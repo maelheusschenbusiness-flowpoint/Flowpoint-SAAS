@@ -4,110 +4,149 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>FlowPoint AI – SaaS</title>
+
   <style>
-  * { box-sizing: border-box; }
+    * { box-sizing: border-box; }
 
-  body{
-    font-family: system-ui, Arial;
-    margin: 0;
-    padding: 0;
-    background: #fff;
-  }
+    body{
+      font-family: system-ui, Arial;
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      color: #111;
+    }
 
-  .page{
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px 16px;
-  }
+    .page{
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
 
-  .container{
-    width: 100%;
-    max-width: 720px;
-    text-align: center;
-  }
+    .container{
+      width: 100%;
+      max-width: 760px;
+      text-align: center;
+    }
 
-  h1{
-    margin: 0 0 8px;
-    font-size: 40px;
-    font-weight: 800;
-  }
+    h1{
+      margin: 0 0 8px;
+      font-size: 42px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
 
-  .muted{
-    color:#666;
-    font-size:14px;
-    margin: 0 0 18px;
-  }
+    .muted{
+      color:#666;
+      font-size:14px;
+      margin: 0 0 18px;
+    }
 
-  .box{
-    width: 100%;
-    border: 1px solid #e6e6e6;
-    background: #fafafa;
-    padding: 18px;
-    border-radius: 14px;
-  }
+    .box{
+      width: 100%;
+      border: 1px solid #e7e7e7;
+      background: #fafafa;
+      padding: 18px;
+      border-radius: 14px;
+    }
 
-  form{
-    width: 100%;
-    display: grid;
-    gap: 12px;
-  }
+    form{
+      width: 100%;
+      display: grid;
+      gap: 12px;
+      text-align: left;
+    }
 
-  input, select, button{
-    width: 100%;
-    padding: 14px 14px;
-    border-radius: 10px;
-    border: 1px solid #d8d8d8;
-    font-size: 16px;
-    outline: none;
-    background: #fff;
-  }
+    label{
+      font-size: 14px;
+      color: #222;
+      margin-bottom: 6px;
+      display: inline-block;
+    }
 
-  input:focus, select:focus{
-    border-color: #9bbcff;
-  }
+    input, select, button{
+      width: 100%;
+      padding: 14px 14px;
+      border-radius: 10px;
+      border: 1px solid #d8d8d8;
+      font-size: 16px;
+      outline: none;
+      background: #fff;
+    }
 
-  button{
-    cursor: pointer;
-    border: none;
-    background: #111;
-    color: #fff;
-    font-weight: 600;
-  }
+    input:focus, select:focus{
+      border-color: #9bbcff;
+    }
 
-  button:hover{
-    opacity: 0.92;
-  }
+    button{
+      cursor: pointer;
+      border: none;
+      background: #111;
+      color: #fff;
+      font-weight: 700;
+      padding: 14px 14px;
+      border-radius: 10px;
+    }
 
-  #msg{
-    margin-top: 10px;
-    text-align: left;
-  }
-</style>
+    button:hover{ opacity: 0.92; }
 
+    #msg{
+      margin: 6px 0 0;
+      font-size: 14px;
+      color: #666;
+      min-height: 18px;
+    }
+
+    .row{
+      display: grid;
+      gap: 6px;
+    }
+  </style>
 </head>
+
 <body>
-  <h1>FlowPoint AI</h1>
-  <p class="muted">Essai gratuit 14 jours (carte obligatoire). Accès bloqué si le paiement échoue après l’essai.</p>
+  <div class="page">
+    <div class="container">
+      <h1>FlowPoint AI</h1>
+      <p class="muted">
+        Essai gratuit 14 jours (carte obligatoire). Accès bloqué si le paiement échoue après l’essai.
+      </p>
 
-  <div class="box">
-    <form id="form">
-      <input id="firstName" placeholder="Prénom" required />
-      <input id="email" type="email" placeholder="Email pro" required />
-      <input id="companyName" placeholder="Entreprise" required />
+      <div class="box">
+        <form id="form">
+          <div class="row">
+            <label for="firstName">Prénom</label>
+            <input id="firstName" placeholder="Jean" required />
+          </div>
 
-      <select id="plan" required>
-        <option value="standard">Standard</option>
-        <option value="pro" selected>Pro</option>
-        <option value="ultra">Ultra</option>
-      </select>
+          <div class="row">
+            <label for="email">Email pro</label>
+            <input id="email" type="email" placeholder="jean@entreprise.com" required />
+          </div>
 
-      <button type="submit">Commencer l’essai (carte requise)</button>
-      <p id="msg" class="muted"></p>
-    </form>
+          <div class="row">
+            <label for="companyName">Entreprise</label>
+            <input id="companyName" placeholder="Ma société" required />
+          </div>
+
+          <div class="row">
+            <label for="plan">Plan</label>
+            <select id="plan" required>
+              <option value="standard">Standard</option>
+              <option value="pro" selected>Pro</option>
+              <option value="ultra">Ultra</option>
+            </select>
+          </div>
+
+          <button type="submit">Commencer l’essai (carte requise)</button>
+          <p id="msg"></p>
+        </form>
+      </div>
+    </div>
   </div>
 
   <script src="/app.js"></script>
 </body>
 </html>
+
