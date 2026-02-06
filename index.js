@@ -1,20 +1,22 @@
 // =======================
-// FlowPoint AI – SaaS Backend + Front
-// Plans: Standard / Pro / Ultra
-// Essai 14 jours, carte requise, blocage auto si paiement échoue
+// FlowPoint AI – SaaS Backend (Render)
+// Plans: standard / pro / ultra
+// Trial 14 jours (carte obligatoire via Stripe Checkout)
+// Blocage auto si paiement échoue (webhooks)
+// Webhook secret attendu: STRIPE_WEBHOOK_SECRET_RENDER
 // =======================
 
-import express from "express";
-import cors from "cors";
-import Stripe from "stripe";
-import jwt from "jsonwebtoken";
-import mongoose from "mongoose";
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
+const Stripe = require("stripe");
 
-// ---------- App ----------
+// ---------- APP ----------
 const app = express();
 app.use(cors());
 
-// JSON partout sauf webhook Stripe (raw)
+// JSON partout SAUF webhook Stripe
 app.use((req, res, next) => {
   if (req.originalUrl === "/api/stripe/webhook") return next();
   express.json({ limit: "1mb" })(req, res, next);
@@ -23,81 +25,43 @@ app.use((req, res, next) => {
 // ---------- ENV ----------
 const PORT = process.env.PORT || 10000;
 
-const MONGO_URI = process.env.MONGO_URI;
-const JWT_SECRET = process.env.JWT_SECRET;
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
+const JWT_SECRET = process.env.JWT_SECRET || "change-me-now";
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
-
-// ✅ On accepte plusieurs noms d’ENV (pour éviter les galères)
-const PRICE_STANDARD =
-  process.env.STRIPE_PRICE_STANDARD ||
-  process.env.STRIPE_PRICE_ID_STANDARD ||
-  process.env.STRIPE_PRICE_ID_STANDARD || // (tolérance si typo) - peut être ignoré
-  process.env.STRIPE_PRICE_ID_STANDARD;
-
-const PRICE_PRO =
-  process.env.STRIPE_PRICE_PRO ||
-  process.env.STRIPE_PRICE_ID_PRO;
-
-const PRICE_ULTRA =
-  process.env.STRIPE_PRICE_ULTRA ||
-  process.env.STRIPE_PRICE_ID_ULTRA;
-
-// ---------- Logs ENV ----------
-function envWarn(key) {
-  console.error(`❌ ENV manquant: ${key}`);
-}
-if (!JWT_SECRET) envWarn("JWT_SECRET");
-if (!STRIPE_SECRET_KEY) envWarn("STRIPE_SECRET_KEY");
-if (!STRIPE_WEBHOOK_SECRET) console.warn("⚠️ STRIPE_WEBHOOK_SECRET manquant (webhook non validable)");
-if (!PRICE_STANDARD) envWarn("STRIPE_PRICE_STANDARD (ou STRIPE_PRICE_ID_STANDARD)");
-if (!PRICE_PRO) envWarn("STRIPE_PRICE_PRO (ou STRIPE_PRICE_ID_PRO)");
-if (!PRICE_ULTRA) envWarn("STRIPE_PRICE_ULTRA (ou STRIPE_PRICE_ID_ULTRA)");
-
-// ---------- Stripe ----------
+// Stripe
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY; // tu as mis LIVE -> OK
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
-// ---------- Mongo ----------
-if (MONGO_URI) {
-  mongoose
-    .connect(MONGO_URI)
-    .then(() => console.log("✅ MongoDB connecté"))
-    .catch((err) => console.error("❌ Mongo error:", err.message));
-} else {
-  console.warn("⚠️ MONGO_URI manquant (Mongo désactivé)");
-}
+// IMPORTANT : on lit en priorité _RENDER comme tu veux
+const STRIPE_WEBHOOK_SECRET =
+  process.env.STRIPE_WEBHOOK_SECRET_RENDER ||
+  process.env.STRIPE_WEBHOOK_SECRET || // fallback si un jour tu changes
+  "";
 
-// ---------- Helpers ----------
-const PUBLIC_EMAIL_DOMAINS = new Set([
-  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "live.com", "msn.com",
-]);
+// Prices (noms simples)
+const PRICE_STANDARD =
+  process.env.STRIPE_PRICE_ID_STANDARD ||
+  process.env.STRIPE_PRICE_STANDARD ||
+  process.env.STRIPE_PRICE_ID_STANDARE || // tolérance typo éventuelle
+  "";
 
-function normalizeEmail(emailRaw) {
-  const email = String(emailRaw || "").trim().toLowerCase();
-  const parts = email.split("@");
-  if (parts.length !== 2) return email;
-  let [local, domain] = parts;
+const PRICE_PRO =
+  process.env.STRIPE_PRICE_ID_PRO ||
+  process.env.STRIPE_PRICE_PRO ||
+  "";
 
-  if (domain === "googlemail.com") domain = "gmail.com";
-  if (domain === "gmail.com") {
-    const plusIndex = local.indexOf("+");
-    if (plusIndex >= 0) local = local.slice(0, plusIndex);
-    local = local.replace(/\./g, "");
-  }
-  return `${local}@${domain}`;
-}
+const PRICE_ULTRA =
+  process.env.STRIPE_PRICE_ID_ULTRA ||
+  process.env.STRIPE_PRICE_ULTRA ||
+  "";
 
-function companyDomainFromEmail(emailNormalized) {
-  return (emailNormalized.split("@")[1] || "").toLowerCase();
-}
-
-function normalizeCompanyName(name) {
-  return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+// ---------- HELPERS ----------
+function planRank(plan) {
+  const map = { free: 0, trial: 1, standard: 2, pro: 3, ultra: 4 };
+  return map[plan] ?? 0;
 }
 
 function quotasForPlan(plan) {
-  // Exemples (à adapter)
   if (plan === "trial") return 50;
   if (plan === "standard") return 500;
   if (plan === "pro") return 5000;
@@ -112,50 +76,33 @@ function priceForPlan(plan) {
   return null;
 }
 
-// ---------- Models ----------
-const userSchema = new mongoose.Schema({
-  firstName: String,
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com",
+  "icloud.com", "live.com", "msn.com"
+]);
 
-  emailRaw: String,
-  emailNormalized: { type: String, unique: true, index: true },
+function normalizeEmail(emailRaw) {
+  const email = String(emailRaw || "").trim().toLowerCase();
+  const parts = email.split("@");
+  if (parts.length !== 2) return email;
+  let [local, domain] = parts;
 
-  companyName: String,
-  companyNameNormalized: { type: String, index: true },
-  companyDomain: { type: String, index: true },
+  if (domain === "googlemail.com") domain = "gmail.com";
 
-  // trial | standard | pro | ultra | free
-  plan: { type: String, default: "trial" },
-  trialStartedAt: Date,
-  trialEndsAt: Date,
+  // Gmail: supprime +alias et points
+  if (domain === "gmail.com") {
+    const plusIndex = local.indexOf("+");
+    if (plusIndex >= 0) local = local.slice(0, plusIndex);
+    local = local.replace(/\./g, "");
+  }
 
-  // Stripe
-  stripeCustomerId: String,
-  stripeSubscriptionId: String,
-  stripePriceId: String,
+  return `${local}@${domain}`;
+}
 
-  // Access
-  accessBlocked: { type: Boolean, default: false },
-  lastPaymentStatus: String,
+function normalizeCompanyName(name) {
+  return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
 
-  // Quota
-  monthlyLimit: { type: Number, default: 0 },
-  monthlyUsed: { type: Number, default: 0 },
-  resetAt: { type: Date, default: Date.now },
-
-  createdAt: { type: Date, default: Date.now },
-});
-
-const trialRegistrySchema = new mongoose.Schema({
-  emailNormalized: { type: String, unique: true, index: true },
-  companyDomain: { type: String, index: true },
-  companyNameNormalized: { type: String, index: true },
-  firstTrialAt: { type: Date, default: Date.now },
-});
-
-const User = mongoose.models.User || mongoose.model("User", userSchema);
-const TrialRegistry = mongoose.models.TrialRegistry || mongoose.model("TrialRegistry", trialRegistrySchema);
-
-// ---------- Auth ----------
 function requireAuth(req, res, next) {
   const h = req.headers.authorization || "";
   const token = h.startsWith("Bearer ") ? h.slice(7) : null;
@@ -169,18 +116,6 @@ function requireAuth(req, res, next) {
   }
 }
 
-async function requireActiveAccess(req, res, next) {
-  const user = await User.findById(req.auth.userId);
-  if (!user) return res.status(401).json({ error: "Utilisateur introuvable" });
-  if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / abonnement inactif)" });
-  req.user = user;
-  next();
-}
-
-function planRank(plan) {
-  const map = { free: 0, trial: 1, standard: 2, pro: 3, ultra: 4 };
-  return map[plan] ?? 0;
-}
 function requirePlan(minPlan) {
   return (req, res, next) => {
     if (planRank(req.user.plan) < planRank(minPlan)) {
@@ -190,10 +125,17 @@ function requirePlan(minPlan) {
   };
 }
 
-// quota (simple)
+async function requireActiveAccess(req, res, next) {
+  const user = await User.findById(req.auth.userId);
+  if (!user) return res.status(401).json({ error: "Utilisateur introuvable" });
+  if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / abonnement inactif)" });
+  req.user = user;
+  next();
+}
+
 async function resetMonthlyIfNeeded(user) {
   const now = new Date();
-  const ra = new Date(user.resetAt || now);
+  const ra = user.resetAt ? new Date(user.resetAt) : now;
   if (ra.getUTCFullYear() !== now.getUTCFullYear() || ra.getUTCMonth() !== now.getUTCMonth()) {
     user.monthlyUsed = 0;
     user.resetAt = now;
@@ -201,137 +143,188 @@ async function resetMonthlyIfNeeded(user) {
     await user.save();
   }
 }
+
 async function useQuota(user, amount = 1) {
   await resetMonthlyIfNeeded(user);
-  if (!user.monthlyLimit || user.monthlyLimit <= 0) return false;
+  if (user.monthlyLimit <= 0) return false;
   if (user.monthlyUsed + amount > user.monthlyLimit) return false;
   user.monthlyUsed += amount;
   await user.save();
   return true;
 }
 
-// ---------- Frontend (simple page) ----------
-app.get("/", (_, res) => {
-  res.type("html").send(`
-<!doctype html>
+// ---------- DB ----------
+if (!MONGO_URI) console.log("❌ MONGO_URI manquant");
+mongoose
+  .connect(MONGO_URI || "mongodb://invalid")
+  .then(() => console.log("✅ MongoDB connecté"))
+  .catch((e) => console.log("❌ MongoDB erreur:", e.message));
+
+const userSchema = new mongoose.Schema({
+  firstName: String,
+  emailRaw: String,
+  emailNormalized: { type: String, unique: true, index: true },
+  companyName: String,
+  companyNameNormalized: { type: String, index: true },
+  companyDomain: { type: String, index: true },
+
+  plan: { type: String, default: "trial" }, // trial|standard|pro|ultra|free
+  trialStartedAt: Date,
+  trialEndsAt: Date,
+
+  stripeCustomerId: String,
+  stripeSubscriptionId: String,
+  stripePriceId: String,
+
+  accessBlocked: { type: Boolean, default: false },
+  lastPaymentStatus: String,
+
+  monthlyLimit: { type: Number, default: 0 },
+  monthlyUsed: { type: Number, default: 0 },
+  resetAt: { type: Date, default: Date.now },
+
+  createdAt: { type: Date, default: Date.now }
+});
+
+const trialRegistrySchema = new mongoose.Schema({
+  emailNormalized: { type: String, unique: true, index: true },
+  companyDomain: { type: String, index: true },
+  companyNameNormalized: { type: String, index: true },
+  firstTrialAt: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model("User", userSchema);
+const TrialRegistry = mongoose.model("TrialRegistry", trialRegistrySchema);
+
+// ---------- FRONT (HTML intégré) ----------
+function renderIndexHtml() {
+  return `<!doctype html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<title>FlowPoint AI</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-  *{box-sizing:border-box}
-  body{font-family:system-ui;background:#f7f7f7;margin:0}
-  .box{max-width:520px;margin:70px auto;background:#fff;padding:24px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
-  h2{margin:0 0 6px}
-  p{margin:0 0 16px;color:#666}
-  input,select,button{width:100%;padding:12px;margin-top:10px;border-radius:10px;border:1px solid #ddd;font-size:16px}
-  button{background:#2563eb;color:white;border:none;font-weight:700;cursor:pointer}
-  button:hover{opacity:.92}
-  #msg{margin-top:12px;color:#d00;min-height:18px}
-</style>
+  <meta charset="UTF-8" />
+  <title>FlowPoint AI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style>
+    body { font-family: system-ui, Arial; background:#f7f7f7; }
+    .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card { width: 100%; max-width: 560px; background:#fff; border:1px solid #e7e7e7; border-radius:16px; padding:22px; box-shadow: 0 12px 30px rgba(0,0,0,0.06); }
+    h1 { margin:0 0 6px 0; font-size:32px; }
+    .muted { color:#666; margin:0 0 14px 0; }
+    input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: 1px solid #dcdcdc; font-size:16px; box-sizing:border-box; }
+    button { background: #2d5bff; border:none; color:white; font-weight:700; cursor:pointer; }
+    button:disabled { opacity: 0.6; cursor:not-allowed; }
+    .err { color:#c00; margin-top:10px; }
+    .ok { color:#0a7; margin-top:10px; }
+  </style>
 </head>
 <body>
-<div class="box">
-  <h2>FlowPoint AI</h2>
-  <p>Essai gratuit 14 jours – carte requise</p>
+  <div class="wrap">
+    <div class="card">
+      <h1>FlowPoint AI</h1>
+      <p class="muted">Essai gratuit 14 jours — carte requise. Accès bloqué si le paiement échoue après l’essai.</p>
 
-  <form id="f">
-    <input id="firstName" placeholder="Prénom" required />
-    <input id="email" type="email" placeholder="Email pro" required />
-    <input id="companyName" placeholder="Entreprise" required />
+      <form id="signup-form">
+        <input id="firstName" type="text" placeholder="Prénom" required />
+        <input id="email" type="email" placeholder="Email professionnel" required />
+        <input id="companyName" type="text" placeholder="Nom de l’entreprise" required />
 
-    <select id="plan">
-      <option value="standard">Standard</option>
-      <option value="pro" selected>Pro</option>
-      <option value="ultra">Ultra</option>
-    </select>
+        <select id="plan" required>
+          <option value="standard">Standard</option>
+          <option value="pro" selected>Pro</option>
+          <option value="ultra">Ultra</option>
+        </select>
 
-    <button id="btn" type="submit">Commencer l’essai</button>
-  </form>
+        <button id="btn" type="submit">Commencer l’essai</button>
+      </form>
 
-  <div id="msg"></div>
-</div>
+      <div id="msg"></div>
+    </div>
+  </div>
 
 <script>
-const f = document.getElementById("f");
-const msg = document.getElementById("msg");
-const btn = document.getElementById("btn");
-
-function setMsg(t){ msg.textContent = t || ""; }
-
-f.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  setMsg("");
-  btn.disabled = true;
-  btn.textContent = "Redirection...";
-
-  const payload = {
-    firstName: document.getElementById("firstName").value.trim(),
-    email: document.getElementById("email").value.trim(),
-    companyName: document.getElementById("companyName").value.trim(),
-    plan: document.getElementById("plan").value
-  };
-
-  try {
-    const leadRes = await fetch("/api/auth/lead", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
-    });
-    const lead = await leadRes.json().catch(() => ({}));
-    if (!leadRes.ok) throw new Error(lead.error || "Erreur lead");
-
-    const stripeRes = await fetch("/api/stripe/checkout", {
-      method: "POST",
-      headers: {
-        "Content-Type":"application/json",
-        "Authorization": "Bearer " + lead.token
-      },
-      body: JSON.stringify({ plan: payload.plan })
-    });
-
-    const out = await stripeRes.json().catch(() => ({}));
-    if (!stripeRes.ok) throw new Error(out.error || "Erreur Stripe");
-
-    window.location.href = out.url;
-  } catch (err) {
-    setMsg("❌ " + (err.message || "Erreur"));
-    btn.disabled = false;
-    btn.textContent = "Commencer l’essai";
+  const msg = document.getElementById("msg");
+  const btn = document.getElementById("btn");
+  function setMsg(text, kind) {
+    msg.className = kind ? kind : "";
+    msg.textContent = text || "";
   }
-});
+
+  document.getElementById("signup-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setMsg("");
+    btn.disabled = true;
+    btn.textContent = "Redirection...";
+
+    const firstName = document.getElementById("firstName").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const companyName = document.getElementById("companyName").value.trim();
+    const plan = document.getElementById("plan").value;
+
+    try {
+      const leadRes = await fetch("/api/auth/lead", {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ firstName, email, companyName, plan })
+      });
+      const leadData = await leadRes.json();
+      if (!leadRes.ok) throw new Error(leadData.error || "Erreur lead");
+
+      const stripeRes = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type":"application/json",
+          "Authorization": "Bearer " + leadData.token
+        },
+        body: JSON.stringify({ plan })
+      });
+      const stripeData = await stripeRes.json();
+      if (!stripeRes.ok) throw new Error(stripeData.error || "Erreur Stripe");
+
+      window.location.href = stripeData.url;
+    } catch (err) {
+      setMsg("❌ " + (err.message || "Erreur"), "err");
+      btn.disabled = false;
+      btn.textContent = "Commencer l’essai";
+    }
+  });
 </script>
 </body>
-</html>
-`);
-});
+</html>`;
+}
 
-// ---------- Health ----------
+// Routes front
+app.get("/", (req, res) => res.type("html").send(renderIndexHtml()));
+app.get("/success", (req, res) => res.type("html").send(`<h1>✅ Paiement enregistré</h1><p>Ton essai est actif. Tu peux fermer cette page.</p>`));
+app.get("/cancel", (req, res) => res.type("html").send(`<h1>❌ Paiement annulé</h1><p>Tu peux revenir en arrière et réessayer.</p>`));
+
+// ---------- API ----------
 app.get("/test", (_, res) => res.send("Backend OK"));
 
-// ---------- Lead (anti-abus) + user + token ----------
+// Lead + anti-abus + token
 app.post("/api/auth/lead", async (req, res) => {
   const { firstName, email, companyName, plan } = req.body || {};
+
   if (!email || !companyName || !plan) return res.status(400).json({ error: "Champs manquants" });
-  if (!["standard", "pro", "ultra"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
+  if (!["standard","pro","ultra"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
 
   const emailNormalized = normalizeEmail(email);
-  const domain = companyDomainFromEmail(emailNormalized);
+  const domain = (emailNormalized.split("@")[1] || "").toLowerCase();
   const companyNameNormalized = normalizeCompanyName(companyName);
 
   try {
-    // anti-abus: 1 essai par email + (si domaine pro) 1 essai par domaine + 1 essai par nom d’entreprise
-    const existingEmail = await TrialRegistry.findOne({ emailNormalized });
-    if (existingEmail) return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
+    // anti-abus email
+    const usedEmail = await TrialRegistry.findOne({ emailNormalized });
+    if (usedEmail) return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
 
+    // anti-abus domaine entreprise (sauf emails publics)
     if (!PUBLIC_EMAIL_DOMAINS.has(domain)) {
-      const existingDomain = await TrialRegistry.findOne({ companyDomain: domain });
-      if (existingDomain) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise (domaine)." });
+      const usedDomain = await TrialRegistry.findOne({ companyDomain: domain });
+      if (usedDomain) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise (domaine)." });
     }
 
-    const existingCompany = await TrialRegistry.findOne({ companyNameNormalized });
-    if (existingCompany) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
+    // anti-abus nom entreprise
+    const usedCompany = await TrialRegistry.findOne({ companyNameNormalized });
+    if (usedCompany) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise (nom)." });
 
     const now = new Date();
     const trialEndsAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
@@ -364,31 +357,30 @@ app.post("/api/auth/lead", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    return res.json({ token });
+    res.json({ ok: true, token });
   } catch (err) {
     if (String(err?.message || "").includes("duplicate key")) {
-      return res.status(403).json({ error: "Essai déjà utilisé." });
+      return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
     }
     console.error(err);
-    return res.status(500).json({ error: "Erreur serveur" });
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
-// ---------- Stripe Checkout (subscription + trial + card required) ----------
-app.post("/api/stripe/checkout", requireAuth, async (req, res) => {
+// Stripe checkout
+app.post("/api/stripe/create-checkout-session", requireAuth, async (req, res) => {
+  if (!stripe) return res.status(500).json({ error: "Stripe non configuré (STRIPE_SECRET_KEY)" });
+
+  const { plan } = req.body || {};
+  if (!["standard","pro","ultra"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
+
+  const priceId = priceForPlan(plan);
+  if (!priceId) return res.status(500).json({ error: "Price ID manquant pour ce plan (ENV Stripe)" });
+
   try {
-    if (!stripe) return res.status(500).json({ error: "Stripe non configuré" });
-
-    const { plan } = req.body || {};
-    if (!["standard", "pro", "ultra"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
-
-    const priceId = priceForPlan(plan);
-    if (!priceId) return res.status(500).json({ error: "Price ID manquant côté serveur" });
-
     const user = await User.findById(req.auth.userId);
     if (!user) return res.status(401).json({ error: "Utilisateur introuvable" });
 
-    // create/reuse customer
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -406,28 +398,30 @@ app.post("/api/stripe/checkout", requireAuth, async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
-      payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
+      allow_promotion_codes: true,
+
+      // TRIAL 14 jours + carte requise via Checkout
       subscription_data: {
         trial_period_days: 14,
         metadata: { userId: user._id.toString(), selectedPlan: plan }
       },
+
       success_url: `${baseUrl}/success`,
-      cancel_url: `${baseUrl}/cancel`,
-      allow_promotion_codes: true
+      cancel_url: `${baseUrl}/cancel`
     });
 
-    return res.json({ url: session.url });
+    res.json({ url: session.url });
   } catch (err) {
-    console.error("❌ Stripe checkout error:", err);
-    return res.status(500).json({ error: err?.raw?.message || err?.message || "Erreur Stripe" });
+    console.error("Stripe error:", err);
+    res.status(500).json({ error: "Erreur Stripe (voir logs Render)" });
   }
 });
 
-// ---------- Stripe Webhook (bloque automatiquement si paiement échoue) ----------
+// Webhook Stripe (raw body)
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   if (!stripe) return res.status(500).send("Stripe non configuré");
-  if (!STRIPE_WEBHOOK_SECRET) return res.status(500).send("Webhook secret manquant");
+  if (!STRIPE_WEBHOOK_SECRET) return res.status(500).send("Webhook secret manquant (STRIPE_WEBHOOK_SECRET_RENDER)");
 
   const sig = req.headers["stripe-signature"];
   let event;
@@ -435,12 +429,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    console.error("❌ Webhook signature error:", err.message);
+    console.error("Webhook signature error:", err.message);
     return res.status(400).send("Webhook Error");
   }
 
   try {
-    async function getUserFromObject(obj) {
+    async function findUserByStripe(obj) {
       const metaUserId = obj?.metadata?.userId;
       if (metaUserId) return await User.findById(metaUserId);
 
@@ -453,15 +447,21 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       return null;
     }
 
-    // ✅ On garde une logique simple:
-    // - trialing => plan trial + accès OK
-    // - active => plan choisi + accès OK
-    // - past_due/unpaid/canceled => accès bloqué + plan free
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const user = await findUserByStripe(session);
+      if (user) {
+        user.stripeCustomerId = session.customer || user.stripeCustomerId;
+        user.stripeSubscriptionId = session.subscription || user.stripeSubscriptionId;
+        user.lastPaymentStatus = "checkout_completed";
+        user.accessBlocked = false;
+        await user.save();
+      }
+    }
 
     if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
       const sub = event.data.object;
-      const user = await getUserFromObject(sub);
-
+      const user = await findUserByStripe(sub);
       if (user) {
         user.stripeSubscriptionId = sub.id;
         user.stripeCustomerId = sub.customer;
@@ -476,10 +476,11 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
           user.monthlyLimit = quotasForPlan("trial");
         } else if (status === "active") {
           const selectedPlan = sub.metadata?.selectedPlan;
-          user.plan = ["standard", "pro", "ultra"].includes(selectedPlan) ? selectedPlan : "pro";
+          user.plan = ["standard","pro","ultra"].includes(selectedPlan) ? selectedPlan : "pro";
           user.accessBlocked = false;
           user.monthlyLimit = quotasForPlan(user.plan);
-        } else if (status === "past_due" || status === "unpaid" || status === "canceled") {
+        } else if (status === "past_due" || status === "unpaid") {
+          // blocage si paiement échoue
           user.accessBlocked = true;
           user.plan = "free";
           user.monthlyLimit = 0;
@@ -493,7 +494,6 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       const invoice = event.data.object;
       const cust = await stripe.customers.retrieve(invoice.customer);
       const uid = cust?.metadata?.userId;
-
       if (uid) {
         const user = await User.findById(uid);
         if (user) {
@@ -508,7 +508,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
     if (event.type === "customer.subscription.deleted") {
       const sub = event.data.object;
-      const user = await getUserFromObject(sub);
+      const user = await findUserByStripe(sub);
       if (user) {
         user.accessBlocked = true;
         user.plan = "free";
@@ -518,51 +518,62 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       }
     }
 
-    return res.json({ received: true });
+    res.json({ received: true });
   } catch (err) {
-    console.error("❌ Webhook handler error:", err);
-    return res.status(500).send("Webhook handler error");
+    console.error("Webhook handler error:", err);
+    res.status(500).send("Webhook handler error");
   }
 });
 
-// ---------- Protected examples ----------
+// /me (debug)
 app.get("/api/me", requireAuth, requireActiveAccess, async (req, res) => {
   const u = req.user;
   res.json({
     email: u.emailRaw,
     company: u.companyName,
     plan: u.plan,
-    accessBlocked: u.accessBlocked,
     trialEndsAt: u.trialEndsAt,
     monthlyUsed: u.monthlyUsed,
     monthlyLimit: u.monthlyLimit,
+    accessBlocked: u.accessBlocked,
     lastPaymentStatus: u.lastPaymentStatus
   });
 });
 
-app.get("/api/features/standard", requireAuth, requireActiveAccess, async (req, res) => {
+// Features (exemples)
+app.get("/api/features/basic", requireAuth, requireActiveAccess, async (req, res) => {
   const ok = await useQuota(req.user, 1);
-  if (!ok) return res.status(429).json({ error: "Quota dépassé" });
-  res.json({ ok: true, feature: "standard", message: "Accès Trial/Standard+" });
+  if (!ok) return res.status(429).json({ error: "Quota mensuel dépassé" });
+  res.json({ ok: true, feature: "basic", message: "Accès Trial/Standard+" });
 });
 
-app.get("/api/features/pro", requireAuth, requireActiveAccess, requirePlan("pro"), async (req, res) => {
+app.get("/api/features/advanced", requireAuth, requireActiveAccess, requirePlan("pro"), async (req, res) => {
   const ok = await useQuota(req.user, 2);
-  if (!ok) return res.status(429).json({ error: "Quota dépassé" });
-  res.json({ ok: true, feature: "pro", message: "Accès Pro+" });
+  if (!ok) return res.status(429).json({ error: "Quota mensuel dépassé" });
+  res.json({ ok: true, feature: "advanced", message: "Accès Pro+" });
 });
 
 app.get("/api/features/ultra", requireAuth, requireActiveAccess, requirePlan("ultra"), async (req, res) => {
   const ok = await useQuota(req.user, 5);
-  if (!ok) return res.status(429).json({ error: "Quota dépassé" });
+  if (!ok) return res.status(429).json({ error: "Quota mensuel dépassé" });
   res.json({ ok: true, feature: "ultra", message: "Accès Ultra" });
 });
 
-// ---------- Pages ----------
-app.get("/success", (_, res) => res.type("html").send("<h1>✅ Paiement enregistré</h1><p>Votre essai est actif. Vous pouvez fermer cette page.</p>"));
-app.get("/cancel", (_, res) => res.type("html").send("<h1>❌ Paiement annulé</h1><p>Vous pouvez revenir en arrière et réessayer.</p>"));
+// ---------- START ----------
+function envWarn(key, ok) {
+  console.log((ok ? "✅" : "❌") + " " + key + (ok ? "" : " manquant"));
+}
 
-// ---------- Start ----------
-app.listen(PORT, () => console.log("✅ FlowPoint SaaS lancé sur le port", PORT));
+envWarn("MONGO_URI", !!MONGO_URI);
+envWarn("JWT_SECRET", !!process.env.JWT_SECRET);
+envWarn("STRIPE_SECRET_KEY", !!STRIPE_SECRET_KEY);
+envWarn("STRIPE_WEBHOOK_SECRET_RENDER", !!process.env.STRIPE_WEBHOOK_SECRET_RENDER);
+envWarn("STRIPE_PRICE_ID_STANDARD", !!PRICE_STANDARD);
+envWarn("STRIPE_PRICE_ID_PRO", !!PRICE_PRO);
+envWarn("STRIPE_PRICE_ID_ULTRA", !!PRICE_ULTRA);
+
+app.listen(PORT, () => {
+  console.log("✅ FlowPoint SaaS lancé sur le port " + PORT);
+});
 
 
