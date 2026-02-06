@@ -33,7 +33,7 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const PRICE_STANDARD =
   process.env.STRIPE_PRICE_STANDARD ||
   process.env.STRIPE_PRICE_ID_STANDARD ||
-  process.env.STRIPE_PRICE_ID_STANDA RD || // (tolérance si typo) - peut être ignoré
+  process.env.STRIPE_PRICE_ID_STANDARD || // (tolérance si typo) - peut être ignoré
   process.env.STRIPE_PRICE_ID_STANDARD;
 
 const PRICE_PRO =
