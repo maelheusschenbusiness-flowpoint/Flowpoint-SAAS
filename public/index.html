@@ -5,11 +5,87 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>FlowPoint AI – SaaS</title>
   <style>
-    body{font-family:system-ui,Arial;max-width:780px;margin:40px auto;padding:0 16px}
-    input,select,button{padding:12px;width:100%;margin:10px 0}
-    .box{border:1px solid #ddd;padding:18px;border-radius:12px}
-    .muted{color:#666;font-size:14px}
-  </style>
+  * { box-sizing: border-box; }
+
+  body{
+    font-family: system-ui, Arial;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+
+  .page{
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+
+  .container{
+    width: 100%;
+    max-width: 720px;
+    text-align: center;
+  }
+
+  h1{
+    margin: 0 0 8px;
+    font-size: 40px;
+    font-weight: 800;
+  }
+
+  .muted{
+    color:#666;
+    font-size:14px;
+    margin: 0 0 18px;
+  }
+
+  .box{
+    width: 100%;
+    border: 1px solid #e6e6e6;
+    background: #fafafa;
+    padding: 18px;
+    border-radius: 14px;
+  }
+
+  form{
+    width: 100%;
+    display: grid;
+    gap: 12px;
+  }
+
+  input, select, button{
+    width: 100%;
+    padding: 14px 14px;
+    border-radius: 10px;
+    border: 1px solid #d8d8d8;
+    font-size: 16px;
+    outline: none;
+    background: #fff;
+  }
+
+  input:focus, select:focus{
+    border-color: #9bbcff;
+  }
+
+  button{
+    cursor: pointer;
+    border: none;
+    background: #111;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  button:hover{
+    opacity: 0.92;
+  }
+
+  #msg{
+    margin-top: 10px;
+    text-align: left;
+  }
+</style>
+
 </head>
 <body>
   <h1>FlowPoint AI</h1>
