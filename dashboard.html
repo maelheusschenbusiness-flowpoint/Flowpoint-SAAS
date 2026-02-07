@@ -19,6 +19,7 @@
     .btn{background:#2f5bff;color:#fff}
     .btn2{background:#111;color:#fff}
     .btn3{background:#eef2ff;color:#1d4ed8}
+    .btn4{background:#10b981;color:#fff}
     input,select{padding:10px;border-radius:12px;border:1px solid #d7d9e6;width:100%}
     .box{border:1px solid #eee;border-radius:14px;padding:12px;background:#fafafa}
     .bar{height:10px;border-radius:999px;background:#eaeefc;overflow:hidden;margin-top:8px}
@@ -32,6 +33,7 @@
     td,th{padding:10px;border-bottom:1px solid #eee;text-align:left;font-size:14px}
     a{color:#2f5bff;font-weight:900;text-decoration:none}
     .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:#f3f4f6;color:#111;font-weight:900;font-size:12px}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
   </style>
 </head>
 <body>
@@ -55,6 +57,12 @@
         </div>
       </div>
       <div id="msg" class="muted" style="margin-top:10px"></div>
+
+      <div class="actions">
+        <button class="btn4" id="btnExportAudits">Exporter Audits CSV</button>
+        <button class="btn4" id="btnExportMonitors">Exporter Monitors CSV</button>
+      </div>
+      <div class="small">Les exports consomment 1 quota “exports”.</div>
     </div>
 
     <div class="card">
@@ -82,6 +90,11 @@
           <div style="margin-top:10px">
             <div class="small">PDF: <span id="qp">0/0</span></div>
             <div class="bar"><div id="bp"></div></div>
+          </div>
+
+          <div style="margin-top:10px">
+            <div class="small">Exports: <span id="qe">0/0</span></div>
+            <div class="bar"><div id="be"></div></div>
           </div>
 
           <div class="small" style="margin-top:10px">Reset: 1er jour du mois (UTC)</div>
