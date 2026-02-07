@@ -46,16 +46,57 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
-
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
 });
 app.use("/api", apiLimiter);
 
-// ---------- STATIC ----------
+// ---------- WEBHOOK MUST BE RAW (AVANT express.json) ----------
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    try {
+      const sig = req.headers["stripe-signature"];
+      const secret = process.env.STRIPE_WEBHOOK_SECRET_RENDER;
+
+      // si pas de secret, on répond OK pour éviter que Stripe spam
+      if (!secret) return res.status(200).send("no webhook secret");
+
+      const event = stripe.webhooks.constructEvent(req.body, sig, secret);
+
+      if (event.type === "invoice.payment_failed") {
+        const inv = event.data.object;
+        const customerId = inv.customer;
+        await User.updateOne(
+          { stripeCustomerId: customerId },
+          { $set: { accessBlocked: true } }
+        );
+      }
+
+      if (event.type === "invoice.payment_succeeded") {
+        const inv = event.data.object;
+        const customerId = inv.customer;
+        await User.updateOne(
+          { stripeCustomerId: customerId },
+          { $set: { accessBlocked: false } }
+        );
+      }
+
+      return res.json({ received: true });
+    } catch (e) {
+      console.log("webhook error:", e.message);
+      return res.status(400).send(`Webhook Error: ${e.message}`);
+    }
+  }
+);
+
+// ---------- BODY PARSERS (APRES webhook) ----------
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// ---------- STATIC (FRONTEND FILES) ----------
 app.use(express.static(path.join(__dirname)));
 
 // ---------- DB ----------
@@ -77,19 +118,19 @@ const UserSchema = new mongoose.Schema(
     stripeCustomerId: String,
     stripeSubscriptionId: String,
 
-    // anti-abus / statut
     hasTrial: { type: Boolean, default: false },
     trialStartedAt: Date,
     trialEndsAt: Date,
-    accessBlocked: { type: Boolean, default: false },
+    accessBlocked: { type: Boolean, default: false }
   },
   { timestamps: true }
 );
 
 const TrialRegistrySchema = new mongoose.Schema(
   {
+    // on bloque par email + ip + user-agent (suffisant pour ton cas)
     fingerprint: { type: String, unique: true, index: true },
-    usedAt: { type: Date, default: Date.now },
+    usedAt: { type: Date, default: Date.now }
   },
   { timestamps: true }
 );
@@ -106,11 +147,13 @@ function normalizeCompanyName(s) {
     .replace(/[^a-z0-9\s-]/g, "");
 }
 
-function makeFingerprint(req, email, companyName) {
-  // simple (améliorable). Le but: empêcher spam avec mêmes infos
-  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
+function makeFingerprint(req, email) {
+  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "")
+    .toString()
+    .split(",")[0]
+    .trim();
   const ua = (req.headers["user-agent"] || "").toString();
-  const base = `${ip}||${ua}||${(email || "").toLowerCase()}||${normalizeCompanyName(companyName)}`;
+  const base = `${ip}||${ua}||${(email || "").toLowerCase()}`;
   return Buffer.from(base).toString("base64");
 }
 
@@ -143,27 +186,19 @@ app.get("/dashboard", (req, res) => res.sendFile(path.join(__dirname, "dashboard
 // ---------- API: HEALTH ----------
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-// ---------- API: LEAD (pré-check anti-abus + user upsert) ----------
+// ---------- API: LEAD (NE CONSOMME PAS L'ESSAI ICI) ----------
 app.post("/api/auth/lead", async (req, res) => {
   try {
     const { firstName, email, companyName, plan } = req.body || {};
     if (!email) return res.status(400).json({ error: "Email requis" });
+
     const chosenPlan = (plan || "").toLowerCase();
     if (!["standard", "pro", "ultra"].includes(chosenPlan)) {
       return res.status(400).json({ error: "Plan invalide" });
     }
 
-    const fingerprint = makeFingerprint(req, email, companyName);
-
-    // Si fingerprint déjà utilisé -> bloquer l'essai (anti abus)
-    const already = await TrialRegistry.findOne({ fingerprint });
-    if (already) {
-      return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
-    }
-
     const companyNameNormalized = normalizeCompanyName(companyName);
 
-    // upsert user
     let user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
       user = await User.create({
@@ -171,7 +206,7 @@ app.post("/api/auth/lead", async (req, res) => {
         name: firstName || "",
         companyName: companyName || "",
         companyNameNormalized,
-        plan: chosenPlan,
+        plan: chosenPlan
       });
     } else {
       user.name = firstName || user.name;
@@ -181,9 +216,6 @@ app.post("/api/auth/lead", async (req, res) => {
       await user.save();
     }
 
-    // créer une “réservation” anti abus (on considère essai consommé dès création du checkout)
-    await TrialRegistry.create({ fingerprint });
-
     const token = signToken(user);
     return res.json({ ok: true, token });
   } catch (e) {
@@ -192,7 +224,7 @@ app.post("/api/auth/lead", async (req, res) => {
   }
 });
 
-// ---------- API: STRIPE CHECKOUT ----------
+// ---------- API: STRIPE CHECKOUT (CONSOMME L'ESSAI ICI) ----------
 app.post("/api/stripe/checkout", auth, async (req, res) => {
   try {
     const { plan } = req.body || {};
@@ -204,6 +236,11 @@ app.post("/api/stripe/checkout", auth, async (req, res) => {
     const user = await User.findById(req.user.uid);
     if (!user) return res.status(404).json({ error: "User introuvable" });
     if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué" });
+
+    // anti-abus: bloque si déjà utilisé (par email + ip + ua)
+    const fingerprint = makeFingerprint(req, user.email);
+    const already = await TrialRegistry.findOne({ fingerprint });
+    if (already) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
 
     const priceId =
       chosenPlan === "standard"
@@ -220,21 +257,16 @@ app.post("/api/stripe/checkout", auth, async (req, res) => {
       const customer = await stripe.customers.create({
         email: user.email,
         name: user.name || undefined,
-        metadata: { uid: user._id.toString() },
+        metadata: { uid: user._id.toString() }
       });
       customerId = customer.id;
       user.stripeCustomerId = customerId;
       await user.save();
     }
 
-    const baseUrl = process.env.PUBLIC_BASE_URL || ""; // optionnel
-    const successUrl = baseUrl
-      ? `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`
-      : `https://${req.headers.host}/success.html?session_id={CHECKOUT_SESSION_ID}`;
-
-    const cancelUrl = baseUrl
-      ? `${baseUrl}/cancel.html`
-      : `https://${req.headers.host}/cancel.html`;
+    // base url (utile si tu as un domaine)
+    const baseUrl =
+      process.env.PUBLIC_BASE_URL?.trim() || `https://${req.headers.host}`;
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -242,13 +274,16 @@ app.post("/api/stripe/checkout", auth, async (req, res) => {
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: {
         trial_period_days: 14,
-        metadata: { uid: user._id.toString(), plan: chosenPlan },
+        metadata: { uid: user._id.toString(), plan: chosenPlan }
       },
       metadata: { uid: user._id.toString(), plan: chosenPlan },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      allow_promotion_codes: true,
+      success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/cancel.html`,
+      allow_promotion_codes: true
     });
+
+    // on “consomme” l’essai seulement après création session checkout
+    await TrialRegistry.create({ fingerprint });
 
     return res.json({ url: session.url });
   } catch (e) {
@@ -257,14 +292,14 @@ app.post("/api/stripe/checkout", auth, async (req, res) => {
   }
 });
 
-// ---------- API: VERIFY SUCCESS (récupérer user + token après paiement) ----------
+// ---------- API: VERIFY SUCCESS ----------
 app.get("/api/stripe/verify", async (req, res) => {
   try {
     const sessionId = req.query.session_id;
     if (!sessionId) return res.status(400).json({ error: "session_id manquant" });
 
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["subscription", "customer"],
+      expand: ["subscription", "customer"]
     });
 
     const uid = session.metadata?.uid || session.subscription?.metadata?.uid;
@@ -273,18 +308,15 @@ app.get("/api/stripe/verify", async (req, res) => {
     const user = await User.findById(uid);
     if (!user) return res.status(404).json({ error: "User introuvable" });
 
-    // enregistrer subscription
     if (session.customer?.id) user.stripeCustomerId = session.customer.id;
     if (session.subscription?.id) user.stripeSubscriptionId = session.subscription.id;
 
-    // marquer trial
     if (!user.hasTrial) {
       user.hasTrial = true;
       user.trialStartedAt = new Date();
       user.trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     }
 
-    // plan
     const plan = (session.metadata?.plan || "").toLowerCase();
     if (["standard", "pro", "ultra"].includes(plan)) user.plan = plan;
 
@@ -300,8 +332,8 @@ app.get("/api/stripe/verify", async (req, res) => {
         companyName: user.companyName,
         plan: user.plan,
         trialEndsAt: user.trialEndsAt,
-        accessBlocked: user.accessBlocked,
-      },
+        accessBlocked: user.accessBlocked
+      }
     });
   } catch (e) {
     console.log("verify error:", e.message);
@@ -309,7 +341,7 @@ app.get("/api/stripe/verify", async (req, res) => {
   }
 });
 
-// ---------- API: ME (pour dashboard) ----------
+// ---------- API: ME (DASHBOARD) ----------
 app.get("/api/me", auth, async (req, res) => {
   const user = await User.findById(req.user.uid);
   if (!user) return res.status(404).json({ error: "User introuvable" });
@@ -321,7 +353,7 @@ app.get("/api/me", auth, async (req, res) => {
     plan: user.plan,
     hasTrial: user.hasTrial,
     trialEndsAt: user.trialEndsAt,
-    accessBlocked: user.accessBlocked,
+    accessBlocked: user.accessBlocked
   });
 });
 
@@ -329,56 +361,23 @@ app.get("/api/me", auth, async (req, res) => {
 app.post("/api/stripe/portal", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.uid);
-    if (!user?.stripeCustomerId) return res.status(400).json({ error: "Customer Stripe manquant" });
+    if (!user?.stripeCustomerId)
+      return res.status(400).json({ error: "Customer Stripe manquant" });
 
-    const baseUrl = process.env.PUBLIC_BASE_URL || `https://${req.headers.host}`;
+    const baseUrl =
+      process.env.PUBLIC_BASE_URL?.trim() || `https://${req.headers.host}`;
+
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
-      return_url: `${baseUrl}/dashboard.html`,
+      return_url: `${baseUrl}/dashboard.html`
     });
 
-    res.json({ url: session.url });
+    return res.json({ url: session.url });
   } catch (e) {
     console.log("portal error:", e.message);
-    res.status(500).json({ error: "Erreur portal" });
+    return res.status(500).json({ error: "Erreur portal" });
   }
 });
-
-// ---------- WEBHOOK (optionnel) ----------
-app.post(
-  "/api/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  async (req, res) => {
-    try {
-      const sig = req.headers["stripe-signature"];
-      const secret = process.env.STRIPE_WEBHOOK_SECRET_RENDER;
-      if (!secret) return res.status(200).send("no webhook secret");
-
-      const event = stripe.webhooks.constructEvent(req.body, sig, secret);
-
-      // Exemple: bloquer / débloquer si paiement échoue
-      if (event.type === "invoice.payment_failed") {
-        const inv = event.data.object;
-        const customerId = inv.customer;
-        await User.updateOne({ stripeCustomerId: customerId }, { $set: { accessBlocked: true } });
-      }
-      if (event.type === "invoice.payment_succeeded") {
-        const inv = event.data.object;
-        const customerId = inv.customer;
-        await User.updateOne({ stripeCustomerId: customerId }, { $set: { accessBlocked: false } });
-      }
-
-      res.json({ received: true });
-    } catch (e) {
-      console.log("webhook error:", e.message);
-      res.status(400).send(`Webhook Error: ${e.message}`);
-    }
-  }
-);
-
-// IMPORTANT: comme on a express.raw sur webhook, il faut le mettre AVANT express.json
-// => ici on l’a mis correctement en route dédiée, mais Express a déjà json() global.
-// Pour éviter conflit, sur Render ça passe souvent, sinon dis-moi et je te donne la variante “app.use('/api/stripe/webhook', raw...)” avant json().
 
 app.listen(PORT, () => {
   console.log(`✅ FlowPoint SaaS lancé sur le port ${PORT}`);
