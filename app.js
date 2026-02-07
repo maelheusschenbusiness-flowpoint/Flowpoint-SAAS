@@ -1,13 +1,12 @@
-const form = document.getElementById("signup-form");
-const msg = document.getElementById("message");
+const msg = document.getElementById("msg");
 const btn = document.getElementById("btn");
 
-function setMsg(text, ok = false) {
-  msg.textContent = text || "";
-  msg.className = ok ? "ok" : "";
+function setMsg(text, type = "error") {
+  msg.className = type === "ok" ? "ok" : "error";
+  msg.textContent = text;
 }
 
-form.addEventListener("submit", async (e) => {
+document.getElementById("signupForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   setMsg("");
   btn.disabled = true;
@@ -18,36 +17,42 @@ form.addEventListener("submit", async (e) => {
   const plan = document.getElementById("plan").value;
 
   try {
-    setMsg("Création du compte...");
-
-    // 1) Lead + token (anti-abus)
-    const leadRes = await fetch("/api/auth/lead", {
+    // 1) Lead + token
+    const r1 = await fetch("/api/auth/lead", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ firstName, email, companyName, plan })
     });
 
-    const leadData = await leadRes.json().catch(() => ({}));
-    if (!leadRes.ok) throw new Error(leadData.error || "Erreur lead");
+    const d1 = await r1.json();
+    if (!r1.ok) {
+      setMsg(d1.error || "Erreur lead");
+      btn.disabled = false;
+      return;
+    }
 
-    setMsg("Redirection Stripe...");
-
-    // 2) Checkout Stripe
-    const stripeRes = await fetch("/api/stripe/checkout", {
+    // 2) Stripe checkout session
+    const r2 = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + leadData.token
+        "Authorization": "Bearer " + d1.token
       },
       body: JSON.stringify({ plan })
     });
 
-    const stripeData = await stripeRes.json().catch(() => ({}));
-    if (!stripeRes.ok) throw new Error(stripeData.error || "Erreur Stripe");
+    const d2 = await r2.json();
+    if (!r2.ok) {
+      setMsg(d2.error || "Erreur Stripe");
+      btn.disabled = false;
+      return;
+    }
 
-    window.location.href = stripeData.url;
+    // 3) Redirect
+    window.location.href = d2.url;
+
   } catch (err) {
-    setMsg("❌ " + (err?.message || "Erreur inconnue"));
+    setMsg("Serveur indisponible");
     btn.disabled = false;
   }
 });
