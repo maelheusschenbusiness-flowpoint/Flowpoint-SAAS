@@ -1,52 +1,82 @@
-const statusEl = document.getElementById("status");
-const nameEl = document.getElementById("name");
-const emailEl = document.getElementById("email");
-const planEl = document.getElementById("plan");
-const subStatusEl = document.getElementById("subStatus");
-const trialEndEl = document.getElementById("trialEnd");
-const accessEl = document.getElementById("access");
+function $(id){ return document.getElementById(id); }
 
-function setError(txt) {
-  statusEl.textContent = txt || "";
+function setMsg(t){ $("msg").textContent = t || ""; }
+
+function getToken(){
+  return localStorage.getItem("fp_token") || "";
 }
 
-function fmtDate(v) {
-  if (!v) return "—";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString("fr-FR");
+function mustLogin(){
+  // Si pas de token, on renvoie sur la page d’accueil (signup)
+  window.location.href = "/index.html";
 }
 
-async function loadMe() {
-  setError("");
-  const token = localStorage.getItem("fp_token");
-  if (!token) {
-    setError("Pas connecté. Va sur / (inscription) ou /success.html après paiement.");
-    return;
+async function api(path, opts = {}){
+  const token = getToken();
+  const headers = Object.assign(
+    { "Content-Type": "application/json" },
+    opts.headers || {},
+    token ? { "Authorization": "Bearer " + token } : {}
+  );
+  const res = await fetch(path, { ...opts, headers });
+  const data = await res.json().catch(()=> ({}));
+  if (!res.ok) throw new Error(data.error || "Erreur API");
+  return data;
+}
+
+function fmtDate(d){
+  if (!d) return "—";
+  try {
+    const dt = new Date(d);
+    return dt.toLocaleString("fr-FR");
+  } catch {
+    return "—";
+  }
+}
+
+async function loadMe(){
+  const me = await api("/api/me", { method:"GET" });
+
+  $("name").textContent = me.name || "—";
+  $("email").textContent = me.email || "—";
+  $("planBadge").textContent = "Plan: " + (me.plan || "standard").toUpperCase();
+
+  $("trialStatus").textContent = me.hasTrial ? "Oui" : "Non";
+  $("trialEnds").textContent = fmtDate(me.trialEndsAt);
+
+  if (me.accessBlocked) {
+    $("access").innerHTML = `<span class="danger">Accès bloqué : paiement en échec.</span>`;
+  } else {
+    $("access").innerHTML = `<span class="ok">Accès OK</span>`;
   }
 
-  const r = await fetch("/api/me", {
-    headers: { "Authorization": "Bearer " + token }
+  // Premium gating
+  const plan = (me.plan || "standard").toLowerCase();
+  const isPremium = plan === "pro" || plan === "ultra";
+  $("standardUpsell").classList.toggle("hidden", isPremium);
+  $("premiumContent").classList.toggle("hidden", !isPremium);
+}
+
+async function openPortal(){
+  const out = await api("/api/stripe/portal", { method:"POST", body:"{}" });
+  window.location.href = out.url;
+}
+
+(function init(){
+  if (!getToken()) return mustLogin();
+
+  $("btnPortal").addEventListener("click", openPortal);
+  $("btnUpgrade2").addEventListener("click", openPortal);
+
+  $("btnRefresh").addEventListener("click", async ()=>{
+    try { setMsg("Chargement..."); await loadMe(); setMsg("✅ OK"); }
+    catch(e){ setMsg("❌ " + e.message); }
   });
 
-  const d = await r.json();
-  if (!r.ok) {
-    setError(d.error || "Impossible de charger le profil.");
-    return;
-  }
+  $("btnLogout").addEventListener("click", ()=>{
+    localStorage.removeItem("fp_token");
+    mustLogin();
+  });
 
-  nameEl.textContent = d.user.firstName || "—";
-  emailEl.textContent = d.user.email || "—";
-  planEl.textContent = (d.user.plan || "—").toUpperCase();
-  subStatusEl.textContent = d.user.subscriptionStatus || "—";
-  trialEndEl.textContent = fmtDate(d.user.trialEndsAt);
-  accessEl.textContent = d.user.accessBlocked ? "Bloqué" : "OK";
-}
-
-document.getElementById("refresh").addEventListener("click", loadMe);
-document.getElementById("logout").addEventListener("click", () => {
-  localStorage.removeItem("fp_token");
-  location.href = "/index.html";
-});
-
-loadMe();
+  loadMe().catch(e => setMsg("❌ " + e.message));
+})();
