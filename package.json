@@ -1,24 +1,22 @@
 {
   "name": "flowpoint-saas",
   "version": "1.0.0",
-  "private": true,
+  "description": "FlowPoint AI SaaS",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js"
-  },
-  "engines": {
-    "node": ">=20"
+    "start": "node index.js",
+    "cron": "node cron.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "express-rate-limit": "^7.4.0",
+    "express-rate-limit": "^7.3.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.9.0",
+    "mongoose": "^8.3.4",
     "nodemailer": "^6.9.14",
-    "stripe": "^16.12.0"
+    "stripe": "^14.25.0"
   }
 }
