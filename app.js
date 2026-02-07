@@ -1,58 +1,104 @@
+// app.js — FlowPoint AI (frontend)
+// Flux: lead -> token -> checkout -> redirect Stripe
+
+const form = document.getElementById("signupForm");
 const msg = document.getElementById("msg");
 const btn = document.getElementById("btn");
 
-function setMsg(text, type = "error") {
-  msg.className = type === "ok" ? "ok" : "error";
+function setMsg(text = "", type = "") {
+  if (!msg) return;
   msg.textContent = text;
+
+  // Si tu utilises des classes CSS "ok" / "error" dans ton HTML
+  msg.className = "";
+  if (type === "ok") msg.classList.add("ok");
+  if (type === "error") msg.classList.add("error");
 }
 
-document.getElementById("signupForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  setMsg("");
-  btn.disabled = true;
+function setLoading(isLoading) {
+  if (!btn) return;
+  btn.disabled = isLoading;
+  btn.textContent = isLoading ? "Traitement..." : "Commencer l’essai";
+}
 
-  const firstName = document.getElementById("firstName").value.trim();
-  const email = document.getElementById("email").value.trim();
-  const companyName = document.getElementById("companyName").value.trim();
-  const plan = document.getElementById("plan").value;
+async function postJSON(url, body, headers = {}) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
 
+  let data = {};
   try {
-    // 1) Lead + token
-    const r1 = await fetch("/api/auth/lead", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ firstName, email, companyName, plan })
-    });
-
-    const d1 = await r1.json();
-    if (!r1.ok) {
-      setMsg(d1.error || "Erreur lead");
-      btn.disabled = false;
-      return;
-    }
-
-    // 2) Stripe checkout session
-    const r2 = await fetch("/api/stripe/checkout", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + d1.token
-      },
-      body: JSON.stringify({ plan })
-    });
-
-    const d2 = await r2.json();
-    if (!r2.ok) {
-      setMsg(d2.error || "Erreur Stripe");
-      btn.disabled = false;
-      return;
-    }
-
-    // 3) Redirect
-    window.location.href = d2.url;
-
-  } catch (err) {
-    setMsg("Serveur indisponible");
-    btn.disabled = false;
+    data = await r.json();
+  } catch {
+    // parfois le serveur peut renvoyer autre chose que JSON
   }
-});
+
+  if (!r.ok) {
+    const errMsg = data?.error || `Erreur ${r.status}`;
+    throw new Error(errMsg);
+  }
+  return data;
+}
+
+function normalizePlan(v) {
+  const p = String(v || "").trim().toLowerCase();
+  // Plans EXACTS attendus par le backend
+  if (["standard", "pro", "ultra"].includes(p)) return p;
+  return "pro";
+}
+
+function requireEl(id) {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`Element #${id} introuvable dans la page`);
+  return el;
+}
+
+if (!form) {
+  console.warn("⚠️ signupForm introuvable (id='signupForm')");
+} else {
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setMsg("");
+    setLoading(true);
+
+    try {
+      const firstName = requireEl("firstName").value.trim();
+      const email = requireEl("email").value.trim();
+      const companyName = requireEl("companyName").value.trim();
+      const plan = normalizePlan(requireEl("plan").value);
+
+      if (!email) throw new Error("Email requis");
+      if (!companyName) throw new Error("Nom d’entreprise requis");
+
+      // 1) Lead -> token
+      const lead = await postJSON("/api/auth/lead", {
+        firstName,
+        email,
+        companyName,
+        plan,
+      });
+
+      if (!lead.token) throw new Error("Token manquant (lead)");
+
+      // On stocke aussi le token tout de suite (pratique)
+      localStorage.setItem("fp_token", lead.token);
+
+      // 2) Checkout Stripe -> url
+      const checkout = await postJSON(
+        "/api/stripe/checkout",
+        { plan },
+        { Authorization: "Bearer " + lead.token }
+      );
+
+      if (!checkout.url) throw new Error("URL Stripe manquante");
+
+      // 3) Redirect Stripe
+      window.location.href = checkout.url;
+    } catch (err) {
+      setMsg(err?.message || "Erreur", "error");
+      setLoading(false);
+    }
+  });
+}
