@@ -1,5 +1,121 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Dashboard</title></head>
-<body style="font-family:system-ui;padding:30px">
-  <h1>Dashboard</h1>
-  <p>Cette page est une base. Ensuite on branchera tes vraies features.</p>
-</body></html>
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - FlowPoint AI</title>
+    <style>
+      body { font-family: system-ui, Arial; background:#f7f7fb; margin:0; }
+      .wrap { max-width:900px; margin:40px auto; padding:0 16px; }
+      .card { background:#fff; border:1px solid #eee; border-radius:16px; padding:22px; }
+      .row { display:flex; gap:16px; flex-wrap:wrap; }
+      .col { flex:1; min-width:260px; }
+      h1 { margin:0 0 10px; }
+      .muted { color:#666; }
+      .badge { display:inline-block; padding:6px 10px; border-radius:999px; background:#eef2ff; color:#1b3cff; font-weight:700; font-size:12px; }
+      .btn { padding:10px 12px; border-radius:10px; border:0; cursor:pointer; font-weight:700; }
+      .btn-primary { background:#2453ff; color:#fff; }
+      .btn-ghost { background:#f2f4ff; color:#1b3cff; }
+      .danger { color:#b00020; font-weight:700; }
+      hr { border:0; border-top:1px solid #eee; margin:16px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Dashboard</h1>
+        <p class="muted">Bienvenue sur FlowPoint AI.</p>
+        <div id="err" class="danger" style="display:none;"></div>
+
+        <hr />
+
+        <div class="row">
+          <div class="col">
+            <h3>Compte</h3>
+            <div>Email : <b id="email">—</b></div>
+            <div>Nom : <b id="name">—</b></div>
+            <div>Entreprise : <b id="company">—</b></div>
+          </div>
+
+          <div class="col">
+            <h3>Abonnement</h3>
+            <div>Plan : <span class="badge" id="plan">—</span></div>
+            <div>Essai : <b id="trial">—</b></div>
+            <div>Fin essai : <b id="trialEnd">—</b></div>
+            <div id="blocked" class="danger" style="display:none;">Accès bloqué (paiement échoué).</div>
+
+            <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+              <button class="btn btn-primary" id="portal">Gérer mon abonnement</button>
+              <button class="btn btn-ghost" id="logout">Se déconnecter</button>
+            </div>
+          </div>
+        </div>
+
+        <hr />
+        <p class="muted">Étape suivante : on ajoute la page “produit” + accès aux features selon le plan.</p>
+      </div>
+    </div>
+
+    <script>
+      function showErr(msg) {
+        const el = document.getElementById("err");
+        el.style.display = "block";
+        el.textContent = msg;
+      }
+
+      function fmtDate(d) {
+        if (!d) return "—";
+        try {
+          return new Date(d).toLocaleString("fr-FR");
+        } catch {
+          return "—";
+        }
+      }
+
+      async function api(path, opts = {}) {
+        const token = localStorage.getItem("fp_token");
+        if (!token) throw new Error("Non connecté (token manquant).");
+        const headers = Object.assign(
+          { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+          opts.headers || {}
+        );
+        const r = await fetch(path, Object.assign({}, opts, { headers }));
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || "Erreur API");
+        return data;
+      }
+
+      async function loadMe() {
+        try {
+          const me = await api("/api/me");
+          document.getElementById("email").textContent = me.email || "—";
+          document.getElementById("name").textContent = me.name || "—";
+          document.getElementById("company").textContent = me.companyName || "—";
+          document.getElementById("plan").textContent = (me.plan || "—").toUpperCase();
+          document.getElementById("trial").textContent = me.hasTrial ? "Actif" : "Non";
+          document.getElementById("trialEnd").textContent = fmtDate(me.trialEndsAt);
+
+          if (me.accessBlocked) document.getElementById("blocked").style.display = "block";
+        } catch (e) {
+          showErr(e.message);
+        }
+      }
+
+      document.getElementById("portal").addEventListener("click", async () => {
+        try {
+          const data = await api("/api/stripe/portal", { method: "POST", body: "{}" });
+          location.href = data.url;
+        } catch (e) {
+          showErr(e.message);
+        }
+      });
+
+      document.getElementById("logout").addEventListener("click", () => {
+        localStorage.removeItem("fp_token");
+        location.href = "/index.html";
+      });
+
+      loadMe();
+    </script>
+  </body>
+</html>
