@@ -1,6 +1,11 @@
 // =======================
-// FlowPoint AI – SaaS Backend (Render)
-// Standard / Pro / Ultra + Dashboard + Stripe + Email helpers
+// FlowPoint AI – SaaS Backend (Standard / Pro / Ultra)
+// - Stripe Checkout + Portal + Webhook
+// - JWT Auth
+// - Trial 14 days (card required via Stripe trial)
+// - Access blocked if payment fails / subscription deleted
+// - Monthly quotas per plan (audits, chat, monitors)
+// - Dashboard endpoints
 // =======================
 
 require("dotenv").config();
@@ -16,34 +21,147 @@ const Stripe = require("stripe");
 const nodemailer = require("nodemailer");
 
 const app = express();
+app.set("trust proxy", true);
+
 const PORT = process.env.PORT || 5000;
 
-// ---------- ENV CHECK ----------
+// ---------- ENV ----------
 const REQUIRED = [
   "MONGO_URI",
   "JWT_SECRET",
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_ID_STANDARD",
   "STRIPE_PRICE_ID_PRO",
-  "STRIPE_PRICE_ID_ULTRA"
+  "STRIPE_PRICE_ID_ULTRA",
+  "PUBLIC_BASE_URL"
 ];
-
 for (const k of REQUIRED) {
   if (!process.env[k]) console.log("❌ ENV manquante:", k);
 }
 
-if (!process.env.STRIPE_WEBHOOK_SECRET_RENDER) {
-  console.log("⚠️ STRIPE_WEBHOOK_SECRET_RENDER manquante (webhook non validable)");
-}
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET_RENDER; // render webhook secret
+if (!STRIPE_WEBHOOK_SECRET) console.log("⚠️ STRIPE_WEBHOOK_SECRET_RENDER manquante");
 
-// ---------- STRIPE ----------
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
+// ---------- SECURITY ----------
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({ origin: true, credentials: true }));
+app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
+
+// ---------- STRIPE WEBHOOK RAW (must be before json) ----------
+app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  try {
+    if (!STRIPE_WEBHOOK_SECRET) return res.status(200).send("no webhook secret");
+    const sig = req.headers["stripe-signature"];
+    const event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+
+    // Helper: find user by customer/sub metadata
+    async function getUserFromObject(obj) {
+      const uid = obj?.metadata?.uid || obj?.metadata?.userId;
+      if (uid) return await User.findById(uid);
+
+      const customerId = obj?.customer;
+      if (customerId) return await User.findOne({ stripeCustomerId: customerId });
+
+      return null;
+    }
+
+    if (event.type === "invoice.payment_failed") {
+      const inv = event.data.object;
+      await User.updateOne(
+        { stripeCustomerId: inv.customer },
+        { $set: { accessBlocked: true, lastPaymentStatus: "payment_failed" } }
+      );
+    }
+
+    if (event.type === "invoice.payment_succeeded") {
+      const inv = event.data.object;
+      await User.updateOne(
+        { stripeCustomerId: inv.customer },
+        { $set: { accessBlocked: false, lastPaymentStatus: "payment_succeeded" } }
+      );
+    }
+
+    if (event.type === "customer.subscription.deleted") {
+      const sub = event.data.object;
+      const user = await getUserFromObject(sub);
+      if (user) {
+        user.accessBlocked = true;
+        user.lastPaymentStatus = "subscription_deleted";
+        await user.save();
+      }
+    }
+
+    if (event.type === "customer.subscription.updated") {
+      const sub = event.data.object;
+      const user = await getUserFromObject(sub);
+      if (user) {
+        user.stripeSubscriptionId = sub.id;
+        user.stripeCustomerId = sub.customer;
+
+        // Stripe status -> block/unblock
+        const status = sub.status;
+        user.lastPaymentStatus = status;
+
+        if (["active", "trialing"].includes(status)) {
+          user.accessBlocked = false;
+        }
+        if (["past_due", "unpaid", "canceled"].includes(status)) {
+          user.accessBlocked = true;
+        }
+
+        // Sync plan from priceId if possible
+        const priceId = sub.items?.data?.[0]?.price?.id;
+        if (priceId) {
+          if (priceId === process.env.STRIPE_PRICE_ID_STANDARD) user.plan = "standard";
+          if (priceId === process.env.STRIPE_PRICE_ID_PRO) user.plan = "pro";
+          if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) user.plan = "ultra";
+        }
+
+        await user.save();
+      }
+    }
+
+    return res.json({ received: true });
+  } catch (e) {
+    console.log("webhook error:", e.message);
+    return res.status(400).send(`Webhook Error: ${e.message}`);
+  }
+});
+
+// ---------- PARSERS ----------
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// ---------- STATIC ----------
+app.use(express.static(path.join(__dirname)));
 
 // ---------- DB ----------
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connecté"))
   .catch((e) => console.log("❌ MongoDB erreur:", e.message));
+
+// ---------- QUOTAS ----------
+function planRank(plan) {
+  const map = { standard: 1, pro: 2, ultra: 3 };
+  return map[String(plan || "").toLowerCase()] || 0;
+}
+
+function quotasForPlan(plan) {
+  const p = String(plan || "").toLowerCase();
+  // Ajuste si tu veux
+  if (p === "standard") return { audits: 50, chat: 200, monitors: 0 };
+  if (p === "pro") return { audits: 500, chat: 2000, monitors: 50 };
+  if (p === "ultra") return { audits: 2000, chat: 10000, monitors: 300 };
+  return { audits: 0, chat: 0, monitors: 0 };
+}
+
+function firstDayOfThisMonthUTC() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+}
 
 // ---------- MODELS ----------
 const UserSchema = new mongoose.Schema(
@@ -57,11 +175,18 @@ const UserSchema = new mongoose.Schema(
 
     stripeCustomerId: String,
     stripeSubscriptionId: String,
+    lastPaymentStatus: String,
 
     hasTrial: { type: Boolean, default: false },
     trialStartedAt: Date,
     trialEndsAt: Date,
-    accessBlocked: { type: Boolean, default: false }
+    accessBlocked: { type: Boolean, default: false },
+
+    // Monthly usage
+    usageMonth: { type: Date, default: firstDayOfThisMonthUTC },
+    usedAudits: { type: Number, default: 0 },
+    usedChat: { type: Number, default: 0 },
+    usedMonitors: { type: Number, default: 0 }
   },
   { timestamps: true }
 );
@@ -113,116 +238,102 @@ function auth(req, res, next) {
   }
 }
 
-// ---------- EMAIL (helper) ----------
-function getMailTransport() {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || "587");
-  const secure = String(process.env.SMTP_SECURE || "false") === "true";
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-
-  if (!host || !user || !pass) return null;
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass }
-  });
+async function resetUsageIfNewMonth(user) {
+  const month = firstDayOfThisMonthUTC();
+  if (!user.usageMonth || new Date(user.usageMonth).getTime() !== month.getTime()) {
+    user.usageMonth = month;
+    user.usedAudits = 0;
+    user.usedChat = 0;
+    user.usedMonitors = 0;
+    await user.save();
+  }
 }
 
-async function sendMail({ to, subject, html }) {
-  const transporter = getMailTransport();
-  if (!transporter) {
-    console.log("⚠️ SMTP non configuré — email non envoyé:", subject);
-    return;
+async function requireActive(req, res, next) {
+  const user = await User.findById(req.user.uid);
+  if (!user) return res.status(404).json({ error: "User introuvable" });
+
+  // Trial expiration => block (safety)
+  if (user.hasTrial && user.trialEndsAt && new Date(user.trialEndsAt).getTime() < Date.now()) {
+    user.accessBlocked = true;
+    user.lastPaymentStatus = user.lastPaymentStatus || "trial_expired";
+    await user.save();
   }
 
-  const from = process.env.ALERT_EMAIL_FROM || process.env.SMTP_USER;
+  if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / essai terminé)" });
 
-  await transporter.sendMail({
-    from,
-    to,
-    subject,
-    html
-  });
+  await resetUsageIfNewMonth(user);
+  req.dbUser = user;
+  next();
 }
 
-// ---------- WEBHOOK (DOIT ÊTRE AVANT express.json) ----------
-app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
-  try {
-    const sig = req.headers["stripe-signature"];
-    const secret = process.env.STRIPE_WEBHOOK_SECRET_RENDER;
-    if (!secret) return res.status(200).send("no webhook secret");
-
-    const event = stripe.webhooks.constructEvent(req.body, sig, secret);
-
-    if (event.type === "invoice.payment_failed") {
-      const inv = event.data.object;
-      const customerId = inv.customer;
-      await User.updateOne({ stripeCustomerId: customerId }, { $set: { accessBlocked: true } });
+function requirePlan(minPlan) {
+  return (req, res, next) => {
+    if (planRank(req.dbUser.plan) < planRank(minPlan)) {
+      return res.status(403).json({ error: `Plan requis: ${minPlan}` });
     }
+    next();
+  };
+}
 
-    if (event.type === "invoice.payment_succeeded") {
-      const inv = event.data.object;
-      const customerId = inv.customer;
-      await User.updateOne({ stripeCustomerId: customerId }, { $set: { accessBlocked: false } });
-    }
+async function consume(user, key, amount = 1) {
+  const q = quotasForPlan(user.plan);
+  const map = {
+    audits: ["usedAudits", q.audits],
+    chat: ["usedChat", q.chat],
+    monitors: ["usedMonitors", q.monitors]
+  };
 
-    return res.json({ received: true });
-  } catch (e) {
-    console.log("webhook error:", e.message);
-    return res.status(400).send(`Webhook Error: ${e.message}`);
-  }
-});
+  const item = map[key];
+  if (!item) return false;
+  const [field, limit] = item;
 
-// ---------- SECURITY ----------
-app.use(helmet());
-app.use(cors({ origin: true, credentials: true }));
+  if (limit <= 0) return false;
+  if (user[field] + amount > limit) return false;
 
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
+  user[field] += amount;
+  await user.save();
+  return true;
+}
 
-const apiLimiter = rateLimit({ windowMs: 60 * 1000, max: 120 });
-app.use("/api", apiLimiter);
+function priceIdForPlan(plan) {
+  if (plan === "standard") return process.env.STRIPE_PRICE_ID_STANDARD;
+  if (plan === "pro") return process.env.STRIPE_PRICE_ID_PRO;
+  if (plan === "ultra") return process.env.STRIPE_PRICE_ID_ULTRA;
+  return null;
+}
 
-// ---------- STATIC ----------
-app.use(express.static(path.join(__dirname)));
-
-// ---------- ROUTES (PAGES) ----------
+// ---------- PAGES ----------
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
+app.get("/dashboard", (req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
+app.get("/pricing", (req, res) => res.sendFile(path.join(__dirname, "pricing.html")));
 app.get("/success", (req, res) => res.sendFile(path.join(__dirname, "success.html")));
 app.get("/cancel", (req, res) => res.sendFile(path.join(__dirname, "cancel.html")));
-app.get("/dashboard", (req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
 
-// ---------- API: HEALTH ----------
-app.get("/api/health", (req, res) => res.json({ ok: true }));
+// ---------- API ----------
+app.get("/api/health", (_, res) => res.json({ ok: true }));
 
-// ---------- API: LEAD ----------
+// Lead (anti-abus + token)
 app.post("/api/auth/lead", async (req, res) => {
   try {
     const { firstName, email, companyName, plan } = req.body || {};
-    if (!email) return res.status(400).json({ error: "Email requis" });
+    if (!email || !companyName) return res.status(400).json({ error: "Email + entreprise requis" });
 
-    const chosenPlan = (plan || "").toLowerCase();
-    if (!["standard", "pro", "ultra"].includes(chosenPlan)) {
-      return res.status(400).json({ error: "Plan invalide" });
-    }
+    const chosenPlan = String(plan || "").toLowerCase();
+    if (!["standard", "pro", "ultra"].includes(chosenPlan)) return res.status(400).json({ error: "Plan invalide" });
 
     const fingerprint = makeFingerprint(req, email, companyName);
     const already = await TrialRegistry.findOne({ fingerprint });
-    if (already) {
-      return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
-    }
+    if (already) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
 
     const companyNameNormalized = normalizeCompanyName(companyName);
 
-    let user = await User.findOne({ email: email.toLowerCase() });
+    let user = await User.findOne({ email: String(email).toLowerCase() });
     if (!user) {
       user = await User.create({
-        email: email.toLowerCase(),
+        email: String(email).toLowerCase(),
         name: firstName || "",
-        companyName: companyName || "",
+        companyName,
         companyNameNormalized,
         plan: chosenPlan
       });
@@ -234,43 +345,32 @@ app.post("/api/auth/lead", async (req, res) => {
       await user.save();
     }
 
+    // reserve trial usage (anti-abus)
     await TrialRegistry.create({ fingerprint });
 
-    const token = signToken(user);
-    return res.json({ ok: true, token });
+    return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("lead error:", e.message);
     return res.status(500).json({ error: "Erreur serveur lead" });
   }
 });
 
-// ---------- API: STRIPE CHECKOUT ----------
-app.post("/api/stripe/checkout", auth, async (req, res) => {
+// Stripe checkout
+app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
   try {
     const { plan } = req.body || {};
-    const chosenPlan = (plan || "").toLowerCase();
-    if (!["standard", "pro", "ultra"].includes(chosenPlan)) {
-      return res.status(400).json({ error: "Plan invalide" });
-    }
+    const chosenPlan = String(plan || "").toLowerCase();
+    if (!["standard", "pro", "ultra"].includes(chosenPlan)) return res.status(400).json({ error: "Plan invalide" });
 
-    const user = await User.findById(req.user.uid);
-    if (!user) return res.status(404).json({ error: "User introuvable" });
-    if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué" });
-
-    const priceId =
-      chosenPlan === "standard"
-        ? process.env.STRIPE_PRICE_ID_STANDARD
-        : chosenPlan === "pro"
-        ? process.env.STRIPE_PRICE_ID_PRO
-        : process.env.STRIPE_PRICE_ID_ULTRA;
-
+    const user = req.dbUser;
+    const priceId = priceIdForPlan(chosenPlan);
     if (!priceId) return res.status(500).json({ error: "PriceId manquant" });
 
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: user.email,
-        name: user.name || undefined,
+        name: user.companyName || user.name || undefined,
         metadata: { uid: user._id.toString() }
       });
       customerId = customer.id;
@@ -278,7 +378,8 @@ app.post("/api/stripe/checkout", auth, async (req, res) => {
       await user.save();
     }
 
-    const baseUrl = process.env.PUBLIC_BASE_URL || `https://${req.headers.host}`;
+    const baseUrl = process.env.PUBLIC_BASE_URL;
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -300,7 +401,7 @@ app.post("/api/stripe/checkout", auth, async (req, res) => {
   }
 });
 
-// ---------- API: VERIFY SUCCESS ----------
+// Verify checkout success
 app.get("/api/stripe/verify", async (req, res) => {
   try {
     const sessionId = req.query.session_id;
@@ -311,7 +412,7 @@ app.get("/api/stripe/verify", async (req, res) => {
     });
 
     const uid = session.metadata?.uid || session.subscription?.metadata?.uid;
-    if (!uid) return res.status(400).json({ error: "uid manquant dans metadata" });
+    if (!uid) return res.status(400).json({ error: "uid manquant" });
 
     const user = await User.findById(uid);
     if (!user) return res.status(404).json({ error: "User introuvable" });
@@ -319,32 +420,24 @@ app.get("/api/stripe/verify", async (req, res) => {
     if (session.customer?.id) user.stripeCustomerId = session.customer.id;
     if (session.subscription?.id) user.stripeSubscriptionId = session.subscription.id;
 
+    // trial
     if (!user.hasTrial) {
       user.hasTrial = true;
       user.trialStartedAt = new Date();
       user.trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     }
 
-    const plan = (session.metadata?.plan || "").toLowerCase();
+    // plan
+    const plan = String(session.metadata?.plan || "").toLowerCase();
     if (["standard", "pro", "ultra"].includes(plan)) user.plan = plan;
 
+    user.accessBlocked = false;
+    user.lastPaymentStatus = "checkout_verified";
     await user.save();
-
-    const token = signToken(user);
-
-    // email admin (optionnel) : nouveau checkout validé
-    const adminTo = process.env.ALERT_EMAIL_TO;
-    if (adminTo) {
-      await sendMail({
-        to: adminTo,
-        subject: "✅ FlowPoint AI — Nouvelle souscription / essai",
-        html: `<p>Nouveau checkout validé pour <b>${user.email}</b> (plan: <b>${user.plan}</b>).</p>`
-      });
-    }
 
     return res.json({
       ok: true,
-      token,
+      token: signToken(user),
       user: {
         email: user.email,
         name: user.name,
@@ -360,41 +453,71 @@ app.get("/api/stripe/verify", async (req, res) => {
   }
 });
 
-// ---------- API: ME ----------
-app.get("/api/me", auth, async (req, res) => {
-  const user = await User.findById(req.user.uid);
-  if (!user) return res.status(404).json({ error: "User introuvable" });
-
-  return res.json({
-    email: user.email,
-    name: user.name,
-    companyName: user.companyName,
-    plan: user.plan,
-    hasTrial: user.hasTrial,
-    trialEndsAt: user.trialEndsAt,
-    accessBlocked: user.accessBlocked
-  });
-});
-
-// ---------- API: CUSTOMER PORTAL ----------
-app.post("/api/stripe/portal", auth, async (req, res) => {
+// Stripe portal
+app.post("/api/stripe/portal", auth, requireActive, async (req, res) => {
   try {
-    const user = await User.findById(req.user.uid);
-    if (!user?.stripeCustomerId) return res.status(400).json({ error: "Customer Stripe manquant" });
+    const user = req.dbUser;
+    if (!user.stripeCustomerId) return res.status(400).json({ error: "Customer Stripe manquant" });
 
-    const baseUrl = process.env.PUBLIC_BASE_URL || `https://${req.headers.host}`;
+    const baseUrl = process.env.PUBLIC_BASE_URL;
+
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
       return_url: `${baseUrl}/dashboard.html`
     });
 
-    res.json({ url: session.url });
+    return res.json({ url: session.url });
   } catch (e) {
     console.log("portal error:", e.message);
-    res.status(500).json({ error: "Erreur portal" });
+    return res.status(500).json({ error: "Erreur portal" });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ FlowPoint SaaS lancé sur le port ${PORT}`);
+// Dashboard: me + quotas
+app.get("/api/me", auth, requireActive, async (req, res) => {
+  const u = req.dbUser;
+  const q = quotasForPlan(u.plan);
+
+  return res.json({
+    email: u.email,
+    name: u.name,
+    companyName: u.companyName,
+    plan: u.plan,
+    hasTrial: u.hasTrial,
+    trialEndsAt: u.trialEndsAt,
+    accessBlocked: u.accessBlocked,
+    lastPaymentStatus: u.lastPaymentStatus || "",
+    usage: {
+      month: u.usageMonth,
+      audits: { used: u.usedAudits, limit: q.audits },
+      chat: { used: u.usedChat, limit: q.chat },
+      monitors: { used: u.usedMonitors, limit: q.monitors }
+    }
+  });
 });
+
+// ----- DEMO FEATURES (gated + quota) -----
+app.post("/api/features/audit", auth, requireActive, async (req, res) => {
+  const ok = await consume(req.dbUser, "audits", 1);
+  if (!ok) return res.status(429).json({ error: "Quota audits dépassé (ou plan insuffisant)" });
+  return res.json({ ok: true, message: "Audit consommé (démo).", usedAudits: req.dbUser.usedAudits });
+});
+
+app.post("/api/features/chat", auth, requireActive, async (req, res) => {
+  const ok = await consume(req.dbUser, "chat", 1);
+  if (!ok) return res.status(429).json({ error: "Quota chat dépassé (ou plan insuffisant)" });
+  return res.json({ ok: true, message: "Chat message consommé (démo).", usedChat: req.dbUser.usedChat });
+});
+
+app.post("/api/features/monitor", auth, requireActive, requirePlan("pro"), async (req, res) => {
+  const ok = await consume(req.dbUser, "monitors", 1);
+  if (!ok) return res.status(429).json({ error: "Quota monitoring dépassé" });
+  return res.json({ ok: true, message: "Monitoring consommé (démo).", usedMonitors: req.dbUser.usedMonitors });
+});
+
+app.post("/api/features/ultra-only", auth, requireActive, requirePlan("ultra"), async (req, res) => {
+  return res.json({ ok: true, message: "Feature Ultra OK (démo)." });
+});
+
+// ---------- START ----------
+app.listen(PORT, () => console.log(`✅ FlowPoint SaaS lancé sur port ${PORT}`));
