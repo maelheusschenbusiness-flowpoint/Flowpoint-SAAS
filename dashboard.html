@@ -1,444 +1,115 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>FlowPoint AI — Dashboard</title>
   <style>
-    body{font-family:system-ui,Arial;background:#f7f7fb;margin:0}
-    .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
-    .card{background:#fff;border:1px solid #e7e9f2;border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.05)}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .box{flex:1;min-width:240px;border:1px solid #eee;border-radius:14px;padding:14px;background:#fafafa}
-    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#1d4ed8;font-weight:900;font-size:12px}
-    h1{margin:0 0 6px}
-    .muted{color:#666;font-size:14px}
-    .btn{padding:10px 12px;border-radius:12px;border:0;cursor:pointer;font-weight:900}
-    .btnPrimary{background:#2f5bff;color:#fff}
-    .btnGhost{background:#eef2ff;color:#1d4ed8}
-    .btnDark{background:#111;color:#fff}
-    input,select{padding:10px;border-radius:12px;border:1px solid #ddd;width:100%;box-sizing:border-box}
-    textarea{width:100%;min-height:90px;border-radius:12px;border:1px solid #ddd;padding:10px;box-sizing:border-box}
-    .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    .tab{padding:8px 10px;border-radius:999px;border:1px solid #e7e9f2;background:#fff;cursor:pointer;font-weight:900}
-    .tab.active{background:#111;color:#fff;border-color:#111}
-    .hide{display:none}
-    #msg{margin-top:10px;font-size:14px}
-    .error{color:#b00020}
-    .ok{color:#0a7a2f}
-    .chat{border:1px solid #eee;border-radius:14px;padding:12px;background:#fafafa;max-height:260px;overflow:auto}
-    .bubble{padding:10px 12px;border-radius:14px;margin:8px 0;max-width:78%}
-    .u{background:#2f5bff;color:#fff;margin-left:auto}
-    .a{background:#fff;border:1px solid #eee}
-    .small{font-size:12px;color:#666}
-    .alert{border:1px solid #eee;border-radius:12px;background:#fff;padding:10px;margin:8px 0}
-    .down{border-color:#fecaca}
-    .up{border-color:#bbf7d0}
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#f7f7f7; margin:0; }
+    .wrap { max-width: 980px; margin: 40px auto; padding: 0 16px; }
+    .card { background:#fff; border-radius:14px; box-shadow: 0 8px 24px rgba(0,0,0,.06); padding: 18px; margin-bottom:16px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .col { flex:1; min-width:260px; }
+    .title { font-size: 22px; font-weight: 800; margin:0 0 8px; }
+    .muted { color:#666; margin:0 0 8px; }
+    .badge { display:inline-block; padding:6px 10px; border-radius:999px; background:#eef2ff; color:#1e40af; font-weight:700; font-size:12px; }
+    button { border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; }
+    .btn { background:#1d4ed8; color:#fff; }
+    .btn2 { background:#111827; color:#fff; }
+    .btn3 { background:#e5e7eb; color:#111827; }
+    .danger { color:#b91c1c; font-weight:700; }
+    .ok { color:#047857; font-weight:700; }
+    .features li { margin: 6px 0; }
+    .hidden { display:none; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:10px; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <div>
-          <h1>Dashboard</h1>
-          <div class="muted">Audit + Chat + Monitoring + Reports</div>
-        </div>
-        <div class="pill" id="planBadge">—</div>
+
+    <div class="card topbar">
+      <div>
+        <div class="title">FlowPoint AI — Dashboard</div>
+        <div class="muted">Bienvenue <span id="name">...</span> (<span id="email">...</span>)</div>
+        <span class="badge" id="planBadge">Plan: ...</span>
       </div>
-
-      <div class="row" style="margin-top:12px">
-        <button class="btn btnPrimary" id="portalBtn">Gérer abonnement</button>
-        <button class="btn btnGhost" id="upgradeBtn">Upgrade</button>
-        <button class="btn btnGhost" id="reportBtn">Ouvrir rapport</button>
-        <button class="btn btnDark" id="logoutBtn">Déconnexion</button>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="btn" id="btnPortal">Gérer / Upgrade</button>
+        <button class="btn3" id="btnLogout">Se déconnecter</button>
       </div>
-
-      <div class="tabs">
-        <button class="tab active" data-tab="overview">Overview</button>
-        <button class="tab" data-tab="projects">Projects</button>
-        <button class="tab" data-tab="audit">Audit</button>
-        <button class="tab" data-tab="chat">Chat</button>
-        <button class="tab" data-tab="monitor">Monitoring</button>
-        <button class="tab" data-tab="alerts">Alertes</button>
-      </div>
-
-      <div id="msg"></div>
-
-      <!-- OVERVIEW -->
-      <div id="tab-overview" style="margin-top:12px">
-        <div class="row">
-          <div class="box">
-            <div class="muted">Email</div>
-            <div style="font-weight:900" id="email">—</div>
-          </div>
-          <div class="box">
-            <div class="muted">Entreprise</div>
-            <div style="font-weight:900" id="company">—</div>
-          </div>
-          <div class="box">
-            <div class="muted">Essai</div>
-            <div style="font-weight:900" id="trial">—</div>
-          </div>
-        </div>
-
-        <div class="row" style="margin-top:12px">
-          <div class="box">
-            <div class="muted">Quota Audits</div>
-            <div style="font-weight:900" id="qAudits">—</div>
-          </div>
-          <div class="box">
-            <div class="muted">Quota Chat</div>
-            <div style="font-weight:900" id="qChat">—</div>
-          </div>
-          <div class="box">
-            <div class="muted">Quota Monitoring</div>
-            <div style="font-weight:900" id="qMon">—</div>
-            <div class="small">Emails envoyés depuis backend si SMTP configuré.</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- PROJECTS -->
-      <div id="tab-projects" class="hide" style="margin-top:12px">
-        <div class="row">
-          <div class="box">
-            <div style="font-weight:900;margin-bottom:8px">Créer un projet</div>
-            <div class="small">Nom</div>
-            <input id="pName" placeholder="Mon site" />
-            <div class="small" style="margin-top:8px">URL</div>
-            <input id="pUrl" placeholder="https://example.com" />
-            <button class="btn btnPrimary" id="createProject" style="margin-top:10px">Créer</button>
-            <div class="small" style="margin-top:8px" id="projectLimit">—</div>
-          </div>
-
-          <div class="box">
-            <div style="font-weight:900;margin-bottom:8px">Mes projets</div>
-            <select id="projectSelect"></select>
-            <div class="small" style="margin-top:8px">Liste:</div>
-            <div id="projectList" class="small"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- AUDIT -->
-      <div id="tab-audit" class="hide" style="margin-top:12px">
-        <div class="row">
-          <div class="box">
-            <div style="font-weight:900;margin-bottom:8px">Run Audit</div>
-            <div class="small">URL (ou utilise le projet sélectionné)</div>
-            <input id="auditUrl" placeholder="https://example.com" />
-            <button class="btn btnPrimary" id="runAudit" style="margin-top:10px">Run audit</button>
-          </div>
-
-          <div class="box">
-            <div style="font-weight:900;margin-bottom:8px">Dernier audit</div>
-            <div id="auditOut" class="small">—</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- CHAT -->
-      <div id="tab-chat" class="hide" style="margin-top:12px">
-        <div class="box">
-          <div style="font-weight:900;margin-bottom:8px">Assistant</div>
-          <div class="small">Exemples: “score ?”, “plan d’action ?”, “SEO ?”, “rapport client ?”</div>
-          <div class="chat" id="chatBox"></div>
-          <textarea id="chatInput" placeholder="Tape ton message…"></textarea>
-          <button class="btn btnPrimary" id="sendChat" style="margin-top:10px">Envoyer</button>
-        </div>
-      </div>
-
-      <!-- MONITOR -->
-      <div id="tab-monitor" class="hide" style="margin-top:12px">
-        <div class="row">
-          <div class="box">
-            <div style="font-weight:900;margin-bottom:8px">Créer un monitor (Pro+)</div>
-            <div class="small">Nom</div>
-            <input id="mName" placeholder="Homepage monitor" />
-            <div class="small" style="margin-top:8px">URL</div>
-            <input id="mUrl" placeholder="https://example.com" />
-            <button class="btn btnPrimary" id="createMonitor" style="margin-top:10px">Créer monitor</button>
-            <div class="small" style="margin-top:10px">
-              Monitoring auto via Cron: <code>/api/cron/run-monitors</code>
-            </div>
-          </div>
-
-          <div class="box">
-            <div style="font-weight:900;margin-bottom:8px">Mes monitors</div>
-            <select id="monitorSelect"></select>
-            <div class="row" style="margin-top:10px">
-              <button class="btn btnGhost" id="runMonitor">Run now</button>
-              <button class="btn btnGhost" id="loadMonitorHistory">Historique</button>
-            </div>
-            <div id="monitorOut" class="small" style="margin-top:10px">—</div>
-            <div id="monitorHistory" class="small" style="margin-top:10px"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ALERTS -->
-      <div id="tab-alerts" class="hide" style="margin-top:12px">
-        <div class="box">
-          <div style="font-weight:900;margin-bottom:8px">Alertes récentes</div>
-          <button class="btn btnGhost" id="reloadAlerts">Rafraîchir</button>
-          <div id="alertsList" style="margin-top:10px"></div>
-          <div class="small" style="margin-top:10px">
-            Les alertes email partent depuis le backend si SMTP configuré.
-          </div>
-        </div>
-      </div>
-
     </div>
+
+    <div class="card">
+      <div class="row">
+        <div class="col">
+          <div class="title" style="font-size:18px;">Statut</div>
+          <p class="muted">Essai: <span id="trialStatus">...</span></p>
+          <p class="muted">Fin essai: <span id="trialEnds">...</span></p>
+          <p id="access" class="muted"></p>
+        </div>
+        <div class="col">
+          <div class="title" style="font-size:18px;">Actions rapides</div>
+          <button class="btn2" id="btnRefresh">Rafraîchir</button>
+          <p id="msg" class="muted"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title" style="font-size:18px;">Fonctionnalités par plan</div>
+      <div class="row">
+        <div class="col">
+          <span class="badge">Standard</span>
+          <ul class="features">
+            <li>Accès dashboard</li>
+            <li>Essai 14 jours</li>
+            <li>Support email (48–72h)</li>
+          </ul>
+        </div>
+        <div class="col">
+          <span class="badge">Pro</span>
+          <ul class="features">
+            <li>Toutes les fonctions Standard</li>
+            <li>Fonctions premium (section ci-dessous)</li>
+            <li>Support prioritaire (24–48h)</li>
+          </ul>
+        </div>
+        <div class="col">
+          <span class="badge">Ultra</span>
+          <ul class="features">
+            <li>Toutes les fonctions Pro</li>
+            <li>Fonctions avancées + support VIP</li>
+          </ul>
+        </div>
+      </div>
+      <p class="muted">Note : tu peux changer ces textes quand tu veux, c’est juste l’affichage.</p>
+    </div>
+
+    <div class="card" id="premiumBox">
+      <div class="title" style="font-size:18px;">Premium</div>
+
+      <div id="standardUpsell" class="hidden">
+        <p class="danger">Tu es en Standard : cette section est réservée Pro/Ultra.</p>
+        <button class="btn" id="btnUpgrade2">Passer en Pro / Ultra</button>
+      </div>
+
+      <div id="premiumContent" class="hidden">
+        <p class="ok">✅ Accès premium activé (Pro/Ultra)</p>
+        <div class="row">
+          <div class="col card" style="margin:0;">
+            <div style="font-weight:800;">Widget Premium #1</div>
+            <div class="muted">Ici tu mettras tes stats / features premium.</div>
+          </div>
+          <div class="col card" style="margin:0;">
+            <div style="font-weight:800;">Widget Premium #2</div>
+            <div class="muted">Ex : exports, automatisations, etc.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <script>
-    const msg = document.getElementById("msg");
-    const planBadge = document.getElementById("planBadge");
-    const portalBtn = document.getElementById("portalBtn");
-    const upgradeBtn = document.getElementById("upgradeBtn");
-    const reportBtn = document.getElementById("reportBtn");
-    const logoutBtn = document.getElementById("logoutBtn");
-
-    const emailEl = document.getElementById("email");
-    const companyEl = document.getElementById("company");
-    const trialEl = document.getElementById("trial");
-    const qAuditsEl = document.getElementById("qAudits");
-    const qChatEl = document.getElementById("qChat");
-    const qMonEl = document.getElementById("qMon");
-    const projectLimitEl = document.getElementById("projectLimit");
-
-    const projectSelect = document.getElementById("projectSelect");
-    const projectList = document.getElementById("projectList");
-    const auditOut = document.getElementById("auditOut");
-    const chatBox = document.getElementById("chatBox");
-    const monitorSelect = document.getElementById("monitorSelect");
-    const monitorOut = document.getElementById("monitorOut");
-    const monitorHistory = document.getElementById("monitorHistory");
-    const alertsList = document.getElementById("alertsList");
-
-    function setMsg(text="", type="") {
-      msg.textContent = text;
-      msg.className = type === "ok" ? "ok" : type === "error" ? "error" : "";
-    }
-    function fmtDate(d) {
-      if (!d) return "—";
-      try { return new Date(d).toLocaleString("fr-FR"); } catch { return "—"; }
-    }
-    function token() { return localStorage.getItem("fp_token"); }
-
-    async function api(path, opts={}) {
-      const t = token();
-      if (!t) throw new Error("Non connecté");
-      const r = await fetch(path, {
-        ...opts,
-        headers: {
-          ...(opts.headers || {}),
-          "Authorization": "Bearer " + t,
-          "Content-Type": "application/json"
-        }
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.error || "Erreur API");
-      return d;
-    }
-
-    // tabs
-    document.querySelectorAll(".tab").forEach(b => {
-      b.addEventListener("click", () => {
-        document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
-        b.classList.add("active");
-        const tab = b.getAttribute("data-tab");
-        ["overview","projects","audit","chat","monitor","alerts"].forEach(t => {
-          document.getElementById("tab-" + t).classList.toggle("hide", t !== tab);
-        });
-      });
-    });
-
-    let cachedMe = null;
-
-    async function loadMe() {
-      setMsg("");
-      const t = token();
-      if (!t) { location.href = "/login.html"; return; }
-
-      const me = await api("/api/me");
-      cachedMe = me;
-
-      emailEl.textContent = me.email || "—";
-      companyEl.textContent = me.companyName || "—";
-      planBadge.textContent = (me.plan || "—").toUpperCase();
-      trialEl.textContent = me.hasTrial ? ("Jusqu’au " + fmtDate(me.trialEndsAt)) : "Non démarré";
-
-      qAuditsEl.textContent = `${me.usage.audits.used} / ${me.usage.audits.limit}`;
-      qChatEl.textContent = `${me.usage.chat.used} / ${me.usage.chat.limit}`;
-      qMonEl.textContent = `${me.usage.monitors.used} / ${me.usage.monitors.limit}`;
-      projectLimitEl.textContent = `Limite projets: ${me.usage.projects.limit}`;
-
-      if (me.accessBlocked) setMsg("Accès bloqué (paiement échoué). Clique “Gérer abonnement”.", "error");
-    }
-
-    async function openPortal() {
-      try {
-        const d = await api("/api/stripe/portal", { method: "POST", body: "{}" });
-        location.href = d.url;
-      } catch (e) { setMsg(e.message, "error"); }
-    }
-    portalBtn.addEventListener("click", openPortal);
-    upgradeBtn.addEventListener("click", openPortal);
-
-    reportBtn.addEventListener("click", async () => {
-      try {
-        const projectId = projectSelect.value || "";
-        // ouvre le rapport dans un nouvel onglet
-        window.open("/api/report/html?projectId=" + encodeURIComponent(projectId), "_blank");
-      } catch (e) { setMsg(e.message, "error"); }
-    });
-
-    logoutBtn.addEventListener("click", () => {
-      localStorage.removeItem("fp_token");
-      location.href="/index.html";
-    });
-
-    // projects
-    async function refreshProjects() {
-      const d = await api("/api/projects");
-      const list = d.projects || [];
-      projectSelect.innerHTML = "";
-      list.forEach(p => {
-        const o = document.createElement("option");
-        o.value = p._id;
-        o.textContent = `${p.name} — ${p.url}`;
-        projectSelect.appendChild(o);
-      });
-      projectList.innerHTML = list.map(p => `• ${p.name} (${p.url})`).join("<br>") || "—";
-    }
-
-    document.getElementById("createProject").addEventListener("click", async () => {
-      try {
-        const name = document.getElementById("pName").value.trim();
-        const url = document.getElementById("pUrl").value.trim();
-        await api("/api/projects", { method:"POST", body: JSON.stringify({ name, url }) });
-        setMsg("Projet créé", "ok");
-        await refreshProjects();
-      } catch(e){ setMsg(e.message, "error"); }
-    });
-
-    // audit
-    document.getElementById("runAudit").addEventListener("click", async () => {
-      try {
-        const projectId = projectSelect.value || null;
-        const url = document.getElementById("auditUrl").value.trim();
-        const d = await api("/api/audit/run", { method:"POST", body: JSON.stringify({ projectId, url }) });
-        const a = d.audit;
-        auditOut.innerHTML = `<b>Score:</b> ${a.score}/100<br><b>Findings:</b><br>• ${a.findings.join("<br>• ")}`;
-        setMsg("Audit terminé", "ok");
-        await loadMe();
-      } catch(e){ setMsg(e.message, "error"); }
-    });
-
-    // chat
-    async function loadChat() {
-      const projectId = projectSelect.value || "";
-      const d = await api("/api/chat/history?projectId=" + encodeURIComponent(projectId));
-      chatBox.innerHTML = "";
-      (d.history || []).forEach(m => {
-        const div = document.createElement("div");
-        div.className = "bubble " + (m.role === "user" ? "u" : "a");
-        div.textContent = m.text;
-        chatBox.appendChild(div);
-      });
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    document.getElementById("sendChat").addEventListener("click", async () => {
-      try {
-        const projectId = projectSelect.value || null;
-        const text = document.getElementById("chatInput").value.trim();
-        if (!text) return;
-        document.getElementById("chatInput").value = "";
-        await api("/api/chat/send", { method:"POST", body: JSON.stringify({ projectId, text }) });
-        await loadChat();
-        await loadMe();
-      } catch(e){ setMsg(e.message, "error"); }
-    });
-
-    // monitors
-    async function refreshMonitors() {
-      try {
-        const d = await api("/api/monitors");
-        const list = d.monitors || [];
-        monitorSelect.innerHTML = "";
-        list.forEach(m => {
-          const o = document.createElement("option");
-          o.value = m._id;
-          o.textContent = `${m.name} — ${m.url} (${m.lastStatus || "never"})`;
-          monitorSelect.appendChild(o);
-        });
-      } catch(e) {
-        // Standard n'a pas accès: on ignore
-      }
-    }
-
-    document.getElementById("createMonitor").addEventListener("click", async () => {
-      try {
-        const projectId = projectSelect.value || null;
-        const name = document.getElementById("mName").value.trim();
-        const url = document.getElementById("mUrl").value.trim();
-        await api("/api/monitors", { method:"POST", body: JSON.stringify({ projectId, name, url }) });
-        setMsg("Monitor créé", "ok");
-        await refreshMonitors();
-      } catch(e){ setMsg(e.message, "error"); }
-    });
-
-    document.getElementById("runMonitor").addEventListener("click", async () => {
-      try {
-        const monitorId = monitorSelect.value;
-        const d = await api("/api/monitors/run", { method:"POST", body: JSON.stringify({ monitorId }) });
-        const m = d.monitor;
-        monitorOut.innerHTML = `<b>${m.name}</b><br>Status: ${m.lastStatus}<br>Code: ${m.lastCode}<br>Latency: ${m.lastLatencyMs}ms<br>Last: ${m.lastRunAt ? fmtDate(m.lastRunAt) : "—"}`;
-        await loadMe();
-      } catch(e){ setMsg(e.message, "error"); }
-    });
-
-    document.getElementById("loadMonitorHistory").addEventListener("click", async () => {
-      try {
-        const monitorId = monitorSelect.value;
-        const d = await api("/api/monitors/history?monitorId=" + encodeURIComponent(monitorId));
-        monitorHistory.innerHTML = (d.history || []).map(x => `• ${fmtDate(x.checkedAt)} → ${x.ok ? "OK" : "DOWN"} (${x.statusCode}) ${x.latencyMs}ms`).join("<br>") || "—";
-      } catch(e){ setMsg(e.message, "error"); }
-    });
-
-    // alerts
-    async function loadAlerts() {
-      const d = await api("/api/alerts/recent");
-      const list = d.alerts || [];
-      alertsList.innerHTML = list.map(a => {
-        const cls = a.type === "monitor_down" ? "alert down" : "alert up";
-        const title = a.type === "monitor_down" ? "DOWN" : "RECOVERED";
-        return `
-          <div class="${cls}">
-            <div style="font-weight:900">${title} — ${a.monitorName}</div>
-            <div class="small">${a.url}</div>
-            <div class="small">Code: ${a.statusCode} | Latence: ${a.latencyMs}ms | ${fmtDate(a.createdAt)}</div>
-          </div>
-        `;
-      }).join("") || "<div class='small'>Aucune alerte.</div>";
-    }
-    document.getElementById("reloadAlerts").addEventListener("click", loadAlerts);
-
-    // boot
-    (async () => {
-      try {
-        await loadMe();
-        await refreshProjects();
-        await refreshMonitors();
-        await loadChat();
-        await loadAlerts();
-      } catch(e) {
-        setMsg(e.message, "error");
-      }
-    })();
-  </script>
+  <script src="/dashboard.js"></script>
 </body>
 </html>
