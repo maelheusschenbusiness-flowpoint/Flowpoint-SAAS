@@ -1,47 +1,67 @@
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Succès - FlowPoint AI</title>
-    <style>
-      body { font-family: system-ui, Arial; background:#f7f7fb; margin:0; }
-      .box { max-width:520px; margin:60px auto; background:#fff; padding:24px; border-radius:14px; border:1px solid #eee; }
-      .muted { color:#666; }
-      .btn { display:inline-block; padding:12px 16px; border-radius:10px; background:#2453ff; color:#fff; text-decoration:none; font-weight:600; }
-    </style>
-  </head>
-  <body>
-    <div class="box">
-      <h2>Paiement confirmé ✅</h2>
-      <p class="muted" id="status">Finalisation de votre compte…</p>
-      <p><a class="btn" id="go" href="/dashboard.html" style="display:none;">Aller au dashboard</a></p>
-    </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Succès - FlowPoint AI</title>
+  <style>
+    body{font-family:system-ui;background:#f6f7fb;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
+    .card{background:#fff;border:1px solid #e7e9f2;border-radius:14px;padding:22px;max-width:520px;width:92%}
+    .muted{color:#5b6473}
+    .ok{color:#0f7b36}
+    .err{color:#b42318}
+    .btn{display:inline-block;margin-top:14px;padding:12px 14px;border-radius:10px;background:#1d4ed8;color:#fff;text-decoration:none;font-weight:600}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>✅ Paiement confirmé</h1>
+    <p class="muted">On finalise ton compte…</p>
+    <p id="msg" class="muted"></p>
+    <a id="go" class="btn" href="/dashboard.html" style="display:none">Aller au dashboard</a>
+  </div>
 
-    <script>
-      async function run() {
-        const params = new URLSearchParams(location.search);
-        const sessionId = params.get("session_id");
-        if (!sessionId) {
-          document.getElementById("status").textContent = "session_id manquant.";
-          return;
-        }
+  <script>
+    const msg = document.getElementById("msg");
+    const go = document.getElementById("go");
 
-        const r = await fetch(`/api/stripe/verify?session_id=${encodeURIComponent(sessionId)}`);
-        const data = await r.json();
+    async function run() {
+      const params = new URLSearchParams(location.search);
+      const sessionId = params.get("session_id");
 
-        if (!r.ok) {
-          document.getElementById("status").textContent = data.error || "Erreur verify.";
-          return;
-        }
-
-        localStorage.setItem("fp_token", data.token);
-        document.getElementById("status").textContent = "Compte prêt. Redirection…";
-        document.getElementById("go").style.display = "inline-block";
-        setTimeout(() => location.href = "/dashboard.html", 700);
+      if (!sessionId) {
+        msg.className = "err";
+        msg.textContent = "session_id manquant dans l’URL.";
+        return;
       }
-      run();
-    </script>
-  </body>
-</html>
 
+      try {
+        const r = await fetch("/api/stripe/confirm", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ sessionId })
+        });
+
+        const d = await r.json();
+        if (!r.ok) {
+          msg.className = "err";
+          msg.textContent = d.error || "Erreur confirmation.";
+          return;
+        }
+
+        // token JWT stocké côté navigateur
+        localStorage.setItem("fp_token", d.token);
+
+        msg.className = "ok";
+        msg.textContent = "Compte activé. Redirection…";
+        go.style.display = "inline-block";
+        setTimeout(() => location.href = "/dashboard.html", 900);
+      } catch(e) {
+        msg.className = "err";
+        msg.textContent = "Serveur indisponible.";
+      }
+    }
+    run();
+  </script>
+</body>
+</html>
