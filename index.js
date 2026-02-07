@@ -1,12 +1,16 @@
 // =======================
-// FlowPoint AI – SaaS Backend
-// Standard / Pro / Ultra
-// Features: SEO Audit + Monitoring + PDF + History
+// FlowPoint AI – SaaS Backend (Pack A complet)
+// Plans: Standard / Pro / Ultra
+// Features: SEO Audit + Cache + PDF + Monitoring (manual) + Logs + CSV Export
+// Auth: JWT + Login par email (magic link)
+// Stripe: Checkout + Portal + Webhook (block/unblock)
+// Admin: endpoints protégés par ADMIN_KEY
 // =======================
 
 require("dotenv").config();
 
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
@@ -16,6 +20,7 @@ const mongoose = require("mongoose");
 const Stripe = require("stripe");
 const cheerio = require("cheerio");
 const PDFDocument = require("pdfkit");
+const nodemailer = require("nodemailer");
 
 const app = express();
 app.set("trust proxy", true);
@@ -31,13 +36,64 @@ const REQUIRED = [
   "STRIPE_PRICE_ID_STANDARD",
   "STRIPE_PRICE_ID_PRO",
   "STRIPE_PRICE_ID_ULTRA",
-  "PUBLIC_BASE_URL"
+  "PUBLIC_BASE_URL",
 ];
 for (const k of REQUIRED) {
   if (!process.env[k]) console.log("❌ ENV manquante:", k);
 }
+
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET_RENDER;
-if (!STRIPE_WEBHOOK_SECRET) console.log("⚠️ STRIPE_WEBHOOK_SECRET_RENDER manquante");
+if (!STRIPE_WEBHOOK_SECRET) console.log("⚠️ STRIPE_WEBHOOK_SECRET_RENDER manquante (webhook non validable)");
+
+const ADMIN_KEY = process.env.ADMIN_KEY || "";
+const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
+const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
+
+// SMTP (pour login email + alertes/cron)
+const SMTP_READY =
+  !!process.env.SMTP_HOST &&
+  !!process.env.SMTP_PORT &&
+  !!process.env.SMTP_USER &&
+  !!process.env.SMTP_PASS &&
+  !!process.env.ALERT_EMAIL_FROM;
+
+function boolEnv(v) {
+  return String(v).toLowerCase() === "true";
+}
+
+function getMailer() {
+  if (!SMTP_READY) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: boolEnv(process.env.SMTP_SECURE), // true pour 465
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+}
+
+async function sendEmail({ to, subject, text, html }) {
+  const t = getMailer();
+  if (!t) {
+    console.log("⚠️ SMTP non configuré, email ignoré:", subject);
+    return;
+  }
+  const info = await t.sendMail({
+    from: process.env.ALERT_EMAIL_FROM,
+    to,
+    subject,
+    text,
+    html,
+  });
+  console.log("✅ Email envoyé:", info.messageId);
+}
+
+function safeHostBaseUrl(req) {
+  // On force PUBLIC_BASE_URL si fourni (recommandé)
+  const base = process.env.PUBLIC_BASE_URL;
+  if (base) return base.replace(/\/+$/, "");
+  // fallback
+  return `https://${req.headers.host}`;
+}
 
 // ---------- STRIPE WEBHOOK RAW (AVANT express.json) ----------
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
@@ -46,34 +102,39 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     const sig = req.headers["stripe-signature"];
     const event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
 
+    // Helper: set access / status
+    async function setBlockedByCustomer(customerId, blocked, status) {
+      await User.updateOne(
+        { stripeCustomerId: customerId },
+        { $set: { accessBlocked: !!blocked, lastPaymentStatus: status || "" } }
+      );
+    }
+
     if (event.type === "invoice.payment_failed") {
       const inv = event.data.object;
-      await User.updateOne(
-        { stripeCustomerId: inv.customer },
-        { $set: { accessBlocked: true, lastPaymentStatus: "payment_failed" } }
-      );
+      await setBlockedByCustomer(inv.customer, true, "payment_failed");
     }
 
     if (event.type === "invoice.payment_succeeded") {
       const inv = event.data.object;
-      await User.updateOne(
-        { stripeCustomerId: inv.customer },
-        { $set: { accessBlocked: false, lastPaymentStatus: "payment_succeeded" } }
-      );
+      await setBlockedByCustomer(inv.customer, false, "payment_succeeded");
     }
 
-    if (event.type === "customer.subscription.updated") {
+    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
       const sub = event.data.object;
       const priceId = sub.items?.data?.[0]?.price?.id;
 
       const user = await User.findOne({ stripeCustomerId: sub.customer });
       if (user) {
         user.stripeSubscriptionId = sub.id;
+        user.subscriptionStatus = sub.status;
         user.lastPaymentStatus = sub.status;
 
+        // block logic
         if (["active", "trialing"].includes(sub.status)) user.accessBlocked = false;
-        if (["past_due", "unpaid", "canceled"].includes(sub.status)) user.accessBlocked = true;
+        if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(sub.status)) user.accessBlocked = true;
 
+        // plan from priceId (source of truth)
         if (priceId === process.env.STRIPE_PRICE_ID_STANDARD) user.plan = "standard";
         if (priceId === process.env.STRIPE_PRICE_ID_PRO) user.plan = "pro";
         if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) user.plan = "ultra";
@@ -86,7 +147,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       const sub = event.data.object;
       await User.updateOne(
         { stripeCustomerId: sub.customer },
-        { $set: { accessBlocked: true, lastPaymentStatus: "subscription_deleted" } }
+        { $set: { accessBlocked: true, subscriptionStatus: "canceled", lastPaymentStatus: "subscription_deleted" } }
       );
     }
 
@@ -99,8 +160,19 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
 // ---------- SECURITY / PARSERS ----------
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: true, credentials: true }));
+
+// CORS: autorise ton domaine + même origin
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
+
+// Rate limiting global API
 app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
+
+// Parsers (après webhook raw)
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -118,17 +190,21 @@ function planRank(plan) {
   const map = { standard: 1, pro: 2, ultra: 3 };
   return map[String(plan || "").toLowerCase()] || 0;
 }
+
 function quotasForPlan(plan) {
   const p = String(plan || "").toLowerCase();
-  if (p === "standard") return { audits: 30, monitors: 3, pdf: 30 };
-  if (p === "pro") return { audits: 300, monitors: 50, pdf: 300 };
-  if (p === "ultra") return { audits: 2000, monitors: 300, pdf: 2000 };
-  return { audits: 0, monitors: 0, pdf: 0 };
+  // Pack A quotas (tu peux ajuster)
+  if (p === "standard") return { audits: 30, monitors: 3, pdf: 30, exports: 30 };
+  if (p === "pro") return { audits: 300, monitors: 50, pdf: 300, exports: 300 };
+  if (p === "ultra") return { audits: 2000, monitors: 300, pdf: 2000, exports: 2000 };
+  return { audits: 0, monitors: 0, pdf: 0, exports: 0 };
 }
+
 function firstDayOfThisMonthUTC() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
 }
+
 async function resetUsageIfNewMonth(user) {
   const month = firstDayOfThisMonthUTC();
   if (!user.usageMonth || new Date(user.usageMonth).getTime() !== month.getTime()) {
@@ -136,15 +212,18 @@ async function resetUsageIfNewMonth(user) {
     user.usedAudits = 0;
     user.usedMonitors = 0;
     user.usedPdf = 0;
+    user.usedExports = 0;
     await user.save();
   }
 }
+
 async function consume(user, key, amount = 1) {
   const q = quotasForPlan(user.plan);
   const map = {
     audits: ["usedAudits", q.audits],
     monitors: ["usedMonitors", q.monitors],
-    pdf: ["usedPdf", q.pdf]
+    pdf: ["usedPdf", q.pdf],
+    exports: ["usedExports", q.exports],
   };
   const item = map[key];
   if (!item) return false;
@@ -155,6 +234,7 @@ async function consume(user, key, amount = 1) {
   await user.save();
   return true;
 }
+
 function priceIdForPlan(plan) {
   if (plan === "standard") return process.env.STRIPE_PRICE_ID_STANDARD;
   if (plan === "pro") return process.env.STRIPE_PRICE_ID_PRO;
@@ -162,18 +242,71 @@ function priceIdForPlan(plan) {
   return null;
 }
 
+// ---------- ANTI-ABUS ----------
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "live.com",
+  "msn.com",
+]);
+
+function normalizeEmail(emailRaw) {
+  const email = String(emailRaw || "").trim().toLowerCase();
+  const parts = email.split("@");
+  if (parts.length !== 2) return email;
+  let [local, domain] = parts;
+
+  if (domain === "googlemail.com") domain = "gmail.com";
+
+  // Gmail: remove dots + plus alias
+  if (domain === "gmail.com") {
+    const plusIndex = local.indexOf("+");
+    if (plusIndex >= 0) local = local.slice(0, plusIndex);
+    local = local.replace(/\./g, "");
+  }
+  return `${local}@${domain}`;
+}
+
+function normalizeCompanyName(s) {
+  return (s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9\s-]/g, "");
+}
+
+function domainFromEmail(emailNorm) {
+  return String(emailNorm || "").split("@")[1] || "";
+}
+
+function makeFingerprint(req) {
+  // pour rate limiting anti-abus (IP+UA)
+  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
+  const ua = (req.headers["user-agent"] || "").toString();
+  const base = `${ip}||${ua}`;
+  return crypto.createHash("sha256").update(base).digest("hex");
+}
+
 // ---------- MODELS ----------
 const UserSchema = new mongoose.Schema(
   {
     email: { type: String, unique: true, index: true },
+    emailNormalized: { type: String, unique: true, index: true },
+
     name: String,
     companyName: String,
-    companyNameNormalized: String,
+    companyNameNormalized: { type: String, index: true },
+    companyDomain: { type: String, index: true },
 
     plan: { type: String, enum: ["standard", "pro", "ultra"], default: "standard" },
 
     stripeCustomerId: String,
     stripeSubscriptionId: String,
+    subscriptionStatus: String,
     lastPaymentStatus: String,
 
     hasTrial: { type: Boolean, default: false },
@@ -184,26 +317,47 @@ const UserSchema = new mongoose.Schema(
     usageMonth: { type: Date, default: firstDayOfThisMonthUTC },
     usedAudits: { type: Number, default: 0 },
     usedMonitors: { type: Number, default: 0 },
-    usedPdf: { type: Number, default: 0 }
+    usedPdf: { type: Number, default: 0 },
+    usedExports: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
 const TrialRegistrySchema = new mongoose.Schema(
-  { fingerprint: { type: String, unique: true, index: true }, usedAt: { type: Date, default: Date.now } },
+  {
+    emailNormalized: { type: String, unique: true, index: true },
+    companyNameNormalized: { type: String, index: true },
+    companyDomain: { type: String, index: true },
+    ipua: { type: String, index: true },
+    usedAt: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+
+const LoginTokenSchema = new mongoose.Schema(
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    tokenHash: { type: String, unique: true, index: true },
+    expiresAt: { type: Date, index: true },
+    usedAt: Date,
+  },
   { timestamps: true }
 );
 
 const AuditSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, index: true },
-    url: String,
+    url: { type: String, index: true },
+    urlNormalized: { type: String, index: true },
+
     status: { type: String, enum: ["ok", "error"], default: "ok" },
     score: Number,
     summary: String,
-    findings: Object, // checks détaillés
+
+    findings: Object,
     recommendations: [String],
-    htmlSnapshot: String // optionnel (petit)
+
+    htmlSnapshot: String,
   },
   { timestamps: true }
 );
@@ -213,9 +367,13 @@ const MonitorSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, index: true },
     url: String,
     active: { type: Boolean, default: true },
-    intervalMinutes: { type: Number, default: 60 }, // simple
+    intervalMinutes: { type: Number, default: 60 },
+
     lastCheckedAt: Date,
-    lastStatus: { type: String, enum: ["up", "down", "unknown"], default: "unknown" }
+    lastStatus: { type: String, enum: ["up", "down", "unknown"], default: "unknown" },
+
+    lastAlertStatus: { type: String, default: "unknown" },
+    lastAlertAt: Date,
   },
   { timestamps: true }
 );
@@ -229,34 +387,23 @@ const MonitorLogSchema = new mongoose.Schema(
     httpStatus: Number,
     responseTimeMs: Number,
     checkedAt: { type: Date, default: Date.now },
-    error: String
+    error: String,
   },
   { timestamps: true }
 );
 
 const User = mongoose.model("User", UserSchema);
 const TrialRegistry = mongoose.model("TrialRegistry", TrialRegistrySchema);
+const LoginToken = mongoose.model("LoginToken", LoginTokenSchema);
 const Audit = mongoose.model("Audit", AuditSchema);
 const Monitor = mongoose.model("Monitor", MonitorSchema);
 const MonitorLog = mongoose.model("MonitorLog", MonitorLogSchema);
 
-// ---------- HELPERS ----------
-function normalizeCompanyName(s) {
-  return (s || "")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[^a-z0-9\s-]/g, "");
-}
-function makeFingerprint(req, email, companyName) {
-  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
-  const ua = (req.headers["user-agent"] || "").toString();
-  const base = `${ip}||${ua}||${(email || "").toLowerCase()}||${normalizeCompanyName(companyName)}`;
-  return Buffer.from(base).toString("base64");
-}
+// ---------- AUTH HELPERS ----------
 function signToken(user) {
   return jwt.sign({ uid: user._id.toString(), email: user.email }, process.env.JWT_SECRET, { expiresIn: "30d" });
 }
+
 function auth(req, res, next) {
   const h = req.headers.authorization || "";
   const token = h.startsWith("Bearer ") ? h.slice(7) : null;
@@ -268,15 +415,21 @@ function auth(req, res, next) {
     return res.status(401).json({ error: "Token invalide" });
   }
 }
+
 async function requireActive(req, res, next) {
   const user = await User.findById(req.user.uid);
   if (!user) return res.status(404).json({ error: "User introuvable" });
 
-  // sécurité: essai expiré => bloqué
+  // Trial expired => block (si pas déjà un abo actif qui aurait débloqué via webhook)
   if (user.hasTrial && user.trialEndsAt && new Date(user.trialEndsAt).getTime() < Date.now()) {
-    user.accessBlocked = true;
-    user.lastPaymentStatus = user.lastPaymentStatus || "trial_expired";
-    await user.save();
+    // si l'abonnement n'est pas actif, on bloque
+    const st = String(user.subscriptionStatus || "").toLowerCase();
+    const active = st === "active" || st === "trialing";
+    if (!active) {
+      user.accessBlocked = true;
+      user.lastPaymentStatus = user.lastPaymentStatus || "trial_expired";
+      await user.save();
+    }
   }
 
   if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / essai terminé)" });
@@ -285,6 +438,7 @@ async function requireActive(req, res, next) {
   req.dbUser = user;
   next();
 }
+
 function requirePlan(minPlan) {
   return (req, res, next) => {
     if (planRank(req.dbUser.plan) < planRank(minPlan)) return res.status(403).json({ error: `Plan requis: ${minPlan}` });
@@ -292,7 +446,15 @@ function requirePlan(minPlan) {
   };
 }
 
-// ---------- SEO AUDIT (simple mais efficace) ----------
+// Admin key
+function requireAdmin(req, res, next) {
+  if (!ADMIN_KEY) return res.status(500).json({ error: "ADMIN_KEY manquante" });
+  const k = req.headers["x-admin-key"] || req.query.admin_key;
+  if (k !== ADMIN_KEY) return res.status(401).json({ error: "Admin non autorisé" });
+  next();
+}
+
+// ---------- SEO AUDIT HELPERS ----------
 async function fetchWithTiming(url) {
   const t0 = Date.now();
   const r = await fetch(url, { redirect: "follow" });
@@ -314,7 +476,9 @@ function scoreAudit(checks) {
   penalize(!checks.https.ok, 12);
   penalize(!checks.viewport.ok, 6);
   penalize(!checks.og.ok, 4);
-  penalize(!checks.sitemapHint.ok, 3);
+
+  // perf
+  penalize(!checks.responseTime.ok, 8);
 
   if (score < 0) score = 0;
   return score;
@@ -322,26 +486,39 @@ function scoreAudit(checks) {
 
 function buildRecommendations(checks) {
   const rec = [];
-  if (!checks.title.ok) rec.push("Ajouter un <title> unique (50–60 caractères).");
-  if (!checks.metaDescription.ok) rec.push("Ajouter une meta description (140–160 caractères).");
-  if (!checks.h1.ok) rec.push("Ajouter exactement 1 H1 pertinent (éviter 0 ou plusieurs).");
-  if (!checks.canonical.ok) rec.push("Ajouter un lien canonical pour éviter le contenu dupliqué.");
-  if (!checks.robots.ok) rec.push("Ajouter une meta robots cohérente (index/follow) ou vérifier robots.txt.");
-  if (!checks.lang.ok) rec.push("Ajouter l’attribut lang sur <html> (ex: fr).");
-  if (!checks.https.ok) rec.push("Forcer HTTPS (redirections + HSTS).");
-  if (!checks.viewport.ok) rec.push("Ajouter meta viewport pour mobile.");
-  if (!checks.og.ok) rec.push("Ajouter Open Graph (og:title, og:description, og:image) pour partage social.");
+  const pri = (label, level) => `[${level}] ${label}`;
+
+  if (!checks.title.ok) rec.push(pri("Ajouter un <title> unique (50–60 caractères).", "HIGH"));
+  if (!checks.metaDescription.ok) rec.push(pri("Ajouter une meta description (140–160 caractères).", "HIGH"));
+  if (!checks.h1.ok) rec.push(pri("Ajouter exactement 1 H1 pertinent (éviter 0 ou plusieurs).", "HIGH"));
+  if (!checks.canonical.ok) rec.push(pri("Ajouter un lien canonical pour éviter le contenu dupliqué.", "MED"));
+  if (!checks.robots.ok) rec.push(pri("Vérifier meta robots (index/follow) + robots.txt.", "MED"));
+  if (!checks.lang.ok) rec.push(pri("Ajouter l’attribut lang sur <html> (ex: fr).", "LOW"));
+  if (!checks.https.ok) rec.push(pri("Forcer HTTPS (redirections + HSTS).", "HIGH"));
+  if (!checks.viewport.ok) rec.push(pri("Ajouter meta viewport pour mobile.", "MED"));
+  if (!checks.og.ok) rec.push(pri("Ajouter Open Graph (og:title, og:description, og:image).", "LOW"));
+  if (!checks.responseTime.ok) rec.push(pri("Améliorer la vitesse (TTFB < 3s).", "MED"));
+
   return rec;
 }
 
-async function runSeoAudit(url) {
-  const result = { url, checks: {}, recommendations: [], summary: "" };
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    // on garde query (souvent utile), mais tu peux la supprimer si tu veux
+    return u.toString();
+  } catch {
+    return String(url || "").trim();
+  }
+}
 
+async function runSeoAudit(url) {
   let fetched;
   try {
     fetched = await fetchWithTiming(url);
   } catch (e) {
-    return { ...result, status: "error", score: 0, summary: "Impossible de charger l’URL.", error: e.message };
+    return { status: "error", score: 0, summary: "Impossible de charger l’URL.", findings: {}, recommendations: [], htmlSnapshot: "", error: e.message };
   }
 
   const $ = cheerio.load(fetched.text);
@@ -360,9 +537,6 @@ async function runSeoAudit(url) {
 
   const httpsOk = String(fetched.finalUrl || url).startsWith("https://");
 
-  // Sitemap hint (simple)
-  const sitemapHint = "/sitemap.xml";
-
   const checks = {
     http: { ok: fetched.ok, value: fetched.status },
     responseTime: { ok: fetched.ms < 3000, value: fetched.ms },
@@ -375,7 +549,6 @@ async function runSeoAudit(url) {
     lang: { ok: !!lang, value: lang },
     viewport: { ok: !!viewport, value: viewport },
     og: { ok: !!(ogTitle && ogDesc && ogImg), value: { ogTitle, ogDesc, ogImg } },
-    sitemapHint: { ok: true, value: sitemapHint }
   };
 
   const score = scoreAudit(checks);
@@ -392,20 +565,26 @@ async function runSeoAudit(url) {
     summary,
     findings: checks,
     recommendations,
-    htmlSnapshot: fetched.text.slice(0, 20000) // petit snapshot (limité)
+    htmlSnapshot: fetched.text.slice(0, 20000),
   };
 }
 
-// ---------- MONITOR CHECK (simple) ----------
+// ---------- MONITOR CHECK ----------
 async function checkUrlOnce(url) {
+  const timeout = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+
   const t0 = Date.now();
   try {
-    const r = await fetch(url, { redirect: "follow" });
+    const r = await fetch(url, { redirect: "follow", signal: controller.signal });
     const ms = Date.now() - t0;
+    clearTimeout(id);
     const up = r.status >= 200 && r.status < 400;
     return { status: up ? "up" : "down", httpStatus: r.status, responseTimeMs: ms, error: "" };
   } catch (e) {
     const ms = Date.now() - t0;
+    clearTimeout(id);
     return { status: "down", httpStatus: 0, responseTimeMs: ms, error: e.message || "fetch failed" };
   }
 }
@@ -416,12 +595,16 @@ app.get("/dashboard", (_, res) => res.sendFile(path.join(__dirname, "dashboard.h
 app.get("/pricing", (_, res) => res.sendFile(path.join(__dirname, "pricing.html")));
 app.get("/success", (_, res) => res.sendFile(path.join(__dirname, "success.html")));
 app.get("/cancel", (_, res) => res.sendFile(path.join(__dirname, "cancel.html")));
+app.get("/login", (_, res) => res.sendFile(path.join(__dirname, "login.html")));
+app.get("/login-verify", (_, res) => res.sendFile(path.join(__dirname, "login-verify.html")));
+app.get("/admin", (_, res) => res.sendFile(path.join(__dirname, "admin.html")));
 
 // ---------- API ----------
 app.get("/api/health", (_, res) => res.json({ ok: true }));
 
-// Lead + token + anti-abus
-app.post("/api/auth/lead", async (req, res) => {
+// ---------- AUTH: LEAD + TOKEN + anti-abus + trial reservation ----------
+const leadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+app.post("/api/auth/lead", leadLimiter, async (req, res) => {
   try {
     const { firstName, email, companyName, plan } = req.body || {};
     if (!email || !companyName) return res.status(400).json({ error: "Email + entreprise requis" });
@@ -429,39 +612,131 @@ app.post("/api/auth/lead", async (req, res) => {
     const chosenPlan = String(plan || "").toLowerCase();
     if (!["standard", "pro", "ultra"].includes(chosenPlan)) return res.status(400).json({ error: "Plan invalide" });
 
-    const fingerprint = makeFingerprint(req, email, companyName);
-    const already = await TrialRegistry.findOne({ fingerprint });
-    if (already) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
+    const emailNorm = normalizeEmail(email);
+    const domain = domainFromEmail(emailNorm);
+    const companyNorm = normalizeCompanyName(companyName);
+    const ipua = makeFingerprint(req);
 
-    const companyNameNormalized = normalizeCompanyName(companyName);
+    // anti abus: 1 trial par email normalisé
+    const usedByEmail = await TrialRegistry.findOne({ emailNormalized: emailNorm });
+    if (usedByEmail) return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
 
-    let user = await User.findOne({ email: String(email).toLowerCase() });
+    // anti abus: 1 trial par entreprise (nom)
+    const usedByCompany = await TrialRegistry.findOne({ companyNameNormalized: companyNorm });
+    if (usedByCompany) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
+
+    // anti abus: si email pro (pas gmail/outlook), 1 trial par domaine
+    if (domain && !PUBLIC_EMAIL_DOMAINS.has(domain)) {
+      const usedByDomain = await TrialRegistry.findOne({ companyDomain: domain });
+      if (usedByDomain) return res.status(403).json({ error: "Essai déjà utilisé pour ce domaine entreprise." });
+    }
+
+    // anti abus: limite ip+ua (soft)
+    const usedByIpua = await TrialRegistry.findOne({ ipua });
+    if (usedByIpua) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus navigateur/IP)." });
+
+    let user = await User.findOne({ emailNormalized: emailNorm });
     if (!user) {
       user = await User.create({
         email: String(email).toLowerCase(),
+        emailNormalized: emailNorm,
         name: firstName || "",
-        companyName,
-        companyNameNormalized,
-        plan: chosenPlan
+        companyName: companyName,
+        companyNameNormalized: companyNorm,
+        companyDomain: domain,
+        plan: chosenPlan,
       });
     } else {
+      // update safe fields
+      user.email = String(email).toLowerCase();
       user.name = firstName || user.name;
       user.companyName = companyName || user.companyName;
-      user.companyNameNormalized = companyNameNormalized || user.companyNameNormalized;
+      user.companyNameNormalized = companyNorm || user.companyNameNormalized;
+      user.companyDomain = domain || user.companyDomain;
       user.plan = chosenPlan;
       await user.save();
     }
 
-    await TrialRegistry.create({ fingerprint });
+    // réserve l'essai
+    await TrialRegistry.create({
+      emailNormalized: emailNorm,
+      companyNameNormalized: companyNorm,
+      companyDomain: domain,
+      ipua,
+    });
 
     return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("lead error:", e.message);
+    // duplicate key => essai déjà utilisé
+    if (String(e.message || "").includes("duplicate key")) {
+      return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
+    }
     return res.status(500).json({ error: "Erreur serveur lead" });
   }
 });
 
-// Stripe checkout
+// ---------- AUTH: LOGIN MAGIC LINK ----------
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
+
+app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim();
+    if (!email) return res.status(400).json({ error: "Email requis" });
+
+    const emailNorm = normalizeEmail(email);
+    const user = await User.findOne({ emailNormalized: emailNorm });
+    if (!user) return res.status(404).json({ error: "Aucun compte pour cet email" });
+
+    // generate token
+    const raw = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+    const expiresAt = new Date(Date.now() + LOGIN_LINK_TTL_MINUTES * 60 * 1000);
+
+    await LoginToken.create({ userId: user._id, tokenHash, expiresAt });
+
+    const baseUrl = process.env.PUBLIC_BASE_URL.replace(/\/+$/, "");
+    const link = `${baseUrl}/login-verify.html?token=${raw}`;
+
+    await sendEmail({
+      to: user.email,
+      subject: "FlowPoint AI — Lien de connexion",
+      text: `Voici ton lien de connexion (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
+      html: `<p>Voici ton lien de connexion (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
+    });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.log("login-request error:", e.message);
+    return res.status(500).json({ error: "Erreur login-request" });
+  }
+});
+
+app.get("/api/auth/login-verify", async (req, res) => {
+  try {
+    const raw = String(req.query?.token || "");
+    if (!raw) return res.status(400).json({ error: "Token manquant" });
+
+    const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+    const lt = await LoginToken.findOne({ tokenHash });
+    if (!lt) return res.status(400).json({ error: "Token invalide" });
+    if (lt.usedAt) return res.status(400).json({ error: "Token déjà utilisé" });
+    if (lt.expiresAt && new Date(lt.expiresAt).getTime() < Date.now()) return res.status(400).json({ error: "Token expiré" });
+
+    const user = await User.findById(lt.userId);
+    if (!user) return res.status(404).json({ error: "User introuvable" });
+
+    lt.usedAt = new Date();
+    await lt.save();
+
+    return res.json({ ok: true, token: signToken(user) });
+  } catch (e) {
+    console.log("login-verify error:", e.message);
+    return res.status(500).json({ error: "Erreur login-verify" });
+  }
+});
+
+// ---------- STRIPE: CHECKOUT ----------
 app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
   try {
     const chosenPlan = String(req.body?.plan || "").toLowerCase();
@@ -471,29 +746,33 @@ app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
     const priceId = priceIdForPlan(chosenPlan);
     if (!priceId) return res.status(500).json({ error: "PriceId manquant" });
 
+    // Customer
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: user.email,
         name: user.companyName || user.name || undefined,
-        metadata: { uid: user._id.toString() }
+        metadata: { uid: user._id.toString() },
       });
       customerId = customer.id;
       user.stripeCustomerId = customerId;
       await user.save();
     }
 
-    const baseUrl = process.env.PUBLIC_BASE_URL;
+    const baseUrl = safeHostBaseUrl(req);
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      subscription_data: { trial_period_days: 14, metadata: { uid: user._id.toString(), plan: chosenPlan } },
+      subscription_data: {
+        trial_period_days: 14,
+        metadata: { uid: user._id.toString(), plan: chosenPlan },
+      },
       metadata: { uid: user._id.toString(), plan: chosenPlan },
       success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/cancel.html`,
-      allow_promotion_codes: true
+      allow_promotion_codes: true,
     });
 
     return res.json({ url: session.url });
@@ -503,7 +782,7 @@ app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
   }
 });
 
-// Verify success
+// ---------- STRIPE: VERIFY SUCCESS ----------
 app.get("/api/stripe/verify", async (req, res) => {
   try {
     const sessionId = req.query.session_id;
@@ -530,7 +809,17 @@ app.get("/api/stripe/verify", async (req, res) => {
 
     user.accessBlocked = false;
     user.lastPaymentStatus = "checkout_verified";
+    user.subscriptionStatus = user.subscriptionStatus || "trialing";
+
     await user.save();
+
+    // email welcome (optionnel)
+    await sendEmail({
+      to: user.email,
+      subject: "Bienvenue sur FlowPoint AI",
+      text: `Ton essai est actif. Tu peux accéder au dashboard: ${process.env.PUBLIC_BASE_URL}/dashboard.html`,
+      html: `<p>Ton essai est actif ✅</p><p>Dashboard: <a href="${process.env.PUBLIC_BASE_URL}/dashboard.html">${process.env.PUBLIC_BASE_URL}/dashboard.html</a></p>`,
+    });
 
     return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
@@ -539,16 +828,16 @@ app.get("/api/stripe/verify", async (req, res) => {
   }
 });
 
-// Stripe portal
+// ---------- STRIPE: CUSTOMER PORTAL ----------
 app.post("/api/stripe/portal", auth, requireActive, async (req, res) => {
   try {
     const user = req.dbUser;
     if (!user.stripeCustomerId) return res.status(400).json({ error: "Customer Stripe manquant" });
 
-    const baseUrl = process.env.PUBLIC_BASE_URL;
+    const baseUrl = safeHostBaseUrl(req);
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
-      return_url: `${baseUrl}/dashboard.html`
+      return_url: `${baseUrl}/dashboard.html`,
     });
 
     return res.json({ url: session.url });
@@ -558,7 +847,7 @@ app.post("/api/stripe/portal", auth, requireActive, async (req, res) => {
   }
 });
 
-// Me (dashboard)
+// ---------- ME (dashboard) ----------
 app.get("/api/me", auth, requireActive, async (req, res) => {
   const u = req.dbUser;
   const q = quotasForPlan(u.plan);
@@ -572,41 +861,63 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
     trialEndsAt: u.trialEndsAt,
     accessBlocked: u.accessBlocked,
     lastPaymentStatus: u.lastPaymentStatus || "",
+    subscriptionStatus: u.subscriptionStatus || "",
     usage: {
       month: u.usageMonth,
       audits: { used: u.usedAudits, limit: q.audits },
       monitors: { used: u.usedMonitors, limit: q.monitors },
-      pdf: { used: u.usedPdf, limit: q.pdf }
-    }
+      pdf: { used: u.usedPdf, limit: q.pdf },
+      exports: { used: u.usedExports, limit: q.exports },
+    },
   });
 });
 
 //
-// ===== FEATURE 1: SEO AUDIT + HISTORY =====
+// ===== FEATURE: SEO AUDIT + HISTORY + CACHE =====
 //
 
-// Run audit
+// Run audit (cache: si audit < AUDIT_CACHE_HOURS, on renvoie sans consommer quota)
 app.post("/api/audits/run", auth, requireActive, async (req, res) => {
   const url = String(req.body?.url || "").trim();
   if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (doit commencer par http/https)" });
 
+  const urlNorm = normalizeUrl(url);
+  const cutoff = new Date(Date.now() - AUDIT_CACHE_HOURS * 60 * 60 * 1000);
+
+  const cached = await Audit.findOne({
+    userId: req.dbUser._id,
+    urlNormalized: urlNorm,
+    createdAt: { $gte: cutoff },
+  }).sort({ createdAt: -1 });
+
+  if (cached) {
+    return res.json({
+      ok: true,
+      cached: true,
+      auditId: cached._id,
+      score: cached.score,
+      summary: `Cache (${AUDIT_CACHE_HOURS}h) — ` + (cached.summary || ""),
+    });
+  }
+
   const ok = await consume(req.dbUser, "audits", 1);
   if (!ok) return res.status(429).json({ error: "Quota audits dépassé" });
 
-  const out = await runSeoAudit(url);
+  const out = await runSeoAudit(urlNorm);
 
   const audit = await Audit.create({
     userId: req.dbUser._id,
-    url,
+    url: urlNorm,
+    urlNormalized: urlNorm,
     status: out.status,
     score: out.score,
     summary: out.summary,
     findings: out.findings,
     recommendations: out.recommendations,
-    htmlSnapshot: out.htmlSnapshot
+    htmlSnapshot: out.htmlSnapshot,
   });
 
-  return res.json({ ok: true, auditId: audit._id, score: audit.score, summary: audit.summary });
+  return res.json({ ok: true, cached: false, auditId: audit._id, score: audit.score, summary: audit.summary });
 });
 
 // List audits
@@ -623,10 +934,8 @@ app.get("/api/audits/:id", auth, requireActive, async (req, res) => {
 });
 
 //
-// ===== FEATURE 2: PDF REPORT GENERATION =====
+// ===== FEATURE: PDF REPORT (audit) =====
 //
-
-// PDF from audit
 app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   const a = await Audit.findOne({ _id: req.params.id, userId: req.dbUser._id });
   if (!a) return res.status(404).json({ error: "Audit introuvable" });
@@ -640,7 +949,8 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   const doc = new PDFDocument({ margin: 48 });
   doc.pipe(res);
 
-  doc.fontSize(20).text("FlowPoint AI — Rapport SEO", { underline: true });
+  // Branding simple
+  doc.fontSize(22).text("FlowPoint AI", { continued: true }).fontSize(22).text("  — Rapport SEO");
   doc.moveDown(0.5);
   doc.fontSize(12).text(`URL: ${a.url}`);
   doc.text(`Date: ${new Date(a.createdAt).toLocaleString("fr-FR")}`);
@@ -651,7 +961,7 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   doc.fontSize(12).text(a.summary || "-");
   doc.moveDown();
 
-  doc.fontSize(14).text("Recommandations", { underline: true });
+  doc.fontSize(14).text("Recommandations (priorisées)", { underline: true });
   doc.moveDown(0.25);
   const rec = Array.isArray(a.recommendations) ? a.recommendations : [];
   if (!rec.length) doc.fontSize(12).text("Aucune recommandation.");
@@ -662,17 +972,18 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   doc.moveDown(0.25);
   const f = a.findings || {};
   for (const [k, v] of Object.entries(f)) {
-    doc.fontSize(12).text(`${k}: ${v?.ok ? "OK" : "À corriger"} — ${typeof v?.value === "object" ? JSON.stringify(v.value) : String(v?.value ?? "")}`);
+    const vv = typeof v?.value === "object" ? JSON.stringify(v.value) : String(v?.value ?? "");
+    doc.fontSize(12).text(`${k}: ${v?.ok ? "OK" : "À corriger"} — ${vv}`);
   }
 
   doc.end();
 });
 
 //
-// ===== FEATURE 3: MONITORING + LOGS + HISTORY =====
+// ===== FEATURE: MONITORING (manual) + LOGS + HISTORY =====
 //
 
-// Create monitor (Pro+ recommandé, mais on laisse Standard = petit nombre)
+// Create monitor (quota = nombre de créations)
 app.post("/api/monitors", auth, requireActive, async (req, res) => {
   const url = String(req.body?.url || "").trim();
   const intervalMinutes = Number(req.body?.intervalMinutes || 60);
@@ -680,8 +991,6 @@ app.post("/api/monitors", auth, requireActive, async (req, res) => {
   if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide" });
   if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5) return res.status(400).json({ error: "intervalMinutes min = 5" });
 
-  // quota monitors = nombre de monitors max (usage)
-  // on consomme 1 "monitor" à la création (tu peux changer)
   const ok = await consume(req.dbUser, "monitors", 1);
   if (!ok) return res.status(429).json({ error: "Quota monitors dépassé" });
 
@@ -689,7 +998,7 @@ app.post("/api/monitors", auth, requireActive, async (req, res) => {
     userId: req.dbUser._id,
     url,
     intervalMinutes,
-    active: true
+    active: true,
   });
 
   return res.json({ ok: true, monitor: m });
@@ -701,7 +1010,7 @@ app.get("/api/monitors", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, monitors: list });
 });
 
-// Toggle monitor
+// Toggle / update monitor
 app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
   const m = await Monitor.findOne({ _id: req.params.id, userId: req.dbUser._id });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
@@ -717,13 +1026,12 @@ app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, monitor: m });
 });
 
-// Run monitor now (manual check)
+// Run monitor now (manual)
 app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
   const m = await Monitor.findOne({ _id: req.params.id, userId: req.dbUser._id });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
   if (!m.active) return res.status(400).json({ error: "Monitor inactif" });
 
-  // Pro+ : checks manuels illimités, Standard : autorisé mais logique simple
   const r = await checkUrlOnce(m.url);
 
   m.lastCheckedAt = new Date();
@@ -737,20 +1045,123 @@ app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
     status: r.status,
     httpStatus: r.httpStatus,
     responseTimeMs: r.responseTimeMs,
-    error: r.error
+    error: r.error,
   });
 
   return res.json({ ok: true, result: r });
 });
 
-// List monitor logs
+// Logs
 app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
   const m = await Monitor.findOne({ _id: req.params.id, userId: req.dbUser._id });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
-  const logs = await MonitorLog.find({ userId: req.dbUser._id, monitorId: m._id }).sort({ checkedAt: -1 }).limit(100);
+  const logs = await MonitorLog.find({ userId: req.dbUser._id, monitorId: m._id })
+    .sort({ checkedAt: -1 })
+    .limit(200);
+
   return res.json({ ok: true, logs });
 });
 
+//
+// ===== EXPORTS CSV =====
+//
+function csvEscape(v) {
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+app.get("/api/export/audits.csv", auth, requireActive, async (req, res) => {
+  const ok = await consume(req.dbUser, "exports", 1);
+  if (!ok) return res.status(429).json({ error: "Quota exports dépassé" });
+
+  const list = await Audit.find({ userId: req.dbUser._id }).sort({ createdAt: -1 }).limit(500);
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="flowpoint-audits.csv"`);
+
+  const header = ["createdAt", "url", "status", "score", "summary"].join(",") + "\n";
+  const rows = list
+    .map((a) =>
+      [a.createdAt?.toISOString?.() || "", a.url || "", a.status || "", a.score ?? "", a.summary || ""]
+        .map(csvEscape)
+        .join(",")
+    )
+    .join("\n");
+
+  res.send(header + rows + "\n");
+});
+
+app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
+  const ok = await consume(req.dbUser, "exports", 1);
+  if (!ok) return res.status(429).json({ error: "Quota exports dépassé" });
+
+  const list = await Monitor.find({ userId: req.dbUser._id }).sort({ createdAt: -1 }).limit(500);
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="flowpoint-monitors.csv"`);
+
+  const header = ["createdAt", "url", "active", "intervalMinutes", "lastStatus", "lastCheckedAt"].join(",") + "\n";
+  const rows = list
+    .map((m) =>
+      [
+        m.createdAt?.toISOString?.() || "",
+        m.url || "",
+        m.active ? "true" : "false",
+        m.intervalMinutes ?? "",
+        m.lastStatus || "",
+        m.lastCheckedAt ? new Date(m.lastCheckedAt).toISOString() : "",
+      ]
+        .map(csvEscape)
+        .join(",")
+    )
+    .join("\n");
+
+  res.send(header + rows + "\n");
+});
+
+//
+// ===== ADMIN (minimal) =====
+//
+app.get("/api/admin/users", requireAdmin, async (req, res) => {
+  const list = await User.find({}).sort({ createdAt: -1 }).limit(200);
+  res.json({ ok: true, users: list });
+});
+
+app.post("/api/admin/user/block", requireAdmin, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const blocked = !!req.body?.blocked;
+  if (!email) return res.status(400).json({ error: "email manquant" });
+  await User.updateOne({ email }, { $set: { accessBlocked: blocked } });
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: "email manquant" });
+  await User.updateOne(
+    { email },
+    { $set: { usageMonth: firstDayOfThisMonthUTC(), usedAudits: 0, usedMonitors: 0, usedPdf: 0, usedExports: 0 } }
+  );
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/user/delete", requireAdmin, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: "email manquant" });
+
+  const u = await User.findOne({ email });
+  if (!u) return res.json({ ok: true });
+
+  await Audit.deleteMany({ userId: u._id });
+  await MonitorLog.deleteMany({ userId: u._id });
+  await Monitor.deleteMany({ userId: u._id });
+  await LoginToken.deleteMany({ userId: u._id });
+  await User.deleteOne({ _id: u._id });
+
+  res.json({ ok: true });
+});
+
 // ---------- START ----------
-app.listen(PORT, () => console.log(`✅ FlowPoint SaaS lancé sur port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ FlowPoint SaaS (Pack A) lancé sur port ${PORT}`));
