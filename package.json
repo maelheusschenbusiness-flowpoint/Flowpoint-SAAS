@@ -6,15 +6,11 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "cron": "node cron.js"
+    "cron": "node cron.js",
+    "monitor-cron": "node monitor-cron.js"
   },
   "engines": {
     "node": ">=18"
- "scripts": {
-  "start": "node index.js",
-  "cron": "node cron.js",
-  "monitor-cron": "node monitor-cron.js"
-}
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
