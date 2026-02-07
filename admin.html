@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>FlowPoint AI — Admin</title>
+  <style>
+    body{font-family:system-ui,Arial;background:#f6f7fb;margin:0}
+    .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e7e9f2;border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.05);margin-bottom:14px}
+    input,button{padding:10px;border-radius:12px;border:1px solid #ddd}
+    button{border:0;background:#111;color:#fff;font-weight:900;cursor:pointer}
+    table{width:100%;border-collapse:collapse}
+    td,th{padding:10px;border-bottom:1px solid #eee;text-align:left;font-size:14px}
+    .muted{color:#666;font-size:14px}
+    .danger{color:#b00020;font-weight:900}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Admin</h1>
+      <div class="muted">Protégé par <b>ADMIN_KEY</b> (header x-admin-key)</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+        <input id="key" placeholder="ADMIN_KEY" style="flex:1;min-width:280px"/>
+        <button id="load">Charger users</button>
+      </div>
+      <div id="msg" class="muted" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card" style="overflow:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Email</th><th>Plan</th><th>Blocked</th><th>TrialEnds</th><th>StripeStatus</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
