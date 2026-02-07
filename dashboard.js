@@ -29,22 +29,37 @@ function fmtDate(d){ if(!d) return "—"; try{return new Date(d).toLocaleString(
 
 function showTab(name){
   const ids = ["audit","audits","monitor"];
-  for (const t of ids) {
-    $("tab-"+t).classList.toggle("hidden", t !== name);
+  for (const t of ids) $("tab-"+t).classList.toggle("hidden", t !== name);
+  document.querySelectorAll(".tab").forEach(el=> el.classList.toggle("active", el.dataset.tab === name));
+}
+
+async function downloadWithAuth(url, filename) {
+  const t = token();
+  const r = await fetch(url, { headers: { "Authorization": "Bearer " + t } });
+  // Important: tes endpoints export sont GET auth, donc on passe token
+  if (!r.ok) {
+    const d = await r.json().catch(()=> ({}));
+    throw new Error(d.error || "Export échoué");
   }
-  document.querySelectorAll(".tab").forEach(el=>{
-    el.classList.toggle("active", el.dataset.tab === name);
-  });
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
 }
 
 async function loadMe(){
   const me = await api("/api/me");
+
   $("email").textContent = me.email || "—";
   $("company").textContent = me.companyName || "—";
 
   $("planBadge").textContent = "PLAN: " + (me.plan || "standard").toUpperCase();
   $("trialPill").textContent = me.hasTrial ? ("Trial jusqu’au " + fmtDate(me.trialEndsAt)) : "Trial: non démarré";
-  $("payPill").textContent = "Paiement: " + (me.lastPaymentStatus || "—");
+  $("payPill").textContent = "Paiement: " + (me.lastPaymentStatus || me.subscriptionStatus || "—");
 
   if (me.accessBlocked) setMsg("Accès bloqué (paiement échoué / essai terminé). Clique “Gérer / Upgrade”.", "error");
   else setMsg("Accès OK.", "ok");
@@ -52,14 +67,17 @@ async function loadMe(){
   const a = me.usage.audits;
   const m = me.usage.monitors;
   const p = me.usage.pdf;
+  const e = me.usage.exports || { used: 0, limit: 0 };
 
   $("qa").textContent = `${a.used}/${a.limit}`;
   $("qm").textContent = `${m.used}/${m.limit}`;
   $("qp").textContent = `${p.used}/${p.limit}`;
+  $("qe").textContent = `${e.used}/${e.limit}`;
 
   $("ba").style.width = pct(a.used, a.limit) + "%";
   $("bm").style.width = pct(m.used, m.limit) + "%";
   $("bp").style.width = pct(p.used, p.limit) + "%";
+  $("be").style.width = pct(e.used, e.limit) + "%";
 
   return me;
 }
@@ -74,7 +92,7 @@ async function runAudit(){
   const url = $("auditUrl").value.trim();
   setMsg("Audit en cours...");
   const out = await api("/api/audits/run", "POST", { url });
-  setMsg("✅ Audit terminé", "ok");
+  setMsg(out.cached ? "✅ Audit (cache) terminé" : "✅ Audit terminé", "ok");
 
   $("auditResult").classList.remove("hidden");
   $("auditResult").innerHTML = `
@@ -94,6 +112,7 @@ async function loadAudits(){
   const out = await api("/api/audits");
   const tb = $("auditsTbody");
   tb.innerHTML = "";
+
   for (const a of out.audits) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -184,7 +203,7 @@ async function loadMonitors(){
       const box = $("monLogsBox");
       box.classList.remove("hidden");
       box.innerHTML = `
-        <div style="font-weight:900;margin-bottom:8px">Logs (100 derniers)</div>
+        <div style="font-weight:900;margin-bottom:8px">Logs (200 derniers)</div>
         <table>
           <thead><tr><th>Date</th><th>Status</th><th>HTTP</th><th>ms</th><th>error</th></tr></thead>
           <tbody>
@@ -222,6 +241,24 @@ function initTabs(){
   $("btnPortal").addEventListener("click", openPortal);
   $("btnLogout").addEventListener("click", ()=>{ localStorage.removeItem("fp_token"); window.location.href="/index.html"; });
   $("btnPricing").addEventListener("click", ()=> window.location.href="/pricing.html");
+
+  $("btnExportAudits").addEventListener("click", async ()=>{
+    try {
+      setMsg("Export audits…");
+      await downloadWithAuth("/api/export/audits.csv", "flowpoint-audits.csv");
+      setMsg("✅ Export audits téléchargé", "ok");
+      await loadMe();
+    } catch(e) { setMsg(e.message, "error"); }
+  });
+
+  $("btnExportMonitors").addEventListener("click", async ()=>{
+    try {
+      setMsg("Export monitors…");
+      await downloadWithAuth("/api/export/monitors.csv", "flowpoint-monitors.csv");
+      setMsg("✅ Export monitors téléchargé", "ok");
+      await loadMe();
+    } catch(e) { setMsg(e.message, "error"); }
+  });
 
   $("btnRunAudit").addEventListener("click", ()=> runAudit().catch(e=>setMsg(e.message,"error")));
   $("btnCreateMon").addEventListener("click", ()=> createMonitor().catch(e=>setMsg(e.message,"error")));
