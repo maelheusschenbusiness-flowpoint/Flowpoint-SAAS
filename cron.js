@@ -1,54 +1,95 @@
+// ===============================
+// FlowPoint AI - Daily Email Cron
+// Envoi 1 email / jour à 9h
+// ===============================
+
 require("dotenv").config();
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
 
-(async () => {
-  console.log("⏰ Cron FlowPoint AI démarré");
+// ---------- LOG ----------
+console.log("🕘 Cron started");
 
-  await mongoose.connect(process.env.MONGO_URI);
+// ---------- ENV CHECK ----------
+const REQUIRED = [
+  "MONGO_URI",
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_SECURE",
+  "SMTP_USER",
+  "SMTP_PASS",
+  "ALERT_EMAIL_FROM",
+  "ALERT_EMAIL_TO",
+];
 
-  const User = mongoose.model(
-    "User",
-    new mongoose.Schema({
-      email: String,
-      trialEndsAt: Date,
-      accessBlocked: Boolean,
-    })
-  );
-
-  const now = new Date();
-  const soon = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-  const users = await User.find({
-    trialEndsAt: { $lte: soon, $gte: now },
-    accessBlocked: false,
-  });
-
-  if (!users.length) {
-    console.log("✅ Aucun utilisateur à notifier");
-    process.exit(0);
+for (const k of REQUIRED) {
+  if (!process.env[k]) {
+    console.error("❌ ENV manquante :", k);
+    process.exit(1);
   }
+}
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
+// ---------- DB ----------
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connecté (cron)"))
+  .catch((e) => {
+    console.error("❌ MongoDB error:", e.message);
+    process.exit(1);
   });
 
-  for (const user of users) {
-    await transporter.sendMail({
-      from: process.env.ALERT_EMAIL_FROM,
-      to: user.email,
-      subject: "⏰ Votre essai FlowPoint AI expire bientôt",
-      html: `<p>Bonjour,<br>Votre essai expire sous 24h.</p>`,
+// ---------- USER MODEL (minimal) ----------
+const UserSchema = new mongoose.Schema({
+  email: String,
+  plan: String,
+  accessBlocked: Boolean,
+  trialEndsAt: Date,
+});
+const User = mongoose.model("User", UserSchema);
+
+// ---------- SMTP ----------
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT),
+  secure: process.env.SMTP_SECURE === "true", // false pour 587
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+// ---------- MAIN ----------
+(async () => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const blockedUsers = await User.countDocuments({ accessBlocked: true });
+    const trialsEndingSoon = await User.countDocuments({
+      trialEndsAt: { $lte: new Date(Date.now() + 48 * 60 * 60 * 1000) },
     });
 
-    console.log("📧 Email envoyé à", user.email);
-  }
+    const text = `
+📊 FlowPoint AI – Rapport quotidien
 
-  process.exit(0);
+👥 Utilisateurs totaux : ${totalUsers}
+🚫 Comptes bloqués : ${blockedUsers}
+⏳ Essais expirant sous 48h : ${trialsEndingSoon}
+
+Date : ${new Date().toLocaleString("fr-FR")}
+`;
+
+    await transporter.sendMail({
+      from: process.env.ALERT_EMAIL_FROM,
+      to: process.env.ALERT_EMAIL_TO,
+      subject: "📊 FlowPoint AI – Rapport quotidien",
+      text,
+    });
+
+    console.log("📧 Email envoyé avec succès");
+  } catch (err) {
+    console.error("❌ Erreur cron:", err.message);
+  } finally {
+    await mongoose.disconnect();
+    console.log("✅ Cron terminé");
+    process.exit(0);
+  }
 })();
