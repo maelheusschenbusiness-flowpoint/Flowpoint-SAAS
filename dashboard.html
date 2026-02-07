@@ -43,11 +43,13 @@
       <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">
         <div>
           <h1>Dashboard</h1>
-          <div class="muted">Audit SEO • Monitoring • PDF • Historique</div>
+          <div class="muted">Audit SEO • Monitoring • PDF • Historique • Équipe (Ultra)</div>
           <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
             <span class="badge" id="planBadge">PLAN</span>
             <span class="pill" id="trialPill">Trial: —</span>
             <span class="pill" id="payPill">Paiement: —</span>
+            <span class="pill" id="orgPill">Org: —</span>
+            <span class="pill" id="rolePill">Rôle: —</span>
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -106,6 +108,7 @@
             <div class="tab active" data-tab="audit">Audit SEO</div>
             <div class="tab" data-tab="audits">Historique Audits</div>
             <div class="tab" data-tab="monitor">Monitoring</div>
+            <div class="tab" data-tab="team" id="teamTab" style="display:none;">Équipe (Ultra)</div>
           </div>
         </div>
       </div>
@@ -183,6 +186,32 @@
       </div>
 
       <div id="monLogsBox" class="box hidden" style="margin-top:12px;overflow:auto"></div>
+    </div>
+
+    <!-- TAB: Team (Ultra) -->
+    <div class="card hidden" id="tab-team">
+      <div style="font-weight:900;font-size:18px">Équipe (Ultra)</div>
+      <div class="muted">Invite des membres (owner seulement). Données partagées au niveau org.</div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="col">
+          <input id="inviteEmail" placeholder="membre@entreprise.com" />
+          <div class="small">Email du membre</div>
+        </div>
+        <div style="width:240px">
+          <button class="btn" id="btnInvite" style="width:100%">Envoyer invitation</button>
+          <div class="small">Requiert Ultra + rôle owner</div>
+        </div>
+      </div>
+
+      <div class="box" style="margin-top:12px;overflow:auto">
+        <table>
+          <thead>
+            <tr><th>Email</th><th>Nom</th><th>Rôle</th><th>Créé</th></tr>
+          </thead>
+          <tbody id="teamTbody"></tbody>
+        </table>
+      </div>
     </div>
 
   </div>
