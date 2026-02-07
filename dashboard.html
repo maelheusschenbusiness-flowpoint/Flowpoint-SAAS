@@ -20,18 +20,20 @@
     input,select{padding:10px;border-radius:12px;border:1px solid #ddd;width:100%;box-sizing:border-box}
     textarea{width:100%;min-height:90px;border-radius:12px;border:1px solid #ddd;padding:10px;box-sizing:border-box}
     .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    .tab{padding:8px 10px;border-radius:999px;border:1px solid #e7e9f2;background:#fff;cursor:pointer;font-weight:800}
+    .tab{padding:8px 10px;border-radius:999px;border:1px solid #e7e9f2;background:#fff;cursor:pointer;font-weight:900}
     .tab.active{background:#111;color:#fff;border-color:#111}
     .hide{display:none}
     #msg{margin-top:10px;font-size:14px}
     .error{color:#b00020}
     .ok{color:#0a7a2f}
-    pre{white-space:pre-wrap;background:#0b1020;color:#e8eefc;padding:12px;border-radius:12px;overflow:auto}
-    .chat{border:1px solid #eee;border-radius:14px;padding:12px;background:#fafafa}
+    .chat{border:1px solid #eee;border-radius:14px;padding:12px;background:#fafafa;max-height:260px;overflow:auto}
     .bubble{padding:10px 12px;border-radius:14px;margin:8px 0;max-width:78%}
     .u{background:#2f5bff;color:#fff;margin-left:auto}
     .a{background:#fff;border:1px solid #eee}
     .small{font-size:12px;color:#666}
+    .alert{border:1px solid #eee;border-radius:12px;background:#fff;padding:10px;margin:8px 0}
+    .down{border-color:#fecaca}
+    .up{border-color:#bbf7d0}
   </style>
 </head>
 <body>
@@ -40,7 +42,7 @@
       <div class="row" style="justify-content:space-between;align-items:center">
         <div>
           <h1>Dashboard</h1>
-          <div class="muted">Audit + Chat + Monitoring</div>
+          <div class="muted">Audit + Chat + Monitoring + Reports</div>
         </div>
         <div class="pill" id="planBadge">—</div>
       </div>
@@ -48,6 +50,7 @@
       <div class="row" style="margin-top:12px">
         <button class="btn btnPrimary" id="portalBtn">Gérer abonnement</button>
         <button class="btn btnGhost" id="upgradeBtn">Upgrade</button>
+        <button class="btn btnGhost" id="reportBtn">Ouvrir rapport</button>
         <button class="btn btnDark" id="logoutBtn">Déconnexion</button>
       </div>
 
@@ -57,6 +60,7 @@
         <button class="tab" data-tab="audit">Audit</button>
         <button class="tab" data-tab="chat">Chat</button>
         <button class="tab" data-tab="monitor">Monitoring</button>
+        <button class="tab" data-tab="alerts">Alertes</button>
       </div>
 
       <div id="msg"></div>
@@ -90,6 +94,7 @@
           <div class="box">
             <div class="muted">Quota Monitoring</div>
             <div style="font-weight:900" id="qMon">—</div>
+            <div class="small">Emails envoyés depuis backend si SMTP configuré.</div>
           </div>
         </div>
       </div>
@@ -104,12 +109,13 @@
             <div class="small" style="margin-top:8px">URL</div>
             <input id="pUrl" placeholder="https://example.com" />
             <button class="btn btnPrimary" id="createProject" style="margin-top:10px">Créer</button>
+            <div class="small" style="margin-top:8px" id="projectLimit">—</div>
           </div>
 
           <div class="box">
             <div style="font-weight:900;margin-bottom:8px">Mes projets</div>
             <select id="projectSelect"></select>
-            <div class="small" style="margin-top:8px">Projets:</div>
+            <div class="small" style="margin-top:8px">Liste:</div>
             <div id="projectList" class="small"></div>
           </div>
         </div>
@@ -120,7 +126,7 @@
         <div class="row">
           <div class="box">
             <div style="font-weight:900;margin-bottom:8px">Run Audit</div>
-            <div class="small">URL (ou utilise le projet)</div>
+            <div class="small">URL (ou utilise le projet sélectionné)</div>
             <input id="auditUrl" placeholder="https://example.com" />
             <button class="btn btnPrimary" id="runAudit" style="margin-top:10px">Run audit</button>
           </div>
@@ -136,7 +142,7 @@
       <div id="tab-chat" class="hide" style="margin-top:12px">
         <div class="box">
           <div style="font-weight:900;margin-bottom:8px">Assistant</div>
-          <div class="small">Exemples: “score ?”, “priorités ?”, “SEO ?”</div>
+          <div class="small">Exemples: “score ?”, “plan d’action ?”, “SEO ?”, “rapport client ?”</div>
           <div class="chat" id="chatBox"></div>
           <textarea id="chatInput" placeholder="Tape ton message…"></textarea>
           <button class="btn btnPrimary" id="sendChat" style="margin-top:10px">Envoyer</button>
@@ -153,6 +159,9 @@
             <div class="small" style="margin-top:8px">URL</div>
             <input id="mUrl" placeholder="https://example.com" />
             <button class="btn btnPrimary" id="createMonitor" style="margin-top:10px">Créer monitor</button>
+            <div class="small" style="margin-top:10px">
+              Monitoring auto via Cron: <code>/api/cron/run-monitors</code>
+            </div>
           </div>
 
           <div class="box">
@@ -168,6 +177,18 @@
         </div>
       </div>
 
+      <!-- ALERTS -->
+      <div id="tab-alerts" class="hide" style="margin-top:12px">
+        <div class="box">
+          <div style="font-weight:900;margin-bottom:8px">Alertes récentes</div>
+          <button class="btn btnGhost" id="reloadAlerts">Rafraîchir</button>
+          <div id="alertsList" style="margin-top:10px"></div>
+          <div class="small" style="margin-top:10px">
+            Les alertes email partent depuis le backend si SMTP configuré.
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -176,6 +197,7 @@
     const planBadge = document.getElementById("planBadge");
     const portalBtn = document.getElementById("portalBtn");
     const upgradeBtn = document.getElementById("upgradeBtn");
+    const reportBtn = document.getElementById("reportBtn");
     const logoutBtn = document.getElementById("logoutBtn");
 
     const emailEl = document.getElementById("email");
@@ -184,6 +206,7 @@
     const qAuditsEl = document.getElementById("qAudits");
     const qChatEl = document.getElementById("qChat");
     const qMonEl = document.getElementById("qMon");
+    const projectLimitEl = document.getElementById("projectLimit");
 
     const projectSelect = document.getElementById("projectSelect");
     const projectList = document.getElementById("projectList");
@@ -192,6 +215,7 @@
     const monitorSelect = document.getElementById("monitorSelect");
     const monitorOut = document.getElementById("monitorOut");
     const monitorHistory = document.getElementById("monitorHistory");
+    const alertsList = document.getElementById("alertsList");
 
     function setMsg(text="", type="") {
       msg.textContent = text;
@@ -225,11 +249,13 @@
         document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
         b.classList.add("active");
         const tab = b.getAttribute("data-tab");
-        ["overview","projects","audit","chat","monitor"].forEach(t => {
+        ["overview","projects","audit","chat","monitor","alerts"].forEach(t => {
           document.getElementById("tab-" + t).classList.toggle("hide", t !== tab);
         });
       });
     });
+
+    let cachedMe = null;
 
     async function loadMe() {
       setMsg("");
@@ -237,6 +263,8 @@
       if (!t) { location.href = "/login.html"; return; }
 
       const me = await api("/api/me");
+      cachedMe = me;
+
       emailEl.textContent = me.email || "—";
       companyEl.textContent = me.companyName || "—";
       planBadge.textContent = (me.plan || "—").toUpperCase();
@@ -245,6 +273,7 @@
       qAuditsEl.textContent = `${me.usage.audits.used} / ${me.usage.audits.limit}`;
       qChatEl.textContent = `${me.usage.chat.used} / ${me.usage.chat.limit}`;
       qMonEl.textContent = `${me.usage.monitors.used} / ${me.usage.monitors.limit}`;
+      projectLimitEl.textContent = `Limite projets: ${me.usage.projects.limit}`;
 
       if (me.accessBlocked) setMsg("Accès bloqué (paiement échoué). Clique “Gérer abonnement”.", "error");
     }
@@ -257,7 +286,19 @@
     }
     portalBtn.addEventListener("click", openPortal);
     upgradeBtn.addEventListener("click", openPortal);
-    logoutBtn.addEventListener("click", () => { localStorage.removeItem("fp_token"); location.href="/index.html"; });
+
+    reportBtn.addEventListener("click", async () => {
+      try {
+        const projectId = projectSelect.value || "";
+        // ouvre le rapport dans un nouvel onglet
+        window.open("/api/report/html?projectId=" + encodeURIComponent(projectId), "_blank");
+      } catch (e) { setMsg(e.message, "error"); }
+    });
+
+    logoutBtn.addEventListener("click", () => {
+      localStorage.removeItem("fp_token");
+      location.href="/index.html";
+    });
 
     // projects
     async function refreshProjects() {
@@ -272,11 +313,12 @@
       });
       projectList.innerHTML = list.map(p => `• ${p.name} (${p.url})`).join("<br>") || "—";
     }
+
     document.getElementById("createProject").addEventListener("click", async () => {
       try {
         const name = document.getElementById("pName").value.trim();
         const url = document.getElementById("pUrl").value.trim();
-        const d = await api("/api/projects", { method:"POST", body: JSON.stringify({ name, url }) });
+        await api("/api/projects", { method:"POST", body: JSON.stringify({ name, url }) });
         setMsg("Projet créé", "ok");
         await refreshProjects();
       } catch(e){ setMsg(e.message, "error"); }
@@ -297,8 +339,8 @@
 
     // chat
     async function loadChat() {
-      const projectId = projectSelect.value || null;
-      const d = await api("/api/chat/history?projectId=" + encodeURIComponent(projectId || ""));
+      const projectId = projectSelect.value || "";
+      const d = await api("/api/chat/history?projectId=" + encodeURIComponent(projectId));
       chatBox.innerHTML = "";
       (d.history || []).forEach(m => {
         const div = document.createElement("div");
@@ -308,6 +350,7 @@
       });
       chatBox.scrollTop = chatBox.scrollHeight;
     }
+
     document.getElementById("sendChat").addEventListener("click", async () => {
       try {
         const projectId = projectSelect.value || null;
@@ -322,16 +365,21 @@
 
     // monitors
     async function refreshMonitors() {
-      const d = await api("/api/monitors");
-      const list = d.monitors || [];
-      monitorSelect.innerHTML = "";
-      list.forEach(m => {
-        const o = document.createElement("option");
-        o.value = m._id;
-        o.textContent = `${m.name} — ${m.url} (${m.lastStatus || "never"})`;
-        monitorSelect.appendChild(o);
-      });
+      try {
+        const d = await api("/api/monitors");
+        const list = d.monitors || [];
+        monitorSelect.innerHTML = "";
+        list.forEach(m => {
+          const o = document.createElement("option");
+          o.value = m._id;
+          o.textContent = `${m.name} — ${m.url} (${m.lastStatus || "never"})`;
+          monitorSelect.appendChild(o);
+        });
+      } catch(e) {
+        // Standard n'a pas accès: on ignore
+      }
     }
+
     document.getElementById("createMonitor").addEventListener("click", async () => {
       try {
         const projectId = projectSelect.value || null;
@@ -342,6 +390,7 @@
         await refreshMonitors();
       } catch(e){ setMsg(e.message, "error"); }
     });
+
     document.getElementById("runMonitor").addEventListener("click", async () => {
       try {
         const monitorId = monitorSelect.value;
@@ -351,6 +400,7 @@
         await loadMe();
       } catch(e){ setMsg(e.message, "error"); }
     });
+
     document.getElementById("loadMonitorHistory").addEventListener("click", async () => {
       try {
         const monitorId = monitorSelect.value;
@@ -359,6 +409,24 @@
       } catch(e){ setMsg(e.message, "error"); }
     });
 
+    // alerts
+    async function loadAlerts() {
+      const d = await api("/api/alerts/recent");
+      const list = d.alerts || [];
+      alertsList.innerHTML = list.map(a => {
+        const cls = a.type === "monitor_down" ? "alert down" : "alert up";
+        const title = a.type === "monitor_down" ? "DOWN" : "RECOVERED";
+        return `
+          <div class="${cls}">
+            <div style="font-weight:900">${title} — ${a.monitorName}</div>
+            <div class="small">${a.url}</div>
+            <div class="small">Code: ${a.statusCode} | Latence: ${a.latencyMs}ms | ${fmtDate(a.createdAt)}</div>
+          </div>
+        `;
+      }).join("") || "<div class='small'>Aucune alerte.</div>";
+    }
+    document.getElementById("reloadAlerts").addEventListener("click", loadAlerts);
+
     // boot
     (async () => {
       try {
@@ -366,6 +434,7 @@
         await refreshProjects();
         await refreshMonitors();
         await loadChat();
+        await loadAlerts();
       } catch(e) {
         setMsg(e.message, "error");
       }
