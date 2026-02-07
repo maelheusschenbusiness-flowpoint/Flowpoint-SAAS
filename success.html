@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Paiement OK</title>
+  <style>body{font-family:system-ui;margin:40px}</style>
+</head>
+<body>
+  <h1>✅ Paiement enregistré</h1>
+  <p>Redirection…</p>
+
+  <script>
+    // Le token a été stocké avant le checkout (dans index.html / modal)
+    setTimeout(()=>{ window.location.href="/dashboard.html"; }, 700);
+  </script>
+</body>
+</html>
