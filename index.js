@@ -1,7 +1,7 @@
 // =======================
 // FlowPoint AI – SaaS Backend
 // Plans: Standard / Pro / Ultra
-// Modules: Audit (URL), Chat (sur audits), Monitoring (run now + historique)
+// Modules: Projects, Audit, Chat, Monitoring Auto + Email Alerts
 // =======================
 
 require("dotenv").config();
@@ -14,21 +14,26 @@ const rateLimit = require("express-rate-limit");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const Stripe = require("stripe");
+const nodemailer = require("nodemailer");
 
 const app = express();
 
-// ---------- ENV ----------
+// ---------- ENV CHECK ----------
 const REQUIRED = [
   "MONGO_URI",
   "JWT_SECRET",
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_ID_STANDARD",
   "STRIPE_PRICE_ID_PRO",
-  "STRIPE_PRICE_ID_ULTRA"
+  "STRIPE_PRICE_ID_ULTRA",
+  "PUBLIC_BASE_URL",
+  "CRON_SECRET"
 ];
+
 for (const k of REQUIRED) {
   if (!process.env[k]) console.log("❌ ENV manquante:", k);
 }
+
 if (!process.env.STRIPE_WEBHOOK_SECRET_RENDER) {
   console.log("⚠️ STRIPE_WEBHOOK_SECRET_RENDER manquante (webhook non validable)");
 }
@@ -55,10 +60,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       const inv = event.data.object;
       await User.updateOne({ stripeCustomerId: inv.customer }, { $set: { accessBlocked: true } });
     }
+
     if (event.type === "invoice.payment_succeeded") {
       const inv = event.data.object;
       await User.updateOne({ stripeCustomerId: inv.customer }, { $set: { accessBlocked: false } });
     }
+
     if (event.type === "customer.subscription.deleted") {
       const sub = event.data.object;
       await User.updateOne({ stripeSubscriptionId: sub.id }, { $set: { accessBlocked: true } });
@@ -75,7 +82,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// ---------- STATIC ----------
+// ---------- STATIC FRONT ----------
 app.use(express.static(path.join(__dirname)));
 
 // ---------- DB ----------
@@ -84,19 +91,18 @@ mongoose
   .then(() => console.log("✅ MongoDB connecté"))
   .catch((e) => console.log("❌ MongoDB erreur:", e.message));
 
-// ---------- PLAN + QUOTAS ----------
+// ---------- PLAN / QUOTAS ----------
 function planRank(plan) {
   const map = { standard: 1, pro: 2, ultra: 3 };
   return map[String(plan || "").toLowerCase()] || 0;
 }
 
-// quotas / mois
 function planQuotas(plan) {
   const p = String(plan || "").toLowerCase();
-  if (p === "standard") return { audits: 200, chat: 400, monitors: 20 };
-  if (p === "pro") return { audits: 2000, chat: 5000, monitors: 200 };
-  if (p === "ultra") return { audits: 8000, chat: 20000, monitors: 1000 };
-  return { audits: 0, chat: 0, monitors: 0 };
+  if (p === "standard") return { audits: 200, chat: 400, monitors: 0, projects: 1 };
+  if (p === "pro") return { audits: 2000, chat: 5000, monitors: 200, projects: 3 };
+  if (p === "ultra") return { audits: 8000, chat: 20000, monitors: 1000, projects: 15 };
+  return { audits: 0, chat: 0, monitors: 0, projects: 0 };
 }
 
 // ---------- MODELS ----------
@@ -108,17 +114,14 @@ const UserSchema = new mongoose.Schema(
     companyNameNormalized: String,
 
     plan: { type: String, enum: ["standard", "pro", "ultra"], default: "standard" },
-
     stripeCustomerId: String,
     stripeSubscriptionId: String,
 
     hasTrial: { type: Boolean, default: false },
     trialStartedAt: Date,
     trialEndsAt: Date,
-
     accessBlocked: { type: Boolean, default: false },
 
-    // usage mensuel
     resetAt: { type: Date, default: Date.now },
     usedAudits: { type: Number, default: 0 },
     usedChat: { type: Number, default: 0 },
@@ -128,7 +131,10 @@ const UserSchema = new mongoose.Schema(
 );
 
 const TrialRegistrySchema = new mongoose.Schema(
-  { fingerprint: { type: String, unique: true, index: true }, usedAt: { type: Date, default: Date.now } },
+  {
+    fingerprint: { type: String, unique: true, index: true },
+    usedAt: { type: Date, default: Date.now }
+  },
   { timestamps: true }
 );
 
@@ -136,8 +142,7 @@ const ProjectSchema = new mongoose.Schema(
   {
     ownerId: { type: mongoose.Schema.Types.ObjectId, index: true },
     name: String,
-    url: String,
-    createdAt: { type: Date, default: Date.now }
+    url: String
   },
   { timestamps: true }
 );
@@ -148,8 +153,7 @@ const AuditSchema = new mongoose.Schema(
     projectId: { type: mongoose.Schema.Types.ObjectId, index: true },
     url: String,
     score: Number,
-    findings: [String],
-    createdAt: { type: Date, default: Date.now }
+    findings: [String]
   },
   { timestamps: true }
 );
@@ -159,8 +163,7 @@ const ChatSchema = new mongoose.Schema(
     ownerId: { type: mongoose.Schema.Types.ObjectId, index: true },
     projectId: { type: mongoose.Schema.Types.ObjectId, index: true },
     role: { type: String, enum: ["user", "assistant"], required: true },
-    text: String,
-    createdAt: { type: Date, default: Date.now }
+    text: String
   },
   { timestamps: true }
 );
@@ -191,6 +194,20 @@ const MonitorRunSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const AlertSchema = new mongoose.Schema(
+  {
+    ownerId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    type: { type: String, enum: ["monitor_down", "monitor_recovered"], required: true },
+    monitorId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    monitorName: String,
+    url: String,
+    statusCode: Number,
+    latencyMs: Number,
+    createdAt: { type: Date, default: Date.now }
+  },
+  { timestamps: false }
+);
+
 const User = mongoose.model("User", UserSchema);
 const TrialRegistry = mongoose.model("TrialRegistry", TrialRegistrySchema);
 const Project = mongoose.model("Project", ProjectSchema);
@@ -198,6 +215,7 @@ const Audit = mongoose.model("Audit", AuditSchema);
 const ChatMessage = mongoose.model("ChatMessage", ChatSchema);
 const Monitor = mongoose.model("Monitor", MonitorSchema);
 const MonitorRun = mongoose.model("MonitorRun", MonitorRunSchema);
+const Alert = mongoose.model("Alert", AlertSchema);
 
 // ---------- HELPERS ----------
 function normalizeCompanyName(s) {
@@ -228,9 +246,11 @@ function auth(req, res, next) {
     return res.status(401).json({ error: "Token invalide" });
   }
 }
+
 async function loadUser(req) {
   return await User.findById(req.user.uid);
 }
+
 function requirePlan(minPlan) {
   return async (req, res, next) => {
     const u = await loadUser(req);
@@ -241,6 +261,7 @@ function requirePlan(minPlan) {
     next();
   };
 }
+
 async function resetMonthlyIfNeeded(user) {
   const now = new Date();
   const ra = user.resetAt ? new Date(user.resetAt) : now;
@@ -252,6 +273,7 @@ async function resetMonthlyIfNeeded(user) {
     await user.save();
   }
 }
+
 async function consume(user, key, amount = 1) {
   await resetMonthlyIfNeeded(user);
   const q = planQuotas(user.plan);
@@ -270,21 +292,52 @@ async function consume(user, key, amount = 1) {
   return true;
 }
 
-// ---------- URL FETCH (Audit + Monitor) ----------
-async function fetchWithTimeout(url, ms = 8000) {
+function priceForPlan(plan) {
+  if (plan === "standard") return process.env.STRIPE_PRICE_ID_STANDARD;
+  if (plan === "pro") return process.env.STRIPE_PRICE_ID_PRO;
+  if (plan === "ultra") return process.env.STRIPE_PRICE_ID_ULTRA;
+  return null;
+}
+
+// ---------- EMAIL (SMTP) ----------
+function smtpConfigured() {
+  return !!(process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASS && process.env.SMTP_FROM);
+}
+
+function mailer() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT),
+    secure: Number(process.env.SMTP_PORT) === 465, // 465 = true, 587 = false
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  });
+}
+
+async function sendAlertEmail({ to, subject, html }) {
+  if (!smtpConfigured()) return;
+  const transport = mailer();
+  await transport.sendMail({
+    from: process.env.SMTP_FROM,
+    to,
+    subject,
+    html
+  });
+}
+
+// ---------- AUDIT LOGIC ----------
+async function fetchHtml(url, ms = 9000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), ms);
-  const start = Date.now();
   try {
+    const start = Date.now();
     const r = await fetch(url, { signal: controller.signal, redirect: "follow" });
     const text = await r.text();
-    return { ok: true, status: r.status, latencyMs: Date.now() - start, text };
+    return { status: r.status, latencyMs: Date.now() - start, text };
   } finally {
     clearTimeout(t);
   }
 }
 
-// ---------- AUDIT HEURISTICS ----------
 function auditHtml(url, html) {
   const findings = [];
   let score = 100;
@@ -315,24 +368,76 @@ function auditHtml(url, html) {
   return { score, findings };
 }
 
-// ---------- PAGES ----------
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
-app.get("/dashboard", (req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
-app.get("/success", (req, res) => res.sendFile(path.join(__dirname, "success.html")));
-app.get("/cancel", (req, res) => res.sendFile(path.join(__dirname, "cancel.html")));
-app.get("/login", (req, res) => res.sendFile(path.join(__dirname, "login.html")));
+// ---------- CHAT LOGIC ----------
+function buildAssistantReply(userText, latestAudit) {
+  const t = String(userText || "").toLowerCase();
 
-// ---------- API ----------
+  if (!latestAudit) {
+    return "Je n’ai pas encore d’audit pour ce projet. Lance un audit (Run audit) et je pourrai te conseiller.";
+  }
+
+  if (t.includes("score")) {
+    return `Ton dernier score est ${latestAudit.score}/100. Principaux points: ${latestAudit.findings.slice(0, 5).join(", ") || "aucun"}.`;
+  }
+
+  if (t.includes("priorité") || t.includes("priorites") || t.includes("plan") || t.includes("action")) {
+    const top = latestAudit.findings.slice(0, 5);
+    return [
+      "Plan d’action (simple):",
+      `1) Corrige: ${top[0] || "—"}`,
+      `2) Puis: ${top[1] || "—"}`,
+      `3) Ensuite: ${top[2] || "—"}`,
+      `4) Bonus: ${top[3] || "—"}`,
+      `5) Bonus: ${top[4] || "—"}`,
+      "Refais un audit après chaque correction pour mesurer l’impact."
+    ].join("\n");
+  }
+
+  if (t.includes("seo")) {
+    const seo = latestAudit.findings.filter(x => x.toLowerCase().includes("meta") || x.toLowerCase().includes("canonical") || x.toLowerCase().includes("title"));
+    return `SEO: ${seo.length ? seo.join(", ") : "rien de critique détecté côté title/meta/canonical."}`;
+  }
+
+  if (t.includes("client") || t.includes("agence") || t.includes("rapport")) {
+    return [
+      "Résumé client:",
+      `- Score: ${latestAudit.score}/100`,
+      `- URL: ${latestAudit.url}`,
+      `- Top fixes: ${latestAudit.findings.slice(0, 3).join(" | ")}`,
+      "- Recommandation: appliquer corrections puis refaire audit."
+    ].join("\n");
+  }
+
+  return `Je peux aider sur: "score", "plan d’action", "SEO", "rapport client". Ton audit indique: ${latestAudit.findings.slice(0, 4).join(", ")}.`;
+}
+
+// ---------- CRON AUTH ----------
+function requireCronSecret(req, res, next) {
+  const secret = process.env.CRON_SECRET;
+  const got = req.headers["x-cron-secret"] || req.query.secret;
+  if (!secret) return res.status(500).json({ error: "CRON_SECRET manquant" });
+  if (got !== secret) return res.status(401).json({ error: "Unauthorized cron" });
+  next();
+}
+
+// ---------- PAGES ----------
+app.get("/", (_, res) => res.sendFile(path.join(__dirname, "index.html")));
+app.get("/dashboard", (_, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
+app.get("/success", (_, res) => res.sendFile(path.join(__dirname, "success.html")));
+app.get("/cancel", (_, res) => res.sendFile(path.join(__dirname, "cancel.html")));
+app.get("/login", (_, res) => res.sendFile(path.join(__dirname, "login.html")));
+
+// ---------- API: HEALTH ----------
 app.get("/api/health", (_, res) => res.json({ ok: true }));
 
-// lead
+// ---------- AUTH: LEAD ----------
 app.post("/api/auth/lead", async (req, res) => {
   try {
     const { firstName, email, companyName, plan } = req.body || {};
     if (!email) return res.status(400).json({ error: "Email requis" });
     if (!companyName) return res.status(400).json({ error: "Entreprise requise" });
 
-    const chosenPlan = (plan || "").toLowerCase();
+    const chosenPlan = String(plan || "").toLowerCase();
     if (!["standard", "pro", "ultra"].includes(chosenPlan)) return res.status(400).json({ error: "Plan invalide" });
 
     const companyNameNormalized = normalizeCompanyName(companyName);
@@ -361,13 +466,15 @@ app.post("/api/auth/lead", async (req, res) => {
   }
 });
 
-// login (retour plus tard)
+// ---------- AUTH: LOGIN ----------
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ error: "Email requis" });
+
     const user = await User.findOne({ email: String(email).toLowerCase().trim() });
     if (!user) return res.status(404).json({ error: "Compte introuvable. Inscrivez-vous d'abord." });
+
     return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("login error:", e.message);
@@ -375,26 +482,23 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-// checkout
+// ---------- STRIPE: CHECKOUT ----------
 app.post("/api/stripe/checkout", auth, async (req, res) => {
   try {
     const { plan } = req.body || {};
-    const chosenPlan = (plan || "").toLowerCase();
+    const chosenPlan = String(plan || "").toLowerCase();
     if (!["standard", "pro", "ultra"].includes(chosenPlan)) return res.status(400).json({ error: "Plan invalide" });
 
     const user = await User.findById(req.user.uid);
     if (!user) return res.status(404).json({ error: "User introuvable" });
     if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué)" });
 
+    // anti abus: on consomme au moment du checkout
     const fp = makeFingerprint(req, user.email);
     const already = await TrialRegistry.findOne({ fingerprint: fp });
     if (already) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
 
-    const priceId =
-      chosenPlan === "standard" ? process.env.STRIPE_PRICE_ID_STANDARD :
-      chosenPlan === "pro" ? process.env.STRIPE_PRICE_ID_PRO :
-      process.env.STRIPE_PRICE_ID_ULTRA;
-
+    const priceId = priceForPlan(chosenPlan);
     if (!priceId) return res.status(500).json({ error: "PriceId manquant" });
 
     let customerId = user.stripeCustomerId;
@@ -409,7 +513,7 @@ app.post("/api/stripe/checkout", auth, async (req, res) => {
       await user.save();
     }
 
-    const baseUrl = (process.env.PUBLIC_BASE_URL || `https://${req.headers.host}`).trim();
+    const baseUrl = String(process.env.PUBLIC_BASE_URL).trim();
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -426,7 +530,6 @@ app.post("/api/stripe/checkout", auth, async (req, res) => {
     });
 
     await TrialRegistry.create({ fingerprint: fp });
-
     return res.json({ url: session.url });
   } catch (e) {
     console.log("checkout error:", e.message);
@@ -434,13 +537,14 @@ app.post("/api/stripe/checkout", auth, async (req, res) => {
   }
 });
 
-// verify
+// ---------- STRIPE: VERIFY SUCCESS ----------
 app.get("/api/stripe/verify", async (req, res) => {
   try {
     const sessionId = req.query.session_id;
     if (!sessionId) return res.status(400).json({ error: "session_id manquant" });
 
     const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription", "customer"] });
+
     const uid = session.metadata?.uid || session.subscription?.metadata?.uid;
     if (!uid) return res.status(400).json({ error: "uid manquant dans metadata" });
 
@@ -456,7 +560,7 @@ app.get("/api/stripe/verify", async (req, res) => {
       user.trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     }
 
-    const p = (session.metadata?.plan || "").toLowerCase();
+    const p = String(session.metadata?.plan || "").toLowerCase();
     if (["standard", "pro", "ultra"].includes(p)) user.plan = p;
 
     await user.save();
@@ -479,13 +583,13 @@ app.get("/api/stripe/verify", async (req, res) => {
   }
 });
 
-// portal
+// ---------- STRIPE: PORTAL ----------
 app.post("/api/stripe/portal", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.uid);
     if (!user?.stripeCustomerId) return res.status(400).json({ error: "Customer Stripe manquant" });
 
-    const baseUrl = (process.env.PUBLIC_BASE_URL || `https://${req.headers.host}`).trim();
+    const baseUrl = String(process.env.PUBLIC_BASE_URL).trim();
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
       return_url: `${baseUrl}/dashboard.html`
@@ -498,12 +602,14 @@ app.post("/api/stripe/portal", auth, async (req, res) => {
   }
 });
 
-// me + quotas
+// ---------- API: ME + USAGE ----------
 app.get("/api/me", auth, async (req, res) => {
   const user = await User.findById(req.user.uid);
   if (!user) return res.status(404).json({ error: "User introuvable" });
+
   await resetMonthlyIfNeeded(user);
   const q = planQuotas(user.plan);
+
   return res.json({
     email: user.email,
     name: user.name,
@@ -515,19 +621,33 @@ app.get("/api/me", auth, async (req, res) => {
     usage: {
       audits: { used: user.usedAudits, limit: q.audits },
       chat: { used: user.usedChat, limit: q.chat },
-      monitors: { used: user.usedMonitors, limit: q.monitors }
+      monitors: { used: user.usedMonitors, limit: q.monitors },
+      projects: { limit: q.projects }
     }
   });
+});
+
+// ---------- API: ALERTS (dashboard) ----------
+app.get("/api/alerts/recent", auth, requirePlan("standard"), async (req, res) => {
+  const user = req.dbUser;
+  const list = await Alert.find({ ownerId: user._id }).sort({ createdAt: -1 }).limit(20);
+  return res.json({ ok: true, alerts: list });
 });
 
 //
 // ========== PROJECTS ==========
 //
 app.post("/api/projects", auth, requirePlan("standard"), async (req, res) => {
+  const user = req.dbUser;
   const { name, url } = req.body || {};
   if (!url) return res.status(400).json({ error: "URL requise" });
+
+  const q = planQuotas(user.plan);
+  const count = await Project.countDocuments({ ownerId: user._id });
+  if (count >= q.projects) return res.status(403).json({ error: `Limite projets atteinte (${q.projects})` });
+
   const p = await Project.create({
-    ownerId: req.dbUser._id,
+    ownerId: user._id,
     name: name || "Mon projet",
     url: String(url).trim()
   });
@@ -535,27 +655,26 @@ app.post("/api/projects", auth, requirePlan("standard"), async (req, res) => {
 });
 
 app.get("/api/projects", auth, requirePlan("standard"), async (req, res) => {
-  const list = await Project.find({ ownerId: req.dbUser._id }).sort({ createdAt: -1 }).limit(50);
+  const user = req.dbUser;
+  const list = await Project.find({ ownerId: user._id }).sort({ createdAt: -1 }).limit(50);
   return res.json({ ok: true, projects: list });
 });
 
 //
-// ========== AUDIT (URL -> score + findings + store) ==========
+// ========== AUDIT ==========
 //
 app.post("/api/audit/run", auth, requirePlan("standard"), async (req, res) => {
   const user = req.dbUser;
   const { projectId, url } = req.body || {};
-
-  const targetUrl = (url || "").trim();
+  const targetUrl = String(url || "").trim();
   if (!targetUrl) return res.status(400).json({ error: "URL requise" });
 
-  // quota
   const ok = await consume(user, "audits", 1);
   if (!ok) return res.status(429).json({ error: "Quota audits dépassé" });
 
   try {
-    const r = await fetchWithTimeout(targetUrl, 9000);
-    const { score, findings } = auditHtml(targetUrl, r.text || "");
+    const { text } = await fetchHtml(targetUrl, 9000);
+    const { score, findings } = auditHtml(targetUrl, text || "");
     const audit = await Audit.create({
       ownerId: user._id,
       projectId: projectId || null,
@@ -564,52 +683,70 @@ app.post("/api/audit/run", auth, requirePlan("standard"), async (req, res) => {
       findings
     });
     return res.json({ ok: true, audit });
-  } catch (e) {
-    return res.status(500).json({ error: "Audit impossible (URL inaccessible ou timeout)" });
+  } catch {
+    return res.status(500).json({ error: "Audit impossible (URL inaccessible / timeout)" });
   }
 });
 
 app.get("/api/audit/latest", auth, requirePlan("standard"), async (req, res) => {
+  const user = req.dbUser;
   const { projectId } = req.query || {};
-  const q = { ownerId: req.dbUser._id };
+  const q = { ownerId: user._id };
   if (projectId) q.projectId = projectId;
   const audit = await Audit.findOne(q).sort({ createdAt: -1 });
   return res.json({ ok: true, audit: audit || null });
 });
 
 //
-// ========== CHAT (simple assistant basé sur audits) ==========
+// ========== REPORT HTML (export PDF via print) ==========
 //
-function buildAssistantReply(userText, latestAudit) {
-  const t = String(userText || "").toLowerCase();
+app.get("/api/report/html", auth, requirePlan("standard"), async (req, res) => {
+  const user = req.dbUser;
+  const { projectId } = req.query || {};
 
-  if (!latestAudit) {
-    return "Je n’ai pas encore d’audit enregistré pour ce projet. Lance un audit (bouton ‘Run audit’) et je pourrai te conseiller.";
-  }
+  const q = { ownerId: user._id };
+  if (projectId) q.projectId = projectId;
 
-  if (t.includes("score")) {
-    return `Ton dernier score est ${latestAudit.score}/100. Points à améliorer : ${latestAudit.findings.slice(0, 5).join(", ") || "aucun"}.`;
-  }
+  const audit = await Audit.findOne(q).sort({ createdAt: -1 });
+  if (!audit) return res.status(404).send("No audit yet");
 
-  if (t.includes("priorité") || t.includes("priorites") || t.includes("first")) {
-    const top = latestAudit.findings.slice(0, 3);
-    return `Priorité: ${top.join(" → ")}. Commence par corriger ça, puis refais un audit.`;
-  }
+  const html = `
+  <html><head><meta charset="utf-8"/>
+  <title>FlowPoint Report</title>
+  <style>
+    body{font-family:system-ui;margin:24px}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#1d4ed8;font-weight:900}
+    ul{line-height:1.6}
+    .muted{color:#666}
+  </style></head>
+  <body>
+    <h1>FlowPoint AI — Report</h1>
+    <div class="pill">Plan: ${(user.plan||"").toUpperCase()}</div>
+    <p class="muted"><b>Email:</b> ${user.email}<br/><b>Entreprise:</b> ${user.companyName || "-"}</p>
 
-  if (t.includes("seo")) {
-    const seo = latestAudit.findings.filter(x => x.toLowerCase().includes("meta") || x.toLowerCase().includes("canonical") || x.toLowerCase().includes("title"));
-    return `SEO: ${seo.length ? seo.join(", ") : "rien de critique détecté côté title/meta/canonical."}`;
-  }
+    <h2>Dernier audit</h2>
+    <p><b>URL:</b> ${audit.url}<br/>
+    <b>Date:</b> ${new Date(audit.createdAt).toLocaleString("fr-FR")}<br/>
+    <b>Score:</b> ${audit.score}/100</p>
 
-  return `Je peux t’aider sur: "score", "priorités", "SEO". Ton audit dit: ${latestAudit.findings.slice(0, 4).join(", ")}.`;
-}
+    <h3>Findings</h3>
+    <ul>${(audit.findings||[]).map(f=>`<li>${f}</li>`).join("")}</ul>
 
+    <hr/>
+    <p class="muted">Astuce: Ctrl+P → “Enregistrer en PDF”.</p>
+  </body></html>
+  `;
+  res.type("html").send(html);
+});
+
+//
+// ========== CHAT ==========
+//
 app.post("/api/chat/send", auth, requirePlan("standard"), async (req, res) => {
   const user = req.dbUser;
   const { projectId, text } = req.body || {};
   if (!text) return res.status(400).json({ error: "Message requis" });
 
-  // quota
   const ok = await consume(user, "chat", 1);
   if (!ok) return res.status(429).json({ error: "Quota chat dépassé" });
 
@@ -626,6 +763,7 @@ app.post("/api/chat/send", auth, requirePlan("standard"), async (req, res) => {
   });
 
   const reply = buildAssistantReply(text, latestAudit);
+
   const botMsg = await ChatMessage.create({
     ownerId: user._id,
     projectId: projectId || null,
@@ -637,18 +775,18 @@ app.post("/api/chat/send", auth, requirePlan("standard"), async (req, res) => {
 });
 
 app.get("/api/chat/history", auth, requirePlan("standard"), async (req, res) => {
+  const user = req.dbUser;
   const { projectId } = req.query || {};
-  const q = { ownerId: req.dbUser._id };
+  const q = { ownerId: user._id };
   if (projectId) q.projectId = projectId;
   const history = await ChatMessage.find(q).sort({ createdAt: -1 }).limit(30);
   return res.json({ ok: true, history: history.reverse() });
 });
 
 //
-// ========== MONITORING (run now + historique) ==========
+// ========== MONITORING (Pro+) ==========
 //
 app.post("/api/monitors", auth, requirePlan("pro"), async (req, res) => {
-  // monitoring = Pro+
   const user = req.dbUser;
   const { projectId, name, url } = req.body || {};
   if (!url) return res.status(400).json({ error: "URL requise" });
@@ -665,10 +803,127 @@ app.post("/api/monitors", auth, requirePlan("pro"), async (req, res) => {
 });
 
 app.get("/api/monitors", auth, requirePlan("pro"), async (req, res) => {
-  const list = await Monitor.find({ ownerId: req.dbUser._id }).sort({ createdAt: -1 }).limit(50);
+  const user = req.dbUser;
+  const list = await Monitor.find({ ownerId: user._id }).sort({ createdAt: -1 }).limit(50);
   return res.json({ ok: true, monitors: list });
 });
 
+async function runOneMonitor(user, monitor) {
+  const prevStatus = monitor.lastStatus || "never";
+
+  try {
+    const start = Date.now();
+    const r = await fetch(String(monitor.url), { redirect: "follow" });
+    const latency = Date.now() - start;
+    const code = r.status;
+    const okStatus = code >= 200 && code < 400;
+
+    monitor.lastStatus = okStatus ? "ok" : "down";
+    monitor.lastCode = code;
+    monitor.lastLatencyMs = latency;
+    monitor.lastRunAt = new Date();
+    await monitor.save();
+
+    await MonitorRun.create({
+      ownerId: user._id,
+      monitorId: monitor._id,
+      ok: okStatus,
+      statusCode: code,
+      latencyMs: latency
+    });
+
+    // Alerte + email si changement de statut
+    if (prevStatus !== monitor.lastStatus) {
+      if (monitor.lastStatus === "down") {
+        await Alert.create({
+          ownerId: user._id,
+          type: "monitor_down",
+          monitorId: monitor._id,
+          monitorName: monitor.name,
+          url: monitor.url,
+          statusCode: code,
+          latencyMs: latency
+        });
+
+        await sendAlertEmail({
+          to: user.email,
+          subject: `🚨 FlowPoint Alert: ${monitor.name} DOWN`,
+          html: `
+            <h2>Monitor DOWN</h2>
+            <p><b>${monitor.name}</b> (${monitor.url}) est DOWN.</p>
+            <p>Status code: <b>${code}</b> — Latence: <b>${latency}ms</b></p>
+            <p>Date: ${new Date().toLocaleString("fr-FR")}</p>
+          `
+        });
+      }
+
+      if (prevStatus === "down" && monitor.lastStatus === "ok") {
+        await Alert.create({
+          ownerId: user._id,
+          type: "monitor_recovered",
+          monitorId: monitor._id,
+          monitorName: monitor.name,
+          url: monitor.url,
+          statusCode: code,
+          latencyMs: latency
+        });
+
+        await sendAlertEmail({
+          to: user.email,
+          subject: `✅ FlowPoint Alert: ${monitor.name} RECOVERED`,
+          html: `
+            <h2>Monitor RECOVERED</h2>
+            <p><b>${monitor.name}</b> (${monitor.url}) est de nouveau OK.</p>
+            <p>Status code: <b>${code}</b> — Latence: <b>${latency}ms</b></p>
+            <p>Date: ${new Date().toLocaleString("fr-FR")}</p>
+          `
+        });
+      }
+    }
+
+    return monitor;
+  } catch {
+    monitor.lastStatus = "down";
+    monitor.lastCode = 0;
+    monitor.lastLatencyMs = 0;
+    monitor.lastRunAt = new Date();
+    await monitor.save();
+
+    await MonitorRun.create({
+      ownerId: user._id,
+      monitorId: monitor._id,
+      ok: false,
+      statusCode: 0,
+      latencyMs: 0
+    });
+
+    if (prevStatus !== "down") {
+      await Alert.create({
+        ownerId: user._id,
+        type: "monitor_down",
+        monitorId: monitor._id,
+        monitorName: monitor.name,
+        url: monitor.url,
+        statusCode: 0,
+        latencyMs: 0
+      });
+
+      await sendAlertEmail({
+        to: user.email,
+        subject: `🚨 FlowPoint Alert: ${monitor.name} DOWN`,
+        html: `
+          <h2>Monitor DOWN</h2>
+          <p><b>${monitor.name}</b> (${monitor.url}) est DOWN (timeout/erreur).</p>
+          <p>Date: ${new Date().toLocaleString("fr-FR")}</p>
+        `
+      });
+    }
+
+    return monitor;
+  }
+}
+
+// Run now (1 monitor)
 app.post("/api/monitors/run", auth, requirePlan("pro"), async (req, res) => {
   const user = req.dbUser;
   const { monitorId } = req.body || {};
@@ -680,52 +935,51 @@ app.post("/api/monitors/run", auth, requirePlan("pro"), async (req, res) => {
   const m = await Monitor.findOne({ _id: monitorId, ownerId: user._id });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
-  try {
-    const start = Date.now();
-    const r = await fetch(String(m.url), { redirect: "follow" });
-    const latency = Date.now() - start;
-    const code = r.status;
-    const okStatus = code >= 200 && code < 400;
-
-    m.lastStatus = okStatus ? "ok" : "down";
-    m.lastCode = code;
-    m.lastLatencyMs = latency;
-    m.lastRunAt = new Date();
-    await m.save();
-
-    await MonitorRun.create({
-      ownerId: user._id,
-      monitorId: m._id,
-      ok: okStatus,
-      statusCode: code,
-      latencyMs: latency
-    });
-
-    return res.json({ ok: true, monitor: m });
-  } catch (e) {
-    m.lastStatus = "down";
-    m.lastCode = 0;
-    m.lastLatencyMs = 0;
-    m.lastRunAt = new Date();
-    await m.save();
-
-    await MonitorRun.create({
-      ownerId: user._id,
-      monitorId: m._id,
-      ok: false,
-      statusCode: 0,
-      latencyMs: 0
-    });
-
-    return res.json({ ok: true, monitor: m });
-  }
+  const updated = await runOneMonitor(user, m);
+  return res.json({ ok: true, monitor: updated });
 });
 
+// History
 app.get("/api/monitors/history", auth, requirePlan("pro"), async (req, res) => {
+  const user = req.dbUser;
   const { monitorId } = req.query || {};
   if (!monitorId) return res.status(400).json({ error: "monitorId requis" });
-  const list = await MonitorRun.find({ ownerId: req.dbUser._id, monitorId }).sort({ checkedAt: -1 }).limit(30);
+
+  const list = await MonitorRun.find({ ownerId: user._id, monitorId }).sort({ checkedAt: -1 }).limit(30);
   return res.json({ ok: true, history: list.reverse() });
+});
+
+//
+// ========== CRON (AUTO MONITORING) ==========
+// Render Cron Job appelle cet endpoint toutes les X minutes
+// URL: POST /api/cron/run-monitors?secret=CRON_SECRET
+//
+app.post("/api/cron/run-monitors", requireCronSecret, async (req, res) => {
+  // on exécute pour tous les users Pro/Ultra non bloqués
+  const users = await User.find({ plan: { $in: ["pro", "ultra"] }, accessBlocked: false }).limit(1000);
+
+  let totalRan = 0;
+
+  for (const u of users) {
+    await resetMonthlyIfNeeded(u);
+    const q = planQuotas(u.plan);
+
+    // si pas de quota monitoring, skip
+    if (q.monitors <= 0) continue;
+
+    const monitors = await Monitor.find({ ownerId: u._id }).limit(50);
+
+    for (const m of monitors) {
+      // consommation quota
+      const ok = await consume(u, "monitors", 1);
+      if (!ok) break;
+
+      await runOneMonitor(u, m);
+      totalRan++;
+    }
+  }
+
+  return res.json({ ok: true, totalRan, smtpConfigured: smtpConfigured() });
 });
 
 app.listen(PORT, () => console.log(`✅ FlowPoint SaaS lancé sur le port ${PORT}`));
