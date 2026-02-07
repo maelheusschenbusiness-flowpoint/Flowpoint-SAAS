@@ -1,42 +1,31 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Connexion — FlowPoint AI</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>FlowPoint AI — Login</title>
   <style>
-    body { font-family: system-ui, Arial; background:#f7f7fb; margin:0; }
-    .wrap { max-width:520px; margin:60px auto; padding:0 16px; }
-    .card { background:#fff; border:1px solid #e7e9f2; border-radius:16px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.05); }
-    input, button { width:100%; padding:12px; border-radius:12px; border:1px solid #ddd; margin-top:10px; box-sizing:border-box; }
-    button { background:#2f5bff; color:#fff; border:none; font-weight:900; cursor:pointer; }
-    button:disabled { opacity:.6; cursor:not-allowed; }
-    .muted { color:#666; font-size:14px; }
-    #msg { margin-top:10px; font-size:14px; }
-    .error { color:#b00020; }
-    .ok { color:#0a7a2f; }
-    a { color:#2f5bff; font-weight:900; text-decoration:none; }
+    body{font-family:system-ui,Arial;background:#f7f7fb;margin:0}
+    .wrap{max-width:720px;margin:40px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e7e9f2;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.05)}
+    input,button{width:100%;padding:12px;border-radius:12px;border:1px solid #ddd;margin-top:10px;box-sizing:border-box}
+    button{background:#2f5bff;color:#fff;border:none;font-weight:900;cursor:pointer}
+    .muted{color:#666;font-size:14px}
+    .error{color:#b00020;font-weight:900}
+    .ok{color:#0a7a2f;font-weight:900}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h2>Connexion</h2>
-      <div class="muted">Entrez votre email pour accéder au dashboard.</div>
+      <h1>Connexion</h1>
+      <div class="muted">On t’envoie un lien de connexion par email (sans mot de passe).</div>
 
-      <form id="loginForm">
-        <input id="email" type="email" placeholder="Email" required />
-        <button id="btn" type="submit">Se connecter</button>
-      </form>
-
-      <div id="msg"></div>
-
-      <p class="muted" style="margin-top:14px;">
-        Pas de compte ? <a href="/index.html">Commencer l’essai</a>
-      </p>
+      <input id="email" type="email" placeholder="ton@email.com" required/>
+      <button id="btn">Recevoir le lien</button>
+      <div id="msg" class="muted" style="margin-top:10px"></div>
     </div>
   </div>
-
   <script src="/login.js"></script>
 </body>
 </html>
