@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FlowPoint AI</title>
+  <style>
+    :root { --bg:#f6f7fb; --card:#fff; --border:#e6e8f0; --text:#121826; }
+    body{
+      margin:0; font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background:var(--bg); color:var(--text);
+      min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    }
+    .card{
+      width:min(560px, 100%);
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:24px;
+      box-shadow:0 10px 30px rgba(0,0,0,.06);
+    }
+    h1{ margin:0 0 8px 0; font-size:34px; }
+    .muted{ margin:0 0 18px 0; color:#5b6475; }
+    input, select, button{
+      width:100%;
+      box-sizing:border-box;
+      padding:12px 14px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      font-size:16px;
+      margin:8px 0;
+      background:#fff;
+    }
+    button{
+      border:none;
+      background:#2f66ff;
+      color:white;
+      font-weight:700;
+      cursor:pointer;
+      padding:13px 14px;
+      margin-top:12px;
+    }
+    button:disabled{ opacity:.6; cursor:not-allowed; }
+    #message{ margin-top:10px; color:#b00020; font-weight:600; }
+    .ok{ color:#0b7a1c; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>FlowPoint AI</h1>
+    <p class="muted">Essai gratuit 14 jours — carte requise. Accès bloqué si le paiement échoue après l’essai.</p>
+
+    <form id="signup-form">
+      <input id="firstName" placeholder="Prénom" required />
+      <input id="email" type="email" placeholder="Email pro" required />
+      <input id="companyName" placeholder="Entreprise" required />
+
+      <select id="plan" required>
+        <option value="standard">Standard</option>
+        <option value="pro" selected>Pro</option>
+        <option value="ultra">Ultra</option>
+      </select>
+
+      <button id="btn" type="submit">Commencer l’essai</button>
+      <div id="message"></div>
+    </form>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
