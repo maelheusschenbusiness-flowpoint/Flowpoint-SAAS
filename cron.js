@@ -1,43 +1,39 @@
-// cron.js
 require("dotenv").config();
 const mongoose = require("mongoose");
-const User = require("./models/User"); // ou adapte le chemin si besoin
 const nodemailer = require("nodemailer");
 
-// ----- MongoDB -----
-async function connectDB() {
-  await mongoose.connect(process.env.MONGO_URI);
-}
+// ===== Mongo =====
+mongoose.connect(process.env.MONGO_URI);
 
-// ----- Email (simple SMTP) -----
+// ===== User model minimal =====
+const User = mongoose.model(
+  "User",
+  new mongoose.Schema({
+    email: String,
+    accessBlocked: Boolean,
+    trialEndsAt: Date,
+  })
+);
+
+// ===== SMTP =====
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT),
-  secure: false,
+  secure: process.env.SMTP_SECURE === "true",
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
 });
 
-async function sendMail(to, subject, text) {
-  await transporter.sendMail({
-    from: `"FlowPoint AI" <${process.env.SMTP_FROM}>`,
-    to,
-    subject,
-    text,
-  });
-}
-
-// ----- Cron logic -----
-async function run() {
-  await connectDB();
+// ===== JOB =====
+(async () => {
+  console.log("⏰ Cron started");
 
   const now = new Date();
 
-  // 1️⃣ Essais expirés
+  // 1️⃣ Trials expirés
   const expiredTrials = await User.find({
-    hasTrial: true,
     trialEndsAt: { $lt: now },
     accessBlocked: false,
   });
@@ -46,24 +42,23 @@ async function run() {
     user.accessBlocked = true;
     await user.save();
 
-    await sendMail(
-      user.email,
-      "Votre essai FlowPoint AI est terminé",
-      `Bonjour ${user.name || ""},
+    await transporter.sendMail({
+      from: process.env.ALERT_EMAIL_FROM,
+      to: user.email,
+      subject: "Votre essai FlowPoint AI est terminé",
+      text: `Bonjour,
 
 Votre période d’essai est terminée.
-Pour continuer à utiliser FlowPoint AI, merci de mettre à jour votre abonnement.
+Votre accès a été suspendu.
 
-👉 Connectez-vous à votre dashboard.
-`
-    );
+👉 Connectez-vous pour passer à un abonnement.
+
+– FlowPoint AI`,
+    });
+
+    console.log("🔒 Trial expiré :", user.email);
   }
 
-  console.log(`✔ Cron terminé – ${expiredTrials.length} essais expirés traités`);
+  console.log("✅ Cron terminé");
   process.exit(0);
-}
-
-run().catch(err => {
-  console.error("❌ Cron error:", err);
-  process.exit(1);
-});
+})();
