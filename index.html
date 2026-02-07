@@ -2,32 +2,57 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>FlowPoint AI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FlowPoint AI — Essai 14 jours</title>
   <style>
-    body { font-family: system-ui, Arial; background:#f6f7fb; }
+    body { font-family: system-ui, Arial; background:#f7f7fb; margin:0; }
     .wrap { max-width: 760px; margin: 40px auto; padding: 0 16px; }
-    .card { background:#fff; border:1px solid #e6e6e6; border-radius:16px; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,.04); }
-    input, select, button { padding: 12px; width: 100%; margin: 10px 0; border-radius: 10px; border:1px solid #d9d9d9; font-size: 16px; box-sizing:border-box; }
-    button { background:#2f5bff; color:#fff; border:none; cursor:pointer; font-weight:700; }
+    .card { background:#fff; border:1px solid #e7e9f2; border-radius:16px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.05); }
+    h1 { margin: 0 0 6px; }
+    .muted { color:#666; font-size:14px; }
+    label { font-weight:700; font-size:13px; display:block; margin-top:10px; }
+    input, select, button { width:100%; padding:12px; border-radius:12px; border:1px solid #ddd; margin-top:6px; box-sizing:border-box; }
+    button { background:#2f5bff; color:#fff; border:none; font-weight:800; cursor:pointer; margin-top:14px; }
     button:disabled { opacity:.6; cursor:not-allowed; }
-    .muted { color:#666; font-size: 14px; }
-    .title { font-size: 34px; margin: 0 0 6px; }
-    .error { color:#c4122f; font-size:14px; margin-top:10px; }
-    .ok { color:#0a7a2f; font-size:14px; margin-top:10px; }
+    #msg { margin-top:12px; font-size:14px; }
+    .error { color:#b00020; }
+    .ok { color:#0a7a2f; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+    .link { color:#2f5bff; font-weight:800; text-decoration:none; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 720px){ .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>FlowPoint AI</h1>
+        <div class="muted">Essai gratuit 14 jours — carte requise. Blocage automatique si paiement échoue.</div>
+      </div>
+      <div>
+        <a class="link" href="/login.html">Se connecter</a>
+      </div>
+    </div>
+
     <div class="card">
-      <h1 class="title">FlowPoint AI</h1>
-      <div class="muted">Essai gratuit 14 jours — carte requise. Accès bloqué si le paiement échoue après l’essai.</div>
-
       <form id="signupForm">
-        <input id="firstName" type="text" placeholder="Prénom" required />
-        <input id="email" type="email" placeholder="Email pro" required />
-        <input id="companyName" type="text" placeholder="Entreprise" required />
+        <div class="grid">
+          <div>
+            <label for="firstName">Prénom</label>
+            <input id="firstName" type="text" placeholder="Jean" required />
+          </div>
 
+          <div>
+            <label for="email">Email professionnel</label>
+            <input id="email" type="email" placeholder="jean@entreprise.com" required />
+          </div>
+        </div>
+
+        <label for="companyName">Nom de l’entreprise</label>
+        <input id="companyName" type="text" placeholder="Entreprise ABC" required />
+
+        <label for="plan">Choisir une offre</label>
         <select id="plan" required>
           <option value="standard">Standard</option>
           <option value="pro" selected>Pro</option>
@@ -35,9 +60,8 @@
         </select>
 
         <button id="btn" type="submit">Commencer l’essai</button>
+        <div id="msg"></div>
       </form>
-
-      <div id="msg"></div>
     </div>
   </div>
 
