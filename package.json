@@ -8,6 +8,9 @@
     "start": "node index.js",
     "cron": "node cron.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -15,11 +18,8 @@
     "express-rate-limit": "^7.4.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.5.2",
+    "mongoose": "^8.5.3",
     "nodemailer": "^6.9.14",
-    "stripe": "^16.6.0"
-  },
-  "engines": {
-    "node": ">=18"
+    "stripe": "^16.7.0"
   }
 }
