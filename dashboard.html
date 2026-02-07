@@ -1,110 +1,118 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>FlowPoint AI — Dashboard</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#f7f7f7; margin:0; }
-    .wrap { max-width: 980px; margin: 40px auto; padding: 0 16px; }
-    .card { background:#fff; border-radius:14px; box-shadow: 0 8px 24px rgba(0,0,0,.06); padding: 18px; margin-bottom:16px; }
-    .row { display:flex; gap:12px; flex-wrap:wrap; }
-    .col { flex:1; min-width:260px; }
-    .title { font-size: 22px; font-weight: 800; margin:0 0 8px; }
-    .muted { color:#666; margin:0 0 8px; }
-    .badge { display:inline-block; padding:6px 10px; border-radius:999px; background:#eef2ff; color:#1e40af; font-weight:700; font-size:12px; }
-    button { border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; }
-    .btn { background:#1d4ed8; color:#fff; }
-    .btn2 { background:#111827; color:#fff; }
-    .btn3 { background:#e5e7eb; color:#111827; }
-    .danger { color:#b91c1c; font-weight:700; }
-    .ok { color:#047857; font-weight:700; }
-    .features li { margin: 6px 0; }
-    .hidden { display:none; }
-    .topbar { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    body{font-family:system-ui,Arial;background:#f6f7fb;margin:0}
+    .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e7e9f2;border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.05);margin-bottom:14px}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .col{flex:1;min-width:260px}
+    h1{margin:0 0 6px}
+    .muted{color:#666;font-size:14px}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#1d4ed8;font-weight:900;font-size:12px}
+    .danger{color:#b00020;font-weight:900}
+    .ok{color:#0a7a2f;font-weight:900}
+    button{padding:10px 12px;border-radius:12px;border:0;cursor:pointer;font-weight:900}
+    .btn{background:#2f5bff;color:#fff}
+    .btn2{background:#111;color:#fff}
+    .btn3{background:#eef2ff;color:#1d4ed8}
+    .box{border:1px solid #eee;border-radius:14px;padding:12px;background:#fafafa}
+    .bar{height:10px;border-radius:999px;background:#eaeefc;overflow:hidden;margin-top:8px}
+    .bar > div{height:100%;background:#2f5bff;width:0%}
+    .small{font-size:12px;color:#666}
+    .hidden{display:none}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:#f3f4f6;color:#111;font-weight:900;font-size:12px}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+    #msg{margin-top:10px}
   </style>
 </head>
 <body>
   <div class="wrap">
 
-    <div class="card topbar">
-      <div>
-        <div class="title">FlowPoint AI — Dashboard</div>
-        <div class="muted">Bienvenue <span id="name">...</span> (<span id="email">...</span>)</div>
-        <span class="badge" id="planBadge">Plan: ...</span>
+    <div class="card">
+      <div class="top">
+        <div>
+          <h1>Dashboard</h1>
+          <div class="muted">Plan, quotas, accès premium + upgrade Stripe</div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            <span class="badge" id="planBadge">PLAN</span>
+            <span class="pill" id="trialPill">Trial: —</span>
+            <span class="pill" id="payPill">Paiement: —</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn3" id="btnPricing">Voir offres</button>
+          <button class="btn" id="btnPortal">Gérer / Upgrade</button>
+          <button class="btn2" id="btnLogout">Déconnexion</button>
+        </div>
       </div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
-        <button class="btn" id="btnPortal">Gérer / Upgrade</button>
-        <button class="btn3" id="btnLogout">Se déconnecter</button>
-      </div>
+      <div id="msg" class="muted"></div>
     </div>
 
     <div class="card">
       <div class="row">
-        <div class="col">
-          <div class="title" style="font-size:18px;">Statut</div>
-          <p class="muted">Essai: <span id="trialStatus">...</span></p>
-          <p class="muted">Fin essai: <span id="trialEnds">...</span></p>
-          <p id="access" class="muted"></p>
+        <div class="col box">
+          <div class="small">Email</div>
+          <div style="font-weight:900" id="email">—</div>
+          <div class="small" style="margin-top:8px">Entreprise</div>
+          <div style="font-weight:900" id="company">—</div>
         </div>
-        <div class="col">
-          <div class="title" style="font-size:18px;">Actions rapides</div>
-          <button class="btn2" id="btnRefresh">Rafraîchir</button>
-          <p id="msg" class="muted"></p>
-        </div>
-      </div>
-    </div>
 
-    <div class="card">
-      <div class="title" style="font-size:18px;">Fonctionnalités par plan</div>
-      <div class="row">
-        <div class="col">
-          <span class="badge">Standard</span>
-          <ul class="features">
-            <li>Accès dashboard</li>
-            <li>Essai 14 jours</li>
-            <li>Support email (48–72h)</li>
-          </ul>
+        <div class="col box">
+          <div style="font-weight:900">Quotas (mensuel)</div>
+
+          <div style="margin-top:10px">
+            <div class="small">Audits: <span id="qa">0/0</span></div>
+            <div class="bar"><div id="ba"></div></div>
+          </div>
+
+          <div style="margin-top:10px">
+            <div class="small">Chat: <span id="qc">0/0</span></div>
+            <div class="bar"><div id="bc"></div></div>
+          </div>
+
+          <div style="margin-top:10px">
+            <div class="small">Monitoring: <span id="qm">0/0</span></div>
+            <div class="bar"><div id="bm"></div></div>
+          </div>
+
+          <div class="small" style="margin-top:10px">Reset: 1er jour du mois (UTC)</div>
         </div>
-        <div class="col">
-          <span class="badge">Pro</span>
-          <ul class="features">
-            <li>Toutes les fonctions Standard</li>
-            <li>Fonctions premium (section ci-dessous)</li>
-            <li>Support prioritaire (24–48h)</li>
-          </ul>
-        </div>
-        <div class="col">
-          <span class="badge">Ultra</span>
-          <ul class="features">
-            <li>Toutes les fonctions Pro</li>
-            <li>Fonctions avancées + support VIP</li>
-          </ul>
+
+        <div class="col box">
+          <div style="font-weight:900">Actions rapides (démo)</div>
+          <div class="small">Ces boutons consomment des quotas pour vérifier que tout est bien bloqué selon le plan.</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+            <button class="btn3" id="btnAudit">+1 Audit</button>
+            <button class="btn3" id="btnChat">+1 Chat</button>
+            <button class="btn3" id="btnMonitor">+1 Monitoring (Pro+)</button>
+            <button class="btn3" id="btnUltra">Ultra only</button>
+          </div>
         </div>
       </div>
-      <p class="muted">Note : tu peux changer ces textes quand tu veux, c’est juste l’affichage.</p>
     </div>
 
     <div class="card" id="premiumBox">
-      <div class="title" style="font-size:18px;">Premium</div>
+      <div style="font-weight:900;font-size:18px">Premium</div>
+      <div class="muted">Sections visibles selon Standard / Pro / Ultra</div>
 
-      <div id="standardUpsell" class="hidden">
-        <p class="danger">Tu es en Standard : cette section est réservée Pro/Ultra.</p>
-        <button class="btn" id="btnUpgrade2">Passer en Pro / Ultra</button>
+      <div id="standardUpsell" class="box" style="margin-top:12px">
+        <div class="danger">Standard : fonctionnalités premium verrouillées.</div>
+        <div class="small">Passe en Pro/Ultra pour activer monitoring + quotas supérieurs.</div>
+        <button class="btn" id="btnUpgrade2" style="margin-top:10px">Upgrade</button>
       </div>
 
-      <div id="premiumContent" class="hidden">
-        <p class="ok">✅ Accès premium activé (Pro/Ultra)</p>
-        <div class="row">
-          <div class="col card" style="margin:0;">
-            <div style="font-weight:800;">Widget Premium #1</div>
-            <div class="muted">Ici tu mettras tes stats / features premium.</div>
-          </div>
-          <div class="col card" style="margin:0;">
-            <div style="font-weight:800;">Widget Premium #2</div>
-            <div class="muted">Ex : exports, automatisations, etc.</div>
-          </div>
-        </div>
+      <div id="proBox" class="box hidden" style="margin-top:12px">
+        <div class="ok">✅ Pro activé</div>
+        <div class="small">Accès monitoring + quotas Pro.</div>
+      </div>
+
+      <div id="ultraBox" class="box hidden" style="margin-top:12px">
+        <div class="ok">🚀 Ultra activé</div>
+        <div class="small">Accès Ultra-only + quotas maximum.</div>
       </div>
     </div>
 
