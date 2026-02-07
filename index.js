@@ -1,119 +1,165 @@
 // =======================
-// FlowPoint AI – SaaS Backend
-// Plans: standard / pro / ultra
-// Essai 14 jours + carte obligatoire via Stripe Checkout
-// Blocage si paiement échoue (webhook)
-// Anti-abus essai: email + domaine + entreprise
-// Webhook secret: STRIPE_WEBHOOK_SECRET_RENDER (pour éviter doublons Make)
+// FlowPoint AI – SaaS Backend (Render)
+// Plans: Standard / Pro / Ultra
+// Sécurité + clean version
 // =======================
 
-const path = require("path");
 const express = require("express");
-const cors = require("cors");
 const mongoose = require("mongoose");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const Stripe = require("stripe");
-
-// Load dotenv en local seulement (sur Render, les ENV sont déjà injectées)
-try { require("dotenv").config(); } catch {}
+const path = require("path");
 
 const app = express();
-app.use(cors());
 
-// JSON partout sauf webhook Stripe
+// -----------------------
+// 0) ENV (Render)
+// -----------------------
+const PORT = process.env.PORT || 10000;
+
+const MONGO_URI = process.env.MONGO_URI;
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Stripe
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+// Tu as choisi STRIPE_WEBHOOK_SECRET_RENDER pour éviter doublon Make : OK
+const STRIPE_WEBHOOK_SECRET =
+  process.env.STRIPE_WEBHOOK_SECRET_RENDER || process.env.STRIPE_WEBHOOK_SECRET;
+
+// Price IDs (IMPORTANT: mêmes noms que sur Render)
+const PRICE_STANDARD = process.env.STRIPE_PRICE_ID_STANDARD;
+const PRICE_PRO = process.env.STRIPE_PRICE_ID_PRO;
+const PRICE_ULTRA = process.env.STRIPE_PRICE_ID_ULTRA;
+
+// Optionnel: whitelist CORS (sécurise l’API)
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// -----------------------
+// 1) Sécurité HTTP
+// -----------------------
+app.set("trust proxy", 1); // important sur Render
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // simple pour éviter soucis sur pages statiques
+  })
+);
+
+// CORS : si ALLOWED_ORIGINS vide => on autorise même origine (safe avec fetch relatif)
+// Si tu veux strict: mets ALLOWED_ORIGINS="https://tonsite.com,https://flowpoint-saas-1.onrender.com"
+app.use(
+  cors({
+    origin: function (origin, cb) {
+      if (!origin) return cb(null, true); // requêtes serveur/health
+      if (ALLOWED_ORIGINS.length === 0) return cb(null, true);
+      if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+      return cb(new Error("CORS blocked"), false);
+    },
+    credentials: true,
+  })
+);
+
+// JSON partout sauf webhook Stripe (raw)
 app.use((req, res, next) => {
   if (req.originalUrl === "/api/stripe/webhook") return next();
   express.json({ limit: "1mb" })(req, res, next);
 });
 
-// --------- ENV ---------
-const PORT = process.env.PORT || 5000;
+// Rate limit global léger
+app.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 240,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
 
-const MONGO_URI = process.env.MONGO_URI;
-const JWT_SECRET = process.env.JWT_SECRET;
+// Rate limit plus strict sur endpoints sensibles
+const authLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const stripeLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-// IMPORTANT: on utilise _RENDER pour éviter doublons avec Make
-const STRIPE_WEBHOOK_SECRET =
-  process.env.STRIPE_WEBHOOK_SECRET_RENDER || process.env.STRIPE_WEBHOOK_SECRET;
-
-const STRIPE_PRICE_ID_STANDARD = process.env.STRIPE_PRICE_ID_STANDARD;
-const STRIPE_PRICE_ID_PRO = process.env.STRIPE_PRICE_ID_PRO;
-const STRIPE_PRICE_ID_ULTRA = process.env.STRIPE_PRICE_ID_ULTRA;
-
-// Vérifs env (affiche clair dans Render logs)
-function envOk(name, val) {
-  if (!val) console.log(`❌ ENV manquant: ${name}`);
-  else console.log(`✅ ${name}`);
-}
-envOk("MONGO_URI", MONGO_URI);
-envOk("JWT_SECRET", JWT_SECRET);
-envOk("STRIPE_SECRET_KEY", STRIPE_SECRET_KEY);
-envOk("STRIPE_WEBHOOK_SECRET_RENDER", STRIPE_WEBHOOK_SECRET);
-envOk("STRIPE_PRICE_ID_STANDARD", STRIPE_PRICE_ID_STANDARD);
-envOk("STRIPE_PRICE_ID_PRO", STRIPE_PRICE_ID_PRO);
-envOk("STRIPE_PRICE_ID_ULTRA", STRIPE_PRICE_ID_ULTRA);
-
+// -----------------------
+// 2) Stripe client
+// -----------------------
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
-// --------- Helpers ---------
-const PUBLIC_EMAIL_DOMAINS = new Set([
-  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "live.com", "msn.com"
-]);
+// -----------------------
+// 3) Helpers
+// -----------------------
+function mustEnv(name, value) {
+  if (!value) console.error(`❌ ENV manquant: ${name}`);
+  else console.log(`✅ ${name}`);
+}
 
 function normalizeEmail(emailRaw) {
   const email = String(emailRaw || "").trim().toLowerCase();
   const parts = email.split("@");
   if (parts.length !== 2) return email;
+
   let [local, domain] = parts;
+
+  // gmail anti abuse (dots + plus)
   if (domain === "googlemail.com") domain = "gmail.com";
   if (domain === "gmail.com") {
     const plusIndex = local.indexOf("+");
     if (plusIndex >= 0) local = local.slice(0, plusIndex);
     local = local.replace(/\./g, "");
   }
+
   return `${local}@${domain}`;
 }
 
 function normalizeCompanyName(name) {
-  return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
-function planRank(plan) {
-  const map = { free: 0, trial: 1, standard: 2, pro: 3, ultra: 4 };
-  return map[plan] ?? 0;
-}
-
-function quotasForPlan(plan) {
-  if (plan === "trial") return 50;
-  if (plan === "standard") return 500;
-  if (plan === "pro") return 5000;
-  if (plan === "ultra") return 20000;
-  return 0;
+function isValidPlan(plan) {
+  return ["standard", "pro", "ultra"].includes(String(plan || "").toLowerCase());
 }
 
 function priceForPlan(plan) {
-  if (plan === "standard") return STRIPE_PRICE_ID_STANDARD;
-  if (plan === "pro") return STRIPE_PRICE_ID_PRO;
-  if (plan === "ultra") return STRIPE_PRICE_ID_ULTRA;
+  const p = String(plan || "").toLowerCase();
+  if (p === "standard") return PRICE_STANDARD;
+  if (p === "pro") return PRICE_PRO;
+  if (p === "ultra") return PRICE_ULTRA;
   return null;
 }
 
-// --------- DB ---------
-if (!MONGO_URI) {
-  console.log("⚠️ MONGO_URI manquant: MongoDB ne pourra pas se connecter.");
-}
+// -----------------------
+// 4) DB
+// -----------------------
+if (!MONGO_URI) console.error("❌ MONGO_URI manquant");
 
-mongoose.connect(MONGO_URI || "mongodb://invalid")
+mongoose
+  .connect(MONGO_URI || "mongodb://invalid")
   .then(() => console.log("✅ MongoDB connecté"))
-  .catch((e) => console.log("❌ MongoDB erreur:", e.message));
+  .catch((e) => console.error("❌ MongoDB erreur:", e.message));
 
 const userSchema = new mongoose.Schema({
   firstName: String,
   emailRaw: String,
   emailNormalized: { type: String, unique: true, index: true },
-
   companyName: String,
   companyNameNormalized: { type: String, index: true },
   companyDomain: { type: String, index: true },
@@ -129,112 +175,97 @@ const userSchema = new mongoose.Schema({
   accessBlocked: { type: Boolean, default: false },
   lastPaymentStatus: String,
 
-  monthlyLimit: { type: Number, default: 0 },
-  monthlyUsed: { type: Number, default: 0 },
-  resetAt: { type: Date, default: Date.now },
-
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
 });
 
 const trialRegistrySchema = new mongoose.Schema({
   emailNormalized: { type: String, unique: true, index: true },
   companyDomain: { type: String, index: true },
   companyNameNormalized: { type: String, index: true },
-  firstTrialAt: { type: Date, default: Date.now }
+
+  firstTrialAt: { type: Date, default: Date.now },
+  lastAttemptAt: { type: Date, default: Date.now },
+  attemptsCount: { type: Number, default: 1 },
 });
 
 const User = mongoose.model("User", userSchema);
 const TrialRegistry = mongoose.model("TrialRegistry", trialRegistrySchema);
 
-// --------- Auth ---------
+// -----------------------
+// 5) Auth middleware
+// -----------------------
 function requireAuth(req, res, next) {
   const h = req.headers.authorization || "";
   const token = h.startsWith("Bearer ") ? h.slice(7) : null;
   if (!token) return res.status(401).json({ error: "Non autorisé" });
+
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     req.auth = payload;
-    next();
+    return next();
   } catch {
     return res.status(401).json({ error: "Token invalide" });
   }
 }
 
-async function requireActiveAccess(req, res, next) {
-  const user = await User.findById(req.auth.userId);
-  if (!user) return res.status(401).json({ error: "Utilisateur introuvable" });
-  if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / abonnement inactif)" });
-  req.user = user;
-  next();
-}
+// -----------------------
+// 6) Static Front (pages)
+// -----------------------
+app.use(express.static(path.join(__dirname))); // sert index.html, app.js, etc.
 
-function requirePlan(minPlan) {
-  return (req, res, next) => {
-    if (planRank(req.user.plan) < planRank(minPlan)) {
-      return res.status(403).json({ error: `Plan requis: ${minPlan}` });
-    }
-    next();
-  };
-}
-
-async function resetMonthlyIfNeeded(user) {
-  const now = new Date();
-  if (!user.resetAt) user.resetAt = now;
-  const ra = new Date(user.resetAt);
-  if (ra.getUTCFullYear() !== now.getUTCFullYear() || ra.getUTCMonth() !== now.getUTCMonth()) {
-    user.monthlyUsed = 0;
-    user.resetAt = now;
-    user.monthlyLimit = quotasForPlan(user.plan);
-    await user.save();
-  }
-}
-
-async function useQuota(user, amount = 1) {
-  await resetMonthlyIfNeeded(user);
-  if (user.monthlyLimit <= 0) return false;
-  if (user.monthlyUsed + amount > user.monthlyLimit) return false;
-  user.monthlyUsed += amount;
-  await user.save();
-  return true;
-}
-
-// --------- Static Frontend ---------
-app.use(express.static(__dirname));
-
-// Page principale
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// --------- API ---------
-app.get("/api/test", (req, res) => res.json({ ok: true, message: "Server OK" }));
+// -----------------------
+// 7) Health check
+// -----------------------
+app.get("/test", (req, res) => res.send("Backend OK"));
+app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-// Lead + anti-abus + token
-app.post("/api/auth/lead", async (req, res) => {
+// -----------------------
+// 8) Lead + anti-abus + token
+// -----------------------
+app.post("/api/auth/lead", authLimiter, async (req, res) => {
   const { firstName, email, companyName, plan } = req.body || {};
-  const p = String(plan || "").trim().toLowerCase();
 
-  if (!email || !companyName || !p) return res.status(400).json({ error: "Champs manquants" });
-  if (!["standard", "pro", "ultra"].includes(p)) return res.status(400).json({ error: "Plan invalide" });
+  if (!email || !companyName || !plan) {
+    return res.status(400).json({ error: "Champs manquants" });
+  }
+
+  const selectedPlan = String(plan).toLowerCase();
+  if (!isValidPlan(selectedPlan)) {
+    return res.status(400).json({ error: "Plan invalide" });
+  }
 
   const emailNormalized = normalizeEmail(email);
   const domain = (emailNormalized.split("@")[1] || "").toLowerCase();
   const companyNameNormalized = normalizeCompanyName(companyName);
 
   try {
-    // Anti-abus: email unique
-    const usedEmail = await TrialRegistry.findOne({ emailNormalized });
-    if (usedEmail) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
-
-    // Anti-abus: domaine pro (si pas gmail etc)
-    if (!PUBLIC_EMAIL_DOMAINS.has(domain)) {
-      const usedDomain = await TrialRegistry.findOne({ companyDomain: domain });
-      if (usedDomain) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise (domaine)." });
+    // anti abus: email unique
+    const existingByEmail = await TrialRegistry.findOne({ emailNormalized });
+    if (existingByEmail) {
+      return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
     }
 
-    // Anti-abus: nom entreprise
-    const usedCompany = await TrialRegistry.findOne({ companyNameNormalized });
-    if (usedCompany) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
+    // anti abus: entreprise unique (nom)
+    const existingByCompany = await TrialRegistry.findOne({ companyNameNormalized });
+    if (existingByCompany) {
+      return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
+    }
+
+    // optionnel: anti abus par domaine (si pas gmail etc)
+    const PUBLIC_DOMAINS = new Set([
+      "gmail.com","googlemail.com","yahoo.com","outlook.com","hotmail.com","icloud.com","live.com","msn.com"
+    ]);
+
+    if (!PUBLIC_DOMAINS.has(domain)) {
+      const existingByDomain = await TrialRegistry.findOne({ companyDomain: domain });
+      if (existingByDomain) {
+        return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
+      }
+    }
 
     const now = new Date();
     const trialEndsAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
@@ -253,16 +284,12 @@ app.post("/api/auth/lead", async (req, res) => {
 
       accessBlocked: false,
       lastPaymentStatus: "trialing",
-
-      monthlyLimit: quotasForPlan("trial"),
-      monthlyUsed: 0,
-      resetAt: now
     });
 
     await TrialRegistry.create({
       emailNormalized,
       companyDomain: domain,
-      companyNameNormalized
+      companyNameNormalized,
     });
 
     const token = jwt.sign(
@@ -276,21 +303,28 @@ app.post("/api/auth/lead", async (req, res) => {
     if (String(err?.message || "").includes("duplicate key")) {
       return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
     }
-    console.log("Lead error:", err);
+    console.error(err);
     return res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
-// Stripe checkout session
-app.post("/api/stripe/checkout", requireAuth, async (req, res) => {
+// -----------------------
+// 9) Stripe checkout session
+// -----------------------
+app.post("/api/stripe/checkout", stripeLimiter, requireAuth, async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe non configuré" });
 
   const { plan } = req.body || {};
-  const p = String(plan || "").trim().toLowerCase();
-  if (!["standard", "pro", "ultra"].includes(p)) return res.status(400).json({ error: "Plan invalide" });
+  const selectedPlan = String(plan || "").toLowerCase();
 
-  const priceId = priceForPlan(p);
-  if (!priceId) return res.status(500).json({ error: "Price ID manquant (env STRIPE_PRICE_ID_...)" });
+  if (!isValidPlan(selectedPlan)) {
+    return res.status(400).json({ error: "Plan invalide" });
+  }
+
+  const priceId = priceForPlan(selectedPlan);
+  if (!priceId) {
+    return res.status(500).json({ error: "Price ID manquant côté serveur" });
+  }
 
   try {
     const user = await User.findById(req.auth.userId);
@@ -301,7 +335,7 @@ app.post("/api/stripe/checkout", requireAuth, async (req, res) => {
       const customer = await stripe.customers.create({
         email: user.emailRaw,
         name: user.companyName,
-        metadata: { userId: user._id.toString(), emailNormalized: user.emailNormalized }
+        metadata: { userId: user._id.toString(), emailNormalized: user.emailNormalized },
       });
       customerId = customer.id;
       user.stripeCustomerId = customerId;
@@ -316,21 +350,23 @@ app.post("/api/stripe/checkout", requireAuth, async (req, res) => {
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: {
         trial_period_days: 14,
-        metadata: { userId: user._id.toString(), selectedPlan: p }
+        metadata: { userId: user._id.toString(), selectedPlan },
       },
       success_url: `${baseUrl}/success.html`,
       cancel_url: `${baseUrl}/cancel.html`,
-      allow_promotion_codes: true
+      allow_promotion_codes: true,
     });
 
     return res.json({ url: session.url });
   } catch (err) {
-    console.log("Stripe checkout error:", err?.message || err);
+    console.error("Stripe checkout error:", err?.message || err);
     return res.status(500).json({ error: "Erreur Stripe" });
   }
 });
 
-// Stripe webhook (raw)
+// -----------------------
+// 10) Stripe webhook (RAW + signature)
+// -----------------------
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   if (!stripe) return res.status(500).send("Stripe non configuré");
   if (!STRIPE_WEBHOOK_SECRET) return res.status(500).send("Webhook secret manquant");
@@ -341,12 +377,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    console.log("Webhook signature error:", err.message);
+    console.error("Webhook signature error:", err.message);
     return res.status(400).send("Webhook Error");
   }
 
   try {
-    async function getUserByStripeObj(obj) {
+    async function getUserByStripeObject(obj) {
       const metaUserId = obj?.metadata?.userId;
       if (metaUserId) return await User.findById(metaUserId);
 
@@ -361,7 +397,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      const user = await getUserByStripeObj(session);
+      const user = await getUserByStripeObject(session);
       if (user) {
         user.stripeCustomerId = session.customer || user.stripeCustomerId;
         user.stripeSubscriptionId = session.subscription || user.stripeSubscriptionId;
@@ -373,7 +409,8 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
     if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
       const sub = event.data.object;
-      const user = await getUserByStripeObj(sub);
+      const user = await getUserByStripeObject(sub);
+
       if (user) {
         user.stripeSubscriptionId = sub.id;
         user.stripeCustomerId = sub.customer;
@@ -385,16 +422,13 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         if (status === "trialing") {
           user.plan = "trial";
           user.accessBlocked = false;
-          user.monthlyLimit = quotasForPlan("trial");
         } else if (status === "active") {
-          const selectedPlan = (sub.metadata?.selectedPlan || "pro").toLowerCase();
-          user.plan = ["standard", "pro", "ultra"].includes(selectedPlan) ? selectedPlan : "pro";
+          const selectedPlan = sub.metadata?.selectedPlan;
+          user.plan = isValidPlan(selectedPlan) ? selectedPlan : "pro";
           user.accessBlocked = false;
-          user.monthlyLimit = quotasForPlan(user.plan);
         } else if (status === "past_due" || status === "unpaid") {
           user.accessBlocked = true;
           user.plan = "free";
-          user.monthlyLimit = 0;
         }
 
         await user.save();
@@ -411,7 +445,6 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
           user.accessBlocked = true;
           user.plan = "free";
           user.lastPaymentStatus = "payment_failed";
-          user.monthlyLimit = 0;
           await user.save();
         }
       }
@@ -419,53 +452,59 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
     if (event.type === "customer.subscription.deleted") {
       const sub = event.data.object;
-      const user = await getUserByStripeObj(sub);
+      const user = await getUserByStripeObject(sub);
       if (user) {
         user.accessBlocked = true;
         user.plan = "free";
         user.lastPaymentStatus = "subscription_deleted";
-        user.monthlyLimit = 0;
         await user.save();
       }
     }
 
     return res.json({ received: true });
   } catch (err) {
-    console.log("Webhook handler error:", err);
+    console.error("Webhook handler error:", err);
     return res.status(500).send("Webhook handler error");
   }
 });
 
-// Me
-app.get("/api/me", requireAuth, requireActiveAccess, async (req, res) => {
-  const u = req.user;
-  res.json({
+// -----------------------
+// 11) /api/me (debug)
+// -----------------------
+app.get("/api/me", requireAuth, async (req, res) => {
+  const u = await User.findById(req.auth.userId);
+  if (!u) return res.status(404).json({ error: "Utilisateur introuvable" });
+
+  return res.json({
     email: u.emailRaw,
     company: u.companyName,
     plan: u.plan,
     trialEndsAt: u.trialEndsAt,
-    monthlyUsed: u.monthlyUsed,
-    monthlyLimit: u.monthlyLimit,
-    accessBlocked: u.accessBlocked
+    blocked: u.accessBlocked,
+    lastPaymentStatus: u.lastPaymentStatus,
   });
 });
 
-// Exemple features protégées
-app.get("/api/features/basic", requireAuth, requireActiveAccess, async (req, res) => {
-  const ok = await useQuota(req.user, 1);
-  if (!ok) return res.status(429).json({ error: "Quota mensuel dépassé" });
-  res.json({ ok: true, feature: "basic" });
-});
-app.get("/api/features/pro", requireAuth, requireActiveAccess, requirePlan("pro"), async (req, res) => {
-  const ok = await useQuota(req.user, 2);
-  if (!ok) return res.status(429).json({ error: "Quota mensuel dépassé" });
-  res.json({ ok: true, feature: "pro" });
-});
-app.get("/api/features/ultra", requireAuth, requireActiveAccess, requirePlan("ultra"), async (req, res) => {
-  const ok = await useQuota(req.user, 5);
-  if (!ok) return res.status(429).json({ error: "Quota mensuel dépassé" });
-  res.json({ ok: true, feature: "ultra" });
+// -----------------------
+// 12) Pages fallback
+// -----------------------
+app.get("/success.html", (_, res) => {
+  res.type("html").send(`<h1>✅ Paiement enregistré</h1><p>Votre essai est actif. Vous pouvez fermer cette page.</p>`);
 });
 
-// Start
+app.get("/cancel.html", (_, res) => {
+  res.type("html").send(`<h1>❌ Paiement annulé</h1><p>Vous pouvez revenir en arrière et réessayer.</p>`);
+});
+
+// -----------------------
+// 13) Boot + env checks
+// -----------------------
+mustEnv("MONGO_URI", MONGO_URI);
+mustEnv("JWT_SECRET", JWT_SECRET);
+mustEnv("STRIPE_SECRET_KEY", STRIPE_SECRET_KEY);
+mustEnv("STRIPE_WEBHOOK_SECRET_RENDER (ou STRIPE_WEBHOOK_SECRET)", STRIPE_WEBHOOK_SECRET);
+mustEnv("STRIPE_PRICE_ID_STANDARD", PRICE_STANDARD);
+mustEnv("STRIPE_PRICE_ID_PRO", PRICE_PRO);
+mustEnv("STRIPE_PRICE_ID_ULTRA", PRICE_ULTRA);
+
 app.listen(PORT, () => console.log(`✅ FlowPoint SaaS lancé sur le port ${PORT}`));
