@@ -3,65 +3,54 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Succès - FlowPoint AI</title>
+  <title>Paiement confirmé — FlowPoint AI</title>
   <style>
-    body{font-family:system-ui;background:#f6f7fb;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
-    .card{background:#fff;border:1px solid #e7e9f2;border-radius:14px;padding:22px;max-width:520px;width:92%}
-    .muted{color:#5b6473}
-    .ok{color:#0f7b36}
-    .err{color:#b42318}
-    .btn{display:inline-block;margin-top:14px;padding:12px 14px;border-radius:10px;background:#1d4ed8;color:#fff;text-decoration:none;font-weight:600}
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#f7f7f7; margin:0; }
+    .wrap { max-width: 800px; margin: 60px auto; padding: 0 16px; }
+    .card { background:#fff; border:1px solid #e8e8e8; border-radius:16px; padding:24px; box-shadow: 0 10px 30px rgba(0,0,0,.05); }
+    .ok { color:#0a7a2f; font-weight:800; }
+    .error { color:#b00020; font-weight:700; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>✅ Paiement confirmé</h1>
-    <p class="muted">On finalise ton compte…</p>
-    <p id="msg" class="muted"></p>
-    <a id="go" class="btn" href="/dashboard.html" style="display:none">Aller au dashboard</a>
+  <div class="wrap">
+    <div class="card">
+      <h2 class="ok">Paiement confirmé ✅</h2>
+      <p id="status">Vérification en cours…</p>
+    </div>
   </div>
 
   <script>
-    const msg = document.getElementById("msg");
-    const go = document.getElementById("go");
+    async function verify(){
+      const p = new URLSearchParams(window.location.search);
+      const sessionId = p.get("session_id");
+      const status = document.getElementById("status");
 
-    async function run() {
-      const params = new URLSearchParams(location.search);
-      const sessionId = params.get("session_id");
-
-      if (!sessionId) {
-        msg.className = "err";
-        msg.textContent = "session_id manquant dans l’URL.";
+      if(!sessionId){
+        status.className = "error";
+        status.textContent = "session_id manquant.";
         return;
       }
 
-      try {
-        const r = await fetch("/api/stripe/confirm", {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ sessionId })
-        });
-
+      try{
+        const r = await fetch("/api/stripe/verify?session_id=" + encodeURIComponent(sessionId));
         const d = await r.json();
-        if (!r.ok) {
-          msg.className = "err";
-          msg.textContent = d.error || "Erreur confirmation.";
+        if(!r.ok){
+          status.className = "error";
+          status.textContent = d.error || "Erreur verify.";
           return;
         }
 
-        // token JWT stocké côté navigateur
         localStorage.setItem("fp_token", d.token);
-
-        msg.className = "ok";
-        msg.textContent = "Compte activé. Redirection…";
-        go.style.display = "inline-block";
-        setTimeout(() => location.href = "/dashboard.html", 900);
-      } catch(e) {
-        msg.className = "err";
-        msg.textContent = "Serveur indisponible.";
+        status.className = "";
+        status.textContent = "Ok. Redirection vers le dashboard…";
+        setTimeout(() => window.location.href = "/dashboard.html", 800);
+      }catch(e){
+        status.className = "error";
+        status.textContent = "Erreur réseau.";
       }
     }
-    run();
+    verify();
   </script>
 </body>
 </html>
