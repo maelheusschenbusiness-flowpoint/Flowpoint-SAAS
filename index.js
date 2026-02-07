@@ -1,61 +1,93 @@
 // =======================
-// FlowPoint AI – SaaS Backend (Render)
-// Plans: standard / pro / ultra
-// Trial 14 jours (carte obligatoire via Stripe Checkout)
-// Blocage auto si paiement échoue (webhooks)
-// Webhook secret attendu: STRIPE_WEBHOOK_SECRET_RENDER
+// FlowPoint AI – SaaS Backend
+// Plans: Standard / Pro / Ultra
+// Stripe Checkout + 14j trial (carte requise) + Webhook + Anti-abus + Quotas
+// ESM (package.json => "type": "module")
 // =======================
 
-const express = require("express");
-const cors = require("cors");
-const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
-const Stripe = require("stripe");
+import express from "express";
+import cors from "cors";
+import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
+import Stripe from "stripe";
+import path from "path";
+import { fileURLToPath } from "url";
 
-// ---------- APP ----------
+// ---------- Path helpers (ESM) ----------
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ---------- App ----------
 const app = express();
 app.use(cors());
 
-// JSON partout SAUF webhook Stripe
+// JSON partout sauf webhook Stripe (qui doit être raw)
 app.use((req, res, next) => {
   if (req.originalUrl === "/api/stripe/webhook") return next();
   express.json({ limit: "1mb" })(req, res, next);
 });
 
 // ---------- ENV ----------
-const PORT = process.env.PORT || 10000;
+const PORT = Number(process.env.PORT || 5000);
 
-const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
-const JWT_SECRET = process.env.JWT_SECRET || "change-me-now";
+const MONGO_URI = process.env.MONGO_URI || "";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 
-// Stripe
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY; // tu as mis LIVE -> OK
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
+// IMPORTANT: tu utilises STRIPE_WEBHOOK_SECRET_RENDER pour éviter le doublon Make
+const STRIPE_WEBHOOK_SECRET =
+  process.env.STRIPE_WEBHOOK_SECRET_RENDER || process.env.STRIPE_WEBHOOK_SECRET || "";
+
+// Price IDs (tu les as dans Render)
+const PRICE_STANDARD = process.env.STRIPE_PRICE_ID_STANDARD || process.env.STRIPE_PRICE_STANDARD || "";
+const PRICE_PRO = process.env.STRIPE_PRICE_ID_PRO || process.env.STRIPE_PRICE_PRO || "";
+const PRICE_ULTRA = process.env.STRIPE_PRICE_ID_ULTRA || process.env.STRIPE_PRICE_ULTRA || "";
+
+// ---------- Stripe client ----------
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
-// IMPORTANT : on lit en priorité _RENDER comme tu veux
-const STRIPE_WEBHOOK_SECRET =
-  process.env.STRIPE_WEBHOOK_SECRET_RENDER ||
-  process.env.STRIPE_WEBHOOK_SECRET || // fallback si un jour tu changes
-  "";
+// ---------- Quick ENV check logs ----------
+function envOk(name, ok) {
+  console.log(`${ok ? "✅" : "❌"} ${name}`);
+}
+envOk("MONGO_URI", !!MONGO_URI);
+envOk("JWT_SECRET", !!JWT_SECRET);
+envOk("STRIPE_SECRET_KEY", !!STRIPE_SECRET_KEY);
+envOk("STRIPE_WEBHOOK_SECRET_RENDER", !!process.env.STRIPE_WEBHOOK_SECRET_RENDER);
+envOk("STRIPE_PRICE_ID_STANDARD", !!PRICE_STANDARD);
+envOk("STRIPE_PRICE_ID_PRO", !!PRICE_PRO);
+envOk("STRIPE_PRICE_ID_ULTRA", !!PRICE_ULTRA);
 
-// Prices (noms simples)
-const PRICE_STANDARD =
-  process.env.STRIPE_PRICE_ID_STANDARD ||
-  process.env.STRIPE_PRICE_STANDARD ||
-  process.env.STRIPE_PRICE_ID_STANDARE || // tolérance typo éventuelle
-  "";
+// ---------- Helpers ----------
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "live.com", "msn.com"
+]);
 
-const PRICE_PRO =
-  process.env.STRIPE_PRICE_ID_PRO ||
-  process.env.STRIPE_PRICE_PRO ||
-  "";
+function normalizeEmail(emailRaw) {
+  const email = String(emailRaw || "").trim().toLowerCase();
+  const parts = email.split("@");
+  if (parts.length !== 2) return email;
+  let [local, domain] = parts;
 
-const PRICE_ULTRA =
-  process.env.STRIPE_PRICE_ID_ULTRA ||
-  process.env.STRIPE_PRICE_ULTRA ||
-  "";
+  if (domain === "googlemail.com") domain = "gmail.com";
 
-// ---------- HELPERS ----------
+  // Normalisation anti-abus Gmail (points + plus)
+  if (domain === "gmail.com") {
+    const plusIndex = local.indexOf("+");
+    if (plusIndex >= 0) local = local.slice(0, plusIndex);
+    local = local.replace(/\./g, "");
+  }
+
+  return `${local}@${domain}`;
+}
+
+function normalizeCompanyName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 function planRank(plan) {
   const map = { free: 0, trial: 1, standard: 2, pro: 3, ultra: 4 };
   return map[plan] ?? 0;
@@ -76,94 +108,22 @@ function priceForPlan(plan) {
   return null;
 }
 
-const PUBLIC_EMAIL_DOMAINS = new Set([
-  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com",
-  "icloud.com", "live.com", "msn.com"
-]);
-
-function normalizeEmail(emailRaw) {
-  const email = String(emailRaw || "").trim().toLowerCase();
-  const parts = email.split("@");
-  if (parts.length !== 2) return email;
-  let [local, domain] = parts;
-
-  if (domain === "googlemail.com") domain = "gmail.com";
-
-  // Gmail: supprime +alias et points
-  if (domain === "gmail.com") {
-    const plusIndex = local.indexOf("+");
-    if (plusIndex >= 0) local = local.slice(0, plusIndex);
-    local = local.replace(/\./g, "");
-  }
-
-  return `${local}@${domain}`;
-}
-
-function normalizeCompanyName(name) {
-  return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function requireAuth(req, res, next) {
-  const h = req.headers.authorization || "";
-  const token = h.startsWith("Bearer ") ? h.slice(7) : null;
-  if (!token) return res.status(401).json({ error: "Non autorisé" });
-
-  try {
-    req.auth = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ error: "Token invalide" });
-  }
-}
-
-function requirePlan(minPlan) {
-  return (req, res, next) => {
-    if (planRank(req.user.plan) < planRank(minPlan)) {
-      return res.status(403).json({ error: `Plan requis: ${minPlan}` });
-    }
-    next();
-  };
-}
-
-async function requireActiveAccess(req, res, next) {
-  const user = await User.findById(req.auth.userId);
-  if (!user) return res.status(401).json({ error: "Utilisateur introuvable" });
-  if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / abonnement inactif)" });
-  req.user = user;
-  next();
-}
-
-async function resetMonthlyIfNeeded(user) {
-  const now = new Date();
-  const ra = user.resetAt ? new Date(user.resetAt) : now;
-  if (ra.getUTCFullYear() !== now.getUTCFullYear() || ra.getUTCMonth() !== now.getUTCMonth()) {
-    user.monthlyUsed = 0;
-    user.resetAt = now;
-    user.monthlyLimit = quotasForPlan(user.plan);
-    await user.save();
-  }
-}
-
-async function useQuota(user, amount = 1) {
-  await resetMonthlyIfNeeded(user);
-  if (user.monthlyLimit <= 0) return false;
-  if (user.monthlyUsed + amount > user.monthlyLimit) return false;
-  user.monthlyUsed += amount;
-  await user.save();
-  return true;
-}
-
 // ---------- DB ----------
-if (!MONGO_URI) console.log("❌ MONGO_URI manquant");
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI manquant (Render ENV)");
+}
+
 mongoose
   .connect(MONGO_URI || "mongodb://invalid")
   .then(() => console.log("✅ MongoDB connecté"))
-  .catch((e) => console.log("❌ MongoDB erreur:", e.message));
+  .catch((e) => console.error("❌ MongoDB erreur:", e.message));
 
 const userSchema = new mongoose.Schema({
   firstName: String,
+
   emailRaw: String,
   emailNormalized: { type: String, unique: true, index: true },
+
   companyName: String,
   companyNameNormalized: { type: String, index: true },
   companyDomain: { type: String, index: true },
@@ -190,141 +150,132 @@ const trialRegistrySchema = new mongoose.Schema({
   emailNormalized: { type: String, unique: true, index: true },
   companyDomain: { type: String, index: true },
   companyNameNormalized: { type: String, index: true },
-  firstTrialAt: { type: Date, default: Date.now }
+
+  firstTrialAt: { type: Date, default: Date.now },
+  lastAttemptAt: { type: Date, default: Date.now },
+  attemptsCount: { type: Number, default: 1 }
 });
 
 const User = mongoose.model("User", userSchema);
 const TrialRegistry = mongoose.model("TrialRegistry", trialRegistrySchema);
 
-// ---------- FRONT (HTML intégré) ----------
-function renderIndexHtml() {
-  return `<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <title>FlowPoint AI</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <style>
-    body { font-family: system-ui, Arial; background:#f7f7f7; }
-    .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-    .card { width: 100%; max-width: 560px; background:#fff; border:1px solid #e7e7e7; border-radius:16px; padding:22px; box-shadow: 0 12px 30px rgba(0,0,0,0.06); }
-    h1 { margin:0 0 6px 0; font-size:32px; }
-    .muted { color:#666; margin:0 0 14px 0; }
-    input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: 1px solid #dcdcdc; font-size:16px; box-sizing:border-box; }
-    button { background: #2d5bff; border:none; color:white; font-weight:700; cursor:pointer; }
-    button:disabled { opacity: 0.6; cursor:not-allowed; }
-    .err { color:#c00; margin-top:10px; }
-    .ok { color:#0a7; margin-top:10px; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>FlowPoint AI</h1>
-      <p class="muted">Essai gratuit 14 jours — carte requise. Accès bloqué si le paiement échoue après l’essai.</p>
+// ---------- Auth middleware ----------
+function requireAuth(req, res, next) {
+  const h = req.headers.authorization || "";
+  const token = h.startsWith("Bearer ") ? h.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "Non autorisé" });
 
-      <form id="signup-form">
-        <input id="firstName" type="text" placeholder="Prénom" required />
-        <input id="email" type="email" placeholder="Email professionnel" required />
-        <input id="companyName" type="text" placeholder="Nom de l’entreprise" required />
-
-        <select id="plan" required>
-          <option value="standard">Standard</option>
-          <option value="pro" selected>Pro</option>
-          <option value="ultra">Ultra</option>
-        </select>
-
-        <button id="btn" type="submit">Commencer l’essai</button>
-      </form>
-
-      <div id="msg"></div>
-    </div>
-  </div>
-
-<script>
-  const msg = document.getElementById("msg");
-  const btn = document.getElementById("btn");
-  function setMsg(text, kind) {
-    msg.className = kind ? kind : "";
-    msg.textContent = text || "";
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.auth = payload;
+    return next();
+  } catch {
+    return res.status(401).json({ error: "Token invalide" });
   }
-
-  document.getElementById("signup-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    setMsg("");
-    btn.disabled = true;
-    btn.textContent = "Redirection...";
-
-    const firstName = document.getElementById("firstName").value.trim();
-    const email = document.getElementById("email").value.trim();
-    const companyName = document.getElementById("companyName").value.trim();
-    const plan = document.getElementById("plan").value;
-
-    try {
-      const leadRes = await fetch("/api/auth/lead", {
-        method: "POST",
-        headers: { "Content-Type":"application/json" },
-        body: JSON.stringify({ firstName, email, companyName, plan })
-      });
-      const leadData = await leadRes.json();
-      if (!leadRes.ok) throw new Error(leadData.error || "Erreur lead");
-
-      const stripeRes = await fetch("/api/stripe/create-checkout-session", {
-        method: "POST",
-        headers: {
-          "Content-Type":"application/json",
-          "Authorization": "Bearer " + leadData.token
-        },
-        body: JSON.stringify({ plan })
-      });
-      const stripeData = await stripeRes.json();
-      if (!stripeRes.ok) throw new Error(stripeData.error || "Erreur Stripe");
-
-      window.location.href = stripeData.url;
-    } catch (err) {
-      setMsg("❌ " + (err.message || "Erreur"), "err");
-      btn.disabled = false;
-      btn.textContent = "Commencer l’essai";
-    }
-  });
-</script>
-</body>
-</html>`;
 }
 
-// Routes front
-app.get("/", (req, res) => res.type("html").send(renderIndexHtml()));
-app.get("/success", (req, res) => res.type("html").send(`<h1>✅ Paiement enregistré</h1><p>Ton essai est actif. Tu peux fermer cette page.</p>`));
-app.get("/cancel", (req, res) => res.type("html").send(`<h1>❌ Paiement annulé</h1><p>Tu peux revenir en arrière et réessayer.</p>`));
+async function requireActiveAccess(req, res, next) {
+  const user = await User.findById(req.auth.userId);
+  if (!user) return res.status(401).json({ error: "Utilisateur introuvable" });
 
-// ---------- API ----------
-app.get("/test", (_, res) => res.send("Backend OK"));
+  // Bloqué si paiement échoué / abonnement inactif
+  if (user.accessBlocked) {
+    return res.status(403).json({ error: "Accès bloqué (paiement échoué / abonnement inactif)" });
+  }
 
-// Lead + anti-abus + token
+  // Si trial expiré et pas active => bloquer
+  if (user.plan === "trial" && user.trialEndsAt && new Date() > new Date(user.trialEndsAt)) {
+    user.accessBlocked = true;
+    user.plan = "free";
+    user.monthlyLimit = 0;
+    user.lastPaymentStatus = "trial_expired";
+    await user.save();
+    return res.status(403).json({ error: "Essai terminé. Abonnement requis." });
+  }
+
+  req.user = user;
+  return next();
+}
+
+function requirePlan(minPlan) {
+  return (req, res, next) => {
+    if (planRank(req.user.plan) < planRank(minPlan)) {
+      return res.status(403).json({ error: `Plan requis: ${minPlan}` });
+    }
+    next();
+  };
+}
+
+async function resetMonthlyIfNeeded(user) {
+  const now = new Date();
+  if (!user.resetAt) user.resetAt = now;
+  const ra = new Date(user.resetAt);
+
+  if (ra.getUTCFullYear() !== now.getUTCFullYear() || ra.getUTCMonth() !== now.getUTCMonth()) {
+    user.monthlyUsed = 0;
+    user.resetAt = now;
+    user.monthlyLimit = quotasForPlan(user.plan);
+    await user.save();
+  }
+}
+
+async function useQuota(user, amount = 1) {
+  await resetMonthlyIfNeeded(user);
+  if (user.monthlyLimit <= 0) return false;
+  if (user.monthlyUsed + amount > user.monthlyLimit) return false;
+  user.monthlyUsed += amount;
+  await user.save();
+  return true;
+}
+
+// ---------- Serve HTML (root + pages) ----------
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
+app.get("/success.html", (req, res) => res.sendFile(path.join(__dirname, "success.html")));
+app.get("/cancel.html", (req, res) => res.sendFile(path.join(__dirname, "cancel.html")));
+app.get("/dashboard.html", (req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
+
+// ---------- Health ----------
+app.get("/test", (req, res) => res.send("Backend OK"));
+
+// =======================
+// 1) LEAD + anti-abus + token
+// =======================
 app.post("/api/auth/lead", async (req, res) => {
   const { firstName, email, companyName, plan } = req.body || {};
 
-  if (!email || !companyName || !plan) return res.status(400).json({ error: "Champs manquants" });
-  if (!["standard","pro","ultra"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
+  if (!email || !companyName || !plan) {
+    return res.status(400).json({ error: "Champs manquants" });
+  }
+
+  // Plans attendus
+  if (!["standard", "pro", "ultra"].includes(String(plan).toLowerCase())) {
+    return res.status(400).json({ error: "Plan invalide" });
+  }
 
   const emailNormalized = normalizeEmail(email);
   const domain = (emailNormalized.split("@")[1] || "").toLowerCase();
   const companyNameNormalized = normalizeCompanyName(companyName);
 
   try {
-    // anti-abus email
-    const usedEmail = await TrialRegistry.findOne({ emailNormalized });
-    if (usedEmail) return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
-
-    // anti-abus domaine entreprise (sauf emails publics)
-    if (!PUBLIC_EMAIL_DOMAINS.has(domain)) {
-      const usedDomain = await TrialRegistry.findOne({ companyDomain: domain });
-      if (usedDomain) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise (domaine)." });
+    // Anti-abus 1: email
+    const existingByEmail = await TrialRegistry.findOne({ emailNormalized });
+    if (existingByEmail) {
+      return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
     }
 
-    // anti-abus nom entreprise
-    const usedCompany = await TrialRegistry.findOne({ companyNameNormalized });
-    if (usedCompany) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise (nom)." });
+    // Anti-abus 2: domaine entreprise (si email pro)
+    if (!PUBLIC_EMAIL_DOMAINS.has(domain)) {
+      const existingByDomain = await TrialRegistry.findOne({ companyDomain: domain });
+      if (existingByDomain) {
+        return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise (domaine)." });
+      }
+    }
+
+    // Anti-abus 3: nom entreprise
+    const existingByCompany = await TrialRegistry.findOne({ companyNameNormalized });
+    if (existingByCompany) {
+      return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
+    }
 
     const now = new Date();
     const trialEndsAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
@@ -349,7 +300,11 @@ app.post("/api/auth/lead", async (req, res) => {
       resetAt: now
     });
 
-    await TrialRegistry.create({ emailNormalized, companyDomain: domain, companyNameNormalized });
+    await TrialRegistry.create({
+      emailNormalized,
+      companyDomain: domain,
+      companyNameNormalized
+    });
 
     const token = jwt.sign(
       { userId: user._id.toString(), emailNormalized },
@@ -357,30 +312,37 @@ app.post("/api/auth/lead", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.json({ ok: true, token });
+    return res.json({ ok: true, token });
   } catch (err) {
     if (String(err?.message || "").includes("duplicate key")) {
       return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
     }
     console.error(err);
-    res.status(500).json({ error: "Erreur serveur" });
+    return res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
-// Stripe checkout
+// =======================
+// 2) STRIPE CHECKOUT (subscription + trial 14j)
+// =======================
 app.post("/api/stripe/create-checkout-session", requireAuth, async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe non configuré (STRIPE_SECRET_KEY)" });
 
   const { plan } = req.body || {};
-  if (!["standard","pro","ultra"].includes(plan)) return res.status(400).json({ error: "Plan invalide" });
+  const p = String(plan || "").toLowerCase();
 
-  const priceId = priceForPlan(plan);
-  if (!priceId) return res.status(500).json({ error: "Price ID manquant pour ce plan (ENV Stripe)" });
+  if (!["standard", "pro", "ultra"].includes(p)) {
+    return res.status(400).json({ error: "Plan invalide" });
+  }
+
+  const priceId = priceForPlan(p);
+  if (!priceId) return res.status(500).json({ error: "Price ID manquant (STRIPE_PRICE_ID_...)" });
 
   try {
     const user = await User.findById(req.auth.userId);
     if (!user) return res.status(401).json({ error: "Utilisateur introuvable" });
 
+    // Customer Stripe
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -399,29 +361,55 @@ app.post("/api/stripe/create-checkout-session", requireAuth, async (req, res) =>
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      allow_promotion_codes: true,
-
-      // TRIAL 14 jours + carte requise via Checkout
       subscription_data: {
         trial_period_days: 14,
-        metadata: { userId: user._id.toString(), selectedPlan: plan }
+        // on garde le plan choisi ici pour le webhook (active)
+        metadata: { userId: user._id.toString(), selectedPlan: p }
       },
-
-      success_url: `${baseUrl}/success`,
-      cancel_url: `${baseUrl}/cancel`
+      success_url: `${baseUrl}/success.html`,
+      cancel_url: `${baseUrl}/cancel.html`,
+      allow_promotion_codes: true
     });
 
-    res.json({ url: session.url });
+    return res.json({ url: session.url });
   } catch (err) {
-    console.error("Stripe error:", err);
-    res.status(500).json({ error: "Erreur Stripe (voir logs Render)" });
+    console.error("Stripe checkout error:", err);
+    return res.status(500).json({ error: "Erreur Stripe" });
   }
 });
 
-// Webhook Stripe (raw body)
+// =======================
+// 3) STRIPE CUSTOMER PORTAL (gérer carte/annuler)
+// =======================
+app.post("/api/stripe/create-portal-session", requireAuth, async (req, res) => {
+  try {
+    if (!stripe) return res.status(500).json({ error: "Stripe non configuré" });
+
+    const user = await User.findById(req.auth.userId);
+    if (!user || !user.stripeCustomerId) {
+      return res.status(400).json({ error: "Client Stripe introuvable" });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: `${baseUrl}/dashboard.html`
+    });
+
+    res.json({ url: session.url });
+  } catch (e) {
+    console.error("Portal error:", e);
+    res.status(500).json({ error: "Erreur portal Stripe" });
+  }
+});
+
+// =======================
+// 4) STRIPE WEBHOOK (RAW) – Render
+// =======================
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   if (!stripe) return res.status(500).send("Stripe non configuré");
-  if (!STRIPE_WEBHOOK_SECRET) return res.status(500).send("Webhook secret manquant (STRIPE_WEBHOOK_SECRET_RENDER)");
+  if (!STRIPE_WEBHOOK_SECRET) return res.status(500).send("Webhook secret manquant");
 
   const sig = req.headers["stripe-signature"];
   let event;
@@ -434,7 +422,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
   }
 
   try {
-    async function findUserByStripe(obj) {
+    async function getUserByStripeObject(obj) {
       const metaUserId = obj?.metadata?.userId;
       if (metaUserId) return await User.findById(metaUserId);
 
@@ -447,9 +435,10 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       return null;
     }
 
+    // ✅ Checkout terminé
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      const user = await findUserByStripe(session);
+      const user = await getUserByStripeObject(session);
       if (user) {
         user.stripeCustomerId = session.customer || user.stripeCustomerId;
         user.stripeSubscriptionId = session.subscription || user.stripeSubscriptionId;
@@ -459,9 +448,11 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       }
     }
 
+    // ✅ Abonnement créé / mis à jour
     if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
       const sub = event.data.object;
-      const user = await findUserByStripe(sub);
+      const user = await getUserByStripeObject(sub);
+
       if (user) {
         user.stripeSubscriptionId = sub.id;
         user.stripeCustomerId = sub.customer;
@@ -475,12 +466,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
           user.accessBlocked = false;
           user.monthlyLimit = quotasForPlan("trial");
         } else if (status === "active") {
-          const selectedPlan = sub.metadata?.selectedPlan;
-          user.plan = ["standard","pro","ultra"].includes(selectedPlan) ? selectedPlan : "pro";
+          const selectedPlan = (sub.metadata?.selectedPlan || "pro").toLowerCase();
+          user.plan = ["standard", "pro", "ultra"].includes(selectedPlan) ? selectedPlan : "pro";
           user.accessBlocked = false;
           user.monthlyLimit = quotasForPlan(user.plan);
         } else if (status === "past_due" || status === "unpaid") {
-          // blocage si paiement échoue
+          // 🔒 Bloqué si paiement échoue
           user.accessBlocked = true;
           user.plan = "free";
           user.monthlyLimit = 0;
@@ -490,10 +481,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       }
     }
 
+    // ❌ Paiement échoué => BLOQUER
     if (event.type === "invoice.payment_failed") {
       const invoice = event.data.object;
       const cust = await stripe.customers.retrieve(invoice.customer);
       const uid = cust?.metadata?.userId;
+
       if (uid) {
         const user = await User.findById(uid);
         if (user) {
@@ -506,9 +499,10 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       }
     }
 
+    // ❌ Abonnement supprimé => BLOQUER
     if (event.type === "customer.subscription.deleted") {
       const sub = event.data.object;
-      const user = await findUserByStripe(sub);
+      const user = await getUserByStripeObject(sub);
       if (user) {
         user.accessBlocked = true;
         user.plan = "free";
@@ -518,17 +512,19 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       }
     }
 
-    res.json({ received: true });
+    return res.json({ received: true });
   } catch (err) {
     console.error("Webhook handler error:", err);
-    res.status(500).send("Webhook handler error");
+    return res.status(500).send("Webhook handler error");
   }
 });
 
-// /me (debug)
+// =======================
+// 5) API ME (dashboard)
+// =======================
 app.get("/api/me", requireAuth, requireActiveAccess, async (req, res) => {
   const u = req.user;
-  res.json({
+  return res.json({
     email: u.emailRaw,
     company: u.companyName,
     plan: u.plan,
@@ -540,40 +536,28 @@ app.get("/api/me", requireAuth, requireActiveAccess, async (req, res) => {
   });
 });
 
-// Features (exemples)
+// =======================
+// 6) FEATURES + quotas (exemples)
+// =======================
 app.get("/api/features/basic", requireAuth, requireActiveAccess, async (req, res) => {
   const ok = await useQuota(req.user, 1);
   if (!ok) return res.status(429).json({ error: "Quota mensuel dépassé" });
-  res.json({ ok: true, feature: "basic", message: "Accès Trial/Standard+" });
+  return res.json({ ok: true, feature: "basic", message: "Accès Trial/Standard+" });
 });
 
 app.get("/api/features/advanced", requireAuth, requireActiveAccess, requirePlan("pro"), async (req, res) => {
   const ok = await useQuota(req.user, 2);
   if (!ok) return res.status(429).json({ error: "Quota mensuel dépassé" });
-  res.json({ ok: true, feature: "advanced", message: "Accès Pro+" });
+  return res.json({ ok: true, feature: "advanced", message: "Accès Pro+" });
 });
 
 app.get("/api/features/ultra", requireAuth, requireActiveAccess, requirePlan("ultra"), async (req, res) => {
   const ok = await useQuota(req.user, 5);
   if (!ok) return res.status(429).json({ error: "Quota mensuel dépassé" });
-  res.json({ ok: true, feature: "ultra", message: "Accès Ultra" });
+  return res.json({ ok: true, feature: "ultra", message: "Accès Ultra" });
 });
 
-// ---------- START ----------
-function envWarn(key, ok) {
-  console.log((ok ? "✅" : "❌") + " " + key + (ok ? "" : " manquant"));
-}
-
-envWarn("MONGO_URI", !!MONGO_URI);
-envWarn("JWT_SECRET", !!process.env.JWT_SECRET);
-envWarn("STRIPE_SECRET_KEY", !!STRIPE_SECRET_KEY);
-envWarn("STRIPE_WEBHOOK_SECRET_RENDER", !!process.env.STRIPE_WEBHOOK_SECRET_RENDER);
-envWarn("STRIPE_PRICE_ID_STANDARD", !!PRICE_STANDARD);
-envWarn("STRIPE_PRICE_ID_PRO", !!PRICE_PRO);
-envWarn("STRIPE_PRICE_ID_ULTRA", !!PRICE_ULTRA);
-
+// ---------- Start ----------
 app.listen(PORT, () => {
-  console.log("✅ FlowPoint SaaS lancé sur le port " + PORT);
+  console.log(`✅ FlowPoint SaaS lancé sur le port ${PORT}`);
 });
-
-
