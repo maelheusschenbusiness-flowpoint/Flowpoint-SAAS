@@ -5,24 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Connexion — FlowPoint AI</title>
   <style>
-    body { font-family: system-ui, Arial; background:#f7f7f7; margin:0; }
+    body { font-family: system-ui, Arial; background:#f7f7fb; margin:0; }
     .wrap { max-width:520px; margin:60px auto; padding:0 16px; }
-    .card { background:#fff; border:1px solid #e8e8e8; border-radius:16px; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,.05); }
-    input, button { width:100%; padding:12px; border-radius:12px; border:1px solid #ddd; margin:8px 0; box-sizing:border-box; }
-    button { background:#2f5bff; color:#fff; border:none; font-weight:700; cursor:pointer; }
+    .card { background:#fff; border:1px solid #e7e9f2; border-radius:16px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.05); }
+    input, button { width:100%; padding:12px; border-radius:12px; border:1px solid #ddd; margin-top:10px; box-sizing:border-box; }
+    button { background:#2f5bff; color:#fff; border:none; font-weight:900; cursor:pointer; }
     button:disabled { opacity:.6; cursor:not-allowed; }
     .muted { color:#666; font-size:14px; }
     #msg { margin-top:10px; font-size:14px; }
     .error { color:#b00020; }
     .ok { color:#0a7a2f; }
-    a { color:#2f5bff; font-weight:700; text-decoration:none; }
+    a { color:#2f5bff; font-weight:900; text-decoration:none; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
       <h2>Connexion</h2>
-      <p class="muted">Entrez votre email pour accéder à votre dashboard.</p>
+      <div class="muted">Entrez votre email pour accéder au dashboard.</div>
 
       <form id="loginForm">
         <input id="email" type="email" placeholder="Email" required />
@@ -32,7 +32,7 @@
       <div id="msg"></div>
 
       <p class="muted" style="margin-top:14px;">
-        Pas encore inscrit ? <a href="/index.html">Commencer l’essai</a>
+        Pas de compte ? <a href="/index.html">Commencer l’essai</a>
       </p>
     </div>
   </div>
