@@ -1,6 +1,47 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Succès</title></head>
-<body style="font-family:system-ui;padding:30px">
-  <h1>✅ Paiement enregistré</h1>
-  <p>Ton essai est actif. Tu peux fermer cette page.</p>
-  <a href="/dashboard.html">Aller au dashboard</a>
-</body></html>
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Succès - FlowPoint AI</title>
+    <style>
+      body { font-family: system-ui, Arial; background:#f7f7fb; margin:0; }
+      .box { max-width:520px; margin:60px auto; background:#fff; padding:24px; border-radius:14px; border:1px solid #eee; }
+      .muted { color:#666; }
+      .btn { display:inline-block; padding:12px 16px; border-radius:10px; background:#2453ff; color:#fff; text-decoration:none; font-weight:600; }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <h2>Paiement confirmé ✅</h2>
+      <p class="muted" id="status">Finalisation de votre compte…</p>
+      <p><a class="btn" id="go" href="/dashboard.html" style="display:none;">Aller au dashboard</a></p>
+    </div>
+
+    <script>
+      async function run() {
+        const params = new URLSearchParams(location.search);
+        const sessionId = params.get("session_id");
+        if (!sessionId) {
+          document.getElementById("status").textContent = "session_id manquant.";
+          return;
+        }
+
+        const r = await fetch(`/api/stripe/verify?session_id=${encodeURIComponent(sessionId)}`);
+        const data = await r.json();
+
+        if (!r.ok) {
+          document.getElementById("status").textContent = data.error || "Erreur verify.";
+          return;
+        }
+
+        localStorage.setItem("fp_token", data.token);
+        document.getElementById("status").textContent = "Compte prêt. Redirection…";
+        document.getElementById("go").style.display = "inline-block";
+        setTimeout(() => location.href = "/dashboard.html", 700);
+      }
+      run();
+    </script>
+  </body>
+</html>
+
