@@ -2,11 +2,10 @@ const form = document.getElementById("loginForm");
 const msg = document.getElementById("msg");
 const btn = document.getElementById("btn");
 
-function setMsg(text = "", type = "") {
+function setMsg(text="", type="") {
   msg.textContent = text;
   msg.className = type === "ok" ? "ok" : type === "error" ? "error" : "";
 }
-
 function setLoading(v) {
   btn.disabled = v;
   btn.textContent = v ? "Connexion..." : "Se connecter";
@@ -30,15 +29,12 @@ form.addEventListener("submit", async (e) => {
 
   try {
     const email = document.getElementById("email").value.trim().toLowerCase();
-    if (!email) throw new Error("Email requis");
-
     const data = await postJSON("/api/auth/login", { email });
-
     localStorage.setItem("fp_token", data.token);
     setMsg("Connexion OK. Redirection…", "ok");
-    setTimeout(() => (window.location.href = "/dashboard.html"), 700);
-  } catch (err) {
-    setMsg(err.message || "Erreur", "error");
+    setTimeout(() => location.href = "/dashboard.html", 700);
+  } catch (e) {
+    setMsg(e.message || "Erreur", "error");
     setLoading(false);
   }
 });
