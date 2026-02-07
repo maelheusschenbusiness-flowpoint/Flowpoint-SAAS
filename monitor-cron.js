@@ -1,9 +1,13 @@
-// monitor-cron.js — checks monitors + logs + email alerts (Render Cron Job)
+// monitor-cron.js — FlowPoint AI monitoring checks + email alerts to org members
+// Run on Render Cron Job (ex: every 5-10 minutes)
+
 require("dotenv").config();
 
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 
+// ---------------- ENV ----------------
 const REQUIRED = [
   "MONGO_URI",
   "SMTP_HOST",
@@ -12,11 +16,22 @@ const REQUIRED = [
   "SMTP_USER",
   "SMTP_PASS",
   "ALERT_EMAIL_FROM",
-  "ALERT_EMAIL_TO",
 ];
-for (const k of REQUIRED) if (!process.env[k]) console.log("❌ ENV manquante:", k);
 
-function boolEnv(v) { return String(v).toLowerCase() === "true"; }
+for (const k of REQUIRED) {
+  if (!process.env[k]) console.log("❌ ENV manquante:", k);
+}
+
+const HTTP_TIMEOUT_MS = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
+const ALERT_COOLDOWN_MINUTES = Number(process.env.MONITOR_ALERT_COOLDOWN_MINUTES || 180);
+const MAX_CHECKS_PER_RUN = Number(process.env.MONITOR_MAX_CHECKS_PER_RUN || 80);
+
+// Optionnel: si tu veux recevoir aussi une copie admin
+const ALERT_EMAIL_TO_FALLBACK = (process.env.ALERT_EMAIL_TO || "").trim(); // facultatif
+
+function boolEnv(v) {
+  return String(v).toLowerCase() === "true";
+}
 
 function mailer() {
   return nodemailer.createTransport({
@@ -27,61 +42,94 @@ function mailer() {
   });
 }
 
-async function sendMail(subject, text, html) {
+async function sendMail({ to, subject, text, html }) {
   const t = mailer();
-  await t.sendMail({
+  const info = await t.sendMail({
     from: process.env.ALERT_EMAIL_FROM,
-    to: process.env.ALERT_EMAIL_TO,
+    to,
     subject,
     text,
     html,
   });
+  console.log("✅ Email envoyé:", info.messageId, "=>", to);
 }
 
+// --------------- DB MODELS (minimal) ---------------
 const UserSchema = new mongoose.Schema(
   {
     email: String,
-    accessBlocked: Boolean,
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    role: String, // owner/member
+    plan: String, // standard/pro/ultra
   },
-  { timestamps: true }
+  { timestamps: true, collection: "users" }
 );
 
 const MonitorSchema = new mongoose.Schema(
   {
-    userId: mongoose.Schema.Types.ObjectId,
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
     url: String,
     active: Boolean,
     intervalMinutes: Number,
+
     lastCheckedAt: Date,
-    lastStatus: String,
-    lastAlertStatus: { type: String, default: "unknown" }, // up/down/unknown
+    lastStatus: String, // up/down/unknown
+
+    lastAlertStatus: String,
     lastAlertAt: Date,
   },
-  { timestamps: true }
+  { timestamps: true, collection: "monitors" }
 );
 
 const MonitorLogSchema = new mongoose.Schema(
   {
-    userId: mongoose.Schema.Types.ObjectId,
-    monitorId: mongoose.Schema.Types.ObjectId,
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    monitorId: { type: mongoose.Schema.Types.ObjectId, index: true },
     url: String,
     status: String,
     httpStatus: Number,
     responseTimeMs: Number,
-    checkedAt: { type: Date, default: Date.now },
+    checkedAt: Date,
     error: String,
   },
-  { timestamps: true }
+  { timestamps: true, collection: "monitorlogs" }
 );
 
 const User = mongoose.model("User", UserSchema);
 const Monitor = mongoose.model("Monitor", MonitorSchema);
 const MonitorLog = mongoose.model("MonitorLog", MonitorLogSchema);
 
+// --------------- HELPERS ---------------
+function now() {
+  return new Date();
+}
+
+function minutesAgo(d) {
+  if (!d) return Infinity;
+  return (Date.now() - new Date(d).getTime()) / 60000;
+}
+
+function shouldRunMonitor(m) {
+  if (!m.active) return false;
+  const interval = Number(m.intervalMinutes || 60);
+  return minutesAgo(m.lastCheckedAt) >= interval;
+}
+
+function canAlert(m, newStatus) {
+  // alert if status changed OR cooldown passed while still down
+  const lastStatus = String(m.lastAlertStatus || "unknown");
+  const changed = lastStatus !== String(newStatus);
+
+  const cooldownOk = minutesAgo(m.lastAlertAt) >= ALERT_COOLDOWN_MINUTES;
+  // If still down, allow repeated alerts with cooldown
+  if (newStatus === "down") return changed || cooldownOk;
+  // If recovered to up, alert on change only
+  return changed;
+}
+
 async function checkUrlOnce(url) {
-  const timeout = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
+  const id = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
 
   const t0 = Date.now();
   try {
@@ -97,87 +145,123 @@ async function checkUrlOnce(url) {
   }
 }
 
-function shouldRun(m, now) {
-  if (!m.active) return false;
-  if (!m.lastCheckedAt) return true;
-  const next = new Date(m.lastCheckedAt).getTime() + (Number(m.intervalMinutes || 60) * 60 * 1000);
-  return now >= next;
+function uniqEmails(list) {
+  const set = new Set();
+  for (const e of list) {
+    const v = String(e || "").trim().toLowerCase();
+    if (v) set.add(v);
+  }
+  return [...set];
 }
 
-function canAlert(m, now) {
-  const cooldownMin = Number(process.env.MONITOR_ALERT_COOLDOWN_MINUTES || 180);
-  if (!m.lastAlertAt) return true;
-  return now - new Date(m.lastAlertAt).getTime() >= cooldownMin * 60 * 1000;
+function fmt(d) {
+  try {
+    return new Date(d).toLocaleString("fr-FR");
+  } catch {
+    return String(d || "");
+  }
 }
 
+function shortId(id) {
+  return crypto.createHash("sha1").update(String(id)).digest("hex").slice(0, 8);
+}
+
+// --------------- MAIN ---------------
 async function main() {
-  console.log("⏱️ monitor-cron started");
+  console.log("⏱️ monitor-cron started", new Date().toISOString());
+
   await mongoose.connect(process.env.MONGO_URI);
 
-  const now = Date.now();
-  const monitors = await Monitor.find({ active: true }).limit(500);
+  // 1) Take active monitors and filter those due
+  const all = await Monitor.find({ active: true }).limit(2000);
+  const due = all.filter(shouldRunMonitor).slice(0, MAX_CHECKS_PER_RUN);
 
-  let checked = 0;
-  let downCount = 0;
+  console.log(`🧭 monitors active=${all.length}, due=${due.length}, max=${MAX_CHECKS_PER_RUN}`);
 
-  for (const m of monitors) {
-    if (!shouldRun(m, now)) continue;
+  let alertsSent = 0;
 
-    checked++;
-    const r = await checkUrlOnce(m.url);
+  for (const m of due) {
+    const result = await checkUrlOnce(m.url);
 
-    m.lastCheckedAt = new Date();
-    m.lastStatus = r.status;
+    // Save monitor status
+    m.lastCheckedAt = now();
+    m.lastStatus = result.status;
     await m.save();
 
+    // Log
     await MonitorLog.create({
-      userId: m.userId,
+      orgId: m.orgId,
       monitorId: m._id,
       url: m.url,
-      status: r.status,
-      httpStatus: r.httpStatus,
-      responseTimeMs: r.responseTimeMs,
-      error: r.error,
+      status: result.status,
+      httpStatus: result.httpStatus,
+      responseTimeMs: result.responseTimeMs,
+      checkedAt: now(),
+      error: result.error,
     });
 
-    if (r.status === "down") downCount++;
+    // Decide alert
+    if (!canAlert(m, result.status)) continue;
 
-    // Alerts DOWN / RECOVERED
-    const changed = (m.lastAlertStatus || "unknown") !== r.status;
-    if (changed && canAlert(m, now)) {
-      m.lastAlertStatus = r.status;
-      m.lastAlertAt = new Date();
+    // Recipients = all users in org (owner + members)
+    const users = await User.find({ orgId: m.orgId }).select("email role plan").limit(200);
+    const recipients = uniqEmails(users.map(u => u.email));
+
+    // Optional admin copy
+    if (ALERT_EMAIL_TO_FALLBACK) recipients.push(ALERT_EMAIL_TO_FALLBACK);
+
+    const to = uniqEmails(recipients).join(",");
+    if (!to) continue;
+
+    const baseSubject =
+      result.status === "down"
+        ? `🚨 FlowPoint Monitoring DOWN — ${m.url}`
+        : `✅ FlowPoint Monitoring UP — ${m.url}`;
+
+    const details =
+      `URL: ${m.url}\n` +
+      `Status: ${result.status.toUpperCase()}\n` +
+      `HTTP: ${result.httpStatus}\n` +
+      `Response time: ${result.responseTimeMs}ms\n` +
+      `Error: ${result.error || "-"}\n` +
+      `Checked at: ${fmt(new Date())}\n` +
+      `Monitor: ${shortId(m._id)}\n`;
+
+    const html =
+      `<h2>${result.status === "down" ? "🚨 DOWN" : "✅ UP"}</h2>` +
+      `<p><b>URL:</b> ${m.url}</p>` +
+      `<ul>` +
+      `<li><b>Status:</b> ${result.status.toUpperCase()}</li>` +
+      `<li><b>HTTP:</b> ${result.httpStatus}</li>` +
+      `<li><b>Temps:</b> ${result.responseTimeMs}ms</li>` +
+      `<li><b>Erreur:</b> ${result.error || "-"}</li>` +
+      `<li><b>Check:</b> ${fmt(new Date())}</li>` +
+      `</ul>`;
+
+    try {
+      await sendMail({
+        to,
+        subject: baseSubject,
+        text: details,
+        html,
+      });
+
+      // Update alert markers
+      m.lastAlertStatus = result.status;
+      m.lastAlertAt = now();
       await m.save();
 
-      const subject =
-        r.status === "down"
-          ? `🚨 FlowPoint Monitoring DOWN: ${m.url}`
-          : `✅ FlowPoint Monitoring RECOVERED: ${m.url}`;
-
-      const text =
-        `URL: ${m.url}\n` +
-        `Status: ${r.status}\n` +
-        `HTTP: ${r.httpStatus}\n` +
-        `Latency: ${r.responseTimeMs}ms\n` +
-        (r.error ? `Error: ${r.error}\n` : "");
-
-      const html =
-        `<h2>${subject}</h2>` +
-        `<p><b>URL:</b> ${m.url}</p>` +
-        `<p><b>Status:</b> ${r.status}</p>` +
-        `<p><b>HTTP:</b> ${r.httpStatus}</p>` +
-        `<p><b>Latency:</b> ${r.responseTimeMs}ms</p>` +
-        (r.error ? `<pre>${r.error}</pre>` : "");
-
-      await sendMail(subject, text, html);
+      alertsSent += 1;
+    } catch (e) {
+      console.log("❌ email error:", e.message);
     }
   }
 
-  console.log(`✅ monitor-cron done. checked=${checked}, down=${downCount}`);
   await mongoose.disconnect();
+  console.log(`✅ monitor-cron terminé. alertsSent=${alertsSent}`);
 }
 
 main().catch((e) => {
-  console.log("❌ monitor-cron error:", e.message);
+  console.log("❌ monitor-cron fatal:", e.message);
   process.exit(1);
 });
