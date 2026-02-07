@@ -28,7 +28,7 @@ async function api(path, method="GET", body=null) {
 function fmtDate(d){ if(!d) return "—"; try{return new Date(d).toLocaleString("fr-FR");}catch{return "—"} }
 
 function showTab(name){
-  const ids = ["audit","audits","monitor"];
+  const ids = ["audit","audits","monitor","team"];
   for (const t of ids) $("tab-"+t).classList.toggle("hidden", t !== name);
   document.querySelectorAll(".tab").forEach(el=> el.classList.toggle("active", el.dataset.tab === name));
 }
@@ -36,7 +36,6 @@ function showTab(name){
 async function downloadWithAuth(url, filename) {
   const t = token();
   const r = await fetch(url, { headers: { "Authorization": "Bearer " + t } });
-  // Important: tes endpoints export sont GET auth, donc on passe token
   if (!r.ok) {
     const d = await r.json().catch(()=> ({}));
     throw new Error(d.error || "Export échoué");
@@ -60,6 +59,13 @@ async function loadMe(){
   $("planBadge").textContent = "PLAN: " + (me.plan || "standard").toUpperCase();
   $("trialPill").textContent = me.hasTrial ? ("Trial jusqu’au " + fmtDate(me.trialEndsAt)) : "Trial: non démarré";
   $("payPill").textContent = "Paiement: " + (me.lastPaymentStatus || me.subscriptionStatus || "—");
+  $("orgPill").textContent = "Org: " + (me.org?.name || "—");
+  $("rolePill").textContent = "Rôle: " + (me.role || "—");
+
+  // Team tab only Ultra
+  const teamTab = $("teamTab");
+  if (String(me.plan).toLowerCase() === "ultra") teamTab.style.display = "inline-block";
+  else teamTab.style.display = "none";
 
   if (me.accessBlocked) setMsg("Accès bloqué (paiement échoué / essai terminé). Clique “Gérer / Upgrade”.", "error");
   else setMsg("Accès OK.", "ok");
@@ -223,6 +229,33 @@ async function loadMonitors(){
   });
 }
 
+// ----- TEAM (Ultra) -----
+async function loadTeam(){
+  const out = await api("/api/org/members");
+  const tb = $("teamTbody");
+  tb.innerHTML = "";
+  for (const m of out.members) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${m.email}</td>
+      <td>${m.name || ""}</td>
+      <td><b>${m.role}</b></td>
+      <td>${fmtDate(m.createdAt)}</td>
+    `;
+    tb.appendChild(tr);
+  }
+}
+
+async function inviteMember(){
+  const email = $("inviteEmail").value.trim();
+  if (!email) return setMsg("Email membre requis", "error");
+  setMsg("Envoi invitation…");
+  await api("/api/org/invite", "POST", { email });
+  setMsg("✅ Invitation envoyée", "ok");
+  $("inviteEmail").value = "";
+  await loadTeam();
+}
+
 // Tabs
 function initTabs(){
   document.querySelectorAll(".tab").forEach(el=>{
@@ -231,6 +264,7 @@ function initTabs(){
       showTab(tab);
       if (tab === "audits") loadAudits().catch(()=>{});
       if (tab === "monitor") loadMonitors().catch(()=>{});
+      if (tab === "team") loadTeam().catch(e=>setMsg(e.message,"error"));
     });
   });
 }
@@ -262,6 +296,7 @@ function initTabs(){
 
   $("btnRunAudit").addEventListener("click", ()=> runAudit().catch(e=>setMsg(e.message,"error")));
   $("btnCreateMon").addEventListener("click", ()=> createMonitor().catch(e=>setMsg(e.message,"error")));
+  $("btnInvite").addEventListener("click", ()=> inviteMember().catch(e=>setMsg(e.message,"error")));
 
   initTabs();
   loadMe().catch(e=>setMsg(e.message,"error"));
