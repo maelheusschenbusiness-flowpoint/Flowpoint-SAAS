@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>FlowPoint AI — Invitation</title>
+  <style>
+    body{font-family:system-ui,Arial;background:#f7f7fb;margin:0}
+    .wrap{max-width:720px;margin:40px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e7e9f2;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.05)}
+    input,button{width:100%;padding:12px;border-radius:12px;border:1px solid #ddd;margin-top:10px;box-sizing:border-box}
+    button{background:#2f5bff;color:#fff;border:none;font-weight:900;cursor:pointer}
+    .muted{color:#666;font-size:14px}
+    .error{color:#b00020;font-weight:900}
+    .ok{color:#0a7a2f;font-weight:900}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Rejoindre l’équipe</h1>
+      <div class="muted">Entre ton email (celui invité) et ton nom.</div>
+
+      <input id="name" placeholder="Nom (optionnel)" />
+      <input id="email" type="email" placeholder="Email invité" required />
+      <button id="btn">Accepter l’invitation</button>
+
+      <div id="msg" class="muted" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <script>
+    const msg = document.getElementById("msg");
+    const btn = document.getElementById("btn");
+    function setMsg(t, type="") {
+      msg.className = type === "error" ? "error" : type === "ok" ? "ok" : "muted";
+      msg.textContent = t || "";
+    }
+
+    btn.addEventListener("click", async ()=>{
+      const params = new URLSearchParams(location.search);
+      const token = params.get("token");
+      const email = document.getElementById("email").value.trim();
+      const name = document.getElementById("name").value.trim();
+
+      if (!token) return setMsg("Token manquant.", "error");
+      if (!email) return setMsg("Email requis.", "error");
+
+      btn.disabled = true;
+      setMsg("Acceptation…");
+
+      try {
+        const r = await fetch("/api/org/invite/accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, email, name })
+        });
+        const d = await r.json().catch(()=> ({}));
+        if (!r.ok) throw new Error(d.error || "Erreur");
+        localStorage.setItem("fp_token", d.token);
+        setMsg("✅ Invitation acceptée. Redirection…", "ok");
+        setTimeout(()=> location.href="/dashboard.html", 800);
+      } catch(e) {
+        setMsg(e.message || "Erreur", "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
