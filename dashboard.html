@@ -6,10 +6,10 @@
   <title>FlowPoint AI — Dashboard</title>
   <style>
     body{font-family:system-ui,Arial;background:#f6f7fb;margin:0}
-    .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
+    .wrap{max-width:1150px;margin:28px auto;padding:0 16px}
     .card{background:#fff;border:1px solid #e7e9f2;border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.05);margin-bottom:14px}
     .row{display:flex;gap:12px;flex-wrap:wrap}
-    .col{flex:1;min-width:260px}
+    .col{flex:1;min-width:280px}
     h1{margin:0 0 6px}
     .muted{color:#666;font-size:14px}
     .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#1d4ed8;font-weight:900;font-size:12px}
@@ -19,24 +19,29 @@
     .btn{background:#2f5bff;color:#fff}
     .btn2{background:#111;color:#fff}
     .btn3{background:#eef2ff;color:#1d4ed8}
+    input,select{padding:10px;border-radius:12px;border:1px solid #d7d9e6;width:100%}
     .box{border:1px solid #eee;border-radius:14px;padding:12px;background:#fafafa}
     .bar{height:10px;border-radius:999px;background:#eaeefc;overflow:hidden;margin-top:8px}
-    .bar > div{height:100%;background:#2f5bff;width:0%}
+    .bar>div{height:100%;background:#2f5bff;width:0%}
     .small{font-size:12px;color:#666}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap}
+    .tab{padding:8px 10px;border-radius:999px;background:#f3f4f6;font-weight:900;cursor:pointer}
+    .tab.active{background:#2f5bff;color:#fff}
     .hidden{display:none}
+    table{width:100%;border-collapse:collapse}
+    td,th{padding:10px;border-bottom:1px solid #eee;text-align:left;font-size:14px}
+    a{color:#2f5bff;font-weight:900;text-decoration:none}
     .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:#f3f4f6;color:#111;font-weight:900;font-size:12px}
-    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
-    #msg{margin-top:10px}
   </style>
 </head>
 <body>
   <div class="wrap">
 
     <div class="card">
-      <div class="top">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">
         <div>
           <h1>Dashboard</h1>
-          <div class="muted">Plan, quotas, accès premium + upgrade Stripe</div>
+          <div class="muted">Audit SEO • Monitoring • PDF • Historique</div>
           <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
             <span class="badge" id="planBadge">PLAN</span>
             <span class="pill" id="trialPill">Trial: —</span>
@@ -44,12 +49,12 @@
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn3" id="btnPricing">Voir offres</button>
+          <button class="btn3" id="btnPricing">Offres</button>
           <button class="btn" id="btnPortal">Gérer / Upgrade</button>
           <button class="btn2" id="btnLogout">Déconnexion</button>
         </div>
       </div>
-      <div id="msg" class="muted"></div>
+      <div id="msg" class="muted" style="margin-top:10px"></div>
     </div>
 
     <div class="card">
@@ -70,50 +75,101 @@
           </div>
 
           <div style="margin-top:10px">
-            <div class="small">Chat: <span id="qc">0/0</span></div>
-            <div class="bar"><div id="bc"></div></div>
+            <div class="small">Monitors (créations): <span id="qm">0/0</span></div>
+            <div class="bar"><div id="bm"></div></div>
           </div>
 
           <div style="margin-top:10px">
-            <div class="small">Monitoring: <span id="qm">0/0</span></div>
-            <div class="bar"><div id="bm"></div></div>
+            <div class="small">PDF: <span id="qp">0/0</span></div>
+            <div class="bar"><div id="bp"></div></div>
           </div>
 
           <div class="small" style="margin-top:10px">Reset: 1er jour du mois (UTC)</div>
         </div>
 
         <div class="col box">
-          <div style="font-weight:900">Actions rapides (démo)</div>
-          <div class="small">Ces boutons consomment des quotas pour vérifier que tout est bien bloqué selon le plan.</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
-            <button class="btn3" id="btnAudit">+1 Audit</button>
-            <button class="btn3" id="btnChat">+1 Chat</button>
-            <button class="btn3" id="btnMonitor">+1 Monitoring (Pro+)</button>
-            <button class="btn3" id="btnUltra">Ultra only</button>
+          <div style="font-weight:900">Navigation</div>
+          <div class="tabs" style="margin-top:10px">
+            <div class="tab active" data-tab="audit">Audit SEO</div>
+            <div class="tab" data-tab="audits">Historique Audits</div>
+            <div class="tab" data-tab="monitor">Monitoring</div>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="card" id="premiumBox">
-      <div style="font-weight:900;font-size:18px">Premium</div>
-      <div class="muted">Sections visibles selon Standard / Pro / Ultra</div>
+    <!-- TAB: Audit run -->
+    <div class="card" id="tab-audit">
+      <div style="font-weight:900;font-size:18px">Audit SEO</div>
+      <div class="muted">Entre une URL (http/https) → score + recommandations + sauvegarde historique.</div>
 
-      <div id="standardUpsell" class="box" style="margin-top:12px">
-        <div class="danger">Standard : fonctionnalités premium verrouillées.</div>
-        <div class="small">Passe en Pro/Ultra pour activer monitoring + quotas supérieurs.</div>
-        <button class="btn" id="btnUpgrade2" style="margin-top:10px">Upgrade</button>
+      <div class="row" style="margin-top:12px">
+        <div class="col">
+          <input id="auditUrl" placeholder="https://exemple.com" />
+        </div>
+        <div style="width:220px">
+          <button class="btn" id="btnRunAudit" style="width:100%">Lancer audit</button>
+        </div>
       </div>
 
-      <div id="proBox" class="box hidden" style="margin-top:12px">
-        <div class="ok">✅ Pro activé</div>
-        <div class="small">Accès monitoring + quotas Pro.</div>
+      <div id="auditResult" class="box hidden" style="margin-top:12px"></div>
+    </div>
+
+    <!-- TAB: Audit history -->
+    <div class="card hidden" id="tab-audits">
+      <div style="font-weight:900;font-size:18px">Historique des audits</div>
+      <div class="muted">Tes derniers audits (PDF disponible).</div>
+
+      <div class="box" style="margin-top:12px;overflow:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>URL</th>
+              <th>Score</th>
+              <th>PDF</th>
+              <th>Détails</th>
+            </tr>
+          </thead>
+          <tbody id="auditsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB: Monitoring -->
+    <div class="card hidden" id="tab-monitor">
+      <div style="font-weight:900;font-size:18px">Monitoring</div>
+      <div class="muted">Crée un monitor (check manuel possible) + historique des checks.</div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="col">
+          <input id="monUrl" placeholder="https://exemple.com" />
+        </div>
+        <div style="width:220px">
+          <input id="monInterval" type="number" min="5" value="60" />
+          <div class="small">Interval minutes (min 5)</div>
+        </div>
+        <div style="width:220px">
+          <button class="btn" id="btnCreateMon" style="width:100%">Créer monitor</button>
+        </div>
       </div>
 
-      <div id="ultraBox" class="box hidden" style="margin-top:12px">
-        <div class="ok">🚀 Ultra activé</div>
-        <div class="small">Accès Ultra-only + quotas maximum.</div>
+      <div class="box" style="margin-top:12px;overflow:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>URL</th>
+              <th>Actif</th>
+              <th>Dernier status</th>
+              <th>Dernier check</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="monTbody"></tbody>
+        </table>
       </div>
+
+      <div id="monLogsBox" class="box hidden" style="margin-top:12px;overflow:auto"></div>
     </div>
 
   </div>
