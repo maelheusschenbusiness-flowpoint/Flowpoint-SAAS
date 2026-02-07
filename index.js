@@ -1,10 +1,8 @@
 // =======================
-// FlowPoint AI – SaaS Backend (Pack A complet)
+// FlowPoint AI – SaaS Backend (Pack A + Pack B)
 // Plans: Standard / Pro / Ultra
-// Features: SEO Audit + Cache + PDF + Monitoring (manual) + Logs + CSV Export
-// Auth: JWT + Login par email (magic link)
-// Stripe: Checkout + Portal + Webhook (block/unblock)
-// Admin: endpoints protégés par ADMIN_KEY
+// Pack A: SEO Audit + Cache + PDF + Monitoring + Logs + CSV + Magic Link + Admin
+// Pack B: Orgs + Team Ultra (Invites) + Roles + Shared data per org
 // =======================
 
 require("dotenv").config();
@@ -49,7 +47,7 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
 const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
 
-// SMTP (pour login email + alertes/cron)
+// SMTP
 const SMTP_READY =
   !!process.env.SMTP_HOST &&
   !!process.env.SMTP_PORT &&
@@ -66,7 +64,7 @@ function getMailer() {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
-    secure: boolEnv(process.env.SMTP_SECURE), // true pour 465
+    secure: boolEnv(process.env.SMTP_SECURE),
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
 }
@@ -87,11 +85,9 @@ async function sendEmail({ to, subject, text, html }) {
   console.log("✅ Email envoyé:", info.messageId);
 }
 
-function safeHostBaseUrl(req) {
-  // On force PUBLIC_BASE_URL si fourni (recommandé)
-  const base = process.env.PUBLIC_BASE_URL;
-  if (base) return base.replace(/\/+$/, "");
-  // fallback
+function safeBaseUrl(req) {
+  const base = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  if (base) return base;
   return `https://${req.headers.host}`;
 }
 
@@ -102,7 +98,6 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     const sig = req.headers["stripe-signature"];
     const event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
 
-    // Helper: set access / status
     async function setBlockedByCustomer(customerId, blocked, status) {
       await User.updateOne(
         { stripeCustomerId: customerId },
@@ -130,11 +125,9 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         user.subscriptionStatus = sub.status;
         user.lastPaymentStatus = sub.status;
 
-        // block logic
         if (["active", "trialing"].includes(sub.status)) user.accessBlocked = false;
         if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(sub.status)) user.accessBlocked = true;
 
-        // plan from priceId (source of truth)
         if (priceId === process.env.STRIPE_PRICE_ID_STANDARD) user.plan = "standard";
         if (priceId === process.env.STRIPE_PRICE_ID_PRO) user.plan = "pro";
         if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) user.plan = "ultra";
@@ -160,19 +153,8 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
 // ---------- SECURITY / PARSERS ----------
 app.use(helmet({ contentSecurityPolicy: false }));
-
-// CORS: autorise ton domaine + même origin
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-  })
-);
-
-// Rate limiting global API
+app.use(cors({ origin: true, credentials: true }));
 app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
-
-// Parsers (après webhook raw)
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -185,7 +167,7 @@ mongoose
   .then(() => console.log("✅ MongoDB connecté"))
   .catch((e) => console.log("❌ MongoDB erreur:", e.message));
 
-// ---------- QUOTAS & PLANS ----------
+// ---------- PLANS / QUOTAS ----------
 function planRank(plan) {
   const map = { standard: 1, pro: 2, ultra: 3 };
   return map[String(plan || "").toLowerCase()] || 0;
@@ -193,11 +175,10 @@ function planRank(plan) {
 
 function quotasForPlan(plan) {
   const p = String(plan || "").toLowerCase();
-  // Pack A quotas (tu peux ajuster)
-  if (p === "standard") return { audits: 30, monitors: 3, pdf: 30, exports: 30 };
-  if (p === "pro") return { audits: 300, monitors: 50, pdf: 300, exports: 300 };
-  if (p === "ultra") return { audits: 2000, monitors: 300, pdf: 2000, exports: 2000 };
-  return { audits: 0, monitors: 0, pdf: 0, exports: 0 };
+  if (p === "standard") return { audits: 30, monitors: 3, pdf: 30, exports: 30, teamSeats: 1 };
+  if (p === "pro") return { audits: 300, monitors: 50, pdf: 300, exports: 300, teamSeats: 1 };
+  if (p === "ultra") return { audits: 2000, monitors: 300, pdf: 2000, exports: 2000, teamSeats: 10 };
+  return { audits: 0, monitors: 0, pdf: 0, exports: 0, teamSeats: 0 };
 }
 
 function firstDayOfThisMonthUTC() {
@@ -244,14 +225,7 @@ function priceIdForPlan(plan) {
 
 // ---------- ANTI-ABUS ----------
 const PUBLIC_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "outlook.com",
-  "hotmail.com",
-  "icloud.com",
-  "live.com",
-  "msn.com",
+  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "live.com", "msn.com"
 ]);
 
 function normalizeEmail(emailRaw) {
@@ -261,8 +235,6 @@ function normalizeEmail(emailRaw) {
   let [local, domain] = parts;
 
   if (domain === "googlemail.com") domain = "gmail.com";
-
-  // Gmail: remove dots + plus alias
   if (domain === "gmail.com") {
     const plusIndex = local.indexOf("+");
     if (plusIndex >= 0) local = local.slice(0, plusIndex);
@@ -283,15 +255,27 @@ function domainFromEmail(emailNorm) {
   return String(emailNorm || "").split("@")[1] || "";
 }
 
-function makeFingerprint(req) {
-  // pour rate limiting anti-abus (IP+UA)
+function ipuaHash(req) {
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
   const ua = (req.headers["user-agent"] || "").toString();
-  const base = `${ip}||${ua}`;
-  return crypto.createHash("sha256").update(base).digest("hex");
+  return crypto.createHash("sha256").update(`${ip}||${ua}`).digest("hex");
 }
 
 // ---------- MODELS ----------
+// Org (Pack B)
+const OrgSchema = new mongoose.Schema(
+  {
+    name: String,
+    normalizedName: { type: String, unique: true, index: true },
+    ownerUserId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    // For future: billing at org level
+    createdFromEmailDomain: String,
+  },
+  { timestamps: true }
+);
+
+// User
 const UserSchema = new mongoose.Schema(
   {
     email: { type: String, unique: true, index: true },
@@ -301,6 +285,10 @@ const UserSchema = new mongoose.Schema(
     companyName: String,
     companyNameNormalized: { type: String, index: true },
     companyDomain: { type: String, index: true },
+
+    // Pack B
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    role: { type: String, enum: ["owner", "member"], default: "owner" },
 
     plan: { type: String, enum: ["standard", "pro", "ultra"], default: "standard" },
 
@@ -344,9 +332,28 @@ const LoginTokenSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Invite (Pack B)
+const InviteSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    invitedEmail: { type: String, index: true },
+    invitedEmailNormalized: { type: String, index: true },
+
+    tokenHash: { type: String, unique: true, index: true },
+    expiresAt: { type: Date, index: true },
+    acceptedAt: Date,
+
+    createdByUserId: { type: mongoose.Schema.Types.ObjectId, index: true },
+  },
+  { timestamps: true }
+);
+
+// Data now linked to org (Pack B)
 const AuditSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true }, // who ran it (optional)
+
     url: { type: String, index: true },
     urlNormalized: { type: String, index: true },
 
@@ -356,7 +363,6 @@ const AuditSchema = new mongoose.Schema(
 
     findings: Object,
     recommendations: [String],
-
     htmlSnapshot: String,
   },
   { timestamps: true }
@@ -364,7 +370,9 @@ const AuditSchema = new mongoose.Schema(
 
 const MonitorSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true }, // creator
+
     url: String,
     active: { type: Boolean, default: true },
     intervalMinutes: { type: Number, default: 60 },
@@ -380,8 +388,10 @@ const MonitorSchema = new mongoose.Schema(
 
 const MonitorLogSchema = new mongoose.Schema(
   {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
     userId: { type: mongoose.Schema.Types.ObjectId, index: true },
     monitorId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
     url: String,
     status: { type: String, enum: ["up", "down"], default: "down" },
     httpStatus: Number,
@@ -392,14 +402,16 @@ const MonitorLogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const Org = mongoose.model("Org", OrgSchema);
 const User = mongoose.model("User", UserSchema);
 const TrialRegistry = mongoose.model("TrialRegistry", TrialRegistrySchema);
 const LoginToken = mongoose.model("LoginToken", LoginTokenSchema);
+const Invite = mongoose.model("Invite", InviteSchema);
 const Audit = mongoose.model("Audit", AuditSchema);
 const Monitor = mongoose.model("Monitor", MonitorSchema);
 const MonitorLog = mongoose.model("MonitorLog", MonitorLogSchema);
 
-// ---------- AUTH HELPERS ----------
+// ---------- AUTH ----------
 function signToken(user) {
   return jwt.sign({ uid: user._id.toString(), email: user.email }, process.env.JWT_SECRET, { expiresIn: "30d" });
 }
@@ -416,13 +428,36 @@ function auth(req, res, next) {
   }
 }
 
+async function ensureOrgForUser(user) {
+  if (user.orgId) return user;
+
+  const normalized = normalizeCompanyName(user.companyName || "Organisation");
+  const domain = user.companyDomain || "";
+
+  // Try find existing org by normalizedName
+  let org = await Org.findOne({ normalizedName: normalized });
+
+  if (!org) {
+    org = await Org.create({
+      name: user.companyName || "Organisation",
+      normalizedName: normalized,
+      ownerUserId: user._id,
+      createdFromEmailDomain: domain,
+    });
+  }
+
+  user.orgId = org._id;
+  user.role = user.role || "owner";
+  await user.save();
+  return user;
+}
+
 async function requireActive(req, res, next) {
   const user = await User.findById(req.user.uid);
   if (!user) return res.status(404).json({ error: "User introuvable" });
 
-  // Trial expired => block (si pas déjà un abo actif qui aurait débloqué via webhook)
+  // trial expired => block if not active subscription
   if (user.hasTrial && user.trialEndsAt && new Date(user.trialEndsAt).getTime() < Date.now()) {
-    // si l'abonnement n'est pas actif, on bloque
     const st = String(user.subscriptionStatus || "").toLowerCase();
     const active = st === "active" || st === "trialing";
     if (!active) {
@@ -435,6 +470,8 @@ async function requireActive(req, res, next) {
   if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / essai terminé)" });
 
   await resetUsageIfNewMonth(user);
+  await ensureOrgForUser(user);
+
   req.dbUser = user;
   next();
 }
@@ -446,7 +483,11 @@ function requirePlan(minPlan) {
   };
 }
 
-// Admin key
+function requireOwner(req, res, next) {
+  if (req.dbUser.role !== "owner") return res.status(403).json({ error: "Owner requis" });
+  next();
+}
+
 function requireAdmin(req, res, next) {
   if (!ADMIN_KEY) return res.status(500).json({ error: "ADMIN_KEY manquante" });
   const k = req.headers["x-admin-key"] || req.query.admin_key;
@@ -454,7 +495,7 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// ---------- SEO AUDIT HELPERS ----------
+// ---------- SEO AUDIT ----------
 async function fetchWithTiming(url) {
   const t0 = Date.now();
   const r = await fetch(url, { redirect: "follow" });
@@ -476,8 +517,6 @@ function scoreAudit(checks) {
   penalize(!checks.https.ok, 12);
   penalize(!checks.viewport.ok, 6);
   penalize(!checks.og.ok, 4);
-
-  // perf
   penalize(!checks.responseTime.ok, 8);
 
   if (score < 0) score = 0;
@@ -506,7 +545,6 @@ function normalizeUrl(url) {
   try {
     const u = new URL(url);
     u.hash = "";
-    // on garde query (souvent utile), mais tu peux la supprimer si tu veux
     return u.toString();
   } catch {
     return String(url || "").trim();
@@ -597,12 +635,13 @@ app.get("/success", (_, res) => res.sendFile(path.join(__dirname, "success.html"
 app.get("/cancel", (_, res) => res.sendFile(path.join(__dirname, "cancel.html")));
 app.get("/login", (_, res) => res.sendFile(path.join(__dirname, "login.html")));
 app.get("/login-verify", (_, res) => res.sendFile(path.join(__dirname, "login-verify.html")));
+app.get("/invite-accept", (_, res) => res.sendFile(path.join(__dirname, "invite-accept.html")));
 app.get("/admin", (_, res) => res.sendFile(path.join(__dirname, "admin.html")));
 
 // ---------- API ----------
 app.get("/api/health", (_, res) => res.json({ ok: true }));
 
-// ---------- AUTH: LEAD + TOKEN + anti-abus + trial reservation ----------
+// ---------- AUTH: LEAD ----------
 const leadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
 app.post("/api/auth/lead", leadLimiter, async (req, res) => {
   try {
@@ -615,25 +654,16 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     const emailNorm = normalizeEmail(email);
     const domain = domainFromEmail(emailNorm);
     const companyNorm = normalizeCompanyName(companyName);
-    const ipua = makeFingerprint(req);
+    const ipua = ipuaHash(req);
 
-    // anti abus: 1 trial par email normalisé
-    const usedByEmail = await TrialRegistry.findOne({ emailNormalized: emailNorm });
-    if (usedByEmail) return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
+    // anti-abus
+    if (await TrialRegistry.findOne({ emailNormalized: emailNorm })) return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
+    if (await TrialRegistry.findOne({ companyNameNormalized: companyNorm })) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
 
-    // anti abus: 1 trial par entreprise (nom)
-    const usedByCompany = await TrialRegistry.findOne({ companyNameNormalized: companyNorm });
-    if (usedByCompany) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
-
-    // anti abus: si email pro (pas gmail/outlook), 1 trial par domaine
     if (domain && !PUBLIC_EMAIL_DOMAINS.has(domain)) {
-      const usedByDomain = await TrialRegistry.findOne({ companyDomain: domain });
-      if (usedByDomain) return res.status(403).json({ error: "Essai déjà utilisé pour ce domaine entreprise." });
+      if (await TrialRegistry.findOne({ companyDomain: domain })) return res.status(403).json({ error: "Essai déjà utilisé pour ce domaine entreprise." });
     }
-
-    // anti abus: limite ip+ua (soft)
-    const usedByIpua = await TrialRegistry.findOne({ ipua });
-    if (usedByIpua) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus navigateur/IP)." });
+    if (await TrialRegistry.findOne({ ipua })) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus navigateur/IP)." });
 
     let user = await User.findOne({ emailNormalized: emailNorm });
     if (!user) {
@@ -641,13 +671,13 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
         email: String(email).toLowerCase(),
         emailNormalized: emailNorm,
         name: firstName || "",
-        companyName: companyName,
+        companyName,
         companyNameNormalized: companyNorm,
         companyDomain: domain,
         plan: chosenPlan,
+        role: "owner",
       });
     } else {
-      // update safe fields
       user.email = String(email).toLowerCase();
       user.name = firstName || user.name;
       user.companyName = companyName || user.companyName;
@@ -657,21 +687,16 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
       await user.save();
     }
 
-    // réserve l'essai
-    await TrialRegistry.create({
-      emailNormalized: emailNorm,
-      companyNameNormalized: companyNorm,
-      companyDomain: domain,
-      ipua,
-    });
+    // reserve trial
+    await TrialRegistry.create({ emailNormalized: emailNorm, companyNameNormalized: companyNorm, companyDomain: domain, ipua });
+
+    // ensure org
+    await ensureOrgForUser(user);
 
     return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("lead error:", e.message);
-    // duplicate key => essai déjà utilisé
-    if (String(e.message || "").includes("duplicate key")) {
-      return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
-    }
+    if (String(e.message || "").includes("duplicate key")) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
     return res.status(500).json({ error: "Erreur serveur lead" });
   }
 });
@@ -688,21 +713,20 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
     const user = await User.findOne({ emailNormalized: emailNorm });
     if (!user) return res.status(404).json({ error: "Aucun compte pour cet email" });
 
-    // generate token
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
     const expiresAt = new Date(Date.now() + LOGIN_LINK_TTL_MINUTES * 60 * 1000);
 
     await LoginToken.create({ userId: user._id, tokenHash, expiresAt });
 
-    const baseUrl = process.env.PUBLIC_BASE_URL.replace(/\/+$/, "");
+    const baseUrl = safeBaseUrl(req);
     const link = `${baseUrl}/login-verify.html?token=${raw}`;
 
     await sendEmail({
       to: user.email,
       subject: "FlowPoint AI — Lien de connexion",
-      text: `Voici ton lien de connexion (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
-      html: `<p>Voici ton lien de connexion (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
+      text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
+      html: `<p>Lien (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
     });
 
     return res.json({ ok: true });
@@ -729,6 +753,8 @@ app.get("/api/auth/login-verify", async (req, res) => {
     lt.usedAt = new Date();
     await lt.save();
 
+    await ensureOrgForUser(user);
+
     return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("login-verify error:", e.message);
@@ -746,7 +772,6 @@ app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
     const priceId = priceIdForPlan(chosenPlan);
     if (!priceId) return res.status(500).json({ error: "PriceId manquant" });
 
-    // Customer
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -759,7 +784,7 @@ app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
       await user.save();
     }
 
-    const baseUrl = safeHostBaseUrl(req);
+    const baseUrl = safeBaseUrl(req);
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -804,20 +829,17 @@ app.get("/api/stripe/verify", async (req, res) => {
       user.trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     }
 
-    const plan = String(session.metadata?.plan || "").toLowerCase();
-    if (["standard", "pro", "ultra"].includes(plan)) user.plan = plan;
-
     user.accessBlocked = false;
     user.lastPaymentStatus = "checkout_verified";
     user.subscriptionStatus = user.subscriptionStatus || "trialing";
 
+    await ensureOrgForUser(user);
     await user.save();
 
-    // email welcome (optionnel)
     await sendEmail({
       to: user.email,
       subject: "Bienvenue sur FlowPoint AI",
-      text: `Ton essai est actif. Tu peux accéder au dashboard: ${process.env.PUBLIC_BASE_URL}/dashboard.html`,
+      text: `Ton essai est actif. Dashboard: ${safeBaseUrl({ headers: { host: "" } })}/dashboard.html`,
       html: `<p>Ton essai est actif ✅</p><p>Dashboard: <a href="${process.env.PUBLIC_BASE_URL}/dashboard.html">${process.env.PUBLIC_BASE_URL}/dashboard.html</a></p>`,
     });
 
@@ -834,7 +856,7 @@ app.post("/api/stripe/portal", auth, requireActive, async (req, res) => {
     const user = req.dbUser;
     if (!user.stripeCustomerId) return res.status(400).json({ error: "Customer Stripe manquant" });
 
-    const baseUrl = safeHostBaseUrl(req);
+    const baseUrl = safeBaseUrl(req);
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
       return_url: `${baseUrl}/dashboard.html`,
@@ -847,21 +869,26 @@ app.post("/api/stripe/portal", auth, requireActive, async (req, res) => {
   }
 });
 
-// ---------- ME (dashboard) ----------
+// ---------- ME ----------
 app.get("/api/me", auth, requireActive, async (req, res) => {
   const u = req.dbUser;
   const q = quotasForPlan(u.plan);
+  const org = u.orgId ? await Org.findById(u.orgId) : null;
 
   return res.json({
     email: u.email,
     name: u.name,
     companyName: u.companyName,
     plan: u.plan,
+    role: u.role,
+    org: org ? { id: org._id, name: org.name } : null,
+
     hasTrial: u.hasTrial,
     trialEndsAt: u.trialEndsAt,
     accessBlocked: u.accessBlocked,
     lastPaymentStatus: u.lastPaymentStatus || "",
     subscriptionStatus: u.subscriptionStatus || "",
+
     usage: {
       month: u.usageMonth,
       audits: { used: u.usedAudits, limit: q.audits },
@@ -873,19 +900,131 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
 });
 
 //
-// ===== FEATURE: SEO AUDIT + HISTORY + CACHE =====
+// ===== ORG / TEAM (Ultra) =====
 //
 
-// Run audit (cache: si audit < AUDIT_CACHE_HOURS, on renvoie sans consommer quota)
+// Org members (Ultra only)
+app.get("/api/org/members", auth, requireActive, requirePlan("ultra"), async (req, res) => {
+  const members = await User.find({ orgId: req.dbUser.orgId }).select("email name role createdAt").sort({ createdAt: 1 });
+  return res.json({ ok: true, members });
+});
+
+// Invite member (owner + Ultra)
+app.post("/api/org/invite", auth, requireActive, requirePlan("ultra"), requireOwner, async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim();
+    if (!email) return res.status(400).json({ error: "Email requis" });
+
+    const emailNorm = normalizeEmail(email);
+
+    // Seats limit
+    const q = quotasForPlan(req.dbUser.plan);
+    const membersCount = await User.countDocuments({ orgId: req.dbUser.orgId });
+    if (membersCount >= q.teamSeats) return res.status(403).json({ error: `Limite de membres atteinte (${q.teamSeats}).` });
+
+    // Already in org
+    const already = await User.findOne({ orgId: req.dbUser.orgId, emailNormalized: emailNorm });
+    if (already) return res.status(400).json({ error: "Ce membre est déjà dans l’organisation." });
+
+    // Create invite token
+    const raw = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
+
+    await Invite.create({
+      orgId: req.dbUser.orgId,
+      invitedEmail: email.toLowerCase(),
+      invitedEmailNormalized: emailNorm,
+      tokenHash,
+      expiresAt,
+      createdByUserId: req.dbUser._id,
+    });
+
+    const baseUrl = safeBaseUrl(req);
+    const link = `${baseUrl}/invite-accept.html?token=${raw}`;
+
+    await sendEmail({
+      to: email.toLowerCase(),
+      subject: "FlowPoint AI — Invitation à rejoindre une équipe",
+      text: `Tu as été invité à rejoindre l’équipe ${req.dbUser.companyName}. Lien: ${link}`,
+      html: `<p>Tu as été invité à rejoindre l’équipe <b>${req.dbUser.companyName}</b>.</p><p><a href="${link}">Accepter l’invitation</a></p><p>Lien: ${link}</p>`,
+    });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.log("invite error:", e.message);
+    if (String(e.message || "").includes("duplicate key")) return res.status(400).json({ error: "Invitation déjà existante." });
+    return res.status(500).json({ error: "Erreur invite" });
+  }
+});
+
+// Accept invite -> creates/links user as member (if user exists, links; else creates minimal user and sends login link)
+app.post("/api/org/invite/accept", async (req, res) => {
+  try {
+    const raw = String(req.body?.token || "");
+    const name = String(req.body?.name || "").trim();
+    const email = String(req.body?.email || "").trim();
+
+    if (!raw) return res.status(400).json({ error: "Token manquant" });
+    if (!email) return res.status(400).json({ error: "Email requis" });
+
+    const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+    const inv = await Invite.findOne({ tokenHash });
+    if (!inv) return res.status(400).json({ error: "Invitation invalide" });
+    if (inv.acceptedAt) return res.status(400).json({ error: "Invitation déjà utilisée" });
+    if (inv.expiresAt && new Date(inv.expiresAt).getTime() < Date.now()) return res.status(400).json({ error: "Invitation expirée" });
+
+    const emailNorm = normalizeEmail(email);
+    if (emailNorm !== inv.invitedEmailNormalized) return res.status(400).json({ error: "Cet email ne correspond pas à l’invitation" });
+
+    // Find or create user
+    let user = await User.findOne({ emailNormalized: emailNorm });
+    if (!user) {
+      user = await User.create({
+        email: email.toLowerCase(),
+        emailNormalized: emailNorm,
+        name: name || "",
+        companyName: "Team Member",
+        companyNameNormalized: "team-member",
+        companyDomain: domainFromEmail(emailNorm),
+        plan: "standard", // plan perso n’a pas d’importance, l’accès org se base sur org + plan owner? (simplifié)
+        role: "member",
+        orgId: inv.orgId,
+        accessBlocked: false,
+      });
+    } else {
+      user.orgId = inv.orgId;
+      user.role = "member";
+      user.accessBlocked = false;
+      if (name && !user.name) user.name = name;
+      await user.save();
+    }
+
+    inv.acceptedAt = new Date();
+    await inv.save();
+
+    // Donne un token direct + login
+    const jwtToken = signToken(user);
+
+    return res.json({ ok: true, token: jwtToken });
+  } catch (e) {
+    console.log("invite accept error:", e.message);
+    return res.status(500).json({ error: "Erreur accept invitation" });
+  }
+});
+
+//
+// ===== SEO AUDIT + CACHE (org-shared) =====
+//
 app.post("/api/audits/run", auth, requireActive, async (req, res) => {
   const url = String(req.body?.url || "").trim();
-  if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (doit commencer par http/https)" });
+  if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (http/https)" });
 
   const urlNorm = normalizeUrl(url);
   const cutoff = new Date(Date.now() - AUDIT_CACHE_HOURS * 60 * 60 * 1000);
 
   const cached = await Audit.findOne({
-    userId: req.dbUser._id,
+    orgId: req.dbUser.orgId,
     urlNormalized: urlNorm,
     createdAt: { $gte: cutoff },
   }).sort({ createdAt: -1 });
@@ -906,6 +1045,7 @@ app.post("/api/audits/run", auth, requireActive, async (req, res) => {
   const out = await runSeoAudit(urlNorm);
 
   const audit = await Audit.create({
+    orgId: req.dbUser.orgId,
     userId: req.dbUser._id,
     url: urlNorm,
     urlNormalized: urlNorm,
@@ -920,24 +1060,19 @@ app.post("/api/audits/run", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, cached: false, auditId: audit._id, score: audit.score, summary: audit.summary });
 });
 
-// List audits
 app.get("/api/audits", auth, requireActive, async (req, res) => {
-  const list = await Audit.find({ userId: req.dbUser._id }).sort({ createdAt: -1 }).limit(50);
+  const list = await Audit.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(50);
   return res.json({ ok: true, audits: list });
 });
 
-// Audit detail
 app.get("/api/audits/:id", auth, requireActive, async (req, res) => {
-  const a = await Audit.findOne({ _id: req.params.id, userId: req.dbUser._id });
+  const a = await Audit.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!a) return res.status(404).json({ error: "Audit introuvable" });
   return res.json({ ok: true, audit: a });
 });
 
-//
-// ===== FEATURE: PDF REPORT (audit) =====
-//
 app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
-  const a = await Audit.findOne({ _id: req.params.id, userId: req.dbUser._id });
+  const a = await Audit.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!a) return res.status(404).json({ error: "Audit introuvable" });
 
   const ok = await consume(req.dbUser, "pdf", 1);
@@ -949,7 +1084,6 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   const doc = new PDFDocument({ margin: 48 });
   doc.pipe(res);
 
-  // Branding simple
   doc.fontSize(22).text("FlowPoint AI", { continued: true }).fontSize(22).text("  — Rapport SEO");
   doc.moveDown(0.5);
   doc.fontSize(12).text(`URL: ${a.url}`);
@@ -980,10 +1114,8 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
 });
 
 //
-// ===== FEATURE: MONITORING (manual) + LOGS + HISTORY =====
+// ===== MONITORS (org-shared) =====
 //
-
-// Create monitor (quota = nombre de créations)
 app.post("/api/monitors", auth, requireActive, async (req, res) => {
   const url = String(req.body?.url || "").trim();
   const intervalMinutes = Number(req.body?.intervalMinutes || 60);
@@ -995,6 +1127,7 @@ app.post("/api/monitors", auth, requireActive, async (req, res) => {
   if (!ok) return res.status(429).json({ error: "Quota monitors dépassé" });
 
   const m = await Monitor.create({
+    orgId: req.dbUser.orgId,
     userId: req.dbUser._id,
     url,
     intervalMinutes,
@@ -1004,15 +1137,13 @@ app.post("/api/monitors", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, monitor: m });
 });
 
-// List monitors
 app.get("/api/monitors", auth, requireActive, async (req, res) => {
-  const list = await Monitor.find({ userId: req.dbUser._id }).sort({ createdAt: -1 }).limit(50);
+  const list = await Monitor.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(50);
   return res.json({ ok: true, monitors: list });
 });
 
-// Toggle / update monitor
 app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
-  const m = await Monitor.findOne({ _id: req.params.id, userId: req.dbUser._id });
+  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
   if (typeof req.body?.active === "boolean") m.active = req.body.active;
@@ -1026,9 +1157,8 @@ app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, monitor: m });
 });
 
-// Run monitor now (manual)
 app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
-  const m = await Monitor.findOne({ _id: req.params.id, userId: req.dbUser._id });
+  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
   if (!m.active) return res.status(400).json({ error: "Monitor inactif" });
 
@@ -1039,6 +1169,7 @@ app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
   await m.save();
 
   await MonitorLog.create({
+    orgId: req.dbUser.orgId,
     userId: req.dbUser._id,
     monitorId: m._id,
     url: m.url,
@@ -1051,20 +1182,16 @@ app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, result: r });
 });
 
-// Logs
 app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
-  const m = await Monitor.findOne({ _id: req.params.id, userId: req.dbUser._id });
+  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
-  const logs = await MonitorLog.find({ userId: req.dbUser._id, monitorId: m._id })
-    .sort({ checkedAt: -1 })
-    .limit(200);
-
+  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id }).sort({ checkedAt: -1 }).limit(200);
   return res.json({ ok: true, logs });
 });
 
 //
-// ===== EXPORTS CSV =====
+// ===== EXPORTS CSV (org-shared) =====
 //
 function csvEscape(v) {
   const s = String(v ?? "");
@@ -1076,7 +1203,7 @@ app.get("/api/export/audits.csv", auth, requireActive, async (req, res) => {
   const ok = await consume(req.dbUser, "exports", 1);
   if (!ok) return res.status(429).json({ error: "Quota exports dépassé" });
 
-  const list = await Audit.find({ userId: req.dbUser._id }).sort({ createdAt: -1 }).limit(500);
+  const list = await Audit.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(500);
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="flowpoint-audits.csv"`);
@@ -1097,7 +1224,7 @@ app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
   const ok = await consume(req.dbUser, "exports", 1);
   if (!ok) return res.status(429).json({ error: "Quota exports dépassé" });
 
-  const list = await Monitor.find({ userId: req.dbUser._id }).sort({ createdAt: -1 }).limit(500);
+  const list = await Monitor.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(500);
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="flowpoint-monitors.csv"`);
@@ -1147,21 +1274,5 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/admin/user/delete", requireAdmin, async (req, res) => {
-  const email = String(req.body?.email || "").trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: "email manquant" });
-
-  const u = await User.findOne({ email });
-  if (!u) return res.json({ ok: true });
-
-  await Audit.deleteMany({ userId: u._id });
-  await MonitorLog.deleteMany({ userId: u._id });
-  await Monitor.deleteMany({ userId: u._id });
-  await LoginToken.deleteMany({ userId: u._id });
-  await User.deleteOne({ _id: u._id });
-
-  res.json({ ok: true });
-});
-
 // ---------- START ----------
-app.listen(PORT, () => console.log(`✅ FlowPoint SaaS (Pack A) lancé sur port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ FlowPoint SaaS (Pack B) lancé sur port ${PORT}`));
