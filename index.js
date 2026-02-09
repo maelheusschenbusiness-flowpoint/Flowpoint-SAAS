@@ -3,6 +3,13 @@
 // Plans: Standard / Pro / Ultra
 // Pack A: SEO Audit + Cache + PDF + Monitoring + Logs + CSV + Magic Link + Admin
 // Pack B: Orgs + Team Ultra (Invites) + Roles + Shared data per org
+//
+// ✅ ADD (4/5/6):
+// 4) Cron endpoint sécurisé pour exécuter automatiquement les monitors
+// 5) Alertes email sur DOWN/UP (selon settings org + emails extra)
+// 6) Rapport monitoring mensuel Ultra + export PDF
+// + Fix: OrgSchema manquait alertRecipients/alertExtraEmails => settings cassés
+// + Compat: /api/org/settings alias des monitor-settings (pour dashboard fallback)
 // =======================
 
 require("dotenv").config();
@@ -47,6 +54,10 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
 const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
 
+// ✅ Cron key (pour Render cron / GitHub actions / autre)
+const CRON_KEY = process.env.CRON_KEY || "";
+if (!CRON_KEY) console.log("⚠️ CRON_KEY manquante (cron monitors non sécurisé / désactivé)");
+
 // SMTP
 const SMTP_READY =
   !!process.env.SMTP_HOST &&
@@ -69,7 +80,6 @@ function getMailer() {
   });
 }
 
-// ✅ FIX: support attachments optionnels (sans casser les anciens appels)
 async function sendEmail({ to, subject, text, html, attachments }) {
   const t = getMailer();
   if (!t) {
@@ -82,7 +92,7 @@ async function sendEmail({ to, subject, text, html, attachments }) {
     subject,
     text,
     html,
-    attachments: Array.isArray(attachments) ? attachments : undefined,
+    attachments,
   });
   console.log("✅ Email envoyé:", info.messageId);
 }
@@ -274,9 +284,9 @@ const OrgSchema = new mongoose.Schema(
     // For future: billing at org level
     createdFromEmailDomain: String,
 
-    // ✅ ADD: monitoring recipients settings (cron attends ces champs sur orgs)
+    // ✅ FIX: settings monitoring doivent être au niveau ORG
     alertRecipients: { type: String, default: "all" }, // "owner" | "all"
-    alertExtraEmails: { type: [String], default: [] }, // ex: ["ops@..."]
+    alertExtraEmails: { type: [String], default: [] },
   },
   { timestamps: true }
 );
@@ -292,9 +302,9 @@ const UserSchema = new mongoose.Schema(
     companyNameNormalized: { type: String, index: true },
     companyDomain: { type: String, index: true },
 
-    // +++ ADD (tu l’avais mis ici aussi: on le garde, même si l’org est la source principale)
-    alertRecipients: { type: String, default: "all" }, // "owner" | "all"
-    alertExtraEmails: { type: [String], default: [] }, // ex: ["ops@..."]
+    // (ok de laisser, mais les settings utilisés sont ceux de Org)
+    alertRecipients: { type: String, default: "all" },
+    alertExtraEmails: { type: [String], default: [] },
 
     // Pack B
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
@@ -444,7 +454,6 @@ async function ensureOrgForUser(user) {
   const normalized = normalizeCompanyName(user.companyName || "Organisation");
   const domain = user.companyDomain || "";
 
-  // Try find existing org by normalizedName
   let org = await Org.findOne({ normalizedName: normalized });
 
   if (!org) {
@@ -468,7 +477,6 @@ async function requireActive(req, res, next) {
   const user = await User.findById(req.user.uid);
   if (!user) return res.status(404).json({ error: "User introuvable" });
 
-  // trial expired => block if not active subscription
   if (user.hasTrial && user.trialEndsAt && new Date(user.trialEndsAt).getTime() < Date.now()) {
     const st = String(user.subscriptionStatus || "").toLowerCase();
     const active = st === "active" || st === "trialing";
@@ -504,6 +512,14 @@ function requireAdmin(req, res, next) {
   if (!ADMIN_KEY) return res.status(500).json({ error: "ADMIN_KEY manquante" });
   const k = req.headers["x-admin-key"] || req.query.admin_key;
   if (k !== ADMIN_KEY) return res.status(401).json({ error: "Admin non autorisé" });
+  next();
+}
+
+// ✅ Cron auth
+function requireCron(req, res, next) {
+  if (!CRON_KEY) return res.status(500).json({ error: "CRON_KEY manquante" });
+  const k = req.headers["x-cron-key"] || req.query.cron_key;
+  if (k !== CRON_KEY) return res.status(401).json({ error: "Cron non autorisé" });
   next();
 }
 
@@ -639,6 +655,100 @@ async function checkUrlOnce(url) {
   }
 }
 
+// ✅ Helpers alerting
+function uniqEmails(arr) {
+  const out = [];
+  const seen = new Set();
+  for (const x of arr || []) {
+    const e = String(x || "").trim().toLowerCase();
+    if (!e) continue;
+    if (seen.has(e)) continue;
+    seen.add(e);
+    out.push(e);
+  }
+  return out;
+}
+
+async function getOrgAlertEmails(orgId) {
+  const org = await Org.findById(orgId).select("alertRecipients alertExtraEmails ownerUserId name");
+  if (!org) return [];
+
+  const recipientsMode = String(org.alertRecipients || "all").toLowerCase();
+  const extra = Array.isArray(org.alertExtraEmails) ? org.alertExtraEmails : [];
+
+  let base = [];
+  if (recipientsMode === "owner") {
+    const owner = org.ownerUserId ? await User.findById(org.ownerUserId).select("email") : null;
+    if (owner?.email) base.push(owner.email);
+  } else {
+    const users = await User.find({ orgId }).select("email");
+    base.push(...users.map((u) => u.email).filter(Boolean));
+  }
+
+  return uniqEmails([...base, ...extra]).slice(0, 60);
+}
+
+function formatMonitorEmail({ orgName, monitorUrl, status, httpStatus, responseTimeMs, checkedAt, error }) {
+  const when = checkedAt ? new Date(checkedAt).toLocaleString("fr-FR") : new Date().toLocaleString("fr-FR");
+  const statusLabel = status === "down" ? "DOWN" : "UP";
+  const subject = `FlowPoint AI — ${statusLabel}: ${monitorUrl}`;
+  const text =
+`Organisation: ${orgName}
+URL: ${monitorUrl}
+Status: ${statusLabel}
+HTTP: ${httpStatus || "-"}
+Temps: ${responseTimeMs ? `${responseTimeMs}ms` : "-"}
+Date: ${when}
+Erreur: ${error || "-"}`;
+
+  const html = `
+    <h2 style="margin:0">FlowPoint AI — <span style="color:${status === "down" ? "#B00020" : "#0A7A2F"}">${statusLabel}</span></h2>
+    <p><b>Organisation</b>: ${orgName || "-"}</p>
+    <p><b>URL</b>: ${monitorUrl}</p>
+    <p><b>HTTP</b>: ${httpStatus || "-"}</p>
+    <p><b>Temps</b>: ${responseTimeMs ? `${responseTimeMs}ms` : "-"}</p>
+    <p><b>Date</b>: ${when}</p>
+    ${error ? `<p><b>Erreur</b>: ${String(error).slice(0, 400)}</p>` : ""}
+  `;
+  return { subject, text, html };
+}
+
+async function maybeSendMonitorAlert(monitor, result) {
+  // Envoie une alerte seulement si changement vs lastAlertStatus (évite spam)
+  const newStatus = String(result.status || "unknown").toLowerCase();
+  const last = String(monitor.lastAlertStatus || "unknown").toLowerCase();
+
+  if (newStatus !== "up" && newStatus !== "down") return { sent: false, reason: "unknown status" };
+  if (newStatus === last) return { sent: false, reason: "no change" };
+
+  const org = await Org.findById(monitor.orgId).select("name");
+  const to = await getOrgAlertEmails(monitor.orgId);
+  if (!to.length) return { sent: false, reason: "no recipients" };
+
+  const payload = formatMonitorEmail({
+    orgName: org?.name || "Organisation",
+    monitorUrl: monitor.url,
+    status: newStatus,
+    httpStatus: result.httpStatus,
+    responseTimeMs: result.responseTimeMs,
+    checkedAt: new Date(),
+    error: result.error,
+  });
+
+  await sendEmail({
+    to: to.join(","),
+    subject: payload.subject,
+    text: payload.text,
+    html: payload.html,
+  });
+
+  monitor.lastAlertStatus = newStatus;
+  monitor.lastAlertAt = new Date();
+  await monitor.save();
+
+  return { sent: true };
+}
+
 // ---------- PAGES ----------
 app.get("/", (_, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/dashboard", (_, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
@@ -668,7 +778,6 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     const companyNorm = normalizeCompanyName(companyName);
     const ipua = ipuaHash(req);
 
-    // anti-abus
     if (await TrialRegistry.findOne({ emailNormalized: emailNorm })) return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
     if (await TrialRegistry.findOne({ companyNameNormalized: companyNorm })) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
 
@@ -699,10 +808,8 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
       await user.save();
     }
 
-    // reserve trial
     await TrialRegistry.create({ emailNormalized: emailNorm, companyNameNormalized: companyNorm, companyDomain: domain, ipua });
 
-    // ensure org
     await ensureOrgForUser(user);
 
     return res.json({ ok: true, token: signToken(user) });
@@ -848,12 +955,11 @@ app.get("/api/stripe/verify", async (req, res) => {
     await ensureOrgForUser(user);
     await user.save();
 
-    const base = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
     await sendEmail({
       to: user.email,
       subject: "Bienvenue sur FlowPoint AI",
-      text: `Ton essai est actif. Dashboard: ${base}/dashboard.html`,
-      html: `<p>Ton essai est actif ✅</p><p>Dashboard: <a href="${base}/dashboard.html">${base}/dashboard.html</a></p>`,
+      text: `Ton essai est actif. Dashboard: ${process.env.PUBLIC_BASE_URL}/dashboard.html`,
+      html: `<p>Ton essai est actif ✅</p><p>Dashboard: <a href="${process.env.PUBLIC_BASE_URL}/dashboard.html">${process.env.PUBLIC_BASE_URL}/dashboard.html</a></p>`,
     });
 
     return res.json({ ok: true, token: signToken(user) });
@@ -915,14 +1021,11 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
 //
 // ===== ORG / TEAM (Ultra) =====
 //
-
-// Org members (Ultra only)
 app.get("/api/org/members", auth, requireActive, requirePlan("ultra"), async (req, res) => {
   const members = await User.find({ orgId: req.dbUser.orgId }).select("email name role createdAt").sort({ createdAt: 1 });
   return res.json({ ok: true, members });
 });
 
-// Invite member (owner + Ultra)
 app.post("/api/org/invite", auth, requireActive, requirePlan("ultra"), requireOwner, async (req, res) => {
   try {
     const email = String(req.body?.email || "").trim();
@@ -930,19 +1033,16 @@ app.post("/api/org/invite", auth, requireActive, requirePlan("ultra"), requireOw
 
     const emailNorm = normalizeEmail(email);
 
-    // Seats limit
     const q = quotasForPlan(req.dbUser.plan);
     const membersCount = await User.countDocuments({ orgId: req.dbUser.orgId });
     if (membersCount >= q.teamSeats) return res.status(403).json({ error: `Limite de membres atteinte (${q.teamSeats}).` });
 
-    // Already in org
     const already = await User.findOne({ orgId: req.dbUser.orgId, emailNormalized: emailNorm });
     if (already) return res.status(400).json({ error: "Ce membre est déjà dans l’organisation." });
 
-    // Create invite token
     const raw = crypto.randomBytes(32).toString("hex");
     const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await Invite.create({
       orgId: req.dbUser.orgId,
@@ -971,7 +1071,6 @@ app.post("/api/org/invite", auth, requireActive, requirePlan("ultra"), requireOw
   }
 });
 
-// Accept invite -> creates/links user as member
 app.post("/api/org/invite/accept", async (req, res) => {
   try {
     const raw = String(req.body?.token || "");
@@ -990,7 +1089,6 @@ app.post("/api/org/invite/accept", async (req, res) => {
     const emailNorm = normalizeEmail(email);
     if (emailNorm !== inv.invitedEmailNormalized) return res.status(400).json({ error: "Cet email ne correspond pas à l’invitation" });
 
-    // Find or create user
     let user = await User.findOne({ emailNormalized: emailNorm });
     if (!user) {
       user = await User.create({
@@ -1016,8 +1114,7 @@ app.post("/api/org/invite/accept", async (req, res) => {
     inv.acceptedAt = new Date();
     await inv.save();
 
-    const jwtToken = signToken(user);
-    return res.json({ ok: true, token: jwtToken });
+    return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("invite accept error:", e.message);
     return res.status(500).json({ error: "Erreur accept invitation" });
@@ -1168,6 +1265,7 @@ app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, monitor: m });
 });
 
+// ✅ run manuel + écrit log + alerte si changement
 app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
   const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
@@ -1190,6 +1288,9 @@ app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
     error: r.error,
   });
 
+  // ✅ alerte si changement
+  await maybeSendMonitorAlert(m, r);
+
   return res.json({ ok: true, result: r });
 });
 
@@ -1199,6 +1300,52 @@ app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
 
   const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id }).sort({ checkedAt: -1 }).limit(200);
   return res.json({ ok: true, logs });
+});
+
+// ✅ (4) CRON: exécute automatiquement les monitors "dus"
+app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
+  try {
+    const now = Date.now();
+    const limit = Math.min(500, Math.max(1, Number(req.body?.limit || req.query.limit || 200)));
+
+    const activeMonitors = await Monitor.find({ active: true }).sort({ updatedAt: 1 }).limit(limit);
+    let checked = 0;
+    let alertsSent = 0;
+
+    for (const m of activeMonitors) {
+      const last = m.lastCheckedAt ? new Date(m.lastCheckedAt).getTime() : 0;
+      const dueMs = (Number(m.intervalMinutes || 60) * 60 * 1000);
+      const due = !last || (now - last >= dueMs);
+      if (!due) continue;
+
+      const r = await checkUrlOnce(m.url);
+
+      m.lastCheckedAt = new Date();
+      m.lastStatus = r.status;
+      await m.save();
+
+      await MonitorLog.create({
+        orgId: m.orgId,
+        userId: m.userId,
+        monitorId: m._id,
+        url: m.url,
+        status: r.status,
+        httpStatus: r.httpStatus,
+        responseTimeMs: r.responseTimeMs,
+        error: r.error,
+      });
+
+      const a = await maybeSendMonitorAlert(m, r);
+      if (a.sent) alertsSent += 1;
+
+      checked += 1;
+    }
+
+    return res.json({ ok: true, checked, alertsSent, scanned: activeMonitors.length });
+  } catch (e) {
+    console.log("cron monitors-run error:", e.message);
+    return res.status(500).json({ error: "Erreur cron monitors-run" });
+  }
 });
 
 //
@@ -1288,7 +1435,6 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
 // =======================
 // DAILY SEO REPORT (API triggerable)
 // =======================
-
 app.post("/api/reports/seo-daily", auth, requireActive, async (req, res) => {
   try {
     const audits = await Audit.find({ orgId: req.dbUser.orgId })
@@ -1335,6 +1481,7 @@ app.post("/api/reports/seo-daily", auth, requireActive, async (req, res) => {
 
 // =======================
 // Monitoring Settings + Monthly Reliability Report (Ultra)
+// + PDF endpoint
 // =======================
 
 function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
@@ -1375,7 +1522,6 @@ async function computeOrgMonthlyReport(orgId) {
       ? Math.round(arr.reduce((s, x) => s + (Number(x.responseTimeMs || 0) || 0), 0) / total)
       : 0;
 
-    // incidents approx = transitions up->down
     let incidents = 0;
     const sorted = arr.slice().sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
     for (let i = 1; i < sorted.length; i++) {
@@ -1426,7 +1572,7 @@ async function computeOrgMonthlyReport(orgId) {
   };
 }
 
-// GET current org monitoring settings
+// ✅ GET current org monitoring settings
 app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails name");
   if (!org) return res.status(404).json({ error: "Org introuvable" });
@@ -1440,7 +1586,7 @@ app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
   });
 });
 
-// Update org monitoring settings (owner only)
+// ✅ Update org monitoring settings (owner only)
 app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (req, res) => {
   const alertRecipients = String(req.body?.alertRecipients || "all").toLowerCase();
   const alertExtraEmails = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
@@ -1457,73 +1603,87 @@ app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (
   return res.json({ ok: true });
 });
 
-// ✅ Alias: pour compat dashboard qui utilise /api/org/settings
+// ✅ Compat endpoints (dashboard fallback): /api/org/settings
 app.get("/api/org/settings", auth, requireActive, async (req, res) => {
-  return app._router.handle(req, res, () => {});
+  const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails name");
+  if (!org) return res.status(404).json({ error: "Org introuvable" });
+  return res.json({
+    ok: true,
+    settings: {
+      alertRecipients: org.alertRecipients || "all",
+      alertExtraEmails: Array.isArray(org.alertExtraEmails) ? org.alertExtraEmails : [],
+    }
+  });
 });
 app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res) => {
-  return app._router.handle(
-    { ...req, url: "/api/org/monitor-settings", path: "/api/org/monitor-settings" },
-    res,
-    () => {}
-  );
+  // même logique
+  const alertRecipients = String(req.body?.alertRecipients || "all").toLowerCase();
+  const alertExtraEmails = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
+  if (!["all", "owner"].includes(alertRecipients)) return res.status(400).json({ error: "alertRecipients invalide" });
+  const cleaned = [...new Set(alertExtraEmails.map(x => String(x || "").trim().toLowerCase()).filter(Boolean))].slice(0, 25);
+  await Org.updateOne({ _id: req.dbUser.orgId }, { $set: { alertRecipients, alertExtraEmails: cleaned } });
+  return res.json({ ok: true });
 });
 
-// Ultra only: monthly reliability report JSON for dashboard
+// ✅ Ultra only: monthly reliability report JSON for dashboard
 app.get("/api/monitoring/monthly-report", auth, requireActive, requirePlan("ultra"), async (req, res) => {
   const report = await computeOrgMonthlyReport(req.dbUser.orgId);
   return res.json({ ok: true, report });
 });
-// =======================
-// MONITORING PDF REPORT (Ultra only)
-// =======================
+
+// ✅ (6) Ultra only: monthly reliability report PDF
 app.get("/api/monitoring/monthly-report/pdf", auth, requireActive, requirePlan("ultra"), async (req, res) => {
   try {
+    const ok = await consume(req.dbUser, "pdf", 1);
+    if (!ok) return res.status(429).json({ error: "Quota PDF dépassé" });
+
+    const org = await Org.findById(req.dbUser.orgId).select("name");
     const report = await computeOrgMonthlyReport(req.dbUser.orgId);
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "inline; filename=flowpoint-monitoring-report.pdf");
+    res.setHeader("Content-Disposition", `inline; filename="flowpoint-monitoring-report.pdf"`);
 
     const doc = new PDFDocument({ margin: 48 });
     doc.pipe(res);
 
-    doc.fontSize(22).text("FlowPoint AI", { continued: true })
-       .fontSize(22).text(" — Rapport Monitoring Mensuel");
-    doc.moveDown();
-
-    doc.fontSize(12).text(`Organisation: ${req.dbUser.companyName}`);
-    doc.text(`Période: ${report.rangeDays} jours`);
-    doc.text(`Généré le: ${new Date().toLocaleDateString("fr-FR")}`);
-    doc.moveDown();
-
-    doc.fontSize(16).text("Score global de fiabilité", { underline: true });
-    doc.fontSize(32).text(`${report.global.reliabilityScore}/100`);
-    doc.moveDown();
-
-    doc.fontSize(12)
-      .text(`Uptime moyen: ${report.global.uptimePct}%`)
-      .text(`Latence moyenne: ${report.global.avgMs} ms`)
-      .text(`Incidents: ${report.global.incidents}`)
-      .text(`Sites monitorés: ${report.global.sitesCount}`);
-
-    doc.moveDown();
-    doc.fontSize(16).text("Détails par site", { underline: true });
+    doc.fontSize(22).text("FlowPoint AI", { continued: true }).fontSize(22).text("  — Rapport Monitoring (30j)");
     doc.moveDown(0.5);
+    doc.fontSize(12).text(`Organisation: ${org?.name || "—"}`);
+    doc.text(`Généré: ${new Date(report.generatedAt).toLocaleString("fr-FR")}`);
+    doc.moveDown();
 
-    report.sites.forEach((s, i) => {
-      doc.fontSize(14).text(`${i + 1}. ${s.url}`);
-      doc.fontSize(12)
-        .text(`Score: ${s.score}/100`)
-        .text(`Uptime: ${s.uptimePct}%`)
-        .text(`Temps moyen: ${s.avgMs} ms`)
-        .text(`Incidents: ${s.incidents}`);
-      doc.moveDown();
-    });
+    doc.fontSize(14).text("Résumé global", { underline: true });
+    doc.moveDown(0.25);
+    doc.fontSize(12).text(`Score fiabilité: ${report.global.reliabilityScore}/100`);
+    doc.text(`Uptime: ${report.global.uptimePct}%`);
+    doc.text(`Latence moyenne: ${report.global.avgMs}ms`);
+    doc.text(`Incidents: ${report.global.incidents}`);
+    doc.text(`Sites suivis: ${report.global.sitesCount}`);
+    doc.moveDown();
+
+    doc.fontSize(14).text("Détails par site", { underline: true });
+    doc.moveDown(0.25);
+
+    const sites = Array.isArray(report.sites) ? report.sites : [];
+    if (!sites.length) {
+      doc.fontSize(12).text("Aucun log sur les 30 derniers jours.");
+      doc.end();
+      return;
+    }
+
+    // tableau simple (liste)
+    for (const s of sites.slice(0, 60)) {
+      doc.fontSize(12).text(`• ${s.url}`);
+      doc.fontSize(10).fillColor("#444").text(
+        `  score=${s.score}/100  uptime=${s.uptimePct}%  avg=${s.avgMs}ms  incidents=${s.incidents}  checks=${s.totalChecks}`
+      ).fillColor("#000");
+      doc.moveDown(0.2);
+    }
 
     doc.end();
   } catch (e) {
-    console.log("monitoring pdf error:", e.message);
-    res.status(500).json({ error: "Erreur génération PDF monitoring" });
+    console.log("monthly report pdf error:", e.message);
+    return res.status(500).json({ error: "Erreur PDF monitoring" });
   }
 });
 
