@@ -1,9 +1,8 @@
 // monitor-cron.js — FlowPoint AI
-// Monitoring + alertes intelligentes + résumé quotidien à 9h
-// À exécuter via Render Cron Job (toutes les 5–10 min)
+// Monitoring + alertes instantanées + résumé quotidien (9h)
+// À exécuter via Render Cron Job (toutes les 5 ou 10 minutes)
 
 require("dotenv").config();
-
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
 
@@ -12,6 +11,7 @@ const REQUIRED = [
   "MONGO_URI",
   "SMTP_HOST",
   "SMTP_PORT",
+  "SMTP_SECURE",
   "SMTP_USER",
   "SMTP_PASS",
   "ALERT_EMAIL_FROM",
@@ -24,14 +24,14 @@ for (const k of REQUIRED) {
 const HTTP_TIMEOUT_MS = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
 const ALERT_COOLDOWN_MINUTES = Number(process.env.MONITOR_ALERT_COOLDOWN_MINUTES || 180);
 const MAX_CHECKS_PER_RUN = Number(process.env.MONITOR_MAX_CHECKS_PER_RUN || 100);
-const DAILY_HOUR = Number(process.env.MONITOR_DAILY_HOUR || 9);
+const DAILY_HOUR = Number(process.env.MONITOR_DAILY_HOUR || 9); // 9h
 
-// ================= MAIL =================
 function boolEnv(v) {
   return String(v).toLowerCase() === "true";
 }
 
-const transporter = nodemailer.createTransport({
+// ================= MAIL =================
+const mailer = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT || 587),
   secure: boolEnv(process.env.SMTP_SECURE),
@@ -41,67 +41,42 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-async function sendMail({ to, subject, text, html }) {
-  await transporter.sendMail({
+async function sendMail({ to, subject, html }) {
+  await mailer.sendMail({
     from: process.env.ALERT_EMAIL_FROM,
     to,
     subject,
-    text,
     html,
   });
 }
 
-// ================= DB MODELS =================
-const OrgSchema = new mongoose.Schema(
-  {
-    name: String,
-    alertRecipients: { type: String, default: "all" }, // owner | all
-    alertExtraEmails: { type: [String], default: [] },
-  },
-  { collection: "orgs" }
-);
+// ================= DB =================
+const Org = mongoose.model("Org", new mongoose.Schema({
+  name: String,
+}, { collection: "orgs" }));
 
-const UserSchema = new mongoose.Schema(
-  {
-    email: String,
-    orgId: mongoose.Schema.Types.ObjectId,
-    role: String,
-  },
-  { collection: "users" }
-);
+const User = mongoose.model("User", new mongoose.Schema({
+  email: String,
+  orgId: mongoose.Schema.Types.ObjectId,
+}, { collection: "users" }));
 
-const MonitorSchema = new mongoose.Schema(
-  {
-    orgId: mongoose.Schema.Types.ObjectId,
-    url: String,
-    active: Boolean,
-    intervalMinutes: Number,
-    lastCheckedAt: Date,
-    lastStatus: String,
-    lastAlertStatus: String,
-    lastAlertAt: Date,
-  },
-  { collection: "monitors" }
-);
+const Monitor = mongoose.model("Monitor", new mongoose.Schema({
+  orgId: mongoose.Schema.Types.ObjectId,
+  url: String,
+  active: Boolean,
+  intervalMinutes: Number,
+  lastCheckedAt: Date,
+  lastStatus: String,
+  lastAlertAt: Date,
+  lastAlertStatus: String,
+}, { collection: "monitors" }));
 
-const MonitorLogSchema = new mongoose.Schema(
-  {
-    orgId: mongoose.Schema.Types.ObjectId,
-    monitorId: mongoose.Schema.Types.ObjectId,
-    url: String,
-    status: String,
-    httpStatus: Number,
-    responseTimeMs: Number,
-    checkedAt: Date,
-    error: String,
-  },
-  { collection: "monitorlogs" }
-);
-
-const Org = mongoose.model("Org", OrgSchema);
-const User = mongoose.model("User", UserSchema);
-const Monitor = mongoose.model("Monitor", MonitorSchema);
-const MonitorLog = mongoose.model("MonitorLog", MonitorLogSchema);
+const MonitorLog = mongoose.model("MonitorLog", new mongoose.Schema({
+  orgId: mongoose.Schema.Types.ObjectId,
+  monitorId: mongoose.Schema.Types.ObjectId,
+  status: String,
+  checkedAt: Date,
+}, { collection: "monitorlogs" }));
 
 // ================= HELPERS =================
 function minutesAgo(d) {
@@ -109,16 +84,15 @@ function minutesAgo(d) {
   return (Date.now() - new Date(d).getTime()) / 60000;
 }
 
-function shouldRunMonitor(m) {
-  const interval = Math.max(5, Number(m.intervalMinutes || 60));
+function shouldRun(m) {
+  const interval = Math.max(5, m.intervalMinutes || 60);
   return m.active && minutesAgo(m.lastCheckedAt) >= interval;
 }
 
-function canAlert(m, newStatus) {
-  const changed = m.lastAlertStatus !== newStatus;
-  const cooldownOk = minutesAgo(m.lastAlertAt) >= ALERT_COOLDOWN_MINUTES;
-  if (newStatus === "down") return changed || cooldownOk;
-  return changed;
+function canAlert(m, status) {
+  if (!m.lastAlertStatus) return true;
+  if (status !== m.lastAlertStatus) return true;
+  return minutesAgo(m.lastAlertAt) >= ALERT_COOLDOWN_MINUTES;
 }
 
 function isDailyWindow() {
@@ -126,97 +100,67 @@ function isDailyWindow() {
   return now.getHours() === DAILY_HOUR && now.getMinutes() < 10;
 }
 
-async function checkUrlOnce(url) {
+async function checkUrl(url) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
-
-  const t0 = Date.now();
   try {
-    const r = await fetch(url, { redirect: "follow", signal: controller.signal });
+    const r = await fetch(url, { signal: controller.signal });
     clearTimeout(id);
-    const ms = Date.now() - t0;
-    const up = r.status >= 200 && r.status < 400;
-    return { status: up ? "up" : "down", httpStatus: r.status, responseTimeMs: ms, error: "" };
-  } catch (e) {
+    return r.status >= 200 && r.status < 400 ? "up" : "down";
+  } catch {
     clearTimeout(id);
-    return { status: "down", httpStatus: 0, responseTimeMs: 0, error: e.message };
+    return "down";
   }
-}
-
-async function resolveRecipients(orgId) {
-  const org = await Org.findById(orgId);
-  const policy = org?.alertRecipients || "all";
-
-  const users =
-    policy === "owner"
-      ? await User.find({ orgId, role: "owner" })
-      : await User.find({ orgId });
-
-  const emails = new Set(users.map(u => u.email));
-  (org?.alertExtraEmails || []).forEach(e => emails.add(e));
-
-  return {
-    to: [...emails].join(","),
-    orgName: org?.name || "Organisation",
-  };
 }
 
 // ================= MAIN =================
 async function main() {
-  console.log("⏱️ monitor-cron start");
+  console.log("⏱ monitor-cron", new Date().toISOString());
   await mongoose.connect(process.env.MONGO_URI);
 
-  const monitors = await Monitor.find({ active: true });
-  const due = monitors.filter(shouldRunMonitor).slice(0, MAX_CHECKS_PER_RUN);
+  const monitors = await Monitor.find({ active: true }).limit(5000);
+  const due = monitors.filter(shouldRun).slice(0, MAX_CHECKS_PER_RUN);
 
   for (const m of due) {
-    const result = await checkUrlOnce(m.url);
-
-    m.lastCheckedAt = new Date();
-    m.lastStatus = result.status;
-    await m.save();
+    const status = await checkUrl(m.url);
 
     await MonitorLog.create({
       orgId: m.orgId,
       monitorId: m._id,
-      url: m.url,
-      status: result.status,
-      httpStatus: result.httpStatus,
-      responseTimeMs: result.responseTimeMs,
+      status,
       checkedAt: new Date(),
-      error: result.error,
     });
 
-    const daily = isDailyWindow() && result.status === "down";
-    if (!daily && !canAlert(m, result.status)) continue;
+    m.lastCheckedAt = new Date();
+    m.lastStatus = status;
 
-    const rec = await resolveRecipients(m.orgId);
-    if (!rec.to) continue;
+    const daily = isDailyWindow();
+    const alertNow = daily || canAlert(m, status);
 
-    const subject =
-      daily
-        ? `📊 Rapport quotidien — ${m.url}`
-        : result.status === "down"
-        ? `🚨 DOWN — ${m.url}`
-        : `✅ UP — ${m.url}`;
+    if (alertNow) {
+      const users = await User.find({ orgId: m.orgId });
+      const emails = users.map(u => u.email).join(",");
 
-    const text =
-      `Organisation: ${rec.orgName}\nURL: ${m.url}\nStatus: ${result.status}\nHTTP: ${result.httpStatus}\nTemps: ${result.responseTimeMs}ms\n`;
+      if (emails) {
+        await sendMail({
+          to: emails,
+          subject: status === "down"
+            ? `🚨 Site DOWN — ${m.url}`
+            : `✅ Site UP — ${m.url}`,
+          html: `
+            <h2 style="color:${status === "down" ? "red" : "#0052CC"}">
+              ${status.toUpperCase()}
+            </h2>
+            <p>URL : ${m.url}</p>
+            <p>Date : ${new Date().toLocaleString("fr-FR")}</p>
+          `,
+        });
+      }
 
-    const html =
-      `<h2>${subject}</h2>
-       <p><b>Organisation:</b> ${rec.orgName}</p>
-       <p><b>URL:</b> ${m.url}</p>
-       <ul>
-         <li>Status: ${result.status}</li>
-         <li>HTTP: ${result.httpStatus}</li>
-         <li>Temps: ${result.responseTimeMs} ms</li>
-       </ul>`;
+      m.lastAlertStatus = status;
+      m.lastAlertAt = new Date();
+    }
 
-    await sendMail({ to: rec.to, subject, text, html });
-
-    m.lastAlertStatus = result.status;
-    m.lastAlertAt = new Date();
     await m.save();
   }
 
@@ -224,7 +168,7 @@ async function main() {
   console.log("✅ monitor-cron terminé");
 }
 
-main().catch(err => {
-  console.error("❌ monitor-cron fatal:", err);
+main().catch(e => {
+  console.error("❌ CRON ERROR", e);
   process.exit(1);
 });
