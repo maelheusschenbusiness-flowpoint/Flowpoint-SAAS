@@ -1474,6 +1474,58 @@ app.get("/api/monitoring/monthly-report", auth, requireActive, requirePlan("ultr
   const report = await computeOrgMonthlyReport(req.dbUser.orgId);
   return res.json({ ok: true, report });
 });
+// =======================
+// MONITORING PDF REPORT (Ultra only)
+// =======================
+app.get("/api/monitoring/monthly-report/pdf", auth, requireActive, requirePlan("ultra"), async (req, res) => {
+  try {
+    const report = await computeOrgMonthlyReport(req.dbUser.orgId);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline; filename=flowpoint-monitoring-report.pdf");
+
+    const doc = new PDFDocument({ margin: 48 });
+    doc.pipe(res);
+
+    doc.fontSize(22).text("FlowPoint AI", { continued: true })
+       .fontSize(22).text(" — Rapport Monitoring Mensuel");
+    doc.moveDown();
+
+    doc.fontSize(12).text(`Organisation: ${req.dbUser.companyName}`);
+    doc.text(`Période: ${report.rangeDays} jours`);
+    doc.text(`Généré le: ${new Date().toLocaleDateString("fr-FR")}`);
+    doc.moveDown();
+
+    doc.fontSize(16).text("Score global de fiabilité", { underline: true });
+    doc.fontSize(32).text(`${report.global.reliabilityScore}/100`);
+    doc.moveDown();
+
+    doc.fontSize(12)
+      .text(`Uptime moyen: ${report.global.uptimePct}%`)
+      .text(`Latence moyenne: ${report.global.avgMs} ms`)
+      .text(`Incidents: ${report.global.incidents}`)
+      .text(`Sites monitorés: ${report.global.sitesCount}`);
+
+    doc.moveDown();
+    doc.fontSize(16).text("Détails par site", { underline: true });
+    doc.moveDown(0.5);
+
+    report.sites.forEach((s, i) => {
+      doc.fontSize(14).text(`${i + 1}. ${s.url}`);
+      doc.fontSize(12)
+        .text(`Score: ${s.score}/100`)
+        .text(`Uptime: ${s.uptimePct}%`)
+        .text(`Temps moyen: ${s.avgMs} ms`)
+        .text(`Incidents: ${s.incidents}`);
+      doc.moveDown();
+    });
+
+    doc.end();
+  } catch (e) {
+    console.log("monitoring pdf error:", e.message);
+    res.status(500).json({ error: "Erreur génération PDF monitoring" });
+  }
+});
 
 // ---------- START ----------
 app.listen(PORT, () => console.log(`✅ FlowPoint SaaS (Pack B) lancé sur port ${PORT}`));
