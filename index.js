@@ -285,6 +285,10 @@ const UserSchema = new mongoose.Schema(
     companyName: String,
     companyNameNormalized: { type: String, index: true },
     companyDomain: { type: String, index: true },
+   
+    // +++ ADD (monitoring recipients settings)
+    alertRecipients: { type: String, default: "all" }, // "owner" | "all"
+    alertExtraEmails: { type: [String], default: [] }, // ex: ["ops@..."]
 
     // Pack B
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
