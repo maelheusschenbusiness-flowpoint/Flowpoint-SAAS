@@ -7,11 +7,6 @@ function setMsg(text, type="") {
   el.textContent = text || "";
 }
 
-function pct(used, limit) {
-  if (!limit || limit <= 0) return 0;
-  return Math.max(0, Math.min(100, Math.round((used / limit) * 100)));
-}
-
 async function api(path, method="GET", body=null) {
   const t = token();
   if (!t) throw new Error("Non connecté");
@@ -28,7 +23,7 @@ async function api(path, method="GET", body=null) {
 function fmtDate(d){ if(!d) return "—"; try{return new Date(d).toLocaleString("fr-FR");}catch{return "—"} }
 
 function showTab(name){
-  const ids = ["audit","audits","monitor","team"];
+  const ids = ["audit","audits","monitor","settings","team"];
   for (const t of ids) $("tab-"+t).classList.toggle("hidden", t !== name);
   document.querySelectorAll(".tab").forEach(el=> el.classList.toggle("active", el.dataset.tab === name));
 }
@@ -50,6 +45,22 @@ async function downloadWithAuth(url, filename) {
   setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
 }
 
+// ---- charts (bars) ----
+function renderBars(containerId, series){
+  const el = $(containerId);
+  el.innerHTML = "";
+  const max = Math.max(1, ...series.map(x => Number(x.value)||0));
+  for (const s of series) {
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    const i = document.createElement("i");
+    i.style.height = Math.round(((Number(s.value)||0) / max) * 100) + "%";
+    bar.title = `${s.day}: ${s.value}`;
+    bar.appendChild(i);
+    el.appendChild(bar);
+  }
+}
+
 async function loadMe(){
   const me = await api("/api/me");
 
@@ -57,12 +68,11 @@ async function loadMe(){
   $("company").textContent = me.companyName || "—";
 
   $("planBadge").textContent = "PLAN: " + (me.plan || "standard").toUpperCase();
-  $("trialPill").textContent = me.hasTrial ? ("Trial jusqu’au " + fmtDate(me.trialEndsAt)) : "Trial: non démarré";
-  $("payPill").textContent = "Paiement: " + (me.lastPaymentStatus || me.subscriptionStatus || "—");
   $("orgPill").textContent = "Org: " + (me.org?.name || "—");
   $("rolePill").textContent = "Rôle: " + (me.role || "—");
+  $("trialPill").textContent = me.hasTrial ? ("Trial jusqu’au " + fmtDate(me.trialEndsAt)) : "Trial: non démarré";
+  $("payPill").textContent = "Paiement: " + (me.lastPaymentStatus || me.subscriptionStatus || "—");
 
-  // Team tab only Ultra
   const teamTab = $("teamTab");
   if (String(me.plan).toLowerCase() === "ultra") teamTab.style.display = "inline-block";
   else teamTab.style.display = "none";
@@ -80,17 +90,40 @@ async function loadMe(){
   $("qp").textContent = `${p.used}/${p.limit}`;
   $("qe").textContent = `${e.used}/${e.limit}`;
 
-  $("ba").style.width = pct(a.used, a.limit) + "%";
-  $("bm").style.width = pct(m.used, m.limit) + "%";
-  $("bp").style.width = pct(p.used, p.limit) + "%";
-  $("be").style.width = pct(e.used, e.limit) + "%";
-
   return me;
 }
 
 async function openPortal(){
   const out = await api("/api/stripe/portal", "POST", {});
   window.location.href = out.url;
+}
+
+// ----- STATS -----
+async function loadStats(){
+  const out = await api("/api/stats");
+
+  $("kpiScore").textContent = out.kpis.avgScore ? (out.kpis.avgScore + "/100") : "—";
+  $("kpiUptime").textContent = out.kpis.uptimePct ? (out.kpis.uptimePct + "%") : "—";
+  $("kpiMs").textContent = out.kpis.avgResponseMs ? (out.kpis.avgResponseMs + " ms") : "—";
+  $("kpiAudits").textContent = String(out.kpis.auditsCount ?? 0);
+
+  renderBars("chartAudits", out.series.auditsByDay || []);
+  renderBars("chartDowns", out.series.downsByDay || []);
+}
+
+// ----- SETTINGS -----
+async function loadSettings(){
+  const out = await api("/api/org/settings");
+  $("alertRecipients").value = out.settings.alertRecipients || "all";
+  $("alertExtraEmails").value = (out.settings.alertExtraEmails || []).join(", ");
+}
+
+async function saveSettings(){
+  const alertRecipients = $("alertRecipients").value;
+  const alertExtraEmails = $("alertExtraEmails").value;
+  setMsg("Enregistrement…");
+  await api("/api/org/settings", "POST", { alertRecipients, alertExtraEmails });
+  setMsg("✅ Réglages enregistrés", "ok");
 }
 
 // ----- AUDITS -----
@@ -112,6 +145,7 @@ async function runAudit(){
 
   await loadAudits();
   await loadMe();
+  await loadStats();
 }
 
 async function loadAudits(){
@@ -198,6 +232,7 @@ async function loadMonitors(){
       const out = await api("/api/monitors/" + id + "/run", "POST", {});
       setMsg(`✅ ${out.result.status.toUpperCase()} (HTTP ${out.result.httpStatus}, ${out.result.responseTimeMs}ms)`, "ok");
       await loadMonitors();
+      await loadStats();
     });
   });
 
@@ -262,42 +297,47 @@ function initTabs(){
     el.addEventListener("click", ()=>{
       const tab = el.dataset.tab;
       showTab(tab);
+
       if (tab === "audits") loadAudits().catch(()=>{});
       if (tab === "monitor") loadMonitors().catch(()=>{});
+      if (tab === "settings") loadSettings().catch(e=>setMsg(e.message,"error"));
       if (tab === "team") loadTeam().catch(e=>setMsg(e.message,"error"));
     });
   });
 }
 
-(function init(){
+(async function init(){
   if (!token()) { window.location.href = "/index.html"; return; }
 
   $("btnPortal").addEventListener("click", openPortal);
   $("btnLogout").addEventListener("click", ()=>{ localStorage.removeItem("fp_token"); window.location.href="/index.html"; });
   $("btnPricing").addEventListener("click", ()=> window.location.href="/pricing.html");
+  $("btnRefresh").addEventListener("click", async ()=> {
+    try { setMsg("Rafraîchissement…"); await loadMe(); await loadStats(); setMsg("✅ OK", "ok"); }
+    catch(e){ setMsg(e.message, "error"); }
+  });
 
   $("btnExportAudits").addEventListener("click", async ()=>{
-    try {
-      setMsg("Export audits…");
-      await downloadWithAuth("/api/export/audits.csv", "flowpoint-audits.csv");
-      setMsg("✅ Export audits téléchargé", "ok");
-      await loadMe();
-    } catch(e) { setMsg(e.message, "error"); }
+    try { setMsg("Export audits…"); await downloadWithAuth("/api/export/audits.csv", "flowpoint-audits.csv"); setMsg("✅ Export audits téléchargé", "ok"); await loadMe(); }
+    catch(e){ setMsg(e.message, "error"); }
   });
 
   $("btnExportMonitors").addEventListener("click", async ()=>{
-    try {
-      setMsg("Export monitors…");
-      await downloadWithAuth("/api/export/monitors.csv", "flowpoint-monitors.csv");
-      setMsg("✅ Export monitors téléchargé", "ok");
-      await loadMe();
-    } catch(e) { setMsg(e.message, "error"); }
+    try { setMsg("Export monitors…"); await downloadWithAuth("/api/export/monitors.csv", "flowpoint-monitors.csv"); setMsg("✅ Export monitors téléchargé", "ok"); await loadMe(); }
+    catch(e){ setMsg(e.message, "error"); }
   });
 
   $("btnRunAudit").addEventListener("click", ()=> runAudit().catch(e=>setMsg(e.message,"error")));
   $("btnCreateMon").addEventListener("click", ()=> createMonitor().catch(e=>setMsg(e.message,"error")));
   $("btnInvite").addEventListener("click", ()=> inviteMember().catch(e=>setMsg(e.message,"error")));
+  $("btnSaveSettings").addEventListener("click", ()=> saveSettings().catch(e=>setMsg(e.message,"error")));
 
   initTabs();
-  loadMe().catch(e=>setMsg(e.message,"error"));
+
+  try {
+    await loadMe();
+    await loadStats();
+  } catch(e){
+    setMsg(e.message, "error");
+  }
 })();
