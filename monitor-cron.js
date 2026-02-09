@@ -222,7 +222,11 @@ async function main() {
       error: result.error,
     });
 
-    if (!canAlert(m, result.status)) continue;
+    const dailyMode = isDailyWindow();
+    if (dailyMode && result.status === "down") {
+     // Force envoi résumé quotidien même sans changement
+    }
+
 
     const rec = await resolveRecipients(m.orgId);
     if (!rec.to) continue;
