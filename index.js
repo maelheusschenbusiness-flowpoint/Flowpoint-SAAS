@@ -1273,6 +1273,53 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
   );
   res.json({ ok: true });
 });
+// =======================
+// DAILY SEO REPORT (API triggerable)
+// =======================
+
+app.post("/api/reports/seo-daily", auth, requireActive, async (req, res) => {
+  try {
+    const audits = await Audit.find({ orgId: req.dbUser.orgId })
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    if (!audits.length) {
+      return res.json({ ok: true, message: "Aucun audit à inclure." });
+    }
+
+    const doc = new PDFDocument({ margin: 40 });
+    const chunks = [];
+    doc.on("data", (c) => chunks.push(c));
+    doc.on("end", async () => {
+      const pdfBuffer = Buffer.concat(chunks);
+
+      await sendEmail({
+        to: req.dbUser.email,
+        subject: "📊 FlowPoint AI — Rapport SEO quotidien",
+        text: "Votre rapport SEO quotidien est en pièce jointe.",
+        html: "<p>Rapport SEO quotidien en pièce jointe.</p>",
+        attachments: [{ filename: "seo-report.pdf", content: pdfBuffer }],
+      });
+
+      res.json({ ok: true });
+    });
+
+    doc.fontSize(20).text("FlowPoint AI — Rapport SEO quotidien");
+    doc.moveDown();
+
+    audits.forEach((a) => {
+      doc.fontSize(12).text(`URL: ${a.url}`);
+      doc.text(`Score: ${a.score}/100`);
+      doc.text(`Résumé: ${a.summary}`);
+      doc.moveDown();
+    });
+
+    doc.end();
+  } catch (e) {
+    console.log("daily seo report error:", e.message);
+    res.status(500).json({ error: "Erreur rapport SEO quotidien" });
+  }
+});
 
 // ---------- START ----------
 app.listen(PORT, () => console.log(`✅ FlowPoint SaaS (Pack B) lancé sur port ${PORT}`));
