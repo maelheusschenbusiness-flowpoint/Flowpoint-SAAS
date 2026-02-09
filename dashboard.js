@@ -629,6 +629,12 @@
     }
     window.print();
   }
+const btnMonitoringPdf = document.getElementById("btnMonitoringPdf");
+if (btnMonitoringPdf) {
+  btnMonitoringPdf.addEventListener("click", () => {
+    window.open("/api/monitoring/monthly-report/pdf", "_blank");
+  });
+}
 
   // ---------- Refresh all ----------
   let lastMe = null;
