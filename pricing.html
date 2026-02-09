@@ -10,61 +10,89 @@
     .card{background:#fff;border:1px solid #e7e9f2;border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.05);margin-bottom:14px}
     .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
     @media(max-width:900px){.grid{grid-template-columns:1fr}}
-    .plan{border:1px solid #eee;border-radius:14px;padding:14px;background:#fafafa}
-    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#1d4ed8;font-weight:900;font-size:12px}
-    button{padding:10px 12px;border-radius:12px;border:0;cursor:pointer;font-weight:900}
-    .btn{background:#2f5bff;color:#fff}
+    .plan{border:1px solid #eee;border-radius:14px;padding:18px;background:#fafafa}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#0052CC;font-weight:900;font-size:12px}
+    .price{font-size:28px;font-weight:900;margin:8px 0}
+    button{padding:12px;border-radius:12px;border:0;cursor:pointer;font-weight:900;width:100%}
+    .btn{background:#0052CC;color:#fff}
     .muted{color:#666;font-size:14px}
-    ul{margin:10px 0 0;padding-left:18px}
+    ul{margin:14px 0 0;padding-left:18px}
+    li{margin-bottom:6px}
   </style>
 </head>
 <body>
   <div class="wrap">
+
     <div class="card">
-      <h1>Offres</h1>
-      <div class="muted">Essai 14 jours (carte requise). Upgrade/Downgrade via Stripe Portal.</div>
+      <h1>Offres FlowPoint AI</h1>
+      <div class="muted">
+        Essai 14 jours • Upgrade / Downgrade instantané • Annulation libre
+      </div>
       <p><a href="/dashboard.html">← Retour dashboard</a></p>
     </div>
 
     <div class="grid">
+
+      <!-- STANDARD -->
       <div class="plan">
         <span class="badge">Standard</span>
         <h2>Standard</h2>
-        <div class="muted">Pour démarrer</div>
+        <div class="muted">Indépendants & petits sites</div>
+        <div class="price">29 € / mois</div>
         <ul>
-          <li>50 audits / mois</li>
-          <li>200 chats / mois</li>
-          <li>Monitoring: ✗</li>
+          <li>✅ 30 audits SEO / mois</li>
+          <li>✅ Historique audits</li>
+          <li>✅ Recommandations SEO</li>
+          <li>✅ PDF & CSV</li>
+          <li>❌ Monitoring</li>
+          <li>❌ Rapports automatiques</li>
+          <li>❌ Équipe</li>
         </ul>
       </div>
 
+      <!-- PRO -->
       <div class="plan">
         <span class="badge">Pro</span>
         <h2>Pro</h2>
-        <div class="muted">Pour pros & agences</div>
+        <div class="muted">Agences & sites actifs</div>
+        <div class="price">79 € / mois</div>
         <ul>
-          <li>500 audits / mois</li>
-          <li>2000 chats / mois</li>
-          <li>50 checks monitoring / mois</li>
+          <li>✅ 300 audits SEO / mois</li>
+          <li>✅ Monitoring sites (jusqu’à 50)</li>
+          <li>✅ Alertes email (DOWN)</li>
+          <li>✅ Historique complet</li>
+          <li>✅ PDF & CSV avancés</li>
+          <li>❌ Équipe</li>
+          <li>❌ Rapports mensuels fiabilité</li>
         </ul>
       </div>
 
-      <div class="plan">
+      <!-- ULTRA -->
+      <div class="plan" style="border:2px solid #0052CC;background:#fff">
         <span class="badge">Ultra</span>
         <h2>Ultra</h2>
-        <div class="muted">Pour volume élevé</div>
+        <div class="muted">SaaS, agences, scale</div>
+        <div class="price">149 € / mois</div>
         <ul>
-          <li>2000 audits / mois</li>
-          <li>10000 chats / mois</li>
-          <li>300 checks monitoring / mois</li>
-          <li>Accès “Ultra only”</li>
+          <li>🚀 2000 audits SEO / mois</li>
+          <li>🚀 300 monitors actifs</li>
+          <li>🚀 Rapports mensuels de fiabilité</li>
+          <li>🚀 Score de fiabilité global</li>
+          <li>🚀 MTTR, incidents, uptime</li>
+          <li>🚀 Équipe (jusqu’à 10 membres)</li>
+          <li>🚀 Données partagées par organisation</li>
+          <li>🚀 Fonctionnalités “Ultra only”</li>
         </ul>
       </div>
+
     </div>
 
     <div class="card">
-      <button class="btn" onclick="location.href='/dashboard.html'">Ouvrir dashboard</button>
+      <button class="btn" onclick="location.href='/dashboard.html'">
+        Ouvrir le dashboard
+      </button>
     </div>
+
   </div>
 </body>
 </html>
