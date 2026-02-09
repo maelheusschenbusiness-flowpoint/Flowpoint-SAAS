@@ -69,7 +69,8 @@ function getMailer() {
   });
 }
 
-async function sendEmail({ to, subject, text, html }) {
+// ✅ FIX: support attachments optionnels (sans casser les anciens appels)
+async function sendEmail({ to, subject, text, html, attachments }) {
   const t = getMailer();
   if (!t) {
     console.log("⚠️ SMTP non configuré, email ignoré:", subject);
@@ -81,6 +82,7 @@ async function sendEmail({ to, subject, text, html }) {
     subject,
     text,
     html,
+    attachments: Array.isArray(attachments) ? attachments : undefined,
   });
   console.log("✅ Email envoyé:", info.messageId);
 }
@@ -271,6 +273,10 @@ const OrgSchema = new mongoose.Schema(
 
     // For future: billing at org level
     createdFromEmailDomain: String,
+
+    // ✅ ADD: monitoring recipients settings (cron attends ces champs sur orgs)
+    alertRecipients: { type: String, default: "all" }, // "owner" | "all"
+    alertExtraEmails: { type: [String], default: [] }, // ex: ["ops@..."]
   },
   { timestamps: true }
 );
@@ -285,8 +291,8 @@ const UserSchema = new mongoose.Schema(
     companyName: String,
     companyNameNormalized: { type: String, index: true },
     companyDomain: { type: String, index: true },
-   
-    // +++ ADD (monitoring recipients settings)
+
+    // +++ ADD (tu l’avais mis ici aussi: on le garde, même si l’org est la source principale)
     alertRecipients: { type: String, default: "all" }, // "owner" | "all"
     alertExtraEmails: { type: [String], default: [] }, // ex: ["ops@..."]
 
@@ -447,6 +453,8 @@ async function ensureOrgForUser(user) {
       normalizedName: normalized,
       ownerUserId: user._id,
       createdFromEmailDomain: domain,
+      alertRecipients: "all",
+      alertExtraEmails: [],
     });
   }
 
@@ -840,11 +848,12 @@ app.get("/api/stripe/verify", async (req, res) => {
     await ensureOrgForUser(user);
     await user.save();
 
+    const base = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
     await sendEmail({
       to: user.email,
       subject: "Bienvenue sur FlowPoint AI",
-      text: `Ton essai est actif. Dashboard: ${safeBaseUrl({ headers: { host: "" } })}/dashboard.html`,
-      html: `<p>Ton essai est actif ✅</p><p>Dashboard: <a href="${process.env.PUBLIC_BASE_URL}/dashboard.html">${process.env.PUBLIC_BASE_URL}/dashboard.html</a></p>`,
+      text: `Ton essai est actif. Dashboard: ${base}/dashboard.html`,
+      html: `<p>Ton essai est actif ✅</p><p>Dashboard: <a href="${base}/dashboard.html">${base}/dashboard.html</a></p>`,
     });
 
     return res.json({ ok: true, token: signToken(user) });
@@ -962,7 +971,7 @@ app.post("/api/org/invite", auth, requireActive, requirePlan("ultra"), requireOw
   }
 });
 
-// Accept invite -> creates/links user as member (if user exists, links; else creates minimal user and sends login link)
+// Accept invite -> creates/links user as member
 app.post("/api/org/invite/accept", async (req, res) => {
   try {
     const raw = String(req.body?.token || "");
@@ -991,7 +1000,7 @@ app.post("/api/org/invite/accept", async (req, res) => {
         companyName: "Team Member",
         companyNameNormalized: "team-member",
         companyDomain: domainFromEmail(emailNorm),
-        plan: "standard", // plan perso n’a pas d’importance, l’accès org se base sur org + plan owner? (simplifié)
+        plan: "standard",
         role: "member",
         orgId: inv.orgId,
         accessBlocked: false,
@@ -1007,9 +1016,7 @@ app.post("/api/org/invite/accept", async (req, res) => {
     inv.acceptedAt = new Date();
     await inv.save();
 
-    // Donne un token direct + login
     const jwtToken = signToken(user);
-
     return res.json({ ok: true, token: jwtToken });
   } catch (e) {
     console.log("invite accept error:", e.message);
@@ -1277,6 +1284,7 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
   );
   res.json({ ok: true });
 });
+
 // =======================
 // DAILY SEO REPORT (API triggerable)
 // =======================
@@ -1324,6 +1332,7 @@ app.post("/api/reports/seo-daily", auth, requireActive, async (req, res) => {
     res.status(500).json({ error: "Erreur rapport SEO quotidien" });
   }
 });
+
 // =======================
 // Monitoring Settings + Monthly Reliability Report (Ultra)
 // =======================
@@ -1446,6 +1455,18 @@ app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (
   );
 
   return res.json({ ok: true });
+});
+
+// ✅ Alias: pour compat dashboard qui utilise /api/org/settings
+app.get("/api/org/settings", auth, requireActive, async (req, res) => {
+  return app._router.handle(req, res, () => {});
+});
+app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res) => {
+  return app._router.handle(
+    { ...req, url: "/api/org/monitor-settings", path: "/api/org/monitor-settings" },
+    res,
+    () => {}
+  );
 });
 
 // Ultra only: monthly reliability report JSON for dashboard
