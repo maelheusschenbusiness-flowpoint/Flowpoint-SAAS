@@ -196,6 +196,8 @@ async function main() {
   console.log("⏱️ monitor-cron started", new Date().toISOString());
   await mongoose.connect(process.env.MONGO_URI);
 
+  const dailyDownByOrg = {};
+
   const active = await Monitor.find({ active: true }).limit(5000);
   const due = active.filter(shouldRunMonitor).slice(0, MAX_CHECKS_PER_RUN);
 
@@ -205,6 +207,17 @@ async function main() {
 
   for (const m of due) {
     const result = await checkUrlOnce(m.url);
+const dailyMode = isDailyWindow();
+
+if (dailyMode && result.status === "down") {
+  if (!dailyDownByOrg[m.orgId]) dailyDownByOrg[m.orgId] = [];
+  dailyDownByOrg[m.orgId].push({
+    url: m.url,
+    httpStatus: result.httpStatus,
+    responseTimeMs: result.responseTimeMs,
+    error: result.error,
+  });
+}
 
     // save status + log
     m.lastCheckedAt = new Date();
