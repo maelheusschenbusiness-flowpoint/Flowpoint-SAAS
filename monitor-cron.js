@@ -180,6 +180,16 @@ async function resolveRecipients(orgId) {
 
   return { to: all.join(","), orgName: org?.name || "Organisation", policy, count: all.length };
 }
+// =======================
+// DAILY SUMMARY MODE (9h)
+// =======================
+
+const DAILY_HOUR = Number(process.env.MONITOR_DAILY_HOUR || 9);
+
+function isDailyWindow() {
+  const now = new Date();
+  return now.getHours() === DAILY_HOUR && now.getMinutes() < 10;
+}
 
 // --------------- MAIN ---------------
 async function main() {
