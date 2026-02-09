@@ -55,6 +55,12 @@
     .bar > i{position:absolute;left:0;bottom:0;width:100%;height:0;background:var(--blue)}
     .barLabel{display:flex;justify-content:space-between;margin-top:6px;color:var(--muted);font-size:12px}
     .box{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fbfcff}
+
+    /* Ultra lock */
+    .lockBox{border:1px dashed #cfe0ff;background:#f6f9ff;border-radius:14px;padding:12px}
+    .lockTitle{font-weight:900;color:var(--blue)}
+    .lockSmall{font-size:12px;color:var(--muted);margin-top:6px}
+    .hr{height:1px;background:#eef2f8;border:0;margin:12px 0}
   </style>
 </head>
 <body>
@@ -123,6 +129,23 @@
           <div class="miniChart">
             <div class="bars" id="chartDowns"></div>
             <div class="barLabel"><span>J-6</span><span>Aujourd’hui</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NEW: Uptime chart (30j) -->
+      <div class="row" style="margin-top:14px">
+        <div class="col box">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:900">Uptime / jour (30j)</div>
+              <div class="muted" style="font-size:12px;margin-top:4px">Estimation basée sur les logs du cron (UP / total checks).</div>
+            </div>
+            <div class="pill" id="uptime30Badge">30j: —</div>
+          </div>
+          <div class="miniChart">
+            <div class="bars" id="chartUptime30"></div>
+            <div class="barLabel"><span>J-29</span><span>Aujourd’hui</span></div>
           </div>
         </div>
       </div>
@@ -217,6 +240,29 @@
       </div>
 
       <div id="monLogsBox" class="box hidden" style="margin-top:12px;overflow:auto"></div>
+
+      <hr class="hr"/>
+
+      <!-- NEW: Monthly report (Ultra only) -->
+      <div id="monthlyReportWrap">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:900;font-size:18px">Rapport monitoring mensuel</div>
+            <div class="muted">Score de fiabilité + incidents + uptime + latence (30 derniers jours).</div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn3" id="btnBuildMonthly">Générer le rapport</button>
+            <button class="btn" id="btnPrintMonthly">Imprimer / PDF</button>
+          </div>
+        </div>
+
+        <div id="monthlyLock" class="lockBox hidden" style="margin-top:12px">
+          <div class="lockTitle">🔒 Ultra uniquement</div>
+          <div class="lockSmall">Upgrade vers Ultra pour accéder au rapport mensuel + score de fiabilité.</div>
+        </div>
+
+        <div id="monthlyReport" class="box hidden" style="margin-top:12px"></div>
+      </div>
     </div>
 
     <!-- TAB: Settings -->
