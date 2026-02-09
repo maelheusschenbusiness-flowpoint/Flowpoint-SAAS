@@ -2,6 +2,8 @@
    - Graph uptime (30j) in blue #0052CC (via CSS var --blue)
    - Monthly monitoring report + reliability score (Ultra only)
    - Uses org monitoring settings endpoints (monitor-settings) + tolerant fallback
+   - FIX: Monitoring PDF uses fetch(blob) with Authorization (works without cookies)
+   - FIX: Audit PDF links use fetch(blob) with Authorization (works without cookies)
 */
 
 (function () {
@@ -70,6 +72,37 @@
     return true;
   }
 
+  // ---------- Helpers: open blob in new tab ----------
+  function openBlobInNewTab(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, "_blank");
+    // if popup blocked, fallback download
+    if (!w) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "file";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  async function fetchPdfBlob(url) {
+    const r = await fetch(url, { headers: headers(), credentials: "include" });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error(`PDF indisponible (${r.status}) ${t ? "- " + t.slice(0, 80) : ""}`.trim());
+    }
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    const blob = await r.blob();
+    if (!ct.includes("pdf")) {
+      // still open it; backend might not set header correctly
+      return blob;
+    }
+    return blob;
+  }
+
   // ---------- Charts helpers ----------
   function renderBars(containerId, values01) {
     const el = $(containerId);
@@ -112,16 +145,18 @@
     const checksByDay30 = Object.fromEntries(dayKeys30.map((k) => [k, 0]));
     const upByDay30 = Object.fromEntries(dayKeys30.map((k) => [k, 0]));
 
+    // Fetch logs in parallel (faster)
     const logsAll = [];
-    for (const m of monitors) {
+    const jobs = (monitors || []).map(async (m) => {
       try {
         const j = await apiGet(`/api/monitors/${m._id}/logs`);
         const logs = (j.logs || []).map((x) => ({ ...x, monitorId: m._id, monitorUrl: m.url }));
         logsAll.push(...logs);
       } catch {
-        // ignore
+        // ignore per monitor
       }
-    }
+    });
+    await Promise.all(jobs);
 
     for (const L of logsAll) {
       const t = new Date(L.checkedAt || L.createdAt || Date.now()).getTime();
@@ -181,12 +216,12 @@
   // ---------- Monthly report (Ultra only) ----------
   function computeMonthlyReport(logsAll, monitors) {
     const cutoff = Date.now() - 30 * 86400000;
-    const logs = logsAll
+    const logs = (logsAll || [])
       .filter((l) => new Date(l.checkedAt || l.createdAt || Date.now()).getTime() >= cutoff)
       .sort((a, b) => new Date(a.checkedAt || 0).getTime() - new Date(b.checkedAt || 0).getTime());
 
     const byMon = new Map();
-    for (const m of monitors) byMon.set(String(m._id), { url: m.url, logs: [] });
+    for (const m of (monitors || [])) byMon.set(String(m._id), { url: m.url, logs: [] });
     for (const l of logs) {
       const k = String(l.monitorId || "");
       if (!byMon.has(k)) byMon.set(k, { url: l.monitorUrl || "-", logs: [] });
@@ -205,7 +240,7 @@
     let mttrCount = 0;
 
     for (const [, obj] of byMon.entries()) {
-      const L = obj.logs;
+      const L = obj.logs || [];
       let prev = "unknown";
       let downStartedAt = null;
 
@@ -285,7 +320,7 @@
         </div>
         <div style="text-align:right">
           <div class="muted">Score de fiabilité</div>
-          <div style="font-weight:900;font-size:28px" class="${scoreClass}">
+          <div class="${scoreClass}" style="font-weight:900;font-size:28px">
             ${report.score}/100
             <span style="font-size:14px;font-weight:900;color:var(--muted)">(${report.grade})</span>
           </div>
@@ -342,27 +377,29 @@
   }
 
   function setPlanUI(me) {
-    $("planBadge").textContent = (me.plan || "standard").toUpperCase();
-    $("orgPill").textContent = `Org: ${me.org?.name || "—"}`;
-    $("rolePill").textContent = `Rôle: ${me.role || "—"}`;
+    if ($("planBadge")) $("planBadge").textContent = (me.plan || "standard").toUpperCase();
+    if ($("orgPill")) $("orgPill").textContent = `Org: ${me.org?.name || "—"}`;
+    if ($("rolePill")) $("rolePill").textContent = `Rôle: ${me.role || "—"}`;
 
     const trial = me.hasTrial ? (me.trialEndsAt ? `jusqu’au ${fmtDate(me.trialEndsAt)}` : "actif") : "—";
-    $("trialPill").textContent = `Trial: ${trial}`;
+    if ($("trialPill")) $("trialPill").textContent = `Trial: ${trial}`;
 
     const pay = me.accessBlocked ? "bloqué" : (me.subscriptionStatus || "ok");
-    $("payPill").textContent = `Paiement: ${pay}`;
+    if ($("payPill")) $("payPill").textContent = `Paiement: ${pay}`;
 
-    $("email").textContent = me.email || "—";
-    $("company").textContent = me.companyName || "—";
+    if ($("email")) $("email").textContent = me.email || "—";
+    if ($("company")) $("company").textContent = me.companyName || "—";
 
     const q = me.usage || {};
-    $("qa").textContent = `${q.audits?.used ?? 0}/${q.audits?.limit ?? 0}`;
-    $("qm").textContent = `${q.monitors?.used ?? 0}/${q.monitors?.limit ?? 0}`;
-    $("qp").textContent = `${q.pdf?.used ?? 0}/${q.pdf?.limit ?? 0}`;
-    $("qe").textContent = `${q.exports?.used ?? 0}/${q.exports?.limit ?? 0}`;
+    if ($("qa")) $("qa").textContent = `${q.audits?.used ?? 0}/${q.audits?.limit ?? 0}`;
+    if ($("qm")) $("qm").textContent = `${q.monitors?.used ?? 0}/${q.monitors?.limit ?? 0}`;
+    if ($("qp")) $("qp").textContent = `${q.pdf?.used ?? 0}/${q.pdf?.limit ?? 0}`;
+    if ($("qe")) $("qe").textContent = `${q.exports?.used ?? 0}/${q.exports?.limit ?? 0}`;
 
-    if (me.plan === "ultra") $("teamTab").style.display = "";
-    else $("teamTab").style.display = "none";
+    if ($("teamTab")) {
+      if (me.plan === "ultra") $("teamTab").style.display = "";
+      else $("teamTab").style.display = "none";
+    }
 
     const lock = $("monthlyLock");
     const btnBuild = $("btnBuildMonthly");
@@ -386,6 +423,7 @@
     const j = await apiGet("/api/audits");
     const audits = j.audits || [];
     const tbody = $("auditsTbody");
+    if (!tbody) return audits;
     tbody.innerHTML = "";
 
     for (const a of audits) {
@@ -394,14 +432,29 @@
         <td>${fmtDate(a.createdAt)}</td>
         <td style="max-width:420px;word-break:break-word">${a.url || ""}</td>
         <td><b>${a.score ?? "—"}</b></td>
-        <td><a href="/api/audits/${a._id}/pdf" target="_blank">PDF</a></td>
+        <td><a href="/api/audits/${a._id}/pdf" data-audit-pdf="${a._id}" target="_blank">PDF</a></td>
         <td><a href="#" data-id="${a._id}">Voir</a></td>
       `;
-      tr.querySelector('a[data-id]').addEventListener("click", async (e) => {
+
+      // ✅ Make PDF work with Bearer token (fetch blob)
+      tr.querySelector('a[data-audit-pdf]')?.addEventListener("click", async (e) => {
+        e.preventDefault();
+        try {
+          setMsg("Ouverture PDF…");
+          const blob = await fetchPdfBlob(`/api/audits/${a._id}/pdf`);
+          openBlobInNewTab(blob, `flowpoint-audit-${a._id}.pdf`);
+          setMsg("✅ PDF ouvert");
+        } catch (err) {
+          setMsg(err.message || "PDF impossible", true);
+        }
+      });
+
+      tr.querySelector('a[data-id]')?.addEventListener("click", async (e) => {
         e.preventDefault();
         const id = e.currentTarget.getAttribute("data-id");
         const det = await apiGet(`/api/audits/${id}`);
         const box = $("auditResult");
+        if (!box) return;
         box.classList.remove("hidden");
         box.innerHTML = `
           <div style="font-weight:900">Détails audit</div>
@@ -413,6 +466,7 @@
         `;
         setTab("audit");
       });
+
       tbody.appendChild(tr);
     }
 
@@ -420,26 +474,43 @@
   }
 
   async function runAudit() {
-    const url = String($("auditUrl").value || "").trim();
+    const url = String($("auditUrl")?.value || "").trim();
     if (!url) return setMsg("URL manquante.", true);
 
     setMsg("Audit en cours…");
     const j = await apiPost("/api/audits/run", { url });
     const box = $("auditResult");
-    box.classList.remove("hidden");
-    box.innerHTML = `
-      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">
-        <div>
-          <div style="font-weight:900">Résultat audit</div>
-          <div class="muted" style="margin-top:6px">${j.summary || ""}</div>
+    if (box) {
+      box.classList.remove("hidden");
+      box.innerHTML = `
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">
+          <div>
+            <div style="font-weight:900">Résultat audit</div>
+            <div class="muted" style="margin-top:6px">${j.summary || ""}</div>
+          </div>
+          <div class="badge">Score: ${j.score ?? "—"}/100</div>
         </div>
-        <div class="badge">Score: ${j.score ?? "—"}/100</div>
-      </div>
-      <div class="muted" style="margin-top:10px">${j.cached ? "✅ Cache utilisé" : "🆕 Audit nouveau"}</div>
-      <div style="margin-top:10px">
-        <a href="/api/audits/${j.auditId}/pdf" target="_blank">Ouvrir PDF</a>
-      </div>
-    `;
+        <div class="muted" style="margin-top:10px">${j.cached ? "✅ Cache utilisé" : "🆕 Audit nouveau"}</div>
+        <div style="margin-top:10px">
+          <a href="#" id="openLastAuditPdf">Ouvrir PDF</a>
+        </div>
+      `;
+      const link = $("openLastAuditPdf");
+      if (link) {
+        link.addEventListener("click", async (e) => {
+          e.preventDefault();
+          try {
+            setMsg("Ouverture PDF…");
+            const blob = await fetchPdfBlob(`/api/audits/${j.auditId}/pdf`);
+            openBlobInNewTab(blob, `flowpoint-audit-${j.auditId}.pdf`);
+            setMsg("✅ PDF ouvert");
+          } catch (err) {
+            setMsg(err.message || "PDF impossible", true);
+          }
+        });
+      }
+    }
+
     setMsg("Audit terminé ✅");
     await loadAudits();
   }
@@ -448,6 +519,7 @@
     const j = await apiGet("/api/monitors");
     const monitors = j.monitors || [];
     const tbody = $("monTbody");
+    if (!tbody) return monitors;
     tbody.innerHTML = "";
 
     for (const m of monitors) {
@@ -467,20 +539,21 @@
         </td>
       `;
 
-      tr.querySelector('[data-act="toggle"]').addEventListener("click", async () => {
+      tr.querySelector('[data-act="toggle"]')?.addEventListener("click", async () => {
         await apiPatch(`/api/monitors/${m._id}`, { active: !m.active });
         await refreshAll();
       });
 
-      tr.querySelector('[data-act="run"]').addEventListener("click", async () => {
+      tr.querySelector('[data-act="run"]')?.addEventListener("click", async () => {
         setMsg("Check manuel…");
         await apiPost(`/api/monitors/${m._id}/run`, {});
         await refreshAll();
         setMsg("Check manuel effectué ✅");
       });
 
-      tr.querySelector('[data-act="logs"]').addEventListener("click", async () => {
+      tr.querySelector('[data-act="logs"]')?.addEventListener("click", async () => {
         const box = $("monLogsBox");
+        if (!box) return;
         box.classList.remove("hidden");
         box.innerHTML = `<div class="muted">Chargement logs…</div>`;
         const jl = await apiGet(`/api/monitors/${m._id}/logs`);
@@ -516,13 +589,13 @@
   }
 
   async function createMonitor() {
-    const url = String($("monUrl").value || "").trim();
-    const intervalMinutes = Number($("monInterval").value || 60);
+    const url = String($("monUrl")?.value || "").trim();
+    const intervalMinutes = Number($("monInterval")?.value || 60);
     if (!url) return setMsg("URL monitor manquante.", true);
 
     setMsg("Création monitor…");
     await apiPost("/api/monitors", { url, intervalMinutes });
-    $("monUrl").value = "";
+    if ($("monUrl")) $("monUrl").value = "";
     setMsg("Monitor créé ✅");
     await refreshAll();
   }
@@ -548,6 +621,7 @@
     if (me.plan !== "ultra") return;
     const j = await apiGet("/api/org/members");
     const tbody = $("teamTbody");
+    if (!tbody) return;
     tbody.innerHTML = "";
     for (const u of (j.members || [])) {
       const tr = document.createElement("tr");
@@ -562,18 +636,18 @@
   }
 
   async function inviteMember() {
-    const email = String($("inviteEmail").value || "").trim();
+    const email = String($("inviteEmail")?.value || "").trim();
     if (!email) return setMsg("Email invite manquant.", true);
     setMsg("Envoi invitation…");
     await apiPost("/api/org/invite", { email });
-    $("inviteEmail").value = "";
+    if ($("inviteEmail")) $("inviteEmail").value = "";
     setMsg("Invitation envoyée ✅");
   }
 
   // ✅ Save monitoring settings to backend (monitor-settings), fallback to /api/org/settings if needed
   async function saveSettings() {
-    const recipients = String($("alertRecipients").value || "all");
-    const extra = String($("alertExtraEmails").value || "")
+    const recipients = String($("alertRecipients")?.value || "all");
+    const extra = String($("alertExtraEmails")?.value || "")
       .split(",").map(s => s.trim()).filter(Boolean);
 
     try {
@@ -589,15 +663,15 @@
     try {
       const j = await apiGet("/api/org/monitor-settings");
       if (j.settings) {
-        $("alertRecipients").value = j.settings.alertRecipients || "all";
-        $("alertExtraEmails").value = (j.settings.alertExtraEmails || []).join(", ");
+        if ($("alertRecipients")) $("alertRecipients").value = j.settings.alertRecipients || "all";
+        if ($("alertExtraEmails")) $("alertExtraEmails").value = (j.settings.alertExtraEmails || []).join(", ");
       }
     } catch {
       try {
         const j = await apiGet("/api/org/settings");
         if (j.settings) {
-          $("alertRecipients").value = j.settings.alertRecipients || "all";
-          $("alertExtraEmails").value = (j.settings.alertExtraEmails || []).join(", ");
+          if ($("alertRecipients")) $("alertRecipients").value = j.settings.alertRecipients || "all";
+          if ($("alertExtraEmails")) $("alertExtraEmails").value = (j.settings.alertExtraEmails || []).join(", ");
         }
       } catch {
         // silent
@@ -614,6 +688,7 @@
     if (me.plan !== "ultra") return;
 
     const box = $("monthlyReport");
+    if (!box) return;
     box.classList.remove("hidden");
     box.innerHTML = `<div class="muted">Génération du rapport…</div>`;
 
@@ -629,12 +704,91 @@
     }
     window.print();
   }
-const btnMonitoringPdf = document.getElementById("btnMonitoringPdf");
-if (btnMonitoringPdf) {
-  btnMonitoringPdf.addEventListener("click", () => {
-    window.open("/api/monitoring/monthly-report/pdf", "_blank");
-  });
-}
+
+  // ✅ Monitoring PDF (works with Bearer token)
+  async function downloadMonitoringPdfWithFallback() {
+    try {
+      setMsg("Génération PDF monitoring…");
+      // 1) Try real PDF endpoint
+      const pdfBlob = await fetchPdfBlob("/api/monitoring/monthly-report/pdf");
+      openBlobInNewTab(pdfBlob, "flowpoint-monitoring-report.pdf");
+      setMsg("✅ PDF monitoring ouvert");
+      return;
+    } catch (e1) {
+      // 2) Fallback: use JSON endpoint and open printable report
+      try {
+        const j = await apiGet("/api/monitoring/monthly-report");
+        const report = j.report || j;
+
+        const w = window.open("", "_blank");
+        if (!w) throw new Error("Popup bloqué par le navigateur");
+
+        const html = `
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>FlowPoint AI — Rapport Monitoring</title>
+<style>
+  body{font-family:system-ui,Arial;margin:24px;color:#0b1220}
+  h1{margin:0 0 10px}
+  .muted{color:#667085}
+  table{width:100%;border-collapse:collapse;margin-top:14px}
+  th,td{padding:10px;border-bottom:1px solid #eef2f8;text-align:left;font-size:14px}
+  .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#E8F0FF;color:#0052CC;font-weight:900;font-size:12px}
+</style>
+</head>
+<body>
+  <h1>FlowPoint AI — Rapport Monitoring</h1>
+  <div class="muted">Période: ${report?.rangeDays || 30} jours • Généré: ${fmtDate(report?.generatedAt || new Date().toISOString())}</div>
+
+  <div style="margin-top:12px">
+    <span class="badge">Score global: ${report?.global?.reliabilityScore ?? "—"}/100</span>
+    <span class="badge">Uptime: ${report?.global?.uptimePct ?? "—"}%</span>
+    <span class="badge">Latence: ${report?.global?.avgMs ?? "—"}ms</span>
+    <span class="badge">Incidents: ${report?.global?.incidents ?? "—"}</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>URL</th>
+        <th>Score</th>
+        <th>Uptime %</th>
+        <th>Avg ms</th>
+        <th>Incidents</th>
+        <th>Checks</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${(report?.sites || []).map(s => `
+        <tr>
+          <td style="word-break:break-word">${s.url || ""}</td>
+          <td><b>${s.score ?? "—"}</b></td>
+          <td>${s.uptimePct ?? "—"}</td>
+          <td>${s.avgMs ?? "—"}</td>
+          <td>${s.incidents ?? "—"}</td>
+          <td>${s.totalChecks ?? "—"}</td>
+        </tr>
+      `).join("")}
+    </tbody>
+  </table>
+
+  <div class="muted" style="margin-top:16px">Astuce: tu peux imprimer cette page en PDF (Ctrl+P).</div>
+  <script>setTimeout(()=>window.print(), 400);</script>
+</body>
+</html>`;
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+
+        setMsg("✅ Rapport monitoring ouvert (fallback imprimable)");
+      } catch (e2) {
+        setMsg((e2 && e2.message) ? e2.message : "PDF monitoring impossible", true);
+      }
+    }
+  }
 
   // ---------- Refresh all ----------
   let lastMe = null;
@@ -657,8 +811,8 @@ if (btnMonitoringPdf) {
     const avgScore =
       last7Audits.length ? (last7Audits.reduce((s, a) => s + (Number(a.score) || 0), 0) / last7Audits.length) : 0;
 
-    $("kpiScore").textContent = last7Audits.length ? `${avgScore.toFixed(1)}/100` : "—";
-    $("kpiAudits").textContent = `${last7Audits.length}`;
+    if ($("kpiScore")) $("kpiScore").textContent = last7Audits.length ? `${avgScore.toFixed(1)}/100` : "—";
+    if ($("kpiAudits")) $("kpiAudits").textContent = `${last7Audits.length}`;
 
     // Audits/day chart (7 days)
     const keys7 = lastNDaysKeys(7);
@@ -674,11 +828,11 @@ if (btnMonitoringPdf) {
     // Monitoring stats
     const stats = await collectMonitoringStats(monitors);
 
-    $("kpiUptime").textContent = stats.uptime7 ? pct(stats.uptime7) : "—";
-    $("kpiMs").textContent = stats.avgMs7 ? ms(stats.avgMs7) : "—";
+    if ($("kpiUptime")) $("kpiUptime").textContent = stats.uptime7 ? pct(stats.uptime7) : "—";
+    if ($("kpiMs")) $("kpiMs").textContent = stats.avgMs7 ? ms(stats.avgMs7) : "—";
     renderBars("chartDowns", stats.downs7Norm);
 
-    // ✅ Uptime 30 days
+    // Uptime 30 days
     renderBars("chartUptime30", stats.uptime30Arr);
     const badge = $("uptime30Badge");
     if (badge) badge.textContent = `30j: ${stats.uptime30 ? pct(stats.uptime30) : "—"}`;
@@ -695,40 +849,42 @@ if (btnMonitoringPdf) {
 
   // ---------- Bind buttons ----------
   function bindActions() {
-    $("btnRefresh").addEventListener("click", () => refreshAll().catch(e => setMsg(e.message, true)));
+    $("btnRefresh")?.addEventListener("click", () => refreshAll().catch(e => setMsg(e.message, true)));
 
-    $("btnPricing").addEventListener("click", () => (location.href = "/pricing.html"));
-    $("btnPortal").addEventListener("click", () => stripePortal().catch(e => setMsg(e.message, true)));
-    $("btnLogout").addEventListener("click", () => { localStorage.removeItem("token"); location.href = "/login.html"; });
+    $("btnPricing")?.addEventListener("click", () => (location.href = "/pricing.html"));
+    $("btnPortal")?.addEventListener("click", () => stripePortal().catch(e => setMsg(e.message, true)));
+    $("btnLogout")?.addEventListener("click", () => { localStorage.removeItem("token"); location.href = "/login.html"; });
 
-    $("btnRunAudit").addEventListener("click", () => runAudit().catch(e => setMsg(e.message, true)));
-    $("btnCreateMon").addEventListener("click", () => createMonitor().catch(e => setMsg(e.message, true)));
+    $("btnRunAudit")?.addEventListener("click", () => runAudit().catch(e => setMsg(e.message, true)));
+    $("btnCreateMon")?.addEventListener("click", () => createMonitor().catch(e => setMsg(e.message, true)));
 
-    $("btnExportAudits").addEventListener("click", () => exportCsv("/api/export/audits.csv").catch(e => setMsg(e.message, true)));
-    $("btnExportMonitors").addEventListener("click", () => exportCsv("/api/export/monitors.csv").catch(e => setMsg(e.message, true)));
+    $("btnExportAudits")?.addEventListener("click", () => exportCsv("/api/export/audits.csv").catch(e => setMsg(e.message, true)));
+    $("btnExportMonitors")?.addEventListener("click", () => exportCsv("/api/export/monitors.csv").catch(e => setMsg(e.message, true)));
 
-    $("btnSaveSettings").addEventListener("click", () => saveSettings().catch(e => setMsg(e.message, true)));
+    $("btnSaveSettings")?.addEventListener("click", () => saveSettings().catch(e => setMsg(e.message, true)));
 
-    const btnInvite = $("btnInvite");
-    if (btnInvite) btnInvite.addEventListener("click", () => inviteMember().catch(e => setMsg(e.message, true)));
+    $("btnInvite")?.addEventListener("click", () => inviteMember().catch(e => setMsg(e.message, true)));
 
     const btnBuild = $("btnBuildMonthly");
     const btnPrint = $("btnPrintMonthly");
 
-    if (btnBuild) {
-      btnBuild.addEventListener("click", async () => {
-        try {
-          if (!lastMe) lastMe = await apiGet("/api/me");
-          const monitors = (await apiGet("/api/monitors")).monitors || [];
-          const stats = await collectMonitoringStats(monitors);
-          await buildMonthlyReport(lastMe, monitors, stats);
-        } catch (e) {
-          setMsg(e.message, true);
-        }
-      });
-    }
+    btnBuild?.addEventListener("click", async () => {
+      try {
+        if (!lastMe) lastMe = await apiGet("/api/me");
+        const monitors = (await apiGet("/api/monitors")).monitors || [];
+        const stats = await collectMonitoringStats(monitors);
+        await buildMonthlyReport(lastMe, monitors, stats);
+      } catch (e) {
+        setMsg(e.message, true);
+      }
+    });
 
-    if (btnPrint) btnPrint.addEventListener("click", () => printMonthly());
+    btnPrint?.addEventListener("click", () => printMonthly());
+
+    // ✅ Monitoring PDF button
+    $("btnMonitoringPdf")?.addEventListener("click", () => {
+      downloadMonitoringPdfWithFallback().catch(e => setMsg(e.message, true));
+    });
   }
 
   // ---------- Boot ----------
