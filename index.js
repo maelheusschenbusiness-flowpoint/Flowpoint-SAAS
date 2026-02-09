@@ -1324,6 +1324,135 @@ app.post("/api/reports/seo-daily", auth, requireActive, async (req, res) => {
     res.status(500).json({ error: "Erreur rapport SEO quotidien" });
   }
 });
+// =======================
+// Monitoring Settings + Monthly Reliability Report (Ultra)
+// =======================
+
+function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+
+function reliabilityScoreFromStats({ uptimePct, downs, avgMs }) {
+  let score = uptimePct;
+  score -= Math.min(25, downs * 1.5);
+  if (avgMs > 1200) {
+    const extra = clamp((avgMs - 1200) / 2000, 0, 1);
+    score -= extra * 15;
+  }
+  return Math.round(clamp(score, 0, 100));
+}
+
+async function computeOrgMonthlyReport(orgId) {
+  const now = new Date();
+  const from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const logs = await MonitorLog.find({ orgId, checkedAt: { $gte: from } })
+    .select("url status responseTimeMs checkedAt");
+
+  const byUrl = new Map();
+  for (const l of logs) {
+    const url = String(l.url || "").trim();
+    if (!url) continue;
+    if (!byUrl.has(url)) byUrl.set(url, []);
+    byUrl.get(url).push(l);
+  }
+
+  const sites = [];
+  for (const [url, arr] of byUrl.entries()) {
+    const total = arr.length || 0;
+    const up = arr.filter(x => x.status === "up").length;
+    const down = arr.filter(x => x.status === "down").length;
+    const uptimePct = total ? (up / total) * 100 : 0;
+
+    const avgMs = total
+      ? Math.round(arr.reduce((s, x) => s + (Number(x.responseTimeMs || 0) || 0), 0) / total)
+      : 0;
+
+    // incidents approx = transitions up->down
+    let incidents = 0;
+    const sorted = arr.slice().sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i - 1].status === "up" && sorted[i].status === "down") incidents++;
+    }
+
+    const score = reliabilityScoreFromStats({ uptimePct, downs: incidents, avgMs });
+
+    sites.push({
+      url,
+      totalChecks: total,
+      uptimePct: Math.round(uptimePct * 100) / 100,
+      avgMs,
+      downLogs: down,
+      incidents,
+      score,
+    });
+  }
+
+  sites.sort((a, b) => b.score - a.score);
+
+  const totalChecks = sites.reduce((s, x) => s + x.totalChecks, 0);
+  const weightedUptime = totalChecks
+    ? sites.reduce((s, x) => s + x.uptimePct * x.totalChecks, 0) / totalChecks
+    : 0;
+  const weightedAvgMs = totalChecks
+    ? Math.round(sites.reduce((s, x) => s + x.avgMs * x.totalChecks, 0) / totalChecks)
+    : 0;
+  const totalIncidents = sites.reduce((s, x) => s + x.incidents, 0);
+
+  const globalScore = reliabilityScoreFromStats({
+    uptimePct: weightedUptime,
+    downs: totalIncidents,
+    avgMs: weightedAvgMs,
+  });
+
+  return {
+    rangeDays: 30,
+    generatedAt: new Date().toISOString(),
+    global: {
+      reliabilityScore: globalScore,
+      uptimePct: Math.round(weightedUptime * 100) / 100,
+      avgMs: weightedAvgMs,
+      incidents: totalIncidents,
+      sitesCount: sites.length,
+    },
+    sites,
+  };
+}
+
+// GET current org monitoring settings
+app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
+  const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails name");
+  if (!org) return res.status(404).json({ error: "Org introuvable" });
+
+  return res.json({
+    ok: true,
+    settings: {
+      alertRecipients: org.alertRecipients || "all",
+      alertExtraEmails: Array.isArray(org.alertExtraEmails) ? org.alertExtraEmails : [],
+    }
+  });
+});
+
+// Update org monitoring settings (owner only)
+app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (req, res) => {
+  const alertRecipients = String(req.body?.alertRecipients || "all").toLowerCase();
+  const alertExtraEmails = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
+
+  if (!["all", "owner"].includes(alertRecipients)) return res.status(400).json({ error: "alertRecipients invalide" });
+
+  const cleaned = [...new Set(alertExtraEmails.map(x => String(x || "").trim().toLowerCase()).filter(Boolean))].slice(0, 25);
+
+  await Org.updateOne(
+    { _id: req.dbUser.orgId },
+    { $set: { alertRecipients, alertExtraEmails: cleaned } }
+  );
+
+  return res.json({ ok: true });
+});
+
+// Ultra only: monthly reliability report JSON for dashboard
+app.get("/api/monitoring/monthly-report", auth, requireActive, requirePlan("ultra"), async (req, res) => {
+  const report = await computeOrgMonthlyReport(req.dbUser.orgId);
+  return res.json({ ok: true, report });
+});
 
 // ---------- START ----------
 app.listen(PORT, () => console.log(`✅ FlowPoint SaaS (Pack B) lancé sur port ${PORT}`));
