@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node index.js",
     "cron": "node cron.js",
-    "monitor-cron": "node monitor-cron.js"
+    "monitor-cron": "node monitor-cron.js",
+    "cron:monthly-monitoring": "node monthly-monitoring-cron.js"
   },
   "engines": {
     "node": ">=18"
