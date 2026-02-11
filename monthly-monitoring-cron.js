@@ -1,91 +1,138 @@
 // monthly-monitoring-cron.js
-// FlowPoint AI — Monthly Monitoring Report (ULTRA)
-// Runs 1x per day, computes last 30 days reliability metrics
 
 require("dotenv").config();
 const mongoose = require("mongoose");
+const axios = require("axios");
 
-const REQUIRED = ["MONGO_URI", "CRON_KEY"];
-for (const k of REQUIRED) {
-  if (!process.env[k]) {
-    console.error("❌ ENV manquante:", k);
+// ===============================
+// 🔌 1. Connexion MongoDB
+// ===============================
+
+async function connectDB() {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log("✅ MongoDB connected");
+  } catch (error) {
+    console.error("❌ MongoDB connection failed:", error);
     process.exit(1);
   }
 }
 
-// ---- Models (same collections, no breaking change)
-const MonitorLogSchema = new mongoose.Schema({}, { strict: false, collection: "monitorlogs" });
-const MonitorSchema = new mongoose.Schema({}, { strict: false, collection: "monitors" });
-const OrgSchema = new mongoose.Schema({}, { strict: false, collection: "orgs" });
+// ===============================
+// 📊 2. Vérifier nombre d'utilisateurs actifs
+// ===============================
 
-const MonitorLog = mongoose.model("MonitorLog", MonitorLogSchema);
-const Monitor = mongoose.model("Monitor", MonitorSchema);
-const Org = mongoose.model("Org", OrgSchema);
+async function checkActiveUsers() {
+  const User = mongoose.model(
+    "User",
+    new mongoose.Schema({
+      email: String,
+      subscriptionStatus: String,
+      createdAt: Date,
+    }),
+    "users"
+  );
 
-function clamp(n, a, b) {
-  return Math.max(a, Math.min(b, n));
+  const activeUsers = await User.countDocuments({
+    subscriptionStatus: "active",
+  });
+
+  console.log("👥 Active users:", activeUsers);
+  return activeUsers;
 }
 
-async function run() {
-  console.log("📊 Monthly monitoring cron started");
-  await mongoose.connect(process.env.MONGO_URI);
+// ===============================
+// 💳 3. Vérifier abonnements Stripe actifs
+// ===============================
 
-  const cutoff = Date.now() - 30 * 86400000;
-  const orgs = await Org.find({ plan: "ultra" });
-
-  for (const org of orgs) {
-    const monitors = await Monitor.find({ orgId: org._id });
-    if (!monitors.length) continue;
-
-    const logs = await MonitorLog.find({
-      orgId: org._id,
-      createdAt: { $gte: new Date(cutoff) },
-    }).sort({ createdAt: 1 });
-
-    let checks = 0, up = 0, down = 0;
-    let incidents = 0;
-    let rtSum = 0, rtCnt = 0;
-
-    let prev = "unknown";
-
-    for (const l of logs) {
-      const st = String(l.status || "").toLowerCase();
-      checks++;
-      if (st === "up") up++;
-      if (st === "down") down++;
-
-      if (st === "down" && prev !== "down") incidents++;
-
-      if (l.responseTimeMs) {
-        rtSum += l.responseTimeMs;
-        rtCnt++;
+async function checkStripeSubscriptions() {
+  try {
+    const response = await axios.get(
+      "https://api.stripe.com/v1/subscriptions?status=active&limit=100",
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+        },
       }
+    );
 
-      prev = st;
+    const stripeCount = response.data.data.length;
+    console.log("💳 Active Stripe subscriptions:", stripeCount);
+    return stripeCount;
+  } catch (error) {
+    console.error("❌ Stripe check failed:", error.response?.data || error.message);
+    return 0;
+  }
+}
+
+// ===============================
+// 📧 4. Vérifier logs emails mensuels
+// ===============================
+
+async function checkEmailLogs() {
+  const EmailLog = mongoose.model(
+    "EmailLog",
+    new mongoose.Schema({
+      userId: String,
+      sentAt: Date,
+      type: String,
+    }),
+    "email_logs"
+  );
+
+  const lastMonth = new Date();
+  lastMonth.setMonth(lastMonth.getMonth() - 1);
+
+  const sentCount = await EmailLog.countDocuments({
+    type: "monthly_report",
+    sentAt: { $gte: lastMonth },
+  });
+
+  console.log("📧 Monthly reports sent:", sentCount);
+  return sentCount;
+}
+
+// ===============================
+// 🌍 5. Vérifier API externe (SEO / Maps)
+// ===============================
+
+async function checkExternalAPI() {
+  try {
+    const response = await axios.get("https://www.google.com");
+    if (response.status === 200) {
+      console.log("🌍 External API reachable");
+      return true;
     }
+  } catch (error) {
+    console.error("❌ External API not reachable");
+    return false;
+  }
+}
 
-    const uptime = checks ? up / checks : 0;
-    const avgRt = rtCnt ? rtSum / rtCnt : 0;
+// ===============================
+// 🧠 6. Monitoring global
+// ===============================
 
-    let score = uptime * 100;
-    score -= Math.min(40, incidents * 2);
-    score -= Math.min(20, avgRt / 200);
-    score = clamp(score, 0, 100);
+async function runMonitoring() {
+  await connectDB();
 
-    org.lastMonitoringScore = Math.round(score);
-    org.lastMonitoringUptime = uptime;
-    org.lastMonitoringComputedAt = new Date();
+  const users = await checkActiveUsers();
+  const stripe = await checkStripeSubscriptions();
+  const emails = await checkEmailLogs();
+  const apiStatus = await checkExternalAPI();
 
-    await org.save();
+  console.log("\n========== 📊 MONTHLY MONITORING REPORT ==========");
+  console.log("Active Users (DB):", users);
+  console.log("Active Stripe Subs:", stripe);
+  console.log("Monthly Emails Sent:", emails);
+  console.log("External API OK:", apiStatus ? "YES" : "NO");
+  console.log("==================================================\n");
 
-    console.log(`✅ Org ${org._id} score=${Math.round(score)}`);
+  if (users !== stripe) {
+    console.warn("⚠️ Mismatch between DB users and Stripe subscriptions!");
   }
 
-  await mongoose.disconnect();
-  console.log("✅ Monthly monitoring cron finished");
+  process.exit();
 }
 
-run().catch((e) => {
-  console.error("❌ Monthly cron fatal:", e);
-  process.exit(1);
-});
+runMonitoring();
