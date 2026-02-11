@@ -1,13 +1,15 @@
 // monthly-monitoring-cron.js
-// Cron "Monthly Monitoring" - Flowpoint AI
+// Cron "Monthly Monitoring" - Flowpoint AI (compatible MONGO_URI ou MONGODB_URI)
 
 const mongoose = require("mongoose");
 
 // ============ Utils ============
-function requiredEnv(name) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
+function requiredEnvEither(...names) {
+  for (const name of names) {
+    const v = process.env[name];
+    if (v && String(v).trim().length > 0) return v;
+  }
+  throw new Error(`Missing env var: one of [${names.join(", ")}]`);
 }
 
 function logSection(title) {
@@ -24,9 +26,10 @@ function withTimeout(promise, ms, label = "operation") {
   ]);
 }
 
-// Node 18+ a fetch. Si tu es en Node 16, je te dis plus bas quoi faire.
+// Node 18+ a fetch (sur ton Render c'est OK)
 async function stripeListActiveSubscriptions(secretKey) {
   const params = new URLSearchParams({ status: "active", limit: "100" });
+
   const res = await fetch(`https://api.stripe.com/v1/subscriptions?${params}`, {
     method: "GET",
     headers: {
@@ -74,9 +77,27 @@ async function connectDB(mongoUri) {
 }
 
 async function checkActiveUsers() {
-  const activeUsers = await User.countDocuments({ subscriptionStatus: "active" });
+  const activeUsers = await User.countDocuments({
+    subscriptionStatus: "active",
+  });
   console.log("👥 Active users (DB):", activeUsers);
   return activeUsers;
+}
+
+async function checkStripeSubscriptions(stripeKey) {
+  try {
+    const stripeRes = await withTimeout(
+      stripeListActiveSubscriptions(stripeKey),
+      20000,
+      "stripeListActiveSubscriptions"
+    );
+    const stripeCount = stripeRes.data?.length ?? 0;
+    console.log("💳 Active Stripe subscriptions:", stripeCount);
+    return stripeCount;
+  } catch (e) {
+    console.error("❌ Stripe check failed:", e.message);
+    return 0;
+  }
 }
 
 async function checkEmailLogs() {
@@ -93,7 +114,6 @@ async function checkEmailLogs() {
 }
 
 async function checkExternalAPI() {
-  // Un ping simple avec timeout
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 8000);
 
@@ -117,29 +137,22 @@ async function main() {
   const startedAt = new Date();
   console.log("🚀 Monthly monitoring cron started:", startedAt.toISOString());
 
-  // ✅ FORCE env vars early
-  const MONGODB_URI = requiredEnv("MONGODB_URI");
-  const STRIPE_SECRET_KEY = requiredEnv("STRIPE_SECRET_KEY");
+  // ✅ Ici on accepte MONGO_URI ou MONGODB_URI
+  const MONGO_URI = requiredEnvEither("MONGO_URI", "MONGODB_URI");
+  const STRIPE_SECRET_KEY = requiredEnvEither("STRIPE_SECRET_KEY");
 
   // 1) DB
-  await withTimeout(connectDB(MONGODB_URI), 20000, "connectDB");
+  await withTimeout(connectDB(MONGO_URI), 20000, "connectDB");
 
   // 2) Active users
   const users = await withTimeout(checkActiveUsers(), 15000, "checkActiveUsers");
 
   // 3) Stripe active subs
-  let stripe = 0;
-  try {
-    const stripeRes = await withTimeout(
-      stripeListActiveSubscriptions(STRIPE_SECRET_KEY),
-      20000,
-      "stripeListActiveSubscriptions"
-    );
-    stripe = stripeRes.data?.length ?? 0;
-    console.log("💳 Active Stripe subscriptions:", stripe);
-  } catch (e) {
-    console.error("❌ Stripe check failed:", e.message);
-  }
+  const stripe = await withTimeout(
+    checkStripeSubscriptions(STRIPE_SECRET_KEY),
+    25000,
+    "checkStripeSubscriptions"
+  );
 
   // 4) Email logs
   const emails = await withTimeout(checkEmailLogs(), 15000, "checkEmailLogs");
@@ -154,12 +167,18 @@ async function main() {
   console.log("External API OK:", apiOk ? "YES" : "NO");
 
   if (stripe !== 0 && users !== stripe) {
-    console.warn("⚠️ Mismatch between DB active users and Stripe active subscriptions!");
+    console.warn(
+      "⚠️ Mismatch between DB active users and Stripe active subscriptions!"
+    );
   }
 
   // Clean exit
   await mongoose.disconnect().catch(() => {});
-  console.log("✅ Cron finished in", Math.round((Date.now() - startedAt) / 1000), "s");
+  console.log(
+    "✅ Cron finished in",
+    Math.round((Date.now() - startedAt) / 1000),
+    "s"
+  );
   process.exitCode = 0;
 }
 
