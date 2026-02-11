@@ -146,6 +146,43 @@ async function main() {
   console.log("⏱️ Daily cron started:", new Date().toISOString());
   await mongoose.connect(process.env.MONGO_URI);
 
+  // =========================
+  // ✅ DEBUG AJOUTÉ ICI (sans toucher au reste)
+  // =========================
+  try {
+    console.log("🧪 DEBUG DB name:", mongoose.connection.name);
+
+    const cols = await mongoose.connection.db.listCollections().toArray();
+    console.log("🧪 DEBUG Collections:", cols.map((c) => c.name));
+
+    // on vérifie "orgs" (ta collection modèle) + "organizations" (cas fréquent)
+    const orgsTotal = await mongoose.connection.db
+      .collection("orgs")
+      .countDocuments({});
+    console.log("🧪 DEBUG orgs total:", orgsTotal);
+
+    const organizationsTotal = await mongoose.connection.db
+      .collection("organizations")
+      .countDocuments({});
+    console.log("🧪 DEBUG organizations total:", organizationsTotal);
+
+    // petit sample (si existe)
+    const sampleOrgs = await mongoose.connection.db
+      .collection("orgs")
+      .find({})
+      .limit(3)
+      .toArray();
+    console.log(
+      "🧪 DEBUG orgs sample:",
+      sampleOrgs.map((o) => ({ _id: o._id, name: o.name }))
+    );
+  } catch (e) {
+    console.log("🧪 DEBUG error:", e.message);
+  }
+  // =========================
+  // ✅ FIN DEBUG
+  // =========================
+
   const orgs = await Org.find({}).select("_id name").limit(5000);
   console.log("Orgs:", orgs.length);
 
