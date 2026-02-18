@@ -1,77 +1,87 @@
-const key = document.getElementById("key");
-const btn = document.getElementById("load");
-const tb = document.getElementById("tb");
-const msg = document.getElementById("msg");
+/* admin.js — FlowPoint AI
+   - Reads ADMIN_KEY from input
+   - Calls /api/admin/users, /api/admin/user/block, /api/admin/user/reset-usage
+   - Sends key in header: x-admin-key
+*/
 
-function setMsg(t, err=false){
-  msg.className = err ? "danger" : "muted";
-  msg.textContent = t || "";
-}
+(function () {
+  const $ = (id) => document.getElementById(id);
 
-async function adminApi(path, method="GET", body=null) {
-  const k = key.value.trim();
-  const r = await fetch(path, {
-    method,
-    headers: {
+  function setMsg(text, isError) {
+    const el = $("msg");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = isError ? "danger" : "muted";
+  }
+
+  function adminHeaders() {
+    const key = String($("key")?.value || "").trim();
+    return {
       "Content-Type": "application/json",
-      "x-admin-key": k
-    },
-    body: body ? JSON.stringify(body) : null
-  });
-  const d = await r.json().catch(()=> ({}));
-  if (!r.ok) throw new Error(d.error || "Erreur " + r.status);
-  return d;
-}
+      "x-admin-key": key,
+    };
+  }
 
-function fmt(d){
-  if(!d) return "-";
-  try { return new Date(d).toLocaleString("fr-FR"); } catch { return String(d); }
-}
+  async function apiGet(url) {
+    const r = await fetch(url, { headers: adminHeaders() });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Erreur API (${r.status})`);
+    return j;
+  }
 
-btn.addEventListener("click", async ()=>{
-  try{
+  async function apiPost(url, body) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body || {}),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Erreur API (${r.status})`);
+    return j;
+  }
+
+  function fmtDate(d) {
+    try { return new Date(d).toLocaleString("fr-FR"); } catch { return String(d || ""); }
+  }
+
+  async function loadUsers() {
     setMsg("Chargement…");
-    const out = await adminApi("/api/admin/users");
+    const j = await apiGet("/api/admin/users");
+    const list = j.users || [];
+
+    const tb = $("tb");
+    if (!tb) return;
+
     tb.innerHTML = "";
-    for (const u of out.users) {
+    for (const u of list) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${u.email}</td>
-        <td>${u.plan}</td>
+        <td>${u.email || ""}</td>
+        <td><b>${u.plan || ""}</b></td>
         <td>${u.accessBlocked ? "YES" : "NO"}</td>
-        <td>${fmt(u.trialEndsAt)}</td>
-        <td>${u.subscriptionStatus || u.lastPaymentStatus || "-"}</td>
-        <td>
-          <button data-email="${u.email}" data-b="${u.accessBlocked ? "0":"1"}" class="blockBtn">
-            ${u.accessBlocked ? "Unblock" : "Block"}
-          </button>
-          <button data-email="${u.email}" class="resetBtn">Reset usage</button>
+        <td>${u.trialEndsAt ? fmtDate(u.trialEndsAt) : "—"}</td>
+        <td>${u.subscriptionStatus || "—"}</td>
+        <td style="white-space:nowrap">
+          <button data-act="toggle">${u.accessBlocked ? "Unblock" : "Block"}</button>
+          <button data-act="reset">Reset usage</button>
         </td>
       `;
+
+      tr.querySelector('[data-act="toggle"]')?.addEventListener("click", async () => {
+        await apiPost("/api/admin/user/block", { email: u.email, blocked: !u.accessBlocked });
+        await loadUsers();
+      });
+
+      tr.querySelector('[data-act="reset"]')?.addEventListener("click", async () => {
+        await apiPost("/api/admin/user/reset-usage", { email: u.email });
+        await loadUsers();
+      });
+
       tb.appendChild(tr);
     }
 
-    tb.querySelectorAll(".blockBtn").forEach(b=>{
-      b.addEventListener("click", async ()=>{
-        const email = b.getAttribute("data-email");
-        const blocked = b.getAttribute("data-b") === "1";
-        await adminApi("/api/admin/user/block", "POST", { email, blocked });
-        setMsg("OK");
-        btn.click();
-      });
-    });
-
-    tb.querySelectorAll(".resetBtn").forEach(b=>{
-      b.addEventListener("click", async ()=>{
-        const email = b.getAttribute("data-email");
-        await adminApi("/api/admin/user/reset-usage", "POST", { email });
-        setMsg("Usage reset OK");
-        btn.click();
-      });
-    });
-
-    setMsg("OK");
-  } catch(e){
-    setMsg(e.message, true);
+    setMsg(`✅ ${list.length} users chargés`);
   }
-});
+
+  $("load")?.addEventListener("click", () => loadUsers().catch(e => setMsg(e.message, true)));
+})();
