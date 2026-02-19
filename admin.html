@@ -5,40 +5,208 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>FlowPoint AI — Admin</title>
   <style>
-    body{font-family:system-ui,Arial;background:#f6f7fb;margin:0}
-    .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
-    .card{background:#fff;border:1px solid #e7e9f2;border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.05);margin-bottom:14px}
-    input,button{padding:10px;border-radius:12px;border:1px solid #ddd}
-    button{border:0;background:#111;color:#fff;font-weight:900;cursor:pointer}
+    :root{
+      --bg:#F6F7FB;
+      --panel:#ffffff;
+      --muted:#667085;
+      --text:#0b1220;
+      --border:#E6EAF2;
+      --blue:#0052CC;
+      --blue2:#E8F0FF;
+      --danger:#B00020;
+      --shadow:0 10px 30px rgba(16,24,40,.06);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{font-family:system-ui,Arial;background:var(--bg);margin:0;color:var(--text)}
+    .layout{display:flex;min-height:100vh}
+    .sidebar{
+      width:260px;flex:0 0 260px;background:var(--panel);
+      border-right:1px solid var(--border);
+      padding:18px;position:sticky;top:0;height:100vh
+    }
+    .brand{display:flex;align-items:center;gap:10px;font-weight:1000}
+    .logo{
+      width:34px;height:34px;border-radius:10px;
+      background:var(--blue2);border:1px solid #cfe0ff;
+      display:flex;align-items:center;justify-content:center;color:var(--blue);font-weight:1000
+    }
+    .nav{margin-top:16px;display:flex;flex-direction:column;gap:6px}
+    .nav a{
+      display:flex;align-items:center;gap:10px;
+      padding:10px 12px;border-radius:12px;color:var(--text);
+      border:1px solid transparent;font-weight:900;text-decoration:none
+    }
+    .nav a.active{
+      background:var(--blue2);color:var(--blue);border-color:#cfe0ff
+    }
+
+    .main{flex:1;min-width:0;padding:18px 18px 40px}
+    .topbar{
+      background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+      padding:14px 16px;box-shadow:var(--shadow);
+      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap
+    }
+    h1{margin:0;font-size:18px}
+    .muted{color:var(--muted);font-size:14px}
+    .danger{color:var(--danger);font-weight:900}
+
+    .card{
+      background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+      padding:16px;box-shadow:var(--shadow);margin-top:12px
+    }
+
+    input{padding:10px;border-radius:12px;border:1px solid var(--border);width:100%}
+    button{
+      border:0;border-radius:12px;padding:10px 12px;
+      font-weight:1000;cursor:pointer
+    }
+    .btn{background:var(--blue);color:#fff}
+    .btn3{background:var(--blue2);color:var(--blue);border:1px solid #cfe0ff}
+
+    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .kpi{border:1px solid var(--border);border-radius:14px;padding:14px;background:#fff}
+    .kpi .label{color:var(--muted);font-size:12px;font-weight:900}
+    .kpi .value{font-size:18px;font-weight:1000;margin-top:6px}
+    @media (max-width: 1080px){
+      .sidebar{display:none}
+      .kpis{grid-template-columns:repeat(2,1fr)}
+    }
+    @media (max-width: 520px){
+      .kpis{grid-template-columns:1fr}
+    }
+
     table{width:100%;border-collapse:collapse}
-    td,th{padding:10px;border-bottom:1px solid #eee;text-align:left;font-size:14px}
-    .muted{color:#666;font-size:14px}
-    .danger{color:#b00020;font-weight:900}
+    td,th{padding:10px;border-bottom:1px solid #eef2f8;text-align:left;font-size:14px}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .col{flex:1;min-width:260px}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:var(--blue2);color:var(--blue);font-weight:1000;font-size:12px}
+    .tableWrap{overflow:auto;border:1px solid var(--border);border-radius:14px}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Admin</h1>
-      <div class="muted">Protégé par <b>ADMIN_KEY</b> (header x-admin-key)</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
-        <input id="key" placeholder="ADMIN_KEY" style="flex:1;min-width:280px"/>
-        <button id="load">Charger users</button>
-      </div>
-      <div id="msg" class="muted" style="margin-top:10px"></div>
-    </div>
+  <div class="layout">
 
-    <div class="card" style="overflow:auto">
-      <table>
-        <thead>
-          <tr>
-            <th>Email</th><th>Plan</th><th>Blocked</th><th>TrialEnds</th><th>StripeStatus</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="tb"></tbody>
-      </table>
-    </div>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">F</div>
+        <div>
+          <div>FlowPoint</div>
+          <div class="muted" style="font-size:12px">Admin Panel</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a class="active" href="/admin.html">Users</a>
+        <a href="/dashboard.html">Client Dashboard</a>
+        <a href="/pricing.html">Pricing</a>
+      </nav>
+
+      <div class="card">
+        <div class="muted" style="font-size:12px;font-weight:1000;margin-bottom:6px">ADMIN_KEY</div>
+        <input id="key" placeholder="ADMIN_KEY" />
+        <button id="load" class="btn" style="width:100%;margin-top:10px">Charger users</button>
+        <div id="msg" class="muted" style="margin-top:10px"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h1>Admin</h1>
+          <div class="muted">Protégé par <b>x-admin-key</b> (ADMIN_KEY)</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <span class="badge">Actions: Block / Unblock / Reset usage</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="kpis">
+          <div class="kpi">
+            <div class="label">Users affichés</div>
+            <div class="value" id="kpiUsers">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Blocked</div>
+            <div class="value" id="kpiBlocked">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Plans Ultra</div>
+            <div class="value" id="kpiUltra">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Trial actifs</div>
+            <div class="value" id="kpiTrial">—</div>
+          </div>
+        </div>
+
+        <div class="muted" style="margin-top:10px;font-size:12px">
+          KPIs se remplissent automatiquement quand la table se charge.
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+          <div style="font-weight:1000">Users</div>
+          <div class="muted" style="font-size:12px">Astuce: si rien ne charge → ADMIN_KEY incorrect</div>
+        </div>
+
+        <div class="tableWrap" style="margin-top:12px">
+          <table>
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Plan</th>
+                <th>Blocked</th>
+                <th>TrialEnds</th>
+                <th>StripeStatus</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tb"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
   </div>
+
+  <script>
+    // Petit KPI helper sans toucher à ton admin.js :
+    // On observe les lignes du tableau (#tb) et on calcule quelques stats.
+    const tb = document.getElementById("tb");
+    const kUsers = document.getElementById("kpiUsers");
+    const kBlocked = document.getElementById("kpiBlocked");
+    const kUltra = document.getElementById("kpiUltra");
+    const kTrial = document.getElementById("kpiTrial");
+
+    function recompute(){
+      if(!tb) return;
+      const rows = Array.from(tb.querySelectorAll("tr"));
+      const users = rows.length;
+
+      let blocked=0, ultra=0, trial=0;
+      for(const r of rows){
+        const tds = r.querySelectorAll("td");
+        const plan = (tds[1]?.textContent || "").toLowerCase();
+        const isBlocked = (tds[2]?.textContent || "").toLowerCase().includes("yes");
+        const trialEnds = (tds[3]?.textContent || "").trim();
+
+        if(isBlocked) blocked++;
+        if(plan.includes("ultra")) ultra++;
+        if(trialEnds && trialEnds !== "—") trial++;
+      }
+
+      if(kUsers) kUsers.textContent = String(users);
+      if(kBlocked) kBlocked.textContent = String(blocked);
+      if(kUltra) kUltra.textContent = String(ultra);
+      if(kTrial) kTrial.textContent = String(trial);
+    }
+
+    if(tb){
+      new MutationObserver(recompute).observe(tb, {childList:true, subtree:true});
+    }
+  </script>
 
   <script src="/admin.js"></script>
 </body>
