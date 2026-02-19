@@ -22,7 +22,6 @@
     body{font-family:system-ui,Arial;background:var(--bg);margin:0;color:var(--text)}
     a{color:var(--blue);font-weight:900;text-decoration:none}
 
-    /* Layout */
     .layout{display:flex;min-height:100vh}
     .sidebar{
       width:260px;flex:0 0 260px;background:var(--panel);
@@ -44,6 +43,7 @@
     .nav a.active{
       background:var(--blue2);color:var(--blue);border-color:#cfe0ff
     }
+
     .sideMeta{margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:14px;background:#fbfcff}
     .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:#f3f4f6;color:var(--text);font-weight:900;font-size:12px}
     .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:var(--blue2);color:var(--blue);font-weight:1000;font-size:12px}
@@ -70,13 +70,8 @@
       padding:16px;box-shadow:var(--shadow)
     }
     .span-12{grid-column:span 12}
-    .span-8{grid-column:span 8}
-    .span-6{grid-column:span 6}
-    .span-4{grid-column:span 4}
-    .span-3{grid-column:span 3}
     @media (max-width: 1080px){
       .sidebar{display:none}
-      .span-8,.span-6,.span-4,.span-3{grid-column:span 12}
     }
 
     .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
@@ -86,7 +81,6 @@
     @media (max-width: 900px){ .kpis{grid-template-columns:repeat(2,1fr)} }
     @media (max-width: 520px){ .kpis{grid-template-columns:1fr} }
 
-    /* mini charts (same as your CSS) */
     .miniChart{margin-top:10px}
     .bars{display:flex;gap:6px;align-items:flex-end;height:54px}
     .bar{flex:1;background:#eef2ff;border-radius:8px;position:relative;overflow:hidden}
@@ -104,18 +98,17 @@
 <body>
   <div class="layout">
 
-    <!-- Sidebar -->
     <aside class="sidebar">
       <div class="brand">
         <div class="logo">F</div>
         <div>
           <div>FlowPoint</div>
-          <div class="muted" style="font-size:12px">Dashboard</div>
+          <div class="muted" style="font-size:12px">Client Dashboard</div>
         </div>
       </div>
 
-      <nav class="nav" style="margin-top:14px">
-        <!-- IMPORTANT: same data-tab names used by your dashboard.js -->
+      <nav class="nav">
+        <!-- IMPORTANT: mêmes data-tab que ton dashboard.js -->
         <a href="#" class="active tab" data-tab="audit">Overview</a>
         <a href="#" class="tab" data-tab="audits">Audits</a>
         <a href="#" class="tab" data-tab="monitor">Monitors</a>
@@ -141,11 +134,10 @@
       </div>
     </aside>
 
-    <!-- Main -->
     <main class="main">
       <div class="topbar">
         <div>
-          <h1>Bonjour, <span id="company">—</span></h1>
+          <h1>Dashboard</h1>
           <div class="muted">Audit SEO • Monitoring • PDF • Historique • Équipe (Ultra)</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -155,7 +147,7 @@
         </div>
       </div>
 
-      <!-- OVERVIEW (we reuse your existing KPI + charts) -->
+      <!-- OVERVIEW + Audit (tab-audit) -->
       <section class="grid" id="tab-audit">
         <div class="card span-12">
           <div class="kpis">
@@ -215,7 +207,7 @@
               <div class="muted">Email</div>
               <div style="font-weight:1000" id="email">—</div>
               <div class="muted" style="margin-top:8px">Entreprise</div>
-              <div style="font-weight:1000" id="company2">—</div>
+              <div style="font-weight:1000" id="company">—</div>
             </div>
 
             <div class="col box">
@@ -242,7 +234,7 @@
         </div>
       </section>
 
-      <!-- AUDITS HISTORY -->
+      <!-- AUDITS -->
       <section class="grid hidden" id="tab-audits">
         <div class="card span-12">
           <div style="font-weight:1000;font-size:18px">Historique des audits</div>
@@ -261,7 +253,7 @@
         </div>
       </section>
 
-      <!-- MONITORING -->
+      <!-- MONITOR -->
       <section class="grid hidden" id="tab-monitor">
         <div class="card span-12">
           <div style="font-weight:1000;font-size:18px">Monitoring</div>
@@ -367,16 +359,6 @@
 
     </main>
   </div>
-
-  <script>
-    // petit bridge: ton JS met à jour #company, ici on a aussi #company2 (optionnel)
-    // (on ne touche pas à dashboard.js)
-    new MutationObserver(() => {
-      const c = document.getElementById("company");
-      const c2 = document.getElementById("company2");
-      if (c && c2) c2.textContent = c.textContent;
-    }).observe(document.documentElement, {subtree:true, childList:true, characterData:true});
-  </script>
 
   <script src="/dashboard.js"></script>
 </body>
