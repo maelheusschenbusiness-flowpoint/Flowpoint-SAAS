@@ -73,12 +73,16 @@ function boolEnv(v) {
 function getMailer() {
   if (!SMTP_READY) return null;
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: boolEnv(process.env.SMTP_SECURE),
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-}
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT || 587),
+  secure: boolEnv(process.env.SMTP_SECURE),
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+
+  // ✅ évite que ça reste bloqué en timeout
+  connectionTimeout: 8000,
+  greetingTimeout: 8000,
+  socketTimeout: 12000,
+});
 
 async function sendEmail({ to, subject, text, html, attachments }) {
   const t = getMailer();
@@ -876,14 +880,23 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
     const baseUrl = safeBaseUrl(req);
     const link = `${baseUrl}/login-verify.html?token=${raw}`;
 
-    await sendEmail({
-      to: user.email,
-      subject: "FlowPoint AI — Lien de connexion",
-      text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
-      html: `<p>Lien (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
-    });
+    const baseUrl = safeBaseUrl(req);
+const link = `${baseUrl}/login-verify.html?token=${raw}`;
 
-    return res.json({ ok: true });
+// ✅ DEBUG MODE: retourne le lien directement (et n'essaie PAS SMTP)
+if (String(process.env.DEBUG_LOGIN_LINK || "").toLowerCase() === "true") {
+  return res.json({ ok: true, debugLink: link });
+}
+
+// sinon on envoie l'email normalement
+await sendEmail({
+  to: user.email,
+  subject: "FlowPoint AI — Lien de connexion",
+  text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
+  html: `<p>Lien (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
+});
+
+return res.json({ ok: true });
   } catch (e) {
     console.log("login-request error:", e.message);
     return res.status(500).json({ error: "Erreur login-request" });
