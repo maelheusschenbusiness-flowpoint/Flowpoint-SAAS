@@ -514,7 +514,12 @@ function requireAdmin(req, res, next) {
   if (k !== ADMIN_KEY) return res.status(401).json({ error: "Admin non autorisé" });
   next();
 }
-
+// ✅ Admin bypass for trial anti-abuse (only for /api/auth/lead)
+function isAdminBypass(req) {
+  if (!ADMIN_KEY) return false;
+  const k = req.headers["x-admin-key"] || req.query.admin_key || req.body?.admin_key;
+  return k === ADMIN_KEY;
+}
 // ✅ Cron auth
 function requireCron(req, res, next) {
   if (!CRON_KEY) return res.status(500).json({ error: "CRON_KEY manquante" });
@@ -778,13 +783,25 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     const companyNorm = normalizeCompanyName(companyName);
     const ipua = ipuaHash(req);
 
-    if (await TrialRegistry.findOne({ emailNormalized: emailNorm })) return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
-    if (await TrialRegistry.findOne({ companyNameNormalized: companyNorm })) return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
+    // ✅ Admin bypass (allows re-testing without consuming trial registry)
+    const bypass = isAdminBypass(req);
 
-    if (domain && !PUBLIC_EMAIL_DOMAINS.has(domain)) {
-      if (await TrialRegistry.findOne({ companyDomain: domain })) return res.status(403).json({ error: "Essai déjà utilisé pour ce domaine entreprise." });
+    // ✅ Anti-abus trial (skip if bypass)
+    if (!bypass) {
+      if (await TrialRegistry.findOne({ emailNormalized: emailNorm }))
+        return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
+
+      if (await TrialRegistry.findOne({ companyNameNormalized: companyNorm }))
+        return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
+
+      if (domain && !PUBLIC_EMAIL_DOMAINS.has(domain)) {
+        if (await TrialRegistry.findOne({ companyDomain: domain }))
+          return res.status(403).json({ error: "Essai déjà utilisé pour ce domaine entreprise." });
+      }
+
+      if (await TrialRegistry.findOne({ ipua }))
+        return res.status(403).json({ error: "Essai déjà utilisé (anti-abus navigateur/IP)." });
     }
-    if (await TrialRegistry.findOne({ ipua })) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus navigateur/IP)." });
 
     let user = await User.findOne({ emailNormalized: emailNorm });
     if (!user) {
@@ -808,14 +825,23 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
       await user.save();
     }
 
-    await TrialRegistry.create({ emailNormalized: emailNorm, companyNameNormalized: companyNorm, companyDomain: domain, ipua });
+    // ✅ Only write TrialRegistry when NOT bypassing (so you can re-test)
+    if (!bypass) {
+      await TrialRegistry.create({
+        emailNormalized: emailNorm,
+        companyNameNormalized: companyNorm,
+        companyDomain: domain,
+        ipua,
+      });
+    }
 
     await ensureOrgForUser(user);
 
     return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("lead error:", e.message);
-    if (String(e.message || "").includes("duplicate key")) return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
+    if (String(e.message || "").includes("duplicate key"))
+      return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
     return res.status(500).json({ error: "Erreur serveur lead" });
   }
 });
