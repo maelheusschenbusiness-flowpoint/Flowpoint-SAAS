@@ -788,6 +788,7 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
 
     // ✅ Anti-abus trial (skip if bypass)
     if (!bypass) {
+          if (!adminBypass) {
       if (await TrialRegistry.findOne({ emailNormalized: emailNorm }))
         return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
 
@@ -827,6 +828,7 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
 
     // ✅ Only write TrialRegistry when NOT bypassing (so you can re-test)
     if (!bypass) {
+          if (!adminBypass) {
       await TrialRegistry.create({
         emailNormalized: emailNorm,
         companyNameNormalized: companyNorm,
