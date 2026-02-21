@@ -28,7 +28,7 @@ const PDFDocument = require("pdfkit");
 const nodemailer = require("nodemailer");
 
 const app = express();
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 5000;
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
