@@ -28,7 +28,7 @@ const PDFDocument = require("pdfkit");
 const nodemailer = require("nodemailer");
 
 const app = express();
-app.set("trust proxy", 1);
+app.set("trust proxy", 1); // Render = 1 proxy devant l’app (évite l’erreur rate-limit)
 
 const PORT = process.env.PORT || 5000;
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
@@ -336,6 +336,10 @@ const TrialRegistrySchema = new mongoose.Schema(
     emailNormalized: { type: String, unique: true, index: true },
     companyNameNormalized: { type: String, index: true },
     companyDomain: { type: String, index: true },
+
+    // ancien index DB probable: fingerprint_1 (unique)
+    fingerprint: { type: String, index: true }, // <-- important
+
     ipua: { type: String, index: true },
     usedAt: { type: Date, default: Date.now },
   },
@@ -769,7 +773,9 @@ app.get("/admin", (_, res) => res.sendFile(path.join(__dirname, "admin.html")));
 app.get("/api/health", (_, res) => res.json({ ok: true }));
 
 // ---------- AUTH: LEAD ----------
+// ---------- AUTH: LEAD ----------
 const leadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+
 app.post("/api/auth/lead", leadLimiter, async (req, res) => {
   try {
     const { firstName, email, companyName, plan } = req.body || {};
@@ -783,12 +789,11 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     const companyNorm = normalizeCompanyName(companyName);
     const ipua = ipuaHash(req);
 
-    // ✅ Admin bypass (allows re-testing without consuming trial registry)
-    const bypass = isAdminBypass(req);
+    // ✅ Admin bypass (pour tests répétés sans être bloqué par anti-abus)
+    const adminBypass = ADMIN_KEY && (req.headers["x-admin-key"] === ADMIN_KEY);
 
-    // ✅ Anti-abus trial (skip if bypass)
-    if (!bypass) {
-          if (!adminBypass) {
+    // ✅ Anti-abus (désactivé uniquement si adminBypass)
+    if (!adminBypass) {
       if (await TrialRegistry.findOne({ emailNormalized: emailNorm }))
         return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
 
@@ -826,14 +831,15 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
       await user.save();
     }
 
-    // ✅ Only write TrialRegistry when NOT bypassing (so you can re-test)
-    if (!bypass) {
-          if (!adminBypass) {
+    // ✅ Écrit dans TrialRegistry seulement si pas en bypass
+    // + fingerprint pour éviter l’erreur DB "fingerprint: null" (ancien index unique)
+    if (!adminBypass) {
       await TrialRegistry.create({
         emailNormalized: emailNorm,
         companyNameNormalized: companyNorm,
         companyDomain: domain,
         ipua,
+        fingerprint: ipua,
       });
     }
 
@@ -853,6 +859,7 @@ const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
 app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
   try {
+    const adminBypass = ADMIN_KEY && (req.headers["x-admin-key"] === ADMIN_KEY);
     const email = String(req.body?.email || "").trim();
     if (!email) return res.status(400).json({ error: "Email requis" });
 
