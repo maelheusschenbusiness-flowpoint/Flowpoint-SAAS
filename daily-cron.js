@@ -1,5 +1,6 @@
-// daily-cron.js — FlowPoint AI daily org reports at 9AM
-// Run on Render Cron Job once per day
+// daily-cron.js — FlowPoint AI daily org reports (Render Cron Job)
+// Envoie 1 rapport / org. Copie admin optionnelle en BCC.
+// IMPORTANT: configure SMTP_* + ALERT_EMAIL_FROM sur Render Cron Job.
 
 require("dotenv").config();
 
@@ -21,10 +22,22 @@ for (const k of REQUIRED) {
   if (!process.env[k]) console.log("❌ ENV manquante:", k);
 }
 
-const ADMIN_COPY = (process.env.ALERT_EMAIL_TO || "").trim(); // optionnel
+// Copie admin (BCC) — tu peux garder ALERT_EMAIL_TO=maelheusschen.business@gmail.com
+// Mode: "always" | "never" | "nonprod"
+const ADMIN_COPY_EMAIL = (process.env.ALERT_EMAIL_TO || "").trim();
+const ADMIN_COPY_MODE = (process.env.ADMIN_COPY_MODE || "nonprod").trim().toLowerCase();
+const NODE_ENV = (process.env.NODE_ENV || "production").trim().toLowerCase();
 
 function boolEnv(v) {
   return String(v).toLowerCase() === "true";
+}
+
+function shouldBccAdmin() {
+  if (!ADMIN_COPY_EMAIL) return false;
+  if (ADMIN_COPY_MODE === "never") return false;
+  if (ADMIN_COPY_MODE === "always") return true;
+  // default: nonprod
+  return NODE_ENV !== "production";
 }
 
 function mailer() {
@@ -33,19 +46,32 @@ function mailer() {
     port: Number(process.env.SMTP_PORT || 587),
     secure: boolEnv(process.env.SMTP_SECURE),
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+
+    // évite les timeouts longs
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 }
 
 async function sendMail({ to, subject, text, html }) {
   const t = mailer();
-  const info = await t.sendMail({
+
+  const mail = {
     from: process.env.ALERT_EMAIL_FROM,
     to,
     subject,
     text,
     html,
-  });
-  console.log("✅ Daily email envoyé:", info.messageId, "=>", to);
+  };
+
+  // ✅ Copie admin en BCC (les clients ne voient pas ton email)
+  if (shouldBccAdmin()) {
+    mail.bcc = ADMIN_COPY_EMAIL;
+  }
+
+  const info = await t.sendMail(mail);
+  console.log("✅ Daily email envoyé:", info.messageId, "=> to:", to, "bccAdmin:", !!mail.bcc);
 }
 
 // --------------- DB MODELS (minimal) ---------------
@@ -101,7 +127,7 @@ const Audit = mongoose.model("Audit", AuditSchema);
 // --------------- HELPERS ---------------
 function uniqEmails(list) {
   const set = new Set();
-  for (const e of list) {
+  for (const e of list || []) {
     const v = String(e || "").trim().toLowerCase();
     if (v) set.add(v);
   }
@@ -109,7 +135,11 @@ function uniqEmails(list) {
 }
 
 function fmt(d) {
-  try { return new Date(d).toLocaleString("fr-FR"); } catch { return String(d || ""); }
+  try {
+    return new Date(d).toLocaleString("fr-FR");
+  } catch {
+    return String(d || "");
+  }
 }
 
 async function resolveRecipients(orgId) {
@@ -122,14 +152,22 @@ async function resolveRecipients(orgId) {
 
   const base = uniqEmails(users.map((u) => u.email));
   const extra = uniqEmails(org?.alertExtraEmails || []);
-  const all = uniqEmails([...base, ...extra, ...(ADMIN_COPY ? [ADMIN_COPY] : [])]);
 
-  return { to: all.join(","), orgName: org?.name || "Organisation", policy, count: all.length };
+  // ✅ TO = uniquement clients (base + extra)
+  const toList = uniqEmails([...base, ...extra]);
+
+  return {
+    to: toList.join(","),
+    orgName: org?.name || "Organisation",
+    policy,
+    count: toList.length,
+  };
 }
 
 // --------------- MAIN ---------------
 async function main() {
-  console.log("⏱️ daily-cron started", new Date().toISOString());
+  console.log("⏱️ daily-cron started", new Date().toISOString(), "NODE_ENV=", NODE_ENV, "ADMIN_COPY_MODE=", ADMIN_COPY_MODE);
+
   await mongoose.connect(process.env.MONGO_URI);
 
   const orgs = await Org.find({}).select("_id name").limit(5000);
