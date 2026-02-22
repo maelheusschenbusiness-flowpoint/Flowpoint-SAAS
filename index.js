@@ -28,7 +28,7 @@ const PDFDocument = require("pdfkit");
 const nodemailer = require("nodemailer");
 
 const app = express();
-app.set("trust proxy", 1); // Render = 1 proxy devant l’app (évite l’erreur rate-limit)
+app.set("trust proxy", 1); // ✅ Render = 1 proxy (évite erreur express-rate-limit)
 
 const PORT = process.env.PORT || 5000;
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
@@ -54,11 +54,11 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
 const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
 
-// ✅ Cron key (pour Render cron / GitHub actions / autre)
+// ✅ Cron key (Render cron / GitHub actions / autre)
 const CRON_KEY = process.env.CRON_KEY || "";
 if (!CRON_KEY) console.log("⚠️ CRON_KEY manquante (cron monitors non sécurisé / désactivé)");
 
-// SMTP
+// ---------- SMTP ----------
 const SMTP_READY =
   !!process.env.SMTP_HOST &&
   !!process.env.SMTP_PORT &&
@@ -73,16 +73,17 @@ function boolEnv(v) {
 function getMailer() {
   if (!SMTP_READY) return null;
   return nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT || 587),
-  secure: boolEnv(process.env.SMTP_SECURE),
-  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: boolEnv(process.env.SMTP_SECURE),
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
 
-  // ✅ évite que ça reste bloqué en timeout
-  connectionTimeout: 8000,
-  greetingTimeout: 8000,
-  socketTimeout: 12000,
-});
+    // ✅ évite timeouts longs
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 12000,
+  });
+}
 
 async function sendEmail({ to, subject, text, html, attachments }) {
   const t = getMailer();
@@ -111,6 +112,7 @@ function safeBaseUrl(req) {
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     if (!STRIPE_WEBHOOK_SECRET) return res.status(200).send("no webhook secret");
+
     const sig = req.headers["stripe-signature"];
     const event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
 
@@ -241,7 +243,14 @@ function priceIdForPlan(plan) {
 
 // ---------- ANTI-ABUS ----------
 const PUBLIC_EMAIL_DOMAINS = new Set([
-  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "live.com", "msn.com"
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "live.com",
+  "msn.com",
 ]);
 
 function normalizeEmail(emailRaw) {
@@ -285,10 +294,9 @@ const OrgSchema = new mongoose.Schema(
     normalizedName: { type: String, unique: true, index: true },
     ownerUserId: { type: mongoose.Schema.Types.ObjectId, index: true },
 
-    // For future: billing at org level
     createdFromEmailDomain: String,
 
-    // ✅ FIX: settings monitoring doivent être au niveau ORG
+    // ✅ settings monitoring au niveau org
     alertRecipients: { type: String, default: "all" }, // "owner" | "all"
     alertExtraEmails: { type: [String], default: [] },
   },
@@ -310,7 +318,6 @@ const UserSchema = new mongoose.Schema(
     alertRecipients: { type: String, default: "all" },
     alertExtraEmails: { type: [String], default: [] },
 
-    // Pack B
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
     role: { type: String, enum: ["owner", "member"], default: "owner" },
 
@@ -342,7 +349,7 @@ const TrialRegistrySchema = new mongoose.Schema(
     companyDomain: { type: String, index: true },
 
     // ancien index DB probable: fingerprint_1 (unique)
-    fingerprint: { type: String, index: true }, // <-- important
+    fingerprint: { type: String, index: true },
 
     ipua: { type: String, index: true },
     usedAt: { type: Date, default: Date.now },
@@ -360,7 +367,6 @@ const LoginTokenSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Invite (Pack B)
 const InviteSchema = new mongoose.Schema(
   {
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
@@ -376,11 +382,10 @@ const InviteSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Data now linked to org (Pack B)
 const AuditSchema = new mongoose.Schema(
   {
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
-    userId: { type: mongoose.Schema.Types.ObjectId, index: true }, // who ran it (optional)
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
 
     url: { type: String, index: true },
     urlNormalized: { type: String, index: true },
@@ -399,7 +404,7 @@ const AuditSchema = new mongoose.Schema(
 const MonitorSchema = new mongoose.Schema(
   {
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
-    userId: { type: mongoose.Schema.Types.ObjectId, index: true }, // creator
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
 
     url: String,
     active: { type: Boolean, default: true },
@@ -522,13 +527,7 @@ function requireAdmin(req, res, next) {
   if (k !== ADMIN_KEY) return res.status(401).json({ error: "Admin non autorisé" });
   next();
 }
-// ✅ Admin bypass for trial anti-abuse (only for /api/auth/lead)
-function isAdminBypass(req) {
-  if (!ADMIN_KEY) return false;
-  const k = req.headers["x-admin-key"] || req.query.admin_key || req.body?.admin_key;
-  return k === ADMIN_KEY;
-}
-// ✅ Cron auth
+
 function requireCron(req, res, next) {
   if (!CRON_KEY) return res.status(500).json({ error: "CRON_KEY manquante" });
   const k = req.headers["x-cron-key"] || req.query.cron_key;
@@ -547,7 +546,9 @@ async function fetchWithTiming(url) {
 
 function scoreAudit(checks) {
   let score = 100;
-  const penalize = (cond, points) => { if (cond) score -= points; };
+  const penalize = (cond, points) => {
+    if (cond) score -= points;
+  };
 
   penalize(!checks.title.ok, 15);
   penalize(!checks.metaDescription.ok, 12);
@@ -597,7 +598,15 @@ async function runSeoAudit(url) {
   try {
     fetched = await fetchWithTiming(url);
   } catch (e) {
-    return { status: "error", score: 0, summary: "Impossible de charger l’URL.", findings: {}, recommendations: [], htmlSnapshot: "", error: e.message };
+    return {
+      status: "error",
+      score: 0,
+      summary: "Impossible de charger l’URL.",
+      findings: {},
+      recommendations: [],
+      htmlSnapshot: "",
+      error: e.message,
+    };
   }
 
   const $ = cheerio.load(fetched.text);
@@ -633,10 +642,9 @@ async function runSeoAudit(url) {
   const score = scoreAudit(checks);
   const recommendations = buildRecommendations(checks);
 
-  const summary =
-    fetched.ok
-      ? `Audit OK. HTTP ${fetched.status} – ${fetched.ms}ms – Score ${score}/100.`
-      : `Audit: page non OK. HTTP ${fetched.status} – Score ${score}/100.`;
+  const summary = fetched.ok
+    ? `Audit OK. HTTP ${fetched.status} – ${fetched.ms}ms – Score ${score}/100.`
+    : `Audit: page non OK. HTTP ${fetched.status} – Score ${score}/100.`;
 
   return {
     status: fetched.ok ? "ok" : "error",
@@ -668,7 +676,7 @@ async function checkUrlOnce(url) {
   }
 }
 
-// ✅ Helpers alerting
+// ---------- Helpers alerting ----------
 function uniqEmails(arr) {
   const out = [];
   const seen = new Set();
@@ -705,8 +713,7 @@ function formatMonitorEmail({ orgName, monitorUrl, status, httpStatus, responseT
   const when = checkedAt ? new Date(checkedAt).toLocaleString("fr-FR") : new Date().toLocaleString("fr-FR");
   const statusLabel = status === "down" ? "DOWN" : "UP";
   const subject = `FlowPoint AI — ${statusLabel}: ${monitorUrl}`;
-  const text =
-`Organisation: ${orgName}
+  const text = `Organisation: ${orgName}
 URL: ${monitorUrl}
 Status: ${statusLabel}
 HTTP: ${httpStatus || "-"}
@@ -727,7 +734,6 @@ Erreur: ${error || "-"}`;
 }
 
 async function maybeSendMonitorAlert(monitor, result) {
-  // Envoie une alerte seulement si changement vs lastAlertStatus (évite spam)
   const newStatus = String(result.status || "unknown").toLowerCase();
   const last = String(monitor.lastAlertStatus || "unknown").toLowerCase();
 
@@ -777,7 +783,6 @@ app.get("/admin", (_, res) => res.sendFile(path.join(__dirname, "admin.html")));
 app.get("/api/health", (_, res) => res.json({ ok: true }));
 
 // ---------- AUTH: LEAD ----------
-// ---------- AUTH: LEAD ----------
 const leadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
 
 app.post("/api/auth/lead", leadLimiter, async (req, res) => {
@@ -793,10 +798,8 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     const companyNorm = normalizeCompanyName(companyName);
     const ipua = ipuaHash(req);
 
-    // ✅ Admin bypass (pour tests répétés sans être bloqué par anti-abus)
-    const adminBypass = ADMIN_KEY && (req.headers["x-admin-key"] === ADMIN_KEY);
+    const adminBypass = ADMIN_KEY && req.headers["x-admin-key"] === ADMIN_KEY;
 
-    // ✅ Anti-abus (désactivé uniquement si adminBypass)
     if (!adminBypass) {
       if (await TrialRegistry.findOne({ emailNormalized: emailNorm }))
         return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
@@ -835,8 +838,6 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
       await user.save();
     }
 
-    // ✅ Écrit dans TrialRegistry seulement si pas en bypass
-    // + fingerprint pour éviter l’erreur DB "fingerprint: null" (ancien index unique)
     if (!adminBypass) {
       await TrialRegistry.create({
         emailNormalized: emailNorm,
@@ -863,7 +864,6 @@ const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
 app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
   try {
-    const adminBypass = ADMIN_KEY && (req.headers["x-admin-key"] === ADMIN_KEY);
     const email = String(req.body?.email || "").trim();
     if (!email) return res.status(400).json({ error: "Email requis" });
 
@@ -880,23 +880,19 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
     const baseUrl = safeBaseUrl(req);
     const link = `${baseUrl}/login-verify.html?token=${raw}`;
 
-    const baseUrl = safeBaseUrl(req);
-const link = `${baseUrl}/login-verify.html?token=${raw}`;
+    // ✅ DEBUG MODE: renvoie le lien direct sans email
+    if (String(process.env.DEBUG_LOGIN_LINK || "").toLowerCase() === "true") {
+      return res.json({ ok: true, debugLink: link });
+    }
 
-// ✅ DEBUG MODE: retourne le lien directement (et n'essaie PAS SMTP)
-if (String(process.env.DEBUG_LOGIN_LINK || "").toLowerCase() === "true") {
-  return res.json({ ok: true, debugLink: link });
-}
+    await sendEmail({
+      to: user.email,
+      subject: "FlowPoint AI — Lien de connexion",
+      text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
+      html: `<p>Lien (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
+    });
 
-// sinon on envoie l'email normalement
-await sendEmail({
-  to: user.email,
-  subject: "FlowPoint AI — Lien de connexion",
-  text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
-  html: `<p>Lien (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
-});
-
-return res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (e) {
     console.log("login-request error:", e.message);
     return res.status(500).json({ error: "Erreur login-request" });
@@ -928,7 +924,6 @@ app.get("/api/auth/login-verify", async (req, res) => {
     return res.status(500).json({ error: "Erreur login-verify" });
   }
 });
-
 // ---------- STRIPE: CHECKOUT ----------
 app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
   try {
@@ -1006,7 +1001,7 @@ app.get("/api/stripe/verify", async (req, res) => {
     await sendEmail({
       to: user.email,
       subject: "Bienvenue sur FlowPoint AI",
-      text: `Ton essai est actif. Dashboard: ${process.env.PUBLIC_BASE_URL}/dashboard.html`,
+      text: `Ton essai est actif. Dashboard: ${safeBaseUrl({ headers: { host: process.env.PUBLIC_BASE_URL || "" } })}/dashboard.html`,
       html: `<p>Ton essai est actif ✅</p><p>Dashboard: <a href="${process.env.PUBLIC_BASE_URL}/dashboard.html">${process.env.PUBLIC_BASE_URL}/dashboard.html</a></p>`,
     });
 
@@ -1169,9 +1164,7 @@ app.post("/api/org/invite/accept", async (req, res) => {
   }
 });
 
-//
-// ===== SEO AUDIT + CACHE (org-shared) =====
-//
+// ===== SEO AUDIT + CACHE =====
 app.post("/api/audits/run", auth, requireActive, async (req, res) => {
   const url = String(req.body?.url || "").trim();
   if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (http/https)" });
@@ -1269,9 +1262,7 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   doc.end();
 });
 
-//
-// ===== MONITORS (org-shared) =====
-//
+// ===== MONITORS =====
 app.post("/api/monitors", auth, requireActive, async (req, res) => {
   const url = String(req.body?.url || "").trim();
   const intervalMinutes = Number(req.body?.intervalMinutes || 60);
@@ -1313,7 +1304,6 @@ app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, monitor: m });
 });
 
-// ✅ run manuel + écrit log + alerte si changement
 app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
   const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
@@ -1336,7 +1326,6 @@ app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
     error: r.error,
   });
 
-  // ✅ alerte si changement
   await maybeSendMonitorAlert(m, r);
 
   return res.json({ ok: true, result: r });
@@ -1350,7 +1339,7 @@ app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, logs });
 });
 
-// ✅ (4) CRON: exécute automatiquement les monitors "dus"
+// ✅ CRON: exécute automatiquement les monitors "dus"
 app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
   try {
     const now = Date.now();
@@ -1362,8 +1351,8 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
 
     for (const m of activeMonitors) {
       const last = m.lastCheckedAt ? new Date(m.lastCheckedAt).getTime() : 0;
-      const dueMs = (Number(m.intervalMinutes || 60) * 60 * 1000);
-      const due = !last || (now - last >= dueMs);
+      const dueMs = Number(m.intervalMinutes || 60) * 60 * 1000;
+      const due = !last || now - last >= dueMs;
       if (!due) continue;
 
       const r = await checkUrlOnce(m.url);
@@ -1396,9 +1385,7 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
   }
 });
 
-//
-// ===== EXPORTS CSV (org-shared) =====
-//
+// ===== EXPORTS CSV =====
 function csvEscape(v) {
   const s = String(v ?? "");
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -1454,9 +1441,7 @@ app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
   res.send(header + rows + "\n");
 });
 
-//
-// ===== ADMIN (minimal) =====
-//
+// ===== ADMIN =====
 app.get("/api/admin/users", requireAdmin, async (req, res) => {
   const list = await User.find({}).sort({ createdAt: -1 }).limit(200);
   res.json({ ok: true, users: list });
@@ -1478,261 +1463,6 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
     { $set: { usageMonth: firstDayOfThisMonthUTC(), usedAudits: 0, usedMonitors: 0, usedPdf: 0, usedExports: 0 } }
   );
   res.json({ ok: true });
-});
-
-// =======================
-// DAILY SEO REPORT (API triggerable)
-// =======================
-app.post("/api/reports/seo-daily", auth, requireActive, async (req, res) => {
-  try {
-    const audits = await Audit.find({ orgId: req.dbUser.orgId })
-      .sort({ createdAt: -1 })
-      .limit(10);
-
-    if (!audits.length) {
-      return res.json({ ok: true, message: "Aucun audit à inclure." });
-    }
-
-    const doc = new PDFDocument({ margin: 40 });
-    const chunks = [];
-    doc.on("data", (c) => chunks.push(c));
-    doc.on("end", async () => {
-      const pdfBuffer = Buffer.concat(chunks);
-
-      await sendEmail({
-        to: req.dbUser.email,
-        subject: "📊 FlowPoint AI — Rapport SEO quotidien",
-        text: "Votre rapport SEO quotidien est en pièce jointe.",
-        html: "<p>Rapport SEO quotidien en pièce jointe.</p>",
-        attachments: [{ filename: "seo-report.pdf", content: pdfBuffer }],
-      });
-
-      res.json({ ok: true });
-    });
-
-    doc.fontSize(20).text("FlowPoint AI — Rapport SEO quotidien");
-    doc.moveDown();
-
-    audits.forEach((a) => {
-      doc.fontSize(12).text(`URL: ${a.url}`);
-      doc.text(`Score: ${a.score}/100`);
-      doc.text(`Résumé: ${a.summary}`);
-      doc.moveDown();
-    });
-
-    doc.end();
-  } catch (e) {
-    console.log("daily seo report error:", e.message);
-    res.status(500).json({ error: "Erreur rapport SEO quotidien" });
-  }
-});
-
-// =======================
-// Monitoring Settings + Monthly Reliability Report (Ultra)
-// + PDF endpoint
-// =======================
-
-function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
-
-function reliabilityScoreFromStats({ uptimePct, downs, avgMs }) {
-  let score = uptimePct;
-  score -= Math.min(25, downs * 1.5);
-  if (avgMs > 1200) {
-    const extra = clamp((avgMs - 1200) / 2000, 0, 1);
-    score -= extra * 15;
-  }
-  return Math.round(clamp(score, 0, 100));
-}
-
-async function computeOrgMonthlyReport(orgId) {
-  const now = new Date();
-  const from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-  const logs = await MonitorLog.find({ orgId, checkedAt: { $gte: from } })
-    .select("url status responseTimeMs checkedAt");
-
-  const byUrl = new Map();
-  for (const l of logs) {
-    const url = String(l.url || "").trim();
-    if (!url) continue;
-    if (!byUrl.has(url)) byUrl.set(url, []);
-    byUrl.get(url).push(l);
-  }
-
-  const sites = [];
-  for (const [url, arr] of byUrl.entries()) {
-    const total = arr.length || 0;
-    const up = arr.filter(x => x.status === "up").length;
-    const down = arr.filter(x => x.status === "down").length;
-    const uptimePct = total ? (up / total) * 100 : 0;
-
-    const avgMs = total
-      ? Math.round(arr.reduce((s, x) => s + (Number(x.responseTimeMs || 0) || 0), 0) / total)
-      : 0;
-
-    let incidents = 0;
-    const sorted = arr.slice().sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
-    for (let i = 1; i < sorted.length; i++) {
-      if (sorted[i - 1].status === "up" && sorted[i].status === "down") incidents++;
-    }
-
-    const score = reliabilityScoreFromStats({ uptimePct, downs: incidents, avgMs });
-
-    sites.push({
-      url,
-      totalChecks: total,
-      uptimePct: Math.round(uptimePct * 100) / 100,
-      avgMs,
-      downLogs: down,
-      incidents,
-      score,
-    });
-  }
-
-  sites.sort((a, b) => b.score - a.score);
-
-  const totalChecks = sites.reduce((s, x) => s + x.totalChecks, 0);
-  const weightedUptime = totalChecks
-    ? sites.reduce((s, x) => s + x.uptimePct * x.totalChecks, 0) / totalChecks
-    : 0;
-  const weightedAvgMs = totalChecks
-    ? Math.round(sites.reduce((s, x) => s + x.avgMs * x.totalChecks, 0) / totalChecks)
-    : 0;
-  const totalIncidents = sites.reduce((s, x) => s + x.incidents, 0);
-
-  const globalScore = reliabilityScoreFromStats({
-    uptimePct: weightedUptime,
-    downs: totalIncidents,
-    avgMs: weightedAvgMs,
-  });
-
-  return {
-    rangeDays: 30,
-    generatedAt: new Date().toISOString(),
-    global: {
-      reliabilityScore: globalScore,
-      uptimePct: Math.round(weightedUptime * 100) / 100,
-      avgMs: weightedAvgMs,
-      incidents: totalIncidents,
-      sitesCount: sites.length,
-    },
-    sites,
-  };
-}
-
-// ✅ GET current org monitoring settings
-app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
-  const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails name");
-  if (!org) return res.status(404).json({ error: "Org introuvable" });
-
-  return res.json({
-    ok: true,
-    settings: {
-      alertRecipients: org.alertRecipients || "all",
-      alertExtraEmails: Array.isArray(org.alertExtraEmails) ? org.alertExtraEmails : [],
-    }
-  });
-});
-
-// ✅ Update org monitoring settings (owner only)
-app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (req, res) => {
-  const alertRecipients = String(req.body?.alertRecipients || "all").toLowerCase();
-  const alertExtraEmails = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
-
-  if (!["all", "owner"].includes(alertRecipients)) return res.status(400).json({ error: "alertRecipients invalide" });
-
-  const cleaned = [...new Set(alertExtraEmails.map(x => String(x || "").trim().toLowerCase()).filter(Boolean))].slice(0, 25);
-
-  await Org.updateOne(
-    { _id: req.dbUser.orgId },
-    { $set: { alertRecipients, alertExtraEmails: cleaned } }
-  );
-
-  return res.json({ ok: true });
-});
-
-// ✅ Compat endpoints (dashboard fallback): /api/org/settings
-app.get("/api/org/settings", auth, requireActive, async (req, res) => {
-  const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails name");
-  if (!org) return res.status(404).json({ error: "Org introuvable" });
-  return res.json({
-    ok: true,
-    settings: {
-      alertRecipients: org.alertRecipients || "all",
-      alertExtraEmails: Array.isArray(org.alertExtraEmails) ? org.alertExtraEmails : [],
-    }
-  });
-});
-app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res) => {
-  // même logique
-  const alertRecipients = String(req.body?.alertRecipients || "all").toLowerCase();
-  const alertExtraEmails = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
-  if (!["all", "owner"].includes(alertRecipients)) return res.status(400).json({ error: "alertRecipients invalide" });
-  const cleaned = [...new Set(alertExtraEmails.map(x => String(x || "").trim().toLowerCase()).filter(Boolean))].slice(0, 25);
-  await Org.updateOne({ _id: req.dbUser.orgId }, { $set: { alertRecipients, alertExtraEmails: cleaned } });
-  return res.json({ ok: true });
-});
-
-// ✅ Ultra only: monthly reliability report JSON for dashboard
-app.get("/api/monitoring/monthly-report", auth, requireActive, requirePlan("ultra"), async (req, res) => {
-  const report = await computeOrgMonthlyReport(req.dbUser.orgId);
-  return res.json({ ok: true, report });
-});
-
-// ✅ (6) Ultra only: monthly reliability report PDF
-app.get("/api/monitoring/monthly-report/pdf", auth, requireActive, requirePlan("ultra"), async (req, res) => {
-  try {
-    const ok = await consume(req.dbUser, "pdf", 1);
-    if (!ok) return res.status(429).json({ error: "Quota PDF dépassé" });
-
-    const org = await Org.findById(req.dbUser.orgId).select("name");
-    const report = await computeOrgMonthlyReport(req.dbUser.orgId);
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="flowpoint-monitoring-report.pdf"`);
-
-    const doc = new PDFDocument({ margin: 48 });
-    doc.pipe(res);
-
-    doc.fontSize(22).text("FlowPoint AI", { continued: true }).fontSize(22).text("  — Rapport Monitoring (30j)");
-    doc.moveDown(0.5);
-    doc.fontSize(12).text(`Organisation: ${org?.name || "—"}`);
-    doc.text(`Généré: ${new Date(report.generatedAt).toLocaleString("fr-FR")}`);
-    doc.moveDown();
-
-    doc.fontSize(14).text("Résumé global", { underline: true });
-    doc.moveDown(0.25);
-    doc.fontSize(12).text(`Score fiabilité: ${report.global.reliabilityScore}/100`);
-    doc.text(`Uptime: ${report.global.uptimePct}%`);
-    doc.text(`Latence moyenne: ${report.global.avgMs}ms`);
-    doc.text(`Incidents: ${report.global.incidents}`);
-    doc.text(`Sites suivis: ${report.global.sitesCount}`);
-    doc.moveDown();
-
-    doc.fontSize(14).text("Détails par site", { underline: true });
-    doc.moveDown(0.25);
-
-    const sites = Array.isArray(report.sites) ? report.sites : [];
-    if (!sites.length) {
-      doc.fontSize(12).text("Aucun log sur les 30 derniers jours.");
-      doc.end();
-      return;
-    }
-
-    // tableau simple (liste)
-    for (const s of sites.slice(0, 60)) {
-      doc.fontSize(12).text(`• ${s.url}`);
-      doc.fontSize(10).fillColor("#444").text(
-        `  score=${s.score}/100  uptime=${s.uptimePct}%  avg=${s.avgMs}ms  incidents=${s.incidents}  checks=${s.totalChecks}`
-      ).fillColor("#000");
-      doc.moveDown(0.2);
-    }
-
-    doc.end();
-  } catch (e) {
-    console.log("monthly report pdf error:", e.message);
-    return res.status(500).json({ error: "Erreur PDF monitoring" });
-  }
 });
 
 // ---------- START ----------
