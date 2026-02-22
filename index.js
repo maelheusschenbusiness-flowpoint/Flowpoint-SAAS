@@ -3,14 +3,11 @@
 // Plans: Standard / Pro / Ultra
 // Pack A: SEO Audit + Cache + PDF + Monitoring + Logs + CSV + Magic Link + Admin
 // Pack B: Orgs + Team Ultra (Invites) + Roles + Shared data per org
-//
-// ✅ ADD (4/5/6):
-// 4) Cron endpoint sécurisé pour exécuter automatiquement les monitors
-// 5) Alertes email sur DOWN/UP (selon settings org + emails extra)
-// 6) Rapport monitoring mensuel Ultra + export PDF
-// + Fix: OrgSchema manquait alertRecipients/alertExtraEmails => settings cassés
-// + Compat: /api/org/settings alias des monitor-settings (pour dashboard fallback)
 // =======================
+
+/* =========================================================
+   PART 1/2 — SETUP, CONFIG, HELPERS, MODELS, MIDDLEWARES
+   ========================================================= */
 
 require("dotenv").config();
 
@@ -27,8 +24,9 @@ const cheerio = require("cheerio");
 const PDFDocument = require("pdfkit");
 const nodemailer = require("nodemailer");
 
+// Node 18+ => fetch ok. Si jamais tu es sur Node <18, installe node-fetch.
 const app = express();
-app.set("trust proxy", 1); // ✅ Render = 1 proxy (évite erreur express-rate-limit)
+app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 5000;
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
@@ -54,11 +52,10 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
 const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
 
-// ✅ Cron key (Render cron / GitHub actions / autre)
 const CRON_KEY = process.env.CRON_KEY || "";
-if (!CRON_KEY) console.log("⚠️ CRON_KEY manquante (cron monitors non sécurisé / désactivé)");
+if (!CRON_KEY) console.log("⚠️ CRON_KEY manquante (cron monitors non sécurisé)");
 
-// ---------- SMTP ----------
+// ---------- SMTP (Resend SMTP compatible) ----------
 const SMTP_READY =
   !!process.env.SMTP_HOST &&
   !!process.env.SMTP_PORT &&
@@ -77,15 +74,13 @@ function getMailer() {
     port: Number(process.env.SMTP_PORT || 587),
     secure: boolEnv(process.env.SMTP_SECURE),
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-
-    // ✅ évite timeouts longs
     connectionTimeout: 8000,
     greetingTimeout: 8000,
     socketTimeout: 12000,
   });
 }
 
-async function sendEmail({ to, subject, text, html, attachments }) {
+async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   const t = getMailer();
   if (!t) {
     console.log("⚠️ SMTP non configuré, email ignoré:", subject);
@@ -94,12 +89,13 @@ async function sendEmail({ to, subject, text, html, attachments }) {
   const info = await t.sendMail({
     from: process.env.ALERT_EMAIL_FROM,
     to,
+    bcc,
     subject,
     text,
     html,
     attachments,
   });
-  console.log("✅ Email envoyé:", info.messageId);
+  console.log("✅ Email envoyé:", info.messageId, "=>", to, bcc ? `(bcc:${bcc})` : "");
 }
 
 function safeBaseUrl(req) {
@@ -107,77 +103,6 @@ function safeBaseUrl(req) {
   if (base) return base;
   return `https://${req.headers.host}`;
 }
-
-// ---------- STRIPE WEBHOOK RAW (AVANT express.json) ----------
-app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
-  try {
-    if (!STRIPE_WEBHOOK_SECRET) return res.status(200).send("no webhook secret");
-
-    const sig = req.headers["stripe-signature"];
-    const event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
-
-    async function setBlockedByCustomer(customerId, blocked, status) {
-      await User.updateOne(
-        { stripeCustomerId: customerId },
-        { $set: { accessBlocked: !!blocked, lastPaymentStatus: status || "" } }
-      );
-    }
-
-    if (event.type === "invoice.payment_failed") {
-      const inv = event.data.object;
-      await setBlockedByCustomer(inv.customer, true, "payment_failed");
-    }
-
-    if (event.type === "invoice.payment_succeeded") {
-      const inv = event.data.object;
-      await setBlockedByCustomer(inv.customer, false, "payment_succeeded");
-    }
-
-    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
-      const sub = event.data.object;
-      const priceId = sub.items?.data?.[0]?.price?.id;
-
-      const user = await User.findOne({ stripeCustomerId: sub.customer });
-      if (user) {
-        user.stripeSubscriptionId = sub.id;
-        user.subscriptionStatus = sub.status;
-        user.lastPaymentStatus = sub.status;
-
-        if (["active", "trialing"].includes(sub.status)) user.accessBlocked = false;
-        if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(sub.status)) user.accessBlocked = true;
-
-        if (priceId === process.env.STRIPE_PRICE_ID_STANDARD) user.plan = "standard";
-        if (priceId === process.env.STRIPE_PRICE_ID_PRO) user.plan = "pro";
-        if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) user.plan = "ultra";
-
-        await user.save();
-      }
-    }
-
-    if (event.type === "customer.subscription.deleted") {
-      const sub = event.data.object;
-      await User.updateOne(
-        { stripeCustomerId: sub.customer },
-        { $set: { accessBlocked: true, subscriptionStatus: "canceled", lastPaymentStatus: "subscription_deleted" } }
-      );
-    }
-
-    return res.json({ received: true });
-  } catch (e) {
-    console.log("webhook error:", e.message);
-    return res.status(400).send(`Webhook Error: ${e.message}`);
-  }
-});
-
-// ---------- SECURITY / PARSERS ----------
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: true, credentials: true }));
-app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
-
-// ---------- STATIC ----------
-app.use(express.static(path.join(__dirname)));
 
 // ---------- DB ----------
 mongoose
@@ -243,14 +168,7 @@ function priceIdForPlan(plan) {
 
 // ---------- ANTI-ABUS ----------
 const PUBLIC_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "outlook.com",
-  "hotmail.com",
-  "icloud.com",
-  "live.com",
-  "msn.com",
+  "gmail.com","googlemail.com","yahoo.com","outlook.com","hotmail.com","icloud.com","live.com","msn.com",
 ]);
 
 function normalizeEmail(emailRaw) {
@@ -287,23 +205,19 @@ function ipuaHash(req) {
 }
 
 // ---------- MODELS ----------
-// Org (Pack B)
 const OrgSchema = new mongoose.Schema(
   {
     name: String,
     normalizedName: { type: String, unique: true, index: true },
     ownerUserId: { type: mongoose.Schema.Types.ObjectId, index: true },
-
     createdFromEmailDomain: String,
 
-    // ✅ settings monitoring au niveau org
     alertRecipients: { type: String, default: "all" }, // "owner" | "all"
     alertExtraEmails: { type: [String], default: [] },
   },
-  { timestamps: true }
+  { timestamps: true, collection: "orgs" }
 );
 
-// User
 const UserSchema = new mongoose.Schema(
   {
     email: { type: String, unique: true, index: true },
@@ -313,10 +227,6 @@ const UserSchema = new mongoose.Schema(
     companyName: String,
     companyNameNormalized: { type: String, index: true },
     companyDomain: { type: String, index: true },
-
-    // (ok de laisser, mais les settings utilisés sont ceux de Org)
-    alertRecipients: { type: String, default: "all" },
-    alertExtraEmails: { type: [String], default: [] },
 
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
     role: { type: String, enum: ["owner", "member"], default: "owner" },
@@ -339,7 +249,7 @@ const UserSchema = new mongoose.Schema(
     usedPdf: { type: Number, default: 0 },
     usedExports: { type: Number, default: 0 },
   },
-  { timestamps: true }
+  { timestamps: true, collection: "users" }
 );
 
 const TrialRegistrySchema = new mongoose.Schema(
@@ -347,14 +257,11 @@ const TrialRegistrySchema = new mongoose.Schema(
     emailNormalized: { type: String, unique: true, index: true },
     companyNameNormalized: { type: String, index: true },
     companyDomain: { type: String, index: true },
-
-    // ancien index DB probable: fingerprint_1 (unique)
     fingerprint: { type: String, index: true },
-
     ipua: { type: String, index: true },
     usedAt: { type: Date, default: Date.now },
   },
-  { timestamps: true }
+  { timestamps: true, collection: "trialregistries" }
 );
 
 const LoginTokenSchema = new mongoose.Schema(
@@ -364,7 +271,7 @@ const LoginTokenSchema = new mongoose.Schema(
     expiresAt: { type: Date, index: true },
     usedAt: Date,
   },
-  { timestamps: true }
+  { timestamps: true, collection: "logintokens" }
 );
 
 const InviteSchema = new mongoose.Schema(
@@ -372,51 +279,43 @@ const InviteSchema = new mongoose.Schema(
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
     invitedEmail: { type: String, index: true },
     invitedEmailNormalized: { type: String, index: true },
-
     tokenHash: { type: String, unique: true, index: true },
     expiresAt: { type: Date, index: true },
     acceptedAt: Date,
-
     createdByUserId: { type: mongoose.Schema.Types.ObjectId, index: true },
   },
-  { timestamps: true }
+  { timestamps: true, collection: "invites" }
 );
 
 const AuditSchema = new mongoose.Schema(
   {
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
     userId: { type: mongoose.Schema.Types.ObjectId, index: true },
-
     url: { type: String, index: true },
     urlNormalized: { type: String, index: true },
-
     status: { type: String, enum: ["ok", "error"], default: "ok" },
     score: Number,
     summary: String,
-
     findings: Object,
     recommendations: [String],
     htmlSnapshot: String,
   },
-  { timestamps: true }
+  { timestamps: true, collection: "audits" }
 );
 
 const MonitorSchema = new mongoose.Schema(
   {
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
     userId: { type: mongoose.Schema.Types.ObjectId, index: true },
-
     url: String,
     active: { type: Boolean, default: true },
     intervalMinutes: { type: Number, default: 60 },
-
     lastCheckedAt: Date,
     lastStatus: { type: String, enum: ["up", "down", "unknown"], default: "unknown" },
-
     lastAlertStatus: { type: String, default: "unknown" },
     lastAlertAt: Date,
   },
-  { timestamps: true }
+  { timestamps: true, collection: "monitors" }
 );
 
 const MonitorLogSchema = new mongoose.Schema(
@@ -424,7 +323,6 @@ const MonitorLogSchema = new mongoose.Schema(
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
     userId: { type: mongoose.Schema.Types.ObjectId, index: true },
     monitorId: { type: mongoose.Schema.Types.ObjectId, index: true },
-
     url: String,
     status: { type: String, enum: ["up", "down"], default: "down" },
     httpStatus: Number,
@@ -432,7 +330,7 @@ const MonitorLogSchema = new mongoose.Schema(
     checkedAt: { type: Date, default: Date.now },
     error: String,
   },
-  { timestamps: true }
+  { timestamps: true, collection: "monitorlogs" }
 );
 
 const Org = mongoose.model("Org", OrgSchema);
@@ -535,147 +433,6 @@ function requireCron(req, res, next) {
   next();
 }
 
-// ---------- SEO AUDIT ----------
-async function fetchWithTiming(url) {
-  const t0 = Date.now();
-  const r = await fetch(url, { redirect: "follow" });
-  const t1 = Date.now();
-  const text = await r.text();
-  return { status: r.status, ok: r.ok, headers: r.headers, text, ms: t1 - t0, finalUrl: r.url };
-}
-
-function scoreAudit(checks) {
-  let score = 100;
-  const penalize = (cond, points) => {
-    if (cond) score -= points;
-  };
-
-  penalize(!checks.title.ok, 15);
-  penalize(!checks.metaDescription.ok, 12);
-  penalize(!checks.h1.ok, 10);
-  penalize(!checks.canonical.ok, 8);
-  penalize(!checks.robots.ok, 6);
-  penalize(!checks.lang.ok, 4);
-  penalize(!checks.https.ok, 12);
-  penalize(!checks.viewport.ok, 6);
-  penalize(!checks.og.ok, 4);
-  penalize(!checks.responseTime.ok, 8);
-
-  if (score < 0) score = 0;
-  return score;
-}
-
-function buildRecommendations(checks) {
-  const rec = [];
-  const pri = (label, level) => `[${level}] ${label}`;
-
-  if (!checks.title.ok) rec.push(pri("Ajouter un <title> unique (50–60 caractères).", "HIGH"));
-  if (!checks.metaDescription.ok) rec.push(pri("Ajouter une meta description (140–160 caractères).", "HIGH"));
-  if (!checks.h1.ok) rec.push(pri("Ajouter exactement 1 H1 pertinent (éviter 0 ou plusieurs).", "HIGH"));
-  if (!checks.canonical.ok) rec.push(pri("Ajouter un lien canonical pour éviter le contenu dupliqué.", "MED"));
-  if (!checks.robots.ok) rec.push(pri("Vérifier meta robots (index/follow) + robots.txt.", "MED"));
-  if (!checks.lang.ok) rec.push(pri("Ajouter l’attribut lang sur <html> (ex: fr).", "LOW"));
-  if (!checks.https.ok) rec.push(pri("Forcer HTTPS (redirections + HSTS).", "HIGH"));
-  if (!checks.viewport.ok) rec.push(pri("Ajouter meta viewport pour mobile.", "MED"));
-  if (!checks.og.ok) rec.push(pri("Ajouter Open Graph (og:title, og:description, og:image).", "LOW"));
-  if (!checks.responseTime.ok) rec.push(pri("Améliorer la vitesse (TTFB < 3s).", "MED"));
-
-  return rec;
-}
-
-function normalizeUrl(url) {
-  try {
-    const u = new URL(url);
-    u.hash = "";
-    return u.toString();
-  } catch {
-    return String(url || "").trim();
-  }
-}
-
-async function runSeoAudit(url) {
-  let fetched;
-  try {
-    fetched = await fetchWithTiming(url);
-  } catch (e) {
-    return {
-      status: "error",
-      score: 0,
-      summary: "Impossible de charger l’URL.",
-      findings: {},
-      recommendations: [],
-      htmlSnapshot: "",
-      error: e.message,
-    };
-  }
-
-  const $ = cheerio.load(fetched.text);
-
-  const title = ($("title").first().text() || "").trim();
-  const metaDesc = ($('meta[name="description"]').attr("content") || "").trim();
-  const h1Count = $("h1").length;
-  const canonical = ($('link[rel="canonical"]').attr("href") || "").trim();
-  const robots = ($('meta[name="robots"]').attr("content") || "").trim();
-  const lang = ($("html").attr("lang") || "").trim();
-  const viewport = ($('meta[name="viewport"]').attr("content") || "").trim();
-
-  const ogTitle = ($('meta[property="og:title"]').attr("content") || "").trim();
-  const ogDesc = ($('meta[property="og:description"]').attr("content") || "").trim();
-  const ogImg = ($('meta[property="og:image"]').attr("content") || "").trim();
-
-  const httpsOk = String(fetched.finalUrl || url).startsWith("https://");
-
-  const checks = {
-    http: { ok: fetched.ok, value: fetched.status },
-    responseTime: { ok: fetched.ms < 3000, value: fetched.ms },
-    https: { ok: httpsOk, value: fetched.finalUrl },
-    title: { ok: title.length >= 10 && title.length <= 70, value: title },
-    metaDescription: { ok: metaDesc.length >= 80 && metaDesc.length <= 180, value: metaDesc },
-    h1: { ok: h1Count === 1, value: h1Count },
-    canonical: { ok: !!canonical, value: canonical },
-    robots: { ok: robots.length === 0 || /index|follow/i.test(robots), value: robots || "(none)" },
-    lang: { ok: !!lang, value: lang },
-    viewport: { ok: !!viewport, value: viewport },
-    og: { ok: !!(ogTitle && ogDesc && ogImg), value: { ogTitle, ogDesc, ogImg } },
-  };
-
-  const score = scoreAudit(checks);
-  const recommendations = buildRecommendations(checks);
-
-  const summary = fetched.ok
-    ? `Audit OK. HTTP ${fetched.status} – ${fetched.ms}ms – Score ${score}/100.`
-    : `Audit: page non OK. HTTP ${fetched.status} – Score ${score}/100.`;
-
-  return {
-    status: fetched.ok ? "ok" : "error",
-    score,
-    summary,
-    findings: checks,
-    recommendations,
-    htmlSnapshot: fetched.text.slice(0, 20000),
-  };
-}
-
-// ---------- MONITOR CHECK ----------
-async function checkUrlOnce(url) {
-  const timeout = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-
-  const t0 = Date.now();
-  try {
-    const r = await fetch(url, { redirect: "follow", signal: controller.signal });
-    const ms = Date.now() - t0;
-    clearTimeout(id);
-    const up = r.status >= 200 && r.status < 400;
-    return { status: up ? "up" : "down", httpStatus: r.status, responseTimeMs: ms, error: "" };
-  } catch (e) {
-    const ms = Date.now() - t0;
-    clearTimeout(id);
-    return { status: "down", httpStatus: 0, responseTimeMs: ms, error: e.message || "fetch failed" };
-  }
-}
-
 // ---------- Helpers alerting ----------
 function uniqEmails(arr) {
   const out = [];
@@ -768,6 +525,210 @@ async function maybeSendMonitorAlert(monitor, result) {
   return { sent: true };
 }
 
+// ---------- MONITOR CHECK ----------
+async function checkUrlOnce(url) {
+  const timeout = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+
+  const t0 = Date.now();
+  try {
+    const r = await fetch(url, { redirect: "follow", signal: controller.signal });
+    const ms = Date.now() - t0;
+    clearTimeout(id);
+    const up = r.status >= 200 && r.status < 400;
+    return { status: up ? "up" : "down", httpStatus: r.status, responseTimeMs: ms, error: "" };
+  } catch (e) {
+    const ms = Date.now() - t0;
+    clearTimeout(id);
+    return { status: "down", httpStatus: 0, responseTimeMs: ms, error: e.message || "fetch failed" };
+  }
+}
+
+// ---------- SEO AUDIT ----------
+async function fetchWithTiming(url) {
+  const t0 = Date.now();
+  const r = await fetch(url, { redirect: "follow" });
+  const t1 = Date.now();
+  const text = await r.text();
+  return { status: r.status, ok: r.ok, headers: r.headers, text, ms: t1 - t0, finalUrl: r.url };
+}
+
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return String(url || "").trim();
+  }
+}
+
+function scoreAudit(checks) {
+  let score = 100;
+  const penalize = (cond, points) => { if (cond) score -= points; };
+  penalize(!checks.title.ok, 15);
+  penalize(!checks.metaDescription.ok, 12);
+  penalize(!checks.h1.ok, 10);
+  penalize(!checks.canonical.ok, 8);
+  penalize(!checks.robots.ok, 6);
+  penalize(!checks.lang.ok, 4);
+  penalize(!checks.https.ok, 12);
+  penalize(!checks.viewport.ok, 6);
+  penalize(!checks.og.ok, 4);
+  penalize(!checks.responseTime.ok, 8);
+  if (score < 0) score = 0;
+  return score;
+}
+
+function buildRecommendations(checks) {
+  const rec = [];
+  const pri = (label, level) => `[${level}] ${label}`;
+
+  if (!checks.title.ok) rec.push(pri("Ajouter un <title> unique (50–60 caractères).", "HIGH"));
+  if (!checks.metaDescription.ok) rec.push(pri("Ajouter une meta description (140–160 caractères).", "HIGH"));
+  if (!checks.h1.ok) rec.push(pri("Ajouter exactement 1 H1 pertinent (éviter 0 ou plusieurs).", "HIGH"));
+  if (!checks.canonical.ok) rec.push(pri("Ajouter un lien canonical pour éviter le contenu dupliqué.", "MED"));
+  if (!checks.robots.ok) rec.push(pri("Vérifier meta robots (index/follow) + robots.txt.", "MED"));
+  if (!checks.lang.ok) rec.push(pri("Ajouter l’attribut lang sur <html> (ex: fr).", "LOW"));
+  if (!checks.https.ok) rec.push(pri("Forcer HTTPS (redirections + HSTS).", "HIGH"));
+  if (!checks.viewport.ok) rec.push(pri("Ajouter meta viewport pour mobile.", "MED"));
+  if (!checks.og.ok) rec.push(pri("Ajouter Open Graph (og:title, og:description, og:image).", "LOW"));
+  if (!checks.responseTime.ok) rec.push(pri("Améliorer la vitesse (TTFB < 3s).", "MED"));
+
+  return rec;
+}
+
+async function runSeoAudit(url) {
+  let fetched;
+  try {
+    fetched = await fetchWithTiming(url);
+  } catch (e) {
+    return { status: "error", score: 0, summary: "Impossible de charger l’URL.", findings: {}, recommendations: [], htmlSnapshot: "", error: e.message };
+  }
+
+  const $ = cheerio.load(fetched.text);
+
+  const title = ($("title").first().text() || "").trim();
+  const metaDesc = ($('meta[name="description"]').attr("content") || "").trim();
+  const h1Count = $("h1").length;
+  const canonical = ($('link[rel="canonical"]').attr("href") || "").trim();
+  const robots = ($('meta[name="robots"]').attr("content") || "").trim();
+  const lang = ($("html").attr("lang") || "").trim();
+  const viewport = ($('meta[name="viewport"]').attr("content") || "").trim();
+
+  const ogTitle = ($('meta[property="og:title"]').attr("content") || "").trim();
+  const ogDesc = ($('meta[property="og:description"]').attr("content") || "").trim();
+  const ogImg = ($('meta[property="og:image"]').attr("content") || "").trim();
+
+  const httpsOk = String(fetched.finalUrl || url).startsWith("https://");
+
+  const checks = {
+    http: { ok: fetched.ok, value: fetched.status },
+    responseTime: { ok: fetched.ms < 3000, value: fetched.ms },
+    https: { ok: httpsOk, value: fetched.finalUrl },
+    title: { ok: title.length >= 10 && title.length <= 70, value: title },
+    metaDescription: { ok: metaDesc.length >= 80 && metaDesc.length <= 180, value: metaDesc },
+    h1: { ok: h1Count === 1, value: h1Count },
+    canonical: { ok: !!canonical, value: canonical },
+    robots: { ok: robots.length === 0 || /index|follow/i.test(robots), value: robots || "(none)" },
+    lang: { ok: !!lang, value: lang },
+    viewport: { ok: !!viewport, value: viewport },
+    og: { ok: !!(ogTitle && ogDesc && ogImg), value: { ogTitle, ogDesc, ogImg } },
+  };
+
+  const score = scoreAudit(checks);
+  const recommendations = buildRecommendations(checks);
+
+  const summary = fetched.ok
+    ? `Audit OK. HTTP ${fetched.status} – ${fetched.ms}ms – Score ${score}/100.`
+    : `Audit: page non OK. HTTP ${fetched.status} – Score ${score}/100.`;
+
+  return {
+    status: fetched.ok ? "ok" : "error",
+    score,
+    summary,
+    findings: checks,
+    recommendations,
+    htmlSnapshot: fetched.text.slice(0, 20000),
+  };
+}
+
+/* =========================================================
+   PART 2/2 — ROUTES, WEBHOOK, MIDDLEWARES, START
+   ========================================================= */
+
+// ---------- STRIPE WEBHOOK RAW (AVANT express.json) ----------
+app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  try {
+    if (!STRIPE_WEBHOOK_SECRET) return res.status(200).send("no webhook secret");
+
+    const sig = req.headers["stripe-signature"];
+    const event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+
+    async function setBlockedByCustomer(customerId, blocked, status) {
+      await User.updateOne(
+        { stripeCustomerId: customerId },
+        { $set: { accessBlocked: !!blocked, lastPaymentStatus: status || "" } }
+      );
+    }
+
+    if (event.type === "invoice.payment_failed") {
+      const inv = event.data.object;
+      await setBlockedByCustomer(inv.customer, true, "payment_failed");
+    }
+
+    if (event.type === "invoice.payment_succeeded") {
+      const inv = event.data.object;
+      await setBlockedByCustomer(inv.customer, false, "payment_succeeded");
+    }
+
+    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
+      const sub = event.data.object;
+      const priceId = sub.items?.data?.[0]?.price?.id;
+
+      const user = await User.findOne({ stripeCustomerId: sub.customer });
+      if (user) {
+        user.stripeSubscriptionId = sub.id;
+        user.subscriptionStatus = sub.status;
+        user.lastPaymentStatus = sub.status;
+
+        if (["active", "trialing"].includes(sub.status)) user.accessBlocked = false;
+        if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(sub.status)) user.accessBlocked = true;
+
+        if (priceId === process.env.STRIPE_PRICE_ID_STANDARD) user.plan = "standard";
+        if (priceId === process.env.STRIPE_PRICE_ID_PRO) user.plan = "pro";
+        if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) user.plan = "ultra";
+
+        await user.save();
+      }
+    }
+
+    if (event.type === "customer.subscription.deleted") {
+      const sub = event.data.object;
+      await User.updateOne(
+        { stripeCustomerId: sub.customer },
+        { $set: { accessBlocked: true, subscriptionStatus: "canceled", lastPaymentStatus: "subscription_deleted" } }
+      );
+    }
+
+    return res.json({ received: true });
+  } catch (e) {
+    console.log("webhook error:", e.message);
+    return res.status(400).send(`Webhook Error: ${e.message}`);
+  }
+});
+
+// ---------- SECURITY / PARSERS ----------
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({ origin: true, credentials: true }));
+app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// ---------- STATIC ----------
+app.use(express.static(path.join(__dirname)));
+
 // ---------- PAGES ----------
 app.get("/", (_, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/dashboard", (_, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
@@ -849,7 +810,6 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     }
 
     await ensureOrgForUser(user);
-
     return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("lead error:", e.message);
@@ -880,7 +840,6 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
     const baseUrl = safeBaseUrl(req);
     const link = `${baseUrl}/login-verify.html?token=${raw}`;
 
-    // ✅ DEBUG MODE: renvoie le lien direct sans email
     if (String(process.env.DEBUG_LOGIN_LINK || "").toLowerCase() === "true") {
       return res.json({ ok: true, debugLink: link });
     }
@@ -917,13 +876,13 @@ app.get("/api/auth/login-verify", async (req, res) => {
     await lt.save();
 
     await ensureOrgForUser(user);
-
     return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("login-verify error:", e.message);
     return res.status(500).json({ error: "Erreur login-verify" });
   }
 });
+
 // ---------- STRIPE: CHECKOUT ----------
 app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
   try {
@@ -952,10 +911,7 @@ app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      subscription_data: {
-        trial_period_days: 14,
-        metadata: { uid: user._id.toString(), plan: chosenPlan },
-      },
+      subscription_data: { trial_period_days: 14, metadata: { uid: user._id.toString(), plan: chosenPlan } },
       metadata: { uid: user._id.toString(), plan: chosenPlan },
       success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/cancel.html`,
@@ -1001,7 +957,7 @@ app.get("/api/stripe/verify", async (req, res) => {
     await sendEmail({
       to: user.email,
       subject: "Bienvenue sur FlowPoint AI",
-      text: `Ton essai est actif. Dashboard: ${safeBaseUrl({ headers: { host: process.env.PUBLIC_BASE_URL || "" } })}/dashboard.html`,
+      text: `Ton essai est actif. Dashboard: ${process.env.PUBLIC_BASE_URL}/dashboard.html`,
       html: `<p>Ton essai est actif ✅</p><p>Dashboard: <a href="${process.env.PUBLIC_BASE_URL}/dashboard.html">${process.env.PUBLIC_BASE_URL}/dashboard.html</a></p>`,
     });
 
@@ -1044,13 +1000,11 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
     plan: u.plan,
     role: u.role,
     org: org ? { id: org._id, name: org.name } : null,
-
     hasTrial: u.hasTrial,
     trialEndsAt: u.trialEndsAt,
     accessBlocked: u.accessBlocked,
     lastPaymentStatus: u.lastPaymentStatus || "",
     subscriptionStatus: u.subscriptionStatus || "",
-
     usage: {
       month: u.usageMonth,
       audits: { used: u.usedAudits, limit: q.audits },
@@ -1061,9 +1015,7 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
   });
 });
 
-//
-// ===== ORG / TEAM (Ultra) =====
-//
+// ---------- ORG / TEAM (Ultra) ----------
 app.get("/api/org/members", auth, requireActive, requirePlan("ultra"), async (req, res) => {
   const members = await User.find({ orgId: req.dbUser.orgId }).select("email name role createdAt").sort({ createdAt: 1 });
   return res.json({ ok: true, members });
@@ -1164,7 +1116,7 @@ app.post("/api/org/invite/accept", async (req, res) => {
   }
 });
 
-// ===== SEO AUDIT + CACHE =====
+// ---------- AUDITS ----------
 app.post("/api/audits/run", auth, requireActive, async (req, res) => {
   const url = String(req.body?.url || "").trim();
   if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (http/https)" });
@@ -1262,7 +1214,7 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   doc.end();
 });
 
-// ===== MONITORS =====
+// ---------- MONITORS ----------
 app.post("/api/monitors", auth, requireActive, async (req, res) => {
   const url = String(req.body?.url || "").trim();
   const intervalMinutes = Number(req.body?.intervalMinutes || 60);
@@ -1335,17 +1287,21 @@ app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
   const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
-  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id }).sort({ checkedAt: -1 }).limit(200);
+  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id })
+    .sort({ checkedAt: -1 })
+    .limit(200);
+
   return res.json({ ok: true, logs });
 });
 
-// ✅ CRON: exécute automatiquement les monitors "dus"
+// ---------- CRON: monitors-run ----------
 app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
   try {
     const now = Date.now();
     const limit = Math.min(500, Math.max(1, Number(req.body?.limit || req.query.limit || 200)));
 
     const activeMonitors = await Monitor.find({ active: true }).sort({ updatedAt: 1 }).limit(limit);
+
     let checked = 0;
     let alertsSent = 0;
 
@@ -1385,7 +1341,7 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
   }
 });
 
-// ===== EXPORTS CSV =====
+// ---------- EXPORTS ----------
 function csvEscape(v) {
   const s = String(v ?? "");
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -1441,7 +1397,7 @@ app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
   res.send(header + rows + "\n");
 });
 
-// ===== ADMIN =====
+// ---------- ADMIN ----------
 app.get("/api/admin/users", requireAdmin, async (req, res) => {
   const list = await User.find({}).sort({ createdAt: -1 }).limit(200);
   res.json({ ok: true, users: list });
@@ -1466,4 +1422,4 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
 });
 
 // ---------- START ----------
-app.listen(PORT, () => console.log(`✅ FlowPoint SaaS (Pack B) lancé sur port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ FlowPoint SaaS lancé sur port ${PORT}`));
