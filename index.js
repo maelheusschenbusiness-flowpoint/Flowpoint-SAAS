@@ -910,7 +910,58 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
   to: user.email,
   subject: "FlowPoint AI — Lien de connexion",
   text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
-  html: `<p>Lien (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
+ const brand = {
+  bg: "#0b1220",
+  card: "#111a2e",
+  primary: "#3b82f6",
+  text: "#e5e7eb",
+  muted: "#a3a3a3",
+};
+
+const html = `
+  <div style="background:${brand.bg};padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
+    <div style="max-width:560px;margin:0 auto;background:${brand.card};border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,.08)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div style="width:44px;height:44px;border-radius:12px;background:rgba(59,130,246,.15);display:flex;align-items:center;justify-content:center">
+          <div style="width:18px;height:18px;border-radius:6px;background:${brand.primary}"></div>
+        </div>
+        <div>
+          <div style="color:${brand.text};font-weight:800;font-size:18px;line-height:1">FlowPoint AI</div>
+          <div style="color:${brand.muted};font-size:13px">Connexion sécurisée (sans mot de passe)</div>
+        </div>
+      </div>
+
+      <h2 style="margin:12px 0 8px;color:${brand.text};font-size:18px">Ton lien de connexion</h2>
+      <p style="margin:0 0 18px;color:${brand.muted};font-size:14px;line-height:1.5">
+        Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
+      </p>
+
+      <a href="${link}"
+         style="display:inline-block;background:${brand.primary};color:white;text-decoration:none;
+                padding:12px 16px;border-radius:12px;font-weight:800;">
+        Se connecter
+      </a>
+
+      <p style="margin:18px 0 6px;color:${brand.muted};font-size:12px">
+        Bouton ne marche pas ? Copie-colle ce lien :
+      </p>
+      <p style="margin:0;color:${brand.text};font-size:12px;word-break:break-all">
+        ${link}
+      </p>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08);
+                  color:${brand.muted};font-size:12px">
+        © ${new Date().getFullYear()} FlowPoint AI
+      </div>
+    </div>
+  </div>
+`;
+
+await sendEmail({
+  to: user.email,
+  subject: "FlowPoint AI — Ton lien de connexion",
+  text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
+  html,
 });
 
 if (!r.ok) {
