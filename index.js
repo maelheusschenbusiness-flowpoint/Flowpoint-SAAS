@@ -80,22 +80,28 @@ function getMailer() {
   });
 }
 
-async function sendEmail({ to, subject, text, html, attachments, bcc }) {
+async function sendEmail({ to, subject, text, html, attachments }) {
   const t = getMailer();
   if (!t) {
     console.log("⚠️ SMTP non configuré, email ignoré:", subject);
-    return;
+    return { ok: false, skipped: true };
   }
-  const info = await t.sendMail({
-    from: process.env.ALERT_EMAIL_FROM,
-    to,
-    bcc,
-    subject,
-    text,
-    html,
-    attachments,
-  });
-  console.log("✅ Email envoyé:", info.messageId, "=>", to, bcc ? `(bcc:${bcc})` : "");
+
+  try {
+    const info = await t.sendMail({
+      from: process.env.ALERT_EMAIL_FROM,
+      to,
+      subject,
+      text,
+      html,
+      attachments,
+    });
+    console.log("✅ Email envoyé:", info.messageId, "=>", to);
+    return { ok: true, messageId: info.messageId };
+  } catch (e) {
+    console.log("❌ SMTP sendMail error:", e.message, "=>", to, "| subject:", subject);
+    return { ok: false, error: e.message };
+  }
 }
 
 function safeBaseUrl(req) {
