@@ -68,11 +68,19 @@ function boolEnv(v) {
 }
 
 function getMailer() {
-  if (!SMTP_READY) return null;
+  const ready =
+    !!process.env.SMTP_HOST &&
+    !!process.env.SMTP_PORT &&
+    !!process.env.SMTP_USER &&
+    !!process.env.SMTP_PASS &&
+    !!process.env.ALERT_EMAIL_FROM;
+
+  if (!ready) return null;
+
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
-    secure: boolEnv(process.env.SMTP_SECURE),
+    secure: boolEnv(process.env.SMTP_SECURE), // 465 => true, 587 => false
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
     connectionTimeout: 8000,
     greetingTimeout: 8000,
@@ -80,27 +88,30 @@ function getMailer() {
   });
 }
 
-async function sendEmail({ to, subject, text, html, attachments }) {
-  const t = getMailer();
-  if (!t) {
-    console.log("⚠️ SMTP non configuré, email ignoré:", subject);
-    return { ok: false, skipped: true };
-  }
-
+async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   try {
+    const t = getMailer();
+    if (!t) {
+      console.log("⚠️ SMTP non configuré, email ignoré:", subject);
+      return { ok: false, skipped: true };
+    }
+
     const info = await t.sendMail({
       from: process.env.ALERT_EMAIL_FROM,
       to,
+      bcc,
       subject,
       text,
       html,
       attachments,
     });
-    console.log("✅ Email envoyé:", info.messageId, "=>", to);
-    return { ok: true, messageId: info.messageId };
+
+    console.log("✅ Email envoyé:", info.messageId, "=>", to, bcc ? `(bcc:${bcc})` : "");
+    return { ok: true };
   } catch (e) {
-    console.log("❌ SMTP sendMail error:", e.message, "=>", to, "| subject:", subject);
-    return { ok: false, error: e.message };
+    console.log("❌ Email error:", e?.message || e);
+    // IMPORTANT: ne pas throw, sinon ça casse /api/auth/login-request
+    return { ok: false, error: e?.message || String(e) };
   }
 }
 
