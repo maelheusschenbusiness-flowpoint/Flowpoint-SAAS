@@ -1,365 +1,727 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>FlowPoint AI — Dashboard</title>
   <style>
     :root{
-      --bg:#F6F7FB;
-      --panel:#ffffff;
-      --muted:#667085;
+      --bg:#f5f7fb;
+      --card:#ffffff;
       --text:#0b1220;
-      --border:#E6EAF2;
+      --muted:#6b7280;
       --blue:#0052CC;
-      --blue2:#E8F0FF;
-      --danger:#B00020;
+      --blue2:#3b82f6;
+      --border:#e6eaf2;
       --ok:#0A7A2F;
-      --shadow:0 10px 30px rgba(16,24,40,.06);
+      --bad:#B00020;
+      --shadow: 0 12px 30px rgba(16,24,40,.08);
       --radius:16px;
     }
     *{box-sizing:border-box}
-    body{font-family:system-ui,Arial;background:var(--bg);margin:0;color:var(--text)}
-    a{color:var(--blue);font-weight:900;text-decoration:none}
-
-    .layout{display:flex;min-height:100vh}
-    .sidebar{
-      width:260px;flex:0 0 260px;background:var(--panel);
-      border-right:1px solid var(--border);
-      padding:18px;position:sticky;top:0;height:100vh
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:var(--bg);
+      color:var(--text);
     }
-    .brand{display:flex;align-items:center;gap:10px;font-weight:1000}
+    a{color:var(--blue);text-decoration:none}
+    .app{
+      display:grid;
+      grid-template-columns: 250px 1fr;
+      min-height:100vh;
+    }
+    .side{
+      background: #fff;
+      border-right:1px solid var(--border);
+      padding:18px;
+      position:sticky; top:0; height:100vh;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight:900; letter-spacing:.2px;
+    }
     .logo{
       width:34px;height:34px;border-radius:10px;
-      background:var(--blue2);border:1px solid #cfe0ff;
-      display:flex;align-items:center;justify-content:center;color:var(--blue);font-weight:1000
+      background:rgba(0,82,204,.12);
+      display:flex;align-items:center;justify-content:center;
+      border:1px solid rgba(0,82,204,.18);
     }
-    .nav{margin-top:16px;display:flex;flex-direction:column;gap:6px}
-    .nav a{
-      display:flex;align-items:center;gap:10px;
-      padding:10px 12px;border-radius:12px;color:var(--text);
-      border:1px solid transparent;font-weight:900
+    .logo i{
+      width:14px;height:14px;border-radius:5px;
+      background:var(--blue);
+      display:block;
     }
-    .nav a.active{
-      background:var(--blue2);color:var(--blue);border-color:#cfe0ff
+    .nav{margin-top:18px;display:flex;flex-direction:column;gap:6px}
+    .nav button{
+      width:100%;
+      border:1px solid transparent;
+      background:transparent;
+      padding:10px 10px;
+      border-radius:12px;
+      text-align:left;
+      cursor:pointer;
+      font-weight:700;
+      color:#111827;
+      display:flex;align-items:center;justify-content:space-between;
     }
+    .nav button:hover{background:#f3f6ff}
+    .nav button.active{
+      background:rgba(0,82,204,.10);
+      border-color:rgba(0,82,204,.18);
+      color:var(--blue);
+    }
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:8px 10px;border-radius:999px;
+      background:#f3f4f6;border:1px solid var(--border);
+      font-size:12px;color:#111827;font-weight:800;
+    }
+    .sideCard{
+      margin-top:14px;
+      border:1px solid var(--border);
+      border-radius:14px;
+      background:#fff;
+      padding:12px;
+    }
+    .sideCard .row{display:flex;justify-content:space-between;gap:10px;margin-top:8px;color:var(--muted);font-size:12px}
+    .sideCard b{color:#111827}
+    .danger{color:var(--bad);font-weight:800}
+    .ok{color:var(--ok);font-weight:800}
 
-    .sideMeta{margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:14px;background:#fbfcff}
-    .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:#f3f4f6;color:var(--text);font-weight:900;font-size:12px}
-    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:var(--blue2);color:var(--blue);font-weight:1000;font-size:12px}
-
-    .main{flex:1;min-width:0;padding:18px 18px 40px}
+    .main{
+      padding:22px;
+    }
     .topbar{
-      background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
-      padding:14px 16px;box-shadow:var(--shadow);
-      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap
+      display:flex;justify-content:space-between;align-items:flex-start;
+      gap:14px;flex-wrap:wrap;
+      margin-bottom:14px;
     }
-    h1{margin:0;font-size:18px}
-    .muted{color:var(--muted);font-size:14px}
-    .danger{color:var(--danger);font-weight:900}
-    .ok{color:var(--ok);font-weight:900}
+    .title h1{margin:0;font-size:22px}
+    .title p{margin:6px 0 0;color:var(--muted)}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{
+      border:none;
+      background:var(--blue);
+      color:#fff;
+      padding:10px 14px;
+      border-radius:12px;
+      font-weight:900;
+      cursor:pointer;
+      box-shadow: 0 10px 20px rgba(0,82,204,.18);
+    }
+    .btn.secondary{
+      background:#fff;color:#111827;
+      border:1px solid var(--border);
+      box-shadow:none;
+      font-weight:800;
+    }
+    .btn:disabled{opacity:.6;cursor:not-allowed}
 
-    .btn{background:var(--blue);color:#fff;border:0;border-radius:12px;padding:10px 12px;font-weight:1000;cursor:pointer}
-    .btn2{background:#111827;color:#fff;border:0;border-radius:12px;padding:10px 12px;font-weight:1000;cursor:pointer}
-    .btn3{background:var(--blue2);color:var(--blue);border:1px solid #cfe0ff;border-radius:12px;padding:10px 12px;font-weight:1000;cursor:pointer}
-    .btn4{background:#10b981;color:#fff;border:0;border-radius:12px;padding:10px 12px;font-weight:1000;cursor:pointer}
+    .msg{
+      margin:10px 0 14px;
+      padding:12px 14px;
+      border:1px solid var(--border);
+      background:#fff;
+      border-radius:14px;
+      color:var(--muted);
+      box-shadow: var(--shadow);
+    }
+    .msg.danger{border-color:rgba(176,0,32,.25);background:#fff5f6;color:var(--bad)}
+    .msg.ok{border-color:rgba(10,122,47,.22);background:#f1fff6;color:var(--ok)}
 
-    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;margin-top:12px}
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:14px;
+    }
     .card{
-      background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
-      padding:16px;box-shadow:var(--shadow)
+      grid-column: span 12;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:16px;
+      box-shadow: var(--shadow);
     }
-    .span-12{grid-column:span 12}
-    @media (max-width: 1080px){
-      .sidebar{display:none}
+    .card h2{margin:0 0 8px;font-size:16px}
+    .muted{color:var(--muted)}
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:14px;
+    }
+    .kpi{
+      background:#fff;border:1px solid var(--border);
+      border-radius:16px;padding:14px;box-shadow: var(--shadow);
+    }
+    .kpi .label{color:var(--muted);font-size:12px;font-weight:800}
+    .kpi .val{font-size:20px;font-weight:1000;margin-top:6px}
+    .split{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:14px;
     }
 
-    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-    .kpi{border:1px solid var(--border);border-radius:14px;padding:14px;background:#fff}
-    .kpi .label{color:var(--muted);font-size:12px;font-weight:900}
-    .kpi .value{font-size:20px;font-weight:1000;margin-top:6px}
-    @media (max-width: 900px){ .kpis{grid-template-columns:repeat(2,1fr)} }
-    @media (max-width: 520px){ .kpis{grid-template-columns:1fr} }
+    .formRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    input, select{
+      padding:10px 12px;border-radius:12px;border:1px solid var(--border);
+      background:#fff;outline:none;
+      min-width: 240px;
+      font-weight:700;
+    }
+    .btnSm{
+      padding:10px 12px;border-radius:12px;
+      border:1px solid var(--border);
+      background:#fff;cursor:pointer;font-weight:900;
+    }
+    .btnSm.primary{background:var(--blue);border-color:transparent;color:#fff}
 
-    .miniChart{margin-top:10px}
-    .bars{display:flex;gap:6px;align-items:flex-end;height:54px}
-    .bar{flex:1;background:#eef2ff;border-radius:8px;position:relative;overflow:hidden}
-    .bar > i{position:absolute;left:0;bottom:0;width:100%;height:0;background:var(--blue)}
-    .barLabel{display:flex;justify-content:space-between;margin-top:6px;color:var(--muted);font-size:12px}
-    .box{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fbfcff}
-    input,select{padding:10px;border-radius:12px;border:1px solid var(--border);width:100%}
-    table{width:100%;border-collapse:collapse}
-    td,th{padding:10px;border-bottom:1px solid #eef2f8;text-align:left;font-size:14px}
-    .hidden{display:none}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .col{flex:1;min-width:280px}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left;font-size:14px}
+    th{color:var(--muted);font-size:12px;letter-spacing:.2px}
+    td small{color:var(--muted)}
+    .tag{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:6px 10px;border-radius:999px;font-weight:900;font-size:12px;
+      border:1px solid var(--border); background:#f3f4f6;
+    }
+    .tag.ok{background:rgba(10,122,47,.08);border-color:rgba(10,122,47,.15);color:var(--ok)}
+    .tag.bad{background:rgba(176,0,32,.08);border-color:rgba(176,0,32,.15);color:var(--bad)}
+
+    .hidden{display:none !important}
+
+    @media (max-width: 980px){
+      .app{grid-template-columns: 1fr}
+      .side{position:relative;height:auto}
+      .kpis{grid-template-columns: 1fr 1fr}
+      .split{grid-template-columns: 1fr}
+      input{min-width: 100%}
+    }
   </style>
 </head>
 <body>
-  <div class="layout">
-
-    <aside class="sidebar">
+  <div class="app">
+    <aside class="side">
       <div class="brand">
-        <div class="logo">F</div>
+        <div class="logo"><i></i></div>
         <div>
           <div>FlowPoint</div>
-          <div class="muted" style="font-size:12px">Client Dashboard</div>
+          <div class="muted" style="font-size:12px;font-weight:800">Client Dashboard</div>
         </div>
       </div>
 
-      <nav class="nav">
-        <!-- IMPORTANT: mêmes data-tab que ton dashboard.js -->
-        <a href="#" class="active tab" data-tab="audit">Overview</a>
-        <a href="#" class="tab" data-tab="audits">Audits</a>
-        <a href="#" class="tab" data-tab="monitor">Monitors</a>
-        <a href="#" class="tab" data-tab="settings">Settings</a>
-        <a href="#" class="tab" data-tab="team" id="teamTab" style="display:none;">Team (Ultra)</a>
-      </nav>
+      <div class="nav">
+        <button class="tab active" data-tab="overview">Overview <span class="muted">›</span></button>
+        <button class="tab" data-tab="audits">Audits <span class="muted">›</span></button>
+        <button class="tab" data-tab="monitors">Monitors <span class="muted">›</span></button>
+        <button class="tab" data-tab="settings">Settings <span class="muted">›</span></button>
+      </div>
 
-      <div class="sideMeta">
+      <div class="sideCard">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <span class="badge" id="planBadge">PLAN</span>
-          <span class="pill" id="orgPill">Org: —</span>
-          <span class="pill" id="rolePill">Rôle: —</span>
-          <span class="pill" id="trialPill">Trial: —</span>
-          <span class="pill" id="payPill">Paiement: —</span>
+          <span class="pill" id="planBadge">—</span>
+          <span class="pill" id="rolePill">—</span>
         </div>
-        <div id="msg" class="muted" style="margin-top:10px"></div>
-      </div>
+        <div class="row"><span>Org</span><b id="orgPill">—</b></div>
+        <div class="row"><span>Email</span><b id="emailPill">—</b></div>
+        <div class="row"><span>Paiement</span><b id="payPill">—</b></div>
+        <div class="row"><span>Trial</span><b id="trialPill">—</b></div>
 
-      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn3" id="btnPricing" style="width:100%">Offres</button>
-        <button class="btn" id="btnPortal" style="width:100%">Gérer / Upgrade</button>
-        <button class="btn2" id="btnLogout" style="width:100%">Déconnexion</button>
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btnSm" id="btnPortal">Billing</button>
+          <button class="btnSm" id="btnLogout">Logout</button>
+        </div>
       </div>
     </aside>
 
     <main class="main">
       <div class="topbar">
-        <div>
+        <div class="title">
           <h1>Dashboard</h1>
-          <div class="muted">Audit SEO • Monitoring • PDF • Historique • Équipe (Ultra)</div>
+          <p class="muted">Audit SEO • Monitoring • Exports • Rapports</p>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn4" id="btnExportAudits">Exporter Audits CSV</button>
-          <button class="btn4" id="btnExportMonitors">Exporter Monitors CSV</button>
-          <button class="btn3" id="btnRefresh">Rafraîchir</button>
+        <div class="actions">
+          <button class="btn secondary" id="btnExportAudits">Exporter Audits CSV</button>
+          <button class="btn secondary" id="btnExportMonitors">Exporter Monitors CSV</button>
+          <button class="btn" id="btnRefresh">Rafraîchir</button>
         </div>
       </div>
 
-      <!-- OVERVIEW + Audit (tab-audit) -->
-      <section class="grid" id="tab-audit">
-        <div class="card span-12">
-          <div class="kpis">
-            <div class="kpi">
-              <div class="label">Score SEO moyen (7j)</div>
-              <div class="value" id="kpiScore">—</div>
-            </div>
-            <div class="kpi">
-              <div class="label">Uptime estimé (7j)</div>
-              <div class="value" id="kpiUptime">—</div>
-            </div>
-            <div class="kpi">
-              <div class="label">Temps moyen (7j)</div>
-              <div class="value" id="kpiMs">—</div>
-            </div>
-            <div class="kpi">
-              <div class="label">Audits (7j)</div>
-              <div class="value" id="kpiAudits">—</div>
-            </div>
-          </div>
+      <div id="msg" class="msg">Chargement…</div>
 
-          <div class="row" style="margin-top:14px">
-            <div class="col box">
-              <div style="font-weight:1000">Audits / jour</div>
-              <div class="miniChart">
-                <div class="bars" id="chartAudits"></div>
-                <div class="barLabel"><span>J-6</span><span>Aujourd’hui</span></div>
-              </div>
-            </div>
-            <div class="col box">
-              <div style="font-weight:1000">Erreurs DOWN / jour</div>
-              <div class="miniChart">
-                <div class="bars" id="chartDowns"></div>
-                <div class="barLabel"><span>J-6</span><span>Aujourd’hui</span></div>
-              </div>
-            </div>
+      <!-- OVERVIEW -->
+      <section id="tab-overview" class="card">
+        <h2>Overview</h2>
+        <div class="kpis" style="margin-top:12px">
+          <div class="kpi">
+            <div class="label">SEO Score (7j)</div>
+            <div class="val" id="kpiSeo">—</div>
           </div>
-
-          <div class="row" style="margin-top:14px">
-            <div class="col box">
-              <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
-                <div style="font-weight:1000">Uptime / jour (30j)</div>
-                <span class="badge" id="uptime30Badge">30j: —</span>
-              </div>
-              <div class="miniChart">
-                <div class="bars" id="chartUptime30"></div>
-                <div class="barLabel"><span>J-29</span><span>Aujourd’hui</span></div>
-              </div>
-              <div class="muted" style="margin-top:6px;font-size:12px">Basé sur les logs du cron monitoring.</div>
-            </div>
+          <div class="kpi">
+            <div class="label">Uptime (7j)</div>
+            <div class="val" id="kpiUptime">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Latency avg (7j)</div>
+            <div class="val" id="kpiMs">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Monitors</div>
+            <div class="val" id="kpiMonitors">—</div>
           </div>
         </div>
 
-        <div class="card span-12">
-          <div class="row">
-            <div class="col box">
-              <div class="muted">Email</div>
-              <div style="font-weight:1000" id="email">—</div>
-              <div class="muted" style="margin-top:8px">Entreprise</div>
-              <div style="font-weight:1000" id="company">—</div>
-            </div>
-
-            <div class="col box">
-              <div style="font-weight:1000">Quotas (mensuel)</div>
-              <div style="margin-top:10px" class="muted">Audits: <b id="qa">0/0</b></div>
-              <div style="margin-top:6px" class="muted">Monitors (créations): <b id="qm">0/0</b></div>
-              <div style="margin-top:6px" class="muted">PDF: <b id="qp">0/0</b></div>
-              <div style="margin-top:6px" class="muted">Exports: <b id="qe">0/0</b></div>
-              <div class="muted" style="margin-top:10px">Reset: 1er jour du mois (UTC)</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card span-12">
-          <div style="font-weight:1000;font-size:18px">Audit SEO</div>
-          <div class="muted">URL http/https → score + recommandations + historique. Cache automatique si audit récent.</div>
-
-          <div class="row" style="margin-top:12px">
-            <div class="col"><input id="auditUrl" placeholder="https://exemple.com" /></div>
-            <div style="width:220px"><button class="btn" id="btnRunAudit" style="width:100%">Lancer audit</button></div>
+        <div class="split" style="margin-top:14px">
+          <div class="card" style="box-shadow:none">
+            <h2 style="margin-bottom:6px">Derniers audits</h2>
+            <div class="muted">Top 5</div>
+            <div id="lastAudits" style="margin-top:10px" class="muted">—</div>
           </div>
 
-          <div id="auditResult" class="box hidden" style="margin-top:12px"></div>
+          <div class="card" style="box-shadow:none">
+            <h2 style="margin-bottom:6px">État monitors</h2>
+            <div class="muted">UP/DOWN sur les derniers checks</div>
+            <div id="monitorsState" style="margin-top:10px" class="muted">—</div>
+          </div>
         </div>
       </section>
 
       <!-- AUDITS -->
-      <section class="grid hidden" id="tab-audits">
-        <div class="card span-12">
-          <div style="font-weight:1000;font-size:18px">Historique des audits</div>
-          <div class="muted">PDF disponible pour chaque audit.</div>
+      <section id="tab-audits" class="card hidden">
+        <h2>Audits</h2>
+        <div class="formRow" style="margin-top:10px">
+          <input id="auditUrl" placeholder="https://exemple.com" />
+          <button class="btnSm primary" id="btnRunAudit">Run audit</button>
+        </div>
 
-          <div class="box" style="margin-top:12px;overflow:auto">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th><th>URL</th><th>Score</th><th>PDF</th><th>Détails</th>
-                </tr>
-              </thead>
-              <tbody id="auditsTbody"></tbody>
-            </table>
-          </div>
+        <div id="auditResult" class="card hidden" style="margin-top:12px;box-shadow:none">
+          <!-- inject -->
+        </div>
+
+        <div style="margin-top:14px">
+          <h2 style="margin-bottom:6px">Historique</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th><th>URL</th><th>Score</th><th>PDF</th><th>Détails</th>
+              </tr>
+            </thead>
+            <tbody id="auditsTbody"></tbody>
+          </table>
         </div>
       </section>
 
-      <!-- MONITOR -->
-      <section class="grid hidden" id="tab-monitor">
-        <div class="card span-12">
-          <div style="font-weight:1000;font-size:18px">Monitoring</div>
-          <div class="muted">Les checks automatiques sont faits par le cron. Tu peux aussi “Run” manuellement.</div>
+      <!-- MONITORS -->
+      <section id="tab-monitors" class="card hidden">
+        <h2>Monitors</h2>
+        <div class="formRow" style="margin-top:10px">
+          <input id="monUrl" placeholder="https://exemple.com" />
+          <select id="monInterval">
+            <option value="5">5 min</option>
+            <option value="15">15 min</option>
+            <option value="30">30 min</option>
+            <option value="60" selected>60 min</option>
+          </select>
+          <button class="btnSm primary" id="btnCreateMon">Add Monitor</button>
+        </div>
 
-          <div class="row" style="margin-top:12px">
-            <div class="col"><input id="monUrl" placeholder="https://exemple.com" /></div>
-            <div style="width:220px">
-              <input id="monInterval" type="number" min="5" value="60" />
-              <div class="muted" style="font-size:12px;margin-top:6px">Interval minutes (min 5)</div>
-            </div>
-            <div style="width:220px"><button class="btn" id="btnCreateMon" style="width:100%">Créer monitor</button></div>
-          </div>
+        <div id="monLogsBox" class="card hidden" style="margin-top:12px;box-shadow:none"></div>
 
-          <div class="box" style="margin-top:12px;overflow:auto">
-            <table>
-              <thead>
-                <tr>
-                  <th>URL</th><th>Actif</th><th>Status</th><th>Dernier check</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="monTbody"></tbody>
-            </table>
-          </div>
-
-          <div id="monLogsBox" class="box hidden" style="margin-top:12px;overflow:auto"></div>
-
-          <div style="margin-top:14px">
-            <button class="btn" id="btnMonitoringPdf">Télécharger rapport monitoring (PDF)</button>
-            <div class="muted" style="margin-top:6px">Ultra uniquement — rapport mensuel de fiabilité</div>
-          </div>
-
-          <div class="box" style="margin-top:12px">
-            <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
-              <div style="font-weight:1000">Rapport monitoring mensuel (Ultra)</div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="btn3" id="btnBuildMonthly">Générer</button>
-                <button class="btn3" id="btnPrintMonthly">Imprimer</button>
-              </div>
-            </div>
-
-            <div id="monthlyLock" class="muted" style="margin-top:8px">
-              🔒 Disponible uniquement sur le plan <b>ULTRA</b>.
-            </div>
-
-            <div id="monthlyReport" class="box hidden" style="margin-top:12px"></div>
-          </div>
+        <div style="margin-top:14px">
+          <table>
+            <thead>
+              <tr>
+                <th>URL</th><th>Active</th><th>Status</th><th>Dernier check</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="monTbody"></tbody>
+          </table>
         </div>
       </section>
 
       <!-- SETTINGS -->
-      <section class="grid hidden" id="tab-settings">
-        <div class="card span-12">
-          <div style="font-weight:1000;font-size:18px">Réglages alertes monitoring</div>
-          <div class="muted">Owner : choisir qui reçoit les alertes + ajouter emails supplémentaires.</div>
+      <section id="tab-settings" class="card hidden">
+        <h2>Settings</h2>
+        <div class="muted">Alertes monitor</div>
 
-          <div class="row" style="margin-top:12px">
-            <div class="col">
-              <label class="muted" style="font-size:12px;font-weight:1000">Destinataires</label>
-              <select id="alertRecipients">
-                <option value="all">Toute l’équipe (owner + members)</option>
-                <option value="owner">Owner uniquement</option>
-              </select>
-            </div>
-            <div class="col">
-              <label class="muted" style="font-size:12px;font-weight:1000">Emails supplémentaires (séparés par virgule)</label>
-              <input id="alertExtraEmails" placeholder="ops@entreprise.com, tech@entreprise.com" />
-            </div>
-            <div style="width:220px">
-              <button class="btn" id="btnSaveSettings" style="width:100%;margin-top:20px">Enregistrer</button>
-            </div>
+        <div class="formRow" style="margin-top:10px">
+          <select id="alertRecipients">
+            <option value="all">Tous les membres org</option>
+            <option value="owner">Owner uniquement</option>
+          </select>
+          <input id="alertExtraEmails" placeholder="extra1@mail.com, extra2@mail.com" />
+          <button class="btnSm primary" id="btnSaveSettings">Save</button>
+        </div>
+
+        <div class="card" style="margin-top:14px;box-shadow:none">
+          <h2>Plan</h2>
+          <div class="muted" style="margin-top:6px">Gère ton abonnement via Billing.</div>
+          <!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FlowPoint AI — Dashboard</title>
+  <style>
+    :root{
+      --bg:#f5f7fb;
+      --card:#ffffff;
+      --text:#0b1220;
+      --muted:#6b7280;
+      --blue:#0052CC;
+      --blue2:#3b82f6;
+      --border:#e6eaf2;
+      --ok:#0A7A2F;
+      --bad:#B00020;
+      --shadow: 0 12px 30px rgba(16,24,40,.08);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:var(--bg);
+      color:var(--text);
+    }
+    a{color:var(--blue);text-decoration:none}
+    .app{
+      display:grid;
+      grid-template-columns: 250px 1fr;
+      min-height:100vh;
+    }
+    .side{
+      background: #fff;
+      border-right:1px solid var(--border);
+      padding:18px;
+      position:sticky; top:0; height:100vh;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight:900; letter-spacing:.2px;
+    }
+    .logo{
+      width:34px;height:34px;border-radius:10px;
+      background:rgba(0,82,204,.12);
+      display:flex;align-items:center;justify-content:center;
+      border:1px solid rgba(0,82,204,.18);
+    }
+    .logo i{
+      width:14px;height:14px;border-radius:5px;
+      background:var(--blue);
+      display:block;
+    }
+    .nav{margin-top:18px;display:flex;flex-direction:column;gap:6px}
+    .nav button{
+      width:100%;
+      border:1px solid transparent;
+      background:transparent;
+      padding:10px 10px;
+      border-radius:12px;
+      text-align:left;
+      cursor:pointer;
+      font-weight:700;
+      color:#111827;
+      display:flex;align-items:center;justify-content:space-between;
+    }
+    .nav button:hover{background:#f3f6ff}
+    .nav button.active{
+      background:rgba(0,82,204,.10);
+      border-color:rgba(0,82,204,.18);
+      color:var(--blue);
+    }
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:8px 10px;border-radius:999px;
+      background:#f3f4f6;border:1px solid var(--border);
+      font-size:12px;color:#111827;font-weight:800;
+    }
+    .sideCard{
+      margin-top:14px;
+      border:1px solid var(--border);
+      border-radius:14px;
+      background:#fff;
+      padding:12px;
+    }
+    .sideCard .row{display:flex;justify-content:space-between;gap:10px;margin-top:8px;color:var(--muted);font-size:12px}
+    .sideCard b{color:#111827}
+    .danger{color:var(--bad);font-weight:800}
+    .ok{color:var(--ok);font-weight:800}
+
+    .main{
+      padding:22px;
+    }
+    .topbar{
+      display:flex;justify-content:space-between;align-items:flex-start;
+      gap:14px;flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    .title h1{margin:0;font-size:22px}
+    .title p{margin:6px 0 0;color:var(--muted)}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{
+      border:none;
+      background:var(--blue);
+      color:#fff;
+      padding:10px 14px;
+      border-radius:12px;
+      font-weight:900;
+      cursor:pointer;
+      box-shadow: 0 10px 20px rgba(0,82,204,.18);
+    }
+    .btn.secondary{
+      background:#fff;color:#111827;
+      border:1px solid var(--border);
+      box-shadow:none;
+      font-weight:800;
+    }
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+
+    .msg{
+      margin:10px 0 14px;
+      padding:12px 14px;
+      border:1px solid var(--border);
+      background:#fff;
+      border-radius:14px;
+      color:var(--muted);
+      box-shadow: var(--shadow);
+    }
+    .msg.danger{border-color:rgba(176,0,32,.25);background:#fff5f6;color:var(--bad)}
+    .msg.ok{border-color:rgba(10,122,47,.22);background:#f1fff6;color:var(--ok)}
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:14px;
+    }
+    .card{
+      grid-column: span 12;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:16px;
+      box-shadow: var(--shadow);
+    }
+    .card h2{margin:0 0 8px;font-size:16px}
+    .muted{color:var(--muted)}
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:14px;
+    }
+    .kpi{
+      background:#fff;border:1px solid var(--border);
+      border-radius:16px;padding:14px;box-shadow: var(--shadow);
+    }
+    .kpi .label{color:var(--muted);font-size:12px;font-weight:800}
+    .kpi .val{font-size:20px;font-weight:1000;margin-top:6px}
+    .split{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:14px;
+    }
+
+    .formRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    input, select{
+      padding:10px 12px;border-radius:12px;border:1px solid var(--border);
+      background:#fff;outline:none;
+      min-width: 240px;
+      font-weight:700;
+    }
+    .btnSm{
+      padding:10px 12px;border-radius:12px;
+      border:1px solid var(--border);
+      background:#fff;cursor:pointer;font-weight:900;
+    }
+    .btnSm.primary{background:var(--blue);border-color:transparent;color:#fff}
+
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left;font-size:14px}
+    th{color:var(--muted);font-size:12px;letter-spacing:.2px}
+    td small{color:var(--muted)}
+    .tag{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:6px 10px;border-radius:999px;font-weight:900;font-size:12px;
+      border:1px solid var(--border); background:#f3f4f6;
+    }
+    .tag.ok{background:rgba(10,122,47,.08);border-color:rgba(10,122,47,.15);color:var(--ok)}
+    .tag.bad{background:rgba(176,0,32,.08);border-color:rgba(176,0,32,.15);color:var(--bad)}
+
+    .hidden{display:none !important}
+
+    @media (max-width: 980px){
+      .app{grid-template-columns: 1fr}
+      .side{position:relative;height:auto}
+      .kpis{grid-template-columns: 1fr 1fr}
+      .split{grid-template-columns: 1fr}
+      input{min-width: 100%}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo"><i></i></div>
+        <div>
+          <div>FlowPoint</div>
+          <div class="muted" style="font-size:12px;font-weight:800">Client Dashboard</div>
+        </div>
+      </div>
+
+      <div class="nav">
+        <button class="tab active" data-tab="overview">Overview <span class="muted">›</span></button>
+        <button class="tab" data-tab="audits">Audits <span class="muted">›</span></button>
+        <button class="tab" data-tab="monitors">Monitors <span class="muted">›</span></button>
+        <button class="tab" data-tab="settings">Settings <span class="muted">›</span></button>
+      </div>
+
+      <div class="sideCard">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="pill" id="planBadge">—</span>
+          <span class="pill" id="rolePill">—</span>
+        </div>
+        <div class="row"><span>Org</span><b id="orgPill">—</b></div>
+        <div class="row"><span>Email</span><b id="emailPill">—</b></div>
+        <div class="row"><span>Paiement</span><b id="payPill">—</b></div>
+        <div class="row"><span>Trial</span><b id="trialPill">—</b></div>
+
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btnSm" id="btnPortal">Billing</button>
+          <button class="btnSm" id="btnLogout">Logout</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="title">
+          <h1>Dashboard</h1>
+          <p class="muted">Audit SEO • Monitoring • Exports • Rapports</p>
+        </div>
+        <div class="actions">
+          <button class="btn secondary" id="btnExportAudits">Exporter Audits CSV</button>
+          <button class="btn secondary" id="btnExportMonitors">Exporter Monitors CSV</button>
+          <button class="btn" id="btnRefresh">Rafraîchir</button>
+        </div>
+      </div>
+
+      <div id="msg" class="msg">Chargement…</div>
+
+      <!-- OVERVIEW -->
+      <section id="tab-overview" class="card">
+        <h2>Overview</h2>
+        <div class="kpis" style="margin-top:12px">
+          <div class="kpi">
+            <div class="label">SEO Score (7j)</div>
+            <div class="val" id="kpiSeo">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Uptime (7j)</div>
+            <div class="val" id="kpiUptime">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Latency avg (7j)</div>
+            <div class="val" id="kpiMs">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Monitors</div>
+            <div class="val" id="kpiMonitors">—</div>
+          </div>
+        </div>
+
+        <div class="split" style="margin-top:14px">
+          <div class="card" style="box-shadow:none">
+            <h2 style="margin-bottom:6px">Derniers audits</h2>
+            <div class="muted">Top 5</div>
+            <div id="lastAudits" style="margin-top:10px" class="muted">—</div>
           </div>
 
-          <div class="muted" style="margin-top:10px">Les emails supplémentaires reçoivent aussi les alertes.</div>
+          <div class="card" style="box-shadow:none">
+            <h2 style="margin-bottom:6px">État monitors</h2>
+            <div class="muted">UP/DOWN sur les derniers checks</div>
+            <div id="monitorsState" style="margin-top:10px" class="muted">—</div>
+          </div>
         </div>
       </section>
 
-      <!-- TEAM -->
-      <section class="grid hidden" id="tab-team">
-        <div class="card span-12">
-          <div style="font-weight:1000;font-size:18px">Équipe (Ultra)</div>
-          <div class="muted">Invite des membres (owner seulement). Données partagées au niveau org.</div>
+      <!-- AUDITS -->
+      <section id="tab-audits" class="card hidden">
+        <h2>Audits</h2>
+        <div class="formRow" style="margin-top:10px">
+          <input id="auditUrl" placeholder="https://exemple.com" />
+          <button class="btnSm primary" id="btnRunAudit">Run audit</button>
+        </div>
 
-          <div class="row" style="margin-top:12px">
-            <div class="col">
-              <input id="inviteEmail" placeholder="membre@entreprise.com" />
-              <div class="muted" style="font-size:12px;margin-top:6px">Email du membre</div>
-            </div>
-            <div style="width:240px">
-              <button class="btn" id="btnInvite" style="width:100%">Envoyer invitation</button>
-              <div class="muted" style="font-size:12px;margin-top:6px">Requiert Ultra + rôle owner</div>
-            </div>
-          </div>
+        <div id="auditResult" class="card hidden" style="margin-top:12px;box-shadow:none">
+          <!-- inject -->
+        </div>
 
-          <div class="box" style="margin-top:12px;overflow:auto">
-            <table>
-              <thead><tr><th>Email</th><th>Nom</th><th>Rôle</th><th>Créé</th></tr></thead>
-              <tbody id="teamTbody"></tbody>
-            </table>
+        <div style="margin-top:14px">
+          <h2 style="margin-bottom:6px">Historique</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th><th>URL</th><th>Score</th><th>PDF</th><th>Détails</th>
+              </tr>
+            </thead>
+            <tbody id="auditsTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- MONITORS -->
+      <section id="tab-monitors" class="card hidden">
+        <h2>Monitors</h2>
+        <div class="formRow" style="margin-top:10px">
+          <input id="monUrl" placeholder="https://exemple.com" />
+          <select id="monInterval">
+            <option value="5">5 min</option>
+            <option value="15">15 min</option>
+            <option value="30">30 min</option>
+            <option value="60" selected>60 min</option>
+          </select>
+          <button class="btnSm primary" id="btnCreateMon">Add Monitor</button>
+        </div>
+
+        <div id="monLogsBox" class="card hidden" style="margin-top:12px;box-shadow:none"></div>
+
+        <div style="margin-top:14px">
+          <table>
+            <thead>
+              <tr>
+                <th>URL</th><th>Active</th><th>Status</th><th>Dernier check</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="monTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="tab-settings" class="card hidden">
+        <h2>Settings</h2>
+        <div class="muted">Alertes monitor</div>
+
+        <div class="formRow" style="margin-top:10px">
+          <select id="alertRecipients">
+            <option value="all">Tous les membres org</option>
+            <option value="owner">Owner uniquement</option>
+          </select>
+          <input id="alertExtraEmails" placeholder="extra1@mail.com, extra2@mail.com" />
+          <button class="btnSm primary" id="btnSaveSettings">Save</button>
+        </div>
+
+        <div class="card" style="margin-top:14px;box-shadow:none">
+          <h2>Plan</h2>
+          <div class="muted" style="margin-top:6px">Gère ton abonnement via Billing.</div>
+          <div style="margin-top:10px">
+            <button class="btnSm" id="btnPortal2">Ouvrir Billing</button>
           </div>
         </div>
       </section>
 
+      <script src="/dashboard.js"></script>
     </main>
   </div>
-
-  <script src="/dashboard.js"></script>
 </body>
 </html>
