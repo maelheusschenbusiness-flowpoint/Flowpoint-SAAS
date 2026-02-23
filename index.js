@@ -884,6 +884,60 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
 // ---------- AUTH: LOGIN MAGIC LINK ----------
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
+function buildMagicLinkEmail({ link, ttlMinutes }) {
+  const brand = {
+    bg: "#0b1220",
+    card: "#111a2e",
+    primary: "#3b82f6",
+    text: "#e5e7eb",
+    muted: "#a3a3a3",
+  };
+
+  const subject = "FlowPoint AI — Ton lien de connexion";
+  const text = `Lien (valide ${ttlMinutes} min): ${link}`;
+
+  const html = `
+  <div style="background:${brand.bg};padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
+    <div style="max-width:560px;margin:0 auto;background:${brand.card};border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,.08)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div style="width:44px;height:44px;border-radius:12px;background:rgba(59,130,246,.15);display:flex;align-items:center;justify-content:center">
+          <div style="width:18px;height:18px;border-radius:6px;background:${brand.primary}"></div>
+        </div>
+        <div>
+          <div style="color:${brand.text};font-weight:800;font-size:18px;line-height:1">FlowPoint AI</div>
+          <div style="color:${brand.muted};font-size:13px">Connexion sécurisée (sans mot de passe)</div>
+        </div>
+      </div>
+
+      <h2 style="margin:12px 0 8px;color:${brand.text};font-size:18px">Ton lien de connexion</h2>
+      <p style="margin:0 0 18px;color:${brand.muted};font-size:14px;line-height:1.5">
+        Ce lien est valide <b>${ttlMinutes} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
+      </p>
+
+      <a href="${link}"
+         style="display:inline-block;background:${brand.primary};color:white;text-decoration:none;
+                padding:12px 16px;border-radius:12px;font-weight:800;border-radius:12px">
+        Se connecter
+      </a>
+
+      <p style="margin:18px 0 6px;color:${brand.muted};font-size:12px">
+        Bouton ne marche pas ? Copie-colle ce lien :
+      </p>
+      <p style="margin:0;color:${brand.text};font-size:12px;word-break:break-all">
+        ${link}
+      </p>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08);
+                  color:${brand.muted};font-size:12px">
+        © ${new Date().getFullYear()} FlowPoint AI
+      </div>
+    </div>
+  </div>
+  `;
+
+  return { subject, text, html };
+}
+
 app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
   try {
     const email = String(req.body?.email || "").trim();
@@ -906,102 +960,28 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
       return res.json({ ok: true, debugLink: link });
     }
 
+    const mail = buildMagicLinkEmail({ link, ttlMinutes: LOGIN_LINK_TTL_MINUTES });
+
     const r = await sendEmail({
-  to: user.email,
-  subject: "FlowPoint AI — Lien de connexion",
-  text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
- const brand = {
-  bg: "#0b1220",
-  card: "#111a2e",
-  primary: "#3b82f6",
-  text: "#e5e7eb",
-  muted: "#a3a3a3",
-};
+      to: user.email,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+    });
 
-const html = `
-  <div style="background:${brand.bg};padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
-    <div style="max-width:560px;margin:0 auto;background:${brand.card};border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,.08)">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <div style="width:44px;height:44px;border-radius:12px;background:rgba(59,130,246,.15);display:flex;align-items:center;justify-content:center">
-          <div style="width:18px;height:18px;border-radius:6px;background:${brand.primary}"></div>
-        </div>
-        <div>
-          <div style="color:${brand.text};font-weight:800;font-size:18px;line-height:1">FlowPoint AI</div>
-          <div style="color:${brand.muted};font-size:13px">Connexion sécurisée (sans mot de passe)</div>
-        </div>
-      </div>
+    if (!r.ok) {
+      return res.status(502).json({
+        ok: false,
+        error: "Email non envoyé",
+      });
+    }
 
-      <h2 style="margin:12px 0 8px;color:${brand.text};font-size:18px">Ton lien de connexion</h2>
-      <p style="margin:0 0 18px;color:${brand.muted};font-size:14px;line-height:1.5">
-        Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
-      </p>
-
-      <a href="${link}"
-         style="display:inline-block;background:${brand.primary};color:white;text-decoration:none;
-                padding:12px 16px;border-radius:12px;font-weight:800;">
-        Se connecter
-      </a>
-
-      <p style="margin:18px 0 6px;color:${brand.muted};font-size:12px">
-        Bouton ne marche pas ? Copie-colle ce lien :
-      </p>
-      <p style="margin:0;color:${brand.text};font-size:12px;word-break:break-all">
-        ${link}
-      </p>
-
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08);
-                  color:${brand.muted};font-size:12px">
-        © ${new Date().getFullYear()} FlowPoint AI
-      </div>
-    </div>
-  </div>
-`;
-
-await sendEmail({
-  to: user.email,
-  subject: "FlowPoint AI — Ton lien de connexion",
-  text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
-  html,
-});
-
-if (!r.ok) {
-  // En prod: mieux vaut renvoyer 502 pour que le front affiche une vraie erreur
-  // En dev: tu peux renvoyer debugLink si DEBUG_LOGIN_LINK=true
-  return res.status(502).json({ ok: false, error: "Email non envoyé (SMTP)", debugLink: String(process.env.DEBUG_LOGIN_LINK || "").toLowerCase() === "true" ? link : undefined });
-}
-
-return res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (e) {
     console.log("login-request error:", e.message);
     return res.status(500).json({ error: "Erreur login-request" });
   }
 });
-
-app.get("/api/auth/login-verify", async (req, res) => {
-  try {
-    const raw = String(req.query?.token || "");
-    if (!raw) return res.status(400).json({ error: "Token manquant" });
-
-    const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
-    const lt = await LoginToken.findOne({ tokenHash });
-    if (!lt) return res.status(400).json({ error: "Token invalide" });
-    if (lt.usedAt) return res.status(400).json({ error: "Token déjà utilisé" });
-    if (lt.expiresAt && new Date(lt.expiresAt).getTime() < Date.now()) return res.status(400).json({ error: "Token expiré" });
-
-    const user = await User.findById(lt.userId);
-    if (!user) return res.status(404).json({ error: "User introuvable" });
-
-    lt.usedAt = new Date();
-    await lt.save();
-
-    await ensureOrgForUser(user);
-    return res.json({ ok: true, token: signToken(user) });
-  } catch (e) {
-    console.log("login-verify error:", e.message);
-    return res.status(500).json({ error: "Erreur login-verify" });
-  }
-});
-
 // ---------- STRIPE: CHECKOUT ----------
 app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
   try {
