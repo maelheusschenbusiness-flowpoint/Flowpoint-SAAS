@@ -1,4 +1,8 @@
 /* dashboard.js — FlowPoint AI (final)
+<script>
+  const token = localStorage.getItem("fp_token");
+  if (!token) location.replace("/login.html");
+</script>
    - Graph uptime (30j) in blue #0052CC (via CSS var --blue)
    - Monthly monitoring report + reliability score (Ultra only)
    - Uses org monitoring settings endpoints (monitor-settings) + tolerant fallback
