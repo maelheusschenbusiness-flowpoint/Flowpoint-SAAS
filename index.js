@@ -90,40 +90,70 @@ function getMailer() {
   return _cachedTransport;
 }
 
-async function sendEmail({ to, subject, text, html, attachments, bcc, replyTo }) {
-  const t = getMailer();
-  if (!t) {
-    console.log("⚠️ SMTP non configuré, email ignoré:", subject);
-    return { ok: false, skipped: true };
-  }
-
+async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   try {
+    // ✅ 1) Envoi via Resend API (HTTPS / port 443) => le plus fiable sur Render
+    if (process.env.RESEND_API_KEY) {
+      const toList = String(to || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const bccList = bcc
+        ? String(bcc)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
+
+      const payload = {
+        from: process.env.ALERT_EMAIL_FROM, // ex: support@flowpoint.pro
+        to: toList,
+        subject,
+        text: text || undefined,
+        html: html || undefined,
+        bcc: bccList && bccList.length ? bccList : undefined,
+      };
+
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await r.json().catch(() => ({}));
+
+      if (!r.ok) {
+        console.log("❌ Resend API error:", r.status, data);
+        return { ok: false, error: data?.message || `Resend API ${r.status}` };
+      }
+
+      console.log("✅ Email envoyé (Resend API):", data?.id, "=>", toList.join(","));
+      return { ok: true };
+    }
+
+    // ✅ 2) Fallback SMTP si jamais RESEND_API_KEY absent
+    const t = getMailer();
+    if (!t) {
+      console.log("⚠️ SMTP non configuré, email ignoré:", subject);
+      return { ok: false, skipped: true };
+    }
+
     const info = await t.sendMail({
       from: process.env.ALERT_EMAIL_FROM,
       to,
       bcc,
-      replyTo: replyTo || process.env.ALERT_EMAIL_TO || undefined, // pratique pour récupérer les réponses
       subject,
       text,
       html,
       attachments,
     });
 
-    // logs utiles pour debug
-    console.log("✅ Email envoyé:", {
-      messageId: info.messageId,
-      to,
-      accepted: info.accepted,
-      rejected: info.rejected,
-      response: info.response,
-    });
-
-    // Si aucun destinataire n’a été accepté, on considère l’envoi comme KO
-    if (Array.isArray(info.accepted) && info.accepted.length === 0) {
-      return { ok: false, error: "No recipients accepted", info };
-    }
-
-    return { ok: true, info };
+    console.log("✅ Email envoyé (SMTP):", info.messageId, "=>", to);
+    return { ok: true };
   } catch (e) {
     console.log("❌ Email error:", e?.message || e);
     return { ok: false, error: e?.message || String(e) };
