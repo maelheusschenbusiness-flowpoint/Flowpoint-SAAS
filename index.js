@@ -67,50 +67,65 @@ function boolEnv(v) {
   return String(v).toLowerCase() === "true";
 }
 
+// Transport réutilisable (sinon nodemailer recrée une connexion à chaque email)
+let _cachedTransport = null;
+
 function getMailer() {
-  const ready =
-    !!process.env.SMTP_HOST &&
-    !!process.env.SMTP_PORT &&
-    !!process.env.SMTP_USER &&
-    !!process.env.SMTP_PASS &&
-    !!process.env.ALERT_EMAIL_FROM;
+  if (!SMTP_READY) return null;
 
-  if (!ready) return null;
+  if (_cachedTransport) return _cachedTransport;
 
-  return nodemailer.createTransport({
+  _cachedTransport = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: boolEnv(process.env.SMTP_SECURE), // 465 => true, 587 => false
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    connectionTimeout: 8000,
-    greetingTimeout: 8000,
-    socketTimeout: 12000,
+
+    // timeouts
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
   });
+
+  return _cachedTransport;
 }
 
-async function sendEmail({ to, subject, text, html, attachments, bcc }) {
-  try {
-    const t = getMailer();
-    if (!t) {
-      console.log("⚠️ SMTP non configuré, email ignoré:", subject);
-      return { ok: false, skipped: true };
-    }
+async function sendEmail({ to, subject, text, html, attachments, bcc, replyTo }) {
+  const t = getMailer();
+  if (!t) {
+    console.log("⚠️ SMTP non configuré, email ignoré:", subject);
+    return { ok: false, skipped: true };
+  }
 
+  try {
     const info = await t.sendMail({
       from: process.env.ALERT_EMAIL_FROM,
       to,
       bcc,
+      replyTo: replyTo || process.env.ALERT_EMAIL_TO || undefined, // pratique pour récupérer les réponses
       subject,
       text,
       html,
       attachments,
     });
 
-    console.log("✅ Email envoyé:", info.messageId, "=>", to, bcc ? `(bcc:${bcc})` : "");
-    return { ok: true };
+    // logs utiles pour debug
+    console.log("✅ Email envoyé:", {
+      messageId: info.messageId,
+      to,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+    });
+
+    // Si aucun destinataire n’a été accepté, on considère l’envoi comme KO
+    if (Array.isArray(info.accepted) && info.accepted.length === 0) {
+      return { ok: false, error: "No recipients accepted", info };
+    }
+
+    return { ok: true, info };
   } catch (e) {
     console.log("❌ Email error:", e?.message || e);
-    // IMPORTANT: ne pas throw, sinon ça casse /api/auth/login-request
     return { ok: false, error: e?.message || String(e) };
   }
 }
@@ -861,14 +876,20 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
       return res.json({ ok: true, debugLink: link });
     }
 
-    await sendEmail({
-      to: user.email,
-      subject: "FlowPoint AI — Lien de connexion",
-      text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
-      html: `<p>Lien (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
-    });
+    const r = await sendEmail({
+  to: user.email,
+  subject: "FlowPoint AI — Lien de connexion",
+  text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
+  html: `<p>Lien (valide <b>${LOGIN_LINK_TTL_MINUTES} min</b>) :</p><p><a href="${link}">${link}</a></p>`,
+});
 
-    return res.json({ ok: true });
+if (!r.ok) {
+  // En prod: mieux vaut renvoyer 502 pour que le front affiche une vraie erreur
+  // En dev: tu peux renvoyer debugLink si DEBUG_LOGIN_LINK=true
+  return res.status(502).json({ ok: false, error: "Email non envoyé (SMTP)", debugLink: String(process.env.DEBUG_LOGIN_LINK || "").toLowerCase() === "true" ? link : undefined });
+}
+
+return res.json({ ok: true });
   } catch (e) {
     console.log("login-request error:", e.message);
     return res.status(500).json({ error: "Erreur login-request" });
