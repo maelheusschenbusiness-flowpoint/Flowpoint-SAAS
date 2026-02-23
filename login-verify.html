@@ -39,7 +39,7 @@
         if (!r.ok) throw new Error(d.error || "Erreur");
         localStorage.setItem("fp_token", d.token);
         setMsg("✅ Connecté. Redirection…", "ok");
-        setTimeout(()=> location.href="/dashboard.html", 800);
+        setTimeout(()=> location.replace("/dashboard.html"), 300);
       } catch (e) {
         setMsg(e.message || "Erreur", "error");
       }
