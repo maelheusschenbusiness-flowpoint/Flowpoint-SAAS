@@ -1,4 +1,5 @@
 // daily-cron.js — FlowPoint AI Daily Report
+// Node 18+ => fetch disponible
 require("dotenv").config();
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
@@ -48,21 +49,33 @@ function uniqEmails(list) {
 }
 
 async function sendMail({ to, subject, html }) {
-  const info = await mailer().sendMail({
+  if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY manquante");
+
+  const toList = String(to || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const payload = {
     from: process.env.ALERT_EMAIL_FROM,
-    to,
-    bcc: ADMIN_BCC || undefined,
-    replyTo: process.env.ALERT_EMAIL_TO || undefined,
+    to: toList,
     subject,
     html,
+    bcc: process.env.ALERT_EMAIL_TO ? [process.env.ALERT_EMAIL_TO] : undefined,
+  };
+
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   });
 
-  console.log("✅ Daily email envoyé:", {
-    messageId: info.messageId,
-    to,
-    accepted: info.accepted,
-    rejected: info.rejected,
-  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data?.message || `Resend API ${r.status}`);
+}
 
   if (Array.isArray(info.accepted) && info.accepted.length === 0) {
     throw new Error("No recipients accepted");
