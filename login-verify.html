@@ -37,7 +37,8 @@
         const r = await fetch("/api/auth/login-verify?token=" + encodeURIComponent(token));
         const d = await r.json().catch(()=> ({}));
         if (!r.ok) throw new Error(d.error || "Erreur");
-        localStorage.setItem("fp_token", d.token);
+        localStorage.setItem("fp_token", data.token);
+location.replace("/dashboard.html");
         setMsg("✅ Connecté. Redirection…", "ok");
         setTimeout(()=> location.replace("/dashboard.html"), 300);
       } catch (e) {
