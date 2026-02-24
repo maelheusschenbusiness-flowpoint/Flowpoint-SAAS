@@ -1,924 +1,474 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>FlowPoint — Dashboard</title>
-
-  <style>
-    :root{
-      --bg:#f6f8fb;
-      --panel:#ffffff;
-      --panel2:#fbfcff;
-      --border:#e6eaf2;
-      --text:#0f172a;
-      --muted:#64748b;
-
-      --primary:#2563eb;
-      --primary2:#1d4ed8;
-      --success:#16a34a;
-      --danger:#ef4444;
-      --warn:#f59e0b;
-
-      --shadow: 0 10px 30px rgba(15, 23, 42, .08);
-      --shadow2: 0 6px 18px rgba(15, 23, 42, .06);
-
-      --radius:16px;
-      --radius2:14px;
-
-      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-    }
-
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      font-family:var(--font);
-      color:var(--text);
-      background: radial-gradient(1200px 600px at 10% -10%, rgba(37,99,235,.10), transparent 55%),
-                  radial-gradient(900px 450px at 95% 0%, rgba(99,102,241,.10), transparent 50%),
-                  var(--bg);
-      -webkit-font-smoothing:antialiased;
-      -moz-osx-font-smoothing:grayscale;
-    }
-
-    /* Layout */
-    .app{
-      min-height:100%;
-      display:grid;
-      grid-template-columns: 280px 1fr;
-      gap: 18px;
-      padding: 18px;
-    }
-
-    /* Sidebar */
-    .sidebar{
-      background: linear-gradient(180deg, #ffffff, #fbfcff);
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow2);
-      padding: 16px;
-      position: sticky;
-      top: 18px;
-      height: calc(100vh - 36px);
-      overflow:auto;
-    }
-
-    .brand{
-      display:flex;
-      align-items:center;
-      gap:12px;
-      padding: 10px 10px 14px;
-    }
-    .brand .logo{
-      width:42px;height:42px;border-radius:14px;
-      background: rgba(37,99,235,.12);
-      display:grid;place-items:center;
-      border: 1px solid rgba(37,99,235,.22);
-    }
-    .brand .logo i{
-      width:18px;height:18px;border-radius:7px;
-      background: linear-gradient(135deg, var(--primary), #60a5fa);
-      display:block;
-      box-shadow: 0 8px 18px rgba(37,99,235,.25);
-    }
-    .brand .title{
-      line-height:1.1;
-    }
-    .brand .title b{
-      font-weight: 700;
-      letter-spacing:.2px;
-    }
-    .brand .title div{
-      color:var(--muted);
-      font-size:12.5px;
-      margin-top:2px;
-      font-weight: 500;
-    }
-
-    .nav{
-      margin-top: 10px;
-      display:flex;
-      flex-direction:column;
-      gap:6px;
-    }
-    .nav a{
-      text-decoration:none;
-      color: var(--text);
-      display:flex;
-      align-items:center;
-      gap:10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid transparent;
-      transition: .15s ease;
-      font-weight: 600; /* -> pas “gras énorme”, juste 600 comme sur ta photo */
-      letter-spacing: .1px;
-    }
-    .nav a:hover{
-      background: rgba(37,99,235,.06);
-      border-color: rgba(37,99,235,.12);
-    }
-    .nav a.active{
-      background: rgba(37,99,235,.10);
-      border-color: rgba(37,99,235,.20);
-      color: var(--primary2);
-    }
-    .badge{
-      margin-left:auto;
-      font-size: 11px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      background: rgba(37,99,235,.10);
-      color: var(--primary2);
-      border: 1px solid rgba(37,99,235,.18);
-      font-weight: 700;
-    }
-
-    .side-card{
-      margin-top: 12px;
-      background: var(--panel);
-      border:1px solid var(--border);
-      border-radius: var(--radius2);
-      padding: 12px;
-    }
-    .side-card h4{
-      margin:0 0 10px;
-      font-size: 12px;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      font-weight: 800;
-    }
-    .kv{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px 10px;
-      font-size: 13px;
-    }
-    .kv .k{color:var(--muted); font-weight:600}
-    .kv .v{font-weight:700; color:#0b1220}
-    .side-actions{
-      display:flex;
-      gap:8px;
-      margin-top: 10px;
-    }
-
-    /* Main */
-    .main{
-      min-width: 0;
-    }
-
-    .topbar{
-      background: rgba(255,255,255,.70);
-      backdrop-filter: blur(10px);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow2);
-      padding: 14px 14px;
-      display:flex;
-      align-items:center;
-      gap: 12px;
-    }
-    .hello{
-      min-width: 0;
-      flex: 1;
-    }
-    .hello h1{
-      margin:0;
-      font-size: 16px;
-      font-weight: 800;
-      letter-spacing:.2px;
-    }
-    .hello p{
-      margin: 4px 0 0;
-      color: var(--muted);
-      font-size: 12.5px;
-      font-weight: 500;
-    }
-
-    .filters{
-      display:flex;
-      align-items:center;
-      gap: 10px;
-    }
-    .chip{
-      display:flex; align-items:center; gap:8px;
-      padding: 8px 10px;
-      border-radius: 12px;
-      border:1px solid var(--border);
-      background: var(--panel);
-      color: var(--text);
-      font-weight: 700;
-      font-size: 12.5px;
-    }
-    .chip select{
-      border:none;
-      outline:none;
-      background:transparent;
-      font: inherit;
-      color: inherit;
-      cursor:pointer;
-    }
-
-    .btn{
-      border:1px solid var(--border);
-      background: var(--panel);
-      color: var(--text);
-      font-weight: 800;
-      padding: 9px 12px;
-      border-radius: 12px;
-      cursor:pointer;
-      transition:.15s ease;
-      box-shadow: 0 1px 0 rgba(15,23,42,.02);
-      font-size: 12.5px;
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      white-space:nowrap;
-    }
-    .btn:hover{transform: translateY(-1px); box-shadow: var(--shadow2)}
-    .btn.primary{
-      border-color: rgba(37,99,235,.25);
-      background: linear-gradient(135deg, var(--primary), #3b82f6);
-      color:#fff;
-      box-shadow: 0 16px 26px rgba(37,99,235,.16);
-    }
-    .btn.ghost{
-      background: transparent;
-      border-color: transparent;
-      color: var(--muted);
-      box-shadow:none;
-    }
-    .btn.danger{
-      border-color: rgba(239,68,68,.25);
-      background: rgba(239,68,68,.08);
-      color: #b91c1c;
-    }
-
-    /* Content grid */
-    .content{
-      margin-top: 14px;
-      display:grid;
-      grid-template-columns: 1.2fr .9fr;
-      gap: 14px;
-      align-items:start;
-    }
-    @media (max-width: 1100px){
-      .app{grid-template-columns: 1fr}
-      .sidebar{position:relative;height:auto}
-      .content{grid-template-columns: 1fr}
-    }
-
-    .card{
-      background: rgba(255,255,255,.82);
-      backdrop-filter: blur(10px);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow2);
-      overflow:hidden;
-    }
-    .card-head{
-      padding: 14px 14px 10px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap: 10px;
-      border-bottom: 1px solid var(--border);
-      background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.72));
-    }
-    .card-head h2{
-      margin:0;
-      font-size: 13px;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: var(--muted);
-      font-weight: 900;
-    }
-    .card-body{padding: 14px}
-
-    .kpis{
-      display:grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-    }
-    @media (max-width: 1100px){
-      .kpis{grid-template-columns: repeat(2,1fr)}
-    }
-    .kpi{
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 12px;
-      box-shadow: 0 8px 18px rgba(15,23,42,.04);
-    }
-    .kpi .label{
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .kpi .value{
-      margin-top: 6px;
-      font-size: 18px;
-      font-weight: 900;
-      letter-spacing: .2px;
-    }
-    .kpi .sub{
-      margin-top: 4px;
-      font-size: 12px;
-      color: var(--muted);
-      font-weight: 600;
-    }
-
-    .grid2{
-      margin-top: 12px;
-      display:grid;
-      grid-template-columns: 1fr;
-      gap: 12px;
-    }
-
-    /* Tables */
-    table{width:100%; border-collapse: collapse}
-    th,td{padding: 10px 10px; border-bottom: 1px solid var(--border); font-size: 13px}
-    th{
-      text-align:left;
-      color: var(--muted);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      font-weight: 900;
-      background: rgba(248,250,252,.65);
-    }
-    tr:hover td{background: rgba(37,99,235,.04)}
-    .status{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      font-weight: 800;
-    }
-    .dot{
-      width:10px;height:10px;border-radius:999px;
-      border:2px solid rgba(0,0,0,.08);
-      background:#cbd5e1;
-    }
-    .dot.up{background: rgba(22,163,74,.95)}
-    .dot.down{background: rgba(239,68,68,.95)}
-    .dot.warn{background: rgba(245,158,11,.95)}
-
-    /* Plans */
-    .plans{
-      display:grid;
-      grid-template-columns: repeat(3,1fr);
-      gap: 10px;
-    }
-    @media (max-width: 1100px){
-      .plans{grid-template-columns: 1fr}
-    }
-    .plan{
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px;
-      box-shadow: 0 10px 20px rgba(15,23,42,.05);
-      position:relative;
-    }
-    .plan.active{
-      border-color: rgba(37,99,235,.28);
-      box-shadow: 0 18px 30px rgba(37,99,235,.14);
-      background: radial-gradient(700px 160px at 50% 0%, rgba(37,99,235,.14), transparent 55%), var(--panel);
-    }
-    .plan h3{margin:0; font-size: 14px; font-weight: 900}
-    .price{
-      margin-top: 8px;
-      font-size: 26px;
-      font-weight: 950;
-      letter-spacing:.2px;
-    }
-    .price small{font-size: 12px; color: var(--muted); font-weight: 700}
-    .ul{
-      margin: 10px 0 0;
-      padding: 0 0 0 14px;
-      color: var(--muted);
-      font-weight: 600;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    .plan .cta{margin-top: 12px; width:100%; justify-content:center}
-
-    /* Sections (hash router) */
-    .section{display:none}
-    .section.active{display:block}
-
-    /* Charts */
-    .chart{
-      background: var(--panel);
-      border:1px solid var(--border);
-      border-radius: 14px;
-      padding: 12px;
-      overflow:hidden;
-    }
-    .chart-head{
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      margin-bottom: 10px;
-    }
-    .chart-head b{
-      font-size: 13px;
-      font-weight: 900;
-      color: #0b1220;
-    }
-    .chart-head span{
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--muted);
-    }
-    canvas{width:100%; height:140px}
-
-    /* Toast */
-    .toast{
-      position: fixed;
-      bottom: 18px;
-      right: 18px;
-      background: rgba(255,255,255,.92);
-      border:1px solid var(--border);
-      box-shadow: var(--shadow);
-      border-radius: 14px;
-      padding: 10px 12px;
-      display:none;
-      gap:10px;
-      align-items:flex-start;
-      max-width: 380px;
-      z-index: 50;
-    }
-    .toast.show{display:flex}
-    .toast b{font-weight: 900; font-size: 13px}
-    .toast p{margin:4px 0 0; color: var(--muted); font-size: 12.5px; font-weight: 600}
-
-    /* Modal */
-    .modal{
-      position: fixed;
-      inset: 0;
-      background: rgba(2,6,23,.38);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      padding: 16px;
-      z-index: 60;
-    }
-    .modal.show{display:flex}
-    .modal-card{
-      width: 100%;
-      max-width: 520px;
-      background: rgba(255,255,255,.96);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      box-shadow: 0 30px 80px rgba(2,6,23,.25);
-      overflow:hidden;
-    }
-    .modal-head{
-      padding: 14px 14px 10px;
-      display:flex; align-items:center; justify-content:space-between;
-      border-bottom: 1px solid var(--border);
-      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.80));
-    }
-    .modal-head b{font-weight: 950}
-    .modal-body{padding: 14px}
-    .field{display:flex; flex-direction:column; gap:6px; margin-bottom: 10px}
-    .field label{font-size: 12px; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing:.08em}
-    .field input, .field select{
-      border:1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px 12px;
-      font: inherit;
-      outline:none;
-      background: #fff;
-      font-weight: 700;
-    }
-    .row2{display:grid; grid-template-columns: 1fr 1fr; gap:10px}
-    @media (max-width:520px){.row2{grid-template-columns:1fr}}
-    .modal-actions{display:flex; gap:10px; justify-content:flex-end; margin-top: 12px}
-    .hint{font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.5}
-  </style>
+  <link rel="stylesheet" href="/style.css"/>
 </head>
 
 <body>
-  <div class="app">
+  <!-- Mobile sticky top -->
+  <div class="mobileTop">
+    <button class="hamb" id="btnOpenDrawer" aria-label="Menu">
+      <!-- hamburger icon -->
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M4 7h16M4 12h16M4 17h16" stroke="rgba(15,23,42,.75)" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
 
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:38px;height:38px;border-radius:14px;background:rgba(37,99,235,.14);border:1px solid rgba(37,99,235,.18);display:flex;align-items:center;justify-content:center;">
+        <!-- small logo -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2c4.4 0 8 3.6 8 8v4c0 4.4-3.6 8-8 8s-8-3.6-8-8v-4c0-4.4 3.6-8 8-8Z" fill="rgba(37,99,235,.18)"/>
+          <path d="M9 13.2l2 2 4-6" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <div style="font-weight:900;font-size:13px;line-height:1;">Flowpoint</div>
+        <div style="font-size:12px;color:rgba(15,23,42,.55);font-weight:650;line-height:1.1;">Client Dashboard</div>
+      </div>
+    </div>
+
+    <div style="width:44px;"></div>
+  </div>
+
+  <!-- Drawer (mobile sidebar) -->
+  <div class="drawerOverlay" id="drawerOverlay"></div>
+  <div class="drawer" id="drawer">
+    <aside class="sidebar" style="display:block; height:100vh; position:static;">
+      <!-- same sidebar markup (duplicated for mobile) -->
       <div class="brand">
-        <div class="logo"><i></i></div>
-        <div class="title">
-          <b>Flowpoint</b>
-          <div>Client Dashboard</div>
+        <div class="logo">
+          <!-- Logo like mock (rounded + check) -->
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2c4.4 0 8 3.6 8 8v4c0 4.4-3.6 8-8 8s-8-3.6-8-8v-4c0-4.4 3.6-8 8-8Z" fill="rgba(37,99,235,.20)"/>
+            <path d="M9 13.2l2 2 4-6" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="brandtext">
+          <div class="t1">Flowpoint</div>
+          <div class="t2">Client Dashboard</div>
         </div>
       </div>
 
-      <nav class="nav" id="nav">
-        <a href="#overview" data-route="overview" class="active">Overview</a>
-        <a href="#audits" data-route="audits">Audits</a>
-        <a href="#monitors" data-route="monitors">Monitors</a>
-        <a href="#localseo" data-route="localseo">Local SEO</a>
-        <a href="#competitors" data-route="competitors">Competitors</a>
-        <a href="#reports" data-route="reports">Reports <span class="badge">Ultra</span></a>
-        <a href="#billing" data-route="billing">Billing</a>
-        <a href="#settings" data-route="settings">Settings</a>
+      <nav class="nav" id="navMobile">
+        <a href="#overview" data-view="overview" class="active">
+          <span>Overview</span>
+        </a>
+        <a href="#audits" data-view="audits"><span>Audits</span></a>
+        <a href="#monitors" data-view="monitors"><span>Monitors</span></a>
+        <a href="#localseo" data-view="localseo"><span>Local SEO</span></a>
+        <a href="#competitors" data-view="competitors"><span>Competitors</span></a>
+        <a href="#reports" data-view="reports">
+          <span>Reports</span>
+          <span class="pill" id="pillReportsMobile" style="display:none;">Ultra</span>
+        </a>
+        <a href="#billing" data-view="billing"><span>Billing</span></a>
+        <a href="#settings" data-view="settings"><span>Settings</span></a>
       </nav>
 
-      <div class="side-card">
-        <h4>Account</h4>
+      <div class="accountCard">
+        <h3>ACCOUNT</h3>
         <div class="kv">
-          <div class="k">Plan</div><div class="v" id="sidePlan">—</div>
-          <div class="k">Org</div><div class="v" id="sideOrg">—</div>
-          <div class="k">Role</div><div class="v" id="sideRole">—</div>
-          <div class="k">Trial</div><div class="v" id="sideTrial">—</div>
+          <div class="k">Plan</div><div class="v" id="accPlanM">—</div>
+          <div class="k">Org</div><div class="v" id="accOrgM">—</div>
+          <div class="k">Role</div><div class="v" id="accRoleM">—</div>
+          <div class="k">Trial</div><div class="v muted" id="accTrialM">—</div>
         </div>
-        <div class="side-actions">
-          <button class="btn" id="btnPortal">Billing / Portal</button>
-          <button class="btn danger" id="btnLogout">Logout</button>
+        <div class="sideActions">
+          <button class="btn small" id="btnPortalM">Billing / Portal</button>
+          <button class="btn small danger" id="btnLogoutM">Logout</button>
         </div>
-        <div class="hint" style="margin-top:10px">
+        <div class="small" style="margin-top:10px;">
+          Tip: si un bouton ne répond pas, ouvre <b>Console</b> et regarde les erreurs réseau.
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="shell">
+    <!-- Desktop sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">
+          <!-- Logo like mock -->
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2c4.4 0 8 3.6 8 8v4c0 4.4-3.6 8-8 8s-8-3.6-8-8v-4c0-4.4 3.6-8 8-8Z" fill="rgba(37,99,235,.20)"/>
+            <path d="M9 13.2l2 2 4-6" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="brandtext">
+          <div class="t1">Flowpoint</div>
+          <div class="t2">Client Dashboard</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="navDesktop">
+        <a href="#overview" data-view="overview" class="active"><span>Overview</span></a>
+        <a href="#audits" data-view="audits"><span>Audits</span></a>
+        <a href="#monitors" data-view="monitors"><span>Monitors</span></a>
+        <a href="#localseo" data-view="localseo"><span>Local SEO</span></a>
+        <a href="#competitors" data-view="competitors"><span>Competitors</span></a>
+        <a href="#reports" data-view="reports">
+          <span>Reports</span>
+          <span class="pill" id="pillReports" style="display:none;">Ultra</span>
+        </a>
+        <a href="#billing" data-view="billing"><span>Billing</span></a>
+        <a href="#settings" data-view="settings"><span>Settings</span></a>
+      </nav>
+
+      <div class="accountCard">
+        <h3>ACCOUNT</h3>
+        <div class="kv">
+          <div class="k">Plan</div><div class="v" id="accPlan">—</div>
+          <div class="k">Org</div><div class="v" id="accOrg">—</div>
+          <div class="k">Role</div><div class="v" id="accRole">—</div>
+          <div class="k">Trial</div><div class="v muted" id="accTrial">—</div>
+        </div>
+        <div class="sideActions">
+          <button class="btn small" id="btnPortal">Billing / Portal</button>
+          <button class="btn small danger" id="btnLogout">Logout</button>
+        </div>
+        <div class="small" style="margin-top:10px;">
           Tip: si un bouton ne répond pas, ouvre <b>Console</b> et regarde les erreurs réseau.
         </div>
       </div>
     </aside>
 
-    <!-- MAIN -->
+    <!-- Main -->
     <main class="main">
-
-      <!-- TOPBAR -->
-      <div class="topbar">
-        <div class="hello">
+      <header class="topbar">
+        <div class="topLeft">
           <h1 id="helloTitle">Bonjour, —</h1>
-          <p id="helloSub">SEO · Monitoring · Reports · Billing</p>
+          <div class="subtitle" id="helloSub">SEO · Monitoring · Reports · Billing</div>
         </div>
-
-        <div class="filters">
-          <div class="chip">
-            <span>Last</span>
-            <select id="range">
-              <option value="7">7 days</option>
-              <option value="30" selected>30 days</option>
-              <option value="90">90 days</option>
-            </select>
-          </div>
-
+        <div class="topRight">
+          <select class="select" id="rangeSelect">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
           <button class="btn primary" id="btnRefresh">Refresh</button>
           <button class="btn" id="btnExportAudits">Export Audits CSV</button>
           <button class="btn" id="btnExportMonitors">Export Monitors CSV</button>
         </div>
-      </div>
+      </header>
 
-      <!-- SECTIONS -->
-      <div class="content">
-
-        <!-- LEFT -->
-        <section class="section active" id="sec-overview">
+      <!-- VIEW: Overview (matches mock) -->
+      <section class="view active" id="view-overview">
+        <div class="grid">
+          <!-- left column -->
           <div class="card">
-            <div class="card-head">
-              <h2>Overview</h2>
-              <button class="btn ghost" id="statusBadge">● Loading…</button>
+            <div class="cardHeader">
+              <h2>OVERVIEW</h2>
+              <div class="statusOk" id="dashStatus">
+                <span class="dot"></span>
+                <span>Dashboard à jour — OK</span>
+              </div>
             </div>
-            <div class="card-body">
 
+            <div class="cardBody">
               <div class="kpis">
-                <div class="kpi">
-                  <div class="label">SEO Score</div>
-                  <div class="value" id="kpiSeo">—</div>
-                  <div class="sub" id="kpiSeoSub">Last <span id="kpiDays1">30</span> days</div>
+                <div class="kpiBox">
+                  <div class="t">SEO Score</div>
+                  <div class="n" id="kpiSeo">—</div>
+                  <div class="s" id="kpiSeoSub">Last 30 days</div>
                 </div>
-                <div class="kpi">
-                  <div class="label">Local Visibility</div>
-                  <div class="value" id="kpiLocal">—</div>
-                  <div class="sub">Map pack + reviews</div>
+                <div class="kpiBox">
+                  <div class="t">Local Visibility</div>
+                  <div class="n" id="kpiLocal">—</div>
+                  <div class="s">Map pack + reviews</div>
                 </div>
-                <div class="kpi">
-                  <div class="label">Monitors</div>
-                  <div class="value" id="kpiMonitors">—</div>
-                  <div class="sub"><span id="kpiUp">—</span> up · <span id="kpiDown">—</span> down</div>
+                <div class="kpiBox">
+                  <div class="t">Monitors</div>
+                  <div class="n" id="kpiMonitors">0</div>
+                  <div class="s" id="kpiMonitorsSub">0 up · 0 down</div>
                 </div>
-                <div class="kpi">
-                  <div class="label">Incidents</div>
-                  <div class="value" id="kpiIncidents">—</div>
-                  <div class="sub">Last <span id="kpiDays2">30</span> days</div>
+                <div class="kpiBox">
+                  <div class="t">Incidents</div>
+                  <div class="n" id="kpiIncidents">0</div>
+                  <div class="s" id="kpiIncidentsSub">Last 30 days</div>
                 </div>
               </div>
 
-              <div class="grid2">
-                <div class="chart">
-                  <div class="chart-head">
-                    <b>SEO Performance</b>
-                    <span>Last <span id="chartDays">30</span> days</span>
-                  </div>
-                  <canvas id="seoChart" width="900" height="260"></canvas>
-                </div>
-
-                <div class="card" style="box-shadow:none;border-radius:14px; border:1px solid var(--border); overflow:hidden">
-                  <div class="card-head" style="border-radius:0">
-                    <h2>Recommended Actions</h2>
-                    <button class="btn" id="btnRunAudit">Run Audit</button>
-                  </div>
-                  <div class="card-body" style="padding:0">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Action</th>
-                          <th>Impact</th>
-                          <th style="width:120px">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody id="actionsTable">
-                        <tr><td>Run a SEO audit to get recommendations</td><td>High</td><td><span class="status"><span class="dot warn"></span>Pending</span></td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div class="card" style="box-shadow:none;border-radius:14px; border:1px solid var(--border); overflow:hidden">
-                  <div class="card-head" style="border-radius:0">
-                    <h2>Recent Incidents</h2>
-                    <button class="btn" id="btnViewAllIncidents">View all</button>
-                  </div>
-                  <div class="card-body" style="padding:0">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>URL</th>
-                          <th>Status</th>
-                          <th>When</th>
-                          <th style="width:120px">Details</th>
-                        </tr>
-                      </thead>
-                      <tbody id="incidentsTable">
-                        <tr><td colspan="4" style="color:var(--muted);font-weight:700;padding:14px">No incidents yet.</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
+              <div class="sectionTitleRow">
+                <div class="title">SEO Performance</div>
+                <div class="small" id="chartRangeLabel">Last 30 days</div>
               </div>
 
-            </div>
-          </div>
-        </section>
+              <div class="chartWrap">
+                <canvas id="seoChart"></canvas>
+              </div>
 
-        <!-- RIGHT COLUMN (MONITORS + PLANS) -->
-        <aside>
-          <div class="card section active" id="sec-right-overview">
-            <div class="card-head">
-              <h2>Monitors</h2>
-              <button class="btn primary" id="btnAddMonitor">Add Monitor</button>
-            </div>
-            <div class="card-body" style="padding:0">
-              <table>
+              <div class="sectionTitleRow" style="margin-top:14px;">
+                <h2 style="margin:0;">RECOMMENDED ACTIONS</h2>
+                <button class="btn small" id="btnRunAudit">Run Audit</button>
+              </div>
+
+              <table class="table" style="margin-top:10px;">
+                <thead>
+                  <tr>
+                    <th>ACTION</th>
+                    <th>IMPACT</th>
+                    <th>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody id="recommendedBody">
+                  <tr>
+                    <td>Run a SEO audit to get recommendations</td>
+                    <td class="kpi">High</td>
+                    <td>
+                      <span class="badge" style="color:rgba(15,23,42,.85);">
+                        <span class="bDot" style="background: var(--amber); box-shadow:0 0 0 4px rgba(245,158,11,.14);"></span>
+                        Pending
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="sectionTitleRow" style="margin-top:14px;">
+                <h2 style="margin:0;">RECENT INCIDENTS</h2>
+                <button class="btn small" id="btnViewIncidents">View all</button>
+              </div>
+
+              <table class="table" style="margin-top:10px;">
                 <thead>
                   <tr>
                     <th>URL</th>
-                    <th>Status</th>
-                    <th>Interval</th>
-                    <th>Last Checked</th>
-                    <th>Resp</th>
+                    <th>STATUS</th>
+                    <th>WHEN</th>
+                    <th>DETAILS</th>
                   </tr>
                 </thead>
-                <tbody id="monitorsTable">
-                  <tr><td colspan="5" style="color:var(--muted);font-weight:700;padding:14px">Loading…</td></tr>
+                <tbody id="incidentsBody">
+                  <tr><td colspan="4" class="small">No incidents yet.</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <div class="card" style="margin-top:14px">
-            <div class="card-head">
-              <h2>Plans</h2>
-              <button class="btn" id="btnSeePlans">See plans</button>
+          <!-- right column -->
+          <div class="split">
+            <div class="card">
+              <div class="cardHeader">
+                <h2>MONITORS</h2>
+                <button class="btn small primary" id="btnAddMonitorTop">Add Monitor</button>
+              </div>
+              <div class="cardBody">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>URL</th>
+                      <th>STATUS</th>
+                      <th>INTERVAL</th>
+                      <th>LAST CHECKED</th>
+                      <th>RESP</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monitorsBody">
+                    <tr><td colspan="5" class="small">No monitors yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div class="card-body">
-              <div class="plans" id="plansWrap">
-                <div class="plan">
-                  <h3>Standard</h3>
-                  <div class="price">€29 <small>/mo</small></div>
-                  <ul class="ul">
-                    <li>SEO audits (30/mo)</li>
-                    <li>3 monitors</li>
-                    <li>PDF exports</li>
-                  </ul>
-                  <button class="btn cta" data-plan="standard">Manage subscription</button>
+
+            <div class="card">
+              <div class="cardHeader">
+                <h2>PLANS</h2>
+                <a class="small" href="#billing" data-view="billing" id="seePlans">See plans</a>
+              </div>
+              <div class="cardBody">
+                <div class="plans">
+                  <div class="plan">
+                    <div class="pt">Standard</div>
+                    <div class="price">€29 <span class="per">/mo</span></div>
+                    <ul>
+                      <li>SEO audits (30/mo)</li>
+                      <li>3 monitors</li>
+                      <li>PDF exports</li>
+                    </ul>
+                    <div class="ctaRow">
+                      <button class="btn small" id="btnManageStandard">Manage subscription</button>
+                    </div>
+                  </div>
+
+                  <div class="plan featured">
+                    <div class="pt">Pro</div>
+                    <div class="price">€79 <span class="per">/mo</span></div>
+                    <ul>
+                      <li>SEO audits (300/mo)</li>
+                      <li>50 monitors</li>
+                      <li>Email alerts</li>
+                    </ul>
+                    <div class="ctaRow">
+                      <button class="btn primary" id="btnUpgradePro">Upgrade subscription</button>
+                    </div>
+                  </div>
+
+                  <div class="plan">
+                    <div class="pt">Ultra</div>
+                    <div class="price">€149 <span class="per">/mo</span></div>
+                    <ul>
+                      <li>2k audits/mo</li>
+                      <li>300 monitors</li>
+                      <li>Team + Reports</li>
+                    </ul>
+                    <div class="ctaRow">
+                      <button class="btn small" id="btnUpdatePayment">Update payment</button>
+                    </div>
+                  </div>
                 </div>
-                <div class="plan active">
-                  <h3>Pro</h3>
-                  <div class="price">€79 <small>/mo</small></div>
-                  <ul class="ul">
-                    <li>SEO audits (300/mo)</li>
-                    <li>50 monitors</li>
-                    <li>Email alerts</li>
-                  </ul>
-                  <button class="btn primary cta" data-plan="pro">Upgrade subscription</button>
-                </div>
-                <div class="plan">
-                  <h3>Ultra</h3>
-                  <div class="price">€149 <small>/mo</small></div>
-                  <ul class="ul">
-                    <li>2k audits/mo</li>
-                    <li>300 monitors</li>
-                    <li>Team + Reports</li>
-                  </ul>
-                  <button class="btn cta" data-plan="ultra">Update payment</button>
-                </div>
-              </div>
-              <div class="hint" style="margin-top:10px">
-                Note: ces boutons peuvent ouvrir Stripe Checkout/Portal si ton backend les gère.
-              </div>
-            </div>
-          </div>
-        </aside>
 
-        <!-- Other sections placeholders (same layout, propre) -->
-        <section class="section" id="sec-audits">
-          <div class="card">
-            <div class="card-head">
-              <h2>Audits</h2>
-              <div style="display:flex;gap:10px">
-                <button class="btn" id="btnAuditsReload">Reload</button>
-                <button class="btn primary" id="btnAuditsRun">Run Audit</button>
-              </div>
-            </div>
-            <div class="card-body" style="padding:0">
-              <table>
-                <thead>
-                  <tr>
-                    <th>URL</th><th>Score</th><th>When</th><th>Status</th><th style="width:140px">Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="auditsTable">
-                  <tr><td colspan="5" style="color:var(--muted);font-weight:700;padding:14px">Loading…</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="section" id="sec-monitors">
-          <div class="card">
-            <div class="card-head">
-              <h2>Monitors</h2>
-              <div style="display:flex;gap:10px">
-                <button class="btn" id="btnMonitorsReload">Reload</button>
-                <button class="btn primary" id="btnAddMonitor2">Add Monitor</button>
-              </div>
-            </div>
-            <div class="card-body" style="padding:0">
-              <table>
-                <thead>
-                  <tr>
-                    <th>URL</th><th>Status</th><th>Interval</th><th>Last</th><th>Resp</th><th style="width:170px">Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="monitorsTable2">
-                  <tr><td colspan="6" style="color:var(--muted);font-weight:700;padding:14px">Loading…</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="section" id="sec-localseo">
-          <div class="card">
-            <div class="card-head">
-              <h2>Local SEO</h2>
-              <button class="btn primary" id="btnLocalScan">Scan</button>
-            </div>
-            <div class="card-body">
-              <div class="hint">
-                Ici tu peux brancher plus tard: Google Business Profile, avis, citations, NAP consistency, Map pack tracking.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="section" id="sec-competitors">
-          <div class="card">
-            <div class="card-head">
-              <h2>Competitors</h2>
-              <button class="btn primary" id="btnAddCompetitor">Add competitor</button>
-            </div>
-            <div class="card-body">
-              <div class="hint">
-                Ajoute: comparaison SEO, keywords, backlinks, vitesse, présence locale, positions Google Maps.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="section" id="sec-reports">
-          <div class="card">
-            <div class="card-head">
-              <h2>Reports</h2>
-              <button class="btn primary" id="btnGenReport">Generate</button>
-            </div>
-            <div class="card-body">
-              <div class="hint">
-                Ultra: rapport mensuel PDF, export, historique incidents, uptime, récap audits. (Tu as déjà des crons → parfait.)
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="section" id="sec-billing">
-          <div class="card">
-            <div class="card-head">
-              <h2>Billing</h2>
-              <button class="btn primary" id="btnOpenPortal2">Open portal</button>
-            </div>
-            <div class="card-body">
-              <div class="hint">
-                Ici tu peux afficher: plan actif, trial, prochaine facture, statut paiement, lien Stripe Customer Portal.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="section" id="sec-settings">
-          <div class="card">
-            <div class="card-head">
-              <h2>Settings</h2>
-              <button class="btn primary" id="btnSaveSettings">Save</button>
-            </div>
-            <div class="card-body">
-              <div class="row2">
-                <div class="field">
-                  <label>Alert email</label>
-                  <input id="setEmail" placeholder="alerts@company.com" />
-                </div>
-                <div class="field">
-                  <label>Monitor interval default</label>
-                  <select id="setInterval">
-                    <option value="60">60 min</option>
-                    <option value="30">30 min</option>
-                    <option value="10">10 min</option>
-                    <option value="5">5 min</option>
-                  </select>
+                <div class="small" style="margin-top:10px;">
+                  Note: ces boutons peuvent ouvrir Stripe Checkout/Portal si ton backend les gère.
                 </div>
               </div>
-              <div class="hint">
-                Ces settings peuvent être liés à ton endpoint org settings / monitor-settings côté backend.
-              </div>
             </div>
-          </div>
-        </section>
 
-      </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: Audits -->
+      <section class="view" id="view-audits">
+        <div class="card">
+          <div class="cardHeader">
+            <h2>AUDITS</h2>
+            <button class="btn small primary" id="btnRunAudit2">Run Audit</button>
+          </div>
+          <div class="cardBody">
+            <div class="small">Liste des audits (à brancher avec ton endpoint).</div>
+            <div style="height:10px;"></div>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>URL</th>
+                  <th>SCORE</th>
+                  <th>WHEN</th>
+                  <th>EXPORT</th>
+                </tr>
+              </thead>
+              <tbody id="auditsBody">
+                <tr><td colspan="4" class="small">No audits yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: Monitors -->
+      <section class="view" id="view-monitors">
+        <div class="card">
+          <div class="cardHeader">
+            <h2>MONITORS</h2>
+            <button class="btn small primary" id="btnAddMonitor2">Add Monitor</button>
+          </div>
+          <div class="cardBody">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>URL</th>
+                  <th>STATUS</th>
+                  <th>INTERVAL</th>
+                  <th>LAST CHECKED</th>
+                  <th>RESP</th>
+                </tr>
+              </thead>
+              <tbody id="monitorsBody2">
+                <tr><td colspan="5" class="small">No monitors yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: Local SEO -->
+      <section class="view" id="view-localseo">
+        <div class="card">
+          <div class="cardHeader"><h2>LOCAL SEO</h2></div>
+          <div class="cardBody">
+            <div class="small">Ici tu peux afficher les infos Google Business Profile, visibilité locale, etc.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: Competitors -->
+      <section class="view" id="view-competitors">
+        <div class="card">
+          <div class="cardHeader"><h2>COMPETITORS</h2></div>
+          <div class="cardBody">
+            <div class="small">Comparaison concurrents (à brancher quand tu veux).</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: Reports -->
+      <section class="view" id="view-reports">
+        <div class="card">
+          <div class="cardHeader">
+            <h2>REPORTS</h2>
+            <button class="btn small" id="btnMonthlyReport">Generate monthly report</button>
+          </div>
+          <div class="cardBody">
+            <div class="small">Rapports (PDF, historique, exports) — surtout pour Ultra.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: Billing -->
+      <section class="view" id="view-billing">
+        <div class="card">
+          <div class="cardHeader"><h2>BILLING</h2></div>
+          <div class="cardBody">
+            <div class="small">Stripe Portal / abonnement / factures.</div>
+            <div style="height:10px;"></div>
+            <button class="btn primary" id="btnOpenPortal2">Open Billing Portal</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: Settings -->
+      <section class="view" id="view-settings">
+        <div class="card">
+          <div class="cardHeader"><h2>SETTINGS</h2></div>
+          <div class="cardBody">
+            <div class="small">Réglages (emails alertes, org settings, etc.).</div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
-  <!-- MODAL: ADD MONITOR -->
-  <div class="modal" id="modalAdd">
-    <div class="modal-card">
-      <div class="modal-head">
-        <b>Add Monitor</b>
-        <button class="btn ghost" id="modalClose">✕</button>
+  <!-- Add Monitor Modal -->
+  <div class="modalOverlay" id="monitorModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mmTitle">
+      <div class="modalHeader">
+        <div class="modalTitle" id="mmTitle">Add Monitor</div>
+        <button class="btn small" id="mmClose">Close</button>
       </div>
-      <div class="modal-body">
+      <div class="modalBody">
         <div class="field">
           <label>URL</label>
-          <input id="mUrl" placeholder="https://example.com" />
+          <input class="input" id="mmUrl" placeholder="https://example.com"/>
         </div>
-        <div class="row2">
-          <div class="field">
-            <label>Interval</label>
-            <select id="mInterval">
-              <option value="60">60 min</option>
-              <option value="30">30 min</option>
-              <option value="10">10 min</option>
-              <option value="5">5 min</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Type</label>
-            <select id="mType">
-              <option value="http">HTTP</option>
-              <option value="keyword">Keyword</option>
-              <option value="ssl">SSL</option>
-            </select>
-          </div>
+        <div class="field">
+          <label>Interval (minutes)</label>
+          <input class="input" id="mmInterval" type="number" min="1" value="60"/>
         </div>
-        <div class="hint">HTTP = check status + temps réponse. Keyword = contient un texte. SSL = validité certificat.</div>
-
-        <div class="modal-actions">
-          <button class="btn" id="modalCancel">Cancel</button>
-          <button class="btn primary" id="modalCreate">Create monitor</button>
-        </div>
+        <div class="small">Le bouton crée le monitor via ton backend (endpoint configurable dans dashboard.js).</div>
+      </div>
+      <div class="modalFooter">
+        <button class="btn" id="mmCancel">Cancel</button>
+        <button class="btn primary" id="mmCreate">Create</button>
       </div>
     </div>
   </div>
 
-  <!-- TOAST -->
-  <div class="toast" id="toast">
-    <div style="margin-top:2px">✅</div>
-    <div>
-      <b id="toastTitle">Done</b>
-      <p id="toastMsg">—</p>
-    </div>
-  </div>
-
+  <!-- Chart + logic -->
   <script src="/dashboard.js"></script>
 </body>
 </html>
