@@ -1,732 +1,922 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>FlowPoint — Dashboard</title>
 
   <style>
     :root{
-      --blue:#0B63F6;
-      --blue2:#0052CC;
-      --bg:#F4F6FB;
-      --card:#FFFFFF;
-      --text:#0b1220;
-      --muted:#667085;
-      --border:#E7ECF5;
-      --shadow:0 10px 30px rgba(15, 23, 42, .06);
-      --radius:16px;
-      --ok:#16a34a;
+      --bg:#f6f8fb;
+      --panel:#ffffff;
+      --panel2:#fbfcff;
+      --border:#e6eaf2;
+      --text:#0f172a;
+      --muted:#64748b;
+
+      --primary:#2563eb;
+      --primary2:#1d4ed8;
+      --success:#16a34a;
       --danger:#ef4444;
       --warn:#f59e0b;
+
+      --shadow: 0 10px 30px rgba(15, 23, 42, .08);
+      --shadow2: 0 6px 18px rgba(15, 23, 42, .06);
+
+      --radius:16px;
+      --radius2:14px;
+
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
     }
 
     *{box-sizing:border-box}
+    html,body{height:100%}
     body{
       margin:0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      background:var(--bg);
+      font-family:var(--font);
       color:var(--text);
+      background: radial-gradient(1200px 600px at 10% -10%, rgba(37,99,235,.10), transparent 55%),
+                  radial-gradient(900px 450px at 95% 0%, rgba(99,102,241,.10), transparent 50%),
+                  var(--bg);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
     }
 
     /* Layout */
     .app{
+      min-height:100%;
       display:grid;
-      grid-template-columns: 270px 1fr;
-      min-height:100vh;
+      grid-template-columns: 280px 1fr;
+      gap: 18px;
+      padding: 18px;
     }
 
     /* Sidebar */
     .sidebar{
-      background: #fff;
-      border-right:1px solid var(--border);
-      padding:18px 14px;
-      position:sticky;
-      top:0;
-      height:100vh;
+      background: linear-gradient(180deg, #ffffff, #fbfcff);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow2);
+      padding: 16px;
+      position: sticky;
+      top: 18px;
+      height: calc(100vh - 36px);
+      overflow:auto;
     }
+
     .brand{
       display:flex;
       align-items:center;
-      gap:10px;
-      padding:10px 10px 14px;
+      gap:12px;
+      padding: 10px 10px 14px;
     }
-    .logo{
-      width:34px;height:34px;border-radius:10px;
-      background:rgba(11,99,246,.12);
-      display:flex;align-items:center;justify-content:center;
-      border:1px solid rgba(11,99,246,.18);
+    .brand .logo{
+      width:42px;height:42px;border-radius:14px;
+      background: rgba(37,99,235,.12);
+      display:grid;place-items:center;
+      border: 1px solid rgba(37,99,235,.22);
     }
-    .logo i{
-      width:14px;height:14px;border-radius:5px;background:var(--blue);
+    .brand .logo i{
+      width:18px;height:18px;border-radius:7px;
+      background: linear-gradient(135deg, var(--primary), #60a5fa);
       display:block;
+      box-shadow: 0 8px 18px rgba(37,99,235,.25);
     }
-    .brand .t{
-      font-weight:900;
-      line-height:1;
+    .brand .title{
+      line-height:1.1;
     }
-    .brand .s{
+    .brand .title b{
+      font-weight: 700;
+      letter-spacing:.2px;
+    }
+    .brand .title div{
       color:var(--muted);
-      font-size:12px;
+      font-size:12.5px;
       margin-top:2px;
+      font-weight: 500;
     }
 
     .nav{
-      margin-top:12px;
+      margin-top: 10px;
       display:flex;
       flex-direction:column;
       gap:6px;
-      padding: 0 8px;
     }
     .nav a{
+      text-decoration:none;
+      color: var(--text);
       display:flex;
       align-items:center;
-      justify-content:space-between;
       gap:10px;
-      padding:10px 10px;
-      border-radius:12px;
-      text-decoration:none;
-      color:var(--text);
-      font-weight:700;
-      border:1px solid transparent;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      transition: .15s ease;
+      font-weight: 600; /* -> pas “gras énorme”, juste 600 comme sur ta photo */
+      letter-spacing: .1px;
     }
-    .nav a span{
-      display:flex;align-items:center;gap:10px;
-    }
-    .nav a i{
-      width:28px;height:28px;border-radius:10px;
-      background:#F3F6FF;
-      display:flex;align-items:center;justify-content:center;
-      color:var(--blue);
-      font-style:normal;
-      border:1px solid rgba(11,99,246,.12);
-      font-weight:900;
-      font-size:12px;
+    .nav a:hover{
+      background: rgba(37,99,235,.06);
+      border-color: rgba(37,99,235,.12);
     }
     .nav a.active{
-      background:rgba(11,99,246,.08);
-      border:1px solid rgba(11,99,246,.15);
+      background: rgba(37,99,235,.10);
+      border-color: rgba(37,99,235,.20);
+      color: var(--primary2);
     }
-    .pill{
-      font-size:11px;
-      background:#F2F4F7;
-      border:1px solid var(--border);
-      padding:4px 8px;
-      border-radius:999px;
-      color:#111827;
-      font-weight:900;
-      white-space:nowrap;
+    .badge{
+      margin-left:auto;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(37,99,235,.10);
+      color: var(--primary2);
+      border: 1px solid rgba(37,99,235,.18);
+      font-weight: 700;
     }
 
-    .sideCard{
-      margin-top:14px;
-      background:var(--card);
+    .side-card{
+      margin-top: 12px;
+      background: var(--panel);
       border:1px solid var(--border);
-      border-radius:14px;
-      padding:12px;
-      box-shadow: var(--shadow);
+      border-radius: var(--radius2);
+      padding: 12px;
     }
-    .sideRow{
-      display:flex;justify-content:space-between;gap:10px;
-      margin:6px 0;
-      font-size:12px;
-      color:var(--muted);
+    .side-card h4{
+      margin:0 0 10px;
+      font-size: 12px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 800;
     }
-    .sideRow b{color:var(--text)}
-    .btnSide{
-      margin-top:10px;
-      width:100%;
-      border:1px solid rgba(11,99,246,.18);
-      background:#F3F6FF;
-      color:var(--blue);
-      font-weight:900;
-      padding:10px 12px;
-      border-radius:12px;
-      cursor:pointer;
+    .kv{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 10px;
+      font-size: 13px;
+    }
+    .kv .k{color:var(--muted); font-weight:600}
+    .kv .v{font-weight:700; color:#0b1220}
+    .side-actions{
+      display:flex;
+      gap:8px;
+      margin-top: 10px;
     }
 
     /* Main */
     .main{
-      padding:18px 18px 28px;
+      min-width: 0;
     }
 
     .topbar{
+      background: rgba(255,255,255,.70);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow2);
+      padding: 14px 14px;
       display:flex;
       align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-bottom:14px;
+      gap: 12px;
     }
-    .topLeft .h{
-      font-size:18px;
-      font-weight:900;
+    .hello{
+      min-width: 0;
+      flex: 1;
     }
-    .topLeft .sub{
-      color:var(--muted);
-      font-size:12px;
-      margin-top:4px;
+    .hello h1{
+      margin:0;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing:.2px;
+    }
+    .hello p{
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12.5px;
+      font-weight: 500;
     }
 
-    .topActions{
+    .filters{
       display:flex;
-      gap:10px;
-      flex-wrap:wrap;
       align-items:center;
+      gap: 10px;
     }
+    .chip{
+      display:flex; align-items:center; gap:8px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 700;
+      font-size: 12.5px;
+    }
+    .chip select{
+      border:none;
+      outline:none;
+      background:transparent;
+      font: inherit;
+      color: inherit;
+      cursor:pointer;
+    }
+
     .btn{
       border:1px solid var(--border);
-      background:#fff;
-      padding:10px 12px;
-      border-radius:12px;
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 800;
+      padding: 9px 12px;
+      border-radius: 12px;
       cursor:pointer;
-      font-weight:900;
+      transition:.15s ease;
+      box-shadow: 0 1px 0 rgba(15,23,42,.02);
+      font-size: 12.5px;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      white-space:nowrap;
     }
+    .btn:hover{transform: translateY(-1px); box-shadow: var(--shadow2)}
     .btn.primary{
-      background:var(--blue);
-      border-color: rgba(11,99,246,.25);
-      color:white;
+      border-color: rgba(37,99,235,.25);
+      background: linear-gradient(135deg, var(--primary), #3b82f6);
+      color:#fff;
+      box-shadow: 0 16px 26px rgba(37,99,235,.16);
     }
-    .btn.green{
-      background:#16a34a;
-      border-color: rgba(22,163,74,.25);
-      color:white;
+    .btn.ghost{
+      background: transparent;
+      border-color: transparent;
+      color: var(--muted);
+      box-shadow:none;
     }
-    .btn.gray{
-      background:#F2F4F7;
-      border-color: var(--border);
-      color:#111827;
+    .btn.danger{
+      border-color: rgba(239,68,68,.25);
+      background: rgba(239,68,68,.08);
+      color: #b91c1c;
     }
 
-    .msg{
-      margin: 12px 0 14px;
-      background:#fff;
-      border:1px solid var(--border);
-      border-radius:12px;
-      padding:10px 12px;
-      color:var(--muted);
-    }
-    .msg.danger{color:var(--danger);border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.04)}
-    .msg.ok{color:var(--ok);border-color:rgba(22,163,74,.25);background:rgba(22,163,74,.04)}
-
-    /* Grid cards */
-    .grid{
+    /* Content grid */
+    .content{
+      margin-top: 14px;
       display:grid;
-      grid-template-columns: 1.2fr 1fr;
-      gap:14px;
+      grid-template-columns: 1.2fr .9fr;
+      gap: 14px;
       align-items:start;
     }
     @media (max-width: 1100px){
       .app{grid-template-columns: 1fr}
       .sidebar{position:relative;height:auto}
-      .grid{grid-template-columns: 1fr}
+      .content{grid-template-columns: 1fr}
     }
 
     .card{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      box-shadow: var(--shadow);
-      padding:14px;
+      background: rgba(255,255,255,.82);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow2);
+      overflow:hidden;
     }
-    .cardTitle{
+    .card-head{
+      padding: 14px 14px 10px;
       display:flex;
       align-items:center;
       justify-content:space-between;
-      gap:10px;
-      margin-bottom:10px;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.72));
     }
-    .cardTitle .t{
-      font-weight:900;
+    .card-head h2{
+      margin:0;
+      font-size: 13px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 900;
     }
-    .muted{color:var(--muted)}
-    .row{
-      display:flex;
-      gap:12px;
-      flex-wrap:wrap;
-    }
+    .card-body{padding: 14px}
 
-    /* Small KPI cards */
     .kpis{
       display:grid;
       grid-template-columns: repeat(4, 1fr);
-      gap:10px;
-      margin-top:10px;
+      gap: 10px;
     }
-    @media (max-width: 900px){ .kpis{grid-template-columns: repeat(2, 1fr);} }
+    @media (max-width: 1100px){
+      .kpis{grid-template-columns: repeat(2,1fr)}
+    }
     .kpi{
-      border:1px solid var(--border);
-      border-radius:14px;
-      padding:12px;
-      background:#fff;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: 0 8px 18px rgba(15,23,42,.04);
     }
-    .kpi .l{font-size:12px;color:var(--muted);font-weight:800}
-    .kpi .v{margin-top:6px;font-weight:900;font-size:20px}
+    .kpi .label{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .kpi .value{
+      margin-top: 6px;
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: .2px;
+    }
+    .kpi .sub{
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
 
-    /* Charts (simple bars) */
-    .bars{
-      display:flex;
-      align-items:flex-end;
-      gap:6px;
-      height:90px;
-      padding:10px 6px 2px;
-      border:1px solid var(--border);
-      border-radius:14px;
-      background: linear-gradient(180deg,#fff,#fbfcff);
-      overflow:hidden;
-    }
-    .bar{
-      width:100%;
-      max-width:12px;
-      flex:1;
-      background:rgba(11,99,246,.12);
-      border-radius:10px;
-      display:flex;
-      align-items:flex-end;
-      overflow:hidden;
-      border:1px solid rgba(11,99,246,.10);
-    }
-    .bar > i{
-      width:100%;
-      background: linear-gradient(180deg,var(--blue),var(--blue2));
-      border-radius:10px;
-      display:block;
-      height:20%;
+    .grid2{
+      margin-top: 12px;
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
     }
 
     /* Tables */
-    table{width:100%;border-collapse:collapse}
-    th,td{
-      border-bottom:1px solid var(--border);
+    table{width:100%; border-collapse: collapse}
+    th,td{padding: 10px 10px; border-bottom: 1px solid var(--border); font-size: 13px}
+    th{
       text-align:left;
-      padding:10px 8px;
-      font-size:13px;
-      vertical-align:top;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 900;
+      background: rgba(248,250,252,.65);
     }
-    th{color:var(--muted);font-weight:900;font-size:12px}
+    tr:hover td{background: rgba(37,99,235,.04)}
     .status{
-      font-weight:900;
       display:inline-flex;
       align-items:center;
-      gap:6px;
-      padding:6px 10px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:#fff;
-      font-size:12px;
+      gap:8px;
+      font-weight: 800;
     }
     .dot{
-      width:8px;height:8px;border-radius:999px;background:#94a3b8;
-      display:inline-block;
+      width:10px;height:10px;border-radius:999px;
+      border:2px solid rgba(0,0,0,.08);
+      background:#cbd5e1;
     }
-    .up .dot{background:var(--ok)}
-    .down .dot{background:var(--danger)}
-    .unknown .dot{background:#94a3b8}
+    .dot.up{background: rgba(22,163,74,.95)}
+    .dot.down{background: rgba(239,68,68,.95)}
+    .dot.warn{background: rgba(245,158,11,.95)}
 
-    .tinyBtn{
-      border:1px solid var(--border);
-      background:#fff;
-      padding:7px 10px;
-      border-radius:10px;
-      cursor:pointer;
-      font-weight:900;
-      font-size:12px;
-    }
-
-    /* Forms */
-    .fieldRow{
-      display:flex;gap:10px;flex-wrap:wrap;
-      margin-top:10px;
-    }
-    input, select{
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background:#fff;
-      outline:none;
-      font-weight:700;
-    }
-    input{min-width:260px;flex:1}
-    select{min-width:200px}
-
-    /* Pricing cards */
-    .pricing{
+    /* Plans */
+    .plans{
       display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap:10px;
-      margin-top:10px;
+      grid-template-columns: repeat(3,1fr);
+      gap: 10px;
     }
-    @media (max-width: 900px){ .pricing{grid-template-columns: 1fr;} }
+    @media (max-width: 1100px){
+      .plans{grid-template-columns: 1fr}
+    }
     .plan{
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:14px;
-      background:#fff;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: 0 10px 20px rgba(15,23,42,.05);
       position:relative;
+    }
+    .plan.active{
+      border-color: rgba(37,99,235,.28);
+      box-shadow: 0 18px 30px rgba(37,99,235,.14);
+      background: radial-gradient(700px 160px at 50% 0%, rgba(37,99,235,.14), transparent 55%), var(--panel);
+    }
+    .plan h3{margin:0; font-size: 14px; font-weight: 900}
+    .price{
+      margin-top: 8px;
+      font-size: 26px;
+      font-weight: 950;
+      letter-spacing:.2px;
+    }
+    .price small{font-size: 12px; color: var(--muted); font-weight: 700}
+    .ul{
+      margin: 10px 0 0;
+      padding: 0 0 0 14px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .plan .cta{margin-top: 12px; width:100%; justify-content:center}
+
+    /* Sections (hash router) */
+    .section{display:none}
+    .section.active{display:block}
+
+    /* Charts */
+    .chart{
+      background: var(--panel);
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
       overflow:hidden;
     }
-    .plan.pro{
-      border:1px solid rgba(11,99,246,.25);
-      box-shadow: 0 16px 40px rgba(11,99,246,.10);
+    .chart-head{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      margin-bottom: 10px;
     }
-    .plan .name{font-weight:900}
-    .plan .price{font-weight:900;font-size:28px;margin:10px 0 6px}
-    .plan ul{margin:10px 0 0;padding-left:18px;color:var(--muted);font-weight:700}
-    .plan li{margin:6px 0}
-    .plan .cta{
-      margin-top:12px;
-      width:100%;
-      padding:10px 12px;
-      border-radius:12px;
-      font-weight:900;
-      border:1px solid var(--border);
-      background:#fff;
-      cursor:pointer;
+    .chart-head b{
+      font-size: 13px;
+      font-weight: 900;
+      color: #0b1220;
     }
-    .plan.pro .cta{background:var(--blue);border-color:rgba(11,99,246,.25);color:#fff}
+    .chart-head span{
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--muted);
+    }
+    canvas{width:100%; height:140px}
 
-    /* Hide panels */
-    .hidden{display:none !important}
+    /* Toast */
+    .toast{
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      background: rgba(255,255,255,.92);
+      border:1px solid var(--border);
+      box-shadow: var(--shadow);
+      border-radius: 14px;
+      padding: 10px 12px;
+      display:none;
+      gap:10px;
+      align-items:flex-start;
+      max-width: 380px;
+      z-index: 50;
+    }
+    .toast.show{display:flex}
+    .toast b{font-weight: 900; font-size: 13px}
+    .toast p{margin:4px 0 0; color: var(--muted); font-size: 12.5px; font-weight: 600}
+
+    /* Modal */
+    .modal{
+      position: fixed;
+      inset: 0;
+      background: rgba(2,6,23,.38);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding: 16px;
+      z-index: 60;
+    }
+    .modal.show{display:flex}
+    .modal-card{
+      width: 100%;
+      max-width: 520px;
+      background: rgba(255,255,255,.96);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 30px 80px rgba(2,6,23,.25);
+      overflow:hidden;
+    }
+    .modal-head{
+      padding: 14px 14px 10px;
+      display:flex; align-items:center; justify-content:space-between;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.80));
+    }
+    .modal-head b{font-weight: 950}
+    .modal-body{padding: 14px}
+    .field{display:flex; flex-direction:column; gap:6px; margin-bottom: 10px}
+    .field label{font-size: 12px; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing:.08em}
+    .field input, .field select{
+      border:1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font: inherit;
+      outline:none;
+      background: #fff;
+      font-weight: 700;
+    }
+    .row2{display:grid; grid-template-columns: 1fr 1fr; gap:10px}
+    @media (max-width:520px){.row2{grid-template-columns:1fr}}
+    .modal-actions{display:flex; gap:10px; justify-content:flex-end; margin-top: 12px}
+    .hint{font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.5}
   </style>
 </head>
 
 <body>
   <div class="app">
 
-    <!-- Sidebar -->
+    <!-- SIDEBAR -->
     <aside class="sidebar">
       <div class="brand">
         <div class="logo"><i></i></div>
-        <div>
-          <div class="t">Flowpoint</div>
-          <div class="s">Client Dashboard</div>
+        <div class="title">
+          <b>Flowpoint</b>
+          <div>Client Dashboard</div>
         </div>
       </div>
 
-      <nav class="nav">
-        <a href="#" class="active tab" data-tab="overview">
-          <span><i>F</i>Overview</span>
-        </a>
-        <a href="#" class="tab" data-tab="audits">
-          <span><i>A</i>Audits</span>
-        </a>
-        <a href="#" class="tab" data-tab="monitors">
-          <span><i>M</i>Monitors</span>
-        </a>
-        <a href="#" class="tab" data-tab="settings">
-          <span><i>S</i>Settings</span>
-        </a>
-        <a href="#" class="tab" data-tab="reports">
-          <span><i>R</i>Reports</span>
-          <span class="pill">Ultra</span>
-        </a>
+      <nav class="nav" id="nav">
+        <a href="#overview" data-route="overview" class="active">Overview</a>
+        <a href="#audits" data-route="audits">Audits</a>
+        <a href="#monitors" data-route="monitors">Monitors</a>
+        <a href="#localseo" data-route="localseo">Local SEO</a>
+        <a href="#competitors" data-route="competitors">Competitors</a>
+        <a href="#reports" data-route="reports">Reports <span class="badge">Ultra</span></a>
+        <a href="#billing" data-route="billing">Billing</a>
+        <a href="#settings" data-route="settings">Settings</a>
       </nav>
 
-      <div class="sideCard">
-        <div class="sideRow"><span>Plan</span><b id="planBadge">—</b></div>
-        <div class="sideRow"><span>Org</span><b id="orgPill">—</b></div>
-        <div class="sideRow"><span>Rôle</span><b id="rolePill">—</b></div>
-        <div class="sideRow"><span>Trial</span><b id="trialPill">—</b></div>
-        <div class="sideRow"><span>Paiement</span><b id="payPill">—</b></div>
-
-        <button class="btnSide" id="btnPortal">Billing / Portal</button>
-        <button class="btnSide" id="btnLogout" style="margin-top:8px;background:#fff;color:#111827">Logout</button>
+      <div class="side-card">
+        <h4>Account</h4>
+        <div class="kv">
+          <div class="k">Plan</div><div class="v" id="sidePlan">—</div>
+          <div class="k">Org</div><div class="v" id="sideOrg">—</div>
+          <div class="k">Role</div><div class="v" id="sideRole">—</div>
+          <div class="k">Trial</div><div class="v" id="sideTrial">—</div>
+        </div>
+        <div class="side-actions">
+          <button class="btn" id="btnPortal">Billing / Portal</button>
+          <button class="btn danger" id="btnLogout">Logout</button>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          Tip: si un bouton ne répond pas, ouvre <b>Console</b> et regarde les erreurs réseau.
+        </div>
       </div>
     </aside>
 
-    <!-- Main -->
+    <!-- MAIN -->
     <main class="main">
 
+      <!-- TOPBAR -->
       <div class="topbar">
-        <div class="topLeft">
-          <div class="h" id="helloTitle">Bonjour</div>
-          <div class="sub">SEO • Monitoring • Reports • Billing</div>
+        <div class="hello">
+          <h1 id="helloTitle">Bonjour, —</h1>
+          <p id="helloSub">SEO · Monitoring · Reports · Billing</p>
         </div>
 
-        <div class="topActions">
-          <button class="btn green" id="btnExportAudits">Exporter Audits CSV</button>
-          <button class="btn green" id="btnExportMonitors">Exporter Monitors CSV</button>
-          <button class="btn gray" id="btnRefresh">Rafraîchir</button>
+        <div class="filters">
+          <div class="chip">
+            <span>Last</span>
+            <select id="range">
+              <option value="7">7 days</option>
+              <option value="30" selected>30 days</option>
+              <option value="90">90 days</option>
+            </select>
+          </div>
+
+          <button class="btn primary" id="btnRefresh">Refresh</button>
+          <button class="btn" id="btnExportAudits">Export Audits CSV</button>
+          <button class="btn" id="btnExportMonitors">Export Monitors CSV</button>
         </div>
       </div>
 
-      <div id="msg" class="msg">Chargement…</div>
+      <!-- SECTIONS -->
+      <div class="content">
 
-      <!-- OVERVIEW -->
-      <section id="tab-overview">
-        <div class="grid">
-
-          <!-- Left: SEO overview -->
+        <!-- LEFT -->
+        <section class="section active" id="sec-overview">
           <div class="card">
-            <div class="cardTitle">
-              <div class="t">SEO Performance — 30 days</div>
-              <div class="muted">Last 30 days</div>
+            <div class="card-head">
+              <h2>Overview</h2>
+              <button class="btn ghost" id="statusBadge">● Loading…</button>
             </div>
+            <div class="card-body">
 
-            <div class="kpis">
-              <div class="kpi">
-                <div class="l">SEO Score</div>
-                <div class="v"><span id="kpiScore">—</span></div>
+              <div class="kpis">
+                <div class="kpi">
+                  <div class="label">SEO Score</div>
+                  <div class="value" id="kpiSeo">—</div>
+                  <div class="sub" id="kpiSeoSub">Last <span id="kpiDays1">30</span> days</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">Local Visibility</div>
+                  <div class="value" id="kpiLocal">—</div>
+                  <div class="sub">Map pack + reviews</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">Monitors</div>
+                  <div class="value" id="kpiMonitors">—</div>
+                  <div class="sub"><span id="kpiUp">—</span> up · <span id="kpiDown">—</span> down</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">Incidents</div>
+                  <div class="value" id="kpiIncidents">—</div>
+                  <div class="sub">Last <span id="kpiDays2">30</span> days</div>
+                </div>
               </div>
-              <div class="kpi">
-                <div class="l">Audits (7j)</div>
-                <div class="v"><span id="kpiAudits">—</span></div>
-              </div>
-              <div class="kpi">
-                <div class="l">Uptime (7j)</div>
-                <div class="v"><span id="kpiUptime">—</span></div>
-              </div>
-              <div class="kpi">
-                <div class="l">Avg ms (7j)</div>
-                <div class="v"><span id="kpiMs">—</span></div>
-              </div>
-            </div>
 
-            <div style="margin-top:12px">
-              <div class="muted" style="font-weight:900;font-size:12px;margin-bottom:8px">Audits / day (7 days)</div>
-              <div class="bars" id="chartAudits"></div>
-            </div>
+              <div class="grid2">
+                <div class="chart">
+                  <div class="chart-head">
+                    <b>SEO Performance</b>
+                    <span>Last <span id="chartDays">30</span> days</span>
+                  </div>
+                  <canvas id="seoChart" width="900" height="260"></canvas>
+                </div>
 
-            <div style="margin-top:12px">
-              <div class="muted" style="font-weight:900;font-size:12px;margin-bottom:8px">Recent incidents</div>
-              <div id="recentIncidents" class="muted">—</div>
-            </div>
+                <div class="card" style="box-shadow:none;border-radius:14px; border:1px solid var(--border); overflow:hidden">
+                  <div class="card-head" style="border-radius:0">
+                    <h2>Recommended Actions</h2>
+                    <button class="btn" id="btnRunAudit">Run Audit</button>
+                  </div>
+                  <div class="card-body" style="padding:0">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Action</th>
+                          <th>Impact</th>
+                          <th style="width:120px">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody id="actionsTable">
+                        <tr><td>Run a SEO audit to get recommendations</td><td>High</td><td><span class="status"><span class="dot warn"></span>Pending</span></td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
 
-            <div style="margin-top:12px">
-              <div class="muted" style="font-weight:900;font-size:12px;margin-bottom:8px">Recommended actions</div>
-              <div id="recommendedActions"></div>
+                <div class="card" style="box-shadow:none;border-radius:14px; border:1px solid var(--border); overflow:hidden">
+                  <div class="card-head" style="border-radius:0">
+                    <h2>Recent Incidents</h2>
+                    <button class="btn" id="btnViewAllIncidents">View all</button>
+                  </div>
+                  <div class="card-body" style="padding:0">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>URL</th>
+                          <th>Status</th>
+                          <th>When</th>
+                          <th style="width:120px">Details</th>
+                        </tr>
+                      </thead>
+                      <tbody id="incidentsTable">
+                        <tr><td colspan="4" style="color:var(--muted);font-weight:700;padding:14px">No incidents yet.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           </div>
+        </section>
 
-          <!-- Right: Monitors + Pricing -->
-          <div class="card">
-            <div class="cardTitle">
-              <div class="t">Monitors</div>
-              <button class="btn primary" id="btnOpenCreateMonitor">Add Monitor</button>
+        <!-- RIGHT COLUMN (MONITORS + PLANS) -->
+        <aside>
+          <div class="card section active" id="sec-right-overview">
+            <div class="card-head">
+              <h2>Monitors</h2>
+              <button class="btn primary" id="btnAddMonitor">Add Monitor</button>
             </div>
-
-            <div id="quickCreateMonitor" class="hidden" style="margin-bottom:10px">
-              <div class="fieldRow">
-                <input id="monUrl" placeholder="https://example.com"/>
-                <select id="monInterval">
-                  <option value="60">Interval: 60 min</option>
-                  <option value="30">Interval: 30 min</option>
-                  <option value="15">Interval: 15 min</option>
-                  <option value="10">Interval: 10 min</option>
-                  <option value="5">Interval: 5 min</option>
-                </select>
-                <button class="btn primary" id="btnCreateMon">Create</button>
-              </div>
-              <div class="muted" style="margin-top:8px;font-size:12px">Astuce: interval min = 5 minutes (backend).</div>
-            </div>
-
-            <div style="overflow:auto;border:1px solid var(--border);border-radius:14px">
+            <div class="card-body" style="padding:0">
               <table>
                 <thead>
                   <tr>
-                    <th style="min-width:220px">URL</th>
+                    <th>URL</th>
                     <th>Status</th>
                     <th>Interval</th>
-                    <th>Last checked</th>
-                    <th>Response</th>
-                    <th style="white-space:nowrap">Actions</th>
+                    <th>Last Checked</th>
+                    <th>Resp</th>
                   </tr>
                 </thead>
-                <tbody id="monTbody">
-                  <tr><td colspan="6" class="muted">Chargement…</td></tr>
+                <tbody id="monitorsTable">
+                  <tr><td colspan="5" style="color:var(--muted);font-weight:700;padding:14px">Loading…</td></tr>
                 </tbody>
               </table>
             </div>
+          </div>
 
-            <div style="margin-top:12px">
-              <div class="muted" style="font-weight:900;font-size:12px;margin-bottom:8px">Errors DOWN / day (7 days)</div>
-              <div class="bars" id="chartDowns"></div>
+          <div class="card" style="margin-top:14px">
+            <div class="card-head">
+              <h2>Plans</h2>
+              <button class="btn" id="btnSeePlans">See plans</button>
             </div>
-
-            <div style="margin-top:12px">
-              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-                <div class="muted" style="font-weight:900;font-size:12px">Uptime / day (30 days)</div>
-                <div class="pill" id="uptime30Badge">30j: —</div>
-              </div>
-              <div class="bars" id="chartUptime30" style="margin-top:8px"></div>
-              <div class="muted" style="font-size:12px;margin-top:6px">Basé sur les logs du cron monitoring.</div>
-            </div>
-
-            <div style="margin-top:14px">
-              <div class="cardTitle">
-                <div class="t">Plans</div>
-                <button class="btn" id="btnPricing">See plans</button>
-              </div>
-
-              <div class="pricing">
+            <div class="card-body">
+              <div class="plans" id="plansWrap">
                 <div class="plan">
-                  <div class="name">Standard</div>
-                  <div class="price">€29 <span class="muted" style="font-size:12px;font-weight:900">/mo</span></div>
-                  <ul>
+                  <h3>Standard</h3>
+                  <div class="price">€29 <small>/mo</small></div>
+                  <ul class="ul">
                     <li>SEO audits (30/mo)</li>
                     <li>3 monitors</li>
                     <li>PDF exports</li>
                   </ul>
-                  <button class="cta" data-checkout="standard">Manage subscription</button>
+                  <button class="btn cta" data-plan="standard">Manage subscription</button>
                 </div>
-
-                <div class="plan pro">
-                  <div class="name">Pro</div>
-                  <div class="price">€79 <span class="muted" style="font-size:12px;font-weight:900">/mo</span></div>
-                  <ul>
+                <div class="plan active">
+                  <h3>Pro</h3>
+                  <div class="price">€79 <small>/mo</small></div>
+                  <ul class="ul">
                     <li>SEO audits (300/mo)</li>
                     <li>50 monitors</li>
-                    <li>Alerts email</li>
+                    <li>Email alerts</li>
                   </ul>
-                  <button class="cta" data-checkout="pro">Upgrade subscription</button>
+                  <button class="btn primary cta" data-plan="pro">Upgrade subscription</button>
                 </div>
-
                 <div class="plan">
-                  <div class="name">Ultra</div>
-                  <div class="price">€149 <span class="muted" style="font-size:12px;font-weight:900">/mo</span></div>
-                  <ul>
+                  <h3>Ultra</h3>
+                  <div class="price">€149 <small>/mo</small></div>
+                  <ul class="ul">
                     <li>2k audits/mo</li>
                     <li>300 monitors</li>
                     <li>Team + Reports</li>
                   </ul>
-                  <button class="cta" data-checkout="ultra">Update payment method</button>
+                  <button class="btn cta" data-plan="ultra">Update payment</button>
                 </div>
               </div>
-
-              <div class="muted" style="margin-top:10px;font-size:12px">
-                Note: ces boutons ouvrent Stripe Checkout (trial 14j si backend l’a).
+              <div class="hint" style="margin-top:10px">
+                Note: ces boutons peuvent ouvrir Stripe Checkout/Portal si ton backend les gère.
               </div>
             </div>
           </div>
+        </aside>
 
-        </div>
-      </section>
-
-      <!-- AUDITS -->
-      <section id="tab-audits" class="hidden">
-        <div class="card">
-          <div class="cardTitle">
-            <div class="t">Audits</div>
-            <div class="muted">Run a new SEO audit</div>
+        <!-- Other sections placeholders (same layout, propre) -->
+        <section class="section" id="sec-audits">
+          <div class="card">
+            <div class="card-head">
+              <h2>Audits</h2>
+              <div style="display:flex;gap:10px">
+                <button class="btn" id="btnAuditsReload">Reload</button>
+                <button class="btn primary" id="btnAuditsRun">Run Audit</button>
+              </div>
+            </div>
+            <div class="card-body" style="padding:0">
+              <table>
+                <thead>
+                  <tr>
+                    <th>URL</th><th>Score</th><th>When</th><th>Status</th><th style="width:140px">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="auditsTable">
+                  <tr><td colspan="5" style="color:var(--muted);font-weight:700;padding:14px">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
+        </section>
 
-          <div class="fieldRow">
-            <input id="auditUrl" placeholder="https://example.com"/>
-            <button class="btn primary" id="btnRunAudit">Run audit</button>
+        <section class="section" id="sec-monitors">
+          <div class="card">
+            <div class="card-head">
+              <h2>Monitors</h2>
+              <div style="display:flex;gap:10px">
+                <button class="btn" id="btnMonitorsReload">Reload</button>
+                <button class="btn primary" id="btnAddMonitor2">Add Monitor</button>
+              </div>
+            </div>
+            <div class="card-body" style="padding:0">
+              <table>
+                <thead>
+                  <tr>
+                    <th>URL</th><th>Status</th><th>Interval</th><th>Last</th><th>Resp</th><th style="width:170px">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="monitorsTable2">
+                  <tr><td colspan="6" style="color:var(--muted);font-weight:700;padding:14px">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
+        </section>
 
-          <div id="auditResult" class="hidden" style="margin-top:12px"></div>
-
-          <div style="margin-top:14px;overflow:auto;border:1px solid var(--border);border-radius:14px">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th style="min-width:260px">URL</th>
-                  <th>Score</th>
-                  <th>PDF</th>
-                  <th>Détails</th>
-                </tr>
-              </thead>
-              <tbody id="auditsTbody">
-                <tr><td colspan="5" class="muted">Chargement…</td></tr>
-              </tbody>
-            </table>
+        <section class="section" id="sec-localseo">
+          <div class="card">
+            <div class="card-head">
+              <h2>Local SEO</h2>
+              <button class="btn primary" id="btnLocalScan">Scan</button>
+            </div>
+            <div class="card-body">
+              <div class="hint">
+                Ici tu peux brancher plus tard: Google Business Profile, avis, citations, NAP consistency, Map pack tracking.
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <!-- MONITORS (full) -->
-      <section id="tab-monitors" class="hidden">
-        <div class="card">
-          <div class="cardTitle">
-            <div class="t">Monitors</div>
-            <div class="muted">Create / run / pause / logs</div>
+        <section class="section" id="sec-competitors">
+          <div class="card">
+            <div class="card-head">
+              <h2>Competitors</h2>
+              <button class="btn primary" id="btnAddCompetitor">Add competitor</button>
+            </div>
+            <div class="card-body">
+              <div class="hint">
+                Ajoute: comparaison SEO, keywords, backlinks, vitesse, présence locale, positions Google Maps.
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div class="fieldRow">
-            <input id="monUrl2" placeholder="https://example.com"/>
-            <select id="monInterval2">
-              <option value="60">Interval: 60 min</option>
-              <option value="30">Interval: 30 min</option>
-              <option value="15">Interval: 15 min</option>
-              <option value="10">Interval: 10 min</option>
-              <option value="5">Interval: 5 min</option>
-            </select>
-            <button class="btn primary" id="btnCreateMon2">Create monitor</button>
+        <section class="section" id="sec-reports">
+          <div class="card">
+            <div class="card-head">
+              <h2>Reports</h2>
+              <button class="btn primary" id="btnGenReport">Generate</button>
+            </div>
+            <div class="card-body">
+              <div class="hint">
+                Ultra: rapport mensuel PDF, export, historique incidents, uptime, récap audits. (Tu as déjà des crons → parfait.)
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div style="margin-top:14px;overflow:auto;border:1px solid var(--border);border-radius:14px">
-            <table>
-              <thead>
-                <tr>
-                  <th style="min-width:280px">URL</th>
-                  <th>Active</th>
-                  <th>Status</th>
-                  <th>Last checked</th>
-                  <th style="white-space:nowrap">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="monTbody2">
-                <tr><td colspan="5" class="muted">Chargement…</td></tr>
-              </tbody>
-            </table>
+        <section class="section" id="sec-billing">
+          <div class="card">
+            <div class="card-head">
+              <h2>Billing</h2>
+              <button class="btn primary" id="btnOpenPortal2">Open portal</button>
+            </div>
+            <div class="card-body">
+              <div class="hint">
+                Ici tu peux afficher: plan actif, trial, prochaine facture, statut paiement, lien Stripe Customer Portal.
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div id="monLogsBox" class="hidden" style="margin-top:12px"></div>
-        </div>
-      </section>
-
-      <!-- SETTINGS -->
-      <section id="tab-settings" class="hidden">
-        <div class="card">
-          <div class="cardTitle">
-            <div class="t">Settings</div>
-            <div class="muted">Alerts / notifications</div>
+        <section class="section" id="sec-settings">
+          <div class="card">
+            <div class="card-head">
+              <h2>Settings</h2>
+              <button class="btn primary" id="btnSaveSettings">Save</button>
+            </div>
+            <div class="card-body">
+              <div class="row2">
+                <div class="field">
+                  <label>Alert email</label>
+                  <input id="setEmail" placeholder="alerts@company.com" />
+                </div>
+                <div class="field">
+                  <label>Monitor interval default</label>
+                  <select id="setInterval">
+                    <option value="60">60 min</option>
+                    <option value="30">30 min</option>
+                    <option value="10">10 min</option>
+                    <option value="5">5 min</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hint">
+                Ces settings peuvent être liés à ton endpoint org settings / monitor-settings côté backend.
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div class="fieldRow">
-            <select id="alertRecipients">
-              <option value="all">Alert recipients: all members</option>
-              <option value="owner">Alert recipients: owner only</option>
-            </select>
-
-            <input id="alertExtraEmails" placeholder="Extra emails (comma separated)"/>
-            <button class="btn primary" id="btnSaveSettings">Save</button>
-          </div>
-
-          <div class="muted" style="margin-top:10px;font-size:12px">
-            Exemple: contact@domaine.com, tech@domaine.com
-          </div>
-        </div>
-      </section>
-
-      <!-- REPORTS (Ultra) -->
-      <section id="tab-reports" class="hidden">
-        <div class="card">
-          <div class="cardTitle">
-            <div class="t">Reports (Ultra)</div>
-            <div class="muted">Monthly monitoring report</div>
-          </div>
-
-          <div id="monthlyLock" class="msg">Plan Ultra requis pour générer le rapport.</div>
-
-          <div class="row">
-            <button class="btn primary" id="btnBuildMonthly" disabled>Build monthly report</button>
-            <button class="btn" id="btnPrintMonthly" disabled>Print</button>
-            <button class="btn" id="btnMonitoringPdf" disabled>Monitoring PDF</button>
-          </div>
-
-          <div id="monthlyReport" class="hidden" style="margin-top:12px"></div>
-        </div>
-      </section>
-
-      <div class="muted" style="margin-top:16px;font-size:12px">
-        <b>Email:</b> <span id="email">—</span> • <b>Company:</b> <span id="company">—</span>
-        <span style="margin-left:10px"><b>Quotas:</b> audits <span id="qa">—</span>, monitors <span id="qm">—</span>, pdf <span id="qp">—</span>, exports <span id="qe">—</span></span>
       </div>
-
     </main>
+  </div>
+
+  <!-- MODAL: ADD MONITOR -->
+  <div class="modal" id="modalAdd">
+    <div class="modal-card">
+      <div class="modal-head">
+        <b>Add Monitor</b>
+        <button class="btn ghost" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>URL</label>
+          <input id="mUrl" placeholder="https://example.com" />
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Interval</label>
+            <select id="mInterval">
+              <option value="60">60 min</option>
+              <option value="30">30 min</option>
+              <option value="10">10 min</option>
+              <option value="5">5 min</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Type</label>
+            <select id="mType">
+              <option value="http">HTTP</option>
+              <option value="keyword">Keyword</option>
+              <option value="ssl">SSL</option>
+            </select>
+          </div>
+        </div>
+        <div class="hint">HTTP = check status + temps réponse. Keyword = contient un texte. SSL = validité certificat.</div>
+
+        <div class="modal-actions">
+          <button class="btn" id="modalCancel">Cancel</button>
+          <button class="btn primary" id="modalCreate">Create monitor</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast">
+    <div style="margin-top:2px">✅</div>
+    <div>
+      <b id="toastTitle">Done</b>
+      <p id="toastMsg">—</p>
+    </div>
   </div>
 
   <script src="/dashboard.js"></script>
