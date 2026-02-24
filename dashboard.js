@@ -1,270 +1,527 @@
+/* FlowPoint Dashboard JS — hash routing + API wiring */
 (() => {
   const TOKEN_KEY = "fp_token";
-  const qs = (s, el = document) => el.querySelector(s);
-  const qsa = (s, el = document) => [...el.querySelectorAll(s)];
-  const getToken = () => localStorage.getItem(TOKEN_KEY);
+  const token = localStorage.getItem(TOKEN_KEY);
+
+  // If token missing -> go login
+  if (!token) {
+    location.replace("/login.html");
+    return;
+  }
+
+  // Helpers
+  const $ = (q) => document.querySelector(q);
+  const $$ = (q) => Array.from(document.querySelectorAll(q));
 
   const api = async (path, opts = {}) => {
-    const token = getToken();
-    const headers = Object.assign(
-      { "Content-Type": "application/json" },
-      token ? { Authorization: `Bearer ${token}` } : {},
-      opts.headers || {}
-    );
-
-    const res = await fetch(path, { ...opts, headers });
-    const text = await res.text();
-    let data = {};
-    try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-
-    if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
-    return data;
-  };
-
-  const escapeHtml = (s) => (s ?? "").toString()
-    .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;").replaceAll("'","&#039;");
-
-  const fmtDate = (ts) => {
-    if (!ts) return "—";
-    const d = new Date(ts);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleString(undefined, { year:"2-digit", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" });
-  };
-
-  /* ------- Drawer (mobile) ------- */
-  const drawer = qs("#drawer");
-  const drawerOverlay = qs("#drawerOverlay");
-  qs("#btnOpenDrawer")?.addEventListener("click", () => {
-    drawerOverlay.classList.add("show");
-    drawer.classList.add("show");
-  });
-  const closeDrawer = () => {
-    drawerOverlay.classList.remove("show");
-    drawer.classList.remove("show");
-  };
-  drawerOverlay?.addEventListener("click", closeDrawer);
-
-  /* ------- Router views ------- */
-  const views = {
-    overview: qs("#view-overview"),
-    audits: qs("#view-audits"),
-    monitors: qs("#view-monitors"),
-    localseo: qs("#view-localseo"),
-    competitors: qs("#view-competitors"),
-    reports: qs("#view-reports"),
-    billing: qs("#view-billing"),
-    settings: qs("#view-settings"),
-  };
-
-  const setActiveNav = (viewName) => {
-    qsa("[data-view]").forEach(a => a.classList.toggle("active", a.dataset.view === viewName));
-  };
-
-  const showView = (viewName) => {
-    if (!views[viewName]) viewName = "overview";
-    Object.entries(views).forEach(([k, el]) => el && el.classList.toggle("active", k === viewName));
-    setActiveNav(viewName);
-    closeDrawer();
-    window.scrollTo({ top: 0, behavior: "instant" });
-  };
-
-  const getViewFromHash = () => (location.hash || "#overview").replace("#","").trim() || "overview";
-
-  qsa("[data-view]").forEach(a => {
-    a.addEventListener("click", (e) => {
-      e.preventDefault();
-      const v = a.dataset.view;
-      history.replaceState({}, "", `#${v}`);
-      showView(v);
+    const r = await fetch(path, {
+      ...opts,
+      headers: {
+        ...(opts.headers || {}),
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
     });
-  });
-  window.addEventListener("hashchange", () => showView(getViewFromHash()));
-
-  /* ------- Auth actions ------- */
-  const doLogout = () => {
-    localStorage.removeItem(TOKEN_KEY);
-    location.href = "/login.html";
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
   };
-  qs("#btnLogout")?.addEventListener("click", doLogout);
-  qs("#btnLogoutM")?.addEventListener("click", doLogout);
 
-  /* ------- Stripe Portal (YOUR ROUTE) ------- */
-  const openPortal = async () => {
-    try {
-      const j = await api("/api/stripe/portal", { method: "POST", body: JSON.stringify({}) });
-      if (j?.url) location.href = j.url;
-      else alert("Portal non configuré.");
-    } catch (e) {
-      alert(e.message || "Erreur portal");
+  function setActiveRoute(route) {
+    $$("#nav a").forEach(a => a.classList.toggle("active", a.dataset.route === route));
+    $$(".section").forEach(s => s.classList.remove("active"));
+    const sec = document.getElementById(`sec-${route}`);
+    if (sec) sec.classList.add("active");
+  }
+
+  function currentRoute() {
+    const h = (location.hash || "#overview").replace("#", "");
+    const allowed = new Set(["overview","audits","monitors","local","competitors","reports","billing","settings"]);
+    return allowed.has(h) ? h : "overview";
+  }
+
+  // Mobile drawer clones sidebar content
+  function mountDrawer() {
+    const mount = $("#drawerMount");
+    const sidebarCard = document.querySelector(".sidebar .sidebar-card");
+    if (!mount || !sidebarCard) return;
+    mount.innerHTML = "";
+    const clone = sidebarCard.cloneNode(true);
+    clone.style.height = "auto";
+    clone.style.boxShadow = "none";
+    mount.appendChild(clone);
+
+    // wire drawer nav click close
+    mount.querySelectorAll("a[data-route]").forEach(a => {
+      a.addEventListener("click", () => closeDrawer());
+    });
+    // wire buttons in drawer
+    mount.querySelector("#btnPortal")?.addEventListener("click", openPortal);
+    mount.querySelector("#btnLogout")?.addEventListener("click", logout);
+  }
+
+  function openDrawer() { $("#drawer").classList.add("open"); }
+  function closeDrawer() { $("#drawer").classList.remove("open"); }
+
+  // UI references
+  const dashStatus = $("#dashStatus");
+  const dashStatusTxt = $("#dashStatusTxt");
+
+  const kSeo = $("#kSeo");
+  const kLocal = $("#kLocal");
+  const kMonitors = $("#kMonitors");
+  const kMonitorsSub = $("#kMonitorsSub");
+  const kIncidents = $("#kIncidents");
+
+  const hello = $("#hello");
+  const whoMobile = $("#whoMobile");
+
+  const accPlan = $("#accPlan");
+  const accOrg = $("#accOrg");
+  const accRole = $("#accRole");
+  const accTrial = $("#accTrial");
+
+  // Chart (simple canvas line chart)
+  function drawChart(points) {
+    const canvas = $("#chart");
+    if (!canvas) return;
+
+    // handle HiDPI
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(300, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(160, Math.floor(rect.height * dpr));
+
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    // grid
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(16,24,40,.10)";
+    for (let i = 0; i <= 4; i++) {
+      const y = (rect.height / 4) * i;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(rect.width, y);
+      ctx.stroke();
     }
-  };
-  qs("#btnPortal")?.addEventListener("click", openPortal);
-  qs("#btnPortalM")?.addEventListener("click", openPortal);
-  qs("#btnOpenPortal2")?.addEventListener("click", openPortal);
 
-  /* ------- Exports (YOUR ROUTES) ------- */
-  qs("#btnExportAudits")?.addEventListener("click", () => (window.location.href = "/api/export/audits.csv"));
-  qs("#btnExportMonitors")?.addEventListener("click", () => (window.location.href = "/api/export/monitors.csv"));
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const pad = 18;
+    const W = rect.width - pad * 2;
+    const H = rect.height - pad * 2;
 
-  /* ------- Monitor modal ------- */
-  const monitorModal = qs("#monitorModal");
-  const openMonitorModal = () => monitorModal.classList.add("show");
-  const closeMonitorModal = () => monitorModal.classList.remove("show");
+    const X = (i) => pad + (W * i) / (points.length - 1);
+    const Y = (v) => pad + (H * (1 - (v - min) / (max - min || 1)));
 
-  qs("#btnAddMonitorTop")?.addEventListener("click", openMonitorModal);
-  qs("#btnAddMonitor2")?.addEventListener("click", openMonitorModal);
+    // area fill
+    ctx.beginPath();
+    ctx.moveTo(X(0), Y(points[0]));
+    for (let i = 1; i < points.length; i++) ctx.lineTo(X(i), Y(points[i]));
+    ctx.lineTo(X(points.length - 1), pad + H);
+    ctx.lineTo(X(0), pad + H);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(45,107,255,.10)";
+    ctx.fill();
 
-  qs("#mmClose")?.addEventListener("click", closeMonitorModal);
-  qs("#mmCancel")?.addEventListener("click", closeMonitorModal);
-  monitorModal?.addEventListener("click", (e) => { if (e.target === monitorModal) closeMonitorModal(); });
+    // line
+    ctx.beginPath();
+    ctx.moveTo(X(0), Y(points[0]));
+    for (let i = 1; i < points.length; i++) ctx.lineTo(X(i), Y(points[i]));
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = "rgba(45,107,255,.95)";
+    ctx.stroke();
 
-  qs("#mmCreate")?.addEventListener("click", async () => {
-    const url = (qs("#mmUrl")?.value || "").trim();
-    const intervalMinutes = Number(qs("#mmInterval")?.value || 60);
-    if (!/^https?:\/\//i.test(url)) return alert("URL invalide (http/https)");
-    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5) return alert("intervalMinutes min = 5");
-
-    try {
-      await api("/api/monitors", { method: "POST", body: JSON.stringify({ url, intervalMinutes }) });
-      closeMonitorModal();
-      await refreshAll();
-      showView("monitors");
-    } catch (e) {
-      alert(e.message || "Erreur création monitor");
+    // dots
+    for (let i = 0; i < points.length; i += Math.ceil(points.length / 10)) {
+      ctx.beginPath();
+      ctx.arc(X(i), Y(points[i]), 3, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(45,107,255,.95)";
+      ctx.fill();
     }
-  });
+  }
 
-  /* ------- Render helpers ------- */
-  const setText = (sel, txt) => { const el = qs(sel); if (el) el.textContent = txt; };
+  // Data loaders
+  async function loadMe() {
+    const me = await api("/api/me");
+    hello.textContent = `Bonjour, ${me.companyName || me.name || "—"}`;
+    whoMobile.textContent = me.email || "—";
 
-  const renderMe = (me) => {
-    const plan = (me?.plan || "—").toString().toUpperCase();
-    const org = (me?.org?.name || me?.companyName || "—").toString();
-    const role = (me?.role || "—").toString();
-    const trial = me?.trialEndsAt ? fmtDate(me.trialEndsAt) : "—";
+    accPlan.textContent = (me.plan || "—").toUpperCase();
+    accOrg.textContent = me.org?.name ? `${me.org.name}` : "—";
+    accRole.textContent = me.role || "—";
+    accTrial.textContent = me.trialEndsAt ? new Date(me.trialEndsAt).toLocaleDateString("fr-FR") : "—";
 
-    setText("#accPlan", plan); setText("#accOrg", org); setText("#accRole", role); setText("#accTrial", trial);
-    setText("#accPlanM", plan); setText("#accOrgM", org); setText("#accRoleM", role); setText("#accTrialM", trial);
+    // update drawer clone if open / mounted
+    mountDrawer();
 
-    setText("#helloTitle", `Bonjour, ${org}`);
+    return me;
+  }
 
-    const isUltra = (me?.plan || "").toLowerCase() === "ultra";
-    const pill = qs("#pillReports"); const pillM = qs("#pillReportsMobile");
-    if (pill) pill.style.display = isUltra ? "inline-flex" : "none";
-    if (pillM) pillM.style.display = isUltra ? "inline-flex" : "none";
+  function setDashboardStatus(ok) {
+    dashStatus.classList.remove("ok","bad");
+    dashStatus.classList.add(ok ? "ok" : "bad");
+    dashStatusTxt.textContent = ok ? "Dashboard à jour — OK" : "Problème détecté";
+  }
 
-    // usage KPIs
-    const seoScore = "—"; // ton backend ne renvoie pas de score global "SEO Score" => tu peux le calculer à partir du dernier audit si tu veux
-    setText("#kpiSeo", seoScore);
+  async function loadMonitorsInto(tbody) {
+    const data = await api("/api/monitors");
+    const list = data.monitors || [];
 
-    // local visibility placeholder (comme ta maquette)
-    setText("#kpiLocal", "+12%");
-  };
+    if (!list.length) {
+      tbody.innerHTML = `<tr><td colspan="6" style="color:var(--muted)">No monitors yet.</td></tr>`;
+      return { up: 0, down: 0, total: 0 };
+    }
 
-  const renderMonitors = (monitors) => {
-    const list = monitors || [];
-    const rows = list.map(m => {
+    tbody.innerHTML = list.map(m => {
       const st = (m.lastStatus || "unknown").toLowerCase();
-      const isUp = st === "up";
-      const badge = isUp
-        ? `<span class="badge bUp"><span class="bDot"></span>Up</span>`
-        : `<span class="badge bDown"><span class="bDot"></span>${st === "down" ? "Down" : "Unknown"}</span>`;
+      const tag =
+        st === "up" ? `<span class="tag up">Up</span>` :
+        st === "down" ? `<span class="tag down">Down</span>` :
+        `<span class="tag pending">Unknown</span>`;
+
+      const last = m.lastCheckedAt ? new Date(m.lastCheckedAt).toLocaleString("fr-FR") : "—";
+      const interval = `${m.intervalMinutes || 60} min`;
 
       return `
         <tr>
-          <td>${escapeHtml(m.url || "")}</td>
-          <td>${badge}</td>
-          <td>${escapeHtml(String(m.intervalMinutes ?? 60))} min</td>
-          <td>${fmtDate(m.lastCheckedAt)}</td>
-          <td>—</td>
+          <td class="mono">${escapeHtml(m.url || "")}</td>
+          <td>${tag}</td>
+          <td>${interval}</td>
+          <td>${last}</td>
+          <td>${st === "unknown" ? "—" : ""}</td>
+          <td>
+            <button class="smallbtn" data-run="${m._id}">Run</button>
+            <button class="smallbtn" data-toggle="${m._id}" data-active="${m.active ? "1":"0"}">${m.active ? "Pause" : "Resume"}</button>
+          </td>
         </tr>
       `;
     }).join("");
 
-    const html = rows || `<tr><td colspan="5" class="small">No monitors yet.</td></tr>`;
-    const tb1 = qs("#monitorsBody");
-    const tb2 = qs("#monitorsBody2");
-    if (tb1) tb1.innerHTML = html;
-    if (tb2) tb2.innerHTML = html;
-
-    const up = list.filter(x => (x.lastStatus || "").toLowerCase() === "up").length;
-    const down = list.filter(x => (x.lastStatus || "").toLowerCase() === "down").length;
-    setText("#kpiMonitors", String(list.length));
-    setText("#kpiMonitorsSub", `${up} up · ${down} down`);
-  };
-
-  const renderAudits = (audits) => {
-    const list = audits || [];
-    const tb = qs("#auditsBody");
-    if (!tb) return;
-
-    tb.innerHTML = list.length ? list.map(a => `
-      <tr>
-        <td>${escapeHtml(a.url || "")}</td>
-        <td class="kpi">${escapeHtml(String(a.score ?? "—"))}</td>
-        <td>${fmtDate(a.createdAt)}</td>
-        <td>
-          <button class="btn small" data-pdf="${escapeHtml(a._id)}">PDF</button>
-        </td>
-      </tr>
-    `).join("") : `<tr><td colspan="4" class="small">No audits yet.</td></tr>`;
-
-    // PDF click => /api/audits/:id/pdf
-    qsa("[data-pdf]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-pdf");
-        if (!id) return;
-        window.open(`/api/audits/${encodeURIComponent(id)}/pdf`, "_blank");
+    // bind actions
+    tbody.querySelectorAll("[data-run]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-run");
+        btn.disabled = true;
+        btn.textContent = "Running…";
+        try {
+          await api(`/api/monitors/${id}/run`, { method: "POST" });
+          await refreshAll();
+        } catch (e) {
+          alert(e.message);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Run";
+        }
       });
     });
 
-    // KPI SEO Score = dernier audit score
-    if (list.length) {
-      const last = list[0];
-      if (typeof last.score === "number") setText("#kpiSeo", `${last.score}/100`);
-    }
-  };
+    tbody.querySelectorAll("[data-toggle]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-toggle");
+        const active = btn.getAttribute("data-active") === "1";
+        btn.disabled = true;
+        try {
+          await api(`/api/monitors/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ active: !active }),
+          });
+          await refreshAll();
+        } catch (e) {
+          alert(e.message);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
 
-  /* ------- Run audit (YOUR ROUTE) ------- */
-  const runAudit = async () => {
-    const url = prompt("URL à auditer (http/https):");
-    if (!url) return;
+    const up = list.filter(m => (m.lastStatus || "").toLowerCase() === "up").length;
+    const down = list.filter(m => (m.lastStatus || "").toLowerCase() === "down").length;
+    return { up, down, total: list.length };
+  }
+
+  async function loadAuditsInto(tbody) {
+    const data = await api("/api/audits");
+    const list = data.audits || [];
+
+    if (!list.length) {
+      tbody.innerHTML = `<tr><td colspan="5" style="color:var(--muted)">No audits yet.</td></tr>`;
+      return { lastScore: null, total: 0 };
+    }
+
+    tbody.innerHTML = list.map(a => {
+      const st = (a.status || "ok").toLowerCase();
+      const tag =
+        st === "ok" ? `<span class="tag up">OK</span>` :
+        `<span class="tag down">Error</span>`;
+
+      const dt = a.createdAt ? new Date(a.createdAt).toLocaleString("fr-FR") : "—";
+      const score = Number.isFinite(a.score) ? a.score : "—";
+
+      return `
+        <tr>
+          <td>${dt}</td>
+          <td class="mono">${escapeHtml(a.url || "")}</td>
+          <td>${tag}</td>
+          <td style="font-weight:850">${score}</td>
+          <td>
+            <button class="smallbtn" data-open="${a._id}">View</button>
+            <a class="smallbtn" href="/api/audits/${a._id}/pdf" target="_blank" style="text-decoration:none;display:inline-flex;align-items:center">PDF</a>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    tbody.querySelectorAll("[data-open]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-open");
+        btn.disabled = true;
+        try {
+          const one = await api(`/api/audits/${id}`);
+          alert(`Score ${one.audit?.score}/100\n\n${one.audit?.summary || ""}`);
+        } catch (e) {
+          alert(e.message);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    const lastScore = Number.isFinite(list[0].score) ? list[0].score : null;
+    return { lastScore, total: list.length };
+  }
+
+  async function loadOrgSettings() {
     try {
-      await api("/api/audits/run", { method: "POST", body: JSON.stringify({ url }) });
+      const r = await api("/api/org/settings");
+      const s = r.settings || {};
+      $("#alertRecipients").value = (s.alertRecipients || "all").toLowerCase();
+      $("#alertExtraEmails").value = Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "";
+      $("#settingsMsg").textContent = "Loaded.";
+    } catch (e) {
+      $("#settingsMsg").textContent = e.message;
+    }
+  }
+
+  async function saveOrgSettings() {
+    $("#settingsMsg").textContent = "Saving…";
+    try {
+      const alertRecipients = $("#alertRecipients").value;
+      const alertExtraEmails = ($("#alertExtraEmails").value || "")
+        .split(",")
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      await api("/api/org/settings", {
+        method: "POST",
+        body: JSON.stringify({ alertRecipients, alertExtraEmails })
+      });
+      $("#settingsMsg").textContent = "Saved ✅";
+    } catch (e) {
+      $("#settingsMsg").textContent = e.message;
+    }
+  }
+
+  // Billing
+  async function checkout(plan) {
+    try {
+      const r = await api("/api/stripe/checkout", {
+        method: "POST",
+        body: JSON.stringify({ plan })
+      });
+      if (r.url) location.href = r.url;
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function openPortal() {
+    try {
+      const r = await api("/api/stripe/portal", { method: "POST" });
+      if (r.url) location.href = r.url;
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem(TOKEN_KEY);
+    location.replace("/login.html");
+  }
+
+  // Add monitor modal
+  function openAddMonitor() {
+    $("#modalAdd").classList.add("open");
+    $("#mMsg").textContent = "—";
+  }
+  function closeAddMonitor() {
+    $("#modalAdd").classList.remove("open");
+  }
+
+  async function createMonitor() {
+    const url = ($("#mUrl").value || "").trim();
+    const intervalMinutes = Number($("#mInterval").value || 60);
+
+    $("#mCreate").disabled = true;
+    $("#mMsg").textContent = "Creating…";
+    try {
+      await api("/api/monitors", {
+        method: "POST",
+        body: JSON.stringify({ url, intervalMinutes })
+      });
+      $("#mMsg").textContent = "Created ✅";
+      closeAddMonitor();
       await refreshAll();
-      showView("audits");
     } catch (e) {
-      alert(e.message || "Erreur audit");
+      $("#mMsg").textContent = e.message;
+    } finally {
+      $("#mCreate").disabled = false;
     }
-  };
-  qs("#btnRunAudit")?.addEventListener("click", runAudit);
-  qs("#btnRunAudit2")?.addEventListener("click", runAudit);
+  }
 
-  /* ------- Refresh ------- */
-  const refreshAll = async () => {
-    if (!getToken()) return (location.href = "/login.html");
+  async function testMonitorNow() {
+    const url = ($("#mUrl").value || "").trim();
+    if (!/^https?:\/\//i.test(url)) {
+      $("#mMsg").textContent = "URL invalide (http/https)";
+      return;
+    }
+    $("#mTest").disabled = true;
+    $("#mMsg").textContent = "Test… (tip: crée le monitor puis Run pour logs)";
+    setTimeout(() => { $("#mTest").disabled = false; }, 600);
+  }
+
+  // Run audit
+  async function runAuditFromInput() {
+    const url = ($("#auditUrl").value || "").trim();
+    $("#auditsStatus").textContent = "Running…";
+    try {
+      const r = await api("/api/audits/run", { method: "POST", body: JSON.stringify({ url }) });
+      $("#auditsStatus").textContent = r.cached ? `Cached ✅ Score ${r.score}` : `Done ✅ Score ${r.score}`;
+      await refreshAll();
+    } catch (e) {
+      $("#auditsStatus").textContent = e.message;
+      alert(e.message);
+    }
+  }
+
+  // Main refresh
+  async function refreshAll() {
+    // range affects labels only for now
+    const days = Number($("#range").value || 30);
+    $("#perfLabel").textContent = `Last ${days} days`;
 
     try {
-      const me = await api("/api/me", { method: "GET" });
-      renderMe(me);
+      setDashboardStatus(true);
 
-      const monitorsRes = await api("/api/monitors", { method: "GET" });
-      renderMonitors(monitorsRes.monitors || []);
+      const me = await loadMe();
 
-      const auditsRes = await api("/api/audits", { method: "GET" });
-      renderAudits(auditsRes.audits || []);
+      // load monitors (overview + monitors section)
+      const stats1 = await loadMonitorsInto($("#monitorsBody"));
+      const stats2 = await loadMonitorsInto($("#monitorsBody2"));
 
-      setText("#kpiIncidents", "0");
+      kMonitors.textContent = String(stats1.total);
+      kMonitorsSub.textContent = `${stats1.up} up · ${stats1.down} down`;
+
+      // load audits
+      const audits = await loadAuditsInto($("#auditsBody"));
+      $("#auditsStatus").textContent = `${audits.total} audits`;
+
+      // KPI SEO
+      kSeo.textContent = audits.lastScore == null ? "—" : `${audits.lastScore}/100`;
+
+      // Local KPI (placeholder consistent with your screenshot)
+      kLocal.textContent = "+12%";
+
+      // Incidents (placeholder from monitor logs would be next step)
+      kIncidents.textContent = stats1.down ? String(stats1.down) : "0";
+
+      // chart points (fake but stable-looking; replace later with real metric)
+      const pts = makeSeries(days);
+      drawChart(pts);
+
+      // blocked status
+      if (me.accessBlocked) setDashboardStatus(false);
     } catch (e) {
+      setDashboardStatus(false);
+      dashStatusTxt.textContent = e.message;
       console.error(e);
-      alert(e.message || "Erreur refresh");
     }
-  };
+  }
 
-  qs("#btnRefresh")?.addEventListener("click", refreshAll);
+  function makeSeries(days) {
+    // generate a smooth deterministic series based on day count (no random)
+    const n = Math.min(30, Math.max(14, Math.floor(days / 2)));
+    const out = [];
+    let v = 65;
+    for (let i = 0; i < n; i++) {
+      const drift = (i < n * 0.6) ? -0.35 : 0.55;
+      v = v + drift + (Math.sin(i * 0.7) * 0.6);
+      v = Math.max(35, Math.min(92, v));
+      out.push(Math.round(v * 10) / 10);
+    }
+    return out;
+  }
 
-  // init
-  showView(getViewFromHash());
+  function escapeHtml(s) {
+    return String(s || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  // Events
+  window.addEventListener("hashchange", () => setActiveRoute(currentRoute()));
+
+  $("#btnRefresh").addEventListener("click", refreshAll);
+  $("#btnExportAudits").addEventListener("click", () => window.open("/api/export/audits.csv", "_blank"));
+  $("#btnExportMonitors").addEventListener("click", () => window.open("/api/export/monitors.csv", "_blank"));
+
+  $("#btnPortal").addEventListener("click", openPortal);
+  $("#btnPortal2").addEventListener("click", openPortal);
+  $("#btnLogout").addEventListener("click", logout);
+
+  $("#btnOpenAddMonitor").addEventListener("click", openAddMonitor);
+  $("#btnOpenAddMonitor2").addEventListener("click", openAddMonitor);
+  $("#mCancel").addEventListener("click", closeAddMonitor);
+  $("#mCreate").addEventListener("click", createMonitor);
+  $("#mTest").addEventListener("click", testMonitorNow);
+  $("#modalAdd").addEventListener("click", (e) => {
+    if (e.target.id === "modalAdd") closeAddMonitor();
+  });
+
+  $("#btnRunAudit").addEventListener("click", () => {
+    location.hash = "#audits";
+    setTimeout(() => $("#auditUrl").focus(), 50);
+  });
+  $("#btnRunAudit2").addEventListener("click", runAuditFromInput);
+
+  $("#btnSaveSettings").addEventListener("click", saveOrgSettings);
+
+  // drawer
+  $("#openDrawer").addEventListener("click", () => { mountDrawer(); openDrawer(); });
+  $("#closeDrawer").addEventListener("click", closeDrawer);
+  $("#drawer").addEventListener("click", (e) => { if (e.target.id === "drawer") closeDrawer(); });
+
+  // Plans checkout buttons
+  document.body.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-checkout]");
+    if (!btn) return;
+    const plan = btn.getAttribute("data-checkout");
+    checkout(plan);
+  });
+
+  // Init
+  setActiveRoute(currentRoute());
+  loadOrgSettings();
   refreshAll();
+
+  // Resize chart
+  window.addEventListener("resize", () => {
+    drawChart(makeSeries(Number($("#range").value || 30)));
+  });
 })();
