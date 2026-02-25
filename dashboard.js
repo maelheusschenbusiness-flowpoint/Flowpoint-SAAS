@@ -1,468 +1,471 @@
 /* Flowpoint dashboard.js
-   - SPA navigation (no weird scroll to bottom)
-   - Responsive sidebar (mobile)
-   - Calls your existing API:
-     GET  /api/me
-     GET  /api/audits
-     POST /api/audits/run
-     GET  /api/monitors
-     POST /api/monitors
-     POST /api/monitors/:id/run
-     PATCH /api/monitors/:id
-     GET  /api/export/*.csv
-     POST /api/stripe/portal
+   - SPA navigation (sans scroll foireux)
+   - Layout identique au mock (photo 1)
+   - Branché sur ton backend: /api/me, /api/audits, /api/monitors, /api/stripe/portal, exports CSV
 */
 
-(() => {
+(function () {
   const TOKEN_KEY = "fp_token";
+  const token = localStorage.getItem(TOKEN_KEY);
 
-  const qs = (s) => document.querySelector(s);
-  const qsa = (s) => [...document.querySelectorAll(s)];
-  const token = () => localStorage.getItem(TOKEN_KEY);
-
-  function setMsg(el, text, type = "") {
-    if (!el) return;
-    el.textContent = text || "";
-    el.classList.remove("ok", "err");
-    if (type) el.classList.add(type);
+  // Redirect if not logged
+  if (!token) {
+    location.replace("/login.html");
+    return;
   }
 
-  function authHeaders() {
-    const t = token();
-    return t ? { Authorization: `Bearer ${t}` } : {};
-  }
+  // Helpers
+  const $ = (q) => document.querySelector(q);
+  const $$ = (q) => Array.from(document.querySelectorAll(q));
 
   async function api(path, opts = {}) {
     const r = await fetch(path, {
       ...opts,
       headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
         ...(opts.headers || {}),
-        ...authHeaders(),
-        "Content-Type": opts.body ? "application/json" : (opts.headers && opts.headers["Content-Type"]) || undefined,
       },
     });
-
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      const msg = j?.error || `HTTP ${r.status}`;
-      throw new Error(msg);
-    }
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
     return j;
   }
 
-  // ----- SPA NAV -----
-  const views = ["overview","audits","monitors","localseo","competitors","reports","billing","settings"];
+  // Mobile sidebar
+  const sidebar = $("#sidebar");
+  const overlay = $("#overlay");
+  const btnMenu = $("#btnMenu");
 
-  function showView(name) {
-    if (!views.includes(name)) name = "overview";
-
-    qsa(".view").forEach(v => v.classList.remove("active"));
-    const v = qs(`#view-${name}`);
-    if (v) v.classList.add("active");
-
-    qsa(".navItem").forEach(b => b.classList.toggle("active", b.dataset.view === name));
-
-    // update hash without scrolling
-    history.replaceState({}, "", `/dashboard.html#${name}`);
-
-    // close mobile nav
-    closeNav();
+  function openSidebar() {
+    sidebar.classList.add("open");
+    overlay.classList.add("show");
   }
-
-  function getHashView() {
-    const h = (location.hash || "").replace("#", "").trim();
-    return views.includes(h) ? h : "overview";
+  function closeSidebar() {
+    sidebar.classList.remove("open");
+    overlay.classList.remove("show");
   }
+  btnMenu?.addEventListener("click", openSidebar);
+  overlay?.addEventListener("click", closeSidebar);
 
-  // ----- Mobile nav -----
-  const sidebar = qs("#sidebar");
-  const overlay = qs("#navOverlay");
-  function openNav(){
-    sidebar?.classList.add("open");
-    overlay?.classList.add("show");
-  }
-  function closeNav(){
-    sidebar?.classList.remove("open");
-    overlay?.classList.remove("show");
-  }
-  qs("#btnOpenNav")?.addEventListener("click", openNav);
-  qs("#btnCloseNav")?.addEventListener("click", closeNav);
-  overlay?.addEventListener("click", closeNav);
+  // Navigation (SPA)
+  const navItems = $$(".nav-item");
+  const pages = {
+    overview: $("#page-overview"),
+    audits: $("#page-audits"),
+    monitors: $("#page-monitors"),
+    local: $("#page-local"),
+    competitors: $("#page-competitors"),
+    reports: $("#page-reports"),
+    billing: $("#page-billing"),
+    settings: $("#page-settings"),
+  };
 
-  qsa(".navItem").forEach(btn => {
-    btn.addEventListener("click", () => showView(btn.dataset.view));
-  });
-
-  window.addEventListener("hashchange", () => showView(getHashView()));
-
-  // ----- Chart (no external lib) -----
-  function drawLineChart(canvas, points) {
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const w = canvas.width = canvas.clientWidth * devicePixelRatio;
-    const h = canvas.height = canvas.clientHeight * devicePixelRatio;
-
-    ctx.clearRect(0,0,w,h);
-
-    // frame
-    const pad = 18 * devicePixelRatio;
-    const innerW = w - pad*2;
-    const innerH = h - pad*2;
-
-    // grid lines
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 1 * devicePixelRatio;
-    ctx.strokeStyle = "rgba(15,23,42,.10)";
-    for (let i=0;i<4;i++){
-      const y = pad + (innerH/3)*i;
-      ctx.beginPath();
-      ctx.moveTo(pad, y);
-      ctx.lineTo(pad+innerW, y);
-      ctx.stroke();
-    }
-
-    if (!points || points.length < 2) return;
-
-    const min = Math.min(...points);
-    const max = Math.max(...points);
-    const range = Math.max(1, max - min);
-
-    const toXY = (i, v) => {
-      const x = pad + (innerW/(points.length-1))*i;
-      const y = pad + innerH - ((v - min)/range)*innerH;
-      return [x,y];
-    };
-
-    // area
-    ctx.fillStyle = "rgba(37,99,235,.10)";
-    ctx.beginPath();
-    let [x0,y0] = toXY(0, points[0]);
-    ctx.moveTo(x0, y0);
-    for (let i=1;i<points.length;i++){
-      const [x,y] = toXY(i, points[i]);
-      ctx.lineTo(x,y);
-    }
-    ctx.lineTo(pad+innerW, pad+innerH);
-    ctx.lineTo(pad, pad+innerH);
-    ctx.closePath();
-    ctx.fill();
-
-    // line
-    ctx.strokeStyle = "rgba(37,99,235,.95)";
-    ctx.lineWidth = 2.4 * devicePixelRatio;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(x0,y0);
-    for (let i=1;i<points.length;i++){
-      const [x,y] = toXY(i, points[i]);
-      ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-
-    // dots
-    ctx.fillStyle = "rgba(37,99,235,.95)";
-    for (let i=0;i<points.length;i++){
-      const [x,y] = toXY(i, points[i]);
-      ctx.beginPath();
-      ctx.arc(x,y, 3.2*devicePixelRatio, 0, Math.PI*2);
-      ctx.fill();
-    }
-  }
-
-  function samplePoints(days){
-    // just to look like mock
-    if (days === 7) return [62,62,63,62,61,62,64];
-    if (days === 90) return [70,71,72,71,69,67,66,65,66,68,69,70,72];
-    // 30
-    return [60,60,61,61,60,59,57,56,55,54,53,52,50,49,51,52,53,55,56,57,58,58,59,60,62,64,66,67,68,69];
-  }
-
-  // ----- Render helpers -----
-  function fmtDate(d) {
-    try { return new Date(d).toLocaleString("fr-FR"); } catch { return "-"; }
-  }
-  function shortUrl(u) {
-    try { return new URL(u).host.replace(/^www\./,""); } catch { return (u||"").slice(0,32); }
-  }
-
-  function monitorStatusPill(status){
-    const s = String(status||"unknown").toLowerCase();
-    const cls = s === "up" ? "pill ok" : s === "down" ? "pill danger" : "pill pending";
-    const label = s === "up" ? "Up" : s === "down" ? "Down" : "Unknown";
-    return `<span class="${cls}">${label}</span>`;
-  }
-
-  // ----- Actions -----
-  async function loadMe(){
-    const me = await api("/api/me");
-    const email = me.email || "—";
-    qs("#pillEmail").textContent = email;
-
-    qs("#helloName").textContent = (me.companyName || me.name || email || "—");
-    qs("#accPlan").textContent = String(me.plan || "—").toUpperCase();
-    qs("#accOrg").textContent = me.org?.name || "—";
-    qs("#accRole").textContent = me.role || "—";
-
-    let trial = "—";
-    if (me.hasTrial && me.trialEndsAt) {
-      trial = new Date(me.trialEndsAt).toLocaleDateString("fr-FR");
-    }
-    qs("#accTrial").textContent = trial;
-
-    // KPI SEO Score: last audit score if exists (loaded later too)
-    return me;
-  }
-
-  async function loadAudits(){
-    const j = await api("/api/audits");
-    const audits = Array.isArray(j.audits) ? j.audits : [];
-
-    qs("#auditsCount").textContent = `${audits.length} audits`;
-
-    const rows = audits.slice(0, 30).map(a => {
-      const status = (a.status || "").toLowerCase() === "ok"
-        ? `<span class="pill" style="background:rgba(34,197,94,.10);border-color:rgba(34,197,94,.18);color:#15803d">OK</span>`
-        : `<span class="pill danger">Error</span>`;
-
-      const score = Number.isFinite(a.score) ? `${a.score}` : "—";
-
-      return `
-        <div class="tr">
-          <div class="td">${fmtDate(a.createdAt)}</div>
-          <div class="td" title="${a.url || ""}">${a.url || "—"}</div>
-          <div class="td">${status}</div>
-          <div class="td"><b>${score}</b></div>
-          <div class="td">
-            <button class="btn ghost" data-pdf="${a._id}">PDF</button>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    qs("#auditsRows").innerHTML = rows || `
-      <div class="tr">
-        <div class="td muted">No audits yet.</div><div class="td">—</div><div class="td">—</div><div class="td">—</div><div class="td">—</div>
-      </div>
-    `;
-
-    // KPI score
-    const last = audits[0];
-    if (last && Number.isFinite(last.score)) {
-      qs("#kpiSeoScore").textContent = `${last.score}`;
-      qs("#kpiSeoMeta").textContent = "Last audit";
-    } else {
-      qs("#kpiSeoScore").textContent = "—";
-      qs("#kpiSeoMeta").textContent = "Last 30 days";
-    }
-
-    // PDF actions
-    qsa('[data-pdf]').forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-pdf");
-        window.open(`/api/audits/${id}/pdf`, "_blank");
-      });
+  function showPage(name) {
+    navItems.forEach((b) => b.classList.toggle("active", b.dataset.page === name));
+    Object.entries(pages).forEach(([k, el]) => {
+      if (!el) return;
+      el.classList.toggle("show", k === name);
     });
-
-    return audits;
+    // ferme le drawer mobile
+    closeSidebar();
+    // top de page (propre)
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  function renderMonitorsRows(monitors){
-    if (!monitors.length) {
-      return `
-        <div class="tr">
-          <div class="td muted">No monitors yet.</div><div class="td">—</div><div class="td">—</div><div class="td">—</div><div class="td">—</div><div class="td"></div>
-        </div>
-      `;
-    }
+  navItems.forEach((b) => b.addEventListener("click", () => showPage(b.dataset.page)));
 
-    return monitors.map(m => {
-      const last = m.lastCheckedAt ? new Date(m.lastCheckedAt).toLocaleString("fr-FR") : "—";
-      const resp = "—"; // (tu peux le remplir avec un dernier log si tu veux)
-      return `
-        <div class="tr">
-          <div class="td" title="${m.url}">${m.url}</div>
-          <div class="td">${monitorStatusPill(m.lastStatus)}</div>
-          <div class="td">${m.intervalMinutes || 60} min</div>
-          <div class="td">${last}</div>
-          <div class="td">${resp}</div>
-          <div class="td" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-            <button class="btn ghost" data-run="${m._id}">Run</button>
-            <button class="btn ghost" data-toggle="${m._id}">${m.active ? "Pause" : "Resume"}</button>
-          </div>
-        </div>
-      `;
-    }).join("");
-  }
-
-  async function loadMonitors(){
-    const j = await api("/api/monitors");
-    const monitors = Array.isArray(j.monitors) ? j.monitors : [];
-
-    // KPI monitors / up / down
-    const up = monitors.filter(m => String(m.lastStatus).toLowerCase() === "up").length;
-    const down = monitors.filter(m => String(m.lastStatus).toLowerCase() === "down").length;
-    qs("#kpiMonitors").textContent = `${monitors.length}`;
-    qs("#kpiUp").textContent = `${up}`;
-    qs("#kpiDown").textContent = `${down}`;
-
-    // overview table + page table
-    qs("#monitorsRows").innerHTML = renderMonitorsRows(monitors.slice(0, 8));
-    qs("#monitorsRowsPage").innerHTML = renderMonitorsRows(monitors);
-
-    // bind actions
-    qsa("[data-run]").forEach(b => {
-      b.addEventListener("click", async () => {
-        try{
-          b.disabled = true;
-          await api(`/api/monitors/${b.getAttribute("data-run")}/run`, { method:"POST" });
-          await refreshAll();
-        }catch(e){
-          setMsg(qs("#monitorsMsg"), e.message, "err");
-        }finally{
-          b.disabled = false;
-        }
-      });
+  // Page jump buttons (View all, See plans, etc.)
+  $$("[data-page-jump]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const p = btn.getAttribute("data-page-jump");
+      if (p) showPage(p);
     });
-
-    qsa("[data-toggle]").forEach(b => {
-      b.addEventListener("click", async () => {
-        try{
-          b.disabled = true;
-          const id = b.getAttribute("data-toggle");
-          // find current state from DOM text (simple)
-          const wantPause = b.textContent.trim().toLowerCase() === "pause";
-          await api(`/api/monitors/${id}`, {
-            method:"PATCH",
-            body: JSON.stringify({ active: !wantPause })
-          });
-          await refreshAll();
-        }catch(e){
-          setMsg(qs("#monitorsMsg"), e.message, "err");
-        }finally{
-          b.disabled = false;
-        }
-      });
-    });
-
-    return monitors;
-  }
-
-  async function runAudit(url){
-    const msg = qs("#auditMsg");
-    setMsg(msg, "Running audit…");
-    const j = await api("/api/audits/run", { method:"POST", body: JSON.stringify({ url }) });
-    setMsg(msg, j.cached ? `✅ ${j.summary}` : `✅ ${j.summary}`, "ok");
-  }
-
-  // ----- Modal add monitor -----
-  const modal = qs("#modalAddMonitor");
-  function openModal(){
-    modal?.classList.add("show");
-    modal?.setAttribute("aria-hidden","false");
-    setMsg(qs("#addMonitorMsg"), "");
-  }
-  function closeModal(){
-    modal?.classList.remove("show");
-    modal?.setAttribute("aria-hidden","true");
-  }
-  qs("#btnAddMonitor")?.addEventListener("click", openModal);
-  qs("#btnAddMonitor2")?.addEventListener("click", openModal);
-
-  qsa("[data-close]").forEach(el => el.addEventListener("click", closeModal));
-
-  qs("#btnCreateMonitor")?.addEventListener("click", async () => {
-    const url = (qs("#inpMonitorUrl").value || "").trim();
-    const intervalMinutes = Number(qs("#inpMonitorInterval").value || 60);
-    const msg = qs("#addMonitorMsg");
-
-    if (!/^https?:\/\//i.test(url)) return setMsg(msg, "URL invalide (http/https)", "err");
-
-    try{
-      setMsg(msg, "Creating…");
-      await api("/api/monitors", { method:"POST", body: JSON.stringify({ url, intervalMinutes }) });
-      setMsg(msg, "✅ Monitor créé", "ok");
-      qs("#inpMonitorUrl").value = "";
-      await refreshAll();
-      setTimeout(closeModal, 300);
-    }catch(e){
-      setMsg(msg, e.message, "err");
-    }
   });
 
-  // ----- Top actions -----
-  qs("#btnRefresh")?.addEventListener("click", () => refreshAll(true));
+  // UI refs
+  const helloName = $("#helloName");
+  const avatarLetter = $("#avatarLetter");
+  const pillEmailMobile = $("#pillEmailMobile");
 
-  qs("#btnExportAudits")?.addEventListener("click", () => {
-    window.location.href = "/api/export/audits.csv";
-  });
-  qs("#btnExportMonitors")?.addEventListener("click", () => {
-    window.location.href = "/api/export/monitors.csv";
-  });
+  const accPlan = $("#accPlan");
+  const accOrg = $("#accOrg");
+  const accRole = $("#accRole");
+  const accTrial = $("#accTrial");
 
-  qs("#btnPortal")?.addEventListener("click", async () => {
-    try{
-      const j = await api("/api/stripe/portal", { method:"POST" });
-      if (j?.url) location.href = j.url;
-    }catch(e){
-      alert(e.message);
-    }
-  });
+  const kpiSeo = $("#kpiSeo");
+  const kpiSeoSub = $("#kpiSeoSub");
+  const kpiMonitors = $("#kpiMonitors");
+  const kpiUp = $("#kpiUp");
+  const kpiDown = $("#kpiDown");
+  const kpiIncidents = $("#kpiIncidents");
+  const chartRange = $("#chartRange");
+  const rangeSel = $("#range");
 
-  qs("#btnLogout")?.addEventListener("click", () => {
+  const monList = $("#monList");
+  const monitorsList2 = $("#monitorsList2");
+
+  const auditsList = $("#auditsList");
+  const auditUrl = $("#auditUrl");
+  const auditMsg = $("#auditMsg");
+
+  const monUrl = $("#monUrl");
+  const monInterval = $("#monInterval");
+  const monMsg = $("#monMsg");
+
+  // Buttons
+  $("#btnLogout")?.addEventListener("click", () => {
     localStorage.removeItem(TOKEN_KEY);
-    location.href = "/login.html";
+    location.replace("/login.html");
   });
 
-  // Plans buttons (checkout)
-  qsa("[data-upgrade]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const plan = btn.getAttribute("data-upgrade");
-      try{
-        btn.disabled = true;
-        const j = await api("/api/stripe/checkout", { method:"POST", body: JSON.stringify({ plan }) });
-        if (j?.url) location.href = j.url;
-      }catch(e){
-        alert(e.message);
-      }finally{
-        btn.disabled = false;
-      }
+  async function openPortal() {
+    const j = await api("/api/stripe/portal", { method: "POST", body: JSON.stringify({}) });
+    if (j.url) location.href = j.url;
+  }
+  $("#btnPortal")?.addEventListener("click", openPortal);
+  $("#btnPortal2")?.addEventListener("click", openPortal);
+
+  // Exports
+  $("#btnExportAudits")?.addEventListener("click", () => {
+    window.location.href = "/api/export/audits.csv?token=1"; // (le vrai auth est via header; donc on fait fetch download ci-dessous)
+    // => on remplace par un vrai download via fetch:
+    downloadAuthed("/api/export/audits.csv", "flowpoint-audits.csv");
+  });
+  $("#btnExportMonitors")?.addEventListener("click", () => {
+    downloadAuthed("/api/export/monitors.csv", "flowpoint-monitors.csv");
+  });
+
+  async function downloadAuthed(url, filename) {
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) return alert("Export impossible (auth/quota).");
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  }
+
+  // Quick actions
+  $("#btnRefresh")?.addEventListener("click", () => refreshAll());
+  $("#btnRunAudit")?.addEventListener("click", () => showPage("audits"));
+  $("#btnAuditRunFromAudits")?.addEventListener("click", () => auditUrl?.focus());
+  $("#btnAddMonitor")?.addEventListener("click", () => showPage("monitors"));
+  $("#btnAddMonitor2")?.addEventListener("click", () => monUrl?.focus());
+
+  // Plan buttons (option: ouvrir billing portal)
+  $$("[data-plan]").forEach((b) => b.addEventListener("click", openPortal));
+
+  // Chart
+  let chart = null;
+  function makeFakeSeries(days) {
+    // juste pour coller au mock (tu pourras brancher sur de vraies stats après)
+    const pts = [];
+    let v = 60;
+    for (let i = 0; i < days; i++) {
+      v += (Math.random() - 0.45) * 8;
+      v = Math.max(20, Math.min(95, v));
+      pts.push(Math.round(v));
+    }
+    return pts;
+  }
+
+  function renderChart(days = 30) {
+    const ctx = $("#chartCanvas");
+    if (!ctx) return;
+    const labels = Array.from({ length: days }, (_, i) => `${i + 1}`);
+    const data = makeFakeSeries(days);
+
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "SEO Performance",
+          data,
+          tension: 0.35,
+          fill: true,
+          pointRadius: 2.5,
+          pointHoverRadius: 4,
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
+        scales: {
+          x: { grid: { display: false }, ticks: { display: false } },
+          y: { grid: { color: "rgba(203,213,225,.35)" }, ticks: { display: false }, border: { display: false } },
+        },
+      },
     });
+  }
+
+  rangeSel?.addEventListener("change", () => {
+    const days = Number(rangeSel.value || 30);
+    chartRange.textContent = `Last ${days} days`;
+    kpiSeoSub.textContent = `Last ${days} days`;
+    renderChart(days);
   });
 
-  // Quick links
-  qs("#btnRunAuditFromActions")?.addEventListener("click", () => showView("audits"));
-  qs("#btnSeePlans")?.addEventListener("click", () => showView("billing"));
+  // Render helpers
+  function fmtDate(d) {
+    if (!d) return "—";
+    try { return new Date(d).toLocaleString("fr-FR"); } catch { return "—"; }
+  }
+  function pillStatus(status) {
+    const s = String(status || "").toLowerCase();
+    if (s === "up") return `<span class="pill pill-soft">Up</span>`;
+    if (s === "down") return `<span class="pill pill-pending">Down</span>`;
+    return `<span class="pill pill-warn">Unknown</span>`;
+  }
 
-  // Range selector -> chart label
-  qs("#rangeSelect")?.addEventListener("change", () => {
-    const days = Number(qs("#rangeSelect").value || 30);
-    qs("#chartRangeLabel").textContent = days === 7 ? "Last 7 days" : days === 90 ? "Last 90 days" : "Last 30 days";
-    drawLineChart(qs("#seoChart"), samplePoints(days));
-  });
+  function renderMonitorsCompact(list) {
+    if (!monList) return;
+    if (!list.length) {
+      monList.innerHTML = `<div class="tr"><div class="muted">No monitors yet.</div><div></div><div></div><div></div><div></div><div></div></div>`;
+      return;
+    }
+    monList.innerHTML = list.map((m) => {
+      return `
+        <div class="tr" style="grid-template-columns: 2.2fr .9fr .9fr .9fr .6fr .9fr">
+          <div style="word-break:break-word">${escapeHtml(m.url || "")}</div>
+          <div>${pillStatus(m.lastStatus)}</div>
+          <div>${(m.intervalMinutes || 60)} min</div>
+          <div>${fmtDate(m.lastCheckedAt)}</div>
+          <div class="muted">—</div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-outline btn-sm" data-run="${m._id}">Run</button>
+          </div>
+        </div>`;
+    }).join("");
 
-  async function refreshAll(fromButton=false){
-    // if no token => redirect
-    if (!token()) return (location.href = "/login.html");
+    monList.querySelectorAll("[data-run]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          await api(`/api/monitors/${btn.getAttribute("data-run")}/run`, { method: "POST", body: "{}" });
+          await loadMonitors();
+        } catch (e) {
+          alert(e.message || "Run failed");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
 
-    try{
-      if (fromButton) qs("#statusText").textContent = "Refreshing…";
+  function renderMonitorsFull(list) {
+    if (!monitorsList2) return;
+    if (!list.length) {
+      monitorsList2.innerHTML = `<div class="tr" style="grid-template-columns:2.2fr .9fr .9fr .9fr .6fr 1.2fr"><div class="muted">No monitors yet.</div><div></div><div></div><div></div><div></div><div></div></div>`;
+      return;
+    }
+    monitorsList2.innerHTML = list.map((m) => `
+      <div class="tr" style="grid-template-columns:2.2fr .9fr .9fr .9fr .6fr 1.2fr">
+        <div style="word-break:break-word">${escapeHtml(m.url || "")}</div>
+        <div>${pillStatus(m.lastStatus)}</div>
+        <div>${(m.intervalMinutes || 60)} min</div>
+        <div>${fmtDate(m.lastCheckedAt)}</div>
+        <div class="muted">—</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" data-run="${m._id}">Run</button>
+          <button class="btn btn-outline btn-sm" data-toggle="${m._id}" data-active="${m.active}">${m.active ? "Pause" : "Resume"}</button>
+        </div>
+      </div>
+    `).join("");
+
+    monitorsList2.querySelectorAll("[data-run]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          await api(`/api/monitors/${btn.getAttribute("data-run")}/run`, { method: "POST", body: "{}" });
+          await loadMonitors();
+        } catch (e) {
+          alert(e.message || "Run failed");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    monitorsList2.querySelectorAll("[data-toggle]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          const id = btn.getAttribute("data-toggle");
+          const active = btn.getAttribute("data-active") === "true";
+          await api(`/api/monitors/${id}`, { method: "PATCH", body: JSON.stringify({ active: !active }) });
+          await loadMonitors();
+        } catch (e) {
+          alert(e.message || "Update failed");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  function renderAudits(list) {
+    if (!auditsList) return;
+    if (!list.length) {
+      auditsList.innerHTML = `<div class="tr" style="grid-template-columns:.9fr 2.2fr .9fr .6fr 2.2fr .8fr"><div class="muted">No audits yet.</div><div></div><div></div><div></div><div></div><div></div></div>`;
+      return;
+    }
+    auditsList.innerHTML = list.map((a) => `
+      <div class="tr" style="grid-template-columns:.9fr 2.2fr .9fr .6fr 2.2fr .8fr">
+        <div class="muted">${fmtDate(a.createdAt)}</div>
+        <div style="word-break:break-word">${escapeHtml(a.url || "")}</div>
+        <div>${a.status === "ok" ? `<span class="pill pill-soft">OK</span>` : `<span class="pill pill-pending">Error</span>`}</div>
+        <div><b>${a.score ?? "—"}</b></div>
+        <div class="muted">${escapeHtml((a.summary || "").slice(0, 90))}</div>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn btn-outline btn-sm" data-pdf="${a._id}">PDF</button>
+        </div>
+      </div>
+    `).join("");
+
+    auditsList.querySelectorAll("[data-pdf]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-pdf");
+        // téléchargement direct (header auth)
+        const r = await fetch(`/api/audits/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) return alert("PDF impossible (quota/auth).");
+        const blob = await r.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `flowpoint-audit-${id}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+      });
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  // Data loaders
+  let me = null;
+  async function loadMe() {
+    me = await api("/api/me");
+    const orgName = me?.org?.name || me.companyName || "—";
+    const displayName = me.companyName || me.name || orgName || "—";
+    helloName.textContent = displayName;
+    accPlan.textContent = String(me.plan || "—").toUpperCase();
+    accOrg.textContent = orgName;
+    accRole.textContent = me.role || "—";
+    accTrial.textContent = me.trialEndsAt ? fmtDate(me.trialEndsAt) : "—";
+
+    const email = me.email || "—";
+    pillEmailMobile.textContent = email;
+
+    const letter = (orgName || email || "F").trim().slice(0, 1).toUpperCase();
+    avatarLetter.textContent = letter;
+  }
+
+  async function loadAudits() {
+    const j = await api("/api/audits");
+    const list = (j.audits || []);
+    renderAudits(list);
+
+    // KPI SEO = dernier score
+    const latest = list[0];
+    if (latest && typeof latest.score === "number") kpiSeo.textContent = `${latest.score}/100`;
+    else kpiSeo.textContent = "—";
+  }
+
+  async function loadMonitors() {
+    const j = await api("/api/monitors");
+    const list = (j.monitors || []);
+    renderMonitorsCompact(list);
+    renderMonitorsFull(list);
+
+    // KPI monitors / up down
+    const up = list.filter(m => String(m.lastStatus).toLowerCase() === "up").length;
+    const down = list.filter(m => String(m.lastStatus).toLowerCase() === "down").length;
+    kpiMonitors.textContent = String(list.length);
+    kpiUp.textContent = String(up);
+    kpiDown.textContent = String(down);
+
+    // Incidents = down (simple)
+    kpiIncidents.textContent = String(down);
+  }
+
+  async function refreshAll() {
+    try {
+      $("#statusText").textContent = "Mise à jour…";
       await loadMe();
-      const days = Number(qs("#rangeSelect").value || 30);
-      drawLineChart(qs("#seoChart"), samplePoints(days));
-
-      await loadAudits();
-      await loadMonitors();
-
-      qs("#statusText").textContent = "Dashboard à jour — OK";
-    }catch(e){
-      qs("#statusText").textContent = `Erreur — ${e.message}`;
+      await Promise.allSettled([loadAudits(), loadMonitors()]);
+      $("#statusText").textContent = "Dashboard à jour — OK";
+    } catch (e) {
+      $("#statusText").textContent = "Erreur de chargement";
+      console.error(e);
+      alert(e.message || "Erreur");
     }
   }
 
-  // ----- Boot -----
-  (async function init(){
-    showView(getHashView());
-    await refreshAll();
-  })();
+  // Create monitor
+  $("#btnMonCreate")?.addEventListener("click", async () => {
+    monMsg.textContent = "";
+    const url = String(monUrl.value || "").trim();
+    const intervalMinutes = Number(monInterval.value || 60);
+
+    if (!/^https?:\/\//i.test(url)) {
+      monMsg.textContent = "URL invalide (doit commencer par http/https).";
+      return;
+    }
+    try {
+      $("#btnMonCreate").disabled = true;
+      await api("/api/monitors", { method: "POST", body: JSON.stringify({ url, intervalMinutes }) });
+      monUrl.value = "";
+      monMsg.textContent = "✅ Monitor créé.";
+      await loadMonitors();
+    } catch (e) {
+      monMsg.textContent = e.message || "Erreur";
+    } finally {
+      $("#btnMonCreate").disabled = false;
+    }
+  });
+
+  // Run audit
+  async function runAuditFromInput() {
+    auditMsg.textContent = "";
+    const url = String(auditUrl.value || "").trim();
+    if (!/^https?:\/\//i.test(url)) {
+      auditMsg.textContent = "URL invalide (doit commencer par http/https).";
+      return;
+    }
+    try {
+      $("#btnAuditRun").disabled = true;
+      const j = await api("/api/audits/run", { method: "POST", body: JSON.stringify({ url }) });
+      auditMsg.textContent = `✅ ${j.cached ? "Cache" : "Nouveau"} — Score ${j.score}/100`;
+      await loadAudits();
+    } catch (e) {
+      auditMsg.textContent = e.message || "Erreur";
+    } finally {
+      $("#btnAuditRun").disabled = false;
+    }
+  }
+
+  $("#btnAuditRun")?.addEventListener("click", runAuditFromInput);
+
+  // Init
+  const days = Number(rangeSel?.value || 30);
+  chartRange.textContent = `Last ${days} days`;
+  renderChart(days);
+
+  refreshAll();
 })();
