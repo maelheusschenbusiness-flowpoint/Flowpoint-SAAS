@@ -5,186 +5,414 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Flowpoint — Dashboard</title>
 
-  <!-- Inter font -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Font (Inter-like) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- CSS -->
-  <link rel="stylesheet" href="/style.css">
-
-  <!-- small icon fallback -->
-  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div id="app">
-    <!-- SIDEBAR -->
-    <aside class="sidebar" id="sidebar">
+  <div class="app" id="app">
+    <!-- Mobile overlay -->
+    <div class="overlay" id="overlay" aria-hidden="true"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Navigation">
       <div class="brand">
-        <img src="/logo.svg" alt="Flowpoint" class="brand-logo" />
-        <span class="brand-name">Flowpoint</span>
+        <div class="brandIcon" aria-hidden="true">
+          <!-- Flowpoint-like logo: rounded square + bolt -->
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="g" x1="3" y1="3" x2="23" y2="23" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#2F6BFF"/>
+                <stop offset="1" stop-color="#1D4ED8"/>
+              </linearGradient>
+            </defs>
+            <rect x="2" y="2" width="22" height="22" rx="7" fill="url(#g)"/>
+            <path d="M14.7 6.8 9.8 14.2h4l-2 5 6-8.4h-4l.9-4z" fill="white" opacity="0.95"/>
+          </svg>
+        </div>
+        <div class="brandText">
+          <div class="brandName">Flowpoint</div>
+          <div class="brandSub">Client Dashboard</div>
+        </div>
+
+        <button class="iconBtn mobileOnly" id="closeSidebar" aria-label="Fermer le menu">
+          ✕
+        </button>
       </div>
 
       <nav class="nav">
-        <button class="nav-item active" data-target="overview">Overview</button>
-        <button class="nav-item" data-target="audits">Audits</button>
-        <button class="nav-item" data-target="monitors">Monitors</button>
-        <button class="nav-item" data-target="local-seo">Local SEO</button>
-        <button class="nav-item" data-target="competitors">Competitors</button>
-        <button class="nav-item" data-target="reports">Reports</button>
-        <button class="nav-item" data-target="billing">Billing</button>
-        <button class="nav-item" data-target="settings">Settings</button>
+        <button class="navItem isActive" data-view="overview">
+          <span class="navDot"></span> Overview
+        </button>
+        <button class="navItem" data-view="audits">
+          <span class="navDot"></span> Audits
+        </button>
+        <button class="navItem" data-view="monitors">
+          <span class="navDot"></span> Monitors
+        </button>
+        <button class="navItem" data-view="local">
+          <span class="navDot"></span> Local SEO
+        </button>
+        <button class="navItem" data-view="competitors">
+          <span class="navDot"></span> Competitors
+        </button>
+        <button class="navItem" data-view="reports">
+          <span class="navDot"></span> Reports
+          <span class="pill">Ultra</span>
+        </button>
+        <button class="navItem" data-view="billing">
+          <span class="navDot"></span> Billing
+        </button>
+        <button class="navItem" data-view="settings">
+          <span class="navDot"></span> Settings
+        </button>
       </nav>
 
-      <div class="account-card">
-        <div class="acct-title">ACCOUNT</div>
-        <div class="acct-row"><span>Plan</span><strong id="acct-plan">—</strong></div>
-        <div class="acct-row"><span>Org</span><strong id="acct-org">—</strong></div>
-        <div class="acct-row"><span>Role</span><strong id="acct-role">—</strong></div>
-        <div class="acct-actions">
-          <button class="btn ghost" id="btn-portal">Billing / Portal</button>
-          <button class="btn danger" id="btn-logout">Logout</button>
+      <div class="accountCard">
+        <div class="accountTitle">ACCOUNT</div>
+        <div class="kv">
+          <div class="k">Plan</div><div class="v" id="kvPlan">—</div>
+          <div class="k">Org</div><div class="v" id="kvOrg">—</div>
+          <div class="k">Role</div><div class="v" id="kvRole">—</div>
+          <div class="k">Trial</div><div class="v" id="kvTrial">—</div>
+        </div>
+
+        <div class="accountActions">
+          <button class="btn btnGhost" id="btnPortal">Billing / Portal</button>
+          <button class="btn btnDanger" id="btnLogout">Logout</button>
+        </div>
+
+        <div class="tip">
+          Tip : si un bouton ne répond pas, ouvre <b>Console</b> et regarde les erreurs réseau.
         </div>
       </div>
     </aside>
 
-    <!-- MAIN -->
+    <!-- Main -->
     <main class="main">
-      <!-- TOPBAR -->
+      <!-- Topbar -->
       <header class="topbar">
-        <div class="top-left">
-          <button id="menu-toggle" class="btn icon-btn" aria-label="Menu">☰ Menu</button>
-          <div class="greeting">
-            <div class="greet-title" id="greet-title">Bonjour, SAAS TEST</div>
-            <div class="greet-sub">SEO · Monitoring · Reports · Billing</div>
+        <div class="topLeft">
+          <button class="btn btnGhost mobileOnly" id="openSidebar">
+            ☰ Menu
+          </button>
+
+          <div class="hello">
+            <div class="helloTitle" id="helloTitle">Bonjour,</div>
+            <div class="helloSub" id="helloSub">SEO · Monitoring · Reports · Billing</div>
           </div>
         </div>
 
-        <div class="top-right">
-          <div class="period">
-            <select id="period-select">
-              <option>Last 7 days</option>
-              <option selected>Last 30 days</option>
-              <option>Last 90 days</option>
+        <div class="topActions">
+          <div class="selectWrap">
+            <select id="rangeSelect" class="select">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
             </select>
+            <span class="selectIcon">⌄</span>
           </div>
 
-          <button class="btn primary" id="btn-refresh">Refresh</button>
-          <button class="btn ghost small" id="btn-export-audits">Export Audits CSV</button>
-          <button class="btn ghost small" id="btn-export-monitors">Export Monitors CSV</button>
+          <button class="btn btnPrimary" id="btnRefresh">Refresh</button>
+          <button class="btn btnGhost" id="btnExportAudits">Export Audits CSV</button>
+          <button class="btn btnGhost" id="btnExportMonitors">Export Monitors CSV</button>
 
-          <div class="avatar"> <span id="user-email" class="user-email">—</span> </div>
+          <div class="userPill" title="Compte">
+            <span class="dotOnline"></span>
+            <span id="userEmail">—</span>
+          </div>
+
+          <button class="iconBtn" id="btnUser" aria-label="User menu">
+            <span class="avatar">☺</span>
+          </button>
         </div>
       </header>
 
-      <!-- CONTENT GRID -->
-      <section class="grid">
-        <!-- LEFT COLUMN -->
-        <div class="col-left">
-          <section class="card overview-card" id="overview">
-            <div class="card-header">
-              <h3>OVERVIEW</h3>
-              <div class="status"> <span class="dot green"></span> Dashboard à jour — OK</div>
-            </div>
-
-            <div class="kpis">
-              <div class="kpi">
-                <div class="kpi-title">SEO Score</div>
-                <div class="kpi-value" id="kpi-seo">—</div>
-                <div class="kpi-sub">Last 30 days</div>
+      <!-- Content -->
+      <section class="content">
+        <!-- Two columns desktop -->
+        <div class="grid">
+          <!-- LEFT -->
+          <div class="colLeft">
+            <!-- OVERVIEW VIEW -->
+            <div class="view isShown" id="view-overview">
+              <div class="sectionHead">
+                <div class="sectionTitle">OVERVIEW</div>
+                <div class="statusLine">
+                  <span class="statusDot" id="statusDot"></span>
+                  <span id="statusText">Dashboard à jour — OK</span>
+                </div>
               </div>
 
-              <div class="kpi">
-                <div class="kpi-title">Local Visibility</div>
-                <div class="kpi-value positive">+12%</div>
-                <div class="kpi-sub">Map pack + reviews</div>
+              <div class="kpiGrid">
+                <div class="card kpi">
+                  <div class="kpiLabel">SEO Score</div>
+                  <div class="kpiValue" id="kpiSeo">—</div>
+                  <div class="kpiSub" id="kpiSeoSub">Last 30 days</div>
+                </div>
+
+                <div class="card kpi">
+                  <div class="kpiLabel">Local Visibility</div>
+                  <div class="kpiValue kpiGreen" id="kpiLocal">—</div>
+                  <div class="kpiSub">Map pack + reviews</div>
+                </div>
+
+                <div class="card kpi">
+                  <div class="kpiLabel">Monitors</div>
+                  <div class="kpiValue" id="kpiMonitors">—</div>
+                  <div class="kpiSub" id="kpiMonitorsSub">—</div>
+                </div>
+
+                <div class="card kpi">
+                  <div class="kpiLabel">Incidents</div>
+                  <div class="kpiValue" id="kpiIncidents">—</div>
+                  <div class="kpiSub" id="kpiIncidentsSub">Last 30 days</div>
+                </div>
               </div>
 
-              <div class="kpi">
-                <div class="kpi-title">Monitors</div>
-                <div class="kpi-value" id="kpi-monitors">0</div>
-                <div class="kpi-sub">0 up · 0 down</div>
+              <div class="card chartCard">
+                <div class="cardHead">
+                  <div class="cardTitle">SEO Performance</div>
+                  <div class="cardMeta" id="chartMeta">Last 30 days</div>
+                </div>
+
+                <!-- lightweight “fake chart” (propre + stable) -->
+                <div class="chart">
+                  <svg viewBox="0 0 600 180" preserveAspectRatio="none" aria-hidden="true">
+                    <path class="chartGrid" d="M0 30H600M0 75H600M0 120H600M0 165H600"/>
+                    <path class="chartArea" id="chartArea" d="" />
+                    <path class="chartLine" id="chartLine" d="" />
+                    <g id="chartDots"></g>
+                  </svg>
+                </div>
               </div>
 
-              <div class="kpi">
-                <div class="kpi-title">Incidents</div>
-                <div class="kpi-value">0</div>
-                <div class="kpi-sub">Last 30 days</div>
+              <div class="card">
+                <div class="cardHead">
+                  <div class="cardTitle subtleUpper">RECOMMENDED ACTIONS</div>
+                  <button class="btn btnSmall btnGhost" id="btnRunAuditTop">Run Audit</button>
+                </div>
+
+                <div class="actionsRow">
+                  <div class="actionText">Run a SEO audit to get recommendations</div>
+                  <div class="chips">
+                    <span class="chip chipWarn">High</span>
+                    <span class="chip">Pending</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="cardHead">
+                  <div class="cardTitle subtleUpper">RECENT INCIDENTS</div>
+                  <button class="btn btnSmall btnGhost" id="btnViewAllIncidents">View all</button>
+                </div>
+                <div class="empty" id="incidentsEmpty">No incidents yet.</div>
               </div>
             </div>
 
-            <div class="chart-wrap">
-              <div class="chart-title">SEO Performance <span class="muted">Last 30 days</span></div>
-              <div class="chart" id="chart"> <!-- placeholder svg can be drawn by chart library --></div>
+            <!-- AUDITS VIEW -->
+            <div class="view" id="view-audits">
+              <div class="sectionHead">
+                <div class="sectionTitle">AUDITS</div>
+                <div class="statusLine">
+                  <span class="muted">URL à auditer :</span>
+                  <input class="input" id="auditUrl" placeholder="https://example.com" />
+                  <button class="btn btnPrimary" id="btnRunAudit">Run Audit</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="tableWrap">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>URL</th>
+                        <th>Status</th>
+                        <th>Score</th>
+                        <th>Summary</th>
+                      </tr>
+                    </thead>
+                    <tbody id="auditsBody">
+                      <tr><td colspan="5" class="tdMuted">Loading…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
 
-            <div class="recommended card-small">
-              <div class="small-header">RECOMMENDED ACTIONS <button class="btn tiny">Run Audit</button></div>
-              <ul class="rec-list">
-                <li><span class="dot small green"></span> Run a SEO audit to get recommendations <span class="pill high">High</span> <span class="status pending">Pending</span></li>
-              </ul>
+            <!-- MONITORS VIEW -->
+            <div class="view" id="view-monitors">
+              <div class="sectionHead">
+                <div class="sectionTitle">MONITORS</div>
+                <div class="statusLine">
+                  <input class="input" id="monitorUrl" placeholder="https://example.com" />
+                  <div class="selectWrap">
+                    <select id="monitorInterval" class="select">
+                      <option value="5">5 min</option>
+                      <option value="15">15 min</option>
+                      <option value="60" selected>60 min</option>
+                      <option value="180">180 min</option>
+                    </select>
+                    <span class="selectIcon">⌄</span>
+                  </div>
+                  <button class="btn btnPrimary" id="btnAddMonitor">Add Monitor</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="tableWrap">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th style="width:46%">URL</th>
+                        <th>Status</th>
+                        <th>Interval</th>
+                        <th>Last</th>
+                        <th>Resp</th>
+                        <th style="width:140px"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="monitorsBody">
+                      <tr><td colspan="6" class="tdMuted">Loading…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
 
-            <div class="recent card-small">
-              <div class="small-header">RECENT INCIDENTS <button class="btn tiny">View all</button></div>
-              <div class="empty">No incidents yet.</div>
+            <!-- PLACEHOLDERS -->
+            <div class="view" id="view-local">
+              <div class="card">
+                <div class="cardHead">
+                  <div class="cardTitle">Local SEO</div>
+                </div>
+                <div class="empty">Coming soon.</div>
+              </div>
             </div>
-          </section>
 
-          <!-- other sections could appear here (audits list etc) -->
+            <div class="view" id="view-competitors">
+              <div class="card">
+                <div class="cardHead">
+                  <div class="cardTitle">Competitors</div>
+                </div>
+                <div class="empty">Coming soon.</div>
+              </div>
+            </div>
+
+            <div class="view" id="view-reports">
+              <div class="card">
+                <div class="cardHead">
+                  <div class="cardTitle">Reports (Ultra)</div>
+                </div>
+                <div class="empty">(Placeholder) — Exports PDF mensuels, rapport monitoring, etc.</div>
+              </div>
+            </div>
+
+            <div class="view" id="view-billing">
+              <div class="card">
+                <div class="cardHead">
+                  <div class="cardTitle">Billing</div>
+                </div>
+                <div class="empty">Gère ton abonnement via “Billing / Portal”.</div>
+              </div>
+            </div>
+
+            <div class="view" id="view-settings">
+              <div class="card">
+                <div class="cardHead">
+                  <div class="cardTitle">Settings</div>
+                </div>
+                <div class="empty">Paramètres à ajouter (alertes email, etc.).</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT -->
+          <div class="colRight">
+            <div class="card">
+              <div class="cardHead">
+                <div class="cardTitle">Monitors</div>
+                <button class="btn btnSmall btnPrimary" id="btnAddMonitorQuick">Add Monitor</button>
+              </div>
+
+              <div class="tableWrap">
+                <table class="table compact">
+                  <thead>
+                    <tr>
+                      <th>URL</th>
+                      <th>Status</th>
+                      <th>Interval</th>
+                      <th>Last</th>
+                      <th>Resp</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monitorsMiniBody">
+                    <tr><td colspan="5" class="tdMuted">Loading…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="cardHead">
+                <div class="cardTitle">Plans</div>
+                <button class="btn btnSmall btnGhost" id="btnSeePlans">See plans</button>
+              </div>
+
+              <div class="plans">
+                <div class="plan">
+                  <div class="planTop">
+                    <div class="planName">Standard</div>
+                    <div class="planPrice">€29 <span>/mo</span></div>
+                  </div>
+                  <ul class="planList">
+                    <li>SEO audits: 30</li>
+                    <li>Monitors: 3</li>
+                    <li>PDF exports</li>
+                  </ul>
+                  <button class="btn btnGhost wFull" id="btnManageStandard">Manage Subscription</button>
+                </div>
+
+                <div class="plan planActive" id="planPro">
+                  <div class="planTop">
+                    <div class="planName">Pro</div>
+                    <div class="planPrice">€79 <span>/mo</span></div>
+                  </div>
+                  <div class="planBadge" id="trialBadge">Free trial 14 days</div>
+                  <ul class="planList">
+                    <li>SEO audits: 300</li>
+                    <li>Monitors: 50</li>
+                    <li>PDF exports</li>
+                    <li>Email alerts</li>
+                  </ul>
+                  <button class="btn btnDark wFull" id="btnUpgradePro">Upgrade Subscription</button>
+                </div>
+
+                <div class="plan">
+                  <div class="planTop">
+                    <div class="planName">Ultra</div>
+                    <div class="planPrice">€149 <span>/mo</span></div>
+                  </div>
+                  <ul class="planList">
+                    <li>SEO audits: 2000</li>
+                    <li>Monitors: 300</li>
+                    <li>Team + Reports</li>
+                  </ul>
+                  <button class="btn btnGhost wFull" id="btnUpdatePayment">Update Payment Method</button>
+                </div>
+              </div>
+
+              <div class="note muted">
+                Note : ces boutons ouvrent Stripe checkout/portal (selon ton backend).
+              </div>
+            </div>
+          </div>
         </div>
-
-        <!-- RIGHT COLUMN -->
-        <aside class="col-right">
-          <section class="card monitor-card" id="monitors">
-            <div class="card-header">
-              <h3>Monitors</h3>
-              <button class="btn primary small" id="btn-add-monitor">Add Monitor</button>
-            </div>
-
-            <table class="monitors-table">
-              <thead><tr><th>URL</th><th>Status</th><th>Interval</th><th>Last Checked</th><th>Response Time</th><th></th></tr></thead>
-              <tbody id="monitors-list">
-                <tr><td>https://flowpoint-ai.replit.app/</td><td><span class="pill unknown">Unknown</span></td><td>60 min</td><td>—</td><td>—</td><td><button class="btn ghost tiny">Run</button></td></tr>
-              </tbody>
-            </table>
-          </section>
-
-          <section class="card plans-card">
-            <div class="card-header"><h3>Plans</h3></div>
-
-            <div class="plans-grid">
-              <div class="plan card-small">
-                <div class="plan-title">Standard</div>
-                <div class="plan-price">€29 <span class="muted">/mo</span></div>
-                <ul class="plan-features">
-                  <li>SEO audits: 30</li>
-                  <li>Monitors: 3</li>
-                  <li>PDF exports</li>
-                </ul>
-                <button class="btn ghost">Manage Subscription</button>
-              </div>
-
-              <div class="plan plan-pro highlight">
-                <div class="plan-title">Pro</div>
-                <div class="plan-price">€79 <span class="muted">/mo</span></div>
-                <ul class="plan-features">
-                  <li>SEO audits: 300</li>
-                  <li>Monitors: 50</li>
-                </ul>
-                <button class="btn primary">Upgrade Subscription</button>
-              </div>
-
-              <div class="plan card-small">
-                <div class="plan-title">Ultra</div>
-                <div class="plan-price">€149 <span class="muted">/mo</span></div>
-                <ul class="plan-features">
-                  <li>SEO audits: 2000</li>
-                  <li>Monitors: 300</li>
-                </ul>
-                <button class="btn ghost">Update Payment Method</button>
-              </div>
-            </div>
-          </section>
-        </aside>
       </section>
     </main>
   </div>
