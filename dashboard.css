@@ -68,28 +68,59 @@ body{
 .brand__name{font-weight:600; letter-spacing:.1px}
 .brand__sub{font-size:12px;color:var(--muted);margin-top:1px}
 
-/* Nav */
-.nav{display:flex;flex-direction:column; gap:6px; padding-top:6px}
+/* =========================
+   NAVIGATION BLEUE PREMIUM
+========================= */
+
+.nav{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding-top:6px;
+}
+
 .nav__item{
-  appearance:none;border:0; background:transparent;
-  padding:10px 12px;
-  border-radius:12px;
-  display:flex;align-items:center;gap:10px;
-  color:#111827;
-  font-size:14px;
-  cursor:pointer;
-}
-.nav__dot{
-  width:8px;height:8px;border-radius:999px;
-  background:rgba(37,99,235,.18);
-}
-.nav__item:hover{background:rgba(37,99,235,.06)}
-.nav__item.is-active{
-  background:rgba(37,99,235,.10);
+  appearance:none;
   border:1px solid rgba(37,99,235,.18);
-  color:var(--blue2);
+  background:linear-gradient(180deg, var(--blue), var(--blue2));
+  padding:10px 14px;
+  border-radius:14px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:#fff;
+  font-size:14px;
+  font-weight:600;
+  cursor:pointer;
+  box-shadow: 0 10px 24px rgba(37,99,235,.22);
+  transition:all .15s ease;
 }
-.nav__item.is-active .nav__dot{background:var(--blue)}
+
+.nav__dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:rgba(255,255,255,.8);
+}
+
+.nav__item:hover{
+  filter:brightness(1.05);
+  transform:translateY(-1px);
+}
+
+.nav__item:active{
+  transform:scale(.98);
+}
+
+.nav__item.is-active{
+  background:linear-gradient(180deg, #1e40af, #1d4ed8);
+  border:1px solid rgba(255,255,255,.25);
+  box-shadow: 0 14px 32px rgba(29,78,216,.35);
+}
+
+.nav__item.is-active .nav__dot{
+  background:#fff;
+}
 
 /* Sidebar bottom mini card */
 .sidebar__foot{margin-top:auto}
