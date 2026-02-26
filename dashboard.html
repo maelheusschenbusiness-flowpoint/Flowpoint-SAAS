@@ -2,1495 +2,897 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Flowpoint — Dashboard</title>
-
-  <!-- Inter (même vibe SaaS moderne) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
   <style>
     :root{
-      --bg: #f3f6ff;
-      --card: #ffffff;
-      --text: #0b1220;
-      --muted: #6b7280;
-      --muted2: #9aa3b2;
-      --line: rgba(15,23,42,.08);
-      --shadow: 0 16px 40px rgba(15,23,42,.08);
+      --bg1:#eef2ff;
+      --bg2:#f6f8ff;
+      --card:#ffffff;
+      --stroke:#e6ebf5;
+      --text:#0f172a;
+      --muted:#6b7280;
 
-      /* BLEU FLOWPOINT (utilisé partout: menu, CTA, plans) */
-      --blue: #1f5eff;         /* <- si tu veux plus foncé/clair, change ici */
-      --blue2: #0b46ff;
-      --blueSoft: rgba(31,94,255,.12);
+      /* Primary Flowpoint blue */
+      --blue:#2563eb;
+      --blue2:#1d4ed8;
+      --blueDeep:#1e40af;
 
-      --green: #16a34a;
-      --orange: #f59e0b;
-      --orangeSoft: rgba(245,158,11,.18);
+      --blueSoft:#eef4ff;
+      --green:#16a34a;
+      --red:#dc2626;
+      --amber:#f59e0b;
 
-      --radius-lg: 18px;
-      --radius-md: 14px;
-      --radius-sm: 12px;
+      --shadow: 0 14px 40px rgba(16,24,40,.08);
+      --shadow2: 0 10px 26px rgba(16,24,40,.08);
 
-      --sidebarW: 240px;
-      --containerMax: 1200px;
+      --r:18px;
+      --r2:22px;
+
+      /* sidebar */
+      --sbw: 212px; /* 🔥 plus étroit */
     }
 
     *{box-sizing:border-box}
     html,body{height:100%}
     body{
       margin:0;
-      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      font-weight:400;
       color:var(--text);
       background:
-        radial-gradient(1000px 450px at 12% -10%, rgba(31,94,255,.14), transparent 55%),
-        radial-gradient(900px 420px at 95% 0%, rgba(31,94,255,.10), transparent 60%),
-        linear-gradient(180deg, #eef3ff 0%, var(--bg) 55%, #f7f9ff 100%);
+        radial-gradient(900px 600px at 12% 6%, rgba(37,99,235,.16), transparent 60%),
+        radial-gradient(900px 600px at 88% 0%, rgba(99,102,241,.14), transparent 55%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+      overflow-x:hidden;
     }
 
-    a{color:inherit;text-decoration:none}
-    button{font-family:inherit}
-    .wrap{
-      display:flex;
-      min-height:100%;
-    }
-
-    /* ===== Sidebar (desktop) ===== */
+    /* ===== Sidebar ===== */
     .sidebar{
-      width:var(--sidebarW);
-      padding:18px 14px;
-      position:sticky;
-      top:0;
-      height:100vh;
-      background: rgba(255,255,255,.55);
-      backdrop-filter: blur(10px);
-      border-right:1px solid var(--line);
+      position:fixed; inset:0 auto 0 0;
+      width:var(--sbw);
+      background:rgba(255,255,255,.78);
+      border-right:1px solid rgba(230,235,245,.92);
+      backdrop-filter:saturate(180%) blur(14px);
+      padding:14px;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      z-index:40;
     }
 
     .brand{
-      display:flex;
-      align-items:center;
-      gap:12px;
-      padding:10px 10px 14px;
-      border-bottom:1px solid var(--line);
-      margin-bottom:14px;
+      display:flex; align-items:center; gap:10px;
+      padding:6px 6px 10px;
     }
-    .logoBox{
-      width:40px;height:40px;border-radius:14px;
-      background: rgba(31,94,255,.14);
-      display:grid;place-items:center;
-      border:1px solid rgba(31,94,255,.22);
+    .brand__mark{
+      width:38px;height:38px;border-radius:12px;
+      background:linear-gradient(180deg, var(--blue), var(--blue2));
+      display:flex;align-items:center;justify-content:center;
+      box-shadow: 0 10px 20px rgba(37,99,235,.22);
       flex:0 0 auto;
     }
-    .brandTitle{
-      display:flex;
-      flex-direction:column;
-      line-height:1.1;
-    }
-    .brandTitle b{font-size:16px}
-    .brandTitle span{font-size:12px;color:var(--muted)}
+    .brand__txt{line-height:1.05}
+    .brand__name{font-weight:700; letter-spacing:.1px}
+    .brand__sub{font-size:12px;color:var(--muted);margin-top:2px}
 
-    /* ===== MENU -> BLEU COMME DEMANDÉ ===== */
-    .nav{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      padding:6px;
-    }
-    .nav a{
-      display:flex;
-      align-items:center;
-      gap:10px;
+    .nav{display:flex;flex-direction:column; gap:8px; padding-top:4px}
+
+    /* 🔥 Menu style “pill bleu” + icônes */
+    .nav__item{
+      appearance:none;border:0;
+      width:100%;
       padding:10px 12px;
       border-radius:14px;
-      background: var(--blue);          /* <- bleu */
-      color:#fff;                       /* <- texte blanc */
-      box-shadow: 0 10px 24px rgba(31,94,255,.22);
-      border:1px solid rgba(255,255,255,.18);
-      transition: transform .08s ease, filter .12s ease, opacity .12s ease;
-      opacity:.88;
+      display:flex;align-items:center;gap:10px;
+      cursor:pointer;
+      font-size:14px;
+      font-weight:600;
+      color:#0b1220;
+      background:rgba(255,255,255,.75);
+      border:1px solid rgba(230,235,245,.9);
+      box-shadow: 0 8px 18px rgba(16,24,40,.05);
     }
-    .nav a:hover{filter:brightness(1.05);opacity:.96}
-    .nav a:active{transform:scale(.99)}
-    .nav a .dot{
-      width:8px;height:8px;border-radius:99px;
-      background: rgba(255,255,255,.85);
-      opacity:.9;
+    .nav__icon{
+      width:18px;height:18px; opacity:.9;
+      display:inline-flex; align-items:center; justify-content:center;
+      color:#334155;
     }
-    .nav a.active{
-      opacity:1;
-      filter:brightness(1.08);
-      outline: 2px solid rgba(31,94,255,.18);
-    }
-    .nav a .pill{
-      margin-left:auto;
+    .nav__label{flex:1}
+    .nav__badge{
+      font-size:12px;
       padding:5px 10px;
       border-radius:999px;
-      background: rgba(255,255,255,.18);
-      color:#fff;
-      font-size:12px;
-      border:1px solid rgba(255,255,255,.22);
+      background:rgba(37,99,235,.10);
+      border:1px solid rgba(37,99,235,.22);
+      color:var(--blue2);
+      font-weight:700;
     }
 
-    .accountCard{
-      margin-top:16px;
-      background: var(--card);
-      border-radius: var(--radius-lg);
-      border:1px solid var(--line);
-      box-shadow: 0 10px 24px rgba(15,23,42,.06);
+    .nav__item:hover{
+      filter:brightness(1.01);
+      border-color:rgba(37,99,235,.22);
+    }
+
+    .nav__item.is-active{
+      background:linear-gradient(180deg, var(--blue), var(--blue2));
+      border-color:transparent;
+      color:#fff;
+      box-shadow: 0 14px 30px rgba(37,99,235,.25);
+    }
+    .nav__item.is-active .nav__icon{color:#fff; opacity:1}
+
+    .sidebar__foot{margin-top:auto}
+    .miniCard{
+      background:rgba(255,255,255,.92);
+      border:1px solid var(--stroke);
+      border-radius:18px;
       padding:14px;
+      box-shadow: 0 8px 22px rgba(16,24,40,.06);
     }
-    .accountCard h4{
-      margin:0 0 10px;
-      font-size:13px;
-      color:var(--muted2);
-      letter-spacing:.16em;
-    }
-    .kv{
-      display:grid;
-      grid-template-columns: 1fr 1.2fr;
-      gap:8px 10px;
-      font-size:14px;
-      align-items:center;
-    }
-    .kv .k{color:var(--muted)}
-    .kv .v{font-weight:700}
-    .btnRow{
-      display:flex;
-      gap:10px;
-      margin-top:12px;
-    }
-    .btn{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      padding:10px 12px;
-      border-radius: 14px;
-      border:1px solid var(--line);
-      background:#fff;
-      color:var(--text);
+    .miniCard__title{
+      font-size:12px;
+      letter-spacing:.18em;
+      color:#64748b;
       font-weight:700;
-      cursor:pointer;
-      transition:transform .08s ease, filter .12s ease;
-      flex:1;
-      white-space:nowrap;
+      margin-bottom:10px;
     }
-    .btn:hover{filter:brightness(0.98)}
-    .btn:active{transform:scale(.99)}
-    .btnDanger{
-      background: rgba(239,68,68,.08);
-      border-color: rgba(239,68,68,.25);
-      color:#b91c1c;
+    .miniGrid{
+      display:grid;
+      grid-template-columns: 64px 1fr;
+      gap:8px 10px;
+      font-size:13px;
+    }
+    .miniGrid__k{color:var(--muted)}
+    .miniGrid__v{font-weight:700; color:#0b1220}
+    .miniActions{display:flex; gap:10px; margin-top:12px}
+    .hint{margin-top:10px;font-size:12.5px;color:#6b7280;line-height:1.35}
+
+    /* overlay mobile */
+    .overlay{
+      position:fixed; inset:0;
+      background:rgba(15,23,42,.35);
+      z-index:35;
+      display:none;
     }
 
     /* ===== Main ===== */
     .main{
-      flex:1;
-      padding:22px 22px 36px;
-    }
-    .container{
-      max-width: var(--containerMax);
-      margin:0 auto;
+      margin-left:var(--sbw);
+      min-height:100vh;
+      padding:18px 20px 28px;
     }
 
     /* Topbar */
     .topbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:14px;
+      display:flex; align-items:flex-start; justify-content:space-between;
+      gap:16px;
       margin-bottom:14px;
     }
-    .hello{
-      display:flex;
-      flex-direction:column;
-      gap:2px;
+    .hello__title{
+      font-size:22px;
+      font-weight:800;
+      letter-spacing:.1px;
     }
-    .hello b{font-size:22px}
-    .hello span{color:var(--muted);font-size:13px}
-
-    .rightTools{
-      display:flex;
-      align-items:center;
-      gap:10px;
+    .hello__sub{
+      margin-top:3px;
+      font-size:13px;color:var(--muted);
+    }
+    .topbar__right{
+      display:flex; align-items:center; gap:10px;
       flex-wrap:wrap;
       justify-content:flex-end;
     }
 
-    .chip{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:10px 12px;
-      border-radius:999px;
-      background: rgba(255,255,255,.75);
-      border:1px solid var(--line);
-      box-shadow: 0 10px 24px rgba(15,23,42,.06);
-      color:var(--text);
-      font-weight:700;
-      font-size:13px;
-    }
-    .select{
-      border:none;
-      background:transparent;
-      font-weight:700;
-      font-size:13px;
-      outline:none;
+    .selectLike{
+      border:1px solid var(--stroke);
+      background:rgba(255,255,255,.9);
+      padding:10px 14px;
+      border-radius:14px;
       cursor:pointer;
-      color:var(--text);
+      display:flex; align-items:center; gap:8px;
+      font-weight:700;
+      color:#0b1220;
+      box-shadow: 0 8px 18px rgba(16,24,40,.05);
     }
+    .caret{opacity:.65}
 
-    .btnPrimary{
-      background: linear-gradient(180deg, var(--blue) 0%, var(--blue2) 100%);
+    /* Buttons */
+    .btn{
+      border:1px solid transparent;
+      background:#fff;
+      padding:10px 14px;
+      border-radius:14px;
+      cursor:pointer;
+      font-weight:800;
+      color:#0b1220;
+      box-shadow: 0 8px 18px rgba(16,24,40,.06);
+      white-space:nowrap;
+    }
+    .btn--sm{padding:8px 12px; border-radius:12px; box-shadow:none; font-weight:800}
+    .btn--primary{
+      background:linear-gradient(180deg, var(--blue), var(--blue2));
       color:#fff;
-      border-color: rgba(255,255,255,.12);
-      box-shadow: 0 14px 34px rgba(31,94,255,.28);
+      box-shadow: 0 14px 28px rgba(37,99,235,.25);
     }
-    .btnGhost{
-      background: rgba(255,255,255,.75);
+    .btn--soft{
+      background:#fff;
+      border:1px solid var(--stroke);
+      color:var(--blue2);
+      box-shadow:none;
     }
+    .btn--danger{
+      background:#fff;
+      border:1px solid rgba(220,38,38,.25);
+      color:#b91c1c;
+      box-shadow:none;
+    }
+    .btn:hover{filter:brightness(.99)}
+    .btn--primary:hover{filter:brightness(1.02)}
+    .w100{width:100%}
 
+    .iconbtn{
+      width:42px;height:42px;border-radius:14px;
+      border:1px solid var(--stroke);
+      background:rgba(255,255,255,.92);
+      cursor:pointer;
+      font-weight:800;
+      display:inline-flex; align-items:center; justify-content:center;
+    }
     .avatar{
-      width:36px;height:36px;border-radius:999px;
-      background: rgba(255,255,255,.75);
-      border:1px solid var(--line);
-      display:grid;place-items:center;
-      box-shadow: 0 10px 24px rgba(15,23,42,.06);
+      width:42px;height:42px;border-radius:999px;
+      border:1px solid var(--stroke);
+      background:rgba(255,255,255,.92);
+      display:flex;align-items:center;justify-content:center;
       cursor:pointer;
       font-weight:900;
-      color:var(--muted);
-      user-select:none;
+      color:#334155;
     }
 
-    /* Status row */
-    .statusRow{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      margin:10px 0 16px;
-    }
-    .statusOk{
-      display:inline-flex;
-      align-items:center;
-      gap:10px;
-      font-weight:700;
-      color:var(--muted);
-      font-size:13px;
-    }
-    .dotGreen{
-      width:10px;height:10px;border-radius:999px;background:var(--green);
-      box-shadow: 0 0 0 6px rgba(22,163,74,.12);
-    }
-
-    /* Layout grid */
+    /* Grid */
     .grid{
       display:grid;
       grid-template-columns: 1.05fr .95fr;
-      gap:16px;
+      gap:18px;
       align-items:start;
     }
+    .col{display:flex; flex-direction:column; gap:18px}
 
+    /* Card */
     .card{
-      background: rgba(255,255,255,.80);
-      backdrop-filter: blur(10px);
-      border:1px solid var(--line);
+      background:rgba(255,255,255,.92);
+      border:1px solid var(--stroke);
+      border-radius:22px;
       box-shadow: var(--shadow);
-      border-radius: var(--radius-lg);
       padding:16px;
+      overflow:hidden;
     }
-    .cardTitle{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
+    .card__head{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px;
       margin-bottom:12px;
     }
-    .cardTitle h3{
-      margin:0;
-      font-size:16px;
-      letter-spacing:.02em;
-    }
-    .subtle{
-      color:var(--muted2);
-      font-size:12px;
+    .card__title{
+      font-size:13px;
+      letter-spacing:.18em;
+      color:#64748b;
       font-weight:800;
-      letter-spacing:.14em;
       text-transform:uppercase;
     }
+    .statusOk{
+      display:flex; align-items:center; gap:8px;
+      color:#4b5563;
+      font-weight:800;
+    }
+    .dot{width:10px;height:10px;border-radius:999px}
+    .dot--green{background:var(--green)}
 
-    /* KPIs */
+    /* KPI grid */
     .kpis{
       display:grid;
-      grid-template-columns: repeat(3, minmax(0,1fr));
+      grid-template-columns: repeat(4, 1fr);
       gap:12px;
     }
     .kpi{
-      border-radius: 16px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.65);
+      border:1px solid var(--stroke);
+      border-radius:16px;
       padding:12px;
-      min-height:74px;
+      background:rgba(248,250,255,.78);
     }
-    .kpi .label{color:var(--muted2);font-size:12px;font-weight:800;letter-spacing:.08em}
-    .kpi .value{margin-top:6px;font-size:22px;font-weight:800}
-    .kpi .hint{margin-top:4px;color:var(--muted);font-size:12px}
+    .kpi__k{color:var(--muted); font-weight:800; font-size:13px}
+    .kpi__v{margin-top:4px; font-size:22px; font-weight:900}
+    .kpi__s{margin-top:3px; font-size:12.5px; color:var(--muted); font-weight:700}
 
-    .kpiWide{
-      grid-column: span 3;
-      padding:14px;
+    .divider{
+      height:1px;
+      background:rgba(230,235,245,.95);
+      margin:14px 0;
     }
 
-    /* Chart mock (simple canvas) */
+    /* Chart */
+    .chartCard__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .chartCard__title{font-weight:900}
+    .muted{color:var(--muted); font-weight:800}
     .chartWrap{
-      border-radius: 16px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.70);
-      padding:10px 12px 12px;
-      overflow:hidden;
+      border:1px solid var(--stroke);
+      border-radius:16px;
+      background:linear-gradient(180deg, rgba(37,99,235,.06), rgba(255,255,255,0));
+      padding:10px 10px 6px;
     }
-    .chartHead{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      margin-bottom:8px;
-      gap:10px;
+    .fakeChart{
+      width:100%;
+      height:120px;
+      display:block;
     }
-    .tabs{
-      display:flex;
-      gap:10px;
-      align-items:center;
-      flex-wrap:wrap;
-      color:var(--muted);
-      font-size:12px;
-      font-weight:700;
-    }
-    .tab{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:6px 10px;
-      border-radius:999px;
-      background: rgba(31,94,255,.10);
-      color: var(--blue);
-      border:1px solid rgba(31,94,255,.18);
-      font-weight:800;
-    }
-    canvas{width:100%;height:170px;display:block}
 
-    /* Table */
+    /* Tables */
+    .tableCard__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
     .table{
       width:100%;
       border-collapse:separate;
       border-spacing:0;
-      overflow:hidden;
-      border-radius: 16px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.70);
+      font-size:13.5px;
     }
-    .table th, .table td{
-      padding:12px 12px;
-      font-size:13px;
-      border-bottom:1px solid rgba(15,23,42,.06);
+    .table thead th{
+      text-align:left;
+      color:#64748b;
+      font-weight:900;
+      letter-spacing:.12em;
+      font-size:12px;
+      padding:10px 10px;
+      border-top:1px solid var(--stroke);
+      border-bottom:1px solid var(--stroke);
+      background:rgba(248,250,255,.55);
+      white-space:nowrap;
+    }
+    .table tbody td{
+      padding:12px 10px;
+      border-bottom:1px solid rgba(230,235,245,.8);
       vertical-align:middle;
     }
-    .table th{
-      color:var(--muted2);
-      text-transform:uppercase;
-      letter-spacing:.14em;
-      font-size:11px;
-      font-weight:900;
-      background: rgba(255,255,255,.55);
-      white-space:nowrap;
+    .urlCell{
+      display:flex; align-items:center; gap:10px;
+      min-width:0;
     }
-    .table tr:last-child td{border-bottom:none}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    .check{
+      width:18px;height:18px;border-radius:6px;
+      background:linear-gradient(180deg, var(--blue), var(--blue2));
+      display:inline-flex; align-items:center; justify-content:center;
+      color:#fff;
+      flex:0 0 auto;
+      box-shadow: 0 10px 18px rgba(37,99,235,.22);
+    }
+    .ellipsis{
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      display:block;
+      min-width:0;
+      max-width:280px;
+      font-weight:800;
+      color:#0b1220;
+    }
 
-    .badge{
+    /* Pills */
+    .pill{
       display:inline-flex;
       align-items:center;
-      gap:8px;
-      padding:8px 12px;
+      padding:7px 12px;
       border-radius:999px;
       font-weight:900;
-      font-size:12px;
-      border:1px solid rgba(15,23,42,.08);
-      background: rgba(255,255,255,.75);
-    }
-    .bUp{color:var(--green);background:rgba(22,163,74,.10);border-color:rgba(22,163,74,.18)}
-    .bDown{color:#dc2626;background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.18)}
-    .bUnknown{color:#b45309;background:var(--orangeSoft);border-color:rgba(245,158,11,.22)}
-
-    .rowActions{
-      display:flex;
-      gap:8px;
-      justify-content:flex-end;
-      flex-wrap:wrap;
-    }
-    .btnSmall{
-      padding:8px 10px;
-      border-radius:999px;
-      font-weight:900;
-      font-size:12px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.9);
-      cursor:pointer;
+      border:1px solid transparent;
+      font-size:12.5px;
       white-space:nowrap;
     }
-    .btnSmallPrimary{
-      background: rgba(31,94,255,.10);
-      color: var(--blue);
-      border-color: rgba(31,94,255,.22);
+    .pill--warn{
+      background:rgba(245,158,11,.14);
+      border-color:rgba(245,158,11,.20);
+      color:#92400e;
+    }
+    .pill--soft{
+      background:rgba(37,99,235,.10);
+      border-color:rgba(37,99,235,.20);
+      color:var(--blue2);
+    }
+    .pill--up{
+      background:rgba(22,163,74,.12);
+      border-color:rgba(22,163,74,.18);
+      color:#166534;
+    }
+    .pill--down{
+      background:rgba(220,38,38,.10);
+      border-color:rgba(220,38,38,.16);
+      color:#991b1b;
     }
 
-    /* Plans */
-    .plansGrid{
+    /* Tabs */
+    .tabs{display:flex; gap:10px; align-items:center}
+    .tab{
+      border:0; background:transparent;
+      font-weight:900;
+      color:#64748b;
+      cursor:pointer;
+      padding:6px 6px;
+    }
+    .tab.is-active{color:var(--blue2); border-bottom:2px solid rgba(37,99,235,.45)}
+
+    /* Plans (proportions + couleurs proches mock) */
+    .plans{
       display:grid;
-      grid-template-columns: repeat(3, minmax(0,1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap:12px;
     }
     .plan{
-      border-radius: 18px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.70);
+      border:1px solid var(--stroke);
+      border-radius:18px;
       padding:14px;
-      min-height: 210px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
+      background:rgba(255,255,255,.94);
+      box-shadow: var(--shadow2);
+      min-height: 214px;
+      display:flex; flex-direction:column;
+      justify-content:space-between;
     }
     .planTop{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:10px;
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
     }
-    .planName{font-weight:900}
-    .price{font-size:34px;font-weight:900;letter-spacing:-.02em}
-    .per{color:var(--muted);font-weight:900}
-    .list{margin:0;padding-left:18px;color:var(--muted);font-weight:700}
-    .list b{color:var(--text)}
-    .planCta{margin-top:auto}
-    .ctaWide{
-      width:100%;
-      padding:12px 12px;
-      border-radius:999px;
-      font-weight:900;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.85);
-      cursor:pointer;
+    .plan__name{font-weight:900; font-size:16px}
+    .plan__price{
+      font-size:34px;
+      font-weight:1000;
+      letter-spacing:-0.02em;
+      line-height:1;
     }
+    .per{font-size:14px; color:#64748b; font-weight:900; margin-left:6px}
+    .plan__list{
+      margin:10px 0 12px;
+      padding-left:16px;
+      color:#334155;
+      font-weight:800;
+    }
+    .plan__list li{margin:6px 0}
+    .plan__btn{margin-top:auto}
 
-    .planPro{
-      background: linear-gradient(180deg, rgba(31,94,255,.16) 0%, rgba(31,94,255,.10) 100%);
-      border-color: rgba(31,94,255,.25);
-      box-shadow: 0 18px 44px rgba(31,94,255,.18);
+    .plan--pro{
+      background:linear-gradient(180deg, rgba(37,99,235,.18), rgba(37,99,235,.10));
+      border-color:rgba(37,99,235,.26);
     }
-    .ctaPro{
-      background: linear-gradient(180deg, var(--blue) 0%, var(--blue2) 100%);
-      border-color: rgba(255,255,255,.12);
-      color:#fff;
-      box-shadow: 0 16px 34px rgba(31,94,255,.28);
-    }
-    .trialPill{
+    .plan--pro .plan__name,
+    .plan--pro .plan__price{color:#0b1220}
+    .trialBadge{
       display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:7px 10px;
+      padding:6px 10px;
       border-radius:999px;
-      background: rgba(255,255,255,.78);
-      border:1px solid rgba(31,94,255,.20);
-      color: var(--blue);
+      background:rgba(255,255,255,.72);
+      border:1px solid rgba(37,99,235,.26);
+      color:var(--blue2);
       font-weight:900;
       font-size:12px;
+      margin-top:8px;
       width:max-content;
     }
 
-    /* Recommended actions */
-    .actionRow{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      padding:12px;
-      border-radius: 16px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.70);
+    /* section titles in right col */
+    .sectionTitle{
+      font-size:22px;
+      font-weight:1000;
+      letter-spacing:-.01em;
+      margin:0;
     }
-    .actionRow b{font-size:13px}
-    .metaRow{
-      display:flex;
-      gap:10px;
-      align-items:center;
-      flex-wrap:wrap;
-    }
-    .pill{
-      padding:8px 12px;border-radius:999px;font-weight:900;font-size:12px;
-      border:1px solid rgba(15,23,42,.08);
-      background: rgba(255,255,255,.85);
-    }
-    .pillHigh{background:var(--orangeSoft);border-color:rgba(245,158,11,.22);color:#92400e}
 
-    /* Sections */
-    .section{display:none}
-    .section.active{display:block}
-
-    /* ===== Mobile drawer ===== */
-    .mobileBar{
-      display:none;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      margin-bottom:12px;
-    }
-    .menuBtn{
-      display:inline-flex;
-      align-items:center;
-      gap:10px;
-      padding:10px 12px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.75);
-      box-shadow: 0 10px 24px rgba(15,23,42,.06);
-      font-weight:900;
-      cursor:pointer;
-    }
-    .drawerOverlay{
-      position:fixed;inset:0;
-      background: rgba(2,6,23,.36);
-      display:none;
-      z-index:50;
-    }
-    .drawer{
-      position:fixed;
-      top:0;left:0;bottom:0;
-      width: 86vw;
-      max-width: 340px;
-      background: rgba(255,255,255,.78);
-      backdrop-filter: blur(12px);
-      border-right:1px solid var(--line);
-      transform: translateX(-105%);
-      transition: transform .18s ease;
-      z-index:51;
-      padding:18px 14px;
-      overflow:auto;
-    }
-    .drawer.open{transform: translateX(0)}
-    .drawerOverlay.open{display:block}
-
-    /* ===== Responsive ===== */
-    @media (max-width: 1020px){
+    /* Mobile */
+    .only-mobile{display:none}
+    @media (max-width: 1120px){
       .grid{grid-template-columns: 1fr}
-      .plansGrid{grid-template-columns: 1fr}
-      .kpis{grid-template-columns: 1fr 1fr}
-      .kpiWide{grid-column: span 2}
+      .plans{grid-template-columns: 1fr}
+      .kpis{grid-template-columns: repeat(2, 1fr)}
+      .ellipsis{max-width: 220px}
     }
-    @media (max-width: 840px){
-      .sidebar{display:none}
-      .mobileBar{display:flex}
-      .topbar{display:none}
-      .kpis{grid-template-columns: 1fr}
-      .kpiWide{grid-column: span 1}
-      canvas{height:160px}
-      .main{padding:14px 14px 26px}
-      .table th:nth-child(4), .table td:nth-child(4),
-      .table th:nth-child(5), .table td:nth-child(5){
-        display:none; /* sur mobile: simplifie pour éviter overflow */
+    @media (max-width: 920px){
+      .only-mobile{display:inline-flex}
+      .main{margin-left:0}
+      .sidebar{
+        transform:translateX(-104%);
+        transition:transform .22s ease;
+        box-shadow: 0 18px 44px rgba(16,24,40,.20);
       }
+      .sidebar.is-open{transform:translateX(0)}
+      .overlay.show{display:block}
+      .topbar{gap:10px}
+      .hello__title{font-size:20px}
+      .selectLike{padding:9px 12px}
+      .btn{padding:9px 12px}
+      .ellipsis{max-width: 160px}
+      .table thead th{font-size:11px}
     }
   </style>
 </head>
 
 <body>
-  <div class="wrap">
+  <div class="overlay" id="overlay"></div>
 
-    <!-- ===== Sidebar Desktop ===== -->
-    <aside class="sidebar" aria-label="Sidebar">
-      <div class="brand">
-        <div class="logoBox" aria-hidden="true">
-          <!-- petit logo (même vibe que ton carré bleu, sans éclair) -->
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2.7c-3.8 0-6.9 3.1-6.9 6.9 0 2.3 1.1 4.3 2.9 5.6v2.1c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2v-2.1c1.8-1.3 2.9-3.3 2.9-5.6 0-3.8-3.1-6.9-6.9-6.9Z" fill="white" opacity=".95"/>
-            <path d="M9.2 22h5.6" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity=".9"/>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand__mark" aria-hidden="true">
+        <!-- logo “précédent” : carré bleu + éclair blanc -->
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M13 2L3 14h8l-1 8 11-14h-8l0-6z" fill="white" opacity="0.95"/>
+        </svg>
+      </div>
+      <div class="brand__txt">
+        <div class="brand__name">Flowpoint</div>
+        <div class="brand__sub">Client Dashboard</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav__item is-active" data-page="overview">
+        <span class="nav__icon">
+          <!-- overview icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M4 4h7v7H4V4zm9 0h7v4h-7V4zM13 10h7v10h-7V10zM4 13h7v7H4v-7z"/>
           </svg>
-        </div>
-        <div class="brandTitle">
-          <b>Flowpoint</b>
-          <span>Client Dashboard</span>
-        </div>
-      </div>
+        </span>
+        <span class="nav__label">Overview</span>
+      </button>
 
-      <nav class="nav" id="nav">
-        <a href="#overview" class="active" data-section="overview"><span class="dot"></span>Overview</a>
-        <a href="#audits" data-section="audits"><span class="dot"></span>Audits</a>
-        <a href="#monitors" data-section="monitors"><span class="dot"></span>Monitors</a>
-        <a href="#local" data-section="local"><span class="dot"></span>Local SEO</a>
-        <a href="#competitors" data-section="competitors"><span class="dot"></span>Competitors</a>
-        <a href="#reports" data-section="reports"><span class="dot"></span>Reports <span class="pill">Ultra</span></a>
-        <a href="#billing" data-section="billing"><span class="dot"></span>Billing</a>
-        <a href="#settings" data-section="settings"><span class="dot"></span>Settings</a>
-      </nav>
-
-      <div class="accountCard">
-        <h4>ACCOUNT</h4>
-        <div class="kv">
-          <div class="k">Plan</div><div class="v" id="accPlan">—</div>
-          <div class="k">Org</div><div class="v" id="accOrg">—</div>
-          <div class="k">Role</div><div class="v" id="accRole">—</div>
-          <div class="k">Trial</div><div class="v" id="accTrial">—</div>
-        </div>
-        <div class="btnRow">
-          <button class="btn" id="btnPortal">Billing / Portal</button>
-          <button class="btn btnDanger" id="btnLogout">Logout</button>
-        </div>
-        <div style="margin-top:10px;color:var(--muted);font-size:12px;line-height:1.4">
-          Tip: si un bouton ne répond pas, ouvre Console et regarde les erreurs réseau.
-        </div>
-      </div>
-    </aside>
-
-    <!-- ===== Drawer Mobile ===== -->
-    <div class="drawerOverlay" id="drawerOverlay"></div>
-    <aside class="drawer" id="drawer" aria-label="Menu mobile">
-      <div class="brand">
-        <div class="logoBox" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2.7c-3.8 0-6.9 3.1-6.9 6.9 0 2.3 1.1 4.3 2.9 5.6v2.1c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2v-2.1c1.8-1.3 2.9-3.3 2.9-5.6 0-3.8-3.1-6.9-6.9-6.9Z" fill="white" opacity=".95"/>
-            <path d="M9.2 22h5.6" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity=".9"/>
+      <button class="nav__item" data-page="audits">
+        <span class="nav__icon">
+          <!-- audits icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M7 3h10a2 2 0 0 1 2 2v16l-5-3-5 3-5-3V5a2 2 0 0 1 2-2zm2 6h6v2H9V9zm0 4h6v2H9v-2z"/>
           </svg>
+        </span>
+        <span class="nav__label">Audits</span>
+      </button>
+
+      <button class="nav__item" data-page="monitors">
+        <span class="nav__icon">
+          <!-- monitors icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M4 5h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6l-2 2-2-2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm2 4h4v4H6V9zm6 0h6v2h-6V9zm0 3h6v1h-6v-1z"/>
+          </svg>
+        </span>
+        <span class="nav__label">Monitors</span>
+      </button>
+
+      <button class="nav__item" data-page="localseo">
+        <span class="nav__icon">
+          <!-- local seo icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
+          </svg>
+        </span>
+        <span class="nav__label">Local SEO</span>
+      </button>
+
+      <button class="nav__item" data-page="competitors">
+        <span class="nav__icon">
+          <!-- competitors icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M3 4h18v2H3V4zm2 4h5v12H5V8zm7 0h5v12h-5V8zm7 0h2v12h-2V8z"/>
+          </svg>
+        </span>
+        <span class="nav__label">Competitors</span>
+      </button>
+
+      <button class="nav__item" data-page="reports">
+        <span class="nav__icon">
+          <!-- reports icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1v5h5"/>
+          </svg>
+        </span>
+        <span class="nav__label">Reports</span>
+        <span class="nav__badge">Ultra</span>
+      </button>
+
+      <button class="nav__item" data-page="billing">
+        <span class="nav__icon">
+          <!-- billing icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2H4V6zm0 4h20v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8zm4 5h6v2H8v-2z"/>
+          </svg>
+        </span>
+        <span class="nav__label">Billing</span>
+      </button>
+
+      <button class="nav__item" data-page="settings">
+        <span class="nav__icon">
+          <!-- settings icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M19.4 13a7.9 7.9 0 0 0 0-2l2-1.5-2-3.5-2.3 1a8 8 0 0 0-1.7-1L15 2h-6l-.4 3a8 8 0 0 0-1.7 1l-2.3-1-2 3.5L4.6 11a7.9 7.9 0 0 0 0 2L2.6 14.5l2 3.5 2.3-1a8 8 0 0 0 1.7 1L9 22h6l.4-3a8 8 0 0 0 1.7-1l2.3 1 2-3.5L19.4 13zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z"/>
+          </svg>
+        </span>
+        <span class="nav__label">Settings</span>
+      </button>
+    </nav>
+
+    <div class="sidebar__foot">
+      <div class="miniCard">
+        <div class="miniCard__title">ACCOUNT</div>
+        <div class="miniGrid">
+          <div class="miniGrid__k">Plan</div><div class="miniGrid__v" id="accPlan">PRO</div>
+          <div class="miniGrid__k">Org</div><div class="miniGrid__v" id="accOrg">SAAS</div>
+          <div class="miniGrid__k">Role</div><div class="miniGrid__v" id="accRole">owner</div>
+          <div class="miniGrid__k">Trial</div><div class="miniGrid__v" id="accTrial">—</div>
         </div>
-        <div class="brandTitle">
-          <b>Flowpoint</b>
-          <span>Client Dashboard</span>
+        <div class="miniActions">
+          <button class="btn btn--sm btn--soft" id="btnPortal">Billing / Portal</button>
+          <button class="btn btn--sm btn--danger" id="btnLogout">Logout</button>
         </div>
-        <div style="margin-left:auto">
-          <button class="btn" style="padding:10px 12px;border-radius:999px" id="btnCloseDrawer">✕</button>
-        </div>
+        <div class="hint">Tip: si un bouton ne répond pas, ouvre Console et regarde les erreurs réseau.</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <button class="btn btn--soft only-mobile" id="btnMenu">☰ Menu</button>
+        <div class="hello__title" id="helloTitle">Bonjour, SAAS TEST</div>
+        <div class="hello__sub">SEO · Monitoring · Reports · Billing</div>
       </div>
 
-      <nav class="nav" id="navMobile" style="margin-top:10px">
-        <a href="#overview" class="active" data-section="overview"><span class="dot"></span>Overview</a>
-        <a href="#audits" data-section="audits"><span class="dot"></span>Audits</a>
-        <a href="#monitors" data-section="monitors"><span class="dot"></span>Monitors</a>
-        <a href="#local" data-section="local"><span class="dot"></span>Local SEO</a>
-        <a href="#competitors" data-section="competitors"><span class="dot"></span>Competitors</a>
-        <a href="#reports" data-section="reports"><span class="dot"></span>Reports <span class="pill">Ultra</span></a>
-        <a href="#billing" data-section="billing"><span class="dot"></span>Billing</a>
-        <a href="#settings" data-section="settings"><span class="dot"></span>Settings</a>
-      </nav>
-
-      <div class="accountCard">
-        <h4>ACCOUNT</h4>
-        <div class="kv">
-          <div class="k">Plan</div><div class="v" id="accPlanM">—</div>
-          <div class="k">Org</div><div class="v" id="accOrgM">—</div>
-          <div class="k">Role</div><div class="v" id="accRoleM">—</div>
-          <div class="k">Trial</div><div class="v" id="accTrialM">—</div>
+      <div class="topbar__right">
+        <div class="selectLike" id="rangeBtn">
+          Last 30 days <span class="caret">▾</span>
         </div>
-        <div class="btnRow">
-          <button class="btn" id="btnPortalM">Billing / Portal</button>
-          <button class="btn btnDanger" id="btnLogoutM">Logout</button>
-        </div>
+        <button class="btn btn--primary" id="btnRefresh">Refresh</button>
+        <button class="btn btn--soft" id="btnExportAudits">Export Audits CSV</button>
+        <button class="btn btn--soft" id="btnExportMonitors">Export Monitors CSV</button>
+        <div class="avatar" title="Profile">FP</div>
       </div>
-    </aside>
+    </div>
 
-    <!-- ===== Main ===== -->
-    <main class="main">
-      <div class="container">
-
-        <!-- Mobile bar -->
-        <div class="mobileBar">
-          <button class="menuBtn" id="btnOpenDrawer">☰ Menu</button>
-          <div class="avatar" id="avatarM">FP</div>
-        </div>
-
-        <!-- Topbar desktop -->
-        <div class="topbar">
-          <div class="hello">
-            <b id="helloTitle">Bonjour, —</b>
-            <span id="helloSubtitle">SEO • Monitoring • Reports • Billing</span>
+    <section class="grid">
+      <!-- LEFT COL -->
+      <div class="col">
+        <div class="card">
+          <div class="card__head">
+            <div class="card__title">OVERVIEW</div>
+            <div class="statusOk"><span class="dot dot--green"></span><span id="dashStatus">Dashboard à jour — OK</span></div>
           </div>
 
-          <div class="rightTools">
-            <div class="chip">
-              <select class="select" id="rangeSelect" aria-label="Range">
-                <option value="7">Last 7 days</option>
-                <option value="30" selected>Last 30 days</option>
-                <option value="90">Last 90 days</option>
-              </select>
+          <div class="kpis">
+            <div class="kpi">
+              <div class="kpi__k">SEO Score</div>
+              <div class="kpi__v" id="seoScore">78<span class="muted"> / 100</span></div>
+              <div class="kpi__s">Last 30 days</div>
             </div>
 
-            <button class="btn btnPrimary" id="btnRefresh">Refresh</button>
-            <button class="btn btnGhost" id="btnExportAudits">Export Audits CSV</button>
-            <button class="btn btnGhost" id="btnExportMonitors">Export Monitors CSV</button>
-            <div class="avatar" id="avatar">FP</div>
+            <div class="kpi">
+              <div class="kpi__k">Local Visibility</div>
+              <div class="kpi__v" style="color:var(--green)" id="localVis">+12%</div>
+              <div class="kpi__s">Map pack + reviews</div>
+            </div>
+
+            <div class="kpi">
+              <div class="kpi__k">Monitors</div>
+              <div class="kpi__v" id="monCount">8</div>
+              <div class="kpi__s"><span id="monUp">8 up</span> · <span id="monDown">0 down</span></div>
+            </div>
+
+            <div class="kpi">
+              <div class="kpi__k">Incidents</div>
+              <div class="kpi__v" id="incCount">0</div>
+              <div class="kpi__s">Last 30 days</div>
+            </div>
           </div>
+
+          <div class="divider"></div>
+
+          <div class="chartCard__head">
+            <div class="chartCard__title">SEO Performance <span class="muted">— 30 days</span></div>
+            <span class="pill pill--soft">active</span>
+          </div>
+
+          <div class="chartWrap">
+            <!-- mini chart svg (placeholder joli) -->
+            <svg class="fakeChart" viewBox="0 0 600 180" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0" stop-color="rgba(37,99,235,.28)"/>
+                  <stop offset="1" stop-color="rgba(37,99,235,0)"/>
+                </linearGradient>
+              </defs>
+              <path d="M0 140 L60 138 L120 120 L180 98 L240 112 L300 148 L360 160 L420 128 L480 92 L540 108 L600 84"
+                    fill="none" stroke="rgba(37,99,235,.95)" stroke-width="4" stroke-linecap="round"/>
+              <path d="M0 140 L60 138 L120 120 L180 98 L240 112 L300 148 L360 160 L420 128 L480 92 L540 108 L600 84 L600 180 L0 180 Z"
+                    fill="url(#g)"/>
+            </svg>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="tableCard__head">
+            <div class="card__title">RECOMMENDED ACTIONS</div>
+            <button class="btn btn--soft btn--sm">Run Audit</button>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div style="font-weight:900;color:#0b1220">Run a SEO audit to get recommendations</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+              <span class="pill pill--warn">High</span>
+              <span class="pill" style="background:rgba(148,163,184,.16);border:1px solid rgba(148,163,184,.24);color:#334155">Pending</span>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="tableCard__head">
+            <div class="card__title">RECENT INCIDENTS</div>
+            <button class="btn btn--soft btn--sm">View all</button>
+          </div>
+          <div class="muted" style="font-weight:900">No incidents yet.</div>
+        </div>
+      </div>
+
+      <!-- RIGHT COL -->
+      <div class="col">
+        <!-- Monitors -->
+        <div class="card">
+          <div class="tableCard__head">
+            <h3 class="sectionTitle" style="margin:0">Monitors</h3>
+            <button class="btn btn--primary btn--sm" id="btnAddMonitor">Add Monitor</button>
+          </div>
+
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width:44%">URL</th>
+                <th>Status</th>
+                <th>Interval</th>
+                <th>Last</th>
+                <th>Resp</th>
+                <th style="width:84px"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="urlCell">
+                    <span class="check" aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                        <path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </span>
+                    <span class="ellipsis">https://flowpoint-ai.replit.app/</span>
+                  </div>
+                </td>
+                <td><span class="pill pill--up">Up</span></td>
+                <td class="muted">60 min</td>
+                <td class="muted">1,000 ago</td>
+                <td class="muted">92 ms</td>
+                <td><button class="btn btn--soft btn--sm">Run</button></td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="urlCell">
+                    <span class="check" aria-hidden="true" style="background:linear-gradient(180deg, rgba(148,163,184,.5), rgba(148,163,184,.35)); box-shadow:none; color:#0b1220">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                        <path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </span>
+                    <span class="ellipsis">https://example.com/</span>
+                  </div>
+                </td>
+                <td><span class="pill pill--down">Down</span></td>
+                <td class="muted">30 min</td>
+                <td class="muted">1,200 ago</td>
+                <td class="muted">—</td>
+                <td><button class="btn btn--soft btn--sm">Run</button></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <div class="statusRow">
-          <div class="subtle" id="pageLabel">OVERVIEW</div>
-          <div class="statusOk"><span class="dotGreen"></span><span id="statusText">Dashboard à jour — OK</span></div>
-        </div>
+        <!-- Plans -->
+        <div class="card">
+          <div class="tableCard__head">
+            <h3 class="sectionTitle" style="margin:0">Plans</h3>
+            <button class="btn btn--soft btn--sm">See plans</button>
+          </div>
 
-        <!-- ===== SECTIONS ===== -->
-
-        <!-- OVERVIEW -->
-        <section class="section active" id="section-overview">
-          <div class="grid">
-
-            <!-- Left column -->
-            <div class="col">
-              <div class="card">
-                <div class="cardTitle">
-                  <h3>Bonjour, <span id="orgNameInline">—</span></h3>
-                  <span class="subtle">Last <span id="rangeInline">30</span> days</span>
+          <div class="plans">
+            <div class="plan">
+              <div>
+                <div class="planTop">
+                  <div class="plan__name">Standard</div>
+                  <div><span class="plan__price">€29</span><span class="per">/mo</span></div>
                 </div>
-
-                <div class="kpis">
-                  <div class="kpi">
-                    <div class="label">SEO Score</div>
-                    <div class="value" id="kpiSeo">—</div>
-                    <div class="hint">Last <span class="rangeTxt">30</span> days</div>
-                  </div>
-                  <div class="kpi">
-                    <div class="label">Local Visibility</div>
-                    <div class="value" id="kpiLocal" style="color:var(--green)">+12%</div>
-                    <div class="hint">Map pack + reviews</div>
-                  </div>
-                  <div class="kpi">
-                    <div class="label">Monitors</div>
-                    <div class="value" id="kpiMonitors">0</div>
-                    <div class="hint"><span id="kpiUpDown">0 up • 0 down</span></div>
-                  </div>
-
-                  <div class="kpi kpiWide">
-                    <div class="chartWrap">
-                      <div class="chartHead">
-                        <b>SEO Performance</b>
-                        <div class="tabs">
-                          <span class="subtle" style="letter-spacing:.1em;text-transform:none;color:var(--muted)">Last <span class="rangeTxt">30</span> days</span>
-                          <span class="tab">active</span>
-                          <span style="opacity:.7">incidents</span>
-                        </div>
-                      </div>
-                      <canvas id="seoChart" width="900" height="240"></canvas>
-                    </div>
-                  </div>
-                </div>
-
-                <div style="height:12px"></div>
-
-                <div class="cardTitle" style="margin-bottom:10px">
-                  <div>
-                    <div class="subtle">RECOMMENDED ACTIONS</div>
-                  </div>
-                  <button class="btn btnSmall btnSmallPrimary" id="btnRunAudit">Run Audit</button>
-                </div>
-
-                <div class="actionRow">
-                  <div>
-                    <b>Run a SEO audit to get recommendations</b>
-                    <div style="color:var(--muted);font-size:12px;margin-top:4px">Targets: title, meta description, H1, canonical, HTTPS, speed…</div>
-                  </div>
-                  <div class="metaRow">
-                    <span class="pill pillHigh">High</span>
-                    <span class="pill">Pending</span>
-                  </div>
-                </div>
-
-                <div style="height:12px"></div>
-
-                <div class="cardTitle" style="margin-bottom:10px">
-                  <div class="subtle">RECENT INCIDENTS</div>
-                  <button class="btnSmall btnSmallPrimary" id="btnIncidents">View all</button>
-                </div>
-
-                <div class="actionRow" style="justify-content:flex-start">
-                  <div style="color:var(--muted);font-weight:800">No incidents yet.</div>
-                </div>
+                <ul class="plan__list">
+                  <li>SEO audits: 30</li>
+                  <li>Monitors: 3</li>
+                  <li>PDF exports</li>
+                </ul>
               </div>
+              <button class="btn btn--soft plan__btn w100">Manage Subscription</button>
             </div>
 
-            <!-- Right column -->
-            <div class="col">
-              <div class="card">
-                <div class="cardTitle">
-                  <h3>Monitors</h3>
-                  <button class="btn btnPrimary" id="btnAddMonitor">Add Monitor</button>
+            <div class="plan plan--pro">
+              <div>
+                <div class="planTop">
+                  <div class="plan__name">Pro</div>
+                  <div><span class="plan__price">€79</span><span class="per">/mo</span></div>
                 </div>
-
-                <table class="table" aria-label="Monitors table">
-                  <thead>
-                    <tr>
-                      <th style="width:42%">URL</th>
-                      <th>Status</th>
-                      <th>Interval</th>
-                      <th>Last Checked</th>
-                      <th>Response Time</th>
-                      <th style="text-align:right"> </th>
-                    </tr>
-                  </thead>
-                  <tbody id="monitorsTbody">
-                    <tr>
-                      <td class="mono" colspan="6" style="color:var(--muted);font-weight:800">No monitors yet.</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div style="height:14px"></div>
-
-                <div class="cardTitle">
-                  <h3>Plans</h3>
-                  <button class="btn btnGhost" id="btnSeePlans">See plans</button>
-                </div>
-
-                <div class="plansGrid">
-                  <div class="plan" id="planStandard">
-                    <div class="planTop">
-                      <div>
-                        <div class="planName">Standard</div>
-                        <div style="color:var(--muted);font-weight:800;font-size:12px;margin-top:4px">Invoice</div>
-                      </div>
-                      <div style="text-align:right">
-                        <div class="price">€29 <span class="per">/mo</span></div>
-                      </div>
-                    </div>
-                    <ul class="list">
-                      <li><b>SEO audits:</b> 30</li>
-                      <li><b>Monitors:</b> 3</li>
-                      <li><b>PDF exports</b></li>
-                    </ul>
-                    <div class="planCta">
-                      <button class="ctaWide" data-plan="standard">Manage Subscription</button>
-                    </div>
-                  </div>
-
-                  <div class="plan planPro" id="planPro">
-                    <div class="planTop">
-                      <div>
-                        <div class="planName">Pro</div>
-                        <div class="trialPill">Free trial 14 days</div>
-                      </div>
-                      <div style="text-align:right">
-                        <div class="price">€79 <span class="per">/mo</span></div>
-                      </div>
-                    </div>
-                    <ul class="list">
-                      <li><b>SEO audits:</b> 300</li>
-                      <li><b>Monitors:</b> 50</li>
-                      <li><b>PDF exports</b></li>
-                      <li><b>Email alerts</b></li>
-                    </ul>
-                    <div class="planCta">
-                      <button class="ctaWide ctaPro" data-plan="pro">Upgrade Subscription</button>
-                    </div>
-                  </div>
-
-                  <div class="plan" id="planUltra">
-                    <div class="planTop">
-                      <div>
-                        <div class="planName">Ultra</div>
-                        <div style="color:var(--muted);font-weight:800;font-size:12px;margin-top:4px">Status</div>
-                      </div>
-                      <div style="text-align:right">
-                        <div class="price">€149 <span class="per">/mo</span></div>
-                      </div>
-                    </div>
-                    <ul class="list">
-                      <li><b>SEO audits:</b> 2000</li>
-                      <li><b>Monitors:</b> 300</li>
-                      <li><b>Team + Reports</b></li>
-                    </ul>
-                    <div class="planCta">
-                      <button class="ctaWide" data-plan="ultra">Update Payment Method</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div style="margin-top:10px;color:var(--muted);font-size:12px;font-weight:800">
-                  Note : ces boutons ouvrent Stripe checkout/portal (selon ton backend).
-                </div>
+                <span class="trialBadge">Free trial 14 days</span>
+                <ul class="plan__list">
+                  <li>SEO audits: 300</li>
+                  <li>Monitors: 50</li>
+                  <li>PDF exports</li>
+                  <li>Email alerts</li>
+                </ul>
               </div>
+              <button class="btn btn--primary plan__btn w100">Upgrade Subscription</button>
             </div>
 
-          </div>
-        </section>
-
-        <!-- AUDITS -->
-        <section class="section" id="section-audits">
-          <div class="card">
-            <div class="cardTitle">
-              <h3>Audits</h3>
-              <button class="btn btnPrimary" id="btnRunAudit2">Run Audit</button>
-            </div>
-            <div style="color:var(--muted);font-weight:800;margin-bottom:10px">
-              URL à auditer (http/https)
-            </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <input id="auditUrl" placeholder="https://example.com"
-                     style="flex:1;min-width:240px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.85);font-weight:700;outline:none" />
-              <button class="btn btnPrimary" id="btnAuditGo">Run</button>
-            </div>
-            <div style="height:14px"></div>
-            <div class="chartWrap" id="auditResult" style="display:none">
-              <b>Résultat</b>
-              <div style="margin-top:8px;color:var(--muted);font-weight:800" id="auditSummary">—</div>
-            </div>
-            <div style="height:14px"></div>
-            <table class="table" aria-label="Audits table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>URL</th>
-                  <th>Status</th>
-                  <th>Score</th>
-                  <th>Summary</th>
-                </tr>
-              </thead>
-              <tbody id="auditsTbody">
-                <tr><td colspan="5" style="color:var(--muted);font-weight:800">No audits yet.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- MONITORS -->
-        <section class="section" id="section-monitors">
-          <div class="card">
-            <div class="cardTitle">
-              <h3>Monitors</h3>
-              <button class="btn btnPrimary" id="btnAddMonitor2">Add Monitor</button>
-            </div>
-
-            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-              <input id="monitorUrl" placeholder="https://example.com"
-                     style="flex:1;min-width:240px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.85);font-weight:700;outline:none" />
-              <input id="monitorInterval" type="number" min="5" value="60"
-                     style="width:140px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.85);font-weight:800;outline:none" />
-              <button class="btn btnPrimary" id="btnCreateMonitor">Create</button>
-            </div>
-
-            <table class="table">
-              <thead>
-                <tr>
-                  <th style="width:42%">URL</th>
-                  <th>Status</th>
-                  <th>Interval</th>
-                  <th>Last Checked</th>
-                  <th style="text-align:right"></th>
-                </tr>
-              </thead>
-              <tbody id="monitorsTbody2">
-                <tr><td colspan="5" style="color:var(--muted);font-weight:800">No monitors yet.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- LOCAL SEO -->
-        <section class="section" id="section-local">
-          <div class="card">
-            <div class="cardTitle"><h3>Local SEO</h3></div>
-            <div style="color:var(--muted);font-weight:800">Placeholder (à brancher plus tard).</div>
-          </div>
-        </section>
-
-        <!-- COMPETITORS -->
-        <section class="section" id="section-competitors">
-          <div class="card">
-            <div class="cardTitle"><h3>Competitors</h3></div>
-            <div style="color:var(--muted);font-weight:800">Placeholder (à brancher plus tard).</div>
-          </div>
-        </section>
-
-        <!-- REPORTS -->
-        <section class="section" id="section-reports">
-          <div class="card">
-            <div class="cardTitle"><h3>Reports (Ultra)</h3></div>
-            <div style="color:var(--muted);font-weight:800">(Placeholder) — Exports PDF mensuels, rapport monitoring, etc.</div>
-          </div>
-        </section>
-
-        <!-- BILLING -->
-        <section class="section" id="section-billing">
-          <div class="card">
-            <div class="cardTitle"><h3>Billing</h3></div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <button class="btn btnPrimary" id="btnPortal2">Open Billing Portal</button>
-              <button class="btn" id="btnCheckoutPro" data-plan="pro">Checkout Pro</button>
-              <button class="btn" id="btnCheckoutUltra" data-plan="ultra">Checkout Ultra</button>
+            <div class="plan">
+              <div>
+                <div class="planTop">
+                  <div class="plan__name">Ultra</div>
+                  <div><span class="plan__price">€149</span><span class="per">/mo</span></div>
+                </div>
+                <ul class="plan__list">
+                  <li>SEO audits: 2000</li>
+                  <li>Monitors: 300</li>
+                  <li>Team + Reports</li>
+                </ul>
+              </div>
+              <button class="btn btn--soft plan__btn w100">Update Payment Method</button>
             </div>
           </div>
-        </section>
 
-        <!-- SETTINGS -->
-        <section class="section" id="section-settings">
-          <div class="card">
-            <div class="cardTitle"><h3>Settings</h3></div>
-            <div style="color:var(--muted);font-weight:800;margin-bottom:10px">
-              Alert recipients / emails (branché à /api/org/monitor-settings)
-            </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <select id="alertRecipients"
-                      style="padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.85);font-weight:800;outline:none">
-                <option value="all">All users (org)</option>
-                <option value="owner">Owner only</option>
-              </select>
-              <input id="alertExtraEmails" placeholder="emails en plus, séparés par virgules"
-                     style="flex:1;min-width:240px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.85);font-weight:700;outline:none" />
-              <button class="btn btnPrimary" id="btnSaveSettings">Save</button>
-            </div>
-            <div style="margin-top:10px;color:var(--muted);font-weight:800" id="settingsMsg"></div>
+          <div style="margin-top:12px;color:#64748b;font-weight:800">
+            Note : ces boutons ouvrent Stripe checkout/portal (selon ton backend).
           </div>
-        </section>
-
+        </div>
       </div>
-    </main>
-  </div>
+    </section>
+  </main>
 
   <script>
-    // =========================
-    // Helpers
-    // =========================
-    const $ = (s, r=document) => r.querySelector(s);
-    const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+    // ===== Mobile drawer =====
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('overlay');
+    const btnMenu = document.getElementById('btnMenu');
 
-    function getToken(){
-      return localStorage.getItem("fp_token") || localStorage.getItem("token") || "";
+    function openSidebar(){
+      sidebar.classList.add('is-open');
+      overlay.classList.add('show');
     }
-    function setActiveNav(section){
-      const navs = [$("#nav"), $("#navMobile")].filter(Boolean);
-      for(const nav of navs){
-        $$(".nav a", nav).forEach(a => a.classList.toggle("active", a.dataset.section === section));
-      }
-      const label = section.toUpperCase();
-      $("#pageLabel").textContent = label === "LOCAL" ? "LOCAL SEO" : label;
-    }
-    function showSection(section){
-      $$(".section").forEach(s => s.classList.remove("active"));
-      const el = $("#section-" + section);
-      if(el) el.classList.add("active");
-      setActiveNav(section);
-      window.scrollTo({top:0, behavior:"instant"});
+    function closeSidebar(){
+      sidebar.classList.remove('is-open');
+      overlay.classList.remove('show');
     }
 
-    function fmtDate(d){
-      if(!d) return "—";
-      try{
-        return new Date(d).toLocaleString("fr-FR", { day:"2-digit", month:"2-digit", year:"2-digit", hour:"2-digit", minute:"2-digit" });
-      }catch{return "—"}
+    if(btnMenu){
+      btnMenu.addEventListener('click', openSidebar);
     }
+    overlay.addEventListener('click', closeSidebar);
 
-    function badgeForStatus(st){
-      const s = String(st||"unknown").toLowerCase();
-      if(s==="up") return `<span class="badge bUp">Up</span>`;
-      if(s==="down") return `<span class="badge bDown">Down</span>`;
-      return `<span class="badge bUnknown">Unknown</span>`;
-    }
-
-    // =========================
-    // Mobile drawer
-    // =========================
-    const drawer = $("#drawer");
-    const overlay = $("#drawerOverlay");
-    function openDrawer(){
-      drawer.classList.add("open");
-      overlay.classList.add("open");
-    }
-    function closeDrawer(){
-      drawer.classList.remove("open");
-      overlay.classList.remove("open");
-    }
-    $("#btnOpenDrawer")?.addEventListener("click", openDrawer);
-    $("#btnCloseDrawer")?.addEventListener("click", closeDrawer);
-    overlay?.addEventListener("click", closeDrawer);
-
-    // =========================
-    // Navigation clicks
-    // =========================
-    function bindNav(navEl){
-      if(!navEl) return;
-      navEl.addEventListener("click", (e)=>{
-        const a = e.target.closest("a[data-section]");
-        if(!a) return;
-        e.preventDefault();
-        const sec = a.dataset.section;
-        showSection(sec);
-        closeDrawer();
-        history.replaceState(null, "", "#" + sec);
-      });
-    }
-    bindNav($("#nav"));
-    bindNav($("#navMobile"));
-
-    // Hash initial
-    const hash = (location.hash || "#overview").replace("#","");
-    showSection(hash);
-
-    // =========================
-    // Chart (simple line)
-    // =========================
-    function drawChart(){
-      const c = $("#seoChart");
-      if(!c) return;
-      const ctx = c.getContext("2d");
-      const W = c.width, H = c.height;
-
-      const data = [18,18,19,20,19,17,14,12,10,9,10,12,14,16,18,19,21,22,23];
-      const max = Math.max(...data), min = Math.min(...data);
-
-      ctx.clearRect(0,0,W,H);
-
-      // grid
-      ctx.globalAlpha = 0.16;
-      ctx.strokeStyle = "#0b1220";
-      ctx.lineWidth = 1;
-      for(let i=1;i<=4;i++){
-        const y = (H/5)*i;
-        ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-
-      // area
-      const padX = 24, padY = 22;
-      const xStep = (W - padX*2) / (data.length - 1);
-
-      function yOf(v){
-        const t = (v - min) / (max - min || 1);
-        return (H - padY) - t * (H - padY*2);
-      }
-
-      ctx.beginPath();
-      ctx.moveTo(padX, yOf(data[0]));
-      for(let i=1;i<data.length;i++){
-        ctx.lineTo(padX + xStep*i, yOf(data[i]));
-      }
-      // stroke
-      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--blue").trim() || "#1f5eff";
-      ctx.lineWidth = 3;
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
-      ctx.stroke();
-
-      // fill under
-      ctx.lineTo(padX + xStep*(data.length-1), H - padY);
-      ctx.lineTo(padX, H - padY);
-      ctx.closePath();
-      ctx.globalAlpha = 0.10;
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-
-      // points
-      ctx.fillStyle = ctx.strokeStyle;
-      for(let i=0;i<data.length;i+=4){
-        ctx.beginPath();
-        ctx.arc(padX + xStep*i, yOf(data[i]), 4, 0, Math.PI*2);
-        ctx.fill();
-      }
-    }
-    drawChart();
-    addEventListener("resize", ()=>drawChart());
-
-    // =========================
-    // API
-    // =========================
-    async function api(path, opts={}){
-      const token = getToken();
-      const headers = Object.assign({}, opts.headers || {});
-      if(token) headers["Authorization"] = "Bearer " + token;
-
-      const res = await fetch(path, Object.assign({}, opts, { headers }));
-      const txt = await res.text();
-      let data = {};
-      try{ data = txt ? JSON.parse(txt) : {}; }catch{ data = { raw: txt }; }
-
-      if(!res.ok){
-        const msg = data?.error || ("HTTP " + res.status);
-        throw new Error(msg);
-      }
-      return data;
-    }
-
-    async function loadMe(){
-      const me = await api("/api/me");
-      const orgName = me?.org?.name || me?.companyName || "—";
-      $("#helloTitle").textContent = "Bonjour, " + (orgName || "—");
-      $("#orgNameInline").textContent = orgName || "—";
-
-      const plan = (me?.plan || "—").toUpperCase();
-      const role = (me?.role || "—");
-      const org = (me?.org?.name || me?.org?.id || "—");
-      const trial = me?.trialEndsAt ? fmtDate(me.trialEndsAt) : "—";
-
-      $("#accPlan").textContent = plan;
-      $("#accOrg").textContent = org;
-      $("#accRole").textContent = role;
-      $("#accTrial").textContent = trial;
-
-      $("#accPlanM").textContent = plan;
-      $("#accOrgM").textContent = org;
-      $("#accRoleM").textContent = role;
-      $("#accTrialM").textContent = trial;
-
-      // avatar
-      const initials = (orgName || "FP").slice(0,2).toUpperCase();
-      $("#avatar").textContent = initials;
-      $("#avatarM").textContent = initials;
-
-      // KPI SEO: utilise usage audits comme placeholder si pas de score global
-      const usedAudits = me?.usage?.audits?.used ?? null;
-      $("#kpiSeo").textContent = usedAudits === null ? "—" : String(usedAudits);
-
-      return me;
-    }
-
-    function renderMonitors(list, tbody){
-      if(!tbody) return;
-      if(!Array.isArray(list) || !list.length){
-        tbody.innerHTML = `<tr><td colspan="6" style="color:var(--muted);font-weight:800">No monitors yet.</td></tr>`;
-        return;
-      }
-      tbody.innerHTML = list.map(m=>{
-        const url = m.url || "—";
-        const st = m.lastStatus || "unknown";
-        const interval = (m.intervalMinutes || 60) + " min";
-        const last = m.lastCheckedAt ? fmtDate(m.lastCheckedAt) : "—";
-        const resp = "—";
-        return `
-          <tr>
-            <td class="mono" title="${url}">${url}</td>
-            <td>${badgeForStatus(st)}</td>
-            <td style="color:var(--muted);font-weight:800">${interval}</td>
-            <td style="color:var(--muted);font-weight:800">${last}</td>
-            <td style="color:var(--muted);font-weight:800">${resp}</td>
-            <td style="text-align:right">
-              <div class="rowActions">
-                <button class="btnSmall btnSmallPrimary" data-run="${m._id}">Run</button>
-                <button class="btnSmall" data-toggle="${m._id}" data-active="${m.active ? "1":"0"}">${m.active ? "Pause":"Resume"}</button>
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join("");
-
-      // bind actions
-      tbody.querySelectorAll("[data-run]").forEach(btn=>{
-        btn.addEventListener("click", async ()=>{
-          const id = btn.getAttribute("data-run");
-          btn.disabled = true;
-          try{
-            await api(`/api/monitors/${id}/run`, { method:"POST" });
-            await loadAll();
-          }catch(e){ alert("Run monitor: " + e.message); }
-          finally{ btn.disabled = false; }
-        });
-      });
-
-      tbody.querySelectorAll("[data-toggle]").forEach(btn=>{
-        btn.addEventListener("click", async ()=>{
-          const id = btn.getAttribute("data-toggle");
-          const active = btn.getAttribute("data-active")==="1";
-          btn.disabled = true;
-          try{
-            await api(`/api/monitors/${id}`, {
-              method:"PATCH",
-              headers: { "Content-Type":"application/json" },
-              body: JSON.stringify({ active: !active })
-            });
-            await loadAll();
-          }catch(e){ alert("Toggle monitor: " + e.message); }
-          finally{ btn.disabled = false; }
-        });
-      });
-    }
-
-    async function loadMonitors(){
-      const data = await api("/api/monitors");
-      const list = data?.monitors || [];
-      renderMonitors(list, $("#monitorsTbody"));
-      renderMonitors(list, $("#monitorsTbody2"));
-
-      // KPI count + up/down
-      const up = list.filter(m=>String(m.lastStatus).toLowerCase()==="up").length;
-      const down = list.filter(m=>String(m.lastStatus).toLowerCase()==="down").length;
-      $("#kpiMonitors").textContent = String(list.length);
-      $("#kpiUpDown").textContent = `${up} up • ${down} down`;
-    }
-
-    async function loadAudits(){
-      const data = await api("/api/audits");
-      const list = data?.audits || [];
-      const tb = $("#auditsTbody");
-      if(!tb) return;
-      if(!list.length){
-        tb.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-weight:800">No audits yet.</td></tr>`;
-        return;
-      }
-      tb.innerHTML = list.slice(0,50).map(a=>{
-        return `
-          <tr>
-            <td style="color:var(--muted);font-weight:800">${fmtDate(a.createdAt)}</td>
-            <td class="mono">${a.url || "—"}</td>
-            <td style="font-weight:900">${a.status || "—"}</td>
-            <td style="font-weight:900">${(a.score ?? "—")}</td>
-            <td style="color:var(--muted);font-weight:800">${a.summary || ""}</td>
-          </tr>
-        `;
-      }).join("");
-    }
-
-    async function loadSettings(){
-      const r = await api("/api/org/monitor-settings");
-      const s = r?.settings || {};
-      $("#alertRecipients").value = (s.alertRecipients || "all");
-      $("#alertExtraEmails").value = Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "";
-      $("#settingsMsg").textContent = "";
-    }
-
-    async function loadAll(){
-      try{
-        $("#statusText").textContent = "Loading…";
-        await loadMe();
-        await Promise.allSettled([loadMonitors(), loadAudits(), loadSettings()]);
-        $("#statusText").textContent = "Dashboard à jour — OK";
-      }catch(e){
-        $("#statusText").textContent = "Erreur — " + e.message;
-      }
-    }
-
-    // =========================
-    // Buttons
-    // =========================
-    $("#btnRefresh")?.addEventListener("click", loadAll);
-
-    $("#btnExportAudits")?.addEventListener("click", ()=>{ location.href = "/api/export/audits.csv"; });
-    $("#btnExportMonitors")?.addEventListener("click", ()=>{ location.href = "/api/export/monitors.csv"; });
-
-    // Audit from overview
-    $("#btnRunAudit")?.addEventListener("click", ()=>showSection("audits"));
-    $("#btnRunAudit2")?.addEventListener("click", ()=>showSection("audits"));
-
-    // Audits run
-    $("#btnAuditGo")?.addEventListener("click", async ()=>{
-      const url = $("#auditUrl").value.trim();
-      if(!url) return alert("Mets une URL (https://...)");
-      $("#btnAuditGo").disabled = true;
-      try{
-        const r = await api("/api/audits/run", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ url })
-        });
-        $("#auditResult").style.display = "block";
-        $("#auditSummary").textContent = (r.summary || "OK") + (r.cached ? " (cached)" : "");
-        await loadAudits();
-      }catch(e){
-        alert("Audit: " + e.message);
-      }finally{
-        $("#btnAuditGo").disabled = false;
-      }
+    // Close on ESC
+    window.addEventListener('keydown', (e)=>{
+      if(e.key === 'Escape') closeSidebar();
     });
 
-    // Monitors create
-    async function createMonitor(){
-      const url = $("#monitorUrl").value.trim();
-      const intervalMinutes = Number($("#monitorInterval").value || 60);
-      if(!url) return alert("Mets une URL (https://...)");
-      if(!Number.isFinite(intervalMinutes) || intervalMinutes < 5) return alert("Interval min = 5");
-      $("#btnCreateMonitor").disabled = true;
-      try{
-        await api("/api/monitors", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ url, intervalMinutes })
-        });
-        $("#monitorUrl").value = "";
-        await loadMonitors();
-        showSection("monitors");
-      }catch(e){
-        alert("Create monitor: " + e.message);
-      }finally{
-        $("#btnCreateMonitor").disabled = false;
-      }
-    }
-    $("#btnCreateMonitor")?.addEventListener("click", createMonitor);
-    $("#btnAddMonitor")?.addEventListener("click", ()=>showSection("monitors"));
-    $("#btnAddMonitor2")?.addEventListener("click", ()=>showSection("monitors"));
-
-    // Stripe checkout from plan buttons
-    $$("[data-plan]").forEach(btn=>{
-      btn.addEventListener("click", async ()=>{
-        const plan = btn.getAttribute("data-plan");
-        btn.disabled = true;
-        try{
-          const r = await api("/api/stripe/checkout", {
-            method:"POST",
-            headers:{ "Content-Type":"application/json" },
-            body: JSON.stringify({ plan })
-          });
-          if(r?.url) location.href = r.url;
-        }catch(e){
-          alert("Checkout: " + e.message);
-        }finally{ btn.disabled = false; }
+    // ===== Nav active state =====
+    const navItems = document.querySelectorAll('.nav__item');
+    navItems.forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        navItems.forEach(b=>b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+        // Sur mobile, ferme le drawer après click
+        if(window.matchMedia('(max-width: 920px)').matches) closeSidebar();
       });
     });
 
-    // Billing portal
-    async function openPortal(){
-      try{
-        const r = await api("/api/stripe/portal", { method:"POST" });
-        if(r?.url) location.href = r.url;
-      }catch(e){
-        alert("Portal: " + e.message);
-      }
-    }
-    $("#btnPortal")?.addEventListener("click", openPortal);
-    $("#btnPortalM")?.addEventListener("click", openPortal);
-    $("#btnPortal2")?.addEventListener("click", openPortal);
-
-    // Settings save
-    $("#btnSaveSettings")?.addEventListener("click", async ()=>{
-      const alertRecipients = $("#alertRecipients").value;
-      const alertExtraEmails = $("#alertExtraEmails").value
-        .split(",")
-        .map(s=>s.trim())
-        .filter(Boolean);
-
-      $("#btnSaveSettings").disabled = true;
-      try{
-        await api("/api/org/monitor-settings", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ alertRecipients, alertExtraEmails })
-        });
-        $("#settingsMsg").textContent = "✅ Saved";
-      }catch(e){
-        $("#settingsMsg").textContent = "❌ " + e.message;
-      }finally{
-        $("#btnSaveSettings").disabled = false;
-      }
-    });
-
-    // Logout
-    function logout(){
-      localStorage.removeItem("fp_token");
-      localStorage.removeItem("token");
-      location.href = "/login.html";
-    }
-    $("#btnLogout")?.addEventListener("click", logout);
-    $("#btnLogoutM")?.addEventListener("click", logout);
-
-    // Range text
-    $("#rangeSelect")?.addEventListener("change", ()=>{
-      const v = $("#rangeSelect").value;
-      $("#rangeInline").textContent = v;
-      $$(".rangeTxt").forEach(x=>x.textContent = v);
-      drawChart();
-    });
-
-    // First load
-    loadAll();
+    // ===== Demo actions (à connecter à ton backend) =====
+    document.getElementById('btnRefresh').addEventListener('click', ()=>console.log('refresh'));
+    document.getElementById('btnExportAudits').addEventListener('click', ()=>console.log('export audits'));
+    document.getElementById('btnExportMonitors').addEventListener('click', ()=>console.log('export monitors'));
+    document.getElementById('btnAddMonitor').addEventListener('click', ()=>console.log('add monitor'));
+    document.getElementById('btnPortal').addEventListener('click', ()=>console.log('stripe portal'));
+    document.getElementById('btnLogout').addEventListener('click', ()=>console.log('logout'));
   </script>
 </body>
 </html>
