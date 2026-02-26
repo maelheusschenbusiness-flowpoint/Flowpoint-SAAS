@@ -1,387 +1,150 @@
-(() => {
-  const $ = (q) => document.querySelector(q);
-  const $$ = (q) => Array.from(document.querySelectorAll(q));
+/* dashboard.js — navigation + mobile drawer + mini chart (sans libs) */
 
-  // ----- Token -----
-  function getToken() {
-    return localStorage.getItem("fp_token") || localStorage.getItem("token") || "";
+(function(){
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("overlay");
+  const openSidebarBtn = document.getElementById("openSidebar");
+  const closeSidebarBtn = document.getElementById("closeSidebar");
+
+  const navItems = Array.from(document.querySelectorAll(".nav__item"));
+  const pages = Array.from(document.querySelectorAll(".page"));
+
+  function isMobile(){
+    return window.matchMedia("(max-width: 900px)").matches;
   }
 
-  function authHeaders() {
-    const t = getToken();
-    return t ? { Authorization: `Bearer ${t}` } : {};
+  function openSidebar(){
+    sidebar.classList.add("is-open");
+    overlay.hidden = false;
   }
 
-  function fmtDate(d) {
-    try {
-      const dt = new Date(d);
-      if (Number.isNaN(dt.getTime())) return "—";
-      return dt.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
-    } catch {
-      return "—";
-    }
+  function closeSidebar(){
+    sidebar.classList.remove("is-open");
+    overlay.hidden = true;
   }
 
-  async function api(path, opts = {}) {
-    const res = await fetch(path, {
-      ...opts,
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(),
-        ...(opts.headers || {}),
-      },
-    });
+  if(openSidebarBtn) openSidebarBtn.addEventListener("click", openSidebar);
+  if(closeSidebarBtn) closeSidebarBtn.addEventListener("click", closeSidebar);
+  if(overlay) overlay.addEventListener("click", closeSidebar);
 
-    let data = null;
-    try { data = await res.json(); } catch {}
-    if (!res.ok) {
-      const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`;
-      throw new Error(msg);
-    }
-    return data;
+  // Route switch
+  function setRoute(route){
+    navItems.forEach(btn => btn.classList.toggle("is-active", btn.dataset.route === route));
+    pages.forEach(p => p.classList.toggle("is-active", p.dataset.page === route));
+
+    // scroll top main on route change (nice)
+    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    if(isMobile()) closeSidebar();
   }
 
-  // ----- Sidebar mobile -----
-  const sidebar = $("#sidebar");
-  const overlay = $("#overlay");
-  const openBtn = $("#openSidebar");
-  const closeBtn = $("#closeSidebar");
-
-  function openSidebar() {
-    sidebar.classList.add("isOpen");
-    overlay.classList.add("isOpen");
-    overlay.setAttribute("aria-hidden", "false");
-  }
-  function closeSidebar() {
-    sidebar.classList.remove("isOpen");
-    overlay.classList.remove("isOpen");
-    overlay.setAttribute("aria-hidden", "true");
-  }
-
-  openBtn?.addEventListener("click", openSidebar);
-  closeBtn?.addEventListener("click", closeSidebar);
-  overlay?.addEventListener("click", closeSidebar);
-
-  // ----- View switching -----
-  function showView(name) {
-    $$(".navItem").forEach(b => b.classList.toggle("isActive", b.dataset.view === name));
-    $$(".view").forEach(v => v.classList.remove("isShown"));
-    const target = $(`#view-${name}`);
-    if (target) target.classList.add("isShown");
-    closeSidebar();
-  }
-
-  $$(".navItem").forEach(btn => {
-    btn.addEventListener("click", () => showView(btn.dataset.view));
+  navItems.forEach(btn => {
+    btn.addEventListener("click", () => setRoute(btn.dataset.route));
   });
 
-  // ----- Chart (stable mock but clean) -----
-  function setChart(points) {
-    // points: [0..100]
-    const W = 600, H = 180;
-    const padX = 20, padY = 18;
-    const innerW = W - padX * 2;
-    const innerH = H - padY * 2;
+  // Default route
+  setRoute("overview");
 
-    const xs = points.map((_, i) => padX + (innerW * (i / (points.length - 1))));
-    const ys = points.map(v => {
-      const vv = Math.max(0, Math.min(100, v));
-      return padY + innerH * (1 - vv / 100);
-    });
+  // “Fake” dropdown for range (simple)
+  const rangeBtn = document.getElementById("rangeBtn");
+  const rangeLabel = document.getElementById("rangeLabel");
+  const ranges = ["Last 30 days", "Last 7 days", "Today"];
 
-    const line = xs.map((x, i) => `${i === 0 ? "M" : "L"} ${x.toFixed(2)} ${ys[i].toFixed(2)}`).join(" ");
-    const area = `${line} L ${xs[xs.length - 1].toFixed(2)} ${(H - padY).toFixed(2)} L ${xs[0].toFixed(2)} ${(H - padY).toFixed(2)} Z`;
-
-    $("#chartLine").setAttribute("d", line);
-    $("#chartArea").setAttribute("d", area);
-
-    const dots = $("#chartDots");
-    dots.innerHTML = "";
-    xs.forEach((x, i) => {
-      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      c.setAttribute("cx", x);
-      c.setAttribute("cy", ys[i]);
-      c.setAttribute("r", 4);
-      c.setAttribute("class", "chartDot");
-      dots.appendChild(c);
+  if(rangeBtn && rangeLabel){
+    rangeBtn.addEventListener("click", () => {
+      const current = rangeLabel.textContent.trim();
+      const idx = ranges.indexOf(current);
+      const next = ranges[(idx + 1) % ranges.length];
+      rangeLabel.textContent = next;
     });
   }
 
-  // ----- Render -----
-  function setStatus(ok) {
-    const dot = $("#statusDot");
-    const txt = $("#statusText");
-    if (!dot || !txt) return;
-    if (ok) {
-      dot.style.background = "var(--green)";
-      dot.style.boxShadow = "0 0 0 5px rgba(22,163,74,.12)";
-      txt.textContent = "Dashboard à jour — OK";
-    } else {
-      dot.style.background = "#EF4444";
-      dot.style.boxShadow = "0 0 0 5px rgba(239,68,68,.12)";
-      txt.textContent = "Problème de chargement — vérifie le token / API";
-    }
-  }
+  // Buttons: prevent “nothing happens” feeling (tu brancheras tes vraies routes ensuite)
+  const toast = (msg) => {
+    console.log(msg);
+    const s = document.getElementById("statusText");
+    if(s) s.textContent = msg;
+    setTimeout(() => {
+      if(s) s.textContent = "Dashboard à jour — OK";
+    }, 1200);
+  };
 
-  function planToLabel(p) {
-    const x = String(p || "").toLowerCase();
-    if (x === "standard") return "STANDARD";
-    if (x === "pro") return "PRO";
-    if (x === "ultra") return "ULTRA";
-    return "—";
-  }
+  const bind = (id, msg) => {
+    const el = document.getElementById(id);
+    if(el) el.addEventListener("click", () => toast(msg));
+  };
 
-  function safeText(el, v) {
-    if (!el) return;
-    el.textContent = (v === null || v === undefined || v === "") ? "—" : String(v);
-  }
+  bind("refreshBtn", "Refresh…");
+  bind("exportAuditsBtn", "Export Audits CSV…");
+  bind("exportMonitorsBtn", "Export Monitors CSV…");
+  bind("runAuditBtn", "Run audit…");
+  bind("addMonitorBtn", "Add monitor…");
+  bind("seePlansBtn", "See plans…");
+  bind("billingPortalBtn", "Billing portal…");
+  bind("logoutBtn", "Logout…");
+  bind("viewAllIncidentsBtn", "View incidents…");
 
-  function statusBadge(status) {
-    const s = String(status || "unknown").toLowerCase();
-    if (s === "up") return `<span class="badge badgeUp">● Up</span>`;
-    if (s === "down") return `<span class="badge badgeDown">● Down</span>`;
-    return `<span class="badge badgeUnk">Unknown</span>`;
-  }
+  // Simple chart (canvas) — vibe comme ton exemple
+  function drawChart(){
+    const canvas = document.getElementById("seoChart");
+    if(!canvas) return;
+    const ctx = canvas.getContext("2d");
 
-  async function loadMe() {
-    const me = await api("/api/me");
-    safeText($("#userEmail"), me.email || "—");
-    safeText($("#kvPlan"), planToLabel(me.plan));
-    safeText($("#kvOrg"), me.org?.name || "—");
-    safeText($("#kvRole"), me.role || "—");
+    // Responsive canvas
+    const parent = canvas.parentElement;
+    const w = parent.clientWidth - 6;
+    canvas.width = Math.max(320, w);
+    canvas.height = 140;
 
-    const t = me.trialEndsAt ? new Date(me.trialEndsAt) : null;
-    safeText($("#kvTrial"), t ? t.toLocaleDateString("fr-FR") : "—");
+    const data = [18, 22, 28, 25, 20, 35, 30, 24, 28, 22, 30];
+    const pad = 16;
+    const W = canvas.width, H = canvas.height;
+    const min = Math.min(...data), max = Math.max(...data);
+    const xStep = (W - pad*2) / (data.length - 1);
 
-    // Hello block
-    const orgName = me.org?.name || me.companyName || "—";
-    $("#helloTitle").textContent = `Bonjour, ${orgName}`;
-    $("#helloSub").textContent = "SEO · Monitoring · Reports · Billing";
+    const y = (v) => {
+      const t = (v - min) / (max - min || 1);
+      return (H - pad) - t * (H - pad*2);
+    };
 
-    return me;
-  }
+    ctx.clearRect(0,0,W,H);
 
-  async function loadAudits() {
-    const out = await api("/api/audits");
-    const list = out.audits || [];
-    const body = $("#auditsBody");
-    if (!body) return;
-
-    if (!list.length) {
-      body.innerHTML = `<tr><td colspan="5" class="tdMuted">No audits yet.</td></tr>`;
-      return;
+    // grid lines
+    ctx.strokeStyle = "rgba(148,163,184,.55)";
+    ctx.lineWidth = 1;
+    for(let i=0;i<3;i++){
+      const yy = pad + i*(H-pad*2)/2;
+      ctx.beginPath();
+      ctx.moveTo(pad, yy);
+      ctx.lineTo(W-pad, yy);
+      ctx.stroke();
     }
 
-    body.innerHTML = list.slice(0, 50).map(a => {
-      const status = (a.status === "ok")
-        ? `<span class="badge badgeUp">● OK</span>`
-        : `<span class="badge badgeDown">● Error</span>`;
-      return `
-        <tr>
-          <td>${fmtDate(a.createdAt)}</td>
-          <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.url || "—"}</td>
-          <td>${status}</td>
-          <td>${(a.score ?? "—")}</td>
-          <td style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.summary || "—"}</td>
-        </tr>
-      `;
-    }).join("");
-  }
-
-  async function loadMonitors() {
-    const out = await api("/api/monitors");
-    const list = out.monitors || [];
-
-    const body = $("#monitorsBody");
-    const mini = $("#monitorsMiniBody");
-
-    const kpiMon = $("#kpiMonitors");
-    const kpiMonSub = $("#kpiMonitorsSub");
-
-    safeText(kpiMon, list.length);
-    safeText(kpiMonSub, `${list.filter(m => (m.lastStatus || "unknown") === "up").length} up · ${list.filter(m => (m.lastStatus || "unknown") === "down").length} down`);
-
-    if (body) {
-      if (!list.length) {
-        body.innerHTML = `<tr><td colspan="6" class="tdMuted">No monitors yet.</td></tr>`;
-      } else {
-        body.innerHTML = list.map(m => `
-          <tr>
-            <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.url || "—"}</td>
-            <td>${statusBadge(m.lastStatus)}</td>
-            <td>${m.intervalMinutes || 60} min</td>
-            <td>${m.lastCheckedAt ? fmtDate(m.lastCheckedAt) : "—"}</td>
-            <td>${m.lastStatus && m.lastStatus !== "unknown" ? "—" : "—"}</td>
-            <td>
-              <div class="rowBtns">
-                <button class="btn btnGhost btnMini" data-run="${m._id}">Run</button>
-                <button class="btn btnGhost btnMini" data-toggle="${m._id}" data-active="${m.active ? "1" : "0"}">${m.active ? "Pause" : "Resume"}</button>
-              </div>
-            </td>
-          </tr>
-        `).join("");
-      }
-    }
-
-    if (mini) {
-      if (!list.length) {
-        mini.innerHTML = `<tr><td colspan="5" class="tdMuted">No monitors yet.</td></tr>`;
-      } else {
-        mini.innerHTML = list.slice(0, 6).map(m => `
-          <tr>
-            <td style="max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.url || "—"}</td>
-            <td>${statusBadge(m.lastStatus)}</td>
-            <td>${m.intervalMinutes || 60} min</td>
-            <td>${m.lastCheckedAt ? "—" : "—"}</td>
-            <td>${"—"}</td>
-          </tr>
-        `).join("");
-      }
-    }
-
-    // Bind row actions
-    $$("#monitorsBody [data-run]").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const id = btn.getAttribute("data-run");
-        btn.disabled = true;
-        try {
-          await api(`/api/monitors/${id}/run`, { method: "POST" });
-          await loadMonitors();
-        } catch (e) {
-          alert(`Run monitor: ${e.message}`);
-        } finally {
-          btn.disabled = false;
-        }
-      });
+    // area fill
+    ctx.beginPath();
+    ctx.moveTo(pad, y(data[0]));
+    data.forEach((v,i)=>{
+      ctx.lineTo(pad + i*xStep, y(v));
     });
+    ctx.lineTo(pad + (data.length-1)*xStep, H-pad);
+    ctx.lineTo(pad, H-pad);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(37,99,235,.10)";
+    ctx.fill();
 
-    $$("#monitorsBody [data-toggle]").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const id = btn.getAttribute("data-toggle");
-        const isActive = btn.getAttribute("data-active") === "1";
-        btn.disabled = true;
-        try {
-          await api(`/api/monitors/${id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ active: !isActive })
-          });
-          await loadMonitors();
-        } catch (e) {
-          alert(`Toggle monitor: ${e.message}`);
-        } finally {
-          btn.disabled = false;
-        }
-      });
+    // line
+    ctx.beginPath();
+    ctx.moveTo(pad, y(data[0]));
+    data.forEach((v,i)=>{
+      ctx.lineTo(pad + i*xStep, y(v));
     });
-
-    // Overview KPIs
-    safeText($("#kpiIncidents"), 0);
-    safeText($("#kpiLocal"), "+12%");
-    safeText($("#kpiSeo"), "—");
+    ctx.strokeStyle = "rgba(37,99,235,.95)";
+    ctx.lineWidth = 3;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.stroke();
   }
 
-  async function refreshAll() {
-    try {
-      setStatus(true);
-      const me = await loadMe();
-
-      // range affects only labels for now (stable)
-      const range = $("#rangeSelect").value;
-      $("#chartMeta").textContent = `Last ${range} days`;
-
-      // Nice looking chart points
-      const base = range === "7" ? [55,58,57,60,62,61,64] :
-                   range === "90" ? [58,60,62,61,59,55,50,46,40,44,49,52,57,60,62] :
-                   [60,60,61,62,61,58,52,45,40,43,48,52,57,62,66];
-
-      setChart(base);
-
-      await Promise.allSettled([loadAudits(), loadMonitors()]);
-      setStatus(true);
-
-      // Show current plan highlight
-      const plan = String(me.plan || "").toLowerCase();
-      const proCard = $("#planPro");
-      if (proCard) {
-        proCard.classList.toggle("planActive", plan === "pro");
-      }
-    } catch (e) {
-      setStatus(false);
-      console.log(e);
-      alert(`Erreur: ${e.message}\n\nVérifie que tu es connecté (token) et que /api/me répond.`);
-    }
-  }
-
-  // ----- Buttons -----
-  $("#btnRefresh")?.addEventListener("click", refreshAll);
-  $("#rangeSelect")?.addEventListener("change", refreshAll);
-
-  $("#btnExportAudits")?.addEventListener("click", () => {
-    window.location.href = "/api/export/audits.csv";
-  });
-  $("#btnExportMonitors")?.addEventListener("click", () => {
-    window.location.href = "/api/export/monitors.csv";
-  });
-
-  $("#btnPortal")?.addEventListener("click", async () => {
-    try {
-      const out = await api("/api/stripe/portal", { method: "POST", body: JSON.stringify({}) });
-      if (out.url) window.location.href = out.url;
-    } catch (e) {
-      alert(`Portal: ${e.message}`);
-    }
-  });
-
-  $("#btnLogout")?.addEventListener("click", () => {
-    localStorage.removeItem("fp_token");
-    localStorage.removeItem("token");
-    window.location.href = "/login.html";
-  });
-
-  $("#btnAddMonitor")?.addEventListener("click", async () => {
-    const url = $("#monitorUrl").value.trim();
-    const intervalMinutes = Number($("#monitorInterval").value || 60);
-    if (!/^https?:\/\//i.test(url)) return alert("URL invalide (http/https)");
-    try {
-      await api("/api/monitors", { method: "POST", body: JSON.stringify({ url, intervalMinutes }) });
-      $("#monitorUrl").value = "";
-      await loadMonitors();
-      showView("monitors");
-    } catch (e) {
-      alert(`Add monitor: ${e.message}`);
-    }
-  });
-
-  $("#btnAddMonitorQuick")?.addEventListener("click", () => showView("monitors"));
-
-  $("#btnRunAudit")?.addEventListener("click", async () => {
-    const url = $("#auditUrl").value.trim();
-    if (!/^https?:\/\//i.test(url)) return alert("URL invalide (http/https)");
-    try {
-      await api("/api/audits/run", { method: "POST", body: JSON.stringify({ url }) });
-      await loadAudits();
-      showView("audits");
-    } catch (e) {
-      alert(`Run audit: ${e.message}`);
-    }
-  });
-
-  $("#btnRunAuditTop")?.addEventListener("click", () => showView("audits"));
-
-  // Plans buttons (simple)
-  $("#btnSeePlans")?.addEventListener("click", () => showView("billing"));
-  $("#btnManageStandard")?.addEventListener("click", () => showView("billing"));
-  $("#btnUpgradePro")?.addEventListener("click", () => showView("billing"));
-  $("#btnUpdatePayment")?.addEventListener("click", () => showView("billing"));
-
-  // ----- Start -----
-  (async () => {
-    // If no token => go login (avoid broken UI)
-    if (!getToken()) {
-      alert("Tu n’es pas connecté (token manquant). Je te renvoie vers /login.html");
-      window.location.href = "/login.html";
-      return;
-    }
-    await refreshAll();
-  })();
+  window.addEventListener("resize", drawChart);
+  drawChart();
 })();
