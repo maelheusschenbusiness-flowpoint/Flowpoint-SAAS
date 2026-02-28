@@ -4,18 +4,39 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>FlowPoint AI — Connexion</title>
+
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+
   <style>
-    :root{--blue:#0052CC;--bg:#0b1220;--card:#111a2e;--text:#e5e7eb;--muted:#a3a3a3;--danger:#ff5a6a}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#070b14,#0b1220);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
-    .card{width:100%;max-width:520px;background:rgba(17,26,46,.92);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+    :root{
+      --bg:#0b1220;
+      --card:#111a2e;
+      --text:#e5e7eb;
+      --muted:#a3a3a3;
+      --primary:#0052CC;
+      --danger:#ff5a6a;
+      --ok:#2ee59d;
+    }
+    body{
+      margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:linear-gradient(180deg,#070b14,#0b1220);
+      color:var(--text);
+      min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;
+    }
+    .card{
+      width:100%;max-width:520px;background:rgba(17,26,46,.92);
+      border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;
+      box-shadow:0 20px 50px rgba(0,0,0,.35)
+    }
     .row{display:flex;align-items:center;gap:12px}
     .logo{width:44px;height:44px;border-radius:14px;background:rgba(0,82,204,.18);display:flex;align-items:center;justify-content:center}
-    .logo i{width:18px;height:18px;border-radius:6px;background:var(--blue);display:block}
+    .logo i{width:18px;height:18px;border-radius:6px;background:var(--primary);display:block}
     h1{margin:14px 0 6px;font-size:18px}
     p{margin:0;color:var(--muted);line-height:1.5}
     .msg{margin-top:14px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:var(--muted)}
-    .ok{color:#2ee59d}
-    .danger{color:var(--danger)}
+    .ok{color:var(--ok);font-weight:700}
+    .danger{color:var(--danger);font-weight:700}
     .small{margin-top:10px;font-size:12px;color:var(--muted)}
   </style>
 </head>
@@ -24,13 +45,13 @@
     <div class="row">
       <div class="logo"><i></i></div>
       <div>
-        <div style="font-weight:900">FlowPoint AI</div>
+        <div style="font-weight:800">FlowPoint AI</div>
         <div style="color:var(--muted);font-size:13px">Connexion sécurisée (sans mot de passe)</div>
       </div>
     </div>
 
     <h1>Connexion…</h1>
-    <p>Validation du lien. Merci de patienter.</p>
+    <p>Validation du lien.</p>
 
     <div id="msg" class="msg">Initialisation…</div>
     <div class="small">Si tu restes bloqué, retourne sur la page de connexion et demande un nouveau lien.</div>
@@ -39,7 +60,6 @@
   <script>
     (async function () {
       const TOKEN_KEY = "fp_token";
-
       const msg = document.getElementById("msg");
       const setMsg = (t, type) => {
         msg.textContent = t;
@@ -49,16 +69,11 @@
 
       const params = new URLSearchParams(location.search);
       const raw = params.get("token");
-
-      if (!raw) {
-        setMsg("Token manquant.", "danger");
-        return;
-      }
+      if (!raw) return setMsg("Token manquant.", "danger");
 
       try {
         setMsg("Vérification du lien…");
 
-        // ✅ IMPORTANT: appelle bien ton backend
         const r = await fetch(`/api/auth/login-verify?token=${encodeURIComponent(raw)}`, {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -66,13 +81,11 @@
 
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.error || "Connexion impossible");
-
         if (!j.token) throw new Error("Le serveur n’a pas renvoyé de token.");
 
-        // ✅ stocke le JWT dans la bonne clé (même que dashboard.js)
         localStorage.setItem(TOKEN_KEY, j.token);
 
-        // ✅ évite refresh => token déjà utilisé
+        // évite refresh (token one-time)
         history.replaceState({}, "", "/dashboard.html");
 
         setMsg("✅ Connecté. Redirection…", "ok");
