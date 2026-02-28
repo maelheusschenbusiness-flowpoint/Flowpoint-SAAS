@@ -4,34 +4,94 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>FlowPoint AI — Essai 14 jours</title>
+
+  <!-- Optional font (clean). If you prefer 0 external deps, you can remove these 2 lines -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <style>
-    body { font-family: system-ui, Arial; background:#f7f7fb; margin:0; }
-    .wrap { max-width: 760px; margin: 40px auto; padding: 0 16px; }
-    .card { background:#fff; border:1px solid #e7e9f2; border-radius:16px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.05); }
-    h1 { margin: 0 0 6px; }
-    .muted { color:#666; font-size:14px; }
-    label { font-weight:800; font-size:13px; display:block; margin-top:10px; }
-    input, select, button { width:100%; padding:12px; border-radius:12px; border:1px solid #ddd; margin-top:6px; box-sizing:border-box; }
-    button { background:#2f5bff; color:#fff; border:none; font-weight:900; cursor:pointer; margin-top:14px; }
-    button:disabled { opacity:.6; cursor:not-allowed; }
-    #msg { margin-top:12px; font-size:14px; }
-    .error { color:#b00020; font-weight:900; }
-    .ok { color:#0a7a2f; font-weight:900; }
-    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:12px; }
-    .link { color:#2f5bff; font-weight:900; text-decoration:none; white-space:nowrap; }
-    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
-    @media (max-width: 720px){ .grid { grid-template-columns: 1fr; } }
-    .fineprint{margin-top:10px;font-size:12px;color:#6b7280;line-height:1.4}
+    :root{
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#667085;
+      --border:#e6eaf2;
+      --primary:#2f5bff;
+      --shadow:0 10px 30px rgba(16,24,40,.06);
+      --r:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.10), transparent 55%),
+                  radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.10), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:860px;margin:44px auto;padding:0 16px;}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;}
+    .brand h1{margin:0;font-size:26px;letter-spacing:-.02em;font-weight:700;}
+    .brand .sub{margin-top:6px;color:var(--muted);font-size:14px;line-height:1.45;}
+    .links{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .link{
+      color:var(--primary);
+      font-weight:600;
+      text-decoration:none;
+      background:rgba(47,91,255,.08);
+      border:1px solid rgba(47,91,255,.16);
+      padding:9px 12px;border-radius:999px;
+      white-space:nowrap;
+    }
+    .card{
+      background:rgba(255,255,255,.92);
+      border:1px solid var(--border);
+      border-radius:var(--r);
+      padding:20px;
+      box-shadow:var(--shadow);
+      backdrop-filter:saturate(180%) blur(12px);
+    }
+    .grid{display:grid;grid-template-columns: 1fr 1fr;gap:12px;}
+    @media (max-width: 720px){ .grid{grid-template-columns:1fr;} }
+
+    label{display:block;margin-top:12px;font-size:13px;font-weight:600;color:#111827;}
+    input,select,button{
+      width:100%;
+      padding:12px;
+      border-radius:12px;
+      border:1px solid #d9deea;
+      margin-top:6px;
+      background:#fff;
+      font-size:14px;
+      outline:none;
+    }
+    input:focus,select:focus{border-color:rgba(47,91,255,.55); box-shadow:0 0 0 4px rgba(47,91,255,.10);}
+    button{
+      border:none;
+      background:linear-gradient(180deg, var(--primary), #2449ff);
+      color:#fff;
+      font-weight:700;
+      cursor:pointer;
+      margin-top:14px;
+    }
+    button:disabled{opacity:.65;cursor:not-allowed;}
+    #msg{margin-top:12px;font-size:14px;}
+    .error{color:#b00020;font-weight:600;}
+    .ok{color:#0a7a2f;font-weight:600;}
+    .note{margin-top:10px;color:var(--muted);font-size:12.5px;line-height:1.45}
+    .tiny{font-size:12px;color:var(--muted);margin-top:10px}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="topbar">
-      <div>
+      <div class="brand">
         <h1>FlowPoint AI</h1>
-        <div class="muted">Essai gratuit 14 jours — carte requise. Accès bloqué si paiement échoue.</div>
+        <div class="sub">Essai gratuit 14 jours — carte requise. Accès bloqué si paiement échoue.</div>
       </div>
-      <div style="display:flex;gap:12px;align-items:center">
+
+      <div class="links">
         <a class="link" href="/pricing.html">Voir les offres</a>
         <a class="link" href="/login.html">Se connecter</a>
       </div>
@@ -42,16 +102,17 @@
         <div class="grid">
           <div>
             <label for="firstName">Prénom</label>
-            <input id="firstName" type="text" placeholder="Jean" autocomplete="given-name" />
+            <input id="firstName" type="text" placeholder="Jean" />
           </div>
+
           <div>
             <label for="email">Email</label>
-            <input id="email" type="email" placeholder="jean@entreprise.com" autocomplete="email" required />
+            <input id="email" type="email" placeholder="jean@entreprise.com" required />
           </div>
         </div>
 
         <label for="companyName">Entreprise</label>
-        <input id="companyName" type="text" placeholder="Entreprise ABC" autocomplete="organization" required />
+        <input id="companyName" type="text" placeholder="Entreprise ABC" required />
 
         <label for="plan">Offre</label>
         <select id="plan" required>
@@ -63,24 +124,14 @@
         <button id="btn" type="submit">Commencer l’essai</button>
         <div id="msg"></div>
 
-        <div class="fineprint">
+        <div class="note">
           En continuant, tu acceptes que les emails d’alertes et rapports soient envoyés à ton équipe (selon les réglages d’organisation).
         </div>
+        <div class="tiny">Tip : tu peux choisir un plan depuis la page “Offres”.</div>
       </form>
     </div>
   </div>
 
-  <script>
-    // Auto-select plan from URL: /?plan=ultra
-    (function(){
-      const p = new URLSearchParams(location.search).get("plan");
-      if(!p) return;
-      const plan = String(p).toLowerCase();
-      const sel = document.getElementById("plan");
-      if(sel && ["standard","pro","ultra"].includes(plan)) sel.value = plan;
-    })();
-  </script>
-
-  <script src="/app.js"></script>
+  <script src="/app.js?v=2"></script>
 </body>
 </html>
