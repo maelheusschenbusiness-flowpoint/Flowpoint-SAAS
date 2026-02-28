@@ -3,29 +3,141 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>FlowPoint AI — Login</title>
+  <title>FlowPoint AI — Connexion</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <style>
-    body{font-family:system-ui,Arial;background:#f7f7fb;margin:0}
-    .wrap{max-width:720px;margin:40px auto;padding:0 16px}
-    .card{background:#fff;border:1px solid #e7e9f2;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.05)}
-    input,button{width:100%;padding:12px;border-radius:12px;border:1px solid #ddd;margin-top:10px;box-sizing:border-box}
-    button{background:#2f5bff;color:#fff;border:none;font-weight:900;cursor:pointer}
-    .muted{color:#666;font-size:14px}
-    .error{color:#b00020;font-weight:900}
-    .ok{color:#0a7a2f;font-weight:900}
+    :root{
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#667085;
+      --border:#e6eaf2;
+      --primary:#2f5bff;
+      --danger:#b00020;
+      --shadow:0 16px 60px rgba(16,24,40,.10);
+      --r:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background: radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.10), transparent 55%),
+                  radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.10), transparent 55%),
+                  var(--bg);
+      min-height:100vh;display:flex;align-items:center;justify-content:center;padding:18px;
+      color:var(--text);
+    }
+    .card{
+      width:100%;max-width:560px;
+      background:rgba(255,255,255,.92);
+      border:1px solid var(--border);
+      border-radius:var(--r);
+      padding:22px;
+      box-shadow:var(--shadow);
+      backdrop-filter:saturate(180%) blur(14px);
+    }
+    .row{display:flex;align-items:center;gap:12px}
+    .logo{
+      width:46px;height:46px;border-radius:16px;
+      background:rgba(47,91,255,.10);
+      border:1px solid rgba(47,91,255,.18);
+      display:flex;align-items:center;justify-content:center;
+      color:#1d4ed8;font-weight:700;
+    }
+    h1{margin:14px 0 6px;font-size:20px;font-weight:700;letter-spacing:-.02em}
+    p{margin:0;color:var(--muted);line-height:1.55;font-size:14px}
+    label{display:block;margin-top:14px;font-size:13px;font-weight:600}
+    input,button{
+      width:100%;padding:12px;border-radius:12px;border:1px solid #d9deea;margin-top:8px;font-size:14px;
+    }
+    input:focus{outline:none;border-color:rgba(47,91,255,.55);box-shadow:0 0 0 4px rgba(47,91,255,.10)}
+    button{
+      border:0;background:linear-gradient(180deg,var(--primary),#2449ff);
+      color:#fff;font-weight:700;cursor:pointer;
+      margin-top:12px;
+    }
+    button:disabled{opacity:.65;cursor:not-allowed}
+    .msg{
+      margin-top:12px;padding:12px 14px;border-radius:12px;
+      background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.06);
+      color:var(--muted);font-size:13.5px;line-height:1.45;
+    }
+    .ok{color:#0a7a2f;font-weight:600}
+    .danger{color:var(--danger);font-weight:600}
+    .links{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
+    .link{color:#1d4ed8;text-decoration:none;font-weight:600}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Connexion</h1>
-      <div class="muted">On t’envoie un lien de connexion par email (sans mot de passe).</div>
+  <div class="card">
+    <div class="row">
+      <div class="logo">FP</div>
+      <div>
+        <div style="font-weight:700">FlowPoint AI</div>
+        <div style="color:var(--muted);font-size:13px">Connexion sécurisée (sans mot de passe)</div>
+      </div>
+    </div>
 
-      <input id="email" type="email" placeholder="ton@email.com" required/>
-      <button id="btn">Recevoir le lien</button>
-      <div id="msg" class="muted" style="margin-top:10px"></div>
+    <h1>Connexion</h1>
+    <p>Entre ton email : on t’envoie un lien de connexion.</p>
+
+    <label for="email">Email</label>
+    <input id="email" type="email" placeholder="toi@entreprise.com" autocomplete="email" />
+
+    <button id="btn">Recevoir le lien</button>
+
+    <div id="msg" class="msg">—</div>
+
+    <div class="links">
+      <a class="link" href="/index.html">Créer un compte</a>
+      <a class="link" href="/pricing.html">Voir les offres</a>
     </div>
   </div>
-  <script src="/login.js"></script>
+
+  <script>
+    const btn = document.getElementById("btn");
+    const emailEl = document.getElementById("email");
+    const msg = document.getElementById("msg");
+
+    function setMsg(t, type){
+      msg.textContent = t || "";
+      msg.classList.remove("ok","danger");
+      if(type) msg.classList.add(type);
+    }
+
+    btn.addEventListener("click", async () => {
+      const email = String(emailEl.value || "").trim();
+      if(!email) return setMsg("Email requis.", "danger");
+
+      btn.disabled = true;
+      setMsg("Envoi…");
+
+      try{
+        const r = await fetch("/api/auth/login-request", {
+          method:"POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ email })
+        });
+        const j = await r.json().catch(()=> ({}));
+        if(!r.ok) throw new Error(j.error || "Erreur");
+
+        // Si DEBUG_LOGIN_LINK=true côté serveur tu verras un lien direct
+        if(j.debugLink){
+          setMsg("✅ Lien généré (mode debug). Ouvre le lien dans un nouvel onglet.", "ok");
+          console.log("DEBUG LOGIN LINK:", j.debugLink);
+        } else {
+          setMsg("✅ Lien envoyé. Vérifie ton email.", "ok");
+        }
+      }catch(e){
+        setMsg(e.message || "Erreur", "danger");
+      }finally{
+        btn.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>
