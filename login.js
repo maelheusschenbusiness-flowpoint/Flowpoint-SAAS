@@ -1,32 +1,53 @@
-const email = document.getElementById("email");
-const btn = document.getElementById("btn");
-const msg = document.getElementById("msg");
+(function () {
+  const TOKEN_KEY = "fp_token";
 
-function setMsg(t, type="") {
-  msg.className = type === "error" ? "error" : type === "ok" ? "ok" : "muted";
-  msg.textContent = t || "";
-}
+  const emailInput = document.getElementById("email");
+  const btn = document.getElementById("btn");
+  const msg = document.getElementById("msg");
 
-btn.addEventListener("click", async () => {
-  const v = email.value.trim();
-  if (!v) return setMsg("Email requis", "error");
-
-  btn.disabled = true;
-  setMsg("Envoi du lien…");
-
-  try {
-    const r = await fetch("/api/auth/login-request", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: v })
-    });
-    const d = await r.json().catch(()=> ({}));
-    if (!r.ok) throw new Error(d.error || "Erreur");
-
-    setMsg("✅ Lien envoyé. Vérifie ton email.", "ok");
-  } catch (e) {
-    setMsg(e.message || "Erreur", "error");
-  } finally {
-    btn.disabled = false;
+  function setMsg(text, type){
+    if(!msg) return;
+    msg.textContent = text || "";
+    msg.className = "muted";
+    if(type === "error") msg.className = "muted error";
+    if(type === "ok") msg.className = "muted ok";
   }
-});
+
+  async function postJSON(url, body){
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body || {})
+    });
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+    return j;
+  }
+
+  btn?.addEventListener("click", async () => {
+    try{
+      const email = String(emailInput?.value || "").trim();
+      if(!email) return setMsg("Email requis", "error");
+
+      setMsg("Envoi du lien…");
+      const r = await postJSON("/api/auth/login-request", { email });
+
+      // debug mode returns debugLink
+      if(r.debugLink){
+        setMsg("DEBUG: lien généré. Copie-colle ce lien dans ton navigateur.", "ok");
+        console.log("DEBUG LINK:", r.debugLink);
+      } else {
+        setMsg("✅ Lien envoyé. Vérifie tes emails.", "ok");
+      }
+    }catch(e){
+      setMsg(e.message || "Erreur", "error");
+    }
+  });
+
+  // Option: si token déjà présent => dashboard
+  const existing = localStorage.getItem(TOKEN_KEY);
+  if(existing){
+    // Pas de redirection forcée, mais tu peux activer si tu veux :
+    // location.replace("/dashboard.html");
+  }
+})();
