@@ -1,18 +1,19 @@
 // =======================
-// FlowPoint AI – SaaS Backend (Pack A + Pack B)
+// FlowPoint AI — SaaS Backend (Pack A + Pack B)
 // Plans: Standard / Pro / Ultra
 // Pack A: SEO Audit + Cache + PDF + Monitoring + Logs + CSV + Magic Link + Admin
 // Pack B: Orgs + Team Ultra (Invites) + Roles + Shared data per org
+// + Fixes: SSRF protection, Monitor quota = active count, Cron concurrency,
+//          /api/overview for dashboard, exports aliases, uptime endpoint.
 // =======================
-
-/* =========================================================
-   PART 1/2 — SETUP, CONFIG, HELPERS, MODELS, MIDDLEWARES
-   ========================================================= */
 
 require("dotenv").config();
 
 const path = require("path");
 const crypto = require("crypto");
+const dns = require("dns").promises;
+const net = require("net");
+
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
@@ -44,17 +45,20 @@ for (const k of REQUIRED) {
   if (!process.env[k]) console.log("❌ ENV manquante:", k);
 }
 
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET_RENDER;
-if (!STRIPE_WEBHOOK_SECRET) console.log("⚠️ STRIPE_WEBHOOK_SECRET_RENDER manquante (webhook non validable)");
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET_RENDER || process.env.STRIPE_WEBHOOK_SECRET;
+if (!STRIPE_WEBHOOK_SECRET) console.log("⚠️ STRIPE_WEBHOOK_SECRET manquante (webhook non validable)");
 
 const ADMIN_KEY = process.env.ADMIN_KEY || "";
-const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
-const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
-
 const CRON_KEY = process.env.CRON_KEY || "";
 if (!CRON_KEY) console.log("⚠️ CRON_KEY manquante (cron monitors non sécurisé)");
 
-// ---------- SMTP (fallback) ----------
+const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
+const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
+
+const MONITOR_HTTP_TIMEOUT_MS = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
+const CRON_CONCURRENCY = Math.min(25, Math.max(2, Number(process.env.CRON_CONCURRENCY || 10)));
+
+// ---------- SMTP / Resend ----------
 const SMTP_READY =
   !!process.env.SMTP_HOST &&
   !!process.env.SMTP_PORT &&
@@ -107,12 +111,13 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
         : undefined;
 
       const payload = {
-        from: process.env.ALERT_EMAIL_FROM, // e.g. support@flowpoint.pro
+        from: process.env.ALERT_EMAIL_FROM,
         to: toList,
         subject,
         text: text || undefined,
         html: html || undefined,
         bcc: bccList && bccList.length ? bccList : undefined,
+        attachments: attachments || undefined,
       };
 
       const r = await fetch("https://api.resend.com/emails", {
@@ -130,7 +135,7 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
         return { ok: false, error: data?.message || `Resend API ${r.status}` };
       }
 
-      console.log("✅ Email envoyé (Resend API):", data?.id, "=>", toList.join(","));
+      console.log("✅ Email envoyé (Resend):", data?.id, "=>", toList.join(","));
       return { ok: true };
     }
 
@@ -195,7 +200,6 @@ async function resetUsageIfNewMonth(user) {
   if (!user.usageMonth || new Date(user.usageMonth).getTime() !== month.getTime()) {
     user.usageMonth = month;
     user.usedAudits = 0;
-    user.usedMonitors = 0;
     user.usedPdf = 0;
     user.usedExports = 0;
     await user.save();
@@ -206,7 +210,6 @@ async function consume(user, key, amount = 1) {
   const q = quotasForPlan(user.plan);
   const map = {
     audits: ["usedAudits", q.audits],
-    monitors: ["usedMonitors", q.monitors],
     pdf: ["usedPdf", q.pdf],
     exports: ["usedExports", q.exports],
   };
@@ -265,6 +268,58 @@ function ipuaHash(req) {
   return crypto.createHash("sha256").update(`${ip}||${ua}`).digest("hex");
 }
 
+// ---------- SSRF PROTECTION (CRITICAL) ----------
+function isPrivateIp(ip) {
+  if (!net.isIP(ip)) return true;
+
+  // IPv4
+  if (net.isIPv4(ip)) {
+    if (ip === "127.0.0.1") return true;
+    if (ip.startsWith("10.")) return true;
+    if (ip.startsWith("192.168.")) return true;
+    if (ip.startsWith("169.254.")) return true; // link-local
+    if (ip.startsWith("172.")) {
+      const second = Number(ip.split(".")[1]);
+      if (second >= 16 && second <= 31) return true;
+    }
+    return false;
+  }
+
+  // IPv6 (simple rules)
+  const v = ip.toLowerCase();
+  if (v === "::1") return true;              // loopback
+  if (v.startsWith("fc") || v.startsWith("fd")) return true; // unique local fc00::/7
+  if (v.startsWith("fe80")) return true;     // link-local fe80::/10
+  return false;
+}
+
+async function assertSafePublicUrl(rawUrl) {
+  let u;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    throw new Error("URL invalide");
+  }
+
+  if (!["http:", "https:"].includes(u.protocol)) throw new Error("Protocole interdit");
+  if (!u.hostname) throw new Error("Hostname manquant");
+  if (u.username || u.password) throw new Error("Credentials interdits dans l'URL");
+
+  const host = u.hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".local")) throw new Error("Hostname interdit");
+
+  // Resolve DNS -> block private networks
+  const res = await dns.lookup(host, { all: true, verbatim: true });
+  if (!res?.length) throw new Error("DNS lookup failed");
+  for (const r of res) {
+    if (isPrivateIp(r.address)) throw new Error("Destination réseau privée interdite");
+  }
+
+  // normalize
+  u.hash = "";
+  return u.toString();
+}
+
 // ---------- MODELS ----------
 const OrgSchema = new mongoose.Schema(
   {
@@ -306,7 +361,6 @@ const UserSchema = new mongoose.Schema(
 
     usageMonth: { type: Date, default: firstDayOfThisMonthUTC },
     usedAudits: { type: Number, default: 0 },
-    usedMonitors: { type: Number, default: 0 },
     usedPdf: { type: Number, default: 0 },
     usedExports: { type: Number, default: 0 },
   },
@@ -586,15 +640,32 @@ async function maybeSendMonitorAlert(monitor, result) {
   return { sent: true };
 }
 
+// ---------- Concurrency helper (cron) ----------
+async function runWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let idx = 0;
+
+  const runners = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+    while (idx < items.length) {
+      const cur = idx++;
+      results[cur] = await worker(items[cur], cur);
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+}
+
 // ---------- MONITOR CHECK ----------
 async function checkUrlOnce(url) {
-  const timeout = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
+  const safeUrl = await assertSafePublicUrl(url);
+
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
+  const id = setTimeout(() => controller.abort(), MONITOR_HTTP_TIMEOUT_MS);
 
   const t0 = Date.now();
   try {
-    const r = await fetch(url, { redirect: "follow", signal: controller.signal });
+    const r = await fetch(safeUrl, { redirect: "follow", signal: controller.signal });
     const ms = Date.now() - t0;
     clearTimeout(id);
     const up = r.status >= 200 && r.status < 400;
@@ -608,10 +679,17 @@ async function checkUrlOnce(url) {
 
 // ---------- SEO AUDIT ----------
 async function fetchWithTiming(url) {
+  const safeUrl = await assertSafePublicUrl(url);
+
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), Math.min(15000, MONITOR_HTTP_TIMEOUT_MS * 2));
+
   const t0 = Date.now();
-  const r = await fetch(url, { redirect: "follow" });
+  const r = await fetch(safeUrl, { redirect: "follow", signal: controller.signal });
   const t1 = Date.now();
   const text = await r.text();
+  clearTimeout(id);
+
   return { status: r.status, ok: r.ok, headers: r.headers, text, ms: t1 - t0, finalUrl: r.url };
 }
 
@@ -715,11 +793,14 @@ async function runSeoAudit(url) {
   };
 }
 
-/* =========================================================
-   PART 2/2 — ROUTES, WEBHOOK, MIDDLEWARES, START
-   ========================================================= */
+// ---------- Monitor quota = ACTIVE count ----------
+async function canCreateActiveMonitor(user) {
+  const q = quotasForPlan(user.plan);
+  const countActive = await Monitor.countDocuments({ orgId: user.orgId, active: true });
+  return countActive < q.monitors;
+}
 
-// ---------- STRIPE WEBHOOK RAW (AVANT express.json) ----------
+// ---------- STRIPE WEBHOOK RAW (BEFORE express.json) ----------
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     if (!STRIPE_WEBHOOK_SECRET) return res.status(200).send("no webhook secret");
@@ -905,7 +986,6 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
       return res.json({ ok: true, debugLink: link });
     }
 
-    // ---- nice branded email ----
     const brand = {
       bg: "#0b1220",
       card: "#0f1a33",
@@ -957,7 +1037,6 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
       return res.status(502).json({
         ok: false,
         error: "Email non envoyé",
-        debugLink: String(process.env.DEBUG_LOGIN_LINK || "").toLowerCase() === "true" ? link : undefined,
       });
     }
 
@@ -1118,19 +1197,64 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
     usage: {
       month: u.usageMonth,
       audits: { used: u.usedAudits, limit: q.audits },
-      monitors: { used: u.usedMonitors, limit: q.monitors },
+      monitors: { used: null, limit: q.monitors }, // monitors => quota basé sur actifs, donc "used" = null
       pdf: { used: u.usedPdf, limit: q.pdf },
       exports: { used: u.usedExports, limit: q.exports },
     },
   });
 });
 
-// ---------- ORG SETTINGS (monitor-settings + alias /settings) ----------
-app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
+// ---------- OVERVIEW (for dashboard KPIs + chart) ----------
+app.get("/api/overview", auth, requireActive, async (req, res) => {
+  const days = Math.min(30, Math.max(1, Number(req.query.days || 30)));
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const lastAudit = await Audit.findOne({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).select("score createdAt url");
+  const audits = await Audit.find({ orgId: req.dbUser.orgId, createdAt: { $gte: since } })
+    .sort({ createdAt: 1 })
+    .limit(120)
+    .select("score createdAt");
+
+  const chart = audits.map((a) => a.score ?? 0);
+
+  const activeMonitors = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true });
+  const downMonitors = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true, lastStatus: "down" });
+
+  return res.json({
+    ok: true,
+    seoScore: lastAudit?.score ?? 0,
+    lastAuditAt: lastAudit?.createdAt || null,
+    lastAuditUrl: lastAudit?.url || null,
+    localVis: "+0%", // placeholder (tu pourras brancher vrai calcul plus tard)
+    chart,
+    monitors: { active: activeMonitors, down: downMonitors },
+    rangeDays: days,
+  });
+});
+
+// ---------- ORG SETTINGS ----------
+app.get("/api/org/settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
   return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
 });
 
+app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res) => {
+  const recipients = String(req.body?.alertRecipients || "all").toLowerCase();
+  const extra = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
+
+  await Org.updateOne(
+    { _id: req.dbUser.orgId },
+    { $set: { alertRecipients: recipients, alertExtraEmails: extra } }
+  );
+
+  return res.json({ ok: true });
+});
+
+// Backward-compatible alias
+app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
+  const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
+  return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
+});
 app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (req, res) => {
   const recipients = String(req.body?.alertRecipients || "all").toLowerCase();
   const extra = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
@@ -1143,61 +1267,54 @@ app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (
   return res.json({ ok: true });
 });
 
-// alias pour compat dashboard
-app.get("/api/org/settings", auth, requireActive, async (req, res) => {
-  const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
-  return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
-});
-app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res) => {
-  const recipients = String(req.body?.alertRecipients || "all").toLowerCase();
-  const extra = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
-  await Org.updateOne({ _id: req.dbUser.orgId }, { $set: { alertRecipients: recipients, alertExtraEmails: extra } });
-  return res.json({ ok: true });
-});
-
 // ---------- AUDITS ----------
 app.post("/api/audits/run", auth, requireActive, async (req, res) => {
-  const url = String(req.body?.url || "").trim();
-  if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (http/https)" });
+  try {
+    const url = String(req.body?.url || "").trim();
+    if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (http/https)" });
 
-  const urlNorm = normalizeUrl(url);
-  const cutoff = new Date(Date.now() - AUDIT_CACHE_HOURS * 60 * 60 * 1000);
+    const urlNorm = normalizeUrl(url);
+    const cutoff = new Date(Date.now() - AUDIT_CACHE_HOURS * 60 * 60 * 1000);
 
-  const cached = await Audit.findOne({
-    orgId: req.dbUser.orgId,
-    urlNormalized: urlNorm,
-    createdAt: { $gte: cutoff },
-  }).sort({ createdAt: -1 });
+    const cached = await Audit.findOne({
+      orgId: req.dbUser.orgId,
+      urlNormalized: urlNorm,
+      createdAt: { $gte: cutoff },
+    }).sort({ createdAt: -1 });
 
-  if (cached) {
-    return res.json({
-      ok: true,
-      cached: true,
-      auditId: cached._id,
-      score: cached.score,
-      summary: `Cache (${AUDIT_CACHE_HOURS}h) — ` + (cached.summary || ""),
+    if (cached) {
+      return res.json({
+        ok: true,
+        cached: true,
+        auditId: cached._id,
+        score: cached.score,
+        summary: `Cache (${AUDIT_CACHE_HOURS}h) — ` + (cached.summary || ""),
+      });
+    }
+
+    const ok = await consume(req.dbUser, "audits", 1);
+    if (!ok) return res.status(429).json({ error: "Quota audits dépassé" });
+
+    // SSRF safe fetch inside runSeoAudit
+    const out = await runSeoAudit(urlNorm);
+
+    const audit = await Audit.create({
+      orgId: req.dbUser.orgId,
+      userId: req.dbUser._id,
+      url: urlNorm,
+      urlNormalized: urlNorm,
+      status: out.status,
+      score: out.score,
+      summary: out.summary,
+      findings: out.findings,
+      recommendations: out.recommendations,
+      htmlSnapshot: out.htmlSnapshot,
     });
+
+    return res.json({ ok: true, cached: false, auditId: audit._id, score: audit.score, summary: audit.summary });
+  } catch (e) {
+    return res.status(400).json({ error: e.message || "Erreur audit" });
   }
-
-  const ok = await consume(req.dbUser, "audits", 1);
-  if (!ok) return res.status(429).json({ error: "Quota audits dépassé" });
-
-  const out = await runSeoAudit(urlNorm);
-
-  const audit = await Audit.create({
-    orgId: req.dbUser.orgId,
-    userId: req.dbUser._id,
-    url: urlNorm,
-    urlNormalized: urlNorm,
-    status: out.status,
-    score: out.score,
-    summary: out.summary,
-    findings: out.findings,
-    recommendations: out.recommendations,
-    htmlSnapshot: out.htmlSnapshot,
-  });
-
-  return res.json({ ok: true, cached: false, auditId: audit._id, score: audit.score, summary: audit.summary });
 });
 
 app.get("/api/audits", auth, requireActive, async (req, res) => {
@@ -1255,24 +1372,32 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
 
 // ---------- MONITORS ----------
 app.post("/api/monitors", auth, requireActive, async (req, res) => {
-  const url = String(req.body?.url || "").trim();
-  const intervalMinutes = Number(req.body?.intervalMinutes || 60);
+  try {
+    const url = String(req.body?.url || "").trim();
+    const intervalMinutes = Number(req.body?.intervalMinutes || 60);
 
-  if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide" });
-  if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5) return res.status(400).json({ error: "intervalMinutes min = 5" });
+    if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide" });
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5) return res.status(400).json({ error: "intervalMinutes min = 5" });
 
-  const ok = await consume(req.dbUser, "monitors", 1);
-  if (!ok) return res.status(429).json({ error: "Quota monitors dépassé" });
+    // SSRF check (fails fast)
+    await assertSafePublicUrl(url);
 
-  const m = await Monitor.create({
-    orgId: req.dbUser.orgId,
-    userId: req.dbUser._id,
-    url,
-    intervalMinutes,
-    active: true,
-  });
+    // quota based on ACTIVE monitors
+    const allowed = await canCreateActiveMonitor(req.dbUser);
+    if (!allowed) return res.status(429).json({ error: "Quota monitors actifs dépassé" });
 
-  return res.json({ ok: true, monitor: m });
+    const m = await Monitor.create({
+      orgId: req.dbUser.orgId,
+      userId: req.dbUser._id,
+      url,
+      intervalMinutes,
+      active: true,
+    });
+
+    return res.json({ ok: true, monitor: m });
+  } catch (e) {
+    return res.status(400).json({ error: e.message || "Erreur monitor" });
+  }
 });
 
 app.get("/api/monitors", auth, requireActive, async (req, res) => {
@@ -1285,14 +1410,30 @@ app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
   if (typeof req.body?.active === "boolean") m.active = req.body.active;
+
   if (req.body?.intervalMinutes) {
     const im = Number(req.body.intervalMinutes);
     if (!Number.isFinite(im) || im < 5) return res.status(400).json({ error: "intervalMinutes min = 5" });
     m.intervalMinutes = im;
   }
 
+  // If user is turning ON a monitor, re-check active quota
+  if (m.active === true) {
+    const q = quotasForPlan(req.dbUser.plan);
+    const countActive = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true, _id: { $ne: m._id } });
+    if (countActive + 1 > q.monitors) return res.status(429).json({ error: "Quota monitors actifs dépassé" });
+  }
+
   await m.save();
   return res.json({ ok: true, monitor: m });
+});
+
+app.delete("/api/monitors/:id", auth, requireActive, async (req, res) => {
+  const m = await Monitor.findOneAndDelete({ _id: req.params.id, orgId: req.dbUser.orgId });
+  if (!m) return res.status(404).json({ error: "Monitor introuvable" });
+
+  await MonitorLog.deleteMany({ orgId: req.dbUser.orgId, monitorId: m._id }).catch(() => {});
+  return res.json({ ok: true });
 });
 
 app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
@@ -1333,7 +1474,26 @@ app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, logs });
 });
 
-// ---------- CRON: monitors-run ----------
+// ✅ Uptime endpoint (sticky + pro)
+app.get("/api/monitors/:id/uptime", auth, requireActive, async (req, res) => {
+  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
+  if (!m) return res.status(404).json({ error: "Monitor introuvable" });
+
+  const days = Math.min(30, Math.max(1, Number(req.query.days || 7)));
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id, checkedAt: { $gte: since } })
+    .select("status checkedAt")
+    .sort({ checkedAt: 1 });
+
+  const total = logs.length;
+  const up = logs.filter((l) => l.status === "up").length;
+  const uptime = total ? Math.round((up / total) * 10000) / 100 : null;
+
+  return res.json({ ok: true, days, totalChecks: total, upChecks: up, uptimePercent: uptime });
+});
+
+// ---------- CRON: monitors-run (concurrent) ----------
 app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
   try {
     const now = Date.now();
@@ -1344,11 +1504,11 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
     let checked = 0;
     let alertsSent = 0;
 
-    for (const m of activeMonitors) {
+    await runWithConcurrency(activeMonitors, CRON_CONCURRENCY, async (m) => {
       const last = m.lastCheckedAt ? new Date(m.lastCheckedAt).getTime() : 0;
       const dueMs = Number(m.intervalMinutes || 60) * 60 * 1000;
       const due = !last || now - last >= dueMs;
-      if (!due) continue;
+      if (!due) return;
 
       const r = await checkUrlOnce(m.url);
 
@@ -1371,9 +1531,9 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
       if (a.sent) alertsSent += 1;
 
       checked += 1;
-    }
+    });
 
-    return res.json({ ok: true, checked, alertsSent, scanned: activeMonitors.length });
+    return res.json({ ok: true, checked, alertsSent, scanned: activeMonitors.length, concurrency: CRON_CONCURRENCY });
   } catch (e) {
     console.log("cron monitors-run error:", e.message);
     return res.status(500).json({ error: "Erreur cron monitors-run" });
@@ -1436,6 +1596,16 @@ app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
   res.send(header + rows + "\n");
 });
 
+// ✅ aliases (ton dashboard parlait de /api/exports/...)
+app.get("/api/exports/audits.csv", auth, requireActive, (req, res) => {
+  req.url = "/api/export/audits.csv";
+  app.handle(req, res);
+});
+app.get("/api/exports/monitors.csv", auth, requireActive, (req, res) => {
+  req.url = "/api/export/monitors.csv";
+  app.handle(req, res);
+});
+
 // ---------- ADMIN ----------
 app.get("/api/admin/users", requireAdmin, async (req, res) => {
   const list = await User.find({}).sort({ createdAt: -1 }).limit(200);
@@ -1455,7 +1625,7 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
   if (!email) return res.status(400).json({ error: "email manquant" });
   await User.updateOne(
     { email },
-    { $set: { usageMonth: firstDayOfThisMonthUTC(), usedAudits: 0, usedMonitors: 0, usedPdf: 0, usedExports: 0 } }
+    { $set: { usageMonth: firstDayOfThisMonthUTC(), usedAudits: 0, usedPdf: 0, usedExports: 0 } }
   );
   res.json({ ok: true });
 });
