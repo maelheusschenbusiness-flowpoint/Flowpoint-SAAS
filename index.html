@@ -15,12 +15,13 @@
     button { background:#2f5bff; color:#fff; border:none; font-weight:900; cursor:pointer; margin-top:14px; }
     button:disabled { opacity:.6; cursor:not-allowed; }
     #msg { margin-top:12px; font-size:14px; }
-    .error { color:#b00020; }
-    .ok { color:#0a7a2f; }
+    .error { color:#b00020; font-weight:900; }
+    .ok { color:#0a7a2f; font-weight:900; }
     .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:12px; }
     .link { color:#2f5bff; font-weight:900; text-decoration:none; white-space:nowrap; }
     .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     @media (max-width: 720px){ .grid { grid-template-columns: 1fr; } }
+    .fineprint{margin-top:10px;font-size:12px;color:#6b7280;line-height:1.4}
   </style>
 </head>
 <body>
@@ -30,7 +31,10 @@
         <h1>FlowPoint AI</h1>
         <div class="muted">Essai gratuit 14 jours — carte requise. Accès bloqué si paiement échoue.</div>
       </div>
-      <a class="link" href="/login.html">Se connecter</a>
+      <div style="display:flex;gap:12px;align-items:center">
+        <a class="link" href="/pricing.html">Voir les offres</a>
+        <a class="link" href="/login.html">Se connecter</a>
+      </div>
     </div>
 
     <div class="card">
@@ -38,16 +42,16 @@
         <div class="grid">
           <div>
             <label for="firstName">Prénom</label>
-            <input id="firstName" type="text" placeholder="Jean" required />
+            <input id="firstName" type="text" placeholder="Jean" autocomplete="given-name" />
           </div>
           <div>
             <label for="email">Email</label>
-            <input id="email" type="email" placeholder="jean@entreprise.com" required />
+            <input id="email" type="email" placeholder="jean@entreprise.com" autocomplete="email" required />
           </div>
         </div>
 
         <label for="companyName">Entreprise</label>
-        <input id="companyName" type="text" placeholder="Entreprise ABC" required />
+        <input id="companyName" type="text" placeholder="Entreprise ABC" autocomplete="organization" required />
 
         <label for="plan">Offre</label>
         <select id="plan" required>
@@ -58,9 +62,24 @@
 
         <button id="btn" type="submit">Commencer l’essai</button>
         <div id="msg"></div>
+
+        <div class="fineprint">
+          En continuant, tu acceptes que les emails d’alertes et rapports soient envoyés à ton équipe (selon les réglages d’organisation).
+        </div>
       </form>
     </div>
   </div>
+
+  <script>
+    // Auto-select plan from URL: /?plan=ultra
+    (function(){
+      const p = new URLSearchParams(location.search).get("plan");
+      if(!p) return;
+      const plan = String(p).toLowerCase();
+      const sel = document.getElementById("plan");
+      if(sel && ["standard","pro","ultra"].includes(plan)) sel.value = plan;
+    })();
+  </script>
 
   <script src="/app.js"></script>
 </body>
