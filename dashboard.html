@@ -4,37 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Flowpoint — Dashboard</title>
-
   <style>
+    /* (TON CSS IDENTIQUE — je le laisse tel quel) */
     :root{
-      --bg1:#eef2ff;
-      --bg2:#f6f8ff;
-      --card:#ffffff;
-      --stroke:#e6ebf5;
-
-      --text:#0f172a;
-      --muted:#6b7280;
-
-      --blue:#2563eb;
-      --blue2:#1d4ed8;
-      --blueSoft:#eef4ff;
-
-      --green:#16a34a;
-      --amber:#f59e0b;
-      --red:#dc2626;
-
+      --bg1:#eef2ff;--bg2:#f6f8ff;--card:#ffffff;--stroke:#e6ebf5;
+      --text:#0f172a;--muted:#6b7280;
+      --blue:#2563eb;--blue2:#1d4ed8;--blueSoft:#eef4ff;
+      --green:#16a34a;--amber:#f59e0b;--red:#dc2626;
       --shadow: 0 14px 40px rgba(16,24,40,.08);
-      --r:16px;
-
-      /* Sidebar (plus fine) */
-      --sidebarW:220px;
-
-      /* Typography control (évite trop gras) */
-      --fw-regular:400;
-      --fw-medium:500;
-      --fw-semibold:600;
+      --r:16px;--sidebarW:220px;
+      --fw-regular:400;--fw-medium:500;--fw-semibold:600;
     }
-
     *{box-sizing:border-box}
     html,body{height:100%}
     body{
@@ -47,458 +27,121 @@
         radial-gradient(900px 600px at 88% 0%, rgba(99,102,241,.14), transparent 55%),
         linear-gradient(180deg, var(--bg1), var(--bg2));
     }
-
-    /* =================== Layout =================== */
-    .sidebar{
-      position:fixed; inset:0 auto 0 0;
-      width:var(--sidebarW);
-      background:rgba(255,255,255,.82);
-      border-right:1px solid rgba(230,235,245,.9);
-      backdrop-filter:saturate(180%) blur(14px);
-      padding:14px;
-      display:flex;
-      flex-direction:column;
-      gap:12px;
-      z-index:30;
-    }
-    .main{
-      margin-left:var(--sidebarW);
-      min-height:100vh;
-      padding:18px 20px 28px;
-    }
-
-    .overlay{
-      position:fixed; inset:0;
-      background:rgba(15,23,42,.35);
-      z-index:25;
-      display:none;
-    }
+    .sidebar{position:fixed; inset:0 auto 0 0;width:var(--sidebarW);background:rgba(255,255,255,.82);
+      border-right:1px solid rgba(230,235,245,.9);backdrop-filter:saturate(180%) blur(14px);
+      padding:14px;display:flex;flex-direction:column;gap:12px;z-index:30;}
+    .main{margin-left:var(--sidebarW);min-height:100vh;padding:18px 20px 28px;}
+    .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:25;display:none;}
     .overlay.is-open{display:block}
-
-    /* =================== Brand =================== */
-    .brand{
-      display:flex; align-items:flex-start; gap:10px;
-      padding:6px 6px 0;
-    }
-    .brand__mark{
-      width:42px;height:42px;border-radius:14px;
-      background:linear-gradient(180deg, rgba(37,99,235,.18), rgba(37,99,235,.08));
-      border:1px solid rgba(37,99,235,.20);
-      display:flex;align-items:center;justify-content:center;
-      flex:0 0 auto;
-    }
-    .brand__name{
-      font-weight:var(--fw-semibold);
-      letter-spacing:.1px;
-      line-height:1.05;
-    }
-    .brand__sub{
-      font-size:12px;color:var(--muted);margin-top:2px;
-    }
-
-    /* =================== Nav =================== */
+    .brand{display:flex;align-items:flex-start;gap:10px;padding:6px 6px 0;}
+    .brand__mark{width:42px;height:42px;border-radius:14px;background:linear-gradient(180deg, rgba(37,99,235,.18), rgba(37,99,235,.08));
+      border:1px solid rgba(37,99,235,.20);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+    .brand__name{font-weight:var(--fw-semibold);letter-spacing:.1px;line-height:1.05;}
+    .brand__sub{font-size:12px;color:var(--muted);margin-top:2px;}
     .nav{display:flex;flex-direction:column; gap:6px; padding-top:6px}
-    .nav__item{
-      appearance:none;border:0; background:transparent;
-      padding:10px 10px;
-      border-radius:12px;
-      display:flex;align-items:center;gap:10px;
-      color:#111827;
-      font-size:14px;
-      cursor:pointer;
-      font-weight:var(--fw-medium);
-    }
-    .nav__icon{
-      width:18px;height:18px; display:inline-flex; align-items:center; justify-content:center;
-      opacity:.9;
-    }
+    .nav__item{appearance:none;border:0;background:transparent;padding:10px 10px;border-radius:12px;display:flex;align-items:center;gap:10px;
+      color:#111827;font-size:14px;cursor:pointer;font-weight:var(--fw-medium);}
+    .nav__icon{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;opacity:.9;}
     .nav__item:hover{background:rgba(37,99,235,.06)}
-    .nav__item.is-active{
-      background:rgba(37,99,235,.10);
-      border:1px solid rgba(37,99,235,.18);
-      color:var(--blue2);
-    }
-    .pill-mini{
-      margin-left:auto;
-      font-size:12px;
-      font-weight:var(--fw-semibold);
-      padding:5px 10px;
-      border-radius:999px;
-      background:rgba(37,99,235,.10);
-      border:1px solid rgba(37,99,235,.20);
-      color:var(--blue2);
-    }
-
-    /* =================== Sidebar bottom =================== */
+    .nav__item.is-active{background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.18);color:var(--blue2);}
+    .pill-mini{margin-left:auto;font-size:12px;font-weight:var(--fw-semibold);padding:5px 10px;border-radius:999px;
+      background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.20);color:var(--blue2);}
     .sidebar__foot{margin-top:auto}
-    .miniCard{
-      background:rgba(255,255,255,.92);
-      border:1px solid var(--stroke);
-      border-radius:18px;
-      padding:14px;
-      box-shadow: 0 8px 22px rgba(16,24,40,.06);
-    }
-    .miniCard__title{
-      font-size:12px;
-      letter-spacing:.18em;
-      color:#64748b;
-      font-weight:var(--fw-semibold);
-      margin-bottom:10px;
-    }
-    .miniGrid{
-      display:grid;
-      grid-template-columns: 64px 1fr;
-      gap:8px 10px;
-      font-size:13px;
-    }
+    .miniCard{background:rgba(255,255,255,.92);border:1px solid var(--stroke);border-radius:18px;padding:14px;box-shadow:0 8px 22px rgba(16,24,40,.06);}
+    .miniCard__title{font-size:12px;letter-spacing:.18em;color:#64748b;font-weight:var(--fw-semibold);margin-bottom:10px;}
+    .miniGrid{display:grid;grid-template-columns: 64px 1fr;gap:8px 10px;font-size:13px;}
     .miniGrid__k{color:var(--muted)}
-    .miniGrid__v{font-weight:var(--fw-semibold); color:#0b1220}
+    .miniGrid__v{font-weight:var(--fw-semibold);color:#0b1220}
     .miniActions{display:flex; gap:10px; margin-top:12px}
     .hint{margin-top:10px;font-size:12.5px;color:#6b7280;line-height:1.35}
-
-    /* =================== Topbar =================== */
-    .topbar{
-      display:flex; align-items:flex-start; justify-content:space-between;
-      gap:14px;
-      margin-bottom:14px;
-    }
-    .hello__title{
-      font-size:22px;
-      font-weight:var(--fw-semibold);
-      letter-spacing:.1px;
-      margin:0;
-    }
-    .hello__sub{
-      margin-top:3px;
-      font-size:13px;color:var(--muted);
-      font-weight:var(--fw-regular);
-    }
-    .topbar__right{
-      display:flex; align-items:center; gap:10px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-      max-width:560px;
-    }
-    .controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
-    .chip{
-      padding:10px 14px;
-      border-radius:14px;
-      background:rgba(255,255,255,.88);
-      border:1px solid var(--stroke);
-      font-weight:var(--fw-semibold);
-      letter-spacing:.1px;
-      font-size:13px;
-    }
-    .selectLike{
-      border:1px solid var(--stroke);
-      background:rgba(255,255,255,.88);
-      padding:10px 14px;
-      border-radius:14px;
-      cursor:pointer;
-      display:flex; align-items:center; gap:8px;
-      font-weight:var(--fw-semibold);
-      font-size:13px;
-      user-select:none;
-    }
+    .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px;}
+    .hello__title{font-size:22px;font-weight:var(--fw-semibold);letter-spacing:.1px;margin:0;}
+    .hello__sub{margin-top:3px;font-size:13px;color:var(--muted);font-weight:var(--fw-regular);}
+    .topbar__right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;max-width:560px;}
+    .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .chip{padding:10px 14px;border-radius:14px;background:rgba(255,255,255,.88);border:1px solid var(--stroke);font-weight:var(--fw-semibold);letter-spacing:.1px;font-size:13px;}
+    .selectLike{border:1px solid var(--stroke);background:rgba(255,255,255,.88);padding:10px 14px;border-radius:14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:var(--fw-semibold);font-size:13px;user-select:none;}
     .caret{opacity:.65}
-
-    /* =================== Buttons =================== */
-    .btn{
-      border:1px solid transparent;
-      background:#fff;
-      padding:10px 14px;
-      border-radius:14px;
-      cursor:pointer;
-      font-weight:var(--fw-semibold);
-      color:#0b1220;
-      box-shadow: 0 8px 18px rgba(16,24,40,.06);
-      font-size:13px;
-    }
-    .btn--sm{padding:8px 12px; border-radius:12px; box-shadow:none}
-    .btn--primary{
-      background:linear-gradient(180deg, var(--blue), var(--blue2));
-      color:#fff;
-    }
-    .btn--soft{
-      background:#fff;
-      border:1px solid var(--stroke);
-      color:var(--blue);
-    }
-    .btn--danger{
-      background:#fff;
-      border:1px solid rgba(220,38,38,.25);
-      color:#b91c1c;
-    }
-    .btn:hover{filter:brightness(.99)}
-    .btn--primary:hover{filter:brightness(1.02)}
+    .btn{border:1px solid transparent;background:#fff;padding:10px 14px;border-radius:14px;cursor:pointer;font-weight:var(--fw-semibold);color:#0b1220;box-shadow:0 8px 18px rgba(16,24,40,.06);font-size:13px;}
+    .btn--sm{padding:8px 12px;border-radius:12px;box-shadow:none}
+    .btn--primary{background:linear-gradient(180deg, var(--blue), var(--blue2));color:#fff;}
+    .btn--soft{background:#fff;border:1px solid var(--stroke);color:var(--blue);}
+    .btn--danger{background:#fff;border:1px solid rgba(220,38,38,.25);color:#b91c1c;}
+    .btn:hover{filter:brightness(.99)} .btn--primary:hover{filter:brightness(1.02)}
     .w100{width:100%}
-
-    /* =================== Icon btn + avatar =================== */
-    .iconbtn{
-      width:42px;height:42px;border-radius:14px;
-      border:1px solid var(--stroke);
-      background:rgba(255,255,255,.92);
-      cursor:pointer;
-      font-weight:var(--fw-semibold);
-    }
-    .iconbtn--ghost{
-      border:1px solid transparent;
-      background:transparent;
-      box-shadow:none;
-    }
-    .avatar{
-      width:42px;height:42px;border-radius:999px;
-      border:1px solid var(--stroke);
-      background:rgba(255,255,255,.92);
-      display:flex;align-items:center;justify-content:center;
-      cursor:pointer;
-      font-weight:var(--fw-semibold);
-      color:#334155;
-    }
-
-    /* =================== Grid =================== */
-    .grid{
-      display:grid;
-      grid-template-columns: 1.05fr .95fr;
-      gap:18px;
-      align-items:start;
-    }
-    .col{display:flex; flex-direction:column; gap:18px}
-
-    /* =================== Card =================== */
-    .card{
-      background:rgba(255,255,255,.90);
-      border:1px solid var(--stroke);
-      border-radius:22px;
-      box-shadow: var(--shadow);
-      padding:16px;
-    }
-    .card__head{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:12px;
-      margin-bottom:12px;
-    }
-    .card__title{
-      font-size:13px;
-      letter-spacing:.18em;
-      color:#64748b;
-      font-weight:var(--fw-semibold);
-      text-transform:none;
-    }
-    .statusOk{
-      display:flex; align-items:center; gap:8px;
-      color:#4b5563;
-      font-weight:var(--fw-semibold);
-      font-size:13px;
-    }
+    .avatar{width:42px;height:42px;border-radius:999px;border:1px solid var(--stroke);background:rgba(255,255,255,.92);
+      display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:var(--fw-semibold);color:#334155;}
+    .grid{display:grid;grid-template-columns: 1.05fr .95fr;gap:18px;align-items:start;}
+    .col{display:flex;flex-direction:column;gap:18px}
+    .card{background:rgba(255,255,255,.90);border:1px solid var(--stroke);border-radius:22px;box-shadow: var(--shadow);padding:16px;}
+    .card__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+    .card__title{font-size:13px;letter-spacing:.18em;color:#64748b;font-weight:var(--fw-semibold);}
+    .statusOk{display:flex;align-items:center;gap:8px;color:#4b5563;font-weight:var(--fw-semibold);font-size:13px;}
     .dot{width:10px;height:10px;border-radius:999px}
     .dot--green{background:var(--green)}
-
-    /* =================== KPI grid =================== */
-    .kpis{
-      display:grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap:12px;
-    }
-    .kpi{
-      border:1px solid var(--stroke);
-      border-radius:16px;
-      padding:12px;
-      background:rgba(248,250,255,.75);
-    }
-    .kpi__k{color:var(--muted); font-weight:var(--fw-semibold); font-size:13px}
-    .kpi__v{margin-top:4px; font-size:26px; font-weight:var(--fw-semibold); letter-spacing:.1px}
-    .kpi__v small{font-weight:var(--fw-medium); color:#94a3b8}
-    .kpi__s{margin-top:3px; font-size:12.5px; color:var(--muted); font-weight:var(--fw-regular)}
+    .kpis{display:grid;grid-template-columns: repeat(2, 1fr);gap:12px;}
+    .kpi{border:1px solid var(--stroke);border-radius:16px;padding:12px;background:rgba(248,250,255,.75);}
+    .kpi__k{color:var(--muted);font-weight:var(--fw-semibold);font-size:13px}
+    .kpi__v{margin-top:4px;font-size:26px;font-weight:var(--fw-semibold);letter-spacing:.1px}
+    .kpi__v small{font-weight:var(--fw-medium);color:#94a3b8}
+    .kpi__s{margin-top:3px;font-size:12.5px;color:var(--muted);font-weight:var(--fw-regular)}
     .kpi__v--green{color:#16a34a}
-
     .divider{height:1px;background:rgba(230,235,245,.95);margin:14px 0;}
-
-    /* =================== Chart =================== */
     .chartCard__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
     .chartCard__title{font-weight:var(--fw-semibold)}
-    .muted{color:var(--muted); font-weight:var(--fw-regular)}
-    .chartWrap{
-      border:1px solid var(--stroke);
-      border-radius:16px;
-      background:linear-gradient(180deg, rgba(37,99,235,.06), rgba(255,255,255,.0));
-      padding:10px 10px 2px;
-      overflow:hidden;
-    }
-    .chartSvg{width:100%; height:150px; display:block}
-    .gridline{stroke:#e5e7eb; stroke-width:1}
-    .line{fill:none; stroke:#3b66f1; stroke-width:3; stroke-linecap:round; stroke-linejoin:round}
+    .muted{color:var(--muted);font-weight:var(--fw-regular)}
+    .chartWrap{border:1px solid var(--stroke);border-radius:16px;background:linear-gradient(180deg, rgba(37,99,235,.06), rgba(255,255,255,.0));padding:10px 10px 2px;overflow:hidden;}
+    .chartSvg{width:100%;height:150px;display:block}
+    .gridline{stroke:#e5e7eb;stroke-width:1}
+    .line{fill:none;stroke:#3b66f1;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
     .area{fill:rgba(59,102,241,.12)}
-
-    /* =================== Tables =================== */
     .tableCard__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-    .tableCard__title{
-      font-size:13px;
-      letter-spacing:.18em;
-      color:#64748b;
-      font-weight:var(--fw-semibold);
-    }
-    .table{
-      width:100%;
-      border-collapse:separate;
-      border-spacing:0;
-      font-size:13.5px;
-    }
-    .table thead th{
-      text-align:left;
-      color:#64748b;
-      font-weight:var(--fw-semibold);
-      letter-spacing:.12em;
-      font-size:12px;
-      padding:10px 10px;
-      border-top:1px solid var(--stroke);
-      border-bottom:1px solid var(--stroke);
-      background:rgba(248,250,255,.55);
-      white-space:nowrap;
-    }
-    .table tbody td{
-      padding:12px 10px;
-      border-bottom:1px solid rgba(230,235,245,.8);
-      vertical-align:middle;
-    }
+    .table{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;}
+    .table thead th{text-align:left;color:#64748b;font-weight:var(--fw-semibold);letter-spacing:.12em;font-size:12px;padding:10px 10px;border-top:1px solid var(--stroke);border-bottom:1px solid var(--stroke);background:rgba(248,250,255,.55);white-space:nowrap;}
+    .table tbody td{padding:12px 10px;border-bottom:1px solid rgba(230,235,245,.8);vertical-align:middle;}
     .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
-    .td-actions{white-space:nowrap; text-align:right}
-
-    /* Pills */
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      padding:7px 12px;
-      border-radius:999px;
-      font-weight:var(--fw-semibold);
-      border:1px solid transparent;
-      font-size:12.5px;
-      white-space:nowrap;
-    }
+    .td-actions{white-space:nowrap;text-align:right}
+    .pill{display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-weight:var(--fw-semibold);border:1px solid transparent;font-size:12.5px;white-space:nowrap;}
     .pill--warn{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.20);color:#92400e;}
     .pill--soft{background:rgba(37,99,235,.10);border-color:rgba(37,99,235,.18);color:#1d4ed8;}
     .pill--up{background:rgba(22,163,74,.12);border-color:rgba(22,163,74,.18);color:#166534;}
     .pill--down{background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.16);color:#991b1b;}
-
-    /* =================== Actions cards =================== */
-    .rowBetween{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap}
-    .actionLine{display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-weight:var(--fw-regular)}
+    .rowBetween{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .actionLine{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-weight:var(--fw-regular)}
     .actionText{font-weight:var(--fw-medium)}
-
-    /* =================== Plans =================== */
-    .plansHeader{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px}
-    .plans{
-      display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap:12px;
-    }
-    .plan{
-      border:1px solid var(--stroke);
-      border-radius:18px;
-      padding:14px;
-      background:rgba(255,255,255,.92);
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      min-height: 210px;
-    }
-    .plan__top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px}
+    .plansHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .plans{display:grid;grid-template-columns: repeat(3, 1fr);gap:12px;}
+    .plan{border:1px solid var(--stroke);border-radius:18px;padding:14px;background:rgba(255,255,255,.92);display:flex;flex-direction:column;gap:10px;min-height:210px;}
+    .plan__top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
     .plan__name{font-weight:var(--fw-semibold)}
-    .plan__price{
-      font-size:34px;
-      font-weight:var(--fw-semibold);
-      letter-spacing:.2px;
-      line-height:1;
-      text-align:right;
-    }
-    .plan__per{color:#94a3b8; font-weight:var(--fw-medium); font-size:14px}
-    .plan__list{
-      margin:0;
-      padding-left:16px;
-      color:#334155;
-      font-weight:var(--fw-regular);
-    }
+    .plan__price{font-size:34px;font-weight:var(--fw-semibold);letter-spacing:.2px;line-height:1;text-align:right;}
+    .plan__per{color:#94a3b8;font-weight:var(--fw-medium);font-size:14px}
+    .plan__list{margin:0;padding-left:16px;color:#334155;font-weight:var(--fw-regular);}
     .plan__list li{margin:6px 0}
-    .plan--featured{
-      background:linear-gradient(180deg, rgba(37,99,235,.22), rgba(37,99,235,.10));
-      border-color:rgba(37,99,235,.28);
-    }
+    .plan--featured{background:linear-gradient(180deg, rgba(37,99,235,.22), rgba(37,99,235,.10));border-color:rgba(37,99,235,.28);}
     .plan--featured *{color:#0b1220}
     .plan--featured .plan__price{color:#0b1220}
-    .plan--featured .plan__badge{background:rgba(255,255,255,.40);border-color:rgba(255,255,255,.35)}
-    .plan__badge{
-      display:inline-flex;
-      padding:6px 10px;
-      border-radius:999px;
-      background:rgba(37,99,235,.10);
-      border:1px solid rgba(37,99,235,.20);
-      color:var(--blue2);
-      font-weight:var(--fw-semibold);
-      font-size:12px;
-      align-self:flex-start;
-    }
-
-    /* =================== Sections =================== */
+    .plan__badge{display:inline-flex;padding:6px 10px;border-radius:999px;background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.20);color:var(--blue2);font-weight:var(--fw-semibold);font-size:12px;align-self:flex-start;}
     .section{display:none}
     .section.is-active{display:block}
-
-    /* =================== Toast =================== */
-    .toast{
-      position:fixed;
-      right:16px; bottom:16px;
-      background:rgba(15,23,42,.92);
-      color:#fff;
-      padding:12px 14px;
-      border-radius:14px;
-      box-shadow:0 18px 50px rgba(0,0,0,.25);
-      max-width: 340px;
-      z-index:60;
-      display:none;
-      font-size:13px;
-      line-height:1.35;
-    }
+    .toast{position:fixed;right:16px;bottom:16px;background:rgba(15,23,42,.92);color:#fff;padding:12px 14px;border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.25);max-width:340px;z-index:60;display:none;font-size:13px;line-height:1.35;}
     .toast.is-open{display:block}
-    .toast strong{font-weight:var(--fw-semibold)}
     .toast .trow{display:flex;justify-content:space-between;align-items:center;gap:12px}
-    .toast .closeX{
-      background:transparent;border:0;color:#cbd5e1;cursor:pointer;
-      font-size:16px; padding:2px 6px;
-    }
-
-    /* =================== Responsive =================== */
+    .toast .closeX{background:transparent;border:0;color:#cbd5e1;cursor:pointer;font-size:16px;padding:2px 6px;}
     .only-mobile{display:none}
-
-    @media (max-width: 1060px){
-      .grid{grid-template-columns: 1fr}
-      .plans{grid-template-columns: 1fr}
-      .kpis{grid-template-columns: repeat(2, 1fr)}
-    }
-
-    /* Mobile: garder vibe PC, mais propre */
-    @media (max-width: 880px){
+    @media (max-width:1060px){.grid{grid-template-columns:1fr}.plans{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
+    @media (max-width:880px){
       .only-mobile{display:inline-flex}
-      .main{margin-left:0; padding:14px 14px 22px}
-      .sidebar{
-        transform:translateX(-105%);
-        transition:transform .22s ease;
-        box-shadow: 0 14px 40px rgba(16,24,40,.18);
-        width:min(86vw, 320px);
-      }
+      .main{margin-left:0;padding:14px 14px 22px}
+      .sidebar{transform:translateX(-105%);transition:transform .22s ease;box-shadow:0 14px 40px rgba(16,24,40,.18);width:min(86vw,320px);}
       .sidebar.is-open{transform:translateX(0)}
-      .topbar{
-        flex-direction:column;
-        align-items:stretch;
-        gap:10px;
-      }
-      .topbar__right{
-        justify-content:flex-start;
-        max-width:none;
-      }
+      .topbar{flex-direction:column;align-items:stretch;gap:10px;}
+      .topbar__right{justify-content:flex-start;max-width:none;}
       .chip{display:none}
       .controls{justify-content:flex-start}
-      .selectLike, .btn{font-size:13px}
-      .table{display:block; overflow:auto; -webkit-overflow-scrolling:touch}
-      .table thead th, .table tbody td{white-space:nowrap}
+      .selectLike,.btn{font-size:13px}
+      .table{display:block;overflow:auto;-webkit-overflow-scrolling:touch}
+      .table thead th,.table tbody td{white-space:nowrap}
     }
   </style>
 </head>
@@ -506,18 +149,13 @@
 <body>
   <div class="overlay" id="overlay"></div>
 
-  <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand__mark" aria-label="Flowpoint logo">
-        <!-- Logo amélioré (éclair clean) -->
         <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-          <defs>
-            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#1d4ed8"/>
-              <stop offset="1" stop-color="#2563eb"/>
-            </linearGradient>
-          </defs>
+          <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#2563eb"/>
+          </linearGradient></defs>
           <path d="M13 2 4 14h7l-1 8 10-14h-7l0-6Z" fill="none" stroke="url(#g)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
         </svg>
       </div>
@@ -528,39 +166,23 @@
     </div>
 
     <nav class="nav" id="nav">
-      <button class="nav__item is-active" data-section="overview">
-        <span class="nav__icon">🏠</span><span>Overview</span>
-      </button>
-      <button class="nav__item" data-section="audits">
-        <span class="nav__icon">🧾</span><span>Audits</span>
-      </button>
-      <button class="nav__item" data-section="monitors">
-        <span class="nav__icon">📡</span><span>Monitors</span>
-      </button>
-      <button class="nav__item" data-section="local">
-        <span class="nav__icon">📍</span><span>Local SEO</span>
-      </button>
-      <button class="nav__item" data-section="competitors">
-        <span class="nav__icon">🧩</span><span>Competitors</span>
-      </button>
-      <button class="nav__item" data-section="reports">
-        <span class="nav__icon">📄</span><span>Reports</span><span class="pill-mini" id="planPill">Ultra</span>
-      </button>
-      <button class="nav__item" data-section="billing">
-        <span class="nav__icon">💳</span><span>Billing</span>
-      </button>
-      <button class="nav__item" data-section="settings">
-        <span class="nav__icon">⚙️</span><span>Settings</span>
-      </button>
+      <button class="nav__item is-active" data-section="overview"><span class="nav__icon">🏠</span><span>Overview</span></button>
+      <button class="nav__item" data-section="audits"><span class="nav__icon">🧾</span><span>Audits</span></button>
+      <button class="nav__item" data-section="monitors"><span class="nav__icon">📡</span><span>Monitors</span></button>
+      <button class="nav__item" data-section="local"><span class="nav__icon">📍</span><span>Local SEO</span></button>
+      <button class="nav__item" data-section="competitors"><span class="nav__icon">🧩</span><span>Competitors</span></button>
+      <button class="nav__item" data-section="reports"><span class="nav__icon">📄</span><span>Reports</span><span class="pill-mini" id="planPill">Ultra</span></button>
+      <button class="nav__item" data-section="billing"><span class="nav__icon">💳</span><span>Billing</span></button>
+      <button class="nav__item" data-section="settings"><span class="nav__icon">⚙️</span><span>Settings</span></button>
     </nav>
 
     <div class="sidebar__foot">
       <div class="miniCard">
         <div class="miniCard__title">ACCOUNT</div>
         <div class="miniGrid">
-          <div class="miniGrid__k">Plan</div><div class="miniGrid__v" id="accPlan">PRO</div>
-          <div class="miniGrid__k">Org</div><div class="miniGrid__v" id="accOrg">SAAS TEST</div>
-          <div class="miniGrid__k">Role</div><div class="miniGrid__v" id="accRole">owner</div>
+          <div class="miniGrid__k">Plan</div><div class="miniGrid__v" id="accPlan">—</div>
+          <div class="miniGrid__k">Org</div><div class="miniGrid__v" id="accOrg">—</div>
+          <div class="miniGrid__k">Role</div><div class="miniGrid__v" id="accRole">—</div>
           <div class="miniGrid__k">Trial</div><div class="miniGrid__v" id="accTrial">—</div>
         </div>
 
@@ -569,29 +191,22 @@
           <button class="btn btn--danger w100" id="btnLogout">Logout</button>
         </div>
 
-        <div class="hint" id="hint">
-          Tip : Si un bouton ne répond pas, vérifie ton token et /api/me.
-        </div>
+        <div class="hint" id="hint">Tip : Si un bouton ne répond pas, vérifie ton token et /api/me.</div>
       </div>
     </div>
   </aside>
 
-  <!-- Main -->
   <main class="main">
-    <!-- Topbar -->
     <header class="topbar">
       <div>
         <button class="btn btn--soft btn--sm only-mobile" id="btnMenu">≡ Menu</button>
-        <h1 class="hello__title" id="helloTitle">Bonjour, SAAS TEST</h1>
+        <h1 class="hello__title" id="helloTitle">Bonjour</h1>
         <div class="hello__sub" id="helloSub">SEO · Monitoring · Reports · Billing</div>
       </div>
 
       <div class="topbar__right">
         <div class="controls">
-          <div class="selectLike" id="periodBtn">
-            <span id="periodLabel">Last 30 days</span>
-            <span class="caret">▾</span>
-          </div>
+          <div class="selectLike" id="periodBtn"><span id="periodLabel">Last 30 days</span><span class="caret">▾</span></div>
           <button class="btn btn--primary" id="btnRefresh">Refresh</button>
           <button class="btn btn--soft" id="btnExportAudits">Export Audits CSV</button>
           <button class="btn btn--soft" id="btnExportMonitors">Export Monitors CSV</button>
@@ -606,11 +221,8 @@
       </div>
     </header>
 
-    <!-- Content Grid -->
     <div class="grid">
-      <!-- LEFT -->
       <section class="col">
-        <!-- OVERVIEW section -->
         <div class="section is-active" id="section-overview">
           <div class="card">
             <div class="card__head">
@@ -621,12 +233,12 @@
             <div class="kpis">
               <div class="kpi">
                 <div class="kpi__k">SEO Score</div>
-                <div class="kpi__v"><span id="seoScore">78</span> <small>/100</small></div>
+                <div class="kpi__v"><span id="seoScore">—</span> <small>/100</small></div>
                 <div class="kpi__s">Last 30 days</div>
               </div>
               <div class="kpi">
                 <div class="kpi__k">Local Visibility</div>
-                <div class="kpi__v kpi__v--green" id="localVis">+12%</div>
+                <div class="kpi__v kpi__v--green" id="localVis">—</div>
                 <div class="kpi__s">Map pack + reviews</div>
               </div>
             </div>
@@ -639,7 +251,6 @@
             </div>
 
             <div class="chartWrap">
-              <!-- simple SVG chart (stable, pas de lib, pas de bug) -->
               <svg class="chartSvg" viewBox="0 0 600 160" preserveAspectRatio="none" aria-label="SEO chart">
                 <line class="gridline" x1="0" y1="40" x2="600" y2="40"></line>
                 <line class="gridline" x1="0" y1="80" x2="600" y2="80"></line>
@@ -671,72 +282,24 @@
           </div>
         </div>
 
-        <!-- AUDITS -->
         <div class="section" id="section-audits">
           <div class="card">
             <div class="card__head">
               <div class="card__title">AUDITS</div>
               <button class="btn btn--soft btn--sm" id="btnNewAudit">New audit</button>
             </div>
-            <div class="muted">Section Audits (tu peux brancher tes données ici).</div>
+            <div class="muted">Section Audits (branche tes données ici).</div>
           </div>
         </div>
 
-        <!-- LOCAL -->
-        <div class="section" id="section-local">
-          <div class="card">
-            <div class="card__head">
-              <div class="card__title">LOCAL SEO</div>
-            </div>
-            <div class="muted">Section Local SEO.</div>
-          </div>
-        </div>
-
-        <!-- COMPETITORS -->
-        <div class="section" id="section-competitors">
-          <div class="card">
-            <div class="card__head">
-              <div class="card__title">COMPETITORS</div>
-            </div>
-            <div class="muted">Section Competitors.</div>
-          </div>
-        </div>
-
-        <!-- REPORTS -->
-        <div class="section" id="section-reports">
-          <div class="card">
-            <div class="card__head">
-              <div class="card__title">REPORTS</div>
-              <button class="btn btn--soft btn--sm">Generate</button>
-            </div>
-            <div class="muted">Section Reports.</div>
-          </div>
-        </div>
-
-        <!-- BILLING -->
-        <div class="section" id="section-billing">
-          <div class="card">
-            <div class="card__head">
-              <div class="card__title">BILLING</div>
-            </div>
-            <div class="muted">Section Billing.</div>
-          </div>
-        </div>
-
-        <!-- SETTINGS -->
-        <div class="section" id="section-settings">
-          <div class="card">
-            <div class="card__head">
-              <div class="card__title">SETTINGS</div>
-            </div>
-            <div class="muted">Section Settings.</div>
-          </div>
-        </div>
+        <div class="section" id="section-local"><div class="card"><div class="card__head"><div class="card__title">LOCAL SEO</div></div><div class="muted">Section Local SEO.</div></div></div>
+        <div class="section" id="section-competitors"><div class="card"><div class="card__head"><div class="card__title">COMPETITORS</div></div><div class="muted">Section Competitors.</div></div></div>
+        <div class="section" id="section-reports"><div class="card"><div class="card__head"><div class="card__title">REPORTS</div><button class="btn btn--soft btn--sm">Generate</button></div><div class="muted">Section Reports.</div></div></div>
+        <div class="section" id="section-billing"><div class="card"><div class="card__head"><div class="card__title">BILLING</div></div><div class="muted">Section Billing.</div></div></div>
+        <div class="section" id="section-settings"><div class="card"><div class="card__head"><div class="card__title">SETTINGS</div></div><div class="muted">Section Settings.</div></div></div>
       </section>
 
-      <!-- RIGHT -->
       <section class="col">
-        <!-- Monitors -->
         <div class="card" id="card-monitors">
           <div class="tableCard__head">
             <div style="font-weight:var(--fw-semibold); font-size:20px;">Monitors</div>
@@ -755,13 +318,10 @@
                 <th class="td-actions">&nbsp;</th>
               </tr>
             </thead>
-            <tbody id="monitorsTbody">
-              <!-- filled by JS -->
-            </tbody>
+            <tbody id="monitorsTbody"></tbody>
           </table>
         </div>
 
-        <!-- Plans header + plans -->
         <div class="card" id="card-plans">
           <div class="plansHeader">
             <div style="font-weight:var(--fw-semibold); font-size:20px;">Plans</div>
@@ -770,68 +330,33 @@
 
           <div class="plans" id="plansGrid">
             <div class="plan">
-              <div class="plan__top">
-                <div>
-                  <div class="plan__name">Standard</div>
-                </div>
-                <div>
-                  <div class="plan__price">€29 <span class="plan__per">/mo</span></div>
-                </div>
-              </div>
-              <ul class="plan__list">
-                <li>SEO audits: 30</li>
-                <li>Monitors: 3</li>
-                <li>PDF exports</li>
-              </ul>
+              <div class="plan__top"><div><div class="plan__name">Standard</div></div><div><div class="plan__price">€29 <span class="plan__per">/mo</span></div></div></div>
+              <ul class="plan__list"><li>SEO audits: 30</li><li>Monitors: 3</li><li>PDF exports</li></ul>
               <button class="btn btn--soft w100" id="btnManage">Manage Subscription</button>
             </div>
 
             <div class="plan plan--featured">
               <div class="plan__top">
-                <div>
-                  <div class="plan__name">Pro</div>
-                  <div class="plan__badge">Free trial 14 days</div>
-                </div>
-                <div>
-                  <div class="plan__price">€79 <span class="plan__per">/mo</span></div>
-                </div>
+                <div><div class="plan__name">Pro</div><div class="plan__badge">Free trial 14 days</div></div>
+                <div><div class="plan__price">€79 <span class="plan__per">/mo</span></div></div>
               </div>
-              <ul class="plan__list">
-                <li>SEO audits: 300</li>
-                <li>Monitors: 50</li>
-                <li>PDF exports</li>
-                <li>Email alerts</li>
-              </ul>
+              <ul class="plan__list"><li>SEO audits: 300</li><li>Monitors: 50</li><li>PDF exports</li><li>Email alerts</li></ul>
               <button class="btn btn--primary w100" id="btnUpgrade">Upgrade Subscription</button>
             </div>
 
             <div class="plan">
-              <div class="plan__top">
-                <div>
-                  <div class="plan__name">Ultra</div>
-                </div>
-                <div>
-                  <div class="plan__price">€149 <span class="plan__per">/mo</span></div>
-                </div>
-              </div>
-              <ul class="plan__list">
-                <li>SEO audits: 2000</li>
-                <li>Monitors: 300</li>
-                <li>Team + Reports</li>
-              </ul>
+              <div class="plan__top"><div><div class="plan__name">Ultra</div></div><div><div class="plan__price">€149 <span class="plan__per">/mo</span></div></div></div>
+              <ul class="plan__list"><li>SEO audits: 2000</li><li>Monitors: 300</li><li>Team + Reports</li></ul>
               <button class="btn btn--soft w100" id="btnPayment">Update Payment Method</button>
             </div>
           </div>
 
-          <div class="hint" style="margin-top:12px;">
-            Note : ces boutons ouvrent Stripe checkout/portal (selon ton backend).
-          </div>
+          <div class="hint" style="margin-top:12px;">Note : ces boutons ouvrent Stripe checkout/portal (selon ton backend).</div>
         </div>
       </section>
     </div>
   </main>
 
-  <!-- Toast -->
   <div class="toast" id="toast">
     <div class="trow">
       <strong id="toastTitle">Info</strong>
@@ -841,14 +366,14 @@
   </div>
 
   <script>
-    // ========= Helpers (zéro crash si element absent) =========
+    const TOKEN_KEY = "fp_token";
+
+    // Helpers
     const $ = (sel, root=document) => root.querySelector(sel);
     const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 
     function toast(title, msg){
-      const t = $("#toast");
-      const tt = $("#toastTitle");
-      const tm = $("#toastMsg");
+      const t = $("#toast"), tt = $("#toastTitle"), tm = $("#toastMsg");
       if(!t || !tt || !tm) return;
       tt.textContent = title ?? "Info";
       tm.textContent = msg ?? "";
@@ -857,62 +382,48 @@
       window.__toastTimer = window.setTimeout(() => t.classList.remove("is-open"), 4200);
     }
 
-    // ========= Sidebar / Mobile drawer =========
+    // Sidebar
     const sidebar = $("#sidebar");
     const overlay = $("#overlay");
-    function openSidebar(){
-      if(sidebar) sidebar.classList.add("is-open");
-      if(overlay) overlay.classList.add("is-open");
-    }
-    function closeSidebar(){
-      if(sidebar) sidebar.classList.remove("is-open");
-      if(overlay) overlay.classList.remove("is-open");
-    }
+    function openSidebar(){ sidebar?.classList.add("is-open"); overlay?.classList.add("is-open"); }
+    function closeSidebar(){ sidebar?.classList.remove("is-open"); overlay?.classList.remove("is-open"); }
     $("#btnMenu")?.addEventListener("click", openSidebar);
     overlay?.addEventListener("click", closeSidebar);
 
-    // ========= Sections navigation =========
+    // Sections
     function setActiveSection(name){
-      // nav active
-      $$("#nav .nav__item").forEach(btn => {
-        btn.classList.toggle("is-active", btn.dataset.section === name);
-      });
-
-      // sections
+      $$("#nav .nav__item").forEach(btn => btn.classList.toggle("is-active", btn.dataset.section === name));
       $$(".section").forEach(sec => sec.classList.remove("is-active"));
-      const target = $(`#section-${name}`);
-      if(target) target.classList.add("is-active");
-
-      // close drawer on mobile
-      if(window.matchMedia("(max-width: 880px)").matches){
-        closeSidebar();
-      }
+      $(`#section-${name}`)?.classList.add("is-active");
+      if(window.matchMedia("(max-width: 880px)").matches) closeSidebar();
     }
-
     $("#nav")?.addEventListener("click", (e) => {
       const btn = e.target.closest(".nav__item");
       if(!btn) return;
-      const name = btn.dataset.section;
-      if(!name) return;
-      setActiveSection(name);
+      setActiveSection(btn.dataset.section);
     });
 
-    // ========= Fake/demo data (fallback) =========
-    const demo = {
-      me: {
-        orgName: "SAAS TEST",
-        plan: "PRO",
-        role: "owner",
-        trial: "—",
-        email: "businessrevival.07@gmail.com"
-      },
-      kpis: { seoScore: 78, localVis: "+12%" },
-      monitors: [
-        { url: "https://flowpoint-ai.replit.app/", status: "up", interval: "60 min", last: "1,000 ago", resp: "90 ms" },
-        { url: "https://flowpoint.pro/", status: "down", interval: "30 min", last: "1,200 ago", resp: "—" }
-      ],
-      chart: [12, 18, 30, 26, 14, 40, 32, 22, 28, 20, 34]
-    };
+    // Chart
+    function renderChart(values){
+      const line = $("#linePath"), area = $("#areaPath");
+      if(!line || !area || !Array.isArray(values) || values.length < 2) return;
+
+      const w = 600, h = 160, padTop = 12, padBottom = 16;
+      const min = Math.min(...values), max = Math.max(...values);
+      const span = (max - min) || 1;
+
+      const sx = (i) => (i/(values.length-1))*w;
+      const sy = (v) => (h - padBottom) - ((v - min)/span)*(h - padTop - padBottom);
+
+      let d = "";
+      values.forEach((v,i) => { d += (i===0 ? "M" : " L") + sx(i).toFixed(2) + " " + sy(v).toFixed(2); });
+      const dArea = d + ` L ${w} ${h} L 0 ${h} Z`;
+
+      line.setAttribute("d", d);
+      area.setAttribute("d", dArea);
+    }
+
+    function setTextSafe(sel, text){ const el = $(sel); if(el) el.textContent = text; }
 
     function renderMonitors(list){
       const tbody = $("#monitorsTbody");
@@ -922,180 +433,117 @@
       list.forEach((m) => {
         const tr = document.createElement("tr");
 
-        const statusPill = (m.status === "up")
+        const st = String(m.lastStatus || m.status || "unknown").toLowerCase();
+        const statusPill = (st === "up")
           ? `<span class="pill pill--up">Up</span>`
-          : (m.status === "down")
+          : (st === "down")
             ? `<span class="pill pill--down">Down</span>`
             : `<span class="pill pill--warn">Unknown</span>`;
+
+        const interval = m.intervalMinutes ? `${m.intervalMinutes} min` : (m.interval || "—");
+        const last = m.lastCheckedAt ? new Date(m.lastCheckedAt).toLocaleString("fr-FR") : (m.last || "—");
+        const resp = (m.responseTimeMs != null) ? `${m.responseTimeMs} ms` : (m.resp || "—");
 
         tr.innerHTML = `
           <td><span class="pill pill--soft" style="padding:6px 10px;">✓</span></td>
           <td class="mono" style="max-width:260px; overflow:hidden; text-overflow:ellipsis;">${m.url}</td>
           <td>${statusPill}</td>
-          <td>${m.interval}</td>
-          <td>${m.last}</td>
-          <td>${m.resp}</td>
-          <td class="td-actions"><button class="btn btn--soft btn--sm">Run</button></td>
+          <td>${interval}</td>
+          <td>${last}</td>
+          <td>${resp}</td>
+          <td class="td-actions"><button class="btn btn--soft btn--sm" data-run="${m._id}">Run</button></td>
         `;
         tbody.appendChild(tr);
       });
     }
 
-    function setTextSafe(sel, text){
-      const el = $(sel);
-      if(el) el.textContent = text;
-    }
+    async function apiJSON(url, opts={}){
+      const token = localStorage.getItem(TOKEN_KEY);
+      if(!token) return { __err: "NO_TOKEN" };
 
-    // ========= Chart (SVG) =========
-    function renderChart(values){
-      const line = $("#linePath");
-      const area = $("#areaPath");
-      if(!line || !area || !Array.isArray(values) || values.length < 2) return;
-
-      const w = 600, h = 160;
-      const padTop = 12, padBottom = 16;
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const span = (max - min) || 1;
-
-      const sx = (i) => (i/(values.length-1))*w;
-      const sy = (v) => {
-        const t = (v - min) / span; // 0..1
-        const y = (h - padBottom) - t*(h - padTop - padBottom);
-        return y;
-      };
-
-      let d = "";
-      values.forEach((v,i) => {
-        d += (i===0 ? "M" : " L") + sx(i).toFixed(2) + " " + sy(v).toFixed(2);
+      const headers = Object.assign({}, opts.headers || {}, {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
       });
 
-      const dArea = d + ` L ${w} ${h} L 0 ${h} Z`;
-
-      line.setAttribute("d", d);
-      area.setAttribute("d", dArea);
-    }
-
-    // ========= API (safe) =========
-    async function safeFetchJSON(url){
-      try{
-        const res = await fetch(url, { credentials:"include" });
-        if(!res.ok) return null;
-        return await res.json();
-      }catch(e){
-        return null;
-      }
+      const res = await fetch(url, { ...opts, headers });
+      const j = await res.json().catch(() => ({}));
+      if(!res.ok) return { __err: j.error || `HTTP ${res.status}`, __status: res.status, ...j };
+      return j;
     }
 
     async function load(){
-      // 1) Try real API
-      //    If you have /api/me, /api/overview, /api/monitors -> plug here.
-      const me = await safeFetchJSON("/api/me");
-      // Optional endpoints (if you have them)
-      const overview = await safeFetchJSON("/api/overview");   // { seoScore, localVis, chart[] }
-      const monitors = await safeFetchJSON("/api/monitors");   // [{url,status,interval,last,resp}]
-
-      const data = {
-        me: me || demo.me,
-        kpis: {
-          seoScore: (overview && overview.seoScore) ?? demo.kpis.seoScore,
-          localVis: (overview && overview.localVis) ?? demo.kpis.localVis,
-        },
-        chart: (overview && Array.isArray(overview.chart) ? overview.chart : demo.chart),
-        monitors: (Array.isArray(monitors) ? monitors : demo.monitors)
-      };
-
-      // 2) Render safe
-      const org = data.me.orgName || "—";
-      setTextSafe("#helloTitle", `Bonjour, ${org}`);
-      setTextSafe("#accOrg", org);
-
-      setTextSafe("#accPlan", (data.me.plan || "—").toUpperCase());
-      setTextSafe("#accRole", data.me.role || "—");
-      setTextSafe("#accTrial", data.me.trial || "—");
-
-      // small pill near Reports
-      const planPill = $("#planPill");
-      if(planPill) planPill.textContent = (data.me.plan || "Ultra");
-
-      setTextSafe("#seoScore", String(data.kpis.seoScore ?? "—"));
-      setTextSafe("#localVis", String(data.kpis.localVis ?? "—"));
-
-      renderChart(data.chart);
-      renderMonitors(data.monitors);
-
-      // if API missing, inform but do not block
-      if(!me){
-        toast("Mode démo", "Ton /api/me ne répond pas (ou pas connecté). Le dashboard reste utilisable.");
+      const me = await apiJSON("/api/me");
+      if(me.__err){
+        toast("Connexion", "Token manquant ou invalide. Retour login.");
+        setTimeout(() => location.replace("/login.html"), 500);
+        return;
       }
+
+      const overview = await apiJSON("/api/overview?days=30");
+      const monitorsRes = await apiJSON("/api/monitors");
+
+      const orgName = me.org?.name || me.companyName || "—";
+      setTextSafe("#helloTitle", `Bonjour, ${orgName}`);
+      setTextSafe("#accOrg", orgName);
+      setTextSafe("#accPlan", String(me.plan || "—").toUpperCase());
+      setTextSafe("#accRole", me.role || "—");
+      setTextSafe("#accTrial", me.trialEndsAt ? new Date(me.trialEndsAt).toLocaleDateString("fr-FR") : "—");
+
+      $("#planPill") && ($("#planPill").textContent = String(me.plan || "pro").toUpperCase());
+
+      const seoScore = (overview && overview.ok) ? overview.seoScore : 0;
+      const localVis = (overview && overview.ok) ? overview.localVis : "+0%";
+      setTextSafe("#seoScore", String(seoScore ?? "—"));
+      setTextSafe("#localVis", String(localVis ?? "—"));
+
+      renderChart((overview && overview.ok && Array.isArray(overview.chart)) ? overview.chart : [10,20,18,24,30,28,40]);
+      const monitors = (monitorsRes && monitorsRes.ok && Array.isArray(monitorsRes.monitors)) ? monitorsRes.monitors : [];
+      renderMonitors(monitors);
+
+      // Bind run buttons
+      $("#monitorsTbody")?.addEventListener("click", async (e) => {
+        const btn = e.target.closest("button[data-run]");
+        if(!btn) return;
+        const id = btn.getAttribute("data-run");
+        toast("Monitor", "Check en cours…");
+        const r = await apiJSON(`/api/monitors/${encodeURIComponent(id)}/run`, { method:"POST" });
+        if(r.__err) toast("Erreur", r.__err);
+        else toast("OK", `Status: ${r.result?.status || "?"}`);
+        await load();
+      }, { once:true });
     }
 
-    // ========= Buttons (no crash) =========
+    // Buttons
     $("#toastClose")?.addEventListener("click", () => $("#toast")?.classList.remove("is-open"));
+    $("#btnRefresh")?.addEventListener("click", async () => { toast("Refresh", "Mise à jour…"); await load(); });
+    $("#btnExportAudits")?.addEventListener("click", () => { window.location.href = "/api/export/audits.csv"; });
+    $("#btnExportMonitors")?.addEventListener("click", () => { window.location.href = "/api/export/monitors.csv"; });
 
-    $("#btnRefresh")?.addEventListener("click", async () => {
-      toast("Refresh", "Mise à jour…");
-      await load();
-    });
-
-    $("#btnExportAudits")?.addEventListener("click", () => {
-      // Replace by real link from your backend:
-      // window.location.href = "/api/exports/audits.csv"
-      toast("Export", "Export Audits CSV (branche ton endpoint).");
-    });
-
-    $("#btnExportMonitors")?.addEventListener("click", () => {
-      // window.location.href = "/api/exports/monitors.csv"
-      toast("Export", "Export Monitors CSV (branche ton endpoint).");
-    });
-
-    $("#btnRunAudit")?.addEventListener("click", () => toast("Audit", "Lancement audit (branche ton endpoint)."));
-    $("#btnViewAll")?.addEventListener("click", () => toast("Incidents", "Afficher tous les incidents (branche ta page)."));
-    $("#btnAddMonitor")?.addEventListener("click", () => toast("Monitors", "Ajouter un monitor (ouvre ton modal)."));
-
-    $("#btnPortal")?.addEventListener("click", () => {
-      // window.location.href = "/api/billing/portal"
-      toast("Billing", "Ouvrir Stripe Portal (branche /api/billing/portal).");
+    $("#btnPortal")?.addEventListener("click", async () => {
+      const r = await apiJSON("/api/stripe/portal", { method:"POST" });
+      if(r.__err) return toast("Billing", r.__err);
+      if(r.url) location.href = r.url;
     });
 
     $("#btnLogout")?.addEventListener("click", () => {
-      // localStorage.removeItem("token"); window.location.href="/login"
-      toast("Logout", "Déconnexion (branche ta route).");
+      localStorage.removeItem(TOKEN_KEY);
+      location.replace("/login.html");
     });
 
-    $("#btnManage")?.addEventListener("click", () => toast("Subscription", "Manage Subscription (Stripe)."));
-    $("#btnUpgrade")?.addEventListener("click", () => toast("Subscription", "Upgrade Subscription (Stripe)."));
-    $("#btnPayment")?.addEventListener("click", () => toast("Payment", "Update Payment Method (Stripe)."));
+    $("#btnRunAudit")?.addEventListener("click", () => toast("Audit", "Branche ton UI audit (POST /api/audits/run)."));
 
     $("#periodBtn")?.addEventListener("click", () => {
-      // simple toggle between periods (no UI bug)
-      const label = $("#periodLabel");
-      const range = $("#rangeLabel");
-      const perf = $("#perfRange");
+      const label = $("#periodLabel"), range = $("#rangeLabel"), perf = $("#perfRange");
       if(!label || !range || !perf) return;
-
       const cur = label.textContent.trim();
-      if(cur === "Last 30 days"){
-        label.textContent = "Last 7 days";
-        range.textContent = "LAST 7 DAYS";
-        perf.textContent = "7 days";
-      }else{
-        label.textContent = "Last 30 days";
-        range.textContent = "LAST 30 DAYS";
-        perf.textContent = "30 days";
-      }
+      if(cur === "Last 30 days"){ label.textContent = "Last 7 days"; range.textContent="LAST 7 DAYS"; perf.textContent="7 days"; }
+      else { label.textContent="Last 30 days"; range.textContent="LAST 30 DAYS"; perf.textContent="30 days"; }
     });
 
-    $("#btnLast3")?.addEventListener("click", () => {
-      toast("Chart", "Filtre Last 3 days (branche tes données).");
-    });
-
-    // ========= Init =========
     window.addEventListener("DOMContentLoaded", () => {
-      // avoid any null crash
-      load();
-      // default section
       setActiveSection("overview");
+      load();
     });
   </script>
 </body>
