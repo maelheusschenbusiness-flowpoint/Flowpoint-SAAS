@@ -1,6 +1,6 @@
 // app.js — FlowPoint AI Signup (Frontend)
 // Flow: POST /api/auth/lead -> store JWT -> POST /api/stripe/checkout -> redirect to Stripe
-// Token stored in localStorage under "fp_token" (same as dashboard.js + login-verify.html)
+// Token stored in localStorage under "fp_token"
 
 (() => {
   const TOKEN_KEY = "fp_token";
@@ -32,6 +32,13 @@
     const v = String(p || "").toLowerCase();
     if (v === "standard" || v === "pro" || v === "ultra") return v;
     return "pro";
+  }
+
+  // ✅ Preselect plan from pricing page: /index.html?plan=pro
+  function applyPlanFromQuery() {
+    const p = new URLSearchParams(location.search).get("plan");
+    const plan = normalizePlan(p);
+    if (planEl) planEl.value = plan;
   }
 
   async function postJSON(url, body, token) {
@@ -82,31 +89,28 @@
       localStorage.setItem(TOKEN_KEY, lead.token);
 
       // 2) Checkout Stripe -> redirect
-      setMsg("Redirection vers Stripe (paiement) …");
+      setMsg("Redirection vers Stripe…");
 
-      const checkout = await postJSON(
-        "/api/stripe/checkout",
-        { plan },
-        lead.token
-      );
-
+      const checkout = await postJSON("/api/stripe/checkout", { plan }, lead.token);
       if (!checkout?.url) throw new Error("URL Stripe manquante.");
       window.location.href = checkout.url;
     } catch (err) {
       const m = err?.message || "Erreur.";
       setMsg(m, "error");
-      // fallback: si token existe, au moins on peut aller dashboard
+
+      // fallback: token exists => can open dashboard
       const tok = localStorage.getItem(TOKEN_KEY);
       if (tok) {
-        setMsg(
-          m + " — Tu peux essayer d’ouvrir le dashboard et relancer le checkout.",
-          "error"
-        );
+        setMsg(m + " — Tu peux ouvrir le dashboard et relancer le checkout.", "error");
       }
     } finally {
       setLoading(false);
     }
   }
+
+  window.addEventListener("DOMContentLoaded", () => {
+    applyPlanFromQuery();
+  });
 
   form?.addEventListener("submit", startTrial);
 })();
