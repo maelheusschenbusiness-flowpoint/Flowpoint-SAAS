@@ -1,10 +1,11 @@
 // =======================
-// FlowPoint AI — SaaS Backend (Pack A + Pack B)
+// FlowPoint AI — SaaS Backend (Pack A + Pack B) + Addons foundations
 // Plans: Standard / Pro / Ultra
 // Pack A: SEO Audit + Cache + PDF + Monitoring + Logs + CSV + Magic Link + Admin
-// Pack B: Orgs + Team Ultra (Invites) + Roles + Shared data per org
-// + Fixes: SSRF protection, Monitor quota = active count, Cron concurrency,
-//          /api/overview for dashboard, exports aliases, uptime endpoint.
+// Pack B: Orgs + Roles + Shared data per org
+// Addons: monitorsPack50 (+50 monitors per pack), whiteLabel (included), extraSeats (future)
+// Fixes: SSRF protection, Monitor quota = active count (+addons), Cron concurrency,
+//        /api/overview for dashboard, exports aliases, uptime endpoint.
 // =======================
 
 require("dotenv").config();
@@ -45,8 +46,10 @@ for (const k of REQUIRED) {
   if (!process.env[k]) console.log("❌ ENV manquante:", k);
 }
 
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET_RENDER || process.env.STRIPE_WEBHOOK_SECRET;
-if (!STRIPE_WEBHOOK_SECRET) console.log("⚠️ STRIPE_WEBHOOK_SECRET manquante (webhook non validable)");
+const STRIPE_WEBHOOK_SECRET =
+  process.env.STRIPE_WEBHOOK_SECRET_RENDER || process.env.STRIPE_WEBHOOK_SECRET;
+if (!STRIPE_WEBHOOK_SECRET)
+  console.log("⚠️ STRIPE_WEBHOOK_SECRET manquante (webhook non validable)");
 
 const ADMIN_KEY = process.env.ADMIN_KEY || "";
 const CRON_KEY = process.env.CRON_KEY || "";
@@ -56,7 +59,10 @@ const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
 const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
 
 const MONITOR_HTTP_TIMEOUT_MS = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
-const CRON_CONCURRENCY = Math.min(25, Math.max(2, Number(process.env.CRON_CONCURRENCY || 10)));
+const CRON_CONCURRENCY = Math.min(
+  25,
+  Math.max(2, Number(process.env.CRON_CONCURRENCY || 10))
+);
 
 // ---------- SMTP / Resend ----------
 const SMTP_READY =
@@ -190,6 +196,22 @@ function quotasForPlan(plan) {
   return { audits: 0, monitors: 0, pdf: 0, exports: 0, teamSeats: 0 };
 }
 
+// ✅ Addons-aware quotas
+function quotasForOrg(plan, org) {
+  const base = quotasForPlan(plan);
+
+  const packs = Number(org?.billingAddons?.monitorsPack50 || 0);
+  const extraMonitors = Math.max(0, Math.floor(packs)) * 50;
+
+  const extraSeats = Number(org?.billingAddons?.extraSeats || 0);
+
+  return {
+    ...base,
+    monitors: base.monitors + extraMonitors,
+    teamSeats: base.teamSeats + Math.max(0, Math.floor(extraSeats)),
+  };
+}
+
 function firstDayOfThisMonthUTC() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
@@ -206,6 +228,7 @@ async function resetUsageIfNewMonth(user) {
   }
 }
 
+// NOTE: consume() remains plan-based (addons for audits/pdf/exports not enabled yet)
 async function consume(user, key, amount = 1) {
   const q = quotasForPlan(user.plan);
   const map = {
@@ -232,7 +255,14 @@ function priceIdForPlan(plan) {
 
 // ---------- ANTI-ABUS ----------
 const PUBLIC_EMAIL_DOMAINS = new Set([
-  "gmail.com","googlemail.com","yahoo.com","outlook.com","hotmail.com","icloud.com","live.com","msn.com",
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "live.com",
+  "msn.com",
 ]);
 
 function normalizeEmail(emailRaw) {
@@ -285,11 +315,11 @@ function isPrivateIp(ip) {
     return false;
   }
 
-  // IPv6 (simple rules)
+  // IPv6
   const v = ip.toLowerCase();
-  if (v === "::1") return true;              // loopback
-  if (v.startsWith("fc") || v.startsWith("fd")) return true; // unique local fc00::/7
-  if (v.startsWith("fe80")) return true;     // link-local fe80::/10
+  if (v === "::1") return true; // loopback
+  if (v.startsWith("fc") || v.startsWith("fd")) return true; // unique local
+  if (v.startsWith("fe80")) return true; // link-local
   return false;
 }
 
@@ -315,7 +345,6 @@ async function assertSafePublicUrl(rawUrl) {
     if (isPrivateIp(r.address)) throw new Error("Destination réseau privée interdite");
   }
 
-  // normalize
   u.hash = "";
   return u.toString();
 }
@@ -331,39 +360,34 @@ const OrgSchema = new mongoose.Schema(
     alertRecipients: { type: String, default: "all" }, // "owner" | "all"
     alertExtraEmails: { type: [String], default: [] },
 
-    // ✅ NEW: Addons (billing features)
+    // ✅ Addons
     billingAddons: {
-      // packs monitors: +50 each pack
-      monitorsPack50: { type: Number, default: 0 },
-
-      // white-label included (per your request)
-      whiteLabel: { type: Boolean, default: true },
-
-      // optional future (ready)
-      extraSeats: { type: Number, default: 0 }, // +seats for team
+      monitorsPack50: { type: Number, default: 0 }, // +50 monitors per pack
+      whiteLabel: { type: Boolean, default: true }, // included (as you requested)
+      extraSeats: { type: Number, default: 0 }, // future
     },
 
-    // ✅ NEW: Branding / White-label (simple version)
+    // ✅ Branding / white-label
     branding: {
       appName: { type: String, default: "FlowPoint" },
       supportEmail: { type: String, default: "" },
       logoUrl: { type: String, default: "" },
       primaryColor: { type: String, default: "#2563eb" },
       accentColor: { type: String, default: "#1d4ed8" },
-      hideFlowPointBranding: { type: Boolean, default: false }, // if whiteLabel true you can flip this later
+      hideFlowPointBranding: { type: Boolean, default: false },
     },
 
-    // ✅ NEW: Data retention (days)
+    // ✅ Data retention (days)
     retentionDays: { type: Number, default: 30 },
 
-    // ✅ NEW: Integrations placeholders
+    // ✅ Integrations placeholders
     integrations: {
       slackWebhookUrl: { type: String, default: "" },
       discordWebhookUrl: { type: String, default: "" },
       zapierHookUrl: { type: String, default: "" },
     },
 
-    // ✅ NEW: Credits (optional future)
+    // ✅ Credits (future optional)
     credits: {
       audits: { type: Number, default: 0 },
       pdf: { type: Number, default: 0 },
@@ -498,7 +522,11 @@ const MonitorLog = mongoose.model("MonitorLog", MonitorLogSchema);
 
 // ---------- AUTH ----------
 function signToken(user) {
-  return jwt.sign({ uid: user._id.toString(), email: user.email }, process.env.JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign(
+    { uid: user._id.toString(), email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: "30d" }
+  );
 }
 
 function auth(req, res, next) {
@@ -513,30 +541,7 @@ function auth(req, res, next) {
   }
 }
 
-async function ensureOrgForUser(user) {
-  if (user.orgId) return user;
-
-  const normalized = normalizeCompanyName(user.companyName || "Organisation");
-  const domain = user.companyDomain || "";
-
-  let org = await Org.findOne({ normalizedName: normalized });
-
-  if (!org) {
-    org = await Org.create({
-      name: user.companyName || "Organisation",
-      normalizedName: normalized,
-      ownerUserId: user._id,
-      createdFromEmailDomain: domain,
-      alertRecipients: "all",
-      alertExtraEmails: [],
-    });
-  }
-
-  user.orgId = org._id;
-  user.role = user.role || "owner";
-  await user.save();
-  return user;
-}
+// ---------- ORG DEFAULTS ----------
 function clampInt(n, min, max) {
   const x = Number(n);
   if (!Number.isFinite(x)) return min;
@@ -545,7 +550,6 @@ function clampInt(n, min, max) {
 
 async function ensureOrgDefaults(org) {
   if (!org) return null;
-
   let changed = false;
 
   // billingAddons
@@ -553,9 +557,18 @@ async function ensureOrgDefaults(org) {
     org.billingAddons = { monitorsPack50: 0, whiteLabel: true, extraSeats: 0 };
     changed = true;
   } else {
-    if (org.billingAddons.monitorsPack50 == null) { org.billingAddons.monitorsPack50 = 0; changed = true; }
-    if (org.billingAddons.whiteLabel == null) { org.billingAddons.whiteLabel = true; changed = true; }
-    if (org.billingAddons.extraSeats == null) { org.billingAddons.extraSeats = 0; changed = true; }
+    if (org.billingAddons.monitorsPack50 == null) {
+      org.billingAddons.monitorsPack50 = 0;
+      changed = true;
+    }
+    if (org.billingAddons.whiteLabel == null) {
+      org.billingAddons.whiteLabel = true;
+      changed = true;
+    }
+    if (org.billingAddons.extraSeats == null) {
+      org.billingAddons.extraSeats = 0;
+      changed = true;
+    }
 
     org.billingAddons.monitorsPack50 = clampInt(org.billingAddons.monitorsPack50, 0, 200);
     org.billingAddons.extraSeats = clampInt(org.billingAddons.extraSeats, 0, 500);
@@ -574,16 +587,37 @@ async function ensureOrgDefaults(org) {
     changed = true;
   } else {
     const b = org.branding;
-    if (b.appName == null) { b.appName = "FlowPoint"; changed = true; }
-    if (b.supportEmail == null) { b.supportEmail = ""; changed = true; }
-    if (b.logoUrl == null) { b.logoUrl = ""; changed = true; }
-    if (b.primaryColor == null) { b.primaryColor = "#2563eb"; changed = true; }
-    if (b.accentColor == null) { b.accentColor = "#1d4ed8"; changed = true; }
-    if (b.hideFlowPointBranding == null) { b.hideFlowPointBranding = false; changed = true; }
+    if (b.appName == null) {
+      b.appName = "FlowPoint";
+      changed = true;
+    }
+    if (b.supportEmail == null) {
+      b.supportEmail = "";
+      changed = true;
+    }
+    if (b.logoUrl == null) {
+      b.logoUrl = "";
+      changed = true;
+    }
+    if (b.primaryColor == null) {
+      b.primaryColor = "#2563eb";
+      changed = true;
+    }
+    if (b.accentColor == null) {
+      b.accentColor = "#1d4ed8";
+      changed = true;
+    }
+    if (b.hideFlowPointBranding == null) {
+      b.hideFlowPointBranding = false;
+      changed = true;
+    }
   }
 
   // retentionDays
-  if (org.retentionDays == null) { org.retentionDays = 30; changed = true; }
+  if (org.retentionDays == null) {
+    org.retentionDays = 30;
+    changed = true;
+  }
   org.retentionDays = clampInt(org.retentionDays, 7, 3650);
 
   // integrations
@@ -591,9 +625,18 @@ async function ensureOrgDefaults(org) {
     org.integrations = { slackWebhookUrl: "", discordWebhookUrl: "", zapierHookUrl: "" };
     changed = true;
   } else {
-    if (org.integrations.slackWebhookUrl == null) { org.integrations.slackWebhookUrl = ""; changed = true; }
-    if (org.integrations.discordWebhookUrl == null) { org.integrations.discordWebhookUrl = ""; changed = true; }
-    if (org.integrations.zapierHookUrl == null) { org.integrations.zapierHookUrl = ""; changed = true; }
+    if (org.integrations.slackWebhookUrl == null) {
+      org.integrations.slackWebhookUrl = "";
+      changed = true;
+    }
+    if (org.integrations.discordWebhookUrl == null) {
+      org.integrations.discordWebhookUrl = "";
+      changed = true;
+    }
+    if (org.integrations.zapierHookUrl == null) {
+      org.integrations.zapierHookUrl = "";
+      changed = true;
+    }
   }
 
   // credits
@@ -601,24 +644,29 @@ async function ensureOrgDefaults(org) {
     org.credits = { audits: 0, pdf: 0, exports: 0 };
     changed = true;
   } else {
-    if (org.credits.audits == null) { org.credits.audits = 0; changed = true; }
-    if (org.credits.pdf == null) { org.credits.pdf = 0; changed = true; }
-    if (org.credits.exports == null) { org.credits.exports = 0; changed = true; }
+    if (org.credits.audits == null) {
+      org.credits.audits = 0;
+      changed = true;
+    }
+    if (org.credits.pdf == null) {
+      org.credits.pdf = 0;
+      changed = true;
+    }
+    if (org.credits.exports == null) {
+      org.credits.exports = 0;
+      changed = true;
+    }
 
     org.credits.audits = clampInt(org.credits.audits, 0, 1000000);
     org.credits.pdf = clampInt(org.credits.pdf, 0, 1000000);
     org.credits.exports = clampInt(org.credits.exports, 0, 1000000);
   }
 
-  // whiteLabel => optionally hide FlowPoint branding by default (safe)
-  if (org.billingAddons?.whiteLabel && org.branding && org.branding.hideFlowPointBranding == null) {
-    org.branding.hideFlowPointBranding = false;
-    changed = true;
-  }
-
   if (changed) await org.save();
   return org;
 }
+
+// ✅ ONE SINGLE ensureOrgForUser (no duplicates)
 async function ensureOrgForUser(user) {
   if (user.orgId) {
     const existing = await Org.findById(user.orgId);
@@ -639,11 +687,9 @@ async function ensureOrgForUser(user) {
       createdFromEmailDomain: domain,
       alertRecipients: "all",
       alertExtraEmails: [],
-      // defaults will be ensured below
     });
   }
 
-  // ✅ ensure defaults exist on org
   await ensureOrgDefaults(org);
 
   user.orgId = org._id;
@@ -651,10 +697,12 @@ async function ensureOrgForUser(user) {
   await user.save();
   return user;
 }
+
 async function requireActive(req, res, next) {
   const user = await User.findById(req.user.uid);
   if (!user) return res.status(404).json({ error: "User introuvable" });
 
+  // Trial expiry -> block if not active subscription
   if (user.hasTrial && user.trialEndsAt && new Date(user.trialEndsAt).getTime() < Date.now()) {
     const st = String(user.subscriptionStatus || "").toLowerCase();
     const active = st === "active" || st === "trialing";
@@ -665,19 +713,23 @@ async function requireActive(req, res, next) {
     }
   }
 
-  if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / essai terminé)" });
+  if (user.accessBlocked)
+    return res.status(403).json({ error: "Accès bloqué (paiement échoué / essai terminé)" });
 
   await resetUsageIfNewMonth(user);
   await ensureOrgForUser(user);
-const org = user.orgId ? await Org.findById(user.orgId) : null;
-req.dbOrg = org ? await ensureOrgDefaults(org) : null;
+
+  const org = user.orgId ? await Org.findById(user.orgId) : null;
+  req.dbOrg = org ? await ensureOrgDefaults(org) : null;
+
   req.dbUser = user;
   next();
 }
 
 function requirePlan(minPlan) {
   return (req, res, next) => {
-    if (planRank(req.dbUser.plan) < planRank(minPlan)) return res.status(403).json({ error: `Plan requis: ${minPlan}` });
+    if (planRank(req.dbUser.plan) < planRank(minPlan))
+      return res.status(403).json({ error: `Plan requis: ${minPlan}` });
     next();
   };
 }
@@ -724,7 +776,9 @@ async function getOrgAlertEmails(orgId) {
 
   let base = [];
   if (recipientsMode === "owner") {
-    const owner = org.ownerUserId ? await User.findById(org.ownerUserId).select("email") : null;
+    const owner = org.ownerUserId
+      ? await User.findById(org.ownerUserId).select("email")
+      : null;
     if (owner?.email) base.push(owner.email);
   } else {
     const users = await User.find({ orgId }).select("email");
@@ -858,7 +912,9 @@ function normalizeUrl(url) {
 
 function scoreAudit(checks) {
   let score = 100;
-  const penalize = (cond, points) => { if (cond) score -= points; };
+  const penalize = (cond, points) => {
+    if (cond) score -= points;
+  };
   penalize(!checks.title.ok, 15);
   penalize(!checks.metaDescription.ok, 12);
   penalize(!checks.h1.ok, 10);
@@ -896,7 +952,15 @@ async function runSeoAudit(url) {
   try {
     fetched = await fetchWithTiming(url);
   } catch (e) {
-    return { status: "error", score: 0, summary: "Impossible de charger l’URL.", findings: {}, recommendations: [], htmlSnapshot: "", error: e.message };
+    return {
+      status: "error",
+      score: 0,
+      summary: "Impossible de charger l’URL.",
+      findings: {},
+      recommendations: [],
+      htmlSnapshot: "",
+      error: e.message,
+    };
   }
 
   const $ = cheerio.load(fetched.text);
@@ -946,44 +1010,14 @@ async function runSeoAudit(url) {
   };
 }
 
-// ---------- Monitor quota = ACTIVE count ----------
+// ---------- Monitor quota = ACTIVE count (addons-aware) ----------
 async function canCreateActiveMonitor(user) {
-  const q = quotasForPlan(user.plan);
+  const org = user.orgId ? await Org.findById(user.orgId) : null;
+  const q = quotasForOrg(user.plan, org);
   const countActive = await Monitor.countDocuments({ orgId: user.orgId, active: true });
   return countActive < q.monitors;
 }
-async function ensureOrgForUser(user) {
-  if (user.orgId) {
-    const existing = await Org.findById(user.orgId);
-    if (existing) await ensureOrgDefaults(existing);
-    return user;
-  }
 
-  const normalized = normalizeCompanyName(user.companyName || "Organisation");
-  const domain = user.companyDomain || "";
-
-  let org = await Org.findOne({ normalizedName: normalized });
-
-  if (!org) {
-    org = await Org.create({
-      name: user.companyName || "Organisation",
-      normalizedName: normalized,
-      ownerUserId: user._id,
-      createdFromEmailDomain: domain,
-      alertRecipients: "all",
-      alertExtraEmails: [],
-      // defaults will be ensured below
-    });
-  }
-
-  // ✅ ensure defaults exist on org
-  await ensureOrgDefaults(org);
-
-  user.orgId = org._id;
-  user.role = user.role || "owner";
-  await user.save();
-  return user;
-}
 // ---------- STRIPE WEBHOOK RAW (BEFORE express.json) ----------
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
@@ -1170,46 +1204,38 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
       return res.json({ ok: true, debugLink: link });
     }
 
-    const brand = {
-      bg: "#0b1220",
-      card: "#0f1a33",
-      primary: "#0052CC",
-      text: "#e5e7eb",
-      muted: "#a3a3a3",
-    };
-
-  const html = `
-  <div style="background:#f6f7fb;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
-    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:18px;padding:24px;border:1px solid rgba(15,23,42,.08)">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        <div style="width:44px;height:44px;border-radius:14px;background:rgba(0,82,204,.10);display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,82,204,.18)">
-          <div style="width:18px;height:18px;border-radius:6px;background:#0052CC"></div>
-        </div>
-        <div>
-          <div style="color:#0f172a;font-weight:800;font-size:18px;line-height:1">FlowPoint AI</div>
-          <div style="color:#667085;font-size:13px">Connexion sécurisée (sans mot de passe)</div>
-        </div>
+    // ✅ Light email template (renders well in Gmail)
+    const html = `
+<div style="background:#f6f7fb;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:18px;padding:24px;border:1px solid rgba(15,23,42,.08)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div style="width:44px;height:44px;border-radius:14px;background:rgba(0,82,204,.10);display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,82,204,.18)">
+        <div style="width:18px;height:18px;border-radius:6px;background:#0052CC"></div>
       </div>
-
-      <h2 style="margin:10px 0 8px;color:#0f172a;font-size:18px">Ton lien de connexion</h2>
-      <p style="margin:0 0 16px;color:#667085;font-size:14px;line-height:1.55">
-        Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
-      </p>
-
-      <a href="${link}"
-         style="display:inline-block;background:#0052CC;color:white;text-decoration:none;padding:12px 16px;border-radius:12px;font-weight:800;">
-        Se connecter
-      </a>
-
-      <p style="margin:16px 0 6px;color:#667085;font-size:12px">Bouton bloqué ? Copie-colle :</p>
-      <p style="margin:0;color:#0f172a;font-size:12px;word-break:break-all">${link}</p>
-
-      <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(15,23,42,.08);color:#667085;font-size:12px">
-        © ${new Date().getFullYear()} FlowPoint AI
+      <div>
+        <div style="color:#0f172a;font-weight:800;font-size:18px;line-height:1">FlowPoint AI</div>
+        <div style="color:#667085;font-size:13px">Connexion sécurisée (sans mot de passe)</div>
       </div>
     </div>
+
+    <h2 style="margin:10px 0 8px;color:#0f172a;font-size:18px">Ton lien de connexion</h2>
+    <p style="margin:0 0 16px;color:#667085;font-size:14px;line-height:1.55">
+      Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
+    </p>
+
+    <a href="${link}"
+       style="display:inline-block;background:#0052CC;color:white;text-decoration:none;padding:12px 16px;border-radius:12px;font-weight:800;">
+      Se connecter
+    </a>
+
+    <p style="margin:16px 0 6px;color:#667085;font-size:12px">Bouton bloqué ? Copie-colle :</p>
+    <p style="margin:0;color:#0f172a;font-size:12px;word-break:break-all">${link}</p>
+
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(15,23,42,.08);color:#667085;font-size:12px">
+      © ${new Date().getFullYear()} FlowPoint AI
+    </div>
   </div>
-`;
+</div>`;
 
     const r = await sendEmail({
       to: user.email,
@@ -1219,10 +1245,7 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
     });
 
     if (!r.ok) {
-      return res.status(502).json({
-        ok: false,
-        error: "Email non envoyé",
-      });
+      return res.status(502).json({ ok: false, error: "Email non envoyé" });
     }
 
     return res.json({ ok: true });
@@ -1241,7 +1264,8 @@ app.get("/api/auth/login-verify", async (req, res) => {
     const lt = await LoginToken.findOne({ tokenHash });
     if (!lt) return res.status(400).json({ error: "Token invalide" });
     if (lt.usedAt) return res.status(400).json({ error: "Token déjà utilisé" });
-    if (lt.expiresAt && new Date(lt.expiresAt).getTime() < Date.now()) return res.status(400).json({ error: "Token expiré" });
+    if (lt.expiresAt && new Date(lt.expiresAt).getTime() < Date.now())
+      return res.status(400).json({ error: "Token expiré" });
 
     const user = await User.findById(lt.userId);
     if (!user) return res.status(404).json({ error: "User introuvable" });
@@ -1261,7 +1285,8 @@ app.get("/api/auth/login-verify", async (req, res) => {
 app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
   try {
     const chosenPlan = String(req.body?.plan || "").toLowerCase();
-    if (!["standard", "pro", "ultra"].includes(chosenPlan)) return res.status(400).json({ error: "Plan invalide" });
+    if (!["standard", "pro", "ultra"].includes(chosenPlan))
+      return res.status(400).json({ error: "Plan invalide" });
 
     const user = req.dbUser;
     const priceId = priceIdForPlan(chosenPlan);
@@ -1285,7 +1310,10 @@ app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      subscription_data: { trial_period_days: 14, metadata: { uid: user._id.toString(), plan: chosenPlan } },
+      subscription_data: {
+        trial_period_days: 14,
+        metadata: { uid: user._id.toString(), plan: chosenPlan },
+      },
       metadata: { uid: user._id.toString(), plan: chosenPlan },
       success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/cancel.html`,
@@ -1305,7 +1333,9 @@ app.get("/api/stripe/verify", async (req, res) => {
     const sessionId = req.query.session_id;
     if (!sessionId) return res.status(400).json({ error: "session_id manquant" });
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription", "customer"] });
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["subscription", "customer"],
+    });
     const uid = session.metadata?.uid || session.subscription?.metadata?.uid;
     if (!uid) return res.status(400).json({ error: "uid manquant" });
 
@@ -1364,8 +1394,8 @@ app.post("/api/stripe/portal", auth, requireActive, async (req, res) => {
 // ---------- ME ----------
 app.get("/api/me", auth, requireActive, async (req, res) => {
   const u = req.dbUser;
-  const q = quotasForPlan(u.plan);
-  const org = u.orgId ? await Org.findById(u.orgId) : null;
+  const org = req.dbOrg || (u.orgId ? await Org.findById(u.orgId) : null);
+  const q = quotasForOrg(u.plan, org);
 
   return res.json({
     email: u.email,
@@ -1374,6 +1404,12 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
     plan: u.plan,
     role: u.role,
     org: org ? { id: org._id, name: org.name } : null,
+
+    // ✅ org extras (useful for dashboard)
+    billingAddons: org?.billingAddons || null,
+    branding: org?.branding || null,
+    retentionDays: org?.retentionDays ?? 30,
+
     hasTrial: u.hasTrial,
     trialEndsAt: u.trialEndsAt,
     accessBlocked: u.accessBlocked,
@@ -1382,7 +1418,7 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
     usage: {
       month: u.usageMonth,
       audits: { used: u.usedAudits, limit: q.audits },
-      monitors: { used: null, limit: q.monitors }, // monitors => quota basé sur actifs, donc "used" = null
+      monitors: { used: null, limit: q.monitors }, // active-count based
       pdf: { used: u.usedPdf, limit: q.pdf },
       exports: { used: u.usedExports, limit: q.exports },
     },
@@ -1394,7 +1430,9 @@ app.get("/api/overview", auth, requireActive, async (req, res) => {
   const days = Math.min(30, Math.max(1, Number(req.query.days || 30)));
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const lastAudit = await Audit.findOne({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).select("score createdAt url");
+  const lastAudit = await Audit.findOne({ orgId: req.dbUser.orgId })
+    .sort({ createdAt: -1 })
+    .select("score createdAt url");
   const audits = await Audit.find({ orgId: req.dbUser.orgId, createdAt: { $gte: since } })
     .sort({ createdAt: 1 })
     .limit(120)
@@ -1403,21 +1441,25 @@ app.get("/api/overview", auth, requireActive, async (req, res) => {
   const chart = audits.map((a) => a.score ?? 0);
 
   const activeMonitors = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true });
-  const downMonitors = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true, lastStatus: "down" });
+  const downMonitors = await Monitor.countDocuments({
+    orgId: req.dbUser.orgId,
+    active: true,
+    lastStatus: "down",
+  });
 
   return res.json({
     ok: true,
     seoScore: lastAudit?.score ?? 0,
     lastAuditAt: lastAudit?.createdAt || null,
     lastAuditUrl: lastAudit?.url || null,
-    localVis: "+0%", // placeholder (tu pourras brancher vrai calcul plus tard)
+    localVis: "+0%",
     chart,
     monitors: { active: activeMonitors, down: downMonitors },
     rangeDays: days,
   });
 });
 
-// ---------- ORG SETTINGS ----------
+// ---------- ORG SETTINGS (alerts) ----------
 app.get("/api/org/settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
   return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
@@ -1452,11 +1494,67 @@ app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (
   return res.json({ ok: true });
 });
 
+// ✅ Branding endpoints (white-label foundation)
+app.get("/api/org/branding", auth, requireActive, async (req, res) => {
+  const org = req.dbOrg || (await Org.findById(req.dbUser.orgId));
+  return res.json({ ok: true, branding: org?.branding || null });
+});
+
+app.post("/api/org/branding", auth, requireActive, requireOwner, async (req, res) => {
+  const org = req.dbOrg || (await Org.findById(req.dbUser.orgId));
+  if (!org) return res.status(404).json({ error: "Org introuvable" });
+
+  const b = org.branding || {};
+  const next = {
+    appName: typeof req.body?.appName === "string" ? req.body.appName.slice(0, 40) : b.appName,
+    supportEmail: typeof req.body?.supportEmail === "string" ? req.body.supportEmail.slice(0, 120) : b.supportEmail,
+    logoUrl: typeof req.body?.logoUrl === "string" ? req.body.logoUrl.slice(0, 500) : b.logoUrl,
+    primaryColor: typeof req.body?.primaryColor === "string" ? req.body.primaryColor.slice(0, 32) : b.primaryColor,
+    accentColor: typeof req.body?.accentColor === "string" ? req.body.accentColor.slice(0, 32) : b.accentColor,
+    hideFlowPointBranding:
+      typeof req.body?.hideFlowPointBranding === "boolean"
+        ? req.body.hideFlowPointBranding
+        : b.hideFlowPointBranding,
+  };
+
+  org.branding = next;
+  await org.save();
+  return res.json({ ok: true, branding: org.branding });
+});
+
+// ✅ Addons endpoints (manual for now, Stripe later)
+app.get("/api/org/addons", auth, requireActive, async (req, res) => {
+  const org = req.dbOrg || (await Org.findById(req.dbUser.orgId));
+  const q = quotasForOrg(req.dbUser.plan, org);
+  return res.json({ ok: true, addons: org?.billingAddons || null, quotas: q });
+});
+
+app.post("/api/org/addons", auth, requireActive, requireOwner, async (req, res) => {
+  const org = req.dbOrg || (await Org.findById(req.dbUser.orgId));
+  if (!org) return res.status(404).json({ error: "Org introuvable" });
+
+  // For now allow only monitorsPack50 changes (admin/owner)
+  if (req.body?.monitorsPack50 != null) {
+    org.billingAddons.monitorsPack50 = clampInt(req.body.monitorsPack50, 0, 200);
+  }
+  if (typeof req.body?.whiteLabel === "boolean") {
+    org.billingAddons.whiteLabel = req.body.whiteLabel;
+  }
+  if (req.body?.extraSeats != null) {
+    org.billingAddons.extraSeats = clampInt(req.body.extraSeats, 0, 500);
+  }
+
+  await org.save();
+  const q = quotasForOrg(req.dbUser.plan, org);
+  return res.json({ ok: true, addons: org.billingAddons, quotas: q });
+});
+
 // ---------- AUDITS ----------
 app.post("/api/audits/run", auth, requireActive, async (req, res) => {
   try {
     const url = String(req.body?.url || "").trim();
-    if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (http/https)" });
+    if (!url || !/^https?:\/\//i.test(url))
+      return res.status(400).json({ error: "URL invalide (http/https)" });
 
     const urlNorm = normalizeUrl(url);
     const cutoff = new Date(Date.now() - AUDIT_CACHE_HOURS * 60 * 60 * 1000);
@@ -1480,7 +1578,6 @@ app.post("/api/audits/run", auth, requireActive, async (req, res) => {
     const ok = await consume(req.dbUser, "audits", 1);
     if (!ok) return res.status(429).json({ error: "Quota audits dépassé" });
 
-    // SSRF safe fetch inside runSeoAudit
     const out = await runSeoAudit(urlNorm);
 
     const audit = await Audit.create({
@@ -1562,12 +1659,11 @@ app.post("/api/monitors", auth, requireActive, async (req, res) => {
     const intervalMinutes = Number(req.body?.intervalMinutes || 60);
 
     if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide" });
-    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5) return res.status(400).json({ error: "intervalMinutes min = 5" });
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5)
+      return res.status(400).json({ error: "intervalMinutes min = 5" });
 
-    // SSRF check (fails fast)
     await assertSafePublicUrl(url);
 
-    // quota based on ACTIVE monitors
     const allowed = await canCreateActiveMonitor(req.dbUser);
     if (!allowed) return res.status(429).json({ error: "Quota monitors actifs dépassé" });
 
@@ -1602,10 +1698,14 @@ app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
     m.intervalMinutes = im;
   }
 
-  // If user is turning ON a monitor, re-check active quota
+  // If turning ON, re-check addons-aware quota
   if (m.active === true) {
-    const q = quotasForPlan(req.dbUser.plan);
-    const countActive = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true, _id: { $ne: m._id } });
+    const q = quotasForOrg(req.dbUser.plan, req.dbOrg);
+    const countActive = await Monitor.countDocuments({
+      orgId: req.dbUser.orgId,
+      active: true,
+      _id: { $ne: m._id },
+    });
     if (countActive + 1 > q.monitors) return res.status(429).json({ error: "Quota monitors actifs dépassé" });
   }
 
@@ -1659,7 +1759,7 @@ app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, logs });
 });
 
-// ✅ Uptime endpoint (sticky + pro)
+// ✅ Uptime endpoint
 app.get("/api/monitors/:id/uptime", auth, requireActive, async (req, res) => {
   const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
@@ -1667,7 +1767,11 @@ app.get("/api/monitors/:id/uptime", auth, requireActive, async (req, res) => {
   const days = Math.min(30, Math.max(1, Number(req.query.days || 7)));
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id, checkedAt: { $gte: since } })
+  const logs = await MonitorLog.find({
+    orgId: req.dbUser.orgId,
+    monitorId: m._id,
+    checkedAt: { $gte: since },
+  })
     .select("status checkedAt")
     .sort({ checkedAt: 1 });
 
@@ -1718,7 +1822,13 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
       checked += 1;
     });
 
-    return res.json({ ok: true, checked, alertsSent, scanned: activeMonitors.length, concurrency: CRON_CONCURRENCY });
+    return res.json({
+      ok: true,
+      checked,
+      alertsSent,
+      scanned: activeMonitors.length,
+      concurrency: CRON_CONCURRENCY,
+    });
   } catch (e) {
     console.log("cron monitors-run error:", e.message);
     return res.status(500).json({ error: "Erreur cron monitors-run" });
@@ -1781,7 +1891,7 @@ app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
   res.send(header + rows + "\n");
 });
 
-// ✅ aliases (ton dashboard parlait de /api/exports/...)
+// ✅ aliases
 app.get("/api/exports/audits.csv", auth, requireActive, (req, res) => {
   req.url = "/api/export/audits.csv";
   app.handle(req, res);
