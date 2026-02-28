@@ -3,12 +3,157 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Flowpoint — Dashboard</title>
+  <title>FlowPoint — Dashboard</title>
 
-  <!-- Si tu utilises dashboard.css : -->
-  <link rel="stylesheet" href="/dashboard.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Sinon tu peux garder ton CSS inline, mais je conseille dashboard.css -->
+  <style>
+    :root{
+      --bg1:#eef2ff;--bg2:#f6f8ff;--card:#ffffff;--stroke:#e6ebf5;
+      --text:#0f172a;--muted:#6b7280;
+      --blue:#2563eb;--blue2:#1d4ed8;--blueSoft:#eef4ff;
+      --green:#16a34a;--amber:#f59e0b;--red:#dc2626;
+      --shadow: 0 14px 40px rgba(16,24,40,.08);
+      --r:16px;--sidebarW:220px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      color:var(--text);
+      background:
+        radial-gradient(900px 600px at 12% 6%, rgba(37,99,235,.14), transparent 60%),
+        radial-gradient(900px 600px at 88% 0%, rgba(99,102,241,.12), transparent 55%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+    }
+    .sidebar{position:fixed; inset:0 auto 0 0;width:var(--sidebarW);background:rgba(255,255,255,.82);
+      border-right:1px solid rgba(230,235,245,.9);backdrop-filter:saturate(180%) blur(14px);
+      padding:14px;display:flex;flex-direction:column;gap:12px;z-index:30;}
+    .main{margin-left:var(--sidebarW);min-height:100vh;padding:18px 20px 28px;}
+    .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:25;display:none;}
+    .overlay.is-open{display:block}
+    .brand{display:flex;align-items:flex-start;gap:10px;padding:6px 6px 0;}
+    .brand__mark{width:42px;height:42px;border-radius:14px;background:linear-gradient(180deg, rgba(37,99,235,.18), rgba(37,99,235,.08));
+      border:1px solid rgba(37,99,235,.20);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+    .brand__name{font-weight:700;letter-spacing:-.01em;line-height:1.05;}
+    .brand__sub{font-size:12px;color:var(--muted);margin-top:2px;}
+    .nav{display:flex;flex-direction:column; gap:6px; padding-top:6px}
+    .nav__item{appearance:none;border:0;background:transparent;padding:10px 10px;border-radius:12px;display:flex;align-items:center;gap:10px;
+      color:#111827;font-size:14px;cursor:pointer;font-weight:600;}
+    .nav__item:hover{background:rgba(37,99,235,.06)}
+    .nav__item.is-active{background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.18);color:var(--blue2);}
+    .pill-mini{margin-left:auto;font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px;
+      background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.20);color:var(--blue2);}
+    .sidebar__foot{margin-top:auto}
+    .miniCard{background:rgba(255,255,255,.92);border:1px solid var(--stroke);border-radius:18px;padding:14px;box-shadow:0 8px 22px rgba(16,24,40,.06);}
+    .miniCard__title{font-size:12px;letter-spacing:.18em;color:#64748b;font-weight:700;margin-bottom:10px;}
+    .miniGrid{display:grid;grid-template-columns: 64px 1fr;gap:8px 10px;font-size:13px;}
+    .miniGrid__k{color:var(--muted)}
+    .miniGrid__v{font-weight:700;color:#0b1220}
+    .miniActions{display:flex; gap:10px; margin-top:12px}
+    .hint{margin-top:10px;font-size:12.5px;color:#6b7280;line-height:1.35}
+    .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px;}
+    .hello__title{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0;}
+    .hello__sub{margin-top:3px;font-size:13px;color:var(--muted);}
+    .topbar__right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;max-width:560px;}
+    .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .selectLike{border:1px solid var(--stroke);background:rgba(255,255,255,.88);padding:10px 14px;border-radius:14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;user-select:none;}
+    .caret{opacity:.65}
+    .btn{border:1px solid transparent;background:#fff;padding:10px 14px;border-radius:14px;cursor:pointer;font-weight:700;color:#0b1220;box-shadow:0 8px 18px rgba(16,24,40,.06);font-size:13px;}
+    .btn--sm{padding:8px 12px;border-radius:12px;box-shadow:none}
+    .btn--primary{background:linear-gradient(180deg, var(--blue), var(--blue2));color:#fff;}
+    .btn--soft{background:#fff;border:1px solid var(--stroke);color:var(--blue);}
+    .btn--danger{background:#fff;border:1px solid rgba(220,38,38,.25);color:#b91c1c;}
+    .w100{width:100%}
+    .avatar{width:42px;height:42px;border-radius:999px;border:1px solid var(--stroke);background:rgba(255,255,255,.92);
+      display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:700;color:#334155;}
+    .grid{display:grid;grid-template-columns: 1.05fr .95fr;gap:18px;align-items:start;}
+    .col{display:flex;flex-direction:column;gap:18px}
+    .card{background:rgba(255,255,255,.90);border:1px solid var(--stroke);border-radius:22px;box-shadow: var(--shadow);padding:16px;}
+    .card__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+    .card__title{font-size:13px;letter-spacing:.18em;color:#64748b;font-weight:700;}
+    .statusOk{display:flex;align-items:center;gap:8px;color:#4b5563;font-weight:700;font-size:13px;}
+    .dot{width:10px;height:10px;border-radius:999px}
+    .dot--green{background:var(--green)}
+    .kpis{display:grid;grid-template-columns: repeat(2, 1fr);gap:12px;}
+    .kpi{border:1px solid var(--stroke);border-radius:16px;padding:12px;background:rgba(248,250,255,.75);}
+    .kpi__k{color:var(--muted);font-weight:700;font-size:13px}
+    .kpi__v{margin-top:4px;font-size:26px;font-weight:700;letter-spacing:-.01em}
+    .kpi__v small{font-weight:600;color:#94a3b8}
+    .kpi__s{margin-top:3px;font-size:12.5px;color:var(--muted)}
+    .kpi__v--green{color:#16a34a}
+    .divider{height:1px;background:rgba(230,235,245,.95);margin:14px 0;}
+    .chartWrap{border:1px solid var(--stroke);border-radius:16px;background:linear-gradient(180deg, rgba(37,99,235,.06), rgba(255,255,255,.0));padding:10px 10px 2px;overflow:hidden;}
+    .chartSvg{width:100%;height:150px;display:block}
+    .gridline{stroke:#e5e7eb;stroke-width:1}
+    .line{fill:none;stroke:#3b66f1;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+    .area{fill:rgba(59,102,241,.12)}
+    .table{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;}
+    .table thead th{text-align:left;color:#64748b;font-weight:700;letter-spacing:.12em;font-size:12px;padding:10px 10px;border-top:1px solid var(--stroke);border-bottom:1px solid var(--stroke);background:rgba(248,250,255,.55);white-space:nowrap;}
+    .table tbody td{padding:12px 10px;border-bottom:1px solid rgba(230,235,245,.8);vertical-align:middle;}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+    .td-actions{white-space:nowrap;text-align:right}
+    .pill{display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-weight:700;border:1px solid transparent;font-size:12.5px;white-space:nowrap;}
+    .pill--warn{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.20);color:#92400e;}
+    .pill--soft{background:rgba(37,99,235,.10);border-color:rgba(37,99,235,.18);color:#1d4ed8;}
+    .pill--up{background:rgba(22,163,74,.12);border-color:rgba(22,163,74,.18);color:#166534;}
+    .pill--down{background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.16);color:#991b1b;}
+    .rowBetween{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+    /* ✅ Plans UI upgraded */
+    .plans{display:grid;grid-template-columns: repeat(3, 1fr);gap:12px;}
+    .plan{
+      border:1px solid var(--stroke);
+      border-radius:18px;
+      padding:14px;
+      background:rgba(255,255,255,.92);
+      display:flex;flex-direction:column;gap:10px;
+      min-height:220px;
+    }
+    .plan--current{
+      border-color:rgba(37,99,235,.34);
+      background:linear-gradient(180deg, rgba(37,99,235,.18), rgba(255,255,255,.92));
+      box-shadow:0 16px 55px rgba(37,99,235,.12);
+    }
+    .planTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+    .planName{font-weight:700}
+    .planPrice{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1;text-align:right;}
+    .planPer{color:#94a3b8;font-weight:600;font-size:14px}
+    .planBadge{
+      display:inline-flex;
+      padding:6px 10px;border-radius:999px;
+      background:rgba(37,99,235,.10);
+      border:1px solid rgba(37,99,235,.18);
+      color:var(--blue2);
+      font-weight:700;font-size:12px;
+      align-self:flex-start;
+    }
+    .planList{margin:0;padding-left:16px;color:#334155;}
+    .planList li{margin:6px 0}
+    .section{display:none}
+    .section.is-active{display:block}
+
+    .toast{position:fixed;right:16px;bottom:16px;background:rgba(15,23,42,.92);color:#fff;padding:12px 14px;border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.25);max-width:340px;z-index:60;display:none;font-size:13px;line-height:1.35;}
+    .toast.is-open{display:block}
+    .toast .trow{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .toast .closeX{background:transparent;border:0;color:#cbd5e1;cursor:pointer;font-size:16px;padding:2px 6px;}
+    .only-mobile{display:none}
+    @media (max-width:1060px){.grid{grid-template-columns:1fr}.plans{grid-template-columns:1fr}}
+    @media (max-width:880px){
+      .only-mobile{display:inline-flex}
+      .main{margin-left:0;padding:14px 14px 22px}
+      .sidebar{transform:translateX(-105%);transition:transform .22s ease;box-shadow:0 14px 40px rgba(16,24,40,.18);width:min(86vw,320px);}
+      .sidebar.is-open{transform:translateX(0)}
+      .topbar{flex-direction:column;align-items:stretch;gap:10px;}
+      .topbar__right{justify-content:flex-start;max-width:none;}
+      .controls{justify-content:flex-start}
+      .table{display:block;overflow:auto;-webkit-overflow-scrolling:touch}
+      .table thead th,.table tbody td{white-space:nowrap}
+    }
+  </style>
 </head>
 
 <body>
@@ -31,12 +176,12 @@
     </div>
 
     <nav class="nav" id="nav">
-      <button class="nav__item is-active" data-section="overview"><span class="nav__icon">🏠</span><span>Overview</span></button>
-      <button class="nav__item" data-section="audits"><span class="nav__icon">🧾</span><span>Audits</span></button>
-      <button class="nav__item" data-section="monitors"><span class="nav__icon">📡</span><span>Monitors</span></button>
-      <button class="nav__item" data-section="reports"><span class="nav__icon">📄</span><span>Reports</span><span class="pill-mini" id="planPill">—</span></button>
-      <button class="nav__item" data-section="billing"><span class="nav__icon">💳</span><span>Billing</span></button>
-      <button class="nav__item" data-section="settings"><span class="nav__icon">⚙️</span><span>Settings</span></button>
+      <button class="nav__item is-active" data-section="overview"><span>🏠</span><span>Overview</span></button>
+      <button class="nav__item" data-section="audits"><span>🧾</span><span>Audits</span></button>
+      <button class="nav__item" data-section="monitors"><span>📡</span><span>Monitors</span></button>
+      <button class="nav__item" data-section="reports"><span>📄</span><span>Reports</span><span class="pill-mini" id="planPill">—</span></button>
+      <button class="nav__item" data-section="billing"><span>💳</span><span>Billing</span></button>
+      <button class="nav__item" data-section="settings"><span>⚙️</span><span>Settings</span></button>
     </nav>
 
     <div class="sidebar__foot">
@@ -54,7 +199,7 @@
           <button class="btn btn--danger w100" id="btnLogout">Logout</button>
         </div>
 
-        <div class="hint" id="hint">Tip : si rien ne charge → token absent/invalid → retour login.</div>
+        <div class="hint" id="hint">Tip : Si un bouton ne répond pas, vérifie ton token et /api/me.</div>
       </div>
     </div>
   </aside>
@@ -75,7 +220,7 @@
           <button class="btn btn--soft" id="btnExportMonitors">Export Monitors CSV</button>
         </div>
 
-        <div class="chip statusOk" id="healthChip">
+        <div class="statusOk" id="healthChip" style="background:rgba(255,255,255,.88);border:1px solid var(--stroke);border-radius:14px;padding:10px 12px">
           <span class="dot dot--green"></span>
           <span id="healthText">Dashboard à jour — OK</span>
         </div>
@@ -108,8 +253,8 @@
 
             <div class="divider"></div>
 
-            <div class="chartCard__head">
-              <div class="chartCard__title">SEO Performance — <span class="muted" id="perfRange">30 days</span></div>
+            <div class="rowBetween">
+              <div style="font-weight:700;">SEO Performance</div>
               <button class="btn btn--soft btn--sm" id="btnLast3">Last 3 days</button>
             </div>
 
@@ -126,36 +271,44 @@
             <div class="divider"></div>
 
             <div class="rowBetween">
-              <div style="font-weight:600;">Recommended Actions</div>
+              <div style="font-weight:700;">Recommended Actions</div>
               <button class="btn btn--soft btn--sm" id="btnRunAudit">Run audit</button>
             </div>
-            <div class="actionLine" style="margin-top:10px;">
-              <span class="actionText">Run a SEO audit to get recommendations</span>
-              <span class="pill pill--warn">High</span>
-              <span class="pill pill--soft">Pending</span>
-            </div>
 
-            <div class="divider"></div>
-
-            <div class="rowBetween">
-              <div style="font-weight:600;">Recent Incidents</div>
-              <button class="btn btn--soft btn--sm" id="btnViewAll">View all</button>
+            <div style="margin-top:10px;color:var(--muted);font-size:13px">
+              Lance un audit SEO pour obtenir des recommandations.
             </div>
-            <div class="muted" style="margin-top:10px;">No incidents yet.</div>
           </div>
         </div>
 
-        <div class="section" id="section-audits"><div class="card"><div class="muted">Section Audits.</div></div></div>
-        <div class="section" id="section-monitors"><div class="card"><div class="muted">Section Monitors.</div></div></div>
-        <div class="section" id="section-reports"><div class="card"><div class="muted">Section Reports.</div></div></div>
-        <div class="section" id="section-billing"><div class="card"><div class="muted">Section Billing.</div></div></div>
-        <div class="section" id="section-settings"><div class="card"><div class="muted">Section Settings.</div></div></div>
+        <div class="section" id="section-audits">
+          <div class="card">
+            <div class="card__head">
+              <div class="card__title">AUDITS</div>
+              <button class="btn btn--soft btn--sm" id="btnNewAudit">New audit</button>
+            </div>
+            <div style="color:var(--muted)">Section Audits (branche tes données ici).</div>
+          </div>
+        </div>
+
+        <div class="section" id="section-monitors">
+          <div class="card">
+            <div class="card__head">
+              <div class="card__title">MONITORS</div>
+            </div>
+            <div style="color:var(--muted)">Gère tes monitors dans le tableau à droite.</div>
+          </div>
+        </div>
+
+        <div class="section" id="section-reports"><div class="card"><div class="card__head"><div class="card__title">REPORTS</div></div><div style="color:var(--muted)">Section Reports.</div></div></div>
+        <div class="section" id="section-billing"><div class="card"><div class="card__head"><div class="card__title">BILLING</div></div><div style="color:var(--muted)">Section Billing.</div></div></div>
+        <div class="section" id="section-settings"><div class="card"><div class="card__head"><div class="card__title">SETTINGS</div></div><div style="color:var(--muted)">Section Settings.</div></div></div>
       </section>
 
       <section class="col">
         <div class="card" id="card-monitors">
-          <div class="tableCard__head">
-            <div style="font-weight:600; font-size:20px;">Monitors</div>
+          <div class="rowBetween" style="margin-bottom:10px">
+            <div style="font-weight:700; font-size:18px;">Monitors</div>
             <button class="btn btn--primary btn--sm" id="btnAddMonitor">Add Monitor</button>
           </div>
 
@@ -174,6 +327,59 @@
             <tbody id="monitorsTbody"></tbody>
           </table>
         </div>
+
+        <div class="card" id="card-plans">
+          <div class="rowBetween" style="margin-bottom:10px">
+            <div style="font-weight:700; font-size:18px;">Plans</div>
+            <button class="btn btn--soft btn--sm" onclick="location.href='/pricing.html'">See plans</button>
+          </div>
+
+          <div class="plans" id="plansGrid">
+            <div class="plan" id="plan-standard">
+              <div class="planTop">
+                <div>
+                  <div class="planName">Standard</div>
+                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
+                </div>
+                <div class="planPrice">29€ <span class="planPer">/mo</span></div>
+              </div>
+              <ul class="planList">
+                <li>SEO audits: 30</li><li>Monitors: 3</li><li>PDF exports</li>
+              </ul>
+              <button class="btn btn--soft w100" data-checkout="standard">Choisir Standard</button>
+            </div>
+
+            <div class="plan" id="plan-pro">
+              <div class="planTop">
+                <div>
+                  <div class="planName">Pro</div>
+                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
+                </div>
+                <div class="planPrice">79€ <span class="planPer">/mo</span></div>
+              </div>
+              <ul class="planList">
+                <li>SEO audits: 300</li><li>Monitors: 50</li><li>Email alerts</li><li>PDF & CSV</li>
+              </ul>
+              <button class="btn btn--primary w100" data-checkout="pro">Passer en Pro</button>
+            </div>
+
+            <div class="plan" id="plan-ultra">
+              <div class="planTop">
+                <div>
+                  <div class="planName">Ultra</div>
+                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
+                </div>
+                <div class="planPrice">149€ <span class="planPer">/mo</span></div>
+              </div>
+              <ul class="planList">
+                <li>SEO audits: 2000</li><li>Monitors: 300</li><li>Team + Reports</li>
+              </ul>
+              <button class="btn btn--soft w100" data-checkout="ultra">Passer en Ultra</button>
+            </div>
+          </div>
+
+          <div class="hint" style="margin-top:12px;">Les boutons ouvrent Stripe checkout/portal (selon ton backend).</div>
+        </div>
       </section>
     </div>
   </main>
@@ -186,7 +392,6 @@
     <div id="toastMsg" style="margin-top:6px;"></div>
   </div>
 
-  <!-- ✅ IMPORTANT: dashboard.js chargé proprement, sans script inline qui casse -->
-  <script src="/dashboard.js"></script>
+  <script src="/dashboard.js?v=2"></script>
 </body>
 </html>
