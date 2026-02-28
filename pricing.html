@@ -1,11 +1,10 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>FlowPoint AI — Essai 14 jours</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>FlowPoint AI — Offres</title>
 
-  <!-- Optional font (clean). If you prefer 0 external deps, you can remove these 2 lines -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -13,125 +12,192 @@
   <style>
     :root{
       --bg:#f6f7fb;
-      --card:#ffffff;
+      --card:#fff;
       --text:#0f172a;
       --muted:#667085;
       --border:#e6eaf2;
       --primary:#2f5bff;
-      --shadow:0 10px 30px rgba(16,24,40,.06);
-      --r:16px;
+      --shadow:0 14px 40px rgba(16,24,40,.08);
+      --r:18px;
     }
     *{box-sizing:border-box}
     body{
       margin:0;
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
       background: radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.10), transparent 55%),
                   radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.10), transparent 55%),
                   var(--bg);
       color:var(--text);
     }
-    .wrap{max-width:860px;margin:44px auto;padding:0 16px;}
-    .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;}
-    .brand h1{margin:0;font-size:26px;letter-spacing:-.02em;font-weight:700;}
-    .brand .sub{margin-top:6px;color:var(--muted);font-size:14px;line-height:1.45;}
-    .links{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-    .link{
-      color:var(--primary);
-      font-weight:600;
-      text-decoration:none;
+    .wrap{max-width:1120px;margin:34px auto;padding:0 16px}
+    .hero{
+      background:rgba(255,255,255,.88);
+      border:1px solid var(--border);
+      border-radius:var(--r);
+      padding:18px 18px;
+      box-shadow:var(--shadow);
+      backdrop-filter:saturate(180%) blur(12px);
+      display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    h1{margin:0;font-size:24px;letter-spacing:-.02em;font-weight:700;}
+    .muted{color:var(--muted);font-size:14px;line-height:1.45}
+    .heroActions{display:flex;gap:10px;flex-wrap:wrap}
+    .pillLink{
+      display:inline-flex;align-items:center;gap:8px;
+      text-decoration:none;font-weight:600;
+      padding:9px 12px;border-radius:999px;
       background:rgba(47,91,255,.08);
       border:1px solid rgba(47,91,255,.16);
-      padding:9px 12px;border-radius:999px;
-      white-space:nowrap;
+      color:var(--primary);
     }
-    .card{
+
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    @media (max-width:980px){.grid{grid-template-columns:1fr}}
+
+    .plan{
       background:rgba(255,255,255,.92);
       border:1px solid var(--border);
       border-radius:var(--r);
-      padding:20px;
-      box-shadow:var(--shadow);
-      backdrop-filter:saturate(180%) blur(12px);
+      padding:18px;
+      box-shadow:0 10px 30px rgba(16,24,40,.06);
+      display:flex;flex-direction:column;gap:12px;
     }
-    .grid{display:grid;grid-template-columns: 1fr 1fr;gap:12px;}
-    @media (max-width: 720px){ .grid{grid-template-columns:1fr;} }
-
-    label{display:block;margin-top:12px;font-size:13px;font-weight:600;color:#111827;}
-    input,select,button{
-      width:100%;
-      padding:12px;
-      border-radius:12px;
-      border:1px solid #d9deea;
-      margin-top:6px;
-      background:#fff;
+    .planHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+    .badge{
+      display:inline-flex;padding:6px 10px;border-radius:999px;
+      background:rgba(47,91,255,.10);border:1px solid rgba(47,91,255,.18);
+      color:#1d4ed8;font-weight:700;font-size:12px
+    }
+    .name{font-size:18px;font-weight:700;margin:0}
+    .desc{margin-top:4px;color:var(--muted);font-size:13.5px}
+    .price{
+      font-size:34px;font-weight:700;letter-spacing:-.02em;line-height:1;
+    }
+    .per{color:#94a3b8;font-weight:600;font-size:14px;margin-left:6px}
+    ul{margin:0;padding-left:16px;color:#334155}
+    li{margin:8px 0;font-size:14px}
+    .btn{
+      border:0;border-radius:14px;padding:12px 14px;font-weight:700;cursor:pointer;width:100%;
       font-size:14px;
-      outline:none;
     }
-    input:focus,select:focus{border-color:rgba(47,91,255,.55); box-shadow:0 0 0 4px rgba(47,91,255,.10);}
-    button{
-      border:none;
-      background:linear-gradient(180deg, var(--primary), #2449ff);
-      color:#fff;
-      font-weight:700;
-      cursor:pointer;
+    .btnPrimary{background:linear-gradient(180deg,var(--primary),#2449ff);color:#fff}
+    .btnSoft{background:#fff;border:1px solid var(--border);color:#1d4ed8}
+    .featured{
+      border:1px solid rgba(47,91,255,.35);
+      background:linear-gradient(180deg, rgba(47,91,255,.18), rgba(255,255,255,.92));
+      box-shadow:0 18px 60px rgba(47,91,255,.14);
+    }
+    .foot{
       margin-top:14px;
+      background:rgba(255,255,255,.88);
+      border:1px solid var(--border);
+      border-radius:var(--r);
+      padding:14px;
+      box-shadow:0 10px 30px rgba(16,24,40,.06);
+      display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
     }
-    button:disabled{opacity:.65;cursor:not-allowed;}
-    #msg{margin-top:12px;font-size:14px;}
-    .error{color:#b00020;font-weight:600;}
-    .ok{color:#0a7a2f;font-weight:600;}
-    .note{margin-top:10px;color:var(--muted);font-size:12.5px;line-height:1.45}
-    .tiny{font-size:12px;color:var(--muted);margin-top:10px}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <h1>FlowPoint AI</h1>
-        <div class="sub">Essai gratuit 14 jours — carte requise. Accès bloqué si paiement échoue.</div>
+
+    <div class="hero">
+      <div>
+        <h1>Offres FlowPoint AI</h1>
+        <div class="muted">Essai 14 jours • Upgrade / Downgrade instantané • Annulation libre</div>
       </div>
 
-      <div class="links">
-        <a class="link" href="/pricing.html">Voir les offres</a>
-        <a class="link" href="/login.html">Se connecter</a>
+      <div class="heroActions">
+        <a class="pillLink" href="/index.html">← Retour</a>
+        <a class="pillLink" href="/login.html">Se connecter</a>
       </div>
     </div>
 
-    <div class="card">
-      <form id="signupForm">
-        <div class="grid">
-          <div>
-            <label for="firstName">Prénom</label>
-            <input id="firstName" type="text" placeholder="Jean" />
-          </div>
+    <div class="grid">
 
+      <div class="plan">
+        <div class="planHeader">
           <div>
-            <label for="email">Email</label>
-            <input id="email" type="email" placeholder="jean@entreprise.com" required />
+            <div class="badge">Standard</div>
+            <p class="name">Standard</p>
+            <div class="desc">Indépendants & petits sites</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">29€ <span class="per">/mois</span></div>
           </div>
         </div>
 
-        <label for="companyName">Entreprise</label>
-        <input id="companyName" type="text" placeholder="Entreprise ABC" required />
+        <ul>
+          <li>✅ 30 audits SEO / mois</li>
+          <li>✅ Historique audits</li>
+          <li>✅ Recommandations SEO</li>
+          <li>✅ PDF & CSV</li>
+          <li>❌ Monitoring</li>
+          <li>❌ Rapports automatiques</li>
+          <li>❌ Équipe</li>
+        </ul>
 
-        <label for="plan">Offre</label>
-        <select id="plan" required>
-          <option value="standard">Standard</option>
-          <option value="pro" selected>Pro</option>
-          <option value="ultra">Ultra</option>
-        </select>
+        <button class="btn btnSoft" onclick="location.href='/index.html?plan=standard'">Choisir Standard</button>
+      </div>
 
-        <button id="btn" type="submit">Commencer l’essai</button>
-        <div id="msg"></div>
-
-        <div class="note">
-          En continuant, tu acceptes que les emails d’alertes et rapports soient envoyés à ton équipe (selon les réglages d’organisation).
+      <div class="plan featured">
+        <div class="planHeader">
+          <div>
+            <div class="badge">Pro</div>
+            <p class="name">Pro</p>
+            <div class="desc">Agences & sites actifs</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">79€ <span class="per">/mois</span></div>
+          </div>
         </div>
-        <div class="tiny">Tip : tu peux choisir un plan depuis la page “Offres”.</div>
-      </form>
+
+        <ul>
+          <li>✅ 300 audits SEO / mois</li>
+          <li>✅ Monitoring sites (jusqu’à 50)</li>
+          <li>✅ Alertes email (DOWN)</li>
+          <li>✅ Historique complet</li>
+          <li>✅ PDF & CSV avancés</li>
+          <li>❌ Équipe</li>
+          <li>❌ Rapports mensuels fiabilité</li>
+        </ul>
+
+        <button class="btn btnPrimary" onclick="location.href='/index.html?plan=pro'">Commencer l’essai (Pro)</button>
+      </div>
+
+      <div class="plan">
+        <div class="planHeader">
+          <div>
+            <div class="badge">Ultra</div>
+            <p class="name">Ultra</p>
+            <div class="desc">SaaS, agences, scale</div>
+          </div>
+          <div style="text-align:right">
+            <div class="price">149€ <span class="per">/mois</span></div>
+          </div>
+        </div>
+
+        <ul>
+          <li>🚀 2000 audits SEO / mois</li>
+          <li>🚀 300 monitors actifs</li>
+          <li>🚀 Rapports mensuels de fiabilité</li>
+          <li>🚀 Score de fiabilité global</li>
+          <li>🚀 MTTR, incidents, uptime</li>
+          <li>🚀 Équipe (jusqu’à 10)</li>
+          <li>🚀 Données partagées par org</li>
+        </ul>
+
+        <button class="btn btnSoft" onclick="location.href='/index.html?plan=ultra'">Choisir Ultra</button>
+      </div>
+
     </div>
+
+    <div class="foot">
+      <div class="muted">Déjà un compte ? Connecte-toi et gère ton abonnement dans Billing/Portal.</div>
+      <button class="btn btnPrimary" style="width:auto" onclick="location.href='/login.html'">Se connecter</button>
+    </div>
+
   </div>
-
-  <script src="/app.js?v=2"></script>
 </body>
 </html>
