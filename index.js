@@ -330,6 +330,45 @@ const OrgSchema = new mongoose.Schema(
 
     alertRecipients: { type: String, default: "all" }, // "owner" | "all"
     alertExtraEmails: { type: [String], default: [] },
+
+    // ✅ NEW: Addons (billing features)
+    billingAddons: {
+      // packs monitors: +50 each pack
+      monitorsPack50: { type: Number, default: 0 },
+
+      // white-label included (per your request)
+      whiteLabel: { type: Boolean, default: true },
+
+      // optional future (ready)
+      extraSeats: { type: Number, default: 0 }, // +seats for team
+    },
+
+    // ✅ NEW: Branding / White-label (simple version)
+    branding: {
+      appName: { type: String, default: "FlowPoint" },
+      supportEmail: { type: String, default: "" },
+      logoUrl: { type: String, default: "" },
+      primaryColor: { type: String, default: "#2563eb" },
+      accentColor: { type: String, default: "#1d4ed8" },
+      hideFlowPointBranding: { type: Boolean, default: false }, // if whiteLabel true you can flip this later
+    },
+
+    // ✅ NEW: Data retention (days)
+    retentionDays: { type: Number, default: 30 },
+
+    // ✅ NEW: Integrations placeholders
+    integrations: {
+      slackWebhookUrl: { type: String, default: "" },
+      discordWebhookUrl: { type: String, default: "" },
+      zapierHookUrl: { type: String, default: "" },
+    },
+
+    // ✅ NEW: Credits (optional future)
+    credits: {
+      audits: { type: Number, default: 0 },
+      pdf: { type: Number, default: 0 },
+      exports: { type: Number, default: 0 },
+    },
   },
   { timestamps: true, collection: "orgs" }
 );
@@ -498,7 +537,120 @@ async function ensureOrgForUser(user) {
   await user.save();
   return user;
 }
+function clampInt(n, min, max) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return min;
+  return Math.max(min, Math.min(max, Math.floor(x)));
+}
 
+async function ensureOrgDefaults(org) {
+  if (!org) return null;
+
+  let changed = false;
+
+  // billingAddons
+  if (!org.billingAddons || typeof org.billingAddons !== "object") {
+    org.billingAddons = { monitorsPack50: 0, whiteLabel: true, extraSeats: 0 };
+    changed = true;
+  } else {
+    if (org.billingAddons.monitorsPack50 == null) { org.billingAddons.monitorsPack50 = 0; changed = true; }
+    if (org.billingAddons.whiteLabel == null) { org.billingAddons.whiteLabel = true; changed = true; }
+    if (org.billingAddons.extraSeats == null) { org.billingAddons.extraSeats = 0; changed = true; }
+
+    org.billingAddons.monitorsPack50 = clampInt(org.billingAddons.monitorsPack50, 0, 200);
+    org.billingAddons.extraSeats = clampInt(org.billingAddons.extraSeats, 0, 500);
+  }
+
+  // branding
+  if (!org.branding || typeof org.branding !== "object") {
+    org.branding = {
+      appName: "FlowPoint",
+      supportEmail: "",
+      logoUrl: "",
+      primaryColor: "#2563eb",
+      accentColor: "#1d4ed8",
+      hideFlowPointBranding: false,
+    };
+    changed = true;
+  } else {
+    const b = org.branding;
+    if (b.appName == null) { b.appName = "FlowPoint"; changed = true; }
+    if (b.supportEmail == null) { b.supportEmail = ""; changed = true; }
+    if (b.logoUrl == null) { b.logoUrl = ""; changed = true; }
+    if (b.primaryColor == null) { b.primaryColor = "#2563eb"; changed = true; }
+    if (b.accentColor == null) { b.accentColor = "#1d4ed8"; changed = true; }
+    if (b.hideFlowPointBranding == null) { b.hideFlowPointBranding = false; changed = true; }
+  }
+
+  // retentionDays
+  if (org.retentionDays == null) { org.retentionDays = 30; changed = true; }
+  org.retentionDays = clampInt(org.retentionDays, 7, 3650);
+
+  // integrations
+  if (!org.integrations || typeof org.integrations !== "object") {
+    org.integrations = { slackWebhookUrl: "", discordWebhookUrl: "", zapierHookUrl: "" };
+    changed = true;
+  } else {
+    if (org.integrations.slackWebhookUrl == null) { org.integrations.slackWebhookUrl = ""; changed = true; }
+    if (org.integrations.discordWebhookUrl == null) { org.integrations.discordWebhookUrl = ""; changed = true; }
+    if (org.integrations.zapierHookUrl == null) { org.integrations.zapierHookUrl = ""; changed = true; }
+  }
+
+  // credits
+  if (!org.credits || typeof org.credits !== "object") {
+    org.credits = { audits: 0, pdf: 0, exports: 0 };
+    changed = true;
+  } else {
+    if (org.credits.audits == null) { org.credits.audits = 0; changed = true; }
+    if (org.credits.pdf == null) { org.credits.pdf = 0; changed = true; }
+    if (org.credits.exports == null) { org.credits.exports = 0; changed = true; }
+
+    org.credits.audits = clampInt(org.credits.audits, 0, 1000000);
+    org.credits.pdf = clampInt(org.credits.pdf, 0, 1000000);
+    org.credits.exports = clampInt(org.credits.exports, 0, 1000000);
+  }
+
+  // whiteLabel => optionally hide FlowPoint branding by default (safe)
+  if (org.billingAddons?.whiteLabel && org.branding && org.branding.hideFlowPointBranding == null) {
+    org.branding.hideFlowPointBranding = false;
+    changed = true;
+  }
+
+  if (changed) await org.save();
+  return org;
+}
+async function ensureOrgForUser(user) {
+  if (user.orgId) {
+    const existing = await Org.findById(user.orgId);
+    if (existing) await ensureOrgDefaults(existing);
+    return user;
+  }
+
+  const normalized = normalizeCompanyName(user.companyName || "Organisation");
+  const domain = user.companyDomain || "";
+
+  let org = await Org.findOne({ normalizedName: normalized });
+
+  if (!org) {
+    org = await Org.create({
+      name: user.companyName || "Organisation",
+      normalizedName: normalized,
+      ownerUserId: user._id,
+      createdFromEmailDomain: domain,
+      alertRecipients: "all",
+      alertExtraEmails: [],
+      // defaults will be ensured below
+    });
+  }
+
+  // ✅ ensure defaults exist on org
+  await ensureOrgDefaults(org);
+
+  user.orgId = org._id;
+  user.role = user.role || "owner";
+  await user.save();
+  return user;
+}
 async function requireActive(req, res, next) {
   const user = await User.findById(req.user.uid);
   if (!user) return res.status(404).json({ error: "User introuvable" });
@@ -517,7 +669,8 @@ async function requireActive(req, res, next) {
 
   await resetUsageIfNewMonth(user);
   await ensureOrgForUser(user);
-
+const org = user.orgId ? await Org.findById(user.orgId) : null;
+req.dbOrg = org ? await ensureOrgDefaults(org) : null;
   req.dbUser = user;
   next();
 }
@@ -799,7 +952,38 @@ async function canCreateActiveMonitor(user) {
   const countActive = await Monitor.countDocuments({ orgId: user.orgId, active: true });
   return countActive < q.monitors;
 }
+async function ensureOrgForUser(user) {
+  if (user.orgId) {
+    const existing = await Org.findById(user.orgId);
+    if (existing) await ensureOrgDefaults(existing);
+    return user;
+  }
 
+  const normalized = normalizeCompanyName(user.companyName || "Organisation");
+  const domain = user.companyDomain || "";
+
+  let org = await Org.findOne({ normalizedName: normalized });
+
+  if (!org) {
+    org = await Org.create({
+      name: user.companyName || "Organisation",
+      normalizedName: normalized,
+      ownerUserId: user._id,
+      createdFromEmailDomain: domain,
+      alertRecipients: "all",
+      alertExtraEmails: [],
+      // defaults will be ensured below
+    });
+  }
+
+  // ✅ ensure defaults exist on org
+  await ensureOrgDefaults(org);
+
+  user.orgId = org._id;
+  user.role = user.role || "owner";
+  await user.save();
+  return user;
+}
 // ---------- STRIPE WEBHOOK RAW (BEFORE express.json) ----------
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
