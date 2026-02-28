@@ -1,53 +1,53 @@
-(function () {
-  const TOKEN_KEY = "fp_token";
+// login.js — FlowPoint AI Magic Link request (frontend)
+// Works with backend: POST /api/auth/login-request { email }
 
-  const emailInput = document.getElementById("email");
+(() => {
+  const emailEl = document.getElementById("email");
   const btn = document.getElementById("btn");
   const msg = document.getElementById("msg");
 
-  function setMsg(text, type){
-    if(!msg) return;
+  const setMsg = (text, type) => {
+    if (!msg) return;
     msg.textContent = text || "";
     msg.className = "muted";
-    if(type === "error") msg.className = "muted error";
-    if(type === "ok") msg.className = "muted ok";
-  }
+    if (type === "ok") msg.classList.add("ok");
+    if (type === "error") msg.classList.add("error");
+  };
 
-  async function postJSON(url, body){
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(body || {})
-    });
-    const j = await res.json().catch(() => ({}));
-    if(!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
-    return j;
-  }
+  async function requestLink() {
+    const email = String(emailEl?.value || "").trim();
+    if (!email) return setMsg("Email requis.", "error");
 
-  btn?.addEventListener("click", async () => {
-    try{
-      const email = String(emailInput?.value || "").trim();
-      if(!email) return setMsg("Email requis", "error");
+    btn && (btn.disabled = true);
+    setMsg("Envoi du lien…");
 
-      setMsg("Envoi du lien…");
-      const r = await postJSON("/api/auth/login-request", { email });
+    try {
+      const r = await fetch("/api/auth/login-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
 
-      // debug mode returns debugLink
-      if(r.debugLink){
-        setMsg("DEBUG: lien généré. Copie-colle ce lien dans ton navigateur.", "ok");
-        console.log("DEBUG LINK:", r.debugLink);
-      } else {
-        setMsg("✅ Lien envoyé. Vérifie tes emails.", "ok");
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "Impossible d’envoyer le lien.");
+
+      // Mode debug (si DEBUG_LOGIN_LINK=true côté backend)
+      if (j.debugLink) {
+        setMsg("Mode debug: lien généré. Ouverture…", "ok");
+        window.location.href = j.debugLink;
+        return;
       }
-    }catch(e){
-      setMsg(e.message || "Erreur", "error");
-    }
-  });
 
-  // Option: si token déjà présent => dashboard
-  const existing = localStorage.getItem(TOKEN_KEY);
-  if(existing){
-    // Pas de redirection forcée, mais tu peux activer si tu veux :
-    // location.replace("/dashboard.html");
+      setMsg("✅ Lien envoyé. Vérifie ta boîte mail (et spam).", "ok");
+    } catch (e) {
+      setMsg(e?.message || "Erreur.", "error");
+    } finally {
+      btn && (btn.disabled = false);
+    }
   }
+
+  btn?.addEventListener("click", requestLink);
+  emailEl?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") requestLink();
+  });
 })();
