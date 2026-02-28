@@ -7,151 +7,36 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
+  <!-- ✅ Ton design cible -->
+  <link rel="stylesheet" href="/style.css" />
+
+  <!-- ✅ Compat JS (ton dashboard.js toggle is-open / is-active) -->
   <style>
-    :root{
-      --bg1:#eef2ff;--bg2:#f6f8ff;--card:#ffffff;--stroke:#e6ebf5;
-      --text:#0f172a;--muted:#6b7280;
-      --blue:#2563eb;--blue2:#1d4ed8;--blueSoft:#eef4ff;
-      --green:#16a34a;--amber:#f59e0b;--red:#dc2626;
-      --shadow: 0 14px 40px rgba(16,24,40,.08);
-      --r:16px;--sidebarW:220px;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      color:var(--text);
-      background:
-        radial-gradient(900px 600px at 12% 6%, rgba(37,99,235,.14), transparent 60%),
-        radial-gradient(900px 600px at 88% 0%, rgba(99,102,241,.12), transparent 55%),
-        linear-gradient(180deg, var(--bg1), var(--bg2));
-    }
-    .sidebar{position:fixed; inset:0 auto 0 0;width:var(--sidebarW);background:rgba(255,255,255,.82);
-      border-right:1px solid rgba(230,235,245,.9);backdrop-filter:saturate(180%) blur(14px);
-      padding:14px;display:flex;flex-direction:column;gap:12px;z-index:30;}
-    .main{margin-left:var(--sidebarW);min-height:100vh;padding:18px 20px 28px;}
-    .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:25;display:none;}
-    .overlay.is-open{display:block}
-    .brand{display:flex;align-items:flex-start;gap:10px;padding:6px 6px 0;}
-    .brand__mark{width:42px;height:42px;border-radius:14px;background:linear-gradient(180deg, rgba(37,99,235,.18), rgba(37,99,235,.08));
-      border:1px solid rgba(37,99,235,.20);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
-    .brand__name{font-weight:700;letter-spacing:-.01em;line-height:1.05;}
-    .brand__sub{font-size:12px;color:var(--muted);margin-top:2px;}
-    .nav{display:flex;flex-direction:column; gap:6px; padding-top:6px}
-    .nav__item{appearance:none;border:0;background:transparent;padding:10px 10px;border-radius:12px;display:flex;align-items:center;gap:10px;
-      color:#111827;font-size:14px;cursor:pointer;font-weight:600;}
-    .nav__item:hover{background:rgba(37,99,235,.06)}
-    .nav__item.is-active{background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.18);color:var(--blue2);}
-    .pill-mini{margin-left:auto;font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px;
-      background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.20);color:var(--blue2);}
-    .sidebar__foot{margin-top:auto}
-    .miniCard{background:rgba(255,255,255,.92);border:1px solid var(--stroke);border-radius:18px;padding:14px;box-shadow:0 8px 22px rgba(16,24,40,.06);}
-    .miniCard__title{font-size:12px;letter-spacing:.18em;color:#64748b;font-weight:700;margin-bottom:10px;}
-    .miniGrid{display:grid;grid-template-columns: 64px 1fr;gap:8px 10px;font-size:13px;}
-    .miniGrid__k{color:var(--muted)}
-    .miniGrid__v{font-weight:700;color:#0b1220}
-    .miniActions{display:flex; gap:10px; margin-top:12px}
-    .hint{margin-top:10px;font-size:12.5px;color:#6b7280;line-height:1.35}
-    .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px;}
-    .hello__title{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0;}
-    .hello__sub{margin-top:3px;font-size:13px;color:var(--muted);}
-    .topbar__right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;max-width:560px;}
-    .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    .selectLike{border:1px solid var(--stroke);background:rgba(255,255,255,.88);padding:10px 14px;border-radius:14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;user-select:none;}
-    .caret{opacity:.65}
-    .btn{border:1px solid transparent;background:#fff;padding:10px 14px;border-radius:14px;cursor:pointer;font-weight:700;color:#0b1220;box-shadow:0 8px 18px rgba(16,24,40,.06);font-size:13px;}
-    .btn--sm{padding:8px 12px;border-radius:12px;box-shadow:none}
-    .btn--primary{background:linear-gradient(180deg, var(--blue), var(--blue2));color:#fff;}
-    .btn--soft{background:#fff;border:1px solid var(--stroke);color:var(--blue);}
-    .btn--danger{background:#fff;border:1px solid rgba(220,38,38,.25);color:#b91c1c;}
-    .w100{width:100%}
-    .avatar{width:42px;height:42px;border-radius:999px;border:1px solid var(--stroke);background:rgba(255,255,255,.92);
-      display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:700;color:#334155;}
-    .grid{display:grid;grid-template-columns: 1.05fr .95fr;gap:18px;align-items:start;}
-    .col{display:flex;flex-direction:column;gap:18px}
-    .card{background:rgba(255,255,255,.90);border:1px solid var(--stroke);border-radius:22px;box-shadow: var(--shadow);padding:16px;}
-    .card__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
-    .card__title{font-size:13px;letter-spacing:.18em;color:#64748b;font-weight:700;}
-    .statusOk{display:flex;align-items:center;gap:8px;color:#4b5563;font-weight:700;font-size:13px;}
-    .dot{width:10px;height:10px;border-radius:999px}
-    .dot--green{background:var(--green)}
-    .kpis{display:grid;grid-template-columns: repeat(2, 1fr);gap:12px;}
-    .kpi{border:1px solid var(--stroke);border-radius:16px;padding:12px;background:rgba(248,250,255,.75);}
-    .kpi__k{color:var(--muted);font-weight:700;font-size:13px}
-    .kpi__v{margin-top:4px;font-size:26px;font-weight:700;letter-spacing:-.01em}
-    .kpi__v small{font-weight:600;color:#94a3b8}
-    .kpi__s{margin-top:3px;font-size:12.5px;color:var(--muted)}
-    .kpi__v--green{color:#16a34a}
-    .divider{height:1px;background:rgba(230,235,245,.95);margin:14px 0;}
-    .chartWrap{border:1px solid var(--stroke);border-radius:16px;background:linear-gradient(180deg, rgba(37,99,235,.06), rgba(255,255,255,.0));padding:10px 10px 2px;overflow:hidden;}
-    .chartSvg{width:100%;height:150px;display:block}
-    .gridline{stroke:#e5e7eb;stroke-width:1}
-    .line{fill:none;stroke:#3b66f1;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-    .area{fill:rgba(59,102,241,.12)}
-    .table{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;}
-    .table thead th{text-align:left;color:#64748b;font-weight:700;letter-spacing:.12em;font-size:12px;padding:10px 10px;border-top:1px solid var(--stroke);border-bottom:1px solid var(--stroke);background:rgba(248,250,255,.55);white-space:nowrap;}
-    .table tbody td{padding:12px 10px;border-bottom:1px solid rgba(230,235,245,.8);vertical-align:middle;}
-    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
-    .td-actions{white-space:nowrap;text-align:right}
-    .pill{display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-weight:700;border:1px solid transparent;font-size:12.5px;white-space:nowrap;}
-    .pill--warn{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.20);color:#92400e;}
-    .pill--soft{background:rgba(37,99,235,.10);border-color:rgba(37,99,235,.18);color:#1d4ed8;}
-    .pill--up{background:rgba(22,163,74,.12);border-color:rgba(22,163,74,.18);color:#166534;}
-    .pill--down{background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.16);color:#991b1b;}
-    .rowBetween{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    /* sidebar/overlay : ton JS met .is-open, ton CSS met .isOpen */
+    .sidebar.is-open{ left:0 !important; }
+    .overlay.is-open{ display:block !important; }
 
-    /* ✅ Plans UI upgraded */
-    .plans{display:grid;grid-template-columns: repeat(3, 1fr);gap:12px;}
-    .plan{
-      border:1px solid var(--stroke);
-      border-radius:18px;
-      padding:14px;
-      background:rgba(255,255,255,.92);
-      display:flex;flex-direction:column;gap:10px;
-      min-height:220px;
+    /* nav : ton JS met .is-active, ton CSS met .isActive */
+    .navItem.is-active{
+      background: rgba(47,107,255,.10);
+      border-color: rgba(47,107,255,.22);
+      color: var(--primary2);
     }
-    .plan--current{
-      border-color:rgba(37,99,235,.34);
-      background:linear-gradient(180deg, rgba(37,99,235,.18), rgba(255,255,255,.92));
-      box-shadow:0 16px 55px rgba(37,99,235,.12);
-    }
-    .planTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-    .planName{font-weight:700}
-    .planPrice{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1;text-align:right;}
-    .planPer{color:#94a3b8;font-weight:600;font-size:14px}
-    .planBadge{
-      display:inline-flex;
-      padding:6px 10px;border-radius:999px;
-      background:rgba(37,99,235,.10);
-      border:1px solid rgba(37,99,235,.18);
-      color:var(--blue2);
-      font-weight:700;font-size:12px;
-      align-self:flex-start;
-    }
-    .planList{margin:0;padding-left:16px;color:#334155;}
-    .planList li{margin:6px 0}
+    .navItem.is-active .navDot{ background: var(--primary); }
+
+    /* sections : ton JS utilise .section + .is-active */
     .section{display:none}
     .section.is-active{display:block}
 
-    .toast{position:fixed;right:16px;bottom:16px;background:rgba(15,23,42,.92);color:#fff;padding:12px 14px;border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.25);max-width:340px;z-index:60;display:none;font-size:13px;line-height:1.35;}
-    .toast.is-open{display:block}
-    .toast .trow{display:flex;justify-content:space-between;align-items:center;gap:12px}
-    .toast .closeX{background:transparent;border:0;color:#cbd5e1;cursor:pointer;font-size:16px;padding:2px 6px;}
-    .only-mobile{display:none}
-    @media (max-width:1060px){.grid{grid-template-columns:1fr}.plans{grid-template-columns:1fr}}
-    @media (max-width:880px){
-      .only-mobile{display:inline-flex}
-      .main{margin-left:0;padding:14px 14px 22px}
-      .sidebar{transform:translateX(-105%);transition:transform .22s ease;box-shadow:0 14px 40px rgba(16,24,40,.18);width:min(86vw,320px);}
-      .sidebar.is-open{transform:translateX(0)}
-      .topbar{flex-direction:column;align-items:stretch;gap:10px;}
-      .topbar__right{justify-content:flex-start;max-width:none;}
-      .controls{justify-content:flex-start}
-      .table{display:block;overflow:auto;-webkit-overflow-scrolling:touch}
-      .table thead th,.table tbody td{white-space:nowrap}
+    /* table cell ellipsis */
+    .mono-ellipsis{
+      max-width: 360px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      display:block;
     }
   </style>
 </head>
@@ -159,231 +44,306 @@
 <body>
   <div class="overlay" id="overlay"></div>
 
-  <aside class="sidebar" id="sidebar">
-    <div class="brand">
-      <div class="brand__mark" aria-label="Flowpoint logo">
-        <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-          <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#2563eb"/>
-          </linearGradient></defs>
-          <path d="M13 2 4 14h7l-1 8 10-14h-7l0-6Z" fill="none" stroke="url(#g)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
-        </svg>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brandIcon" aria-label="Flowpoint logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+            <defs>
+              <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#2F6BFF"/>
+              </linearGradient>
+            </defs>
+            <path d="M13 2 4 14h7l-1 8 10-14h-7l0-6Z"
+              fill="none" stroke="url(#g)" stroke-width="2.2"
+              stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brandName">Flowpoint</div>
+          <div class="brandSub">Client Dashboard</div>
+        </div>
       </div>
-      <div>
-        <div class="brand__name">Flowpoint</div>
-        <div class="brand__sub">Client Dashboard</div>
-      </div>
-    </div>
 
-    <nav class="nav" id="nav">
-      <button class="nav__item is-active" data-section="overview"><span>🏠</span><span>Overview</span></button>
-      <button class="nav__item" data-section="audits"><span>🧾</span><span>Audits</span></button>
-      <button class="nav__item" data-section="monitors"><span>📡</span><span>Monitors</span></button>
-      <button class="nav__item" data-section="reports"><span>📄</span><span>Reports</span><span class="pill-mini" id="planPill">—</span></button>
-      <button class="nav__item" data-section="billing"><span>💳</span><span>Billing</span></button>
-      <button class="nav__item" data-section="settings"><span>⚙️</span><span>Settings</span></button>
-    </nav>
+      <nav class="nav" id="nav">
+        <!-- ✅ On garde nav__item pour ton JS -->
+        <button class="navItem nav__item is-active" data-section="overview">
+          <span class="navDot"></span>
+          <span>Overview</span>
+        </button>
 
-    <div class="sidebar__foot">
-      <div class="miniCard">
-        <div class="miniCard__title">ACCOUNT</div>
-        <div class="miniGrid">
-          <div class="miniGrid__k">Plan</div><div class="miniGrid__v" id="accPlan">—</div>
-          <div class="miniGrid__k">Org</div><div class="miniGrid__v" id="accOrg">—</div>
-          <div class="miniGrid__k">Role</div><div class="miniGrid__v" id="accRole">—</div>
-          <div class="miniGrid__k">Trial</div><div class="miniGrid__v" id="accTrial">—</div>
+        <button class="navItem nav__item" data-section="audits">
+          <span class="navDot"></span>
+          <span>Audits</span>
+        </button>
+
+        <button class="navItem nav__item" data-section="monitors">
+          <span class="navDot"></span>
+          <span>Monitors</span>
+        </button>
+
+        <button class="navItem nav__item" data-section="reports">
+          <span class="navDot"></span>
+          <span>Reports</span>
+          <span class="pill" id="planPill">—</span>
+        </button>
+
+        <button class="navItem nav__item" data-section="billing">
+          <span class="navDot"></span>
+          <span>Billing</span>
+        </button>
+
+        <button class="navItem nav__item" data-section="settings">
+          <span class="navDot"></span>
+          <span>Settings</span>
+        </button>
+      </nav>
+
+      <div class="accountCard">
+        <div class="accountTitle">ACCOUNT</div>
+        <div class="kv">
+          <div class="k">Plan</div><div class="v" id="accPlan">—</div>
+          <div class="k">Org</div><div class="v" id="accOrg">—</div>
+          <div class="k">Role</div><div class="v" id="accRole">—</div>
+          <div class="k">Trial</div><div class="v" id="accTrial">—</div>
         </div>
 
-        <div class="miniActions">
-          <button class="btn btn--soft w100" id="btnPortal">Billing / Portal</button>
-          <button class="btn btn--danger w100" id="btnLogout">Logout</button>
+        <div class="accountActions">
+          <button class="btn btnGhost wFull" id="btnPortal">Billing / Portal</button>
+          <button class="btn btnDanger wFull" id="btnLogout">Logout</button>
         </div>
 
-        <div class="hint" id="hint">Tip : Si un bouton ne répond pas, vérifie ton token et /api/me.</div>
+        <div class="tip" id="hint">Tip : Si un bouton ne répond pas, vérifie ton token et /api/me.</div>
       </div>
-    </div>
-  </aside>
+    </aside>
 
-  <main class="main">
-    <header class="topbar">
-      <div>
-        <button class="btn btn--soft btn--sm only-mobile" id="btnMenu">≡ Menu</button>
-        <h1 class="hello__title" id="helloTitle">Bonjour</h1>
-        <div class="hello__sub" id="helloSub">SEO · Monitoring · Reports · Billing</div>
-      </div>
-
-      <div class="topbar__right">
-        <div class="controls">
-          <div class="selectLike" id="periodBtn"><span id="periodLabel">Last 30 days</span><span class="caret">▾</span></div>
-          <button class="btn btn--primary" id="btnRefresh">Refresh</button>
-          <button class="btn btn--soft" id="btnExportAudits">Export Audits CSV</button>
-          <button class="btn btn--soft" id="btnExportMonitors">Export Monitors CSV</button>
-        </div>
-
-        <div class="statusOk" id="healthChip" style="background:rgba(255,255,255,.88);border:1px solid var(--stroke);border-radius:14px;padding:10px 12px">
-          <span class="dot dot--green"></span>
-          <span id="healthText">Dashboard à jour — OK</span>
-        </div>
-
-        <div class="avatar" id="avatar" title="Account">FP</div>
-      </div>
-    </header>
-
-    <div class="grid">
-      <section class="col">
-        <div class="section is-active" id="section-overview">
-          <div class="card">
-            <div class="card__head">
-              <div class="card__title">OVERVIEW</div>
-              <div class="card__title" id="rangeLabel">LAST 30 DAYS</div>
-            </div>
-
-            <div class="kpis">
-              <div class="kpi">
-                <div class="kpi__k">SEO Score</div>
-                <div class="kpi__v"><span id="seoScore">—</span> <small>/100</small></div>
-                <div class="kpi__s">Last 30 days</div>
-              </div>
-              <div class="kpi">
-                <div class="kpi__k">Local Visibility</div>
-                <div class="kpi__v kpi__v--green" id="localVis">—</div>
-                <div class="kpi__s">Map pack + reviews</div>
-              </div>
-            </div>
-
-            <div class="divider"></div>
-
-            <div class="rowBetween">
-              <div style="font-weight:700;">SEO Performance</div>
-              <button class="btn btn--soft btn--sm" id="btnLast3">Last 3 days</button>
-            </div>
-
-            <div class="chartWrap">
-              <svg class="chartSvg" viewBox="0 0 600 160" preserveAspectRatio="none" aria-label="SEO chart">
-                <line class="gridline" x1="0" y1="40" x2="600" y2="40"></line>
-                <line class="gridline" x1="0" y1="80" x2="600" y2="80"></line>
-                <line class="gridline" x1="0" y1="120" x2="600" y2="120"></line>
-                <path class="area" id="areaPath" d=""></path>
-                <path class="line" id="linePath" d=""></path>
-              </svg>
-            </div>
-
-            <div class="divider"></div>
-
-            <div class="rowBetween">
-              <div style="font-weight:700;">Recommended Actions</div>
-              <button class="btn btn--soft btn--sm" id="btnRunAudit">Run audit</button>
-            </div>
-
-            <div style="margin-top:10px;color:var(--muted);font-size:13px">
-              Lance un audit SEO pour obtenir des recommandations.
-            </div>
+    <!-- Main -->
+    <main class="main">
+      <!-- Topbar (rendu cible) -->
+      <header class="topbar">
+        <div class="topLeft">
+          <button class="btn btnGhost btnSmall mobileOnly" id="btnMenu">≡ Menu</button>
+          <div>
+            <div class="helloTitle" id="helloTitle">Bonjour</div>
+            <div class="helloSub" id="helloSub">SEO · Monitoring · Reports · Billing</div>
           </div>
         </div>
 
-        <div class="section" id="section-audits">
-          <div class="card">
-            <div class="card__head">
-              <div class="card__title">AUDITS</div>
-              <button class="btn btn--soft btn--sm" id="btnNewAudit">New audit</button>
+        <div class="topActions">
+          <!-- Period -->
+          <div class="selectWrap" id="periodBtn" title="Change period">
+            <div class="select">
+              <span id="periodLabel">Last 30 days</span>
             </div>
-            <div style="color:var(--muted)">Section Audits (branche tes données ici).</div>
+            <span class="selectIcon">▾</span>
           </div>
+
+          <button class="btn btnPrimary" id="btnRefresh">Refresh</button>
+          <button class="btn btnGhost" id="btnExportAudits">Export Audits CSV</button>
+          <button class="btn btnGhost" id="btnExportMonitors">Export Monitors CSV</button>
+
+          <div class="userPill" id="healthChip">
+            <span class="dotOnline"></span>
+            <span id="healthText">Dashboard à jour — OK</span>
+          </div>
+
+          <button class="iconBtn" id="avatar" title="Account">
+            <span class="avatar">FP</span>
+          </button>
         </div>
+      </header>
 
-        <div class="section" id="section-monitors">
-          <div class="card">
-            <div class="card__head">
-              <div class="card__title">MONITORS</div>
-            </div>
-            <div style="color:var(--muted)">Gère tes monitors dans le tableau à droite.</div>
-          </div>
-        </div>
-
-        <div class="section" id="section-reports"><div class="card"><div class="card__head"><div class="card__title">REPORTS</div></div><div style="color:var(--muted)">Section Reports.</div></div></div>
-        <div class="section" id="section-billing"><div class="card"><div class="card__head"><div class="card__title">BILLING</div></div><div style="color:var(--muted)">Section Billing.</div></div></div>
-        <div class="section" id="section-settings"><div class="card"><div class="card__head"><div class="card__title">SETTINGS</div></div><div style="color:var(--muted)">Section Settings.</div></div></div>
-      </section>
-
-      <section class="col">
-        <div class="card" id="card-monitors">
-          <div class="rowBetween" style="margin-bottom:10px">
-            <div style="font-weight:700; font-size:18px;">Monitors</div>
-            <button class="btn btn--primary btn--sm" id="btnAddMonitor">Add Monitor</button>
-          </div>
-
-          <table class="table" aria-label="Monitors table">
-            <thead>
-              <tr>
-                <th style="width:48px;">&nbsp;</th>
-                <th>URL</th>
-                <th>Status</th>
-                <th>Interval</th>
-                <th>Last</th>
-                <th>Resp</th>
-                <th class="td-actions">&nbsp;</th>
-              </tr>
-            </thead>
-            <tbody id="monitorsTbody"></tbody>
-          </table>
-        </div>
-
-        <div class="card" id="card-plans">
-          <div class="rowBetween" style="margin-bottom:10px">
-            <div style="font-weight:700; font-size:18px;">Plans</div>
-            <button class="btn btn--soft btn--sm" onclick="location.href='/pricing.html'">See plans</button>
-          </div>
-
-          <div class="plans" id="plansGrid">
-            <div class="plan" id="plan-standard">
-              <div class="planTop">
-                <div>
-                  <div class="planName">Standard</div>
-                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
+      <div class="content">
+        <div class="grid">
+          <!-- LEFT -->
+          <section class="colLeft">
+            <!-- OVERVIEW -->
+            <div class="section is-active" id="section-overview">
+              <div class="card">
+                <div class="sectionHead">
+                  <div class="sectionTitle">OVERVIEW</div>
+                  <div class="cardMeta" id="rangeLabel">LAST 30 DAYS</div>
                 </div>
-                <div class="planPrice">29€ <span class="planPer">/mo</span></div>
-              </div>
-              <ul class="planList">
-                <li>SEO audits: 30</li><li>Monitors: 3</li><li>PDF exports</li>
-              </ul>
-              <button class="btn btn--soft w100" data-checkout="standard">Choisir Standard</button>
-            </div>
 
-            <div class="plan" id="plan-pro">
-              <div class="planTop">
-                <div>
-                  <div class="planName">Pro</div>
-                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
+                <div class="kpiGrid">
+                  <div class="card kpi" style="box-shadow:none;border:1px solid rgba(15,23,42,.06);">
+                    <div class="kpiLabel">SEO Score</div>
+                    <div class="kpiValue"><span id="seoScore">—</span><span style="font-size:14px;color:var(--muted);font-weight:700"> /100</span></div>
+                    <div class="kpiSub">Last 30 days</div>
+                  </div>
+
+                  <div class="card kpi" style="box-shadow:none;border:1px solid rgba(15,23,42,.06);">
+                    <div class="kpiLabel">Local Visibility</div>
+                    <div class="kpiValue kpiGreen" id="localVis">—</div>
+                    <div class="kpiSub">Map pack + reviews</div>
+                  </div>
                 </div>
-                <div class="planPrice">79€ <span class="planPer">/mo</span></div>
-              </div>
-              <ul class="planList">
-                <li>SEO audits: 300</li><li>Monitors: 50</li><li>Email alerts</li><li>PDF & CSV</li>
-              </ul>
-              <button class="btn btn--primary w100" data-checkout="pro">Passer en Pro</button>
-            </div>
 
-            <div class="plan" id="plan-ultra">
-              <div class="planTop">
-                <div>
-                  <div class="planName">Ultra</div>
-                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
+                <div class="actionsRow" style="margin-top:10px;">
+                  <div class="actionText">SEO Performance</div>
+                  <div class="chips">
+                    <button class="btn btnGhost btnSmall" id="btnLast3">Last 3 days</button>
+                  </div>
                 </div>
-                <div class="planPrice">149€ <span class="planPer">/mo</span></div>
-              </div>
-              <ul class="planList">
-                <li>SEO audits: 2000</li><li>Monitors: 300</li><li>Team + Reports</li>
-              </ul>
-              <button class="btn btn--soft w100" data-checkout="ultra">Passer en Ultra</button>
-            </div>
-          </div>
 
-          <div class="hint" style="margin-top:12px;">Les boutons ouvrent Stripe checkout/portal (selon ton backend).</div>
+                <div class="chart">
+                  <svg viewBox="0 0 600 190" preserveAspectRatio="none" aria-label="SEO chart">
+                    <line class="chartGrid" x1="0" y1="45" x2="600" y2="45"></line>
+                    <line class="chartGrid" x1="0" y1="95" x2="600" y2="95"></line>
+                    <line class="chartGrid" x1="0" y1="145" x2="600" y2="145"></line>
+                    <path class="chartArea" id="areaPath" d=""></path>
+                    <path class="chartLine" id="linePath" d=""></path>
+                  </svg>
+                </div>
+
+                <div class="actionsRow" style="margin-top:12px;">
+                  <div class="actionText">Recommended Actions</div>
+                  <button class="btn btnGhost btnSmall" id="btnRunAudit">Run audit</button>
+                </div>
+
+                <div class="note muted">
+                  Lance un audit SEO pour obtenir des recommandations.
+                </div>
+              </div>
+            </div>
+
+            <!-- AUDITS -->
+            <div class="section" id="section-audits">
+              <div class="card">
+                <div class="cardHead">
+                  <div class="cardTitle">Audits</div>
+                  <button class="btn btnGhost btnSmall" id="btnNewAudit">New audit</button>
+                </div>
+                <div class="empty">Section Audits (branche tes données ici).</div>
+              </div>
+            </div>
+
+            <!-- MONITORS (left placeholder) -->
+            <div class="section" id="section-monitors">
+              <div class="card">
+                <div class="cardHead">
+                  <div class="cardTitle">Monitors</div>
+                </div>
+                <div class="empty">Gère tes monitors dans le tableau à droite.</div>
+              </div>
+            </div>
+
+            <div class="section" id="section-reports">
+              <div class="card">
+                <div class="cardHead"><div class="cardTitle">Reports</div></div>
+                <div class="empty">Section Reports.</div>
+              </div>
+            </div>
+
+            <div class="section" id="section-billing">
+              <div class="card">
+                <div class="cardHead"><div class="cardTitle">Billing</div></div>
+                <div class="empty">Section Billing.</div>
+              </div>
+            </div>
+
+            <div class="section" id="section-settings">
+              <div class="card">
+                <div class="cardHead"><div class="cardTitle">Settings</div></div>
+                <div class="empty">Section Settings.</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- RIGHT -->
+          <aside class="colRight">
+            <!-- Monitors table -->
+            <div class="card">
+              <div class="cardHead">
+                <div class="cardTitle">Monitors</div>
+                <button class="btn btnPrimary btnSmall" id="btnAddMonitor">Add Monitor</button>
+              </div>
+
+              <div class="tableWrap">
+                <table class="table compact" aria-label="Monitors table">
+                  <thead>
+                    <tr>
+                      <th style="width:54px;">&nbsp;</th>
+                      <th>URL</th>
+                      <th>Status</th>
+                      <th>Interval</th>
+                      <th>Last Checked</th>
+                      <th>Response Time</th>
+                      <th style="text-align:right;">&nbsp;</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monitorsTbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Plans -->
+            <div class="card" style="margin-top:14px;">
+              <div class="cardHead">
+                <div class="cardTitle">Plans</div>
+                <button class="btn btnGhost btnSmall" onclick="location.href='/pricing.html'">See plans</button>
+              </div>
+
+              <!-- ✅ On garde plansGrid id pour ton JS backend si besoin -->
+              <div class="plans" id="plansGrid">
+                <div class="plan" id="plan-standard">
+                  <div class="planTop">
+                    <div class="planName">Standard</div>
+                    <div class="planPrice">29€ <span>/mo</span></div>
+                  </div>
+                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
+                  <ul class="planList">
+                    <li>SEO audits: 30</li>
+                    <li>Monitors: 3</li>
+                    <li>PDF exports</li>
+                  </ul>
+                  <button class="btn btnGhost wFull" data-checkout="standard">Choisir Standard</button>
+                </div>
+
+                <div class="plan planActive" id="plan-pro">
+                  <div class="planTop">
+                    <div class="planName">Pro</div>
+                    <div class="planPrice">79€ <span>/mo</span></div>
+                  </div>
+                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
+                  <ul class="planList">
+                    <li>SEO audits: 300</li>
+                    <li>Monitors: 50</li>
+                    <li>Email alerts</li>
+                    <li>PDF & CSV</li>
+                  </ul>
+                  <button class="btn btnDark wFull" data-checkout="pro">Passer en Pro</button>
+                </div>
+
+                <div class="plan" id="plan-ultra">
+                  <div class="planTop">
+                    <div class="planName">Ultra</div>
+                    <div class="planPrice">149€ <span>/mo</span></div>
+                  </div>
+                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
+                  <ul class="planList">
+                    <li>SEO audits: 2000</li>
+                    <li>Monitors: 300</li>
+                    <li>Team + Reports</li>
+                  </ul>
+                  <button class="btn btnGhost wFull" data-checkout="ultra">Passer en Ultra</button>
+                </div>
+              </div>
+
+              <div class="tip">Les boutons ouvrent Stripe checkout/portal (selon ton backend).</div>
+            </div>
+          </aside>
         </div>
-      </section>
-    </div>
-  </main>
+      </div>
+    </main>
+  </div>
 
+  <!-- Toast (inchangé pour ton JS) -->
+  <div class="toast" id="toast" style="display:none;"></div>
+  <div class="toast" id="toast" style="display:none;"></div>
+
+  <!-- ✅ On garde la structure toast attendue par ton JS -->
   <div class="toast" id="toast">
     <div class="trow">
       <strong id="toastTitle">Info</strong>
