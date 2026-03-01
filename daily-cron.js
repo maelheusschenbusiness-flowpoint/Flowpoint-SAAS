@@ -1,4 +1,4 @@
-// daily-cron.js — FlowPoint AI Daily Report
+// daily-cron.js — FlowPoint Daily Report
 // Node 18+ => fetch disponible
 require("dotenv").config();
 const mongoose = require("mongoose");
