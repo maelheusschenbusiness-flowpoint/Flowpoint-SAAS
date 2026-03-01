@@ -1,227 +1,201 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FlowPoint — Dashboard</title>
-  <link rel="stylesheet" href="/dashboard.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Flowpoint Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="dashboard.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
-  <!-- Mobile overlay -->
-  <div id="overlay" class="overlay" hidden></div>
+<div class="app-layout">
 
-  <div class="app">
-    <!-- Sidebar -->
-    <aside id="sidebar" class="sidebar">
-      <div class="sb-top">
-        <div class="brand">
-          <div class="brand-icon">⚡</div>
-          <div class="brand-text">
-            <div class="brand-name" id="brandName">Flowpoint</div>
-            <div class="brand-sub">Client Dashboard</div>
-          </div>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">F</div>
+      <span>Flowpoint</span>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="active" data-page="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span>Overview</span>
+      </a>
+      <a href="#" data-page="audits">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        <span>Audits</span>
+      </a>
+      <a href="#" data-page="monitors">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Monitors</span>
+      </a>
+      <a href="#" data-page="local-seo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <span>Local SEO</span>
+      </a>
+      <a href="#" data-page="competitors">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        <span>Competitors</span>
+      </a>
+      <a href="#" data-page="reports">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span>Reports</span>
+      </a>
+      <a href="#" data-page="billing">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span>Billing</span>
+      </a>
+      <a href="#" data-page="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span>Settings</span>
+      </a>
+    </nav>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main-content">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="site-selector">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+          Bonjour, Leclerc Auto
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+      <div class="topbar-actions">
+        <button class="date-selector" id="datePicker">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span id="dateLabel">Last 30 days</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <button class="notif-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <span class="notif-dot"></span>
+        </button>
+        <button class="avatar-btn">LA</button>
+      </div>
+    </header>
+
+    <!-- PAGE : OVERVIEW -->
+    <main class="page active" id="page-overview">
+      <h1 class="page-title">Bonjour, Leclerc Auto</h1>
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">SEO Score</div>
+          <div class="kpi-value">78<span class="kpi-total">/100</span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Local Visibility</div>
+          <div class="kpi-value"><span class="change-positive">+12%</span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Monitors (live)</div>
+          <div class="kpi-value">8 <span class="kpi-total" style="font-size:13px;">active</span></div>
+          <div class="kpi-sub">0 incidents</div>
         </div>
       </div>
-
-      <nav class="sb-nav">
-        <a class="sb-link active" href="/dashboard.html">
-          <span class="sb-ico">📊</span><span>Overview</span>
-        </a>
-        <a class="sb-link" href="/dashboard.html#audits">
-          <span class="sb-ico">🧾</span><span>Audits</span>
-        </a>
-        <a class="sb-link" href="/dashboard.html#monitors">
-          <span class="sb-ico">🟢</span><span>Monitors</span>
-        </a>
-        <a class="sb-link" href="/dashboard.html#reports">
-          <span class="sb-ico">📄</span><span>Reports</span>
-          <span class="pill pill-pro" id="reportsPill" hidden>PRO</span>
-        </a>
-        <a class="sb-link" href="/dashboard.html#billing">
-          <span class="sb-ico">💳</span><span>Billing</span>
-        </a>
-        <a class="sb-link" href="/dashboard.html#settings">
-          <span class="sb-ico">⚙️</span><span>Settings</span>
-        </a>
-      </nav>
-
-      <div class="sb-account">
-        <div class="sb-section-title">ACCOUNT</div>
-        <div class="sb-kv">
-          <div class="k">Plan</div><div class="v" id="accPlan">—</div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">SEO Performance – 30 days</div>
+          <div class="chart-legend">
+            <span class="legend-item"><span class="legend-dot" style="background:#2563EB"></span>Performances</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#10B981"></span>Active</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#F59E0B"></span>Incidents</span>
+          </div>
         </div>
-        <div class="sb-kv">
-          <div class="k">Org</div><div class="v" id="accOrg">—</div>
+        <div class="chart-container"><canvas id="seoChart"></canvas></div>
+      </div>
+      <div class="overview-grid">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Recommended Actions</div>
+            <div class="card-header-actions">
+              <input type="checkbox" checked>
+              <span style="font-size:12px;color:var(--gray-500)">leclerc auto only</span>
+            </div>
+          </div>
+          <div class="actions-list" id="actionsList"></div>
         </div>
-        <div class="sb-kv">
-          <div class="k">Role</div><div class="v" id="accRole">—</div>
-        </div>
-        <div class="sb-kv">
-          <div class="k">Trial</div><div class="v" id="accTrial">—</div>
-        </div>
-
-        <div class="sb-actions">
-          <button class="btn btn-ghost" id="btnPortal">Billing / Portal</button>
-          <button class="btn btn-ghost danger" id="btnLogout">Logout</button>
+        <div class="card">
+          <div class="incident-header">
+            <div class="card-title">Recent Incidents</div>
+            <button class="incidents-filter-btn">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>
+              Monitor a sample
+            </button>
+          </div>
+          <div id="incidentsList"></div>
         </div>
       </div>
-    </aside>
-
-    <!-- Main -->
-    <main class="main">
-      <!-- Top bar -->
-      <header class="topbar">
-        <div class="top-left">
-          <button class="iconbtn" id="btnBurger" aria-label="Menu">☰</button>
-          <div class="hello">
-            <div class="hello-title" id="helloTitle">Bonjour, —</div>
-            <div class="hello-sub" id="helloSub">SEO · Monitoring · Reports · Billing</div>
-          </div>
-        </div>
-
-        <div class="top-right">
-          <div class="seg">
-            <button class="segbtn active" data-days="30">Last 30 days</button>
-            <button class="segbtn" data-days="7">Last 7 days</button>
-          </div>
-
-          <button class="btn btn-primary" id="btnRefresh">Refresh</button>
-
-          <button class="btn btn-ghost" id="btnExportAudits">Export Audits CSV</button>
-          <button class="btn btn-ghost" id="btnExportMonitors">Export Monitors CSV</button>
-
-          <div class="statuspill" id="statusPill">
-            <span class="dot ok"></span>
-            <span id="statusText">Dashboard à jour — OK</span>
-          </div>
-
-          <div class="avatar" id="avatar">FP</div>
-        </div>
-      </header>
-
-      <!-- Content grid -->
-      <section class="grid">
-        <!-- LEFT column -->
-        <div class="col">
-          <section class="card">
-            <div class="card-h">
-              <div>
-                <div class="card-title">OVERVIEW</div>
-                <div class="card-sub" id="rangeLabel">LAST 30 DAYS</div>
-              </div>
-            </div>
-
-            <div class="kpis">
-              <div class="kpi">
-                <div class="kpi-label">SEO Score</div>
-                <div class="kpi-value"><span id="seoScore">0</span><span class="kpi-unit">/100</span></div>
-                <div class="kpi-foot">Last <span id="rangeSmall">30</span> days</div>
-              </div>
-
-              <div class="kpi">
-                <div class="kpi-label">Local Visibility</div>
-                <div class="kpi-value green"><span id="localVis">+0%</span></div>
-                <div class="kpi-foot">Map pack + reviews</div>
-              </div>
-            </div>
-
-            <div class="chart-wrap">
-              <div class="chart-title">SEO Performance</div>
-              <div class="chart-badge">Last 3 days</div>
-              <canvas id="chart" width="800" height="260"></canvas>
-            </div>
-
-            <div class="actions-row">
-              <div class="muted">Recommended Actions</div>
-              <button class="btn btn-ghost" id="btnRunAudit">Run audit</button>
-            </div>
-          </section>
-        </div>
-
-        <!-- RIGHT column -->
-        <div class="col">
-          <section class="card">
-            <div class="card-h row">
-              <div>
-                <div class="card-title">Monitors</div>
-                <div class="card-sub">Active status</div>
-              </div>
-              <button class="btn btn-primary" id="btnAddMonitor">Add Monitor</button>
-            </div>
-
-            <div class="table">
-              <div class="t-head">
-                <div>URL</div>
-                <div>Status</div>
-                <div class="right">Interval</div>
-                <div class="right">Action</div>
-              </div>
-              <div class="t-body" id="monitorsBody">
-                <!-- rows injected -->
-              </div>
-            </div>
-          </section>
-
-          <section class="card">
-            <div class="card-h row">
-              <div>
-                <div class="card-title">Plans</div>
-                <div class="card-sub">See plans</div>
-              </div>
-              <button class="btn btn-ghost" id="btnSeePlans">See plans</button>
-            </div>
-
-            <div class="plans">
-              <div class="plan">
-                <div class="plan-top">
-                  <div class="plan-name">Standard</div>
-                  <div class="plan-price">29€ <span>/mo</span></div>
-                </div>
-                <ul class="plan-ul">
-                  <li><b>SEO audits:</b> 30</li>
-                  <li><b>Monitors:</b> 3</li>
-                  <li><b>PDF exports</b></li>
-                </ul>
-                <button class="btn btn-ghost wfull" data-plan="standard">Choisir Standard</button>
-              </div>
-
-              <div class="plan featured">
-                <div class="plan-top">
-                  <div class="plan-name">Pro</div>
-                  <div class="plan-price">79€ <span>/mo</span></div>
-                </div>
-                <ul class="plan-ul">
-                  <li><b>SEO audits:</b> 300</li>
-                  <li><b>Monitors:</b> 50</li>
-                  <li><b>Email alerts</b></li>
-                  <li><b>PDF & CSV</b></li>
-                </ul>
-                <button class="btn btn-primary wfull" data-plan="pro">Passer en Pro</button>
-              </div>
-
-              <div class="plan">
-                <div class="plan-top">
-                  <div class="plan-name">Ultra</div>
-                  <div class="plan-price">149€ <span>/mo</span></div>
-                </div>
-                <ul class="plan-ul">
-                  <li><b>SEO audits:</b> 2000</li>
-                  <li><b>Monitors:</b> 300</li>
-                  <li><b>Team + Reports</b></li>
-                </ul>
-                <button class="btn btn-ghost wfull" data-plan="ultra">Passer en Ultra</button>
-              </div>
-            </div>
-
-            <div class="footnote">
-              Les boutons ouvrent Stripe checkout/portal (selon ton backend).
-            </div>
-          </section>
-        </div>
-      </section>
     </main>
-  </div>
 
-  <script src="/dashboard.js"></script>
+    <!-- PAGE : MONITORS -->
+    <main class="page" id="page-monitors">
+      <div class="monitors-header">
+        <h1 class="page-title" style="margin-bottom:0">Monitors</h1>
+        <button class="btn btn-primary">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Monitor
+        </button>
+      </div>
+      <div class="monitors-table">
+        <table>
+          <thead>
+            <tr>
+              <th>URL</th><th>Status</th><th>Interval</th><th>Last Checked</th><th>Response Time</th>
+            </tr>
+          </thead>
+          <tbody id="monitorsTableBody"></tbody>
+        </table>
+      </div>
+    </main>
+
+    <!-- PAGE : BILLING -->
+    <main class="page" id="page-billing">
+      <h1 class="page-title">Billing</h1>
+      <div class="trial-notice">
+        <span>Trial ends in <strong>0 day(s)</strong></span>
+        <a href="#">Reactivate now</a>
+      </div>
+      <div class="billing-section">
+        <div class="billing-tabs">
+          <button class="billing-tab active">Bonuses</button>
+          <button class="billing-tab">Facturation</button>
+          <button class="billing-tab">Tallying</button>
+        </div>
+        <div id="billingTabContent"></div>
+      </div>
+    </main>
+
+    <!-- PAGES PLACEHOLDER -->
+    <main class="page" id="page-audits">
+      <h1 class="page-title">Audits</h1>
+      <div class="card"><p style="color:var(--gray-500);font-size:13px;">Aucun audit disponible.</p></div>
+    </main>
+    <main class="page" id="page-local-seo">
+      <h1 class="page-title">Local SEO</h1>
+      <div class="card"><p style="color:var(--gray-500);font-size:13px;">Données Local SEO en cours de chargement...</p></div>
+    </main>
+    <main class="page" id="page-competitors">
+      <h1 class="page-title">Competitors</h1>
+      <div class="card"><p style="color:var(--gray-500);font-size:13px;">Analyse des concurrents disponible prochainement.</p></div>
+    </main>
+    <main class="page" id="page-reports">
+      <h1 class="page-title">Reports</h1>
+      <div class="card"><p style="color:var(--gray-500);font-size:13px;">Aucun rapport généré.</p></div>
+    </main>
+    <main class="page" id="page-settings">
+      <h1 class="page-title">Settings</h1>
+      <div class="card"><p style="color:var(--gray-500);font-size:13px;">Paramètres du compte.</p></div>
+    </main>
+
+  </div>
+</div>
+<script src="dashboard.js"></script>
 </body>
 </html>
