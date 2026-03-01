@@ -1,375 +1,330 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pricing — FlowPoint</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>FlowPoint — Pricing</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <style>
     :root{
-      --bg:#0b1220;
-      --text:#eaf0ff;
-      --muted:rgba(234,240,255,.72);
-      --muted2:rgba(234,240,255,.55);
-      --panel:rgba(255,255,255,.06);
-      --panel2:rgba(255,255,255,.08);
-      --stroke:rgba(255,255,255,.10);
-      --shadow:0 18px 60px rgba(0,0,0,.35);
-      --blue:#2f6bff;
-      --blue2:#0047ff;
-      --chipBg:rgba(140,120,255,.18);
-      --chipText:#cbb8ff;
-      --ok:#22c55e;
+      --bg:#f6f7fb;
+      --bg2:#eef2ff;
+      --card:rgba(255,255,255,.92);
+      --text:#0f172a;
+      --muted:#667085;
+      --border:rgba(15,23,42,.10);
+      --primary:#2f5bff;
+      --shadow:0 16px 70px rgba(16,24,40,.12);
+      --r:18px;
+      --chip:rgba(47,91,255,.12);
+      --chipText:#2f5bff;
     }
-
-    @media (prefers-color-scheme: light){
+    @media (prefers-color-scheme: dark){
       :root{
-        --bg:#f6f7fb;
-        --text:#0f172a;
-        --muted:rgba(15,23,42,.72);
-        --muted2:rgba(15,23,42,.55);
-        --panel:rgba(15,23,42,.04);
-        --panel2:rgba(15,23,42,.06);
-        --stroke:rgba(15,23,42,.10);
-        --shadow:0 18px 60px rgba(15,23,42,.10);
-        --chipBg:rgba(124,90,255,.12);
-        --chipText:#5b3df5;
+        --bg:#070b18;
+        --bg2:#0a1030;
+        --card:rgba(16,23,42,.72);
+        --text:#e8eeff;
+        --muted:rgba(232,238,255,.72);
+        --border:rgba(232,238,255,.12);
+        --shadow:0 16px 80px rgba(0,0,0,.50);
+        --chip:rgba(167,139,250,.18);
+        --chipText:#c4b5fd;
       }
     }
 
     *{box-sizing:border-box}
     body{
       margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-      background:
-        radial-gradient(1200px 700px at 70% -10%, rgba(47,107,255,.35), transparent 55%),
-        radial-gradient(900px 600px at 15% -15%, rgba(140,120,255,.35), transparent 52%),
-        var(--bg);
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
       color:var(--text);
+      background:
+        radial-gradient(1100px 700px at 12% 0%, rgba(47,91,255,.22), transparent 55%),
+        radial-gradient(1100px 700px at 88% 0%, rgba(99,102,241,.18), transparent 55%),
+        linear-gradient(180deg, var(--bg2), var(--bg));
+      min-height:100vh;
     }
 
-    .wrap{max-width:1180px;margin:0 auto;padding:24px 16px 60px}
-    .top{
-      display:flex;align-items:center;justify-content:space-between;gap:12px;
-      margin-bottom:14px;
-    }
-    .brandLogo{
-      width:42px;height:42px;object-fit:contain;border-radius:12px;
-      box-shadow:0 10px 26px rgba(0,0,0,.18);
-    }
+    .wrap{max-width:1180px;margin:0 auto;padding:22px 16px 44px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .brandLogo{width:42px;height:42px;object-fit:contain;border-radius:12px;display:block}
     .pill{
-      display:inline-flex;align-items:center;gap:8px;
-      padding:8px 12px;border-radius:999px;
-      background:var(--panel);border:1px solid var(--stroke);
-      color:var(--muted);font-weight:850;font-size:13px;
+      font-size:12px;font-weight:700;color:var(--muted);
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.45);
+      padding:8px 10px;border-radius:999px;
     }
-    .dot{width:8px;height:8px;border-radius:50%;background:#f59e0b}
+    @media (prefers-color-scheme: dark){
+      .pill{background:rgba(2,6,23,.30)}
+    }
 
     .hero{
-      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
-      border:1px solid var(--stroke);
-      border-radius:22px;
+      border:1px solid var(--border);
+      background:var(--card);
       box-shadow:var(--shadow);
+      border-radius:24px;
       padding:18px;
-      margin-bottom:14px;
+      backdrop-filter:saturate(180%) blur(14px);
+      margin-bottom:16px;
     }
-    .hero h1{margin:0;font-size:38px;letter-spacing:-.02em}
-    .hero p{margin:10px 0 0;color:var(--muted);font-weight:650;line-height:1.45}
+    .hero h1{margin:0;font-size:28px;letter-spacing:-.03em}
+    .hero p{margin:8px 0 0;color:var(--muted);line-height:1.55}
 
-    .grid{
-      display:grid;
-      grid-template-columns: 1.55fr .9fr;
-      gap:14px;
-      align-items:start;
+    .grid{display:grid;grid-template-columns:1fr;gap:14px}
+    @media (min-width: 980px){
+      .grid{grid-template-columns: 1.35fr .65fr;align-items:start}
     }
-    @media (max-width:980px){ .grid{grid-template-columns:1fr} }
 
     .card{
-      background:var(--panel);
-      border:1px solid var(--stroke);
-      border-radius:22px;
+      border:1px solid var(--border);
+      background:var(--card);
       box-shadow:var(--shadow);
+      border-radius:22px;
+      padding:16px;
+      backdrop-filter:saturate(180%) blur(14px);
     }
-    .head{
-      display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
-      padding:16px 16px 0;
+
+    .sectionTitle{
+      display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
+      margin-bottom:10px;
     }
-    .title{font-weight:950;letter-spacing:-.01em}
-    .small{font-size:13px;color:var(--muted)}
-    .pad{padding:16px}
+    .sectionTitle h2{margin:0;font-size:16px}
+    .sectionTitle small{color:var(--muted);font-weight:600}
 
     /* Plans */
-    .plans{
-      display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap:12px;
-      padding:14px 16px 16px;
+    .plans{display:grid;grid-template-columns:1fr;gap:12px}
+    @media (min-width: 760px){
+      .plans{grid-template-columns:repeat(3,1fr)}
     }
-    @media (max-width:980px){ .plans{grid-template-columns:1fr} }
 
     .plan{
-      border-radius:22px;
-      padding:18px;
-      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      border:1px solid var(--stroke);
-      min-height:230px;
-      display:flex;flex-direction:column;gap:10px;
-      cursor:pointer;
-      transition:transform .12s ease,border-color .12s ease;
-    }
-    .plan:hover{transform:translateY(-1px);border-color:rgba(47,107,255,.35)}
-    .plan.active{border-color:rgba(47,107,255,.55);box-shadow:0 16px 40px rgba(47,107,255,.18)}
-    .planTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-    .planName{font-weight:950;font-size:18px}
-    .price{font-weight:950;font-size:34px;letter-spacing:-.02em}
-    .per{font-weight:850;color:var(--muted);margin-left:6px;font-size:13px}
-    .bul{margin:0;padding-left:18px;color:var(--muted);font-weight:750;line-height:1.55}
-    .bul li{margin:4px 0}
-    .tag{
-      display:inline-flex;align-items:center;justify-content:center;
-      padding:6px 10px;border-radius:999px;
-      background:rgba(47,107,255,.14);
-      border:1px solid rgba(47,107,255,.20);
-      font-size:12px;font-weight:950;color:var(--text);
-      width:max-content;margin-top:8px;
-    }
-
-    /* Addons grid */
-    .addonsGrid{
-      padding:0 16px 16px;
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:10px;
-    }
-    @media (max-width:720px){ .addonsGrid{grid-template-columns:1fr} }
-
-    .addon{
-      padding:14px;
+      border:1px solid var(--border);
       border-radius:18px;
-      background:var(--panel2);
-      border:1px solid var(--stroke);
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      min-height:140px;
+      padding:14px;
+      background:rgba(255,255,255,.40);
+    }
+    @media (prefers-color-scheme: dark){
+      .plan{background:rgba(2,6,23,.28)}
+    }
+    .plan.active{outline:3px solid rgba(47,91,255,.28)}
+    @media (prefers-color-scheme: dark){
+      .plan.active{outline:3px solid rgba(167,139,250,.25)}
     }
 
-    .addonTop{
-      display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
-    }
-    .addonName{font-weight:950}
-    .addonDesc{color:var(--muted);font-size:13px;line-height:1.45;margin-top:4px}
-    .addonPrice{font-weight:950;white-space:nowrap}
-
-    .chip{
-      display:inline-flex;align-items:center;
+    .planTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+    .planName{font-size:16px;font-weight:800}
+    .planPrice{font-size:28px;font-weight:900;letter-spacing:-.03em}
+    .planPrice span{font-size:12px;font-weight:800;color:var(--muted)}
+    .features{margin:10px 0 0;padding:0 0 0 16px;color:var(--muted);line-height:1.65;font-weight:600}
+    .tag{
+      display:inline-flex;align-items:center;gap:6px;
+      font-size:12px;font-weight:800;
       padding:6px 10px;border-radius:999px;
-      background:var(--chipBg);
-      border:1px solid rgba(180,160,255,.20);
-      color:var(--chipText);
-      font-weight:950;font-size:12px;
-      width:max-content;
+      background:var(--chip);color:var(--chipText);
+      border:1px solid rgba(47,91,255,.18);
+      margin-top:10px;
     }
 
-    .addonCtrl{
-      display:flex;align-items:center;justify-content:space-between;gap:10px;
-      margin-top:auto;
+    /* Add-ons list */
+    .addons{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
+    .addon{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap:10px;
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:12px;
+      background:rgba(255,255,255,.40);
+      align-items:center;
+    }
+    @media (prefers-color-scheme: dark){
+      .addon{background:rgba(2,6,23,.28)}
     }
 
-    select{
-      height:38px;border-radius:12px;border:1px solid var(--stroke);
-      background:rgba(0,0,0,.12);
+    .addon h3{margin:0;font-size:14px;font-weight:900}
+    .addon p{margin:4px 0 0;color:var(--muted);font-size:12.5px;line-height:1.45}
+    .metaRow{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+    .keyChip{
+      font-size:12px;font-weight:900;
+      padding:6px 10px;border-radius:999px;
+      background:var(--chip);color:var(--chipText);
+      border:1px solid rgba(167,139,250,.18);
+    }
+    .priceLabel{
+      font-size:12px;font-weight:900;color:var(--muted);
+      padding:6px 10px;border-radius:999px;border:1px solid var(--border);
+      background:rgba(255,255,255,.35);
+    }
+    @media (prefers-color-scheme: dark){
+      .priceLabel{background:rgba(2,6,23,.25)}
+    }
+
+    .controls{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+    .check{
+      width:18px;height:18px;
+      accent-color: var(--primary);
+      cursor:pointer;
+    }
+
+    /* ✅ Select quantité propre sur PC */
+    .qtySelect{
+      appearance:none;
+      -webkit-appearance:none;
+      -moz-appearance:none;
+      padding:10px 42px 10px 12px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.60), rgba(255,255,255,.35));
       color:var(--text);
-      padding:0 10px;
+      font-weight:800;
+      cursor:pointer;
+      min-width:120px;
+      text-align:left;
+      position:relative;
+    }
+    @media (prefers-color-scheme: dark){
+      .qtySelect{
+        background: linear-gradient(180deg, rgba(2,6,23,.42), rgba(2,6,23,.26));
+        border-color:rgba(232,238,255,.14);
+      }
+    }
+    .selectWrap{position:relative}
+    .selectWrap:after{
+      content:"▾";
+      position:absolute;
+      right:14px; top:50%;
+      transform:translateY(-50%);
+      color:var(--muted);
       font-weight:900;
-      min-width:110px;
-    }
-    @media (prefers-color-scheme: light){ select{background:#fff} }
-
-    input[type="checkbox"]{transform:scale(1.1);accent-color:var(--blue)}
-
-    .btn{
-      width:100%;
-      height:44px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.12);
-      background:linear-gradient(180deg,var(--blue),var(--blue2));
-      color:white;
-      font-weight:950;
-      cursor:pointer;
-      box-shadow:0 14px 30px rgba(0,71,255,.22);
-    }
-    .btn:disabled{opacity:.6;cursor:not-allowed}
-
-    .btnGhost{
-      width:100%;
-      height:44px;
-      border-radius:14px;
-      border:1px solid var(--stroke);
-      background:var(--panel);
-      color:var(--text);
-      font-weight:950;
-      cursor:pointer;
+      pointer-events:none;
     }
 
-    .side{
+    /* Right column sticky */
+    .sticky{
       position:sticky;
       top:14px;
       display:grid;
       gap:12px;
     }
-    @media (max-width:980px){ .side{position:static} }
 
-    .rowLine{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
-    .hr{height:1px;background:var(--stroke);margin:12px 0}
+    .btn{
+      width:100%;
+      border:0;
+      border-radius:14px;
+      padding:12px 14px;
+      font-weight:900;
+      cursor:pointer;
+      color:#fff;
+      background:linear-gradient(180deg, var(--primary), #2449ff);
+    }
+    .btn.secondary{
+      background:transparent;
+      color:var(--text);
+      border:1px solid var(--border);
+      box-shadow:none;
+    }
 
-    .list{margin:8px 0 0;padding-left:18px;color:var(--muted);font-weight:750;line-height:1.55}
-    .free{
-      display:inline-flex;align-items:center;justify-content:center;
-      padding:6px 10px;border-radius:999px;
-      background:rgba(34,197,94,.14);
-      border:1px solid rgba(34,197,94,.22);
-      color:rgba(34,197,94,.95);
-      font-weight:950;font-size:12px;
+    .summaryLine{
+      display:flex;align-items:center;justify-content:space-between;
+      gap:10px;
+      padding:10px 0;
+      border-bottom:1px solid var(--border);
+      font-weight:800;
+    }
+    .summaryLine:last-child{border-bottom:0}
+    .muted{color:var(--muted);font-weight:700}
+    .list{margin:8px 0 0;padding-left:18px;color:var(--muted);line-height:1.65;font-weight:600}
+
+    .hint{
+      font-size:12.5px;color:var(--muted);line-height:1.55;margin:0;
     }
   </style>
 </head>
-
 <body>
   <div class="wrap">
-    <div class="top">
-      <img class="brandLogo" src="/assets/flowpoint-logo.png" alt="FlowPoint" />
-      <div class="pill" id="authPill"><span class="dot" id="authDot"></span><span id="authText">Statut : …</span></div>
+    <div class="topbar">
+      <div class="brand">
+        <!-- ✅ logo seul -->
+        <img class="brandLogo" src="/assets/flowpoint-logo.png" alt="FlowPoint" />
+      </div>
+      <div class="pill" id="authState">Statut : …</div>
     </div>
 
     <div class="hero">
       <h1>Choisis ton plan + tes options</h1>
-      <p>
-        Tu peux acheter un plan maintenant. Les add-ons se gèrent ensuite dans le Customer Portal Stripe.
-        Les <b>keys</b> (en violet) sont tes identifiants internes.
-      </p>
+      <p>Tu peux acheter un plan maintenant. Les add-ons payants se gèrent ensuite dans le <b>Customer Portal Stripe</b> via “Gérer mes add-ons”.</p>
     </div>
 
     <div class="grid">
       <!-- LEFT -->
       <div class="card">
-        <div class="head">
-          <div>
-            <div class="title">Plans</div>
-            <div class="small">Sélectionne un plan. Essai 14 jours via Stripe.</div>
-          </div>
-          <a class="pill" href="/index.html" style="text-decoration:none">Retour accueil</a>
+        <div class="sectionTitle">
+          <h2>Plans</h2>
+          <small>Essai 14 jours via Stripe</small>
         </div>
 
-        <div class="plans" id="plans">
-          <div class="plan" data-plan="standard">
-            <div class="planTop">
-              <div>
-                <div class="planName">Standard</div>
-                <div class="small">Pour démarrer</div>
-              </div>
-              <div><span class="price">29€</span><span class="per">/ mois</span></div>
-            </div>
-            <ul class="bul">
-              <li>30 audits / mois</li>
-              <li>3 monitors actifs</li>
-              <li>30 PDFs + 30 exports</li>
-            </ul>
-          </div>
+        <div class="plans" id="plans"></div>
 
-          <div class="plan active" data-plan="pro">
-            <div class="planTop">
-              <div>
-                <div class="planName">Pro</div>
-                <div class="small">Le meilleur choix</div>
-                <div class="tag">Populaire</div>
-              </div>
-              <div><span class="price">79€</span><span class="per">/ mois</span></div>
-            </div>
-            <ul class="bul">
-              <li>300 audits / mois</li>
-              <li>50 monitors actifs</li>
-              <li>300 PDFs + 300 exports</li>
-            </ul>
-          </div>
+        <div style="height:12px"></div>
 
-          <div class="plan" data-plan="ultra">
-            <div class="planTop">
-              <div>
-                <div class="planName">Ultra</div>
-                <div class="small">Teams & scale</div>
-                <div class="tag">Team</div>
-              </div>
-              <div><span class="price">149€</span><span class="per">/ mois</span></div>
-            </div>
-            <ul class="bul">
-              <li>2000 audits / mois</li>
-              <li>300 monitors actifs</li>
-              <li>2000 PDFs + 2000 exports</li>
-              <li>10 seats inclus</li>
-            </ul>
-          </div>
+        <div class="sectionTitle">
+          <h2>Add-ons</h2>
+          <small>Keys (en violet) + préférence enregistrée</small>
         </div>
 
-        <div class="head" style="padding-top:0">
-          <div>
-            <div class="title">Add-ons</div>
-            <div class="small">Affichage + préférences (l’achat se fait dans Stripe Portal).</div>
-          </div>
-          <button class="pill" id="btnPortal" type="button" style="cursor:pointer">Gérer mes add-ons</button>
-        </div>
-
-        <div class="addonsGrid" id="addonsList"></div>
+        <div class="addons" id="addons"></div>
       </div>
 
       <!-- RIGHT -->
-      <div class="side">
+      <div class="sticky">
         <div class="card">
-          <div class="pad">
-            <div class="title">Résumé</div>
-            <div class="small">Plan sélectionné + options (préférence enregistrée).</div>
-
-            <div class="rowLine">
-              <div class="small">Plan</div>
-              <div style="font-weight:950" id="sumPlan">PRO</div>
-            </div>
-            <div class="rowLine">
-              <div class="small">Prix plan</div>
-              <div style="font-weight:950" id="sumPlanPrice">79€ / mois</div>
-            </div>
-
-            <div class="hr"></div>
-
-            <div class="rowLine">
-              <div class="small">White label</div>
-              <div class="free">Inclus (gratuit)</div>
-            </div>
-            <div class="chip" title="clé interne">whiteLabel</div>
-
-            <div class="hr"></div>
-
-            <div class="small">Add-ons sélectionnés :</div>
-            <ul class="list" id="sumAddons"><li class="small">—</li></ul>
-
-            <div style="margin-top:14px">
-              <button class="btn" id="btnCheckout" type="button">Continuer (Checkout Plan)</button>
-              <div class="small" style="margin-top:10px;line-height:1.4">
-                Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (plan pré-sélectionné).
-              </div>
-            </div>
+          <div class="sectionTitle">
+            <h2>Résumé</h2>
+            <small id="sumPlan">—</small>
           </div>
+
+          <div class="summaryLine">
+            <div class="muted">Plan</div>
+            <div id="sumPlanName">—</div>
+          </div>
+
+          <div class="summaryLine">
+            <div class="muted">Prix plan</div>
+            <div id="sumPlanPrice">—</div>
+          </div>
+
+          <div class="summaryLine">
+            <div class="muted">White label</div>
+            <div><span class="keyChip">whiteLabel</span> <span class="muted">(inclus / gratuit)</span></div>
+          </div>
+
+          <div style="margin-top:10px;display:grid;gap:10px">
+            <button class="btn" id="btnCheckout">Continuer (Checkout Plan)</button>
+            <button class="btn secondary" id="btnPortal">Gérer mes add-ons</button>
+          </div>
+
+          <p class="hint" style="margin-top:10px">
+            Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (le plan sera pré-sélectionné).
+          </p>
         </div>
 
+        <!-- ✅ “bouche le trou” avec une carte utile -->
         <div class="card">
-          <div class="pad">
-            <div class="title">Info</div>
-            <div class="small" style="margin-top:6px">
-              Les add-ons se modifient dans Stripe Portal après l’abonnement.
-              Ici tu enregistres juste une préférence (pour ton UI).
-            </div>
-            <div class="hr"></div>
-            <button class="btnGhost" id="btnBackDash" type="button">Retour dashboard</button>
+          <div class="sectionTitle">
+            <h2>Info</h2>
+            <small>Simple</small>
           </div>
+          <ul class="list">
+            <li>Ton plan fixe les quotas de base (audits / monitors / PDF / exports).</li>
+            <li>Les add-ons payants sont modifiables à tout moment dans le portail Stripe.</li>
+            <li>Sur cette page, on enregistre juste ta préférence (UI) via <b>localStorage</b>.</li>
+          </ul>
         </div>
       </div>
     </div>
