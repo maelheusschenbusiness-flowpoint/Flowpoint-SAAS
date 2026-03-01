@@ -1,327 +1,554 @@
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FlowPoint — Dashboard</title>
+:root{
+  --bg:#f5f7fb;
+  --card:#ffffff;
+  --text:#0f172a;
+  --muted:#64748b;
+  --border:rgba(15,23,42,.10);
+  --shadow:0 10px 30px rgba(15,23,42,.06);
+  --blue:#1f5eff;
+  --blue2:#1a49d6;
+  --green:#16a34a;
+  --red:#ef4444;
+  --radius:16px;
+  --radius2:14px;
+  --gap:18px;
+  --sidebar:260px;
+}
 
-  <!-- Font proche du rendu de la capture -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}
 
-  <link rel="stylesheet" href="./dashboard.css" />
-</head>
+.app{
+  min-height:100vh;
+  display:grid;
+  grid-template-columns: var(--sidebar) 1fr;
+}
 
-<body>
-  <div class="app" id="app">
-    <!-- SIDEBAR -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sb-top">
-        <div class="brand">
-          <div class="brand-ico">⚡</div>
-          <div class="brand-txt">
-            <div class="brand-name">Flowpoint</div>
-            <div class="brand-sub">Client Dashboard</div>
-          </div>
-        </div>
-      </div>
+.sidebar{
+  position:sticky;
+  top:0;
+  height:100vh;
+  padding:18px 14px;
+  background:linear-gradient(180deg, #f7f9ff 0%, #f4f6fb 40%, #f4f6fb 100%);
+  border-right:1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
 
-      <nav class="sb-nav">
-        <a class="nav-item active" href="#" data-route="overview">
-          <span class="nav-ico">📊</span><span>Overview</span>
-        </a>
-        <a class="nav-item" href="#" data-route="audits">
-          <span class="nav-ico">🧾</span><span>Audits</span>
-        </a>
-        <a class="nav-item" href="#" data-route="monitors">
-          <span class="nav-ico">🟢</span><span>Monitors</span>
-        </a>
-        <a class="nav-item" href="#" data-route="localseo">
-          <span class="nav-ico">📍</span><span>Local SEO</span>
-        </a>
-        <a class="nav-item" href="#" data-route="competitors">
-          <span class="nav-ico">🥊</span><span>Competitors</span>
-        </a>
-        <a class="nav-item" href="#" data-route="reports">
-          <span class="nav-ico">📑</span><span>Reports</span>
-          <span class="pill">PRO</span>
-        </a>
-        <a class="nav-item" href="#" data-route="billing">
-          <span class="nav-ico">💳</span><span>Billing</span>
-        </a>
-        <a class="nav-item" href="#" data-route="settings">
-          <span class="nav-ico">⚙️</span><span>Settings</span>
-        </a>
-      </nav>
+.brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 10px;
+  border-radius:14px;
+}
+.brand-ico{
+  width:34px;height:34px;
+  border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(31,94,255,.10);
+  border:1px solid rgba(31,94,255,.20);
+  font-weight:800;
+}
+.brand-name{font-weight:800;letter-spacing:-.2px}
+.brand-sub{font-size:12px;color:var(--muted);margin-top:2px}
 
-      <div class="sb-bottom">
-        <div class="account">
-          <div class="account-title">ACCOUNT</div>
-          <div class="account-row"><span class="muted">Plan</span><span id="sbPlan">—</span></div>
-          <div class="account-row"><span class="muted">Org</span><span id="sbOrg">—</span></div>
-          <div class="account-row"><span class="muted">Role</span><span id="sbRole">—</span></div>
-          <div class="account-row"><span class="muted">Trial</span><span id="sbTrial">—</span></div>
+.sb-nav{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding:6px 6px;
+}
+.nav-item{
+  position:relative;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 10px;
+  border-radius:12px;
+  color:var(--text);
+  text-decoration:none;
+  font-weight:600;
+  font-size:14px;
+  border:1px solid transparent;
+}
+.nav-item .nav-ico{width:22px;display:inline-flex;justify-content:center}
+.nav-item:hover{background:rgba(15,23,42,.03)}
+.nav-item.active{
+  background:rgba(31,94,255,.10);
+  border-color:rgba(31,94,255,.20);
+  color:#0b2aa6;
+}
+.pill{
+  margin-left:auto;
+  font-size:11px;
+  font-weight:800;
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(31,94,255,.12);
+  color:#0b2aa6;
+  border:1px solid rgba(31,94,255,.20);
+}
 
-          <button class="btn ghost full" id="btnPortal">Billing / Portal</button>
-          <button class="btn ghost full" id="btnLogout">Logout</button>
-        </div>
+.sb-bottom{margin-top:auto;padding:8px 6px}
+.account{
+  background:rgba(255,255,255,.65);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:12px;
+  box-shadow:0 8px 18px rgba(15,23,42,.04);
+}
+.account-title{
+  font-size:12px;
+  letter-spacing:.14em;
+  color:var(--muted);
+  font-weight:800;
+  margin-bottom:10px;
+}
+.account-row{
+  display:flex;
+  justify-content:space-between;
+  font-size:13px;
+  margin:6px 0;
+}
+.muted{color:var(--muted);font-weight:600}
+.sb-footnote{margin-top:10px;color:var(--muted);font-size:12px}
 
-        <div class="sb-footnote">© Flowpoint</div>
-      </div>
-    </aside>
+.main{
+  padding:18px 22px 26px;
+}
 
-    <!-- OVERLAY (mobile) -->
-    <div class="overlay" id="overlay"></div>
+.topbar{
+  display:grid;
+  grid-template-columns: 44px 1fr auto;
+  gap:14px;
+  align-items:start;
+  margin-bottom:16px;
+}
 
-    <!-- MAIN -->
-    <main class="main">
-      <!-- TOPBAR -->
-      <header class="topbar">
-        <button class="icon-btn burger" id="btnBurger" aria-label="Menu">
-          <span></span><span></span><span></span>
-        </button>
+.burger{
+  display:none;
+  width:44px;height:44px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.7);
+  box-shadow:0 10px 20px rgba(15,23,42,.06);
+}
+.burger span{
+  display:block;
+  width:18px;height:2px;
+  background:#0f172a;
+  margin:4px auto;
+  border-radius:10px;
+  opacity:.85;
+}
 
-        <div class="top-left">
-          <div class="hello">
-            <div class="hello-title" id="helloTitle">Bonjour, …</div>
-            <div class="hello-sub">SEO · Monitoring · Reports · Billing</div>
-          </div>
-        </div>
+.top-left{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.hello-title{
+  font-size:22px;
+  font-weight:800;
+  letter-spacing:-.3px;
+}
+.hello-sub{color:var(--muted);font-size:13px;margin-top:2px}
 
-        <div class="top-right">
-          <div class="controls">
-            <div class="select" id="rangeSelect">
-              <button class="select-btn" id="rangeBtn">
-                <span id="rangeLabel">Last 30 days</span>
-                <span class="chev">▾</span>
-              </button>
-              <div class="select-menu" id="rangeMenu" role="menu">
-                <button class="select-item" data-days="7">Last 7 days</button>
-                <button class="select-item" data-days="14">Last 14 days</button>
-                <button class="select-item active" data-days="30">Last 30 days</button>
-              </div>
-            </div>
+.top-right{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  align-items:flex-end;
+}
+.controls{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.top-mini{
+  width:100%;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+}
+.link-btn{
+  background:none;border:none;
+  color:#0b2aa6;
+  font-weight:700;
+  cursor:pointer;
+  padding:0;
+}
+.link-btn:hover{text-decoration:underline}
 
-            <button class="btn primary" id="btnRefresh">Refresh</button>
+.btn{
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.85);
+  color:var(--text);
+  border-radius:999px;
+  padding:10px 14px;
+  font-weight:800;
+  font-size:13px;
+  cursor:pointer;
+  box-shadow:0 10px 18px rgba(15,23,42,.05);
+}
+.btn:hover{filter:brightness(.98)}
+.btn.primary{
+  background:linear-gradient(180deg,var(--blue) 0%, var(--blue2) 100%);
+  color:white;
+  border-color:rgba(255,255,255,.15);
+}
+.btn.ghost{
+  background:rgba(255,255,255,.65);
+}
+.btn.sm{padding:8px 12px;font-size:12px}
+.btn.full{width:100%;justify-content:center}
 
-            <div class="dropdown" id="exportDd">
-              <button class="btn ghost" id="exportBtn">Exports ▾</button>
-              <div class="dd-menu" id="exportMenu">
-                <button class="dd-item" id="btnExportAudits">Export Audits CSV</button>
-                <button class="dd-item" id="btnExportMonitors">Export Monitors CSV</button>
-              </div>
-            </div>
+.icon-btn{
+  border:none;background:none;cursor:pointer;
+}
 
-            <div class="status-pill" id="statusPill">
-              <span class="dot"></span>
-              <span id="statusText">Dashboard à jour — OK</span>
-            </div>
+.status-pill{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;
+  border-radius:999px;
+  background:rgba(255,255,255,.75);
+  border:1px solid var(--border);
+  box-shadow:0 10px 18px rgba(15,23,42,.05);
+  font-weight:700;
+  font-size:13px;
+}
+.status-pill .dot{
+  width:10px;height:10px;border-radius:999px;
+  background:#22c55e;
+  box-shadow:0 0 0 5px rgba(34,197,94,.14);
+}
 
-            <div class="avatar" id="avatar">FP</div>
-          </div>
+.avatar{
+  width:42px;height:42px;
+  border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:900;
+  background:rgba(255,255,255,.8);
+  border:1px solid var(--border);
+  box-shadow:0 10px 18px rgba(15,23,42,.05);
+}
 
-          <div class="top-mini">
-            <div class="mini-left">
-              <button class="link-btn" id="btnSeeLimits">See limits</button>
-            </div>
-            <div class="mini-right">
-              <div class="dropdown" id="flowportsDd">
-                <button class="btn ghost sm" id="flowportsBtn">Flowports ▾</button>
-                <div class="dd-menu right" id="flowportsMenu">
-                  <button class="dd-item">Monthly report</button>
-                  <button class="dd-item">Weekly report</button>
-                  <button class="dd-item">Export PDF</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+.select{position:relative}
+.select-btn{
+  display:flex;align-items:center;gap:10px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.75);
+  padding:10px 12px;
+  border-radius:999px;
+  font-weight:800;
+  cursor:pointer;
+  box-shadow:0 10px 18px rgba(15,23,42,.05);
+}
+.chev{opacity:.65}
+.select-menu{
+  position:absolute;
+  top:48px; right:0;
+  min-width:170px;
+  background:white;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:6px;
+  box-shadow:var(--shadow);
+  display:none;
+  z-index:50;
+}
+.select.open .select-menu{display:block}
+.select-item{
+  width:100%;
+  text-align:left;
+  background:none;border:none;
+  padding:10px 10px;
+  border-radius:12px;
+  font-weight:800;
+  cursor:pointer;
+}
+.select-item:hover{background:rgba(15,23,42,.04)}
+.select-item.active{background:rgba(31,94,255,.10);color:#0b2aa6}
 
-      <!-- GRID -->
-      <section class="grid">
-        <!-- LEFT COLUMN -->
-        <div class="col left">
-          <!-- KPI + CHART CARD -->
-          <section class="card kpi">
-            <div class="card-head">
-              <div class="card-title">Bonjour, <span id="orgNameInline">—</span></div>
-              <div class="card-actions">
-                <span class="tag">Overview</span>
-              </div>
-            </div>
+.dropdown{position:relative}
+.dd-menu{
+  position:absolute;
+  top:46px; left:0;
+  min-width:210px;
+  background:white;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:6px;
+  box-shadow:var(--shadow);
+  display:none;
+  z-index:60;
+}
+.dd-menu.right{left:auto;right:0}
+.dropdown.open .dd-menu{display:block}
+.dd-item{
+  width:100%;
+  text-align:left;
+  background:none;border:none;
+  padding:10px 10px;
+  border-radius:12px;
+  font-weight:800;
+  cursor:pointer;
+}
+.dd-item:hover{background:rgba(15,23,42,.04)}
 
-            <div class="kpi-row">
-              <div class="kpi-box">
-                <div class="kpi-label">SEO Score</div>
-                <div class="kpi-value"><span id="seoScore">0</span><span class="kpi-suffix">/100</span></div>
-                <div class="kpi-sub" id="seoRangeSub">Last 30 days</div>
-              </div>
+.grid{
+  display:grid;
+  grid-template-columns: 1.05fr .95fr;
+  gap:var(--gap);
+  align-items:start;
+}
+.col{display:flex;flex-direction:column;gap:var(--gap)}
 
-              <div class="kpi-box">
-                <div class="kpi-label">Local Visibility</div>
-                <div class="kpi-value green" id="localVis">+0%</div>
-                <div class="kpi-sub">Map pack + reviews</div>
-              </div>
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:18px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.card-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:14px 16px;
+  border-bottom:1px solid rgba(15,23,42,.06);
+}
+.card-title{
+  font-weight:900;
+  letter-spacing:-.2px;
+}
+.tag{
+  font-size:12px;
+  font-weight:900;
+  padding:6px 10px;
+  border-radius:999px;
+  background:rgba(15,23,42,.04);
+  border:1px solid rgba(15,23,42,.08);
+  color:#0f172a;
+}
 
-              <div class="kpi-box">
-                <div class="kpi-label">Monitors</div>
-                <div class="kpi-value"><span id="monActive">0</span> <span class="kpi-suffix">active</span></div>
-                <div class="kpi-sub"><span id="monIncidents">0</span> incidents</div>
-              </div>
-            </div>
+.kpi{padding-bottom:10px}
+.kpi .card-head{border-bottom:none;padding-bottom:8px}
+.kpi-row{
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap:12px;
+  padding:0 16px 8px;
+}
+.kpi-box{
+  background:rgba(15,23,42,.02);
+  border:1px solid rgba(15,23,42,.07);
+  border-radius:16px;
+  padding:14px;
+}
+.kpi-label{font-size:12px;color:var(--muted);font-weight:800}
+.kpi-value{font-size:28px;font-weight:900;letter-spacing:-.4px;margin-top:6px}
+.kpi-value.green{color:var(--green)}
+.kpi-suffix{font-size:16px;color:var(--muted);font-weight:900;margin-left:4px}
+.kpi-sub{margin-top:6px;font-size:12px;color:var(--muted);font-weight:700}
 
-            <div class="chart-head">
-              <div class="chart-title">SEO Performance — <span id="chartRangeLabel">30 days</span></div>
-              <div class="chart-tabs">
-                <button class="chip active">Confomants</button>
-                <button class="chip">active</button>
-                <button class="chip">incidents</button>
-              </div>
-            </div>
+.chart-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 16px 0;
+}
+.chart-title{font-weight:900;color:#0f172a}
+.chart-tabs{display:flex;gap:8px}
+.chip{
+  border:1px solid rgba(15,23,42,.10);
+  background:rgba(15,23,42,.03);
+  padding:7px 10px;
+  border-radius:999px;
+  font-weight:900;
+  font-size:12px;
+  cursor:pointer;
+}
+.chip.active{background:rgba(31,94,255,.10);border-color:rgba(31,94,255,.22);color:#0b2aa6}
 
-            <div class="chart-wrap">
-              <canvas id="chart" width="900" height="240" aria-label="SEO chart"></canvas>
-            </div>
-          </section>
+.chart-wrap{padding:10px 16px 16px}
+.chart-wrap canvas{
+  width:100%;
+  height:220px;
+  display:block;
+  background:linear-gradient(180deg, rgba(31,94,255,.10) 0%, rgba(31,94,255,0) 80%);
+  border:1px solid rgba(15,23,42,.07);
+  border-radius:16px;
+}
 
-          <!-- RECOMMENDED ACTIONS -->
-          <section class="card actions">
-            <div class="card-head">
-              <div class="card-title">Recommended Actions</div>
-              <div class="card-actions">
-                <button class="btn ghost sm" id="btnRunAudit">Run audit</button>
-              </div>
-            </div>
+.actions .actions-list{padding:12px 16px 14px;display:flex;flex-direction:column;gap:10px}
+.action-item{
+  display:grid;
+  grid-template-columns: 20px 1fr auto;
+  gap:10px;
+  align-items:center;
+  padding:10px 10px;
+  border-radius:14px;
+  border:1px solid rgba(15,23,42,.08);
+  background:rgba(255,255,255,.70);
+}
+.action-ico{width:18px;height:18px;border-radius:7px;background:rgba(31,94,255,.14);border:1px solid rgba(31,94,255,.22)}
+.action-title{font-weight:900;font-size:13px}
+.action-sub{font-size:12px;color:var(--muted);font-weight:700;margin-top:2px}
+.action-btn{
+  border:none;
+  background:rgba(31,94,255,.12);
+  border:1px solid rgba(31,94,255,.22);
+  color:#0b2aa6;
+  font-weight:900;
+  padding:8px 10px;
+  border-radius:12px;
+  cursor:pointer;
+}
+.action-btn:hover{filter:brightness(.98)}
 
-            <div class="actions-list" id="actionsList">
-              <!-- injected -->
-            </div>
-          </section>
+.table-wrap{padding:0 10px 12px}
+.table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0 10px;
+  font-size:13px;
+}
+.table thead th{
+  text-align:left;
+  color:var(--muted);
+  font-size:12px;
+  letter-spacing:.02em;
+  padding:0 10px;
+}
+.table tbody td{
+  background:rgba(15,23,42,.02);
+  border-top:1px solid rgba(15,23,42,.08);
+  border-bottom:1px solid rgba(15,23,42,.08);
+  padding:12px 10px;
+  font-weight:700;
+}
+.table tbody tr td:first-child{
+  border-left:1px solid rgba(15,23,42,.08);
+  border-top-left-radius:14px;
+  border-bottom-left-radius:14px;
+}
+.table tbody tr td:last-child{
+  border-right:1px solid rgba(15,23,42,.08);
+  border-top-right-radius:14px;
+  border-bottom-right-radius:14px;
+}
+.table.compact tbody td{padding:10px 10px}
+.right{text-align:right}
 
-          <!-- RECENT INCIDENTS -->
-          <section class="card incidents">
-            <div class="card-head">
-              <div class="card-title">Recent Incidents</div>
-              <div class="card-actions">
-                <button class="btn ghost sm" id="btnViewLogs">View logs</button>
-              </div>
-            </div>
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+}
+.dot-sm{
+  width:10px;height:10px;border-radius:999px;
+  background:var(--muted);
+}
+.dot-sm.up{background:#22c55e}
+.dot-sm.down{background:#ef4444}
+.dot-sm.unk{background:#94a3b8}
 
-            <div class="table-wrap">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Incident</th>
-                    <th>URL</th>
-                    <th>When</th>
-                    <th>Status</th>
-                    <th class="right">Cost</th>
-                  </tr>
-                </thead>
-                <tbody id="incidentsTbody">
-                  <!-- injected -->
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
+.plans .plans-grid{
+  padding:12px 12px 14px;
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap:12px;
+}
+.plan{
+  border-radius:18px;
+  border:1px solid rgba(15,23,42,.10);
+  background:rgba(255,255,255,.75);
+  padding:14px;
+  position:relative;
+}
+.plan-top{
+  display:flex;justify-content:space-between;align-items:baseline;
+  margin-bottom:8px;
+}
+.plan-name{font-weight:900;font-size:14px}
+.plan-price{font-weight:900;letter-spacing:-.3px}
+.plan-price .euro{opacity:.65;margin-right:2px}
+.plan-price .amt{font-size:24px}
+.plan-price .per{opacity:.55;margin-left:4px;font-size:12px}
 
-        <!-- RIGHT COLUMN -->
-        <div class="col right">
-          <!-- MONITORS CARD -->
-          <section class="card monitors">
-            <div class="card-head">
-              <div class="card-title">Monitors</div>
-              <div class="card-actions">
-                <button class="btn primary sm" id="btnAddMonitor">Add Monitor</button>
-              </div>
-            </div>
+.plan-list{
+  margin:10px 0 12px;
+  padding-left:16px;
+  color:#0f172a;
+}
+.plan-list li{margin:7px 0;font-weight:700}
+.plan.featured{
+  background:linear-gradient(180deg, rgba(31,94,255,.18) 0%, rgba(31,94,255,.08) 100%);
+  border-color:rgba(31,94,255,.25);
+}
+.plan-badge{
+  position:absolute;
+  top:12px; right:12px;
+  font-size:11px;
+  font-weight:900;
+  padding:6px 10px;
+  border-radius:999px;
+  background:rgba(31,94,255,.14);
+  border:1px solid rgba(31,94,255,.22);
+  color:#0b2aa6;
+}
 
-            <div class="table-wrap">
-              <table class="table compact">
-                <thead>
-                  <tr>
-                    <th>URL</th>
-                    <th>Status</th>
-                    <th>Interval</th>
-                    <th>Last Check</th>
-                    <th class="right">Response Time</th>
-                  </tr>
-                </thead>
-                <tbody id="monitorsTbody">
-                  <!-- injected -->
-                </tbody>
-              </table>
-            </div>
-          </section>
+/* Overlay for mobile sidebar */
+.overlay{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.35);
+  z-index:80;
+}
 
-          <!-- PRICING CARD -->
-          <section class="card plans">
-            <div class="card-head">
-              <div class="card-title">Plans</div>
-              <div class="card-actions">
-                <button class="btn ghost sm" id="btnSeePlans">See plans</button>
-              </div>
-            </div>
+/* RESPONSIVE (mobile identique à ce que tu veux : pas de “layout catastrophique”) */
+@media (max-width: 1100px){
+  .grid{grid-template-columns:1fr}
+  .plans .plans-grid{grid-template-columns:1fr}
+}
 
-            <div class="plans-grid" id="plansGrid">
-              <!-- Standard -->
-              <article class="plan">
-                <div class="plan-top">
-                  <div class="plan-name">Standard</div>
-                  <div class="plan-price"><span class="euro">€</span><span class="amt" id="pStd">29</span><span class="per">/mo</span></div>
-                </div>
-                <ul class="plan-list">
-                  <li>Recommended actions</li>
-                  <li>SEO audits: <b>30</b></li>
-                  <li>Google Maps</li>
-                  <li>Monitors: <b>3</b></li>
-                  <li>PDF exports</li>
-                </ul>
-                <button class="btn ghost full" data-plan="standard">Manage Subscription</button>
-              </article>
+@media (max-width: 920px){
+  .app{grid-template-columns:1fr}
+  .sidebar{
+    position:fixed;
+    left:0; top:0;
+    transform:translateX(-105%);
+    transition:transform .22s ease;
+    z-index:90;
+    width:min(320px, 86vw);
+  }
+  .sidebar.open{transform:translateX(0)}
+  .overlay.show{display:block}
 
-              <!-- Pro (selected) -->
-              <article class="plan featured">
-                <div class="plan-top">
-                  <div class="plan-name">Pro</div>
-                  <div class="plan-price"><span class="euro">€</span><span class="amt" id="pPro">79</span><span class="per">/mo</span></div>
-                </div>
-                <div class="plan-badge">Best value</div>
-                <ul class="plan-list">
-                  <li>Faster in 9 days</li>
-                  <li>SEO audits: <b>300</b></li>
-                  <li>Google Maps</li>
-                  <li>Monitors: <b>50</b></li>
-                  <li>UFO Monitored Monitors</li>
-                </ul>
-                <button class="btn primary full" data-plan="pro">Upgrade Subscription</button>
-              </article>
+  .burger{display:inline-flex;align-items:center;justify-content:center}
+  .topbar{grid-template-columns:44px 1fr}
+  .top-right{grid-column:1 / -1; align-items:flex-start}
+  .controls{justify-content:flex-start}
+  .avatar{margin-left:auto}
+}
 
-              <!-- Ultra -->
-              <article class="plan">
-                <div class="plan-top">
-                  <div class="plan-name">Ultra</div>
-                  <div class="plan-price"><span class="euro">€</span><span class="amt" id="pUltra">149</span><span class="per">/mo</span></div>
-                </div>
-                <ul class="plan-list">
-                  <li>Recommended actions</li>
-                  <li>SEO audits: <b>2000</b></li>
-                  <li>Google Maps</li>
-                  <li>Monitors: <b>300</b></li>
-                  <li>UFO Monitored Monitors</li>
-                </ul>
-                <button class="btn ghost full" data-plan="ultra">Update Payment Method</button>
-              </article>
-            </div>
-          </section>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <script src="./dashboard.js"></script>
-</body>
-</html>
+@media (max-width: 520px){
+  .main{padding:14px 14px 20px}
+  .hello-title{font-size:18px}
+  .kpi-row{grid-template-columns:1fr; }
+  .chart-tabs{display:none}
+  .status-pill{width:100%;justify-content:center}
+}
