@@ -1,4 +1,4 @@
-/* admin.js — FlowPoint AI (improved)
+/* admin.js — FlowPoint (improved)
    - Reads ADMIN_KEY from input
    - Calls /api/admin/users, /api/admin/user/block, /api/admin/user/reset-usage
    - Sends key in header: x-admin-key
