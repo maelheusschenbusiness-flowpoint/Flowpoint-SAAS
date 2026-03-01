@@ -1,7 +1,29 @@
 /* Flowpoint Dashboard — UI/Routes/Responsive
    Fix: overlay ne bloque plus les clics (pointer-events: none quand fermé)
 */
+const token = localStorage.getItem("token") || "";
+if (!token) window.location.replace("/login.html");
 
+async function api(path, opts = {}) {
+  const r = await fetch(path, {
+    ...opts,
+    headers: {
+      ...(opts.headers || {}),
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    cache: "no-store",
+  });
+
+  if (r.status === 401 || r.status === 403) {
+    localStorage.removeItem("token");
+    window.location.replace("/login.html");
+    throw new Error("Unauthorized");
+  }
+
+  return r;
+}
 (function () {
   const $ = (q) => document.querySelector(q);
   const $$ = (q) => Array.from(document.querySelectorAll(q));
