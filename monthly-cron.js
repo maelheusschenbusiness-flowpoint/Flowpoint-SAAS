@@ -1,4 +1,4 @@
-// monthly-cron.js — FlowPoint AI Monthly Ultra Report
+// monthly-cron.js — FlowPoint Monthly Ultra Report
 require("dotenv").config();
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
@@ -56,14 +56,14 @@ async function main(){
 
   for(const user of ultras){
     const html = `
-      <h2>FlowPoint AI — Rapport Mensuel</h2>
+      <h2>FlowPoint — Rapport Mensuel</h2>
       <p>Bonjour ${user.name || ""},</p>
       <p>Voici votre rapport mensuel Ultra.</p>
-      <p>Merci d'utiliser FlowPoint AI.</p>
+      <p>Merci d'utiliser FlowPoint.</p>
     `;
     await sendMail({
       to: user.email,
-      subject: "FlowPoint AI — Rapport Mensuel Ultra",
+      subject: "FlowPoint — Rapport Mensuel Ultra",
       html
     });
   }
