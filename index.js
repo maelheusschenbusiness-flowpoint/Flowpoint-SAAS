@@ -1,11 +1,10 @@
 // =======================
-// FlowPoint AI — SaaS Backend (Pack A + Pack B) + Addons foundations
+// FlowPoint — SaaS Backend (Pack A + Pack B)
 // Plans: Standard / Pro / Ultra
 // Pack A: SEO Audit + Cache + PDF + Monitoring + Logs + CSV + Magic Link + Admin
-// Pack B: Orgs + Roles + Shared data per org
-// Addons: monitorsPack50 (+50 monitors per pack), whiteLabel (included), extraSeats (future)
-// Fixes: SSRF protection, Monitor quota = active count (+addons), Cron concurrency,
-//        /api/overview for dashboard, exports aliases, uptime endpoint.
+// Pack B: Orgs + Team Ultra (Invites) + Roles + Shared data per org
+// + Fixes: SSRF protection, Monitor quota = active count, Cron concurrency,
+//          /api/overview for dashboard, exports aliases, uptime endpoint.
 // =======================
 
 require("dotenv").config();
@@ -32,6 +31,9 @@ app.set("trust proxy", 1);
 const PORT = process.env.PORT || 5000;
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
+// ✅ BRAND (AI removed)
+const BRAND_NAME = "FlowPoint";
+
 // ---------- ENV CHECK ----------
 const REQUIRED = [
   "MONGO_URI",
@@ -48,8 +50,7 @@ for (const k of REQUIRED) {
 
 const STRIPE_WEBHOOK_SECRET =
   process.env.STRIPE_WEBHOOK_SECRET_RENDER || process.env.STRIPE_WEBHOOK_SECRET;
-if (!STRIPE_WEBHOOK_SECRET)
-  console.log("⚠️ STRIPE_WEBHOOK_SECRET manquante (webhook non validable)");
+if (!STRIPE_WEBHOOK_SECRET) console.log("⚠️ STRIPE_WEBHOOK_SECRET manquante (webhook non validable)");
 
 const ADMIN_KEY = process.env.ADMIN_KEY || "";
 const CRON_KEY = process.env.CRON_KEY || "";
@@ -59,10 +60,7 @@ const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
 const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
 
 const MONITOR_HTTP_TIMEOUT_MS = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
-const CRON_CONCURRENCY = Math.min(
-  25,
-  Math.max(2, Number(process.env.CRON_CONCURRENCY || 10))
-);
+const CRON_CONCURRENCY = Math.min(25, Math.max(2, Number(process.env.CRON_CONCURRENCY || 10)));
 
 // ---------- SMTP / Resend ----------
 const SMTP_READY =
@@ -84,7 +82,7 @@ function getMailer() {
   _cachedTransport = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
-    secure: boolEnv(process.env.SMTP_SECURE), // 465 => true, 587 => false
+    secure: boolEnv(process.env.SMTP_SECURE),
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
     connectionTimeout: 15000,
     greetingTimeout: 15000,
@@ -102,7 +100,7 @@ function getMailer() {
  */
 async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   try {
-    // 1) Resend API (recommended on Render)
+    // 1) Resend API
     if (process.env.RESEND_API_KEY) {
       const toList = String(to || "")
         .split(",")
@@ -196,22 +194,6 @@ function quotasForPlan(plan) {
   return { audits: 0, monitors: 0, pdf: 0, exports: 0, teamSeats: 0 };
 }
 
-// ✅ Addons-aware quotas
-function quotasForOrg(plan, org) {
-  const base = quotasForPlan(plan);
-
-  const packs = Number(org?.billingAddons?.monitorsPack50 || 0);
-  const extraMonitors = Math.max(0, Math.floor(packs)) * 50;
-
-  const extraSeats = Number(org?.billingAddons?.extraSeats || 0);
-
-  return {
-    ...base,
-    monitors: base.monitors + extraMonitors,
-    teamSeats: base.teamSeats + Math.max(0, Math.floor(extraSeats)),
-  };
-}
-
 function firstDayOfThisMonthUTC() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
@@ -228,7 +210,6 @@ async function resetUsageIfNewMonth(user) {
   }
 }
 
-// NOTE: consume() remains plan-based (addons for audits/pdf/exports not enabled yet)
 async function consume(user, key, amount = 1) {
   const q = quotasForPlan(user.plan);
   const map = {
@@ -298,16 +279,15 @@ function ipuaHash(req) {
   return crypto.createHash("sha256").update(`${ip}||${ua}`).digest("hex");
 }
 
-// ---------- SSRF PROTECTION (CRITICAL) ----------
+// ---------- SSRF PROTECTION ----------
 function isPrivateIp(ip) {
   if (!net.isIP(ip)) return true;
 
-  // IPv4
   if (net.isIPv4(ip)) {
     if (ip === "127.0.0.1") return true;
     if (ip.startsWith("10.")) return true;
     if (ip.startsWith("192.168.")) return true;
-    if (ip.startsWith("169.254.")) return true; // link-local
+    if (ip.startsWith("169.254.")) return true;
     if (ip.startsWith("172.")) {
       const second = Number(ip.split(".")[1]);
       if (second >= 16 && second <= 31) return true;
@@ -315,11 +295,10 @@ function isPrivateIp(ip) {
     return false;
   }
 
-  // IPv6
   const v = ip.toLowerCase();
-  if (v === "::1") return true; // loopback
-  if (v.startsWith("fc") || v.startsWith("fd")) return true; // unique local
-  if (v.startsWith("fe80")) return true; // link-local
+  if (v === "::1") return true;
+  if (v.startsWith("fc") || v.startsWith("fd")) return true;
+  if (v.startsWith("fe80")) return true;
   return false;
 }
 
@@ -338,7 +317,6 @@ async function assertSafePublicUrl(rawUrl) {
   const host = u.hostname.toLowerCase();
   if (host === "localhost" || host.endsWith(".local")) throw new Error("Hostname interdit");
 
-  // Resolve DNS -> block private networks
   const res = await dns.lookup(host, { all: true, verbatim: true });
   if (!res?.length) throw new Error("DNS lookup failed");
   for (const r of res) {
@@ -357,19 +335,17 @@ const OrgSchema = new mongoose.Schema(
     ownerUserId: { type: mongoose.Schema.Types.ObjectId, index: true },
     createdFromEmailDomain: String,
 
-    alertRecipients: { type: String, default: "all" }, // "owner" | "all"
+    alertRecipients: { type: String, default: "all" },
     alertExtraEmails: { type: [String], default: [] },
 
-    // ✅ Addons
     billingAddons: {
-      monitorsPack50: { type: Number, default: 0 }, // +50 monitors per pack
-      whiteLabel: { type: Boolean, default: true }, // included (as you requested)
-      extraSeats: { type: Number, default: 0 }, // future
+      monitorsPack50: { type: Number, default: 0 },
+      whiteLabel: { type: Boolean, default: true },
+      extraSeats: { type: Number, default: 0 },
     },
 
-    // ✅ Branding / white-label
     branding: {
-      appName: { type: String, default: "FlowPoint" },
+      appName: { type: String, default: BRAND_NAME },
       supportEmail: { type: String, default: "" },
       logoUrl: { type: String, default: "" },
       primaryColor: { type: String, default: "#2563eb" },
@@ -377,17 +353,14 @@ const OrgSchema = new mongoose.Schema(
       hideFlowPointBranding: { type: Boolean, default: false },
     },
 
-    // ✅ Data retention (days)
     retentionDays: { type: Number, default: 30 },
 
-    // ✅ Integrations placeholders
     integrations: {
       slackWebhookUrl: { type: String, default: "" },
       discordWebhookUrl: { type: String, default: "" },
       zapierHookUrl: { type: String, default: "" },
     },
 
-    // ✅ Credits (future optional)
     credits: {
       audits: { type: Number, default: 0 },
       pdf: { type: Number, default: 0 },
@@ -522,11 +495,7 @@ const MonitorLog = mongoose.model("MonitorLog", MonitorLogSchema);
 
 // ---------- AUTH ----------
 function signToken(user) {
-  return jwt.sign(
-    { uid: user._id.toString(), email: user.email },
-    process.env.JWT_SECRET,
-    { expiresIn: "30d" }
-  );
+  return jwt.sign({ uid: user._id.toString(), email: user.email }, process.env.JWT_SECRET, { expiresIn: "30d" });
 }
 
 function auth(req, res, next) {
@@ -541,7 +510,6 @@ function auth(req, res, next) {
   }
 }
 
-// ---------- ORG DEFAULTS ----------
 function clampInt(n, min, max) {
   const x = Number(n);
   if (!Number.isFinite(x)) return min;
@@ -552,32 +520,21 @@ async function ensureOrgDefaults(org) {
   if (!org) return null;
   let changed = false;
 
-  // billingAddons
   if (!org.billingAddons || typeof org.billingAddons !== "object") {
     org.billingAddons = { monitorsPack50: 0, whiteLabel: true, extraSeats: 0 };
     changed = true;
   } else {
-    if (org.billingAddons.monitorsPack50 == null) {
-      org.billingAddons.monitorsPack50 = 0;
-      changed = true;
-    }
-    if (org.billingAddons.whiteLabel == null) {
-      org.billingAddons.whiteLabel = true;
-      changed = true;
-    }
-    if (org.billingAddons.extraSeats == null) {
-      org.billingAddons.extraSeats = 0;
-      changed = true;
-    }
+    if (org.billingAddons.monitorsPack50 == null) { org.billingAddons.monitorsPack50 = 0; changed = true; }
+    if (org.billingAddons.whiteLabel == null) { org.billingAddons.whiteLabel = true; changed = true; }
+    if (org.billingAddons.extraSeats == null) { org.billingAddons.extraSeats = 0; changed = true; }
 
     org.billingAddons.monitorsPack50 = clampInt(org.billingAddons.monitorsPack50, 0, 200);
     org.billingAddons.extraSeats = clampInt(org.billingAddons.extraSeats, 0, 500);
   }
 
-  // branding
   if (!org.branding || typeof org.branding !== "object") {
     org.branding = {
-      appName: "FlowPoint",
+      appName: BRAND_NAME,
       supportEmail: "",
       logoUrl: "",
       primaryColor: "#2563eb",
@@ -587,75 +544,33 @@ async function ensureOrgDefaults(org) {
     changed = true;
   } else {
     const b = org.branding;
-    if (b.appName == null) {
-      b.appName = "FlowPoint";
-      changed = true;
-    }
-    if (b.supportEmail == null) {
-      b.supportEmail = "";
-      changed = true;
-    }
-    if (b.logoUrl == null) {
-      b.logoUrl = "";
-      changed = true;
-    }
-    if (b.primaryColor == null) {
-      b.primaryColor = "#2563eb";
-      changed = true;
-    }
-    if (b.accentColor == null) {
-      b.accentColor = "#1d4ed8";
-      changed = true;
-    }
-    if (b.hideFlowPointBranding == null) {
-      b.hideFlowPointBranding = false;
-      changed = true;
-    }
+    if (b.appName == null) { b.appName = BRAND_NAME; changed = true; }
+    if (b.supportEmail == null) { b.supportEmail = ""; changed = true; }
+    if (b.logoUrl == null) { b.logoUrl = ""; changed = true; }
+    if (b.primaryColor == null) { b.primaryColor = "#2563eb"; changed = true; }
+    if (b.accentColor == null) { b.accentColor = "#1d4ed8"; changed = true; }
+    if (b.hideFlowPointBranding == null) { b.hideFlowPointBranding = false; changed = true; }
   }
 
-  // retentionDays
-  if (org.retentionDays == null) {
-    org.retentionDays = 30;
-    changed = true;
-  }
+  if (org.retentionDays == null) { org.retentionDays = 30; changed = true; }
   org.retentionDays = clampInt(org.retentionDays, 7, 3650);
 
-  // integrations
   if (!org.integrations || typeof org.integrations !== "object") {
     org.integrations = { slackWebhookUrl: "", discordWebhookUrl: "", zapierHookUrl: "" };
     changed = true;
   } else {
-    if (org.integrations.slackWebhookUrl == null) {
-      org.integrations.slackWebhookUrl = "";
-      changed = true;
-    }
-    if (org.integrations.discordWebhookUrl == null) {
-      org.integrations.discordWebhookUrl = "";
-      changed = true;
-    }
-    if (org.integrations.zapierHookUrl == null) {
-      org.integrations.zapierHookUrl = "";
-      changed = true;
-    }
+    if (org.integrations.slackWebhookUrl == null) { org.integrations.slackWebhookUrl = ""; changed = true; }
+    if (org.integrations.discordWebhookUrl == null) { org.integrations.discordWebhookUrl = ""; changed = true; }
+    if (org.integrations.zapierHookUrl == null) { org.integrations.zapierHookUrl = ""; changed = true; }
   }
 
-  // credits
   if (!org.credits || typeof org.credits !== "object") {
     org.credits = { audits: 0, pdf: 0, exports: 0 };
     changed = true;
   } else {
-    if (org.credits.audits == null) {
-      org.credits.audits = 0;
-      changed = true;
-    }
-    if (org.credits.pdf == null) {
-      org.credits.pdf = 0;
-      changed = true;
-    }
-    if (org.credits.exports == null) {
-      org.credits.exports = 0;
-      changed = true;
-    }
+    if (org.credits.audits == null) { org.credits.audits = 0; changed = true; }
+    if (org.credits.pdf == null) { org.credits.pdf = 0; changed = true; }
+    if (org.credits.exports == null) { org.credits.exports = 0; changed = true; }
 
     org.credits.audits = clampInt(org.credits.audits, 0, 1000000);
     org.credits.pdf = clampInt(org.credits.pdf, 0, 1000000);
@@ -666,7 +581,7 @@ async function ensureOrgDefaults(org) {
   return org;
 }
 
-// ✅ ONE SINGLE ensureOrgForUser (no duplicates)
+// ✅ Single version (duplicates removed)
 async function ensureOrgForUser(user) {
   if (user.orgId) {
     const existing = await Org.findById(user.orgId);
@@ -702,7 +617,6 @@ async function requireActive(req, res, next) {
   const user = await User.findById(req.user.uid);
   if (!user) return res.status(404).json({ error: "User introuvable" });
 
-  // Trial expiry -> block if not active subscription
   if (user.hasTrial && user.trialEndsAt && new Date(user.trialEndsAt).getTime() < Date.now()) {
     const st = String(user.subscriptionStatus || "").toLowerCase();
     const active = st === "active" || st === "trialing";
@@ -713,8 +627,7 @@ async function requireActive(req, res, next) {
     }
   }
 
-  if (user.accessBlocked)
-    return res.status(403).json({ error: "Accès bloqué (paiement échoué / essai terminé)" });
+  if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / essai terminé)" });
 
   await resetUsageIfNewMonth(user);
   await ensureOrgForUser(user);
@@ -728,8 +641,7 @@ async function requireActive(req, res, next) {
 
 function requirePlan(minPlan) {
   return (req, res, next) => {
-    if (planRank(req.dbUser.plan) < planRank(minPlan))
-      return res.status(403).json({ error: `Plan requis: ${minPlan}` });
+    if (planRank(req.dbUser.plan) < planRank(minPlan)) return res.status(403).json({ error: `Plan requis: ${minPlan}` });
     next();
   };
 }
@@ -776,9 +688,7 @@ async function getOrgAlertEmails(orgId) {
 
   let base = [];
   if (recipientsMode === "owner") {
-    const owner = org.ownerUserId
-      ? await User.findById(org.ownerUserId).select("email")
-      : null;
+    const owner = org.ownerUserId ? await User.findById(org.ownerUserId).select("email") : null;
     if (owner?.email) base.push(owner.email);
   } else {
     const users = await User.find({ orgId }).select("email");
@@ -791,7 +701,7 @@ async function getOrgAlertEmails(orgId) {
 function formatMonitorEmail({ orgName, monitorUrl, status, httpStatus, responseTimeMs, checkedAt, error }) {
   const when = checkedAt ? new Date(checkedAt).toLocaleString("fr-FR") : new Date().toLocaleString("fr-FR");
   const statusLabel = status === "down" ? "DOWN" : "UP";
-  const subject = `FlowPoint AI — ${statusLabel}: ${monitorUrl}`;
+  const subject = `${BRAND_NAME} — ${statusLabel}: ${monitorUrl}`;
   const text = `Organisation: ${orgName}
 URL: ${monitorUrl}
 Status: ${statusLabel}
@@ -801,7 +711,7 @@ Date: ${when}
 Erreur: ${error || "-"}`;
 
   const html = `
-    <h2 style="margin:0">FlowPoint AI — <span style="color:${status === "down" ? "#B00020" : "#0A7A2F"}">${statusLabel}</span></h2>
+    <h2 style="margin:0">${BRAND_NAME} — <span style="color:${status === "down" ? "#B00020" : "#0A7A2F"}">${statusLabel}</span></h2>
     <p><b>Organisation</b>: ${orgName || "-"}</p>
     <p><b>URL</b>: ${monitorUrl}</p>
     <p><b>HTTP</b>: ${httpStatus || "-"}</p>
@@ -847,7 +757,7 @@ async function maybeSendMonitorAlert(monitor, result) {
   return { sent: true };
 }
 
-// ---------- Concurrency helper (cron) ----------
+// ---------- Concurrency helper ----------
 async function runWithConcurrency(items, limit, worker) {
   const results = new Array(items.length);
   let idx = 0;
@@ -912,9 +822,7 @@ function normalizeUrl(url) {
 
 function scoreAudit(checks) {
   let score = 100;
-  const penalize = (cond, points) => {
-    if (cond) score -= points;
-  };
+  const penalize = (cond, points) => { if (cond) score -= points; };
   penalize(!checks.title.ok, 15);
   penalize(!checks.metaDescription.ok, 12);
   penalize(!checks.h1.ok, 10);
@@ -952,15 +860,7 @@ async function runSeoAudit(url) {
   try {
     fetched = await fetchWithTiming(url);
   } catch (e) {
-    return {
-      status: "error",
-      score: 0,
-      summary: "Impossible de charger l’URL.",
-      findings: {},
-      recommendations: [],
-      htmlSnapshot: "",
-      error: e.message,
-    };
+    return { status: "error", score: 0, summary: "Impossible de charger l’URL.", findings: {}, recommendations: [], htmlSnapshot: "", error: e.message };
   }
 
   const $ = cheerio.load(fetched.text);
@@ -1010,15 +910,14 @@ async function runSeoAudit(url) {
   };
 }
 
-// ---------- Monitor quota = ACTIVE count (addons-aware) ----------
+// ---------- Monitor quota = ACTIVE count ----------
 async function canCreateActiveMonitor(user) {
-  const org = user.orgId ? await Org.findById(user.orgId) : null;
-  const q = quotasForOrg(user.plan, org);
+  const q = quotasForPlan(user.plan);
   const countActive = await Monitor.countDocuments({ orgId: user.orgId, active: true });
   return countActive < q.monitors;
 }
 
-// ---------- STRIPE WEBHOOK RAW (BEFORE express.json) ----------
+// ---------- STRIPE WEBHOOK RAW ----------
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     if (!STRIPE_WEBHOOK_SECRET) return res.status(200).send("no webhook secret");
@@ -1204,48 +1103,52 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
       return res.json({ ok: true, debugLink: link });
     }
 
-    // ✅ Light email template (renders well in Gmail)
+    // ✅ Email HTML (AI removed)
     const html = `
-<div style="background:#f6f7fb;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
-  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:18px;padding:24px;border:1px solid rgba(15,23,42,.08)">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-      <div style="width:44px;height:44px;border-radius:14px;background:rgba(0,82,204,.10);display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,82,204,.18)">
-        <div style="width:18px;height:18px;border-radius:6px;background:#0052CC"></div>
+  <div style="background:#f6f7fb;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:18px;padding:24px;border:1px solid rgba(15,23,42,.08)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div style="width:44px;height:44px;border-radius:14px;background:rgba(0,82,204,.10);display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,82,204,.18)">
+          <div style="width:18px;height:18px;border-radius:6px;background:#0052CC"></div>
+        </div>
+        <div>
+          <div style="color:#0f172a;font-weight:800;font-size:18px;line-height:1">${BRAND_NAME}</div>
+          <div style="color:#667085;font-size:13px">Connexion sécurisée (sans mot de passe)</div>
+        </div>
       </div>
-      <div>
-        <div style="color:#0f172a;font-weight:800;font-size:18px;line-height:1">FlowPoint AI</div>
-        <div style="color:#667085;font-size:13px">Connexion sécurisée (sans mot de passe)</div>
+
+      <h2 style="margin:10px 0 8px;color:#0f172a;font-size:18px">Ton lien de connexion</h2>
+      <p style="margin:0 0 16px;color:#667085;font-size:14px;line-height:1.55">
+        Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
+      </p>
+
+      <a href="${link}"
+         style="display:inline-block;background:#0052CC;color:white;text-decoration:none;padding:12px 16px;border-radius:12px;font-weight:800;">
+        Se connecter
+      </a>
+
+      <p style="margin:16px 0 6px;color:#667085;font-size:12px">Bouton bloqué ? Copie-colle :</p>
+      <p style="margin:0;color:#0f172a;font-size:12px;word-break:break-all">${link}</p>
+
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(15,23,42,.08);color:#667085;font-size:12px">
+        © ${new Date().getFullYear()} ${BRAND_NAME}
       </div>
-    </div>
-
-    <h2 style="margin:10px 0 8px;color:#0f172a;font-size:18px">Ton lien de connexion</h2>
-    <p style="margin:0 0 16px;color:#667085;font-size:14px;line-height:1.55">
-      Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
-    </p>
-
-    <a href="${link}"
-       style="display:inline-block;background:#0052CC;color:white;text-decoration:none;padding:12px 16px;border-radius:12px;font-weight:800;">
-      Se connecter
-    </a>
-
-    <p style="margin:16px 0 6px;color:#667085;font-size:12px">Bouton bloqué ? Copie-colle :</p>
-    <p style="margin:0;color:#0f172a;font-size:12px;word-break:break-all">${link}</p>
-
-    <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(15,23,42,.08);color:#667085;font-size:12px">
-      © ${new Date().getFullYear()} FlowPoint AI
     </div>
   </div>
-</div>`;
+`;
 
     const r = await sendEmail({
       to: user.email,
-      subject: "FlowPoint AI — Ton lien de connexion",
+      subject: `${BRAND_NAME} — Ton lien de connexion`,
       text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
       html,
     });
 
     if (!r.ok) {
-      return res.status(502).json({ ok: false, error: "Email non envoyé" });
+      return res.status(502).json({
+        ok: false,
+        error: "Email non envoyé",
+      });
     }
 
     return res.json({ ok: true });
@@ -1264,8 +1167,7 @@ app.get("/api/auth/login-verify", async (req, res) => {
     const lt = await LoginToken.findOne({ tokenHash });
     if (!lt) return res.status(400).json({ error: "Token invalide" });
     if (lt.usedAt) return res.status(400).json({ error: "Token déjà utilisé" });
-    if (lt.expiresAt && new Date(lt.expiresAt).getTime() < Date.now())
-      return res.status(400).json({ error: "Token expiré" });
+    if (lt.expiresAt && new Date(lt.expiresAt).getTime() < Date.now()) return res.status(400).json({ error: "Token expiré" });
 
     const user = await User.findById(lt.userId);
     if (!user) return res.status(404).json({ error: "User introuvable" });
@@ -1285,8 +1187,7 @@ app.get("/api/auth/login-verify", async (req, res) => {
 app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
   try {
     const chosenPlan = String(req.body?.plan || "").toLowerCase();
-    if (!["standard", "pro", "ultra"].includes(chosenPlan))
-      return res.status(400).json({ error: "Plan invalide" });
+    if (!["standard", "pro", "ultra"].includes(chosenPlan)) return res.status(400).json({ error: "Plan invalide" });
 
     const user = req.dbUser;
     const priceId = priceIdForPlan(chosenPlan);
@@ -1310,10 +1211,7 @@ app.post("/api/stripe/checkout", auth, requireActive, async (req, res) => {
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      subscription_data: {
-        trial_period_days: 14,
-        metadata: { uid: user._id.toString(), plan: chosenPlan },
-      },
+      subscription_data: { trial_period_days: 14, metadata: { uid: user._id.toString(), plan: chosenPlan } },
       metadata: { uid: user._id.toString(), plan: chosenPlan },
       success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/cancel.html`,
@@ -1333,9 +1231,7 @@ app.get("/api/stripe/verify", async (req, res) => {
     const sessionId = req.query.session_id;
     if (!sessionId) return res.status(400).json({ error: "session_id manquant" });
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["subscription", "customer"],
-    });
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription", "customer"] });
     const uid = session.metadata?.uid || session.subscription?.metadata?.uid;
     if (!uid) return res.status(400).json({ error: "uid manquant" });
 
@@ -1360,7 +1256,7 @@ app.get("/api/stripe/verify", async (req, res) => {
 
     await sendEmail({
       to: user.email,
-      subject: "Bienvenue sur FlowPoint AI",
+      subject: `Bienvenue sur ${BRAND_NAME}`,
       text: `Ton essai est actif. Dashboard: ${process.env.PUBLIC_BASE_URL}/dashboard.html`,
       html: `<p>Ton essai est actif ✅</p><p>Dashboard: <a href="${process.env.PUBLIC_BASE_URL}/dashboard.html">${process.env.PUBLIC_BASE_URL}/dashboard.html</a></p>`,
     });
@@ -1394,8 +1290,8 @@ app.post("/api/stripe/portal", auth, requireActive, async (req, res) => {
 // ---------- ME ----------
 app.get("/api/me", auth, requireActive, async (req, res) => {
   const u = req.dbUser;
-  const org = req.dbOrg || (u.orgId ? await Org.findById(u.orgId) : null);
-  const q = quotasForOrg(u.plan, org);
+  const q = quotasForPlan(u.plan);
+  const org = u.orgId ? await Org.findById(u.orgId) : null;
 
   return res.json({
     email: u.email,
@@ -1404,12 +1300,6 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
     plan: u.plan,
     role: u.role,
     org: org ? { id: org._id, name: org.name } : null,
-
-    // ✅ org extras (useful for dashboard)
-    billingAddons: org?.billingAddons || null,
-    branding: org?.branding || null,
-    retentionDays: org?.retentionDays ?? 30,
-
     hasTrial: u.hasTrial,
     trialEndsAt: u.trialEndsAt,
     accessBlocked: u.accessBlocked,
@@ -1418,21 +1308,19 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
     usage: {
       month: u.usageMonth,
       audits: { used: u.usedAudits, limit: q.audits },
-      monitors: { used: null, limit: q.monitors }, // active-count based
+      monitors: { used: null, limit: q.monitors },
       pdf: { used: u.usedPdf, limit: q.pdf },
       exports: { used: u.usedExports, limit: q.exports },
     },
   });
 });
 
-// ---------- OVERVIEW (for dashboard KPIs + chart) ----------
+// ---------- OVERVIEW ----------
 app.get("/api/overview", auth, requireActive, async (req, res) => {
   const days = Math.min(30, Math.max(1, Number(req.query.days || 30)));
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const lastAudit = await Audit.findOne({ orgId: req.dbUser.orgId })
-    .sort({ createdAt: -1 })
-    .select("score createdAt url");
+  const lastAudit = await Audit.findOne({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).select("score createdAt url");
   const audits = await Audit.find({ orgId: req.dbUser.orgId, createdAt: { $gte: since } })
     .sort({ createdAt: 1 })
     .limit(120)
@@ -1441,11 +1329,7 @@ app.get("/api/overview", auth, requireActive, async (req, res) => {
   const chart = audits.map((a) => a.score ?? 0);
 
   const activeMonitors = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true });
-  const downMonitors = await Monitor.countDocuments({
-    orgId: req.dbUser.orgId,
-    active: true,
-    lastStatus: "down",
-  });
+  const downMonitors = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true, lastStatus: "down" });
 
   return res.json({
     ok: true,
@@ -1459,7 +1343,7 @@ app.get("/api/overview", auth, requireActive, async (req, res) => {
   });
 });
 
-// ---------- ORG SETTINGS (alerts) ----------
+// ---------- ORG SETTINGS ----------
 app.get("/api/org/settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
   return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
@@ -1477,7 +1361,7 @@ app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res
   return res.json({ ok: true });
 });
 
-// Backward-compatible alias
+// Aliases
 app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
   return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
@@ -1494,67 +1378,11 @@ app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (
   return res.json({ ok: true });
 });
 
-// ✅ Branding endpoints (white-label foundation)
-app.get("/api/org/branding", auth, requireActive, async (req, res) => {
-  const org = req.dbOrg || (await Org.findById(req.dbUser.orgId));
-  return res.json({ ok: true, branding: org?.branding || null });
-});
-
-app.post("/api/org/branding", auth, requireActive, requireOwner, async (req, res) => {
-  const org = req.dbOrg || (await Org.findById(req.dbUser.orgId));
-  if (!org) return res.status(404).json({ error: "Org introuvable" });
-
-  const b = org.branding || {};
-  const next = {
-    appName: typeof req.body?.appName === "string" ? req.body.appName.slice(0, 40) : b.appName,
-    supportEmail: typeof req.body?.supportEmail === "string" ? req.body.supportEmail.slice(0, 120) : b.supportEmail,
-    logoUrl: typeof req.body?.logoUrl === "string" ? req.body.logoUrl.slice(0, 500) : b.logoUrl,
-    primaryColor: typeof req.body?.primaryColor === "string" ? req.body.primaryColor.slice(0, 32) : b.primaryColor,
-    accentColor: typeof req.body?.accentColor === "string" ? req.body.accentColor.slice(0, 32) : b.accentColor,
-    hideFlowPointBranding:
-      typeof req.body?.hideFlowPointBranding === "boolean"
-        ? req.body.hideFlowPointBranding
-        : b.hideFlowPointBranding,
-  };
-
-  org.branding = next;
-  await org.save();
-  return res.json({ ok: true, branding: org.branding });
-});
-
-// ✅ Addons endpoints (manual for now, Stripe later)
-app.get("/api/org/addons", auth, requireActive, async (req, res) => {
-  const org = req.dbOrg || (await Org.findById(req.dbUser.orgId));
-  const q = quotasForOrg(req.dbUser.plan, org);
-  return res.json({ ok: true, addons: org?.billingAddons || null, quotas: q });
-});
-
-app.post("/api/org/addons", auth, requireActive, requireOwner, async (req, res) => {
-  const org = req.dbOrg || (await Org.findById(req.dbUser.orgId));
-  if (!org) return res.status(404).json({ error: "Org introuvable" });
-
-  // For now allow only monitorsPack50 changes (admin/owner)
-  if (req.body?.monitorsPack50 != null) {
-    org.billingAddons.monitorsPack50 = clampInt(req.body.monitorsPack50, 0, 200);
-  }
-  if (typeof req.body?.whiteLabel === "boolean") {
-    org.billingAddons.whiteLabel = req.body.whiteLabel;
-  }
-  if (req.body?.extraSeats != null) {
-    org.billingAddons.extraSeats = clampInt(req.body.extraSeats, 0, 500);
-  }
-
-  await org.save();
-  const q = quotasForOrg(req.dbUser.plan, org);
-  return res.json({ ok: true, addons: org.billingAddons, quotas: q });
-});
-
 // ---------- AUDITS ----------
 app.post("/api/audits/run", auth, requireActive, async (req, res) => {
   try {
     const url = String(req.body?.url || "").trim();
-    if (!url || !/^https?:\/\//i.test(url))
-      return res.status(400).json({ error: "URL invalide (http/https)" });
+    if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (http/https)" });
 
     const urlNorm = normalizeUrl(url);
     const cutoff = new Date(Date.now() - AUDIT_CACHE_HOURS * 60 * 60 * 1000);
@@ -1623,7 +1451,8 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   const doc = new PDFDocument({ margin: 48 });
   doc.pipe(res);
 
-  doc.fontSize(22).text("FlowPoint AI", { continued: true }).fontSize(22).text("  — Rapport SEO");
+  // ✅ PDF branding (AI removed)
+  doc.fontSize(22).text(BRAND_NAME, { continued: true }).fontSize(22).text("  — Rapport SEO");
   doc.moveDown(0.5);
   doc.fontSize(12).text(`URL: ${a.url}`);
   doc.text(`Date: ${new Date(a.createdAt).toLocaleString("fr-FR")}`);
@@ -1659,8 +1488,7 @@ app.post("/api/monitors", auth, requireActive, async (req, res) => {
     const intervalMinutes = Number(req.body?.intervalMinutes || 60);
 
     if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide" });
-    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5)
-      return res.status(400).json({ error: "intervalMinutes min = 5" });
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5) return res.status(400).json({ error: "intervalMinutes min = 5" });
 
     await assertSafePublicUrl(url);
 
@@ -1698,14 +1526,9 @@ app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
     m.intervalMinutes = im;
   }
 
-  // If turning ON, re-check addons-aware quota
   if (m.active === true) {
-    const q = quotasForOrg(req.dbUser.plan, req.dbOrg);
-    const countActive = await Monitor.countDocuments({
-      orgId: req.dbUser.orgId,
-      active: true,
-      _id: { $ne: m._id },
-    });
+    const q = quotasForPlan(req.dbUser.plan);
+    const countActive = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true, _id: { $ne: m._id } });
     if (countActive + 1 > q.monitors) return res.status(429).json({ error: "Quota monitors actifs dépassé" });
   }
 
@@ -1759,7 +1582,6 @@ app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, logs });
 });
 
-// ✅ Uptime endpoint
 app.get("/api/monitors/:id/uptime", auth, requireActive, async (req, res) => {
   const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
@@ -1767,11 +1589,7 @@ app.get("/api/monitors/:id/uptime", auth, requireActive, async (req, res) => {
   const days = Math.min(30, Math.max(1, Number(req.query.days || 7)));
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const logs = await MonitorLog.find({
-    orgId: req.dbUser.orgId,
-    monitorId: m._id,
-    checkedAt: { $gte: since },
-  })
+  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id, checkedAt: { $gte: since } })
     .select("status checkedAt")
     .sort({ checkedAt: 1 });
 
@@ -1782,7 +1600,7 @@ app.get("/api/monitors/:id/uptime", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, days, totalChecks: total, upChecks: up, uptimePercent: uptime });
 });
 
-// ---------- CRON: monitors-run (concurrent) ----------
+// ---------- CRON ----------
 app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
   try {
     const now = Date.now();
@@ -1822,13 +1640,7 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
       checked += 1;
     });
 
-    return res.json({
-      ok: true,
-      checked,
-      alertsSent,
-      scanned: activeMonitors.length,
-      concurrency: CRON_CONCURRENCY,
-    });
+    return res.json({ ok: true, checked, alertsSent, scanned: activeMonitors.length, concurrency: CRON_CONCURRENCY });
   } catch (e) {
     console.log("cron monitors-run error:", e.message);
     return res.status(500).json({ error: "Erreur cron monitors-run" });
@@ -1891,7 +1703,7 @@ app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
   res.send(header + rows + "\n");
 });
 
-// ✅ aliases
+// aliases
 app.get("/api/exports/audits.csv", auth, requireActive, (req, res) => {
   req.url = "/api/export/audits.csv";
   app.handle(req, res);
@@ -1926,4 +1738,4 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
 });
 
 // ---------- START ----------
-app.listen(PORT, () => console.log(`✅ FlowPoint SaaS lancé sur port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ ${BRAND_NAME} lancé sur port ${PORT}`));
