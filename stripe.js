@@ -2,11 +2,11 @@
 // Option B: séparé du index.js
 // - Centralise plan + addons
 // - Webhook en raw body
-// - Applique les entitlements dans Mongo (User + Org)
+// - Applique entitlements dans Mongo (User + Org)
 
 const Stripe = require("stripe");
 
-// ---- Add-ons price IDs (tes 10 add-ons) ----
+// ---- Add-ons price IDs (TES 10 add-ons) ----
 const ADDON_PRICE_ID_TO_KEY = {
   // 1) monitors pack +50
   "price_1T6A839eqtbj6iPBTXCaiv0W": "monitorsPack50",
@@ -39,16 +39,12 @@ const ADDON_PRICE_ID_TO_KEY = {
   "price_1T6AZ39eqtbj6iPB93TgRJvI": "customDomain",
 };
 
-// (optionnel) si tu ajoutes whiteLabel plus tard : mets ici
-// const WHITE_LABEL_PRICE_ID = "price_...";
-
 function buildStripeModule(ctx) {
   const {
     STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET,
     BRAND_NAME,
     priceIdForPlan,
-    quotasForPlan,
     safeBaseUrl,
     signToken,
     auth,
@@ -62,14 +58,17 @@ function buildStripeModule(ctx) {
 
   const stripe = Stripe(STRIPE_SECRET_KEY);
 
-  // -------- Central function: appliquer plan + addons depuis une subscription --------
+  function planRank(p) {
+    const map = { standard: 1, pro: 2, ultra: 3 };
+    return map[String(p || "").toLowerCase()] || 0;
+  }
+
+  // -------- Central: extraire plan + addons + credits depuis une subscription --------
   function extractEntitlementsFromSubscription(sub) {
     const items = sub?.items?.data || [];
 
-    // 1) Plan (standard/pro/ultra) = on prend le plus haut trouvé
     let plan = null;
 
-    // 2) Addons (quantités/flags)
     const addons = {
       monitorsPack50: 0,
       extraSeat: 0,
@@ -81,27 +80,33 @@ function buildStripeModule(ctx) {
       exportsPack1000: 0,
       prioritySupport: false,
       customDomain: false,
-      whiteLabel: false, // prêt si tu ajoutes plus tard
+      // whiteLabel = GRATUIT => géré côté org defaults (pas Stripe)
     };
 
-    // 3) Credits dérivés
+    // credits dérivés (ajout mensuel)
     let creditAudits = 0;
     let creditPdf = 0;
     let creditExports = 0;
 
-    // 4) Retention dérivée
+    // retention dérivée
     let retentionDays = 30;
 
     for (const it of items) {
       const priceId = it?.price?.id;
       const qty = Number(it?.quantity || 1);
 
-      // Plan ?
-      if (priceId === process.env.STRIPE_PRICE_ID_STANDARD) plan = plan ? plan : "standard";
-      if (priceId === process.env.STRIPE_PRICE_ID_PRO) plan = planRank(plan) < 2 ? "pro" : plan;
-      if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) plan = "ultra";
+      // Plan items
+      if (priceId === process.env.STRIPE_PRICE_ID_STANDARD) {
+        if (planRank(plan) < 1) plan = "standard";
+      }
+      if (priceId === process.env.STRIPE_PRICE_ID_PRO) {
+        if (planRank(plan) < 2) plan = "pro";
+      }
+      if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) {
+        plan = "ultra";
+      }
 
-      // Addon ?
+      // Addon items
       const addonKey = ADDON_PRICE_ID_TO_KEY[priceId];
       if (!addonKey) continue;
 
@@ -118,6 +123,7 @@ function buildStripeModule(ctx) {
         case "retention365d":
           addons.retention365d = true;
           break;
+
         case "auditsPack200":
           addons.auditsPack200 += qty;
           creditAudits += 200 * qty;
@@ -126,20 +132,25 @@ function buildStripeModule(ctx) {
           addons.auditsPack1000 += qty;
           creditAudits += 1000 * qty;
           break;
+
         case "pdfPack200":
           addons.pdfPack200 += qty;
           creditPdf += 200 * qty;
           break;
+
         case "exportsPack1000":
           addons.exportsPack1000 += qty;
           creditExports += 1000 * qty;
           break;
+
         case "prioritySupport":
           addons.prioritySupport = true;
           break;
+
         case "customDomain":
           addons.customDomain = true;
           break;
+
         default:
           break;
       }
@@ -157,19 +168,14 @@ function buildStripeModule(ctx) {
     };
   }
 
-  function planRank(p) {
-    const map = { standard: 1, pro: 2, ultra: 3 };
-    return map[String(p || "").toLowerCase()] || 0;
-  }
-
   async function applySubscriptionToUserAndOrg(sub) {
     const customerId = sub.customer;
     const user = await User.findOne({ stripeCustomerId: customerId });
     if (!user) return;
 
-    // Applique plan + statut sur user
     const ent = extractEntitlementsFromSubscription(sub);
 
+    // User
     user.stripeSubscriptionId = sub.id;
     user.subscriptionStatus = sub.status;
     user.lastPaymentStatus = sub.status;
@@ -182,33 +188,37 @@ function buildStripeModule(ctx) {
     await ensureOrgForUser(user);
     await user.save();
 
-    // Applique addons/credits/retention sur org
+    // Org
     const org = user.orgId ? await Org.findById(user.orgId) : null;
-    if (org) {
-      await ensureOrgDefaults(org);
+    if (!org) return;
 
-      // billingAddons (stockage simple)
-      org.billingAddons = org.billingAddons || {};
-      org.billingAddons.monitorsPack50 = ent.addons.monitorsPack50 || 0;
-      org.billingAddons.extraSeats = ent.addons.extraSeat || 0;
+    await ensureOrgDefaults(org);
 
-      org.billingAddons.prioritySupport = !!ent.addons.prioritySupport;
-      org.billingAddons.customDomain = !!ent.addons.customDomain;
+    // billingAddons
+    org.billingAddons.monitorsPack50 = ent.addons.monitorsPack50 || 0;
+    org.billingAddons.extraSeats = ent.addons.extraSeat || 0;
 
-      // whiteLabel prêt (si tu ajoutes l’ID plus tard)
-      org.billingAddons.whiteLabel = org.billingAddons.whiteLabel ?? true;
+    org.billingAddons.retention90d = !!ent.addons.retention90d;
+    org.billingAddons.retention365d = !!ent.addons.retention365d;
 
-      // retention
-      org.retentionDays = ent.retentionDays;
+    org.billingAddons.auditsPack200 = ent.addons.auditsPack200 || 0;
+    org.billingAddons.auditsPack1000 = ent.addons.auditsPack1000 || 0;
+    org.billingAddons.pdfPack200 = ent.addons.pdfPack200 || 0;
+    org.billingAddons.exportsPack1000 = ent.addons.exportsPack1000 || 0;
 
-      // credits
-      org.credits = org.credits || { audits: 0, pdf: 0, exports: 0 };
-      org.credits.audits = Number(ent.credits.audits || 0);
-      org.credits.pdf = Number(ent.credits.pdf || 0);
-      org.credits.exports = Number(ent.credits.exports || 0);
+    org.billingAddons.prioritySupport = !!ent.addons.prioritySupport;
+    org.billingAddons.customDomain = !!ent.addons.customDomain;
 
-      await org.save();
-    }
+    // whiteLabel GRATUIT => reste true via defaults
+    org.billingAddons.whiteLabel = true;
+
+    // retentionDays + credits
+    org.retentionDays = ent.retentionDays;
+    org.credits.audits = Number(ent.credits.audits || 0);
+    org.credits.pdf = Number(ent.credits.pdf || 0);
+    org.credits.exports = Number(ent.credits.exports || 0);
+
+    await org.save();
   }
 
   // -------- Routes Stripe --------
@@ -281,10 +291,8 @@ function buildStripeModule(ctx) {
       await ensureOrgForUser(user);
       await user.save();
 
-      // IMPORTANT: applique aussi addons si la subscription contient déjà des items
-      if (session.subscription) {
-        await applySubscriptionToUserAndOrg(session.subscription);
-      }
+      // Appliquer entitlements si déjà items (rare), sinon webhook fera le boulot
+      if (session.subscription) await applySubscriptionToUserAndOrg(session.subscription);
 
       await sendEmail({
         to: user.email,
@@ -343,10 +351,7 @@ function buildStripeModule(ctx) {
         await setBlockedByCustomer(inv.customer, false, "payment_succeeded");
       }
 
-      if (
-        event.type === "customer.subscription.updated" ||
-        event.type === "customer.subscription.created"
-      ) {
+      if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
         const sub = event.data.object;
         await applySubscriptionToUserAndOrg(sub);
       }
@@ -358,7 +363,7 @@ function buildStripeModule(ctx) {
           { $set: { accessBlocked: true, subscriptionStatus: "canceled", lastPaymentStatus: "subscription_deleted" } }
         );
 
-        // Option: reset addons/credits sur org
+        // reset addons/credits sur org (whiteLabel reste gratuit/true)
         const user = await User.findOne({ stripeCustomerId: sub.customer });
         if (user?.orgId) {
           const org = await Org.findById(user.orgId);
@@ -366,8 +371,20 @@ function buildStripeModule(ctx) {
             await ensureOrgDefaults(org);
             org.billingAddons.monitorsPack50 = 0;
             org.billingAddons.extraSeats = 0;
+
+            org.billingAddons.retention90d = false;
+            org.billingAddons.retention365d = false;
+
+            org.billingAddons.auditsPack200 = 0;
+            org.billingAddons.auditsPack1000 = 0;
+            org.billingAddons.pdfPack200 = 0;
+            org.billingAddons.exportsPack1000 = 0;
+
             org.billingAddons.prioritySupport = false;
             org.billingAddons.customDomain = false;
+
+            org.billingAddons.whiteLabel = true;
+
             org.retentionDays = 30;
             org.credits = { audits: 0, pdf: 0, exports: 0 };
             await org.save();
@@ -382,7 +399,6 @@ function buildStripeModule(ctx) {
     }
   }
 
-  // expose
   return {
     stripe,
     webhookHandler,
