@@ -580,3 +580,58 @@ a{color:inherit}
   .input{min-width: 190px}
   .table{min-width: 760px;} /* scroll horizontal stable */
 }
+/* =========================================
+   COMPAT dashboard.js (pills) -> style.css
+   Ajoute ceci en bas de style.css
+   ========================================= */
+
+/* base pill */
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius:999px;
+  font-weight:800;
+  font-size:13px;
+  line-height:1;
+  white-space:nowrap;
+  border:1px solid rgba(15,23,42,.10);
+}
+
+/* Up */
+.pill--up{
+  background: rgba(22,163,74,.12);
+  color:#166534;
+  border-color: rgba(22,163,74,.18);
+}
+
+/* Down */
+.pill--down{
+  background: rgba(239,68,68,.10);
+  color:#991B1B;
+  border-color: rgba(239,68,68,.18);
+}
+
+/* Unknown / warn */
+.pill--warn{
+  background: var(--warnBg);
+  color: var(--warnText);
+  border-color: rgba(180,83,9,.18);
+}
+
+/* Soft (le petit point "•" dans la 1ère colonne) */
+.pill--soft{
+  background: rgba(47,107,255,.08);
+  color: var(--primary2);
+  border-color: rgba(47,107,255,.18);
+}
+
+/* Optionnel: version compacte (si tu veux des pills un poil plus petites) */
+/*
+.pill{
+  padding:7px 10px;
+  font-size:12.5px;
+  font-weight:800;
+}
+*/
