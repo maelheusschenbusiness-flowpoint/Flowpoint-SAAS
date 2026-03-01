@@ -4,34 +4,46 @@ const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
 const PDFDocument = require("pdfkit");
 
-const Audit = mongoose.model("Audit", new mongoose.Schema({}, { strict: false, collection:"audits" }));
-const User  = mongoose.model("User",  new mongoose.Schema({}, { strict: false, collection:"users" }));
+// ✅ Brand
+const BRAND_NAME = "FlowPoint";
 
-function bool(v){ return String(v||"").toLowerCase() === "true"; }
+const Audit = mongoose.model("Audit", new mongoose.Schema({}, { strict: false, collection: "audits" }));
+const User = mongoose.model("User", new mongoose.Schema({}, { strict: false, collection: "users" }));
+
+function bool(v) {
+  return String(v || "").toLowerCase() === "true";
+}
 
 async function sendPdfEmail({ to, subject, pdfBuffer }) {
   // Resend first
   if (process.env.RESEND_API_KEY) {
-    // Resend accepte attachments en base64
     const payload = {
       from: process.env.ALERT_EMAIL_FROM,
       to: [to],
       subject,
-      html: "<p>Votre rapport SEO quotidien est en pièce jointe.</p>",
-      attachments: [{
-        filename: "seo-report.pdf",
-        content: pdfBuffer.toString("base64"),
-      }],
+      html: `
+        <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial">
+          <p>Votre rapport SEO quotidien est en pièce jointe.</p>
+          <p style="color:#667085;font-size:12px">— ${BRAND_NAME}</p>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: "seo-report.pdf",
+          content: pdfBuffer.toString("base64"),
+        },
+      ],
       bcc: process.env.ALERT_EMAIL_TO ? [process.env.ALERT_EMAIL_TO] : undefined,
     };
 
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type":"application/json" },
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await r.json().catch(()=> ({}));
-    if(!r.ok) throw new Error(data?.message || `Resend API ${r.status}`);
+
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.message || `Resend API ${r.status}`);
     return;
   }
 
@@ -40,7 +52,7 @@ async function sendPdfEmail({ to, subject, pdfBuffer }) {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: bool(process.env.SMTP_SECURE),
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
 
   await t.sendMail({
@@ -48,7 +60,7 @@ async function sendPdfEmail({ to, subject, pdfBuffer }) {
     to,
     subject,
     text: "Votre rapport SEO quotidien est en pièce jointe.",
-    attachments: [{ filename: "seo-report.pdf", content: pdfBuffer }]
+    attachments: [{ filename: "seo-report.pdf", content: pdfBuffer }],
   });
 }
 
@@ -61,11 +73,14 @@ async function buildPdfForAudits(audits) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.fontSize(20).text("FlowPoint — Rapport SEO quotidien");
+    // ✅ Branding PDF
+    doc.fontSize(20).text(`${BRAND_NAME} — Rapport SEO quotidien`);
     doc.moveDown();
 
     for (const a of audits) {
-      doc.fontSize(12).text(`${new Date(a.createdAt).toLocaleString("fr-FR")} — ${a.url} — ${a.score}/100`);
+      doc
+        .fontSize(12)
+        .text(`${new Date(a.createdAt).toLocaleString("fr-FR")} — ${a.url} — ${a.score}/100`);
     }
 
     doc.end();
@@ -88,8 +103,9 @@ async function main() {
     try {
       await sendPdfEmail({
         to: u.email,
-        subject: "📈 Rapport SEO quotidien",
-        pdfBuffer: pdf
+        // ✅ Sujet cohérent et brandé
+        subject: `${BRAND_NAME} — Rapport SEO quotidien`,
+        pdfBuffer: pdf,
       });
       console.log("✅ SEO PDF envoyé =>", u.email);
     } catch (e) {
