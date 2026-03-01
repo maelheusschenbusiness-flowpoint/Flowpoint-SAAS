@@ -1,4 +1,4 @@
-// cron.js — FlowPoint AI daily report per ORG
+// cron.js — FlowPoint daily report per ORG
 require("dotenv").config();
 
 const mongoose = require("mongoose");
