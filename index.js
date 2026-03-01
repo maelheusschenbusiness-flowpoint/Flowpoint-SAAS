@@ -1138,9 +1138,13 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
   <div style="background:#f6f7fb;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:18px;padding:24px;border:1px solid rgba(15,23,42,.08)">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        <div style="width:44px;height:44px;border-radius:14px;background:rgba(0,82,204,.10);display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,82,204,.18)">
-          <div style="width:18px;height:18px;border-radius:6px;background:#0052CC"></div>
-        </div>
+       <!-- FlowPoint logo (rounded square + lightning) -->
+<div style="width:44px;height:44px;border-radius:14px;background:#2F6BFF;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(47,107,255,.22), inset 0 0 0 1px rgba(255,255,255,.18);">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M13 2L4 14h7l-1 8 10-14h-7l0-6Z"
+          stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>
+</div>
         <div>
           <div style="color:#0f172a;font-weight:800;font-size:18px;line-height:1">${BRAND_NAME}</div>
           <div style="color:#667085;font-size:13px">Connexion sécurisée (sans mot de passe)</div>
