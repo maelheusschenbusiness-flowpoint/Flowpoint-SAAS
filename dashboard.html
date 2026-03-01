@@ -1,291 +1,206 @@
-(function () {
-  const $ = (q) => document.querySelector(q);
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FlowPoint — Dashboard</title>
+  <link rel="stylesheet" href="/dashboard.css" />
+</head>
+<body>
 
-  const token = localStorage.getItem("token") || "";
-  if (!token) {
-    window.location.href = "/login.html";
-    return;
-  }
+  <!-- Mobile overlay -->
+  <div id="overlay" class="overlay" hidden></div>
 
-  const api = async (path, opts = {}) => {
-    const r = await fetch(path, {
-      ...opts,
-      headers: {
-        ...(opts.headers || {}),
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
+  <!-- Sidebar -->
+  <aside id="sidebar" class="sidebar">
+    <div class="brand">
+      <div class="brandIcon">⚡</div>
+      <div class="brandText">
+        <div class="brandName">Flowpoint</div>
+        <div class="brandSub">Client Dashboard</div>
+      </div>
+    </div>
 
-    if (r.status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/login.html";
-      return null;
-    }
-    return r;
-  };
+    <nav class="nav">
+      <a class="navItem active" data-page="overview" href="#overview">
+        <span class="navIcon">📊</span><span>Overview</span>
+      </a>
+      <a class="navItem" data-page="audits" href="#audits">
+        <span class="navIcon">🧾</span><span>Audits</span>
+      </a>
+      <a class="navItem" data-page="monitors" href="#monitors">
+        <span class="navIcon">🟢</span><span>Monitors</span>
+      </a>
+      <a class="navItem" data-page="reports" href="#reports">
+        <span class="navIcon">📄</span><span>Reports</span>
+        <span class="pill">PRO</span>
+      </a>
+      <a class="navItem" data-page="billing" href="#billing">
+        <span class="navIcon">💳</span><span>Billing</span>
+      </a>
+      <a class="navItem" data-page="settings" href="#settings">
+        <span class="navIcon">⚙️</span><span>Settings</span>
+      </a>
+    </nav>
 
-  // Mobile drawer
-  const sidebar = $("#sidebar");
-  const overlay = $("#overlay");
-  const btnBurger = $("#btnBurger");
+    <div class="account">
+      <div class="accountTitle">ACCOUNT</div>
+      <div class="accountGrid">
+        <div class="k">Plan</div><div class="v" id="accPlan">—</div>
+        <div class="k">Org</div><div class="v" id="accOrg">—</div>
+        <div class="k">Role</div><div class="v" id="accRole">—</div>
+        <div class="k">Trial</div><div class="v" id="accTrial">—</div>
+      </div>
 
-  function openSidebar() {
-    sidebar.classList.add("open");
-    overlay.classList.add("show");
-  }
-  function closeSidebar() {
-    sidebar.classList.remove("open");
-    overlay.classList.remove("show");
-  }
-  btnBurger?.addEventListener("click", () => {
-    if (sidebar.classList.contains("open")) closeSidebar();
-    else openSidebar();
-  });
-  overlay?.addEventListener("click", closeSidebar);
+      <div class="accountActions">
+        <button class="btnGhost" id="btnPortal">Billing / Portal</button>
+        <button class="btnLight" id="btnLogout">Logout</button>
+      </div>
+    </div>
+  </aside>
 
-  // Range selector
-  let days = 30;
-  document.querySelectorAll(".seg__btn").forEach((b) => {
-    b.addEventListener("click", () => {
-      document.querySelectorAll(".seg__btn").forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
-      days = Number(b.dataset.days || 30);
-      $("#rangeLabel").textContent = `LAST ${days} DAYS`;
-      refresh();
-    });
-  });
+  <!-- Main -->
+  <main class="main">
+    <!-- Topbar -->
+    <header class="topbar">
+      <button class="iconBtn" id="btnMenu" aria-label="Menu">☰</button>
 
-  // Buttons
-  $("#btnLogout").addEventListener("click", () => {
-    localStorage.removeItem("token");
-    window.location.href = "/login.html";
-  });
+      <div class="hello">
+        <div class="helloTitle" id="helloTitle">Bonjour, …</div>
+        <div class="helloSub">SEO · Monitoring · Reports · Billing</div>
+      </div>
 
-  $("#btnExportAudits").addEventListener("click", () => {
-    window.location.href = "/api/export/audits.csv";
-  });
+      <div class="topActions">
+        <div class="dropdown">
+          <button class="btnChip" id="rangeBtn">
+            <span id="rangeLabel">Last 30 days</span>
+            <span class="chev">▾</span>
+          </button>
+          <div class="dropdownMenu" id="rangeMenu" hidden>
+            <button class="menuItem" data-days="7">Last 7 days</button>
+            <button class="menuItem" data-days="14">Last 14 days</button>
+            <button class="menuItem" data-days="30">Last 30 days</button>
+          </div>
+        </div>
 
-  $("#btnExportMonitors").addEventListener("click", () => {
-    window.location.href = "/api/export/monitors.csv";
-  });
+        <button class="btnPrimary" id="btnRefresh">Refresh</button>
 
-  $("#btnRefresh").addEventListener("click", () => refresh());
+        <button class="btnChip" id="btnExportAudits">Export Audits CSV</button>
+        <button class="btnChip" id="btnExportMonitors">Export Monitors CSV</button>
 
-  $("#btnSeePlans").addEventListener("click", () => {
-    window.location.href = "/pricing.html";
-  });
+        <div class="statusPill" id="statusPill">
+          <span class="dot"></span>
+          <span id="statusText">Dashboard à jour — OK</span>
+        </div>
 
-  $("#btnPortal").addEventListener("click", async () => {
-    const r = await api("/api/stripe/portal", { method: "POST", body: JSON.stringify({}) });
-    if (!r) return;
-    const data = await r.json().catch(() => ({}));
-    if (data?.url) window.location.href = data.url;
-    else alert(data?.error || "Impossible d'ouvrir le portal");
-  });
+        <div class="avatar" id="avatar">FP</div>
+      </div>
+    </header>
 
-  // Plan CTA -> Stripe checkout
-  document.querySelectorAll('[data-action="choose-plan"]').forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const plan = btn.dataset.plan;
-      const r = await api("/api/stripe/checkout", {
-        method: "POST",
-        body: JSON.stringify({ plan }),
-      });
-      if (!r) return;
-      const data = await r.json().catch(() => ({}));
-      if (data?.url) window.location.href = data.url;
-      else alert(data?.error || "Checkout impossible");
-    });
-  });
+    <!-- Content -->
+    <section class="content" id="overview">
+      <div class="grid2">
+        <!-- Left big card -->
+        <section class="card cardBig">
+          <div class="cardHeader">
+            <div>
+              <div class="cardEyebrow">OVERVIEW</div>
+              <div class="cardTitle" id="rangeTitle">LAST 30 DAYS</div>
+            </div>
+          </div>
 
-  // Monitors
-  $("#btnAddMonitor").addEventListener("click", async () => {
-    const url = prompt("URL du site (https://...)");
-    if (!url) return;
-    const intervalMinutes = Number(prompt("Interval minutes (min 5)", "60") || "60");
+          <div class="kpiRow">
+            <div class="kpi">
+              <div class="kpiLabel">SEO Score</div>
+              <div class="kpiValue"><span id="seoScore">0</span><span class="kpiUnit">/100</span></div>
+              <div class="kpiHint" id="seoHint">Last 30 days</div>
+            </div>
 
-    const r = await api("/api/monitors", {
-      method: "POST",
-      body: JSON.stringify({ url, intervalMinutes }),
-    });
-    if (!r) return;
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) return alert(data?.error || "Erreur monitor");
-    refreshMonitors();
-  });
+            <div class="kpi">
+              <div class="kpiLabel">Local Visibility</div>
+              <div class="kpiValue green" id="localVis">+0%</div>
+              <div class="kpiHint">Map pack + reviews</div>
+            </div>
+          </div>
 
-  // Fake run audit button (tu peux brancher vers ton flow)
-  $("#btnRunAudit").addEventListener("click", () => {
-    // idéalement: ouvrir la page audits ou ouvrir un modal
-    alert("Branche-moi sur ton écran Audits quand tu veux (run audit).");
-  });
+          <div class="sectionTitle">
+            <span>SEO Performance</span>
+            <span class="badge" id="perfBadge">Last 3 days</span>
+          </div>
 
-  // Canvas chart (sans lib)
-  const canvas = $("#chart");
-  const ctx = canvas.getContext("2d");
+          <div class="chartWrap">
+            <canvas id="chart" width="800" height="260"></canvas>
+          </div>
 
-  function drawChart(points) {
-    const w = canvas.width = canvas.parentElement.clientWidth - 2;
-    const h = canvas.height = 130;
+          <div class="sectionTitle" style="margin-top:14px;">
+            <span>Recommended Actions</span>
+            <button class="btnLink" id="btnRunAudit">Run audit</button>
+          </div>
 
-    ctx.clearRect(0, 0, w, h);
+          <div class="actionsList" id="actionsList">
+            <div class="actionItem">
+              <span class="bullet">•</span>
+              <span>Ajouter un &lt;title&gt; unique (50–60 caractères).</span>
+              <span class="prio high">HIGH</span>
+            </div>
+            <div class="actionItem">
+              <span class="bullet">•</span>
+              <span>Ajouter une meta description (140–160 caractères).</span>
+              <span class="prio high">HIGH</span>
+            </div>
+            <div class="actionItem">
+              <span class="bullet">•</span>
+              <span>Vérifier meta robots (index/follow) + robots.txt.</span>
+              <span class="prio med">MED</span>
+            </div>
+          </div>
+        </section>
 
-    const pad = 14;
-    const xs = points.length > 1 ? (w - pad * 2) / (points.length - 1) : 1;
-    const min = 0;
-    const max = 100;
+        <!-- Right column -->
+        <div class="stack">
+          <!-- Monitors card -->
+          <section class="card">
+            <div class="cardHeader row">
+              <div class="cardTitleSm">Monitors</div>
+              <button class="btnPrimarySm" id="btnAddMonitor">Add Monitor</button>
+            </div>
 
-    // grid
-    ctx.globalAlpha = 0.35;
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(29,78,216,.25)";
-    for (let i = 0; i < 4; i++) {
-      const y = pad + (i * (h - pad * 2)) / 3;
-      ctx.beginPath();
-      ctx.moveTo(pad, y);
-      ctx.lineTo(w - pad, y);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
+            <div class="table">
+              <div class="thead">
+                <div>URL</div>
+                <div>Status</div>
+                <div>Interval</div>
+                <div></div>
+              </div>
+              <div class="tbody" id="monitorsList">
+                <!-- rows injected -->
+              </div>
+            </div>
+          </section>
 
-    if (!points || !points.length) {
-      // empty state line
-      ctx.strokeStyle = "rgba(100,116,139,.7)";
-      ctx.beginPath();
-      ctx.moveTo(pad, h - pad);
-      ctx.lineTo(w - pad, h - pad);
-      ctx.stroke();
-      return;
-    }
+          <!-- Plans card -->
+          <section class="card" id="plans">
+            <div class="cardHeader row">
+              <div class="cardTitleSm">Plans</div>
+              <button class="btnChipSm" id="btnSeePlans">See plans</button>
+            </div>
 
-    const toY = (v) => {
-      const t = (v - min) / (max - min);
-      return (h - pad) - t * (h - pad * 2);
-    };
+            <div class="plans3" id="plansGrid">
+              <!-- injected -->
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
 
-    // area fill
-    ctx.beginPath();
-    points.forEach((p, i) => {
-      const x = pad + i * xs;
-      const y = toY(p);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.lineTo(pad + (points.length - 1) * xs, h - pad);
-    ctx.lineTo(pad, h - pad);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(29,78,216,.12)";
-    ctx.fill();
+    <!-- placeholders sections -->
+    <section class="content" id="audits" hidden></section>
+    <section class="content" id="monitors" hidden></section>
+    <section class="content" id="reports" hidden></section>
+    <section class="content" id="billing" hidden></section>
+    <section class="content" id="settings" hidden></section>
+  </main>
 
-    // line
-    ctx.beginPath();
-    points.forEach((p, i) => {
-      const x = pad + i * xs;
-      const y = toY(p);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.lineWidth = 4;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "rgba(29,78,216,1)";
-    ctx.stroke();
-  }
-
-  async function refreshMe() {
-    const r = await api("/api/me");
-    if (!r) return;
-    const me = await r.json().catch(() => ({}));
-
-    $("#helloTitle").textContent = `Bonjour, ${me?.org?.name || me?.companyName || me?.name || "—"}`;
-    $("#helloSub").textContent = "SEO · Monitoring · Reports · Billing";
-
-    $("#accPlan").textContent = (me?.plan || "—").toUpperCase();
-    $("#accOrg").textContent = me?.org?.name || "—";
-    $("#accRole").textContent = me?.role || "—";
-    $("#accTrial").textContent = me?.trialEndsAt ? "actif" : "—";
-
-    // avatar
-    const initials = (me?.org?.name || "FP")
-      .split(" ")
-      .slice(0, 2)
-      .map((s) => s[0]?.toUpperCase() || "")
-      .join("");
-    $("#avatar").textContent = initials || "FP";
-  }
-
-  async function refreshOverview() {
-    const r = await api(`/api/overview?days=${days}`);
-    if (!r) return;
-    const data = await r.json().catch(() => ({}));
-
-    $("#seoScore").textContent = String(data?.seoScore ?? 0);
-    $("#localVis").textContent = String(data?.localVis ?? "+0%");
-    $("#seoScoreSub").textContent = `Last ${days} days`;
-
-    const chart = Array.isArray(data?.chart) ? data.chart : [];
-    // badge "Last 3 days" comme ton design
-    $("#chartBadge").textContent = "Last 3 days";
-    drawChart(chart);
-
-    const ok = true;
-    $("#statusText").textContent = ok ? "Dashboard à jour — OK" : "Problème — à vérifier";
-  }
-
-  async function refreshMonitors() {
-    const r = await api("/api/monitors");
-    if (!r) return;
-    const data = await r.json().catch(() => ({}));
-    const list = Array.isArray(data?.monitors) ? data.monitors : [];
-
-    const tbody = $("#monitorsTbody");
-    tbody.innerHTML = "";
-
-    if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="3" class="muted">Aucun monitor.</td></tr>`;
-      return;
-    }
-
-    list.slice(0, 5).forEach((m) => {
-      const st = String(m.lastStatus || "unknown").toLowerCase();
-      const badge =
-        st === "up" ? `<span class="badge badge--up">Up</span>` :
-        st === "down" ? `<span class="badge badge--down">Down</span>` :
-        `<span class="badge badge--unk">Unknown</span>`;
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td title="${m.url}">${escapeHtml(shorten(m.url, 40))}</td>
-        <td>${badge}</td>
-        <td>${Number(m.intervalMinutes || 60)} min</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
-
-  function shorten(s, n) {
-    s = String(s || "");
-    if (s.length <= n) return s;
-    return s.slice(0, n - 1) + "…";
-  }
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
-    }[c]));
-  }
-
-  async function refresh() {
-    await Promise.all([refreshMe(), refreshOverview(), refreshMonitors()]);
-  }
-
-  // initial
-  refresh();
-
-  // redraw chart on resize
-  window.addEventListener("resize", () => refreshOverview());
-
-})();
+  <script src="/dashboard.js"></script>
+</body>
+</html>
