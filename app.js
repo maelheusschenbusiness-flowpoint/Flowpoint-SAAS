@@ -1,4 +1,4 @@
-// app.js — FlowPoint AI Signup (Frontend)
+// app.js — FlowPoint Signup (Frontend)
 // Flow: POST /api/auth/lead -> store JWT -> POST /api/stripe/checkout -> redirect to Stripe
 // Token stored in localStorage under "fp_token"
 
