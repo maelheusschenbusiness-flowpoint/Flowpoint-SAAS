@@ -58,42 +58,58 @@
   </div>
 
   <script>
-    (async function () {
-      const TOKEN_KEY = "fp_token";
-      const msg = document.getElementById("msg");
-      const setMsg = (t, type) => {
-        msg.textContent = t;
-        msg.classList.remove("ok","danger");
-        if (type) msg.classList.add(type);
-      };
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("token");
 
-      const params = new URLSearchParams(location.search);
-      const raw = params.get("token");
-      if (!raw) return setMsg("Token manquant.", "danger");
+  const statusEl =
+    document.querySelector("#status") ||
+    document.querySelector("#msg") ||
+    document.querySelector(".status") ||
+    null;
 
-      try {
-        setMsg("Vérification du lien…");
+  function setStatus(txt) {
+    if (statusEl) statusEl.textContent = txt;
+    console.log(txt);
+  }
 
-        const r = await fetch(`/api/auth/login-verify?token=${encodeURIComponent(raw)}`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        });
-
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j.error || "Connexion impossible");
-        if (!j.token) throw new Error("Le serveur n’a pas renvoyé de token.");
-
-        localStorage.setItem(TOKEN_KEY, j.token);
-
-        // évite refresh (token one-time)
-        history.replaceState({}, "", "/dashboard.html");
-
-        setMsg("✅ Connecté. Redirection…", "ok");
-        setTimeout(() => location.replace("/dashboard.html"), 250);
-      } catch (e) {
-        setMsg(e.message || "Erreur", "danger");
+  async function run() {
+    try {
+      if (!raw) {
+        setStatus("Token manquant.");
+        return;
       }
-    })();
-  </script>
+
+      setStatus("Vérification du lien…");
+
+      const r = await fetch(`/api/auth/login-verify?token=${encodeURIComponent(raw)}`, {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+        cache: "no-store",
+      });
+
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data?.token) {
+        setStatus(data?.error || "Lien invalide / expiré.");
+        return;
+      }
+
+      // ✅ IMPORTANT : toujours la même clé partout
+      localStorage.setItem("token", data.token);
+
+      // nettoie l’URL pour éviter des relinks chelous
+      window.history.replaceState({}, "", "/login-verify.html");
+
+      setStatus("Token OK. Redirection…");
+      window.location.replace("/dashboard.html");
+    } catch (e) {
+      console.error(e);
+      setStatus("Erreur. Réessaie.");
+    }
+  }
+
+  run();
+})();
+</script>
 </body>
 </html>
