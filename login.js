@@ -1,4 +1,4 @@
-// login.js — FlowPoint AI Magic Link request (frontend)
+// login.js — FlowPoint  Magic Link request (frontend)
 // Works with backend: POST /api/auth/login-request { email }
 
 (() => {
