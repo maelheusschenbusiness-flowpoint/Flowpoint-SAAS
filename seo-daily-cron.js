@@ -74,7 +74,8 @@ async function buildPdfForAudits(audits) {
     doc.on("error", reject);
 
     // ✅ Branding PDF
-    doc.fontSize(20).text(`${BRAND_NAME} — Rapport SEO quotidien`);
+    const BRAND = "FlowPoint";
+doc.fontSize(20).text(`${BRAND} — Rapport SEO quotidien`);
     doc.moveDown();
 
     for (const a of audits) {
