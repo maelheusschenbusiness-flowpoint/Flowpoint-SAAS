@@ -1,362 +1,241 @@
-(() => {
-  const $ = (q) => document.querySelector(q);
+// dashboard.js
 
-  const token = localStorage.getItem("token") || "";
-  if (!token) {
-    window.location.href = "/login.html";
-    return;
+// ── DATA ──────────────────────────────────────────────────────────────────────
+
+const ACTIONS = [
+  { icon: 'orange', text: 'Ajouter témoignages – 158.3 mots 300-150 zone...', price: '$1.28', done: false },
+  { icon: 'green',  text: 'Ajouter témoignages – 158.3 mots 350-150 an...',   price: '$1.35', done: false },
+  { icon: 'green',  text: 'Renseigner témoignages – 304.3 mots 350-130...',   price: '$1.14', done: false },
+  { icon: 'green',  text: 'Ajouter topnav/s – 191.314.02 350.97/114 350',     price: '$1.21', done: false },
+];
+
+const INCIDENTS = [
+  { name: 'financiaro.com',   barWidth: 85, status: 'Paid', amount: '4,789.00',  link: 'View Log', time: '18 Jan 25 ago' },
+  { name: 'leclercauto.com',  barWidth: 60, status: 'Paid', amount: '5,510,938', link: 'View Log', time: '' },
+  { name: 'leclercauto.com',  barWidth: 40, status: 'Paid', amount: 'Pour de fona', link: '',      time: '' },
+];
+
+const MONITORS = [
+  { url: 'leclercauto.com', status: 'up',   interval: 'Local',    lastChecked: '1:30:19 ago', responseTime: '92 url' },
+  { url: 'leclercauto.com', status: 'down', interval: '23 Avns',  lastChecked: '1:30:19 ago', responseTime: '22 Continuous' },
+  { url: 'leclercauto.com', status: 'up',   interval: 'Broad',    lastChecked: '1:30:19 ago', responseTime: '52 Continuous' },
+  { url: 'leclercauto.com', status: 'down', interval: '21 Parts', lastChecked: '1:32:19 ago', responseTime: '52 Continuous' },
+];
+
+const PLANS = [
+  {
+    name: 'Standard', price: '29', period: '/mo/site', featured: false,
+    features: ['Reoccur to com','SEO Dyxfit déseuver-mano','Gooo Rp6.0-24','For vert 08 bho fenix','UFO Manified Monitors'],
+    btnClass: 'plan-btn-outline', btnLabel: 'Manage Subscription',
+  },
+  {
+    name: 'Pro', price: '79', period: '/mo', featured: true, selector: true,
+    features: ['TGO Dyxfit.12','G Google Maps','For xcnt 6 Montitage','UFO Manified Monitors'],
+    btnClass: 'plan-btn-primary', btnLabel: 'Upgrade Subscription',
+  },
+  {
+    name: 'Ultra', price: '149', period: '/status', featured: false,
+    features: ['Reocurser 0 rigs','SEO Dyxfit 9 ur poner mano','Gooto Bop.0.24','The vers 10 Mo Fenix','UFO Manified Monitors'],
+    btnClass: 'plan-btn-dark', btnLabel: 'Update Payment Method',
+  },
+];
+
+// ── RENDER FUNCTIONS ──────────────────────────────────────────────────────────
+
+function renderActions() {
+  const el = document.getElementById('actionsList');
+  if (!el) return;
+  el.innerHTML = ACTIONS.map((a, i) => `
+    <div class="action-item">
+      <span class="action-icon ${a.icon}"></span>
+      <span class="action-text" title="${a.text}">${a.text}</span>
+      <span class="action-price">${a.price}</span>
+      <button class="action-btn-mark" onclick="markDone(${i}, this)">Mark as done</button>
+    </div>
+  `).join('');
+}
+
+window.markDone = function(i, btn) {
+  ACTIONS[i].done = !ACTIONS[i].done;
+  const item = btn.closest('.action-item');
+  const text = item.querySelector('.action-text');
+  if (ACTIONS[i].done) {
+    item.style.opacity = '0.5';
+    text.style.textDecoration = 'line-through';
+    btn.textContent = 'Undo';
+  } else {
+    item.style.opacity = '1';
+    text.style.textDecoration = 'none';
+    btn.textContent = 'Mark as done';
   }
+};
 
-  const api = async (path, opts = {}) => {
-    const r = await fetch(path, {
-      ...opts,
-      headers: {
-        ...(opts.headers || {}),
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+function renderIncidents() {
+  const el = document.getElementById('incidentsList');
+  if (!el) return;
+  el.innerHTML = INCIDENTS.map(inc => `
+    <div class="incident-item">
+      <span class="incident-name">${inc.name}</span>
+      <div class="incident-bar"><div class="incident-bar-fill" style="width:${inc.barWidth}%"></div></div>
+      ${inc.time ? `<span style="font-size:11px;color:var(--gray-400)">${inc.time}</span>` : ''}
+      <span class="incident-status">${inc.status}</span>
+      <span class="incident-cost">${inc.amount}</span>
+      ${inc.link ? `<a href="#" class="incident-link">${inc.link}</a>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderMonitors() {
+  const el = document.getElementById('monitorsTableBody');
+  if (!el) return;
+  el.innerHTML = MONITORS.map(m => `
+    <tr>
+      <td><div class="monitor-url"><input type="checkbox" checked><span>${m.url}</span></div></td>
+      <td><span class="status-dot status-${m.status}">${m.status === 'up' ? 'Up' : 'Down'}</span></td>
+      <td>${m.interval}</td>
+      <td>${m.lastChecked}</td>
+      <td>${m.responseTime}</td>
+    </tr>
+  `).join('');
+}
+
+function renderBilling() {
+  const el = document.getElementById('billingTabContent');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="plans-grid">
+      ${PLANS.map(p => `
+        <div class="plan-card ${p.featured ? 'featured' : ''}">
+          <div class="plan-name">${p.name}</div>
+          <div class="plan-price">
+            <sup>€</sup>${p.price}
+            ${p.selector
+              ? `<div class="plan-period-selector">
+                  /mo
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>`
+              : `<span class="period">${p.period}</span>`
+            }
+          </div>
+          <div class="plan-features">
+            ${p.features.map(f => `<div class="plan-feature">${f}</div>`).join('')}
+          </div>
+          <button class="plan-btn ${p.btnClass}">${p.btnLabel}</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+// ── CHART ─────────────────────────────────────────────────────────────────────
+
+function initChart() {
+  const canvas = document.getElementById('seoChart');
+  if (!canvas) return;
+  const labels = Array.from({ length: 31 }, (_, i) => {
+    if (i % 5 !== 0) return '';
+    const d = new Date();
+    d.setDate(d.getDate() - (30 - i));
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+  });
+  const rand = (base, variance, trend) =>
+    Array.from({ length: 31 }, (_, i) =>
+      Math.round(base + trend * i + (Math.random() - 0.5) * variance)
+    );
+  new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Performances', data: rand(65, 12, 0.4), borderColor: '#2563EB', backgroundColor: 'rgba(37,99,235,0.08)', borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4 },
+        { label: 'Active',       data: rand(55,  8, 0.2), borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.05)', borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4 },
+        { label: 'Incidents',    data: rand(20, 15,-0.1), borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.05)', borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          mode: 'index', intersect: false,
+          backgroundColor: 'white', borderColor: '#E5E7EB', borderWidth: 1,
+          titleColor: '#111827', bodyColor: '#6B7280',
+          bodyFont: { family: 'Inter', size: 12 },
+          titleFont: { family: 'Inter', size: 12, weight: '600' },
+          padding: 10, boxPadding: 4,
+        },
       },
-    });
-
-    if (r.status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/login.html";
-      return null;
-    }
-    return r;
-  };
-
-  // Sidebar mobile
-  const sidebar = $("#sidebar");
-  const overlay = $("#overlay");
-  const btnBurger = $("#btnBurger");
-
-  function openSidebar() {
-    sidebar.classList.add("open");
-    overlay.hidden = false;
-  }
-  function closeSidebar() {
-    sidebar.classList.remove("open");
-    overlay.hidden = true;
-  }
-
-  btnBurger?.addEventListener("click", () => {
-    if (sidebar.classList.contains("open")) closeSidebar();
-    else openSidebar();
+      scales: {
+        x: { grid: { display: false }, border: { display: false }, ticks: { color: '#9CA3AF', font: { size: 11 } } },
+        y: { grid: { color: '#F3F4F6' }, border: { display: false }, ticks: { color: '#9CA3AF', font: { size: 11 } } },
+      },
+      interaction: { mode: 'index', intersect: false },
+    },
   });
-  overlay?.addEventListener("click", closeSidebar);
+}
 
-  // UI refs
-  const helloTitle = $("#helloTitle");
-  const avatar = $("#avatar");
-  const statusText = $("#statusText");
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
 
-  const accPlan = $("#accPlan");
-  const accOrg = $("#accOrg");
-  const accRole = $("#accRole");
-  const accTrial = $("#accTrial");
-
-  const seoScore = $("#seoScore");
-  const localVis = $("#localVis");
-  const rangeLabel = $("#rangeLabel");
-  const rangeSmall = $("#rangeSmall");
-
-  const monitorsBody = $("#monitorsBody");
-
-  const btnRefresh = $("#btnRefresh");
-  const btnExportAudits = $("#btnExportAudits");
-  const btnExportMonitors = $("#btnExportMonitors");
-  const btnPortal = $("#btnPortal");
-  const btnLogout = $("#btnLogout");
-  const btnSeePlans = $("#btnSeePlans");
-  const btnRunAudit = $("#btnRunAudit");
-  const btnAddMonitor = $("#btnAddMonitor");
-
-  // Range selection
-  let days = 30;
-  document.querySelectorAll(".segbtn").forEach((b) => {
-    b.addEventListener("click", () => {
-      document.querySelectorAll(".segbtn").forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
-      days = Number(b.dataset.days || 30);
-      refreshAll();
+function initNav() {
+  document.querySelectorAll('.sidebar-nav a[data-page]').forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      document.querySelectorAll('.sidebar-nav a').forEach(l => l.classList.remove('active'));
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      link.classList.add('active');
+      const page = document.getElementById('page-' + link.dataset.page);
+      if (page) page.classList.add('active');
     });
   });
+}
 
-  // Chart
-  const canvas = $("#chart");
-  const ctx = canvas.getContext("2d");
+// ── BILLING TABS ──────────────────────────────────────────────────────────────
 
-  function drawChart(points) {
-    // points: array numbers
-    const w = canvas.width;
-    const h = canvas.height;
-
-    ctx.clearRect(0, 0, w, h);
-
-    // padding
-    const pad = 22;
-    const X0 = pad;
-    const Y0 = pad;
-    const X1 = w - pad;
-    const Y1 = h - pad;
-
-    // background grid
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(15,23,42,.10)";
-    for (let i = 0; i <= 4; i++) {
-      const y = Y0 + ((Y1 - Y0) * i) / 4;
-      ctx.beginPath();
-      ctx.moveTo(X0, y);
-      ctx.lineTo(X1, y);
-      ctx.stroke();
-    }
-
-    const arr = Array.isArray(points) && points.length ? points : [0, 0, 0];
-    const min = 0;
-    const max = 100;
-
-    const n = arr.length;
-    const dx = n === 1 ? 0 : (X1 - X0) / (n - 1);
-
-    const mapY = (v) => {
-      const t = (v - min) / (max - min);
-      return Y1 - t * (Y1 - Y0);
-    };
-
-    // area
-    ctx.beginPath();
-    ctx.moveTo(X0, mapY(arr[0]));
-    for (let i = 1; i < n; i++) ctx.lineTo(X0 + dx * i, mapY(arr[i]));
-    ctx.lineTo(X0 + dx * (n - 1), Y1);
-    ctx.lineTo(X0, Y1);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(37,99,235,.10)";
-    ctx.fill();
-
-    // line
-    ctx.beginPath();
-    ctx.moveTo(X0, mapY(arr[0]));
-    for (let i = 1; i < n; i++) ctx.lineTo(X0 + dx * i, mapY(arr[i]));
-    ctx.strokeStyle = "rgba(29,78,216,1)";
-    ctx.lineWidth = 3;
-    ctx.stroke();
-
-    // points
-    for (let i = 0; i < n; i++) {
-      ctx.beginPath();
-      ctx.arc(X0 + dx * i, mapY(arr[i]), 4, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(29,78,216,1)";
-      ctx.fill();
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-  }
-
-  function capInitials(s) {
-    const t = String(s || "").trim();
-    if (!t) return "FP";
-    const parts = t.split(/\s+/).filter(Boolean);
-    const a = (parts[0] || "F")[0] || "F";
-    const b = (parts[1] || "P")[0] || "P";
-    return (a + b).toUpperCase();
-  }
-
-  function planLabel(p) {
-    const x = String(p || "").toLowerCase();
-    if (x === "standard") return "STANDARD";
-    if (x === "pro") return "PRO";
-    if (x === "ultra") return "ULTRA";
-    return (x || "—").toUpperCase();
-  }
-
-  function setStatus(ok, msg) {
-    statusText.textContent = msg || (ok ? "Dashboard à jour — OK" : "Problème à vérifier");
-  }
-
-  async function loadMe() {
-    const r = await api("/api/me");
-    if (!r) return null;
-    const data = await r.json().catch(() => null);
-    if (!data) return null;
-
-    const displayName = data.companyName || data.name || data.email || "—";
-    helloTitle.textContent = `Bonjour, ${displayName}`;
-
-    avatar.textContent = capInitials(data.org?.name || displayName);
-
-    accPlan.textContent = planLabel(data.plan);
-    accOrg.textContent = data.org?.name || "—";
-    accRole.textContent = String(data.role || "—");
-    accTrial.textContent = data.trialEndsAt ? new Date(data.trialEndsAt).toLocaleDateString("fr-FR") : "—";
-
-    // PRO badge on Reports
-    const pro = ["pro", "ultra"].includes(String(data.plan || "").toLowerCase());
-    const pill = $("#reportsPill");
-    if (pill) pill.hidden = !pro;
-
-    return data;
-  }
-
-  async function loadOverview() {
-    rangeLabel.textContent = `LAST ${days} DAYS`;
-    rangeSmall.textContent = String(days);
-
-    const r = await api(`/api/overview?days=${encodeURIComponent(days)}`);
-    if (!r) return null;
-    const data = await r.json().catch(() => null);
-    if (!data) return null;
-
-    seoScore.textContent = String(data.seoScore ?? 0);
-    localVis.textContent = String(data.localVis ?? "+0%");
-
-    drawChart(Array.isArray(data.chart) ? data.chart : []);
-
-    return data;
-  }
-
-  function renderMonitors(list) {
-    monitorsBody.innerHTML = "";
-
-    const items = Array.isArray(list) ? list : [];
-    if (!items.length) {
-      const row = document.createElement("div");
-      row.className = "t-row";
-      row.innerHTML = `
-        <div class="url" style="opacity:.7">Aucun monitor</div>
-        <div><span class="badge unknown">Unknown</span></div>
-        <div class="right">—</div>
-        <div class="right">—</div>
-      `;
-      monitorsBody.appendChild(row);
-      return;
-    }
-
-    for (const m of items) {
-      const st = String(m.lastStatus || "unknown").toLowerCase();
-      const badgeClass = st === "up" ? "up" : st === "down" ? "down" : "unknown";
-      const label = st === "up" ? "Up" : st === "down" ? "Down" : "Unknown";
-
-      const row = document.createElement("div");
-      row.className = "t-row";
-      row.innerHTML = `
-        <div class="url" title="${m.url || ""}">${m.url || "-"}</div>
-        <div><span class="badge ${badgeClass}">${label}</span></div>
-        <div class="right">${m.intervalMinutes ? `${m.intervalMinutes} min` : "—"}</div>
-        <div class="right"><button class="btn btn-ghost" data-run="${m._id}">Run</button></div>
-      `;
-      monitorsBody.appendChild(row);
-    }
-
-    // attach run handlers
-    monitorsBody.querySelectorAll("[data-run]").forEach((b) => {
-      b.addEventListener("click", async () => {
-        const id = b.getAttribute("data-run");
-        b.disabled = true;
-        try {
-          const rr = await api(`/api/monitors/${id}/run`, { method: "POST" });
-          if (!rr) return;
-          await rr.json().catch(() => null);
-          await refreshMonitors();
-          setStatus(true, "Dashboard à jour — OK");
-        } catch {
-          setStatus(false, "Erreur monitor");
-        } finally {
-          b.disabled = false;
-        }
-      });
-    });
-  }
-
-  async function refreshMonitors() {
-    const r = await api("/api/monitors");
-    if (!r) return null;
-    const data = await r.json().catch(() => null);
-    renderMonitors(data?.monitors || []);
-    return data;
-  }
-
-  async function refreshAll() {
-    setStatus(true, "Mise à jour…");
-    try {
-      await loadMe();
-      await loadOverview();
-      await refreshMonitors();
-      setStatus(true, "Dashboard à jour — OK");
-    } catch {
-      setStatus(false, "Problème à vérifier");
-    }
-  }
-
-  // Buttons
-  btnRefresh?.addEventListener("click", refreshAll);
-
-  btnExportAudits?.addEventListener("click", () => {
-    window.location.href = "/api/export/audits.csv";
-  });
-  btnExportMonitors?.addEventListener("click", () => {
-    window.location.href = "/api/export/monitors.csv";
-  });
-
-  btnPortal?.addEventListener("click", async () => {
-    const r = await api("/api/stripe/portal", { method: "POST", body: "{}" });
-    if (!r) return;
-    const data = await r.json().catch(() => null);
-    if (data?.url) window.location.href = data.url;
-    else alert("Impossible d’ouvrir le portail.");
-  });
-
-  btnLogout?.addEventListener("click", () => {
-    localStorage.removeItem("token");
-    window.location.href = "/login.html";
-  });
-
-  btnSeePlans?.addEventListener("click", () => {
-    window.location.href = "/pricing.html";
-  });
-
-  btnRunAudit?.addEventListener("click", async () => {
-    const url = prompt("URL du site (https://...)");
-    if (!url) return;
-    const r = await api("/api/audits/run", { method: "POST", body: JSON.stringify({ url }) });
-    if (!r) return;
-    const data = await r.json().catch(() => null);
-    if (data?.ok) {
-      alert(`Audit lancé ✅ Score: ${data.score ?? "?"}`);
-      refreshAll();
-    } else {
-      alert(data?.error || "Erreur audit");
-    }
-  });
-
-  btnAddMonitor?.addEventListener("click", async () => {
-    const url = prompt("URL à monitor (https://...)");
-    if (!url) return;
-    const interval = Number(prompt("Interval minutes (min 5)", "60"));
-    const payload = { url, intervalMinutes: Number.isFinite(interval) ? interval : 60 };
-    const r = await api("/api/monitors", { method: "POST", body: JSON.stringify(payload) });
-    if (!r) return;
-    const data = await r.json().catch(() => null);
-    if (data?.ok) {
-      refreshMonitors();
-    } else {
-      alert(data?.error || "Erreur monitor");
-    }
-  });
-
-  // Plan buttons => Stripe checkout
-  document.querySelectorAll("[data-plan]").forEach((b) => {
-    b.addEventListener("click", async () => {
-      const plan = b.getAttribute("data-plan");
-      const r = await api("/api/stripe/checkout", { method: "POST", body: JSON.stringify({ plan }) });
-      if (!r) return;
-      const data = await r.json().catch(() => null);
-      if (data?.url) window.location.href = data.url;
-      else alert(data?.error || "Erreur checkout");
+function initBillingTabs() {
+  document.querySelectorAll('.billing-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.billing-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
     });
   });
+}
 
-  // Init
-  refreshAll();
-})();
+// ── DATE PICKER ───────────────────────────────────────────────────────────────
+
+function initDatePicker() {
+  const ranges = ['Last 7 days', 'Last 30 days', 'Last 90 days', 'Last 12 months'];
+  let idx = 1;
+  const btn = document.getElementById('datePicker');
+  const label = document.getElementById('dateLabel');
+  if (btn && label) {
+    btn.addEventListener('click', () => {
+      idx = (idx + 1) % ranges.length;
+      label.textContent = ranges[idx];
+    });
+  }
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderActions();
+  renderIncidents();
+  renderMonitors();
+  renderBilling();
+  initChart();
+  initNav();
+  initBillingTabs();
+  initDatePicker();
+});
+```
+
+---
+
+**Structure des fichiers dans ton dossier :**
+```
+mon-projet/
+├── dashboard.html   ← coller le bloc 3
+├── dashboard.css    ← coller le bloc 2
+├── dashboard.js     ← coller le bloc 4
+└── style.css        ← coller le bloc 1
