@@ -2,356 +2,221 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>FlowPoint — Dashboard</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-  <!-- ✅ Ton design cible -->
-  <link rel="stylesheet" href="/style.css" />
-
-  <!-- ✅ Compat JS (ton dashboard.js toggle is-open / is-active) -->
-  <style>
-    /* sidebar/overlay : ton JS met .is-open, ton CSS met .isOpen */
-    .sidebar.is-open{ left:0 !important; }
-    .overlay.is-open{ display:block !important; }
-
-    /* nav : ton JS met .is-active, ton CSS met .isActive */
-    .navItem.is-active{
-      background: rgba(47,107,255,.10);
-      border-color: rgba(47,107,255,.22);
-      color: var(--primary2);
-    }
-    .navItem.is-active .navDot{ background: var(--primary); }
-
-    /* sections : ton JS utilise .section + .is-active */
-    .section{display:none}
-    .section.is-active{display:block}
-
-    /* table cell ellipsis */
-    .mono-ellipsis{
-      max-width: 360px;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-      display:block;
-    }
-  </style>
+  <link rel="stylesheet" href="/dashboard.css" />
 </head>
-
 <body>
-  <div class="overlay" id="overlay"></div>
-
   <div class="app">
-    <!-- Sidebar -->
+    <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <div class="brandIcon" aria-label="Flowpoint logo">
-          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-            <defs>
-              <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#2F6BFF"/>
-              </linearGradient>
-            </defs>
-            <path d="M13 2 4 14h7l-1 8 10-14h-7l0-6Z"
-              fill="none" stroke="url(#g)" stroke-width="2.2"
-              stroke-linejoin="round" stroke-linecap="round"/>
-          </svg>
+        <div class="brand__logo" aria-hidden="true">
+          <span class="bolt">⚡</span>
         </div>
-        <div>
-          <div class="brandName">Flowpoint</div>
-          <div class="brandSub">Client Dashboard</div>
+        <div class="brand__text">
+          <div class="brand__name" id="brandName">Flowpoint</div>
+          <div class="brand__sub">Client Dashboard</div>
         </div>
       </div>
 
-      <nav class="nav" id="nav">
-        <!-- ✅ On garde nav__item pour ton JS -->
-        <button class="navItem nav__item is-active" data-section="overview">
-          <span class="navDot"></span>
-          <span>Overview</span>
-        </button>
-
-        <button class="navItem nav__item" data-section="audits">
-          <span class="navDot"></span>
-          <span>Audits</span>
-        </button>
-
-        <button class="navItem nav__item" data-section="monitors">
-          <span class="navDot"></span>
-          <span>Monitors</span>
-        </button>
-
-        <button class="navItem nav__item" data-section="reports">
-          <span class="navDot"></span>
-          <span>Reports</span>
-          <span class="pill" id="planPill">—</span>
-        </button>
-
-        <button class="navItem nav__item" data-section="billing">
-          <span class="navDot"></span>
-          <span>Billing</span>
-        </button>
-
-        <button class="navItem nav__item" data-section="settings">
-          <span class="navDot"></span>
-          <span>Settings</span>
-        </button>
+      <nav class="nav">
+        <a class="nav__item active" href="#overview" data-view="overview">
+          <span class="nav__icon">📊</span><span>Overview</span>
+        </a>
+        <a class="nav__item" href="#audits" data-view="audits">
+          <span class="nav__icon">🧾</span><span>Audits</span>
+        </a>
+        <a class="nav__item" href="#monitors" data-view="monitors">
+          <span class="nav__icon">🟢</span><span>Monitors</span>
+        </a>
+        <a class="nav__item" href="#reports" data-view="reports">
+          <span class="nav__icon">📤</span><span>Reports</span>
+          <span class="pill">PRO</span>
+        </a>
+        <a class="nav__item" href="#billing" data-view="billing">
+          <span class="nav__icon">💳</span><span>Billing</span>
+        </a>
+        <a class="nav__item" href="#settings" data-view="settings">
+          <span class="nav__icon">⚙️</span><span>Settings</span>
+        </a>
       </nav>
 
       <div class="accountCard">
-        <div class="accountTitle">ACCOUNT</div>
-        <div class="kv">
-          <div class="k">Plan</div><div class="v" id="accPlan">—</div>
-          <div class="k">Org</div><div class="v" id="accOrg">—</div>
-          <div class="k">Role</div><div class="v" id="accRole">—</div>
-          <div class="k">Trial</div><div class="v" id="accTrial">—</div>
+        <div class="accountCard__title">ACCOUNT</div>
+        <div class="accountCard__rows">
+          <div class="row"><span class="k">Plan</span><span class="v" id="accPlan">—</span></div>
+          <div class="row"><span class="k">Org</span><span class="v" id="accOrg">—</span></div>
+          <div class="row"><span class="k">Role</span><span class="v" id="accRole">—</span></div>
+          <div class="row"><span class="k">Trial</span><span class="v" id="accTrial">—</span></div>
         </div>
 
-        <div class="accountActions">
-          <button class="btn btnGhost wFull" id="btnPortal">Billing / Portal</button>
-          <button class="btn btnDanger wFull" id="btnLogout">Logout</button>
+        <div class="accountCard__actions">
+          <button class="btn btn--ghost" id="btnPortal">Billing / Portal</button>
+          <button class="btn btn--ghost" id="btnLogout">Logout</button>
         </div>
-
-        <div class="tip" id="hint">Tip : Si un bouton ne répond pas, vérifie ton token et /api/me.</div>
       </div>
     </aside>
 
-    <!-- Main -->
+    <!-- OVERLAY (mobile drawer) -->
+    <div class="overlay" id="overlay"></div>
+
+    <!-- MAIN -->
     <main class="main">
-      <!-- Topbar (rendu cible) -->
+      <!-- TOPBAR -->
       <header class="topbar">
-        <div class="topLeft">
-          <button class="btn btnGhost btnSmall mobileOnly" id="btnMenu">≡ Menu</button>
-          <div>
-            <div class="helloTitle" id="helloTitle">Bonjour</div>
-            <div class="helloSub" id="helloSub">SEO · Monitoring · Reports · Billing</div>
+        <div class="topbar__left">
+          <button class="btn btn--ghost btn--icon burger" id="btnBurger" aria-label="Menu">☰</button>
+          <div class="hello">
+            <div class="hello__title" id="helloTitle">Bonjour, —</div>
+            <div class="hello__sub" id="helloSub">SEO · Monitoring · Reports · Billing</div>
           </div>
         </div>
 
-        <div class="topActions">
-          <!-- Period -->
-          <div class="selectWrap" id="periodBtn" title="Change period">
-            <div class="select">
-              <span id="periodLabel">Last 30 days</span>
-            </div>
-            <span class="selectIcon">▾</span>
+        <div class="topbar__right">
+          <div class="seg">
+            <button class="seg__btn active" data-days="30">Last 30 days</button>
+            <button class="seg__btn" data-days="7">Last 7 days</button>
           </div>
 
-          <button class="btn btnPrimary" id="btnRefresh">Refresh</button>
-          <button class="btn btnGhost" id="btnExportAudits">Export Audits CSV</button>
-          <button class="btn btnGhost" id="btnExportMonitors">Export Monitors CSV</button>
+          <button class="btn btn--primary" id="btnRefresh">Refresh</button>
 
-          <div class="userPill" id="healthChip">
-            <span class="dotOnline"></span>
-            <span id="healthText">Dashboard à jour — OK</span>
+          <button class="btn btn--ghost" id="btnExportAudits">Export Audits CSV</button>
+          <button class="btn btn--ghost" id="btnExportMonitors">Export Monitors CSV</button>
+
+          <div class="statusChip" id="statusChip">
+            <span class="dot"></span>
+            <span id="statusText">Dashboard à jour — OK</span>
           </div>
 
-          <button class="iconBtn" id="avatar" title="Account">
-            <span class="avatar">FP</span>
-          </button>
+          <div class="avatar" id="avatar">FP</div>
         </div>
       </header>
 
-      <div class="content">
-        <div class="grid">
-          <!-- LEFT -->
-          <section class="colLeft">
-            <!-- OVERVIEW -->
-            <div class="section is-active" id="section-overview">
-              <div class="card">
-                <div class="sectionHead">
-                  <div class="sectionTitle">OVERVIEW</div>
-                  <div class="cardMeta" id="rangeLabel">LAST 30 DAYS</div>
-                </div>
+      <!-- GRID -->
+      <section class="grid">
+        <!-- LEFT COLUMN -->
+        <section class="col col--left">
+          <div class="card card--kpis">
+            <div class="card__titleRow">
+              <div class="card__title">OVERVIEW</div>
+              <div class="card__meta" id="rangeLabel">LAST 30 DAYS</div>
+            </div>
 
-                <div class="kpiGrid">
-                  <div class="card kpi" style="box-shadow:none;border:1px solid rgba(15,23,42,.06);">
-                    <div class="kpiLabel">SEO Score</div>
-                    <div class="kpiValue"><span id="seoScore">—</span><span style="font-size:14px;color:var(--muted);font-weight:700"> /100</span></div>
-                    <div class="kpiSub">Last 30 days</div>
-                  </div>
+            <div class="kpis">
+              <div class="kpi">
+                <div class="kpi__label">SEO Score</div>
+                <div class="kpi__value"><span id="seoScore">0</span><span class="muted">/100</span></div>
+                <div class="kpi__sub" id="seoScoreSub">Last 30 days</div>
+              </div>
 
-                  <div class="card kpi" style="box-shadow:none;border:1px solid rgba(15,23,42,.06);">
-                    <div class="kpiLabel">Local Visibility</div>
-                    <div class="kpiValue kpiGreen" id="localVis">—</div>
-                    <div class="kpiSub">Map pack + reviews</div>
-                  </div>
-                </div>
-
-                <div class="actionsRow" style="margin-top:10px;">
-                  <div class="actionText">SEO Performance</div>
-                  <div class="chips">
-                    <button class="btn btnGhost btnSmall" id="btnLast3">Last 3 days</button>
-                  </div>
-                </div>
-
-                <div class="chart">
-                  <svg viewBox="0 0 600 190" preserveAspectRatio="none" aria-label="SEO chart">
-                    <line class="chartGrid" x1="0" y1="45" x2="600" y2="45"></line>
-                    <line class="chartGrid" x1="0" y1="95" x2="600" y2="95"></line>
-                    <line class="chartGrid" x1="0" y1="145" x2="600" y2="145"></line>
-                    <path class="chartArea" id="areaPath" d=""></path>
-                    <path class="chartLine" id="linePath" d=""></path>
-                  </svg>
-                </div>
-
-                <div class="actionsRow" style="margin-top:12px;">
-                  <div class="actionText">Recommended Actions</div>
-                  <button class="btn btnGhost btnSmall" id="btnRunAudit">Run audit</button>
-                </div>
-
-                <div class="note muted">
-                  Lance un audit SEO pour obtenir des recommandations.
-                </div>
+              <div class="kpi">
+                <div class="kpi__label">Local Visibility</div>
+                <div class="kpi__value green"><span id="localVis">+0%</span></div>
+                <div class="kpi__sub">Map pack + reviews</div>
               </div>
             </div>
 
-            <!-- AUDITS -->
-            <div class="section" id="section-audits">
-              <div class="card">
-                <div class="cardHead">
-                  <div class="cardTitle">Audits</div>
-                  <button class="btn btnGhost btnSmall" id="btnNewAudit">New audit</button>
+            <div class="chartHead">
+              <div class="chartHead__title">SEO Performance</div>
+              <div class="chartHead__badge" id="chartBadge">Last 3 days</div>
+            </div>
+
+            <div class="chartBox">
+              <canvas id="chart" height="120"></canvas>
+            </div>
+
+            <div class="card__foot">
+              <div class="muted" id="recHint">Recommended Actions</div>
+              <button class="btn btn--ghost" id="btnRunAudit">Run audit</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- RIGHT COLUMN -->
+        <section class="col col--right">
+          <!-- MONITORS -->
+          <div class="card">
+            <div class="card__titleRow">
+              <div class="card__title">Monitors</div>
+              <button class="btn btn--primary btn--small" id="btnAddMonitor">Add Monitor</button>
+            </div>
+
+            <div class="tableWrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>URL</th>
+                    <th>Status</th>
+                    <th>Interval</th>
+                  </tr>
+                </thead>
+                <tbody id="monitorsTbody">
+                  <tr><td colspan="3" class="muted">Chargement…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- PLANS -->
+          <div class="card">
+            <div class="card__titleRow">
+              <div class="card__title">Plans</div>
+              <button class="btn btn--ghost btn--small" id="btnSeePlans">See plans</button>
+            </div>
+
+            <div class="plans">
+              <div class="plan" data-plan="standard">
+                <div class="plan__head">
+                  <div class="plan__name">Standard</div>
+                  <div class="plan__price"><span>29€</span><small>/mo</small></div>
                 </div>
-                <div class="empty">Section Audits (branche tes données ici).</div>
+                <ul class="plan__list">
+                  <li>SEO audits: <b>30</b></li>
+                  <li>Monitors: <b>3</b></li>
+                  <li>PDF exports</li>
+                </ul>
+                <button class="btn btn--ghost plan__btn" data-action="choose-plan" data-plan="standard">Choisir Standard</button>
               </div>
-            </div>
 
-            <!-- MONITORS (left placeholder) -->
-            <div class="section" id="section-monitors">
-              <div class="card">
-                <div class="cardHead">
-                  <div class="cardTitle">Monitors</div>
+              <div class="plan plan--featured" data-plan="pro">
+                <div class="plan__head">
+                  <div class="plan__name">Pro</div>
+                  <div class="plan__price"><span>79€</span><small>/mo</small></div>
                 </div>
-                <div class="empty">Gère tes monitors dans le tableau à droite.</div>
-              </div>
-            </div>
-
-            <div class="section" id="section-reports">
-              <div class="card">
-                <div class="cardHead"><div class="cardTitle">Reports</div></div>
-                <div class="empty">Section Reports.</div>
-              </div>
-            </div>
-
-            <div class="section" id="section-billing">
-              <div class="card">
-                <div class="cardHead"><div class="cardTitle">Billing</div></div>
-                <div class="empty">Section Billing.</div>
-              </div>
-            </div>
-
-            <div class="section" id="section-settings">
-              <div class="card">
-                <div class="cardHead"><div class="cardTitle">Settings</div></div>
-                <div class="empty">Section Settings.</div>
-              </div>
-            </div>
-          </section>
-
-          <!-- RIGHT -->
-          <aside class="colRight">
-            <!-- Monitors table -->
-            <div class="card">
-              <div class="cardHead">
-                <div class="cardTitle">Monitors</div>
-                <button class="btn btnPrimary btnSmall" id="btnAddMonitor">Add Monitor</button>
+                <ul class="plan__list">
+                  <li>SEO audits: <b>300</b></li>
+                  <li>Monitors: <b>50</b></li>
+                  <li>Email alerts</li>
+                  <li>PDF & CSV</li>
+                </ul>
+                <button class="btn btn--primary plan__btn" data-action="choose-plan" data-plan="pro">Passer en Pro</button>
               </div>
 
-              <div class="tableWrap">
-                <table class="table compact" aria-label="Monitors table">
-                  <thead>
-                    <tr>
-                      <th style="width:54px;">&nbsp;</th>
-                      <th>URL</th>
-                      <th>Status</th>
-                      <th>Interval</th>
-                      <th>Last Checked</th>
-                      <th>Response Time</th>
-                      <th style="text-align:right;">&nbsp;</th>
-                    </tr>
-                  </thead>
-                  <tbody id="monitorsTbody"></tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Plans -->
-            <div class="card" style="margin-top:14px;">
-              <div class="cardHead">
-                <div class="cardTitle">Plans</div>
-                <button class="btn btnGhost btnSmall" onclick="location.href='/pricing.html'">See plans</button>
-              </div>
-
-              <!-- ✅ On garde plansGrid id pour ton JS backend si besoin -->
-              <div class="plans" id="plansGrid">
-                <div class="plan" id="plan-standard">
-                  <div class="planTop">
-                    <div class="planName">Standard</div>
-                    <div class="planPrice">29€ <span>/mo</span></div>
-                  </div>
-                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
-                  <ul class="planList">
-                    <li>SEO audits: 30</li>
-                    <li>Monitors: 3</li>
-                    <li>PDF exports</li>
-                  </ul>
-                  <button class="btn btnGhost wFull" data-checkout="standard">Choisir Standard</button>
+              <div class="plan" data-plan="ultra">
+                <div class="plan__head">
+                  <div class="plan__name">Ultra</div>
+                  <div class="plan__price"><span>149€</span><small>/mo</small></div>
                 </div>
-
-                <div class="plan planActive" id="plan-pro">
-                  <div class="planTop">
-                    <div class="planName">Pro</div>
-                    <div class="planPrice">79€ <span>/mo</span></div>
-                  </div>
-                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
-                  <ul class="planList">
-                    <li>SEO audits: 300</li>
-                    <li>Monitors: 50</li>
-                    <li>Email alerts</li>
-                    <li>PDF & CSV</li>
-                  </ul>
-                  <button class="btn btnDark wFull" data-checkout="pro">Passer en Pro</button>
-                </div>
-
-                <div class="plan" id="plan-ultra">
-                  <div class="planTop">
-                    <div class="planName">Ultra</div>
-                    <div class="planPrice">149€ <span>/mo</span></div>
-                  </div>
-                  <div class="planBadge" style="display:none" data-badge>Current plan</div>
-                  <ul class="planList">
-                    <li>SEO audits: 2000</li>
-                    <li>Monitors: 300</li>
-                    <li>Team + Reports</li>
-                  </ul>
-                  <button class="btn btnGhost wFull" data-checkout="ultra">Passer en Ultra</button>
-                </div>
+                <ul class="plan__list">
+                  <li>SEO audits: <b>2000</b></li>
+                  <li>Monitors: <b>300</b></li>
+                  <li>Team + Reports</li>
+                </ul>
+                <button class="btn btn--ghost plan__btn" data-action="choose-plan" data-plan="ultra">Passer en Ultra</button>
               </div>
-
-              <div class="tip">Les boutons ouvrent Stripe checkout/portal (selon ton backend).</div>
             </div>
-          </aside>
-        </div>
-      </div>
+
+            <div class="muted small" style="margin-top:10px">
+              Les boutons ouvrent Stripe checkout/portal (selon ton backend).
+            </div>
+          </div>
+        </section>
+      </section>
     </main>
   </div>
 
-  <!-- Toast (inchangé pour ton JS) -->
-  <div class="toast" id="toast" style="display:none;"></div>
-  <div class="toast" id="toast" style="display:none;"></div>
-
-  <!-- ✅ On garde la structure toast attendue par ton JS -->
-  <div class="toast" id="toast">
-    <div class="trow">
-      <strong id="toastTitle">Info</strong>
-      <button class="closeX" id="toastClose" aria-label="Fermer">×</button>
-    </div>
-    <div id="toastMsg" style="margin-top:6px;"></div>
-  </div>
-
-  <script src="/dashboard.js?v=2"></script>
+  <script src="/dashboard.js"></script>
 </body>
 </html>
