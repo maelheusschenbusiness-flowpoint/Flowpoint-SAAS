@@ -1,7 +1,7 @@
 console.log("✅ LOADED NEW VERSION (v2) -", new Date().toISOString());
 console.log("ENV MONGO_URI exists?", !!process.env.MONGO_URI);
 console.log("ENV MONGODB_URI exists?", !!process.env.MONGODB_URI);// monthly-monitoring-cron.js
-// Cron "Monthly Monitoring" - Flowpoint AI (compatible MONGO_URI ou MONGODB_URI)
+// Cron "Monthly Monitoring" - Flowpoint (compatible MONGO_URI ou MONGODB_URI)
 
 const mongoose = require("mongoose");
 
