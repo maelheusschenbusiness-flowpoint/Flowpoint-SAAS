@@ -61,7 +61,7 @@ async function buildPdfForAudits(audits) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.fontSize(20).text("FlowPoint AI — Rapport SEO quotidien");
+    doc.fontSize(20).text("FlowPoint — Rapport SEO quotidien");
     doc.moveDown();
 
     for (const a of audits) {
