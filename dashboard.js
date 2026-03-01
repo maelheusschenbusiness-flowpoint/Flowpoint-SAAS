@@ -1,15 +1,34 @@
-(function () {
-  const $ = (id) => document.getElementById(id);
+(() => {
+  const $ = (q) => document.querySelector(q);
 
   const token = localStorage.getItem("token") || "";
-  const headers = token ? { Authorization: "Bearer " + token } : {};
+  if (!token) {
+    window.location.href = "/login.html";
+    return;
+  }
 
-  let days = 30;
+  const api = async (path, opts = {}) => {
+    const r = await fetch(path, {
+      ...opts,
+      headers: {
+        ...(opts.headers || {}),
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
 
-  // --- Mobile drawer
-  const sidebar = $("sidebar");
-  const overlay = $("overlay");
-  const btnMenu = $("btnMenu");
+    if (r.status === 401) {
+      localStorage.removeItem("token");
+      window.location.href = "/login.html";
+      return null;
+    }
+    return r;
+  };
+
+  // Sidebar mobile
+  const sidebar = $("#sidebar");
+  const overlay = $("#overlay");
+  const btnBurger = $("#btnBurger");
 
   function openSidebar() {
     sidebar.classList.add("open");
@@ -19,348 +38,325 @@
     sidebar.classList.remove("open");
     overlay.hidden = true;
   }
-  btnMenu?.addEventListener("click", () => {
+
+  btnBurger?.addEventListener("click", () => {
     if (sidebar.classList.contains("open")) closeSidebar();
     else openSidebar();
   });
   overlay?.addEventListener("click", closeSidebar);
 
-  // --- Range dropdown
-  const rangeBtn = $("rangeBtn");
-  const rangeMenu = $("rangeMenu");
-  function setRangeLabel() {
-    $("rangeLabel").textContent = `Last ${days} days`;
-    $("rangeTitle").textContent = `LAST ${days} DAYS`;
-    $("seoHint").textContent = `Last ${days} days`;
-  }
+  // UI refs
+  const helloTitle = $("#helloTitle");
+  const avatar = $("#avatar");
+  const statusText = $("#statusText");
 
-  rangeBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    rangeMenu.hidden = !rangeMenu.hidden;
+  const accPlan = $("#accPlan");
+  const accOrg = $("#accOrg");
+  const accRole = $("#accRole");
+  const accTrial = $("#accTrial");
+
+  const seoScore = $("#seoScore");
+  const localVis = $("#localVis");
+  const rangeLabel = $("#rangeLabel");
+  const rangeSmall = $("#rangeSmall");
+
+  const monitorsBody = $("#monitorsBody");
+
+  const btnRefresh = $("#btnRefresh");
+  const btnExportAudits = $("#btnExportAudits");
+  const btnExportMonitors = $("#btnExportMonitors");
+  const btnPortal = $("#btnPortal");
+  const btnLogout = $("#btnLogout");
+  const btnSeePlans = $("#btnSeePlans");
+  const btnRunAudit = $("#btnRunAudit");
+  const btnAddMonitor = $("#btnAddMonitor");
+
+  // Range selection
+  let days = 30;
+  document.querySelectorAll(".segbtn").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".segbtn").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      days = Number(b.dataset.days || 30);
+      refreshAll();
+    });
   });
 
-  document.addEventListener("click", () => { if (rangeMenu) rangeMenu.hidden = true; });
+  // Chart
+  const canvas = $("#chart");
+  const ctx = canvas.getContext("2d");
 
-  rangeMenu?.addEventListener("click", async (e) => {
-    const b = e.target.closest("button[data-days]");
-    if (!b) return;
-    days = Number(b.dataset.days || 30);
-    setRangeLabel();
-    rangeMenu.hidden = true;
-    await refreshAll();
-  });
-
-  // --- API helpers
-  async function apiGet(path) {
-    const r = await fetch(path, { headers });
-    if (r.status === 401) {
-      localStorage.removeItem("token");
-      location.href = "/login.html";
-      return null;
-    }
-    const ct = r.headers.get("content-type") || "";
-    if (ct.includes("application/json")) return r.json();
-    return r.text();
-  }
-
-  function setStatus(ok, msg) {
-    const pill = $("statusPill");
-    const text = $("statusText");
-    if (!pill || !text) return;
-    text.textContent = msg || (ok ? "Dashboard à jour — OK" : "Erreur de chargement");
-    const dot = pill.querySelector(".dot");
-    if (dot) dot.style.background = ok ? "var(--green)" : "#ef4444";
-  }
-
-  // --- Chart (simple line)
-  function drawChart(values) {
-    const canvas = $("chart");
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+  function drawChart(points) {
+    // points: array numbers
     const w = canvas.width;
     const h = canvas.height;
 
     ctx.clearRect(0, 0, w, h);
 
-    const padding = 18;
-    const innerW = w - padding * 2;
-    const innerH = h - padding * 2;
+    // padding
+    const pad = 22;
+    const X0 = pad;
+    const Y0 = pad;
+    const X1 = w - pad;
+    const Y1 = h - pad;
 
-    const data = Array.isArray(values) && values.length ? values : [0, 0, 0, 0, 0];
-    const max = Math.max(...data, 1);
-    const min = Math.min(...data, 0);
-
-    const xStep = innerW / Math.max(1, data.length - 1);
-
-    function yScale(v) {
-      const t = (v - min) / (max - min || 1);
-      return padding + innerH - t * innerH;
-    }
-
-    // grid
-    ctx.globalAlpha = 0.35;
+    // background grid
+    ctx.globalAlpha = 1;
     ctx.lineWidth = 1;
-    ctx.strokeStyle = "#94a3b8";
+    ctx.strokeStyle = "rgba(15,23,42,.10)";
     for (let i = 0; i <= 4; i++) {
-      const y = padding + (innerH * i) / 4;
+      const y = Y0 + ((Y1 - Y0) * i) / 4;
       ctx.beginPath();
-      ctx.moveTo(padding, y);
-      ctx.lineTo(w - padding, y);
+      ctx.moveTo(X0, y);
+      ctx.lineTo(X1, y);
       ctx.stroke();
     }
-    ctx.globalAlpha = 1;
+
+    const arr = Array.isArray(points) && points.length ? points : [0, 0, 0];
+    const min = 0;
+    const max = 100;
+
+    const n = arr.length;
+    const dx = n === 1 ? 0 : (X1 - X0) / (n - 1);
+
+    const mapY = (v) => {
+      const t = (v - min) / (max - min);
+      return Y1 - t * (Y1 - Y0);
+    };
+
+    // area
+    ctx.beginPath();
+    ctx.moveTo(X0, mapY(arr[0]));
+    for (let i = 1; i < n; i++) ctx.lineTo(X0 + dx * i, mapY(arr[i]));
+    ctx.lineTo(X0 + dx * (n - 1), Y1);
+    ctx.lineTo(X0, Y1);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(37,99,235,.10)";
+    ctx.fill();
 
     // line
-    ctx.strokeStyle = "#1d4ed8";
-    ctx.lineWidth = 4;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
     ctx.beginPath();
-    data.forEach((v, i) => {
-      const x = padding + i * xStep;
-      const y = yScale(v);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
+    ctx.moveTo(X0, mapY(arr[0]));
+    for (let i = 1; i < n; i++) ctx.lineTo(X0 + dx * i, mapY(arr[i]));
+    ctx.strokeStyle = "rgba(29,78,216,1)";
+    ctx.lineWidth = 3;
     ctx.stroke();
 
-    // fill
-    const grad = ctx.createLinearGradient(0, padding, 0, h - padding);
-    grad.addColorStop(0, "rgba(29,78,216,.22)");
-    grad.addColorStop(1, "rgba(29,78,216,0)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    data.forEach((v, i) => {
-      const x = padding + i * xStep;
-      const y = yScale(v);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.lineTo(w - padding, h - padding);
-    ctx.lineTo(padding, h - padding);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // --- Render monitors
-  function renderMonitors(monitors) {
-    const wrap = $("monitorsList");
-    if (!wrap) return;
-    wrap.innerHTML = "";
-
-    const list = Array.isArray(monitors) ? monitors.slice(0, 4) : [];
-
-    if (!list.length) {
-      wrap.innerHTML = `<div class="trow"><div class="url">Aucun monitor</div><div class="status unk">—</div><div>—</div><div></div></div>`;
-      return;
+    // points
+    for (let i = 0; i < n; i++) {
+      ctx.beginPath();
+      ctx.arc(X0 + dx * i, mapY(arr[i]), 4, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(29,78,216,1)";
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
-
-    for (const m of list) {
-      const st = (m.lastStatus || "unknown").toLowerCase();
-      const cls = st === "up" ? "up" : st === "down" ? "down" : "unk";
-      const interval = (m.intervalMinutes ?? 60) + " min";
-
-      const row = document.createElement("div");
-      row.className = "trow";
-      row.innerHTML = `
-        <div class="url" title="${m.url || ""}">${m.url || ""}</div>
-        <div class="status ${cls}">${st === "unknown" ? "Unknown" : st.toUpperCase()}</div>
-        <div>${interval}</div>
-        <button class="runBtn" data-id="${m._id}">Run</button>
-      `;
-      wrap.appendChild(row);
-    }
-
-    wrap.addEventListener("click", async (e) => {
-      const btn = e.target.closest("button.runBtn");
-      if (!btn) return;
-      const id = btn.dataset.id;
-      if (!id) return;
-      btn.disabled = true;
-      btn.textContent = "…";
-      try {
-        const r = await fetch(`/api/monitors/${id}/run`, { method: "POST", headers });
-        const data = await r.json().catch(() => null);
-        await refreshMonitors();
-        setStatus(true, "Dashboard à jour — OK");
-      } catch {
-        setStatus(false, "Erreur monitor");
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Run";
-      }
-    }, { once: true });
   }
 
-  // --- Plans
-  function renderPlans(me) {
-    const grid = $("plansGrid");
-    if (!grid) return;
-
-    const current = (me?.plan || "standard").toLowerCase();
-
-    const plans = [
-      { key: "standard", name: "Standard", price: "29€", items: ["SEO audits: 30", "Monitors: 3", "PDF exports"] },
-      { key: "pro", name: "Pro", price: "79€", items: ["SEO audits: 300", "Monitors: 50", "Email alerts", "PDF & CSV"] },
-      { key: "ultra", name: "Ultra", price: "149€", items: ["SEO audits: 2000", "Monitors: 300", "Team + Reports", "White-label"] },
-    ];
-
-    grid.innerHTML = plans.map(p => {
-      const highlight = p.key === current ? "highlight" : "";
-      const btnText = p.key === current ? "Actuel" : (p.key === "standard" ? "Choisir Standard" : `Passer en ${p.name}`);
-      return `
-        <div class="plan ${highlight}">
-          <div class="planTop">
-            <div class="planName">${p.name}</div>
-            <div class="planPrice">${p.price}<span>/mo</span></div>
-          </div>
-          <ul class="planList">
-            ${p.items.map(i => `<li>${i}</li>`).join("")}
-          </ul>
-          <button class="planBtn" data-plan="${p.key}" ${p.key === current ? "disabled" : ""}>${btnText}</button>
-        </div>
-      `;
-    }).join("");
-
-    grid.addEventListener("click", async (e) => {
-      const b = e.target.closest("button.planBtn");
-      if (!b) return;
-      const plan = b.dataset.plan;
-      if (!plan) return;
-
-      b.disabled = true;
-      b.textContent = "Redirect…";
-      try {
-        // checkout
-        const r = await fetch("/api/stripe/checkout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...headers },
-          body: JSON.stringify({ plan })
-        });
-        const data = await r.json();
-        if (data?.url) location.href = data.url;
-        else setStatus(false, data?.error || "Stripe checkout error");
-      } catch {
-        setStatus(false, "Stripe checkout error");
-      } finally {
-        b.disabled = false;
-      }
-    }, { once: true });
+  function capInitials(s) {
+    const t = String(s || "").trim();
+    if (!t) return "FP";
+    const parts = t.split(/\s+/).filter(Boolean);
+    const a = (parts[0] || "F")[0] || "F";
+    const b = (parts[1] || "P")[0] || "P";
+    return (a + b).toUpperCase();
   }
 
-  // --- Loaders
-  async function refreshMe() {
-    const me = await apiGet("/api/me");
-    if (!me) return null;
-
-    $("helloTitle").textContent = `Bonjour, ${me.org?.name || me.companyName || me.email || ""}`;
-    $("accPlan").textContent = (me.plan || "—").toUpperCase();
-    $("accOrg").textContent = me.org?.name || "—";
-    $("accRole").textContent = me.role || "—";
-    $("accTrial").textContent = me.hasTrial ? "ON" : "—";
-    $("avatar").textContent = (me.org?.name || "FP").slice(0,2).toUpperCase();
-
-    renderPlans(me);
-    return me;
+  function planLabel(p) {
+    const x = String(p || "").toLowerCase();
+    if (x === "standard") return "STANDARD";
+    if (x === "pro") return "PRO";
+    if (x === "ultra") return "ULTRA";
+    return (x || "—").toUpperCase();
   }
 
-  async function refreshOverview() {
-    const data = await apiGet(`/api/overview?days=${days}`);
+  function setStatus(ok, msg) {
+    statusText.textContent = msg || (ok ? "Dashboard à jour — OK" : "Problème à vérifier");
+  }
+
+  async function loadMe() {
+    const r = await api("/api/me");
+    if (!r) return null;
+    const data = await r.json().catch(() => null);
     if (!data) return null;
 
-    $("seoScore").textContent = String(data.seoScore ?? 0);
-    $("localVis").textContent = String(data.localVis ?? "+0%");
-    drawChart(data.chart || []);
+    const displayName = data.companyName || data.name || data.email || "—";
+    helloTitle.textContent = `Bonjour, ${displayName}`;
+
+    avatar.textContent = capInitials(data.org?.name || displayName);
+
+    accPlan.textContent = planLabel(data.plan);
+    accOrg.textContent = data.org?.name || "—";
+    accRole.textContent = String(data.role || "—");
+    accTrial.textContent = data.trialEndsAt ? new Date(data.trialEndsAt).toLocaleDateString("fr-FR") : "—";
+
+    // PRO badge on Reports
+    const pro = ["pro", "ultra"].includes(String(data.plan || "").toLowerCase());
+    const pill = $("#reportsPill");
+    if (pill) pill.hidden = !pro;
+
     return data;
   }
 
-  async function refreshMonitors() {
-    const data = await apiGet("/api/monitors");
+  async function loadOverview() {
+    rangeLabel.textContent = `LAST ${days} DAYS`;
+    rangeSmall.textContent = String(days);
+
+    const r = await api(`/api/overview?days=${encodeURIComponent(days)}`);
+    if (!r) return null;
+    const data = await r.json().catch(() => null);
     if (!data) return null;
-    renderMonitors(data.monitors || []);
+
+    seoScore.textContent = String(data.seoScore ?? 0);
+    localVis.textContent = String(data.localVis ?? "+0%");
+
+    drawChart(Array.isArray(data.chart) ? data.chart : []);
+
+    return data;
+  }
+
+  function renderMonitors(list) {
+    monitorsBody.innerHTML = "";
+
+    const items = Array.isArray(list) ? list : [];
+    if (!items.length) {
+      const row = document.createElement("div");
+      row.className = "t-row";
+      row.innerHTML = `
+        <div class="url" style="opacity:.7">Aucun monitor</div>
+        <div><span class="badge unknown">Unknown</span></div>
+        <div class="right">—</div>
+        <div class="right">—</div>
+      `;
+      monitorsBody.appendChild(row);
+      return;
+    }
+
+    for (const m of items) {
+      const st = String(m.lastStatus || "unknown").toLowerCase();
+      const badgeClass = st === "up" ? "up" : st === "down" ? "down" : "unknown";
+      const label = st === "up" ? "Up" : st === "down" ? "Down" : "Unknown";
+
+      const row = document.createElement("div");
+      row.className = "t-row";
+      row.innerHTML = `
+        <div class="url" title="${m.url || ""}">${m.url || "-"}</div>
+        <div><span class="badge ${badgeClass}">${label}</span></div>
+        <div class="right">${m.intervalMinutes ? `${m.intervalMinutes} min` : "—"}</div>
+        <div class="right"><button class="btn btn-ghost" data-run="${m._id}">Run</button></div>
+      `;
+      monitorsBody.appendChild(row);
+    }
+
+    // attach run handlers
+    monitorsBody.querySelectorAll("[data-run]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        const id = b.getAttribute("data-run");
+        b.disabled = true;
+        try {
+          const rr = await api(`/api/monitors/${id}/run`, { method: "POST" });
+          if (!rr) return;
+          await rr.json().catch(() => null);
+          await refreshMonitors();
+          setStatus(true, "Dashboard à jour — OK");
+        } catch {
+          setStatus(false, "Erreur monitor");
+        } finally {
+          b.disabled = false;
+        }
+      });
+    });
+  }
+
+  async function refreshMonitors() {
+    const r = await api("/api/monitors");
+    if (!r) return null;
+    const data = await r.json().catch(() => null);
+    renderMonitors(data?.monitors || []);
     return data;
   }
 
   async function refreshAll() {
+    setStatus(true, "Mise à jour…");
     try {
-      setStatus(true, "Chargement…");
-      await refreshMe();
-      await refreshOverview();
+      await loadMe();
+      await loadOverview();
       await refreshMonitors();
       setStatus(true, "Dashboard à jour — OK");
     } catch {
-      setStatus(false, "Erreur de chargement");
+      setStatus(false, "Problème à vérifier");
     }
   }
 
-  // --- Buttons
-  $("btnRefresh")?.addEventListener("click", refreshAll);
+  // Buttons
+  btnRefresh?.addEventListener("click", refreshAll);
 
-  $("btnExportAudits")?.addEventListener("click", () => {
+  btnExportAudits?.addEventListener("click", () => {
     window.location.href = "/api/export/audits.csv";
   });
-  $("btnExportMonitors")?.addEventListener("click", () => {
+  btnExportMonitors?.addEventListener("click", () => {
     window.location.href = "/api/export/monitors.csv";
   });
 
-  $("btnPortal")?.addEventListener("click", async () => {
-    try {
-      const r = await fetch("/api/stripe/portal", { method: "POST", headers });
-      const data = await r.json();
-      if (data?.url) location.href = data.url;
-      else setStatus(false, data?.error || "Portal error");
-    } catch {
-      setStatus(false, "Portal error");
-    }
+  btnPortal?.addEventListener("click", async () => {
+    const r = await api("/api/stripe/portal", { method: "POST", body: "{}" });
+    if (!r) return;
+    const data = await r.json().catch(() => null);
+    if (data?.url) window.location.href = data.url;
+    else alert("Impossible d’ouvrir le portail.");
   });
 
-  $("btnLogout")?.addEventListener("click", () => {
+  btnLogout?.addEventListener("click", () => {
     localStorage.removeItem("token");
-    location.href = "/login.html";
+    window.location.href = "/login.html";
   });
 
-  $("btnSeePlans")?.addEventListener("click", () => {
-    document.getElementById("plans")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  btnSeePlans?.addEventListener("click", () => {
+    window.location.href = "/pricing.html";
   });
 
-  $("btnAddMonitor")?.addEventListener("click", async () => {
-    const url = prompt("URL du monitor (https://...)");
+  btnRunAudit?.addEventListener("click", async () => {
+    const url = prompt("URL du site (https://...)");
     if (!url) return;
-    const intervalMinutes = Number(prompt("Interval (minutes, min 5)", "60") || "60");
-    try {
-      const r = await fetch("/api/monitors", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ url, intervalMinutes })
-      });
-      const data = await r.json();
-      if (!r.ok) return setStatus(false, data?.error || "Erreur monitor");
-      await refreshMonitors();
-      setStatus(true, "Monitor ajouté");
-    } catch {
-      setStatus(false, "Erreur monitor");
+    const r = await api("/api/audits/run", { method: "POST", body: JSON.stringify({ url }) });
+    if (!r) return;
+    const data = await r.json().catch(() => null);
+    if (data?.ok) {
+      alert(`Audit lancé ✅ Score: ${data.score ?? "?"}`);
+      refreshAll();
+    } else {
+      alert(data?.error || "Erreur audit");
     }
   });
 
-  $("btnRunAudit")?.addEventListener("click", async () => {
-    const url = prompt("URL à auditer (https://...)");
+  btnAddMonitor?.addEventListener("click", async () => {
+    const url = prompt("URL à monitor (https://...)");
     if (!url) return;
-    try {
-      const r = await fetch("/api/audits/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ url })
-      });
-      const data = await r.json();
-      if (!r.ok) return setStatus(false, data?.error || "Erreur audit");
-      setStatus(true, `Audit OK — Score ${data.score ?? "?"}/100`);
-      await refreshOverview();
-    } catch {
-      setStatus(false, "Erreur audit");
+    const interval = Number(prompt("Interval minutes (min 5)", "60"));
+    const payload = { url, intervalMinutes: Number.isFinite(interval) ? interval : 60 };
+    const r = await api("/api/monitors", { method: "POST", body: JSON.stringify(payload) });
+    if (!r) return;
+    const data = await r.json().catch(() => null);
+    if (data?.ok) {
+      refreshMonitors();
+    } else {
+      alert(data?.error || "Erreur monitor");
     }
   });
 
-  // init
-  setRangeLabel();
+  // Plan buttons => Stripe checkout
+  document.querySelectorAll("[data-plan]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const plan = b.getAttribute("data-plan");
+      const r = await api("/api/stripe/checkout", { method: "POST", body: JSON.stringify({ plan }) });
+      if (!r) return;
+      const data = await r.json().catch(() => null);
+      if (data?.url) window.location.href = data.url;
+      else alert(data?.error || "Erreur checkout");
+    });
+  });
+
+  // Init
   refreshAll();
 })();
