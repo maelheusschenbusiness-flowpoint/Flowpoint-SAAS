@@ -1,7 +1,7 @@
-// pricing.js — FlowPoint Pricing (Plans + Add-ons keys)
-// - Checkout plan via /api/stripe/checkout (backend accepte uniquement "plan")
+// pricing.js — FlowPoint Pricing (plans + add-ons keys)
+// - Checkout plan via POST /api/stripe/checkout (backend accepte seulement "plan")
 // - Add-ons via /api/stripe/portal (Customer Portal)
-// - On sauvegarde la sélection add-ons en localStorage (préférence UI)
+// - On sauvegarde la sélection add-ons en localStorage (préférence UX)
 
 (() => {
   const TOKEN_KEYS = ["token", "fp_token"]; // compat: dashboard.js = token ; app.js = fp_token
@@ -10,249 +10,237 @@
 
   const $ = (q) => document.querySelector(q);
 
-  const authPill = $("#authPill");
   const authState = $("#authState");
-  const msg = $("#msg");
+  const authDot = $("#authDot");
 
   const plansWrap = $("#plans");
+  const addonsList = $("#addonsList");
+  const btnCheckout = $("#btnCheckout");
+  const btnPortal = $("#btnPortal");
+  const btnHome = $("#btnHome");
+
   const sumPlan = $("#sumPlan");
   const sumPlanPrice = $("#sumPlanPrice");
   const sumAddons = $("#sumAddons");
 
-  const btnCheckout = $("#btnCheckout");
-  const btnPortal = $("#btnPortal");
-  const addonsList = $("#addonsList");
+  const PRICES = {
+    standard: "29€ / mois",
+    pro: "79€ / mois",
+    ultra: "149€ / mois",
+  };
 
-  function setMsg(text, type) {
-    if (!msg) return;
-    msg.textContent = text || "";
-    msg.style.color =
-      type === "ok" ? "#bbf7d0" :
-      type === "error" ? "#fecaca" :
-      type === "warn" ? "#fde68a" : "#94a3b8";
-  }
-
-  function getToken() {
-    for (const k of TOKEN_KEYS) {
-      const t = localStorage.getItem(k);
-      if (t) return t;
-    }
-    return "";
-  }
-
-  function setAuthUI() {
-    const t = getToken();
-    if (t) {
-      authState.textContent = "Connecté";
-      authState.style.color = "#bbf7d0";
-      btnPortal.disabled = false;
-    } else {
-      authState.textContent = "Non connecté";
-      authState.style.color = "#fde68a";
-      btnPortal.disabled = true;
-    }
-  }
-
+  // ✅ Add-ons (ceux que tu as demandés)
+  // White label = inclus gratuit (pas dans Stripe)
   const ADDONS = [
     {
       key: "monitorsPack50",
       name: "Monitors Pack +50",
       priceLabel: "19€ / mois",
       desc: "Ajoute +50 monitors actifs au quota du plan.",
-      type: "qty",
-      defaultQty: 0,
+      kind: "qty", // quantité
+      max: 50
     },
     {
       key: "extraSeat",
       name: "Extra Seat",
       priceLabel: "7€ / mois",
       desc: "Ajoute des seats (membres) à ton organisation.",
-      type: "qty",
-      defaultQty: 0,
+      kind: "qty",
+      max: 100
     },
     {
       key: "retention90d",
       name: "Retention +90 days",
       priceLabel: "9€ / mois",
       desc: "Rétention des données étendue à 90 jours.",
-      type: "bool",
-      defaultOn: false,
+      kind: "flag"
     },
     {
       key: "retention365d",
       name: "Retention +365 days",
       priceLabel: "19€ / mois",
       desc: "Rétention des données étendue à 365 jours.",
-      type: "bool",
-      defaultOn: false,
+      kind: "flag"
     },
     {
       key: "auditsPack200",
       name: "Audits Pack +200",
       priceLabel: "9€ / mois",
-      desc: "Ajoute +200 crédits audits / mois.",
-      type: "qty",
-      defaultQty: 0,
+      desc: "Ajoute +200 audits / mois.",
+      kind: "flag"
     },
     {
       key: "auditsPack1000",
       name: "Audits Pack +1000",
       priceLabel: "29€ / mois",
-      desc: "Ajoute +1000 crédits audits / mois.",
-      type: "qty",
-      defaultQty: 0,
+      desc: "Ajoute +1000 audits / mois.",
+      kind: "flag"
     },
     {
       key: "pdfPack200",
       name: "PDF Pack +200",
       priceLabel: "9€ / mois",
-      desc: "Ajoute +200 crédits PDF / mois.",
-      type: "qty",
-      defaultQty: 0,
+      desc: "Ajoute +200 PDFs / mois.",
+      kind: "flag"
     },
     {
       key: "exportsPack1000",
       name: "Exports Pack +1000",
       priceLabel: "19€ / mois",
-      desc: "Ajoute +1000 crédits exports CSV / mois.",
-      type: "qty",
-      defaultQty: 0,
+      desc: "Ajoute +1000 exports / mois.",
+      kind: "flag"
     },
     {
       key: "prioritySupport",
       name: "Priority Support",
       priceLabel: "29€ / mois",
-      desc: "Support prioritaire (SLA, réponse plus rapide).",
-      type: "bool",
-      defaultOn: false,
+      desc: "Support prioritaire (réponse plus rapide).",
+      kind: "flag"
     },
     {
       key: "customDomain",
       name: "Custom Domain",
       priceLabel: "9€ / mois",
-      desc: "Utilise un domaine personnalisé pour ton dashboard.",
-      type: "bool",
-      defaultOn: false,
-    },
+      desc: "Utilise ton propre domaine (ex: app.tondomaine.com).",
+      kind: "flag"
+    }
   ];
 
-  function loadAddonPrefs() {
-    try {
-      const raw = localStorage.getItem(ADDON_PREF_KEY);
-      const obj = raw ? JSON.parse(raw) : {};
-      return obj && typeof obj === "object" ? obj : {};
-    } catch {
-      return {};
+  function getToken() {
+    for (const k of TOKEN_KEYS) {
+      const v = localStorage.getItem(k);
+      if (v) return v;
+    }
+    return "";
+  }
+
+  function setAuthPill(connected) {
+    if (connected) {
+      authDot.style.background = "#22c55e";
+      authState.textContent = "Statut : Connecté";
+    } else {
+      authDot.style.background = "#f59e0b";
+      authState.textContent = "Statut : Non connecté";
     }
   }
 
-  function saveAddonPrefs(prefs) {
-    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(prefs || {}));
+  function loadPrefs() {
+    const plan = (localStorage.getItem(PLAN_PREF_KEY) || "pro").toLowerCase();
+    let addons = {};
+    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}"); } catch {}
+    return { plan, addons };
   }
 
-  function renderAddons() {
-    const prefs = loadAddonPrefs();
+  function savePrefs(plan, addons) {
+    localStorage.setItem(PLAN_PREF_KEY, plan);
+    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(addons || {}));
+  }
+
+  function renderAddons(state) {
     addonsList.innerHTML = "";
 
     for (const a of ADDONS) {
-      const wrap = document.createElement("div");
-      wrap.className = "addon";
+      const row = document.createElement("div");
+      row.className = "addon";
 
       const left = document.createElement("div");
-      left.className = "addonLeft";
+      left.style.minWidth = "0";
       left.innerHTML = `
-        <div class="addonName">${a.name}</div>
-        <div class="addonDesc">${a.desc}</div>
-        <div class="key">${a.key}</div>
+        <div class="name">${a.name}</div>
+        <div class="desc">${a.desc}</div>
+        <div class="kv">${a.key}</div>
       `;
 
       const right = document.createElement("div");
-      right.className = "addonRight";
+      right.style.display = "flex";
+      right.style.flexDirection = "column";
+      right.style.alignItems = "flex-end";
+      right.style.gap = "8px";
 
-      // UI selon type
-      if (a.type === "bool") {
-        const checked = prefs[a.key] === true;
-        right.innerHTML = `
-          <div class="addonPrice">${a.priceLabel}</div>
-          <label class="toggle">
-            <input type="checkbox" data-addon="${a.key}" ${checked ? "checked" : ""} />
-            <span>Pré-sélection</span>
-          </label>
-        `;
-      } else {
-        // qty (simple: 0..20)
-        const qty = Number.isFinite(Number(prefs[a.key])) ? Number(prefs[a.key]) : (a.defaultQty || 0);
-        right.innerHTML = `
-          <div class="addonPrice">${a.priceLabel}</div>
-          <div class="toggle">
-            <span>Qté</span>
-            <select data-addon="${a.key}" style="height:34px;border-radius:10px;border:1px solid rgba(148,163,184,.25);background:rgba(255,255,255,.03);color:#e5e7eb;padding:0 10px;font-weight:800">
-              ${Array.from({ length: 21 }).map((_, i) => `<option value="${i}" ${i === qty ? "selected" : ""}>${i}</option>`).join("")}
-            </select>
-          </div>
-        `;
-      }
+      const price = document.createElement("div");
+      price.style.fontWeight = "1000";
+      price.textContent = a.priceLabel;
 
-      wrap.appendChild(left);
-      wrap.appendChild(right);
-      addonsList.appendChild(wrap);
-    }
+      if (a.kind === "qty") {
+        const sel = document.createElement("select");
+        sel.className = "btn";
+        sel.style.height = "36px";
+        sel.style.padding = "0 10px";
+        const current = Number(state.addons?.[a.key] || 0);
 
-    // listeners
-    addonsList.querySelectorAll("[data-addon]").forEach((el) => {
-      el.addEventListener("change", () => {
-        const prefs2 = loadAddonPrefs();
-        const key = el.getAttribute("data-addon");
-
-        if (el.tagName === "INPUT") {
-          prefs2[key] = !!el.checked;
-        } else {
-          prefs2[key] = Number(el.value || 0);
+        // options 0..10 (tu peux augmenter)
+        const max = Math.min(a.max || 100, 50);
+        for (let i = 0; i <= 10; i++) {
+          const opt = document.createElement("option");
+          opt.value = String(i);
+          opt.textContent = i === 0 ? "Qté 0" : `Qté ${i}`;
+          if (i === current) opt.selected = true;
+          sel.appendChild(opt);
         }
 
-        saveAddonPrefs(prefs2);
-        renderSummary();
-      });
-    });
-  }
+        sel.addEventListener("change", () => {
+          const v = Number(sel.value || 0);
+          state.addons[a.key] = v;
+          savePrefs(state.plan, state.addons);
+          renderSummary(state);
+        });
 
-  function getSelectedPlan() {
-    const selected = plansWrap.querySelector(".plan.selected");
-    const plan = selected?.getAttribute("data-plan") || "pro";
-    const price = selected?.getAttribute("data-price") || "79";
-    return { plan, price };
-  }
-
-  function setSelectedPlan(plan) {
-    plansWrap.querySelectorAll(".plan").forEach((p) => {
-      p.classList.toggle("selected", p.getAttribute("data-plan") === plan);
-    });
-    localStorage.setItem(PLAN_PREF_KEY, plan);
-    renderSummary();
-  }
-
-  function renderSummary() {
-    const { plan, price } = getSelectedPlan();
-    sumPlan.textContent = String(plan).toUpperCase();
-    sumPlanPrice.textContent = `${price}€ / mois`;
-
-    const prefs = loadAddonPrefs();
-
-    // Construit une liste lisible
-    const chosen = [];
-
-    for (const a of ADDONS) {
-      if (a.type === "bool") {
-        if (prefs[a.key] === true) chosen.push(`${a.name} (${a.key})`);
+        right.appendChild(price);
+        right.appendChild(sel);
       } else {
-        const qty = Number(prefs[a.key] || 0);
-        if (qty > 0) chosen.push(`${a.name} x${qty} (${a.key})`);
-      }
-    }
+        const chk = document.createElement("input");
+        chk.type = "checkbox";
+        chk.checked = !!state.addons?.[a.key];
+        chk.style.transform = "scale(1.2)";
+        chk.style.cursor = "pointer";
 
-    sumAddons.innerHTML = chosen.length
-      ? chosen.map((x) => `• ${x}`).join("<br>")
-      : "—";
+        chk.addEventListener("change", () => {
+          state.addons[a.key] = chk.checked ? 1 : 0;
+          savePrefs(state.plan, state.addons);
+          renderSummary(state);
+        });
+
+        const wrap = document.createElement("div");
+        wrap.style.display = "flex";
+        wrap.style.alignItems = "center";
+        wrap.style.gap = "10px";
+
+        const lbl = document.createElement("div");
+        lbl.style.fontSize = "12px";
+        lbl.style.fontWeight = "900";
+        lbl.style.opacity = "0.9";
+        lbl.textContent = "Pré-selection";
+
+        wrap.appendChild(chk);
+        wrap.appendChild(lbl);
+
+        right.appendChild(price);
+        right.appendChild(wrap);
+      }
+
+      row.appendChild(left);
+      row.appendChild(right);
+      addonsList.appendChild(row);
+    }
+  }
+
+  function setActivePlanUI(plan) {
+    plansWrap.querySelectorAll(".plan").forEach((el) => {
+      el.classList.toggle("active", el.getAttribute("data-plan") === plan);
+    });
+  }
+
+  function renderSummary(state) {
+    sumPlan.textContent = String(state.plan || "pro").toUpperCase();
+    sumPlanPrice.textContent = PRICES[state.plan] || PRICES.pro;
+
+    const picked = [];
+    for (const a of ADDONS) {
+      const v = Number(state.addons?.[a.key] || 0);
+      if (a.kind === "qty" && v > 0) picked.push(`${a.name} x${v}`);
+      if (a.kind === "flag" && v > 0) picked.push(a.name);
+    }
+    sumAddons.textContent = picked.length ? picked.join(", ") : "—";
   }
 
   async function postJSON(url, body, token) {
@@ -265,73 +253,71 @@
     return j;
   }
 
+  async function openCheckout(state) {
+    // si pas token -> renvoie vers index (signup) avec plan pré-sélectionné
+    const token = getToken();
+    if (!token) {
+      const p = encodeURIComponent(state.plan || "pro");
+      window.location.href = `/index.html?plan=${p}`;
+      return;
+    }
+
+    const out = await postJSON("/api/stripe/checkout", { plan: state.plan }, token);
+    if (!out?.url) throw new Error("URL Stripe manquante.");
+    window.location.href = out.url;
+  }
+
   async function openPortal() {
     const token = getToken();
     if (!token) {
-      setMsg("Connecte-toi d’abord pour ouvrir le Portal Stripe.", "warn");
+      window.location.href = "/login.html";
       return;
     }
-    setMsg("Ouverture du Customer Portal…", "ok");
-    try {
-      const out = await postJSON("/api/stripe/portal", {}, token);
-      if (!out?.url) throw new Error("URL portal manquante");
-      window.location.href = out.url;
-    } catch (e) {
-      setMsg(e.message || "Erreur portal", "error");
-    }
+    const out = await postJSON("/api/stripe/portal", {}, token);
+    if (!out?.url) throw new Error("URL Portal manquante.");
+    window.location.href = out.url;
   }
 
-  async function checkoutPlan() {
-    const { plan } = getSelectedPlan();
-    const token = getToken();
+  // INIT
+  const state = loadPrefs();
+  if (!["standard", "pro", "ultra"].includes(state.plan)) state.plan = "pro";
+  if (!state.addons || typeof state.addons !== "object") state.addons = {};
 
-    // Si pas connecté -> on renvoie vers page signup/index avec plan pré-sélectionné
-    if (!token) {
-      localStorage.setItem(PLAN_PREF_KEY, plan);
-      // Ton app.js lit déjà ?plan=...
-      window.location.href = `/index.html?plan=${encodeURIComponent(plan)}`;
-      return;
-    }
+  setAuthPill(!!getToken());
+  setActivePlanUI(state.plan);
+  renderAddons(state);
+  renderSummary(state);
 
-    setMsg("Redirection vers Stripe Checkout…", "ok");
+  plansWrap.querySelectorAll(".plan").forEach((el) => {
+    el.addEventListener("click", () => {
+      state.plan = el.getAttribute("data-plan");
+      savePrefs(state.plan, state.addons);
+      setActivePlanUI(state.plan);
+      renderSummary(state);
+    });
+  });
+
+  btnCheckout.addEventListener("click", async () => {
     btnCheckout.disabled = true;
-
     try {
-      const out = await postJSON("/api/stripe/checkout", { plan }, token);
-      if (!out?.url) throw new Error("URL checkout manquante");
-      window.location.href = out.url;
+      await openCheckout(state);
     } catch (e) {
-      setMsg(e.message || "Erreur checkout", "error");
+      alert(e?.message || "Erreur checkout");
+    } finally {
       btnCheckout.disabled = false;
     }
-  }
-
-  function applyPlanFromQueryOrStorage() {
-    const qp = new URLSearchParams(location.search);
-    const p = (qp.get("plan") || localStorage.getItem(PLAN_PREF_KEY) || "pro").toLowerCase();
-    if (["standard", "pro", "ultra"].includes(p)) setSelectedPlan(p);
-  }
-
-  function wirePlans() {
-    plansWrap.querySelectorAll(".plan").forEach((el) => {
-      el.addEventListener("click", () => {
-        const p = el.getAttribute("data-plan");
-        setSelectedPlan(p);
-      });
-    });
-  }
-
-  window.addEventListener("DOMContentLoaded", () => {
-    setAuthUI();
-    wirePlans();
-    applyPlanFromQueryOrStorage();
-    renderAddons();
-    renderSummary();
-
-    btnPortal.addEventListener("click", openPortal);
-    btnCheckout.addEventListener("click", checkoutPlan);
-
-    // Update auth pill if token changes (rare)
-    window.addEventListener("storage", setAuthUI);
   });
+
+  btnPortal.addEventListener("click", async () => {
+    btnPortal.disabled = true;
+    try {
+      await openPortal();
+    } catch (e) {
+      alert(e?.message || "Erreur portal");
+    } finally {
+      btnPortal.disabled = false;
+    }
+  });
+
+  btnHome.addEventListener("click", () => (window.location.href = "/"));
 })();
