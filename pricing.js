@@ -1,110 +1,29 @@
-// pricing.js — FlowPoint Pricing (plans + add-ons keys)
-// - Checkout plan via POST /api/stripe/checkout (backend accepte seulement "plan")
-// - Add-ons via /api/stripe/portal (Customer Portal)
-// - On sauvegarde la sélection add-ons en localStorage (préférence UX)
+// pricing.js — FlowPoint Pricing (Plans + Add-ons keys)
+// - Checkout plan via POST /api/stripe/checkout (backend accepte uniquement "plan")
+// - Portal via POST /api/stripe/portal
+// - On sauvegarde la sélection add-ons en localStorage (préférence UI)
 
 (() => {
-  const TOKEN_KEYS = ["token", "fp_token"]; // compat: dashboard.js = token ; app.js = fp_token
-  const ADDON_PREF_KEY = "fp_addon_prefs";
+  // Tokens possibles (tu as eu token vs fp_token selon pages)
+  const TOKEN_KEYS = ["token", "fp_token"]; // dashboard.js = token ; app.js = fp_token
+  const ADDON_PREF_KEY = "fp_addon_pref";
   const PLAN_PREF_KEY = "fp_plan_pref";
 
   const $ = (q) => document.querySelector(q);
 
-  const authState = $("#authState");
+  const authText = $("#authText");
   const authDot = $("#authDot");
 
   const plansWrap = $("#plans");
-  const addonsList = $("#addonsList");
-  const btnCheckout = $("#btnCheckout");
-  const btnPortal = $("#btnPortal");
-  const btnHome = $("#btnHome");
-
   const sumPlan = $("#sumPlan");
   const sumPlanPrice = $("#sumPlanPrice");
   const sumAddons = $("#sumAddons");
 
-  const PRICES = {
-    standard: "29€ / mois",
-    pro: "79€ / mois",
-    ultra: "149€ / mois",
-  };
+  const btnCheckout = $("#btnCheckout");
+  const btnPortal = $("#btnPortal");
+  const btnBackDash = $("#btnBackDash");
 
-  // ✅ Add-ons (ceux que tu as demandés)
-  // White label = inclus gratuit (pas dans Stripe)
-  const ADDONS = [
-    {
-      key: "monitorsPack50",
-      name: "Monitors Pack +50",
-      priceLabel: "19€ / mois",
-      desc: "Ajoute +50 monitors actifs au quota du plan.",
-      kind: "qty", // quantité
-      max: 50
-    },
-    {
-      key: "extraSeat",
-      name: "Extra Seat",
-      priceLabel: "7€ / mois",
-      desc: "Ajoute des seats (membres) à ton organisation.",
-      kind: "qty",
-      max: 100
-    },
-    {
-      key: "retention90d",
-      name: "Retention +90 days",
-      priceLabel: "9€ / mois",
-      desc: "Rétention des données étendue à 90 jours.",
-      kind: "flag"
-    },
-    {
-      key: "retention365d",
-      name: "Retention +365 days",
-      priceLabel: "19€ / mois",
-      desc: "Rétention des données étendue à 365 jours.",
-      kind: "flag"
-    },
-    {
-      key: "auditsPack200",
-      name: "Audits Pack +200",
-      priceLabel: "9€ / mois",
-      desc: "Ajoute +200 audits / mois.",
-      kind: "flag"
-    },
-    {
-      key: "auditsPack1000",
-      name: "Audits Pack +1000",
-      priceLabel: "29€ / mois",
-      desc: "Ajoute +1000 audits / mois.",
-      kind: "flag"
-    },
-    {
-      key: "pdfPack200",
-      name: "PDF Pack +200",
-      priceLabel: "9€ / mois",
-      desc: "Ajoute +200 PDFs / mois.",
-      kind: "flag"
-    },
-    {
-      key: "exportsPack1000",
-      name: "Exports Pack +1000",
-      priceLabel: "19€ / mois",
-      desc: "Ajoute +1000 exports / mois.",
-      kind: "flag"
-    },
-    {
-      key: "prioritySupport",
-      name: "Priority Support",
-      priceLabel: "29€ / mois",
-      desc: "Support prioritaire (réponse plus rapide).",
-      kind: "flag"
-    },
-    {
-      key: "customDomain",
-      name: "Custom Domain",
-      priceLabel: "9€ / mois",
-      desc: "Utilise ton propre domaine (ex: app.tondomaine.com).",
-      kind: "flag"
-    }
-  ];
+  const addonsList = $("#addonsList");
 
   function getToken() {
     for (const k of TOKEN_KEYS) {
@@ -114,29 +33,162 @@
     return "";
   }
 
-  function setAuthPill(connected) {
-    if (connected) {
-      authDot.style.background = "#22c55e";
-      authState.textContent = "Statut : Connecté";
-    } else {
-      authDot.style.background = "#f59e0b";
-      authState.textContent = "Statut : Non connecté";
+  function setAuthPill(ok) {
+    authText.textContent = ok ? "Statut : Connecté" : "Statut : Non connecté";
+    authDot.style.background = ok ? "#22c55e" : "#f59e0b";
+  }
+
+  async function api(path, opts = {}) {
+    const token = getToken();
+    const headers = { ...(opts.headers || {}) };
+
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (!headers["Content-Type"] && opts.body) headers["Content-Type"] = "application/json";
+
+    const r = await fetch(path, {
+      ...opts,
+      headers,
+      cache: "no-store",
+    });
+
+    if (r.status === 401 || r.status === 403) {
+      // Token pas bon => on considère non connecté
+      return { ok: false, status: r.status, json: async () => ({}) };
+    }
+
+    return r;
+  }
+
+  // ===== Plans UI =====
+  const PLAN_META = {
+    standard: { label: "STANDARD", price: "29€ / mois" },
+    pro: { label: "PRO", price: "79€ / mois" },
+    ultra: { label: "ULTRA", price: "149€ / mois" },
+  };
+
+  function normalizePlan(p) {
+    const v = String(p || "").toLowerCase();
+    return ["standard", "pro", "ultra"].includes(v) ? v : "pro";
+  }
+
+  function setActivePlan(plan) {
+    const p = normalizePlan(plan);
+
+    plansWrap.querySelectorAll(".plan").forEach((el) => {
+      el.classList.toggle("active", el.getAttribute("data-plan") === p);
+    });
+
+    localStorage.setItem(PLAN_PREF_KEY, p);
+
+    sumPlan.textContent = PLAN_META[p].label;
+    sumPlanPrice.textContent = PLAN_META[p].price;
+  }
+
+  plansWrap.addEventListener("click", (e) => {
+    const card = e.target.closest(".plan");
+    if (!card) return;
+    setActivePlan(card.getAttribute("data-plan"));
+    renderSummaryAddons(); // garde résumé cohérent
+  });
+
+  // ===== Add-ons (keys violettes) =====
+  // IMPORTANT : tu m’as demandé de remplacer 2-9 par ces items.
+  // WhiteLabel est gratuit et inclus (pas un add-on payant ici).
+  // MonitorsPack+50 est le #1 (clé monitorsPack50).
+  const ADDONS = [
+    {
+      key: "monitorsPack50",
+      name: "Monitors Pack +50",
+      desc: "Ajoute +50 monitors actifs au quota du plan.",
+      priceLabel: "19€ / mois",
+      kind: "qty", // quantité
+      max: 50,
+    },
+    {
+      key: "extraSeat",
+      name: "Extra Seat",
+      desc: "Ajoute des seats (membres) à ton organisation.",
+      priceLabel: "7€ / mois",
+      kind: "qty",
+      max: 500,
+    },
+    {
+      key: "retention90d",
+      name: "Retention +90 days",
+      desc: "Rétention des données étendue à 90 jours.",
+      priceLabel: "9€ / mois",
+      kind: "flag",
+    },
+    {
+      key: "retention365d",
+      name: "Retention +365 days",
+      desc: "Rétention des données étendue à 365 jours.",
+      priceLabel: "19€ / mois",
+      kind: "flag",
+    },
+    {
+      key: "auditsPack200",
+      name: "Audits Pack +200",
+      desc: "Ajoute +200 audits / mois.",
+      priceLabel: "9€ / mois",
+      kind: "flag",
+    },
+    {
+      key: "auditsPack1000",
+      name: "Audits Pack +1000",
+      desc: "Ajoute +1000 audits / mois.",
+      priceLabel: "29€ / mois",
+      kind: "flag",
+    },
+    {
+      key: "pdfPack200",
+      name: "PDF Pack +200",
+      desc: "Ajoute +200 PDFs / mois.",
+      priceLabel: "9€ / mois",
+      kind: "flag",
+    },
+    {
+      key: "exportsPack1000",
+      name: "Exports Pack +1000",
+      desc: "Ajoute +1000 exports / mois.",
+      priceLabel: "19€ / mois",
+      kind: "flag",
+    },
+    {
+      key: "prioritySupport",
+      name: "Priority Support",
+      desc: "Support prioritaire (SLA).",
+      priceLabel: "29€ / mois",
+      kind: "flag",
+    },
+    // Tu as aussi “Custom Domain” dans Stripe, on le garde en dernier si tu veux l’afficher :
+    {
+      key: "customDomain",
+      name: "Custom Domain",
+      desc: "Domaine personnalisé (ex: app.tondomaine.com).",
+      priceLabel: "9€ / mois",
+      kind: "flag",
+    },
+  ];
+
+  function loadAddonPref() {
+    const raw = localStorage.getItem(ADDON_PREF_KEY);
+    if (!raw) return {};
+    try {
+      const j = JSON.parse(raw);
+      return j && typeof j === "object" ? j : {};
+    } catch {
+      return {};
     }
   }
 
-  function loadPrefs() {
-    const plan = (localStorage.getItem(PLAN_PREF_KEY) || "pro").toLowerCase();
-    let addons = {};
-    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}"); } catch {}
-    return { plan, addons };
+  function saveAddonPref(pref) {
+    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(pref || {}));
   }
 
-  function savePrefs(plan, addons) {
-    localStorage.setItem(PLAN_PREF_KEY, plan);
-    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(addons || {}));
-  }
+  function renderAddons() {
+    const pref = loadAddonPref();
 
-  function renderAddons(state) {
     addonsList.innerHTML = "";
 
     for (const a of ADDONS) {
@@ -144,78 +196,58 @@
       row.className = "addon";
 
       const left = document.createElement("div");
-      left.style.minWidth = "0";
+      left.className = "addonLeft";
       left.innerHTML = `
-        <div class="name">${a.name}</div>
-        <div class="desc">${a.desc}</div>
-        <div class="kv">${a.key}</div>
+        <div class="addonName">${a.name}</div>
+        <div class="small addonDesc">${a.desc}</div>
+        <div class="keyChip">${a.key}</div>
       `;
 
       const right = document.createElement("div");
-      right.style.display = "flex";
-      right.style.flexDirection = "column";
-      right.style.alignItems = "flex-end";
-      right.style.gap = "8px";
+      right.className = "addonRight";
 
       const price = document.createElement("div");
-      price.style.fontWeight = "1000";
+      price.style.fontWeight = "950";
       price.textContent = a.priceLabel;
+
+      right.appendChild(price);
 
       if (a.kind === "qty") {
         const sel = document.createElement("select");
-        sel.className = "btn";
-        sel.style.height = "36px";
-        sel.style.padding = "0 10px";
-        const current = Number(state.addons?.[a.key] || 0);
+        sel.className = "qty";
+        const cur = Number(pref[a.key] || 0);
 
-        // options 0..10 (tu peux augmenter)
-        const max = Math.min(a.max || 100, 50);
+        // options 0..10 + “custom” si tu veux, mais on reste simple
+        const max = Math.min(a.max || 50, 50);
         for (let i = 0; i <= 10; i++) {
           const opt = document.createElement("option");
           opt.value = String(i);
-          opt.textContent = i === 0 ? "Qté 0" : `Qté ${i}`;
-          if (i === current) opt.selected = true;
+          opt.textContent = `Qté ${i}`;
           sel.appendChild(opt);
         }
+        sel.value = String(Math.min(10, Math.max(0, cur)));
 
         sel.addEventListener("change", () => {
-          const v = Number(sel.value || 0);
-          state.addons[a.key] = v;
-          savePrefs(state.plan, state.addons);
-          renderSummary(state);
+          const p = loadAddonPref();
+          p[a.key] = Number(sel.value || 0);
+          saveAddonPref(p);
+          renderSummaryAddons();
         });
 
-        right.appendChild(price);
         right.appendChild(sel);
       } else {
         const chk = document.createElement("input");
         chk.type = "checkbox";
-        chk.checked = !!state.addons?.[a.key];
-        chk.style.transform = "scale(1.2)";
-        chk.style.cursor = "pointer";
+        chk.checked = !!pref[a.key];
 
         chk.addEventListener("change", () => {
-          state.addons[a.key] = chk.checked ? 1 : 0;
-          savePrefs(state.plan, state.addons);
-          renderSummary(state);
+          const p = loadAddonPref();
+          p[a.key] = !!chk.checked;
+          saveAddonPref(p);
+          renderSummaryAddons();
         });
 
-        const wrap = document.createElement("div");
-        wrap.style.display = "flex";
-        wrap.style.alignItems = "center";
-        wrap.style.gap = "10px";
-
-        const lbl = document.createElement("div");
-        lbl.style.fontSize = "12px";
-        lbl.style.fontWeight = "900";
-        lbl.style.opacity = "0.9";
-        lbl.textContent = "Pré-selection";
-
-        wrap.appendChild(chk);
-        wrap.appendChild(lbl);
-
-        right.appendChild(price);
-        right.appendChild(wrap);
+        right.appendChild(chk);
       }
 
       row.appendChild(left);
@@ -224,100 +256,93 @@
     }
   }
 
-  function setActivePlanUI(plan) {
-    plansWrap.querySelectorAll(".plan").forEach((el) => {
-      el.classList.toggle("active", el.getAttribute("data-plan") === plan);
-    });
-  }
+  function renderSummaryAddons() {
+    const pref = loadAddonPref();
 
-  function renderSummary(state) {
-    sumPlan.textContent = String(state.plan || "pro").toUpperCase();
-    sumPlanPrice.textContent = PRICES[state.plan] || PRICES.pro;
+    const lines = [];
 
-    const picked = [];
+    // White label inclus gratuit (toujours)
+    // (tu as demandé “white label gratuit”)
+    // => pas besoin de le lister en add-on payant, il est déjà affiché dans le résumé.
+
     for (const a of ADDONS) {
-      const v = Number(state.addons?.[a.key] || 0);
-      if (a.kind === "qty" && v > 0) picked.push(`${a.name} x${v}`);
-      if (a.kind === "flag" && v > 0) picked.push(a.name);
+      const v = pref[a.key];
+      if (a.kind === "qty") {
+        const n = Number(v || 0);
+        if (n > 0) lines.push(`${a.name} × ${n}`);
+      } else {
+        if (v) lines.push(a.name);
+      }
     }
-    sumAddons.textContent = picked.length ? picked.join(", ") : "—";
-  }
 
-  async function postJSON(url, body, token) {
-    const headers = { "Content-Type": "application/json", "Accept": "application/json" };
-    if (token) headers.Authorization = `Bearer ${token}`;
-
-    const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(body || {}) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || `Erreur API (${r.status})`);
-    return j;
-  }
-
-  async function openCheckout(state) {
-    // si pas token -> renvoie vers index (signup) avec plan pré-sélectionné
-    const token = getToken();
-    if (!token) {
-      const p = encodeURIComponent(state.plan || "pro");
-      window.location.href = `/index.html?plan=${p}`;
+    sumAddons.innerHTML = "";
+    if (!lines.length) {
+      sumAddons.innerHTML = `<li class="small2">—</li>`;
       return;
     }
-
-    const out = await postJSON("/api/stripe/checkout", { plan: state.plan }, token);
-    if (!out?.url) throw new Error("URL Stripe manquante.");
-    window.location.href = out.url;
-  }
-
-  async function openPortal() {
-    const token = getToken();
-    if (!token) {
-      window.location.href = "/login.html";
-      return;
+    for (const t of lines) {
+      const li = document.createElement("li");
+      li.textContent = t;
+      sumAddons.appendChild(li);
     }
-    const out = await postJSON("/api/stripe/portal", {}, token);
-    if (!out?.url) throw new Error("URL Portal manquante.");
-    window.location.href = out.url;
   }
 
-  // INIT
-  const state = loadPrefs();
-  if (!["standard", "pro", "ultra"].includes(state.plan)) state.plan = "pro";
-  if (!state.addons || typeof state.addons !== "object") state.addons = {};
-
-  setAuthPill(!!getToken());
-  setActivePlanUI(state.plan);
-  renderAddons(state);
-  renderSummary(state);
-
-  plansWrap.querySelectorAll(".plan").forEach((el) => {
-    el.addEventListener("click", () => {
-      state.plan = el.getAttribute("data-plan");
-      savePrefs(state.plan, state.addons);
-      setActivePlanUI(state.plan);
-      renderSummary(state);
-    });
+  // ===== Actions =====
+  btnBackDash?.addEventListener("click", () => {
+    window.location.href = "/dashboard.html";
   });
 
-  btnCheckout.addEventListener("click", async () => {
+  btnPortal?.addEventListener("click", async () => {
+    // Si pas connecté => redirige login
+    const token = getToken();
+    if (!token) return (window.location.href = "/login.html");
+
+    const r = await api("/api/stripe/portal", { method: "POST", body: "{}" });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return alert(data?.error || "Impossible d'ouvrir le portal");
+    window.location.href = data.url;
+  });
+
+  btnCheckout?.addEventListener("click", async () => {
+    const plan = normalizePlan(localStorage.getItem(PLAN_PREF_KEY) || "pro");
+    const token = getToken();
+
+    // Si pas connecté, renvoie vers index avec plan préselectionné
+    if (!token) {
+      return (window.location.href = `/index.html?plan=${encodeURIComponent(plan)}`);
+    }
+
     btnCheckout.disabled = true;
+    btnCheckout.textContent = "Redirection…";
+
     try {
-      await openCheckout(state);
+      const r = await api("/api/stripe/checkout", {
+        method: "POST",
+        body: JSON.stringify({ plan }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data?.error || "Erreur checkout");
+      if (!data?.url) throw new Error("URL Stripe manquante");
+      window.location.href = data.url;
     } catch (e) {
-      alert(e?.message || "Erreur checkout");
-    } finally {
+      alert(e?.message || "Erreur");
       btnCheckout.disabled = false;
+      btnCheckout.textContent = "Continuer (Checkout Plan)";
     }
   });
 
-  btnPortal.addEventListener("click", async () => {
-    btnPortal.disabled = true;
-    try {
-      await openPortal();
-    } catch (e) {
-      alert(e?.message || "Erreur portal");
-    } finally {
-      btnPortal.disabled = false;
-    }
-  });
+  // ===== Init =====
+  function init() {
+    const token = getToken();
+    setAuthPill(!!token);
 
-  btnHome.addEventListener("click", () => (window.location.href = "/"));
+    const urlPlan = new URLSearchParams(location.search).get("plan");
+    const stored = localStorage.getItem(PLAN_PREF_KEY);
+    setActivePlan(normalizePlan(urlPlan || stored || "pro"));
+
+    renderAddons();
+    renderSummaryAddons();
+  }
+
+  window.addEventListener("DOMContentLoaded", init);
 })();
