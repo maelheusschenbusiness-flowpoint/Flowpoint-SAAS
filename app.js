@@ -1,9 +1,9 @@
 // app.js — FlowPoint Signup (Frontend)
 // Flow: POST /api/auth/lead -> store JWT -> POST /api/stripe/checkout -> redirect to Stripe
-// Token stored in localStorage under "fp_token"
+// ✅ Token stored in localStorage under "token" (same as dashboard)
 
 (() => {
-  const TOKEN_KEY = "fp_token";
+  const TOKEN_KEY = "token";
 
   const form = document.getElementById("signupForm");
   const btn = document.getElementById("btn");
@@ -34,7 +34,7 @@
     return "pro";
   }
 
-  // ✅ Preselect plan from pricing page: /index.html?plan=pro
+  // Preselect plan: /index.html?plan=pro
   function applyPlanFromQuery() {
     const p = new URLSearchParams(location.search).get("plan");
     const plan = normalizePlan(p);
@@ -42,13 +42,14 @@
   }
 
   async function postJSON(url, body, token) {
-    const headers = { "Content-Type": "application/json" };
+    const headers = { "Content-Type": "application/json", Accept: "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
 
     const r = await fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(body || {}),
+      cache: "no-store",
     });
 
     const j = await r.json().catch(() => ({}));
@@ -78,20 +79,15 @@
 
     try {
       // 1) Lead -> JWT
-      const lead = await postJSON("/api/auth/lead", {
-        firstName,
-        email,
-        companyName,
-        plan,
-      });
+      const lead = await postJSON("/api/auth/lead", { firstName, email, companyName, plan });
 
       if (!lead?.token) throw new Error("Token manquant (lead).");
       localStorage.setItem(TOKEN_KEY, lead.token);
 
       // 2) Checkout Stripe -> redirect
       setMsg("Redirection vers Stripe…");
-
       const checkout = await postJSON("/api/stripe/checkout", { plan }, lead.token);
+
       if (!checkout?.url) throw new Error("URL Stripe manquante.");
       window.location.href = checkout.url;
     } catch (err) {
