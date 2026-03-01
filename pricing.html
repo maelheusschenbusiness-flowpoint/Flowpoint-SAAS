@@ -1,330 +1,338 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FlowPoint — Pricing</title>
-  <meta name="description" content="Choisis ton plan et ajoute des options." />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Flowpoint — Pricing</title>
+
   <style>
     :root{
-      --bg:#0b1220;
-      --card:#0f1b33;
-      --card2:#0f172a;
-      --txt:#e5e7eb;
-      --mut:#94a3b8;
-      --line:rgba(148,163,184,.16);
-      --blue:#2f6bff;
-      --blue2:#1e4cff;
-      --violet:#a78bfa;
-      --green:#22c55e;
-      --red:#ef4444;
-      --radius:18px;
-      --shadow: 0 18px 50px rgba(0,0,0,.35);
+      --bg: #070B18;
+      --panel: rgba(255,255,255,.06);
+      --panel2: rgba(255,255,255,.08);
+      --border: rgba(255,255,255,.10);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.70);
+      --muted2: rgba(255,255,255,.55);
+      --brand: #2F6BFF;
+      --brand2:#1D4ED8;
+      --chip: rgba(47,107,255,.16);
+      --shadow: 0 22px 60px rgba(0,0,0,.35);
     }
-    *{box-sizing:border-box}
+
+    /* ✅ Mode clair auto si le système est en clair */
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#F6F8FF;
+        --panel:#FFFFFF;
+        --panel2:#FFFFFF;
+        --border: rgba(15,23,42,.10);
+        --text:#0F172A;
+        --muted: rgba(15,23,42,.72);
+        --muted2: rgba(15,23,42,.55);
+        --chip: rgba(47,107,255,.12);
+        --shadow: 0 22px 60px rgba(15,23,42,.10);
+      }
+    }
+
+    *{ box-sizing:border-box; }
     body{
       margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-      background: radial-gradient(1200px 600px at 50% -100px, rgba(47,107,255,.28), transparent 55%),
-                  radial-gradient(900px 500px at 10% 20%, rgba(167,139,250,.16), transparent 55%),
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 700px at 30% -10%, rgba(47,107,255,.35), transparent 60%),
+                  radial-gradient(900px 500px at 90% 0%, rgba(29,78,216,.25), transparent 55%),
                   var(--bg);
-      color:var(--txt);
+      color:var(--text);
     }
-    a{color:inherit}
-    .wrap{max-width:1100px;margin:0 auto;padding:34px 16px 60px}
-    .top{
-      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-      margin-bottom:18px;
+
+    a{ color:inherit; text-decoration:none; }
+    .wrap{ max-width:1180px; margin:0 auto; padding:26px 18px 42px; }
+
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:14px; margin-bottom:16px;
     }
-    .brand{display:flex;align-items:center;gap:10px}
-    .logo{
-      width:38px;height:38px;border-radius:14px;background:rgba(47,107,255,.18);
-      border:1px solid rgba(47,107,255,.35);
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 10px 30px rgba(47,107,255,.18);
+    .brand{
+      display:flex; align-items:center; gap:10px;
     }
-    .dot{width:16px;height:16px;border-radius:6px;background:var(--blue)}
-    h1{font-size:34px;line-height:1.05;margin:10px 0 6px}
-    .sub{color:var(--mut);max-width:760px;line-height:1.55}
+    .brand img{ height:36px; width:auto; display:block; }
+    .brand .sub{ font-size:12px; color:var(--muted2); margin-top:-2px; font-weight:700; letter-spacing:.2px; }
+
     .pill{
-      display:inline-flex;align-items:center;gap:8px;
-      border:1px solid var(--line);border-radius:999px;padding:8px 12px;
-      color:var(--mut);background:rgba(255,255,255,.02)
+      display:flex; align-items:center; gap:8px;
+      padding:8px 12px; border-radius:999px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      font-weight:800;
+      color: var(--muted);
+      white-space:nowrap;
     }
-    .pill b{color:var(--txt)}
+    .dot{ width:8px; height:8px; border-radius:50%; background:#f59e0b; }
+
+    .hero{
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border:1px solid var(--border);
+      border-radius:26px;
+      padding:20px 18px;
+      box-shadow: var(--shadow);
+    }
+    h1{ margin:0; font-size:34px; letter-spacing:-.6px; }
+    .lead{ margin-top:8px; color:var(--muted); line-height:1.5; }
+
+    /* ✅ Layout PC : 2 colonnes (plans+addons à gauche, résumé à droite) => plus de gros trou */
     .grid{
-      display:grid;grid-template-columns:1.1fr .9fr;gap:14px;margin-top:18px;
+      margin-top:14px;
+      display:grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap:14px;
+      align-items:start;
     }
-    @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+    @media (max-width: 980px){
+      .grid{ grid-template-columns: 1fr; }
+    }
 
     .card{
-      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
-      border:1px solid var(--line);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      padding:16px;
+      background: var(--panel);
+      border:1px solid var(--border);
+      border-radius:22px;
+      padding:14px;
+      box-shadow: var(--shadow);
     }
+    .cardTitle{ font-weight:900; letter-spacing:-.2px; }
+    .small{ font-size:12px; color:var(--muted); margin-top:4px; }
 
     .plans{
-      display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px;
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:12px;
+      margin-top:12px;
     }
-    @media (max-width: 900px){ .plans{grid-template-columns:1fr} }
+    @media (max-width: 980px){
+      .plans{ grid-template-columns: 1fr; }
+    }
 
     .plan{
-      border-radius:18px;border:1px solid var(--line);
-      padding:14px;background:rgba(15,27,51,.35);
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border-radius:18px;
+      padding:14px;
       cursor:pointer;
-      transition: transform .12s ease, border-color .12s ease, background .12s ease;
-      user-select:none;
+      transition: transform .12s ease, border-color .12s ease;
+      min-height:150px;
     }
-    .plan:hover{transform: translateY(-2px);border-color:rgba(47,107,255,.35)}
-    .plan.selected{border-color:rgba(47,107,255,.7);background:rgba(47,107,255,.08)}
-    .planTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-    .planName{font-weight:900;font-size:18px}
-    .price{font-weight:900;font-size:22px}
-    .per{color:var(--mut);font-size:12px;margin-top:2px}
-    .feat{margin:10px 0 0;padding:0;list-style:none;color:var(--mut);line-height:1.5}
-    .feat li{margin:6px 0}
+    .plan:hover{ transform: translateY(-2px); border-color: rgba(47,107,255,.45); }
+    .plan.active{
+      border-color: rgba(47,107,255,.70);
+      box-shadow: 0 16px 40px rgba(47,107,255,.18);
+    }
+    .planHead{
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+    }
+    .price{ font-weight:1000; font-size:26px; }
+    .per{ font-size:12px; color:var(--muted2); font-weight:800; margin-top:2px; text-align:right; }
     .badge{
-      font-size:12px;font-weight:900;
-      padding:6px 10px;border-radius:999px;
-      background:rgba(34,197,94,.14);
-      border:1px solid rgba(34,197,94,.25);
-      color:#bbf7d0;
-      white-space:nowrap;
-    }
-    .badge.pro{
-      background:rgba(167,139,250,.14);
-      border:1px solid rgba(167,139,250,.25);
-      color:#e9d5ff;
-    }
-
-    .row{
-      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-      margin-top:14px;
-    }
-    .btn{
-      height:44px;border-radius:14px;padding:0 14px;
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.04);
-      color:var(--txt);font-weight:900;
-      cursor:pointer;
-    }
-    .btn:hover{border-color:rgba(47,107,255,.35)}
-    .btn.primary{
-      background:linear-gradient(180deg, rgba(47,107,255,.95), rgba(30,76,255,.95));
-      border-color:rgba(47,107,255,.6);
-      box-shadow:0 16px 40px rgba(47,107,255,.20);
-    }
-    .btn.primary:disabled{opacity:.65;cursor:not-allowed}
-    .btn.small{height:38px;border-radius:12px;font-size:13px}
-
-    .muted{color:var(--mut);font-size:13px;line-height:1.5}
-    .hr{height:1px;background:var(--line);margin:14px 0}
-
-    .addonsHead{
-      display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;
-    }
-    .addonsList{display:grid;gap:10px;margin-top:12px}
-    .addon{
-      display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
-      padding:12px;border-radius:16px;border:1px solid var(--line);
-      background:rgba(15,27,51,.25);
-    }
-    .addonLeft{min-width:0}
-    .addonName{font-weight:900}
-    .addonDesc{color:var(--mut);font-size:12px;margin-top:4px;line-height:1.45}
-    .key{
-      display:inline-block;
-      margin-top:8px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New";
-      font-size:12px;
-      color:var(--violet);
-      background:rgba(167,139,250,.12);
-      border:1px solid rgba(167,139,250,.22);
-      padding:4px 8px;border-radius:999px;
-      white-space:nowrap;
-    }
-    .addonRight{text-align:right}
-    .addonPrice{font-weight:900}
-    .toggle{
-      display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-top:8px;
-      color:var(--mut);font-size:12px;
-    }
-    input[type="checkbox"]{width:18px;height:18px}
-
-    .summary{
-      position:sticky;top:14px;
-    }
-    .sumLine{display:flex;justify-content:space-between;gap:10px;margin:8px 0;color:var(--mut)}
-    .sumLine b{color:var(--txt)}
-    .sumTag{
-      display:inline-flex;align-items:center;gap:8px;
-      border:1px solid var(--line);border-radius:12px;padding:10px 12px;
-      background:rgba(255,255,255,.03);color:var(--mut);font-size:13px;
-      width:100%;
-    }
-    .ok{color:#bbf7d0}
-    .warn{color:#fde68a}
-    .err{color:#fecaca}
-
-    .msg{
+      display:inline-flex; align-items:center; padding:5px 9px; border-radius:999px;
+      background: var(--chip); border:1px solid rgba(47,107,255,.25);
+      font-size:11px; font-weight:900; color: var(--text);
       margin-top:10px;
-      font-size:13px;color:var(--mut);
-      min-height:18px;
+    }
+
+    .addons{
+      margin-top:12px;
+      display:grid;
+      gap:10px;
+    }
+    .addon{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:12px;
+      border-radius:18px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+    }
+    .addon .name{ font-weight:950; }
+    .addon .desc{ font-size:12px; color:var(--muted); margin-top:4px; line-height:1.35; }
+    .kv{
+      display:inline-flex;
+      padding:4px 8px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:900;
+      background: rgba(168,85,247,.12);
+      border: 1px solid rgba(168,85,247,.22);
+      color:#c4b5fd;
+      margin-top:8px;
+    }
+
+    .rightActions{
+      display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;
+    }
+
+    .btn{
+      appearance:none; border:none;
+      height:44px; padding:0 14px;
+      border-radius:14px;
+      font-weight:950;
+      cursor:pointer;
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+      border:1px solid var(--border);
+    }
+    .btn:hover{ border-color: rgba(47,107,255,.35); }
+    .btn.primary{
+      background: linear-gradient(180deg, var(--brand), var(--brand2));
+      border-color: rgba(255,255,255,.18);
+      box-shadow: 0 16px 36px rgba(47,107,255,.22);
+    }
+    .btn.full{ width:100%; }
+
+    .sumRow{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:10px 0; border-top:1px solid var(--border);
+    }
+    .sumRow:first-of-type{ border-top:none; padding-top:0; }
+    .sumLabel{ color:var(--muted); font-weight:850; }
+    .sumValue{ font-weight:1000; }
+
+    .note{
+      margin-top:10px;
+      font-size:12px;
+      color:var(--muted2);
+      line-height:1.45;
     }
   </style>
 </head>
+
 <body>
   <div class="wrap">
-    <div class="top">
+    <div class="topbar">
       <div class="brand">
-        <div class="logo"><div class="dot"></div></div>
+        <!-- ✅ Logo Flowpoint (plus de cube) -->
+        <img src="/assets/flowpoint-logo.svg" alt="Flowpoint">
         <div>
-          <div style="font-weight:900;font-size:16px;line-height:1">FlowPoint</div>
-          <div style="color:var(--mut);font-size:12px">Pricing</div>
+          <div style="font-weight:1000; letter-spacing:-.2px">Pricing</div>
+          <div class="sub">Plans + Add-ons</div>
         </div>
       </div>
+
       <div class="pill" id="authPill">
-        <span>Statut :</span>
-        <b id="authState">—</b>
+        <span class="dot" id="authDot"></span>
+        <span id="authState">Statut : …</span>
       </div>
     </div>
 
-    <h1>Choisis ton plan + tes options</h1>
-    <div class="sub">
-      Tu peux acheter un plan maintenant. Les add-ons se gèrent ensuite dans le <b>Customer Portal Stripe</b>
-      (bouton “Gérer mes add-ons”).
+    <div class="hero">
+      <h1>Choisis ton plan + tes options</h1>
+      <div class="lead">
+        Tu peux acheter un plan maintenant. Les add-ons se gèrent ensuite dans le Customer Portal Stripe (bouton “Gérer mes add-ons”).
+      </div>
     </div>
 
     <div class="grid">
       <!-- LEFT -->
       <div class="card">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">
-          <div>
-            <div style="font-weight:900;font-size:18px">Plans</div>
-            <div class="muted">Sélectionne un plan. Essai 14 jours via Stripe.</div>
-          </div>
-          <a class="btn small" href="/index.html" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">
-            Retour accueil
-          </a>
-        </div>
+        <div class="cardTitle">Plans</div>
+        <div class="small">Sélectionne un plan. Essai 14 jours via Stripe.</div>
 
         <div class="plans" id="plans">
-          <div class="plan" data-plan="standard" data-price="29">
-            <div class="planTop">
+          <div class="plan" data-plan="standard">
+            <div class="planHead">
               <div>
-                <div class="planName">Standard</div>
-                <div class="per">Pour démarrer</div>
+                <div style="font-weight:1000">Standard</div>
+                <div class="small">Pour démarrer</div>
               </div>
               <div style="text-align:right">
                 <div class="price">29€</div>
                 <div class="per">/ mois</div>
               </div>
             </div>
-            <ul class="feat">
-              <li>30 audits / mois</li>
-              <li>3 monitors actifs</li>
-              <li>30 PDFs + 30 exports</li>
-            </ul>
+            <div class="small" style="margin-top:10px">
+              30 audits / mois<br>
+              3 monitors actifs<br>
+              30 PDFs + 30 exports
+            </div>
           </div>
 
-          <div class="plan selected" data-plan="pro" data-price="79">
-            <div class="planTop">
+          <div class="plan active" data-plan="pro">
+            <div class="planHead">
               <div>
-                <div class="planName">Pro</div>
-                <div class="per">Le meilleur choix</div>
+                <div style="font-weight:1000">Pro</div>
+                <div class="small">Le meilleur choix</div>
               </div>
               <div style="text-align:right">
                 <div class="price">79€</div>
                 <div class="per">/ mois</div>
               </div>
             </div>
-            <ul class="feat">
-              <li>300 audits / mois</li>
-              <li>50 monitors actifs</li>
-              <li>300 PDFs + 300 exports</li>
-            </ul>
-            <div style="margin-top:10px"><span class="badge pro">Populaire</span></div>
+            <span class="badge">Populaire</span>
+            <div class="small" style="margin-top:10px">
+              300 audits / mois<br>
+              50 monitors actifs<br>
+              300 PDFs + 300 exports
+            </div>
           </div>
 
-          <div class="plan" data-plan="ultra" data-price="149">
-            <div class="planTop">
+          <div class="plan" data-plan="ultra">
+            <div class="planHead">
               <div>
-                <div class="planName">Ultra</div>
-                <div class="per">Teams & scale</div>
+                <div style="font-weight:1000">Ultra</div>
+                <div class="small">Teams & scale</div>
               </div>
               <div style="text-align:right">
                 <div class="price">149€</div>
                 <div class="per">/ mois</div>
               </div>
             </div>
-            <ul class="feat">
-              <li>2000 audits / mois</li>
-              <li>300 monitors actifs</li>
-              <li>2000 PDFs + 2000 exports</li>
-              <li>10 seats inclus</li>
-            </ul>
-            <div style="margin-top:10px"><span class="badge">Team</span></div>
-          </div>
-        </div>
-
-        <div class="hr"></div>
-
-        <div class="addonsHead">
-          <div>
-            <div style="font-weight:900;font-size:18px">Add-ons</div>
-            <div class="muted">
-              Ici tu vois les options et leurs <b>keys</b> (en violet).  
-              L’achat/gestion se fait via le Portal Stripe.
+            <span class="badge">Team</span>
+            <div class="small" style="margin-top:10px">
+              2000 audits / mois<br>
+              300 monitors actifs<br>
+              2000 PDFs + 2000 exports<br>
+              10 seats inclus
             </div>
           </div>
-          <button class="btn small" id="btnPortal" type="button">Gérer mes add-ons</button>
         </div>
 
-        <div class="addonsList" id="addonsList">
-          <!-- injecté par pricing.js -->
+        <div style="margin-top:14px" class="cardTitle">Add-ons</div>
+        <div class="small">Ici tu vois les options et leurs keys (en violet). L'achat/gestion se fait via le Portal Stripe.</div>
+
+        <div class="rightActions">
+          <button class="btn" id="btnPortal" type="button">Gérer mes add-ons</button>
+          <button class="btn" id="btnHome" type="button">Retour accueil</button>
         </div>
 
-        <div class="msg" id="msg"></div>
+        <div class="addons" id="addonsList"></div>
       </div>
 
       <!-- RIGHT -->
-      <div class="card summary">
-        <div style="font-weight:900;font-size:18px">Résumé</div>
-        <div class="muted">Plan sélectionné + options (pré-sélection). Les add-ons se règlent dans le Portal.</div>
+      <div class="card" id="summaryCard">
+        <div class="cardTitle">Résumé</div>
+        <div class="small">Plan sélectionné + options (pré-sélection). Les add-ons se règlent dans le Portal.</div>
 
-        <div class="hr"></div>
-
-        <div class="sumLine">
-          <span>Plan</span>
-          <b id="sumPlan">PRO</b>
+        <div style="margin-top:12px" id="summary">
+          <div class="sumRow">
+            <div class="sumLabel">Plan</div>
+            <div class="sumValue" id="sumPlan">PRO</div>
+          </div>
+          <div class="sumRow">
+            <div class="sumLabel">Prix plan</div>
+            <div class="sumValue" id="sumPlanPrice">79€ / mois</div>
+          </div>
+          <div class="sumRow">
+            <div class="sumLabel">White label</div>
+            <div class="sumValue">Inclus (gratuit)</div>
+          </div>
+          <div class="sumRow">
+            <div class="sumLabel">Add-ons sélectionnés</div>
+            <div class="sumValue" id="sumAddons">—</div>
+          </div>
         </div>
-        <div class="sumLine">
-          <span>Prix plan</span>
-          <b id="sumPlanPrice">79€ / mois</b>
-        </div>
 
-        <div class="hr"></div>
-
-        <div class="sumTag">
-          <span>White label</span>
-          <b class="ok">Inclus (gratuit)</b>
-          <span style="margin-left:auto" class="key">whiteLabel</span>
-        </div>
-
-        <div style="margin-top:12px" class="muted">
-          Add-ons sélectionnés (préférence enregistrée) :
-        </div>
-        <div id="sumAddons" class="muted" style="margin-top:8px;line-height:1.6">—</div>
-
-        <div class="hr"></div>
-
-        <button class="btn primary" id="btnCheckout" type="button" style="width:100%">
-          Continuer (Checkout Plan)
-        </button>
-        <div class="muted" style="margin-top:10px">
-          Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (le plan sera pré-sélectionné).
+        <div style="margin-top:14px">
+          <button class="btn primary full" id="btnCheckout" type="button">Continuer (Checkout Plan)</button>
+          <div class="note" id="note">
+            Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (le plan sera pré-sélectionné).
+          </div>
         </div>
       </div>
     </div>
