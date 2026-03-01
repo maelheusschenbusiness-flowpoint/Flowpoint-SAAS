@@ -1,554 +1,616 @@
-:root{
-  --bg:#f5f7fb;
-  --card:#ffffff;
-  --text:#0f172a;
-  --muted:#64748b;
-  --border:rgba(15,23,42,.10);
-  --shadow:0 10px 30px rgba(15,23,42,.06);
-  --blue:#1f5eff;
-  --blue2:#1a49d6;
-  --green:#16a34a;
-  --red:#ef4444;
-  --radius:16px;
-  --radius2:14px;
-  --gap:18px;
-  --sidebar:260px;
-}
+/* Flowpoint Dashboard — UI/Routes/Responsive
+   Fix: overlay ne bloque plus les clics (pointer-events: none quand fermé)
+*/
 
-*{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0;
-  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-  background:var(--bg);
-  color:var(--text);
-}
+(function () {
+  const $ = (q) => document.querySelector(q);
+  const $$ = (q) => Array.from(document.querySelectorAll(q));
 
-.app{
-  min-height:100vh;
-  display:grid;
-  grid-template-columns: var(--sidebar) 1fr;
-}
-
-.sidebar{
-  position:sticky;
-  top:0;
-  height:100vh;
-  padding:18px 14px;
-  background:linear-gradient(180deg, #f7f9ff 0%, #f4f6fb 40%, #f4f6fb 100%);
-  border-right:1px solid var(--border);
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-}
-
-.brand{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  padding:10px 10px;
-  border-radius:14px;
-}
-.brand-ico{
-  width:34px;height:34px;
-  border-radius:12px;
-  display:flex;align-items:center;justify-content:center;
-  background:rgba(31,94,255,.10);
-  border:1px solid rgba(31,94,255,.20);
-  font-weight:800;
-}
-.brand-name{font-weight:800;letter-spacing:-.2px}
-.brand-sub{font-size:12px;color:var(--muted);margin-top:2px}
-
-.sb-nav{
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-  padding:6px 6px;
-}
-.nav-item{
-  position:relative;
-  display:flex;
-  align-items:center;
-  gap:10px;
-  padding:10px 10px;
-  border-radius:12px;
-  color:var(--text);
-  text-decoration:none;
-  font-weight:600;
-  font-size:14px;
-  border:1px solid transparent;
-}
-.nav-item .nav-ico{width:22px;display:inline-flex;justify-content:center}
-.nav-item:hover{background:rgba(15,23,42,.03)}
-.nav-item.active{
-  background:rgba(31,94,255,.10);
-  border-color:rgba(31,94,255,.20);
-  color:#0b2aa6;
-}
-.pill{
-  margin-left:auto;
-  font-size:11px;
-  font-weight:800;
-  padding:4px 8px;
-  border-radius:999px;
-  background:rgba(31,94,255,.12);
-  color:#0b2aa6;
-  border:1px solid rgba(31,94,255,.20);
-}
-
-.sb-bottom{margin-top:auto;padding:8px 6px}
-.account{
-  background:rgba(255,255,255,.65);
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:12px;
-  box-shadow:0 8px 18px rgba(15,23,42,.04);
-}
-.account-title{
-  font-size:12px;
-  letter-spacing:.14em;
-  color:var(--muted);
-  font-weight:800;
-  margin-bottom:10px;
-}
-.account-row{
-  display:flex;
-  justify-content:space-between;
-  font-size:13px;
-  margin:6px 0;
-}
-.muted{color:var(--muted);font-weight:600}
-.sb-footnote{margin-top:10px;color:var(--muted);font-size:12px}
-
-.main{
-  padding:18px 22px 26px;
-}
-
-.topbar{
-  display:grid;
-  grid-template-columns: 44px 1fr auto;
-  gap:14px;
-  align-items:start;
-  margin-bottom:16px;
-}
-
-.burger{
-  display:none;
-  width:44px;height:44px;
-  border-radius:14px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.7);
-  box-shadow:0 10px 20px rgba(15,23,42,.06);
-}
-.burger span{
-  display:block;
-  width:18px;height:2px;
-  background:#0f172a;
-  margin:4px auto;
-  border-radius:10px;
-  opacity:.85;
-}
-
-.top-left{
-  display:flex;
-  align-items:center;
-  gap:14px;
-}
-.hello-title{
-  font-size:22px;
-  font-weight:800;
-  letter-spacing:-.3px;
-}
-.hello-sub{color:var(--muted);font-size:13px;margin-top:2px}
-
-.top-right{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  align-items:flex-end;
-}
-.controls{
-  display:flex;
-  gap:10px;
-  align-items:center;
-  flex-wrap:wrap;
-  justify-content:flex-end;
-}
-.top-mini{
-  width:100%;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:12px;
-}
-.link-btn{
-  background:none;border:none;
-  color:#0b2aa6;
-  font-weight:700;
-  cursor:pointer;
-  padding:0;
-}
-.link-btn:hover{text-decoration:underline}
-
-.btn{
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.85);
-  color:var(--text);
-  border-radius:999px;
-  padding:10px 14px;
-  font-weight:800;
-  font-size:13px;
-  cursor:pointer;
-  box-shadow:0 10px 18px rgba(15,23,42,.05);
-}
-.btn:hover{filter:brightness(.98)}
-.btn.primary{
-  background:linear-gradient(180deg,var(--blue) 0%, var(--blue2) 100%);
-  color:white;
-  border-color:rgba(255,255,255,.15);
-}
-.btn.ghost{
-  background:rgba(255,255,255,.65);
-}
-.btn.sm{padding:8px 12px;font-size:12px}
-.btn.full{width:100%;justify-content:center}
-
-.icon-btn{
-  border:none;background:none;cursor:pointer;
-}
-
-.status-pill{
-  display:flex;align-items:center;gap:10px;
-  padding:10px 12px;
-  border-radius:999px;
-  background:rgba(255,255,255,.75);
-  border:1px solid var(--border);
-  box-shadow:0 10px 18px rgba(15,23,42,.05);
-  font-weight:700;
-  font-size:13px;
-}
-.status-pill .dot{
-  width:10px;height:10px;border-radius:999px;
-  background:#22c55e;
-  box-shadow:0 0 0 5px rgba(34,197,94,.14);
-}
-
-.avatar{
-  width:42px;height:42px;
-  border-radius:14px;
-  display:flex;align-items:center;justify-content:center;
-  font-weight:900;
-  background:rgba(255,255,255,.8);
-  border:1px solid var(--border);
-  box-shadow:0 10px 18px rgba(15,23,42,.05);
-}
-
-.select{position:relative}
-.select-btn{
-  display:flex;align-items:center;gap:10px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.75);
-  padding:10px 12px;
-  border-radius:999px;
-  font-weight:800;
-  cursor:pointer;
-  box-shadow:0 10px 18px rgba(15,23,42,.05);
-}
-.chev{opacity:.65}
-.select-menu{
-  position:absolute;
-  top:48px; right:0;
-  min-width:170px;
-  background:white;
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:6px;
-  box-shadow:var(--shadow);
-  display:none;
-  z-index:50;
-}
-.select.open .select-menu{display:block}
-.select-item{
-  width:100%;
-  text-align:left;
-  background:none;border:none;
-  padding:10px 10px;
-  border-radius:12px;
-  font-weight:800;
-  cursor:pointer;
-}
-.select-item:hover{background:rgba(15,23,42,.04)}
-.select-item.active{background:rgba(31,94,255,.10);color:#0b2aa6}
-
-.dropdown{position:relative}
-.dd-menu{
-  position:absolute;
-  top:46px; left:0;
-  min-width:210px;
-  background:white;
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:6px;
-  box-shadow:var(--shadow);
-  display:none;
-  z-index:60;
-}
-.dd-menu.right{left:auto;right:0}
-.dropdown.open .dd-menu{display:block}
-.dd-item{
-  width:100%;
-  text-align:left;
-  background:none;border:none;
-  padding:10px 10px;
-  border-radius:12px;
-  font-weight:800;
-  cursor:pointer;
-}
-.dd-item:hover{background:rgba(15,23,42,.04)}
-
-.grid{
-  display:grid;
-  grid-template-columns: 1.05fr .95fr;
-  gap:var(--gap);
-  align-items:start;
-}
-.col{display:flex;flex-direction:column;gap:var(--gap)}
-
-.card{
-  background:var(--card);
-  border:1px solid var(--border);
-  border-radius:18px;
-  box-shadow:var(--shadow);
-  overflow:hidden;
-}
-.card-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:14px 16px;
-  border-bottom:1px solid rgba(15,23,42,.06);
-}
-.card-title{
-  font-weight:900;
-  letter-spacing:-.2px;
-}
-.tag{
-  font-size:12px;
-  font-weight:900;
-  padding:6px 10px;
-  border-radius:999px;
-  background:rgba(15,23,42,.04);
-  border:1px solid rgba(15,23,42,.08);
-  color:#0f172a;
-}
-
-.kpi{padding-bottom:10px}
-.kpi .card-head{border-bottom:none;padding-bottom:8px}
-.kpi-row{
-  display:grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap:12px;
-  padding:0 16px 8px;
-}
-.kpi-box{
-  background:rgba(15,23,42,.02);
-  border:1px solid rgba(15,23,42,.07);
-  border-radius:16px;
-  padding:14px;
-}
-.kpi-label{font-size:12px;color:var(--muted);font-weight:800}
-.kpi-value{font-size:28px;font-weight:900;letter-spacing:-.4px;margin-top:6px}
-.kpi-value.green{color:var(--green)}
-.kpi-suffix{font-size:16px;color:var(--muted);font-weight:900;margin-left:4px}
-.kpi-sub{margin-top:6px;font-size:12px;color:var(--muted);font-weight:700}
-
-.chart-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:10px 16px 0;
-}
-.chart-title{font-weight:900;color:#0f172a}
-.chart-tabs{display:flex;gap:8px}
-.chip{
-  border:1px solid rgba(15,23,42,.10);
-  background:rgba(15,23,42,.03);
-  padding:7px 10px;
-  border-radius:999px;
-  font-weight:900;
-  font-size:12px;
-  cursor:pointer;
-}
-.chip.active{background:rgba(31,94,255,.10);border-color:rgba(31,94,255,.22);color:#0b2aa6}
-
-.chart-wrap{padding:10px 16px 16px}
-.chart-wrap canvas{
-  width:100%;
-  height:220px;
-  display:block;
-  background:linear-gradient(180deg, rgba(31,94,255,.10) 0%, rgba(31,94,255,0) 80%);
-  border:1px solid rgba(15,23,42,.07);
-  border-radius:16px;
-}
-
-.actions .actions-list{padding:12px 16px 14px;display:flex;flex-direction:column;gap:10px}
-.action-item{
-  display:grid;
-  grid-template-columns: 20px 1fr auto;
-  gap:10px;
-  align-items:center;
-  padding:10px 10px;
-  border-radius:14px;
-  border:1px solid rgba(15,23,42,.08);
-  background:rgba(255,255,255,.70);
-}
-.action-ico{width:18px;height:18px;border-radius:7px;background:rgba(31,94,255,.14);border:1px solid rgba(31,94,255,.22)}
-.action-title{font-weight:900;font-size:13px}
-.action-sub{font-size:12px;color:var(--muted);font-weight:700;margin-top:2px}
-.action-btn{
-  border:none;
-  background:rgba(31,94,255,.12);
-  border:1px solid rgba(31,94,255,.22);
-  color:#0b2aa6;
-  font-weight:900;
-  padding:8px 10px;
-  border-radius:12px;
-  cursor:pointer;
-}
-.action-btn:hover{filter:brightness(.98)}
-
-.table-wrap{padding:0 10px 12px}
-.table{
-  width:100%;
-  border-collapse:separate;
-  border-spacing:0 10px;
-  font-size:13px;
-}
-.table thead th{
-  text-align:left;
-  color:var(--muted);
-  font-size:12px;
-  letter-spacing:.02em;
-  padding:0 10px;
-}
-.table tbody td{
-  background:rgba(15,23,42,.02);
-  border-top:1px solid rgba(15,23,42,.08);
-  border-bottom:1px solid rgba(15,23,42,.08);
-  padding:12px 10px;
-  font-weight:700;
-}
-.table tbody tr td:first-child{
-  border-left:1px solid rgba(15,23,42,.08);
-  border-top-left-radius:14px;
-  border-bottom-left-radius:14px;
-}
-.table tbody tr td:last-child{
-  border-right:1px solid rgba(15,23,42,.08);
-  border-top-right-radius:14px;
-  border-bottom-right-radius:14px;
-}
-.table.compact tbody td{padding:10px 10px}
-.right{text-align:right}
-
-.badge{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-}
-.dot-sm{
-  width:10px;height:10px;border-radius:999px;
-  background:var(--muted);
-}
-.dot-sm.up{background:#22c55e}
-.dot-sm.down{background:#ef4444}
-.dot-sm.unk{background:#94a3b8}
-
-.plans .plans-grid{
-  padding:12px 12px 14px;
-  display:grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap:12px;
-}
-.plan{
-  border-radius:18px;
-  border:1px solid rgba(15,23,42,.10);
-  background:rgba(255,255,255,.75);
-  padding:14px;
-  position:relative;
-}
-.plan-top{
-  display:flex;justify-content:space-between;align-items:baseline;
-  margin-bottom:8px;
-}
-.plan-name{font-weight:900;font-size:14px}
-.plan-price{font-weight:900;letter-spacing:-.3px}
-.plan-price .euro{opacity:.65;margin-right:2px}
-.plan-price .amt{font-size:24px}
-.plan-price .per{opacity:.55;margin-left:4px;font-size:12px}
-
-.plan-list{
-  margin:10px 0 12px;
-  padding-left:16px;
-  color:#0f172a;
-}
-.plan-list li{margin:7px 0;font-weight:700}
-.plan.featured{
-  background:linear-gradient(180deg, rgba(31,94,255,.18) 0%, rgba(31,94,255,.08) 100%);
-  border-color:rgba(31,94,255,.25);
-}
-.plan-badge{
-  position:absolute;
-  top:12px; right:12px;
-  font-size:11px;
-  font-weight:900;
-  padding:6px 10px;
-  border-radius:999px;
-  background:rgba(31,94,255,.14);
-  border:1px solid rgba(31,94,255,.22);
-  color:#0b2aa6;
-}
-
-/* Overlay for mobile sidebar */
-.overlay{
-  display:none;
-  position:fixed;
-  inset:0;
-  background:rgba(15,23,42,.35);
-  z-index:80;
-}
-
-/* RESPONSIVE (mobile identique à ce que tu veux : pas de “layout catastrophique”) */
-@media (max-width: 1100px){
-  .grid{grid-template-columns:1fr}
-  .plans .plans-grid{grid-template-columns:1fr}
-}
-
-@media (max-width: 920px){
-  .app{grid-template-columns:1fr}
-  .sidebar{
-    position:fixed;
-    left:0; top:0;
-    transform:translateX(-105%);
-    transition:transform .22s ease;
-    z-index:90;
-    width:min(320px, 86vw);
+  const token = localStorage.getItem("token") || "";
+  if (!token) {
+    window.location.href = "/login.html";
+    return;
   }
-  .sidebar.open{transform:translateX(0)}
-  .overlay.show{display:block}
 
-  .burger{display:inline-flex;align-items:center;justify-content:center}
-  .topbar{grid-template-columns:44px 1fr}
-  .top-right{grid-column:1 / -1; align-items:flex-start}
-  .controls{justify-content:flex-start}
-  .avatar{margin-left:auto}
-}
+  // ---------- API ----------
+  const api = async (path, opts = {}) => {
+    const r = await fetch(path, {
+      ...opts,
+      headers: {
+        ...(opts.headers || {}),
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (r.status === 401) {
+      localStorage.removeItem("token");
+      window.location.href = "/login.html";
+      return null;
+    }
+    return r;
+  };
 
-@media (max-width: 520px){
-  .main{padding:14px 14px 20px}
-  .hello-title{font-size:18px}
-  .kpi-row{grid-template-columns:1fr; }
-  .chart-tabs{display:none}
-  .status-pill{width:100%;justify-content:center}
-}
+  // ---------- Icons (blue style) ----------
+  const icons = {
+    overview: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 19V5m0 14h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 15l3-3 3 2 5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    audits: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M7 3h8l2 2v16H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 9h6M9 13h6M9 17h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+    monitors: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 12l4-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>`,
+    local: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M12 22s7-5.5 7-12a7 7 0 1 0-14 0c0 6.5 7 12 7 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>`,
+    competitors: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 20h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 20V10m5 10V4m5 16v-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+    reports: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M7 3h10l2 2v16H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+    billing: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 7h16v10H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 10h16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+    settings: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a7.7 7.7 0 0 0 .1-1 7.7 7.7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7.4 7.4 0 0 0-1.7-1l-.3-2.6H11l-.3 2.6a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.5L6.6 13a7.7 7.7 0 0 0-.1 1 7.7 7.7 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1a7.4 7.4 0 0 0 1.7 1l.3 2.6h4l.3-2.6a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`
+  };
+
+  $$("[data-ico]").forEach(el => {
+    const k = el.getAttribute("data-ico");
+    el.innerHTML = icons[k] || "";
+  });
+
+  // ---------- UI elements ----------
+  const sidebar = $("#sidebar");
+  const overlay = $("#overlay");
+  const btnMenu = $("#btnMenu");
+
+  const exportsDropdown = $("#exportsDropdown");
+  const exportsMenu = $("#exportsMenu");
+  const btnExports = $("#btnExports");
+
+  const plansCard = $("#plansCard");
+  const monitorsCard = $("#monitorsCard");
+  const overviewHero = $("#overviewHero");
+  const pageContainer = $("#pageContainer");
+
+  // Fix: menu mobile
+  const openSidebar = () => {
+    sidebar.classList.add("open");
+    overlay.classList.add("show");
+    overlay.setAttribute("aria-hidden", "false");
+  };
+  const closeSidebar = () => {
+    sidebar.classList.remove("open");
+    overlay.classList.remove("show");
+    overlay.setAttribute("aria-hidden", "true");
+  };
+
+  btnMenu.addEventListener("click", () => {
+    if (sidebar.classList.contains("open")) closeSidebar();
+    else openSidebar();
+  });
+  overlay.addEventListener("click", closeSidebar);
+
+  // Dropdown exports
+  const closeExports = () => {
+    exportsMenu.classList.remove("show");
+    exportsMenu.setAttribute("aria-hidden", "true");
+  };
+  btnExports.addEventListener("click", (e) => {
+    e.stopPropagation();
+    exportsMenu.classList.toggle("show");
+    exportsMenu.setAttribute("aria-hidden", exportsMenu.classList.contains("show") ? "false" : "true");
+  });
+  document.addEventListener("click", closeExports);
+
+  // ---------- Routing ----------
+  const routes = ["overview","audits","monitors","local","competitors","reports","billing","settings"];
+
+  function setActiveRoute(route) {
+    $$("[data-route]").forEach(a => {
+      a.classList.toggle("active", a.getAttribute("data-route") === route);
+    });
+
+    // Plans only on Overview + Billing
+    const showPlans = (route === "overview" || route === "billing");
+    plansCard.style.display = showPlans ? "" : "none";
+
+    // On non-overview pages: hide the big overview hero and show page view
+    if (route === "overview") {
+      overviewHero.style.display = "";
+      monitorsCard.style.display = "";
+      pageContainer.innerHTML = "";
+    } else {
+      overviewHero.style.display = "none";
+      // monitors table stays visible on monitors route + overview only
+      monitorsCard.style.display = (route === "monitors") ? "" : "none";
+      renderPage(route);
+    }
+
+    // On mobile, close sidebar after nav click
+    if (window.matchMedia("(max-width: 900px)").matches) closeSidebar();
+  }
+
+  function renderPage(route) {
+    // Pages “différentes” (Settings & Reports style différent)
+    if (route === "audits") return renderAudits();
+    if (route === "monitors") return renderMonitorsPage();
+    if (route === "billing") return renderBilling();
+    if (route === "settings") return renderSettings();
+    if (route === "reports") return renderReports();
+    if (route === "local") return renderLocal();
+    if (route === "competitors") return renderCompetitors();
+
+    pageContainer.innerHTML = "";
+  }
+
+  function cardHTML(title, inner, extraClass="") {
+    return `
+      <div class="card ${extraClass}">
+        <div class="cardHead">
+          <div class="cardTitle">${title}</div>
+        </div>
+        <div style="margin-top:10px">${inner}</div>
+      </div>
+    `;
+  }
+
+  // ---------- Data fetch ----------
+  async function fetchMe() {
+    const r = await api("/api/me");
+    if (!r) return null;
+    return r.json().catch(() => null);
+  }
+  async function fetchOverview(days) {
+    const r = await api(`/api/overview?days=${encodeURIComponent(days)}`);
+    if (!r) return null;
+    return r.json().catch(() => null);
+  }
+  async function fetchMonitors() {
+    const r = await api("/api/monitors");
+    if (!r) return null;
+    return r.json().catch(() => null);
+  }
+  async function fetchAudits() {
+    const r = await api("/api/audits");
+    if (!r) return null;
+    return r.json().catch(() => null);
+  }
+
+  // ---------- KPI + header ----------
+  function initials(str) {
+    const s = String(str || "").trim();
+    if (!s) return "FP";
+    const parts = s.split(" ").filter(Boolean);
+    if (parts.length === 1) return (parts[0][0] || "F").toUpperCase() + "P";
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
+  function setAccount(me) {
+    $("#helloTitle").textContent = `Bonjour, ${me?.companyName || me?.name || "—"}`;
+    $("#avatarText").textContent = initials(me?.companyName || me?.name || "FP");
+
+    $("#accPlan").textContent = (me?.plan || "—").toUpperCase();
+    $("#accOrg").textContent = me?.org?.name || "—";
+    $("#accRole").textContent = me?.role || "—";
+
+    const trial = me?.trialEndsAt ? new Date(me.trialEndsAt).toLocaleDateString("fr-FR") : "—";
+    $("#accTrial").textContent = me?.hasTrial ? trial : "—";
+  }
+
+  // ---------- Simple chart (canvas) ----------
+  function drawChart(points) {
+    const canvas = $("#chart");
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width = canvas.clientWidth * devicePixelRatio;
+    const h = canvas.height = canvas.clientHeight * devicePixelRatio;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const pad = 18 * devicePixelRatio;
+    const max = Math.max(100, ...points);
+    const min = 0;
+
+    // grid
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1 * devicePixelRatio;
+    ctx.strokeStyle = "rgba(15,23,42,.10)";
+    for (let i = 0; i <= 4; i++) {
+      const y = pad + (h - pad*2) * (i/4);
+      ctx.beginPath();
+      ctx.moveTo(pad, y);
+      ctx.lineTo(w - pad, y);
+      ctx.stroke();
+    }
+
+    // line
+    const n = Math.max(2, points.length);
+    const stepX = (w - pad*2) / (n - 1);
+    const toY = (v) => {
+      const t = (v - min) / (max - min || 1);
+      return pad + (h - pad*2) * (1 - t);
+    };
+
+    // area
+    ctx.beginPath();
+    ctx.moveTo(pad, toY(points[0] || 0));
+    for (let i = 1; i < n; i++) {
+      ctx.lineTo(pad + stepX * i, toY(points[i] || points[points.length-1] || 0));
+    }
+    ctx.lineTo(pad + stepX * (n - 1), h - pad);
+    ctx.lineTo(pad, h - pad);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(47,107,255,.10)";
+    ctx.fill();
+
+    // stroke
+    ctx.beginPath();
+    ctx.moveTo(pad, toY(points[0] || 0));
+    for (let i = 1; i < n; i++) {
+      ctx.lineTo(pad + stepX * i, toY(points[i] || points[points.length-1] || 0));
+    }
+    ctx.strokeStyle = "rgba(47,107,255,.95)";
+    ctx.lineWidth = 3.2 * devicePixelRatio;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+  }
+
+  // ---------- Monitors table ----------
+  function fmtWhen(d) {
+    if (!d) return "—";
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return "—";
+    return dt.toLocaleString("fr-FR", { dateStyle:"short", timeStyle:"short" });
+  }
+
+  function renderMonitorsRows(list) {
+    const wrap = $("#monitorsRows");
+    const empty = $("#monitorsEmpty");
+
+    wrap.innerHTML = "";
+
+    if (!list?.length) {
+      empty.style.display = "";
+      return;
+    }
+    empty.style.display = "none";
+
+    for (const m of list) {
+      const st = (m.lastStatus || "unknown").toLowerCase();
+      const klass = st === "up" ? "up" : st === "down" ? "down" : "";
+
+      const row = document.createElement("div");
+      row.className = "tr row";
+
+      // Mobile labels handled via CSS data-label on each cell (only visible on 520px)
+      row.innerHTML = `
+        <div data-label="URL">${m.url || "—"}</div>
+        <div data-label="Status">
+          <span class="badgeStatus ${klass}">
+            <span class="sDot"></span>
+            <span>${st === "unknown" ? "Unknown" : st.toUpperCase()}</span>
+          </span>
+        </div>
+        <div data-label="Interval">${m.intervalMinutes || 60} min</div>
+        <div data-label="Last Check">${fmtWhen(m.lastCheckedAt)}</div>
+        <div data-label="Response Time">${m.lastResponseTimeMs ? `${m.lastResponseTimeMs} ms` : "—"}</div>
+        <div data-label="">
+          <button class="btn small" data-run="${m._id}">Run</button>
+        </div>
+      `;
+      wrap.appendChild(row);
+    }
+
+    // run buttons
+    wrap.querySelectorAll("[data-run]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-run");
+        btn.disabled = true;
+        btn.textContent = "…";
+        try {
+          const r = await api(`/api/monitors/${id}/run`, { method:"POST" });
+          const data = await r.json().catch(()=>null);
+          if (!r.ok) alert(data?.error || "Erreur monitor");
+          await refreshMonitors();
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Run";
+        }
+      });
+    });
+  }
+
+  async function refreshMonitors() {
+    const data = await fetchMonitors();
+    const list = data?.monitors || [];
+    renderMonitorsRows(list);
+  }
+
+  // ---------- Pages ----------
+  async function renderAudits() {
+    pageContainer.innerHTML = cardHTML("Audits", `
+      <div class="smallMuted" style="margin-bottom:10px">Derniers audits SEO. Exporte en CSV via “Exports”.</div>
+      <div id="auditsBox" class="empty">Chargement…</div>
+    `);
+    const box = $("#auditsBox");
+    const data = await fetchAudits();
+    const list = data?.audits || [];
+    if (!list.length) {
+      box.className = "empty";
+      box.textContent = "Aucun audit pour le moment.";
+      return;
+    }
+    box.className = "";
+    box.innerHTML = `
+      <div class="table">
+        <div class="tr th" style="grid-template-columns:1.4fr .6fr .6fr 1fr;">
+          <div>URL</div><div>Score</div><div>Status</div><div>Date</div>
+        </div>
+        ${list.slice(0,30).map(a => `
+          <div class="tr row" style="grid-template-columns:1.4fr .6fr .6fr 1fr;">
+            <div data-label="URL">${a.url || "—"}</div>
+            <div data-label="Score"><b>${a.score ?? 0}</b>/100</div>
+            <div data-label="Status">${(a.status || "—").toUpperCase()}</div>
+            <div data-label="Date">${fmtWhen(a.createdAt)}</div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  async function renderMonitorsPage() {
+    pageContainer.innerHTML = cardHTML("Monitoring", `
+      <div class="smallMuted">Gère tes monitors ici. Le tableau à droite reste visible sur cette page.</div>
+    `);
+  }
+
+  async function renderBilling() {
+    pageContainer.innerHTML = cardHTML("Billing", `
+      <div class="smallMuted" style="margin-bottom:10px">
+        Gère ton abonnement. Les Plans sont visibles ici + sur Overview.
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <button class="btn primary" id="billingPortalBtn" type="button">Open Customer Portal</button>
+        <button class="btn" id="billingSeePlansBtn" type="button">Go to Pricing</button>
+      </div>
+    `);
+    $("#billingPortalBtn").addEventListener("click", async () => {
+      const r = await api("/api/stripe/portal", { method:"POST", body:"{}" });
+      const data = await r.json().catch(()=>null);
+      if (!r.ok) return alert(data?.error || "Impossible d'ouvrir le portal");
+      window.location.href = data.url;
+    });
+    $("#billingSeePlansBtn").addEventListener("click", () => {
+      window.location.href = "/pricing.html";
+    });
+  }
+
+  async function renderSettings() {
+    // Style différent: “panel” plus produit, plus de champs (branding/alerts)
+    pageContainer.innerHTML = `
+      <div class="card" style="border-radius:26px;background:linear-gradient(180deg, rgba(15,23,42,.04), rgba(255,255,255,.78));">
+        <div class="cardHead">
+          <div class="cardTitle">Settings</div>
+          <div class="smallMuted">Alerting · Branding · Organisation</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+          <div class="card" style="padding:14px;border-radius:22px;">
+            <div class="cardTitle" style="font-size:16px">Alert recipients</div>
+            <div class="smallMuted" style="margin:8px 0 10px;">Choisis qui reçoit les alertes monitors.</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn small" id="setAll" type="button">All members</button>
+              <button class="btn small" id="setOwner" type="button">Owner only</button>
+            </div>
+            <div class="smallMuted" style="margin-top:10px">Emails additionnels (plus tard): support@…</div>
+          </div>
+
+          <div class="card" style="padding:14px;border-radius:22px;">
+            <div class="cardTitle" style="font-size:16px">Branding</div>
+            <div class="smallMuted" style="margin:8px 0 10px;">White-label prêt (selon ton backend).</div>
+            <div style="display:grid;gap:8px">
+              <label class="smallMuted">App name</label>
+              <input id="brandName" class="inp" placeholder="Flowpoint" />
+              <label class="smallMuted">Support email</label>
+              <input id="brandSupport" class="inp" placeholder="support@tondomaine.com" />
+              <button class="btn primary" id="saveBrand" type="button">Save</button>
+            </div>
+          </div>
+        </div>
+
+        <style>
+          .inp{
+            height:42px;border-radius:14px;border:1px solid rgba(15,23,42,.10);
+            padding:0 12px;background:rgba(255,255,255,.85);font-weight:800;outline:none;
+          }
+          .inp:focus{ border-color: rgba(47,107,255,.35); }
+          @media (max-width: 900px){ .card > div[style*="grid-template-columns:1fr 1fr"]{ grid-template-columns:1fr !important; } }
+        </style>
+      </div>
+    `;
+
+    // Alert recipients
+    $("#setAll").addEventListener("click", async () => {
+      const r = await api("/api/org/settings", { method:"POST", body: JSON.stringify({ alertRecipients:"all", alertExtraEmails:[] })});
+      if (!r.ok) alert("Erreur settings");
+      else alert("OK: alerts = all");
+    });
+    $("#setOwner").addEventListener("click", async () => {
+      const r = await api("/api/org/settings", { method:"POST", body: JSON.stringify({ alertRecipients:"owner", alertExtraEmails:[] })});
+      if (!r.ok) alert("Erreur settings");
+      else alert("OK: alerts = owner");
+    });
+
+    // Branding (si tu branches un endpoint plus tard)
+    $("#saveBrand").addEventListener("click", () => {
+      alert("Branding: prêt côté UI. On branche l’API quand tu veux.");
+    });
+  }
+
+  async function renderReports() {
+    // Plus “original”: aperçu + stats + actions
+    pageContainer.innerHTML = `
+      <div class="card" style="border-radius:26px;">
+        <div class="cardHead">
+          <div>
+            <div class="cardTitle">Reports</div>
+            <div class="smallMuted">Exports · PDF · Résumés automatiques</div>
+          </div>
+          <button class="btn primary small" id="genReport" type="button">Generate report</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-top:12px">
+          <div class="card" style="padding:14px;border-radius:22px;">
+            <div class="cardTitle" style="font-size:16px">This week summary</div>
+            <div class="smallMuted" style="margin:8px 0 10px;">Automatique (SEO + monitors + actions)</div>
+            <div class="empty" style="border-style:solid">
+              Rapport hebdo bientôt: on l’alimente avec tes audits + incidents.
+            </div>
+          </div>
+
+          <div class="card" style="padding:14px;border-radius:22px;background:linear-gradient(180deg, rgba(47,107,255,.10), rgba(255,255,255,.86));border-color:rgba(47,107,255,.22)">
+            <div class="cardTitle" style="font-size:16px">Quick exports</div>
+            <div class="smallMuted" style="margin:8px 0 10px;">CSV/ PDF en 1 clic</div>
+            <div style="display:grid;gap:10px">
+              <button class="btn" id="repAudits" type="button">Export audits CSV</button>
+              <button class="btn" id="repMon" type="button">Export monitors CSV</button>
+              <button class="btn primary" id="repPdf" type="button">PDF summary</button>
+            </div>
+          </div>
+        </div>
+
+        <style>
+          @media (max-width: 900px){
+            .card > div[style*="grid-template-columns:1.2fr .8fr"]{ grid-template-columns:1fr !important; }
+          }
+        </style>
+      </div>
+    `;
+
+    $("#genReport").addEventListener("click", () => alert("On branche la génération PDF/Email ensuite (déjà prêt côté backend PDF audits)."));
+    $("#repAudits").addEventListener("click", () => $("#btnExportAudits").click());
+    $("#repMon").addEventListener("click", () => $("#btnExportMonitors").click());
+    $("#repPdf").addEventListener("click", () => alert("PDF summary: on peut ajouter un endpoint /api/reports/weekly.pdf ensuite."));
+  }
+
+  async function renderLocal() {
+    pageContainer.innerHTML = cardHTML("Local SEO", `
+      <div class="empty" style="border-style:solid">
+        On branche ici tes métriques Google Business Profile (à venir).
+      </div>
+    `);
+  }
+
+  async function renderCompetitors() {
+    pageContainer.innerHTML = cardHTML("Competitors", `
+      <div class="empty" style="border-style:solid">
+        On branche ici l’analyse concurrentielle (à venir).
+      </div>
+    `);
+  }
+
+  // ---------- Actions / Buttons ----------
+  $("#btnLogout").addEventListener("click", () => {
+    localStorage.removeItem("token");
+    window.location.href = "/login.html";
+  });
+
+  $("#btnPortal").addEventListener("click", async () => {
+    const r = await api("/api/stripe/portal", { method:"POST", body:"{}" });
+    const data = await r.json().catch(()=>null);
+    if (!r.ok) return alert(data?.error || "Impossible d'ouvrir le portal");
+    window.location.href = data.url;
+  });
+
+  $("#btnExportAudits").addEventListener("click", async () => {
+    closeExports();
+    window.location.href = "/api/export/audits.csv";
+  });
+
+  $("#btnExportMonitors").addEventListener("click", async () => {
+    closeExports();
+    window.location.href = "/api/export/monitors.csv";
+  });
+
+  $("#btnRefresh").addEventListener("click", async () => {
+    await refreshAll();
+  });
+
+  $("#btnAddMonitor").addEventListener("click", async () => {
+    const url = prompt("URL du site (https://...)");
+    if (!url) return;
+    const interval = Number(prompt("Interval minutes (min 5)", "60") || "60");
+    const r = await api("/api/monitors", { method:"POST", body: JSON.stringify({ url, intervalMinutes: interval }) });
+    const data = await r.json().catch(()=>null);
+    if (!r.ok) return alert(data?.error || "Erreur add monitor");
+    await refreshMonitors();
+    alert("Monitor ajouté ✅");
+  });
+
+  $("#btnRunAudit").addEventListener("click", async () => {
+    const url = prompt("URL à auditer (https://...)");
+    if (!url) return;
+    const r = await api("/api/audits/run", { method:"POST", body: JSON.stringify({ url }) });
+    const data = await r.json().catch(()=>null);
+    if (!r.ok) return alert(data?.error || "Erreur audit");
+    alert(`Audit OK ✅ Score: ${data.score}/100`);
+    await refreshAll();
+  });
+
+  $("#btnSeePlans").addEventListener("click", () => {
+    window.location.href = "/pricing.html";
+  });
+
+  // Plans buttons => vers pricing (ou checkout selon toi)
+  function goCheckout(plan) {
+    // Si tu veux ouvrir checkout direct:
+    // api("/api/stripe/checkout",{method:"POST",body:JSON.stringify({plan})}).then(r=>r.json()).then(d=>location.href=d.url)
+    window.location.href = "/pricing.html";
+  }
+  $("#btnChooseStandard").addEventListener("click", () => goCheckout("standard"));
+  $("#btnChoosePro").addEventListener("click", () => goCheckout("pro"));
+  $("#btnChooseUltra").addEventListener("click", () => goCheckout("ultra"));
+
+  // ---------- Range ----------
+  $("#rangeSelect").addEventListener("change", () => refreshAll());
+
+  function setRangeLabels(days) {
+    $("#kpiRange").textContent = `LAST ${days} DAYS`;
+    $("#seoHint").textContent = `Last ${days} days`;
+    $("#perfRange").textContent = `${days} days`;
+  }
+
+  // ---------- Refresh all ----------
+  async function refreshAll() {
+    const days = Number($("#rangeSelect").value || 30);
+    setRangeLabels(days);
+
+    $("#statusText").textContent = "Refreshing…";
+    $("#statusPill .dot").style.background = "#f59e0b";
+
+    const [me, ov] = await Promise.all([fetchMe(), fetchOverview(days)]);
+    if (me) setAccount(me);
+
+    if (ov?.ok) {
+      $("#seoScore").textContent = String(ov.seoScore ?? 0);
+      $("#localVis").textContent = String(ov.localVis ?? "+0%");
+      $("#monActive").textContent = String(ov.monitors?.active ?? 0);
+      $("#monInc").textContent = String(ov.monitors?.down ?? 0);
+      drawChart(Array.isArray(ov.chart) ? ov.chart : []);
+    } else {
+      drawChart([0, 10, 15, 12, 18, 22, 30]);
+    }
+
+    await refreshMonitors();
+
+    $("#statusText").textContent = "Dashboard à jour — OK";
+    $("#statusPill .dot").style.background = "#22c55e";
+  }
+
+  // ---------- Init route ----------
+  function currentRoute() {
+    const h = (location.hash || "#overview").replace("#","");
+    return routes.includes(h) ? h : "overview";
+  }
+
+  window.addEventListener("hashchange", () => setActiveRoute(currentRoute()));
+  $$("[data-route]").forEach(a => {
+    a.addEventListener("click", () => {
+      // handled by hashchange
+    });
+  });
+
+  // initial
+  setActiveRoute(currentRoute());
+  refreshAll();
+
+})();
