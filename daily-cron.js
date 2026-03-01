@@ -120,7 +120,7 @@ async function main() {
     const monitorsDown = await Monitor.countDocuments({ orgId: org._id, active: true, lastStatus: "down" });
 
     const html = `
-      <h2 style="margin:0">FlowPoint AI — Rapport Quotidien</h2>
+      <h2 style="margin:0">FlowPoint — Rapport Quotidien</h2>
       <p><b>Organisation:</b> ${org.name || "-"}</p>
       <ul>
         <li><b>Users:</b> ${usersCount}</li>
@@ -131,7 +131,7 @@ async function main() {
 
     await sendMail({
       to: recipients.join(","),
-      subject: `FlowPoint AI — Rapport quotidien — ${org.name || "Organisation"}`,
+      subject: `FlowPoint — Rapport quotidien — ${org.name || "Organisation"}`,
       html,
     });
   }
