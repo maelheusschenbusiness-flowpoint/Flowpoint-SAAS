@@ -1,408 +1,206 @@
-:root{
-  --bg:#f4f6fb;
-  --panel:#ffffff;
-  --panel2:#fbfcff;
-  --text:#0f172a;
-  --muted:#64748b;
-  --line:rgba(15,23,42,.10);
-  --blue:#1d4ed8;
-  --blue2:#2563eb;
-  --green:#16a34a;
-  --shadow:0 10px 30px rgba(15,23,42,.07);
-  --radius:18px;
-}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FlowPoint — Dashboard</title>
+  <link rel="stylesheet" href="/dashboard.css" />
+</head>
+<body>
 
-*{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-  background:var(--bg);
-  color:var(--text);
-}
+  <!-- Mobile overlay -->
+  <div id="overlay" class="overlay" hidden></div>
 
-.app{
-  display:flex;
-  min-height:100vh;
-}
+  <!-- Sidebar -->
+  <aside id="sidebar" class="sidebar">
+    <div class="brand">
+      <div class="brandIcon">⚡</div>
+      <div class="brandText">
+        <div class="brandName">Flowpoint</div>
+        <div class="brandSub">Client Dashboard</div>
+      </div>
+    </div>
 
-/* SIDEBAR */
-.sidebar{
-  width:270px;
-  background:linear-gradient(180deg,#f8fafc 0%, #f4f6fb 100%);
-  border-right:1px solid var(--line);
-  padding:18px 14px;
-  position:sticky;
-  top:0;
-  height:100vh;
-}
+    <nav class="nav">
+      <a class="navItem active" data-page="overview" href="#overview">
+        <span class="navIcon">📊</span><span>Overview</span>
+      </a>
+      <a class="navItem" data-page="audits" href="#audits">
+        <span class="navIcon">🧾</span><span>Audits</span>
+      </a>
+      <a class="navItem" data-page="monitors" href="#monitors">
+        <span class="navIcon">🟢</span><span>Monitors</span>
+      </a>
+      <a class="navItem" data-page="reports" href="#reports">
+        <span class="navIcon">📄</span><span>Reports</span>
+        <span class="pill">PRO</span>
+      </a>
+      <a class="navItem" data-page="billing" href="#billing">
+        <span class="navIcon">💳</span><span>Billing</span>
+      </a>
+      <a class="navItem" data-page="settings" href="#settings">
+        <span class="navIcon">⚙️</span><span>Settings</span>
+      </a>
+    </nav>
 
-.brand{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  padding:10px 10px 14px;
-}
-.brand__logo{
-  width:42px;height:42px;border-radius:14px;
-  background:rgba(37,99,235,.10);
-  border:1px solid rgba(37,99,235,.18);
-  display:flex;align-items:center;justify-content:center;
-}
-.bolt{font-size:18px}
-.brand__name{font-weight:800; letter-spacing:.2px}
-.brand__sub{font-size:12px;color:var(--muted); margin-top:2px}
+    <div class="account">
+      <div class="accountTitle">ACCOUNT</div>
+      <div class="accountGrid">
+        <div class="k">Plan</div><div class="v" id="accPlan">—</div>
+        <div class="k">Org</div><div class="v" id="accOrg">—</div>
+        <div class="k">Role</div><div class="v" id="accRole">—</div>
+        <div class="k">Trial</div><div class="v" id="accTrial">—</div>
+      </div>
 
-.nav{padding:6px}
-.nav__item{
-  display:flex;align-items:center;gap:10px;
-  padding:10px 12px;
-  border-radius:14px;
-  color:#0f172a;
-  text-decoration:none;
-  font-weight:650;
-  margin:4px 0;
-}
-.nav__icon{width:20px; text-align:center; opacity:.85}
-.nav__item:hover{background:rgba(37,99,235,.07)}
-.nav__item.active{
-  background:rgba(29,78,216,.12);
-  border:1px solid rgba(29,78,216,.18);
-}
-.pill{
-  margin-left:auto;
-  font-size:11px;
-  background:rgba(29,78,216,.12);
-  border:1px solid rgba(29,78,216,.18);
-  color:var(--blue);
-  padding:3px 8px;
-  border-radius:999px;
-}
+      <div class="accountActions">
+        <button class="btnGhost" id="btnPortal">Billing / Portal</button>
+        <button class="btnLight" id="btnLogout">Logout</button>
+      </div>
+    </div>
+  </aside>
 
-.accountCard{
-  margin-top:14px;
-  background:var(--panel);
-  border:1px solid var(--line);
-  border-radius:var(--radius);
-  padding:14px;
-  box-shadow:var(--shadow);
-}
-.accountCard__title{
-  font-size:11px;
-  letter-spacing:.16em;
-  color:var(--muted);
-  font-weight:800;
-  margin-bottom:10px;
-}
-.accountCard__rows .row{
-  display:flex; justify-content:space-between;
-  padding:6px 0;
-  border-bottom:1px dashed rgba(15,23,42,.08);
-}
-.accountCard__rows .row:last-child{border-bottom:none}
-.k{color:var(--muted); font-size:12px}
-.v{font-weight:750; font-size:12px}
-.accountCard__actions{
-  display:flex; gap:10px; margin-top:12px;
-}
-.accountCard__actions .btn{flex:1}
+  <!-- Main -->
+  <main class="main">
+    <!-- Topbar -->
+    <header class="topbar">
+      <button class="iconBtn" id="btnMenu" aria-label="Menu">☰</button>
 
-/* MAIN */
-.main{
-  flex:1;
-  padding:18px 22px;
-  min-width:0;
-}
+      <div class="hello">
+        <div class="helloTitle" id="helloTitle">Bonjour, …</div>
+        <div class="helloSub">SEO · Monitoring · Reports · Billing</div>
+      </div>
 
-/* TOPBAR */
-.topbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:14px;
-  margin-bottom:16px;
-}
-.topbar__left{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  min-width:0;
-}
-.hello__title{
-  font-size:18px;
-  font-weight:850;
-  line-height:1.1;
-}
-.hello__sub{
-  font-size:13px;
-  color:var(--muted);
-  margin-top:2px;
-}
-.topbar__right{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  flex-wrap:wrap; /* ✅ important mobile/tablet */
-  justify-content:flex-end;
-}
+      <div class="topActions">
+        <div class="dropdown">
+          <button class="btnChip" id="rangeBtn">
+            <span id="rangeLabel">Last 30 days</span>
+            <span class="chev">▾</span>
+          </button>
+          <div class="dropdownMenu" id="rangeMenu" hidden>
+            <button class="menuItem" data-days="7">Last 7 days</button>
+            <button class="menuItem" data-days="14">Last 14 days</button>
+            <button class="menuItem" data-days="30">Last 30 days</button>
+          </div>
+        </div>
 
-.seg{
-  display:flex;
-  background:var(--panel);
-  border:1px solid var(--line);
-  border-radius:999px;
-  padding:4px;
-  box-shadow:var(--shadow);
-}
-.seg__btn{
-  border:none;
-  background:transparent;
-  padding:9px 12px;
-  border-radius:999px;
-  font-weight:750;
-  color:var(--muted);
-  cursor:pointer;
-}
-.seg__btn.active{
-  background:rgba(29,78,216,.10);
-  color:var(--blue);
-}
+        <button class="btnPrimary" id="btnRefresh">Refresh</button>
 
-/* BUTTONS */
-.btn{
-  border:1px solid var(--line);
-  background:var(--panel);
-  color:var(--text);
-  padding:10px 12px;
-  border-radius:14px;
-  font-weight:750;
-  cursor:pointer;
-  box-shadow:var(--shadow);
-}
-.btn:hover{transform:translateY(-1px)}
-.btn--primary{
-  background:linear-gradient(180deg,var(--blue2),var(--blue));
-  color:#fff;
-  border-color:rgba(29,78,216,.20);
-}
-.btn--ghost{
-  background:var(--panel);
-}
-.btn--small{padding:8px 10px; border-radius:12px}
-.btn--icon{padding:10px 12px; width:44px}
-.burger{display:none}
+        <button class="btnChip" id="btnExportAudits">Export Audits CSV</button>
+        <button class="btnChip" id="btnExportMonitors">Export Monitors CSV</button>
 
-/* STATUS + AVATAR */
-.statusChip{
-  display:flex; align-items:center; gap:8px;
-  background:var(--panel);
-  border:1px solid var(--line);
-  border-radius:999px;
-  padding:10px 12px;
-  box-shadow:var(--shadow);
-  font-weight:700;
-  color:#0f172a;
-}
-.statusChip .dot{
-  width:10px; height:10px;
-  border-radius:999px;
-  background:var(--green);
-  box-shadow:0 0 0 4px rgba(22,163,74,.12);
-}
-.avatar{
-  width:42px; height:42px;
-  display:flex; align-items:center; justify-content:center;
-  border-radius:16px;
-  background:var(--panel);
-  border:1px solid var(--line);
-  box-shadow:var(--shadow);
-  font-weight:900;
-  color:var(--blue);
-}
+        <div class="statusPill" id="statusPill">
+          <span class="dot"></span>
+          <span id="statusText">Dashboard à jour — OK</span>
+        </div>
 
-/* GRID */
-.grid{
-  display:grid;
-  grid-template-columns: 1.2fr .9fr;
-  gap:16px;
-  align-items:start;
-}
-.col{min-width:0}
-.card{
-  background:var(--panel);
-  border:1px solid var(--line);
-  border-radius:var(--radius);
-  padding:16px;
-  box-shadow:var(--shadow);
-}
-.card__titleRow{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  margin-bottom:12px;
-}
-.card__title{
-  font-size:13px;
-  letter-spacing:.16em;
-  color:var(--muted);
-  font-weight:900;
-}
-.card__meta{
-  font-size:12px;
-  color:var(--muted);
-  font-weight:800;
-}
+        <div class="avatar" id="avatar">FP</div>
+      </div>
+    </header>
 
-.kpis{
-  display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap:12px;
-}
-.kpi{
-  background:var(--panel2);
-  border:1px solid rgba(15,23,42,.08);
-  border-radius:16px;
-  padding:14px;
-}
-.kpi__label{color:var(--muted); font-weight:800; font-size:13px}
-.kpi__value{font-size:34px; font-weight:900; margin-top:6px}
-.kpi__value .muted{font-size:16px; color:var(--muted); font-weight:800}
-.kpi__value.green{color:var(--green)}
-.kpi__sub{color:var(--muted); font-size:13px; margin-top:4px; font-weight:650}
+    <!-- Content -->
+    <section class="content" id="overview">
+      <div class="grid2">
+        <!-- Left big card -->
+        <section class="card cardBig">
+          <div class="cardHeader">
+            <div>
+              <div class="cardEyebrow">OVERVIEW</div>
+              <div class="cardTitle" id="rangeTitle">LAST 30 DAYS</div>
+            </div>
+          </div>
 
-.chartHead{
-  display:flex; align-items:center; justify-content:space-between;
-  margin-top:14px;
-  margin-bottom:8px;
-}
-.chartHead__title{font-size:16px; font-weight:900}
-.chartHead__badge{
-  background:rgba(15,23,42,.06);
-  border:1px solid rgba(15,23,42,.08);
-  color:var(--muted);
-  font-weight:800;
-  padding:8px 10px;
-  border-radius:999px;
-  font-size:12px;
-}
-.chartBox{
-  background:rgba(29,78,216,.06);
-  border:1px solid rgba(29,78,216,.14);
-  border-radius:16px;
-  padding:10px 10px 6px;
-}
-.card__foot{
-  display:flex; align-items:center; justify-content:space-between;
-  margin-top:12px;
-}
+          <div class="kpiRow">
+            <div class="kpi">
+              <div class="kpiLabel">SEO Score</div>
+              <div class="kpiValue"><span id="seoScore">0</span><span class="kpiUnit">/100</span></div>
+              <div class="kpiHint" id="seoHint">Last 30 days</div>
+            </div>
 
-/* TABLE */
-.tableWrap{overflow:auto}
-.table{
-  width:100%;
-  border-collapse:separate;
-  border-spacing:0 10px;
-}
-.table thead th{
-  font-size:12px;
-  color:var(--muted);
-  text-align:left;
-  font-weight:900;
-  padding:0 10px;
-}
-.table tbody td{
-  background:var(--panel2);
-  border:1px solid rgba(15,23,42,.08);
-  padding:12px 10px;
-  font-weight:650;
-}
-.table tbody tr td:first-child{border-radius:14px 0 0 14px}
-.table tbody tr td:last-child{border-radius:0 14px 14px 0}
-.badge{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  padding:6px 10px;
-  border-radius:999px;
-  font-weight:900;
-  font-size:12px;
-  border:1px solid rgba(15,23,42,.10);
-}
-.badge--up{background:rgba(22,163,74,.10); color:#166534; border-color:rgba(22,163,74,.18)}
-.badge--down{background:rgba(220,38,38,.10); color:#991b1b; border-color:rgba(220,38,38,.18)}
-.badge--unk{background:rgba(100,116,139,.12); color:#334155; border-color:rgba(100,116,139,.18)}
+            <div class="kpi">
+              <div class="kpiLabel">Local Visibility</div>
+              <div class="kpiValue green" id="localVis">+0%</div>
+              <div class="kpiHint">Map pack + reviews</div>
+            </div>
+          </div>
 
-/* PLANS */
-.plans{
-  display:grid;
-  grid-template-columns:1fr;
-  gap:12px;
-}
-.plan{
-  border-radius:18px;
-  border:1px solid rgba(15,23,42,.10);
-  background:var(--panel2);
-  padding:14px;
-}
-.plan__head{
-  display:flex; align-items:baseline; justify-content:space-between;
-  margin-bottom:8px;
-}
-.plan__name{font-weight:950; font-size:18px}
-.plan__price{font-weight:950; font-size:30px}
-.plan__price small{font-size:14px; color:var(--muted); font-weight:800}
-.plan__list{
-  margin:10px 0 12px;
-  padding-left:18px;
-  color:#0f172a;
-}
-.plan__list li{margin:6px 0}
-.plan__btn{width:100%}
-.plan--featured{
-  background:rgba(29,78,216,.10);
-  border-color:rgba(29,78,216,.20);
-}
+          <div class="sectionTitle">
+            <span>SEO Performance</span>
+            <span class="badge" id="perfBadge">Last 3 days</span>
+          </div>
 
-/* TEXT HELPERS */
-.muted{color:var(--muted)}
-.small{font-size:12px}
+          <div class="chartWrap">
+            <canvas id="chart" width="800" height="260"></canvas>
+          </div>
 
-/* MOBILE DRAWER */
-.overlay{
-  display:none;
-  position:fixed; inset:0;
-  background:rgba(2,6,23,.45);
-  z-index:30;
-}
+          <div class="sectionTitle" style="margin-top:14px;">
+            <span>Recommended Actions</span>
+            <button class="btnLink" id="btnRunAudit">Run audit</button>
+          </div>
 
-/* RESPONSIVE */
-@media (max-width: 980px){
-  .grid{grid-template-columns:1fr; }
-}
+          <div class="actionsList" id="actionsList">
+            <div class="actionItem">
+              <span class="bullet">•</span>
+              <span>Ajouter un &lt;title&gt; unique (50–60 caractères).</span>
+              <span class="prio high">HIGH</span>
+            </div>
+            <div class="actionItem">
+              <span class="bullet">•</span>
+              <span>Ajouter une meta description (140–160 caractères).</span>
+              <span class="prio high">HIGH</span>
+            </div>
+            <div class="actionItem">
+              <span class="bullet">•</span>
+              <span>Vérifier meta robots (index/follow) + robots.txt.</span>
+              <span class="prio med">MED</span>
+            </div>
+          </div>
+        </section>
 
-@media (max-width: 820px){
-  .sidebar{
-    position:fixed;
-    left:-290px;
-    top:0;
-    z-index:40;
-    transition:left .22s ease;
-    box-shadow: 0 30px 60px rgba(2,6,23,.20);
-  }
-  .sidebar.open{left:0}
-  .overlay.show{display:block}
-  .burger{display:inline-flex}
-  .topbar{align-items:flex-start}
-  .topbar__right{justify-content:flex-start}
-}
+        <!-- Right column -->
+        <div class="stack">
+          <!-- Monitors card -->
+          <section class="card">
+            <div class="cardHeader row">
+              <div class="cardTitleSm">Monitors</div>
+              <button class="btnPrimarySm" id="btnAddMonitor">Add Monitor</button>
+            </div>
 
-@media (max-width: 520px){
-  .main{padding:14px}
-  .kpis{grid-template-columns:1fr}
-  .hello__title{font-size:16px}
-  .seg{width:100%}
-  .topbar__right .btn{width:100%} /* ✅ plus de chevauchement */
-  .statusChip{width:100%; justify-content:center}
-  .avatar{display:none}
-}
+            <div class="table">
+              <div class="thead">
+                <div>URL</div>
+                <div>Status</div>
+                <div>Interval</div>
+                <div></div>
+              </div>
+              <div class="tbody" id="monitorsList">
+                <!-- rows injected -->
+              </div>
+            </div>
+          </section>
+
+          <!-- Plans card -->
+          <section class="card" id="plans">
+            <div class="cardHeader row">
+              <div class="cardTitleSm">Plans</div>
+              <button class="btnChipSm" id="btnSeePlans">See plans</button>
+            </div>
+
+            <div class="plans3" id="plansGrid">
+              <!-- injected -->
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- placeholders sections -->
+    <section class="content" id="audits" hidden></section>
+    <section class="content" id="monitors" hidden></section>
+    <section class="content" id="reports" hidden></section>
+    <section class="content" id="billing" hidden></section>
+    <section class="content" id="settings" hidden></section>
+  </main>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>
