@@ -1,206 +1,485 @@
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FlowPoint — Dashboard</title>
-  <link rel="stylesheet" href="/dashboard.css" />
-</head>
-<body>
+:root{
+  --bg:#f4f6fb;
+  --card:#ffffff;
+  --text:#0f172a;
+  --muted:#667085;
+  --border:rgba(15,23,42,.10);
+  --shadow:0 10px 30px rgba(16,24,40,.08);
+  --blue:#1d4ed8;
+  --blue2:#2563eb;
+  --green:#16a34a;
+  --pill:#eef2ff;
+  --radius:18px;
+  --sidebarW:260px;
+}
 
-  <!-- Mobile overlay -->
-  <div id="overlay" class="overlay" hidden></div>
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  background: var(--bg);
+  color: var(--text);
+}
 
-  <!-- Sidebar -->
-  <aside id="sidebar" class="sidebar">
-    <div class="brand">
-      <div class="brandIcon">⚡</div>
-      <div class="brandText">
-        <div class="brandName">Flowpoint</div>
-        <div class="brandSub">Client Dashboard</div>
-      </div>
-    </div>
+.overlay{
+  position:fixed; inset:0;
+  background: rgba(15,23,42,.35);
+  z-index:40;
+}
 
-    <nav class="nav">
-      <a class="navItem active" data-page="overview" href="#overview">
-        <span class="navIcon">📊</span><span>Overview</span>
-      </a>
-      <a class="navItem" data-page="audits" href="#audits">
-        <span class="navIcon">🧾</span><span>Audits</span>
-      </a>
-      <a class="navItem" data-page="monitors" href="#monitors">
-        <span class="navIcon">🟢</span><span>Monitors</span>
-      </a>
-      <a class="navItem" data-page="reports" href="#reports">
-        <span class="navIcon">📄</span><span>Reports</span>
-        <span class="pill">PRO</span>
-      </a>
-      <a class="navItem" data-page="billing" href="#billing">
-        <span class="navIcon">💳</span><span>Billing</span>
-      </a>
-      <a class="navItem" data-page="settings" href="#settings">
-        <span class="navIcon">⚙️</span><span>Settings</span>
-      </a>
-    </nav>
+.sidebar{
+  position:fixed;
+  top:0; left:0; bottom:0;
+  width:var(--sidebarW);
+  padding:18px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  border-right:1px solid var(--border);
+  z-index:50;
+}
 
-    <div class="account">
-      <div class="accountTitle">ACCOUNT</div>
-      <div class="accountGrid">
-        <div class="k">Plan</div><div class="v" id="accPlan">—</div>
-        <div class="k">Org</div><div class="v" id="accOrg">—</div>
-        <div class="k">Role</div><div class="v" id="accRole">—</div>
-        <div class="k">Trial</div><div class="v" id="accTrial">—</div>
-      </div>
+.brand{
+  display:flex; gap:12px; align-items:center;
+  padding:10px 10px 14px;
+}
+.brandIcon{
+  width:40px; height:40px;
+  border-radius:14px;
+  display:flex; align-items:center; justify-content:center;
+  background: rgba(37,99,235,.10);
+  border:1px solid rgba(37,99,235,.18);
+}
+.brandName{font-weight:800; letter-spacing:-.2px}
+.brandSub{font-size:12px; color:var(--muted); margin-top:2px}
 
-      <div class="accountActions">
-        <button class="btnGhost" id="btnPortal">Billing / Portal</button>
-        <button class="btnLight" id="btnLogout">Logout</button>
-      </div>
-    </div>
-  </aside>
+.nav{margin-top:8px; display:flex; flex-direction:column; gap:6px}
+.navItem{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 10px;
+  border-radius:14px;
+  color: var(--text);
+  text-decoration:none;
+  border:1px solid transparent;
+}
+.navItem:hover{background: rgba(37,99,235,.06)}
+.navItem.active{
+  background: rgba(37,99,235,.10);
+  border:1px solid rgba(37,99,235,.18);
+}
+.navIcon{width:22px; display:inline-flex; justify-content:center}
+.pill{
+  margin-left:auto;
+  font-size:11px;
+  background: rgba(37,99,235,.12);
+  color: var(--blue);
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid rgba(37,99,235,.18);
+  font-weight:700;
+}
 
-  <!-- Main -->
-  <main class="main">
-    <!-- Topbar -->
-    <header class="topbar">
-      <button class="iconBtn" id="btnMenu" aria-label="Menu">☰</button>
+.account{
+  position:absolute;
+  left:16px; right:16px; bottom:16px;
+  padding:14px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.accountTitle{font-size:12px; color:var(--muted); font-weight:800; letter-spacing:.06em}
+.accountGrid{
+  display:grid;
+  grid-template-columns: 70px 1fr;
+  gap:6px 10px;
+  margin-top:10px;
+  font-size:12px;
+}
+.accountGrid .k{color:var(--muted)}
+.accountGrid .v{font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.accountActions{display:flex; gap:8px; margin-top:12px}
+.btnGhost, .btnLight{
+  width:100%;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:#fff;
+  font-weight:800;
+  cursor:pointer;
+}
+.btnLight{
+  background: rgba(15,23,42,.04);
+}
+.btnGhost:hover,.btnLight:hover{filter:brightness(.98)}
 
-      <div class="hello">
-        <div class="helloTitle" id="helloTitle">Bonjour, …</div>
-        <div class="helloSub">SEO · Monitoring · Reports · Billing</div>
-      </div>
+.main{
+  margin-left: var(--sidebarW);
+  min-height:100vh;
+  padding:16px 18px 28px;
+}
 
-      <div class="topActions">
-        <div class="dropdown">
-          <button class="btnChip" id="rangeBtn">
-            <span id="rangeLabel">Last 30 days</span>
-            <span class="chev">▾</span>
-          </button>
-          <div class="dropdownMenu" id="rangeMenu" hidden>
-            <button class="menuItem" data-days="7">Last 7 days</button>
-            <button class="menuItem" data-days="14">Last 14 days</button>
-            <button class="menuItem" data-days="30">Last 30 days</button>
-          </div>
-        </div>
+.topbar{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:14px 14px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.60);
+  border:1px solid rgba(255,255,255,.60);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(16,24,40,.06);
+}
 
-        <button class="btnPrimary" id="btnRefresh">Refresh</button>
+.iconBtn{
+  width:42px;height:42px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  background:#fff;
+  cursor:pointer;
+  font-size:18px;
+  display:none; /* desktop hidden */
+}
 
-        <button class="btnChip" id="btnExportAudits">Export Audits CSV</button>
-        <button class="btnChip" id="btnExportMonitors">Export Monitors CSV</button>
+.hello{flex:1; min-width:220px}
+.helloTitle{
+  font-weight:900;
+  letter-spacing:-.3px;
+  font-size:18px;
+}
+.helloSub{color:var(--muted); font-size:13px; margin-top:2px}
 
-        <div class="statusPill" id="statusPill">
-          <span class="dot"></span>
-          <span id="statusText">Dashboard à jour — OK</span>
-        </div>
+.topActions{
+  display:flex; align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
 
-        <div class="avatar" id="avatar">FP</div>
-      </div>
-    </header>
+.btnPrimary{
+  background: linear-gradient(180deg, var(--blue2), var(--blue));
+  color:#fff;
+  border:none;
+  padding:10px 14px;
+  border-radius: 999px;
+  font-weight:900;
+  cursor:pointer;
+  box-shadow: 0 12px 24px rgba(37,99,235,.20);
+}
+.btnPrimary:hover{filter:brightness(.98)}
 
-    <!-- Content -->
-    <section class="content" id="overview">
-      <div class="grid2">
-        <!-- Left big card -->
-        <section class="card cardBig">
-          <div class="cardHeader">
-            <div>
-              <div class="cardEyebrow">OVERVIEW</div>
-              <div class="cardTitle" id="rangeTitle">LAST 30 DAYS</div>
-            </div>
-          </div>
+.btnChip{
+  background:#fff;
+  border:1px solid var(--border);
+  padding:10px 12px;
+  border-radius: 999px;
+  font-weight:800;
+  cursor:pointer;
+  color: var(--text);
+}
+.btnChip:hover{background: rgba(15,23,42,.02)}
 
-          <div class="kpiRow">
-            <div class="kpi">
-              <div class="kpiLabel">SEO Score</div>
-              <div class="kpiValue"><span id="seoScore">0</span><span class="kpiUnit">/100</span></div>
-              <div class="kpiHint" id="seoHint">Last 30 days</div>
-            </div>
+.statusPill{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 12px;
+  border-radius:999px;
+  background:#fff;
+  border:1px solid var(--border);
+  font-weight:800;
+  color: var(--text);
+  white-space:nowrap;
+}
+.statusPill .dot{
+  width:10px;height:10px;border-radius:99px;
+  background: var(--green);
+  box-shadow: 0 0 0 6px rgba(22,163,74,.12);
+}
 
-            <div class="kpi">
-              <div class="kpiLabel">Local Visibility</div>
-              <div class="kpiValue green" id="localVis">+0%</div>
-              <div class="kpiHint">Map pack + reviews</div>
-            </div>
-          </div>
+.avatar{
+  width:42px;height:42px;
+  border-radius:16px;
+  background:#fff;
+  border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:900;
+}
 
-          <div class="sectionTitle">
-            <span>SEO Performance</span>
-            <span class="badge" id="perfBadge">Last 3 days</span>
-          </div>
+.content{margin-top:14px}
 
-          <div class="chartWrap">
-            <canvas id="chart" width="800" height="260"></canvas>
-          </div>
+.grid2{
+  display:grid;
+  grid-template-columns: 1.4fr .9fr;
+  gap:14px;
+  align-items:start;
+}
 
-          <div class="sectionTitle" style="margin-top:14px;">
-            <span>Recommended Actions</span>
-            <button class="btnLink" id="btnRunAudit">Run audit</button>
-          </div>
+.stack{display:flex; flex-direction:column; gap:14px}
 
-          <div class="actionsList" id="actionsList">
-            <div class="actionItem">
-              <span class="bullet">•</span>
-              <span>Ajouter un &lt;title&gt; unique (50–60 caractères).</span>
-              <span class="prio high">HIGH</span>
-            </div>
-            <div class="actionItem">
-              <span class="bullet">•</span>
-              <span>Ajouter une meta description (140–160 caractères).</span>
-              <span class="prio high">HIGH</span>
-            </div>
-            <div class="actionItem">
-              <span class="bullet">•</span>
-              <span>Vérifier meta robots (index/follow) + robots.txt.</span>
-              <span class="prio med">MED</span>
-            </div>
-          </div>
-        </section>
+.card{
+  background: var(--card);
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding:16px;
+}
 
-        <!-- Right column -->
-        <div class="stack">
-          <!-- Monitors card -->
-          <section class="card">
-            <div class="cardHeader row">
-              <div class="cardTitleSm">Monitors</div>
-              <button class="btnPrimarySm" id="btnAddMonitor">Add Monitor</button>
-            </div>
+.cardBig{padding:18px}
 
-            <div class="table">
-              <div class="thead">
-                <div>URL</div>
-                <div>Status</div>
-                <div>Interval</div>
-                <div></div>
-              </div>
-              <div class="tbody" id="monitorsList">
-                <!-- rows injected -->
-              </div>
-            </div>
-          </section>
+.cardHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  margin-bottom:12px;
+}
+.cardHeader.row{align-items:center}
 
-          <!-- Plans card -->
-          <section class="card" id="plans">
-            <div class="cardHeader row">
-              <div class="cardTitleSm">Plans</div>
-              <button class="btnChipSm" id="btnSeePlans">See plans</button>
-            </div>
+.cardEyebrow{
+  font-size:12px;
+  color:var(--muted);
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.cardTitle{
+  font-size:12px;
+  font-weight:900;
+  color:var(--muted);
+  letter-spacing:.12em;
+  margin-top:4px;
+}
+.cardTitleSm{font-weight:900; letter-spacing:-.2px}
 
-            <div class="plans3" id="plansGrid">
-              <!-- injected -->
-            </div>
-          </section>
-        </div>
-      </div>
-    </section>
+.kpiRow{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:12px;
+  margin-top:8px;
+}
 
-    <!-- placeholders sections -->
-    <section class="content" id="audits" hidden></section>
-    <section class="content" id="monitors" hidden></section>
-    <section class="content" id="reports" hidden></section>
-    <section class="content" id="billing" hidden></section>
-    <section class="content" id="settings" hidden></section>
-  </main>
+.kpi{
+  padding:14px;
+  border:1px solid rgba(15,23,42,.08);
+  border-radius:16px;
+  background: linear-gradient(180deg,#ffffff 0%, #fbfcff 100%);
+}
+.kpiLabel{font-weight:900; color:var(--muted); font-size:12px}
+.kpiValue{font-weight:950; font-size:34px; letter-spacing:-.8px; margin-top:6px}
+.kpiUnit{font-size:16px; color:var(--muted); margin-left:4px; font-weight:900}
+.kpiHint{margin-top:6px; font-size:12px; color:var(--muted); font-weight:700}
+.green{color:var(--green)}
 
-  <script src="/dashboard.js"></script>
-</body>
-</html>
+.sectionTitle{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-top:12px;
+  font-weight:950;
+  letter-spacing:-.2px;
+}
+.badge{
+  font-size:12px;
+  color:var(--muted);
+  background: rgba(15,23,42,.04);
+  border:1px solid rgba(15,23,42,.08);
+  padding:8px 10px;
+  border-radius:999px;
+  font-weight:900;
+}
+.btnLink{
+  border:none;
+  background: transparent;
+  color: var(--blue);
+  font-weight:950;
+  cursor:pointer;
+}
+.btnLink:hover{text-decoration:underline}
+
+.chartWrap{
+  margin-top:10px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(37,99,235,.10), rgba(37,99,235,.03));
+  border:1px solid rgba(37,99,235,.18);
+  padding:12px;
+  overflow:hidden;
+}
+
+.actionsList{margin-top:8px; display:flex; flex-direction:column; gap:10px}
+.actionItem{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 12px;
+  border:1px solid rgba(15,23,42,.08);
+  border-radius: 14px;
+  background:#fff;
+}
+.bullet{color:var(--muted); font-weight:900}
+.prio{
+  margin-left:auto;
+  font-size:11px;
+  font-weight:950;
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid rgba(15,23,42,.10);
+}
+.prio.high{background: rgba(239,68,68,.10); color:#b91c1c; border-color: rgba(239,68,68,.20)}
+.prio.med{background: rgba(245,158,11,.12); color:#92400e; border-color: rgba(245,158,11,.25)}
+
+.btnPrimarySm{
+  background: linear-gradient(180deg, var(--blue2), var(--blue));
+  color:#fff;
+  border:none;
+  padding:9px 12px;
+  border-radius: 12px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.btnChipSm{
+  background:#fff;
+  border:1px solid var(--border);
+  padding:8px 10px;
+  border-radius: 12px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.table{margin-top:10px}
+.thead, .trow{
+  display:grid;
+  grid-template-columns: 1fr 90px 80px 50px;
+  gap:10px;
+  align-items:center;
+}
+.thead{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.06em;
+  padding:0 6px 8px;
+}
+.tbody{display:flex; flex-direction:column; gap:10px}
+.trow{
+  padding:10px 10px;
+  border:1px solid rgba(15,23,42,.08);
+  border-radius: 14px;
+  background:#fff;
+}
+.url{font-weight:900; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.status{
+  font-size:12px;
+  font-weight:950;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(15,23,42,.10);
+  text-align:center;
+}
+.status.up{background: rgba(22,163,74,.10); color: var(--green); border-color: rgba(22,163,74,.22)}
+.status.down{background: rgba(239,68,68,.10); color:#b91c1c; border-color: rgba(239,68,68,.22)}
+.status.unk{background: rgba(15,23,42,.04); color: var(--muted)}
+.runBtn{
+  border:none;
+  background: transparent;
+  color: var(--blue);
+  font-weight:950;
+  cursor:pointer;
+}
+.runBtn:hover{text-decoration:underline}
+
+.plans3{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap:12px;
+}
+.plan{
+  border:1px solid rgba(15,23,42,.10);
+  border-radius: 16px;
+  padding:12px;
+  background:#fff;
+}
+.plan.highlight{
+  background: linear-gradient(180deg, rgba(37,99,235,.12), rgba(37,99,235,.05));
+  border-color: rgba(37,99,235,.22);
+}
+.planTop{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+}
+.planName{font-weight:950; font-size:16px}
+.planPrice{font-weight:950; font-size:28px; letter-spacing:-.6px}
+.planPrice span{font-size:14px; color:var(--muted); font-weight:900}
+.planList{margin:10px 0 12px; padding-left:18px; color:var(--text); font-weight:800}
+.planList li{margin:6px 0}
+.planBtn{
+  width:100%;
+  padding:10px 12px;
+  border-radius: 12px;
+  border:1px solid rgba(15,23,42,.12);
+  background:#fff;
+  font-weight:950;
+  cursor:pointer;
+}
+.plan.highlight .planBtn{
+  border:none;
+  background: linear-gradient(180deg, var(--blue2), var(--blue));
+  color:#fff;
+  box-shadow: 0 12px 24px rgba(37,99,235,.20);
+}
+.planBtn:hover{filter:brightness(.99)}
+
+/* Dropdown */
+.dropdown{position:relative}
+.chev{margin-left:6px; opacity:.7}
+.dropdownMenu{
+  position:absolute;
+  right:0;
+  top:46px;
+  min-width:170px;
+  background:#fff;
+  border:1px solid rgba(15,23,42,.10);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding:6px;
+  z-index:60;
+}
+.menuItem{
+  width:100%;
+  text-align:left;
+  padding:10px 10px;
+  border:none;
+  background:transparent;
+  border-radius: 12px;
+  cursor:pointer;
+  font-weight:900;
+}
+.menuItem:hover{background: rgba(37,99,235,.08)}
+
+/* Responsive */
+@media (max-width: 1100px){
+  .grid2{grid-template-columns: 1fr}
+  .plans3{grid-template-columns: 1fr}
+  .thead,.trow{grid-template-columns: 1fr 90px 70px 46px}
+}
+@media (max-width: 860px){
+  .main{margin-left:0}
+  .iconBtn{display:inline-flex; align-items:center; justify-content:center}
+  .sidebar{
+    transform: translateX(-110%);
+    transition: transform .18s ease;
+  }
+  .sidebar.open{transform: translateX(0)}
+  .topActions{justify-content:flex-start}
+}
+@media (max-width: 520px){
+  .topbar{align-items:flex-start}
+  .hello{min-width:unset}
+  .topActions{
+    width:100%;
+    gap:8px;
+  }
+  .btnChip, .btnPrimary{
+    width:100%;
+    justify-content:center;
+  }
+  .statusPill{width:100%}
+  .avatar{display:none}
+  .kpiRow{grid-template-columns: 1fr}
+}
