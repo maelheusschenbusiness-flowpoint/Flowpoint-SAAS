@@ -1,5 +1,13 @@
 // =======================
 // FlowPoint — SaaS Backend (Pack A + Pack B)
+// Plans: Standard / Pro / Ultra
+// Pack A: SEO Audit + Cache + PDF + Monitoring + Logs + CSV + Magic Link + Admin
+// Pack B: Orgs + Team Ultra (Invites) + Roles + Shared data per org
+// + Fixes: SSRF protection, Monitor quota = active count, Cron concurrency,
+//          /api/overview for dashboard, exports aliases, uptime endpoint.
+// + Stripe Option B: stripe.js (central helpers + webhook + routes)
+// + Add-ons: monitors +50, extra seat, retention 90/365, audits packs, pdf pack, exports pack, priority support, custom domain
+// White label: GRATUIT (toujours activé)
 // =======================
 
 require("dotenv").config();
@@ -26,7 +34,7 @@ app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 5000;
 
-// ✅ BRAND (AI removed)
+// ✅ BRAND
 const BRAND_NAME = "FlowPoint";
 
 // ---------- ENV CHECK ----------
@@ -181,12 +189,33 @@ function planRank(plan) {
   return map[String(plan || "").toLowerCase()] || 0;
 }
 
-function quotasForPlan(plan) {
+// Base quotas only (sans add-ons)
+function baseQuotasForPlan(plan) {
   const p = String(plan || "").toLowerCase();
   if (p === "standard") return { audits: 30, monitors: 3, pdf: 30, exports: 30, teamSeats: 1 };
   if (p === "pro") return { audits: 300, monitors: 50, pdf: 300, exports: 300, teamSeats: 1 };
   if (p === "ultra") return { audits: 2000, monitors: 300, pdf: 2000, exports: 2000, teamSeats: 10 };
   return { audits: 0, monitors: 0, pdf: 0, exports: 0, teamSeats: 0 };
+}
+
+// Effective quotas = base + addons/credits (org)
+function effectiveQuotas(user, org) {
+  const base = baseQuotasForPlan(user?.plan);
+
+  const monitorsExtra = Number(org?.billingAddons?.monitorsPack50 || 0) * 50;
+  const seatsExtra = Number(org?.billingAddons?.extraSeats || 0);
+
+  const auditsExtra = Number(org?.credits?.audits || 0);
+  const pdfExtra = Number(org?.credits?.pdf || 0);
+  const exportsExtra = Number(org?.credits?.exports || 0);
+
+  return {
+    audits: base.audits + auditsExtra,
+    monitors: base.monitors + monitorsExtra,
+    pdf: base.pdf + pdfExtra,
+    exports: base.exports + exportsExtra,
+    teamSeats: base.teamSeats + seatsExtra,
+  };
 }
 
 function firstDayOfThisMonthUTC() {
@@ -205,8 +234,9 @@ async function resetUsageIfNewMonth(user) {
   }
 }
 
-async function consume(user, key, amount = 1) {
-  const q = quotasForPlan(user.plan);
+async function consume(user, org, key, amount = 1) {
+  const q = effectiveQuotas(user, org);
+
   const map = {
     audits: ["usedAudits", q.audits],
     pdf: ["usedPdf", q.pdf],
@@ -276,9 +306,9 @@ function ipuaHash(req) {
 
 // ---------- SSRF PROTECTION ----------
 function isPrivateIp(ip) {
-  if (!require("net").isIP(ip)) return true;
+  if (!net.isIP(ip)) return true;
 
-  if (require("net").isIPv4(ip)) {
+  if (net.isIPv4(ip)) {
     if (ip === "127.0.0.1") return true;
     if (ip.startsWith("10.")) return true;
     if (ip.startsWith("192.168.")) return true;
@@ -349,7 +379,7 @@ const OrgSchema = new mongoose.Schema(
       prioritySupport: { type: Boolean, default: false },
       customDomain: { type: Boolean, default: false },
 
-      // prêt si tu ajoutes le price_id plus tard
+      // ✅ White label GRATUIT
       whiteLabel: { type: Boolean, default: true },
     },
 
@@ -533,15 +563,19 @@ async function ensureOrgDefaults(org) {
     org.billingAddons = {
       monitorsPack50: 0,
       extraSeats: 0,
+
       retention90d: false,
       retention365d: false,
+
       auditsPack200: 0,
       auditsPack1000: 0,
       pdfPack200: 0,
       exportsPack1000: 0,
+
       prioritySupport: false,
       customDomain: false,
-      whiteLabel: true,
+
+      whiteLabel: true, // ✅ gratuit
     };
     changed = true;
   } else {
@@ -561,7 +595,9 @@ async function ensureOrgDefaults(org) {
     if (b.prioritySupport == null) { b.prioritySupport = false; changed = true; }
     if (b.customDomain == null) { b.customDomain = false; changed = true; }
 
+    // ✅ gratuit
     if (b.whiteLabel == null) { b.whiteLabel = true; changed = true; }
+    b.whiteLabel = true;
 
     b.monitorsPack50 = clampInt(b.monitorsPack50, 0, 200);
     b.extraSeats = clampInt(b.extraSeats, 0, 500);
@@ -621,7 +657,7 @@ async function ensureOrgDefaults(org) {
   return org;
 }
 
-// ✅ Single version (duplicates removed)
+// ✅ Single version
 async function ensureOrgForUser(user) {
   if (user.orgId) {
     const existing = await Org.findById(user.orgId);
@@ -943,9 +979,9 @@ async function runSeoAudit(url) {
   };
 }
 
-// ---------- Monitor quota = ACTIVE count ----------
-async function canCreateActiveMonitor(user) {
-  const q = quotasForPlan(user.plan);
+// ---------- Monitor quota = ACTIVE count (+ addons) ----------
+async function canCreateActiveMonitor(user, org) {
+  const q = effectiveQuotas(user, org);
   const countActive = await Monitor.countDocuments({ orgId: user.orgId, active: true });
   return countActive < q.monitors;
 }
@@ -954,13 +990,11 @@ async function canCreateActiveMonitor(user) {
 // STRIPE (via stripe.js)
 // IMPORTANT: webhook RAW doit être AVANT express.json()
 // =======================
-
 const stripeModule = buildStripeModule({
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET,
   BRAND_NAME,
   priceIdForPlan,
-  quotasForPlan,
   safeBaseUrl,
   signToken,
   auth,
@@ -1100,7 +1134,6 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
       return res.json({ ok: true, debugLink: link });
     }
 
-    // ✅ Email HTML (AI removed)
     const html = `
   <div style="background:#f6f7fb;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:18px;padding:24px;border:1px solid rgba(15,23,42,.08)">
@@ -1188,8 +1221,8 @@ app.post("/api/stripe/portal", auth, requireActive, stripeModule.customerPortal)
 // ---------- ME ----------
 app.get("/api/me", auth, requireActive, async (req, res) => {
   const u = req.dbUser;
-  const q = quotasForPlan(u.plan);
-  const org = u.orgId ? await Org.findById(u.orgId) : null;
+  const org = req.dbOrg;
+  const q = effectiveQuotas(u, org);
 
   return res.json({
     email: u.email,
@@ -1203,12 +1236,16 @@ app.get("/api/me", auth, requireActive, async (req, res) => {
     accessBlocked: u.accessBlocked,
     lastPaymentStatus: u.lastPaymentStatus || "",
     subscriptionStatus: u.subscriptionStatus || "",
+    addons: org?.billingAddons || {},
+    retentionDays: org?.retentionDays ?? 30,
+    credits: org?.credits || { audits: 0, pdf: 0, exports: 0 },
     usage: {
       month: u.usageMonth,
       audits: { used: u.usedAudits, limit: q.audits },
       monitors: { used: null, limit: q.monitors },
       pdf: { used: u.usedPdf, limit: q.pdf },
       exports: { used: u.usedExports, limit: q.exports },
+      teamSeats: { used: null, limit: q.teamSeats },
     },
   });
 });
@@ -1301,7 +1338,7 @@ app.post("/api/audits/run", auth, requireActive, async (req, res) => {
       });
     }
 
-    const ok = await consume(req.dbUser, "audits", 1);
+    const ok = await consume(req.dbUser, req.dbOrg, "audits", 1);
     if (!ok) return res.status(429).json({ error: "Quota audits dépassé" });
 
     const out = await runSeoAudit(urlNorm);
@@ -1340,7 +1377,7 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   const a = await Audit.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
   if (!a) return res.status(404).json({ error: "Audit introuvable" });
 
-  const ok = await consume(req.dbUser, "pdf", 1);
+  const ok = await consume(req.dbUser, req.dbOrg, "pdf", 1);
   if (!ok) return res.status(429).json({ error: "Quota PDF dépassé" });
 
   res.setHeader("Content-Type", "application/pdf");
@@ -1389,7 +1426,7 @@ app.post("/api/monitors", auth, requireActive, async (req, res) => {
 
     await assertSafePublicUrl(url);
 
-    const allowed = await canCreateActiveMonitor(req.dbUser);
+    const allowed = await canCreateActiveMonitor(req.dbUser, req.dbOrg);
     if (!allowed) return res.status(429).json({ error: "Quota monitors actifs dépassé" });
 
     const m = await Monitor.create({
@@ -1424,7 +1461,7 @@ app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
   }
 
   if (m.active === true) {
-    const q = quotasForPlan(req.dbUser.plan);
+    const q = effectiveQuotas(req.dbUser, req.dbOrg);
     const countActive = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true, _id: { $ne: m._id } });
     if (countActive + 1 > q.monitors) return res.status(429).json({ error: "Quota monitors actifs dépassé" });
   }
@@ -1468,8 +1505,171 @@ app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
   return res.json({ ok: true, result: r });
 });
 
-// ---------- CRON + EXPORTS + ADMIN + START ----------
-// (le reste de ton fichier ne change pas)
-// ... garde exactement la suite comme tu l’avais (cron/export/admin/start)
+app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
+  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
+  if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
+  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id })
+    .sort({ checkedAt: -1 })
+    .limit(200);
+
+  return res.json({ ok: true, logs });
+});
+
+app.get("/api/monitors/:id/uptime", auth, requireActive, async (req, res) => {
+  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
+  if (!m) return res.status(404).json({ error: "Monitor introuvable" });
+
+  const days = Math.min(30, Math.max(1, Number(req.query.days || 7)));
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id, checkedAt: { $gte: since } })
+    .select("status checkedAt")
+    .sort({ checkedAt: 1 });
+
+  const total = logs.length;
+  const up = logs.filter((l) => l.status === "up").length;
+  const uptime = total ? Math.round((up / total) * 10000) / 100 : null;
+
+  return res.json({ ok: true, days, totalChecks: total, upChecks: up, uptimePercent: uptime });
+});
+
+// ---------- CRON ----------
+app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
+  try {
+    const now = Date.now();
+    const limit = Math.min(500, Math.max(1, Number(req.body?.limit || req.query.limit || 200)));
+
+    const activeMonitors = await Monitor.find({ active: true }).sort({ updatedAt: 1 }).limit(limit);
+
+    let checked = 0;
+    let alertsSent = 0;
+
+    await runWithConcurrency(activeMonitors, CRON_CONCURRENCY, async (m) => {
+      const last = m.lastCheckedAt ? new Date(m.lastCheckedAt).getTime() : 0;
+      const dueMs = Number(m.intervalMinutes || 60) * 60 * 1000;
+      const due = !last || now - last >= dueMs;
+      if (!due) return;
+
+      const r = await checkUrlOnce(m.url);
+
+      m.lastCheckedAt = new Date();
+      m.lastStatus = r.status;
+      await m.save();
+
+      await MonitorLog.create({
+        orgId: m.orgId,
+        userId: m.userId,
+        monitorId: m._id,
+        url: m.url,
+        status: r.status,
+        httpStatus: r.httpStatus,
+        responseTimeMs: r.responseTimeMs,
+        error: r.error,
+      });
+
+      const a = await maybeSendMonitorAlert(m, r);
+      if (a.sent) alertsSent += 1;
+
+      checked += 1;
+    });
+
+    return res.json({ ok: true, checked, alertsSent, scanned: activeMonitors.length, concurrency: CRON_CONCURRENCY });
+  } catch (e) {
+    console.log("cron monitors-run error:", e.message);
+    return res.status(500).json({ error: "Erreur cron monitors-run" });
+  }
+});
+
+// ---------- EXPORTS ----------
+function csvEscape(v) {
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+app.get("/api/export/audits.csv", auth, requireActive, async (req, res) => {
+  const ok = await consume(req.dbUser, req.dbOrg, "exports", 1);
+  if (!ok) return res.status(429).json({ error: "Quota exports dépassé" });
+
+  const list = await Audit.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(500);
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="flowpoint-audits.csv"`);
+
+  const header = ["createdAt", "url", "status", "score", "summary"].join(",") + "\n";
+  const rows = list
+    .map((a) =>
+      [a.createdAt?.toISOString?.() || "", a.url || "", a.status || "", a.score ?? "", a.summary || ""]
+        .map(csvEscape)
+        .join(",")
+    )
+    .join("\n");
+
+  res.send(header + rows + "\n");
+});
+
+app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
+  const ok = await consume(req.dbUser, req.dbOrg, "exports", 1);
+  if (!ok) return res.status(429).json({ error: "Quota exports dépassé" });
+
+  const list = await Monitor.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(500);
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="flowpoint-monitors.csv"`);
+
+  const header = ["createdAt", "url", "active", "intervalMinutes", "lastStatus", "lastCheckedAt"].join(",") + "\n";
+  const rows = list
+    .map((m) =>
+      [
+        m.createdAt?.toISOString?.() || "",
+        m.url || "",
+        m.active ? "true" : "false",
+        m.intervalMinutes ?? "",
+        m.lastStatus || "",
+        m.lastCheckedAt ? new Date(m.lastCheckedAt).toISOString() : "",
+      ]
+        .map(csvEscape)
+        .join(",")
+    )
+    .join("\n");
+
+  res.send(header + rows + "\n");
+});
+
+// aliases
+app.get("/api/exports/audits.csv", auth, requireActive, (req, res) => {
+  req.url = "/api/export/audits.csv";
+  app.handle(req, res);
+});
+app.get("/api/exports/monitors.csv", auth, requireActive, (req, res) => {
+  req.url = "/api/export/monitors.csv";
+  app.handle(req, res);
+});
+
+// ---------- ADMIN ----------
+app.get("/api/admin/users", requireAdmin, async (req, res) => {
+  const list = await User.find({}).sort({ createdAt: -1 }).limit(200);
+  res.json({ ok: true, users: list });
+});
+
+app.post("/api/admin/user/block", requireAdmin, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const blocked = !!req.body?.blocked;
+  if (!email) return res.status(400).json({ error: "email manquant" });
+  await User.updateOne({ email }, { $set: { accessBlocked: blocked } });
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: "email manquant" });
+  await User.updateOne(
+    { email },
+    { $set: { usageMonth: firstDayOfThisMonthUTC(), usedAudits: 0, usedPdf: 0, usedExports: 0 } }
+  );
+  res.json({ ok: true });
+});
+
+// ---------- START ----------
 app.listen(PORT, () => console.log(`✅ ${BRAND_NAME} lancé sur port ${PORT}`));
