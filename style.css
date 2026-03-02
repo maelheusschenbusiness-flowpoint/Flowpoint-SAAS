@@ -1,185 +1,92 @@
-/* style.css — FlowPoint base + pages (index / login / pricing / dashboard)
-   Objectif :
-   - Light + Dark (prefers-color-scheme)
-   - Layout pricing comme “avant” (plans grands + add-ons + résumé sticky)
-   - Logo icône seule (cropping si svg contient du texte)
-   - Select quantité propre (PC + iOS)
-*/
+/* style.css — FlowPoint (base + dark) */
+/* Copie/colle tout le fichier */
 
-/* -------------------- Reset -------------------- */
-*,
-*::before,
-*::after { box-sizing: border-box; }
-
-html, body { height: 100%; }
-
-body {
-  margin: 0;
-  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  line-height: 1.5;
+*, *::before, *::after{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
 }
 
-img { display: block; max-width: 100%; }
-a { color: inherit; text-decoration: none; }
-button, input, select, textarea { font: inherit; }
-button { cursor: pointer; }
-
-/* -------------------- Theme tokens -------------------- */
 :root{
-  /* brand */
+  /* Brand */
   --primary:#2f5bff;
   --primary2:#2449ff;
 
-  /* light */
+  /* Light */
   --bg:#f6f7fb;
   --panel:#ffffff;
   --panel2:#f7f8ff;
   --text:#0f172a;
   --muted:#667085;
-
   --border:#e6eaf2;
-  --field:#ffffff;
-  --fieldBorder:#d9deea;
-
+  --shadow:0 18px 70px rgba(16,24,40,.10);
   --chip:#eef2ff;
   --chipText:#2b4cff;
 
-  --shadow: 0 18px 70px rgba(16,24,40,.10);
-  --shadow2: 0 10px 35px rgba(0,0,0,.08);
+  /* Fields */
+  --field:#ffffff;
+  --fieldBorder:#d9deea;
 
+  /* Radius */
   --r:18px;
+  --r2:16px;
+  --rPill:999px;
+
+  /* Typography */
+  --font: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#070b18;
-    --panel:rgba(12,18,40,.72);
+    --panel:rgba(12,18,40,.78);
     --panel2:rgba(255,255,255,.05);
-    --text:#e8eeff;
-    --muted:#aab7e1;
+    --text:#eaf0ff;
+    --muted:rgba(234,240,255,.70);
+    --border:rgba(255,255,255,.11);
+    --shadow:0 28px 110px rgba(0,0,0,.45);
+    --chip:rgba(132,102,255,.18);
+    --chipText:#d7ccff;
 
-    --border:rgba(255,255,255,.10);
     --field:rgba(255,255,255,.06);
     --fieldBorder:rgba(255,255,255,.12);
-
-    --chip:rgba(132,102,255,.18);
-    --chipText:#d4c9ff;
-
-    --shadow: 0 22px 90px rgba(0,0,0,.55);
-    --shadow2: 0 18px 60px rgba(0,0,0,.35);
   }
 }
 
-/* -------------------- Global background -------------------- */
-body{
+html, body{
+  font-family:var(--font);
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  color:var(--text);
   background:
     radial-gradient(1200px 700px at 15% 0%, rgba(47,91,255,.22), transparent 55%),
     radial-gradient(1200px 700px at 85% 0%, rgba(99,102,241,.20), transparent 55%),
     var(--bg);
-  color: var(--text);
 }
 
-/* -------------------- Generic UI helpers -------------------- */
-.muted { color: var(--muted); }
-.hint { color: var(--muted); font-weight: 700; font-size: 13px; }
+a{ color:inherit; text-decoration:none; }
+button{ font-family:var(--font); cursor:pointer; }
+ul,ol{ list-style:none; }
 
-.card,
-.panel{
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  box-shadow: var(--shadow);
-  backdrop-filter: saturate(180%) blur(14px);
-}
-
-.cardHead{
-  padding: 14px;
-  background: var(--panel2);
-  border-bottom: 1px solid var(--border);
-  font-weight: 900;
-  letter-spacing: -.02em;
-}
-
-.cardBody{
-  padding: 14px;
-  display: grid;
-  gap: 10px;
-}
-
-input, select, textarea{
-  width: 100%;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid var(--fieldBorder);
-  background: var(--field);
-  color: var(--text);
-  outline: none;
-}
-
-input:focus, select:focus, textarea:focus{
-  border-color: rgba(47,91,255,.55);
-  box-shadow: 0 0 0 4px rgba(47,91,255,.12);
-}
-
-.primaryBtn{
-  border: 0;
-  width: 100%;
-  padding: 12px 14px;
-  border-radius: 14px;
-  font-weight: 900;
-  color: #fff;
-  background: linear-gradient(180deg, var(--primary), var(--primary2));
-  box-shadow: 0 16px 50px rgba(47,91,255,.30);
-}
-
-.ghostBtn{
-  width: 100%;
-  padding: 12px 14px;
-  border-radius: 14px;
-  font-weight: 900;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,.06);
-  color: var(--text);
-}
-
-@media (prefers-color-scheme: light){
-  .ghostBtn{ background:#fff; }
-}
-
-/* pill / link buttons */
-.pill, .linkBtn{
-  padding: 10px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  box-shadow: 0 10px 40px rgba(0,0,0,.06);
-  font-weight: 800;
-  font-size: 13px;
-  white-space: nowrap;
-}
-.pill{ color: var(--muted); }
-.linkBtn{ color: var(--text); }
-
-/* -------------------- Layout containers -------------------- */
+/* =============== Layout =============== */
 .page{
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 18px 18px 44px;
+  max-width:1180px;
+  margin:0 auto;
+  padding:18px 18px 44px;
 }
 
 .grid{
-  display: grid;
+  display:grid;
   grid-template-columns: 1.25fr .75fr;
-  gap: 14px;
-  align-items: start;
+  gap:14px;
+  align-items:start;
 }
 
 @media (max-width: 980px){
-  .grid{ grid-template-columns: 1fr; }
+  .grid{ grid-template-columns:1fr; }
 }
 
-/* -------------------- Topbar + Logo (icône seule) -------------------- */
 .topbar{
   display:flex;
   align-items:center;
@@ -192,6 +99,7 @@ input:focus, select:focus, textarea:focus{
   display:flex;
   align-items:center;
   gap:12px;
+  min-width:0;
 }
 
 .actions{
@@ -199,364 +107,530 @@ input:focus, select:focus, textarea:focus{
   align-items:center;
   gap:10px;
   flex-wrap:wrap;
+  justify-content:flex-end;
 }
 
-/* ✅ Logo carré + crop si svg contient du texte */
+/* Pills / header buttons */
+.pill{
+  padding:10px 12px;
+  border-radius:var(--rPill);
+  border:1px solid var(--border);
+  background:var(--panel);
+  color:var(--muted);
+  font-weight:800;
+  font-size:13px;
+  box-shadow:0 10px 40px rgba(0,0,0,.06);
+}
+
+.linkBtn{
+  padding:10px 12px;
+  border-radius:var(--rPill);
+  border:1px solid var(--border);
+  background:var(--panel);
+  color:var(--text);
+  font-weight:900;
+  font-size:13px;
+  box-shadow:0 10px 40px rgba(0,0,0,.06);
+}
+
+/* =============== Logo (fix) =============== */
+/* Carré, crop si ton svg a encore du texte */
 .logoBox{
   width:64px;
   height:64px;
   border-radius:18px;
-  background: rgba(47,91,255,.10);
-  border: 1px solid rgba(47,91,255,.18);
+  background:rgba(47,91,255,.10);
+  border:1px solid rgba(47,91,255,.18);
   display:flex;
   align-items:center;
   justify-content:center;
-  overflow:hidden; /* important pour crop */
+  overflow:hidden; /* IMPORTANT */
 }
 
-/* IMPORTANT :
-   - Si ton SVG contient encore un mot (FlowPoint / FlowF), on “crop” pour ne garder que l’icône.
-   - Si ton SVG est déjà icône-only, ça marche aussi.
-*/
+/* Icône seule visuellement “plus grande” */
 .brandLogo{
-  width: 150%;
-  height: 150%;
-  object-fit: cover;
-  object-position: left center;
+  width:145%;
+  height:145%;
+  object-fit:cover;            /* crop */
+  object-position:left center; /* garde l’icône */
+  display:block;
 }
 
-/* -------------------- Hero (pricing/login/index) -------------------- */
+/* Si tu utilises <img class="brandLogo"> sans .logoBox */
+.brandLogoSolo{
+  width:64px;
+  height:64px;
+  padding:0;
+  border-radius:18px;
+  background:rgba(47,91,255,.10);
+  border:1px solid rgba(47,91,255,.18);
+  object-fit:cover;
+  object-position:left center;
+}
+
+/* =============== Cards =============== */
 .hero{
-  background: linear-gradient(180deg, rgba(47,91,255,.18), transparent 55%);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 18px;
-  box-shadow: var(--shadow);
+  background:linear-gradient(180deg, rgba(47,91,255,.18), transparent 55%);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:18px;
+  box-shadow:var(--shadow);
+  backdrop-filter:saturate(180%) blur(14px);
 }
 
 .hero h1{
-  margin: 0 0 6px;
-  font-size: 34px;
-  letter-spacing: -.03em;
-}
-.hero p{
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.6;
-  font-size: 14px;
+  margin:0 0 6px;
+  font-size:34px;
+  letter-spacing:-.03em;
 }
 
-/* -------------------- Sections (pricing) -------------------- */
+.hero p{
+  margin:0;
+  color:var(--muted);
+  line-height:1.6;
+  font-size:14px;
+}
+
 .section{
-  margin-top: 14px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  box-shadow: var(--shadow);
-  overflow: hidden;
+  margin-top:14px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+  overflow:hidden;
 }
 
 .sectionHead{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  padding: 14px;
-  background: var(--panel2);
-  border-bottom: 1px solid var(--border);
-  gap: 10px;
+  padding:14px;
+  background:var(--panel2);
+  border-bottom:1px solid var(--border);
+  gap:10px;
 }
 
 .sectionHead .title{
-  font-weight: 900;
-  letter-spacing: -.02em;
+  font-weight:950;
+  letter-spacing:-.02em;
+  font-size:16px;
 }
 
-/* -------------------- Plans cards (GRANDS + centrés) -------------------- */
+.sectionHead .hint{
+  color:var(--muted);
+  font-size:13px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+/* =============== Plans (ancien rendu “meilleur”) =============== */
 .plans{
-  padding: 14px;
-  display: grid;
+  padding:14px;
+  display:grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap:12px;
 }
 
 @media (max-width: 980px){
-  .plans{ grid-template-columns: 1fr; }
+  .plans{ grid-template-columns:1fr; }
 }
 
 .planCard{
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 16px;
-  background: linear-gradient(180deg, rgba(47,91,255,.10), transparent 65%);
-  min-height: 190px;
-  position: relative;
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:16px;
+  background:linear-gradient(180deg, rgba(47,91,255,.10), transparent 65%);
+  min-height:190px;
+  position:relative;
 }
 
 .planCard.active{
-  outline: 2px solid rgba(47,91,255,.45);
-  box-shadow: 0 0 0 6px rgba(47,91,255,.12);
+  outline:2px solid rgba(47,91,255,.45);
+  box-shadow:0 0 0 6px rgba(47,91,255,.12);
 }
 
 .planTop{
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
-  gap: 10px;
+  gap:10px;
 }
 
 .planName{
-  font-weight: 900;
-  font-size: 18px;
-  letter-spacing: -.02em;
+  font-weight:950;
+  font-size:18px;
+  letter-spacing:-.02em;
 }
 
 .price{
-  font-weight: 900;
-  font-size: 28px;
-  letter-spacing: -.03em;
-  white-space: nowrap;
+  font-weight:950;
+  font-size:28px;
+  letter-spacing:-.03em;
+  white-space:nowrap;
 }
 
 .per{
-  font-weight: 800;
-  font-size: 13px;
-  color: var(--muted);
+  font-weight:900;
+  font-size:13px;
+  color:var(--muted);
 }
 
 .badge{
   display:inline-flex;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--chip);
-  color: var(--chipText);
-  font-weight: 900;
-  font-size: 12px;
-  margin-top: 10px;
+  padding:6px 10px;
+  border-radius:var(--rPill);
+  background:var(--chip);
+  color:var(--chipText);
+  font-weight:950;
+  font-size:12px;
+  margin-top:10px;
 }
 
 .features{
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--muted);
-  font-weight: 700;
-  font-size: 13px;
-  line-height: 1.65;
+  margin:12px 0 0;
+  padding:0;
+  color:var(--muted);
+  font-weight:800;
+  font-size:13px;
+  line-height:1.65;
+}
+
+.features li{
+  display:flex;
+  gap:8px;
 }
 
 .features li::before{
   content:"•";
-  margin-right: 8px;
-  color: rgba(47,91,255,.8);
-  font-weight: 900;
+  color:rgba(47,91,255,.85);
+  font-weight:950;
 }
 
-/* -------------------- Add-ons list (comme avant) -------------------- */
+/* =============== Add-ons (ancien rendu “cards”) =============== */
 .addons{
-  padding: 14px;
-  display: grid;
-  gap: 12px;
+  padding:14px;
+  display:grid;
+  gap:12px;
 }
 
 .addonRow{
-  display: grid;
+  display:grid;
   grid-template-columns: 1fr auto;
-  gap: 12px;
-  align-items: center;
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 80%);
+  gap:12px;
+  align-items:center;
+  padding:14px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 80%);
 }
 
 @media (max-width: 520px){
-  .addonRow{ grid-template-columns: 1fr; }
+  .addonRow{ grid-template-columns:1fr; }
 }
 
 .addonTitle{
-  font-weight: 900;
-  margin: 0;
-  letter-spacing: -.01em;
+  font-weight:950;
+  margin:0;
+  letter-spacing:-.01em;
+  font-size:16px;
 }
 
 .addonDesc{
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.5;
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:700;
+  line-height:1.5;
 }
 
 .keyChip{
-  margin-top: 10px;
-  display: inline-flex;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(150,120,255,.22);
-  border: 1px solid rgba(150,120,255,.30);
-  color: #e7ddff;
-  font-weight: 900;
-  font-size: 12px;
+  margin-top:10px;
+  display:inline-flex;
+  padding:6px 10px;
+  border-radius:var(--rPill);
+  background:rgba(150,120,255,.22);
+  border:1px solid rgba(150,120,255,.30);
+  color:#e7ddff;
+  font-weight:950;
+  font-size:12px;
 }
 
 @media (prefers-color-scheme: light){
   .keyChip{
-    background: #efeaff;
-    border: 1px solid #ddd2ff;
-    color: #5b32ff;
+    background:#efeaff;
+    border:1px solid #ddd2ff;
+    color:#5b32ff;
   }
 }
 
 .addonRight{
   display:flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
-  min-width: 200px;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:10px;
+  min-width:200px;
 }
 
-@media (max-width: 520px){
+@media (max-width:520px){
   .addonRight{
-    align-items: stretch;
-    min-width: auto;
+    align-items:flex-start;
+    min-width:unset;
   }
 }
 
 .addonPrice{
-  font-weight: 900;
-  font-size: 16px;
-  white-space: nowrap;
+  font-weight:950;
+  font-size:16px;
+  white-space:nowrap;
 }
 
-/* ✅ Select Qté propre + menu dark */
+/* =============== Qty select (PC + menu dark propre) =============== */
 .qtyWrap{
-  position: relative;
-  width: 160px;
-}
-
-@media (max-width: 520px){
-  .qtyWrap{ width: 100%; }
+  position:relative;
+  width:160px;
 }
 
 select.qty{
-  width: 100%;
-  padding: 10px 38px 10px 12px;
-  border-radius: 14px;
-  border: 1px solid var(--fieldBorder);
-  background: var(--field);
-  color: var(--text);
-  font-weight: 900;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  outline: none;
-  box-shadow: var(--shadow2);
-  color-scheme: light dark; /* aide iOS/Chrome */
+  width:100%;
+  padding:10px 38px 10px 12px;
+  border-radius:14px;
+  border:1px solid var(--fieldBorder);
+  background:var(--field);
+  color:var(--text);
+  font-weight:950;
+  appearance:none;
+  -webkit-appearance:none;
+  -moz-appearance:none;
+  outline:none;
+  box-shadow:0 10px 35px rgba(0,0,0,.08);
+  color-scheme: light dark;
 }
 
 .qtyWrap::after{
-  content: "▾";
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted);
-  font-weight: 900;
-  pointer-events: none;
+  content:"▾";
+  position:absolute;
+  right:12px;
+  top:50%;
+  transform:translateY(-50%);
+  color:var(--muted);
+  font-weight:950;
+  pointer-events:none;
 }
 
 select.qty:focus{
-  border-color: rgba(47,91,255,.55);
-  box-shadow: 0 0 0 4px rgba(47,91,255,.12);
+  border-color:rgba(47,91,255,.55);
+  box-shadow:0 0 0 4px rgba(47,91,255,.12);
 }
 
-/* options dropdown */
+/* Options (important sinon blanc/illisible selon OS) */
 select.qty option{
-  background: #0b1220;
-  color: #e8eeff;
+  background:#0b1220;
+  color:#eaf0ff;
 }
 @media (prefers-color-scheme: light){
   select.qty option{
-    background: #ffffff;
-    color: #0f172a;
+    background:#ffffff;
+    color:#0f172a;
   }
 }
 
-/* -------------------- Toggle switch (flags) -------------------- */
+/* =============== Qty stepper (si tu utilises - / +) =============== */
+.qty{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px;
+  border-radius:14px;
+  border:1px solid var(--fieldBorder);
+  background:var(--field);
+  box-shadow:0 10px 35px rgba(0,0,0,.08);
+}
+
+.qtyBtn{
+  width:36px;
+  height:36px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.06);
+  color:var(--text);
+  font-weight:950;
+}
+
+@media (prefers-color-scheme: light){
+  .qtyBtn{ background:#fff; }
+}
+
+.qtyInput{
+  width:64px;
+  text-align:center;
+  border:0;
+  background:transparent;
+  color:var(--text);
+  font-weight:950;
+  font-size:14px;
+  outline:none;
+}
+
+/* =============== Toggle (checkbox “flag”) =============== */
 .toggle{
-  position: relative;
-  width: 52px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  position:relative;
+  width:52px;
+  height:32px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
 }
 
 .toggle input{
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
+  position:absolute;
+  inset:0;
+  opacity:0;
+  cursor:pointer;
 }
 
 .toggle .track{
-  width: 52px;
-  height: 32px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,.06);
-  position: relative;
-  transition: .15s ease;
+  width:52px;
+  height:32px;
+  border-radius:var(--rPill);
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.06);
+  position:relative;
+  transition:.15s ease;
 }
 
 .toggle .track::after{
   content:"";
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  position: absolute;
-  left: 3px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(255,255,255,.9);
-  transition: .15s ease;
+  width:26px;
+  height:26px;
+  border-radius:var(--rPill);
+  position:absolute;
+  left:3px;
+  top:50%;
+  transform:translateY(-50%);
+  background:rgba(255,255,255,.92);
+  transition:.15s ease;
 }
 
 .toggle input:checked + .track{
-  background: linear-gradient(180deg, var(--primary), var(--primary2));
-  border-color: rgba(47,91,255,.45);
+  background:linear-gradient(180deg,var(--primary),var(--primary2));
+  border-color:rgba(47,91,255,.45);
 }
 
 .toggle input:checked + .track::after{
-  left: 23px;
+  left:23px;
 }
 
 .toggle input:disabled + .track{
-  opacity: .65;
-  cursor: not-allowed;
+  opacity:.65;
+  cursor:not-allowed;
 }
 
-/* -------------------- Sidebar (pricing) -------------------- */
+/* =============== Sidebar cards (Résumé / Info) =============== */
 .side{
-  position: sticky;
-  top: 14px;
-  display: grid;
-  gap: 14px;
+  position:sticky;
+  top:14px;
+  display:grid;
+  gap:14px;
 }
-@media (max-width: 980px){
-  .side{ position: static; }
+
+@media (max-width:980px){
+  .side{ position:static; }
+}
+
+.card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+
+.cardHead{
+  padding:14px;
+  background:var(--panel2);
+  border-bottom:1px solid var(--border);
+  font-weight:950;
+  letter-spacing:-.02em;
+}
+
+.cardBody{
+  padding:14px;
+  display:grid;
+  gap:10px;
 }
 
 .row2{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap: 12px;
-  font-weight: 800;
+  gap:12px;
+  font-weight:900;
+}
+
+.muted{ color:var(--muted); font-weight:800; }
+
+.primaryBtn{
+  border:0;
+  width:100%;
+  padding:12px 14px;
+  border-radius:14px;
+  font-weight:950;
+  color:#fff;
+  background:linear-gradient(180deg,var(--primary),var(--primary2));
+  box-shadow:0 16px 50px rgba(47,91,255,.30);
+}
+
+.ghostBtn{
+  width:100%;
+  padding:12px 14px;
+  border-radius:14px;
+  font-weight:950;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.06);
+  color:var(--text);
+}
+
+@media (prefers-color-scheme: light){
+  .ghostBtn{ background:#fff; }
 }
 
 .small{
-  font-size: 12.5px;
-  color: var(--muted);
-  line-height: 1.5;
+  font-size:12.5px;
+  color:var(--muted);
+  line-height:1.5;
+}
+
+/* =============== Forms (index/login) =============== */
+.cardForm{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:20px;
+  box-shadow:var(--shadow);
+  backdrop-filter:saturate(180%) blur(14px);
+}
+
+label{
+  display:block;
+  margin-top:12px;
+  font-size:13px;
+  font-weight:850;
+  color:var(--text);
+}
+
+input, select, textarea{
+  width:100%;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid var(--fieldBorder);
+  margin-top:6px;
+  background:var(--field);
+  color:var(--text);
+  font-size:14px;
+  outline:none;
+}
+
+input:focus, select:focus, textarea:focus{
+  border-color:rgba(47,91,255,.55);
+  box-shadow:0 0 0 4px rgba(47,91,255,.12);
 }
