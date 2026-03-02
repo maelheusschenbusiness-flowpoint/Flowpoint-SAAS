@@ -169,41 +169,25 @@ ul,ol{ list-style:none; }
   box-shadow:0 10px 40px rgba(0,0,0,.06);
 }
 
-/* =============== Logo (fix) =============== */
-/* Carré, crop si ton svg a encore du texte */
+/* ===== Logo Pricing ===== */
 .logoBox{
   width:64px;
   height:64px;
-  border-radius:18px;
-  background:rgba(47,91,255,.10);
-  border:1px solid rgba(47,91,255,.18);
+  border-radius:22px; /* PLUS ARRONDI */
+  background:linear-gradient(180deg,#3b6bff,#2449ff);
   display:flex;
   align-items:center;
   justify-content:center;
-  overflow:hidden; /* IMPORTANT */
+  box-shadow:0 10px 35px rgba(47,91,255,.35);
+  overflow:hidden;
 }
 
-/* Icône seule visuellement “plus grande” */
+/* Si image svg dedans */
 .brandLogo{
-  width:145%;
-  height:145%;
-  object-fit:cover;            /* crop */
-  object-position:left center; /* garde l’icône */
-  display:block;
+  width:60%;
+  height:60%;
+  object-fit:contain;
 }
-
-/* Si tu utilises <img class="brandLogo"> sans .logoBox */
-.brandLogoSolo{
-  width:64px;
-  height:64px;
-  padding:0;
-  border-radius:18px;
-  background:rgba(47,91,255,.10);
-  border:1px solid rgba(47,91,255,.18);
-  object-fit:cover;
-  object-position:left center;
-}
-
 /* =============== Cards =============== */
 .hero{
   background:linear-gradient(180deg, rgba(47,91,255,.18), transparent 55%);
