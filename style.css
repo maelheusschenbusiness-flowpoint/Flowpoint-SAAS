@@ -1,158 +1,193 @@
-/* style.css - Base styles & CSS Variables */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* style.css - Base styles & CSS Variables (FlowPoint) */
+/* ✅ Light + Dark (prefers-color-scheme) */
+/* ✅ Compatible avec pricing/login/index + tes classes (page/grid/plans/qty/toggle) */
+
+*, *::before, *::after{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
 }
 
-:root {
-  --blue: #2563EB;
-  --blue-light: #EFF6FF;
-  --blue-dark: #1D4ED8;
-  --green: #16A34A;
-  --green-light: #F0FDF4;
-  --red: #DC2626;
-  --red-light: #FEF2F2;
-  --orange: #F59E0B;
-  --orange-light: #FFFBEB;
-  --gray-50: #F9FAFB;
-  --gray-100: #F3F4F6;
-  --gray-200: #E5E7EB;
-  --gray-300: #D1D5DB;
-  --gray-400: #9CA3AF;
-  --gray-500: #6B7280;
-  --gray-600: #4B5563;
-  --gray-700: #374151;
-  --gray-800: #1F2937;
-  --gray-900: #111827;
-  --white: #FFFFFF;
-  --sidebar-width: 180px;
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --radius-sm: 4px;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
-  /* UI tokens (pour pricing/login/index) */
-  --bg: var(--gray-100);
-  --panel: var(--white);
-  --text: var(--gray-900);
-  --muted: var(--gray-500);
-  --border: var(--gray-200);
+/* ====== TOKENS ====== */
+:root{
+  /* Brand */
+  --primary:#2f5bff;
+  --primary2:#2449ff;
 
-  --primary: #2f5bff;
-  --primary2: #2449ff;
+  /* Palette */
+  --blue:#2563EB;
+  --blue-light:#EFF6FF;
+  --blue-dark:#1D4ED8;
 
-  --field: var(--white);
-  --fieldBorder: var(--gray-300);
+  --green:#16A34A;
+  --green-light:#F0FDF4;
+  --red:#DC2626;
+  --red-light:#FEF2F2;
+  --orange:#F59E0B;
+  --orange-light:#FFFBEB;
+
+  --gray-50:#F9FAFB;
+  --gray-100:#F3F4F6;
+  --gray-200:#E5E7EB;
+  --gray-300:#D1D5DB;
+  --gray-400:#9CA3AF;
+  --gray-500:#6B7280;
+  --gray-600:#4B5563;
+  --gray-700:#374151;
+  --gray-800:#1F2937;
+  --gray-900:#111827;
+
+  --white:#FFFFFF;
+
+  /* Layout */
+  --sidebar-width:180px;
+  --font:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Radius / Shadow */
+  --radius-sm:8px;
+  --radius:12px;
+  --radius-lg:18px;
+
+  --shadow-sm:0 1px 2px rgba(0,0,0,0.05);
+  --shadow:0 1px 3px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md:0 4px 14px rgba(0,0,0,0.10);
+  --shadow-lg:0 18px 70px rgba(16,24,40,.10);
+
+  /* ✅ UI tokens (utilisés partout) */
+  --bg:var(--gray-100);
+  --panel:var(--white);
+  --panel2:rgba(47,91,255,.06);
+  --text:var(--gray-900);
+  --muted:var(--gray-600);
+  --border:var(--gray-200);
+
+  --field:var(--white);
+  --fieldBorder:var(--gray-300);
+
+  --chip:rgba(47,91,255,.10);
+  --chipText:#2b4cff;
 }
 
-html, body {
-  font-family: var(--font);
-  font-size: 14px;
-  color: var(--gray-800);
-  background: var(--gray-100);
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
+html, body{
+  font-family:var(--font);
+  font-size:14px;
+  color:var(--text);
+  background:var(--bg);
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
 }
 
-a { text-decoration: none; color: inherit; }
-button { cursor: pointer; font-family: var(--font); }
-ul, ol { list-style: none; }
+a{ text-decoration:none; color:inherit; }
+button{ cursor:pointer; font-family:var(--font); }
+ul, ol{ list-style:none; }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
+/* ====== BADGES / BUTTONS ====== */
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:2px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
 }
-.badge-green { background: var(--green-light); color: var(--green); }
-.badge-red   { background: var(--red-light);   color: var(--red);   }
-.badge-orange{ background: var(--orange-light); color: var(--orange);}
+.badge-green{ background:var(--green-light); color:var(--green); }
+.badge-red{ background:var(--red-light); color:var(--red); }
+.badge-orange{ background:var(--orange-light); color:var(--orange); }
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 500;
-  border: none;
-  transition: all 0.15s;
+.btn{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:9px 14px;
+  border-radius:999px;
+  font-size:13px;
+  font-weight:700;
+  border:1px solid var(--border);
+  transition:all .15s ease;
+  background:var(--panel);
+  color:var(--text);
 }
-.btn-primary  { background: var(--blue);  color: var(--white); }
-.btn-primary:hover { background: var(--blue-dark); }
-.btn-outline  { background: var(--white); color: var(--gray-700); border: 1px solid var(--gray-200); }
-.btn-outline:hover { background: var(--gray-50); }
-.btn-sm { padding: 5px 10px; font-size: 12px; }
-@media (prefers-color-scheme: dark){
-  body{
-    background: #070b18 !important;
-    color: #eaf0ff !important;
-  }
-  .card, .panel, .container, form{
-    background: rgba(14,18,40,.78) !important;
-    border: 1px solid rgba(255,255,255,.11) !important;
-    box-shadow: 0 28px 110px rgba(0,0,0,.45) !important;
-    backdrop-filter: blur(14px) saturate(160%);
-  }
-  input, select, textarea{
-    background: rgba(255,255,255,.06) !important;
-    border: 1px solid rgba(255,255,255,.12) !important;
-    color: #eaf0ff !important;
-  }
-  .muted, small, .hint{
-    color: rgba(234,240,255,.72) !important;
-  }
+.btn-primary{
+  border:none;
+  background:linear-gradient(180deg,var(--primary),var(--primary2));
+  color:#fff;
+  box-shadow:0 16px 50px rgba(47,91,255,.30);
 }
-/* ✅ Centre mieux sur mobile + PC */
+.btn-primary:hover{ filter:brightness(1.03); }
+.btn-outline:hover{ background:rgba(0,0,0,.03); }
+.btn-sm{ padding:7px 12px; font-size:12px; }
+
+/* ====== GENERIC CARDS ====== */
+.card, .panel, .container, form{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lg);
+}
+
+/* ====== INPUTS ====== */
+input, select, textarea{
+  width:100%;
+  padding:12px 12px;
+  border-radius:14px;
+  border:1px solid var(--fieldBorder);
+  background:var(--field);
+  color:var(--text);
+  outline:none;
+  font-size:14px;
+}
+input:focus, select:focus, textarea:focus{
+  border-color:rgba(47,91,255,.55);
+  box-shadow:0 0 0 4px rgba(47,91,255,.12);
+}
+
+/* ====== PRICING LAYOUT HELPERS ====== */
+/* ✅ Centre la page */
 .page{
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 18px 18px 44px;
+  max-width:1180px;
+  margin:0 auto;
+  padding:18px 18px 44px;
 }
+
+/* ✅ Grille pricing (gauche + résumé) */
 .grid{
   display:grid;
-  grid-template-columns: 1.25fr .75fr;
+  grid-template-columns:1.25fr .75fr;
   gap:14px;
   align-items:start;
 }
-@media (max-width: 980px){
-  .grid{grid-template-columns:1fr;}
+@media (max-width:980px){
+  .grid{ grid-template-columns:1fr; }
 }
 
-/* ✅ Logo carré + icône seule (crop si le svg contient du texte) */
+/* ✅ Logo carré + icône grande (avec le nouveau SVG "icon-only") */
 .logoBox{
-  width:64px;height:64px;
+  width:64px;
+  height:64px;
   border-radius:18px;
   background:rgba(47,91,255,.10);
   border:1px solid rgba(47,91,255,.18);
-  display:flex;align-items:center;justify-content:center;
-  overflow:hidden; /* important pour crop */
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 .brandLogo{
-  width:140%;
-  height:140%;
-  object-fit:cover;              /* crop */
-  object-position:left center;   /* garde l’icône à gauche */
+  width:54px;
+  height:54px;
+  object-fit:contain;
   display:block;
 }
 
-/* ✅ Plan cards: centre proprement */
+/* ✅ Plan cards: grandes + clean */
 .plans{
   padding:14px;
   display:grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns:repeat(3, 1fr);
   gap:12px;
 }
-@media (max-width: 980px){
-  .plans{grid-template-columns:1fr;}
+@media (max-width:980px){
+  .plans{ grid-template-columns:1fr; }
 }
 .planCard{
   border:1px solid var(--border);
@@ -166,10 +201,12 @@ ul, ol { list-style: none; }
   box-shadow:0 0 0 6px rgba(47,91,255,.12);
 }
 
-/* ✅ Quantité jolie sur PC */
+/* ====== ADD-ONS / QTY UI ====== */
+/* ✅ Quantité jolie (PC + mobile) */
 .qty{
   display:flex;
   align-items:center;
+  justify-content:center;
   gap:10px;
   padding:8px;
   border-radius:14px;
@@ -177,18 +214,20 @@ ul, ol { list-style: none; }
   background:var(--field);
   box-shadow:0 10px 35px rgba(0,0,0,.08);
 }
+
 .qtyBtn{
-  width:36px;height:36px;
+  width:36px;
+  height:36px;
   border-radius:12px;
   border:1px solid var(--border);
   background:rgba(255,255,255,.06);
   color:var(--text);
   font-weight:900;
-  cursor:pointer;
+  font-size:16px;
+  line-height:1;
 }
-@media (prefers-color-scheme: light){
-  .qtyBtn{background:#fff;}
-}
+.qtyBtn:active{ transform:translateY(1px); }
+
 .qtyInput{
   width:64px;
   text-align:center;
@@ -198,15 +237,15 @@ ul, ol { list-style: none; }
   font-weight:900;
   font-size:14px;
   outline:none;
+  padding:0;
 }
 
-/* ✅ Toggle switch pour flags */
+/* ✅ Toggle switch (flags) */
 .toggle{
   position:relative;
-  width:52px;height:32px;
+  width:52px;
+  height:32px;
   display:inline-flex;
-  align-items:center;
-  justify-content:center;
 }
 .toggle input{
   position:absolute;
@@ -215,21 +254,24 @@ ul, ol { list-style: none; }
   cursor:pointer;
 }
 .toggle .track{
-  width:52px;height:32px;
+  width:52px;
+  height:32px;
   border-radius:999px;
   border:1px solid var(--border);
   background:rgba(255,255,255,.06);
   position:relative;
-  transition: .15s ease;
+  transition:.15s ease;
 }
 .toggle .track:after{
   content:"";
-  width:26px;height:26px;
+  width:26px;
+  height:26px;
   border-radius:999px;
   position:absolute;
-  left:3px;top:50%;
+  left:3px;
+  top:50%;
   transform:translateY(-50%);
-  background:rgba(255,255,255,.9);
+  background:rgba(255,255,255,.90);
   transition:.15s ease;
 }
 .toggle input:checked + .track{
@@ -243,15 +285,46 @@ ul, ol { list-style: none; }
   opacity:.65;
   cursor:not-allowed;
 }
+
+/* ====== TEXT HELPERS ====== */
+.muted, small, .hint{
+  color:var(--muted);
+}
+.small{
+  font-size:12.5px;
+  color:var(--muted);
+}
+
+/* ====== DARK MODE ====== */
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#070b18;
-    --panel: rgba(14,18,40,.78);
+    --panel:rgba(14,18,40,.78);
+    --panel2:rgba(255,255,255,.05);
     --text:#eaf0ff;
-    --muted: rgba(234,240,255,.72);
-    --border: rgba(255,255,255,.11);
+    --muted:rgba(234,240,255,.72);
+    --border:rgba(255,255,255,.11);
 
-    --field: rgba(255,255,255,.06);
-    --fieldBorder: rgba(255,255,255,.12);
+    --field:rgba(255,255,255,.06);
+    --fieldBorder:rgba(255,255,255,.12);
+
+    --chip:rgba(132,102,255,.18);
+    --chipText:#d4c9ff;
   }
+
+  /* Sur certaines pages, tu as encore .card/.panel/.container/form */
+  .card, .panel, .container, form{
+    background:var(--panel) !important;
+    border:1px solid var(--border) !important;
+    box-shadow:0 28px 110px rgba(0,0,0,.45) !important;
+    backdrop-filter:blur(14px) saturate(160%);
+  }
+
+  input, select, textarea{
+    background:var(--field) !important;
+    border:1px solid var(--fieldBorder) !important;
+    color:var(--text) !important;
+  }
+
+  .btn-outline:hover{ background:rgba(255,255,255,.06); }
 }
