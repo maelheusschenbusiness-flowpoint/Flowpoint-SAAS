@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>FlowPoint — Connexion</title>
 
+  <meta name="color-scheme" content="light dark"/>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -20,15 +22,20 @@
       --danger:#b00020;
       --shadow:0 16px 60px rgba(16,24,40,.10);
       --r:18px;
+      --field:#ffffff;
+      --fieldBorder:#d9deea;
     }
+
     @media (prefers-color-scheme: dark){
       :root{
         --bg:#070b18;
-        --card:rgba(14,18,40,.78);
-        --text:#eaf0ff;
-        --muted:rgba(234,240,255,.72);
+        --card:rgba(12,18,40,.72);
+        --text:#e8eeff;
+        --muted:#aab7e1;
         --border:rgba(255,255,255,.10);
-        --shadow:0 24px 90px rgba(0,0,0,.45);
+        --shadow:0 18px 70px rgba(0,0,0,.45);
+        --field:rgba(255,255,255,.06);
+        --fieldBorder:rgba(255,255,255,.12);
       }
     }
 
@@ -37,16 +44,20 @@
       margin:0;
       font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
       background:
-        radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.18), transparent 55%),
-        radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.14), transparent 55%),
+        radial-gradient(1100px 700px at 10% 0%, rgba(47,91,255,.18), transparent 55%),
+        radial-gradient(1100px 700px at 90% 0%, rgba(99,102,241,.18), transparent 55%),
         var(--bg);
       min-height:100vh;
-      display:flex;align-items:center;justify-content:center;
+      display:flex;
+      align-items:center;
+      justify-content:center;
       padding:18px;
       color:var(--text);
     }
+
     .card{
-      width:100%;max-width:560px;
+      width:100%;
+      max-width:560px;
       background:var(--card);
       border:1px solid var(--border);
       border-radius:var(--r);
@@ -54,16 +65,22 @@
       box-shadow:var(--shadow);
       backdrop-filter:saturate(180%) blur(14px);
     }
-    .brandRow{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+
+    .row{display:flex;align-items:center;gap:12px}
+
+    /* ✅ LOGO FIX */
     .brandLogo{
-      width:44px;height:44px;
+      width:54px;
+      height:54px;
       object-fit:contain;
-      border-radius:12px;
+      border-radius:14px;
       display:block;
-      filter: drop-shadow(0 10px 22px rgba(0,0,0,.22));
+      background:rgba(47,91,255,.10);
+      border:1px solid rgba(47,91,255,.18);
+      padding:10px;
     }
 
-    h1{margin:10px 0 6px;font-size:20px;font-weight:700;letter-spacing:-.02em}
+    h1{margin:14px 0 6px;font-size:20px;font-weight:700;letter-spacing:-.02em}
     p{margin:0;color:var(--muted);line-height:1.55;font-size:14px}
 
     label{display:block;margin-top:14px;font-size:13px;font-weight:600}
@@ -71,21 +88,27 @@
       width:100%;
       padding:12px;
       border-radius:12px;
-      border:1px solid rgba(120,130,160,.35);
       margin-top:8px;
       font-size:14px;
-      background:transparent;
+    }
+
+    input{
+      border:1px solid var(--fieldBorder);
+      background:var(--field);
       color:var(--text);
     }
     input:focus{
       outline:none;
-      border-color:rgba(47,91,255,.65);
-      box-shadow:0 0 0 4px rgba(47,91,255,.16)
+      border-color:rgba(47,91,255,.55);
+      box-shadow:0 0 0 4px rgba(47,91,255,.12)
     }
+
     button{
       border:0;
       background:linear-gradient(180deg,var(--primary),#2449ff);
-      color:#fff;font-weight:800;cursor:pointer;
+      color:#fff;
+      font-weight:700;
+      cursor:pointer;
       margin-top:12px;
     }
     button:disabled{opacity:.65;cursor:not-allowed}
@@ -94,33 +117,39 @@
       margin-top:12px;
       padding:12px 14px;
       border-radius:12px;
-      background:rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.10);
+      background:rgba(15,23,42,.06);
+      border:1px solid rgba(15,23,42,.08);
       color:var(--muted);
       font-size:13.5px;
       line-height:1.45;
     }
-    @media (prefers-color-scheme: light){
+
+    @media (prefers-color-scheme: dark){
       .msg{
-        background:rgba(15,23,42,.04);
-        border:1px solid rgba(15,23,42,.06);
+        background:rgba(255,255,255,.06);
+        border:1px solid rgba(255,255,255,.10);
       }
     }
-    .ok{color:#18a558;font-weight:700}
-    .danger{color:var(--danger);font-weight:700}
+
+    .ok{color:#0a7a2f;font-weight:600}
+    .danger{color:var(--danger);font-weight:600}
 
     .links{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
     .link{color:#1d4ed8;text-decoration:none;font-weight:700}
+    @media (prefers-color-scheme: dark){
+      .link{color:#86a2ff}
+    }
   </style>
 </head>
-
 <body>
   <div class="card">
-    <!-- Logo SEUL (comme tu veux) -->
-    <div class="brandRow">
-      <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint">
-      <div style="color:var(--muted);font-size:13px;font-weight:600">
-        Connexion sécurisée (sans mot de passe)
+    <div class="row">
+      <!-- ✅ mets ton vrai logo -->
+      <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
+           onerror="this.src='/assets/flowpoint-logo.png'"/>
+      <div>
+        <div style="font-weight:800">FlowPoint</div>
+        <div style="color:var(--muted);font-size:13px">Connexion sécurisée (sans mot de passe)</div>
       </div>
     </div>
 
@@ -168,7 +197,7 @@
         if(!r.ok) throw new Error(j.error || "Erreur");
 
         if(j.debugLink){
-          setMsg("✅ Lien généré (mode debug). Regarde la console.", "ok");
+          setMsg("✅ Lien généré (mode debug). Ouvre le lien dans un nouvel onglet.", "ok");
           console.log("DEBUG LOGIN LINK:", j.debugLink);
         } else {
           setMsg("✅ Lien envoyé. Vérifie ton email.", "ok");
