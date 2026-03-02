@@ -1,330 +1,562 @@
-/* style.css - Base styles & CSS Variables (FlowPoint) */
-/* ✅ Light + Dark (prefers-color-scheme) */
-/* ✅ Compatible avec pricing/login/index + tes classes (page/grid/plans/qty/toggle) */
+/* style.css — FlowPoint base + pages (index / login / pricing / dashboard)
+   Objectif :
+   - Light + Dark (prefers-color-scheme)
+   - Layout pricing comme “avant” (plans grands + add-ons + résumé sticky)
+   - Logo icône seule (cropping si svg contient du texte)
+   - Select quantité propre (PC + iOS)
+*/
 
-*, *::before, *::after{
-  box-sizing:border-box;
-  margin:0;
-  padding:0;
+/* -------------------- Reset -------------------- */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
 }
 
-/* ====== TOKENS ====== */
+img { display: block; max-width: 100%; }
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+
+/* -------------------- Theme tokens -------------------- */
 :root{
-  /* Brand */
+  /* brand */
   --primary:#2f5bff;
   --primary2:#2449ff;
 
-  /* Palette */
-  --blue:#2563EB;
-  --blue-light:#EFF6FF;
-  --blue-dark:#1D4ED8;
+  /* light */
+  --bg:#f6f7fb;
+  --panel:#ffffff;
+  --panel2:#f7f8ff;
+  --text:#0f172a;
+  --muted:#667085;
 
-  --green:#16A34A;
-  --green-light:#F0FDF4;
-  --red:#DC2626;
-  --red-light:#FEF2F2;
-  --orange:#F59E0B;
-  --orange-light:#FFFBEB;
+  --border:#e6eaf2;
+  --field:#ffffff;
+  --fieldBorder:#d9deea;
 
-  --gray-50:#F9FAFB;
-  --gray-100:#F3F4F6;
-  --gray-200:#E5E7EB;
-  --gray-300:#D1D5DB;
-  --gray-400:#9CA3AF;
-  --gray-500:#6B7280;
-  --gray-600:#4B5563;
-  --gray-700:#374151;
-  --gray-800:#1F2937;
-  --gray-900:#111827;
-
-  --white:#FFFFFF;
-
-  /* Layout */
-  --sidebar-width:180px;
-  --font:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-
-  /* Radius / Shadow */
-  --radius-sm:8px;
-  --radius:12px;
-  --radius-lg:18px;
-
-  --shadow-sm:0 1px 2px rgba(0,0,0,0.05);
-  --shadow:0 1px 3px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-md:0 4px 14px rgba(0,0,0,0.10);
-  --shadow-lg:0 18px 70px rgba(16,24,40,.10);
-
-  /* ✅ UI tokens (utilisés partout) */
-  --bg:var(--gray-100);
-  --panel:var(--white);
-  --panel2:rgba(47,91,255,.06);
-  --text:var(--gray-900);
-  --muted:var(--gray-600);
-  --border:var(--gray-200);
-
-  --field:var(--white);
-  --fieldBorder:var(--gray-300);
-
-  --chip:rgba(47,91,255,.10);
+  --chip:#eef2ff;
   --chipText:#2b4cff;
+
+  --shadow: 0 18px 70px rgba(16,24,40,.10);
+  --shadow2: 0 10px 35px rgba(0,0,0,.08);
+
+  --r:18px;
 }
 
-html, body{
-  font-family:var(--font);
-  font-size:14px;
-  color:var(--text);
-  background:var(--bg);
-  line-height:1.5;
-  -webkit-font-smoothing:antialiased;
-}
-
-a{ text-decoration:none; color:inherit; }
-button{ cursor:pointer; font-family:var(--font); }
-ul, ol{ list-style:none; }
-
-/* ====== BADGES / BUTTONS ====== */
-.badge{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:2px 10px;
-  border-radius:999px;
-  font-size:12px;
-  font-weight:700;
-}
-.badge-green{ background:var(--green-light); color:var(--green); }
-.badge-red{ background:var(--red-light); color:var(--red); }
-.badge-orange{ background:var(--orange-light); color:var(--orange); }
-
-.btn{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  padding:9px 14px;
-  border-radius:999px;
-  font-size:13px;
-  font-weight:700;
-  border:1px solid var(--border);
-  transition:all .15s ease;
-  background:var(--panel);
-  color:var(--text);
-}
-.btn-primary{
-  border:none;
-  background:linear-gradient(180deg,var(--primary),var(--primary2));
-  color:#fff;
-  box-shadow:0 16px 50px rgba(47,91,255,.30);
-}
-.btn-primary:hover{ filter:brightness(1.03); }
-.btn-outline:hover{ background:rgba(0,0,0,.03); }
-.btn-sm{ padding:7px 12px; font-size:12px; }
-
-/* ====== GENERIC CARDS ====== */
-.card, .panel, .container, form{
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:var(--radius-lg);
-  box-shadow:var(--shadow-lg);
-}
-
-/* ====== INPUTS ====== */
-input, select, textarea{
-  width:100%;
-  padding:12px 12px;
-  border-radius:14px;
-  border:1px solid var(--fieldBorder);
-  background:var(--field);
-  color:var(--text);
-  outline:none;
-  font-size:14px;
-}
-input:focus, select:focus, textarea:focus{
-  border-color:rgba(47,91,255,.55);
-  box-shadow:0 0 0 4px rgba(47,91,255,.12);
-}
-
-/* ====== PRICING LAYOUT HELPERS ====== */
-/* ✅ Centre la page */
-.page{
-  max-width:1180px;
-  margin:0 auto;
-  padding:18px 18px 44px;
-}
-
-/* ✅ Grille pricing (gauche + résumé) */
-.grid{
-  display:grid;
-  grid-template-columns:1.25fr .75fr;
-  gap:14px;
-  align-items:start;
-}
-@media (max-width:980px){
-  .grid{ grid-template-columns:1fr; }
-}
-
-/* ✅ Logo carré + icône grande (avec le nouveau SVG "icon-only") */
-.logoBox{
-  width:64px;
-  height:64px;
-  border-radius:18px;
-  background:rgba(47,91,255,.10);
-  border:1px solid rgba(47,91,255,.18);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-.brandLogo{
-  width:54px;
-  height:54px;
-  object-fit:contain;
-  display:block;
-}
-
-/* ✅ Plan cards: grandes + clean */
-.plans{
-  padding:14px;
-  display:grid;
-  grid-template-columns:repeat(3, 1fr);
-  gap:12px;
-}
-@media (max-width:980px){
-  .plans{ grid-template-columns:1fr; }
-}
-.planCard{
-  border:1px solid var(--border);
-  border-radius:18px;
-  padding:16px;
-  background:linear-gradient(180deg, rgba(47,91,255,.10), transparent 65%);
-  min-height:190px;
-}
-.planCard.active{
-  outline:2px solid rgba(47,91,255,.45);
-  box-shadow:0 0 0 6px rgba(47,91,255,.12);
-}
-
-/* ====== ADD-ONS / QTY UI ====== */
-/* ✅ Quantité jolie (PC + mobile) */
-.qty{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:10px;
-  padding:8px;
-  border-radius:14px;
-  border:1px solid var(--fieldBorder);
-  background:var(--field);
-  box-shadow:0 10px 35px rgba(0,0,0,.08);
-}
-
-.qtyBtn{
-  width:36px;
-  height:36px;
-  border-radius:12px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.06);
-  color:var(--text);
-  font-weight:900;
-  font-size:16px;
-  line-height:1;
-}
-.qtyBtn:active{ transform:translateY(1px); }
-
-.qtyInput{
-  width:64px;
-  text-align:center;
-  border:0;
-  background:transparent;
-  color:var(--text);
-  font-weight:900;
-  font-size:14px;
-  outline:none;
-  padding:0;
-}
-
-/* ✅ Toggle switch (flags) */
-.toggle{
-  position:relative;
-  width:52px;
-  height:32px;
-  display:inline-flex;
-}
-.toggle input{
-  position:absolute;
-  inset:0;
-  opacity:0;
-  cursor:pointer;
-}
-.toggle .track{
-  width:52px;
-  height:32px;
-  border-radius:999px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.06);
-  position:relative;
-  transition:.15s ease;
-}
-.toggle .track:after{
-  content:"";
-  width:26px;
-  height:26px;
-  border-radius:999px;
-  position:absolute;
-  left:3px;
-  top:50%;
-  transform:translateY(-50%);
-  background:rgba(255,255,255,.90);
-  transition:.15s ease;
-}
-.toggle input:checked + .track{
-  background:linear-gradient(180deg,var(--primary),var(--primary2));
-  border-color:rgba(47,91,255,.45);
-}
-.toggle input:checked + .track:after{
-  left:23px;
-}
-.toggle input:disabled + .track{
-  opacity:.65;
-  cursor:not-allowed;
-}
-
-/* ====== TEXT HELPERS ====== */
-.muted, small, .hint{
-  color:var(--muted);
-}
-.small{
-  font-size:12.5px;
-  color:var(--muted);
-}
-
-/* ====== DARK MODE ====== */
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#070b18;
-    --panel:rgba(14,18,40,.78);
+    --panel:rgba(12,18,40,.72);
     --panel2:rgba(255,255,255,.05);
-    --text:#eaf0ff;
-    --muted:rgba(234,240,255,.72);
-    --border:rgba(255,255,255,.11);
+    --text:#e8eeff;
+    --muted:#aab7e1;
 
+    --border:rgba(255,255,255,.10);
     --field:rgba(255,255,255,.06);
     --fieldBorder:rgba(255,255,255,.12);
 
     --chip:rgba(132,102,255,.18);
     --chipText:#d4c9ff;
-  }
 
-  /* Sur certaines pages, tu as encore .card/.panel/.container/form */
-  .card, .panel, .container, form{
-    background:var(--panel) !important;
-    border:1px solid var(--border) !important;
-    box-shadow:0 28px 110px rgba(0,0,0,.45) !important;
-    backdrop-filter:blur(14px) saturate(160%);
+    --shadow: 0 22px 90px rgba(0,0,0,.55);
+    --shadow2: 0 18px 60px rgba(0,0,0,.35);
   }
+}
 
-  input, select, textarea{
-    background:var(--field) !important;
-    border:1px solid var(--fieldBorder) !important;
-    color:var(--text) !important;
+/* -------------------- Global background -------------------- */
+body{
+  background:
+    radial-gradient(1200px 700px at 15% 0%, rgba(47,91,255,.22), transparent 55%),
+    radial-gradient(1200px 700px at 85% 0%, rgba(99,102,241,.20), transparent 55%),
+    var(--bg);
+  color: var(--text);
+}
+
+/* -------------------- Generic UI helpers -------------------- */
+.muted { color: var(--muted); }
+.hint { color: var(--muted); font-weight: 700; font-size: 13px; }
+
+.card,
+.panel{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  backdrop-filter: saturate(180%) blur(14px);
+}
+
+.cardHead{
+  padding: 14px;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--border);
+  font-weight: 900;
+  letter-spacing: -.02em;
+}
+
+.cardBody{
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+input, select, textarea{
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--fieldBorder);
+  background: var(--field);
+  color: var(--text);
+  outline: none;
+}
+
+input:focus, select:focus, textarea:focus{
+  border-color: rgba(47,91,255,.55);
+  box-shadow: 0 0 0 4px rgba(47,91,255,.12);
+}
+
+.primaryBtn{
+  border: 0;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(180deg, var(--primary), var(--primary2));
+  box-shadow: 0 16px 50px rgba(47,91,255,.30);
+}
+
+.ghostBtn{
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-weight: 900;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+}
+
+@media (prefers-color-scheme: light){
+  .ghostBtn{ background:#fff; }
+}
+
+/* pill / link buttons */
+.pill, .linkBtn{
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 10px 40px rgba(0,0,0,.06);
+  font-weight: 800;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pill{ color: var(--muted); }
+.linkBtn{ color: var(--text); }
+
+/* -------------------- Layout containers -------------------- */
+.page{
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px 18px 44px;
+}
+
+.grid{
+  display: grid;
+  grid-template-columns: 1.25fr .75fr;
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 980px){
+  .grid{ grid-template-columns: 1fr; }
+}
+
+/* -------------------- Topbar + Logo (icône seule) -------------------- */
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:14px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+/* ✅ Logo carré + crop si svg contient du texte */
+.logoBox{
+  width:64px;
+  height:64px;
+  border-radius:18px;
+  background: rgba(47,91,255,.10);
+  border: 1px solid rgba(47,91,255,.18);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden; /* important pour crop */
+}
+
+/* IMPORTANT :
+   - Si ton SVG contient encore un mot (FlowPoint / FlowF), on “crop” pour ne garder que l’icône.
+   - Si ton SVG est déjà icône-only, ça marche aussi.
+*/
+.brandLogo{
+  width: 150%;
+  height: 150%;
+  object-fit: cover;
+  object-position: left center;
+}
+
+/* -------------------- Hero (pricing/login/index) -------------------- */
+.hero{
+  background: linear-gradient(180deg, rgba(47,91,255,.18), transparent 55%);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.hero h1{
+  margin: 0 0 6px;
+  font-size: 34px;
+  letter-spacing: -.03em;
+}
+.hero p{
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+/* -------------------- Sections (pricing) -------------------- */
+.section{
+  margin-top: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.sectionHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 14px;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+}
+
+.sectionHead .title{
+  font-weight: 900;
+  letter-spacing: -.02em;
+}
+
+/* -------------------- Plans cards (GRANDS + centrés) -------------------- */
+.plans{
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 980px){
+  .plans{ grid-template-columns: 1fr; }
+}
+
+.planCard{
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(47,91,255,.10), transparent 65%);
+  min-height: 190px;
+  position: relative;
+}
+
+.planCard.active{
+  outline: 2px solid rgba(47,91,255,.45);
+  box-shadow: 0 0 0 6px rgba(47,91,255,.12);
+}
+
+.planTop{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 10px;
+}
+
+.planName{
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: -.02em;
+}
+
+.price{
+  font-weight: 900;
+  font-size: 28px;
+  letter-spacing: -.03em;
+  white-space: nowrap;
+}
+
+.per{
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.badge{
+  display:inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--chipText);
+  font-weight: 900;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.features{
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.features li::before{
+  content:"•";
+  margin-right: 8px;
+  color: rgba(47,91,255,.8);
+  font-weight: 900;
+}
+
+/* -------------------- Add-ons list (comme avant) -------------------- */
+.addons{
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.addonRow{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 80%);
+}
+
+@media (max-width: 520px){
+  .addonRow{ grid-template-columns: 1fr; }
+}
+
+.addonTitle{
+  font-weight: 900;
+  margin: 0;
+  letter-spacing: -.01em;
+}
+
+.addonDesc{
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.keyChip{
+  margin-top: 10px;
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(150,120,255,.22);
+  border: 1px solid rgba(150,120,255,.30);
+  color: #e7ddff;
+  font-weight: 900;
+  font-size: 12px;
+}
+
+@media (prefers-color-scheme: light){
+  .keyChip{
+    background: #efeaff;
+    border: 1px solid #ddd2ff;
+    color: #5b32ff;
   }
+}
 
-  .btn-outline:hover{ background:rgba(255,255,255,.06); }
+.addonRight{
+  display:flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  min-width: 200px;
+}
+
+@media (max-width: 520px){
+  .addonRight{
+    align-items: stretch;
+    min-width: auto;
+  }
+}
+
+.addonPrice{
+  font-weight: 900;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+/* ✅ Select Qté propre + menu dark */
+.qtyWrap{
+  position: relative;
+  width: 160px;
+}
+
+@media (max-width: 520px){
+  .qtyWrap{ width: 100%; }
+}
+
+select.qty{
+  width: 100%;
+  padding: 10px 38px 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--fieldBorder);
+  background: var(--field);
+  color: var(--text);
+  font-weight: 900;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  outline: none;
+  box-shadow: var(--shadow2);
+  color-scheme: light dark; /* aide iOS/Chrome */
+}
+
+.qtyWrap::after{
+  content: "▾";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-weight: 900;
+  pointer-events: none;
+}
+
+select.qty:focus{
+  border-color: rgba(47,91,255,.55);
+  box-shadow: 0 0 0 4px rgba(47,91,255,.12);
+}
+
+/* options dropdown */
+select.qty option{
+  background: #0b1220;
+  color: #e8eeff;
+}
+@media (prefers-color-scheme: light){
+  select.qty option{
+    background: #ffffff;
+    color: #0f172a;
+  }
+}
+
+/* -------------------- Toggle switch (flags) -------------------- */
+.toggle{
+  position: relative;
+  width: 52px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toggle input{
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.toggle .track{
+  width: 52px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.06);
+  position: relative;
+  transition: .15s ease;
+}
+
+.toggle .track::after{
+  content:"";
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,.9);
+  transition: .15s ease;
+}
+
+.toggle input:checked + .track{
+  background: linear-gradient(180deg, var(--primary), var(--primary2));
+  border-color: rgba(47,91,255,.45);
+}
+
+.toggle input:checked + .track::after{
+  left: 23px;
+}
+
+.toggle input:disabled + .track{
+  opacity: .65;
+  cursor: not-allowed;
+}
+
+/* -------------------- Sidebar (pricing) -------------------- */
+.side{
+  position: sticky;
+  top: 14px;
+  display: grid;
+  gap: 14px;
+}
+@media (max-width: 980px){
+  .side{ position: static; }
+}
+
+.row2{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  font-weight: 800;
+}
+
+.small{
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
 }
