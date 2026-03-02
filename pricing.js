@@ -137,16 +137,66 @@
     return opts.join("");
   }
 
-  function renderAddons(state) {
-    // init defaults (whiteLabel on, etc.)
-    for (const a of ADDONS) {
-      if (a.type === "flag") {
-        if (state.addons[a.key] == null) state.addons[a.key] = !!a.defaultOn;
-      }
-      if (a.type === "qty") {
-        if (state.addons[a.key] == null) state.addons[a.key] = 0;
-      }
+function renderAddons(addons, state) {
+  const root = document.getElementById("addonsList");
+  root.innerHTML = "";
+
+  for (const a of addons) {
+    const qty = Number(state.addons?.[a.key] || 0);
+
+    const el = document.createElement("div");
+    el.className = "addon";
+    el.innerHTML = `
+      <div class="addonLeft">
+        <div class="addonName">${a.name}</div>
+        <div class="addonDesc">${a.desc || ""}</div>
+        <div class="addonKey">${a.key}</div>
+      </div>
+
+      <div class="addonRight">
+        <div class="addonPrice">${a.priceLabel || ""}</div>
+
+        <div class="qty" data-key="${a.key}">
+          <button type="button" data-act="dec">−</button>
+          <input type="number" min="0" max="${a.max ?? 999}" step="1" value="${qty}" inputmode="numeric">
+          <button type="button" data-act="inc">+</button>
+        </div>
+      </div>
+    `;
+
+    // events
+    const wrap = el.querySelector(".qty");
+    const input = wrap.querySelector("input");
+
+    function setVal(v){
+      const max = Number(a.max ?? 999);
+      const nv = Math.max(0, Math.min(max, Number(v || 0)));
+      input.value = String(nv);
+
+      state.addons = state.addons || {};
+      state.addons[a.key] = nv;
+
+      savePrefs(state);     // <= ta fonction localStorage
+      updateSummary(state); // <= ta fonction résumé
     }
+
+    wrap.addEventListener("click", (e) => {
+      const act = e.target?.dataset?.act;
+      if (!act) return;
+      const cur = Number(input.value || 0);
+      setVal(act === "inc" ? cur + 1 : cur - 1);
+    });
+
+    input.addEventListener("change", () => setVal(input.value));
+    input.addEventListener("input", () => {
+      // évite les valeurs vides bizarres
+      if (input.value === "") return;
+      setVal(input.value);
+    });
+
+    root.appendChild(el);
+  }
+}
     // whiteLabel forcé ON
     state.addons.whiteLabel = true;
 
