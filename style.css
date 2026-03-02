@@ -79,3 +79,23 @@ ul, ol { list-style: none; }
 .btn-outline  { background: var(--white); color: var(--gray-700); border: 1px solid var(--gray-200); }
 .btn-outline:hover { background: var(--gray-50); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
+@media (prefers-color-scheme: dark){
+  body{
+    background: #070b18 !important;
+    color: #eaf0ff !important;
+  }
+  .card, .panel, .container, form{
+    background: rgba(14,18,40,.78) !important;
+    border: 1px solid rgba(255,255,255,.11) !important;
+    box-shadow: 0 28px 110px rgba(0,0,0,.45) !important;
+    backdrop-filter: blur(14px) saturate(160%);
+  }
+  input, select, textarea{
+    background: rgba(255,255,255,.06) !important;
+    border: 1px solid rgba(255,255,255,.12) !important;
+    color: #eaf0ff !important;
+  }
+  .muted, small, .hint{
+    color: rgba(234,240,255,.72) !important;
+  }
+}
