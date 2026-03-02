@@ -1,328 +1,320 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Pricing — Plans + Add-ons</title>
+  <meta name="color-scheme" content="light dark"/>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <style>
     :root{
-      --bg:#070b18;
-      --panel:rgba(14,18,40,.78);
-      --panel2:rgba(18,24,55,.66);
-      --text:#eaf0ff;
-      --muted:rgba(234,240,255,.72);
-      --border:rgba(255,255,255,.11);
-      --shadow:0 28px 110px rgba(0,0,0,.45);
-      --blue1:#2f5bff;
-      --blue2:#2449ff;
-      --violet:rgba(167,139,250,.20);
-      --violetText:#c7b6ff;
-      --radius:22px;
-      --radius2:18px;
+      --bg:#f6f7fb;
+      --panel:#ffffff;
+      --panel2:#f7f8ff;
+      --text:#0f172a;
+      --muted:#667085;
+      --border:#e6eaf2;
+      --shadow:0 18px 70px rgba(16,24,40,.10);
+      --primary:#2f5bff;
+      --primary2:#2449ff;
+      --r:18px;
+      --chip:#eef2ff;
+      --chipText:#2b4cff;
+      --field:#ffffff;
+      --fieldBorder:#d9deea;
     }
-
-    /* MODE CLAIR auto */
-    @media (prefers-color-scheme: light){
+    @media (prefers-color-scheme: dark){
       :root{
-        --bg:#f5f7ff;
-        --panel:rgba(255,255,255,.92);
-        --panel2:rgba(255,255,255,.88);
-        --text:#0f172a;
-        --muted:#667085;
-        --border:rgba(15,23,42,.10);
-        --shadow:0 16px 60px rgba(16,24,40,.10);
-        --violet:rgba(124,58,237,.12);
-        --violetText:#6d28d9;
+        --bg:#070b18;
+        --panel:rgba(12,18,40,.72);
+        --panel2:rgba(255,255,255,.05);
+        --text:#e8eeff;
+        --muted:#aab7e1;
+        --border:rgba(255,255,255,.10);
+        --shadow:0 22px 90px rgba(0,0,0,.55);
+        --chip:rgba(132,102,255,.18);
+        --chipText:#d4c9ff;
+        --field:rgba(255,255,255,.06);
+        --fieldBorder:rgba(255,255,255,.12);
       }
     }
-
     *{box-sizing:border-box}
     body{
       margin:0;
       font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
-      color:var(--text);
       background:
-        radial-gradient(1200px 700px at 15% 0%, rgba(47,91,255,.22), transparent 58%),
-        radial-gradient(1200px 700px at 85% 0%, rgba(99,102,241,.18), transparent 58%),
+        radial-gradient(1200px 700px at 15% 0%, rgba(47,91,255,.22), transparent 55%),
+        radial-gradient(1200px 700px at 85% 0%, rgba(99,102,241,.20), transparent 55%),
         var(--bg);
+      color:var(--text);
     }
 
-    .wrap{max-width:1200px;margin:0 auto;padding:22px 18px 34px}
+    .page{max-width:1200px;margin:0 auto;padding:18px 18px 40px;}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
 
-    /* Header */
-    .topbar{
-      display:flex;align-items:center;justify-content:space-between;gap:12px;
-      margin-bottom:16px;
+    /* ✅ Logo : on affiche l’icône en GRAND (pas le texte) */
+    .logoBox{
+      width:64px;height:64px;border-radius:18px;
+      background:rgba(47,91,255,.10);
+      border:1px solid rgba(47,91,255,.18);
+      display:flex;align-items:center;justify-content:center;
+      overflow:hidden;
     }
-    .brand{display:flex;align-items:center;gap:10px}
     .brandLogo{
-      width:44px;height:44px;object-fit:contain;display:block;
-      border-radius:14px;
-      filter: drop-shadow(0 12px 26px rgba(0,0,0,.22));
+      width:140%;
+      height:140%;
+      object-fit:cover;
+      object-position:left center; /* garde l’icône (à gauche) */
+      display:block;
+      filter: drop-shadow(0 10px 25px rgba(47,91,255,.25));
     }
-    .pill{
+
+    .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .pill, .linkBtn{
+      padding:10px 12px;border-radius:999px;border:1px solid var(--border);
+      background:var(--panel);
+      box-shadow:0 10px 40px rgba(0,0,0,.06);
+      font-weight:800;font-size:13px;
+      text-decoration:none;
+      color:var(--text);
       display:inline-flex;align-items:center;gap:8px;
-      padding:8px 12px;border-radius:999px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
-      color:var(--muted);
-      font-size:13px;font-weight:700;
-      white-space:nowrap;
     }
-    @media (prefers-color-scheme: light){
-      .pill{ background:rgba(15,23,42,.04); }
-    }
+    .pill{color:var(--muted);}
+
+    .grid{display:grid;grid-template-columns: 1.25fr .75fr;gap:14px;align-items:start;}
+    @media (max-width: 980px){ .grid{grid-template-columns:1fr;} }
 
     .hero{
-      background:var(--panel);
+      background:linear-gradient(180deg, rgba(47,91,255,.18), transparent 55%);
       border:1px solid var(--border);
-      border-radius:var(--radius);
-      padding:22px;
+      border-radius:var(--r);
+      padding:18px;
       box-shadow:var(--shadow);
-      backdrop-filter: blur(14px) saturate(160%);
-      margin-bottom:18px;
+      backdrop-filter:saturate(180%) blur(14px);
     }
     .hero h1{margin:0 0 6px;font-size:34px;letter-spacing:-.03em}
-    .hero p{margin:0;color:var(--muted);line-height:1.5}
+    .hero p{margin:0;color:var(--muted);line-height:1.6;font-size:14px}
 
-    /* Layout */
-    .grid{
-      display:grid;
-      grid-template-columns: 1.25fr .75fr;
-      gap:16px;
-      align-items:start;
-    }
-    @media (max-width: 980px){
-      .grid{grid-template-columns:1fr}
-    }
-
-    .card{
+    .section{
+      margin-top:14px;
       background:var(--panel);
       border:1px solid var(--border);
-      border-radius:var(--radius);
-      padding:18px;
+      border-radius:var(--r);
       box-shadow:var(--shadow);
-      backdrop-filter: blur(14px) saturate(160%);
+      overflow:hidden;
     }
-    .cardTitle{
-      display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-      margin-bottom:12px;
+    .sectionHead{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px;background:var(--panel2);border-bottom:1px solid var(--border);
+      gap:10px;
     }
-    .cardTitle h2{margin:0;font-size:16px}
-    .sub{color:var(--muted);font-size:13px;font-weight:600}
+    .sectionHead .title{font-weight:900;letter-spacing:-.02em}
+    .sectionHead .hint{color:var(--muted);font-size:13px;font-weight:800;white-space:nowrap}
 
-    /* Plans cards (gros comme “avant”) */
+    /* Plans */
     .plans{
+      padding:14px;
       display:grid;
-      grid-template-columns: repeat(3, minmax(0,1fr));
+      grid-template-columns:repeat(3,1fr);
       gap:12px;
     }
-    @media (max-width: 980px){ .plans{grid-template-columns:1fr} }
+    @media (max-width: 980px){ .plans{grid-template-columns:1fr;} }
 
-    .plan{
-      background:var(--panel2);
+    .planCard{
       border:1px solid var(--border);
-      border-radius:var(--radius);
-      padding:18px;
+      border-radius:18px;
+      padding:16px;
+      background:linear-gradient(180deg, rgba(47,91,255,.10), transparent 65%);
       min-height:190px;
-      display:flex;flex-direction:column;gap:10px;
       cursor:pointer;
-      transition: transform .12s ease, border-color .12s ease;
     }
-    .plan:hover{transform:translateY(-2px);border-color:rgba(47,91,255,.35)}
-    .plan.active{
-      border-color:rgba(47,91,255,.55);
-      box-shadow:0 0 0 4px rgba(47,91,255,.16);
+    .planCard.active{
+      outline:2px solid rgba(47,91,255,.45);
+      box-shadow:0 0 0 6px rgba(47,91,255,.12);
     }
-    .planTop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-    .planName{font-size:18px;font-weight:800}
-    .planPrice{font-size:28px;font-weight:900;letter-spacing:-.02em}
-    .planPrice small{font-size:13px;color:var(--muted);font-weight:800}
+    .planTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+    .planName{font-weight:900;font-size:18px;letter-spacing:-.02em}
+    .price{font-weight:900;font-size:28px;letter-spacing:-.03em;white-space:nowrap}
+    .per{font-weight:800;font-size:13px;color:var(--muted)}
     .badge{
-      display:inline-flex;align-items:center;
-      padding:6px 10px;border-radius:999px;
-      border:1px solid var(--border);
-      font-size:12px;font-weight:800;
-      color:var(--muted);
-      background:rgba(255,255,255,.06);
+      display:inline-flex;padding:6px 10px;border-radius:999px;
+      background:var(--chip);color:var(--chipText);
+      font-weight:900;font-size:12px;margin-top:10px;
+    }
+    .features{margin:12px 0 0;padding:0;list-style:none;color:var(--muted);font-weight:700;font-size:13px;line-height:1.65}
+    .features li::before{content:"•";margin-right:8px;color:rgba(47,91,255,.8);font-weight:900}
+
+    /* Add-ons */
+    .addons{padding:14px;display:grid;gap:12px;}
+    .addonRow{
+      display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;
+      padding:14px;border-radius:16px;border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 80%);
+    }
+    .addonTitle{font-weight:900;margin:0;letter-spacing:-.01em}
+    .addonDesc{margin:6px 0 0;color:var(--muted);font-size:13px;font-weight:650;line-height:1.5}
+    .keyChip{
+      margin-top:10px;display:inline-flex;padding:6px 10px;border-radius:999px;
+      background:rgba(150,120,255,.22);border:1px solid rgba(150,120,255,.30);
+      color:#e7ddff;font-weight:900;font-size:12px;
     }
     @media (prefers-color-scheme: light){
-      .badge{background:rgba(15,23,42,.04)}
+      .keyChip{background:#efeaff;border:1px solid #ddd2ff;color:#5b32ff;}
     }
-    .ul{margin:0;padding-left:16px;color:var(--muted);font-size:13.5px;line-height:1.55}
-    .ul li{margin:4px 0}
 
-    /* Add-ons list */
-    .addons{display:flex;flex-direction:column;gap:10px}
-    .addon{
-      background:var(--panel2);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      padding:14px;
-      display:flex;align-items:center;justify-content:space-between;gap:14px;
-    }
-    .addonLeft{min-width:0}
-    .addonName{font-weight:900}
-    .addonDesc{color:var(--muted);font-size:13px;margin-top:3px}
-    .addonKey{
-      display:inline-flex;
-      margin-top:8px;
-      padding:6px 10px;border-radius:999px;
-      background:var(--violet);
-      color:var(--violetText);
-      font-weight:900;font-size:12px;
-      border:1px solid rgba(167,139,250,.25);
-    }
-    .addonRight{display:flex;align-items:center;gap:12px;flex-shrink:0}
-    .addonPrice{font-weight:900;white-space:nowrap}
+    .addonRight{display:flex;flex-direction:column;align-items:flex-end;gap:10px;min-width:200px}
+    .addonPrice{font-weight:900;font-size:16px;white-space:nowrap}
 
-    /* Qty stepper (beau sur PC) */
+    /* ✅ Qté jolie */
     .qty{
-      display:inline-flex;align-items:center;
-      border:1px solid var(--border);
-      border-radius:14px;
-      overflow:hidden;
-      background:rgba(255,255,255,.06);
+      display:flex;align-items:center;gap:10px;
+      padding:8px;border-radius:14px;
+      border:1px solid var(--fieldBorder);
+      background:var(--field);
+      box-shadow:0 10px 35px rgba(0,0,0,.08);
     }
-    @media (prefers-color-scheme: light){
-      .qty{background:rgba(15,23,42,.04)}
-    }
-    .qty button{
-      width:38px;height:38px;border:0;background:transparent;
-      color:var(--text);font-weight:900;cursor:pointer;
-    }
-    .qty input{
-      width:54px;height:38px;border:0;background:transparent;
-      color:var(--text);text-align:center;font-weight:900;
-      outline:none;
-      -moz-appearance:textfield;
-    }
-    .qty input::-webkit-outer-spin-button,
-    .qty input::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
-
-    /* Summary sticky (comble le “trou” avec un bloc info en dessous) */
-    .sticky{position:sticky;top:16px;display:flex;flex-direction:column;gap:12px}
-    @media (max-width:980px){ .sticky{position:static} }
-
-    .rowLine{display:flex;justify-content:space-between;gap:12px;margin:10px 0;color:var(--muted);font-weight:700}
-    .rowLine b{color:var(--text)}
-    .sep{height:1px;background:rgba(255,255,255,.10);margin:10px 0}
-    @media (prefers-color-scheme: light){
-      .sep{background:rgba(15,23,42,.10)}
-    }
-
-    .btn{
-      width:100%;
-      padding:12px 14px;
-      border-radius:14px;
-      border:0;
-      background:linear-gradient(180deg,var(--blue1),var(--blue2));
-      color:white;font-weight:900;cursor:pointer;
-    }
-    .btnGhost{
-      width:100%;
-      padding:11px 14px;
-      border-radius:14px;
+    .qtyBtn{
+      width:36px;height:36px;border-radius:12px;
       border:1px solid var(--border);
       background:rgba(255,255,255,.06);
       color:var(--text);
-      font-weight:900;cursor:pointer;
+      font-weight:900;
+      cursor:pointer;
     }
-    @media (prefers-color-scheme: light){
-      .btnGhost{background:rgba(15,23,42,.04)}
+    @media (prefers-color-scheme: light){ .qtyBtn{background:#fff;} }
+    .qtyInput{
+      width:64px;text-align:center;border:0;background:transparent;
+      color:var(--text);font-weight:900;font-size:14px;outline:none;
     }
 
-    .note{color:var(--muted);font-size:12.5px;line-height:1.45}
+    /* ✅ Toggle */
+    .toggle{position:relative;width:52px;height:32px;display:inline-flex;align-items:center;justify-content:center;}
+    .toggle input{position:absolute;inset:0;opacity:0;cursor:pointer;}
+    .toggle .track{
+      width:52px;height:32px;border-radius:999px;border:1px solid var(--border);
+      background:rgba(255,255,255,.06);position:relative;transition:.15s ease;
+    }
+    .toggle .track:after{
+      content:"";width:26px;height:26px;border-radius:999px;
+      position:absolute;left:3px;top:50%;transform:translateY(-50%);
+      background:rgba(255,255,255,.9);transition:.15s ease;
+    }
+    .toggle input:checked + .track{
+      background:linear-gradient(180deg,var(--primary),var(--primary2));
+      border-color:rgba(47,91,255,.45);
+    }
+    .toggle input:checked + .track:after{left:23px;}
+    .toggle input:disabled + .track{opacity:.65;cursor:not-allowed;}
+
+    /* Sidebar */
+    .side{position:sticky;top:14px;display:grid;gap:14px;}
+    @media (max-width:980px){ .side{position:static;} }
+
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;}
+    .cardHead{padding:14px;background:var(--panel2);border-bottom:1px solid var(--border);font-weight:900;letter-spacing:-.02em;}
+    .cardBody{padding:14px;display:grid;gap:10px;}
+    .row2{display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:800;}
+    .muted{color:var(--muted);font-weight:700}
+
+    .primaryBtn{
+      border:0;width:100%;padding:12px 14px;border-radius:14px;
+      font-weight:900;cursor:pointer;color:#fff;
+      background:linear-gradient(180deg,var(--primary),var(--primary2));
+      box-shadow:0 16px 50px rgba(47,91,255,.30);
+    }
+    .ghostBtn{
+      width:100%;padding:12px 14px;border-radius:14px;
+      font-weight:900;cursor:pointer;border:1px solid var(--border);
+      background:rgba(255,255,255,.06);color:var(--text);
+    }
+    @media (prefers-color-scheme: light){ .ghostBtn{background:#fff;} }
+    .small{font-size:12.5px;color:var(--muted);line-height:1.5;}
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-
+  <div class="page">
     <div class="topbar">
-      <!-- LOGO SEUL -->
-      <div class="brand">
-        <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint">
+      <div class="logoBox">
+        <!-- On crop l’SVG pour ne garder que l’icône -->
+        <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
+             onerror="this.src='/assets/flowpoint-logo.png'">
       </div>
 
-      <div style="display:flex;gap:10px;align-items:center">
-        <span id="statusPill" class="pill">Statut : …</span>
-        <a href="/index.html" class="pill" style="text-decoration:none">Retour accueil</a>
+      <div class="actions">
+        <a class="linkBtn" href="#" id="homeBtn">Retour à l’accueil</a>
+        <div class="pill" id="authPill">Statut : …</div>
       </div>
-    </div>
-
-    <div class="hero">
-      <h1>Choisis ton plan + tes options</h1>
-      <p>Tu peux acheter un plan maintenant. Les add-ons payants se gèrent ensuite dans le Customer Portal Stripe.</p>
     </div>
 
     <div class="grid">
-      <!-- COLONNE GAUCHE -->
-      <div style="display:flex;flex-direction:column;gap:16px">
-
-        <div class="card">
-          <div class="cardTitle">
-            <h2>Plans</h2>
-            <div class="sub">Essai 14 jours via Stripe.</div>
-          </div>
-
-          <div id="plans" class="plans"><!-- rempli par JS --></div>
-        </div>
-
-        <div class="card">
-          <div class="cardTitle">
-            <h2>Add-ons</h2>
-            <div class="sub">Keys (en violet) + préférence enregistrée</div>
-          </div>
-
-          <div id="addonsList" class="addons"><!-- rempli par JS --></div>
-        </div>
-
-      </div>
-
-      <!-- COLONNE DROITE -->
-      <div class="sticky">
-        <div class="card">
-          <div class="cardTitle">
-            <h2>Résumé</h2>
-            <div class="sub">Plan + options</div>
-          </div>
-
-          <div class="rowLine"><span>Plan</span><b id="sumPlan">—</b></div>
-          <div class="rowLine"><span>Prix plan</span><b id="sumPlanPrice">—</b></div>
-
-          <div class="sep"></div>
-
-          <div class="rowLine"><span>White label</span><b id="sumWhiteLabel">Inclus (gratuit)</b></div>
-          <div class="rowLine"><span>Add-ons</span><b id="sumAddons">—</b></div>
-
-          <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
-            <button id="btnCheckout" class="btn">Continuer (Checkout Plan)</button>
-            <button id="btnPortal" class="btnGhost">Gérer mes add-ons</button>
-          </div>
-
-          <p class="note" style="margin-top:10px">
-            Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (le plan sera pré-sélectionné).
+      <!-- Left -->
+      <div>
+        <div class="hero">
+          <h1>Choisis ton plan + tes options</h1>
+          <p>
+            Tu peux acheter un plan maintenant. Les add-ons payants se gèrent ensuite dans le Customer Portal Stripe
+            (bouton “Gérer mes add-ons”).
           </p>
         </div>
 
-        <!-- Bloc qui “bouche le trou” proprement -->
-        <div class="card">
-          <div class="cardTitle">
-            <h2>Info</h2>
-            <div class="sub">Fonctionnement</div>
+        <div class="section">
+          <div class="sectionHead">
+            <div class="title">Plans</div>
+            <div class="hint">Essai 14 jours via Stripe.</div>
           </div>
-          <ul class="ul" style="margin:0">
-            <li>Ton plan fixe les quotas (audits / monitors / PDFs / exports).</li>
-            <li>Les add-ons payants se modifient ensuite dans le portail Stripe.</li>
-            <li>Ici, tu enregistres juste une préférence UI (localStorage).</li>
-          </ul>
+
+          <!-- Rempli par pricing.js -->
+          <div class="plans" id="plans"></div>
         </div>
 
+        <div class="section">
+          <div class="sectionHead">
+            <div class="title">Add-ons</div>
+            <div class="hint">Keys (en violet) + préférence enregistrée</div>
+          </div>
+
+          <!-- Rempli par pricing.js -->
+          <div class="addons" id="addonsList"></div>
+        </div>
+      </div>
+
+      <!-- Right -->
+      <div class="side">
+        <div class="card">
+          <div class="cardHead">Résumé</div>
+          <div class="cardBody">
+            <div class="row2"><span class="muted">Plan</span> <span id="sumPlan">—</span></div>
+            <div class="row2"><span class="muted">Prix plan</span> <span id="sumPlanPrice">—</span></div>
+            <div class="row2"><span class="muted">White label</span> <span>Inclus (gratuit)</span></div>
+            <div class="row2" style="align-items:flex-start">
+              <span class="muted">Add-ons</span>
+              <span id="sumAddOns" style="text-align:right">—</span>
+            </div>
+
+            <button class="primaryBtn" id="btnCheckout">Continuer (Checkout Plan)</button>
+            <button class="ghostBtn" id="btnPortal">Gérer mes add-ons</button>
+
+            <div class="small">
+              Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (le plan sera pré-sélectionné).
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="cardHead">Info</div>
+          <div class="cardBody">
+            <div class="small">
+              • Ton plan fixe les quotas monitors / PDF / exports.<br/>
+              • Les add-ons payants sont modifiables dans le Portal Stripe.<br/>
+              • Sur cette page, on enregistre juste une préférence (UI) en localStorage.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
