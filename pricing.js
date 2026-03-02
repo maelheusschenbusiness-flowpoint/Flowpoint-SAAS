@@ -4,18 +4,23 @@
 // - On sauvegarde la sélection add-ons en localStorage (préférence UI)
 
 (() => {
-  const TOKEN_KEYS = ["token", "fp_token"];      // compat
+  const TOKEN_KEYS = ["token", "fp_token"]; // compat
   const ADDON_PREF_KEY = "fp_addon_prefs";
-  const PLAN_PREF_KEY  = "fp_plan_pref";
+  const PLAN_PREF_KEY = "fp_plan_pref";
 
   const $ = (q) => document.querySelector(q);
 
-  const authState = $("#authState");
-  const plansEl = $("#plans");
-  const addonsEl = $("#addons");
+  // Elements (ids côté HTML)
+  const authPill = $("#authPill");
+  const homeBtn = $("#homeBtn");
 
-  const sumPlanName = $("#sumPlanName");
+  const plansEl = $("#plans");
+  const addonsRoot = $("#addonsList");
+
+  const sumPlan = $("#sumPlan");
   const sumPlanPrice = $("#sumPlanPrice");
+  const sumAddOns = $("#sumAddOns");
+
   const btnCheckout = $("#btnCheckout");
   const btnPortal = $("#btnPortal");
 
@@ -29,28 +34,31 @@
 
   function setAuthBadge() {
     const tok = getToken();
-    authState.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
+    if (authPill) authPill.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
   }
 
   function loadPrefs() {
     let addons = {};
-    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {}; } catch {}
+    try {
+      addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {};
+    } catch {}
     const plan = String(localStorage.getItem(PLAN_PREF_KEY) || "pro");
     return { plan, addons };
   }
 
-  function savePrefs(next) {
-    localStorage.setItem(PLAN_PREF_KEY, next.plan);
-    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(next.addons || {}));
+  function savePrefs(state) {
+    localStorage.setItem(PLAN_PREF_KEY, state.plan);
+    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(state.addons || {}));
   }
 
-  // ✅ Plans (tes prix UI)
+  // ✅ Plans (UI)
   const PLANS = [
     {
       id: "standard",
       name: "Standard",
       priceLabel: "29€",
       per: "/ mois",
+      tag: "Pour démarrer",
       features: ["30 audits / mois", "3 monitors actifs", "30 PDFs + 30 exports"],
     },
     {
@@ -71,8 +79,7 @@
     },
   ];
 
-  // ✅ Add-ons affichés (préférences UI)
-  // IMPORTANT: le vrai achat/gestion se fait dans le portail Stripe
+  // ✅ Add-ons (préférences UI)
   const ADDONS = [
     { key: "monitorsPack50",   name: "Monitors Pack +50",   desc: "Ajoute +50 monitors actifs au quota du plan.", price: "19€ / mois", type: "qty", max: 10 },
     { key: "extraSeat",        name: "Extra Seat",          desc: "Ajoute des seats (membres) à ton organisation.", price: "7€ / mois", type: "qty", max: 50 },
@@ -86,142 +93,175 @@
     { key: "pdfPack200",       name: "PDF Pack +200",       desc: "+200 PDFs / mois.",                              price: "9€ / mois", type: "flag", defaultOn: false },
     { key: "exportsPack1000",  name: "Exports Pack +1000",  desc: "+1000 exports / mois.",                          price: "19€ / mois", type: "flag", defaultOn: false },
 
-    { key: "prioritySupport",  name: "Priority Support",    desc: "Support prioritaire.",                            price: "29€ / mois", type: "flag", defaultOn: false },
-    { key: "customDomain",     name: "Custom Domain",       desc: "Utilise ton propre domaine.",                     price: "9€ / mois", type: "flag", defaultOn: false },
+    { key: "prioritySupport",  name: "Priority Support",    desc: "Support prioritaire.",                           price: "29€ / mois", type: "flag", defaultOn: false },
+    { key: "customDomain",     name: "Custom Domain",       desc: "Utilise ton propre domaine.",                    price: "9€ / mois", type: "flag", defaultOn: false },
 
-    // ✅ whiteLabel gratuit / inclus
-    { key: "whiteLabel",       name: "White label",         desc: "Marque blanche (inclus).",                        price: "Inclus",     type: "flag", defaultOn: true, lockedOn: true },
+    // ✅ whiteLabel inclus
+    { key: "whiteLabel",       name: "White label",         desc: "Marque blanche (inclus).",                        price: "Inclus (gratuit)", type: "flag", defaultOn: true, lockedOn: true },
   ];
+
+  function ensureDefaults(state) {
+    if (!["standard", "pro", "ultra"].includes(state.plan)) state.plan = "pro";
+    if (!state.addons || typeof state.addons !== "object") state.addons = {};
+
+    // defaults flags
+    for (const a of ADDONS) {
+      if (a.type === "flag" && state.addons[a.key] === undefined) {
+        state.addons[a.key] = !!a.defaultOn;
+      }
+      if (a.type === "qty" && state.addons[a.key] === undefined) {
+        state.addons[a.key] = 0;
+      }
+    }
+
+    // whiteLabel forcé ON
+    state.addons.whiteLabel = true;
+  }
 
   function renderPlans(state) {
     plansEl.innerHTML = "";
+
     for (const p of PLANS) {
-      const div = document.createElement("div");
-      div.className = "plan" + (state.plan === p.id ? " active" : "");
-      div.tabIndex = 0;
+      const card = document.createElement("div");
+      card.className = "planCard" + (state.plan === p.id ? " active" : "");
+      card.tabIndex = 0;
 
-      const tag = p.tag ? `<div class="tag">${p.tag}</div>` : "";
-
-      div.innerHTML = `
+      card.innerHTML = `
         <div class="planTop">
           <div>
             <div class="planName">${p.name}</div>
-            ${tag}
+            ${p.tag ? `<div class="badge">${p.tag}</div>` : ""}
           </div>
-          <div class="planPrice">${p.priceLabel} <span>${p.per}</span></div>
+          <div style="text-align:right">
+            <div class="price">${p.priceLabel} <span class="per">${p.per}</span></div>
+          </div>
         </div>
         <ul class="features">
-          ${p.features.map(x => `<li>${x}</li>`).join("")}
+          ${p.features.map(f => `<li>${f}</li>`).join("")}
         </ul>
       `;
 
-      div.addEventListener("click", () => {
+      const choose = () => {
         state.plan = p.id;
         savePrefs(state);
         renderAll(state);
+      };
+
+      card.addEventListener("click", choose);
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") choose();
       });
 
-      div.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") div.click();
-      });
-
-      plansEl.appendChild(div);
+      plansEl.appendChild(card);
     }
-  }
-
-  function qtyOptions(max) {
-    const opts = [];
-    for (let i=0;i<=max;i++){
-      opts.push(`<option value="${i}">Qté ${i}</option>`);
-    }
-    return opts.join("");
   }
 
   function renderAddons(state) {
-    // init defaults (whiteLabel on, etc.)
-    for (const a of ADDONS) {
-      if (a.type === "flag") {
-        if (state.addons[a.key] == null) state.addons[a.key] = !!a.defaultOn;
-      }
-      if (a.type === "qty") {
-        if (state.addons[a.key] == null) state.addons[a.key] = 0;
-      }
-    }
-    // whiteLabel forcé ON
-    state.addons.whiteLabel = true;
+    addonsRoot.innerHTML = "";
 
-    addonsEl.innerHTML = "";
     for (const a of ADDONS) {
       const row = document.createElement("div");
-      row.className = "addon";
+      row.className = "addonRow";
+      row.dataset.key = a.key;
 
       const left = document.createElement("div");
       left.innerHTML = `
-        <h3>${a.name}</h3>
-        <p>${a.desc}</p>
-        <div class="metaRow">
-          <span class="keyChip">${a.key}</span>
-          <span class="priceLabel">${a.price}</span>
-        </div>
+        <p class="addonTitle">${a.name}</p>
+        <p class="addonDesc">${a.desc || ""}</p>
+        <span class="keyChip">${a.key}</span>
       `;
 
       const right = document.createElement("div");
-      right.className = "controls";
+      right.className = "addonRight";
+      right.innerHTML = `<div class="addonPrice">${a.price}</div>`;
 
+      // qty
       if (a.type === "qty") {
+        const qty = Number(state.addons[a.key] || 0);
         const wrap = document.createElement("div");
-        wrap.className = "selectWrap";
+        wrap.className = "qty";
+        wrap.innerHTML = `
+          <button class="qtyBtn" type="button" data-act="dec">−</button>
+          <input class="qtyInput" type="number" min="0" max="${a.max ?? 999}" step="1" value="${qty}" inputmode="numeric" />
+          <button class="qtyBtn" type="button" data-act="inc">+</button>
+        `;
 
-        const sel = document.createElement("select");
-        sel.className = "qtySelect";
-        sel.innerHTML = qtyOptions(a.max || 20);
-        sel.value = String(state.addons[a.key] || 0);
+        const input = wrap.querySelector(".qtyInput");
 
-        sel.addEventListener("change", () => {
-          state.addons[a.key] = parseInt(sel.value, 10) || 0;
+        const setVal = (v) => {
+          const max = Number(a.max ?? 999);
+          const nv = Math.max(0, Math.min(max, Number(v || 0)));
+          input.value = String(nv);
+          state.addons[a.key] = nv;
           savePrefs(state);
+          updateSummary(state);
+        };
+
+        wrap.addEventListener("click", (e) => {
+          const act = e.target?.dataset?.act;
+          if (!act) return;
+          const cur = Number(input.value || 0);
+          setVal(act === "inc" ? cur + 1 : cur - 1);
         });
 
-        wrap.appendChild(sel);
+        input.addEventListener("change", () => setVal(input.value));
+        input.addEventListener("input", () => {
+          if (input.value === "") return;
+          setVal(input.value);
+        });
+
         right.appendChild(wrap);
       } else {
-        const chk = document.createElement("input");
-        chk.type = "checkbox";
-        chk.className = "check";
-        chk.checked = !!state.addons[a.key];
+        // flag toggle
+        const isOn = !!state.addons[a.key];
 
-        if (a.lockedOn) {
-          chk.disabled = true;
-          chk.checked = true;
-        }
+        const toggle = document.createElement("label");
+        toggle.className = "toggle";
+        toggle.innerHTML = `
+          <input type="checkbox" ${isOn ? "checked" : ""} ${a.lockedOn ? "disabled" : ""} />
+          <span class="track"></span>
+        `;
 
-        chk.addEventListener("change", () => {
-          state.addons[a.key] = !!chk.checked;
+        const input = toggle.querySelector("input");
+        input.addEventListener("change", () => {
+          state.addons[a.key] = !!input.checked;
           if (a.key === "whiteLabel") state.addons.whiteLabel = true;
           savePrefs(state);
+          updateSummary(state);
         });
 
-        right.appendChild(chk);
+        right.appendChild(toggle);
       }
 
       row.appendChild(left);
       row.appendChild(right);
-      addonsEl.appendChild(row);
+      addonsRoot.appendChild(row);
     }
-
-    savePrefs(state);
   }
 
-  function renderSummary(state) {
+  function updateSummary(state) {
     const p = PLANS.find(x => x.id === state.plan) || PLANS[1];
-    sumPlanName.textContent = p.name.toUpperCase();
-    sumPlanPrice.textContent = `${p.priceLabel} ${p.per}`;
+    if (sumPlan) sumPlan.textContent = p.name;
+    if (sumPlanPrice) sumPlanPrice.textContent = `${p.priceLabel} ${p.per}`;
+
+    // Liste add-ons sélectionnés
+    const lines = [];
+    for (const a of ADDONS) {
+      if (a.key === "whiteLabel") continue; // déjà affiché séparément
+      if (a.type === "qty") {
+        const q = Number(state.addons[a.key] || 0);
+        if (q > 0) lines.push(`${a.name} × ${q}`);
+      } else {
+        if (state.addons[a.key]) lines.push(a.name);
+      }
+    }
+    if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
   }
 
   async function goCheckout(state) {
     const tok = getToken();
     if (!tok) {
-      // si pas connecté => renvoyer à l'inscription en pré-sélectionnant le plan
+      // pas connecté => renvoyer à l'inscription avec plan pré-sélectionné
       localStorage.setItem(PLAN_PREF_KEY, state.plan);
       window.location.href = "/index.html";
       return;
@@ -234,14 +274,16 @@
       const r = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: {
-          "Content-Type":"application/json",
+          "Content-Type": "application/json",
           "Authorization": "Bearer " + tok,
         },
         body: JSON.stringify({ plan: state.plan })
       });
-      const j = await r.json().catch(()=> ({}));
+
+      const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "Erreur checkout");
       if (!j.url) throw new Error("URL Stripe manquante");
+
       window.location.href = j.url;
     } catch (e) {
       alert(e.message || "Erreur");
@@ -262,12 +304,14 @@
 
     try {
       const r = await fetch("/api/stripe/portal", {
-        method:"POST",
-        headers: { "Authorization":"Bearer " + tok }
+        method: "POST",
+        headers: { "Authorization": "Bearer " + tok }
       });
-      const j = await r.json().catch(()=> ({}));
+
+      const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "Erreur portal");
       if (!j.url) throw new Error("URL portal manquante");
+
       window.location.href = j.url;
     } catch (e) {
       alert(e.message || "Erreur");
@@ -280,18 +324,24 @@
     setAuthBadge();
     renderPlans(state);
     renderAddons(state);
-    renderSummary(state);
+    updateSummary(state);
   }
 
   // init
   const state = loadPrefs();
-  // hard safety
-  if (!["standard","pro","ultra"].includes(state.plan)) state.plan = "pro";
-  if (!state.addons || typeof state.addons !== "object") state.addons = {};
-  state.addons.whiteLabel = true;
-
+  ensureDefaults(state);
+  savePrefs(state);
   renderAll(state);
 
-  btnCheckout.addEventListener("click", () => goCheckout(state));
-  btnPortal.addEventListener("click", openPortal);
+  // ✅ Pas de “flash dashboard” : on décide AVANT d’ouvrir dashboard
+  if (homeBtn) {
+    homeBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const tok = getToken();
+      window.location.href = tok ? "/dashboard.html" : "/login.html";
+    });
+  }
+
+  if (btnCheckout) btnCheckout.addEventListener("click", () => goCheckout(state));
+  if (btnPortal) btnPortal.addEventListener("click", openPortal);
 })();
