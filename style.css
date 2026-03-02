@@ -243,3 +243,15 @@ ul, ol { list-style: none; }
   opacity:.65;
   cursor:not-allowed;
 }
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#070b18;
+    --panel: rgba(14,18,40,.78);
+    --text:#eaf0ff;
+    --muted: rgba(234,240,255,.72);
+    --border: rgba(255,255,255,.11);
+
+    --field: rgba(255,255,255,.06);
+    --fieldBorder: rgba(255,255,255,.12);
+  }
+}
