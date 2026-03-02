@@ -12,16 +12,3 @@
   <!-- lightning -->
   <path d="M34.5 14L22 36.5h10.2L28.7 50 43 28.5H32.8L34.5 14Z"
         fill="#fff" opacity="0.98"/>
-<div class="topbar">
-  <div class="brand">
-    <div class="logoBox" aria-label="FlowPoint">
-      <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt=""
-           onerror="this.src='/assets/flowpoint-logo.png'">
-    </div>
-  </div>
-
-  <div class="actions">
-    <a class="linkBtn" id="btnBackHome" href="/dashboard.html">Retour à l’accueil</a>
-    <div class="pill" id="authPill">Statut : …</div>
-  </div>
-</div>
