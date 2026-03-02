@@ -5,6 +5,30 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Flowpoint — Client Dashboard</title>
   <link rel="stylesheet" href="./dashboard.css" />
+
+  <!-- ✅ Anti-flash dashboard si non connecté (redirige AVANT rendu) -->
+  <script>
+    (function () {
+      try {
+        const keys = ["token", "fp_token"];
+        const tok = keys.map(k => localStorage.getItem(k)).find(Boolean);
+
+        if (!tok) {
+          // replace = pas d’historique + moins de flash
+          window.location.replace("/login.html");
+          return;
+        }
+
+        // Optionnel: cache très rapide si token vide/space
+        if (typeof tok === "string" && tok.trim().length < 10) {
+          window.location.replace("/login.html");
+          return;
+        }
+      } catch (e) {
+        window.location.replace("/login.html");
+      }
+    })();
+  </script>
 </head>
 <body>
   <!-- Mobile overlay (NE BLOQUE PAS les clics quand fermé) -->
