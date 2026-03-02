@@ -1,48 +1,20 @@
 /* style.css — FlowPoint (base + dark) */
-/* Copie/colle tout le fichier */
-/* ===== Fix centrage global ===== */
-.page{
-  max-width:1100px;           /* un peu plus compact */
-  margin-left:auto;
-  margin-right:auto;
-  padding:24px 20px 60px;     /* padding équilibré */
-}
+/* Copie/colle TOUT ce fichier */
 
-/* Hero bien centré */
-.hero{
-  margin-left:auto;
-  margin-right:auto;
-}
-
-/* Sections bien alignées */
-.section{
-  margin-left:auto;
-  margin-right:auto;
-}
-
-/* Plans centrés */
-.plans{
-  justify-content:center;
-}
-
-/* Add-ons centrés */
-.addons{
-  justify-content:center;
-}
-
-/* Corrige effet “collé à gauche” mobile */
-@media (max-width: 980px){
-  .page{
-    padding-left:16px;
-    padding-right:16px;
-  }
-}
+/* ===================== Reset ===================== */
 *, *::before, *::after{
   box-sizing:border-box;
   margin:0;
   padding:0;
 }
+html, body{
+  height:100%;
+}
+body{
+  overflow-x:hidden; /* évite les décalages horizontaux (outline, shadows, etc.) */
+}
 
+/* ===================== Variables ===================== */
 :root{
   /* Brand */
   --primary:#2f5bff;
@@ -81,6 +53,7 @@
     --muted:rgba(234,240,255,.70);
     --border:rgba(255,255,255,.11);
     --shadow:0 28px 110px rgba(0,0,0,.45);
+
     --chip:rgba(132,102,255,.18);
     --chipText:#d7ccff;
 
@@ -89,6 +62,7 @@
   }
 }
 
+/* ===================== Base ===================== */
 html, body{
   font-family:var(--font);
   font-size:14px;
@@ -105,39 +79,51 @@ a{ color:inherit; text-decoration:none; }
 button{ font-family:var(--font); cursor:pointer; }
 ul,ol{ list-style:none; }
 
-/* =============== Layout =============== */
+/* iOS: empêche le “micro shift” dû au safe area */
 .page{
+  width:100%;
   max-width:1180px;
-  margin:0 auto;
+  margin-left:auto;
+  margin-right:auto;
   padding:18px 18px 44px;
+  padding-left:max(18px, env(safe-area-inset-left));
+  padding-right:max(18px, env(safe-area-inset-right));
+}
+@media (max-width: 980px){
+  .page{
+    padding-top:16px;
+    padding-bottom:50px;
+    padding-left:max(16px, env(safe-area-inset-left));
+    padding-right:max(16px, env(safe-area-inset-right));
+  }
 }
 
+/* ===================== Layout ===================== */
 .grid{
   display:grid;
   grid-template-columns: 1.25fr .75fr;
   gap:14px;
   align-items:start;
 }
-
 @media (max-width: 980px){
   .grid{ grid-template-columns:1fr; }
 }
 
+/* Topbar */
 .topbar{
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:14px;
   margin-bottom:14px;
+  width:100%;
 }
-
 .brand{
   display:flex;
   align-items:center;
   gap:12px;
   min-width:0;
 }
-
 .actions{
   display:flex;
   align-items:center;
@@ -146,50 +132,69 @@ ul,ol{ list-style:none; }
   justify-content:flex-end;
 }
 
-/* Pills / header buttons */
-.pill{
-  padding:10px 12px;
-  border-radius:var(--rPill);
-  border:1px solid var(--border);
-  background:var(--panel);
-  color:var(--muted);
-  font-weight:800;
-  font-size:13px;
-  box-shadow:0 10px 40px rgba(0,0,0,.06);
+/* Sur mobile: on force un alignement propre (pas “décalé”) */
+@media (max-width: 520px){
+  .topbar{
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:10px;
+  }
+  .brand{
+    width:100%;
+    justify-content:center;
+  }
+  .actions{
+    width:100%;
+    justify-content:center;
+  }
 }
 
+/* Pills / header buttons */
+.pill,
 .linkBtn{
   padding:10px 12px;
   border-radius:var(--rPill);
   border:1px solid var(--border);
   background:var(--panel);
-  color:var(--text);
-  font-weight:900;
-  font-size:13px;
   box-shadow:0 10px 40px rgba(0,0,0,.06);
+  font-size:13px;
+  font-weight:900;
+  white-space:nowrap;
+}
+.pill{
+  color:var(--muted);
+  font-weight:800;
+}
+.linkBtn{
+  color:var(--text);
 }
 
-/* ===== Logo Pricing ===== */
+/* ===================== Logo Pricing ===================== */
+/* Un peu plus petit + plus arrondi + rendu plus “clean” */
 .logoBox{
-  width:64px;
-  height:64px;
-  border-radius:22px; /* PLUS ARRONDI */
+  width:56px;
+  height:56px;
+  border-radius:20px;                 /* plus arrondi */
   background:linear-gradient(180deg,#3b6bff,#2449ff);
   display:flex;
   align-items:center;
   justify-content:center;
-  box-shadow:0 10px 35px rgba(47,91,255,.35);
+  box-shadow:0 10px 35px rgba(47,91,255,.30);
   overflow:hidden;
+  flex:0 0 auto;
 }
 
-/* Si image svg dedans */
+/* svg/png dans la box */
 .brandLogo{
-  width:60%;
-  height:60%;
+  width:56%;
+  height:56%;
   object-fit:contain;
+  display:block;
 }
-/* =============== Cards =============== */
+
+/* ===================== Cards ===================== */
 .hero{
+  width:100%;
   background:linear-gradient(180deg, rgba(47,91,255,.18), transparent 55%);
   border:1px solid var(--border);
   border-radius:var(--r);
@@ -197,13 +202,11 @@ ul,ol{ list-style:none; }
   box-shadow:var(--shadow);
   backdrop-filter:saturate(180%) blur(14px);
 }
-
 .hero h1{
   margin:0 0 6px;
   font-size:34px;
   letter-spacing:-.03em;
 }
-
 .hero p{
   margin:0;
   color:var(--muted);
@@ -212,6 +215,7 @@ ul,ol{ list-style:none; }
 }
 
 .section{
+  width:100%;
   margin-top:14px;
   background:var(--panel);
   border:1px solid var(--border);
@@ -220,6 +224,7 @@ ul,ol{ list-style:none; }
   overflow:hidden;
 }
 
+/* Head */
 .sectionHead{
   display:flex;
   align-items:center;
@@ -229,13 +234,11 @@ ul,ol{ list-style:none; }
   border-bottom:1px solid var(--border);
   gap:10px;
 }
-
 .sectionHead .title{
   font-weight:950;
   letter-spacing:-.02em;
   font-size:16px;
 }
-
 .sectionHead .hint{
   color:var(--muted);
   font-size:13px;
@@ -243,14 +246,23 @@ ul,ol{ list-style:none; }
   white-space:nowrap;
 }
 
-/* =============== Plans (ancien rendu “meilleur”) =============== */
+/* Sur très petit écran, évite que le hint pousse tout et crée un “décalage” */
+@media (max-width: 420px){
+  .sectionHead{
+    flex-wrap:wrap;
+  }
+  .sectionHead .hint{
+    white-space:normal;
+  }
+}
+
+/* ===================== Plans ===================== */
 .plans{
   padding:14px;
   display:grid;
   grid-template-columns: repeat(3, 1fr);
   gap:12px;
 }
-
 @media (max-width: 980px){
   .plans{ grid-template-columns:1fr; }
 }
@@ -262,11 +274,14 @@ ul,ol{ list-style:none; }
   background:linear-gradient(180deg, rgba(47,91,255,.10), transparent 65%);
   min-height:190px;
   position:relative;
+  width:100%;
 }
 
+/* IMPORTANT: pas d’outline qui déborde et “décale” visuellement la page */
 .planCard.active{
-  outline:2px solid rgba(47,91,255,.45);
-  box-shadow:0 0 0 6px rgba(47,91,255,.12);
+  box-shadow:
+    0 0 0 2px rgba(47,91,255,.45) inset,
+    0 0 0 6px rgba(47,91,255,.12);
 }
 
 .planTop{
@@ -275,20 +290,17 @@ ul,ol{ list-style:none; }
   justify-content:space-between;
   gap:10px;
 }
-
 .planName{
   font-weight:950;
   font-size:18px;
   letter-spacing:-.02em;
 }
-
 .price{
   font-weight:950;
   font-size:28px;
   letter-spacing:-.03em;
   white-space:nowrap;
 }
-
 .per{
   font-weight:900;
   font-size:13px;
@@ -314,19 +326,17 @@ ul,ol{ list-style:none; }
   font-size:13px;
   line-height:1.65;
 }
-
 .features li{
   display:flex;
   gap:8px;
 }
-
 .features li::before{
   content:"•";
   color:rgba(47,91,255,.85);
   font-weight:950;
 }
 
-/* =============== Add-ons (ancien rendu “cards”) =============== */
+/* ===================== Add-ons ===================== */
 .addons{
   padding:14px;
   display:grid;
@@ -334,6 +344,7 @@ ul,ol{ list-style:none; }
 }
 
 .addonRow{
+  width:100%;
   display:grid;
   grid-template-columns: 1fr auto;
   gap:12px;
@@ -344,8 +355,11 @@ ul,ol{ list-style:none; }
   background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 80%);
 }
 
+/* Mobile: empêche le bloc droite (prix/qty) de pousser et créer “décalage” */
 @media (max-width: 520px){
-  .addonRow{ grid-template-columns:1fr; }
+  .addonRow{
+    grid-template-columns:1fr;
+  }
 }
 
 .addonTitle{
@@ -354,7 +368,6 @@ ul,ol{ list-style:none; }
   letter-spacing:-.01em;
   font-size:16px;
 }
-
 .addonDesc{
   margin:6px 0 0;
   color:var(--muted);
@@ -374,7 +387,6 @@ ul,ol{ list-style:none; }
   font-weight:950;
   font-size:12px;
 }
-
 @media (prefers-color-scheme: light){
   .keyChip{
     background:#efeaff;
@@ -390,24 +402,26 @@ ul,ol{ list-style:none; }
   gap:10px;
   min-width:200px;
 }
-
 @media (max-width:520px){
   .addonRight{
     align-items:flex-start;
-    min-width:unset;
+    min-width:0;
+    width:100%;
   }
 }
-
 .addonPrice{
   font-weight:950;
   font-size:16px;
   white-space:nowrap;
 }
 
-/* =============== Qty select (PC + menu dark propre) =============== */
+/* ===================== Qty select (si tu l’utilises) ===================== */
 .qtyWrap{
   position:relative;
   width:160px;
+}
+@media (max-width:520px){
+  .qtyWrap{ width:100%; }
 }
 
 select.qty{
@@ -442,7 +456,7 @@ select.qty:focus{
   box-shadow:0 0 0 4px rgba(47,91,255,.12);
 }
 
-/* Options (important sinon blanc/illisible selon OS) */
+/* options (sinon blanc/illisible selon OS) */
 select.qty option{
   background:#0b1220;
   color:#eaf0ff;
@@ -454,7 +468,7 @@ select.qty option{
   }
 }
 
-/* =============== Qty stepper (si tu utilises - / +) =============== */
+/* ===================== Qty stepper (- / +) ===================== */
 .qty{
   display:flex;
   align-items:center;
@@ -475,7 +489,6 @@ select.qty option{
   color:var(--text);
   font-weight:950;
 }
-
 @media (prefers-color-scheme: light){
   .qtyBtn{ background:#fff; }
 }
@@ -491,7 +504,7 @@ select.qty option{
   outline:none;
 }
 
-/* =============== Toggle (checkbox “flag”) =============== */
+/* ===================== Toggle (flags) ===================== */
 .toggle{
   position:relative;
   width:52px;
@@ -500,14 +513,12 @@ select.qty option{
   align-items:center;
   justify-content:center;
 }
-
 .toggle input{
   position:absolute;
   inset:0;
   opacity:0;
   cursor:pointer;
 }
-
 .toggle .track{
   width:52px;
   height:32px;
@@ -517,7 +528,6 @@ select.qty option{
   position:relative;
   transition:.15s ease;
 }
-
 .toggle .track::after{
   content:"";
   width:26px;
@@ -530,41 +540,38 @@ select.qty option{
   background:rgba(255,255,255,.92);
   transition:.15s ease;
 }
-
 .toggle input:checked + .track{
   background:linear-gradient(180deg,var(--primary),var(--primary2));
   border-color:rgba(47,91,255,.45);
 }
-
 .toggle input:checked + .track::after{
   left:23px;
 }
-
 .toggle input:disabled + .track{
   opacity:.65;
   cursor:not-allowed;
 }
 
-/* =============== Sidebar cards (Résumé / Info) =============== */
+/* ===================== Sidebar (Résumé / Info) ===================== */
 .side{
   position:sticky;
   top:14px;
   display:grid;
   gap:14px;
+  width:100%;
 }
-
 @media (max-width:980px){
   .side{ position:static; }
 }
 
 .card{
+  width:100%;
   background:var(--panel);
   border:1px solid var(--border);
   border-radius:var(--r);
   box-shadow:var(--shadow);
   overflow:hidden;
 }
-
 .cardHead{
   padding:14px;
   background:var(--panel2);
@@ -572,7 +579,6 @@ select.qty option{
   font-weight:950;
   letter-spacing:-.02em;
 }
-
 .cardBody{
   padding:14px;
   display:grid;
@@ -586,7 +592,6 @@ select.qty option{
   gap:12px;
   font-weight:900;
 }
-
 .muted{ color:var(--muted); font-weight:800; }
 
 .primaryBtn{
@@ -599,7 +604,6 @@ select.qty option{
   background:linear-gradient(180deg,var(--primary),var(--primary2));
   box-shadow:0 16px 50px rgba(47,91,255,.30);
 }
-
 .ghostBtn{
   width:100%;
   padding:12px 14px;
@@ -609,7 +613,6 @@ select.qty option{
   background:rgba(255,255,255,.06);
   color:var(--text);
 }
-
 @media (prefers-color-scheme: light){
   .ghostBtn{ background:#fff; }
 }
@@ -620,7 +623,7 @@ select.qty option{
   line-height:1.5;
 }
 
-/* =============== Forms (index/login) =============== */
+/* ===================== Forms (index/login) ===================== */
 .cardForm{
   background:var(--panel);
   border:1px solid var(--border);
@@ -653,4 +656,66 @@ input, select, textarea{
 input:focus, select:focus, textarea:focus{
   border-color:rgba(47,91,255,.55);
   box-shadow:0 0 0 4px rgba(47,91,255,.12);
+}
+/* ===== PC ONLY : Plans + Sidebar légèrement plus grands & centrés ===== */
+@media (min-width: 981px){
+
+  /* On donne un peu plus de place au layout global */
+  .page{
+    max-width: 1240px;     /* + large mais toujours centré */
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  /* Colonne droite plus grande (Résumé/Info) */
+  .grid{
+    grid-template-columns: 1.35fr 0.95fr; /* avant: 1.25fr .75fr */
+    gap: 18px;
+  }
+
+  /* Plans : cartes légèrement plus grandes */
+  .plans{
+    gap: 14px;
+  }
+
+  .planCard{
+    padding: 18px;         /* + confortable */
+    min-height: 215px;     /* + grand */
+    border-radius: 20px;   /* + smooth */
+  }
+
+  .planName{
+    font-size: 19px;
+  }
+
+  .price{
+    font-size: 30px;
+  }
+
+  /* Sidebar : cartes plus grandes */
+  .cardHead{
+    padding: 16px;
+    font-size: 16px;
+  }
+
+  .cardBody{
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .primaryBtn,
+  .ghostBtn{
+    padding: 13px 14px;
+    border-radius: 16px;
+  }
+
+  /* Un peu plus de respiration sur les add-ons, sans décentrer */
+  .addons{
+    gap: 14px;
+  }
+
+  .addonRow{
+    border-radius: 18px;
+    padding: 16px;
+  }
 }
