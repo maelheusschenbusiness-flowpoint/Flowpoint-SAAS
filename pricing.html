@@ -27,7 +27,6 @@
       --field:#ffffff;
       --fieldBorder:#d9deea;
     }
-
     @media (prefers-color-scheme: dark){
       :root{
         --bg:#070b18;
@@ -55,69 +54,49 @@
       color:var(--text);
     }
 
-    .page{
-      max-width:1200px;
-      margin:0 auto;
-      padding:18px 18px 40px;
-    }
+    .page{max-width:1200px;margin:0 auto;padding:18px 18px 40px;}
 
-    /* Header */
     .topbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:14px;
-      margin-bottom:14px;
+      display:flex;align-items:center;justify-content:space-between;
+      gap:14px;margin-bottom:14px;
     }
-    .brand{
-      display:flex;align-items:center;gap:12px;
-    }
+    .brand{display:flex;align-items:center;gap:12px;}
 
-    /* ✅ Logo SEUL, plus grand, sans texte */
+    /* ✅ logo seul + plus grand */
     .brandLogo{
-      width:56px;height:56px;
-      padding:12px;
-      border-radius:16px;
+      width:64px;height:64px;
+      padding:14px;
+      border-radius:18px;
       background:rgba(47,91,255,.10);
       border:1px solid rgba(47,91,255,.18);
       display:block;
       object-fit:contain;
     }
 
-    .actions{
-      display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-    }
+    .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
     .pill{
-      padding:10px 12px;
-      border-radius:999px;
+      padding:10px 12px;border-radius:999px;
       border:1px solid var(--border);
       background:var(--panel);
       color:var(--muted);
-      font-weight:700;
-      font-size:13px;
+      font-weight:800;font-size:13px;
       box-shadow:0 10px 40px rgba(0,0,0,.06);
     }
     .linkBtn{
-      padding:10px 12px;
-      border-radius:999px;
+      padding:10px 12px;border-radius:999px;
       border:1px solid var(--border);
       background:var(--panel);
       color:var(--text);
       text-decoration:none;
-      font-weight:800;
-      font-size:13px;
+      font-weight:900;font-size:13px;
     }
 
-    /* Main layout */
     .grid{
       display:grid;
       grid-template-columns: 1.25fr .75fr;
-      gap:14px;
-      align-items:start;
+      gap:14px;align-items:start;
     }
-    @media (max-width: 980px){
-      .grid{grid-template-columns:1fr;}
-    }
+    @media (max-width:980px){ .grid{grid-template-columns:1fr;} }
 
     .hero{
       background:linear-gradient(180deg, rgba(47,91,255,.18), transparent 55%);
@@ -127,17 +106,8 @@
       box-shadow:var(--shadow);
       backdrop-filter:saturate(180%) blur(14px);
     }
-    .hero h1{
-      margin:0 0 6px;
-      font-size:34px;
-      letter-spacing:-.03em;
-    }
-    .hero p{
-      margin:0;
-      color:var(--muted);
-      line-height:1.6;
-      font-size:14px;
-    }
+    .hero h1{margin:0 0 6px;font-size:34px;letter-spacing:-.03em;}
+    .hero p{margin:0;color:var(--muted);line-height:1.6;font-size:14px;}
 
     .section{
       margin-top:14px;
@@ -148,198 +118,151 @@
       overflow:hidden;
     }
     .sectionHead{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      padding:14px 14px;
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px;
       background:var(--panel2);
       border-bottom:1px solid var(--border);
       gap:10px;
     }
-    .sectionHead .title{
-      font-weight:900;
-      letter-spacing:-.02em;
-    }
-    .sectionHead .hint{
-      color:var(--muted);
-      font-size:13px;
-      font-weight:700;
-      white-space:nowrap;
-    }
+    .sectionHead .title{font-weight:900;letter-spacing:-.02em;}
+    .sectionHead .hint{color:var(--muted);font-size:13px;font-weight:800;white-space:nowrap;}
 
-    /* ✅ Plans cards GRANDES */
+    /* PLANS — compat avec pricing.js (.plan) */
     .plans{
       padding:14px;
       display:grid;
       grid-template-columns: repeat(3, 1fr);
       gap:12px;
     }
-    @media (max-width: 980px){
-      .plans{grid-template-columns:1fr;}
-    }
+    @media (max-width:980px){ .plans{grid-template-columns:1fr;} }
 
-    .planCard{
+    .plan{
       border:1px solid var(--border);
       border-radius:18px;
       padding:16px;
       background:linear-gradient(180deg, rgba(47,91,255,.10), transparent 65%);
       min-height:190px;
-      position:relative;
-    }
-    .planTop{
-      display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
-    }
-    .planName{font-weight:900;font-size:18px;letter-spacing:-.02em}
-    .price{
-      font-weight:900;
-      font-size:28px;
-      letter-spacing:-.03em;
-      white-space:nowrap;
-    }
-    .per{font-weight:800;font-size:13px;color:var(--muted)}
-    .badge{
-      display:inline-flex;
-      padding:6px 10px;
-      border-radius:999px;
-      background:var(--chip);
-      color:var(--chipText);
-      font-weight:900;
-      font-size:12px;
-      margin-top:10px;
-    }
-    .features{
-      margin:12px 0 0;
-      padding:0;
-      list-style:none;
-      color:var(--muted);
-      font-weight:700;
-      font-size:13px;
-      line-height:1.65;
-    }
-    .features li::before{
-      content:"•";
-      margin-right:8px;
-      color:rgba(47,91,255,.8);
-      font-weight:900;
-    }
-
-    /* Add-ons list */
-    .addons{
-      padding:14px;
-      display:grid;
-      gap:12px;
-    }
-    .addonRow{
-      display:grid;
-      grid-template-columns: 1fr auto;
-      gap:12px;
-      align-items:center;
-      padding:14px;
-      border-radius:16px;
-      border:1px solid var(--border);
-      background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 80%);
-    }
-    .addonTitle{
-      font-weight:900;
-      margin:0;
-      letter-spacing:-.01em;
-    }
-    .addonDesc{
-      margin:6px 0 0;
-      color:var(--muted);
-      font-size:13px;
-      font-weight:650;
-      line-height:1.5;
-    }
-    .keyChip{
-      margin-top:10px;
-      display:inline-flex;
-      padding:6px 10px;
-      border-radius:999px;
-      background:rgba(150,120,255,.22);
-      border:1px solid rgba(150,120,255,.30);
-      color:#e7ddff;
-      font-weight:900;
-      font-size:12px;
-    }
-    @media (prefers-color-scheme: light){
-      .keyChip{
-        background:#efeaff;
-        border:1px solid #ddd2ff;
-        color:#5b32ff;
-      }
-    }
-
-    .addonRight{
-      display:flex;
-      flex-direction:column;
-      align-items:flex-end;
-      gap:10px;
-      min-width:200px;
-    }
-    .addonPrice{
-      font-weight:900;
-      font-size:16px;
-      white-space:nowrap;
-    }
-
-    /* ✅ QTÉ plus belle + options dark */
-    .qtyWrap{
-      position:relative;
-      width:160px;
-    }
-    select.qty{
-      width:100%;
-      padding:10px 38px 10px 12px;
-      border-radius:14px;
-      border:1px solid var(--fieldBorder);
-      background:var(--field);
-      color:var(--text);
-      font-weight:900;
-      appearance:none;
-      -webkit-appearance:none;
-      -moz-appearance:none;
+      cursor:pointer;
+      transition:transform .08s ease, border-color .08s ease;
       outline:none;
-      box-shadow:0 10px 35px rgba(0,0,0,.08);
-      color-scheme: light dark; /* IMPORTANT */
     }
-    .qtyWrap:after{
-      content:"▾";
-      position:absolute;
-      right:12px;
-      top:50%;
-      transform:translateY(-50%);
-      color:var(--muted);
-      font-weight:900;
-      pointer-events:none;
-    }
-    select.qty:focus{
+    .plan:hover{transform:translateY(-1px);}
+    .plan.active{
       border-color:rgba(47,91,255,.55);
       box-shadow:0 0 0 4px rgba(47,91,255,.12);
     }
 
-    /* Le menu déroulant (options) */
-    select.qty option{
-      background: #0b1220;
-      color: #e8eeff;
+    .planTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+    .planName{font-weight:900;font-size:18px;letter-spacing:-.02em;}
+    .tag{
+      display:inline-flex;margin-top:10px;
+      padding:6px 10px;border-radius:999px;
+      background:var(--chip);
+      color:var(--chipText);
+      font-weight:900;font-size:12px;
+    }
+    .planPrice{font-weight:900;font-size:28px;letter-spacing:-.03em;white-space:nowrap;}
+    .planPrice span{font-weight:800;font-size:13px;color:var(--muted);}
+    .features{
+      margin:12px 0 0;padding:0;list-style:none;
+      color:var(--muted);font-weight:750;font-size:13px;line-height:1.65;
+    }
+    .features li::before{content:"•";margin-right:8px;color:rgba(47,91,255,.8);font-weight:900;}
+
+    /* ADDONS */
+    .addons{padding:14px;display:grid;gap:12px;}
+    .addon{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap:12px;align-items:center;
+      padding:14px;border-radius:16px;
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 80%);
+    }
+    .addonName{font-weight:900;letter-spacing:-.01em;}
+    .addonDesc{margin-top:6px;color:var(--muted);font-size:13px;font-weight:650;line-height:1.5;}
+    .addonMeta{margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+    .keyChip{
+      display:inline-flex;padding:6px 10px;border-radius:999px;
+      background:rgba(150,120,255,.22);
+      border:1px solid rgba(150,120,255,.30);
+      color:#e7ddff;
+      font-weight:900;font-size:12px;
     }
     @media (prefers-color-scheme: light){
-      select.qty option{
-        background:#ffffff;
-        color:#0f172a;
-      }
+      .keyChip{background:#efeaff;border:1px solid #ddd2ff;color:#5b32ff;}
+    }
+    .priceLabel{font-weight:900;color:var(--text);opacity:.9}
+
+    .addonRight{display:flex;align-items:center;justify-content:flex-end;min-width:190px;}
+
+    /* ✅ Qté stepper (beau sur PC, pas de dropdown blanc) */
+    .qtyStepper{
+      display:flex;align-items:center;gap:8px;
+      padding:8px;border-radius:16px;
+      border:1px solid var(--fieldBorder);
+      background:var(--field);
+      box-shadow:0 10px 35px rgba(0,0,0,.08);
+    }
+    .stepBtn{
+      width:38px;height:38px;border-radius:12px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      font-weight:900;font-size:18px;
+      cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+    }
+    @media (prefers-color-scheme: light){
+      .stepBtn{background:#fff;}
+    }
+    .stepInput{
+      width:64px;
+      height:38px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:transparent;
+      color:var(--text);
+      font-weight:900;
+      text-align:center;
+      outline:none;
+    }
+    .stepInput::-webkit-outer-spin-button,
+    .stepInput::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+
+    /* Switch toggle */
+    .switch{position:relative;display:inline-block;width:52px;height:30px;}
+    .switch input{opacity:0;width:0;height:0;}
+    .slider{
+      position:absolute;cursor:pointer;inset:0;
+      background:rgba(255,255,255,.10);
+      border:1px solid var(--border);
+      transition:.15s;border-radius:999px;
+    }
+    .slider:before{
+      content:"";
+      position:absolute;height:24px;width:24px;left:3px;top:50%;
+      transform:translateY(-50%);
+      background:#fff;border-radius:999px;
+      transition:.15s;
+    }
+    @media (prefers-color-scheme: dark){
+      .slider:before{background:#dbe6ff;}
+    }
+    .switch input:checked + .slider{
+      background:rgba(47,91,255,.35);
+      border-color:rgba(47,91,255,.55);
+    }
+    .switch input:checked + .slider:before{
+      transform:translate(22px, -50%);
+    }
+    .switch input:disabled + .slider{
+      opacity:.6;cursor:not-allowed;
     }
 
-    /* Sidebar summary */
-    .side{
-      position:sticky;
-      top:14px;
-      display:grid;
-      gap:14px;
-    }
-    @media (max-width:980px){
-      .side{position:static;}
-    }
+    /* Sidebar */
+    .side{position:sticky;top:14px;display:grid;gap:14px;}
+    @media (max-width:980px){ .side{position:static;} }
 
     .card{
       background:var(--panel);
@@ -349,56 +272,32 @@
       overflow:hidden;
     }
     .cardHead{
-      padding:14px;
-      background:var(--panel2);
+      padding:14px;background:var(--panel2);
       border-bottom:1px solid var(--border);
-      font-weight:900;
-      letter-spacing:-.02em;
+      font-weight:900;letter-spacing:-.02em;
     }
-    .cardBody{
-      padding:14px;
-      display:grid;
-      gap:10px;
-    }
-
-    .row2{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      font-weight:800;
-    }
-    .muted{color:var(--muted);font-weight:700}
+    .cardBody{padding:14px;display:grid;gap:10px;}
+    .row2{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;font-weight:900;}
+    .muted{color:var(--muted);font-weight:800;}
+    .small{font-size:12.5px;color:var(--muted);line-height:1.5;}
 
     .primaryBtn{
-      border:0;
-      width:100%;
-      padding:12px 14px;
-      border-radius:14px;
-      font-weight:900;
-      cursor:pointer;
-      color:#fff;
+      border:0;width:100%;
+      padding:12px 14px;border-radius:14px;
+      font-weight:900;cursor:pointer;color:#fff;
       background:linear-gradient(180deg,var(--primary),var(--primary2));
       box-shadow:0 16px 50px rgba(47,91,255,.30);
     }
     .ghostBtn{
       width:100%;
-      padding:12px 14px;
-      border-radius:14px;
-      font-weight:900;
-      cursor:pointer;
+      padding:12px 14px;border-radius:14px;
+      font-weight:900;cursor:pointer;
       border:1px solid var(--border);
       background:rgba(255,255,255,.06);
       color:var(--text);
     }
     @media (prefers-color-scheme: light){
       .ghostBtn{background:#fff;}
-    }
-
-    .small{
-      font-size:12.5px;
-      color:var(--muted);
-      line-height:1.5;
     }
   </style>
 </head>
@@ -407,26 +306,21 @@
   <div class="page">
     <div class="topbar">
       <div class="brand">
-        <!-- ✅ LOGO SEUL -->
         <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
-             onerror="this.src='/assets/flowpoint-logo.png'">
+             onerror="this.src='assets/flowpoint-logo.svg'; this.onerror=null;">
       </div>
 
       <div class="actions">
         <a class="linkBtn" href="/dashboard.html">Retour à l’accueil</a>
-        <div class="pill" id="authPill">Statut : …</div>
+        <div class="pill" id="authState">Statut : …</div>
       </div>
     </div>
 
     <div class="grid">
-      <!-- Left -->
       <div>
         <div class="hero">
           <h1>Choisis ton plan + tes options</h1>
-          <p>
-            Tu peux acheter un plan maintenant. Les add-ons payants se gèrent ensuite dans le Customer Portal Stripe
-            (bouton “Gérer mes add-ons”).
-          </p>
+          <p>Tu peux acheter un plan maintenant. Les add-ons payants se gèrent ensuite dans le Customer Portal Stripe.</p>
         </div>
 
         <div class="section">
@@ -435,173 +329,32 @@
             <div class="hint">Essai 14 jours via Stripe.</div>
           </div>
 
-          <!-- ✅ ids attendus par pricing.js -->
-          <div class="plans" id="plans">
-            <!-- Cartes gérées par pricing.js ou laissées statiques si tu préfères -->
-            <div class="planCard" data-plan="standard">
-              <div class="planTop">
-                <div>
-                  <div class="planName">Standard</div>
-                  <div class="badge">Pour démarrer</div>
-                </div>
-                <div style="text-align:right">
-                  <div class="price">29€ <span class="per">/ mois</span></div>
-                </div>
-              </div>
-              <ul class="features">
-                <li>30 audits / mois</li>
-                <li>3 monitors actifs</li>
-                <li>30 PDFs + 30 exports</li>
-              </ul>
-            </div>
-
-            <div class="planCard" data-plan="pro">
-              <div class="planTop">
-                <div>
-                  <div class="planName">Pro</div>
-                  <div class="badge">Populaire</div>
-                </div>
-                <div style="text-align:right">
-                  <div class="price">79€ <span class="per">/ mois</span></div>
-                </div>
-              </div>
-              <ul class="features">
-                <li>300 audits / mois</li>
-                <li>50 monitors actifs</li>
-                <li>300 PDFs + 300 exports</li>
-              </ul>
-            </div>
-
-            <div class="planCard" data-plan="ultra">
-              <div class="planTop">
-                <div>
-                  <div class="planName">Ultra</div>
-                  <div class="badge">Team</div>
-                </div>
-                <div style="text-align:right">
-                  <div class="price">149€ <span class="per">/ mois</span></div>
-                </div>
-              </div>
-              <ul class="features">
-                <li>2000 audits / mois</li>
-                <li>300 monitors actifs</li>
-                <li>2000 PDFs + 2000 exports</li>
-                <li>10 seats inclus</li>
-              </ul>
-            </div>
-          </div>
+          <div class="plans" id="plans"></div>
         </div>
 
         <div class="section">
           <div class="sectionHead">
             <div class="title">Add-ons</div>
-            <div class="hint">Keys (en violet) + préférence enregistrée</div>
+            <div class="hint">Préférence enregistrée</div>
           </div>
 
-          <div class="addons" id="addonsList">
-            <!-- Exemple : tu peux laisser ton pricing.js remplir dynamiquement.
-                 Sinon, garde ce rendu (et fais matcher tes keys). -->
-
-            <div class="addonRow" data-addon="monitorsPack50">
-              <div>
-                <p class="addonTitle">Monitors Pack +50</p>
-                <p class="addonDesc">Ajoute +50 monitors actifs au quota du plan.</p>
-                <span class="keyChip">monitorsPack50</span>
-              </div>
-              <div class="addonRight">
-                <div class="addonPrice">19€ / mois</div>
-                <div class="qtyWrap">
-                  <select class="qty" aria-label="Quantité Monitors Pack +50">
-                    <option value="0">Qté 0</option>
-                    <option value="1">Qté 1</option>
-                    <option value="2">Qté 2</option>
-                    <option value="3">Qté 3</option>
-                    <option value="4">Qté 4</option>
-                    <option value="5">Qté 5</option>
-                    <option value="10">Qté 10</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div class="addonRow" data-addon="extraSeat">
-              <div>
-                <p class="addonTitle">Extra Seat</p>
-                <p class="addonDesc">Ajoute des seats (membres) à ton organisation.</p>
-                <span class="keyChip">extraSeat</span>
-              </div>
-              <div class="addonRight">
-                <div class="addonPrice">7€ / mois</div>
-                <div class="qtyWrap">
-                  <select class="qty" aria-label="Quantité Extra Seat">
-                    <option value="0">Qté 0</option>
-                    <option value="1">Qté 1</option>
-                    <option value="2">Qté 2</option>
-                    <option value="3">Qté 3</option>
-                    <option value="4">Qté 4</option>
-                    <option value="5">Qté 5</option>
-                    <option value="10">Qté 10</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div class="addonRow" data-addon="retention90d">
-              <div>
-                <p class="addonTitle">Retention +90 days</p>
-                <p class="addonDesc">Rétention des données étendue à 90 jours.</p>
-                <span class="keyChip">retention90d</span>
-              </div>
-              <div class="addonRight">
-                <div class="addonPrice">9€ / mois</div>
-                <div class="qtyWrap">
-                  <select class="qty" aria-label="Quantité Retention +90 days">
-                    <option value="0">Qté 0</option>
-                    <option value="1">Qté 1</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div class="addonRow" data-addon="retention365d">
-              <div>
-                <p class="addonTitle">Retention +365 days</p>
-                <p class="addonDesc">Rétention des données étendue à 365 jours.</p>
-                <span class="keyChip">retention365d</span>
-              </div>
-              <div class="addonRight">
-                <div class="addonPrice">19€ / mois</div>
-                <div class="qtyWrap">
-                  <select class="qty" aria-label="Quantité Retention +365 days">
-                    <option value="0">Qté 0</option>
-                    <option value="1">Qté 1</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-          </div>
+          <div class="addons" id="addons"></div>
         </div>
       </div>
 
-      <!-- Right -->
       <div class="side">
         <div class="card">
           <div class="cardHead">Résumé</div>
           <div class="cardBody">
-            <div class="row2"><span class="muted">Plan</span> <span id="sumPlan">—</span></div>
+            <div class="row2"><span class="muted">Plan</span> <span id="sumPlanName">—</span></div>
             <div class="row2"><span class="muted">Prix plan</span> <span id="sumPlanPrice">—</span></div>
-            <div class="row2"><span class="muted">White label</span> <span id="sumWhiteLabel">Inclus (gratuit)</span></div>
-            <div class="row2" style="align-items:flex-start">
-              <span class="muted">Add-ons</span>
-              <span id="sumAddOns" style="text-align:right">—</span>
-            </div>
+            <div class="row2"><span class="muted">Add-ons</span> <span id="sumAddons" style="text-align:right">—</span></div>
 
             <button class="primaryBtn" id="btnCheckout">Continuer (Checkout Plan)</button>
             <button class="ghostBtn" id="btnPortal">Gérer mes add-ons</button>
 
             <div class="small">
-              Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (le plan sera pré-sélectionné).
+              Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (plan pré-sélectionné).
             </div>
           </div>
         </div>
@@ -611,8 +364,8 @@
           <div class="cardBody">
             <div class="small">
               • Ton plan fixe les quotas monitors / PDF / exports.<br/>
-              • Les add-ons payants sont modifiables dans le Portal Stripe.<br/>
-              • Sur cette page, on enregistre juste une préférence (UI) en localStorage.
+              • Les add-ons payants se modifient dans Stripe Portal.<br/>
+              • Ici on sauvegarde une préférence (UI) en localStorage.
             </div>
           </div>
         </div>
@@ -620,13 +373,6 @@
     </div>
   </div>
 
-  <!-- Ton script -->
   <script src="/pricing.js"></script>
-
-  <script>
-    // petit statut visuel (si ton pricing.js le fait déjà, tu peux supprimer)
-    const pill = document.getElementById("authPill");
-    if (pill) pill.textContent = "Statut : Connecté";
-  </script>
 </body>
 </html>
