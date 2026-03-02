@@ -3,37 +3,40 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>FlowPoint — Pricing</title>
-
+  <title>Pricing — Plans + Add-ons</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <style>
     :root{
-      --bg:#f6f7fb;
-      --bg2:#eef2ff;
-      --card:rgba(255,255,255,.92);
-      --text:#0f172a;
-      --muted:#667085;
-      --border:rgba(15,23,42,.10);
-      --primary:#2f5bff;
-      --shadow:0 16px 70px rgba(16,24,40,.12);
-      --r:18px;
-      --chip:rgba(47,91,255,.12);
-      --chipText:#2f5bff;
+      --bg:#070b18;
+      --panel:rgba(14,18,40,.78);
+      --panel2:rgba(18,24,55,.66);
+      --text:#eaf0ff;
+      --muted:rgba(234,240,255,.72);
+      --border:rgba(255,255,255,.11);
+      --shadow:0 28px 110px rgba(0,0,0,.45);
+      --blue1:#2f5bff;
+      --blue2:#2449ff;
+      --violet:rgba(167,139,250,.20);
+      --violetText:#c7b6ff;
+      --radius:22px;
+      --radius2:18px;
     }
-    @media (prefers-color-scheme: dark){
+
+    /* MODE CLAIR auto */
+    @media (prefers-color-scheme: light){
       :root{
-        --bg:#070b18;
-        --bg2:#0a1030;
-        --card:rgba(16,23,42,.72);
-        --text:#e8eeff;
-        --muted:rgba(232,238,255,.72);
-        --border:rgba(232,238,255,.12);
-        --shadow:0 16px 80px rgba(0,0,0,.50);
-        --chip:rgba(167,139,250,.18);
-        --chipText:#c4b5fd;
+        --bg:#f5f7ff;
+        --panel:rgba(255,255,255,.92);
+        --panel2:rgba(255,255,255,.88);
+        --text:#0f172a;
+        --muted:#667085;
+        --border:rgba(15,23,42,.10);
+        --shadow:0 16px 60px rgba(16,24,40,.10);
+        --violet:rgba(124,58,237,.12);
+        --violetText:#6d28d9;
       }
     }
 
@@ -43,289 +46,283 @@
       font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
       color:var(--text);
       background:
-        radial-gradient(1100px 700px at 12% 0%, rgba(47,91,255,.22), transparent 55%),
-        radial-gradient(1100px 700px at 88% 0%, rgba(99,102,241,.18), transparent 55%),
-        linear-gradient(180deg, var(--bg2), var(--bg));
-      min-height:100vh;
+        radial-gradient(1200px 700px at 15% 0%, rgba(47,91,255,.22), transparent 58%),
+        radial-gradient(1200px 700px at 85% 0%, rgba(99,102,241,.18), transparent 58%),
+        var(--bg);
     }
 
-    .wrap{max-width:1180px;margin:0 auto;padding:22px 16px 44px}
-    .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
-    .brand{display:flex;align-items:center;gap:12px}
-    .brandLogo{width:42px;height:42px;object-fit:contain;border-radius:12px;display:block}
-    .pill{
-      font-size:12px;font-weight:700;color:var(--muted);
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.45);
-      padding:8px 10px;border-radius:999px;
+    .wrap{max-width:1200px;margin:0 auto;padding:22px 18px 34px}
+
+    /* Header */
+    .topbar{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      margin-bottom:16px;
     }
-    @media (prefers-color-scheme: dark){
-      .pill{background:rgba(2,6,23,.30)}
+    .brand{display:flex;align-items:center;gap:10px}
+    .brandLogo{
+      width:44px;height:44px;object-fit:contain;display:block;
+      border-radius:14px;
+      filter: drop-shadow(0 12px 26px rgba(0,0,0,.22));
+    }
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:8px 12px;border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--muted);
+      font-size:13px;font-weight:700;
+      white-space:nowrap;
+    }
+    @media (prefers-color-scheme: light){
+      .pill{ background:rgba(15,23,42,.04); }
     }
 
     .hero{
+      background:var(--panel);
       border:1px solid var(--border);
-      background:var(--card);
+      border-radius:var(--radius);
+      padding:22px;
       box-shadow:var(--shadow);
-      border-radius:24px;
-      padding:18px;
-      backdrop-filter:saturate(180%) blur(14px);
-      margin-bottom:16px;
+      backdrop-filter: blur(14px) saturate(160%);
+      margin-bottom:18px;
     }
-    .hero h1{margin:0;font-size:28px;letter-spacing:-.03em}
-    .hero p{margin:8px 0 0;color:var(--muted);line-height:1.55}
+    .hero h1{margin:0 0 6px;font-size:34px;letter-spacing:-.03em}
+    .hero p{margin:0;color:var(--muted);line-height:1.5}
 
-    .grid{display:grid;grid-template-columns:1fr;gap:14px}
-    @media (min-width: 980px){
-      .grid{grid-template-columns: 1.35fr .65fr;align-items:start}
+    /* Layout */
+    .grid{
+      display:grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap:16px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .grid{grid-template-columns:1fr}
     }
 
     .card{
+      background:var(--panel);
       border:1px solid var(--border);
-      background:var(--card);
+      border-radius:var(--radius);
+      padding:18px;
       box-shadow:var(--shadow);
-      border-radius:22px;
-      padding:16px;
-      backdrop-filter:saturate(180%) blur(14px);
+      backdrop-filter: blur(14px) saturate(160%);
     }
+    .cardTitle{
+      display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+      margin-bottom:12px;
+    }
+    .cardTitle h2{margin:0;font-size:16px}
+    .sub{color:var(--muted);font-size:13px;font-weight:600}
 
-    .sectionTitle{
-      display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
-      margin-bottom:10px;
+    /* Plans cards (gros comme “avant”) */
+    .plans{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0,1fr));
+      gap:12px;
     }
-    .sectionTitle h2{margin:0;font-size:16px}
-    .sectionTitle small{color:var(--muted);font-weight:600}
-
-    /* Plans */
-    .plans{display:grid;grid-template-columns:1fr;gap:12px}
-    @media (min-width: 760px){
-      .plans{grid-template-columns:repeat(3,1fr)}
-    }
+    @media (max-width: 980px){ .plans{grid-template-columns:1fr} }
 
     .plan{
+      background:var(--panel2);
       border:1px solid var(--border);
-      border-radius:18px;
-      padding:14px;
-      background:rgba(255,255,255,.40);
+      border-radius:var(--radius);
+      padding:18px;
+      min-height:190px;
+      display:flex;flex-direction:column;gap:10px;
+      cursor:pointer;
+      transition: transform .12s ease, border-color .12s ease;
     }
-    @media (prefers-color-scheme: dark){
-      .plan{background:rgba(2,6,23,.28)}
+    .plan:hover{transform:translateY(-2px);border-color:rgba(47,91,255,.35)}
+    .plan.active{
+      border-color:rgba(47,91,255,.55);
+      box-shadow:0 0 0 4px rgba(47,91,255,.16);
     }
-    .plan.active{outline:3px solid rgba(47,91,255,.28)}
-    @media (prefers-color-scheme: dark){
-      .plan.active{outline:3px solid rgba(167,139,250,.25)}
-    }
-
-    .planTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-    .planName{font-size:16px;font-weight:800}
-    .planPrice{font-size:28px;font-weight:900;letter-spacing:-.03em}
-    .planPrice span{font-size:12px;font-weight:800;color:var(--muted)}
-    .features{margin:10px 0 0;padding:0 0 0 16px;color:var(--muted);line-height:1.65;font-weight:600}
-    .tag{
-      display:inline-flex;align-items:center;gap:6px;
-      font-size:12px;font-weight:800;
+    .planTop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+    .planName{font-size:18px;font-weight:800}
+    .planPrice{font-size:28px;font-weight:900;letter-spacing:-.02em}
+    .planPrice small{font-size:13px;color:var(--muted);font-weight:800}
+    .badge{
+      display:inline-flex;align-items:center;
       padding:6px 10px;border-radius:999px;
-      background:var(--chip);color:var(--chipText);
-      border:1px solid rgba(47,91,255,.18);
-      margin-top:10px;
+      border:1px solid var(--border);
+      font-size:12px;font-weight:800;
+      color:var(--muted);
+      background:rgba(255,255,255,.06);
     }
+    @media (prefers-color-scheme: light){
+      .badge{background:rgba(15,23,42,.04)}
+    }
+    .ul{margin:0;padding-left:16px;color:var(--muted);font-size:13.5px;line-height:1.55}
+    .ul li{margin:4px 0}
 
     /* Add-ons list */
-    .addons{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
+    .addons{display:flex;flex-direction:column;gap:10px}
     .addon{
-      display:grid;
-      grid-template-columns: 1fr auto;
-      gap:10px;
+      background:var(--panel2);
       border:1px solid var(--border);
-      border-radius:16px;
-      padding:12px;
-      background:rgba(255,255,255,.40);
-      align-items:center;
+      border-radius:var(--radius);
+      padding:14px;
+      display:flex;align-items:center;justify-content:space-between;gap:14px;
     }
-    @media (prefers-color-scheme: dark){
-      .addon{background:rgba(2,6,23,.28)}
-    }
-
-    .addon h3{margin:0;font-size:14px;font-weight:900}
-    .addon p{margin:4px 0 0;color:var(--muted);font-size:12.5px;line-height:1.45}
-    .metaRow{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
-    .keyChip{
-      font-size:12px;font-weight:900;
+    .addonLeft{min-width:0}
+    .addonName{font-weight:900}
+    .addonDesc{color:var(--muted);font-size:13px;margin-top:3px}
+    .addonKey{
+      display:inline-flex;
+      margin-top:8px;
       padding:6px 10px;border-radius:999px;
-      background:var(--chip);color:var(--chipText);
-      border:1px solid rgba(167,139,250,.18);
+      background:var(--violet);
+      color:var(--violetText);
+      font-weight:900;font-size:12px;
+      border:1px solid rgba(167,139,250,.25);
     }
-    .priceLabel{
-      font-size:12px;font-weight:900;color:var(--muted);
-      padding:6px 10px;border-radius:999px;border:1px solid var(--border);
-      background:rgba(255,255,255,.35);
-    }
-    @media (prefers-color-scheme: dark){
-      .priceLabel{background:rgba(2,6,23,.25)}
-    }
+    .addonRight{display:flex;align-items:center;gap:12px;flex-shrink:0}
+    .addonPrice{font-weight:900;white-space:nowrap}
 
-    .controls{display:flex;align-items:center;gap:8px;justify-content:flex-end}
-    .check{
-      width:18px;height:18px;
-      accent-color: var(--primary);
-      cursor:pointer;
-    }
-
-    /* ✅ Select quantité propre sur PC */
-    .qtySelect{
-      appearance:none;
-      -webkit-appearance:none;
-      -moz-appearance:none;
-      padding:10px 42px 10px 12px;
-      border-radius:12px;
+    /* Qty stepper (beau sur PC) */
+    .qty{
+      display:inline-flex;align-items:center;
       border:1px solid var(--border);
-      background:
-        linear-gradient(180deg, rgba(255,255,255,.60), rgba(255,255,255,.35));
-      color:var(--text);
-      font-weight:800;
-      cursor:pointer;
-      min-width:120px;
-      text-align:left;
-      position:relative;
+      border-radius:14px;
+      overflow:hidden;
+      background:rgba(255,255,255,.06);
     }
-    @media (prefers-color-scheme: dark){
-      .qtySelect{
-        background: linear-gradient(180deg, rgba(2,6,23,.42), rgba(2,6,23,.26));
-        border-color:rgba(232,238,255,.14);
-      }
+    @media (prefers-color-scheme: light){
+      .qty{background:rgba(15,23,42,.04)}
     }
-    .selectWrap{position:relative}
-    .selectWrap:after{
-      content:"▾";
-      position:absolute;
-      right:14px; top:50%;
-      transform:translateY(-50%);
-      color:var(--muted);
-      font-weight:900;
-      pointer-events:none;
+    .qty button{
+      width:38px;height:38px;border:0;background:transparent;
+      color:var(--text);font-weight:900;cursor:pointer;
     }
+    .qty input{
+      width:54px;height:38px;border:0;background:transparent;
+      color:var(--text);text-align:center;font-weight:900;
+      outline:none;
+      -moz-appearance:textfield;
+    }
+    .qty input::-webkit-outer-spin-button,
+    .qty input::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
 
-    /* Right column sticky */
-    .sticky{
-      position:sticky;
-      top:14px;
-      display:grid;
-      gap:12px;
+    /* Summary sticky (comble le “trou” avec un bloc info en dessous) */
+    .sticky{position:sticky;top:16px;display:flex;flex-direction:column;gap:12px}
+    @media (max-width:980px){ .sticky{position:static} }
+
+    .rowLine{display:flex;justify-content:space-between;gap:12px;margin:10px 0;color:var(--muted);font-weight:700}
+    .rowLine b{color:var(--text)}
+    .sep{height:1px;background:rgba(255,255,255,.10);margin:10px 0}
+    @media (prefers-color-scheme: light){
+      .sep{background:rgba(15,23,42,.10)}
     }
 
     .btn{
       width:100%;
-      border:0;
-      border-radius:14px;
       padding:12px 14px;
-      font-weight:900;
-      cursor:pointer;
-      color:#fff;
-      background:linear-gradient(180deg, var(--primary), #2449ff);
+      border-radius:14px;
+      border:0;
+      background:linear-gradient(180deg,var(--blue1),var(--blue2));
+      color:white;font-weight:900;cursor:pointer;
     }
-    .btn.secondary{
-      background:transparent;
-      color:var(--text);
+    .btnGhost{
+      width:100%;
+      padding:11px 14px;
+      border-radius:14px;
       border:1px solid var(--border);
-      box-shadow:none;
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      font-weight:900;cursor:pointer;
+    }
+    @media (prefers-color-scheme: light){
+      .btnGhost{background:rgba(15,23,42,.04)}
     }
 
-    .summaryLine{
-      display:flex;align-items:center;justify-content:space-between;
-      gap:10px;
-      padding:10px 0;
-      border-bottom:1px solid var(--border);
-      font-weight:800;
-    }
-    .summaryLine:last-child{border-bottom:0}
-    .muted{color:var(--muted);font-weight:700}
-    .list{margin:8px 0 0;padding-left:18px;color:var(--muted);line-height:1.65;font-weight:600}
-
-    .hint{
-      font-size:12.5px;color:var(--muted);line-height:1.55;margin:0;
-    }
+    .note{color:var(--muted);font-size:12.5px;line-height:1.45}
   </style>
 </head>
+
 <body>
   <div class="wrap">
+
     <div class="topbar">
+      <!-- LOGO SEUL -->
       <div class="brand">
-        <!-- ✅ logo seul -->
-        <img class="brandLogo" src="/assets/flowpoint-logo.png" alt="FlowPoint" />
+        <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint">
       </div>
-      <div class="pill" id="authState">Statut : …</div>
+
+      <div style="display:flex;gap:10px;align-items:center">
+        <span id="statusPill" class="pill">Statut : …</span>
+        <a href="/index.html" class="pill" style="text-decoration:none">Retour accueil</a>
+      </div>
     </div>
 
     <div class="hero">
       <h1>Choisis ton plan + tes options</h1>
-      <p>Tu peux acheter un plan maintenant. Les add-ons payants se gèrent ensuite dans le <b>Customer Portal Stripe</b> via “Gérer mes add-ons”.</p>
+      <p>Tu peux acheter un plan maintenant. Les add-ons payants se gèrent ensuite dans le Customer Portal Stripe.</p>
     </div>
 
     <div class="grid">
-      <!-- LEFT -->
-      <div class="card">
-        <div class="sectionTitle">
-          <h2>Plans</h2>
-          <small>Essai 14 jours via Stripe</small>
+      <!-- COLONNE GAUCHE -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+
+        <div class="card">
+          <div class="cardTitle">
+            <h2>Plans</h2>
+            <div class="sub">Essai 14 jours via Stripe.</div>
+          </div>
+
+          <div id="plans" class="plans"><!-- rempli par JS --></div>
         </div>
 
-        <div class="plans" id="plans"></div>
+        <div class="card">
+          <div class="cardTitle">
+            <h2>Add-ons</h2>
+            <div class="sub">Keys (en violet) + préférence enregistrée</div>
+          </div>
 
-        <div style="height:12px"></div>
-
-        <div class="sectionTitle">
-          <h2>Add-ons</h2>
-          <small>Keys (en violet) + préférence enregistrée</small>
+          <div id="addonsList" class="addons"><!-- rempli par JS --></div>
         </div>
 
-        <div class="addons" id="addons"></div>
       </div>
 
-      <!-- RIGHT -->
+      <!-- COLONNE DROITE -->
       <div class="sticky">
         <div class="card">
-          <div class="sectionTitle">
+          <div class="cardTitle">
             <h2>Résumé</h2>
-            <small id="sumPlan">—</small>
+            <div class="sub">Plan + options</div>
           </div>
 
-          <div class="summaryLine">
-            <div class="muted">Plan</div>
-            <div id="sumPlanName">—</div>
+          <div class="rowLine"><span>Plan</span><b id="sumPlan">—</b></div>
+          <div class="rowLine"><span>Prix plan</span><b id="sumPlanPrice">—</b></div>
+
+          <div class="sep"></div>
+
+          <div class="rowLine"><span>White label</span><b id="sumWhiteLabel">Inclus (gratuit)</b></div>
+          <div class="rowLine"><span>Add-ons</span><b id="sumAddons">—</b></div>
+
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+            <button id="btnCheckout" class="btn">Continuer (Checkout Plan)</button>
+            <button id="btnPortal" class="btnGhost">Gérer mes add-ons</button>
           </div>
 
-          <div class="summaryLine">
-            <div class="muted">Prix plan</div>
-            <div id="sumPlanPrice">—</div>
-          </div>
-
-          <div class="summaryLine">
-            <div class="muted">White label</div>
-            <div><span class="keyChip">whiteLabel</span> <span class="muted">(inclus / gratuit)</span></div>
-          </div>
-
-          <div style="margin-top:10px;display:grid;gap:10px">
-            <button class="btn" id="btnCheckout">Continuer (Checkout Plan)</button>
-            <button class="btn secondary" id="btnPortal">Gérer mes add-ons</button>
-          </div>
-
-          <p class="hint" style="margin-top:10px">
+          <p class="note" style="margin-top:10px">
             Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (le plan sera pré-sélectionné).
           </p>
         </div>
 
-        <!-- ✅ “bouche le trou” avec une carte utile -->
+        <!-- Bloc qui “bouche le trou” proprement -->
         <div class="card">
-          <div class="sectionTitle">
+          <div class="cardTitle">
             <h2>Info</h2>
-            <small>Simple</small>
+            <div class="sub">Fonctionnement</div>
           </div>
-          <ul class="list">
-            <li>Ton plan fixe les quotas de base (audits / monitors / PDF / exports).</li>
-            <li>Les add-ons payants sont modifiables à tout moment dans le portail Stripe.</li>
-            <li>Sur cette page, on enregistre juste ta préférence (UI) via <b>localStorage</b>.</li>
+          <ul class="ul" style="margin:0">
+            <li>Ton plan fixe les quotas (audits / monitors / PDFs / exports).</li>
+            <li>Les add-ons payants se modifient ensuite dans le portail Stripe.</li>
+            <li>Ici, tu enregistres juste une préférence UI (localStorage).</li>
           </ul>
         </div>
+
       </div>
     </div>
   </div>
