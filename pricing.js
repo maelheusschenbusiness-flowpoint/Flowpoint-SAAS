@@ -4,20 +4,22 @@
 // - On sauvegarde la sélection add-ons en localStorage (préférence UI)
 
 (() => {
-  const TOKEN_KEYS = ["token", "fp_token"];      // compat
+  const TOKEN_KEYS = ["token", "fp_token"];
   const ADDON_PREF_KEY = "fp_addon_prefs";
   const PLAN_PREF_KEY  = "fp_plan_pref";
 
   const $ = (q) => document.querySelector(q);
 
-  const authState = $("#authState");
-  const plansEl = $("#plans");
-  const addonsEl = $("#addons");
+  const authState     = $("#authState");
+  const plansEl       = $("#plans");
+  const addonsEl      = $("#addons");
 
-  const sumPlanName = $("#sumPlanName");
-  const sumPlanPrice = $("#sumPlanPrice");
-  const btnCheckout = $("#btnCheckout");
-  const btnPortal = $("#btnPortal");
+  const sumPlanName   = $("#sumPlanName");
+  const sumPlanPrice  = $("#sumPlanPrice");
+  const sumAddons     = $("#sumAddons");
+
+  const btnCheckout   = $("#btnCheckout");
+  const btnPortal     = $("#btnPortal");
 
   function getToken() {
     for (const k of TOKEN_KEYS) {
@@ -29,7 +31,7 @@
 
   function setAuthBadge() {
     const tok = getToken();
-    authState.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
+    if (authState) authState.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
   }
 
   function loadPrefs() {
@@ -39,62 +41,51 @@
     return { plan, addons };
   }
 
-  function savePrefs(next) {
-    localStorage.setItem(PLAN_PREF_KEY, next.plan);
-    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(next.addons || {}));
+  function savePrefs(state) {
+    localStorage.setItem(PLAN_PREF_KEY, state.plan);
+    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(state.addons || {}));
   }
 
-  // ✅ Plans (tes prix UI)
+  // Plans UI
   const PLANS = [
-    {
-      id: "standard",
-      name: "Standard",
-      priceLabel: "29€",
-      per: "/ mois",
-      features: ["30 audits / mois", "3 monitors actifs", "30 PDFs + 30 exports"],
-    },
-    {
-      id: "pro",
-      name: "Pro",
-      priceLabel: "79€",
-      per: "/ mois",
-      tag: "Populaire",
-      features: ["300 audits / mois", "50 monitors actifs", "300 PDFs + 300 exports"],
-    },
-    {
-      id: "ultra",
-      name: "Ultra",
-      priceLabel: "149€",
-      per: "/ mois",
-      tag: "Team",
-      features: ["2000 audits / mois", "300 monitors actifs", "2000 PDFs + 2000 exports", "10 seats inclus"],
-    },
+    { id: "standard", name: "Standard", priceLabel: "29€",  per: "/ mois",
+      features: ["30 audits / mois", "3 monitors actifs", "30 PDFs + 30 exports"] },
+    { id: "pro", name: "Pro", priceLabel: "79€", per: "/ mois", tag: "Populaire",
+      features: ["300 audits / mois", "50 monitors actifs", "300 PDFs + 300 exports"] },
+    { id: "ultra", name: "Ultra", priceLabel: "149€", per: "/ mois", tag: "Team",
+      features: ["2000 audits / mois", "300 monitors actifs", "2000 PDFs + 2000 exports", "10 seats inclus"] },
   ];
 
-  // ✅ Add-ons affichés (préférences UI)
-  // IMPORTANT: le vrai achat/gestion se fait dans le portail Stripe
+  // Add-ons UI (préférences uniquement)
   const ADDONS = [
-    { key: "monitorsPack50",   name: "Monitors Pack +50",   desc: "Ajoute +50 monitors actifs au quota du plan.", price: "19€ / mois", type: "qty", max: 10 },
-    { key: "extraSeat",        name: "Extra Seat",          desc: "Ajoute des seats (membres) à ton organisation.", price: "7€ / mois", type: "qty", max: 50 },
+    { key: "monitorsPack50",   name: "Monitors Pack +50",   desc: "Ajoute +50 monitors actifs au quota du plan.", price: "19€ / mois", type: "qty",  max: 10 },
+    { key: "extraSeat",        name: "Extra Seat",          desc: "Ajoute des seats (membres) à ton organisation.", price: "7€ / mois",  type: "qty",  max: 50 },
 
-    { key: "retention90d",     name: "Retention +90 days",  desc: "Rétention des données étendue à 90 jours.",      price: "9€ / mois", type: "flag", defaultOn: false },
+    { key: "retention90d",     name: "Retention +90 days",  desc: "Rétention des données étendue à 90 jours.",      price: "9€ / mois",  type: "flag", defaultOn: false },
     { key: "retention365d",    name: "Retention +365 days", desc: "Rétention des données étendue à 365 jours.",     price: "19€ / mois", type: "flag", defaultOn: false },
 
-    { key: "auditsPack200",    name: "Audits Pack +200",    desc: "+200 audits / mois.",                            price: "9€ / mois", type: "flag", defaultOn: false },
+    { key: "auditsPack200",    name: "Audits Pack +200",    desc: "+200 audits / mois.",                            price: "9€ / mois",  type: "flag", defaultOn: false },
     { key: "auditsPack1000",   name: "Audits Pack +1000",   desc: "+1000 audits / mois.",                           price: "29€ / mois", type: "flag", defaultOn: false },
 
-    { key: "pdfPack200",       name: "PDF Pack +200",       desc: "+200 PDFs / mois.",                              price: "9€ / mois", type: "flag", defaultOn: false },
+    { key: "pdfPack200",       name: "PDF Pack +200",       desc: "+200 PDFs / mois.",                              price: "9€ / mois",  type: "flag", defaultOn: false },
     { key: "exportsPack1000",  name: "Exports Pack +1000",  desc: "+1000 exports / mois.",                          price: "19€ / mois", type: "flag", defaultOn: false },
 
-    { key: "prioritySupport",  name: "Priority Support",    desc: "Support prioritaire.",                            price: "29€ / mois", type: "flag", defaultOn: false },
-    { key: "customDomain",     name: "Custom Domain",       desc: "Utilise ton propre domaine.",                     price: "9€ / mois", type: "flag", defaultOn: false },
+    { key: "prioritySupport",  name: "Priority Support",    desc: "Support prioritaire.",                           price: "29€ / mois", type: "flag", defaultOn: false },
+    { key: "customDomain",     name: "Custom Domain",       desc: "Utilise ton propre domaine.",                    price: "9€ / mois",  type: "flag", defaultOn: false },
 
-    // ✅ whiteLabel gratuit / inclus
-    { key: "whiteLabel",       name: "White label",         desc: "Marque blanche (inclus).",                        price: "Inclus",     type: "flag", defaultOn: true, lockedOn: true },
+    // inclus
+    { key: "whiteLabel",       name: "White label",         desc: "Marque blanche (inclus).",                       price: "Inclus",     type: "flag", defaultOn: true, lockedOn: true },
   ];
+
+  function clamp(n, min, max){
+    n = Number(n || 0);
+    if (Number.isNaN(n)) n = 0;
+    return Math.max(min, Math.min(max, n));
+  }
 
   function renderPlans(state) {
     plansEl.innerHTML = "";
+
     for (const p of PLANS) {
       const div = document.createElement("div");
       div.className = "plan" + (state.plan === p.id ? " active" : "");
@@ -118,7 +109,8 @@
       div.addEventListener("click", () => {
         state.plan = p.id;
         savePrefs(state);
-        renderAll(state);
+        renderSummary(state);
+        renderPlans(state);
       });
 
       div.addEventListener("keydown", (e) => {
@@ -129,129 +121,86 @@
     }
   }
 
-  function qtyOptions(max) {
-    const opts = [];
-    for (let i=0;i<=max;i++){
-      opts.push(`<option value="${i}">Qté ${i}</option>`);
-    }
-    return opts.join("");
-  }
-
-function renderAddons(addons, state) {
-  const root = document.getElementById("addonsList");
-  root.innerHTML = "";
-
-  for (const a of addons) {
-    const qty = Number(state.addons?.[a.key] || 0);
-
-    const el = document.createElement("div");
-    el.className = "addon";
-    el.innerHTML = `
-      <div class="addonLeft">
-        <div class="addonName">${a.name}</div>
-        <div class="addonDesc">${a.desc || ""}</div>
-        <div class="addonKey">${a.key}</div>
-      </div>
-
-      <div class="addonRight">
-        <div class="addonPrice">${a.priceLabel || ""}</div>
-
-        <div class="qty" data-key="${a.key}">
-          <button type="button" data-act="dec">−</button>
-          <input type="number" min="0" max="${a.max ?? 999}" step="1" value="${qty}" inputmode="numeric">
-          <button type="button" data-act="inc">+</button>
-        </div>
-      </div>
-    `;
-
-    // events
-    const wrap = el.querySelector(".qty");
-    const input = wrap.querySelector("input");
-
-    function setVal(v){
-      const max = Number(a.max ?? 999);
-      const nv = Math.max(0, Math.min(max, Number(v || 0)));
-      input.value = String(nv);
-
-      state.addons = state.addons || {};
-      state.addons[a.key] = nv;
-
-      savePrefs(state);     // <= ta fonction localStorage
-      updateSummary(state); // <= ta fonction résumé
-    }
-
-    wrap.addEventListener("click", (e) => {
-      const act = e.target?.dataset?.act;
-      if (!act) return;
-      const cur = Number(input.value || 0);
-      setVal(act === "inc" ? cur + 1 : cur - 1);
-    });
-
-    input.addEventListener("change", () => setVal(input.value));
-    input.addEventListener("input", () => {
-      // évite les valeurs vides bizarres
-      if (input.value === "") return;
-      setVal(input.value);
-    });
-
-    root.appendChild(el);
-  }
-}
+  function renderAddons(state) {
     // whiteLabel forcé ON
     state.addons.whiteLabel = true;
 
     addonsEl.innerHTML = "";
+
     for (const a of ADDONS) {
       const row = document.createElement("div");
       row.className = "addon";
 
       const left = document.createElement("div");
+      left.className = "addonLeft";
       left.innerHTML = `
-        <h3>${a.name}</h3>
-        <p>${a.desc}</p>
-        <div class="metaRow">
+        <div class="addonName">${a.name}</div>
+        <div class="addonDesc">${a.desc || ""}</div>
+        <div class="addonMeta">
           <span class="keyChip">${a.key}</span>
           <span class="priceLabel">${a.price}</span>
         </div>
       `;
 
       const right = document.createElement("div");
-      right.className = "controls";
+      right.className = "addonRight";
 
       if (a.type === "qty") {
+        const max = Number(a.max ?? 999);
+        const cur = clamp(state.addons[a.key] ?? 0, 0, max);
+
         const wrap = document.createElement("div");
-        wrap.className = "selectWrap";
+        wrap.className = "qtyStepper";
+        wrap.innerHTML = `
+          <button type="button" class="stepBtn" data-act="dec" aria-label="Diminuer">−</button>
+          <input class="stepInput" type="number" min="0" max="${max}" step="1" value="${cur}" inputmode="numeric" />
+          <button type="button" class="stepBtn" data-act="inc" aria-label="Augmenter">+</button>
+        `;
 
-        const sel = document.createElement("select");
-        sel.className = "qtySelect";
-        sel.innerHTML = qtyOptions(a.max || 20);
-        sel.value = String(state.addons[a.key] || 0);
+        const input = wrap.querySelector("input");
 
-        sel.addEventListener("change", () => {
-          state.addons[a.key] = parseInt(sel.value, 10) || 0;
+        const setVal = (v) => {
+          const nv = clamp(v, 0, max);
+          input.value = String(nv);
+          state.addons[a.key] = nv;
           savePrefs(state);
+          renderSummary(state);
+        };
+
+        wrap.addEventListener("click", (e) => {
+          const act = e.target?.dataset?.act;
+          if (!act) return;
+          const c = Number(input.value || 0);
+          setVal(act === "inc" ? c + 1 : c - 1);
         });
 
-        wrap.appendChild(sel);
+        input.addEventListener("change", () => setVal(input.value));
+        input.addEventListener("input", () => {
+          if (input.value === "") return;
+          setVal(input.value);
+        });
+
         right.appendChild(wrap);
       } else {
-        const chk = document.createElement("input");
-        chk.type = "checkbox";
-        chk.className = "check";
-        chk.checked = !!state.addons[a.key];
+        const isOn = a.lockedOn ? true : !!state.addons[a.key];
+        state.addons[a.key] = isOn;
 
-        if (a.lockedOn) {
-          chk.disabled = true;
-          chk.checked = true;
-        }
+        const sw = document.createElement("label");
+        sw.className = "switch";
+        sw.innerHTML = `
+          <input type="checkbox" ${isOn ? "checked" : ""} ${a.lockedOn ? "disabled" : ""}>
+          <span class="slider"></span>
+        `;
 
+        const chk = sw.querySelector("input");
         chk.addEventListener("change", () => {
           state.addons[a.key] = !!chk.checked;
           if (a.key === "whiteLabel") state.addons.whiteLabel = true;
           savePrefs(state);
+          renderSummary(state);
         });
 
-        right.appendChild(chk);
+        right.appendChild(sw);
       }
 
       row.appendChild(left);
@@ -264,14 +213,29 @@ function renderAddons(addons, state) {
 
   function renderSummary(state) {
     const p = PLANS.find(x => x.id === state.plan) || PLANS[1];
-    sumPlanName.textContent = p.name.toUpperCase();
-    sumPlanPrice.textContent = `${p.priceLabel} ${p.per}`;
+    if (sumPlanName)  sumPlanName.textContent = p.name.toUpperCase();
+    if (sumPlanPrice) sumPlanPrice.textContent = `${p.priceLabel} ${p.per}`;
+
+    if (sumAddons) {
+      const lines = [];
+
+      for (const a of ADDONS) {
+        if (a.type === "qty") {
+          const q = Number(state.addons?.[a.key] || 0);
+          if (q > 0) lines.push(`${a.name} ×${q}`);
+        } else {
+          const on = !!state.addons?.[a.key];
+          if (on) lines.push(a.lockedOn ? `${a.name} (inclus)` : a.name);
+        }
+      }
+
+      sumAddons.textContent = lines.length ? lines.join(" • ") : "—";
+    }
   }
 
   async function goCheckout(state) {
     const tok = getToken();
     if (!tok) {
-      // si pas connecté => renvoyer à l'inscription en pré-sélectionnant le plan
       localStorage.setItem(PLAN_PREF_KEY, state.plan);
       window.location.href = "/index.html";
       return;
@@ -335,7 +299,6 @@ function renderAddons(addons, state) {
 
   // init
   const state = loadPrefs();
-  // hard safety
   if (!["standard","pro","ultra"].includes(state.plan)) state.plan = "pro";
   if (!state.addons || typeof state.addons !== "object") state.addons = {};
   state.addons.whiteLabel = true;
