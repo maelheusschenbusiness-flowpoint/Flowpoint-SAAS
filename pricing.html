@@ -62,16 +62,12 @@
     }
     .brand{display:flex;align-items:center;gap:12px;}
 
-    /* ✅ logo seul + plus grand */
-    .brandLogo{
-      width:64px;height:64px;
-      padding:14px;
-      border-radius:18px;
-      background:rgba(47,91,255,.10);
-      border:1px solid rgba(47,91,255,.18);
-      display:block;
-      object-fit:contain;
-    }
+<div class="brand">
+  <div class="logoBox">
+    <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
+         onerror="this.src='/assets/flowpoint-logo.png'">
+  </div>
+</div>
 
     .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
     .pill{
