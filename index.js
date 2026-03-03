@@ -1221,10 +1221,15 @@ const stripeModule = buildStripeModule({
   Org,
   sendEmail,
 });
-app.post("/api/stripe/checkout-embedded", auth, requireActive, stripeModule.checkoutEmbedded);
 // Webhook RAW (avant parsers JSON)
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeModule.webhookHandler);
-
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+// ---------- STRIPE ROUTES (via stripe.js) ----------
+app.post("/api/stripe/checkout", auth, requireActive, stripeModule.checkoutPlan);
+app.post("/api/stripe/checkout-embedded", auth, requireActive, stripeModule.checkoutEmbedded);
+app.get("/api/stripe/verify", stripeModule.verifyCheckout);
+app.post("/api/stripe/portal", auth, requireActive, stripeModule.customerPortal);
 // ---------- SECURITY / PARSERS ----------
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: false }));
