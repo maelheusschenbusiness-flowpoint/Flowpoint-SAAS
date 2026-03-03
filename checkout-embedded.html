@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Checkout</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#0b1020;color:#eaf0ff;}
+    .wrap{max-width:960px;margin:0 auto;padding:24px;}
+    .card{background:#0f1733;border:1px solid rgba(255,255,255,.10);border-radius:18px;padding:18px;}
+    .muted{color:rgba(234,240,255,.70);font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 style="margin:0 0 8px">Finaliser</h1>
+    <div class="muted" style="margin-bottom:16px">Paiement sécurisé via Stripe</div>
+    <div class="card">
+      <div id="checkout"></div>
+    </div>
+  </div>
+
+  <script>
+    // ✅ Mets ta publishable key
+    const stripe = Stripe("pk_live_xxx");
+
+    // Exemple: tu récupères ce que l’utilisateur a choisi sur pricing
+    // (toi: remplace par ton vrai state)
+    const selection = {
+      plan: "standard", // ou null si déjà abonné et tu veux juste des add-ons
+      addons: {
+        auditsPack1000: 1,
+        customDomain: true
+      }
+    };
+
+    async function initialize() {
+      const fetchClientSecret = async () => {
+        const token = localStorage.getItem("token"); // si tu stockes le JWT
+        const res = await fetch("/api/stripe/checkout-embedded", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": token ? `Bearer ${token}` : ""
+          },
+          body: JSON.stringify(selection)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || "checkout error");
+        return data.clientSecret;
+      };
+
+      const checkout = await stripe.initEmbeddedCheckout({ fetchClientSecret });
+      checkout.mount("#checkout");
+    }
+
+    initialize().catch(err => {
+      document.getElementById("checkout").innerHTML =
+        `<div style="padding:12px">Erreur: ${String(err.message || err)}</div>`;
+    });
+  </script>
+</body>
+</html>
