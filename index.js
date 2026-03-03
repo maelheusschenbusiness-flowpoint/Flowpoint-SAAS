@@ -1891,5 +1891,21 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- KEEP ALIVE (empêche le cold start Render) ----------
+if (process.env.RENDER) {
+  const SELF_URL = process.env.PUBLIC_BASE_URL;
+
+  if (SELF_URL) {
+    setInterval(async () => {
+      try {
+        await fetch(`${SELF_URL}/api/health`);
+        console.log("🔁 Keep alive ping");
+      } catch (e) {
+        console.log("Keep alive failed:", e.message);
+      }
+    }, 1000 * 60 * 5); // toutes les 5 minutes
+  }
+}
+
 // ---------- START ----------
 app.listen(PORT, () => console.log(`✅ ${BRAND_NAME} lancé sur port ${PORT}`));
