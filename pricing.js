@@ -51,7 +51,8 @@
     localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(state.addons || {}));
   }
 
-  // ✅ Plans (UI)
+  // ✅ Plans (UI) — + de features “vendeuses”
+  // NOTE: c'est de l'UI, pas un contrat technique. Les quotas restent les mêmes.
   const PLANS = [
     {
       id: "standard",
@@ -59,7 +60,14 @@
       priceLabel: "29€",
       per: "/ mois",
       tag: "Pour démarrer",
-      features: ["30 audits / mois", "3 monitors actifs", "30 PDFs + 30 exports"],
+      features: [
+        "30 audits / mois (SEO instantané)",
+        "3 monitors actifs (uptime)",
+        "30 PDFs + 30 exports (CSV)",
+        "Rapports partageables (clients / équipe)",
+        "Alertes email + historique de base",
+        "White label inclus (gratuit)",
+      ],
     },
     {
       id: "pro",
@@ -67,7 +75,14 @@
       priceLabel: "79€",
       per: "/ mois",
       tag: "Populaire",
-      features: ["300 audits / mois", "50 monitors actifs", "300 PDFs + 300 exports"],
+      features: [
+        "300 audits / mois (optimisation continue)",
+        "50 monitors actifs + logs",
+        "300 PDFs + 300 exports (CSV)",
+        "Pages de rapports + partage client",
+        "Alertes email + incidents",
+        "White label inclus (gratuit)",
+      ],
     },
     {
       id: "ultra",
@@ -75,36 +90,132 @@
       priceLabel: "149€",
       per: "/ mois",
       tag: "Team",
-      features: ["2000 audits / mois", "300 monitors actifs", "2000 PDFs + 2000 exports", "10 seats inclus"],
+      features: [
+        "2000 audits / mois (volume)",
+        "300 monitors actifs (SLA / scalabilité)",
+        "2000 PDFs + 2000 exports (CSV)",
+        "10 seats inclus (team)",
+        "Organisation + invites + rôles (workflow équipe)",
+        "White label inclus (gratuit)",
+      ],
     },
   ];
 
-  // ✅ Add-ons (préférences UI)
+  // ✅ Add-ons (préférences UI) — cohérent avec ton backend
+  // Backend OrgSchema.billingAddons :
+  // monitorsPack50 (Number), extraSeats (Number), retention90d (Boolean), retention365d (Boolean),
+  // auditsPack200 (Number), auditsPack1000 (Number), pdfPack200 (Number), exportsPack1000 (Number),
+  // prioritySupport (Boolean), customDomain (Boolean), whiteLabel (Boolean always true)
   const ADDONS = [
-    { key: "monitorsPack50",   name: "Monitors Pack +50",   desc: "Ajoute +50 monitors actifs au quota du plan.", price: "19€ / mois", type: "qty", max: 10 },
-    { key: "extraSeat",        name: "Extra Seat",          desc: "Ajoute des seats (membres) à ton organisation.", price: "7€ / mois", type: "qty", max: 50 },
+    {
+      key: "monitorsPack50",
+      name: "Monitors Pack +50",
+      desc: "Ajoute +50 monitors actifs au quota du plan (idéal quand tu scales).",
+      price: "19€ / mois",
+      type: "qty",
+      max: 10,
+      unitLabel: "+50 monitors",
+    },
+    {
+      key: "extraSeats",
+      name: "Extra Seats",
+      desc: "Ajoute des seats (membres) à ton organisation (collaboration équipe).",
+      price: "7€ / mois",
+      type: "qty",
+      max: 50,
+      unitLabel: "seat",
+    },
 
-    { key: "retention90d",     name: "Retention +90 days",  desc: "Rétention des données étendue à 90 jours.",      price: "9€ / mois", type: "flag", defaultOn: false },
-    { key: "retention365d",    name: "Retention +365 days", desc: "Rétention des données étendue à 365 jours.",     price: "19€ / mois", type: "flag", defaultOn: false },
+    {
+      key: "retention90d",
+      name: "Retention +90 days",
+      desc: "Rétention des données étendue à 90 jours (plus d’historique).",
+      price: "9€ / mois",
+      type: "flag",
+      defaultOn: false,
+    },
+    {
+      key: "retention365d",
+      name: "Retention +365 days",
+      desc: "Rétention des données étendue à 365 jours (idéal reporting annuel).",
+      price: "19€ / mois",
+      type: "flag",
+      defaultOn: false,
+    },
 
-    { key: "auditsPack200",    name: "Audits Pack +200",    desc: "+200 audits / mois.",                            price: "9€ / mois", type: "flag", defaultOn: false },
-    { key: "auditsPack1000",   name: "Audits Pack +1000",   desc: "+1000 audits / mois.",                           price: "29€ / mois", type: "flag", defaultOn: false },
+    // Packs => NUMÉRIQUES (cohérent avec le backend)
+    {
+      key: "auditsPack200",
+      name: "Audits Pack +200",
+      desc: "Ajoute +200 audits / mois (en plus du plan).",
+      price: "9€ / mois",
+      type: "qty",
+      max: 50,
+      unitLabel: "+200 audits",
+    },
+    {
+      key: "auditsPack1000",
+      name: "Audits Pack +1000",
+      desc: "Ajoute +1000 audits / mois (gros volume).",
+      price: "29€ / mois",
+      type: "qty",
+      max: 20,
+      unitLabel: "+1000 audits",
+    },
 
-    { key: "pdfPack200",       name: "PDF Pack +200",       desc: "+200 PDFs / mois.",                              price: "9€ / mois", type: "flag", defaultOn: false },
-    { key: "exportsPack1000",  name: "Exports Pack +1000",  desc: "+1000 exports / mois.",                          price: "19€ / mois", type: "flag", defaultOn: false },
+    {
+      key: "pdfPack200",
+      name: "PDF Pack +200",
+      desc: "Ajoute +200 PDFs / mois (rapports clients).",
+      price: "9€ / mois",
+      type: "qty",
+      max: 50,
+      unitLabel: "+200 PDFs",
+    },
+    {
+      key: "exportsPack1000",
+      name: "Exports Pack +1000",
+      desc: "Ajoute +1000 exports / mois (CSV, analyses, reporting).",
+      price: "19€ / mois",
+      type: "qty",
+      max: 50,
+      unitLabel: "+1000 exports",
+    },
 
-    { key: "prioritySupport",  name: "Priority Support",    desc: "Support prioritaire.",                           price: "29€ / mois", type: "flag", defaultOn: false },
-    { key: "customDomain",     name: "Custom Domain",       desc: "Utilise ton propre domaine.",                    price: "9€ / mois", type: "flag", defaultOn: false },
+    {
+      key: "prioritySupport",
+      name: "Priority Support",
+      desc: "Support prioritaire (réponse plus rapide, meilleur suivi).",
+      price: "29€ / mois",
+      type: "flag",
+      defaultOn: false,
+    },
+    {
+      key: "customDomain",
+      name: "Custom Domain",
+      desc: "Utilise ton propre domaine (brand pro).",
+      price: "9€ / mois",
+      type: "flag",
+      defaultOn: false,
+    },
 
     // ✅ whiteLabel inclus
-    { key: "whiteLabel",       name: "White label",         desc: "Marque blanche (inclus).",                        price: "Inclus (gratuit)", type: "flag", defaultOn: true, lockedOn: true },
+    {
+      key: "whiteLabel",
+      name: "White label",
+      desc: "Marque blanche (inclus).",
+      price: "Inclus (gratuit)",
+      type: "flag",
+      defaultOn: true,
+      lockedOn: true,
+    },
   ];
 
   function ensureDefaults(state) {
     if (!["standard", "pro", "ultra"].includes(state.plan)) state.plan = "pro";
     if (!state.addons || typeof state.addons !== "object") state.addons = {};
 
-    // defaults flags
+    // defaults flags / qty
     for (const a of ADDONS) {
       if (a.type === "flag" && state.addons[a.key] === undefined) {
         state.addons[a.key] = !!a.defaultOn;
@@ -116,6 +227,12 @@
 
     // whiteLabel forcé ON
     state.addons.whiteLabel = true;
+
+    // ✅ migration ancienne clé (bug) : extraSeat -> extraSeats
+    if (state.addons.extraSeat != null && state.addons.extraSeats == null) {
+      state.addons.extraSeats = Number(state.addons.extraSeat || 0);
+      delete state.addons.extraSeat;
+    }
   }
 
   function renderPlans(state) {
@@ -247,14 +364,20 @@
     // Liste add-ons sélectionnés
     const lines = [];
     for (const a of ADDONS) {
-      if (a.key === "whiteLabel") continue; // déjà affiché séparément
+      if (a.key === "whiteLabel") continue;
+
       if (a.type === "qty") {
         const q = Number(state.addons[a.key] || 0);
-        if (q > 0) lines.push(`${a.name} × ${q}`);
+        if (q > 0) {
+          // affichage "xN" + (optionnel) label
+          if (a.unitLabel) lines.push(`${a.name} × ${q} (${a.unitLabel})`);
+          else lines.push(`${a.name} × ${q}`);
+        }
       } else {
         if (state.addons[a.key]) lines.push(a.name);
       }
     }
+
     if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
   }
 
