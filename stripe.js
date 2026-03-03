@@ -325,42 +325,61 @@ function buildStripeModule(ctx) {
   //  { plan?: "...", addons?: ... }
   // =========================================================
   async function checkoutEmbedded(req, res) {
-    try {
-      const chosenPlanRaw = req.body?.plan;
-      const chosenPlan = chosenPlanRaw ? String(chosenPlanRaw).toLowerCase() : null;
+  try {
+    const { plan, addons } = req.body;
 
-      if (chosenPlan && !["standard", "pro", "ultra"].includes(chosenPlan)) {
-        return res.status(400).json({ error: "Plan invalide" });
-      }
+    if (!["standard", "pro", "ultra"].includes(plan)) {
+      return res.status(400).json({ error: "Plan invalide" });
+    }
 
-      const user = req.dbUser;
+    const priceId = priceIdForPlan(plan);
+    if (!priceId) {
+      return res.status(400).json({ error: "Price ID manquant" });
+    }
 
-      let customerId = user.stripeCustomerId;
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: user.email,
-          name: user.companyName || user.name || undefined,
-          metadata: { uid: user._id.toString() },
-        });
-        customerId = customer.id;
-        user.stripeCustomerId = customerId;
-        await user.save();
-      }
+    const line_items = [
+      {
+        price: priceId,
+        quantity: 1,
+      },
+    ];
 
-      const lineItems = [];
+    // 🔥 ADD-ONS dynamiques
+    if (addons?.monitorsPack50) {
+      line_items.push({
+        price: process.env.STRIPE_PRICE_ADDON_MONITORS_50,
+        quantity: addons.monitorsPack50,
+      });
+    }
 
-      if (chosenPlan) {
-        const planPriceId = priceIdForPlan(chosenPlan);
-        if (!planPriceId) return res.status(500).json({ error: "PriceId plan manquant" });
-        lineItems.push({ price: planPriceId, quantity: 1 });
-      }
+    if (addons?.extraSeats) {
+      line_items.push({
+        price: process.env.STRIPE_PRICE_ADDON_SEAT,
+        quantity: addons.extraSeats,
+      });
+    }
 
-      lineItems.push(...normalizeAddonSelection(req.body?.addons));
+    if (addons?.retention90d) {
+      line_items.push({
+        price: process.env.STRIPE_PRICE_ADDON_RETENTION_90,
+        quantity: 1,
+      });
+    }
 
-      if (!lineItems.length) {
-        return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
-      }
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      ui_mode: "embedded",
+      line_items,
+      customer_email: req.dbUser.email,
+      return_url: `${safeBaseUrl(req)}/success.html`,
+    });
 
+    return res.json({ clientSecret: session.client_secret });
+  } catch (e) {
+    console.log("checkoutEmbedded error:", e.message);
+    return res.status(500).json({ error: "Erreur checkout embedded" });
+  }
+}
       const baseUrl = safeBaseUrl(req);
 
       const session = await stripe.checkout.sessions.create({
