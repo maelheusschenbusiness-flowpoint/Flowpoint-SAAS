@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Retour paiement</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#0b1020;color:#eaf0ff;}
+    .wrap{max-width:760px;margin:0 auto;padding:28px;}
+    .card{background:#0f1733;border:1px solid rgba(255,255,255,.10);border-radius:18px;padding:18px;}
+    a{color:#8ab4ff}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="box">Vérification...</div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const session_id = params.get("session_id");
+
+    async function run() {
+      if (!session_id) {
+        document.getElementById("box").innerHTML = "session_id manquant";
+        return;
+      }
+      const r = await fetch(`/api/stripe/verify?session_id=${encodeURIComponent(session_id)}`);
+      const data = await r.json();
+
+      if (!r.ok) {
+        document.getElementById("box").innerHTML = `Erreur: ${data?.error || "verify failed"}`;
+        return;
+      }
+
+      // si tu veux auto-login
+      if (data.token) localStorage.setItem("token", data.token);
+
+      document.getElementById("box").innerHTML = `
+        <h2 style="margin:0 0 8px">✅ Paiement OK</h2>
+        <p style="margin:0 0 12px;opacity:.8">Ton abonnement / tes add-ons sont actifs.</p>
+        <a href="/dashboard.html">Aller au dashboard</a>
+      `;
+    }
+
+    run();
+  </script>
+</body>
+</html>
