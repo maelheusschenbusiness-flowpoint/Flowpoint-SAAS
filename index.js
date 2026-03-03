@@ -103,48 +103,29 @@ function getMailer() {
  */
 async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   try {
-    const from = process.env.ALERT_EMAIL_FROM;
-    if (!from) {
-      console.log("❌ ALERT_EMAIL_FROM manquante");
-      return { ok: false, error: "ALERT_EMAIL_FROM manquante" };
-    }
-
-    const toList = String(to || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    if (!toList.length) {
-      console.log("❌ sendEmail: destinataire manquant");
-      return { ok: false, error: "Destinataire manquant" };
-    }
-
-    const bccList = bcc
-      ? String(bcc)
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-
-    const safeSubject = String(subject || "").trim() || "Message";
-    const safeText = text ? String(text) : "";
-    const safeHtml = html ? String(html) : "";
-
     // 1) Resend API
     if (process.env.RESEND_API_KEY) {
+      const toList = String(to || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const bccList = bcc
+        ? String(bcc)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
+
       const payload = {
-        from,
+        from: process.env.ALERT_EMAIL_FROM,
         to: toList,
-        subject: safeSubject,
-        text: safeText || undefined,
-        html: safeHtml || undefined,
-        bcc: bccList.length ? bccList : undefined,
+        subject,
+        text: text || undefined,
+        html: html || undefined,
+        bcc: bccList && bccList.length ? bccList : undefined,
         attachments: attachments || undefined,
       };
-
-      // petit timeout pour éviter les requêtes qui pendent
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 15000);
 
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -153,12 +134,7 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        signal: controller.signal,
-      }).catch((e) => {
-        throw new Error(`Resend fetch error: ${e?.message || e}`);
       });
-
-      clearTimeout(t);
 
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
@@ -167,33 +143,8 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
       }
 
       console.log("✅ Email envoyé (Resend):", data?.id, "=>", toList.join(","));
-      return { ok: true, id: data?.id };
-    }
-
-    // 2) SMTP fallback
-    const t = getMailer();
-    if (!t) {
-      console.log("⚠️ SMTP non configuré, email ignoré:", safeSubject);
-      return { ok: false, skipped: true, error: "SMTP non configuré" };
-    }
-
-    const info = await t.sendMail({
-      from,
-      to: toList.join(","),
-      bcc: bccList.length ? bccList.join(",") : undefined,
-      subject: safeSubject,
-      text: safeText || undefined,
-      html: safeHtml || undefined,
-      attachments: attachments || undefined,
-    });
-
-    console.log("✅ Email envoyé (SMTP):", info.messageId, "=>", toList.join(","));
-    return { ok: true, id: info.messageId };
-  } catch (e) {
-    console.log("❌ Email error:", e?.message || e);
-    return { ok: false, error: e?.message || String(e) };
-  }
-}
+      return { ok: true };
+    } 
 // ---------- DB ----------
 mongoose
   .connect(process.env.MONGO_URI)
