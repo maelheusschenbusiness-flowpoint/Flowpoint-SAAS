@@ -107,110 +107,123 @@
   // auditsPack200 (Number), auditsPack1000 (Number), pdfPack200 (Number), exportsPack1000 (Number),
   // prioritySupport (Boolean), customDomain (Boolean), whiteLabel (Boolean always true)
   const ADDONS = [
-    {
-      key: "monitorsPack50",
-      name: "Monitors Pack +50",
-      desc: "Ajoute +50 monitors actifs au quota du plan (idéal quand tu scales).",
-      price: "19€ / mois",
-      type: "qty",
-      max: 10,
-      unitLabel: "+50 monitors",
-    },
-    {
-      key: "extraSeats",
-      name: "Extra Seats",
-      desc: "Ajoute des seats (membres) à ton organisation (collaboration équipe).",
-      price: "7€ / mois",
-      type: "qty",
-      max: 50,
-      unitLabel: "seat",
-    },
+  // 1️⃣ White label
+  {
+    key: "whiteLabel",
+    name: "White label",
+    desc: "Marque blanche (inclus).",
+    price: "Inclus (gratuit)",
+    type: "flag",
+    defaultOn: true,
+    lockedOn: true,
+  },
 
-    {
-      key: "retention90d",
-      name: "Retention +90 days",
-      desc: "Rétention des données étendue à 90 jours (plus d’historique).",
-      price: "9€ / mois",
-      type: "flag",
-      defaultOn: false,
-    },
-    {
-      key: "retention365d",
-      name: "Retention +365 days",
-      desc: "Rétention des données étendue à 365 jours (idéal reporting annuel).",
-      price: "19€ / mois",
-      type: "flag",
-      defaultOn: false,
-    },
+  // 2️⃣ Custom Domain
+  {
+    key: "customDomain",
+    name: "Custom Domain",
+    desc: "Utilise ton propre domaine (brand pro).",
+    price: "9€ / mois",
+    type: "flag",
+    defaultOn: false,
+  },
 
-    // Packs => NUMÉRIQUES (cohérent avec le backend)
-    {
-      key: "auditsPack200",
-      name: "Audits Pack +200",
-      desc: "Ajoute +200 audits / mois (en plus du plan).",
-      price: "9€ / mois",
-      type: "qty",
-      max: 50,
-      unitLabel: "+200 audits",
-    },
-    {
-      key: "auditsPack1000",
-      name: "Audits Pack +1000",
-      desc: "Ajoute +1000 audits / mois (gros volume).",
-      price: "29€ / mois",
-      type: "qty",
-      max: 20,
-      unitLabel: "+1000 audits",
-    },
+  // 3️⃣ Priority Support
+  {
+    key: "prioritySupport",
+    name: "Priority Support",
+    desc: "Support prioritaire (réponse plus rapide, meilleur suivi).",
+    price: "29€ / mois",
+    type: "flag",
+    defaultOn: false,
+  },
 
-    {
-      key: "pdfPack200",
-      name: "PDF Pack +200",
-      desc: "Ajoute +200 PDFs / mois (rapports clients).",
-      price: "9€ / mois",
-      type: "qty",
-      max: 50,
-      unitLabel: "+200 PDFs",
-    },
-    {
-      key: "exportsPack1000",
-      name: "Exports Pack +1000",
-      desc: "Ajoute +1000 exports / mois (CSV, analyses, reporting).",
-      price: "19€ / mois",
-      type: "qty",
-      max: 50,
-      unitLabel: "+1000 exports",
-    },
+  // 4️⃣ Retention +90 days
+  {
+    key: "retention90d",
+    name: "Retention +90 days",
+    desc: "Rétention des données étendue à 90 jours (plus d’historique).",
+    price: "9€ / mois",
+    type: "flag",
+    defaultOn: false,
+  },
 
-    {
-      key: "prioritySupport",
-      name: "Priority Support",
-      desc: "Support prioritaire (réponse plus rapide, meilleur suivi).",
-      price: "29€ / mois",
-      type: "flag",
-      defaultOn: false,
-    },
-    {
-      key: "customDomain",
-      name: "Custom Domain",
-      desc: "Utilise ton propre domaine (brand pro).",
-      price: "9€ / mois",
-      type: "flag",
-      defaultOn: false,
-    },
+  // 5️⃣ Retention +365 days
+  {
+    key: "retention365d",
+    name: "Retention +365 days",
+    desc: "Rétention des données étendue à 365 jours (idéal reporting annuel).",
+    price: "19€ / mois",
+    type: "flag",
+    defaultOn: false,
+  },
 
-    // ✅ whiteLabel inclus
-    {
-      key: "whiteLabel",
-      name: "White label",
-      desc: "Marque blanche (inclus).",
-      price: "Inclus (gratuit)",
-      type: "flag",
-      defaultOn: true,
-      lockedOn: true,
-    },
-  ];
+  // 6️⃣ Audits Pack +200
+  {
+    key: "auditsPack200",
+    name: "Audits Pack +200",
+    desc: "Ajoute +200 audits / mois (en plus du plan).",
+    price: "9€ / mois",
+    type: "qty",
+    max: 50,
+    unitLabel: "+200 audits",
+  },
 
+  // 7️⃣ Audits Pack +1000
+  {
+    key: "auditsPack1000",
+    name: "Audits Pack +1000",
+    desc: "Ajoute +1000 audits / mois (gros volume).",
+    price: "29€ / mois",
+    type: "qty",
+    max: 20,
+    unitLabel: "+1000 audits",
+  },
+
+  // 8️⃣ PDF Pack +200
+  {
+    key: "pdfPack200",
+    name: "PDF Pack +200",
+    desc: "Ajoute +200 PDFs / mois (rapports clients).",
+    price: "9€ / mois",
+    type: "qty",
+    max: 50,
+    unitLabel: "+200 PDFs",
+  },
+
+  // 9️⃣ Exports Pack +1000
+  {
+    key: "exportsPack1000",
+    name: "Exports Pack +1000",
+    desc: "Ajoute +1000 exports / mois (CSV, analyses, reporting).",
+    price: "19€ / mois",
+    type: "qty",
+    max: 50,
+    unitLabel: "+1000 exports",
+  },
+
+  // 🔟 Monitors Pack +50
+  {
+    key: "monitorsPack50",
+    name: "Monitors Pack +50",
+    desc: "Ajoute +50 monitors actifs au quota du plan (idéal quand tu scales).",
+    price: "19€ / mois",
+    type: "qty",
+    max: 10,
+    unitLabel: "+50 monitors",
+  },
+
+  // 1️⃣1️⃣ Extra Seats
+  {
+    key: "extraSeats",
+    name: "Extra Seats",
+    desc: "Ajoute des seats (membres) à ton organisation (collaboration équipe).",
+    price: "7€ / mois",
+    type: "qty",
+    max: 50,
+    unitLabel: "seat",
+  },
+];
   function ensureDefaults(state) {
     if (!["standard", "pro", "ultra"].includes(state.plan)) state.plan = "pro";
     if (!state.addons || typeof state.addons !== "object") state.addons = {};
