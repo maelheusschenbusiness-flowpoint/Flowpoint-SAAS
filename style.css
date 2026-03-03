@@ -696,3 +696,160 @@ input:focus, select:focus, textarea:focus{
   border-color:rgba(47,91,255,.55);
   box-shadow:0 0 0 4px rgba(47,91,255,.12);
 }
+/* =========================
+   FIX FINAL — centré + logo + PC layout
+   (COLLER TOUT EN BAS)
+========================= */
+
+/* 1) Centrage global béton (évite l’effet “collé à gauche” iOS) */
+.page{
+  width: min(1180px, 100%);
+  margin-inline: auto;
+  padding-inline: 18px;
+  padding-top: 18px;
+  padding-bottom: 44px;
+}
+
+@media (max-width: 980px){
+  .page{
+    padding-inline: 16px;
+  }
+}
+
+/* 2) Topbar centré + ne déborde pas */
+.topbar{
+  width: 100%;
+  margin-inline: auto;
+  align-items: center;
+}
+
+.brand{
+  min-width: 0;
+}
+
+/* 3) Logo pricing: plus beau + plus arrondi + plus petit sur mobile */
+.logoBox{
+  width: 64px;
+  height: 64px;
+  border-radius: 24px; /* + arrondi */
+  background: linear-gradient(180deg, #3b6bff, #2449ff);
+  box-shadow: 0 14px 44px rgba(47,91,255,.32);
+}
+
+.brandLogo{
+  width: 58%;
+  height: 58%;
+  object-fit: contain;
+  display: block;
+}
+
+@media (max-width: 520px){
+  .logoBox{
+    width: 56px;       /* moins gros sur tel */
+    height: 56px;
+    border-radius: 20px; /* + arrondi */
+    box-shadow: 0 12px 36px rgba(47,91,255,.28);
+  }
+  .brandLogo{
+    width: 56%;
+    height: 56%;
+  }
+}
+
+/* 4) Grid PC: colonne droite plus large + tout reste centré */
+.grid{
+  align-items: start;
+}
+
+@media (min-width: 981px){
+  .grid{
+    grid-template-columns: 1.35fr .90fr; /* droite + grande */
+    gap: 16px;
+  }
+}
+
+/* 5) Plans PC: cartes un peu plus grandes */
+@media (min-width: 981px){
+  .plans{
+    gap: 14px;
+  }
+  .planCard{
+    min-height: 230px;
+    padding: 18px;
+    border-radius: 20px;
+  }
+  .planName{ font-size: 19px; }
+  .price{ font-size: 32px; }
+  .features{ font-size: 13.5px; }
+}
+
+/* 6) Colonne droite: cards un peu plus “premium” (lisibilité + taille) */
+@media (min-width: 981px){
+  .side{
+    gap: 16px;
+  }
+  .cardHead{
+    padding: 16px;
+  }
+  .cardBody{
+    padding: 16px;
+  }
+}
+
+/* 7) “Inclus dans tous les plans” – style cohérent + texte lisible */
+.includedCard .cardBody{
+  gap: 12px;
+}
+.includedList{
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  font-weight: 850;
+  line-height: 1.7;
+}
+.includedList li{
+  display: flex;
+  gap: 10px;
+}
+.includedList li::before{
+  content: "•";
+  color: rgba(47,91,255,.85);
+  font-weight: 950;
+}
+.includedNote{
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+/* 8) Une “card filler” à droite pour équilibrer la hauteur (optionnel mais conseillé) */
+.sideFiller .cardBody{
+  gap: 10px;
+}
+.sideFiller .miniTitle{
+  font-weight: 950;
+  letter-spacing: -.02em;
+}
+.sideFiller .miniMuted{
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.6;
+}
+.sideFiller .miniGrid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.sideFiller .miniItem{
+  border: 1px solid var(--border);
+  background: var(--panel2);
+  border-radius: 14px;
+  padding: 10px;
+}
+.sideFiller .miniItem b{
+  display: block;
+  font-weight: 950;
+  margin-bottom: 4px;
+}
