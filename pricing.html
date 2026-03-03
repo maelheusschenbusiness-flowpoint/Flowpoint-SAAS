@@ -125,5 +125,161 @@
   </div>
 
   <script src="/pricing.js"></script>
+  <script src="https://js.stripe.com/v3/"></script>
+<script>
+  // ---- CONFIG ----
+  // Si tu fais Embedded Checkout, il faut un container :
+  // <div id="embedded-checkout"></div>
+  const stripePublicKey = "pk_live_XXXX"; // <-- mets ta clé publique Stripe
+  const stripe = Stripe(stripePublicKey);
+
+  function getToken() {
+    return localStorage.getItem("token") || "";
+  }
+
+  async function api(path, method, body) {
+    const r = await fetch(path, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${getToken()}`
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || "Erreur API");
+    return data;
+  }
+
+  function readSelectedPlan() {
+    const el = document.querySelector('input[name="plan"]:checked');
+    return el ? el.value : null;
+  }
+
+  function readAddonsFromDom() {
+    const addons = {};
+    document.querySelectorAll("[data-addon]").forEach((el) => {
+      const key = el.getAttribute("data-addon");
+      if (!key) return;
+
+      if (el.type === "checkbox") {
+        addons[key] = !!el.checked;
+        return;
+      }
+
+      // number / text => quantité
+      const n = Number(el.value);
+      if (Number.isFinite(n) && n > 0) addons[key] = Math.floor(n);
+      else addons[key] = 0; // important: 0 = supprimé côté Stripe (update subscription)
+    });
+
+    return addons;
+  }
+
+  function setMsg(text) {
+    const box = document.getElementById("pricingMsg");
+    if (box) box.textContent = text || "";
+  }
+
+  // ✅ règle "déjà abonné"
+  let currentPlan = null;
+  let isAlreadySubscribed = false;
+
+  async function initPricingState() {
+    try {
+      const me = await api("/api/me", "GET");
+      currentPlan = me.plan || null;
+
+      const st = String(me.subscriptionStatus || "").toLowerCase();
+      isAlreadySubscribed = (st === "active" || st === "trialing" || st === "past_due");
+
+      // UI: si déjà abonné, on peut désactiver les radios plan (optionnel)
+      if (isAlreadySubscribed) {
+        setMsg("Abonnement actif détecté : vous pouvez ajouter/retirer des options sans re-souscrire au plan.");
+        document.querySelectorAll('input[name="plan"]').forEach((r) => {
+          // on laisse visible mais on évite le changement si tu veux:
+          // r.disabled = true;
+          // ou mieux: pré-sélectionner le plan actuel
+          if (currentPlan && r.value === currentPlan) r.checked = true;
+        });
+      } else {
+        setMsg("");
+      }
+    } catch (e) {
+      // pas connecté / token absent
+      setMsg("Connectez-vous pour acheter un plan / des options.");
+    }
+  }
+
+  // ✅ ACHAT (Embedded Checkout)
+  async function startEmbeddedCheckout() {
+    const addons = readAddonsFromDom();
+
+    // Si déjà abonné => on n’envoie pas de plan (null) pour éviter une "re-souscription"
+    const plan = isAlreadySubscribed ? null : readSelectedPlan();
+
+    if (!plan && (!addons || Object.values(addons).every(v => !v || v === 0))) {
+      throw new Error("Sélectionne un plan ou au moins une option.");
+    }
+
+    const data = await api("/api/stripe/checkout-embedded", "POST", { plan, addons });
+
+    // ✅ Cas 1: déjà abonné => backend répond { ok:true, updated:true/false }
+    if (data && data.ok) {
+      setMsg(data.updated ? "Options mises à jour ✅" : "Aucun changement.");
+      return;
+    }
+
+    // ✅ Cas 2: nouveau => on a clientSecret
+    if (!data.clientSecret) throw new Error("clientSecret manquant");
+
+    // Stripe Embedded Checkout mount
+    const container = document.getElementById("embedded-checkout");
+    if (!container) throw new Error("Ajoute <div id='embedded-checkout'></div> dans pricing.html");
+
+    container.innerHTML = ""; // reset
+    const checkout = await stripe.initEmbeddedCheckout({ clientSecret: data.clientSecret });
+    checkout.mount("#embedded-checkout");
+  }
+
+  // ✅ ACHAT (Redirect Checkout)
+  async function startRedirectCheckout() {
+    const addons = readAddonsFromDom();
+    const plan = isAlreadySubscribed ? null : readSelectedPlan();
+
+    const data = await api("/api/stripe/checkout", "POST", { plan, addons });
+
+    // déjà abonné => update direct
+    if (data && data.ok) {
+      setMsg(data.updated ? "Options mises à jour ✅" : "Aucun changement.");
+      return;
+    }
+
+    if (!data.url) throw new Error("URL checkout manquante");
+    location.href = data.url;
+  }
+
+  // ---- bouton ----
+  document.addEventListener("DOMContentLoaded", () => {
+    initPricingState();
+
+    const btn = document.getElementById("buyBtn");
+    if (!btn) return;
+
+    btn.addEventListener("click", async () => {
+      setMsg("");
+      btn.disabled = true;
+      try {
+        // Choisis l’un des 2:
+        await startEmbeddedCheckout();   // ✅ Embedded
+        // await startRedirectCheckout(); // ✅ Redirect
+      } catch (e) {
+        setMsg(e.message || "Erreur");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+</script>
 </body>
 </html>
