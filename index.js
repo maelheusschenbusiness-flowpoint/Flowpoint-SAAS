@@ -33,6 +33,8 @@ const app = express();
 app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 5000;
+
+// ✅ BRAND
 const BRAND_NAME = "FlowPoint";
 
 // ---------- ENV CHECK ----------
@@ -101,14 +103,17 @@ function getMailer() {
  */
 function safeBaseUrl(req) {
   const env = String(process.env.PUBLIC_BASE_URL || "").trim();
-  if (env) return env.replace(/\/+$/, "");
+  if (env) {
+    // normalise sans trailing slash
+    return env.replace(/\/+$/, "");
+  }
 
   const protoRaw = String(req.headers["x-forwarded-proto"] || req.protocol || "https");
   const proto = protoRaw.split(",")[0].trim().toLowerCase();
   const safeProto = proto === "http" || proto === "https" ? proto : "https";
 
   const hostRaw = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
-  const host = hostRaw.replace(/[\r\n]/g, "");
+  const host = hostRaw.replace(/[\r\n]/g, ""); // anti header-injection
   if (!host) return "https://localhost";
 
   return `${safeProto}://${host}`.replace(/\/+$/, "");
@@ -128,6 +133,7 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
       return { ok: false, error: "ALERT_EMAIL_FROM missing" };
     }
 
+    // normalise to/bcc (accept string "a,b,c" or array)
     const normalizeList = (v) => {
       if (!v) return [];
       if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
@@ -145,7 +151,7 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
       return { ok: false, error: "Recipient missing" };
     }
 
-    // 1) Resend
+    // 1) Resend API
     if (process.env.RESEND_API_KEY) {
       const payload = {
         from,
@@ -201,13 +207,200 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   }
 }
 
-// ---------- DB ----------
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connecté"))
-  .catch((e) => console.log("❌ MongoDB erreur:", e.message));
+/**
+ * buildDailyReportEmail
+ * - Template premium
+ * - Dark/Light auto via prefers-color-scheme
+ */
+function buildDailyReportEmail({ brandName, orgName, usersCount, monitorsDown, audits24hCount, logsDown24hCount }) {
+
+  // ✅ Supprime "AI" automatiquement si présent
+  const bn = String(brandName || BRAND_NAME || "FlowPoint")
+    .replace(/\s*AI\s*$/i, "")
+    .trim();
+
+  const subject = `${bn} — Rapport quotidien — ${orgName}`;
+  const text = `${brandName} — Rapport quotidien
+Organisation: ${orgName}
+
+• Users: ${usersCount}
+• Monitors DOWN: ${monitorsDown}
+
+Audits (24h): ${audits24hCount || 0}
+Logs DOWN (24h): ${logsDown24hCount || 0}
+
+Email envoyé automatiquement.
+`;
+
+  const dateLabel = new Date().toLocaleDateString("fr-FR", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const html = `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>${brandName} — Rapport quotidien</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --muted:#667085;
+      --text:#0f172a;
+      --border:rgba(15,23,42,.10);
+      --brand:#2f5bff;
+      --brand2:#2449ff;
+      --chip:#eef2ff;
+      --down:#b00020;
+      --ok:#0a7a2f;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#070b18;
+        --card:#0c1228;
+        --muted:rgba(234,240,255,.72);
+        --text:#eaf0ff;
+        --border:rgba(255,255,255,.10);
+        --chip:rgba(132,102,255,.18);
+      }
+    }
+    body{
+      margin:0;
+      background:var(--bg);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--text);
+    }
+    .wrap{ padding:28px 14px; }
+    .container{ max-width:620px; margin:0 auto; }
+    .hero{
+      background: linear-gradient(180deg, rgba(47,91,255,.22), transparent 55%);
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:18px;
+    }
+    .brandRow{ display:flex; gap:12px; align-items:center; }
+    .logo{
+      width:44px;height:44px;border-radius:14px;
+      background:linear-gradient(180deg,var(--brand),var(--brand2));
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 12px 30px rgba(47,91,255,.25);
+      flex:0 0 auto;
+    }
+    h1{ margin:12px 0 2px; font-size:22px; letter-spacing:-.02em; }
+    .sub{ color:var(--muted); font-size:13.5px; line-height:1.6; }
+    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:14px;
+    }
+    .k{ color:var(--muted); font-size:12px; font-weight:800; }
+    .v{ margin-top:6px; font-size:20px; font-weight:900; letter-spacing:-.02em; }
+    .pill{
+      display:inline-block;
+      margin-top:10px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:var(--chip);
+      color:var(--muted);
+      font-weight:800;
+      font-size:12px;
+    }
+    .section{
+      margin-top:12px;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:14px;
+    }
+    .sectionTitle{ font-weight:900; margin:0 0 8px; letter-spacing:-.01em; }
+    ul{ margin:0; padding-left:18px; color:var(--muted); line-height:1.7; }
+    .footer{
+      margin-top:14px;
+      color:var(--muted);
+      font-size:12px;
+      text-align:center;
+      line-height:1.6;
+    }
+    @media (max-width:520px){
+      .grid{ grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="container">
+      <div class="hero">
+        <div class="brandRow">
+          <div class="logo" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M13 2L4 14h7l-1 8 10-14h-7l0-6Z" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <div style="font-weight:900; font-size:16px; line-height:1">${brandName}</div>
+            <div class="sub">Rapport quotidien (automatique)</div>
+          </div>
+        </div>
+
+        <h1>${brandName} — Rapport quotidien</h1>
+        <div class="sub">
+          Organisation : <b>${orgName}</b>
+          <span class="pill">${dateLabel}</span>
+        </div>
+
+        <div class="grid">
+          <div class="card">
+            <div class="k">Users</div>
+            <div class="v">${usersCount}</div>
+          </div>
+          <div class="card">
+            <div class="k">Monitors DOWN</div>
+            <div class="v">${monitorsDown}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Audits (24h)</div>
+        <ul>
+          <li>${audits24hCount ? `${audits24hCount} audit(s) effectué(s)` : "Aucun"}</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Logs DOWN (24h)</div>
+        <ul>
+          <li>${logsDown24hCount ? `${logsDown24hCount} incident(s) détecté(s)` : "Aucun"}</li>
+        </ul>
+      </div>
+
+      <div class="footer">
+        Email envoyé automatiquement par ${brandName}.<br>
+        © ${new Date().getFullYear()} ${brandName}
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
 
 // ---------- PLANS / QUOTAS ----------
+function planRank(plan) {
+  const map = { standard: 1, pro: 2, ultra: 3 };
+  return map[String(plan || "").toLowerCase()] || 0;
+}
+
+// Base quotas only (sans add-ons)
 function baseQuotasForPlan(plan) {
   const p = String(plan || "").toLowerCase();
   if (p === "standard") return { audits: 30, monitors: 3, pdf: 30, exports: 30, teamSeats: 1 };
@@ -216,6 +409,7 @@ function baseQuotasForPlan(plan) {
   return { audits: 0, monitors: 0, pdf: 0, exports: 0, teamSeats: 0 };
 }
 
+// Effective quotas = base + addons/credits (org)
 function effectiveQuotas(user, org) {
   const base = baseQuotasForPlan(user?.plan);
 
@@ -239,6 +433,12 @@ function firstDayOfThisMonthUTC() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
 }
+
+// ---------- DB ----------
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connecté"))
+  .catch((e) => console.log("❌ MongoDB erreur:", e.message));
 
 async function resetUsageIfNewMonth(user) {
   const month = firstDayOfThisMonthUTC();
@@ -380,6 +580,7 @@ const OrgSchema = new mongoose.Schema(
     alertRecipients: { type: String, default: "all" },
     alertExtraEmails: { type: [String], default: [] },
 
+    // ✅ Add-ons (étendus)
     billingAddons: {
       monitorsPack50: { type: Number, default: 0 },
       extraSeats: { type: Number, default: 0 },
@@ -395,6 +596,7 @@ const OrgSchema = new mongoose.Schema(
       prioritySupport: { type: Boolean, default: false },
       customDomain: { type: Boolean, default: false },
 
+      // ✅ White label GRATUIT
       whiteLabel: { type: Boolean, default: true },
     },
 
@@ -578,15 +780,19 @@ async function ensureOrgDefaults(org) {
     org.billingAddons = {
       monitorsPack50: 0,
       extraSeats: 0,
+
       retention90d: false,
       retention365d: false,
+
       auditsPack200: 0,
       auditsPack1000: 0,
       pdfPack200: 0,
       exportsPack1000: 0,
+
       prioritySupport: false,
       customDomain: false,
-      whiteLabel: true,
+
+      whiteLabel: true, // ✅ gratuit
     };
     changed = true;
   } else {
@@ -606,6 +812,7 @@ async function ensureOrgDefaults(org) {
     if (b.prioritySupport == null) { b.prioritySupport = false; changed = true; }
     if (b.customDomain == null) { b.customDomain = false; changed = true; }
 
+    // ✅ gratuit
     if (b.whiteLabel == null) { b.whiteLabel = true; changed = true; }
     b.whiteLabel = true;
 
@@ -667,6 +874,7 @@ async function ensureOrgDefaults(org) {
   return org;
 }
 
+// ✅ Single version
 async function ensureOrgForUser(user) {
   if (user.orgId) {
     const existing = await Org.findById(user.orgId);
@@ -678,6 +886,7 @@ async function ensureOrgForUser(user) {
   const domain = user.companyDomain || "";
 
   let org = await Org.findOne({ normalizedName: normalized });
+
   if (!org) {
     org = await Org.create({
       name: user.companyName || "Organisation",
@@ -1014,19 +1223,19 @@ const stripeModule = buildStripeModule({
   sendEmail,
 });
 
-// 1) WEBHOOK RAW (AVANT JSON)
+// ✅ 1) WEBHOOK RAW (AVANT JSON PARSER)
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeModule.webhookHandler);
 
-// 2) SECURITY + RATE LIMIT (GLOBAL)
+// ✅ 2) SECURITY / LIMITERS (UNE SEULE FOIS)
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: false }));
 app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
 
-// 3) PARSERS (APRES WEBHOOK)
+// ✅ 3) PARSERS (APRES WEBHOOK)
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// 4) STRIPE ROUTES (UNE SEULE FOIS)
+// ✅ 4) STRIPE ROUTES (UNE SEULE FOIS)
 app.post("/api/stripe/checkout", auth, requireActive, stripeModule.checkoutPlan);
 app.post("/api/stripe/checkout-embedded", auth, requireActive, stripeModule.checkoutEmbedded);
 app.get("/api/stripe/verify", stripeModule.verifyCheckout);
@@ -1154,12 +1363,13 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
   <div style="background:#f6f7fb;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:18px;padding:24px;border:1px solid rgba(15,23,42,.08)">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        <div style="width:44px;height:44px;border-radius:14px;background:#2F6BFF;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(47,107,255,.22), inset 0 0 0 1px rgba(255,255,255,.18);">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M13 2L4 14h7l-1 8 10-14h-7l0-6Z"
-                  stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
-          </svg>
-        </div>
+       <!-- FlowPoint logo (rounded square + lightning) -->
+<div style="width:44px;height:44px;border-radius:14px;background:#2F6BFF;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(47,107,255,.22), inset 0 0 0 1px rgba(255,255,255,.18);">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M13 2L4 14h7l-1 8 10-14h-7l0-6Z"
+          stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>
+</div>
         <div>
           <div style="color:#0f172a;font-weight:800;font-size:18px;line-height:1">${BRAND_NAME}</div>
           <div style="color:#667085;font-size:13px">Connexion sécurisée (sans mot de passe)</div>
@@ -1193,7 +1403,13 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
       html,
     });
 
-    if (!r.ok) return res.status(502).json({ ok: false, error: "Email non envoyé" });
+    if (!r.ok) {
+      return res.status(502).json({
+        ok: false,
+        error: "Email non envoyé",
+      });
+    }
+
     return res.json({ ok: true });
   } catch (e) {
     console.log("login-request error:", e.message);
@@ -1263,10 +1479,7 @@ app.get("/api/overview", auth, requireActive, async (req, res) => {
   const days = Math.min(30, Math.max(1, Number(req.query.days || 30)));
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const lastAudit = await Audit.findOne({ orgId: req.dbUser.orgId })
-    .sort({ createdAt: -1 })
-    .select("score createdAt url");
-
+  const lastAudit = await Audit.findOne({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).select("score createdAt url");
   const audits = await Audit.find({ orgId: req.dbUser.orgId, createdAt: { $gte: since } })
     .sort({ createdAt: 1 })
     .limit(120)
@@ -1299,11 +1512,15 @@ app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res
   const recipients = String(req.body?.alertRecipients || "all").toLowerCase();
   const extra = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
 
-  await Org.updateOne({ _id: req.dbUser.orgId }, { $set: { alertRecipients: recipients, alertExtraEmails: extra } });
+  await Org.updateOne(
+    { _id: req.dbUser.orgId },
+    { $set: { alertRecipients: recipients, alertExtraEmails: extra } }
+  );
+
   return res.json({ ok: true });
 });
 
-// aliases
+// Aliases
 app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
   return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
@@ -1312,7 +1529,11 @@ app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (
   const recipients = String(req.body?.alertRecipients || "all").toLowerCase();
   const extra = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
 
-  await Org.updateOne({ _id: req.dbUser.orgId }, { $set: { alertRecipients: recipients, alertExtraEmails: extra } });
+  await Org.updateOne(
+    { _id: req.dbUser.orgId },
+    { $set: { alertRecipients: recipients, alertExtraEmails: extra } }
+  );
+
   return res.json({ ok: true });
 });
 
@@ -1674,9 +1895,10 @@ app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- KEEP ALIVE (Render) ----------
+// ---------- KEEP ALIVE (empêche le cold start Render) ----------
 if (process.env.RENDER) {
   const SELF_URL = process.env.PUBLIC_BASE_URL;
+
   if (SELF_URL) {
     setInterval(async () => {
       try {
@@ -1685,7 +1907,7 @@ if (process.env.RENDER) {
       } catch (e) {
         console.log("Keep alive failed:", e.message);
       }
-    }, 1000 * 60 * 5);
+    }, 1000 * 60 * 5); // toutes les 5 minutes
   }
 }
 
