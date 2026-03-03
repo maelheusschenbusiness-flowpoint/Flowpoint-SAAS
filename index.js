@@ -143,8 +143,201 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
       }
 
       console.log("✅ Email envoyé (Resend):", data?.id, "=>", toList.join(","));
-      return { ok: true };
-    } 
+      return { ok: true, id: data?.id };
+    }
+
+    // 2) SMTP fallback
+    const t = getMailer();
+    if (!t) {
+      console.log("⚠️ SMTP non configuré, email ignoré:", subject);
+      return { ok: false, skipped: true, error: "SMTP not configured" };
+    }
+
+    const info = await t.sendMail({
+      from: process.env.ALERT_EMAIL_FROM,
+      to,
+      bcc,
+      subject,
+      text,
+      html,
+      attachments,
+    });
+
+    console.log("✅ Email envoyé (SMTP):", info.messageId, "=>", to);
+    return { ok: true, id: info.messageId };
+  } catch (e) {
+    console.log("❌ Email error:", e?.message || e);
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+function buildDailyReportEmail({ brandName, orgName, usersCount, monitorsDown, audits24hCount, logsDown24hCount }) {
+  const subject = `${brandName} — Rapport quotidien — ${orgName}`;
+
+  const text = `${brandName} — Rapport quotidien
+Organisation: ${orgName}
+
+• Users: ${usersCount}
+• Monitors DOWN: ${monitorsDown}
+
+Audits (24h): ${audits24hCount || 0}
+Logs DOWN (24h): ${logsDown24hCount || 0}
+
+Email envoyé automatiquement.
+`;
+
+  const html = `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>${brandName} — Rapport quotidien</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --muted:#667085;
+      --text:#0f172a;
+      --border:rgba(15,23,42,.10);
+      --brand:#2f5bff;
+      --brand2:#2449ff;
+      --chip:#eef2ff;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#070b18;
+        --card:#0c1228;
+        --muted:rgba(234,240,255,.72);
+        --text:#eaf0ff;
+        --border:rgba(255,255,255,.10);
+        --chip:rgba(132,102,255,.18);
+      }
+    }
+    body{
+      margin:0;
+      background:var(--bg);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--text);
+    }
+    .wrap{ padding:28px 14px; }
+    .container{ max-width:620px; margin:0 auto; }
+    .hero{
+      background: linear-gradient(180deg, rgba(47,91,255,.22), transparent 55%);
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:18px;
+    }
+    .brandRow{ display:flex; gap:12px; align-items:center; }
+    .logo{
+      width:44px;height:44px;border-radius:14px;
+      background:linear-gradient(180deg,var(--brand),var(--brand2));
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 12px 30px rgba(47,91,255,.25);
+      flex:0 0 auto;
+    }
+    .logo svg{ display:block; }
+    h1{ margin:12px 0 2px; font-size:22px; letter-spacing:-.02em; }
+    .sub{ color:var(--muted); font-size:13.5px; line-height:1.6; }
+    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:14px;
+    }
+    .k{ color:var(--muted); font-size:12px; font-weight:700; }
+    .v{ margin-top:6px; font-size:20px; font-weight:900; letter-spacing:-.02em; }
+    .pill{
+      display:inline-block;
+      margin-top:10px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:var(--chip);
+      color:var(--muted);
+      font-weight:800;
+      font-size:12px;
+    }
+    .section{
+      margin-top:12px;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:14px;
+    }
+    .sectionTitle{ font-weight:900; margin:0 0 8px; letter-spacing:-.01em; }
+    ul{ margin:0; padding-left:18px; color:var(--muted); line-height:1.7; }
+    .footer{
+      margin-top:14px;
+      color:var(--muted);
+      font-size:12px;
+      text-align:center;
+      line-height:1.6;
+    }
+    @media (max-width:520px){
+      .grid{ grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="container">
+      <div class="hero">
+        <div class="brandRow">
+          <div class="logo" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M13 2L4 14h7l-1 8 10-14h-7l0-6Z" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <div style="font-weight:900; font-size:16px; line-height:1">${brandName}</div>
+            <div class="sub">Rapport quotidien (automatique)</div>
+          </div>
+        </div>
+
+        <h1>${brandName} — Rapport quotidien</h1>
+        <div class="sub">
+          Organisation : <b>${orgName}</b>
+          <span class="pill">${new Date().toLocaleDateString("fr-FR", { weekday:"long", year:"numeric", month:"long", day:"numeric" })}</span>
+        </div>
+
+        <div class="grid">
+          <div class="card">
+            <div class="k">Users</div>
+            <div class="v">${usersCount}</div>
+          </div>
+          <div class="card">
+            <div class="k">Monitors DOWN</div>
+            <div class="v">${monitorsDown}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Audits (24h)</div>
+        <ul>
+          <li>${audits24hCount ? `${audits24hCount} audit(s) effectué(s)` : "Aucun"}</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Logs DOWN (24h)</div>
+        <ul>
+          <li>${logsDown24hCount ? `${logsDown24hCount} incident(s) détecté(s)` : "Aucun"}</li>
+        </ul>
+      </div>
+
+      <div class="footer">
+        Email envoyé automatiquement par ${brandName}.<br>
+        © ${new Date().getFullYear()} ${brandName}
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
 // ---------- DB ----------
 mongoose
   .connect(process.env.MONGO_URI)
