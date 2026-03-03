@@ -212,16 +212,14 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
  * - Template premium
  * - Dark/Light auto via prefers-color-scheme
  */
-function buildDailyReportEmail({
-  brandName,
-  orgName,
-  usersCount,
-  monitorsDown,
-  audits24hCount,
-  logsDown24hCount,
-}) {
-  const subject = `${brandName} — Rapport quotidien — ${orgName}`;
+function buildDailyReportEmail({ brandName, orgName, usersCount, monitorsDown, audits24hCount, logsDown24hCount }) {
 
+  // ✅ Supprime "AI" automatiquement si présent
+  const bn = String(brandName || BRAND_NAME || "FlowPoint")
+    .replace(/\s*AI\s*$/i, "")
+    .trim();
+
+  const subject = `${bn} — Rapport quotidien — ${orgName}`;
   const text = `${brandName} — Rapport quotidien
 Organisation: ${orgName}
 
