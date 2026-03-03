@@ -101,7 +101,7 @@ function getMailer() {
  *  1) Resend API (HTTPS / port 443) if RESEND_API_KEY is set
  *  2) SMTP fallback
  */
-async function sendEmail({ to, subject, text, html, attachments, bcc, cc, replyTo }) {
+async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   try {
     const from = process.env.ALERT_EMAIL_FROM;
     if (!from) {
@@ -109,39 +109,42 @@ async function sendEmail({ to, subject, text, html, attachments, bcc, cc, replyT
       return { ok: false, error: "ALERT_EMAIL_FROM manquante" };
     }
 
-    if (!subject) {
-      console.log("❌ Email subject manquant");
-      return { ok: false, error: "subject manquant" };
-    }
-
-    const normalizeList = (v) =>
-      String(v || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-    const toList = normalizeList(to);
-    const bccList = bcc ? normalizeList(bcc) : [];
-    const ccList = cc ? normalizeList(cc) : [];
+    const toList = String(to || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
     if (!toList.length) {
-      console.log("❌ Email 'to' manquant");
-      return { ok: false, error: "to manquant" };
+      console.log("❌ sendEmail: destinataire manquant");
+      return { ok: false, error: "Destinataire manquant" };
     }
+
+    const bccList = bcc
+      ? String(bcc)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+    const safeSubject = String(subject || "").trim() || "Message";
+    const safeText = text ? String(text) : "";
+    const safeHtml = html ? String(html) : "";
 
     // 1) Resend API
     if (process.env.RESEND_API_KEY) {
       const payload = {
         from,
         to: toList,
-        subject,
-        text: text || undefined,
-        html: html || undefined,
+        subject: safeSubject,
+        text: safeText || undefined,
+        html: safeHtml || undefined,
         bcc: bccList.length ? bccList : undefined,
-        cc: ccList.length ? ccList : undefined,
-        reply_to: replyTo || undefined,
         attachments: attachments || undefined,
       };
+
+      // petit timeout pour éviter les requêtes qui pendent
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 15000);
 
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -150,77 +153,47 @@ async function sendEmail({ to, subject, text, html, attachments, bcc, cc, replyT
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
+        signal: controller.signal,
+      }).catch((e) => {
+        throw new Error(`Resend fetch error: ${e?.message || e}`);
       });
 
-      const data = await r.json().catch(() => ({}));
+      clearTimeout(t);
 
+      const data = await r.json().catch(() => ({}));
       if (!r.ok) {
         console.log("❌ Resend API error:", r.status, data);
         return { ok: false, error: data?.message || `Resend API ${r.status}` };
       }
 
       console.log("✅ Email envoyé (Resend):", data?.id, "=>", toList.join(","));
-      return { ok: true, provider: "resend", id: data?.id };
+      return { ok: true, id: data?.id };
     }
 
     // 2) SMTP fallback
     const t = getMailer();
     if (!t) {
-      console.log("⚠️ SMTP non configuré, email ignoré:", subject);
-      return { ok: false, skipped: true, error: "smtp_not_configured" };
+      console.log("⚠️ SMTP non configuré, email ignoré:", safeSubject);
+      return { ok: false, skipped: true, error: "SMTP non configuré" };
     }
 
     const info = await t.sendMail({
       from,
       to: toList.join(","),
       bcc: bccList.length ? bccList.join(",") : undefined,
-      cc: ccList.length ? ccList.join(",") : undefined,
-      replyTo: replyTo || undefined,
-      subject,
-      text,
-      html,
-      attachments,
+      subject: safeSubject,
+      text: safeText || undefined,
+      html: safeHtml || undefined,
+      attachments: attachments || undefined,
     });
 
     console.log("✅ Email envoyé (SMTP):", info.messageId, "=>", toList.join(","));
-    return { ok: true, provider: "smtp", id: info.messageId };
+    return { ok: true, id: info.messageId };
   } catch (e) {
     console.log("❌ Email error:", e?.message || e);
     return { ok: false, error: e?.message || String(e) };
   }
 }
-
-    // 2) SMTP fallback
-    const t = getMailer();
-    if (!t) {
-      console.log("⚠️ SMTP non configuré, email ignoré:", subject);
-      return { ok: false, skipped: true };
-    }
-
-    const info = await t.sendMail({
-      from: process.env.ALERT_EMAIL_FROM,
-      to,
-      bcc,
-      subject,
-      text,
-      html,
-      attachments,
-    });
-
-    console.log("✅ Email envoyé (SMTP):", info.messageId, "=>", to);
-    return { ok: true };
-  } catch (e) {
-    console.log("❌ Email error:", e?.message || e);
-    return { ok: false, error: e?.message || String(e) };
-  }
-}
-
-function safeBaseUrl(req) {
-  const base = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
-  if (base) return base;
-  return `https://${req.headers.host}`;
-}
-
 // ---------- DB ----------
 mongoose
   .connect(process.env.MONGO_URI)
