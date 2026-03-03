@@ -1221,7 +1221,7 @@ const stripeModule = buildStripeModule({
   Org,
   sendEmail,
 });
-
+app.post("/api/stripe/checkout-embedded", auth, requireActive, stripeModule.checkoutEmbedded);
 // Webhook RAW (avant parsers JSON)
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeModule.webhookHandler);
 
