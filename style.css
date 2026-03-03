@@ -71,28 +71,23 @@ ul,ol{ list-style:none; }
 
 /* =============== Layout (CENTRAGE PROPRE) =============== */
 .page{
-  width:100%;
-  max-width:1180px;
-  margin:0 auto;
+  width:min(1180px, 100%);
+  margin-inline:auto;
   padding:20px 18px 54px;
 }
 
-/* Sur mobile, on évite l’effet “collé à gauche” + on garde tout symétrique */
 @media (max-width: 980px){
-  .page{
-    padding-left:16px;
-    padding-right:16px;
-  }
+  .page{ padding-left:16px; padding-right:16px; }
 }
 
+/* Grid: droite + large sur PC */
 .grid{
   display:grid;
-  grid-template-columns: 1.25fr .85fr; /* un peu plus large côté droite */
+  grid-template-columns: 1.35fr .90fr;
   gap:16px;
   align-items:start;
 }
 
-/* Mobile = 1 colonne */
 @media (max-width: 980px){
   .grid{ grid-template-columns:1fr; }
 }
@@ -105,20 +100,6 @@ ul,ol{ list-style:none; }
   justify-content:space-between;
   gap:14px;
   margin-bottom:14px;
-}
-
-/* Mobile: centre mieux les éléments et évite “décalage visuel” */
-@media (max-width: 980px){
-  .topbar{
-    align-items:flex-start;
-    flex-wrap:wrap;
-    justify-content:center;
-    gap:10px;
-  }
-  .actions{
-    width:100%;
-    justify-content:center;
-  }
 }
 
 .brand{
@@ -134,6 +115,19 @@ ul,ol{ list-style:none; }
   gap:10px;
   flex-wrap:wrap;
   justify-content:flex-end;
+}
+
+/* Mobile: vraiment centré et symétrique */
+@media (max-width: 980px){
+  .topbar{
+    justify-content:center;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  .actions{
+    width:100%;
+    justify-content:center;
+  }
 }
 
 /* Pills / header buttons */
@@ -159,37 +153,39 @@ ul,ol{ list-style:none; }
   box-shadow:0 10px 40px rgba(0,0,0,.06);
 }
 
-/* ===== Logo Pricing (PC + Mobile) ===== */
+/* ===== Logo Pricing (PC + Mobile) =====
+   IMPORTANT: pas de crop, on centre comme sur PC */
 .logoBox{
   width:64px;
   height:64px;
-  border-radius:24px; /* plus arrondi sur PC */
+  border-radius:24px;
   background:linear-gradient(180deg,#3b6bff,#2449ff);
   display:flex;
   align-items:center;
   justify-content:center;
-  box-shadow:0 10px 35px rgba(47,91,255,.35);
+  box-shadow:0 14px 44px rgba(47,91,255,.32);
   overflow:hidden;
 }
 
-/* SVG/logo dedans */
 .brandLogo{
   width:58%;
   height:58%;
   object-fit:contain;
   display:block;
+  filter: drop-shadow(0 10px 25px rgba(47,91,255,.22));
 }
 
-/* Mobile: logo plus petit + encore plus “clean” (comme ton rendu PC) */
-@media (max-width: 980px){
+/* Mobile: plus petit + plus arrondi */
+@media (max-width: 520px){
   .logoBox{
-    width:56px;
-    height:56px;
-    border-radius:20px; /* plus arrondi + moins “gros carré” */
+    width:54px;
+    height:54px;
+    border-radius:20px;
+    box-shadow:0 12px 36px rgba(47,91,255,.28);
   }
   .brandLogo{
-    width:54%;
-    height:54%;
+    width:56%;
+    height:56%;
   }
 }
 
@@ -202,8 +198,6 @@ ul,ol{ list-style:none; }
   padding:18px;
   box-shadow:var(--shadow);
   backdrop-filter:saturate(180%) blur(14px);
-  margin-left:auto;
-  margin-right:auto;
 }
 
 .hero h1{
@@ -227,8 +221,6 @@ ul,ol{ list-style:none; }
   border-radius:var(--r);
   box-shadow:var(--shadow);
   overflow:hidden;
-  margin-left:auto;
-  margin-right:auto;
 }
 
 .sectionHead{
@@ -254,7 +246,6 @@ ul,ol{ list-style:none; }
   white-space:nowrap;
 }
 
-/* Mobile: évite le “hint” qui pousse le titre et donne un effet de décentrage */
 @media (max-width: 520px){
   .sectionHead{
     flex-wrap:wrap;
@@ -265,13 +256,12 @@ ul,ol{ list-style:none; }
   }
 }
 
-/* =============== Plans (PLUS GRANDS sur PC) =============== */
+/* =============== Plans (plus gros + plus vendeur) =============== */
 .plans{
   padding:14px;
   display:grid;
   grid-template-columns: repeat(3, 1fr);
-  gap:14px; /* un peu plus respirant */
-  justify-content:center;
+  gap:14px;
 }
 
 @media (max-width: 980px){
@@ -283,7 +273,7 @@ ul,ol{ list-style:none; }
   border-radius:20px;
   padding:18px;
   background:linear-gradient(180deg, rgba(47,91,255,.10), transparent 65%);
-  min-height:220px; /* + grand */
+  min-height:240px; /* + grand */
   position:relative;
 }
 
@@ -307,7 +297,7 @@ ul,ol{ list-style:none; }
 
 .price{
   font-weight:950;
-  font-size:30px;
+  font-size:32px;
   letter-spacing:-.03em;
   white-space:nowrap;
 }
@@ -334,7 +324,7 @@ ul,ol{ list-style:none; }
   padding:0;
   color:var(--muted);
   font-weight:800;
-  font-size:13px;
+  font-size:13.5px;
   line-height:1.65;
 }
 
@@ -342,7 +332,6 @@ ul,ol{ list-style:none; }
   display:flex;
   gap:8px;
 }
-
 .features li::before{
   content:"•";
   color:rgba(47,91,255,.85);
@@ -354,7 +343,6 @@ ul,ol{ list-style:none; }
   padding:14px;
   display:grid;
   gap:12px;
-  justify-content:center;
 }
 
 .addonRow{
@@ -426,55 +414,6 @@ ul,ol{ list-style:none; }
   font-weight:950;
   font-size:16px;
   white-space:nowrap;
-}
-
-/* =============== Qty select (menu dark propre) =============== */
-.qtyWrap{
-  position:relative;
-  width:160px;
-}
-
-select.qty{
-  width:100%;
-  padding:10px 38px 10px 12px;
-  border-radius:14px;
-  border:1px solid var(--fieldBorder);
-  background:var(--field);
-  color:var(--text);
-  font-weight:950;
-  appearance:none;
-  -webkit-appearance:none;
-  -moz-appearance:none;
-  outline:none;
-  box-shadow:0 10px 35px rgba(0,0,0,.08);
-  color-scheme: light dark;
-}
-
-.qtyWrap::after{
-  content:"▾";
-  position:absolute;
-  right:12px;
-  top:50%;
-  transform:translateY(-50%);
-  color:var(--muted);
-  font-weight:950;
-  pointer-events:none;
-}
-
-select.qty:focus{
-  border-color:rgba(47,91,255,.55);
-  box-shadow:0 0 0 4px rgba(47,91,255,.12);
-}
-
-select.qty option{
-  background:#0b1220;
-  color:#eaf0ff;
-}
-@media (prefers-color-scheme: light){
-  select.qty option{
-    background:#ffffff;
-    color:#0f172a;
-  }
 }
 
 /* =============== Qty stepper (- / +) =============== */
@@ -568,7 +507,7 @@ select.qty option{
   cursor:not-allowed;
 }
 
-/* =============== Sidebar cards (Résumé / Info / EXTRA) =============== */
+/* =============== Sidebar cards (DROITE) =============== */
 .side{
   position:sticky;
   top:14px;
@@ -643,7 +582,7 @@ select.qty option{
   line-height:1.5;
 }
 
-/* Mini list utile pour le contenu “extra” à droite */
+/* List pour les cards à droite */
 .miniList{
   display:grid;
   gap:8px;
@@ -695,161 +634,4 @@ input, select, textarea{
 input:focus, select:focus, textarea:focus{
   border-color:rgba(47,91,255,.55);
   box-shadow:0 0 0 4px rgba(47,91,255,.12);
-}
-/* =========================
-   FIX FINAL — centré + logo + PC layout
-   (COLLER TOUT EN BAS)
-========================= */
-
-/* 1) Centrage global béton (évite l’effet “collé à gauche” iOS) */
-.page{
-  width: min(1180px, 100%);
-  margin-inline: auto;
-  padding-inline: 18px;
-  padding-top: 18px;
-  padding-bottom: 44px;
-}
-
-@media (max-width: 980px){
-  .page{
-    padding-inline: 16px;
-  }
-}
-
-/* 2) Topbar centré + ne déborde pas */
-.topbar{
-  width: 100%;
-  margin-inline: auto;
-  align-items: center;
-}
-
-.brand{
-  min-width: 0;
-}
-
-/* 3) Logo pricing: plus beau + plus arrondi + plus petit sur mobile */
-.logoBox{
-  width: 64px;
-  height: 64px;
-  border-radius: 24px; /* + arrondi */
-  background: linear-gradient(180deg, #3b6bff, #2449ff);
-  box-shadow: 0 14px 44px rgba(47,91,255,.32);
-}
-
-.brandLogo{
-  width: 58%;
-  height: 58%;
-  object-fit: contain;
-  display: block;
-}
-
-@media (max-width: 520px){
-  .logoBox{
-    width: 56px;       /* moins gros sur tel */
-    height: 56px;
-    border-radius: 20px; /* + arrondi */
-    box-shadow: 0 12px 36px rgba(47,91,255,.28);
-  }
-  .brandLogo{
-    width: 56%;
-    height: 56%;
-  }
-}
-
-/* 4) Grid PC: colonne droite plus large + tout reste centré */
-.grid{
-  align-items: start;
-}
-
-@media (min-width: 981px){
-  .grid{
-    grid-template-columns: 1.35fr .90fr; /* droite + grande */
-    gap: 16px;
-  }
-}
-
-/* 5) Plans PC: cartes un peu plus grandes */
-@media (min-width: 981px){
-  .plans{
-    gap: 14px;
-  }
-  .planCard{
-    min-height: 230px;
-    padding: 18px;
-    border-radius: 20px;
-  }
-  .planName{ font-size: 19px; }
-  .price{ font-size: 32px; }
-  .features{ font-size: 13.5px; }
-}
-
-/* 6) Colonne droite: cards un peu plus “premium” (lisibilité + taille) */
-@media (min-width: 981px){
-  .side{
-    gap: 16px;
-  }
-  .cardHead{
-    padding: 16px;
-  }
-  .cardBody{
-    padding: 16px;
-  }
-}
-
-/* 7) “Inclus dans tous les plans” – style cohérent + texte lisible */
-.includedCard .cardBody{
-  gap: 12px;
-}
-.includedList{
-  margin: 0;
-  padding: 0;
-  color: var(--muted);
-  font-weight: 850;
-  line-height: 1.7;
-}
-.includedList li{
-  display: flex;
-  gap: 10px;
-}
-.includedList li::before{
-  content: "•";
-  color: rgba(47,91,255,.85);
-  font-weight: 950;
-}
-.includedNote{
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 800;
-  line-height: 1.55;
-}
-
-/* 8) Une “card filler” à droite pour équilibrer la hauteur (optionnel mais conseillé) */
-.sideFiller .cardBody{
-  gap: 10px;
-}
-.sideFiller .miniTitle{
-  font-weight: 950;
-  letter-spacing: -.02em;
-}
-.sideFiller .miniMuted{
-  color: var(--muted);
-  font-weight: 800;
-  line-height: 1.6;
-}
-.sideFiller .miniGrid{
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.sideFiller .miniItem{
-  border: 1px solid var(--border);
-  background: var(--panel2);
-  border-radius: 14px;
-  padding: 10px;
-}
-.sideFiller .miniItem b{
-  display: block;
-  font-weight: 950;
-  margin-bottom: 4px;
 }
