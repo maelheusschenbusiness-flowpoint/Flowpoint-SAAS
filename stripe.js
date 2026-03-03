@@ -1,5 +1,5 @@
 // stripe.js — FlowPoint Stripe (helpers + routes + webhook)
-// ✅ Checkout plan + addons (redirect) + Embedded checkout + Portal config option
+// ✅ Checkout redirect + Embedded checkout + Update subscription if already active + Portal + Webhook
 
 const Stripe = require("stripe");
 
@@ -17,7 +17,6 @@ const ADDON_PRICE_ID_TO_KEY = {
   "price_1T6AZ39eqtbj6iPB93TgRJvI": "customDomain",
 };
 
-// Optionnel: mapping inverse (utile pour valider côté serveur)
 const ADDON_KEY_TO_PRICE_ID = Object.fromEntries(
   Object.entries(ADDON_PRICE_ID_TO_KEY).map(([priceId, key]) => [key, priceId])
 );
@@ -30,8 +29,6 @@ function buildStripeModule(ctx) {
     priceIdForPlan,
     safeBaseUrl,
     signToken,
-    auth,
-    requireActive,
     ensureOrgForUser,
     ensureOrgDefaults,
     User,
@@ -41,12 +38,213 @@ function buildStripeModule(ctx) {
 
   const stripe = Stripe(STRIPE_SECRET_KEY);
 
+  // ----------------------------
+  // Helpers
+  // ----------------------------
   function planRank(p) {
     const map = { standard: 1, pro: 2, ultra: 3 };
     return map[String(p || "").toLowerCase()] || 0;
   }
 
-  // -------- Entitlements depuis subscription --------
+  function isActiveStatus(status) {
+    const s = String(status || "").toLowerCase();
+    return s === "active" || s === "trialing" || s === "past_due";
+  }
+
+  async function getOrCreateCustomer(user) {
+    let customerId = user.stripeCustomerId;
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.companyName || user.name || undefined,
+        metadata: { uid: user._id.toString() },
+      });
+      customerId = customer.id;
+      user.stripeCustomerId = customerId;
+      await user.save();
+    }
+
+    return customerId;
+  }
+
+  async function getActiveSubscriptionForUser(user) {
+    // 1) via stripeSubscriptionId si présent
+    if (user.stripeSubscriptionId) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
+          expand: ["items.data.price"],
+        });
+        if (sub && isActiveStatus(sub.status)) return sub;
+      } catch {
+        // ignore
+      }
+    }
+
+    // 2) sinon liste subscriptions du customer (si customer)
+    if (!user.stripeCustomerId) return null;
+
+    const list = await stripe.subscriptions.list({
+      customer: user.stripeCustomerId,
+      status: "all",
+      limit: 10,
+      expand: ["data.items.data.price"],
+    });
+
+    const active = (list.data || []).find((s) => isActiveStatus(s.status));
+    if (active) return active;
+
+    return null;
+  }
+
+  function normalizeAddonSelection(addonsRaw) {
+    // Accepte:
+    // - array: [{ priceId, quantity }]
+    // - object: { monitorsPack50: 2, prioritySupport: true, ... }
+    // - object: { "price_xxx": 2 } (optionnel)
+    const out = [];
+
+    if (!addonsRaw) return out;
+
+    if (Array.isArray(addonsRaw)) {
+      for (const a of addonsRaw) {
+        const priceId = String(a?.priceId || "").trim();
+        if (!ADDON_PRICE_ID_TO_KEY[priceId]) continue;
+        const q = Number(a?.quantity ?? 1);
+        const qty = Number.isFinite(q) && q > 0 ? Math.floor(q) : 1;
+        out.push({ price: priceId, quantity: qty });
+      }
+      return out;
+    }
+
+    if (typeof addonsRaw === "object") {
+      for (const [k, v] of Object.entries(addonsRaw)) {
+        // 1) si key = addonKey
+        let priceId = ADDON_KEY_TO_PRICE_ID[k];
+
+        // 2) si key = priceId direct
+        if (!priceId && ADDON_PRICE_ID_TO_KEY[k]) priceId = k;
+
+        if (!priceId || !ADDON_PRICE_ID_TO_KEY[priceId]) continue;
+
+        if (typeof v === "boolean") {
+          if (v) out.push({ price: priceId, quantity: 1 });
+          continue;
+        }
+
+        const q = Number(v);
+        const qty = Number.isFinite(q) ? Math.floor(q) : 0;
+        if (qty > 0) out.push({ price: priceId, quantity: qty });
+      }
+    }
+
+    return out;
+  }
+
+  function buildDesiredPriceQty({ chosenPlan, addonsRaw }) {
+    // Retourne: Map priceId -> quantity (int)
+    const desired = new Map();
+
+    // Plan (optionnel)
+    if (chosenPlan) {
+      const planPriceId = priceIdForPlan(chosenPlan);
+      if (planPriceId) desired.set(planPriceId, 1);
+    }
+
+    // Addons
+    const addonItems = normalizeAddonSelection(addonsRaw);
+    for (const it of addonItems) desired.set(it.price, it.quantity || 1);
+
+    return desired;
+  }
+
+  function getPlanPriceIds() {
+    return [
+      process.env.STRIPE_PRICE_ID_STANDARD,
+      process.env.STRIPE_PRICE_ID_PRO,
+      process.env.STRIPE_PRICE_ID_ULTRA,
+    ].filter(Boolean);
+  }
+
+  async function updateExistingSubscription({ sub, chosenPlan, addonsRaw }) {
+    const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw });
+    const planPriceIds = new Set(getPlanPriceIds());
+
+    // On ne force pas à "reprendre" un plan si chosenPlan == null.
+    // Si chosenPlan != null → on change le plan (on garde 1 seul plan item).
+    const items = sub.items?.data || [];
+
+    // Index existing items by priceId
+    const existingByPrice = new Map();
+    for (const it of items) {
+      const pid = it?.price?.id;
+      if (pid) existingByPrice.set(pid, it);
+    }
+
+    const updates = [];
+
+    // 1) Gérer plan si demandé
+    if (chosenPlan) {
+      const wantedPlanPrice = priceIdForPlan(chosenPlan);
+      if (!wantedPlanPrice) throw new Error("PriceId plan manquant");
+
+      // supprimer tous les autres plans
+      for (const it of items) {
+        const pid = it?.price?.id;
+        if (pid && planPriceIds.has(pid) && pid !== wantedPlanPrice) {
+          updates.push({ id: it.id, deleted: true });
+        }
+      }
+
+      // s'assurer que wantedPlanPrice existe (ou update qty)
+      const existingPlanItem = existingByPrice.get(wantedPlanPrice);
+      if (existingPlanItem) {
+        updates.push({ id: existingPlanItem.id, quantity: 1 });
+      } else {
+        updates.push({ price: wantedPlanPrice, quantity: 1 });
+      }
+    }
+
+    // 2) Add-ons: on supporte la désélection.
+    // Stratégie:
+    // - pour chaque addon existant: si pas dans desired => delete
+    // - pour chaque addon désiré: si existe => set qty, sinon add
+    const addonPriceIds = new Set(Object.keys(ADDON_PRICE_ID_TO_KEY));
+
+    // delete addons non désirés
+    for (const it of items) {
+      const pid = it?.price?.id;
+      if (!pid || !addonPriceIds.has(pid)) continue;
+      if (!desired.has(pid)) {
+        updates.push({ id: it.id, deleted: true });
+      }
+    }
+
+    // add/update desired addons
+    for (const [pid, qty] of desired.entries()) {
+      if (!addonPriceIds.has(pid)) continue;
+      const ex = existingByPrice.get(pid);
+      if (ex) updates.push({ id: ex.id, quantity: qty });
+      else updates.push({ price: pid, quantity: qty });
+    }
+
+    if (!updates.length) {
+      return { updated: false, subscription: sub };
+    }
+
+    const updated = await stripe.subscriptions.update(sub.id, {
+      items: updates,
+      proration_behavior: "create_prorations",
+      payment_behavior: "default_incomplete",
+      expand: ["latest_invoice.payment_intent", "items.data.price"],
+    });
+
+    return { updated: true, subscription: updated };
+  }
+
+  // ----------------------------
+  // Entitlements from subscription (inchangé dans l’idée)
+  // ----------------------------
   function extractEntitlementsFromSubscription(sub) {
     const items = sub?.items?.data || [];
     let plan = null;
@@ -101,7 +299,6 @@ function buildStripeModule(ctx) {
         case "retention365d":
           addons.retention365d = true;
           break;
-
         case "auditsPack200":
           addons.auditsPack200 += qty;
           creditAudits += 200 * qty;
@@ -110,21 +307,17 @@ function buildStripeModule(ctx) {
           addons.auditsPack1000 += qty;
           creditAudits += 1000 * qty;
           break;
-
         case "pdfPack200":
           addons.pdfPack200 += qty;
           creditPdf += 200 * qty;
           break;
-
         case "exportsPack1000":
           addons.exportsPack1000 += qty;
           creditExports += 1000 * qty;
           break;
-
         case "prioritySupport":
           addons.prioritySupport = true;
           break;
-
         case "customDomain":
           addons.customDomain = true;
           break;
@@ -155,8 +348,9 @@ function buildStripeModule(ctx) {
     user.subscriptionStatus = sub.status;
     user.lastPaymentStatus = sub.status;
 
-    if (["active", "trialing"].includes(sub.status)) user.accessBlocked = false;
-    if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(sub.status)) user.accessBlocked = true;
+    if (["active", "trialing"].includes(String(sub.status || "").toLowerCase())) user.accessBlocked = false;
+    if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(String(sub.status || "").toLowerCase()))
+      user.accessBlocked = true;
 
     if (ent.plan) user.plan = ent.plan;
 
@@ -192,56 +386,10 @@ function buildStripeModule(ctx) {
     await org.save();
   }
 
-  // -------- Helpers: build line_items --------
-  function normalizeAddonSelection(addonsRaw) {
-    // Attendu côté front :
-    // addons: [{ priceId: "...", quantity: 2 }, ...]
-    // OU addons: { monitorsPack50: 1, prioritySupport: true, customDomain: true, ... }
-    const lineItems = [];
-
-    if (!addonsRaw) return lineItems;
-
-    // format array
-    if (Array.isArray(addonsRaw)) {
-      for (const a of addonsRaw) {
-        const priceId = String(a?.priceId || "").trim();
-        if (!ADDON_PRICE_ID_TO_KEY[priceId]) continue;
-
-        const q = Number(a?.quantity ?? 1);
-        const qty = Number.isFinite(q) && q > 0 ? Math.floor(q) : 1;
-
-        lineItems.push({ price: priceId, quantity: qty });
-      }
-      return lineItems;
-    }
-
-    // format object by key
-    if (typeof addonsRaw === "object") {
-      for (const [key, val] of Object.entries(addonsRaw)) {
-        const priceId = ADDON_KEY_TO_PRICE_ID[key];
-        if (!priceId) continue;
-
-        if (typeof val === "boolean") {
-          if (val) lineItems.push({ price: priceId, quantity: 1 });
-          continue;
-        }
-
-        const q = Number(val);
-        const qty = Number.isFinite(q) && q > 0 ? Math.floor(q) : 0;
-        if (qty > 0) lineItems.push({ price: priceId, quantity: qty });
-      }
-    }
-
-    return lineItems;
-  }
-
   // =========================================================
-  // ✅ ROUTE 1 — Checkout redirect (plan optionnel + addons)
-  // Body:
-  //  {
-  //    plan?: "standard"|"pro"|"ultra"|null,
-  //    addons?: array/object (voir normalizeAddonSelection)
-  //  }
+  // ROUTE — Checkout redirect (plan optionnel + addons)
+  // Body: { plan?: "standard"|"pro"|"ultra"|null, addons?: ... }
+  // - Si subscription active => UPDATE subscription (pas de nouvelle)
   // =========================================================
   async function checkoutPlan(req, res) {
     try {
@@ -253,59 +401,45 @@ function buildStripeModule(ctx) {
       }
 
       const user = req.dbUser;
+      await getOrCreateCustomer(user);
 
-      // Customer
-      let customerId = user.stripeCustomerId;
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: user.email,
-          name: user.companyName || user.name || undefined,
-          metadata: { uid: user._id.toString() },
+      const activeSub = await getActiveSubscriptionForUser(user);
+
+      // ✅ déjà abonné => update subscription (et on renvoie ok)
+      if (activeSub) {
+        const { updated, subscription } = await updateExistingSubscription({
+          sub: activeSub,
+          chosenPlan,
+          addonsRaw: req.body?.addons,
         });
-        customerId = customer.id;
-        user.stripeCustomerId = customerId;
-        await user.save();
+
+        // Appliquer entitlements tout de suite (en plus du webhook)
+        await applySubscriptionToUserAndOrg(subscription);
+
+        return res.json({ ok: true, updated, subscriptionId: subscription.id });
       }
 
-      // line_items
+      // ✅ pas abonné => créer Checkout Session (nouvelle subscription)
       const lineItems = [];
+      const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw: req.body?.addons });
 
-      // Plan (optionnel)
-      if (chosenPlan) {
-        const planPriceId = priceIdForPlan(chosenPlan);
-        if (!planPriceId) return res.status(500).json({ error: "PriceId plan manquant" });
-        lineItems.push({ price: planPriceId, quantity: 1 });
+      for (const [pid, qty] of desired.entries()) {
+        lineItems.push({ price: pid, quantity: qty });
       }
 
-      // Add-ons
-      const addonItems = normalizeAddonSelection(req.body?.addons);
-      lineItems.push(...addonItems);
-
-      if (!lineItems.length) {
-        return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
-      }
+      if (!lineItems.length) return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
 
       const baseUrl = safeBaseUrl(req);
 
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
-        customer: customerId,
+        customer: user.stripeCustomerId,
         line_items: lineItems,
-
-        // Trial uniquement si tu veux trial sur plan (sinon enlève)
         subscription_data: {
           trial_period_days: chosenPlan ? 14 : undefined,
-          metadata: {
-            uid: user._id.toString(),
-            plan: chosenPlan || "",
-          },
+          metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
         },
-
-        metadata: {
-          uid: user._id.toString(),
-          plan: chosenPlan || "",
-        },
-
+        metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
         success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/cancel.html`,
         allow_promotion_codes: true,
@@ -313,87 +447,66 @@ function buildStripeModule(ctx) {
 
       return res.json({ url: session.url });
     } catch (e) {
-      console.log("checkout error:", e.message);
+      console.log("checkoutPlan error:", e.message);
       return res.status(500).json({ error: "Erreur Stripe checkout" });
     }
   }
 
   // =========================================================
-  // ✅ ROUTE 2 — Embedded Checkout (retourne clientSecret)
-  // (Stripe: ui_mode=embedded + return_url)  [oai_citation:1‡docs.stripe.com](https://docs.stripe.com/payments/accept-a-payment?locale=en-GB&payment-ui=checkout&ui=embedded-form)
-  // Body:
-  //  { plan?: "...", addons?: ... }
+  // ROUTE — Embedded Checkout (plan optionnel + addons)
+  // Body: { plan?: "...", addons?: ... }
+  // - Si subscription active => UPDATE subscription (pas d'embedded)
+  // - Sinon => session embedded + clientSecret
   // =========================================================
   async function checkoutEmbedded(req, res) {
-  try {
-    const { plan, addons } = req.body;
+    try {
+      const chosenPlanRaw = req.body?.plan;
+      const chosenPlan = chosenPlanRaw ? String(chosenPlanRaw).toLowerCase() : null;
 
-    if (!["standard", "pro", "ultra"].includes(plan)) {
-      return res.status(400).json({ error: "Plan invalide" });
-    }
+      if (chosenPlan && !["standard", "pro", "ultra"].includes(chosenPlan)) {
+        return res.status(400).json({ error: "Plan invalide" });
+      }
 
-    const priceId = priceIdForPlan(plan);
-    if (!priceId) {
-      return res.status(400).json({ error: "Price ID manquant" });
-    }
+      const user = req.dbUser;
+      await getOrCreateCustomer(user);
 
-    const line_items = [
-      {
-        price: priceId,
-        quantity: 1,
-      },
-    ];
+      const activeSub = await getActiveSubscriptionForUser(user);
 
-    // 🔥 ADD-ONS dynamiques
-    if (addons?.monitorsPack50) {
-      line_items.push({
-        price: process.env.STRIPE_PRICE_ADDON_MONITORS_50,
-        quantity: addons.monitorsPack50,
-      });
-    }
+      // ✅ déjà abonné => update subscription direct
+      if (activeSub) {
+        const { updated, subscription } = await updateExistingSubscription({
+          sub: activeSub,
+          chosenPlan,
+          addonsRaw: req.body?.addons,
+        });
 
-    if (addons?.extraSeats) {
-      line_items.push({
-        price: process.env.STRIPE_PRICE_ADDON_SEAT,
-        quantity: addons.extraSeats,
-      });
-    }
+        await applySubscriptionToUserAndOrg(subscription);
 
-    if (addons?.retention90d) {
-      line_items.push({
-        price: process.env.STRIPE_PRICE_ADDON_RETENTION_90,
-        quantity: 1,
-      });
-    }
+        return res.json({ ok: true, updated, subscriptionId: subscription.id });
+      }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      ui_mode: "embedded",
-      line_items,
-      customer_email: req.dbUser.email,
-      return_url: `${safeBaseUrl(req)}/success.html`,
-    });
+      // ✅ nouveau => embedded checkout
+      const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw: req.body?.addons });
 
-    return res.json({ clientSecret: session.client_secret });
-  } catch (e) {
-    console.log("checkoutEmbedded error:", e.message);
-    return res.status(500).json({ error: "Erreur checkout embedded" });
-  }
-}
+      const lineItems = [];
+      for (const [pid, qty] of desired.entries()) {
+        lineItems.push({ price: pid, quantity: qty });
+      }
+
+      if (!lineItems.length) return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
+
       const baseUrl = safeBaseUrl(req);
 
       const session = await stripe.checkout.sessions.create({
-        ui_mode: "embedded", // ✅
+        ui_mode: "embedded",
         mode: "subscription",
-        customer: customerId,
+        customer: user.stripeCustomerId,
         line_items: lineItems,
         subscription_data: {
           trial_period_days: chosenPlan ? 14 : undefined,
           metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
         },
         metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
-
-        // ✅ Embedded utilise return_url (pas success/cancel)  [oai_citation:2‡docs.stripe.com](https://docs.stripe.com/payments/accept-a-payment?locale=en-GB&payment-ui=checkout&ui=embedded-form)
         return_url: `${baseUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
         allow_promotion_codes: true,
       });
@@ -405,6 +518,10 @@ function buildStripeModule(ctx) {
     }
   }
 
+  // =========================================================
+  // VERIFY — récup session + applique (utile pour embedded return)
+  // GET /api/stripe/verify?session_id=...
+  // =========================================================
   async function verifyCheckout(req, res) {
     try {
       const sessionId = req.query.session_id;
@@ -420,7 +537,6 @@ function buildStripeModule(ctx) {
       if (session.customer?.id) user.stripeCustomerId = session.customer.id;
       if (session.subscription?.id) user.stripeSubscriptionId = session.subscription.id;
 
-      // Trial bookkeeping (si tu veux)
       if (!user.hasTrial) {
         user.hasTrial = true;
         user.trialStartedAt = new Date();
@@ -438,15 +554,13 @@ function buildStripeModule(ctx) {
 
       return res.json({ ok: true, token: signToken(user) });
     } catch (e) {
-      console.log("verify error:", e.message);
+      console.log("verifyCheckout error:", e.message);
       return res.status(500).json({ error: "Erreur verify" });
     }
   }
 
   // =========================================================
-  // ✅ Customer Portal
-  // IMPORTANT: pour voir/éditer add-ons dans le Portal,
-  // il faut configurer le portal côté Stripe (dashboard ou API config).
+  // PORTAL
   // =========================================================
   async function customerPortal(req, res) {
     try {
@@ -458,17 +572,19 @@ function buildStripeModule(ctx) {
       const session = await stripe.billingPortal.sessions.create({
         customer: user.stripeCustomerId,
         return_url: `${baseUrl}/dashboard.html`,
-        // Optionnel si tu crées une configuration dédiée et que tu mets son ID en env :
-        // configuration: process.env.STRIPE_PORTAL_CONFIGURATION_ID,
+        // configuration: process.env.STRIPE_PORTAL_CONFIGURATION_ID, // optionnel
       });
 
       return res.json({ url: session.url });
     } catch (e) {
-      console.log("portal error:", e.message);
+      console.log("customerPortal error:", e.message);
       return res.status(500).json({ error: "Erreur portal" });
     }
   }
 
+  // =========================================================
+  // WEBHOOK (RAW)
+  // =========================================================
   async function webhookHandler(req, res) {
     try {
       if (!STRIPE_WEBHOOK_SECRET) return res.status(200).send("no webhook secret");
@@ -500,6 +616,7 @@ function buildStripeModule(ctx) {
 
       if (event.type === "customer.subscription.deleted") {
         const sub = event.data.object;
+
         await User.updateOne(
           { stripeCustomerId: sub.customer },
           { $set: { accessBlocked: true, subscriptionStatus: "canceled", lastPaymentStatus: "subscription_deleted" } }
@@ -510,7 +627,6 @@ function buildStripeModule(ctx) {
           const org = await Org.findById(user.orgId);
           if (org) {
             await ensureOrgDefaults(org);
-
             org.billingAddons.monitorsPack50 = 0;
             org.billingAddons.extraSeats = 0;
             org.billingAddons.retention90d = false;
@@ -522,7 +638,6 @@ function buildStripeModule(ctx) {
             org.billingAddons.prioritySupport = false;
             org.billingAddons.customDomain = false;
             org.billingAddons.whiteLabel = true;
-
             org.retentionDays = 30;
             org.credits = { audits: 0, pdf: 0, exports: 0 };
             await org.save();
