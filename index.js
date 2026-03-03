@@ -96,6 +96,30 @@ function getMailer() {
 }
 
 /**
+ * safeBaseUrl(req)
+ * - Utilise PUBLIC_BASE_URL si présent (recommandé)
+ * - Sinon reconstruit depuis req (proxy-friendly)
+ * - Évite les valeurs foireuses (host vide / injections)
+ */
+function safeBaseUrl(req) {
+  const env = String(process.env.PUBLIC_BASE_URL || "").trim();
+  if (env) {
+    // normalise sans trailing slash
+    return env.replace(/\/+$/, "");
+  }
+
+  const protoRaw = String(req.headers["x-forwarded-proto"] || req.protocol || "https");
+  const proto = protoRaw.split(",")[0].trim().toLowerCase();
+  const safeProto = proto === "http" || proto === "https" ? proto : "https";
+
+  const hostRaw = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  const host = hostRaw.replace(/[\r\n]/g, ""); // anti header-injection
+  if (!host) return "https://localhost";
+
+  return `${safeProto}://${host}`.replace(/\/+$/, "");
+}
+
+/**
  * sendEmail
  * Priority:
  *  1) Resend API (HTTPS / port 443) if RESEND_API_KEY is set
@@ -103,27 +127,39 @@ function getMailer() {
  */
 async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   try {
-    // 1) Resend API
-    if (process.env.RESEND_API_KEY) {
-      const toList = String(to || "")
+    const from = String(process.env.ALERT_EMAIL_FROM || "").trim();
+    if (!from) {
+      console.log("❌ ALERT_EMAIL_FROM manquant (email non envoyé)");
+      return { ok: false, error: "ALERT_EMAIL_FROM missing" };
+    }
+
+    // normalise to/bcc (accept string "a,b,c" or array)
+    const normalizeList = (v) => {
+      if (!v) return [];
+      if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
+      return String(v)
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+    };
 
-      const bccList = bcc
-        ? String(bcc)
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined;
+    const toList = normalizeList(to);
+    const bccList = normalizeList(bcc);
 
+    if (!toList.length) {
+      console.log("❌ sendEmail: destinataire manquant:", subject);
+      return { ok: false, error: "Recipient missing" };
+    }
+
+    // 1) Resend API
+    if (process.env.RESEND_API_KEY) {
       const payload = {
-        from: process.env.ALERT_EMAIL_FROM,
+        from,
         to: toList,
-        subject,
-        text: text || undefined,
-        html: html || undefined,
-        bcc: bccList && bccList.length ? bccList : undefined,
+        subject: String(subject || ""),
+        text: text ? String(text) : undefined,
+        html: html ? String(html) : undefined,
+        bcc: bccList.length ? bccList : undefined,
         attachments: attachments || undefined,
       };
 
@@ -149,28 +185,41 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
     // 2) SMTP fallback
     const t = getMailer();
     if (!t) {
-      console.log("⚠️ SMTP non configuré, email ignoré:", subject);
-      return { ok: false, skipped: true, error: "SMTP not configured" };
+      console.log("⚠️ SMTP non configuré et RESEND_API_KEY absent => email ignoré:", subject);
+      return { ok: false, skipped: true, error: "No email provider configured" };
     }
 
     const info = await t.sendMail({
-      from: process.env.ALERT_EMAIL_FROM,
-      to,
-      bcc,
+      from,
+      to: toList.join(","),
+      bcc: bccList.length ? bccList.join(",") : undefined,
       subject,
       text,
       html,
       attachments,
     });
 
-    console.log("✅ Email envoyé (SMTP):", info.messageId, "=>", to);
+    console.log("✅ Email envoyé (SMTP):", info.messageId, "=>", toList.join(","));
     return { ok: true, id: info.messageId };
   } catch (e) {
     console.log("❌ Email error:", e?.message || e);
     return { ok: false, error: e?.message || String(e) };
   }
 }
-function buildDailyReportEmail({ brandName, orgName, usersCount, monitorsDown, audits24hCount, logsDown24hCount }) {
+
+/**
+ * buildDailyReportEmail
+ * - Template premium
+ * - Dark/Light auto via prefers-color-scheme
+ */
+function buildDailyReportEmail({
+  brandName,
+  orgName,
+  usersCount,
+  monitorsDown,
+  audits24hCount,
+  logsDown24hCount,
+}) {
   const subject = `${brandName} — Rapport quotidien — ${orgName}`;
 
   const text = `${brandName} — Rapport quotidien
@@ -184,6 +233,13 @@ Logs DOWN (24h): ${logsDown24hCount || 0}
 
 Email envoyé automatiquement.
 `;
+
+  const dateLabel = new Date().toLocaleDateString("fr-FR", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
   const html = `<!doctype html>
 <html lang="fr">
@@ -203,6 +259,8 @@ Email envoyé automatiquement.
       --brand:#2f5bff;
       --brand2:#2449ff;
       --chip:#eef2ff;
+      --down:#b00020;
+      --ok:#0a7a2f;
     }
     @media (prefers-color-scheme: dark){
       :root{
@@ -236,7 +294,6 @@ Email envoyé automatiquement.
       box-shadow:0 12px 30px rgba(47,91,255,.25);
       flex:0 0 auto;
     }
-    .logo svg{ display:block; }
     h1{ margin:12px 0 2px; font-size:22px; letter-spacing:-.02em; }
     .sub{ color:var(--muted); font-size:13.5px; line-height:1.6; }
     .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
@@ -246,7 +303,7 @@ Email envoyé automatiquement.
       border-radius:16px;
       padding:14px;
     }
-    .k{ color:var(--muted); font-size:12px; font-weight:700; }
+    .k{ color:var(--muted); font-size:12px; font-weight:800; }
     .v{ margin-top:6px; font-size:20px; font-weight:900; letter-spacing:-.02em; }
     .pill{
       display:inline-block;
@@ -298,7 +355,7 @@ Email envoyé automatiquement.
         <h1>${brandName} — Rapport quotidien</h1>
         <div class="sub">
           Organisation : <b>${orgName}</b>
-          <span class="pill">${new Date().toLocaleDateString("fr-FR", { weekday:"long", year:"numeric", month:"long", day:"numeric" })}</span>
+          <span class="pill">${dateLabel}</span>
         </div>
 
         <div class="grid">
