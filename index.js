@@ -1204,8 +1204,8 @@ async function canCreateActiveMonitor(user, org) {
 
 // =======================
 // STRIPE (via stripe.js)
-// IMPORTANT: webhook RAW doit être AVANT express.json()
 // =======================
+
 const stripeModule = buildStripeModule({
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET,
@@ -1221,18 +1221,57 @@ const stripeModule = buildStripeModule({
   Org,
   sendEmail,
 });
-// webhook RAW
-app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeModule.webhookHandler);
 
-// parsers
+
+// =======================
+// 1️⃣ WEBHOOK (RAW BODY OBLIGATOIRE)
+// =======================
+
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeModule.webhookHandler
+);
+
+
+// =======================
+// 2️⃣ SECURITY (GLOBAL)
+// =======================
+
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({ origin: true, credentials: false }));
+app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
+
+
+// =======================
+// 3️⃣ BODY PARSERS (APRES WEBHOOK)
+// =======================
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Stripe routes
+
+// =======================
+// 4️⃣ STRIPE ROUTES
+// =======================
+
 app.post("/api/stripe/checkout", auth, requireActive, stripeModule.checkoutPlan);
-app.post("/api/stripe/checkout-embedded", auth, requireActive, stripeModule.checkoutEmbedded);
+
+app.post(
+  "/api/stripe/checkout-embedded",
+  auth,
+  requireActive,
+  stripeModule.checkoutEmbedded
+);
+
 app.get("/api/stripe/verify", stripeModule.verifyCheckout);
-app.post("/api/stripe/portal", auth, requireActive, stripeModule.customerPortal);
+
+app.post(
+  "/api/stripe/portal",
+  auth,
+  requireActive,
+  stripeModule.customerPortal
+);
 // ---------- SECURITY / PARSERS ----------
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: false }));
