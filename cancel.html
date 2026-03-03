@@ -1,10 +1,110 @@
 <!doctype html>
 <html lang="fr">
-<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Annulé</title></head>
-<body style="font-family:system-ui;margin:40px">
-  <h1>❌ Paiement annulé</h1>
-  <p>Tu peux revenir et réessayer.</p>
-  <a href="/index.html">Retour</a>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light dark">
+  <title>Paiement annulé</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#667085;
+      --border:rgba(15,23,42,.10);
+      --danger:#e11d48;
+      --btn:#0f172a;
+      --btnText:#ffffff;
+      --link:#2f5bff;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#070b18;
+        --card:#0c1228;
+        --text:#eaf0ff;
+        --muted:rgba(234,240,255,.72);
+        --border:rgba(255,255,255,.10);
+        --btn:#eaf0ff;
+        --btnText:#0c1228;
+        --link:#9aaeff;
+      }
+    }
+    body{
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 500px at 50% -10%, rgba(47,91,255,.20), transparent 60%),
+                  var(--bg);
+      color:var(--text);
+    }
+    .wrap{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card{
+      width:min(560px, 100%);
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:20px;
+      box-shadow: 0 20px 70px rgba(0,0,0,.18);
+    }
+    .top{ display:flex; align-items:center; gap:12px; }
+    .icon{
+      width:44px;height:44px;border-radius:14px;
+      background: rgba(225,29,72,.12);
+      display:flex;align-items:center;justify-content:center;
+      border:1px solid rgba(225,29,72,.25);
+      flex:0 0 auto;
+    }
+    h1{ margin:14px 0 6px; font-size:20px; letter-spacing:-.02em; }
+    p{ margin:0; color:var(--muted); line-height:1.6; font-size:14px; }
+    .actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+    .btn{
+      appearance:none; border:1px solid var(--border);
+      background:transparent; color:var(--text);
+      padding:10px 14px; border-radius:12px;
+      font-weight:800; cursor:pointer; text-decoration:none;
+      display:inline-flex; align-items:center; gap:8px;
+    }
+    .btnPrimary{
+      background:var(--btn); color:var(--btnText);
+      border-color: transparent;
+    }
+    .meta{ margin-top:14px; font-size:12px; color:var(--muted); }
+    a{ color:var(--link); text-decoration:none; }
+    a:hover{ text-decoration:underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" role="status" aria-live="polite">
+      <div class="top">
+        <div class="icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M12 9v5" stroke="var(--danger)" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M12 17.5h.01" stroke="var(--danger)" stroke-width="3.2" stroke-linecap="round"/>
+            <path d="M10.3 3.6 2.4 17.3a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z"
+                  stroke="var(--danger)" stroke-width="2.2" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-weight:900; line-height:1">Paiement annulé</div>
+          <div class="meta">Aucun montant n’a été débité.</div>
+        </div>
+      </div>
+
+      <h1>Tu peux réessayer quand tu veux</h1>
+      <p>
+        Si tu as rencontré un problème (3D Secure, carte refusée, etc.), réessaie avec un autre moyen de paiement
+        ou contacte le support.
+      </p>
+
+      <div class="actions">
+        <a class="btn btnPrimary" href="/pricing.html">Revenir au pricing</a>
+        <a class="btn" href="/dashboard.html">Aller au dashboard</a>
+      </div>
+
+      <div class="meta" style="margin-top:12px">
+        Besoin d’aide ? <a href="mailto:support@flowpoint.pro">support@flowpoint.pro</a>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
