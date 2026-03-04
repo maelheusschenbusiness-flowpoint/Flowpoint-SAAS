@@ -1,108 +1,91 @@
-// addons.js — FlowPoint Add-ons management (custom UI)
-// - UI add-ons (comme pricing.js mais sans plans)
-// - sauvegarde localStorage (prefs)
-// - applique via POST /api/stripe/checkout avec { plan:null, addons } (si abonnement actif => updateExistingSubscription)
+// addons.js — FlowPoint Add-ons UI
+// - Lit prefs (fp_addon_prefs)
+// - Apply => POST /api/stripe/checkout { plan:null, addons }
+// - Si backend renvoie paymentIntentClientSecret => on propose "Payer maintenant" (redirect /checkout.html)
 
 (() => {
   const TOKEN_KEYS = ["token", "fp_token"];
   const ADDON_PREF_KEY = "fp_addon_prefs";
+  const CHECKOUT_PAYLOAD_KEY = "fp_checkout_payload";
 
   const $ = (q) => document.querySelector(q);
-
   const authPill = $("#authPill");
-  const addonsRoot = $("#addonsList");
-  const addonsMsg = $("#addonsMsg");
-  const sumAddons = $("#sumAddons");
-
-  const btnApply = $("#btnApply");
-  const btnDashboard = $("#btnDashboard");
+  const root = $("#addonsList");
+  const msg = $("#addonsMsg");
+  const sumAddOns = $("#sumAddOns");
+  const applyBtn = $("#applyBtn");
+  const toPayBtn = $("#toPayBtn");
 
   function getToken() {
     for (const k of TOKEN_KEYS) {
       const v = localStorage.getItem(k);
       if (v) return v;
     }
-    return "";
+    return null;
   }
 
-  function setAuth() {
+  function setAuthBadge() {
     const tok = getToken();
-    if (authPill) authPill.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
+    if (!authPill) return;
+    authPill.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
   }
 
   function setMsg(t) {
-    if (addonsMsg) addonsMsg.textContent = t || "";
-  }
-
-  function loadPrefs() {
-    let addons = {};
-    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {}; } catch {}
-    return { addons };
-  }
-
-  function savePrefs(state) {
-    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(state.addons || {}));
+    if (msg) msg.textContent = t || "";
   }
 
   const ADDONS = [
-    { key: "whiteLabel", name: "White label", desc: "Marque blanche (inclus).", price: "Inclus (gratuit)", type: "flag", defaultOn: true, lockedOn: true },
-    { key: "customDomain", name: "Custom Domain", desc: "Utilise ton propre domaine (brand pro).", price: "9€ / mois", type: "flag", defaultOn: false },
-    { key: "prioritySupport", name: "Priority Support", desc: "Support prioritaire.", price: "29€ / mois", type: "flag", defaultOn: false },
-    { key: "retention90d", name: "Retention +90 days", desc: "Rétention 90 jours.", price: "9€ / mois", type: "flag", defaultOn: false },
-    { key: "retention365d", name: "Retention +365 days", desc: "Rétention 365 jours.", price: "19€ / mois", type: "flag", defaultOn: false },
+    { key: "whiteLabel", name: "White label", desc: "Marque blanche (inclus).", price: "Inclus (gratuit)", type: "flag", lockedOn: true },
+    { key: "customDomain", name: "Custom Domain", desc: "Utilise ton propre domaine.", price: "9€ / mois", type: "flag" },
+    { key: "prioritySupport", name: "Priority Support", desc: "Support prioritaire.", price: "29€ / mois", type: "flag" },
+    { key: "retention90d", name: "Retention +90 days", desc: "Rétention 90 jours.", price: "9€ / mois", type: "flag" },
+    { key: "retention365d", name: "Retention +365 days", desc: "Rétention 365 jours.", price: "19€ / mois", type: "flag" },
 
-    { key: "auditsPack200", name: "Audits Pack +200", desc: "Ajoute +200 audits / mois.", price: "9€ / mois", type: "qty", max: 50, unitLabel: "+200 audits" },
-    { key: "auditsPack1000", name: "Audits Pack +1000", desc: "Ajoute +1000 audits / mois.", price: "29€ / mois", type: "qty", max: 20, unitLabel: "+1000 audits" },
-    { key: "pdfPack200", name: "PDF Pack +200", desc: "Ajoute +200 PDFs / mois.", price: "9€ / mois", type: "qty", max: 50, unitLabel: "+200 PDFs" },
-    { key: "exportsPack1000", name: "Exports Pack +1000", desc: "Ajoute +1000 exports / mois.", price: "19€ / mois", type: "qty", max: 50, unitLabel: "+1000 exports" },
-    { key: "monitorsPack50", name: "Monitors Pack +50", desc: "Ajoute +50 monitors.", price: "19€ / mois", type: "qty", max: 10, unitLabel: "+50 monitors" },
-    { key: "extraSeats", name: "Extra Seats", desc: "Ajoute des seats.", price: "7€ / mois", type: "qty", max: 50, unitLabel: "seat" },
+    { key: "auditsPack200", name: "Audits Pack +200", desc: "+200 audits / mois.", price: "9€ / mois", type: "qty", max: 50 },
+    { key: "auditsPack1000", name: "Audits Pack +1000", desc: "+1000 audits / mois.", price: "29€ / mois", type: "qty", max: 20 },
+    { key: "pdfPack200", name: "PDF Pack +200", desc: "+200 PDFs / mois.", price: "9€ / mois", type: "qty", max: 50 },
+    { key: "exportsPack1000", name: "Exports Pack +1000", desc: "+1000 exports / mois.", price: "19€ / mois", type: "qty", max: 50 },
+    { key: "monitorsPack50", name: "Monitors Pack +50", desc: "+50 monitors.", price: "19€ / mois", type: "qty", max: 10 },
+    { key: "extraSeats", name: "Extra Seats", desc: "Seats supplémentaires.", price: "7€ / mois", type: "qty", max: 50 },
   ];
 
-  function ensureDefaults(state) {
-    if (!state.addons || typeof state.addons !== "object") state.addons = {};
-
+  function loadAddons() {
+    let addons = {};
+    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {}; } catch {}
+    // defaults
     for (const a of ADDONS) {
-      if (a.type === "flag" && state.addons[a.key] === undefined) state.addons[a.key] = !!a.defaultOn;
-      if (a.type === "qty" && state.addons[a.key] === undefined) state.addons[a.key] = 0;
+      if (a.type === "flag" && addons[a.key] === undefined) addons[a.key] = (a.key === "whiteLabel");
+      if (a.type === "qty" && addons[a.key] === undefined) addons[a.key] = 0;
     }
-
-    // whiteLabel always on
-    state.addons.whiteLabel = true;
-
-    // compat old key
-    if (state.addons.extraSeat != null && state.addons.extraSeats == null) {
-      state.addons.extraSeats = Number(state.addons.extraSeat || 0);
-      delete state.addons.extraSeat;
+    addons.whiteLabel = true;
+    // migration ancienne clé
+    if (addons.extraSeat != null && addons.extraSeats == null) {
+      addons.extraSeats = Number(addons.extraSeat || 0);
+      delete addons.extraSeat;
     }
+    return addons;
   }
 
-  function summarize(addons) {
+  function saveAddons(addons) {
+    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(addons || {}));
+  }
+
+  function updateSummary(addons) {
     const lines = [];
-    for (const a of ADDONS) {
-      if (a.key === "whiteLabel") continue;
-      const v = addons[a.key];
-      if (a.type === "flag") {
-        if (v) lines.push(a.name);
-      } else {
-        const n = Number(v || 0);
-        if (n > 0) lines.push(`${a.name} × ${n}`);
-      }
+    for (const [k, v] of Object.entries(addons || {})) {
+      if (k === "whiteLabel") continue;
+      if (typeof v === "boolean") { if (v) lines.push(k); }
+      else if (Number(v) > 0) lines.push(`${k}×${Number(v)}`);
     }
-    return lines.length ? lines.join(" • ") : "—";
+    if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
   }
 
-  function updateSummary(state) {
-    if (sumAddons) sumAddons.textContent = summarize(state.addons);
-  }
-
-  function renderAddons(state) {
-    addonsRoot.innerHTML = "";
+  function render(addons) {
+    root.innerHTML = "";
 
     for (const a of ADDONS) {
       const row = document.createElement("div");
       row.className = "addonRow";
-      row.dataset.key = a.key;
 
       const left = document.createElement("div");
       left.innerHTML = `
@@ -116,23 +99,22 @@
       right.innerHTML = `<div class="addonPrice">${a.price}</div>`;
 
       if (a.type === "qty") {
-        const qty = Number(state.addons[a.key] || 0);
         const wrap = document.createElement("div");
         wrap.className = "qty";
         wrap.innerHTML = `
           <button class="qtyBtn" type="button" data-act="dec">−</button>
-          <input class="qtyInput" type="number" min="0" max="${a.max ?? 999}" step="1" value="${qty}" inputmode="numeric" />
+          <input class="qtyInput" type="number" min="0" max="${a.max ?? 999}" step="1" value="${Number(addons[a.key] || 0)}" />
           <button class="qtyBtn" type="button" data-act="inc">+</button>
         `;
-
         const input = wrap.querySelector(".qtyInput");
+
         const setVal = (v) => {
           const max = Number(a.max ?? 999);
           const nv = Math.max(0, Math.min(max, Number(v || 0)));
           input.value = String(nv);
-          state.addons[a.key] = nv;
-          savePrefs(state);
-          updateSummary(state);
+          addons[a.key] = nv;
+          saveAddons(addons);
+          updateSummary(addons);
         };
 
         wrap.addEventListener("click", (e) => {
@@ -143,100 +125,104 @@
         });
 
         input.addEventListener("change", () => setVal(input.value));
-        input.addEventListener("input", () => {
-          if (input.value === "") return;
-          setVal(input.value);
-        });
-
         right.appendChild(wrap);
       } else {
-        const isOn = !!state.addons[a.key];
-
         const toggle = document.createElement("label");
         toggle.className = "toggle";
+        const on = !!addons[a.key];
         toggle.innerHTML = `
-          <input type="checkbox" ${isOn ? "checked" : ""} ${a.lockedOn ? "disabled" : ""} />
+          <input type="checkbox" ${on ? "checked" : ""} ${a.lockedOn ? "disabled" : ""} />
           <span class="track"></span>
         `;
-
         const input = toggle.querySelector("input");
         input.addEventListener("change", () => {
-          state.addons[a.key] = !!input.checked;
-          if (a.key === "whiteLabel") state.addons.whiteLabel = true;
-          savePrefs(state);
-          updateSummary(state);
+          addons[a.key] = !!input.checked;
+          if (a.key === "whiteLabel") addons.whiteLabel = true;
+          saveAddons(addons);
+          updateSummary(addons);
         });
-
         right.appendChild(toggle);
       }
 
       row.appendChild(left);
       row.appendChild(right);
-      addonsRoot.appendChild(row);
+      root.appendChild(row);
     }
   }
 
-  async function applyAddons(state) {
+  async function apiApply(addons) {
     const tok = getToken();
-    if (!tok) {
-      location.href = "/login.html";
-      return;
-    }
+    const r = await fetch("/api/stripe/checkout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + tok
+      },
+      body: JSON.stringify({ plan: null, addons })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Erreur apply");
+    return j;
+  }
 
-    btnApply.disabled = true;
-    btnApply.textContent = "Application…";
+  function setCheckoutPayloadForPay(addons) {
+    localStorage.setItem(CHECKOUT_PAYLOAD_KEY, JSON.stringify({
+      mode: "addons",
+      plan: null,
+      addons,
+      ts: Date.now()
+    }));
+  }
+
+  async function onApply(addons) {
     setMsg("");
+    toPayBtn.style.display = "none";
+
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Application…";
 
     try {
-      // ✅ Ton backend: /api/stripe/checkout
-      // - si abonnement actif => updateExistingSubscription + {ok:true, updated}
-      // - si pas abonné => ça créerait un checkout session (mais ici plan=null => addons seuls => possible si tu veux)
-      const r = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + tok,
-        },
-        body: JSON.stringify({ plan: null, addons: state.addons }),
-      });
+      const j = await apiApply(addons);
 
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "Erreur");
-
-      if (j.ok) {
-        setMsg(j.updated ? "✅ Add-ons mis à jour." : "✅ Aucun changement.");
-        btnApply.disabled = false;
-        btnApply.textContent = "Appliquer les add-ons";
+      // Update sans paiement
+      if (j.ok && !j.paymentIntentClientSecret) {
+        setMsg(j.updated ? "Add-ons mis à jour ✅" : "Aucun changement.");
+        applyBtn.disabled = false;
+        applyBtn.textContent = "Appliquer";
         return;
       }
 
-      // Si jamais backend renvoie une url (si pas abonné et addons only)
-      if (j.url) {
-        location.href = j.url;
+      // Update avec paiement prorata requis
+      if (j.paymentIntentClientSecret) {
+        setMsg("Add-ons mis à jour ✅ Paiement requis (prorata).");
+        setCheckoutPayloadForPay(addons);
+        toPayBtn.style.display = "inline-block";
+        toPayBtn.onclick = () => window.location.href = "/checkout.html";
+        applyBtn.disabled = false;
+        applyBtn.textContent = "Appliquer";
         return;
       }
 
-      setMsg("✅ OK.");
-      btnApply.disabled = false;
-      btnApply.textContent = "Appliquer les add-ons";
+      setMsg("Réponse inattendue.");
+      applyBtn.disabled = false;
+      applyBtn.textContent = "Appliquer";
     } catch (e) {
-      setMsg("❌ " + (e?.message || "Erreur"));
-      btnApply.disabled = false;
-      btnApply.textContent = "Appliquer les add-ons";
+      setMsg(e.message || "Erreur");
+      applyBtn.disabled = false;
+      applyBtn.textContent = "Appliquer";
     }
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    setAuth();
+  // init
+  setAuthBadge();
+  if (!getToken()) {
+    window.location.href = "/login.html";
+    return;
+  }
 
-    const state = loadPrefs();
-    ensureDefaults(state);
-    savePrefs(state);
+  const addons = loadAddons();
+  render(addons);
+  updateSummary(addons);
 
-    renderAddons(state);
-    updateSummary(state);
-
-    if (btnApply) btnApply.addEventListener("click", () => applyAddons(state));
-    if (btnDashboard) btnDashboard.addEventListener("click", () => (location.href = "/dashboard.html"));
-  });
+  applyBtn.addEventListener("click", () => onApply(addons));
 })();
