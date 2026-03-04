@@ -33,35 +33,25 @@
         <div class="hero">
           <h1>Choisis ton plan + tes options</h1>
           <p>
-            Tu peux acheter un plan maintenant. Les add-ons payants se gèrent ensuite dans le Customer Portal Stripe
-            (bouton “Gérer mes add-ons”).
+            1) Clique <b>Checkout</b> pour payer le plan + add-ons sélectionnés (dans une page FlowPoint).<br/>
+            2) Clique <b>Gérer mes add-ons</b> pour ajouter/retirer des options (dans une page FlowPoint).
           </p>
-        </div>
-
-        <!-- ✅ zone message (erreurs / infos) -->
-        <div class="section">
-          <div class="card" style="padding:14px">
-            <div class="small" id="pricingMsg" style="white-space:pre-wrap; opacity:.9"></div>
-          </div>
+          <div class="small" id="pricingMsg"></div>
         </div>
 
         <div class="section">
           <div class="sectionHead">
             <div class="title">Plans</div>
-            <div class="hint">Essai via Stripe.</div>
+            <div class="hint">Essai via Stripe (Billing).</div>
           </div>
-
-          <!-- Rempli par pricing.js -->
           <div class="plans" id="plans"></div>
         </div>
 
         <div class="section">
           <div class="sectionHead">
             <div class="title">Add-ons</div>
-            <div class="hint">Keys (en violet) + préférence enregistrée</div>
+            <div class="hint">Sélection UI (puis paiement/MAJ dans Checkout ou Add-ons).</div>
           </div>
-
-          <!-- Rempli par pricing.js -->
           <div class="addons" id="addonsList"></div>
         </div>
       </div>
@@ -74,12 +64,11 @@
             <ul class="miniList">
               <li>Rapports PDF + exports CSV</li>
               <li>Alertes email + pages de rapports</li>
-              <li>White label (selon plan)</li>
+              <li>White label inclus (gratuit)</li>
               <li>Support email + onboarding</li>
               <li>Historique d’incidents (selon rétention)</li>
               <li>Exports & partage équipe (selon plan)</li>
             </ul>
-            <div class="small">Les add-ons sont gérés dans le Stripe Portal (bouton “Gérer mes add-ons”).</div>
           </div>
         </div>
 
@@ -94,12 +83,11 @@
               <span id="sumAddOns" style="text-align:right">—</span>
             </div>
 
-            <!-- ✅ IDs cohérents -->
-            <button class="primaryBtn" id="btnCheckout">Continuer (Checkout Plan)</button>
+            <button class="primaryBtn" id="btnCheckout">Continuer (Checkout)</button>
             <button class="ghostBtn" id="btnPortal">Gérer mes add-ons</button>
 
             <div class="small">
-              Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (le plan sera pré-sélectionné).
+              Si tu n’es pas connecté, tu seras renvoyé vers l’inscription / login.
             </div>
           </div>
         </div>
@@ -115,175 +103,11 @@
             </ul>
           </div>
         </div>
-
-        <div class="card">
-          <div class="cardHead">Info</div>
-          <div class="cardBody">
-            <div class="small">
-              • Ton plan fixe les quotas monitors / PDF / exports.<br/>
-              • Les add-ons payants sont modifiables dans le Portal Stripe.<br/>
-              • Sur cette page, on envoie les choix au backend (pas de Stripe.js côté client).
-            </div>
-          </div>
-        </div>
       </div>
 
     </div>
   </div>
 
-  <!-- ✅ pricing.js peut rester pour générer les radios et inputs -->
   <script src="/pricing.js"></script>
-
-  <!-- ✅ Script SIMPLE et UNIQUE pour Stripe -->
-  <script>
-    function setMsg(t) {
-      const el = document.getElementById("pricingMsg");
-      if (el) el.textContent = t || "";
-    }
-
-    function getToken() {
-      return localStorage.getItem("token") || "";
-    }
-
-    async function api(path, method, body) {
-      const headers = {};
-      const tok = getToken();
-      if (tok) headers["Authorization"] = "Bearer " + tok;
-      if (body) headers["Content-Type"] = "application/json";
-
-      const r = await fetch(path, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || ("Erreur API: " + r.status));
-      return data;
-    }
-
-    function readSelectedPlan() {
-      const el = document.querySelector('input[name="plan"]:checked');
-      return el ? el.value : null;
-    }
-
-    function readAddonsFromDom() {
-      const addons = {};
-      document.querySelectorAll("[data-addon]").forEach((el) => {
-        const key = el.getAttribute("data-addon");
-        if (!key) return;
-
-        if (el.type === "checkbox") {
-          addons[key] = !!el.checked;
-          return;
-        }
-
-        const n = Number(el.value);
-        addons[key] = (Number.isFinite(n) && n > 0) ? Math.floor(n) : 0;
-      });
-      return addons;
-    }
-
-    let isAlreadySubscribed = false;
-    let currentPlan = null;
-
-    async function init() {
-      const pill = document.getElementById("authPill");
-
-      const tok = getToken();
-      if (!tok) {
-        if (pill) pill.textContent = "Statut : non connecté";
-        setMsg("Connecte-toi pour acheter un plan / gérer les add-ons.");
-        return;
-      }
-
-      try {
-        const me = await api("/api/me", "GET");
-        currentPlan = me.plan || null;
-
-        const st = String(me.subscriptionStatus || "").toLowerCase();
-        isAlreadySubscribed = (st === "active" || st === "trialing" || st === "past_due");
-
-        if (pill) pill.textContent = "Statut : connecté (" + (currentPlan || "—") + ")";
-
-        if (isAlreadySubscribed) {
-          setMsg(
-            "Abonnement détecté : " + st +
-            "\\n→ Le bouton “Checkout Plan” servira surtout si tu n’as pas encore d’abonnement." +
-            "\\n→ Pour modifier les add-ons, utilise “Gérer mes add-ons” (Portal)."
-          );
-
-          // optionnel : pré-check le plan actuel si les radios existent déjà
-          if (currentPlan) {
-            const r = document.querySelector('input[name="plan"][value="' + currentPlan + '"]');
-            if (r) r.checked = true;
-          }
-        } else {
-          setMsg("");
-        }
-      } catch (e) {
-        if (pill) pill.textContent = "Statut : token invalide";
-        setMsg("Session invalide. Reconnecte-toi.");
-      }
-    }
-
-    async function openPortal() {
-      setMsg("");
-      const data = await api("/api/stripe/portal", "POST");
-      if (!data || !data.url) throw new Error("URL Stripe manquante (portal)");
-      location.href = data.url;
-    }
-
-    async function startCheckout() {
-      setMsg("");
-
-      const addons = readAddonsFromDom();
-      const plan = readSelectedPlan();
-
-      // si déjà abonné, on conseille portal (sinon Stripe peut créer une 2e souscription)
-      if (isAlreadySubscribed) {
-        setMsg("Tu as déjà un abonnement. Utilise plutôt “Gérer mes add-ons” (Portal Stripe).");
-        return;
-      }
-
-      if (!plan) throw new Error("Sélectionne un plan.");
-
-      const data = await api("/api/stripe/checkout", "POST", { plan, addons });
-
-      // selon ton backend : soit { url }, soit { ok:true } si déjà géré
-      if (data && data.ok && !data.url) {
-        setMsg(data.updated ? "Options mises à jour ✅" : "OK ✅");
-        return;
-      }
-
-      if (!data || !data.url) throw new Error("URL Stripe manquante (checkout)");
-      location.href = data.url;
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-      init();
-
-      const btnCheckout = document.getElementById("btnCheckout");
-      const btnPortal = document.getElementById("btnPortal");
-
-      if (btnPortal) {
-        btnPortal.addEventListener("click", async () => {
-          btnPortal.disabled = true;
-          try { await openPortal(); }
-          catch (e) { setMsg(e.message || "Erreur Portal"); }
-          finally { btnPortal.disabled = false; }
-        });
-      }
-
-      if (btnCheckout) {
-        btnCheckout.addEventListener("click", async () => {
-          btnCheckout.disabled = true;
-          try { await startCheckout(); }
-          catch (e) { setMsg(e.message || "Erreur Checkout"); }
-          finally { btnCheckout.disabled = false; }
-        });
-      }
-    });
-  </script>
 </body>
 </html>
