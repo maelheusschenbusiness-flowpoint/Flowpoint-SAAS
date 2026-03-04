@@ -3,6 +3,7 @@
 // ✅ FIX: extraSeat -> extraSeats (cohérent avec OrgSchema.billingAddons.extraSeats)
 // ✅ FIX: cancel redirect (checkout redirect -> cancel.html?next=...)
 // ✅ Embedded: Stripe renvoie sur return_url avec redirect_status => à gérer dans checkout-return.html
+// ✅ FIX: Active sub (embedded/redirect) -> renvoie paymentIntentClientSecret si prorata à payer
 
 const Stripe = require("stripe");
 
@@ -176,8 +177,6 @@ function buildStripeModule(ctx) {
     const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw });
     const planPriceIds = new Set(getPlanPriceIds());
 
-    // On ne force pas à "reprendre" un plan si chosenPlan == null.
-    // Si chosenPlan != null → on change le plan (on garde 1 seul plan item).
     const items = sub.items?.data || [];
 
     // Index existing items by priceId
@@ -418,19 +417,19 @@ function buildStripeModule(ctx) {
 
         await applySubscriptionToUserAndOrg(subscription);
 
-       const pi = subscription?.latest_invoice?.payment_intent;
+        const pi = subscription?.latest_invoice?.payment_intent;
 
-if (pi && pi.client_secret && pi.status && pi.status !== "succeeded") {
-  return res.json({
-    ok: true,
-    updated,
-    subscriptionId: subscription.id,
-    paymentIntentClientSecret: pi.client_secret,
-    paymentIntentStatus: pi.status
-  });
-}
+        if (pi && pi.client_secret && pi.status && pi.status !== "succeeded") {
+          return res.json({
+            ok: true,
+            updated,
+            subscriptionId: subscription.id,
+            paymentIntentClientSecret: pi.client_secret,
+            paymentIntentStatus: pi.status,
+          });
+        }
 
-return res.json({ ok: true, updated, subscriptionId: subscription.id });
+        return res.json({ ok: true, updated, subscriptionId: subscription.id });
       }
 
       // ✅ pas abonné => créer Checkout Session (nouvelle subscription)
@@ -477,7 +476,7 @@ return res.json({ ok: true, updated, subscriptionId: subscription.id });
   // =========================================================
   // ROUTE — Embedded Checkout (plan optionnel + addons)
   // Body: { plan?: "...", addons?: ... }
-  // - Si subscription active => UPDATE subscription (pas d'embedded)
+  // - Si subscription active => UPDATE subscription
   // - Sinon => session embedded + clientSecret
   // =========================================================
   async function checkoutEmbedded(req, res) {
@@ -494,7 +493,8 @@ return res.json({ ok: true, updated, subscriptionId: subscription.id });
 
       const activeSub = await getActiveSubscriptionForUser(user);
 
-      // ✅ déjà abonné => update subscription direct (pas d'embedded)
+      // ✅ déjà abonné => update subscription direct
+      // ✅ IMPORTANT: si Stripe génère une invoice (prorata), on renvoie le paymentIntent client_secret
       if (activeSub) {
         const { updated, subscription } = await updateExistingSubscription({
           sub: activeSub,
@@ -503,6 +503,18 @@ return res.json({ ok: true, updated, subscriptionId: subscription.id });
         });
 
         await applySubscriptionToUserAndOrg(subscription);
+
+        const pi = subscription?.latest_invoice?.payment_intent;
+
+        if (pi && pi.client_secret && pi.status && pi.status !== "succeeded") {
+          return res.json({
+            ok: true,
+            updated,
+            subscriptionId: subscription.id,
+            paymentIntentClientSecret: pi.client_secret,
+            paymentIntentStatus: pi.status,
+          });
+        }
 
         return res.json({ ok: true, updated, subscriptionId: subscription.id });
       }
