@@ -228,6 +228,7 @@
   }
 
   function renderPlans(state) {
+    if (!plansEl) return;
     plansEl.innerHTML = "";
 
     for (const p of PLANS) {
@@ -246,7 +247,7 @@
           </div>
         </div>
         <ul class="features">
-          ${p.features.map(f => `<li>${f}</li>`).join("")}
+          ${p.features.map((f) => `<li>${f}</li>`).join("")}
         </ul>
       `;
 
@@ -266,6 +267,7 @@
   }
 
   function renderAddons(state) {
+    if (!addonsRoot) return;
     addonsRoot.innerHTML = "";
 
     for (const a of ADDONS) {
@@ -347,7 +349,7 @@
   }
 
   function updateSummary(state) {
-    const p = PLANS.find(x => x.id === state.plan) || PLANS[1];
+    const p = PLANS.find((x) => x.id === state.plan) || PLANS[1];
     if (sumPlan) sumPlan.textContent = p.name;
     if (sumPlanPrice) sumPlanPrice.textContent = `${p.priceLabel} ${p.per}`;
 
@@ -372,42 +374,41 @@
   // ---- Stripe state (depuis /api/me) ----
   let isSubscribed = false;
   let subscriptionStatus = "";
+  let currentPlan = "";
 
   async function fetchMe() {
     const tok = getToken();
     if (!tok) return null;
 
-    const r = await fetch("/api/me", {
-      headers: { "Authorization": "Bearer " + tok }
-    });
-
+    const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + tok } });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return null;
 
     const st = String(j.subscriptionStatus || "").toLowerCase();
     subscriptionStatus = st;
-    isSubscribed = (st === "active" || st === "trialing" || st === "past_due");
+    isSubscribed = st === "active" || st === "trialing" || st === "past_due";
+    currentPlan = String(j.plan || "");
 
-    // Bonus: si backend te donne le plan actuel, on sync l’UI
-    if (j.plan && ["standard", "pro", "ultra"].includes(String(j.plan))) {
-      return j;
-    }
     return j;
   }
 
   async function goCheckout(state) {
     const tok = getToken();
     if (!tok) {
+      // pas connecté => renvoyer à l'inscription avec plan pré-sélectionné
       localStorage.setItem(PLAN_PREF_KEY, state.plan);
-      window.location.href = "/index.html";
+      // choisis l’un des deux :
+      // window.location.href = "/index.html";
+      window.location.href = "/login.html";
       return;
     }
 
+    if (!btnCheckout) return;
     btnCheckout.disabled = true;
     btnCheckout.textContent = "Redirection…";
 
     try {
-      // ✅ IMPORTANT : si déjà abonné -> pas de checkout plan -> Portal
+      // ✅ si déjà abonné => on passe par Portal (upgrade/downgrade + add-ons)
       if (isSubscribed) {
         await openPortal();
         return;
@@ -417,29 +418,22 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer " + tok,
+          Authorization: "Bearer " + tok,
         },
         // ✅ on envoie aussi addons (si backend ignore, aucun souci)
-        body: JSON.stringify({ plan: state.plan, addons: state.addons })
+        body: JSON.stringify({ plan: state.plan, addons: state.addons }),
       });
 
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "Erreur checkout");
 
-      // ✅ Cas normal: url checkout
       if (j.url) {
         window.location.href = j.url;
         return;
       }
 
-      // ✅ Cas “backend a fait autre chose” (ex: update direct, already subscribed, etc.)
+      // ✅ backend a renvoyé ok:true sans url
       if (j.ok) {
-        // si le backend a renvoyé un portalUrl ou autre
-        if (j.portalUrl) {
-          window.location.href = j.portalUrl;
-          return;
-        }
-
         alert(j.updated ? "Options mises à jour ✅" : "OK ✅");
         btnCheckout.disabled = false;
         btnCheckout.textContent = "Continuer (Checkout Plan)";
@@ -461,37 +455,45 @@
       return;
     }
 
-    btnPortal.disabled = true;
-    btnPortal.textContent = "Ouverture…";
+    if (btnPortal) {
+      btnPortal.disabled = true;
+      btnPortal.textContent = "Ouverture…";
+    }
+    if (btnCheckout) {
+      // si on arrive ici via Checkout
+      btnCheckout.disabled = true;
+      btnCheckout.textContent = "Ouverture…";
+    }
 
     try {
       const r = await fetch("/api/stripe/portal", {
         method: "POST",
-        headers: { "Authorization": "Bearer " + tok }
+        headers: { Authorization: "Bearer " + tok },
       });
 
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "Erreur portal");
 
-      // ✅ Normal: url portal
       if (j.url) {
         window.location.href = j.url;
         return;
       }
 
-      // ✅ Si backend répond ok:true sans url (rare mais possible dans ton module)
       if (j.ok) {
         alert("Portal: OK ✅ (mais aucune URL renvoyée par le backend)");
-        btnPortal.disabled = false;
-        btnPortal.textContent = "Gérer mes add-ons";
-        return;
+      } else {
+        throw new Error("URL portal manquante");
       }
-
-      throw new Error("URL portal manquante");
     } catch (e) {
       alert(e.message || "Erreur");
-      btnPortal.disabled = false;
-      btnPortal.textContent = "Gérer mes add-ons";
+      if (btnPortal) {
+        btnPortal.disabled = false;
+        btnPortal.textContent = "Gérer mes add-ons";
+      }
+      if (btnCheckout) {
+        btnCheckout.disabled = false;
+        btnCheckout.textContent = "Continuer (Checkout Plan)";
+      }
     }
   }
 
@@ -508,7 +510,7 @@
   renderAll(state);
   setAuthBadge();
 
-  // ✅ Pas de “flash dashboard” : on décide AVANT d’ouvrir dashboard
+  // Bouton home (si tu l’as dans ton HTML)
   if (homeBtn) {
     homeBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -520,23 +522,25 @@
   // ✅ Fetch /api/me pour savoir si tu es déjà abonné
   (async () => {
     const me = await fetchMe();
-    if (me) {
-      // sync plan UI si besoin
-      if (me.plan && ["standard", "pro", "ultra"].includes(String(me.plan))) {
-        state.plan = String(me.plan);
-        savePrefs(state);
-        renderAll(state);
-      }
-
-      if (isSubscribed) {
-        setAuthBadge("Statut : Connecté (" + (me.plan || "—") + ", " + (subscriptionStatus || "sub") + ")");
-        // optionnel: tu peux changer le label du bouton checkout
-        if (btnCheckout) btnCheckout.textContent = "Modifier via Portal";
-      } else {
-        setAuthBadge("Statut : Connecté");
-      }
-    } else {
+    if (!me) {
       setAuthBadge();
+      return;
+    }
+
+    // Sync plan UI si backend retourne plan
+    if (me.plan && ["standard", "pro", "ultra"].includes(String(me.plan))) {
+      state.plan = String(me.plan);
+      savePrefs(state);
+      renderAll(state);
+    }
+
+    if (isSubscribed) {
+      setAuthBadge(
+        `Statut : Connecté (${currentPlan || "—"}, ${subscriptionStatus || "sub"})`
+      );
+      if (btnCheckout) btnCheckout.textContent = "Modifier via Portal";
+    } else {
+      setAuthBadge("Statut : Connecté");
     }
   })();
 
