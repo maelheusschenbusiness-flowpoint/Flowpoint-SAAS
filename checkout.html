@@ -7,6 +7,7 @@
   <meta name="color-scheme" content="light dark"/>
   <link rel="stylesheet" href="/style.css" />
 </head>
+
 <body>
   <div class="page">
     <div class="topbar">
@@ -73,14 +74,17 @@
         </div>
       </div>
     </div>
-
   </div>
 
+  <!-- ✅ Stripe.js UNE SEULE FOIS -->
   <script src="https://js.stripe.com/v3/"></script>
+
+  <!-- ✅ IMPORTANT: mettre la clé sur window -->
   <script>
-    // ✅ Mets ta publishable key ici (pk_live_...)
-    const STRIPE_PUBLISHABLE_KEY = "pk_live_51StVIr9eqtbj6iPB07lwbilmCrWyiNYvupqep7WV7BwxljclefFqISYc6GHW9RFEoohaXVHdyXu43ivcAWSRf2gp00QEjt2RSe";
+    window.STRIPE_PUBLISHABLE_KEY = "pk_live_51StVIr9eqtbj6iPB07lwbilmCrWyiNYvupqep7WV7BwxljclefFqISYc6GHW9RFEoohaXVHdyXu43ivcAWSRf2gp00QEjt2RSe"; 
+    // ⬆️ Remplace par TA nouvelle clé publique Stripe (pk_live_...)
   </script>
+
   <script src="/checkout.js"></script>
 </body>
 </html>
