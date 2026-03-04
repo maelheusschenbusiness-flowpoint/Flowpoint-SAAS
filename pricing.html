@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- ✅ IMPORTANT : on utilise style.css, pas de style inline -->
+  <!-- ✅ IMPORTANT : on utilise style.css -->
   <link rel="stylesheet" href="/style.css" />
 </head>
 
@@ -42,7 +42,7 @@
         <div class="section">
           <div class="sectionHead">
             <div class="title">Plans</div>
-            <div class="hint">Essai 14 jours via Stripe.</div>
+            <div class="hint">Essai via Stripe (selon config).</div>
           </div>
 
           <!-- Rempli par pricing.js -->
@@ -88,15 +88,15 @@
               <span id="sumAddOns" style="text-align:right">—</span>
             </div>
 
-            <!-- ✅ zone messages (manquait) -->
-            <div class="small" id="pricingMsg" style="margin:10px 0;"></div>
+            <!-- ✅ Zone message (avant boutons) -->
+            <div id="pricingMsg" class="small" style="margin-top:10px"></div>
 
-            <!-- ✅ IDs utilisés par le JS ci-dessous -->
+            <!-- ✅ IDs cohérents -->
             <button class="primaryBtn" id="btnCheckout">Continuer (Checkout Plan)</button>
             <button class="ghostBtn" id="btnPortal">Gérer mes add-ons</button>
 
-            <div class="small">
-              Si tu n’es pas connecté, tu seras renvoyé vers l’inscription (le plan sera pré-sélectionné).
+            <div class="small" style="margin-top:10px">
+              Si tu n’es pas connecté, tu seras renvoyé vers la connexion.
             </div>
           </div>
         </div>
@@ -119,7 +119,7 @@
             <div class="small">
               • Ton plan fixe les quotas monitors / PDF / exports.<br/>
               • Les add-ons payants sont modifiables dans le Portal Stripe.<br/>
-              • Sur cette page, on enregistre juste une préférence (UI) en localStorage.
+              • Sur cette page, on envoie plan + addons au backend Stripe.
             </div>
           </div>
         </div>
@@ -128,47 +128,41 @@
     </div>
   </div>
 
-  <!-- ✅ pricing.js peut rester (il remplit #plans + #addonsList + résumé) -->
+  <!-- Ton renderer UI (plans + addons) -->
   <script src="/pricing.js"></script>
 
-  <!-- Stripe -->
-  <script src="https://js.stripe.com/v3/"></script>
-
   <script>
-    /**
-     * ✅ FIXES inclus :
-     * - bouton hook correct (btnCheckout au lieu de buyBtn)
-     * - zone message pricingMsg ajoutée et utilisée
-     * - flux simple = Redirect Checkout (évite le container embedded)
-     * - bouton Portal fonctionnel
-     * - détection "déjà abonné" pour éviter une re-souscription inutile
-     */
-
-    // ---- CONFIG ----
-    const STRIPE_PUBLIC_KEY = "pk_live_XXXX"; // <-- mets TA clé publique Stripe
-    const stripe = Stripe(STRIPE_PUBLIC_KEY);
-
+    // ----------------------------
+    // Helpers
+    // ----------------------------
     function getToken() {
       return localStorage.getItem("token") || "";
     }
 
+    function setMsg(text) {
+      const el = document.getElementById("pricingMsg");
+      if (el) el.textContent = text || "";
+    }
+
+    function setAuthPill(text) {
+      const el = document.getElementById("authPill");
+      if (el) el.textContent = text || "";
+    }
+
     async function api(path, method, body) {
+      const headers = { "Content-Type": "application/json" };
+      const tok = getToken();
+      if (tok) headers.Authorization = `Bearer ${tok}`;
+
       const r = await fetch(path, {
         method,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${getToken()}`
-        },
+        headers,
         body: body ? JSON.stringify(body) : undefined
       });
+
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "Erreur API");
       return data;
-    }
-
-    function setMsg(text) {
-      const box = document.getElementById("pricingMsg");
-      if (box) box.textContent = text || "";
     }
 
     function readSelectedPlan() {
@@ -189,35 +183,41 @@
 
         const n = Number(el.value);
         if (Number.isFinite(n) && n > 0) addons[key] = Math.floor(n);
-        else addons[key] = 0; // 0 = supprimer côté Stripe si ton backend le gère
+        else addons[key] = 0; // important: 0 = supprimé côté Stripe (si backend le gère)
       });
       return addons;
     }
 
-    function hasAnyAddon(addons) {
-      if (!addons) return false;
-      return Object.values(addons).some(v => v === true || (Number(v) > 0));
+    function anyAddonSelected(addons) {
+      return Object.values(addons || {}).some(v => (v === true) || (Number(v) > 0));
     }
 
-    // état abonnement
+    // ----------------------------
+    // State
+    // ----------------------------
     let currentPlan = null;
     let isAlreadySubscribed = false;
 
     async function initPricingState() {
-      const pill = document.getElementById("authPill");
+      const tok = getToken();
+      if (!tok) {
+        setAuthPill("Statut : non connecté");
+        setMsg("Connecte-toi pour acheter un plan / gérer les add-ons.");
+        return;
+      }
 
       try {
         const me = await api("/api/me", "GET");
-
-        if (pill) pill.textContent = `Connecté : ${me.email || "ok"} (${me.plan || "-"})`;
-
         currentPlan = me.plan || null;
+
         const st = String(me.subscriptionStatus || "").toLowerCase();
         isAlreadySubscribed = (st === "active" || st === "trialing" || st === "past_due");
 
+        setAuthPill(`Statut : ${isAlreadySubscribed ? "abonné" : "connecté"}`);
+
         if (isAlreadySubscribed) {
-          setMsg("Abonnement détecté : tu peux gérer les add-ons via le Portal Stripe (ou appliquer des changements si ton backend l’autorise).");
-          // Optionnel: pré-cocher le plan courant (si les radios existent déjà via pricing.js)
+          setMsg("Abonnement détecté : tu peux gérer les add-ons sans re-souscrire.");
+          // pré-sélection visuelle du plan actuel (si radios présentes)
           document.querySelectorAll('input[name="plan"]').forEach((r) => {
             if (currentPlan && r.value === currentPlan) r.checked = true;
           });
@@ -225,40 +225,69 @@
           setMsg("");
         }
       } catch (e) {
-        if (pill) pill.textContent = "Statut : non connecté";
-        setMsg("Connecte-toi pour acheter un plan / gérer tes add-ons.");
+        setAuthPill("Statut : session invalide");
+        setMsg("Session invalide. Reconnecte-toi.");
       }
     }
 
-    // ✅ Redirect Checkout (robuste)
+    // ----------------------------
+    // Actions Stripe
+    // ----------------------------
     async function startRedirectCheckout() {
+      const tok = getToken();
+      if (!tok) {
+        // Option: sauvegarder la sélection pour après login
+        const p = readSelectedPlan();
+        if (p) localStorage.setItem("preselect_plan", p);
+        setMsg("Tu dois te connecter. Redirection…");
+        location.href = "./login.html";
+        return;
+      }
+
       const addons = readAddonsFromDom();
       const plan = isAlreadySubscribed ? null : readSelectedPlan();
 
-      if (!plan && !hasAnyAddon(addons)) {
+      if (!plan && !anyAddonSelected(addons)) {
         throw new Error("Sélectionne un plan (ou au moins 1 add-on).");
       }
 
       const data = await api("/api/stripe/checkout", "POST", { plan, addons });
 
-      // si déjà abonné et backend fait update direct
-      if (data && data.ok) {
-        setMsg(data.updated ? "Options mises à jour ✅" : "Aucun changement.");
+      // ✅ Cas update direct (déjà abonné)
+      if (data && data.ok && (data.updated === true || data.updated === false) && !data.url) {
+        setMsg(data.updated ? "Add-ons mis à jour ✅" : "Aucun changement.");
         return;
       }
 
-      if (!data.url) throw new Error("URL checkout manquante (le backend n'a pas renvoyé 'url').");
-      window.location.href = data.url;
+      if (!data.url) {
+        throw new Error("URL Stripe manquante (backend). Vérifie /api/stripe/checkout renvoie {url}.");
+      }
+
+      location.href = data.url;
     }
 
-    async function openPortal() {
+    async function openStripePortal() {
+      const tok = getToken();
+      if (!tok) {
+        setMsg("Tu dois te connecter. Redirection…");
+        location.href = "./login.html";
+        return;
+      }
+
       const data = await api("/api/stripe/portal", "POST");
-      if (!data.url) throw new Error("URL portal manquante");
-      window.location.href = data.url;
+
+      if (!data.url) {
+        throw new Error("URL Stripe manquante (backend). Vérifie /api/stripe/portal renvoie {url}.");
+      }
+
+      location.href = data.url;
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
-      initPricingState();
+    // ----------------------------
+    // Bind
+    // ----------------------------
+    document.addEventListener("DOMContentLoaded", async () => {
+      await initPricingState();
 
       const btnCheckout = document.getElementById("btnCheckout");
       const btnPortal = document.getElementById("btnPortal");
@@ -282,7 +311,7 @@
           setMsg("");
           btnPortal.disabled = true;
           try {
-            await openPortal();
+            await openStripePortal();
           } catch (e) {
             setMsg(e.message || "Erreur");
           } finally {
