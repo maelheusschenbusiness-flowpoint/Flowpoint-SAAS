@@ -1,12 +1,15 @@
 // stripe.js — FlowPoint Stripe (helpers + routes + webhook)
 // ✅ Checkout redirect + Embedded checkout + Update subscription if already active + Portal + Webhook
+// ✅ FIX: extraSeat -> extraSeats (cohérent avec OrgSchema.billingAddons.extraSeats)
+// ✅ FIX: cancel redirect (checkout redirect -> cancel.html?next=...)
+// ✅ Embedded: Stripe renvoie sur return_url avec redirect_status => à gérer dans checkout-return.html
 
 const Stripe = require("stripe");
 
 // ---- Add-ons price IDs (TES 10 add-ons) ----
 const ADDON_PRICE_ID_TO_KEY = {
   "price_1T6A839eqtbj6iPBTXCaiv0W": "monitorsPack50",
-  "price_1T6AB29eqtbj6iPBYcWdWqXZ": "extraSeat",
+  "price_1T6AB29eqtbj6iPBYcWdWqXZ": "extraSeats", // ✅ FIX (avant: extraSeat)
   "price_1T6AFo9eqtbj6iPBz8eEQaWu": "retention90d",
   "price_1T6AIu9eqtbj6iPBKFWQBxXz": "retention365d",
   "price_1T6AMF9eqtbj6iPB03qrHCdP": "auditsPack200",
@@ -102,8 +105,8 @@ function buildStripeModule(ctx) {
     // - array: [{ priceId, quantity }]
     // - object: { monitorsPack50: 2, prioritySupport: true, ... }
     // - object: { "price_xxx": 2 } (optionnel)
+    // ✅ compat: extraSeat (ancien) -> extraSeats (nouveau)
     const out = [];
-
     if (!addonsRaw) return out;
 
     if (Array.isArray(addonsRaw)) {
@@ -118,7 +121,10 @@ function buildStripeModule(ctx) {
     }
 
     if (typeof addonsRaw === "object") {
-      for (const [k, v] of Object.entries(addonsRaw)) {
+      for (let [k, v] of Object.entries(addonsRaw)) {
+        // ✅ compat old key
+        if (k === "extraSeat") k = "extraSeats";
+
         // 1) si key = addonKey
         let priceId = ADDON_KEY_TO_PRICE_ID[k];
 
@@ -205,10 +211,7 @@ function buildStripeModule(ctx) {
       }
     }
 
-    // 2) Add-ons: on supporte la désélection.
-    // Stratégie:
-    // - pour chaque addon existant: si pas dans desired => delete
-    // - pour chaque addon désiré: si existe => set qty, sinon add
+    // 2) Add-ons: support désélection
     const addonPriceIds = new Set(Object.keys(ADDON_PRICE_ID_TO_KEY));
 
     // delete addons non désirés
@@ -243,7 +246,7 @@ function buildStripeModule(ctx) {
   }
 
   // ----------------------------
-  // Entitlements from subscription (inchangé dans l’idée)
+  // Entitlements from subscription
   // ----------------------------
   function extractEntitlementsFromSubscription(sub) {
     const items = sub?.items?.data || [];
@@ -251,7 +254,7 @@ function buildStripeModule(ctx) {
 
     const addons = {
       monitorsPack50: 0,
-      extraSeat: 0,
+      extraSeats: 0, // ✅ FIX
       retention90d: false,
       retention365d: false,
       auditsPack200: 0,
@@ -290,8 +293,8 @@ function buildStripeModule(ctx) {
         case "monitorsPack50":
           addons.monitorsPack50 += qty;
           break;
-        case "extraSeat":
-          addons.extraSeat += qty;
+        case "extraSeats":
+          addons.extraSeats += qty;
           break;
         case "retention90d":
           addons.retention90d = true;
@@ -348,9 +351,9 @@ function buildStripeModule(ctx) {
     user.subscriptionStatus = sub.status;
     user.lastPaymentStatus = sub.status;
 
-    if (["active", "trialing"].includes(String(sub.status || "").toLowerCase())) user.accessBlocked = false;
-    if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(String(sub.status || "").toLowerCase()))
-      user.accessBlocked = true;
+    const st = String(sub.status || "").toLowerCase();
+    if (st === "active" || st === "trialing") user.accessBlocked = false;
+    if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(st)) user.accessBlocked = true;
 
     if (ent.plan) user.plan = ent.plan;
 
@@ -363,7 +366,7 @@ function buildStripeModule(ctx) {
     await ensureOrgDefaults(org);
 
     org.billingAddons.monitorsPack50 = ent.addons.monitorsPack50 || 0;
-    org.billingAddons.extraSeats = ent.addons.extraSeat || 0;
+    org.billingAddons.extraSeats = ent.addons.extraSeats || 0; // ✅ FIX
 
     org.billingAddons.retention90d = !!ent.addons.retention90d;
     org.billingAddons.retention365d = !!ent.addons.retention365d;
@@ -405,7 +408,7 @@ function buildStripeModule(ctx) {
 
       const activeSub = await getActiveSubscriptionForUser(user);
 
-      // ✅ déjà abonné => update subscription (et on renvoie ok)
+      // ✅ déjà abonné => update subscription (retour ok)
       if (activeSub) {
         const { updated, subscription } = await updateExistingSubscription({
           sub: activeSub,
@@ -413,16 +416,15 @@ function buildStripeModule(ctx) {
           addonsRaw: req.body?.addons,
         });
 
-        // Appliquer entitlements tout de suite (en plus du webhook)
         await applySubscriptionToUserAndOrg(subscription);
 
         return res.json({ ok: true, updated, subscriptionId: subscription.id });
       }
 
       // ✅ pas abonné => créer Checkout Session (nouvelle subscription)
-      const lineItems = [];
       const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw: req.body?.addons });
 
+      const lineItems = [];
       for (const [pid, qty] of desired.entries()) {
         lineItems.push({ price: pid, quantity: qty });
       }
@@ -430,6 +432,9 @@ function buildStripeModule(ctx) {
       if (!lineItems.length) return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
 
       const baseUrl = safeBaseUrl(req);
+
+      // ✅ Cancel: renvoie sur cancel.html + param next (tu gères ensuite la redirection)
+      const cancelNext = encodeURIComponent("/pricing.html");
 
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
@@ -440,8 +445,13 @@ function buildStripeModule(ctx) {
           metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
         },
         metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
-        success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/cancel.html`,
+
+        // ✅ success / cancel
+        success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}&next=${encodeURIComponent(
+          "/dashboard.html"
+        )}`,
+        cancel_url: `${baseUrl}/cancel.html?next=${cancelNext}`,
+
         allow_promotion_codes: true,
       });
 
@@ -472,7 +482,7 @@ function buildStripeModule(ctx) {
 
       const activeSub = await getActiveSubscriptionForUser(user);
 
-      // ✅ déjà abonné => update subscription direct
+      // ✅ déjà abonné => update subscription direct (pas d'embedded)
       if (activeSub) {
         const { updated, subscription } = await updateExistingSubscription({
           sub: activeSub,
@@ -507,7 +517,10 @@ function buildStripeModule(ctx) {
           metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
         },
         metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
+
+        // ✅ Stripe va ajouter automatiquement &redirect_status=succeeded|failed|canceled
         return_url: `${baseUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
+
         allow_promotion_codes: true,
       });
 
@@ -527,7 +540,10 @@ function buildStripeModule(ctx) {
       const sessionId = req.query.session_id;
       if (!sessionId) return res.status(400).json({ error: "session_id manquant" });
 
-      const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription", "customer"] });
+      const session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ["subscription", "customer"],
+      });
+
       const uid = session.metadata?.uid || session.subscription?.metadata?.uid;
       if (!uid) return res.status(400).json({ error: "uid manquant" });
 
@@ -537,6 +553,7 @@ function buildStripeModule(ctx) {
       if (session.customer?.id) user.stripeCustomerId = session.customer.id;
       if (session.subscription?.id) user.stripeSubscriptionId = session.subscription.id;
 
+      // (optionnel) trial flags
       if (!user.hasTrial) {
         user.hasTrial = true;
         user.trialStartedAt = new Date();
@@ -571,6 +588,7 @@ function buildStripeModule(ctx) {
 
       const session = await stripe.billingPortal.sessions.create({
         customer: user.stripeCustomerId,
+        // ✅ tu peux changer le return_url si tu préfères pricing
         return_url: `${baseUrl}/dashboard.html`,
         // configuration: process.env.STRIPE_PORTAL_CONFIGURATION_ID, // optionnel
       });
@@ -628,7 +646,7 @@ function buildStripeModule(ctx) {
           if (org) {
             await ensureOrgDefaults(org);
             org.billingAddons.monitorsPack50 = 0;
-            org.billingAddons.extraSeats = 0;
+            org.billingAddons.extraSeats = 0; // ✅ FIX
             org.billingAddons.retention90d = false;
             org.billingAddons.retention365d = false;
             org.billingAddons.auditsPack200 = 0;
