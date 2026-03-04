@@ -5,12 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Add-ons — FlowPoint</title>
   <meta name="color-scheme" content="light dark"/>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
   <link rel="stylesheet" href="/style.css" />
+  <script src="https://js.stripe.com/v3/"></script>
 </head>
 
 <body>
@@ -28,13 +24,10 @@
     </div>
 
     <div class="grid">
-      <!-- Left -->
       <div>
         <div class="hero">
           <h1>Gérer mes add-ons</h1>
-          <p>
-            Ici tu ajoutes/supprimes des options. Ça applique la modification à ton abonnement existant.
-          </p>
+          <p>Ici tu ajoutes/supprimes des options. Ça s’applique à ton abonnement existant.</p>
         </div>
 
         <div class="section">
@@ -43,25 +36,36 @@
             <div class="hint">FlowPoint UI → applique sur Stripe (subscription update).</div>
           </div>
 
-          <div id="addonsMsg" class="small" style="min-height:18px;"></div>
+          <div id="msg" class="small" style="margin:10px 0;"></div>
+
           <div class="addons" id="addonsList"></div>
 
-          <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
-            <button class="primaryBtn" id="btnApply">Appliquer les add-ons</button>
-            <button class="ghostBtn" id="btnDashboard">Dashboard</button>
+          <button class="primaryBtn" id="applyBtn">Appliquer</button>
+
+          <!-- Paiement prorata si requis -->
+          <div id="paybox" class="card" style="padding:14px; margin-top:14px; display:none;">
+            <div class="cardHead">Paiement requis</div>
+            <div class="cardBody">
+              <div class="small" style="margin-bottom:10px;">
+                Stripe a généré un prorata. Règle-le ici pour valider les add-ons.
+              </div>
+              <form id="pay-form">
+                <div id="payment-element"></div>
+                <button class="primaryBtn" id="payBtn" type="submit" style="margin-top:12px;">Payer</button>
+              </form>
+              <div class="small" id="payErr" style="margin-top:10px;"></div>
+            </div>
           </div>
+
         </div>
       </div>
 
-      <!-- Right -->
       <div class="side">
         <div class="card">
           <div class="cardHead">Résumé</div>
           <div class="cardBody">
-            <div class="row2"><span class="muted">Add-ons</span> <span id="sumAddons">—</span></div>
-            <div class="small" style="margin-top:10px;">
-              Cette page pousse la sélection vers Stripe via ton endpoint backend.
-            </div>
+            <div class="row2"><span class="muted">Add-ons</span> <span id="sumAddOns" style="text-align:right">—</span></div>
+            <div class="small">Cette page pousse la sélection vers Stripe via ton endpoint backend.</div>
           </div>
         </div>
 
@@ -70,15 +74,253 @@
           <div class="cardBody">
             <div class="small">
               • White label est inclus et forcé ON.<br/>
-              • Les quantités à 0 suppriment l’item Stripe correspondant.
+              • Les quantités à 0 suppriment l’item Stripe correspondant.<br/>
+              • Si un prorata est généré, tu payes ici.
             </div>
           </div>
         </div>
       </div>
-
     </div>
   </div>
 
-  <script src="/addons.js"></script>
+<script>
+(() => {
+  const STRIPE_PUBLISHABLE_KEY = "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";
+
+  const TOKEN_KEYS = ["token", "fp_token"];
+  const ADDON_PREF_KEY = "fp_addon_prefs";
+
+  const authPill = document.getElementById("authPill");
+  const msg = document.getElementById("msg");
+  const addonsRoot = document.getElementById("addonsList");
+  const applyBtn = document.getElementById("applyBtn");
+  const sumAddOns = document.getElementById("sumAddOns");
+
+  const paybox = document.getElementById("paybox");
+  const payForm = document.getElementById("pay-form");
+  const payErr = document.getElementById("payErr");
+  const payBtn = document.getElementById("payBtn");
+
+  function getToken() {
+    for (const k of TOKEN_KEYS) {
+      const v = localStorage.getItem(k);
+      if (v) return v;
+    }
+    return null;
+  }
+
+  function setMsg(t) { msg.textContent = t || ""; }
+
+  // même liste que pricing (addon keys)
+  const ADDONS = [
+    { key: "whiteLabel", name: "White label", desc: "Marque blanche (inclus).", price: "Inclus (gratuit)", type: "flag", defaultOn: true, lockedOn: true },
+    { key: "customDomain", name: "Custom Domain", desc: "Utilise ton propre domaine (brand pro).", price: "9€ / mois", type: "flag", defaultOn: false },
+    { key: "prioritySupport", name: "Priority Support", desc: "Support prioritaire (réponse plus rapide, meilleur suivi).", price: "29€ / mois", type: "flag", defaultOn: false },
+    { key: "retention90d", name: "Retention +90 days", desc: "Rétention des données étendue à 90 jours.", price: "9€ / mois", type: "flag", defaultOn: false },
+    { key: "retention365d", name: "Retention +365 days", desc: "Rétention des données étendue à 365 jours.", price: "19€ / mois", type: "flag", defaultOn: false },
+    { key: "auditsPack200", name: "Audits Pack +200", desc: "Ajoute +200 audits / mois.", price: "9€ / mois", type: "qty", max: 50 },
+    { key: "auditsPack1000", name: "Audits Pack +1000", desc: "Ajoute +1000 audits / mois.", price: "29€ / mois", type: "qty", max: 20 },
+    { key: "pdfPack200", name: "PDF Pack +200", desc: "Ajoute +200 PDFs / mois.", price: "9€ / mois", type: "qty", max: 50 },
+    { key: "exportsPack1000", name: "Exports Pack +1000", desc: "Ajoute +1000 exports / mois.", price: "19€ / mois", type: "qty", max: 50 },
+    { key: "monitorsPack50", name: "Monitors Pack +50", desc: "Ajoute +50 monitors.", price: "19€ / mois", type: "qty", max: 10 },
+    { key: "extraSeats", name: "Extra Seats", desc: "Ajoute des seats.", price: "7€ / mois", type: "qty", max: 50 },
+  ];
+
+  function loadPrefs() {
+    let addons = {};
+    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {}; } catch {}
+    // defaults
+    for (const a of ADDONS) {
+      if (a.type === "flag" && addons[a.key] === undefined) addons[a.key] = !!a.defaultOn;
+      if (a.type === "qty" && addons[a.key] === undefined) addons[a.key] = 0;
+    }
+    addons.whiteLabel = true;
+
+    // migration ancienne clé
+    if (addons.extraSeat != null && addons.extraSeats == null) {
+      addons.extraSeats = Number(addons.extraSeat || 0);
+      delete addons.extraSeat;
+    }
+
+    return addons;
+  }
+
+  function savePrefs(addons) {
+    localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(addons || {}));
+  }
+
+  function updateSummary(addons) {
+    const lines = [];
+    for (const [k,v] of Object.entries(addons || {})) {
+      if (k === "whiteLabel") continue;
+      if (typeof v === "boolean" && v) lines.push(k);
+      if (typeof v === "number" && v > 0) lines.push(`${k}×${v}`);
+    }
+    sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
+  }
+
+  function renderAddons(addons) {
+    addonsRoot.innerHTML = "";
+    for (const a of ADDONS) {
+      const row = document.createElement("div");
+      row.className = "addonRow";
+
+      const left = document.createElement("div");
+      left.innerHTML = `
+        <p class="addonTitle">${a.name}</p>
+        <p class="addonDesc">${a.desc || ""}</p>
+        <span class="keyChip">${a.key}</span>
+      `;
+
+      const right = document.createElement("div");
+      right.className = "addonRight";
+      right.innerHTML = `<div class="addonPrice">${a.price}</div>`;
+
+      if (a.type === "qty") {
+        const wrap = document.createElement("div");
+        wrap.className = "qty";
+        wrap.innerHTML = `
+          <button class="qtyBtn" type="button" data-act="dec">−</button>
+          <input class="qtyInput" type="number" min="0" max="${a.max ?? 999}" step="1" value="${Number(addons[a.key]||0)}" inputmode="numeric" />
+          <button class="qtyBtn" type="button" data-act="inc">+</button>
+        `;
+        const input = wrap.querySelector(".qtyInput");
+
+        const setVal = (v) => {
+          const max = Number(a.max ?? 999);
+          const nv = Math.max(0, Math.min(max, Number(v || 0)));
+          input.value = String(nv);
+          addons[a.key] = nv;
+          savePrefs(addons);
+          updateSummary(addons);
+        };
+
+        wrap.addEventListener("click", (e) => {
+          const act = e.target?.dataset?.act;
+          if (!act) return;
+          const cur = Number(input.value || 0);
+          setVal(act === "inc" ? cur + 1 : cur - 1);
+        });
+
+        input.addEventListener("change", () => setVal(input.value));
+        input.addEventListener("input", () => {
+          if (input.value === "") return;
+          setVal(input.value);
+        });
+
+        right.appendChild(wrap);
+      } else {
+        const toggle = document.createElement("label");
+        toggle.className = "toggle";
+        toggle.innerHTML = `
+          <input type="checkbox" ${addons[a.key] ? "checked" : ""} ${a.lockedOn ? "disabled" : ""} />
+          <span class="track"></span>
+        `;
+        const input = toggle.querySelector("input");
+        input.addEventListener("change", () => {
+          addons[a.key] = !!input.checked;
+          if (a.key === "whiteLabel") addons.whiteLabel = true;
+          savePrefs(addons);
+          updateSummary(addons);
+        });
+        right.appendChild(toggle);
+      }
+
+      row.appendChild(left);
+      row.appendChild(right);
+      addonsRoot.appendChild(row);
+    }
+  }
+
+  async function api(path, method, body) {
+    const tok = getToken();
+    const r = await fetch(path, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + tok
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Erreur API");
+    return j;
+  }
+
+  async function applyAddons(addons) {
+    setMsg("");
+    paybox.style.display = "none";
+    payErr.textContent = "";
+
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Application…";
+
+    try {
+      // ✅ On force plan=null : ici c’est uniquement add-ons sur sub existante
+      const data = await api("/api/stripe/checkout-embedded", "POST", { plan: null, addons });
+
+      if (data.ok && !data.paymentRequired) {
+        setMsg(data.updated ? "✅ Add-ons mis à jour." : "✅ Aucun changement.");
+        applyBtn.disabled = false;
+        applyBtn.textContent = "Appliquer";
+        return;
+      }
+
+      if (data.ok && data.paymentRequired && data.clientSecret) {
+        if (!STRIPE_PUBLISHABLE_KEY || !STRIPE_PUBLISHABLE_KEY.startsWith("pk_")) {
+          throw new Error("Clé Stripe publishable manquante dans addons.html");
+        }
+
+        setMsg("Paiement requis : complète le paiement ci-dessous.");
+        paybox.style.display = "block";
+
+        const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+        const elements = stripe.elements({ clientSecret: data.clientSecret });
+        const paymentElement = elements.create("payment");
+        paymentElement.mount("#payment-element");
+
+        payForm.addEventListener("submit", async (ev) => {
+          ev.preventDefault();
+          payErr.textContent = "";
+          payBtn.disabled = true;
+
+          const { error } = await stripe.confirmPayment({
+            elements,
+            confirmParams: { return_url: window.location.origin + "/success.html" }
+          });
+
+          if (error) {
+            payErr.textContent = "❌ " + (error.message || "Erreur paiement");
+            payBtn.disabled = false;
+          }
+        });
+
+        applyBtn.disabled = false;
+        applyBtn.textContent = "Appliquer";
+        return;
+      }
+
+      setMsg("Réponse inattendue.");
+      applyBtn.disabled = false;
+      applyBtn.textContent = "Appliquer";
+    } catch (e) {
+      setMsg("❌ " + (e.message || "Erreur"));
+      applyBtn.disabled = false;
+      applyBtn.textContent = "Appliquer";
+    }
+  }
+
+  // init
+  const tok = getToken();
+  if (!tok) return (window.location.href = "/login.html");
+  authPill.textContent = "Statut : Connecté";
+
+  const addons = loadPrefs();
+  renderAddons(addons);
+  updateSummary(addons);
+
+  applyBtn.addEventListener("click", () => applyAddons(addons));
+})();
+</script>
 </body>
 </html>
