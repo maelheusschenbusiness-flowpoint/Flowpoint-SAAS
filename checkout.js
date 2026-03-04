@@ -1,8 +1,7 @@
 // checkout.js — FlowPoint UI
 // - Lit payload depuis localStorage (plan + addons)
-// - Appelle /api/stripe/checkout-embedded (nouveau) OU /api/stripe/checkout (update)
+// - Appelle /api/stripe/checkout (update) puis fallback /api/stripe/checkout-embedded (nouveau)
 // - Si update renvoie paymentIntentClientSecret => affiche Payment Element et paye
-// - Si annulation: Stripe renverra vers /cancel.html (config backend)
 
 (() => {
   const TOKEN_KEYS = ["token", "fp_token"];
@@ -17,7 +16,6 @@
   const embeddedContainer = $("#embedded-checkout");
   const piForm = $("#piForm");
   const payBtn = $("#payBtn");
-  const paymentEl = $("#payment-element");
 
   const sumPlan = $("#sumPlan");
   const sumAddOns = $("#sumAddOns");
@@ -57,8 +55,11 @@
     const lines = [];
     for (const [k, v] of Object.entries(addons)) {
       if (k === "whiteLabel") continue;
-      if (typeof v === "boolean") { if (v) lines.push(k); }
-      else if (Number(v) > 0) lines.push(`${k}×${Number(v)}`);
+      if (typeof v === "boolean") {
+        if (v) lines.push(k);
+      } else if (Number(v) > 0) {
+        lines.push(`${k}×${Number(v)}`);
+      }
     }
     if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
   }
@@ -87,8 +88,9 @@
       return;
     }
 
-    if (!window.STRIPE_PUBLISHABLE_KEY || !String(window.STRIPE_PUBLISHABLE_KEY).startsWith("pk_")) {
-      setMsg("Clé Stripe publique manquante dans checkout.html (STRIPE_PUBLISHABLE_KEY).");
+    const pk = window.STRIPE_PUBLISHABLE_KEY;
+    if (!pk || typeof pk !== "string" || !pk.startsWith("pk_")) {
+      setMsg("Clé Stripe publique manquante dans checkout.html (window.STRIPE_PUBLISHABLE_KEY).");
       if (retryBtn) retryBtn.style.display = "none";
       return;
     }
@@ -98,12 +100,12 @@
       setMsg("Aucune sélection trouvée. Retourne sur pricing.");
       return;
     }
+
     summarize(payload);
 
-    const stripe = Stripe(window.STRIPE_PUBLISHABLE_KEY);
+    const stripe = Stripe(pk);
 
-    // 1) On tente d'abord un update via /api/stripe/checkout (si déjà abonné => ok/updated + peut renvoyer un paymentIntent)
-    //    Si pas abonné => backend renvoie { url } (checkout stripe classique) -> on préfère embedded, donc on passe au point 2.
+    // 1) tentative update via /api/stripe/checkout
     try {
       setMsg("Préparation…");
 
@@ -112,18 +114,18 @@
         addons: payload.addons
       });
 
-      // Cas: update direct sans paiement requis
+      // ✅ update sans paiement requis
       if (j.ok && !j.paymentIntentClientSecret) {
         setMsg(j.updated ? "Abonnement mis à jour ✅" : "Aucun changement.");
-        setTimeout(() => window.location.href = "/dashboard.html", 800);
+        setTimeout(() => (window.location.href = "/dashboard.html"), 800);
         return;
       }
 
-      // Cas: update avec prorata à payer (PaymentIntent)
+      // ✅ prorata à payer (PaymentIntent)
       if (j.paymentIntentClientSecret) {
         setMsg("Paiement requis (prorata).");
-        embeddedContainer.innerHTML = "";
-        piForm.style.display = "block";
+        if (embeddedContainer) embeddedContainer.innerHTML = "";
+        if (piForm) piForm.style.display = "block";
 
         const elements = stripe.elements({ clientSecret: j.paymentIntentClientSecret });
         const pe = elements.create("payment");
@@ -131,33 +133,28 @@
 
         piForm.addEventListener("submit", async (e) => {
           e.preventDefault();
-          payBtn.disabled = true;
+          if (payBtn) payBtn.disabled = true;
 
           const { error } = await stripe.confirmPayment({
             elements,
-            confirmParams: { return_url: window.location.origin + "/success.html" }
+            confirmParams: { return_url: window.location.origin + "/success.html?next=/dashboard.html" }
           });
 
           if (error) {
             setMsg(error.message || "Erreur paiement");
-            payBtn.disabled = false;
+            if (payBtn) payBtn.disabled = false;
           }
         });
 
         return;
       }
 
-      // Cas: backend te renvoie encore une URL checkout Stripe (ancien flow)
-      // => on préfère Embedded Checkout (FlowPoint UI) donc on continue au point 2.
-      if (j.url) {
-        // on ignore et on fait embedded
-      }
+      // ✅ si backend renvoie url (checkout classique), on ignore et on préfère embedded
     } catch (e) {
-      // on tente embedded quand même
       console.log("checkout update -> fallback embedded:", e.message);
     }
 
-    // 2) Embedded checkout (nouvelle souscription) via /api/stripe/checkout-embedded
+    // 2) embedded checkout (nouvelle subscription)
     try {
       setMsg("Ouverture du paiement…");
 
@@ -166,15 +163,15 @@
         addons: payload.addons
       });
 
-      // si déjà abonné => update direct
+      // déjà abonné => update direct
       if (j2.ok) {
         setMsg(j2.updated ? "Abonnement mis à jour ✅" : "Aucun changement.");
-        setTimeout(() => window.location.href = "/dashboard.html", 800);
+        setTimeout(() => (window.location.href = "/dashboard.html"), 800);
         return;
       }
 
       if (!j2.clientSecret) throw new Error("clientSecret manquant (embedded)");
-      piForm.style.display = "none";
+      if (piForm) piForm.style.display = "none";
 
       const checkout = await stripe.initEmbeddedCheckout({ clientSecret: j2.clientSecret });
       checkout.mount("#embedded-checkout");
