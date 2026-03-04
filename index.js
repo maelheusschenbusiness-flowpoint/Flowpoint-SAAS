@@ -103,17 +103,14 @@ function getMailer() {
  */
 function safeBaseUrl(req) {
   const env = String(process.env.PUBLIC_BASE_URL || "").trim();
-  if (env) {
-    // normalise sans trailing slash
-    return env.replace(/\/+$/, "");
-  }
+  if (env) return env.replace(/\/+$/, "");
 
   const protoRaw = String(req.headers["x-forwarded-proto"] || req.protocol || "https");
   const proto = protoRaw.split(",")[0].trim().toLowerCase();
   const safeProto = proto === "http" || proto === "https" ? proto : "https";
 
   const hostRaw = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
-  const host = hostRaw.replace(/[\r\n]/g, ""); // anti header-injection
+  const host = hostRaw.replace(/[\r\n]/g, "");
   if (!host) return "https://localhost";
 
   return `${safeProto}://${host}`.replace(/\/+$/, "");
@@ -133,7 +130,6 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
       return { ok: false, error: "ALERT_EMAIL_FROM missing" };
     }
 
-    // normalise to/bcc (accept string "a,b,c" or array)
     const normalizeList = (v) => {
       if (!v) return [];
       if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
@@ -209,12 +205,8 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
 
 /**
  * buildDailyReportEmail
- * - Template premium
- * - Dark/Light auto via prefers-color-scheme
  */
 function buildDailyReportEmail({ brandName, orgName, usersCount, monitorsDown, audits24hCount, logsDown24hCount }) {
-
-  // ✅ Supprime "AI" automatiquement si présent
   const bn = String(brandName || BRAND_NAME || "FlowPoint")
     .replace(/\s*AI\s*$/i, "")
     .trim();
@@ -394,13 +386,18 @@ Email envoyé automatiquement.
   return { subject, text, html };
 }
 
+// ---------- DB ----------
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connecté"))
+  .catch((e) => console.log("❌ MongoDB erreur:", e.message));
+
 // ---------- PLANS / QUOTAS ----------
 function planRank(plan) {
   const map = { standard: 1, pro: 2, ultra: 3 };
   return map[String(plan || "").toLowerCase()] || 0;
 }
 
-// Base quotas only (sans add-ons)
 function baseQuotasForPlan(plan) {
   const p = String(plan || "").toLowerCase();
   if (p === "standard") return { audits: 30, monitors: 3, pdf: 30, exports: 30, teamSeats: 1 };
@@ -409,7 +406,6 @@ function baseQuotasForPlan(plan) {
   return { audits: 0, monitors: 0, pdf: 0, exports: 0, teamSeats: 0 };
 }
 
-// Effective quotas = base + addons/credits (org)
 function effectiveQuotas(user, org) {
   const base = baseQuotasForPlan(user?.plan);
 
@@ -433,12 +429,6 @@ function firstDayOfThisMonthUTC() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
 }
-
-// ---------- DB ----------
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connecté"))
-  .catch((e) => console.log("❌ MongoDB erreur:", e.message));
 
 async function resetUsageIfNewMonth(user) {
   const month = firstDayOfThisMonthUTC();
@@ -580,7 +570,6 @@ const OrgSchema = new mongoose.Schema(
     alertRecipients: { type: String, default: "all" },
     alertExtraEmails: { type: [String], default: [] },
 
-    // ✅ Add-ons (étendus)
     billingAddons: {
       monitorsPack50: { type: Number, default: 0 },
       extraSeats: { type: Number, default: 0 },
@@ -596,8 +585,7 @@ const OrgSchema = new mongoose.Schema(
       prioritySupport: { type: Boolean, default: false },
       customDomain: { type: Boolean, default: false },
 
-      // ✅ White label GRATUIT
-      whiteLabel: { type: Boolean, default: true },
+      whiteLabel: { type: Boolean, default: true }, // ✅ gratuit
     },
 
     branding: {
@@ -792,7 +780,7 @@ async function ensureOrgDefaults(org) {
       prioritySupport: false,
       customDomain: false,
 
-      whiteLabel: true, // ✅ gratuit
+      whiteLabel: true,
     };
     changed = true;
   } else {
@@ -812,7 +800,6 @@ async function ensureOrgDefaults(org) {
     if (b.prioritySupport == null) { b.prioritySupport = false; changed = true; }
     if (b.customDomain == null) { b.customDomain = false; changed = true; }
 
-    // ✅ gratuit
     if (b.whiteLabel == null) { b.whiteLabel = true; changed = true; }
     b.whiteLabel = true;
 
@@ -874,7 +861,6 @@ async function ensureOrgDefaults(org) {
   return org;
 }
 
-// ✅ Single version
 async function ensureOrgForUser(user) {
   if (user.orgId) {
     const existing = await Org.findById(user.orgId);
@@ -1223,23 +1209,17 @@ const stripeModule = buildStripeModule({
   sendEmail,
 });
 
-// ✅ 1) WEBHOOK RAW (AVANT JSON PARSER)
+// 1) WEBHOOK (RAW)
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeModule.webhookHandler);
 
-// ✅ 2) SECURITY / LIMITERS (UNE SEULE FOIS)
+// 2) SECURITY (GLOBAL)
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: false }));
 app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
 
-// ✅ 3) PARSERS (APRES WEBHOOK)
+// 3) BODY PARSERS (APRES WEBHOOK)
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
-
-// ✅ 4) STRIPE ROUTES (UNE SEULE FOIS)
-app.post("/api/stripe/checkout", auth, requireActive, stripeModule.checkoutPlan);
-app.post("/api/stripe/checkout-embedded", auth, requireActive, stripeModule.checkoutEmbedded);
-app.get("/api/stripe/verify", stripeModule.verifyCheckout);
-app.post("/api/stripe/portal", auth, requireActive, stripeModule.customerPortal);
 
 // ---------- STATIC ----------
 app.use(express.static(path.join(__dirname)));
@@ -1257,6 +1237,12 @@ app.get("/admin", (_, res) => res.sendFile(path.join(__dirname, "admin.html")));
 
 // ---------- API ----------
 app.get("/api/health", (_, res) => res.json({ ok: true }));
+
+// ---------- STRIPE ROUTES (1 seule fois) ----------
+app.post("/api/stripe/checkout", auth, requireActive, stripeModule.checkoutPlan);
+app.post("/api/stripe/checkout-embedded", auth, requireActive, stripeModule.checkoutEmbedded);
+app.get("/api/stripe/verify", stripeModule.verifyCheckout);
+app.post("/api/stripe/portal", auth, requireActive, stripeModule.customerPortal);
 
 // ---------- AUTH: LEAD ----------
 const leadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
@@ -1363,7 +1349,6 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
   <div style="background:#f6f7fb;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:18px;padding:24px;border:1px solid rgba(15,23,42,.08)">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-       <!-- FlowPoint logo (rounded square + lightning) -->
 <div style="width:44px;height:44px;border-radius:14px;background:#2F6BFF;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(47,107,255,.22), inset 0 0 0 1px rgba(255,255,255,.18);">
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M13 2L4 14h7l-1 8 10-14h-7l0-6Z"
@@ -1404,10 +1389,7 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
     });
 
     if (!r.ok) {
-      return res.status(502).json({
-        ok: false,
-        error: "Email non envoyé",
-      });
+      return res.status(502).json({ ok: false, error: "Email non envoyé" });
     }
 
     return res.json({ ok: true });
@@ -1512,11 +1494,7 @@ app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res
   const recipients = String(req.body?.alertRecipients || "all").toLowerCase();
   const extra = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
 
-  await Org.updateOne(
-    { _id: req.dbUser.orgId },
-    { $set: { alertRecipients: recipients, alertExtraEmails: extra } }
-  );
-
+  await Org.updateOne({ _id: req.dbUser.orgId }, { $set: { alertRecipients: recipients, alertExtraEmails: extra } });
   return res.json({ ok: true });
 });
 
@@ -1525,15 +1503,12 @@ app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
   return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
 });
+
 app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (req, res) => {
   const recipients = String(req.body?.alertRecipients || "all").toLowerCase();
   const extra = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
 
-  await Org.updateOne(
-    { _id: req.dbUser.orgId },
-    { $set: { alertRecipients: recipients, alertExtraEmails: extra } }
-  );
-
+  await Org.updateOne({ _id: req.dbUser.orgId }, { $set: { alertRecipients: recipients, alertExtraEmails: extra } });
   return res.json({ ok: true });
 });
 
@@ -1907,7 +1882,7 @@ if (process.env.RENDER) {
       } catch (e) {
         console.log("Keep alive failed:", e.message);
       }
-    }, 1000 * 60 * 5); // toutes les 5 minutes
+    }, 1000 * 60 * 5);
   }
 }
 
