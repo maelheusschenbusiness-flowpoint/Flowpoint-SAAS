@@ -56,7 +56,7 @@
       priceLabel: "29€",
       per: "/ mois",
       // ✅ tu veux que ce badge soit moins large => soit tu changes le texte ici
-      tag: "Démarrer",
+      tag: "Starter",
       features: [
         "30 audits / mois (SEO instantané)",
         "3 monitors actifs (uptime)",
