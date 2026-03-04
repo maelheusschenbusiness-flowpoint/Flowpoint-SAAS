@@ -1,22 +1,16 @@
-// pricing.js — FlowPoint Pricing (Plans + Add-ons prefs)
-// ✅ FlowPoint custom flow:
-// - "Checkout plan" => /checkout.html (ta page FlowPoint embedded checkout)
-// - "Gérer mes add-ons" => /addons.html (ta page FlowPoint UI)
-// - Pricing ne redirige PLUS vers Stripe Portal directement
-// - On garde le localStorage pour transférer plan + addons aux pages suivantes
-// - Sync status via /api/me (optionnel)
+// pricing.js — FlowPoint Pricing (UI only)
+// - Pricing = choix plan + add-ons (localStorage)
+// - "Continuer" => /checkout.html (page FlowPoint custom qui fait le paiement)
+// - "Gérer mes add-ons" => /addons.html (page FlowPoint custom qui update + paye si besoin)
 
 (() => {
-  const TOKEN_KEYS = ["token", "fp_token"]; // compat
+  const TOKEN_KEYS = ["token", "fp_token"];
   const ADDON_PREF_KEY = "fp_addon_prefs";
   const PLAN_PREF_KEY = "fp_plan_pref";
 
   const $ = (q) => document.querySelector(q);
 
-  // Elements (ids côté HTML)
   const authPill = $("#authPill");
-  const homeBtn = $("#homeBtn");
-
   const plansEl = $("#plans");
   const addonsRoot = $("#addonsList");
 
@@ -25,7 +19,7 @@
   const sumAddOns = $("#sumAddOns");
 
   const btnCheckout = $("#btnCheckout");
-  const btnPortal = $("#btnPortal"); // dans ton UI = "Gérer mes add-ons"
+  const btnPortal = $("#btnPortal");
 
   function getToken() {
     for (const k of TOKEN_KEYS) {
@@ -35,14 +29,10 @@
     return null;
   }
 
-  function setAuthBadge(textOverride) {
+  function setAuthBadge(extra) {
     const tok = getToken();
     if (!authPill) return;
-    if (textOverride) {
-      authPill.textContent = textOverride;
-      return;
-    }
-    authPill.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
+    authPill.textContent = tok ? `Statut : Connecté${extra ? " (" + extra + ")" : ""}` : "Statut : Non connecté";
   }
 
   function loadPrefs() {
@@ -59,14 +49,14 @@
     localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(state.addons || {}));
   }
 
-  // ✅ Plans (UI)
   const PLANS = [
     {
       id: "standard",
       name: "Standard",
       priceLabel: "29€",
       per: "/ mois",
-      tag: "Pour démarrer",
+      // ✅ tu veux que ce badge soit moins large => soit tu changes le texte ici
+      tag: "Démarrer",
       features: [
         "30 audits / mois (SEO instantané)",
         "3 monitors actifs (uptime)",
@@ -108,103 +98,18 @@
     },
   ];
 
-  // ✅ Add-ons (préférences UI) — cohérent avec ton backend
   const ADDONS = [
-    {
-      key: "whiteLabel",
-      name: "White label",
-      desc: "Marque blanche (inclus).",
-      price: "Inclus (gratuit)",
-      type: "flag",
-      defaultOn: true,
-      lockedOn: true,
-    },
-    {
-      key: "customDomain",
-      name: "Custom Domain",
-      desc: "Utilise ton propre domaine (brand pro).",
-      price: "9€ / mois",
-      type: "flag",
-      defaultOn: false,
-    },
-    {
-      key: "prioritySupport",
-      name: "Priority Support",
-      desc: "Support prioritaire (réponse plus rapide, meilleur suivi).",
-      price: "29€ / mois",
-      type: "flag",
-      defaultOn: false,
-    },
-    {
-      key: "retention90d",
-      name: "Retention +90 days",
-      desc: "Rétention des données étendue à 90 jours (plus d’historique).",
-      price: "9€ / mois",
-      type: "flag",
-      defaultOn: false,
-    },
-    {
-      key: "retention365d",
-      name: "Retention +365 days",
-      desc: "Rétention des données étendue à 365 jours (idéal reporting annuel).",
-      price: "19€ / mois",
-      type: "flag",
-      defaultOn: false,
-    },
-    {
-      key: "auditsPack200",
-      name: "Audits Pack +200",
-      desc: "Ajoute +200 audits / mois (en plus du plan).",
-      price: "9€ / mois",
-      type: "qty",
-      max: 50,
-      unitLabel: "+200 audits",
-    },
-    {
-      key: "auditsPack1000",
-      name: "Audits Pack +1000",
-      desc: "Ajoute +1000 audits / mois (gros volume).",
-      price: "29€ / mois",
-      type: "qty",
-      max: 20,
-      unitLabel: "+1000 audits",
-    },
-    {
-      key: "pdfPack200",
-      name: "PDF Pack +200",
-      desc: "Ajoute +200 PDFs / mois (rapports clients).",
-      price: "9€ / mois",
-      type: "qty",
-      max: 50,
-      unitLabel: "+200 PDFs",
-    },
-    {
-      key: "exportsPack1000",
-      name: "Exports Pack +1000",
-      desc: "Ajoute +1000 exports / mois (CSV, analyses, reporting).",
-      price: "19€ / mois",
-      type: "qty",
-      max: 50,
-      unitLabel: "+1000 exports",
-    },
-    {
-      key: "monitorsPack50",
-      name: "Monitors Pack +50",
-      desc: "Ajoute +50 monitors actifs au quota du plan (idéal quand tu scales).",
-      price: "19€ / mois",
-      type: "qty",
-      max: 10,
-      unitLabel: "+50 monitors",
-    },
-    {
-      key: "extraSeats",
-      name: "Extra Seats",
-      desc: "Ajoute des seats (membres) à ton organisation (collaboration équipe).",
-      price: "7€ / mois",
-      type: "qty",
-      max: 50,
-      unitLabel: "seat",
-    },
+    { key: "whiteLabel", name: "White label", desc: "Marque blanche (inclus).", price: "Inclus (gratuit)", type: "flag", defaultOn: true, lockedOn: true },
+    { key: "customDomain", name: "Custom Domain", desc: "Utilise ton propre domaine (brand pro).", price: "9€ / mois", type: "flag", defaultOn: false },
+    { key: "prioritySupport", name: "Priority Support", desc: "Support prioritaire (réponse plus rapide, meilleur suivi).", price: "29€ / mois", type: "flag", defaultOn: false },
+    { key: "retention90d", name: "Retention +90 days", desc: "Rétention des données étendue à 90 jours (plus d’historique).", price: "9€ / mois", type: "flag", defaultOn: false },
+    { key: "retention365d", name: "Retention +365 days", desc: "Rétention des données étendue à 365 jours (idéal reporting annuel).", price: "19€ / mois", type: "flag", defaultOn: false },
+    { key: "auditsPack200", name: "Audits Pack +200", desc: "Ajoute +200 audits / mois (en plus du plan).", price: "9€ / mois", type: "qty", max: 50, unitLabel: "+200 audits" },
+    { key: "auditsPack1000", name: "Audits Pack +1000", desc: "Ajoute +1000 audits / mois (gros volume).", price: "29€ / mois", type: "qty", max: 20, unitLabel: "+1000 audits" },
+    { key: "pdfPack200", name: "PDF Pack +200", desc: "Ajoute +200 PDFs / mois (rapports clients).", price: "9€ / mois", type: "qty", max: 50, unitLabel: "+200 PDFs" },
+    { key: "exportsPack1000", name: "Exports Pack +1000", desc: "Ajoute +1000 exports / mois (CSV, analyses, reporting).", price: "19€ / mois", type: "qty", max: 50, unitLabel: "+1000 exports" },
+    { key: "monitorsPack50", name: "Monitors Pack +50", desc: "Ajoute +50 monitors actifs au quota du plan (idéal quand tu scales).", price: "19€ / mois", type: "qty", max: 10, unitLabel: "+50 monitors" },
+    { key: "extraSeats", name: "Extra Seats", desc: "Ajoute des seats (membres) à ton organisation (collaboration équipe).", price: "7€ / mois", type: "qty", max: 50, unitLabel: "seat" },
   ];
 
   function ensureDefaults(state) {
@@ -212,18 +117,13 @@
     if (!state.addons || typeof state.addons !== "object") state.addons = {};
 
     for (const a of ADDONS) {
-      if (a.type === "flag" && state.addons[a.key] === undefined) {
-        state.addons[a.key] = !!a.defaultOn;
-      }
-      if (a.type === "qty" && state.addons[a.key] === undefined) {
-        state.addons[a.key] = 0;
-      }
+      if (a.type === "flag" && state.addons[a.key] === undefined) state.addons[a.key] = !!a.defaultOn;
+      if (a.type === "qty" && state.addons[a.key] === undefined) state.addons[a.key] = 0;
     }
 
-    // whiteLabel forcé ON
     state.addons.whiteLabel = true;
 
-    // ✅ migration ancienne clé (bug) : extraSeat -> extraSeats
+    // migration ancienne clé
     if (state.addons.extraSeat != null && state.addons.extraSeats == null) {
       state.addons.extraSeats = Number(state.addons.extraSeat || 0);
       delete state.addons.extraSeat;
@@ -362,62 +262,13 @@
 
       if (a.type === "qty") {
         const q = Number(state.addons[a.key] || 0);
-        if (q > 0) {
-          if (a.unitLabel) lines.push(`${a.name} × ${q} (${a.unitLabel})`);
-          else lines.push(`${a.name} × ${q}`);
-        }
+        if (q > 0) lines.push(a.unitLabel ? `${a.name} × ${q} (${a.unitLabel})` : `${a.name} × ${q}`);
       } else {
         if (state.addons[a.key]) lines.push(a.name);
       }
     }
 
     if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
-  }
-
-  // ---- Stripe state (depuis /api/me) ----
-  let isSubscribed = false;
-  let subscriptionStatus = "";
-  let currentPlan = "";
-
-  async function fetchMe() {
-    const tok = getToken();
-    if (!tok) return null;
-
-    const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + tok } });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) return null;
-
-    const st = String(j.subscriptionStatus || "").toLowerCase();
-    subscriptionStatus = st;
-    isSubscribed = st === "active" || st === "trialing" || st === "past_due";
-    currentPlan = String(j.plan || "");
-
-    return j;
-  }
-
-  // ✅ NOUVEAU FLOW
-  function goCheckoutPage(state) {
-    const tok = getToken();
-    if (!tok) {
-      localStorage.setItem(PLAN_PREF_KEY, state.plan);
-      window.location.href = "/login.html"; // ou /index.html si tu préfères
-      return;
-    }
-
-    // on garde les prefs déjà sauvegardées
-    savePrefs(state);
-    window.location.href = "/checkout.html";
-  }
-
-  function goAddonsPage(state) {
-    const tok = getToken();
-    if (!tok) {
-      window.location.href = "/login.html";
-      return;
-    }
-
-    savePrefs(state);
-    window.location.href = "/addons.html";
   }
 
   function renderAll(state) {
@@ -433,39 +284,25 @@
   renderAll(state);
   setAuthBadge();
 
-  // Bouton home (si tu l’as dans ton HTML)
-  if (homeBtn) {
-    homeBtn.addEventListener("click", (e) => {
-      e.preventDefault();
+  // ✅ Continuer = va sur checkout.html (custom FlowPoint)
+  if (btnCheckout) {
+    // ✅ texte du bouton comme tu veux
+    btnCheckout.textContent = "Continuer";
+    btnCheckout.addEventListener("click", () => {
       const tok = getToken();
-      window.location.href = tok ? "/dashboard.html" : "/login.html";
+      if (!tok) return (window.location.href = "/login.html");
+      savePrefs(state);
+      window.location.href = "/checkout.html";
     });
   }
 
-  // Sync plan UI si backend retourne plan (optionnel)
-  (async () => {
-    const me = await fetchMe();
-    if (!me) {
-      setAuthBadge();
-      return;
-    }
-
-    // si tu veux que pricing reflète le plan actuel automatiquement :
-    if (me.plan && ["standard", "pro", "ultra"].includes(String(me.plan))) {
-      state.plan = String(me.plan);
+  // ✅ Gérer add-ons = va sur addons.html (custom FlowPoint)
+  if (btnPortal) {
+    btnPortal.addEventListener("click", () => {
+      const tok = getToken();
+      if (!tok) return (window.location.href = "/login.html");
       savePrefs(state);
-      renderAll(state);
-    }
-
-    if (isSubscribed) {
-      setAuthBadge(`Statut : Connecté (${currentPlan || "—"}, ${subscriptionStatus || "sub"})`);
-      if (btnCheckout) btnCheckout.textContent = "Continuer (Checkout Plan)";
-      // (on garde le même label, car ça mène à ta page checkout flowpoint)
-    } else {
-      setAuthBadge("Statut : Connecté");
-    }
-  })();
-
-  if (btnCheckout) btnCheckout.addEventListener("click", () => goCheckoutPage(state));
-  if (btnPortal) btnPortal.addEventListener("click", () => goAddonsPage(state));
+      window.location.href = "/addons.html";
+    });
+  }
 })();
