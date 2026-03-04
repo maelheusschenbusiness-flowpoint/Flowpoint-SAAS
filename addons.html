@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Add-ons — FlowPoint</title>
   <meta name="color-scheme" content="light dark"/>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="/style.css" />
 </head>
 
@@ -15,194 +20,65 @@
         <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
              onerror="this.src='/assets/flowpoint-logo.png'">
       </div>
+
       <div class="actions">
-        <a class="linkBtn" href="/pricing.html">← Retour Pricing</a>
+        <a class="linkBtn" href="/pricing.html">← Retour pricing</a>
         <div class="pill" id="authPill">Statut : …</div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="sectionHead">
-        <div class="title">Gérer mes add-ons</div>
-        <div class="hint">Ajoute / retire, puis “Enregistrer”</div>
-      </div>
+    <div class="grid">
+      <!-- Left -->
+      <div>
+        <div class="hero">
+          <h1>Gérer mes add-ons</h1>
+          <p>
+            Ici tu ajoutes/supprimes des options. Ça applique la modification à ton abonnement existant.
+          </p>
+        </div>
 
-      <div class="card" style="margin-top:12px">
-        <div class="cardBody">
-          <div class="small" id="msg"></div>
-          <div id="addonsList" class="addons"></div>
+        <div class="section">
+          <div class="sectionHead">
+            <div class="title">Add-ons</div>
+            <div class="hint">FlowPoint UI → applique sur Stripe (subscription update).</div>
+          </div>
 
-          <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap">
-            <button class="primaryBtn" id="btnSave">Enregistrer</button>
-            <button class="ghostBtn" id="btnBack">Retour Pricing</button>
+          <div id="addonsMsg" class="small" style="min-height:18px;"></div>
+          <div class="addons" id="addonsList"></div>
+
+          <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="primaryBtn" id="btnApply">Appliquer les add-ons</button>
+            <button class="ghostBtn" id="btnDashboard">Dashboard</button>
           </div>
         </div>
       </div>
+
+      <!-- Right -->
+      <div class="side">
+        <div class="card">
+          <div class="cardHead">Résumé</div>
+          <div class="cardBody">
+            <div class="row2"><span class="muted">Add-ons</span> <span id="sumAddons">—</span></div>
+            <div class="small" style="margin-top:10px;">
+              Cette page pousse la sélection vers Stripe via ton endpoint backend.
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="cardHead">Info</div>
+          <div class="cardBody">
+            <div class="small">
+              • White label est inclus et forcé ON.<br/>
+              • Les quantités à 0 suppriment l’item Stripe correspondant.
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
-  <script>
-    const TOKEN_KEYS = ["token", "fp_token"];
-    const ADDON_PREF_KEY = "fp_addon_prefs";
-
-    const ADDONS = [
-      { key:"whiteLabel", name:"White label", desc:"Marque blanche (inclus).", type:"flag", lockedOn:true, defaultOn:true },
-      { key:"customDomain", name:"Custom Domain", desc:"Utilise ton propre domaine.", type:"flag" },
-      { key:"prioritySupport", name:"Priority Support", desc:"Support prioritaire.", type:"flag" },
-      { key:"retention90d", name:"Retention +90 days", desc:"Rétention 90 jours.", type:"flag" },
-      { key:"retention365d", name:"Retention +365 days", desc:"Rétention 365 jours.", type:"flag" },
-      { key:"auditsPack200", name:"Audits Pack +200", desc:"+200 audits / mois.", type:"qty", max:50 },
-      { key:"auditsPack1000", name:"Audits Pack +1000", desc:"+1000 audits / mois.", type:"qty", max:20 },
-      { key:"pdfPack200", name:"PDF Pack +200", desc:"+200 PDFs / mois.", type:"qty", max:50 },
-      { key:"exportsPack1000", name:"Exports Pack +1000", desc:"+1000 exports / mois.", type:"qty", max:50 },
-      { key:"monitorsPack50", name:"Monitors Pack +50", desc:"+50 monitors / pack.", type:"qty", max:10 },
-      { key:"extraSeats", name:"Extra Seats", desc:"Seats supplémentaires.", type:"qty", max:50 },
-    ];
-
-    function getToken() {
-      for (const k of TOKEN_KEYS) {
-        const v = localStorage.getItem(k);
-        if (v) return v;
-      }
-      return "";
-    }
-    function setAuth(){ const el=document.getElementById("authPill"); if(el) el.textContent = getToken() ? "Statut : Connecté" : "Statut : Non connecté"; }
-    function setMsg(t){ const el=document.getElementById("msg"); if(el) el.textContent = t||""; }
-
-    async function api(path, method, body) {
-      const tok = getToken();
-      const r = await fetch(path, {
-        method,
-        headers: { "Content-Type":"application/json", "Authorization":"Bearer " + tok },
-        body: body ? JSON.stringify(body) : undefined
-      });
-      const data = await r.json().catch(()=> ({}));
-      if (!r.ok) throw new Error(data.error || "Erreur API");
-      return data;
-    }
-
-    function loadPrefs() {
-      try { return JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {}; }
-      catch { return {}; }
-    }
-    function savePrefs(addons) {
-      localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(addons || {}));
-    }
-
-    function ensureDefaults(addons) {
-      if (!addons || typeof addons !== "object") addons = {};
-      for (const a of ADDONS) {
-        if (a.type === "flag" && addons[a.key] == null) addons[a.key] = !!a.defaultOn;
-        if (a.type === "qty" && addons[a.key] == null) addons[a.key] = 0;
-      }
-      addons.whiteLabel = true;
-      return addons;
-    }
-
-    function render(addons) {
-      const root = document.getElementById("addonsList");
-      root.innerHTML = "";
-
-      for (const a of ADDONS) {
-        const row = document.createElement("div");
-        row.className = "addonRow";
-
-        const left = document.createElement("div");
-        left.innerHTML = `
-          <p class="addonTitle">${a.name}</p>
-          <p class="addonDesc">${a.desc || ""}</p>
-          <span class="keyChip">${a.key}</span>
-        `;
-
-        const right = document.createElement("div");
-        right.className = "addonRight";
-
-        if (a.type === "qty") {
-          const q = Number(addons[a.key] || 0);
-          right.innerHTML = `
-            <div class="qty">
-              <button class="qtyBtn" type="button" data-act="dec">−</button>
-              <input class="qtyInput" type="number" min="0" max="${a.max ?? 999}" step="1" value="${q}" inputmode="numeric" />
-              <button class="qtyBtn" type="button" data-act="inc">+</button>
-            </div>
-          `;
-
-          const input = right.querySelector(".qtyInput");
-          const setVal = (v) => {
-            const max = Number(a.max ?? 999);
-            const nv = Math.max(0, Math.min(max, Number(v || 0)));
-            input.value = String(nv);
-            addons[a.key] = nv;
-            savePrefs(addons);
-          };
-
-          right.addEventListener("click", (e) => {
-            const act = e.target?.dataset?.act;
-            if (!act) return;
-            const cur = Number(input.value || 0);
-            setVal(act === "inc" ? cur + 1 : cur - 1);
-          });
-          input.addEventListener("change", () => setVal(input.value));
-          input.addEventListener("input", () => { if (input.value !== "") setVal(input.value); });
-
-        } else {
-          const on = !!addons[a.key];
-          right.innerHTML = `
-            <label class="toggle">
-              <input type="checkbox" ${on ? "checked" : ""} ${a.lockedOn ? "disabled" : ""} />
-              <span class="track"></span>
-            </label>
-          `;
-          const input = right.querySelector("input");
-          input.addEventListener("change", () => {
-            addons[a.key] = !!input.checked;
-            if (a.key === "whiteLabel") addons.whiteLabel = true;
-            savePrefs(addons);
-          });
-        }
-
-        row.appendChild(left);
-        row.appendChild(right);
-        root.appendChild(row);
-      }
-    }
-
-    async function loadFromAccountIntoPrefs() {
-      // optionnel : pré-remplir depuis ce que renvoie /api/me (addons actuels)
-      const me = await api("/api/me", "GET");
-      const current = me?.addons || {};
-      const prefs = ensureDefaults({ ...loadPrefs(), ...current });
-      savePrefs(prefs);
-      return prefs;
-    }
-
-    async function saveToStripe(addons) {
-      setMsg("Enregistrement…");
-      // ✅ Update add-ons sur subscription (pas de plan ici)
-      const payload = { plan: null, addons };
-      const r = await api("/api/stripe/checkout-embedded", "POST", payload);
-      if (r && r.ok) setMsg(r.updated ? "Add-ons mis à jour ✅" : "Aucun changement.");
-      else setMsg("Réponse inattendue.");
-    }
-
-    (async () => {
-      setAuth();
-      if (!getToken()) { location.href = "/login.html"; return; }
-
-      let addons = await loadFromAccountIntoPrefs();
-      render(addons);
-
-      document.getElementById("btnSave").addEventListener("click", async () => {
-        try {
-          addons = ensureDefaults(loadPrefs());
-          await saveToStripe(addons);
-        } catch (e) {
-          setMsg(e.message || "Erreur");
-        }
-      });
-
-      document.getElementById("btnBack").addEventListener("click", () => location.href = "/pricing.html");
-    })().catch(e => setMsg(e.message || "Erreur"));
-  </script>
+  <script src="/addons.js"></script>
 </body>
 </html>
