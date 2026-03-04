@@ -1,10 +1,29 @@
 <!doctype html>
 <html lang="fr">
-<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Succès</title></head>
-<body style="font-family:system-ui;margin:40px">
-  <h1>✅ Paiement enregistré</h1>
-  <p>Ton essai est actif. Tu peux aller au dashboard.</p>
-  <a href="/dashboard.html">Ouvrir le dashboard</a>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Paiement réussi — FlowPoint</title>
+  <meta name="color-scheme" content="light dark"/>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="page">
+    <div class="hero" style="max-width:720px; margin:40px auto;">
+      <h1>Paiement réussi ✅</h1>
+      <p id="msg">Redirection…</p>
+
+      <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="primaryBtn" href="/dashboard.html">Dashboard</a>
+        <a class="ghostBtn" href="/pricing.html">Pricing</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const next = params.get("next") || "/dashboard.html";
+    setTimeout(() => location.href = next, 900);
+  </script>
 </body>
 </html>
