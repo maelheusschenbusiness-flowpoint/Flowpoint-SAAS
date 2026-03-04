@@ -1,7 +1,10 @@
 // pricing.js — FlowPoint Pricing (Plans + Add-ons prefs)
-// ✅ FIX: si déjà abonné => Checkout plan = on ouvre le Portal (pas de re-souscription)
-// ✅ FIX: si backend répond { ok:true } sans url => on ne crie plus "URL Stripe manquante"
-// ✅ FIX: on envoie aussi addons au checkout (ça ne casse rien même si backend ignore)
+// ✅ FlowPoint custom flow:
+// - "Checkout plan" => /checkout.html (ta page FlowPoint embedded checkout)
+// - "Gérer mes add-ons" => /addons.html (ta page FlowPoint UI)
+// - Pricing ne redirige PLUS vers Stripe Portal directement
+// - On garde le localStorage pour transférer plan + addons aux pages suivantes
+// - Sync status via /api/me (optionnel)
 
 (() => {
   const TOKEN_KEYS = ["token", "fp_token"]; // compat
@@ -22,7 +25,7 @@
   const sumAddOns = $("#sumAddOns");
 
   const btnCheckout = $("#btnCheckout");
-  const btnPortal = $("#btnPortal");
+  const btnPortal = $("#btnPortal"); // dans ton UI = "Gérer mes add-ons"
 
   function getToken() {
     for (const k of TOKEN_KEYS) {
@@ -392,109 +395,29 @@
     return j;
   }
 
-  async function goCheckout(state) {
+  // ✅ NOUVEAU FLOW
+  function goCheckoutPage(state) {
     const tok = getToken();
     if (!tok) {
-      // pas connecté => renvoyer à l'inscription avec plan pré-sélectionné
       localStorage.setItem(PLAN_PREF_KEY, state.plan);
-      // choisis l’un des deux :
-      // window.location.href = "/index.html";
-      window.location.href = "/login.html";
+      window.location.href = "/login.html"; // ou /index.html si tu préfères
       return;
     }
 
-    if (!btnCheckout) return;
-    btnCheckout.disabled = true;
-    btnCheckout.textContent = "Redirection…";
-
-    try {
-      // ✅ si déjà abonné => on passe par Portal (upgrade/downgrade + add-ons)
-      if (isSubscribed) {
-        await openPortal();
-        return;
-      }
-
-      const r = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + tok,
-        },
-        // ✅ on envoie aussi addons (si backend ignore, aucun souci)
-        body: JSON.stringify({ plan: state.plan, addons: state.addons }),
-      });
-
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "Erreur checkout");
-
-      if (j.url) {
-        window.location.href = j.url;
-        return;
-      }
-
-      // ✅ backend a renvoyé ok:true sans url
-      if (j.ok) {
-        alert(j.updated ? "Options mises à jour ✅" : "OK ✅");
-        btnCheckout.disabled = false;
-        btnCheckout.textContent = "Continuer (Checkout Plan)";
-        return;
-      }
-
-      throw new Error("Réponse Stripe inattendue (pas d’url).");
-    } catch (e) {
-      alert(e.message || "Erreur");
-      btnCheckout.disabled = false;
-      btnCheckout.textContent = "Continuer (Checkout Plan)";
-    }
+    // on garde les prefs déjà sauvegardées
+    savePrefs(state);
+    window.location.href = "/checkout.html";
   }
 
-  async function openPortal() {
+  function goAddonsPage(state) {
     const tok = getToken();
     if (!tok) {
       window.location.href = "/login.html";
       return;
     }
 
-    if (btnPortal) {
-      btnPortal.disabled = true;
-      btnPortal.textContent = "Ouverture…";
-    }
-    if (btnCheckout) {
-      // si on arrive ici via Checkout
-      btnCheckout.disabled = true;
-      btnCheckout.textContent = "Ouverture…";
-    }
-
-    try {
-      const r = await fetch("/api/stripe/portal", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + tok },
-      });
-
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "Erreur portal");
-
-      if (j.url) {
-        window.location.href = j.url;
-        return;
-      }
-
-      if (j.ok) {
-        alert("Portal: OK ✅ (mais aucune URL renvoyée par le backend)");
-      } else {
-        throw new Error("URL portal manquante");
-      }
-    } catch (e) {
-      alert(e.message || "Erreur");
-      if (btnPortal) {
-        btnPortal.disabled = false;
-        btnPortal.textContent = "Gérer mes add-ons";
-      }
-      if (btnCheckout) {
-        btnCheckout.disabled = false;
-        btnCheckout.textContent = "Continuer (Checkout Plan)";
-      }
-    }
+    savePrefs(state);
+    window.location.href = "/addons.html";
   }
 
   function renderAll(state) {
@@ -519,7 +442,7 @@
     });
   }
 
-  // ✅ Fetch /api/me pour savoir si tu es déjà abonné
+  // Sync plan UI si backend retourne plan (optionnel)
   (async () => {
     const me = await fetchMe();
     if (!me) {
@@ -527,7 +450,7 @@
       return;
     }
 
-    // Sync plan UI si backend retourne plan
+    // si tu veux que pricing reflète le plan actuel automatiquement :
     if (me.plan && ["standard", "pro", "ultra"].includes(String(me.plan))) {
       state.plan = String(me.plan);
       savePrefs(state);
@@ -535,15 +458,14 @@
     }
 
     if (isSubscribed) {
-      setAuthBadge(
-        `Statut : Connecté (${currentPlan || "—"}, ${subscriptionStatus || "sub"})`
-      );
-      if (btnCheckout) btnCheckout.textContent = "Modifier via Portal";
+      setAuthBadge(`Statut : Connecté (${currentPlan || "—"}, ${subscriptionStatus || "sub"})`);
+      if (btnCheckout) btnCheckout.textContent = "Continuer (Checkout Plan)";
+      // (on garde le même label, car ça mène à ta page checkout flowpoint)
     } else {
       setAuthBadge("Statut : Connecté");
     }
   })();
 
-  if (btnCheckout) btnCheckout.addEventListener("click", () => goCheckout(state));
-  if (btnPortal) btnPortal.addEventListener("click", openPortal);
+  if (btnCheckout) btnCheckout.addEventListener("click", () => goCheckoutPage(state));
+  if (btnPortal) btnPortal.addEventListener("click", () => goAddonsPage(state));
 })();
