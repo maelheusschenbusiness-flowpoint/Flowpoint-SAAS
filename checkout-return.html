@@ -1,49 +1,68 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Retour paiement</title>
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#0b1020;color:#eaf0ff;}
-    .wrap{max-width:760px;margin:0 auto;padding:28px;}
-    .card{background:#0f1733;border:1px solid rgba(255,255,255,.10);border-radius:18px;padding:18px;}
-    a{color:#8ab4ff}
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Retour Checkout — FlowPoint</title>
+  <meta name="color-scheme" content="light dark"/>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="wrap">
-    <div class="card" id="box">Vérification...</div>
+  <div class="page">
+    <div class="hero" style="max-width:720px; margin:40px auto;">
+      <h1>Finalisation…</h1>
+      <p id="msg">Traitement en cours.</p>
+    </div>
   </div>
 
   <script>
-    const params = new URLSearchParams(location.search);
-    const session_id = params.get("session_id");
+    (async () => {
+      const params = new URLSearchParams(location.search);
+      const sessionId = params.get("session_id");
+      const status = (params.get("redirect_status") || "").toLowerCase();
 
-    async function run() {
-      if (!session_id) {
-        document.getElementById("box").innerHTML = "session_id manquant";
+      const msgEl = document.getElementById("msg");
+      const setMsg = (t) => msgEl && (msgEl.textContent = t);
+
+      // ✅ Cancel
+      if (status === "canceled") {
+        location.href = "/cancel.html?next=" + encodeURIComponent("/pricing.html");
         return;
       }
-      const r = await fetch(`/api/stripe/verify?session_id=${encodeURIComponent(session_id)}`);
-      const data = await r.json();
 
-      if (!r.ok) {
-        document.getElementById("box").innerHTML = `Erreur: ${data?.error || "verify failed"}`;
+      // ✅ Failed
+      if (status === "failed") {
+        location.href = "/cancel.html?next=" + encodeURIComponent("/pricing.html");
         return;
       }
 
-      // si tu veux auto-login
-      if (data.token) localStorage.setItem("token", data.token);
+      // ✅ Succeeded => verify backend (met à jour entitlements + renvoie token)
+      if (!sessionId) {
+        location.href = "/pricing.html";
+        return;
+      }
 
-      document.getElementById("box").innerHTML = `
-        <h2 style="margin:0 0 8px">✅ Paiement OK</h2>
-        <p style="margin:0 0 12px;opacity:.8">Ton abonnement / tes add-ons sont actifs.</p>
-        <a href="/dashboard.html">Aller au dashboard</a>
-      `;
-    }
+      try {
+        setMsg("Vérification du paiement…");
 
-    run();
+        const r = await fetch("/api/stripe/verify?session_id=" + encodeURIComponent(sessionId));
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || "Erreur verify");
+
+        // si ton backend renvoie un token, on le stocke
+        if (j.token) {
+          localStorage.setItem("token", j.token);
+          localStorage.setItem("fp_token", j.token);
+        }
+
+        setMsg("✅ Paiement validé. Redirection…");
+        location.href = "/dashboard.html";
+      } catch (e) {
+        setMsg("❌ " + (e.message || "Erreur"));
+        // fallback
+        setTimeout(() => (location.href = "/pricing.html"), 1200);
+      }
+    })();
   </script>
 </body>
 </html>
