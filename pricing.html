@@ -60,7 +60,7 @@
         </div>
       </div>
 
-      <!-- Right (✅ TOUT dans .side, sinon ça se place n'importe comment) -->
+      <!-- Right -->
       <div class="side">
         <div class="card">
           <div class="cardHead">Inclus dans tous les plans</div>
@@ -88,6 +88,10 @@
               <span id="sumAddOns" style="text-align:right">—</span>
             </div>
 
+            <!-- ✅ zone messages (manquait) -->
+            <div class="small" id="pricingMsg" style="margin:10px 0;"></div>
+
+            <!-- ✅ IDs utilisés par le JS ci-dessous -->
             <button class="primaryBtn" id="btnCheckout">Continuer (Checkout Plan)</button>
             <button class="ghostBtn" id="btnPortal">Gérer mes add-ons</button>
 
@@ -124,162 +128,169 @@
     </div>
   </div>
 
+  <!-- ✅ pricing.js peut rester (il remplit #plans + #addonsList + résumé) -->
   <script src="/pricing.js"></script>
+
+  <!-- Stripe -->
   <script src="https://js.stripe.com/v3/"></script>
-<script>
-  // ---- CONFIG ----
-  // Si tu fais Embedded Checkout, il faut un container :
-  // <div id="embedded-checkout"></div>
-  const stripePublicKey = "pk_live_XXXX"; // <-- mets ta clé publique Stripe
-  const stripe = Stripe(stripePublicKey);
 
-  function getToken() {
-    return localStorage.getItem("token") || "";
-  }
+  <script>
+    /**
+     * ✅ FIXES inclus :
+     * - bouton hook correct (btnCheckout au lieu de buyBtn)
+     * - zone message pricingMsg ajoutée et utilisée
+     * - flux simple = Redirect Checkout (évite le container embedded)
+     * - bouton Portal fonctionnel
+     * - détection "déjà abonné" pour éviter une re-souscription inutile
+     */
 
-  async function api(path, method, body) {
-    const r = await fetch(path, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${getToken()}`
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || "Erreur API");
-    return data;
-  }
+    // ---- CONFIG ----
+    const STRIPE_PUBLIC_KEY = "pk_live_XXXX"; // <-- mets TA clé publique Stripe
+    const stripe = Stripe(STRIPE_PUBLIC_KEY);
 
-  function readSelectedPlan() {
-    const el = document.querySelector('input[name="plan"]:checked');
-    return el ? el.value : null;
-  }
+    function getToken() {
+      return localStorage.getItem("token") || "";
+    }
 
-  function readAddonsFromDom() {
-    const addons = {};
-    document.querySelectorAll("[data-addon]").forEach((el) => {
-      const key = el.getAttribute("data-addon");
-      if (!key) return;
+    async function api(path, method, body) {
+      const r = await fetch(path, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getToken()}`
+        },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "Erreur API");
+      return data;
+    }
 
-      if (el.type === "checkbox") {
-        addons[key] = !!el.checked;
+    function setMsg(text) {
+      const box = document.getElementById("pricingMsg");
+      if (box) box.textContent = text || "";
+    }
+
+    function readSelectedPlan() {
+      const el = document.querySelector('input[name="plan"]:checked');
+      return el ? el.value : null;
+    }
+
+    function readAddonsFromDom() {
+      const addons = {};
+      document.querySelectorAll("[data-addon]").forEach((el) => {
+        const key = el.getAttribute("data-addon");
+        if (!key) return;
+
+        if (el.type === "checkbox") {
+          addons[key] = !!el.checked;
+          return;
+        }
+
+        const n = Number(el.value);
+        if (Number.isFinite(n) && n > 0) addons[key] = Math.floor(n);
+        else addons[key] = 0; // 0 = supprimer côté Stripe si ton backend le gère
+      });
+      return addons;
+    }
+
+    function hasAnyAddon(addons) {
+      if (!addons) return false;
+      return Object.values(addons).some(v => v === true || (Number(v) > 0));
+    }
+
+    // état abonnement
+    let currentPlan = null;
+    let isAlreadySubscribed = false;
+
+    async function initPricingState() {
+      const pill = document.getElementById("authPill");
+
+      try {
+        const me = await api("/api/me", "GET");
+
+        if (pill) pill.textContent = `Connecté : ${me.email || "ok"} (${me.plan || "-"})`;
+
+        currentPlan = me.plan || null;
+        const st = String(me.subscriptionStatus || "").toLowerCase();
+        isAlreadySubscribed = (st === "active" || st === "trialing" || st === "past_due");
+
+        if (isAlreadySubscribed) {
+          setMsg("Abonnement détecté : tu peux gérer les add-ons via le Portal Stripe (ou appliquer des changements si ton backend l’autorise).");
+          // Optionnel: pré-cocher le plan courant (si les radios existent déjà via pricing.js)
+          document.querySelectorAll('input[name="plan"]').forEach((r) => {
+            if (currentPlan && r.value === currentPlan) r.checked = true;
+          });
+        } else {
+          setMsg("");
+        }
+      } catch (e) {
+        if (pill) pill.textContent = "Statut : non connecté";
+        setMsg("Connecte-toi pour acheter un plan / gérer tes add-ons.");
+      }
+    }
+
+    // ✅ Redirect Checkout (robuste)
+    async function startRedirectCheckout() {
+      const addons = readAddonsFromDom();
+      const plan = isAlreadySubscribed ? null : readSelectedPlan();
+
+      if (!plan && !hasAnyAddon(addons)) {
+        throw new Error("Sélectionne un plan (ou au moins 1 add-on).");
+      }
+
+      const data = await api("/api/stripe/checkout", "POST", { plan, addons });
+
+      // si déjà abonné et backend fait update direct
+      if (data && data.ok) {
+        setMsg(data.updated ? "Options mises à jour ✅" : "Aucun changement.");
         return;
       }
 
-      // number / text => quantité
-      const n = Number(el.value);
-      if (Number.isFinite(n) && n > 0) addons[key] = Math.floor(n);
-      else addons[key] = 0; // important: 0 = supprimé côté Stripe (update subscription)
-    });
+      if (!data.url) throw new Error("URL checkout manquante (le backend n'a pas renvoyé 'url').");
+      window.location.href = data.url;
+    }
 
-    return addons;
-  }
+    async function openPortal() {
+      const data = await api("/api/stripe/portal", "POST");
+      if (!data.url) throw new Error("URL portal manquante");
+      window.location.href = data.url;
+    }
 
-  function setMsg(text) {
-    const box = document.getElementById("pricingMsg");
-    if (box) box.textContent = text || "";
-  }
+    document.addEventListener("DOMContentLoaded", () => {
+      initPricingState();
 
-  // ✅ règle "déjà abonné"
-  let currentPlan = null;
-  let isAlreadySubscribed = false;
+      const btnCheckout = document.getElementById("btnCheckout");
+      const btnPortal = document.getElementById("btnPortal");
 
-  async function initPricingState() {
-    try {
-      const me = await api("/api/me", "GET");
-      currentPlan = me.plan || null;
-
-      const st = String(me.subscriptionStatus || "").toLowerCase();
-      isAlreadySubscribed = (st === "active" || st === "trialing" || st === "past_due");
-
-      // UI: si déjà abonné, on peut désactiver les radios plan (optionnel)
-      if (isAlreadySubscribed) {
-        setMsg("Abonnement actif détecté : vous pouvez ajouter/retirer des options sans re-souscrire au plan.");
-        document.querySelectorAll('input[name="plan"]').forEach((r) => {
-          // on laisse visible mais on évite le changement si tu veux:
-          // r.disabled = true;
-          // ou mieux: pré-sélectionner le plan actuel
-          if (currentPlan && r.value === currentPlan) r.checked = true;
+      if (btnCheckout) {
+        btnCheckout.addEventListener("click", async () => {
+          setMsg("");
+          btnCheckout.disabled = true;
+          try {
+            await startRedirectCheckout();
+          } catch (e) {
+            setMsg(e.message || "Erreur");
+          } finally {
+            btnCheckout.disabled = false;
+          }
         });
-      } else {
-        setMsg("");
       }
-    } catch (e) {
-      // pas connecté / token absent
-      setMsg("Connectez-vous pour acheter un plan / des options.");
-    }
-  }
 
-  // ✅ ACHAT (Embedded Checkout)
-  async function startEmbeddedCheckout() {
-    const addons = readAddonsFromDom();
-
-    // Si déjà abonné => on n’envoie pas de plan (null) pour éviter une "re-souscription"
-    const plan = isAlreadySubscribed ? null : readSelectedPlan();
-
-    if (!plan && (!addons || Object.values(addons).every(v => !v || v === 0))) {
-      throw new Error("Sélectionne un plan ou au moins une option.");
-    }
-
-    const data = await api("/api/stripe/checkout-embedded", "POST", { plan, addons });
-
-    // ✅ Cas 1: déjà abonné => backend répond { ok:true, updated:true/false }
-    if (data && data.ok) {
-      setMsg(data.updated ? "Options mises à jour ✅" : "Aucun changement.");
-      return;
-    }
-
-    // ✅ Cas 2: nouveau => on a clientSecret
-    if (!data.clientSecret) throw new Error("clientSecret manquant");
-
-    // Stripe Embedded Checkout mount
-    const container = document.getElementById("embedded-checkout");
-    if (!container) throw new Error("Ajoute <div id='embedded-checkout'></div> dans pricing.html");
-
-    container.innerHTML = ""; // reset
-    const checkout = await stripe.initEmbeddedCheckout({ clientSecret: data.clientSecret });
-    checkout.mount("#embedded-checkout");
-  }
-
-  // ✅ ACHAT (Redirect Checkout)
-  async function startRedirectCheckout() {
-    const addons = readAddonsFromDom();
-    const plan = isAlreadySubscribed ? null : readSelectedPlan();
-
-    const data = await api("/api/stripe/checkout", "POST", { plan, addons });
-
-    // déjà abonné => update direct
-    if (data && data.ok) {
-      setMsg(data.updated ? "Options mises à jour ✅" : "Aucun changement.");
-      return;
-    }
-
-    if (!data.url) throw new Error("URL checkout manquante");
-    location.href = data.url;
-  }
-
-  // ---- bouton ----
-  document.addEventListener("DOMContentLoaded", () => {
-    initPricingState();
-
-    const btn = document.getElementById("buyBtn");
-    if (!btn) return;
-
-    btn.addEventListener("click", async () => {
-      setMsg("");
-      btn.disabled = true;
-      try {
-        // Choisis l’un des 2:
-        await startEmbeddedCheckout();   // ✅ Embedded
-        // await startRedirectCheckout(); // ✅ Redirect
-      } catch (e) {
-        setMsg(e.message || "Erreur");
-      } finally {
-        btn.disabled = false;
+      if (btnPortal) {
+        btnPortal.addEventListener("click", async () => {
+          setMsg("");
+          btnPortal.disabled = true;
+          try {
+            await openPortal();
+          } catch (e) {
+            setMsg(e.message || "Erreur");
+          } finally {
+            btnPortal.disabled = false;
+          }
+        });
       }
     });
-  });
-</script>
+  </script>
 </body>
 </html>
