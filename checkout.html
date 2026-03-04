@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Checkout — FlowPoint</title>
+  <meta name="color-scheme" content="light dark"/>
+  <link rel="stylesheet" href="/style.css" />
+
+  <!-- ✅ Mets TA clé publique Stripe -->
+  <meta name="stripe-pk" content="pk_live_XXXX" />
+</head>
+
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div class="logoBox">
+        <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
+             onerror="this.src='/assets/flowpoint-logo.png'">
+      </div>
+      <div class="actions">
+        <a class="linkBtn" href="/pricing.html">← Retour Pricing</a>
+        <div class="pill" id="authPill">Statut : …</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sectionHead">
+        <div class="title">Paiement</div>
+        <div class="hint">Plan + add-ons sélectionnés</div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="cardBody">
+          <div class="small" id="msg"></div>
+
+          <!-- ✅ Stripe Embedded Checkout MOUNT ICI -->
+          <div id="embedded-checkout"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://js.stripe.com/v3/"></script>
+  <script>
+    const TOKEN_KEYS = ["token", "fp_token"];
+    function getToken() {
+      for (const k of TOKEN_KEYS) {
+        const v = localStorage.getItem(k);
+        if (v) return v;
+      }
+      return "";
+    }
+    function setMsg(t){ const el=document.getElementById("msg"); if(el) el.textContent = t||""; }
+    function setAuth(){ const el=document.getElementById("authPill"); if(el) el.textContent = getToken() ? "Statut : Connecté" : "Statut : Non connecté"; }
+
+    async function api(path, method, body) {
+      const tok = getToken();
+      const r = await fetch(path, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + tok
+        },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const data = await r.json().catch(()=> ({}));
+      if (!r.ok) throw new Error(data.error || "Erreur API");
+      return data;
+    }
+
+    async function start() {
+      setAuth();
+      const tok = getToken();
+      if (!tok) {
+        location.href = "/login.html";
+        return;
+      }
+
+      // payload mis par pricing.js
+      const raw = sessionStorage.getItem("fp_checkout_payload");
+      if (!raw) {
+        setMsg("Aucune sélection trouvée. Retour à Pricing.");
+        return;
+      }
+
+      let payload;
+      try { payload = JSON.parse(raw); } catch { payload = null; }
+      if (!payload) {
+        setMsg("Sélection invalide. Retour à Pricing.");
+        return;
+      }
+
+      setMsg("Chargement du checkout…");
+
+      // ✅ IMPORTANT: on utilise /api/stripe/checkout-embedded
+      // - Nouveau client: { clientSecret }
+      // - Déjà abonné: { ok:true, updated:true/false }
+      const data = await api("/api/stripe/checkout-embedded", "POST", payload);
+
+      // déjà abonné -> le backend met à jour subscription (plan+addons) et renvoie ok
+      if (data && data.ok) {
+        setMsg(data.updated ? "Abonnement mis à jour ✅" : "Aucun changement.");
+        return;
+      }
+
+      if (!data.clientSecret) throw new Error("clientSecret manquant (backend)");
+
+      const pk = document.querySelector('meta[name="stripe-pk"]')?.content || "";
+      if (!pk) throw new Error("Clé publique Stripe manquante dans <meta name='stripe-pk'>");
+
+      const stripe = Stripe(pk);
+      const checkout = await stripe.initEmbeddedCheckout({ clientSecret: data.clientSecret });
+      checkout.mount("#embedded-checkout");
+      setMsg("");
+    }
+
+    start().catch(e => setMsg(e.message || "Erreur"));
+  </script>
+</body>
+</html>
