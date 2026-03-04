@@ -1,7 +1,7 @@
 // pricing.js — FlowPoint Pricing (Plans + Add-ons prefs)
-// - Checkout plan via /api/stripe/checkout (backend accepte uniquement "plan")
-// - Add-ons via /api/stripe/portal (Customer Portal)
-// - On sauvegarde la sélection add-ons en localStorage (préférence UI)
+// ✅ FIX: si déjà abonné => Checkout plan = on ouvre le Portal (pas de re-souscription)
+// ✅ FIX: si backend répond { ok:true } sans url => on ne crie plus "URL Stripe manquante"
+// ✅ FIX: on envoie aussi addons au checkout (ça ne casse rien même si backend ignore)
 
 (() => {
   const TOKEN_KEYS = ["token", "fp_token"]; // compat
@@ -32,9 +32,14 @@
     return null;
   }
 
-  function setAuthBadge() {
+  function setAuthBadge(textOverride) {
     const tok = getToken();
-    if (authPill) authPill.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
+    if (!authPill) return;
+    if (textOverride) {
+      authPill.textContent = textOverride;
+      return;
+    }
+    authPill.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
   }
 
   function loadPrefs() {
@@ -51,8 +56,7 @@
     localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(state.addons || {}));
   }
 
-  // ✅ Plans (UI) — + de features “vendeuses”
-  // NOTE: c'est de l'UI, pas un contrat technique. Les quotas restent les mêmes.
+  // ✅ Plans (UI)
   const PLANS = [
     {
       id: "standard",
@@ -102,133 +106,108 @@
   ];
 
   // ✅ Add-ons (préférences UI) — cohérent avec ton backend
-  // Backend OrgSchema.billingAddons :
-  // monitorsPack50 (Number), extraSeats (Number), retention90d (Boolean), retention365d (Boolean),
-  // auditsPack200 (Number), auditsPack1000 (Number), pdfPack200 (Number), exportsPack1000 (Number),
-  // prioritySupport (Boolean), customDomain (Boolean), whiteLabel (Boolean always true)
   const ADDONS = [
-  // 1️⃣ White label
-  {
-    key: "whiteLabel",
-    name: "White label",
-    desc: "Marque blanche (inclus).",
-    price: "Inclus (gratuit)",
-    type: "flag",
-    defaultOn: true,
-    lockedOn: true,
-  },
+    {
+      key: "whiteLabel",
+      name: "White label",
+      desc: "Marque blanche (inclus).",
+      price: "Inclus (gratuit)",
+      type: "flag",
+      defaultOn: true,
+      lockedOn: true,
+    },
+    {
+      key: "customDomain",
+      name: "Custom Domain",
+      desc: "Utilise ton propre domaine (brand pro).",
+      price: "9€ / mois",
+      type: "flag",
+      defaultOn: false,
+    },
+    {
+      key: "prioritySupport",
+      name: "Priority Support",
+      desc: "Support prioritaire (réponse plus rapide, meilleur suivi).",
+      price: "29€ / mois",
+      type: "flag",
+      defaultOn: false,
+    },
+    {
+      key: "retention90d",
+      name: "Retention +90 days",
+      desc: "Rétention des données étendue à 90 jours (plus d’historique).",
+      price: "9€ / mois",
+      type: "flag",
+      defaultOn: false,
+    },
+    {
+      key: "retention365d",
+      name: "Retention +365 days",
+      desc: "Rétention des données étendue à 365 jours (idéal reporting annuel).",
+      price: "19€ / mois",
+      type: "flag",
+      defaultOn: false,
+    },
+    {
+      key: "auditsPack200",
+      name: "Audits Pack +200",
+      desc: "Ajoute +200 audits / mois (en plus du plan).",
+      price: "9€ / mois",
+      type: "qty",
+      max: 50,
+      unitLabel: "+200 audits",
+    },
+    {
+      key: "auditsPack1000",
+      name: "Audits Pack +1000",
+      desc: "Ajoute +1000 audits / mois (gros volume).",
+      price: "29€ / mois",
+      type: "qty",
+      max: 20,
+      unitLabel: "+1000 audits",
+    },
+    {
+      key: "pdfPack200",
+      name: "PDF Pack +200",
+      desc: "Ajoute +200 PDFs / mois (rapports clients).",
+      price: "9€ / mois",
+      type: "qty",
+      max: 50,
+      unitLabel: "+200 PDFs",
+    },
+    {
+      key: "exportsPack1000",
+      name: "Exports Pack +1000",
+      desc: "Ajoute +1000 exports / mois (CSV, analyses, reporting).",
+      price: "19€ / mois",
+      type: "qty",
+      max: 50,
+      unitLabel: "+1000 exports",
+    },
+    {
+      key: "monitorsPack50",
+      name: "Monitors Pack +50",
+      desc: "Ajoute +50 monitors actifs au quota du plan (idéal quand tu scales).",
+      price: "19€ / mois",
+      type: "qty",
+      max: 10,
+      unitLabel: "+50 monitors",
+    },
+    {
+      key: "extraSeats",
+      name: "Extra Seats",
+      desc: "Ajoute des seats (membres) à ton organisation (collaboration équipe).",
+      price: "7€ / mois",
+      type: "qty",
+      max: 50,
+      unitLabel: "seat",
+    },
+  ];
 
-  // 2️⃣ Custom Domain
-  {
-    key: "customDomain",
-    name: "Custom Domain",
-    desc: "Utilise ton propre domaine (brand pro).",
-    price: "9€ / mois",
-    type: "flag",
-    defaultOn: false,
-  },
-
-  // 3️⃣ Priority Support
-  {
-    key: "prioritySupport",
-    name: "Priority Support",
-    desc: "Support prioritaire (réponse plus rapide, meilleur suivi).",
-    price: "29€ / mois",
-    type: "flag",
-    defaultOn: false,
-  },
-
-  // 4️⃣ Retention +90 days
-  {
-    key: "retention90d",
-    name: "Retention +90 days",
-    desc: "Rétention des données étendue à 90 jours (plus d’historique).",
-    price: "9€ / mois",
-    type: "flag",
-    defaultOn: false,
-  },
-
-  // 5️⃣ Retention +365 days
-  {
-    key: "retention365d",
-    name: "Retention +365 days",
-    desc: "Rétention des données étendue à 365 jours (idéal reporting annuel).",
-    price: "19€ / mois",
-    type: "flag",
-    defaultOn: false,
-  },
-
-  // 6️⃣ Audits Pack +200
-  {
-    key: "auditsPack200",
-    name: "Audits Pack +200",
-    desc: "Ajoute +200 audits / mois (en plus du plan).",
-    price: "9€ / mois",
-    type: "qty",
-    max: 50,
-    unitLabel: "+200 audits",
-  },
-
-  // 7️⃣ Audits Pack +1000
-  {
-    key: "auditsPack1000",
-    name: "Audits Pack +1000",
-    desc: "Ajoute +1000 audits / mois (gros volume).",
-    price: "29€ / mois",
-    type: "qty",
-    max: 20,
-    unitLabel: "+1000 audits",
-  },
-
-  // 8️⃣ PDF Pack +200
-  {
-    key: "pdfPack200",
-    name: "PDF Pack +200",
-    desc: "Ajoute +200 PDFs / mois (rapports clients).",
-    price: "9€ / mois",
-    type: "qty",
-    max: 50,
-    unitLabel: "+200 PDFs",
-  },
-
-  // 9️⃣ Exports Pack +1000
-  {
-    key: "exportsPack1000",
-    name: "Exports Pack +1000",
-    desc: "Ajoute +1000 exports / mois (CSV, analyses, reporting).",
-    price: "19€ / mois",
-    type: "qty",
-    max: 50,
-    unitLabel: "+1000 exports",
-  },
-
-  // 🔟 Monitors Pack +50
-  {
-    key: "monitorsPack50",
-    name: "Monitors Pack +50",
-    desc: "Ajoute +50 monitors actifs au quota du plan (idéal quand tu scales).",
-    price: "19€ / mois",
-    type: "qty",
-    max: 10,
-    unitLabel: "+50 monitors",
-  },
-
-  // 1️⃣1️⃣ Extra Seats
-  {
-    key: "extraSeats",
-    name: "Extra Seats",
-    desc: "Ajoute des seats (membres) à ton organisation (collaboration équipe).",
-    price: "7€ / mois",
-    type: "qty",
-    max: 50,
-    unitLabel: "seat",
-  },
-];
   function ensureDefaults(state) {
     if (!["standard", "pro", "ultra"].includes(state.plan)) state.plan = "pro";
     if (!state.addons || typeof state.addons !== "object") state.addons = {};
 
-    // defaults flags / qty
     for (const a of ADDONS) {
       if (a.type === "flag" && state.addons[a.key] === undefined) {
         state.addons[a.key] = !!a.defaultOn;
@@ -305,7 +284,6 @@
       right.className = "addonRight";
       right.innerHTML = `<div class="addonPrice">${a.price}</div>`;
 
-      // qty
       if (a.type === "qty") {
         const qty = Number(state.addons[a.key] || 0);
         const wrap = document.createElement("div");
@@ -342,7 +320,6 @@
 
         right.appendChild(wrap);
       } else {
-        // flag toggle
         const isOn = !!state.addons[a.key];
 
         const toggle = document.createElement("label");
@@ -374,7 +351,6 @@
     if (sumPlan) sumPlan.textContent = p.name;
     if (sumPlanPrice) sumPlanPrice.textContent = `${p.priceLabel} ${p.per}`;
 
-    // Liste add-ons sélectionnés
     const lines = [];
     for (const a of ADDONS) {
       if (a.key === "whiteLabel") continue;
@@ -382,7 +358,6 @@
       if (a.type === "qty") {
         const q = Number(state.addons[a.key] || 0);
         if (q > 0) {
-          // affichage "xN" + (optionnel) label
           if (a.unitLabel) lines.push(`${a.name} × ${q} (${a.unitLabel})`);
           else lines.push(`${a.name} × ${q}`);
         }
@@ -394,10 +369,35 @@
     if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
   }
 
+  // ---- Stripe state (depuis /api/me) ----
+  let isSubscribed = false;
+  let subscriptionStatus = "";
+
+  async function fetchMe() {
+    const tok = getToken();
+    if (!tok) return null;
+
+    const r = await fetch("/api/me", {
+      headers: { "Authorization": "Bearer " + tok }
+    });
+
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return null;
+
+    const st = String(j.subscriptionStatus || "").toLowerCase();
+    subscriptionStatus = st;
+    isSubscribed = (st === "active" || st === "trialing" || st === "past_due");
+
+    // Bonus: si backend te donne le plan actuel, on sync l’UI
+    if (j.plan && ["standard", "pro", "ultra"].includes(String(j.plan))) {
+      return j;
+    }
+    return j;
+  }
+
   async function goCheckout(state) {
     const tok = getToken();
     if (!tok) {
-      // pas connecté => renvoyer à l'inscription avec plan pré-sélectionné
       localStorage.setItem(PLAN_PREF_KEY, state.plan);
       window.location.href = "/index.html";
       return;
@@ -407,20 +407,46 @@
     btnCheckout.textContent = "Redirection…";
 
     try {
+      // ✅ IMPORTANT : si déjà abonné -> pas de checkout plan -> Portal
+      if (isSubscribed) {
+        await openPortal();
+        return;
+      }
+
       const r = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": "Bearer " + tok,
         },
-        body: JSON.stringify({ plan: state.plan })
+        // ✅ on envoie aussi addons (si backend ignore, aucun souci)
+        body: JSON.stringify({ plan: state.plan, addons: state.addons })
       });
 
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "Erreur checkout");
-      if (!j.url) throw new Error("URL Stripe manquante");
 
-      window.location.href = j.url;
+      // ✅ Cas normal: url checkout
+      if (j.url) {
+        window.location.href = j.url;
+        return;
+      }
+
+      // ✅ Cas “backend a fait autre chose” (ex: update direct, already subscribed, etc.)
+      if (j.ok) {
+        // si le backend a renvoyé un portalUrl ou autre
+        if (j.portalUrl) {
+          window.location.href = j.portalUrl;
+          return;
+        }
+
+        alert(j.updated ? "Options mises à jour ✅" : "OK ✅");
+        btnCheckout.disabled = false;
+        btnCheckout.textContent = "Continuer (Checkout Plan)";
+        return;
+      }
+
+      throw new Error("Réponse Stripe inattendue (pas d’url).");
     } catch (e) {
       alert(e.message || "Erreur");
       btnCheckout.disabled = false;
@@ -446,9 +472,22 @@
 
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "Erreur portal");
-      if (!j.url) throw new Error("URL portal manquante");
 
-      window.location.href = j.url;
+      // ✅ Normal: url portal
+      if (j.url) {
+        window.location.href = j.url;
+        return;
+      }
+
+      // ✅ Si backend répond ok:true sans url (rare mais possible dans ton module)
+      if (j.ok) {
+        alert("Portal: OK ✅ (mais aucune URL renvoyée par le backend)");
+        btnPortal.disabled = false;
+        btnPortal.textContent = "Gérer mes add-ons";
+        return;
+      }
+
+      throw new Error("URL portal manquante");
     } catch (e) {
       alert(e.message || "Erreur");
       btnPortal.disabled = false;
@@ -457,7 +496,6 @@
   }
 
   function renderAll(state) {
-    setAuthBadge();
     renderPlans(state);
     renderAddons(state);
     updateSummary(state);
@@ -468,6 +506,7 @@
   ensureDefaults(state);
   savePrefs(state);
   renderAll(state);
+  setAuthBadge();
 
   // ✅ Pas de “flash dashboard” : on décide AVANT d’ouvrir dashboard
   if (homeBtn) {
@@ -477,6 +516,29 @@
       window.location.href = tok ? "/dashboard.html" : "/login.html";
     });
   }
+
+  // ✅ Fetch /api/me pour savoir si tu es déjà abonné
+  (async () => {
+    const me = await fetchMe();
+    if (me) {
+      // sync plan UI si besoin
+      if (me.plan && ["standard", "pro", "ultra"].includes(String(me.plan))) {
+        state.plan = String(me.plan);
+        savePrefs(state);
+        renderAll(state);
+      }
+
+      if (isSubscribed) {
+        setAuthBadge("Statut : Connecté (" + (me.plan || "—") + ", " + (subscriptionStatus || "sub") + ")");
+        // optionnel: tu peux changer le label du bouton checkout
+        if (btnCheckout) btnCheckout.textContent = "Modifier via Portal";
+      } else {
+        setAuthBadge("Statut : Connecté");
+      }
+    } else {
+      setAuthBadge();
+    }
+  })();
 
   if (btnCheckout) btnCheckout.addEventListener("click", () => goCheckout(state));
   if (btnPortal) btnPortal.addEventListener("click", openPortal);
