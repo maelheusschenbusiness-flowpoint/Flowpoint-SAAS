@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Checkout — FlowPoint</title>
-  <meta name="color-scheme" content="light dark"/>
+  <meta name="color-scheme" content="light dark" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 
@@ -12,7 +12,9 @@
   <div class="page">
     <div class="topbar">
       <div class="logoBox">
-        <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
+        <img class="brandLogo"
+             src="/assets/flowpoint-logo.svg"
+             alt="FlowPoint"
              onerror="this.src='/assets/flowpoint-logo.png'">
       </div>
       <div class="actions">
@@ -39,7 +41,7 @@
 
           <div class="card" style="margin-top:12px">
             <div class="cardBody">
-              <div id="checkoutMsg" class="small"></div>
+              <div id="checkoutMsg" class="small">Chargement du paiement…</div>
 
               <!-- 1) Embedded Checkout (nouvelle souscription) -->
               <div id="embedded-checkout" style="margin-top:10px"></div>
@@ -51,7 +53,9 @@
                 <button class="primaryBtn" id="payBtn" type="submit">Payer maintenant</button>
               </form>
 
-              <button class="ghostBtn" id="retryBtn" style="display:none;margin-top:10px">Réessayer</button>
+              <button class="ghostBtn" id="retryBtn" style="display:none;margin-top:10px" type="button">
+                Réessayer
+              </button>
             </div>
           </div>
         </div>
@@ -62,10 +66,12 @@
           <div class="cardHead">Résumé</div>
           <div class="cardBody">
             <div class="row2"><span class="muted">Plan</span> <span id="sumPlan">—</span></div>
+
             <div class="row2" style="align-items:flex-start">
               <span class="muted">Add-ons</span>
               <span id="sumAddOns" style="text-align:right">—</span>
             </div>
+
             <div class="small" style="margin-top:10px">
               • Si tu annules le paiement, tu reviens sur /cancel.html.<br/>
               • Si paiement OK, on redirige vers /dashboard.html.
@@ -76,13 +82,13 @@
     </div>
   </div>
 
-  <!-- ✅ Stripe.js UNE SEULE FOIS -->
+  <!-- Stripe.js (UNE SEULE FOIS) -->
   <script src="https://js.stripe.com/v3/"></script>
 
-  <!-- ✅ IMPORTANT: mettre la clé sur window -->
+  <!-- IMPORTANT: la clé doit être sur window pour checkout.js -->
   <script>
-    window.STRIPE_PUBLISHABLE_KEY = "pk_live_51StVIr9eqtbj6iPB07lwbilmCrWyiNYvupqep7WV7BwxljclefFqISYc6GHW9RFEoohaXVHdyXu43ivcAWSRf2gp00QEjt2RSe"; 
-    // ⬆️ Remplace par TA nouvelle clé publique Stripe (pk_live_...)
+    window.STRIPE_PUBLISHABLE_KEY = "pk_live_51StVIr9eqtbj6iPB07lwbilmCrWyiNYvupqep7WV7BwxljclefFqISYc6GHW9RFEoohaXVHdyXu43ivcAWSRf2gp00QEjt2RSe";
+    // Remplace par TA clé publique Stripe (pk_live_...)
   </script>
 
   <script src="/checkout.js"></script>
