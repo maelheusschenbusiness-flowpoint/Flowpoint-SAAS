@@ -5,12 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Checkout — FlowPoint</title>
   <meta name="color-scheme" content="light dark"/>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
   <link rel="stylesheet" href="/style.css" />
+  <script src="https://js.stripe.com/v3/"></script>
 </head>
 
 <body>
@@ -22,19 +18,18 @@
       </div>
 
       <div class="actions">
-        <a class="linkBtn" id="backLink" href="/pricing.html">← Retour pricing</a>
+        <a class="linkBtn" href="/pricing.html">← Retour pricing</a>
         <div class="pill" id="authPill">Statut : …</div>
       </div>
     </div>
 
     <div class="grid">
-      <!-- Left -->
       <div>
         <div class="hero">
           <h1>Paiement sécurisé</h1>
           <p>
             Tu confirmes ton plan et tes add-ons. Si tu es déjà abonné, Stripe appliquera la modification
-            (upgrade/downgrade) et les prorata si nécessaire.
+            (upgrade/downgrade) et les proratas si nécessaire.
           </p>
         </div>
 
@@ -44,29 +39,37 @@
             <div class="hint">Paiement intégré (FlowPoint).</div>
           </div>
 
-          <div id="checkoutMsg" class="small" style="min-height:18px;"></div>
+          <div id="msg" class="small" style="margin:10px 0;"></div>
 
-          <!-- Stripe Embedded Checkout mount -->
-          <div id="embedded-checkout" style="margin-top:14px;"></div>
+          <!-- EMBEDDED CHECKOUT -->
+          <div id="embedded-checkout" class="card" style="padding:14px; display:none;"></div>
 
-          <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
-            <button class="ghostBtn" id="btnRetry" style="display:none;">Réessayer</button>
-            <button class="primaryBtn" id="btnGoDashboard" style="display:none;">Aller au dashboard</button>
-            <button class="ghostBtn" id="btnGoPricing" style="display:none;">Retour pricing</button>
+          <!-- SI UPDATE SUB => parfois Stripe demande de payer un prorata => Payment Element -->
+          <div id="paybox" class="card" style="padding:14px; display:none;">
+            <div class="cardHead">Paiement requis</div>
+            <div class="cardBody">
+              <div class="small" style="margin-bottom:10px;">
+                Stripe a généré un prorata. Règle-le ici pour valider la modification.
+              </div>
+              <form id="pay-form">
+                <div id="payment-element"></div>
+                <button class="primaryBtn" id="payBtn" type="submit" style="margin-top:12px;">Payer</button>
+              </form>
+              <div class="small" id="payErr" style="margin-top:10px;"></div>
+            </div>
           </div>
+
+          <button class="ghostBtn" id="retryBtn" style="display:none;">Réessayer</button>
         </div>
       </div>
 
-      <!-- Right -->
       <div class="side">
         <div class="card">
           <div class="cardHead">Résumé</div>
           <div class="cardBody">
             <div class="row2"><span class="muted">Plan</span> <span id="sumPlan">—</span></div>
-            <div class="row2"><span class="muted">Add-ons</span> <span id="sumAddons">—</span></div>
-            <div class="small" style="margin-top:10px;">
-              Les sélections viennent de ta page pricing.
-            </div>
+            <div class="row2"><span class="muted">Add-ons</span> <span id="sumAddOns" style="text-align:right">—</span></div>
+            <div class="small">Les sélections viennent de la page pricing.</div>
           </div>
         </div>
 
@@ -74,24 +77,167 @@
           <div class="cardHead">Info</div>
           <div class="cardBody">
             <div class="small">
-              • Si tu annules le paiement, tu reviens sur une page FlowPoint (cancel).<br/>
-              • Si le paiement réussit, on valide côté backend puis on te redirige au dashboard.
+              • Si tu annules le paiement, tu reviens sur <b>/cancel.html</b>.<br/>
+              • Si paiement OK, on redirige vers <b>/dashboard.html</b>.
             </div>
           </div>
         </div>
       </div>
-
     </div>
   </div>
 
-  <!-- Stripe -->
-  <script src="https://js.stripe.com/v3/"></script>
+<script>
+(() => {
+  // ✅ Mets ta clé Stripe publishable ici (public)
+  const STRIPE_PUBLISHABLE_KEY = "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";
 
-  <!-- ✅ Mets ta clé publique ici -->
-  <script>
-    window.STRIPE_PUBLISHABLE_KEY = "pk_live_XXXX";
-  </script>
+  const TOKEN_KEYS = ["token", "fp_token"];
+  const ADDON_PREF_KEY = "fp_addon_prefs";
+  const PLAN_PREF_KEY = "fp_plan_pref";
 
-  <script src="/checkout.js"></script>
+  const authPill = document.getElementById("authPill");
+  const msg = document.getElementById("msg");
+  const retryBtn = document.getElementById("retryBtn");
+
+  const sumPlan = document.getElementById("sumPlan");
+  const sumAddOns = document.getElementById("sumAddOns");
+
+  const embeddedBox = document.getElementById("embedded-checkout");
+  const paybox = document.getElementById("paybox");
+  const payForm = document.getElementById("pay-form");
+  const payErr = document.getElementById("payErr");
+  const payBtn = document.getElementById("payBtn");
+
+  function getToken() {
+    for (const k of TOKEN_KEYS) {
+      const v = localStorage.getItem(k);
+      if (v) return v;
+    }
+    return null;
+  }
+
+  function setMsg(t) { msg.textContent = t || ""; }
+
+  function loadPrefs() {
+    let addons = {};
+    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {}; } catch {}
+    const plan = String(localStorage.getItem(PLAN_PREF_KEY) || "pro");
+    return { plan, addons };
+  }
+
+  function summarize({plan, addons}) {
+    if (sumPlan) sumPlan.textContent = plan || "—";
+    const lines = [];
+    if (addons && typeof addons === "object") {
+      for (const [k,v] of Object.entries(addons)) {
+        if (k === "whiteLabel") continue;
+        if (typeof v === "boolean" && v) lines.push(k);
+        if (typeof v === "number" && v > 0) lines.push(`${k}×${v}`);
+      }
+    }
+    if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
+  }
+
+  async function api(path, method, body) {
+    const tok = getToken();
+    const r = await fetch(path, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + tok
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Erreur API");
+    return j;
+  }
+
+  async function start() {
+    const tok = getToken();
+    if (!tok) return (window.location.href = "/login.html");
+    authPill.textContent = "Statut : Connecté";
+
+    if (!STRIPE_PUBLISHABLE_KEY || !STRIPE_PUBLISHABLE_KEY.startsWith("pk_")) {
+      setMsg("❌ Clé Stripe publique manquante dans checkout.html (STRIPE_PUBLISHABLE_KEY).");
+      retryBtn.style.display = "inline-block";
+      return;
+    }
+
+    const prefs = loadPrefs();
+    summarize(prefs);
+
+    const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+
+    setMsg("Création du paiement…");
+
+    // ✅ On utilise ton endpoint embedded : /api/stripe/checkout-embedded
+    // - si pas abonné => renvoie { clientSecret } => embedded checkout
+    // - si déjà abonné => update subscription et peut renvoyer { ok:true, updated:true } OU { paymentRequired:true, clientSecret }
+    let data;
+    try {
+      data = await api("/api/stripe/checkout-embedded", "POST", { plan: prefs.plan, addons: prefs.addons });
+    } catch (e) {
+      setMsg("❌ " + (e.message || "Erreur"));
+      retryBtn.style.display = "inline-block";
+      return;
+    }
+
+    // ✅ Cas embedded checkout
+    if (data.clientSecret) {
+      setMsg("");
+      embeddedBox.style.display = "block";
+      embeddedBox.innerHTML = "";
+      const checkout = await stripe.initEmbeddedCheckout({ clientSecret: data.clientSecret });
+      checkout.mount("#embedded-checkout");
+      return;
+    }
+
+    // ✅ Cas update subscription sans paiement requis
+    if (data.ok && !data.paymentRequired) {
+      setMsg(data.updated ? "✅ Abonnement mis à jour." : "✅ Aucun changement.");
+      // redirection dashboard après 1s
+      setTimeout(() => (window.location.href = "/dashboard.html"), 900);
+      return;
+    }
+
+    // ✅ Cas update subscription AVEC paiement requis (prorata)
+    if (data.ok && data.paymentRequired && data.clientSecret) {
+      setMsg("");
+      paybox.style.display = "block";
+
+      const elements = stripe.elements({ clientSecret: data.clientSecret });
+      const paymentElement = elements.create("payment");
+      paymentElement.mount("#payment-element");
+
+      payForm.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        payErr.textContent = "";
+        payBtn.disabled = true;
+
+        const { error } = await stripe.confirmPayment({
+          elements,
+          confirmParams: {
+            return_url: window.location.origin + "/success.html"
+          }
+        });
+
+        if (error) {
+          payErr.textContent = "❌ " + (error.message || "Erreur paiement");
+          payBtn.disabled = false;
+        }
+      });
+
+      return;
+    }
+
+    setMsg("Réponse Stripe inattendue.");
+    retryBtn.style.display = "inline-block";
+  }
+
+  retryBtn.addEventListener("click", () => window.location.reload());
+  start();
+})();
+</script>
 </body>
 </html>
