@@ -418,7 +418,19 @@ function buildStripeModule(ctx) {
 
         await applySubscriptionToUserAndOrg(subscription);
 
-        return res.json({ ok: true, updated, subscriptionId: subscription.id });
+       const pi = subscription?.latest_invoice?.payment_intent;
+
+if (pi && pi.client_secret && pi.status && pi.status !== "succeeded") {
+  return res.json({
+    ok: true,
+    updated,
+    subscriptionId: subscription.id,
+    paymentIntentClientSecret: pi.client_secret,
+    paymentIntentStatus: pi.status
+  });
+}
+
+return res.json({ ok: true, updated, subscriptionId: subscription.id });
       }
 
       // ✅ pas abonné => créer Checkout Session (nouvelle subscription)
