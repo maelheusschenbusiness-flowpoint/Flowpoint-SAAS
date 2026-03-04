@@ -1,163 +1,192 @@
-// checkout.js — FlowPoint Embedded Checkout
-// - lit plan + addons depuis localStorage (venant de pricing.js)
-// - appelle /api/stripe/checkout-embedded { plan, addons }
-// - si {ok:true} => update fait côté backend (déjà abonné) => message + boutons
-// - si {clientSecret} => mount Embedded Checkout
+// checkout.js — FlowPoint UI
+// - Lit payload depuis localStorage (plan + addons)
+// - Appelle /api/stripe/checkout-embedded (nouveau) OU /api/stripe/checkout (update)
+// - Si update renvoie paymentIntentClientSecret => affiche Payment Element et paye
+// - Si annulation: Stripe renverra vers /cancel.html (config backend)
 
 (() => {
   const TOKEN_KEYS = ["token", "fp_token"];
-  const PLAN_PREF_KEY = "fp_plan_pref";
-  const ADDON_PREF_KEY = "fp_addon_prefs";
+  const CHECKOUT_PAYLOAD_KEY = "fp_checkout_payload";
 
   const $ = (q) => document.querySelector(q);
 
   const authPill = $("#authPill");
-  const backLink = $("#backLink");
+  const msg = $("#checkoutMsg");
+  const retryBtn = $("#retryBtn");
 
-  const checkoutMsg = $("#checkoutMsg");
-  const mountEl = $("#embedded-checkout");
+  const embeddedContainer = $("#embedded-checkout");
+  const piForm = $("#piForm");
+  const payBtn = $("#payBtn");
+  const paymentEl = $("#payment-element");
 
   const sumPlan = $("#sumPlan");
-  const sumAddons = $("#sumAddons");
-
-  const btnRetry = $("#btnRetry");
-  const btnGoDashboard = $("#btnGoDashboard");
-  const btnGoPricing = $("#btnGoPricing");
+  const sumAddOns = $("#sumAddOns");
 
   function getToken() {
     for (const k of TOKEN_KEYS) {
       const v = localStorage.getItem(k);
       if (v) return v;
     }
-    return "";
+    return null;
   }
 
-  function setAuth() {
+  function setAuthBadge() {
     const tok = getToken();
-    if (authPill) authPill.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
+    if (!authPill) return;
+    authPill.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
   }
 
   function setMsg(t) {
-    if (checkoutMsg) checkoutMsg.textContent = t || "";
+    if (msg) msg.textContent = t || "";
   }
 
-  function loadSelection() {
-    const plan = String(localStorage.getItem(PLAN_PREF_KEY) || "");
-    let addons = {};
-    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {}; } catch {}
-    return { plan: plan || null, addons: addons || {} };
+  function readPayload() {
+    try {
+      return JSON.parse(localStorage.getItem(CHECKOUT_PAYLOAD_KEY) || "null");
+    } catch {
+      return null;
+    }
   }
 
-  function summarizeAddons(addons) {
-    if (!addons || typeof addons !== "object") return "—";
+  function summarize(payload) {
+    if (!payload) return;
+
+    if (sumPlan) sumPlan.textContent = payload.plan || "—";
+
+    const addons = payload.addons || {};
     const lines = [];
-
     for (const [k, v] of Object.entries(addons)) {
       if (k === "whiteLabel") continue;
-      if (typeof v === "boolean") {
-        if (v) lines.push(k);
-      } else {
-        const n = Number(v);
-        if (Number.isFinite(n) && n > 0) lines.push(`${k} × ${n}`);
-      }
+      if (typeof v === "boolean") { if (v) lines.push(k); }
+      else if (Number(v) > 0) lines.push(`${k}×${Number(v)}`);
     }
-
-    return lines.length ? lines.join(" • ") : "—";
+    if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
   }
 
-  async function api(path, method, body) {
+  async function api(path, body) {
     const tok = getToken();
     const r = await fetch(path, {
-      method,
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer " + tok,
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: JSON.stringify(body || {})
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "Erreur API");
     return j;
   }
 
-  function showPostActions() {
-    if (btnGoDashboard) btnGoDashboard.style.display = "";
-    if (btnGoPricing) btnGoPricing.style.display = "";
-  }
-
-  function wireButtons() {
-    if (btnGoDashboard) btnGoDashboard.addEventListener("click", () => (location.href = "/dashboard.html"));
-    if (btnGoPricing) btnGoPricing.addEventListener("click", () => (location.href = "/pricing.html"));
-    if (btnRetry) btnRetry.addEventListener("click", () => start());
-  }
-
   async function start() {
-    setAuth();
-    wireButtons();
+    setAuthBadge();
 
     const tok = getToken();
     if (!tok) {
-      // pas connecté => retour login/pricing
-      setMsg("Connecte-toi pour payer ou modifier ton abonnement.");
-      showPostActions();
-      if (btnGoPricing) btnGoPricing.textContent = "Aller au pricing";
-      if (btnGoDashboard) btnGoDashboard.style.display = "none";
+      window.location.href = "/login.html";
       return;
     }
 
-    const { plan, addons } = loadSelection();
-
-    if (sumPlan) sumPlan.textContent = plan ? plan : "—";
-    if (sumAddons) sumAddons.textContent = summarizeAddons(addons);
-
-    // Stripe init
-    const pk = window.STRIPE_PUBLISHABLE_KEY;
-    if (!pk || pk.includes("XXXX")) {
-      setMsg("❌ Clé Stripe publique manquante dans checkout.html (STRIPE_PUBLISHABLE_KEY).");
-      if (btnRetry) btnRetry.style.display = "";
+    if (!window.STRIPE_PUBLISHABLE_KEY || !String(window.STRIPE_PUBLISHABLE_KEY).startsWith("pk_")) {
+      setMsg("Clé Stripe publique manquante dans checkout.html (STRIPE_PUBLISHABLE_KEY).");
+      if (retryBtn) retryBtn.style.display = "none";
       return;
     }
-    const stripe = Stripe(pk);
 
-    // Call backend embedded checkout
-    setMsg("Préparation du paiement…");
+    const payload = readPayload();
+    if (!payload) {
+      setMsg("Aucune sélection trouvée. Retourne sur pricing.");
+      return;
+    }
+    summarize(payload);
 
+    const stripe = Stripe(window.STRIPE_PUBLISHABLE_KEY);
+
+    // 1) On tente d'abord un update via /api/stripe/checkout (si déjà abonné => ok/updated + peut renvoyer un paymentIntent)
+    //    Si pas abonné => backend renvoie { url } (checkout stripe classique) -> on préfère embedded, donc on passe au point 2.
     try {
-      const data = await api("/api/stripe/checkout-embedded", "POST", {
-        plan: plan || null,
-        addons: addons || {},
+      setMsg("Préparation…");
+
+      const j = await api("/api/stripe/checkout", {
+        plan: payload.mode === "addons" ? null : payload.plan,
+        addons: payload.addons
       });
 
-      // Cas: déjà abonné => backend update direct
-      if (data && data.ok) {
-        setMsg(data.updated ? "✅ Abonnement / options mis à jour." : "✅ Aucun changement.");
-        showPostActions();
+      // Cas: update direct sans paiement requis
+      if (j.ok && !j.paymentIntentClientSecret) {
+        setMsg(j.updated ? "Abonnement mis à jour ✅" : "Aucun changement.");
+        setTimeout(() => window.location.href = "/dashboard.html", 800);
         return;
       }
 
-      if (!data.clientSecret) {
-        setMsg("❌ clientSecret manquant (réponse backend).");
-        if (btnRetry) btnRetry.style.display = "";
+      // Cas: update avec prorata à payer (PaymentIntent)
+      if (j.paymentIntentClientSecret) {
+        setMsg("Paiement requis (prorata).");
+        embeddedContainer.innerHTML = "";
+        piForm.style.display = "block";
+
+        const elements = stripe.elements({ clientSecret: j.paymentIntentClientSecret });
+        const pe = elements.create("payment");
+        pe.mount("#payment-element");
+
+        piForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          payBtn.disabled = true;
+
+          const { error } = await stripe.confirmPayment({
+            elements,
+            confirmParams: { return_url: window.location.origin + "/success.html" }
+          });
+
+          if (error) {
+            setMsg(error.message || "Erreur paiement");
+            payBtn.disabled = false;
+          }
+        });
+
         return;
       }
 
-      // Mount embedded checkout
-      mountEl.innerHTML = "";
-      const checkout = await stripe.initEmbeddedCheckout({ clientSecret: data.clientSecret });
-      checkout.mount("#embedded-checkout");
-
-      setMsg(""); // clean
+      // Cas: backend te renvoie encore une URL checkout Stripe (ancien flow)
+      // => on préfère Embedded Checkout (FlowPoint UI) donc on continue au point 2.
+      if (j.url) {
+        // on ignore et on fait embedded
+      }
     } catch (e) {
-      setMsg("❌ " + (e?.message || "Erreur checkout"));
-      if (btnRetry) btnRetry.style.display = "";
-      showPostActions();
+      // on tente embedded quand même
+      console.log("checkout update -> fallback embedded:", e.message);
+    }
+
+    // 2) Embedded checkout (nouvelle souscription) via /api/stripe/checkout-embedded
+    try {
+      setMsg("Ouverture du paiement…");
+
+      const j2 = await api("/api/stripe/checkout-embedded", {
+        plan: payload.plan,
+        addons: payload.addons
+      });
+
+      // si déjà abonné => update direct
+      if (j2.ok) {
+        setMsg(j2.updated ? "Abonnement mis à jour ✅" : "Aucun changement.");
+        setTimeout(() => window.location.href = "/dashboard.html", 800);
+        return;
+      }
+
+      if (!j2.clientSecret) throw new Error("clientSecret manquant (embedded)");
+      piForm.style.display = "none";
+
+      const checkout = await stripe.initEmbeddedCheckout({ clientSecret: j2.clientSecret });
+      checkout.mount("#embedded-checkout");
+      setMsg("");
+    } catch (e) {
+      setMsg(e.message || "Erreur checkout");
+      if (retryBtn) {
+        retryBtn.style.display = "inline-block";
+        retryBtn.onclick = () => window.location.reload();
+      }
     }
   }
 
-  // back link safe
-  if (backLink) backLink.addEventListener("click", (e) => {
-    // laisse le href fonctionner
-  });
-
-  document.addEventListener("DOMContentLoaded", start);
+  start();
 })();
