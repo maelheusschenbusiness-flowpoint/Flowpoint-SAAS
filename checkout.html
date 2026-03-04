@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Checkout — FlowPoint</title>
   <meta name="color-scheme" content="light dark"/>
-  <link rel="stylesheet" href="/style.css" />
 
-  <!-- ✅ Mets TA clé publique Stripe -->
-  <meta name="stripe-pk" content="pk_live_XXXX" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/style.css" />
 </head>
 
 <body>
@@ -18,104 +20,78 @@
         <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
              onerror="this.src='/assets/flowpoint-logo.png'">
       </div>
+
       <div class="actions">
-        <a class="linkBtn" href="/pricing.html">← Retour Pricing</a>
+        <a class="linkBtn" id="backLink" href="/pricing.html">← Retour pricing</a>
         <div class="pill" id="authPill">Statut : …</div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="sectionHead">
-        <div class="title">Paiement</div>
-        <div class="hint">Plan + add-ons sélectionnés</div>
-      </div>
+    <div class="grid">
+      <!-- Left -->
+      <div>
+        <div class="hero">
+          <h1>Paiement sécurisé</h1>
+          <p>
+            Tu confirmes ton plan et tes add-ons. Si tu es déjà abonné, Stripe appliquera la modification
+            (upgrade/downgrade) et les prorata si nécessaire.
+          </p>
+        </div>
 
-      <div class="card" style="margin-top:12px">
-        <div class="cardBody">
-          <div class="small" id="msg"></div>
+        <div class="section">
+          <div class="sectionHead">
+            <div class="title">Checkout</div>
+            <div class="hint">Paiement intégré (FlowPoint).</div>
+          </div>
 
-          <!-- ✅ Stripe Embedded Checkout MOUNT ICI -->
-          <div id="embedded-checkout"></div>
+          <div id="checkoutMsg" class="small" style="min-height:18px;"></div>
+
+          <!-- Stripe Embedded Checkout mount -->
+          <div id="embedded-checkout" style="margin-top:14px;"></div>
+
+          <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="ghostBtn" id="btnRetry" style="display:none;">Réessayer</button>
+            <button class="primaryBtn" id="btnGoDashboard" style="display:none;">Aller au dashboard</button>
+            <button class="ghostBtn" id="btnGoPricing" style="display:none;">Retour pricing</button>
+          </div>
         </div>
       </div>
+
+      <!-- Right -->
+      <div class="side">
+        <div class="card">
+          <div class="cardHead">Résumé</div>
+          <div class="cardBody">
+            <div class="row2"><span class="muted">Plan</span> <span id="sumPlan">—</span></div>
+            <div class="row2"><span class="muted">Add-ons</span> <span id="sumAddons">—</span></div>
+            <div class="small" style="margin-top:10px;">
+              Les sélections viennent de ta page pricing.
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="cardHead">Info</div>
+          <div class="cardBody">
+            <div class="small">
+              • Si tu annules le paiement, tu reviens sur une page FlowPoint (cancel).<br/>
+              • Si le paiement réussit, on valide côté backend puis on te redirige au dashboard.
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
+  <!-- Stripe -->
   <script src="https://js.stripe.com/v3/"></script>
+
+  <!-- ✅ Mets ta clé publique ici -->
   <script>
-    const TOKEN_KEYS = ["token", "fp_token"];
-    function getToken() {
-      for (const k of TOKEN_KEYS) {
-        const v = localStorage.getItem(k);
-        if (v) return v;
-      }
-      return "";
-    }
-    function setMsg(t){ const el=document.getElementById("msg"); if(el) el.textContent = t||""; }
-    function setAuth(){ const el=document.getElementById("authPill"); if(el) el.textContent = getToken() ? "Statut : Connecté" : "Statut : Non connecté"; }
-
-    async function api(path, method, body) {
-      const tok = getToken();
-      const r = await fetch(path, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + tok
-        },
-        body: body ? JSON.stringify(body) : undefined
-      });
-      const data = await r.json().catch(()=> ({}));
-      if (!r.ok) throw new Error(data.error || "Erreur API");
-      return data;
-    }
-
-    async function start() {
-      setAuth();
-      const tok = getToken();
-      if (!tok) {
-        location.href = "/login.html";
-        return;
-      }
-
-      // payload mis par pricing.js
-      const raw = sessionStorage.getItem("fp_checkout_payload");
-      if (!raw) {
-        setMsg("Aucune sélection trouvée. Retour à Pricing.");
-        return;
-      }
-
-      let payload;
-      try { payload = JSON.parse(raw); } catch { payload = null; }
-      if (!payload) {
-        setMsg("Sélection invalide. Retour à Pricing.");
-        return;
-      }
-
-      setMsg("Chargement du checkout…");
-
-      // ✅ IMPORTANT: on utilise /api/stripe/checkout-embedded
-      // - Nouveau client: { clientSecret }
-      // - Déjà abonné: { ok:true, updated:true/false }
-      const data = await api("/api/stripe/checkout-embedded", "POST", payload);
-
-      // déjà abonné -> le backend met à jour subscription (plan+addons) et renvoie ok
-      if (data && data.ok) {
-        setMsg(data.updated ? "Abonnement mis à jour ✅" : "Aucun changement.");
-        return;
-      }
-
-      if (!data.clientSecret) throw new Error("clientSecret manquant (backend)");
-
-      const pk = document.querySelector('meta[name="stripe-pk"]')?.content || "";
-      if (!pk) throw new Error("Clé publique Stripe manquante dans <meta name='stripe-pk'>");
-
-      const stripe = Stripe(pk);
-      const checkout = await stripe.initEmbeddedCheckout({ clientSecret: data.clientSecret });
-      checkout.mount("#embedded-checkout");
-      setMsg("");
-    }
-
-    start().catch(e => setMsg(e.message || "Erreur"));
+    window.STRIPE_PUBLISHABLE_KEY = "pk_live_XXXX";
   </script>
+
+  <script src="/checkout.js"></script>
 </body>
 </html>
