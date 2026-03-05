@@ -3,24 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Flowpoint — Client Dashboard</title>
+  <title>FlowPoint — Dashboard</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="./dashboard.css" />
 
-  <!-- ✅ Anti-flash dashboard si non connecté (redirige AVANT rendu) -->
   <script>
     (function () {
       try {
-        const keys = ["token", "fp_token"];
-        const tok = keys.map(k => localStorage.getItem(k)).find(Boolean);
-
-        if (!tok) {
-          // replace = pas d’historique + moins de flash
-          window.location.replace("/login.html");
-          return;
-        }
-
-        // Optionnel: cache très rapide si token vide/space
-        if (typeof tok === "string" && tok.trim().length < 10) {
+        const tok = localStorage.getItem("token");
+        if (!tok || (typeof tok === "string" && tok.trim().length < 10)) {
           window.location.replace("/login.html");
           return;
         }
@@ -30,279 +25,299 @@
     })();
   </script>
 </head>
-<body>
-  <!-- Mobile overlay (NE BLOQUE PAS les clics quand fermé) -->
-  <div id="overlay" class="overlay" aria-hidden="true"></div>
 
-  <div class="app">
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar" aria-label="Navigation principale">
-      <div class="brand">
-        <div class="brandLogo" aria-hidden="true">
-          <!-- Logo Flowpoint + éclair (style propre + moderne) -->
-          <svg viewBox="0 0 44 44" width="44" height="44" role="img" aria-label="Flowpoint">
+<body>
+  <div id="overlay" class="fpOverlay" aria-hidden="true"></div>
+
+  <div class="fpApp">
+    <aside class="fpSidebar" id="sidebar" aria-label="Navigation">
+      <div class="fpBrand">
+        <div class="fpLogo" aria-hidden="true">
+          <svg viewBox="0 0 44 44" width="44" height="44" role="img" aria-label="FlowPoint">
             <defs>
-              <linearGradient id="fpG" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#2F6BFF"/>
-                <stop offset="1" stop-color="#1F46E5"/>
+              <linearGradient id="fpGdash" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#2f5bff"/>
+                <stop offset="1" stop-color="#2449ff"/>
               </linearGradient>
             </defs>
-            <rect x="2.5" y="2.5" width="39" height="39" rx="14" fill="rgba(47,107,255,.10)" stroke="rgba(47,107,255,.22)" />
+            <rect x="2.5" y="2.5" width="39" height="39" rx="14" fill="rgba(47,91,255,.10)" stroke="rgba(47,91,255,.22)" />
             <path d="M22 9.5c.6 0 1 .5.8 1.1l-3 10.2h6.7c.7 0 1.1.7.7 1.3L18.6 34c-.4.5-1.2.1-1-.6l3.1-10.4h-6.7c-.7 0-1.1-.7-.7-1.3l8.1-11.8c.2-.3.4-.4.6-.4Z"
-                  fill="url(#fpG)"/>
+              fill="url(#fpGdash)"/>
           </svg>
         </div>
-        <div class="brandText">
-          <div class="brandName">Flowpoint</div>
-          <div class="brandSub">Client Dashboard</div>
+        <div class="fpBrandText">
+          <div class="fpBrandName">FlowPoint</div>
+          <div class="fpBrandSub">Client Dashboard</div>
         </div>
       </div>
 
-      <nav class="nav">
-        <a class="navItem active" href="#overview" data-route="overview">
-          <span class="navIcon" aria-hidden="true" data-ico="overview"></span>
+      <nav class="fpNav">
+        <a class="fpNavItem active" href="#overview" data-route="overview">
+          <span class="fpNavIcon" data-ico="overview" aria-hidden="true"></span>
           <span>Overview</span>
         </a>
-        <a class="navItem" href="#audits" data-route="audits">
-          <span class="navIcon" aria-hidden="true" data-ico="audits"></span>
+
+        <a class="fpNavItem" href="#missions" data-route="missions">
+          <span class="fpNavIcon" data-ico="missions" aria-hidden="true"></span>
+          <span>Missions</span>
+          <span class="fpPill">✔</span>
+        </a>
+
+        <a class="fpNavItem" href="#audits" data-route="audits">
+          <span class="fpNavIcon" data-ico="audits" aria-hidden="true"></span>
           <span>Audits</span>
         </a>
-        <a class="navItem" href="#monitors" data-route="monitors">
-          <span class="navIcon" aria-hidden="true" data-ico="monitors"></span>
+
+        <a class="fpNavItem" href="#monitors" data-route="monitors">
+          <span class="fpNavIcon" data-ico="monitors" aria-hidden="true"></span>
           <span>Monitors</span>
         </a>
-        <a class="navItem" href="#local" data-route="local">
-          <span class="navIcon" aria-hidden="true" data-ico="local"></span>
-          <span>Local SEO</span>
-        </a>
-        <a class="navItem" href="#competitors" data-route="competitors">
-          <span class="navIcon" aria-hidden="true" data-ico="competitors"></span>
-          <span>Competitors</span>
-        </a>
 
-        <a class="navItem" href="#reports" data-route="reports">
-          <span class="navIcon" aria-hidden="true" data-ico="reports"></span>
+        <a class="fpNavItem" href="#reports" data-route="reports">
+          <span class="fpNavIcon" data-ico="reports" aria-hidden="true"></span>
           <span>Reports</span>
-          <span class="pill">PRO</span>
+          <span class="fpPill">PRO</span>
         </a>
 
-        <a class="navItem" href="#billing" data-route="billing">
-          <span class="navIcon" aria-hidden="true" data-ico="billing"></span>
+        <a class="fpNavItem" href="#billing" data-route="billing">
+          <span class="fpNavIcon" data-ico="billing" aria-hidden="true"></span>
           <span>Billing</span>
         </a>
-        <a class="navItem" href="#settings" data-route="settings">
-          <span class="navIcon" aria-hidden="true" data-ico="settings"></span>
+
+        <a class="fpNavItem" href="#settings" data-route="settings">
+          <span class="fpNavIcon" data-ico="settings" aria-hidden="true"></span>
           <span>Settings</span>
         </a>
       </nav>
 
-      <div class="account">
-        <div class="accountTitle">ACCOUNT</div>
-        <div class="accountRow"><span>Plan</span><span id="accPlan">—</span></div>
-        <div class="accountRow"><span>Org</span><span id="accOrg">—</span></div>
-        <div class="accountRow"><span>Role</span><span id="accRole">—</span></div>
-        <div class="accountRow"><span>Trial</span><span id="accTrial">—</span></div>
+      <div class="fpAccount">
+        <div class="fpAccountTitle">ACCOUNT</div>
 
-        <div class="accountActions">
-          <button class="btn ghost" id="btnPortal" type="button">Billing / Portal</button>
-          <button class="btn danger" id="btnLogout" type="button">Logout</button>
+        <div class="fpRow"><span>Plan</span><span id="accPlan">—</span></div>
+        <div class="fpRow"><span>Org</span><span id="accOrg">—</span></div>
+        <div class="fpRow"><span>Role</span><span id="accRole">—</span></div>
+        <div class="fpRow"><span>Trial</span><span id="accTrial">—</span></div>
+
+        <div class="fpDivider"></div>
+
+        <div class="fpUsageBox">
+          <div class="fpUsageTitle">Usage (mois)</div>
+
+          <div class="fpUsageRow">
+            <div class="fpUsageLabel">Audits</div>
+            <div class="fpUsageNums"><span id="uAudits">—</span></div>
+            <div class="fpBar"><div class="fpBarFill" id="barAudits"></div></div>
+          </div>
+
+          <div class="fpUsageRow">
+            <div class="fpUsageLabel">PDF</div>
+            <div class="fpUsageNums"><span id="uPdf">—</span></div>
+            <div class="fpBar"><div class="fpBarFill" id="barPdf"></div></div>
+          </div>
+
+          <div class="fpUsageRow">
+            <div class="fpUsageLabel">Exports</div>
+            <div class="fpUsageNums"><span id="uExports">—</span></div>
+            <div class="fpBar"><div class="fpBarFill" id="barExports"></div></div>
+          </div>
+
+          <div class="fpUsageRow">
+            <div class="fpUsageLabel">Monitors (actifs)</div>
+            <div class="fpUsageNums"><span id="uMonitors">—</span></div>
+          </div>
+        </div>
+
+        <div class="fpAccountActions">
+          <button class="fpBtn ghost" id="btnPortal" type="button">Billing Portal</button>
+          <button class="fpBtn danger" id="btnLogout" type="button">Logout</button>
         </div>
       </div>
     </aside>
 
-    <!-- Main -->
-    <main class="main">
-      <!-- Topbar -->
-      <header class="topbar">
-        <button class="iconBtn" id="btnMenu" type="button" aria-label="Ouvrir le menu">
-          <!-- Hamburger -->
+    <main class="fpMain">
+      <header class="fpTopbar">
+        <button class="fpIconBtn" id="btnMenu" type="button" aria-label="Ouvrir le menu">
           <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
         </button>
 
-        <div class="hello">
-          <div class="helloTitle" id="helloTitle">Bonjour, —</div>
-          <div class="helloSub">SEO · Monitoring · Reports · Billing</div>
+        <div class="fpHello">
+          <div class="fpHelloTitle" id="helloTitle">Bonjour, —</div>
+          <div class="fpHelloSub" id="helloSub">SEO · Monitoring · Reports · Billing</div>
         </div>
 
-        <div class="topActions">
-          <div class="selectWrap">
-            <select id="rangeSelect" class="select" aria-label="Période">
-              <option value="30">Last 30 days</option>
-              <option value="7">Last 7 days</option>
-              <option value="3">Last 3 days</option>
-            </select>
-          </div>
+        <div class="fpTopActions">
+          <select id="rangeSelect" class="fpSelect" aria-label="Période">
+            <option value="30">Last 30 days</option>
+            <option value="7">Last 7 days</option>
+            <option value="3">Last 3 days</option>
+          </select>
 
-          <button class="btn primary" id="btnRefresh" type="button">Refresh</button>
+          <button class="fpBtn primary" id="btnRefresh" type="button">Refresh</button>
 
-          <div class="dropdown" id="exportsDropdown">
-            <button class="btn" id="btnExports" type="button">
+          <div class="fpDropdown">
+            <button class="fpBtn" id="btnExports" type="button">
               Exports
               <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
-            <div class="menu" id="exportsMenu" role="menu" aria-hidden="true">
-              <button class="menuItem" id="btnExportAudits" type="button">Export Audits CSV</button>
-              <button class="menuItem" id="btnExportMonitors" type="button">Export Monitors CSV</button>
+            <div class="fpMenu" id="exportsMenu" role="menu" aria-hidden="true">
+              <button class="fpMenuItem" id="btnExportAudits" type="button">Export audits CSV</button>
+              <button class="fpMenuItem" id="btnExportMonitors" type="button">Export monitors CSV</button>
             </div>
           </div>
 
-          <div class="statusPill" id="statusPill">
-            <span class="dot"></span>
+          <div class="fpStatus" id="statusPill">
+            <span class="fpDot" id="statusDot"></span>
             <span id="statusText">Dashboard à jour — OK</span>
           </div>
 
-          <button class="avatar" id="btnAvatar" type="button" aria-label="Compte">
+          <button class="fpAvatar" id="btnAvatar" type="button" aria-label="Compte">
             <span id="avatarText">FP</span>
           </button>
         </div>
       </header>
 
-      <div class="content">
-        <!-- ROW: left + right -->
-        <section class="grid">
-          <!-- LEFT -->
-          <div class="col">
-            <!-- Overview cards wrapper -->
-            <div class="card hero" id="overviewHero">
-              <div class="cardHead">
+      <div class="fpContent">
+        <section class="fpGrid">
+          <div class="fpCol">
+            <div class="fpCard" id="overviewHero">
+              <div class="fpCardHead">
                 <div>
-                  <div class="kicker">OVERVIEW</div>
-                  <div class="smallMuted" id="kpiRange">LAST 30 DAYS</div>
+                  <div class="fpKicker">OVERVIEW</div>
+                  <div class="fpSmall" id="kpiRange">LAST 30 DAYS</div>
                 </div>
-                <button class="chip" id="chipOverview" type="button" aria-label="Vue">Overview</button>
+                <div class="fpChip" id="orgChip">—</div>
               </div>
 
-              <div class="kpiStack">
-                <div class="kpiCard">
-                  <div class="kpiLabel">SEO Score</div>
-                  <div class="kpiValue"><span id="seoScore">0</span><span class="kpiUnit">/100</span></div>
-                  <div class="kpiHint" id="seoHint">Last 30 days</div>
+              <div class="fpKpiGrid">
+                <div class="fpKpi">
+                  <div class="fpKpiLabel">SEO Score</div>
+                  <div class="fpKpiValue"><span id="seoScore">0</span><span class="fpKpiUnit">/100</span></div>
+                  <div class="fpKpiHint" id="seoHint">Last 30 days</div>
                 </div>
-
-                <div class="kpiCard">
-                  <div class="kpiLabel">Local Visibility</div>
-                  <div class="kpiValue green"><span id="localVis">+0%</span></div>
-                  <div class="kpiHint">Map pack + reviews</div>
+                <div class="fpKpi">
+                  <div class="fpKpiLabel">Monitors actifs</div>
+                  <div class="fpKpiValue"><span id="monActive">0</span><span class="fpKpiUnit">/</span><span id="monLimit">0</span></div>
+                  <div class="fpKpiHint"><span id="monInc">0</span> incident(s) DOWN</div>
                 </div>
-
-                <div class="kpiCard">
-                  <div class="kpiLabel">Monitors</div>
-                  <div class="kpiValue"><span id="monActive">0</span> <span class="kpiUnit">active</span></div>
-                  <div class="kpiHint"><span id="monInc">0</span> incidents</div>
+                <div class="fpKpi">
+                  <div class="fpKpiLabel">Subscription</div>
+                  <div class="fpKpiValue"><span id="subStatus">—</span></div>
+                  <div class="fpKpiHint" id="subHint">—</div>
                 </div>
               </div>
 
-              <div class="sectionTitle">SEO Performance — <span id="perfRange">30 days</span></div>
-              <div class="chartCard">
+              <div class="fpSectionTitle">SEO performance</div>
+              <div class="fpChartBox">
                 <canvas id="chart" height="120"></canvas>
               </div>
 
-              <div class="sectionTitle">Recommended Actions</div>
-              <div class="actionsList" id="actionsList">
-                <div class="actionRow">
-                  <div class="actionDot"></div>
-                  <div class="actionText">
-                    Lance un audit sur ta page principale pour obtenir des recommandations.
-                    <div class="smallMuted">SEO audits · 2 min</div>
-                  </div>
-                  <button class="btn small" id="btnRunAudit" type="button">Run audit</button>
-                </div>
+              <div class="fpSectionTitle">Missions (Quick setup)</div>
+              <div class="fpMissionList" id="missionPreview"></div>
+
+              <div class="fpSectionTitle">Actions rapides</div>
+              <div class="fpQuickGrid">
+                <button class="fpBtn" id="btnRunAudit" type="button">Run SEO audit</button>
+                <button class="fpBtn" id="btnAddMonitor" type="button">Add monitor</button>
+                <button class="fpBtn" id="btnGoMissions" type="button">Voir toutes les missions</button>
+                <button class="fpBtn primary" id="btnOpenBilling" type="button">Ouvrir Billing Portal</button>
               </div>
             </div>
 
-            <!-- Dynamic pages (Audits/Monitors/etc) -->
             <div id="pageContainer"></div>
           </div>
 
-          <!-- RIGHT -->
-          <div class="col rightCol">
-            <div class="card" id="monitorsCard">
-              <div class="cardHead">
-                <div class="cardTitle">Monitors</div>
-                <button class="btn primary small" id="btnAddMonitor" type="button">Add Monitor</button>
+          <div class="fpRightCol">
+            <div class="fpCard" id="monitorsCard">
+              <div class="fpCardHead">
+                <div>
+                  <div class="fpCardTitle">Monitors</div>
+                  <div class="fpSmall">Uptime, incidents, logs (par monitor)</div>
+                </div>
+                <button class="fpBtn small primary" id="btnAddMonitor2" type="button">Add</button>
               </div>
 
-              <div class="table">
-                <div class="tr th">
-                  <div>URL</div>
-                  <div>Status</div>
-                  <div>Interval</div>
-                  <div>Last Check</div>
-                  <div>Response Time</div>
-                  <div></div>
+              <div class="fpTable">
+                <div class="fpTr th">
+                  <div>URL</div><div>Status</div><div>Interval</div><div>Last check</div><div></div><div></div>
                 </div>
-
                 <div id="monitorsRows"></div>
-
-                <div class="empty" id="monitorsEmpty">
-                  Aucun monitor pour le moment.
-                </div>
+                <div class="fpEmpty" id="monitorsEmpty">Aucun monitor pour le moment.</div>
               </div>
             </div>
 
-            <!-- Plans (DOIT être visible uniquement Overview + Billing) -->
-            <div class="card" id="plansCard">
-              <div class="cardHead">
-                <div class="cardTitle">Plans</div>
-                <button class="btn ghost small" id="btnSeePlans" type="button">See plans</button>
+            <div class="fpCard" id="plansCard">
+              <div class="fpCardHead">
+                <div>
+                  <div class="fpCardTitle">Plans</div>
+                  <div class="fpSmall">Gère ton abonnement via Stripe</div>
+                </div>
+                <button class="fpBtn small" id="btnSeePlans" type="button">Pricing</button>
               </div>
 
-              <div class="plans">
-                <div class="plan">
-                  <div class="planTop">
-                    <div class="planName">Standard</div>
-                    <div class="planPrice">€29 <span>/mo</span></div>
+              <div class="fpPlans">
+                <div class="fpPlan">
+                  <div class="fpPlanTop">
+                    <div class="fpPlanName">Standard</div>
+                    <div class="fpPlanPrice">€29 <span>/mo</span></div>
                   </div>
-                  <ul class="planList">
-                    <li>Recommended actions</li>
-                    <li>SEO audits: <b>30</b></li>
-                    <li>Google Maps</li>
-                    <li>Monitors: <b>3</b></li>
-                    <li>PDF exports</li>
+                  <ul class="fpPlanList">
+                    <li>Audits: <b>30</b>/mo</li>
+                    <li>Monitors: <b>3</b> actifs</li>
+                    <li>PDF: <b>30</b>/mo</li>
+                    <li>Exports: <b>30</b>/mo</li>
                   </ul>
-                  <button class="btn full" id="btnChooseStandard" type="button">Manage</button>
+                  <button class="fpBtn full" data-plan-btn="standard" type="button">Manage</button>
                 </div>
 
-                <div class="plan featured" id="planPro">
-                  <div class="badge">Best value</div>
-                  <div class="planTop">
-                    <div class="planName">Pro</div>
-                    <div class="planPrice">€79 <span>/mo</span></div>
+                <div class="fpPlan featured">
+                  <div class="fpPlanBadge">Best value</div>
+                  <div class="fpPlanTop">
+                    <div class="fpPlanName">Pro</div>
+                    <div class="fpPlanPrice">€79 <span>/mo</span></div>
                   </div>
-                  <div class="smallMuted" style="margin:-2px 0 10px;">Faster in 9 days</div>
-                  <ul class="planList">
-                    <li>Recommended actions</li>
-                    <li>SEO audits: <b>300</b></li>
-                    <li>Google Maps</li>
-                    <li>Monitors: <b>50</b></li>
-                    <li>UFO Monitored</li>
+                  <ul class="fpPlanList">
+                    <li>Audits: <b>300</b>/mo</li>
+                    <li>Monitors: <b>50</b> actifs</li>
+                    <li>PDF: <b>300</b>/mo</li>
+                    <li>Exports: <b>300</b>/mo</li>
                   </ul>
-                  <button class="btn primary full" id="btnChoosePro" type="button">Upgrade Subscription</button>
+                  <button class="fpBtn primary full" data-plan-btn="pro" type="button">Upgrade</button>
                 </div>
 
-                <div class="plan">
-                  <div class="planTop">
-                    <div class="planName">Ultra</div>
-                    <div class="planPrice">€149 <span>/mo</span></div>
+                <div class="fpPlan">
+                  <div class="fpPlanTop">
+                    <div class="fpPlanName">Ultra</div>
+                    <div class="fpPlanPrice">€149 <span>/mo</span></div>
                   </div>
-                  <ul class="planList">
-                    <li>Recommended actions</li>
-                    <li>SEO audits: <b>2000</b></li>
-                    <li>Google Maps</li>
-                    <li>Monitors: <b>300</b></li>
-                    <li>UFO Monitored</li>
+                  <ul class="fpPlanList">
+                    <li>Audits: <b>2000</b>/mo</li>
+                    <li>Monitors: <b>300</b> actifs</li>
+                    <li>Team: <b>10</b> seats</li>
+                    <li>Retentions + Add-ons</li>
                   </ul>
-                  <button class="btn full" id="btnChooseUltra" type="button">Update Payment Method</button>
+                  <button class="fpBtn full" data-plan-btn="ultra" type="button">Upgrade</button>
                 </div>
               </div>
 
-              <div class="smallMuted" style="margin-top:10px;">
-                Les boutons ouvrent Stripe checkout/portal (selon ton backend).
+              <div class="fpSmall" style="margin-top:10px">
+                Tous les changements se font via Stripe Billing Portal.
               </div>
+            </div>
+
+            <div class="fpCard" id="addonsCard">
+              <div class="fpCardHead">
+                <div>
+                  <div class="fpCardTitle">Add-ons</div>
+                  <div class="fpSmall">Actifs sur ton organisation</div>
+                </div>
+                <button class="fpBtn small" id="btnManageAddons" type="button">Manage</button>
+              </div>
+
+              <div id="addonsList" class="fpAddonList"></div>
             </div>
           </div>
         </section>
