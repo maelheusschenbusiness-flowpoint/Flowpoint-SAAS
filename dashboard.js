@@ -1,11 +1,11 @@
 /* =========================================================
-   FlowPoint — dashboard.js (UPGRADED FROM YOUR VERSION)
-   Fixes:
-   - fetch abort bug (was aborting previous request on each call)
-   - Usage formatting ([object Object]) safe
-   - Missions with "Faire" action button + deep link
-   - Auto-add new missions every 48h (front-only)
-   - Exports dropdown more reliable (mobile)
+   FlowPoint — dashboard.js (FULL PAGES + FIXES)
+   Routes: #overview #missions #audits #monitors #reports #billing #settings
+   - Pages personnalisées pour TOUTES les catégories
+   - Missions: Done + bouton "Faire" (action + deep link)
+   - fetchWithAuth: refresh + retry + abort ONLY on loadData
+   - Fix usage [object Object]
+   - Dropdown exports robuste (mobile)
    ========================================================= */
 
 (() => {
@@ -15,8 +15,9 @@
   const API_BASE = ""; // keep "" if same origin
   const TOKEN_KEY = "token";
 
+  // If your backend supports refresh token:
   const REFRESH_TOKEN_KEY = "refreshToken";
-  const REFRESH_ENDPOINT = "/api/auth/refresh";
+  const REFRESH_ENDPOINT = "/api/auth/refresh"; // optional
 
   const ROUTES = [
     { hash: "#overview", key: "overview" },
@@ -53,7 +54,6 @@
 
     // header texts
     helloTitle: $("#helloTitle"),
-    helloSub: $("#helloSub"),
     avatarText: $("#avatarText"),
 
     // account box
@@ -89,12 +89,12 @@
     btnGoMissions: $("#btnGoMissions"),
     btnOpenBilling: $("#btnOpenBilling"),
 
-    // monitors table
+    // monitors table (right column)
     monitorsRows: $("#monitorsRows"),
     monitorsEmpty: $("#monitorsEmpty"),
     btnAddMonitor2: $("#btnAddMonitor2"),
 
-    // plans buttons
+    // plans
     planBtns: $$("[data-plan-btn]"),
     btnSeePlans: $("#btnSeePlans"),
 
@@ -111,12 +111,14 @@
   const state = {
     route: location.hash || "#overview",
     rangeDays: 30,
-    controller: null, // abort only per loadData
-    missions: [],
+    controller: null, // abort ONLY for loadData
     me: null,
     overview: null,
     monitors: [],
     addons: [],
+    audits: [], // optional
+    reports: [], // optional
+    missions: [],
   };
 
   // -------------------- UTIL --------------------
@@ -152,7 +154,6 @@
   }
 
   function normalizeUsedLimit(used, limit) {
-    // accepts numbers OR objects like {used,limit}
     if (typeof used === "object" && used) {
       const u = used.used ?? used.count ?? used.value ?? 0;
       const l = used.limit ?? used.max ?? 0;
@@ -213,7 +214,7 @@
         ...options,
         headers,
         credentials: "include",
-        signal: options.signal, // IMPORTANT: no global abort here
+        signal: options.signal,
       });
 
     let res = await doFetch();
@@ -239,18 +240,11 @@
     return res;
   }
 
-  // -------------------- MISSIONS (PRO) --------------------
-  const MISSIONS_KEY = "fp_missions_v2";
-  const MISSIONS_LAST_GEN_KEY = "fp_missions_last_gen";
-  const GEN_INTERVAL_MS = 48 * 60 * 60 * 1000; // 48h (met 72h si tu veux)
+  // -------------------- MISSIONS --------------------
+  const MISSIONS_KEY = "fp_missions_v3";
+  const MISSIONS_LAST_GEN_KEY = "fp_missions_last_gen_v3";
+  const GEN_INTERVAL_MS = 48 * 60 * 60 * 1000;
 
-  // Each mission can have an action:
-  // { type: "goto", hash:"#audits" }
-  // { type: "run_audit" }
-  // { type: "add_monitor" }
-  // { type: "open_billing" }
-  // { type: "export_audits" }
-  // { type: "export_monitors" }
   const baseMissions = [
     { id: "m1", title: "Créer ton 1er monitor", meta: "Monitoring", done: false, action: { type: "add_monitor", hash: "#monitors" } },
     { id: "m2", title: "Lancer un SEO audit", meta: "Audits", done: false, action: { type: "run_audit", hash: "#audits" } },
@@ -259,11 +253,10 @@
     { id: "m5", title: "Exporter monitors CSV", meta: "Exports", done: false, action: { type: "export_monitors" } },
   ];
 
-  // Pool for future missions (auto-added every 48h)
   const missionPool = [
     { id: "p1", title: "Ajouter un 2e monitor (uptime)", meta: "Monitoring", done: false, action: { type: "add_monitor", hash: "#monitors" } },
     { id: "p2", title: "Relancer un audit après modifications", meta: "Audits", done: false, action: { type: "run_audit", hash: "#audits" } },
-    { id: "p3", title: "Vérifier tes Settings (emails alert)", meta: "Settings", done: false, action: { type: "goto", hash: "#settings" } },
+    { id: "p3", title: "Configurer les emails d’alertes", meta: "Settings", done: false, action: { type: "goto", hash: "#settings" } },
     { id: "p4", title: "Exporter les monitors pour ton client", meta: "Exports", done: false, action: { type: "export_monitors" } },
     { id: "p5", title: "Exporter les audits du mois", meta: "Exports", done: false, action: { type: "export_audits" } },
   ];
@@ -276,35 +269,26 @@
     } catch {}
     return JSON.parse(JSON.stringify(baseMissions));
   }
-
   function saveMissions(missions) {
     localStorage.setItem(MISSIONS_KEY, JSON.stringify(missions));
   }
-
   function maybeGenerateNewMission() {
     const now = Date.now();
     const last = Number(localStorage.getItem(MISSIONS_LAST_GEN_KEY) || 0);
-
     if (!last) {
       localStorage.setItem(MISSIONS_LAST_GEN_KEY, String(now));
       return;
     }
     if (now - last < GEN_INTERVAL_MS) return;
 
-    // pick first pool mission not already present
     const ids = new Set(state.missions.map((m) => m.id));
     const next = missionPool.find((m) => !ids.has(m.id));
-    if (!next) {
-      localStorage.setItem(MISSIONS_LAST_GEN_KEY, String(now));
-      return;
-    }
+    localStorage.setItem(MISSIONS_LAST_GEN_KEY, String(now));
+    if (!next) return;
 
     state.missions.unshift(JSON.parse(JSON.stringify(next)));
-    // cap missions to keep it clean
-    state.missions = state.missions.slice(0, 10);
-
+    state.missions = state.missions.slice(0, 12);
     saveMissions(state.missions);
-    localStorage.setItem(MISSIONS_LAST_GEN_KEY, String(now));
   }
 
   function toggleMission(id) {
@@ -313,7 +297,6 @@
     m.done = !m.done;
     saveMissions(state.missions);
   }
-
   function markMissionDone(id, done = true) {
     const m = state.missions.find((x) => x.id === id);
     if (!m) return;
@@ -359,7 +342,7 @@
         <div class="fpCardHead">
           <div>
             <div class="fpCardTitle">Missions</div>
-            <div class="fpSmall">${done}/${missions.length} complétées — bouton "Faire" exécute l'action.</div>
+            <div class="fpSmall">${done}/${missions.length} complétées — bouton "Faire" exécute l’action.</div>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <button class="fpBtn small" id="btnResetMissions" type="button">Reset</button>
@@ -373,78 +356,55 @@
       </div>
     `;
 
-    const btnReset = $("#btnResetMissions");
-    const btnSave = $("#btnSaveMissions");
+    $("#btnResetMissions")?.addEventListener("click", () => {
+      state.missions = JSON.parse(JSON.stringify(baseMissions));
+      saveMissions(state.missions);
+      renderMissionPreview();
+      renderMissionsPage();
+      setStatus("Missions réinitialisées — OK", "ok");
+    });
 
-    if (btnReset) {
-      btnReset.addEventListener("click", () => {
-        state.missions = JSON.parse(JSON.stringify(baseMissions));
-        saveMissions(state.missions);
-        renderMissionPreview();
-        renderMissionsPage();
-        setStatus("Missions réinitialisées — OK", "ok");
-      });
-    }
-
-    if (btnSave) {
-      btnSave.addEventListener("click", () => {
-        saveMissions(state.missions);
-        renderMissionPreview();
-        setStatus("Missions sauvegardées — OK", "ok");
-      });
-    }
+    $("#btnSaveMissions")?.addEventListener("click", () => {
+      saveMissions(state.missions);
+      renderMissionPreview();
+      setStatus("Missions sauvegardées — OK", "ok");
+    });
   }
 
   async function runMissionAction(missionId, mode = "do") {
     const m = state.missions.find((x) => x.id === missionId);
     if (!m || !m.action) return;
 
-    // "Voir" just navigates
     if (mode === "goto") {
       if (m.action.hash) location.hash = m.action.hash;
       return;
     }
 
-    // "Faire": optional navigate first
     if (m.action.hash) location.hash = m.action.hash;
 
-    const type = m.action.type;
-
     try {
-      if (type === "goto") {
+      if (m.action.type === "goto") {
         if (m.action.hash) location.hash = m.action.hash;
-        return;
       }
-
-      if (type === "run_audit") {
-        await safeRunAudit(true);
-        markMissionDone(m.id, true);
-        return;
+      if (m.action.type === "run_audit") {
+        const ok = await safeRunAudit(true);
+        if (ok) markMissionDone(m.id, true);
       }
-
-      if (type === "add_monitor") {
-        await safeAddMonitor(true);
-        // only mark done if user actually created one
-        // safeAddMonitor returns true/false
-        return;
+      if (m.action.type === "add_monitor") {
+        const ok = await safeAddMonitor(true);
+        if (ok) markMissionDone(m.id, true);
       }
-
-      if (type === "open_billing") {
-        await openBillingPortal(true);
-        markMissionDone(m.id, true);
-        return;
+      if (m.action.type === "open_billing") {
+        const ok = await openBillingPortal(true);
+        if (ok) markMissionDone(m.id, true);
       }
-
-      if (type === "export_audits") {
-        await safeExport("/api/exports/audits.csv", "audits.csv", true);
-        markMissionDone(m.id, true);
-        return;
+      if (m.action.type === "export_audits") {
+        const ok = await safeExport("/api/exports/audits.csv", "audits.csv", true);
+        if (ok) markMissionDone(m.id, true);
       }
-
-      if (type === "export_monitors") {
-        await safeExport("/api/exports/monitors.csv", "monitors.csv", true);
-        markMissionDone(m.id, true);
-        return;
+      if (m.action.type === "export_monitors") {
+        const ok = await safeExport("/api/exports/monitors.csv", "monitors.csv", true);
+        if (ok) markMissionDone(m.id, true);
       }
     } finally {
       renderMissionPreview();
@@ -452,8 +412,8 @@
     }
   }
 
-  // -------------------- RENDER PAGES --------------------
-  function renderSimplePage(title, subtitle, html = "") {
+  // -------------------- PAGES (CUSTOM) --------------------
+  function renderPageShell(title, subtitle, innerHTML) {
     els.pageContainer.innerHTML = `
       <div class="fpCard" style="margin-top:14px">
         <div class="fpCardHead">
@@ -462,103 +422,254 @@
             <div class="fpSmall">${esc(subtitle)}</div>
           </div>
         </div>
-        <div style="margin-top:12px">${html}</div>
+        <div style="margin-top:12px">${innerHTML}</div>
       </div>
     `;
   }
 
-  function renderAudits() {
-    renderSimplePage(
+  function renderAuditsPage() {
+    renderPageShell(
       "Audits",
-      "Lance des audits SEO et retrouve ton historique.",
+      "Lance des audits SEO, consulte l’historique et exporte pour ton client.",
       `
-      <div class="fpDetailActions">
-        <button class="fpBtn primary" id="audBtnRun" type="button">Run SEO audit</button>
-        <button class="fpBtn" id="audBtnExport" type="button">Export audits CSV</button>
-      </div>
+        <div class="fpDetailActions">
+          <button class="fpBtn primary" id="audRun" type="button">Run SEO audit</button>
+          <button class="fpBtn" id="audExport" type="button">Export audits CSV</button>
+        </div>
+
+        <div class="fpCardInner">
+          <div class="fpCardInnerTitle">Derniers audits</div>
+          <div class="fpSmall">Si ton backend expose <span class="fpMono">GET /api/audits</span>, la liste s’affiche ici.</div>
+          <div id="auditsList" style="margin-top:10px"></div>
+        </div>
       `
     );
 
-    const run = $("#audBtnRun");
-    const exp = $("#audBtnExport");
-    if (run) run.addEventListener("click", () => safeRunAudit());
-    if (exp) exp.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv"));
+    $("#audRun")?.addEventListener("click", () => safeRunAudit(false));
+    $("#audExport")?.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv", false));
+
+    renderAuditsList();
+    loadAuditsIfPossible();
   }
 
-  function renderMonitors() {
-    renderSimplePage(
+  function renderAuditsList() {
+    const host = $("#auditsList");
+    if (!host) return;
+
+    const arr = Array.isArray(state.audits) ? state.audits : [];
+    if (!arr.length) {
+      host.innerHTML = `<div class="fpEmpty">Aucun audit chargé (optionnel). Branche <span class="fpMono">GET /api/audits</span>.</div>`;
+      return;
+    }
+
+    host.innerHTML = arr.slice(0, 10).map((a) => {
+      const url = a.url || a.target || "—";
+      const score = a.score ?? a.seoScore ?? "—";
+      const date = a.createdAt || a.date || a.updatedAt || "—";
+      return `
+        <div class="fpTr row" style="grid-template-columns: 1.4fr .6fr 1fr; margin-top:8px">
+          <div class="fpUrl">${esc(url)}</div>
+          <div><span class="fpMono">${esc(score)}</span></div>
+          <div class="fpMono">${esc(date)}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  async function loadAuditsIfPossible() {
+    try {
+      const r = await fetchWithAuth("/api/audits");
+      if (!r.ok) return;
+      const data = await r.json().catch(() => null);
+      if (Array.isArray(data)) state.audits = data;
+      renderAuditsList();
+    } catch {}
+  }
+
+  function renderMonitorsPage() {
+    renderPageShell(
       "Monitors",
-      "Ajoute, supprime et surveille tes URLs.",
+      "Ajoute des URLs, teste le uptime et gère tes incidents.",
       `
-      <div class="fpDetailActions">
-        <button class="fpBtn primary" id="monBtnAdd" type="button">Add monitor</button>
-        <button class="fpBtn" id="monBtnExport" type="button">Export monitors CSV</button>
-      </div>
+        <div class="fpDetailActions">
+          <button class="fpBtn primary" id="monAdd" type="button">Add monitor</button>
+          <button class="fpBtn" id="monExport" type="button">Export monitors CSV</button>
+          <button class="fpBtn" id="monRefresh" type="button">Refresh monitors</button>
+        </div>
+
+        <div class="fpCardInner">
+          <div class="fpCardInnerTitle">Liste monitors (page)</div>
+          <div class="fpSmall">Même contenu que la colonne droite, mais en version page complète.</div>
+          <div id="monitorsPageRows" style="margin-top:10px"></div>
+        </div>
       `
     );
 
-    const add = $("#monBtnAdd");
-    const exp = $("#monBtnExport");
-    if (add) add.addEventListener("click", () => safeAddMonitor());
-    if (exp) exp.addEventListener("click", () => safeExport("/api/exports/monitors.csv", "monitors.csv"));
+    $("#monAdd")?.addEventListener("click", () => safeAddMonitor(false));
+    $("#monExport")?.addEventListener("click", () => safeExport("/api/exports/monitors.csv", "monitors.csv", false));
+    $("#monRefresh")?.addEventListener("click", async () => { await loadData(); renderMonitorsPageRows(); });
+
+    renderMonitorsPageRows();
   }
 
-  function renderReports() {
-    renderSimplePage(
+  function renderMonitorsPageRows() {
+    const host = $("#monitorsPageRows");
+    if (!host) return;
+
+    const arr = Array.isArray(state.monitors) ? state.monitors : [];
+    if (!arr.length) {
+      host.innerHTML = `<div class="fpEmpty">Aucun monitor pour le moment.</div>`;
+      return;
+    }
+
+    host.innerHTML = arr.slice(0, 40).map((m) => {
+      const url = m.url || m.endpoint || m.name || "—";
+      const status = String(m.status || "unknown").toLowerCase();
+      const interval = m.interval || m.intervalMin || "—";
+      const last = m.lastCheck || m.lastCheckedAt || m.updatedAt || "—";
+
+      return `
+        <div class="fpTr row" style="grid-template-columns: 1.4fr .6fr .6fr 1fr .6fr .6fr; margin-top:8px">
+          <div class="fpUrl">${esc(url)}</div>
+          <div>
+            <span class="fpBadge ${status === "up" ? "up" : status === "down" ? "down" : ""}">
+              <span class="fpBadgeDot"></span>${esc(status.toUpperCase())}
+            </span>
+          </div>
+          <div class="fpMono">${esc(interval)}</div>
+          <div class="fpMono">${esc(last)}</div>
+          <div class="fpRowBtns">
+            <button class="fpBtn small" data-mon-action="test" data-id="${esc(m.id)}" type="button">Test</button>
+          </div>
+          <div class="fpRowBtns">
+            <button class="fpBtn small danger" data-mon-action="del" data-id="${esc(m.id)}" type="button">Del</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderReportsPage() {
+    renderPageShell(
       "Reports",
-      "Exports PDF/CSV et rapports mensuels.",
+      "Génère des exports PDF/CSV et des rapports mensuels.",
       `
-      <div class="fpDetailActions">
-        <button class="fpBtn primary" id="repBtnPdf" type="button">Export PDF</button>
-        <button class="fpBtn" id="repBtnCsv" type="button">Export CSV</button>
-      </div>
+        <div class="fpDetailActions">
+          <button class="fpBtn primary" id="repPdf" type="button">Export PDF</button>
+          <button class="fpBtn" id="repCsv" type="button">Export CSV</button>
+        </div>
+
+        <div class="fpCardInner">
+          <div class="fpCardInnerTitle">Rapport mensuel</div>
+          <div class="fpSmall">Si tu as <span class="fpMono">GET /api/reports/monthly</span>, on peut afficher ici le résumé.</div>
+          <div id="reportsBox" style="margin-top:10px"></div>
+        </div>
       `
     );
 
-    const pdf = $("#repBtnPdf");
-    const csv = $("#repBtnCsv");
-    if (pdf) pdf.addEventListener("click", () => safeExport("/api/reports/export/pdf", "report.pdf"));
-    if (csv) csv.addEventListener("click", () => safeExport("/api/reports/export/csv", "report.csv"));
+    $("#repPdf")?.addEventListener("click", () => safeExport("/api/reports/export/pdf", "report.pdf", false));
+    $("#repCsv")?.addEventListener("click", () => safeExport("/api/reports/export/csv", "report.csv", false));
+
+    loadMonthlyReportIfPossible();
   }
 
-  function renderBilling() {
-    renderSimplePage(
+  async function loadMonthlyReportIfPossible() {
+    const box = $("#reportsBox");
+    if (!box) return;
+
+    box.innerHTML = `<div class="fpEmpty">Chargement… (optionnel)</div>`;
+    try {
+      const r = await fetchWithAuth("/api/reports/monthly");
+      if (!r.ok) {
+        box.innerHTML = `<div class="fpEmpty">Endpoint absent. (Optionnel)</div>`;
+        return;
+      }
+      const data = await r.json().catch(() => null);
+      box.innerHTML = `
+        <div class="fpTr row" style="grid-template-columns: 1fr; margin-top:8px">
+          <div class="fpMono">${esc(JSON.stringify(data, null, 2))}</div>
+        </div>
+      `;
+    } catch {
+      box.innerHTML = `<div class="fpEmpty">Endpoint absent. (Optionnel)</div>`;
+    }
+  }
+
+  function renderBillingPage() {
+    renderPageShell(
       "Billing",
-      "Gère ton abonnement via Stripe Billing Portal.",
+      "Tout se fait via Stripe Billing Portal (upgrade/downgrade/annulation).",
       `
-      <div class="fpDetailActions">
-        <button class="fpBtn primary" id="billBtnPortal" type="button">Open Billing Portal</button>
-      </div>
+        <div class="fpDetailActions">
+          <button class="fpBtn primary" id="billPortal" type="button">Open Billing Portal</button>
+          <button class="fpBtn" id="billCheckout" type="button">Go to Checkout page</button>
+        </div>
+
+        <div class="fpCardInner">
+          <div class="fpCardInnerTitle">Infos abonnement</div>
+          <div class="fpSmall">Si tu as <span class="fpMono">GET /api/billing/subscription</span>, on peut afficher ici.</div>
+          <div id="subBox" style="margin-top:10px"></div>
+        </div>
       `
     );
 
-    const b = $("#billBtnPortal");
-    if (b) b.addEventListener("click", () => openBillingPortal());
+    $("#billPortal")?.addEventListener("click", () => openBillingPortal(false));
+    $("#billCheckout")?.addEventListener("click", () => { window.location.href = "/checkout.html"; });
+
+    loadSubIfPossible();
   }
 
-  function renderSettings() {
-    renderSimplePage(
-      "Settings",
-      "Config organisation: alert emails, options, etc.",
-      `
-      <div class="fpSettingsGrid" style="margin-top:10px">
-        <div class="fpCardInner">
-          <div class="fpCardInnerTitle">Alert emails</div>
-          <div class="fpField">
-            <label class="fpLabel">Recipients (comma-separated)</label>
-            <input class="fpInput" id="setRecipients" placeholder="name@domain.com, other@domain.com" />
-          </div>
-          <div class="fpDetailActions">
-            <button class="fpBtn primary" id="setSave" type="button">Save</button>
-            <button class="fpBtn" id="setTest" type="button">Send test</button>
-          </div>
+  async function loadSubIfPossible() {
+    const box = $("#subBox");
+    if (!box) return;
+    box.innerHTML = `<div class="fpEmpty">Chargement… (optionnel)</div>`;
+    try {
+      const r = await fetchWithAuth("/api/billing/subscription");
+      if (!r.ok) {
+        box.innerHTML = `<div class="fpEmpty">Endpoint absent. (Optionnel)</div>`;
+        return;
+      }
+      const data = await r.json().catch(() => ({}));
+      const plan = data.plan || data.priceId || "—";
+      const status = data.status || "—";
+      const renew = data.current_period_end || data.renewAt || "—";
+      box.innerHTML = `
+        <div class="fpTr row" style="grid-template-columns: 1fr 1fr 1fr; margin-top:8px">
+          <div><div class="fpSmall">Plan</div><div class="fpUrl">${esc(plan)}</div></div>
+          <div><div class="fpSmall">Status</div><div class="fpUrl">${esc(status)}</div></div>
+          <div><div class="fpSmall">Renouvellement</div><div class="fpMono">${esc(renew)}</div></div>
         </div>
+      `;
+    } catch {
+      box.innerHTML = `<div class="fpEmpty">Endpoint absent. (Optionnel)</div>`;
+    }
+  }
 
-        <div class="fpCardInner">
-          <div class="fpCardInnerTitle">UI</div>
-          <div class="fpSmall">Ton thème suit le système (light/dark).</div>
+  function renderSettingsPage() {
+    renderPageShell(
+      "Settings",
+      "Emails d’alerte, organisation, préférences.",
+      `
+        <div class="fpSettingsGrid">
+          <div class="fpCardInner">
+            <div class="fpCardInnerTitle">Alert emails</div>
+            <div class="fpField">
+              <label class="fpLabel">Recipients (comma-separated)</label>
+              <input class="fpInput" id="setRecipients" placeholder="name@domain.com, other@domain.com" />
+            </div>
+            <div class="fpDetailActions">
+              <button class="fpBtn primary" id="setSave" type="button">Save</button>
+              <button class="fpBtn" id="setTest" type="button">Send test</button>
+            </div>
+          </div>
+
+          <div class="fpCardInner">
+            <div class="fpCardInnerTitle">Organisation</div>
+            <div class="fpSmall">Nom: <span class="fpMono" id="orgNameInline">—</span></div>
+            <div class="fpSmall" style="margin-top:8px">Plan: <span class="fpMono" id="planInline">—</span></div>
+            <div class="fpSmall" style="margin-top:8px">Rôle: <span class="fpMono" id="roleInline">—</span></div>
+          </div>
         </div>
-      </div>
       `
     );
 
@@ -566,37 +677,34 @@
     const saved = localStorage.getItem("fp_alert_recipients") || "";
     if (input) input.value = saved;
 
-    const save = $("#setSave");
-    const test = $("#setTest");
+    $("#orgNameInline") && ($("#orgNameInline").textContent = state.me?.orgName || "—");
+    $("#planInline") && ($("#planInline").textContent = state.me?.plan || "—");
+    $("#roleInline") && ($("#roleInline").textContent = state.me?.role || "—");
 
-    if (save) {
-      save.addEventListener("click", async () => {
-        const val = (input?.value || "").trim();
-        localStorage.setItem("fp_alert_recipients", val);
-        setStatus("Settings saved — OK", "ok");
-        try {
-          await fetchWithAuth("/api/org/settings", {
-            method: "POST",
-            body: JSON.stringify({ alertRecipients: val }),
-          });
-        } catch {}
-      });
-    }
+    $("#setSave")?.addEventListener("click", async () => {
+      const val = (input?.value || "").trim();
+      localStorage.setItem("fp_alert_recipients", val);
+      setStatus("Settings saved — OK", "ok");
+      try {
+        await fetchWithAuth("/api/org/settings", {
+          method: "POST",
+          body: JSON.stringify({ alertRecipients: val }),
+        });
+      } catch {}
+    });
 
-    if (test) {
-      test.addEventListener("click", async () => {
-        setStatus("Sending test…", "warn");
-        try {
-          const r = await fetchWithAuth("/api/email/test", { method: "POST" });
-          setStatus(r.ok ? "Test email sent — OK" : "Test failed", r.ok ? "ok" : "danger");
-        } catch {
-          setStatus("Test failed", "danger");
-        }
-      });
-    }
+    $("#setTest")?.addEventListener("click", async () => {
+      setStatus("Sending test…", "warn");
+      try {
+        const r = await fetchWithAuth("/api/email/test", { method: "POST" });
+        setStatus(r.ok ? "Test email sent — OK" : "Test failed", r.ok ? "ok" : "danger");
+      } catch {
+        setStatus("Test failed", "danger");
+      }
+    });
   }
 
-  // -------------------- OVERVIEW DATA (SAFE DEFAULTS) --------------------
+  // -------------------- OVERVIEW FALLBACK --------------------
   function hydrateOverviewFallback() {
     if (els.kpiRange) els.kpiRange.textContent = `LAST ${state.rangeDays} DAYS`;
     if (els.seoHint) els.seoHint.textContent = `Last ${state.rangeDays} days`;
@@ -612,8 +720,8 @@
 
   function hydrateAccountFallback() {
     const me = state.me || {};
-
     if (els.helloTitle) els.helloTitle.textContent = `Bonjour, ${me.firstName || me.name || "—"}`;
+
     if (els.avatarText) {
       const s = (me.name || "FlowPoint").trim();
       els.avatarText.textContent =
@@ -636,54 +744,8 @@
     pctBar(els.barExports, usage.exportsUsed ?? usage.exports, usage.exportsLimit);
   }
 
-  async function loadData() {
-    setStatus("Refreshing…", "warn");
-
-    // Abort only when refreshing dashboard
-    if (state.controller) state.controller.abort();
-    state.controller = new AbortController();
-    const signal = state.controller.signal;
-
-    hydrateAccountFallback();
-    hydrateOverviewFallback();
-
-    try {
-      try {
-        const rMe = await fetchWithAuth("/api/me", { signal });
-        if (rMe.ok) state.me = await rMe.json();
-      } catch {}
-
-      try {
-        const rOv = await fetchWithAuth(`/api/dashboard/overview?range=${encodeURIComponent(state.rangeDays)}`, { signal });
-        if (rOv.ok) state.overview = await rOv.json();
-      } catch {}
-
-      try {
-        const rMon = await fetchWithAuth("/api/monitors", { signal });
-        if (rMon.ok) state.monitors = await rMon.json();
-      } catch {}
-
-      try {
-        const rAd = await fetchWithAuth("/api/addons", { signal });
-        if (rAd.ok) state.addons = await rAd.json();
-      } catch {}
-
-      hydrateAccountFallback();
-      hydrateOverviewFallback();
-      renderMonitorsTable();
-      renderAddons();
-      renderMissionPreview();
-
-      setStatus("Dashboard à jour — OK", "ok");
-    } catch (e) {
-      if (e?.name === "AbortError") return;
-      console.error(e);
-      setStatus("Erreur réseau / session — vérifie ton token", "danger");
-    }
-  }
-
-  // -------------------- MONITORS TABLE (RIGHT COLUMN) --------------------
-  function renderMonitorsTable() {
+  // -------------------- RIGHT COLUMN RENDERS --------------------
+  function renderMonitorsTableRight() {
     if (!els.monitorsRows || !els.monitorsEmpty) return;
 
     const arr = Array.isArray(state.monitors) ? state.monitors : [];
@@ -694,41 +756,36 @@
     }
 
     els.monitorsEmpty.style.display = "none";
-    els.monitorsRows.innerHTML = arr
-      .slice(0, 30)
-      .map((m) => {
-        const url = m.url || m.endpoint || m.name || "—";
-        const status = String(m.status || "unknown").toLowerCase();
-        const interval = m.interval || m.intervalMin || "—";
-        const last = m.lastCheck || m.lastCheckedAt || m.updatedAt || "—";
+    els.monitorsRows.innerHTML = arr.slice(0, 25).map((m) => {
+      const url = m.url || m.endpoint || m.name || "—";
+      const status = String(m.status || "unknown").toLowerCase();
+      const interval = m.interval || m.intervalMin || "—";
+      const last = m.lastCheck || m.lastCheckedAt || m.updatedAt || "—";
 
-        return `
-          <div class="fpTr row">
-            <div class="fpUrl">${esc(url)}</div>
-            <div>
-              <span class="fpBadge ${status === "up" ? "up" : status === "down" ? "down" : ""}">
-                <span class="fpBadgeDot"></span>
-                ${esc(status.toUpperCase())}
-              </span>
-            </div>
-            <div class="fpMono">${esc(interval)}</div>
-            <div class="fpMono">${esc(last)}</div>
-            <div class="fpRowBtns">
-              <button class="fpBtn small" data-mon-action="test" data-id="${esc(m.id)}" type="button">Test</button>
-            </div>
-            <div class="fpRowBtns">
-              <button class="fpBtn small danger" data-mon-action="del" data-id="${esc(m.id)}" type="button">Del</button>
-            </div>
+      return `
+        <div class="fpTr row">
+          <div class="fpUrl">${esc(url)}</div>
+          <div>
+            <span class="fpBadge ${status === "up" ? "up" : status === "down" ? "down" : ""}">
+              <span class="fpBadgeDot"></span>
+              ${esc(status.toUpperCase())}
+            </span>
           </div>
-        `;
-      })
-      .join("");
+          <div class="fpMono">${esc(interval)}</div>
+          <div class="fpMono">${esc(last)}</div>
+          <div class="fpRowBtns">
+            <button class="fpBtn small" data-mon-action="test" data-id="${esc(m.id)}" type="button">Test</button>
+          </div>
+          <div class="fpRowBtns">
+            <button class="fpBtn small danger" data-mon-action="del" data-id="${esc(m.id)}" type="button">Del</button>
+          </div>
+        </div>
+      `;
+    }).join("");
   }
 
-  // -------------------- ADDONS (RIGHT COLUMN) --------------------
-  function renderAddons() {
+  function renderAddonsRight() {
     if (!els.addonsList) return;
-
     const arr = Array.isArray(state.addons) ? state.addons : [];
     if (!arr.length) {
       els.addonsList.innerHTML = `
@@ -739,75 +796,73 @@
       `;
       return;
     }
-
-    els.addonsList.innerHTML = arr
-      .map((a) => {
-        const label = a.name || a.key || "Addon";
-        const on = !!(a.enabled ?? a.active ?? a.on);
-        const pillClass = on ? "on" : "off";
-        return `
-          <div class="fpAddonRow">
-            <div class="fpAddonLabel">${esc(label)}</div>
-            <span class="fpAddonPill ${pillClass}">${on ? "ON" : "OFF"}</span>
-          </div>
-        `;
-      })
-      .join("");
+    els.addonsList.innerHTML = arr.map((a) => {
+      const label = a.name || a.key || "Addon";
+      const on = !!(a.enabled ?? a.active ?? a.on);
+      return `
+        <div class="fpAddonRow">
+          <div class="fpAddonLabel">${esc(label)}</div>
+          <span class="fpAddonPill ${on ? "on" : "off"}">${on ? "ON" : "OFF"}</span>
+        </div>
+      `;
+    }).join("");
   }
 
-  // -------------------- ROUTER --------------------
-  function setActiveNav(hash) {
-    const key = hash.replace("#", "");
-    els.navItems.forEach((a) => {
-      const r = a.getAttribute("data-route");
-      a.classList.toggle("active", r === key);
-    });
-  }
+  // -------------------- LOAD DATA --------------------
+  async function loadData() {
+    setStatus("Refreshing…", "warn");
 
-  function navigate(hash) {
-    const h = hash || "#overview";
-    const exists = ROUTES.some((r) => r.hash === h);
-    state.route = exists ? h : "#overview";
-    if (!exists) location.hash = "#overview";
+    if (state.controller) state.controller.abort();
+    state.controller = new AbortController();
+    const signal = state.controller.signal;
 
-    setActiveNav(state.route);
+    hydrateAccountFallback();
+    hydrateOverviewFallback();
 
-    if (!els.pageContainer) return;
-    if (state.route === "#overview") {
-      els.pageContainer.innerHTML = "";
-      return;
+    try {
+      // /api/me (optional)
+      try {
+        const r = await fetchWithAuth("/api/me", { signal });
+        if (r.ok) state.me = await r.json();
+      } catch {}
+
+      // /api/dashboard/overview?range=30 (optional)
+      try {
+        const r = await fetchWithAuth(`/api/dashboard/overview?range=${encodeURIComponent(state.rangeDays)}`, { signal });
+        if (r.ok) state.overview = await r.json();
+      } catch {}
+
+      // /api/monitors (optional)
+      try {
+        const r = await fetchWithAuth("/api/monitors", { signal });
+        if (r.ok) state.monitors = await r.json();
+      } catch {}
+
+      // /api/addons (optional)
+      try {
+        const r = await fetchWithAuth("/api/addons", { signal });
+        if (r.ok) state.addons = await r.json();
+      } catch {}
+
+      hydrateAccountFallback();
+      hydrateOverviewFallback();
+      renderMonitorsTableRight();
+      renderAddonsRight();
+      renderMissionPreview();
+
+      // refresh page-specific lists if currently open
+      if (location.hash === "#monitors") renderMonitorsPageRows();
+      if (location.hash === "#audits") renderAuditsList();
+
+      setStatus("Dashboard à jour — OK", "ok");
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      console.error(e);
+      setStatus("Erreur réseau / session — vérifie ton token", "danger");
     }
-
-    if (state.route === "#missions") return renderMissionsPage();
-    if (state.route === "#audits") return renderAudits();
-    if (state.route === "#monitors") return renderMonitors();
-    if (state.route === "#reports") return renderReports();
-    if (state.route === "#billing") return renderBilling();
-    if (state.route === "#settings") return renderSettings();
   }
 
-  // -------------------- UI ACTIONS --------------------
-  function openSidebar() {
-    if (!els.sidebar || !els.overlay) return;
-    els.sidebar.classList.add("open");
-    els.overlay.classList.add("show");
-    els.overlay.setAttribute("aria-hidden", "false");
-  }
-  function closeSidebar() {
-    if (!els.sidebar || !els.overlay) return;
-    els.sidebar.classList.remove("open");
-    els.overlay.classList.remove("show");
-    els.overlay.setAttribute("aria-hidden", "true");
-  }
-
-  function toggleExportsMenu(force) {
-    if (!els.exportsMenu) return;
-    const isOpen = els.exportsMenu.classList.contains("show");
-    const next = typeof force === "boolean" ? force : !isOpen;
-    els.exportsMenu.classList.toggle("show", next);
-    els.exportsMenu.setAttribute("aria-hidden", next ? "false" : "true");
-  }
-
+  // -------------------- ACTIONS --------------------
   async function openBillingPortal(silent = false) {
     if (!silent) setStatus("Opening billing portal…", "warn");
     try {
@@ -875,7 +930,6 @@
       });
       if (!r.ok) throw new Error("create monitor failed");
       setStatus("Monitor created — OK", "ok");
-      markMissionDone("m1", true); // convenient if first mission
       await loadData();
       return true;
     } catch (e) {
@@ -917,75 +971,110 @@
     window.location.replace("/login.html");
   }
 
-  // -------------------- EVENT BINDINGS --------------------
+  // -------------------- ROUTER --------------------
+  function setActiveNav(hash) {
+    const key = hash.replace("#", "");
+    els.navItems.forEach((a) => {
+      const r = a.getAttribute("data-route");
+      a.classList.toggle("active", r === key);
+    });
+  }
+
+  function navigate(hash) {
+    const h = hash || "#overview";
+    const exists = ROUTES.some((r) => r.hash === h);
+    state.route = exists ? h : "#overview";
+    if (!exists) location.hash = "#overview";
+
+    setActiveNav(state.route);
+
+    if (!els.pageContainer) return;
+
+    // Overview uses the existing hero in HTML, so we clear custom pages
+    if (state.route === "#overview") {
+      els.pageContainer.innerHTML = "";
+      return;
+    }
+
+    // Render each page
+    if (state.route === "#missions") return renderMissionsPage();
+    if (state.route === "#audits") return renderAuditsPage();
+    if (state.route === "#monitors") return renderMonitorsPage();
+    if (state.route === "#reports") return renderReportsPage();
+    if (state.route === "#billing") return renderBillingPage();
+    if (state.route === "#settings") return renderSettingsPage();
+  }
+
+  // -------------------- UI HELPERS --------------------
+  function openSidebar() {
+    if (!els.sidebar || !els.overlay) return;
+    els.sidebar.classList.add("open");
+    els.overlay.classList.add("show");
+    els.overlay.setAttribute("aria-hidden", "false");
+  }
+  function closeSidebar() {
+    if (!els.sidebar || !els.overlay) return;
+    els.sidebar.classList.remove("open");
+    els.overlay.classList.remove("show");
+    els.overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function toggleExportsMenu(force) {
+    if (!els.exportsMenu) return;
+    const isOpen = els.exportsMenu.classList.contains("show");
+    const next = typeof force === "boolean" ? force : !isOpen;
+    els.exportsMenu.classList.toggle("show", next);
+    els.exportsMenu.setAttribute("aria-hidden", next ? "false" : "true");
+  }
+
+  // -------------------- BINDINGS --------------------
   function bind() {
-    // mobile menu
-    if (els.btnMenu) els.btnMenu.addEventListener("click", openSidebar);
-    if (els.overlay) els.overlay.addEventListener("click", closeSidebar);
+    // sidebar
+    els.btnMenu?.addEventListener("click", openSidebar);
+    els.overlay?.addEventListener("click", closeSidebar);
+    els.navItems.forEach((a) => a.addEventListener("click", closeSidebar));
 
-    els.navItems.forEach((a) =>
-      a.addEventListener("click", () => {
-        closeSidebar();
-      })
-    );
-
-    // exports dropdown (more reliable)
-    if (els.btnExports) {
-      els.btnExports.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleExportsMenu();
-      });
-    }
-    if (els.exportsMenu) {
-      els.exportsMenu.addEventListener("click", (e) => e.stopPropagation());
-    }
+    // exports dropdown (robust)
+    els.btnExports?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleExportsMenu();
+    });
+    els.exportsMenu?.addEventListener("click", (e) => e.stopPropagation());
     document.addEventListener("click", () => toggleExportsMenu(false));
 
-    if (els.btnExportAudits) {
-      els.btnExportAudits.addEventListener("click", () => {
-        toggleExportsMenu(false);
-        safeExport("/api/exports/audits.csv", "audits.csv");
-      });
-    }
-    if (els.btnExportMonitors) {
-      els.btnExportMonitors.addEventListener("click", () => {
-        toggleExportsMenu(false);
-        safeExport("/api/exports/monitors.csv", "monitors.csv");
-      });
-    }
+    els.btnExportAudits?.addEventListener("click", () => {
+      toggleExportsMenu(false);
+      safeExport("/api/exports/audits.csv", "audits.csv");
+    });
+    els.btnExportMonitors?.addEventListener("click", () => {
+      toggleExportsMenu(false);
+      safeExport("/api/exports/monitors.csv", "monitors.csv");
+    });
 
     // refresh + range
-    if (els.btnRefresh) els.btnRefresh.addEventListener("click", loadData);
-    if (els.rangeSelect) {
-      els.rangeSelect.addEventListener("change", () => {
-        const v = Number(els.rangeSelect.value || 30);
-        state.rangeDays = [30, 7, 3].includes(v) ? v : 30;
-        hydrateOverviewFallback();
-        loadData();
-      });
-    }
+    els.btnRefresh?.addEventListener("click", loadData);
+    els.rangeSelect?.addEventListener("change", () => {
+      const v = Number(els.rangeSelect.value || 30);
+      state.rangeDays = [30, 7, 3].includes(v) ? v : 30;
+      hydrateOverviewFallback();
+      loadData();
+    });
 
-    // quick actions
-    if (els.btnRunAudit) els.btnRunAudit.addEventListener("click", safeRunAudit);
-    if (els.btnAddMonitor) els.btnAddMonitor.addEventListener("click", safeAddMonitor);
-    if (els.btnAddMonitor2) els.btnAddMonitor2.addEventListener("click", safeAddMonitor);
-
-    if (els.btnGoMissions) {
-      els.btnGoMissions.addEventListener("click", () => {
-        location.hash = "#missions";
-      });
-    }
-
-    if (els.btnOpenBilling) els.btnOpenBilling.addEventListener("click", openBillingPortal);
+    // quick actions (overview)
+    els.btnRunAudit?.addEventListener("click", () => safeRunAudit(false));
+    els.btnAddMonitor?.addEventListener("click", () => safeAddMonitor(false));
+    els.btnAddMonitor2?.addEventListener("click", () => safeAddMonitor(false));
+    els.btnGoMissions?.addEventListener("click", () => (location.hash = "#missions"));
+    els.btnOpenBilling?.addEventListener("click", () => openBillingPortal(false));
 
     // account buttons
-    if (els.btnPortal) els.btnPortal.addEventListener("click", openBillingPortal);
-    if (els.btnLogout) els.btnLogout.addEventListener("click", logout);
+    els.btnPortal?.addEventListener("click", () => openBillingPortal(false));
+    els.btnLogout?.addEventListener("click", logout);
 
-    // plans/manage buttons
-    els.planBtns.forEach((b) => b.addEventListener("click", openBillingPortal));
-    if (els.btnSeePlans) els.btnSeePlans.addEventListener("click", openBillingPortal);
-    if (els.btnManageAddons) els.btnManageAddons.addEventListener("click", openBillingPortal);
+    // plans buttons
+    els.planBtns.forEach((b) => b.addEventListener("click", () => openBillingPortal(false)));
+    els.btnSeePlans?.addEventListener("click", () => openBillingPortal(false));
+    els.btnManageAddons?.addEventListener("click", () => openBillingPortal(false));
 
     // delegation: missions + monitors
     document.addEventListener("click", (e) => {
@@ -1000,15 +1089,13 @@
 
       const doBtn = e.target.closest("[data-mission-do]");
       if (doBtn) {
-        const id = doBtn.getAttribute("data-mission-do");
-        runMissionAction(id, "do");
+        runMissionAction(doBtn.getAttribute("data-mission-do"), "do");
         return;
       }
 
       const goBtn = e.target.closest("[data-mission-goto]");
       if (goBtn) {
-        const id = goBtn.getAttribute("data-mission-goto");
-        runMissionAction(id, "goto");
+        runMissionAction(goBtn.getAttribute("data-mission-goto"), "goto");
         return;
       }
 
@@ -1027,11 +1114,12 @@
   // -------------------- INIT --------------------
   function init() {
     state.missions = loadMissions();
-    maybeGenerateNewMission(); // adds one new mission every 48h max
+    maybeGenerateNewMission();
     saveMissions(state.missions);
 
     if (!ROUTES.some((r) => r.hash === location.hash)) {
       if (!location.hash) location.hash = "#overview";
+      else location.hash = "#overview";
     }
 
     if (els.rangeSelect) els.rangeSelect.value = String(state.rangeDays);
