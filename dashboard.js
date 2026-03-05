@@ -1,610 +1,843 @@
-/* Flowpoint Dashboard — UI/Routes/Responsive
-   Fix:
-   - Un seul token key: "token"
-   - Un seul helper api()
-   - 401/403 => logout propre
-   - Overlay/menu OK
-*/
+/* ===========================
+   FlowPoint AI — dashboard.js
+   Hash router + theme + toasts + mission (done/not done)
+   + fetchWithAuth (auto refresh/retry) to stop “request expired”
+   =========================== */
 
 (() => {
-  const $ = (q) => document.querySelector(q);
-  const $$ = (q) => Array.from(document.querySelectorAll(q));
+  "use strict";
 
-  // ✅ IMPORTANT: même clé partout
-  const TOKEN_KEY = "token";
-  const token = localStorage.getItem(TOKEN_KEY) || "";
-  if (!token) {
-    window.location.replace("/login.html");
-    return;
+  // ---------- Config ----------
+  const API_BASE = ""; // keep "" if same domain. otherwise "https://api.yourdomain.com"
+  const ROUTES = [
+    { hash: "#overview", label: "Overview" },
+    { hash: "#monitors", label: "Monitoring" },
+    { hash: "#reports", label: "Reports" },
+    { hash: "#logs", label: "Logs" },
+    { hash: "#billing", label: "Billing" },
+    { hash: "#settings", label: "Settings" },
+    { hash: "#mission", label: "Mission" },
+  ];
+
+  // ---------- DOM ----------
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+  const els = {
+    app: $("#app") || document.body,
+    view: $("#view"),
+    nav: $("#sidebarNav"),
+    topTitle: $("#pageTitle"),
+    themeToggle: $("#themeToggle"),
+    toast: $("#toast"),
+    toastMsg: $("#toastMsg"),
+  };
+
+  // If your HTML doesn't have these, the code still works, but you should add:
+  // <div id="view"></div> somewhere, and #sidebarNav for nav highlight.
+
+  // ---------- State ----------
+  const state = {
+    route: location.hash || "#overview",
+    loading: false,
+    controller: null,
+    user: null,
+    org: null,
+  };
+
+  // ---------- Theme ----------
+  function getTheme() {
+    return localStorage.getItem("fp_theme") || "dark";
+  }
+  function setTheme(theme) {
+    localStorage.setItem("fp_theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+    if (els.themeToggle) {
+      els.themeToggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+      els.themeToggle.textContent = theme === "dark" ? "🌙" : "☀️";
+      els.themeToggle.title = theme === "dark" ? "Dark mode" : "Light mode";
+    }
   }
 
-  // ---------- API ----------
-  async function api(path, opts = {}) {
-    const r = await fetch(path, {
-      ...opts,
-      headers: {
-        ...(opts.headers || {}),
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      cache: "no-store",
+  // ---------- Toast ----------
+  let toastTimer = null;
+  function toast(message = "Done.", type = "info") {
+    if (!els.toast) return;
+    els.toast.dataset.type = type;
+    if (els.toastMsg) els.toastMsg.textContent = message;
+    els.toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => els.toast.classList.remove("show"), 2600);
+  }
+
+  // ---------- Auth / Token helpers ----------
+  function getAccessToken() {
+    return localStorage.getItem("fp_access_token") || "";
+  }
+  function setAccessToken(token) {
+    if (token) localStorage.setItem("fp_access_token", token);
+  }
+  function clearTokens() {
+    localStorage.removeItem("fp_access_token");
+    localStorage.removeItem("fp_refresh_token");
+  }
+
+  async function refreshToken() {
+    // Try refresh endpoint if you have one. If not, this will fail gracefully.
+    const refresh = localStorage.getItem("fp_refresh_token");
+    if (!refresh) throw new Error("No refresh token");
+
+    const r = await fetch(`${API_BASE}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: refresh }),
     });
 
-    if (r.status === 401 || r.status === 403) {
-      localStorage.removeItem(TOKEN_KEY);
-      window.location.replace("/login.html");
-      throw new Error("Unauthorized");
-    }
-    return r;
+    if (!r.ok) throw new Error("Refresh failed");
+    const data = await r.json().catch(() => ({}));
+    if (data?.accessToken) setAccessToken(data.accessToken);
+    if (data?.refreshToken) localStorage.setItem("fp_refresh_token", data.refreshToken);
+    return true;
   }
 
-  // ---------- Icons (blue style) ----------
-  const icons = {
-    overview: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 19V5m0 14h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 15l3-3 3 2 5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-    audits: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M7 3h8l2 2v16H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 9h6M9 13h6M9 17h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
-    monitors: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 12l4-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>`,
-    local: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M12 22s7-5.5 7-12a7 7 0 1 0-14 0c0 6.5 7 12 7 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>`,
-    competitors: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 20h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 20V10m5 10V4m5 16v-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
-    reports: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M7 3h10l2 2v16H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
-    billing: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 7h16v10H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 10h16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
-    settings: `<svg width="20" height="20" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a7.7 7.7 0 0 0 .1-1 7.7 7.7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7.4 7.4 0 0 0-1.7-1l-.3-2.6H11l-.3 2.6a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.5L6.6 13a7.7 7.7 0 0 0-.1 1 7.7 7.7 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1a7.4 7.4 0 0 0 1.7 1l.3 2.6h4l.3-2.6a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
-  };
+  // ---------- fetchWithAuth (fix “request expired”) ----------
+  async function fetchWithAuth(path, options = {}) {
+    const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+    const headers = new Headers(options.headers || {});
+    const token = getAccessToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (!headers.has("Content-Type") && options.body) headers.set("Content-Type", "application/json");
 
-  $$("[data-ico]").forEach((el) => {
-    const k = el.getAttribute("data-ico");
-    el.innerHTML = icons[k] || "";
-  });
+    // Abort previous view requests
+    if (state.controller) state.controller.abort();
+    state.controller = new AbortController();
 
-  // ---------- UI elements ----------
-  const sidebar = $("#sidebar");
-  const overlay = $("#overlay");
-  const btnMenu = $("#btnMenu");
+    const doFetch = () =>
+      fetch(url, {
+        ...options,
+        headers,
+        signal: state.controller.signal,
+        credentials: "include", // helps if you use cookies too
+      });
 
-  const exportsMenu = $("#exportsMenu");
-  const btnExports = $("#btnExports");
+    let res = await doFetch();
 
-  const plansCard = $("#plansCard");
-  const monitorsCard = $("#monitorsCard");
-  const overviewHero = $("#overviewHero");
-  const pageContainer = $("#pageContainer");
+    // If token expired, attempt refresh then retry once
+    if (res.status === 401 || res.status === 403) {
+      try {
+        await refreshToken();
+        const token2 = getAccessToken();
+        if (token2) headers.set("Authorization", `Bearer ${token2}`);
+        res = await doFetch();
+      } catch (e) {
+        // Logout UX
+        toast("Session expired. Please log in again.", "error");
+        clearTokens();
+        // Optional redirect
+        // location.href = "/login";
+        throw e;
+      }
+    }
 
-  // Menu mobile
-  const openSidebar = () => {
-    sidebar?.classList.add("open");
-    overlay?.classList.add("show");
-    overlay?.setAttribute("aria-hidden", "false");
-  };
-  const closeSidebar = () => {
-    sidebar?.classList.remove("open");
-    overlay?.classList.remove("show");
-    overlay?.setAttribute("aria-hidden", "true");
-  };
+    // Handle rate limits / transient errors
+    if (res.status === 429) {
+      await sleep(700);
+      res = await doFetch();
+    }
 
-  btnMenu?.addEventListener("click", () => {
-    if (sidebar?.classList.contains("open")) closeSidebar();
-    else openSidebar();
-  });
-  overlay?.addEventListener("click", closeSidebar);
+    return res;
+  }
 
-  // Dropdown exports
-  const closeExports = () => {
-    exportsMenu?.classList.remove("show");
-    exportsMenu?.setAttribute("aria-hidden", "true");
-  };
-  btnExports?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    exportsMenu?.classList.toggle("show");
-    exportsMenu?.setAttribute("aria-hidden", exportsMenu?.classList.contains("show") ? "false" : "true");
-  });
-  document.addEventListener("click", closeExports);
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
 
-  // ---------- Routing ----------
-  const routes = ["overview", "audits", "monitors", "local", "competitors", "reports", "billing", "settings"];
-
-  function setActiveRoute(route) {
-    $$("[data-route]").forEach((a) => {
-      a.classList.toggle("active", a.getAttribute("data-route") === route);
+  // ---------- Router ----------
+  function setActiveNav(hash) {
+    if (!els.nav) return;
+    $$("a[data-route]", els.nav).forEach((a) => {
+      a.classList.toggle("active", a.getAttribute("data-route") === hash);
     });
+  }
 
-    // Plans only on Overview + Billing
-    const showPlans = route === "overview" || route === "billing";
-    if (plansCard) plansCard.style.display = showPlans ? "" : "none";
+  function setTitle(text) {
+    if (els.topTitle) els.topTitle.textContent = text;
+    document.title = `FlowPoint AI — ${text}`;
+  }
 
-    if (route === "overview") {
-      if (overviewHero) overviewHero.style.display = "";
-      if (monitorsCard) monitorsCard.style.display = "";
-      if (pageContainer) pageContainer.innerHTML = "";
-    } else {
-      if (overviewHero) overviewHero.style.display = "none";
-      if (monitorsCard) monitorsCard.style.display = route === "monitors" ? "" : "none";
-      renderPage(route);
+  function routeLabel(hash) {
+    return ROUTES.find((r) => r.hash === hash)?.label || "Dashboard";
+  }
+
+  async function navigate(hash) {
+    const h = hash || "#overview";
+    if (!ROUTES.some((r) => r.hash === h)) {
+      location.hash = "#overview";
+      return;
     }
 
-    if (window.matchMedia("(max-width: 900px)").matches) closeSidebar();
+    state.route = h;
+    setActiveNav(h);
+    setTitle(routeLabel(h));
+
+    // Render
+    if (!els.view) return;
+    els.view.classList.add("fadeIn");
+    try {
+      if (h === "#overview") await renderOverview();
+      else if (h === "#monitors") await renderMonitors();
+      else if (h === "#reports") await renderReports();
+      else if (h === "#logs") await renderLogs();
+      else if (h === "#billing") await renderBilling();
+      else if (h === "#settings") await renderSettings();
+      else if (h === "#mission") await renderMission();
+    } finally {
+      setTimeout(() => els.view && els.view.classList.remove("fadeIn"), 250);
+    }
   }
 
-  function renderPage(route) {
-    if (route === "audits") return renderAudits();
-    if (route === "monitors") return renderMonitorsPage();
-    if (route === "billing") return renderBilling();
-    if (route === "settings") return renderSettings();
-    if (route === "reports") return renderReports();
-    if (route === "local") return renderLocal();
-    if (route === "competitors") return renderCompetitors();
-    if (pageContainer) pageContainer.innerHTML = "";
+  // ---------- Render helpers ----------
+  function view(html) {
+    if (!els.view) return;
+    els.view.innerHTML = html;
   }
 
-  function cardHTML(title, inner, extraClass = "") {
+  function card({ title, subtitle = "", right = "", body = "" }) {
     return `
-      <div class="card ${extraClass}">
-        <div class="cardHead">
-          <div class="cardTitle">${title}</div>
+      <section class="card">
+        <div class="card__head">
+          <div>
+            <h3 class="card__title">${escapeHtml(title)}</h3>
+            ${subtitle ? `<p class="card__sub">${escapeHtml(subtitle)}</p>` : ""}
+          </div>
+          ${right ? `<div class="card__right">${right}</div>` : ""}
         </div>
-        <div style="margin-top:10px">${inner}</div>
-      </div>
+        <div class="card__body">${body}</div>
+      </section>
     `;
   }
 
-  // ---------- Data fetch ----------
-  async function fetchMe() {
-    const r = await api("/api/me");
-    return r.json().catch(() => null);
-  }
-  async function fetchOverview(days) {
-    const r = await api(`/api/overview?days=${encodeURIComponent(days)}`);
-    return r.json().catch(() => null);
-  }
-  async function fetchMonitors() {
-    const r = await api("/api/monitors");
-    return r.json().catch(() => null);
-  }
-  async function fetchAudits() {
-    const r = await api("/api/audits");
-    return r.json().catch(() => null);
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
   }
 
-  // ---------- KPI + header ----------
-  function initials(str) {
-    const s = String(str || "").trim();
-    if (!s) return "FP";
-    const parts = s.split(" ").filter(Boolean);
-    if (parts.length === 1) return (parts[0][0] || "F").toUpperCase() + "P";
-    return (parts[0][0] + parts[1][0]).toUpperCase();
+  function fmtPct(n) {
+    if (n == null || Number.isNaN(Number(n))) return "—";
+    return `${Math.round(Number(n) * 100)}%`;
   }
 
-  function setAccount(me) {
-    $("#helloTitle").textContent = `Bonjour, ${me?.companyName || me?.name || "—"}`;
-    $("#avatarText").textContent = initials(me?.companyName || me?.name || "FP");
-
-    $("#accPlan").textContent = (me?.plan || "—").toUpperCase();
-    $("#accOrg").textContent = me?.org?.name || "—";
-    $("#accRole").textContent = me?.role || "—";
-
-    const trial = me?.trialEndsAt ? new Date(me.trialEndsAt).toLocaleDateString("fr-FR") : "—";
-    $("#accTrial").textContent = me?.hasTrial ? trial : "—";
+  function fmtMs(n) {
+    if (n == null || Number.isNaN(Number(n))) return "—";
+    const v = Number(n);
+    if (v < 1000) return `${Math.round(v)} ms`;
+    return `${(v / 1000).toFixed(2)} s`;
   }
 
-  // ---------- Simple chart ----------
-  function drawChart(points) {
-    const canvas = $("#chart");
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    const w = (canvas.width = canvas.clientWidth * devicePixelRatio);
-    const h = (canvas.height = canvas.clientHeight * devicePixelRatio);
-
-    ctx.clearRect(0, 0, w, h);
-
-    const pad = 18 * devicePixelRatio;
-    const max = Math.max(100, ...points);
-    const min = 0;
-
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 1 * devicePixelRatio;
-    ctx.strokeStyle = "rgba(15,23,42,.10)";
-    for (let i = 0; i <= 4; i++) {
-      const y = pad + (h - pad * 2) * (i / 4);
-      ctx.beginPath();
-      ctx.moveTo(pad, y);
-      ctx.lineTo(w - pad, y);
-      ctx.stroke();
+  // ---------- Data loaders ----------
+  async function loadMe() {
+    // Optional endpoint. If you don’t have it, it’ll fail quietly.
+    try {
+      const r = await fetchWithAuth("/api/me");
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
     }
-
-    const n = Math.max(2, points.length);
-    const stepX = (w - pad * 2) / (n - 1);
-    const toY = (v) => {
-      const t = (v - min) / (max - min || 1);
-      return pad + (h - pad * 2) * (1 - t);
-    };
-
-    ctx.beginPath();
-    ctx.moveTo(pad, toY(points[0] || 0));
-    for (let i = 1; i < n; i++) {
-      ctx.lineTo(pad + stepX * i, toY(points[i] ?? points[points.length - 1] ?? 0));
-    }
-    ctx.lineTo(pad + stepX * (n - 1), h - pad);
-    ctx.lineTo(pad, h - pad);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(47,107,255,.10)";
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(pad, toY(points[0] || 0));
-    for (let i = 1; i < n; i++) {
-      ctx.lineTo(pad + stepX * i, toY(points[i] ?? points[points.length - 1] ?? 0));
-    }
-    ctx.strokeStyle = "rgba(47,107,255,.95)";
-    ctx.lineWidth = 3.2 * devicePixelRatio;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.stroke();
   }
 
-  // ---------- Monitors table ----------
-  function fmtWhen(d) {
-    if (!d) return "—";
-    const dt = new Date(d);
-    if (Number.isNaN(dt.getTime())) return "—";
-    return dt.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+  async function loadOverview() {
+    try {
+      const r = await fetchWithAuth("/api/dashboard/overview");
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
+    }
   }
 
-  function renderMonitorsRows(list) {
-    const wrap = $("#monitorsRows");
-    const empty = $("#monitorsEmpty");
-    if (!wrap || !empty) return;
-
-    wrap.innerHTML = "";
-
-    if (!list?.length) {
-      empty.style.display = "";
-      return;
+  async function loadMonitors() {
+    try {
+      const r = await fetchWithAuth("/api/monitors");
+      if (!r.ok) return [];
+      return await r.json();
+    } catch {
+      return [];
     }
-    empty.style.display = "none";
-
-    for (const m of list) {
-      const st = (m.lastStatus || "unknown").toLowerCase();
-      const klass = st === "up" ? "up" : st === "down" ? "down" : "";
-
-      const row = document.createElement("div");
-      row.className = "tr row";
-      row.innerHTML = `
-        <div data-label="URL">${m.url || "—"}</div>
-        <div data-label="Status">
-          <span class="badgeStatus ${klass}">
-            <span class="sDot"></span>
-            <span>${st === "unknown" ? "Unknown" : st.toUpperCase()}</span>
-          </span>
-        </div>
-        <div data-label="Interval">${m.intervalMinutes || 60} min</div>
-        <div data-label="Last Check">${fmtWhen(m.lastCheckedAt)}</div>
-        <div data-label="Response Time">${m.lastResponseTimeMs ? `${m.lastResponseTimeMs} ms` : "—"}</div>
-        <div data-label="">
-          <button class="btn small" data-run="${m._id}">Run</button>
-        </div>
-      `;
-      wrap.appendChild(row);
-    }
-
-    wrap.querySelectorAll("[data-run]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const id = btn.getAttribute("data-run");
-        btn.disabled = true;
-        btn.textContent = "…";
-        try {
-          const r = await api(`/api/monitors/${id}/run`, { method: "POST", body: "{}" });
-          const data = await r.json().catch(() => null);
-          if (!r.ok) alert(data?.error || "Erreur monitor");
-          await refreshMonitors();
-        } finally {
-          btn.disabled = false;
-          btn.textContent = "Run";
-        }
-      });
-    });
   }
 
-  async function refreshMonitors() {
-    const data = await fetchMonitors();
-    const list = data?.monitors || [];
-    renderMonitorsRows(list);
+  async function loadLogs() {
+    try {
+      const r = await fetchWithAuth("/api/logs?limit=50");
+      if (!r.ok) return [];
+      return await r.json();
+    } catch {
+      return [];
+    }
   }
 
   // ---------- Pages ----------
-  async function renderAudits() {
-    pageContainer.innerHTML = cardHTML(
-      "Audits",
-      `
-      <div class="smallMuted" style="margin-bottom:10px">Derniers audits SEO. Exporte en CSV via “Exports”.</div>
-      <div id="auditsBox" class="empty">Chargement…</div>
-    `
-    );
-    const box = $("#auditsBox");
-    const data = await fetchAudits();
-    const list = data?.audits || [];
-
-    if (!list.length) {
-      box.className = "empty";
-      box.textContent = "Aucun audit pour le moment.";
-      return;
-    }
-
-    box.className = "";
-    box.innerHTML = `
-      <div class="table">
-        <div class="tr th" style="grid-template-columns:1.4fr .6fr .6fr 1fr;">
-          <div>URL</div><div>Score</div><div>Status</div><div>Date</div>
-        </div>
-        ${list.slice(0, 30).map((a) => `
-          <div class="tr row" style="grid-template-columns:1.4fr .6fr .6fr 1fr;">
-            <div data-label="URL">${a.url || "—"}</div>
-            <div data-label="Score"><b>${a.score ?? 0}</b>/100</div>
-            <div data-label="Status">${(a.status || "—").toUpperCase()}</div>
-            <div data-label="Date">${fmtWhen(a.createdAt)}</div>
-          </div>
-        `).join("")}
+  async function renderOverview() {
+    view(`
+      <div class="grid">
+        ${skeletonCard("Quick stats")}
+        ${skeletonCard("Uptime")}
+        ${skeletonCard("Latest events")}
       </div>
-    `;
-  }
+    `);
 
-  async function renderMonitorsPage() {
-    pageContainer.innerHTML = cardHTML(
-      "Monitoring",
-      `<div class="smallMuted">Gère tes monitors ici. Le tableau reste visible sur cette page.</div>`
-    );
-  }
+    if (!state.user) state.user = await loadMe();
 
-  async function renderBilling() {
-    pageContainer.innerHTML = cardHTML(
-      "Billing",
-      `
-      <div class="smallMuted" style="margin-bottom:10px">Gère ton abonnement. Les Plans sont visibles ici + sur Overview.</div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap">
-        <button class="btn primary" id="billingPortalBtn" type="button">Open Customer Portal</button>
-        <button class="btn" id="billingSeePlansBtn" type="button">Go to Pricing</button>
-      </div>
-    `
-    );
+    const data = await loadOverview();
 
-    $("#billingPortalBtn").addEventListener("click", async () => {
-      const r = await api("/api/stripe/portal", { method: "POST", body: "{}" });
-      const data = await r.json().catch(() => null);
-      if (!r.ok) return alert(data?.error || "Impossible d'ouvrir le portal");
-      window.location.href = data.url;
-    });
-    $("#billingSeePlansBtn").addEventListener("click", () => {
-      window.location.href = "/pricing.html";
-    });
-  }
+    const stats = data?.stats || {
+      sites: data?.sites ?? 0,
+      monitors: data?.monitors ?? 0,
+      alerts: data?.alerts ?? 0,
+      avgResponseMs: data?.avgResponseMs ?? null,
+      uptime7d: data?.uptime7d ?? null,
+    };
 
-  async function renderSettings() {
-    pageContainer.innerHTML = `
-      <div class="card" style="border-radius:26px;background:linear-gradient(180deg, rgba(15,23,42,.04), rgba(255,255,255,.78));">
-        <div class="cardHead">
-          <div class="cardTitle">Settings</div>
-          <div class="smallMuted">Alerting · Branding · Organisation</div>
-        </div>
+    const events = data?.events || [];
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-          <div class="card" style="padding:14px;border-radius:22px;">
-            <div class="cardTitle" style="font-size:16px">Alert recipients</div>
-            <div class="smallMuted" style="margin:8px 0 10px;">Choisis qui reçoit les alertes monitors.</div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <button class="btn small" id="setAll" type="button">All members</button>
-              <button class="btn small" id="setOwner" type="button">Owner only</button>
+    view(`
+      <div class="grid">
+        ${card({
+          title: "Quick stats",
+          subtitle: state.user?.email ? `Signed in as ${state.user.email}` : "Your workspace at a glance",
+          body: `
+            <div class="kpis">
+              <div class="kpi"><div class="kpi__label">Sites</div><div class="kpi__value">${escapeHtml(stats.sites)}</div></div>
+              <div class="kpi"><div class="kpi__label">Monitors</div><div class="kpi__value">${escapeHtml(stats.monitors)}</div></div>
+              <div class="kpi"><div class="kpi__label">Alerts (7d)</div><div class="kpi__value">${escapeHtml(stats.alerts)}</div></div>
+              <div class="kpi"><div class="kpi__label">Avg response</div><div class="kpi__value">${escapeHtml(fmtMs(stats.avgResponseMs))}</div></div>
             </div>
-          </div>
-
-          <div class="card" style="padding:14px;border-radius:22px;">
-            <div class="cardTitle" style="font-size:16px">Branding</div>
-            <div class="smallMuted" style="margin:8px 0 10px;">White-label prêt (API à brancher si besoin).</div>
-            <div style="display:grid;gap:8px">
-              <label class="smallMuted">App name</label>
-              <input id="brandName" class="inp" placeholder="Flowpoint" />
-              <label class="smallMuted">Support email</label>
-              <input id="brandSupport" class="inp" placeholder="support@tondomaine.com" />
-              <button class="btn primary" id="saveBrand" type="button">Save</button>
+            <div class="card__actions">
+              <button class="btn" data-action="go" data-to="#monitors">View monitoring</button>
+              <button class="btn btn--ghost" data-action="go" data-to="#reports">Open reports</button>
             </div>
-          </div>
-        </div>
-
-        <style>
-          .inp{
-            height:42px;border-radius:14px;border:1px solid rgba(15,23,42,.10);
-            padding:0 12px;background:rgba(255,255,255,.85);font-weight:800;outline:none;
-          }
-          .inp:focus{ border-color: rgba(47,107,255,.35); }
-          @media (max-width: 900px){
-            .card > div[style*="grid-template-columns:1fr 1fr"]{ grid-template-columns:1fr !important; }
-          }
-        </style>
+          `,
+        })}
+        ${card({
+          title: "Uptime",
+          subtitle: "Rolling 7 days",
+          body: `
+            <div class="uptime">
+              <div class="uptime__big">${escapeHtml(fmtPct(stats.uptime7d))}</div>
+              <div class="uptime__meta">
+                <div class="pill">Auto-retry on auth expiry ✅</div>
+                <div class="pill pill--soft">Hash routes enabled</div>
+              </div>
+            </div>
+          `,
+        })}
+        ${card({
+          title: "Latest events",
+          subtitle: "Most recent activity",
+          body: events?.length
+            ? `<div class="list">
+                ${events
+                  .slice(0, 8)
+                  .map(
+                    (e) => `
+                  <div class="row">
+                    <div class="dot ${escapeHtml(e.type || "info")}"></div>
+                    <div class="row__main">
+                      <div class="row__title">${escapeHtml(e.title || "Event")}</div>
+                      <div class="row__sub">${escapeHtml(e.time || e.createdAt || "")}</div>
+                    </div>
+                    ${e.ctaHash ? `<button class="btn btn--xs" data-action="go" data-to="${escapeHtml(e.ctaHash)}">Open</button>` : ""}
+                  </div>`
+                  )
+                  .join("")}
+              </div>`
+            : `<div class="empty">
+                <div class="empty__title">No events yet</div>
+                <div class="empty__sub">Once monitors and reports run, you'll see them here.</div>
+              </div>`,
+        })}
       </div>
-    `;
+    `);
+  }
 
-    $("#setAll").addEventListener("click", async () => {
-      const r = await api("/api/org/settings", {
-        method: "POST",
-        body: JSON.stringify({ alertRecipients: "all", alertExtraEmails: [] }),
-      });
-      alert(r.ok ? "OK: alerts = all" : "Erreur settings");
-    });
+  async function renderMonitors() {
+    view(`
+      <div class="grid">
+        ${skeletonCard("Monitors")}
+        ${skeletonCard("Health")}
+      </div>
+    `);
 
-    $("#setOwner").addEventListener("click", async () => {
-      const r = await api("/api/org/settings", {
-        method: "POST",
-        body: JSON.stringify({ alertRecipients: "owner", alertExtraEmails: [] }),
-      });
-      alert(r.ok ? "OK: alerts = owner" : "Erreur settings");
-    });
+    const monitors = await loadMonitors();
 
-    $("#saveBrand").addEventListener("click", () => {
-      alert("Branding: prêt côté UI. On branche l’API quand tu veux.");
-    });
+    const up = monitors.filter((m) => (m.status || "").toLowerCase() === "up").length;
+    const down = monitors.filter((m) => (m.status || "").toLowerCase() === "down").length;
+
+    view(`
+      <div class="grid">
+        ${card({
+          title: "Monitors",
+          subtitle: "Your endpoints & site checks",
+          right: `<button class="btn" data-action="addMonitor">+ New monitor</button>`,
+          body: monitors.length
+            ? `<div class="table">
+                <div class="table__row table__head">
+                  <div>Name</div><div>Status</div><div>Response</div><div>Actions</div>
+                </div>
+                ${monitors
+                  .map((m) => {
+                    const s = (m.status || "unknown").toLowerCase();
+                    return `
+                      <div class="table__row">
+                        <div class="mono">${escapeHtml(m.name || m.url || "Monitor")}</div>
+                        <div><span class="badge badge--${escapeHtml(s)}">${escapeHtml(s.toUpperCase())}</span></div>
+                        <div>${escapeHtml(fmtMs(m.lastResponseMs))}</div>
+                        <div class="table__actions">
+                          <button class="btn btn--xs btn--ghost" data-action="ping" data-id="${escapeHtml(m.id)}">Test</button>
+                          <button class="btn btn--xs btn--ghost" data-action="editMonitor" data-id="${escapeHtml(m.id)}">Edit</button>
+                          <button class="btn btn--xs btn--danger" data-action="deleteMonitor" data-id="${escapeHtml(m.id)}">Delete</button>
+                        </div>
+                      </div>
+                    `;
+                  })
+                  .join("")}
+              </div>`
+            : `<div class="empty">
+                <div class="empty__title">No monitors</div>
+                <div class="empty__sub">Create your first monitor to track uptime and performance.</div>
+                <div class="card__actions">
+                  <button class="btn" data-action="addMonitor">+ New monitor</button>
+                </div>
+              </div>`,
+        })}
+        ${card({
+          title: "Health",
+          subtitle: "Current snapshot",
+          body: `
+            <div class="kpis">
+              <div class="kpi"><div class="kpi__label">UP</div><div class="kpi__value">${escapeHtml(up)}</div></div>
+              <div class="kpi"><div class="kpi__label">DOWN</div><div class="kpi__value">${escapeHtml(down)}</div></div>
+              <div class="kpi"><div class="kpi__label">TOTAL</div><div class="kpi__value">${escapeHtml(monitors.length)}</div></div>
+              <div class="kpi"><div class="kpi__label">Retry</div><div class="kpi__value">ON</div></div>
+            </div>
+            <div class="hint">Tip: if your API uses short-lived JWTs, keep <span class="mono">/api/auth/refresh</span> enabled.</div>
+          `,
+        })}
+      </div>
+    `);
   }
 
   async function renderReports() {
-    pageContainer.innerHTML = `
-      <div class="card" style="border-radius:26px;">
-        <div class="cardHead">
-          <div>
-            <div class="cardTitle">Reports</div>
-            <div class="smallMuted">Exports · PDF · Résumés automatiques</div>
-          </div>
-          <button class="btn primary small" id="genReport" type="button">Generate report</button>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-top:12px">
-          <div class="card" style="padding:14px;border-radius:22px;">
-            <div class="cardTitle" style="font-size:16px">This week summary</div>
-            <div class="smallMuted" style="margin:8px 0 10px;">Automatique (SEO + monitors + actions)</div>
-            <div class="empty" style="border-style:solid">
-              Rapport hebdo bientôt: on l’alimente avec tes audits + incidents.
+    view(`
+      <div class="grid">
+        ${card({
+          title: "Reports",
+          subtitle: "Exports & monthly summaries",
+          right: `<button class="btn" data-action="exportPdf">Export PDF</button>`,
+          body: `
+            <div class="empty">
+              <div class="empty__title">Ready when you are</div>
+              <div class="empty__sub">Generate a report, then export it as PDF / CSV.</div>
+              <div class="card__actions">
+                <button class="btn" data-action="generateReport">Generate report</button>
+                <button class="btn btn--ghost" data-action="go" data-to="#logs">See logs</button>
+              </div>
             </div>
-          </div>
-
-          <div class="card" style="padding:14px;border-radius:22px;background:linear-gradient(180deg, rgba(47,107,255,.10), rgba(255,255,255,.86));border-color:rgba(47,107,255,.22)">
-            <div class="cardTitle" style="font-size:16px">Quick exports</div>
-            <div class="smallMuted" style="margin:8px 0 10px;">CSV/ PDF en 1 clic</div>
-            <div style="display:grid;gap:10px">
-              <button class="btn" id="repAudits" type="button">Export audits CSV</button>
-              <button class="btn" id="repMon" type="button">Export monitors CSV</button>
-              <button class="btn primary" id="repPdf" type="button">PDF summary</button>
+          `,
+        })}
+        ${card({
+          title: "Automations",
+          subtitle: "Cron + alerts",
+          body: `
+            <div class="list">
+              <div class="row">
+                <div class="dot success"></div>
+                <div class="row__main">
+                  <div class="row__title">Cron runner</div>
+                  <div class="row__sub">Secured endpoint for monitor runs</div>
+                </div>
+                <button class="btn btn--xs btn--ghost" data-action="runCron">Run now</button>
+              </div>
+              <div class="row">
+                <div class="dot info"></div>
+                <div class="row__main">
+                  <div class="row__title">Email alerts</div>
+                  <div class="row__sub">UP/DOWN notifications</div>
+                </div>
+                <button class="btn btn--xs btn--ghost" data-action="go" data-to="#settings">Configure</button>
+              </div>
             </div>
-          </div>
-        </div>
-
-        <style>
-          @media (max-width: 900px){
-            .card > div[style*="grid-template-columns:1.2fr .8fr"]{ grid-template-columns:1fr !important; }
-          }
-        </style>
+          `,
+        })}
       </div>
+    `);
+  }
+
+  async function renderLogs() {
+    view(`
+      <div class="grid">
+        ${skeletonCard("Latest logs")}
+      </div>
+    `);
+
+    const logs = await loadLogs();
+
+    view(`
+      <div class="grid">
+        ${card({
+          title: "Latest logs",
+          subtitle: "Last 50 entries",
+          right: `<button class="btn btn--ghost" data-action="refreshLogs">Refresh</button>`,
+          body: logs.length
+            ? `<div class="loglist">
+                ${logs
+                  .slice(0, 50)
+                  .map(
+                    (l) => `
+                  <div class="log">
+                    <div class="log__lvl lvl-${escapeHtml((l.level || "info").toLowerCase())}">${escapeHtml(
+                      (l.level || "INFO").toUpperCase()
+                    )}</div>
+                    <div class="log__msg">${escapeHtml(l.message || l.msg || "—")}</div>
+                    <div class="log__ts mono">${escapeHtml(l.time || l.createdAt || "")}</div>
+                  </div>`
+                  )
+                  .join("")}
+              </div>`
+            : `<div class="empty">
+                <div class="empty__title">No logs</div>
+                <div class="empty__sub">Once cron runs and monitoring starts, logs will appear here.</div>
+              </div>`,
+        })}
+      </div>
+    `);
+  }
+
+  async function renderBilling() {
+    view(`
+      <div class="grid">
+        ${card({
+          title: "Billing",
+          subtitle: "Plan & invoices",
+          body: `
+            <div class="empty">
+              <div class="empty__title">Manage your plan</div>
+              <div class="empty__sub">Update plan, view invoices, and manage trial status.</div>
+              <div class="card__actions">
+                <button class="btn" data-action="openStripePortal">Open customer portal</button>
+              </div>
+            </div>
+          `,
+        })}
+      </div>
+    `);
+  }
+
+  async function renderSettings() {
+    view(`
+      <div class="grid">
+        ${card({
+          title: "Settings",
+          subtitle: "Theme, notifications, org configuration",
+          body: `
+            <div class="form">
+              <div class="field">
+                <label>Theme</label>
+                <div class="seg">
+                  <button class="seg__btn" data-action="setTheme" data-theme="light">Light</button>
+                  <button class="seg__btn" data-action="setTheme" data-theme="dark">Dark</button>
+                </div>
+              </div>
+              <div class="field">
+                <label>Alerts recipients</label>
+                <input class="input" id="alertRecipients" placeholder="name@domain.com, name2@domain.com" />
+                <div class="hint">Comma-separated emails. Saved locally unless your endpoint exists.</div>
+              </div>
+              <div class="field">
+                <button class="btn" data-action="saveSettings">Save</button>
+                <button class="btn btn--ghost" data-action="testEmail">Send test email</button>
+              </div>
+            </div>
+          `,
+        })}
+      </div>
+    `);
+
+    // hydrate saved local setting
+    const saved = localStorage.getItem("fp_alert_recipients");
+    const input = $("#alertRecipients");
+    if (input && saved) input.value = saved;
+    // mark active theme button
+    const t = getTheme();
+    $$(`.seg__btn[data-theme="${t}"]`).forEach((b) => b.classList.add("active"));
+  }
+
+  // ✅ Mission page (done/not done)
+  async function renderMission() {
+    const key = "fp_missions_v1";
+    const defaults = [
+      { id: "m1", title: "Setup at least 1 monitor", done: false },
+      { id: "m2", title: "Run cron manually once", done: false },
+      { id: "m3", title: "Enable email alerts", done: false },
+      { id: "m4", title: "Export a PDF report", done: false },
+      { id: "m5", title: "Invite a teammate (Ultra)", done: false },
+    ];
+
+    const missions = (() => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) || "null");
+        if (Array.isArray(parsed) && parsed.length) return parsed;
+      } catch {}
+      return defaults;
+    })();
+
+    const doneCount = missions.filter((m) => m.done).length;
+
+    view(`
+      <div class="grid">
+        ${card({
+          title: "Mission",
+          subtitle: "Mark as done or not done ✔️",
+          right: `<div class="pill">${doneCount}/${missions.length} done</div>`,
+          body: `
+            <div class="mission">
+              ${missions
+                .map(
+                  (m) => `
+                <label class="mission__item">
+                  <input type="checkbox" data-action="toggleMission" data-id="${escapeHtml(m.id)}" ${
+                    m.done ? "checked" : ""
+                  } />
+                  <span class="mission__check"></span>
+                  <span class="mission__text">${escapeHtml(m.title)}</span>
+                </label>
+              `
+                )
+                .join("")}
+            </div>
+            <div class="card__actions">
+              <button class="btn btn--ghost" data-action="resetMissions">Reset</button>
+              <button class="btn" data-action="saveMissions">Save</button>
+            </div>
+          `,
+        })}
+        ${card({
+          title: "Tips",
+          subtitle: "To keep everything stable",
+          body: `
+            <div class="list">
+              <div class="row">
+                <div class="dot success"></div>
+                <div class="row__main">
+                  <div class="row__title">No more “request expired”</div>
+                  <div class="row__sub">Auto refresh + retry on 401/403</div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="dot info"></div>
+                <div class="row__main">
+                  <div class="row__title">Hash router</div>
+                  <div class="row__sub">Fast navigation without reload</div>
+                </div>
+              </div>
+            </div>
+          `,
+        })}
+      </div>
+    `);
+
+    // store missions in memory for toggles
+    state._missions = missions;
+  }
+
+  function skeletonCard(title) {
+    return `
+      <section class="card">
+        <div class="card__head">
+          <div>
+            <h3 class="card__title">${escapeHtml(title)}</h3>
+            <p class="card__sub">Loading…</p>
+          </div>
+        </div>
+        <div class="card__body">
+          <div class="skeleton sk1"></div>
+          <div class="skeleton sk2"></div>
+          <div class="skeleton sk3"></div>
+        </div>
+      </section>
     `;
-
-    $("#genReport").addEventListener("click", () => alert("On branche la génération PDF/Email ensuite."));
-    $("#repAudits").addEventListener("click", () => $("#btnExportAudits").click());
-    $("#repMon").addEventListener("click", () => $("#btnExportMonitors").click());
-    $("#repPdf").addEventListener("click", () => alert("PDF summary: endpoint à ajouter plus tard."));
   }
 
-  async function renderLocal() {
-    pageContainer.innerHTML = cardHTML(
-      "Local SEO",
-      `<div class="empty" style="border-style:solid">On branche ici Google Business Profile (à venir).</div>`
-    );
+  // ---------- Actions (buttons that “did nothing” before) ----------
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+
+    const action = btn.getAttribute("data-action");
+
+    try {
+      if (action === "go") {
+        const to = btn.getAttribute("data-to") || "#overview";
+        location.hash = to;
+      }
+
+      if (action === "setTheme") {
+        const t = btn.getAttribute("data-theme");
+        if (t === "light" || t === "dark") {
+          setTheme(t);
+          $$(".seg__btn").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          toast(`Theme set to ${t}`, "success");
+        }
+      }
+
+      if (action === "refreshLogs") {
+        await renderLogs();
+        toast("Logs refreshed", "success");
+      }
+
+      if (action === "addMonitor") {
+        toast("Add monitor: connect this to your modal/form.", "info");
+      }
+
+      if (action === "ping") {
+        const id = btn.getAttribute("data-id");
+        btn.disabled = true;
+        btn.textContent = "Testing…";
+        const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}/ping`, { method: "POST" });
+        btn.disabled = false;
+        btn.textContent = "Test";
+        toast(r.ok ? "Ping OK" : "Ping failed", r.ok ? "success" : "error");
+      }
+
+      if (action === "deleteMonitor") {
+        const id = btn.getAttribute("data-id");
+        btn.disabled = true;
+        const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}`, { method: "DELETE" });
+        toast(r.ok ? "Deleted" : "Delete failed", r.ok ? "success" : "error");
+        await renderMonitors();
+      }
+
+      if (action === "generateReport") {
+        toast("Generating…", "info");
+        const r = await fetchWithAuth(`/api/reports/generate`, { method: "POST" });
+        toast(r.ok ? "Report generated" : "Failed", r.ok ? "success" : "error");
+      }
+
+      if (action === "exportPdf") {
+        toast("Preparing PDF…", "info");
+        const r = await fetchWithAuth(`/api/reports/export/pdf`, { method: "GET" });
+        if (!r.ok) return toast("Export failed", "error");
+        // Download
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "flowpoint-report.pdf";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast("PDF downloaded", "success");
+      }
+
+      if (action === "runCron") {
+        toast("Running cron…", "info");
+        const r = await fetchWithAuth(`/api/cron/run`, { method: "POST" });
+        toast(r.ok ? "Cron executed" : "Cron failed", r.ok ? "success" : "error");
+      }
+
+      if (action === "openStripePortal") {
+        const r = await fetchWithAuth(`/api/billing/portal`, { method: "POST" });
+        if (!r.ok) return toast("Portal error", "error");
+        const data = await r.json().catch(() => ({}));
+        if (data?.url) location.href = data.url;
+        else toast("Portal URL missing", "error");
+      }
+
+      if (action === "saveSettings") {
+        const input = $("#alertRecipients");
+        const value = (input?.value || "").trim();
+        localStorage.setItem("fp_alert_recipients", value);
+        // Optional: push to backend if exists
+        try {
+          await fetchWithAuth("/api/org/settings", {
+            method: "POST",
+            body: JSON.stringify({ alertRecipients: value }),
+          });
+        } catch {}
+        toast("Settings saved", "success");
+      }
+
+      if (action === "testEmail") {
+        toast("Sending…", "info");
+        const r = await fetchWithAuth(`/api/email/test`, { method: "POST" });
+        toast(r.ok ? "Test email sent" : "Email failed", r.ok ? "success" : "error");
+      }
+
+      // Mission actions
+      if (action === "toggleMission") {
+        // handled in change event (checkbox), but keep safe
+      }
+      if (action === "resetMissions") {
+        localStorage.removeItem("fp_missions_v1");
+        toast("Missions reset", "success");
+        await renderMission();
+      }
+      if (action === "saveMissions") {
+        if (state._missions) {
+          localStorage.setItem("fp_missions_v1", JSON.stringify(state._missions));
+          toast("Missions saved ✔️", "success");
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      toast("Something went wrong", "error");
+    }
+  });
+
+  document.addEventListener("change", (e) => {
+    const cb = e.target.closest('input[type="checkbox"][data-action="toggleMission"]');
+    if (!cb) return;
+    const id = cb.getAttribute("data-id");
+    const missions = state._missions || [];
+    const m = missions.find((x) => x.id === id);
+    if (m) m.done = !!cb.checked;
+  });
+
+  // ---------- Init ----------
+  function buildNavIfMissing() {
+    if (!els.nav) return;
+    // If your HTML already has links, skip.
+    if ($$("a[data-route]", els.nav).length) return;
+
+    els.nav.innerHTML = ROUTES.map(
+      (r) => `<a class="nav__link" href="${r.hash}" data-route="${r.hash}">
+                <span class="nav__dot"></span>
+                <span>${r.label}</span>
+              </a>`
+    ).join("");
   }
 
-  async function renderCompetitors() {
-    pageContainer.innerHTML = cardHTML(
-      "Competitors",
-      `<div class="empty" style="border-style:solid">On branche ici l’analyse concurrentielle (à venir).</div>`
-    );
-  }
+  function init() {
+    setTheme(getTheme());
 
-  // ---------- Actions / Buttons ----------
-  $("#btnLogout")?.addEventListener("click", () => {
-    localStorage.removeItem(TOKEN_KEY);
-    window.location.replace("/login.html");
-  });
-
-  $("#btnPortal")?.addEventListener("click", async () => {
-    const r = await api("/api/stripe/portal", { method: "POST", body: "{}" });
-    const data = await r.json().catch(() => null);
-    if (!r.ok) return alert(data?.error || "Impossible d'ouvrir le portal");
-    window.location.href = data.url;
-  });
-
-  $("#btnExportAudits")?.addEventListener("click", () => {
-    closeExports();
-    window.location.href = "/api/export/audits.csv";
-  });
-
-  $("#btnExportMonitors")?.addEventListener("click", () => {
-    closeExports();
-    window.location.href = "/api/export/monitors.csv";
-  });
-
-  $("#btnRefresh")?.addEventListener("click", async () => {
-    await refreshAll();
-  });
-
-  $("#btnAddMonitor")?.addEventListener("click", async () => {
-    const url = prompt("URL du site (https://...)");
-    if (!url) return;
-    const interval = Number(prompt("Interval minutes (min 5)", "60") || "60");
-    const r = await api("/api/monitors", { method: "POST", body: JSON.stringify({ url, intervalMinutes: interval }) });
-    const data = await r.json().catch(() => null);
-    if (!r.ok) return alert(data?.error || "Erreur add monitor");
-    await refreshMonitors();
-    alert("Monitor ajouté ✅");
-  });
-
-  $("#btnRunAudit")?.addEventListener("click", async () => {
-    const url = prompt("URL à auditer (https://...)");
-    if (!url) return;
-    const r = await api("/api/audits/run", { method: "POST", body: JSON.stringify({ url }) });
-    const data = await r.json().catch(() => null);
-    if (!r.ok) return alert(data?.error || "Erreur audit");
-    alert(`Audit OK ✅ Score: ${data.score}/100`);
-    await refreshAll();
-  });
-
-  $("#btnSeePlans")?.addEventListener("click", () => {
-    window.location.href = "/pricing.html";
-  });
-
-  function goCheckout() {
-    window.location.href = "/pricing.html";
-  }
-  $("#btnChooseStandard")?.addEventListener("click", goCheckout);
-  $("#btnChoosePro")?.addEventListener("click", goCheckout);
-  $("#btnChooseUltra")?.addEventListener("click", goCheckout);
-
-  $("#rangeSelect")?.addEventListener("change", () => refreshAll());
-
-  function setRangeLabels(days) {
-    $("#kpiRange").textContent = `LAST ${days} DAYS`;
-    $("#seoHint").textContent = `Last ${days} days`;
-    $("#perfRange").textContent = `${days} days`;
-  }
-
-  // ---------- Refresh all ----------
-  async function refreshAll() {
-    const days = Number($("#rangeSelect")?.value || 30);
-    setRangeLabels(days);
-
-    $("#statusText").textContent = "Refreshing…";
-    const pillDot = $("#statusPill .dot");
-    if (pillDot) pillDot.style.background = "#f59e0b";
-
-    const [me, ov] = await Promise.all([fetchMe(), fetchOverview(days)]);
-    if (me) setAccount(me);
-
-    if (ov?.ok) {
-      $("#seoScore").textContent = String(ov.seoScore ?? 0);
-      $("#localVis").textContent = String(ov.localVis ?? "+0%");
-      $("#monActive").textContent = String(ov.monitors?.active ?? 0);
-      $("#monInc").textContent = String(ov.monitors?.down ?? 0);
-      drawChart(Array.isArray(ov.chart) ? ov.chart : []);
-    } else {
-      drawChart([0, 10, 15, 12, 18, 22, 30]);
+    if (els.themeToggle) {
+      els.themeToggle.addEventListener("click", () => {
+        setTheme(getTheme() === "dark" ? "light" : "dark");
+      });
     }
 
-    await refreshMonitors();
+    buildNavIfMissing();
+    window.addEventListener("hashchange", () => navigate(location.hash || "#overview"));
 
-    $("#statusText").textContent = "Dashboard à jour — OK";
-    if (pillDot) pillDot.style.background = "#22c55e";
+    // First route
+    navigate(location.hash || "#overview").catch(() => navigate("#overview"));
   }
 
-  // ---------- Init route ----------
-  function currentRoute() {
-    const h = (location.hash || "#overview").replace("#", "");
-    return routes.includes(h) ? h : "overview";
-  }
-
-  window.addEventListener("hashchange", () => setActiveRoute(currentRoute()));
-
-  // initial
-  setActiveRoute(currentRoute());
-  refreshAll();
+  init();
 })();
