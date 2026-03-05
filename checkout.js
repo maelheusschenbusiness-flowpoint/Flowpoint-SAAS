@@ -1,7 +1,8 @@
-// checkout.js — FlowPoint UI
+// checkout.js — FlowPoint UI (AUTO light/dark Stripe)
 // - Lit payload depuis localStorage (plan + addons)
 // - Appelle /api/stripe/checkout (update) puis fallback /api/stripe/checkout-embedded (nouveau)
 // - Si update renvoie paymentIntentClientSecret => affiche Payment Element et paye
+// ✅ Stripe suit le thème système (clair/sombre) via appearance
 
 (() => {
   const TOKEN_KEYS = ["token", "fp_token"];
@@ -72,11 +73,19 @@
         "Content-Type": "application/json",
         "Authorization": "Bearer " + tok,
       },
-      body: JSON.stringify(body || {})
+      body: JSON.stringify(body || {}),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "Erreur API");
     return j;
+  }
+
+  // ✅ Stripe appearance auto selon thème système
+  function stripeAppearance() {
+    const isDark =
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return { theme: isDark ? "night" : "stripe" };
   }
 
   async function start() {
@@ -90,7 +99,9 @@
 
     const pk = window.STRIPE_PUBLISHABLE_KEY;
     if (!pk || typeof pk !== "string" || !pk.startsWith("pk_")) {
-      setMsg("Clé Stripe publique manquante dans checkout.html (window.STRIPE_PUBLISHABLE_KEY).");
+      setMsg(
+        "Clé Stripe publique manquante dans checkout.html (window.STRIPE_PUBLISHABLE_KEY)."
+      );
       if (retryBtn) retryBtn.style.display = "none";
       return;
     }
@@ -111,7 +122,7 @@
 
       const j = await api("/api/stripe/checkout", {
         plan: payload.mode === "addons" ? null : payload.plan,
-        addons: payload.addons
+        addons: payload.addons,
       });
 
       // ✅ update sans paiement requis
@@ -127,24 +138,33 @@
         if (embeddedContainer) embeddedContainer.innerHTML = "";
         if (piForm) piForm.style.display = "block";
 
-        const elements = stripe.elements({ clientSecret: j.paymentIntentClientSecret });
+        // ✅ appearance ici
+        const elements = stripe.elements({
+          clientSecret: j.paymentIntentClientSecret,
+          appearance: stripeAppearance(),
+        });
+
         const pe = elements.create("payment");
         pe.mount("#payment-element");
 
-        piForm.addEventListener("submit", async (e) => {
+        // évite double listener si reload partiel
+        piForm.onsubmit = async (e) => {
           e.preventDefault();
           if (payBtn) payBtn.disabled = true;
 
           const { error } = await stripe.confirmPayment({
             elements,
-            confirmParams: { return_url: window.location.origin + "/success.html?next=/dashboard.html" }
+            confirmParams: {
+              return_url:
+                window.location.origin + "/success.html?next=/dashboard.html",
+            },
           });
 
           if (error) {
             setMsg(error.message || "Erreur paiement");
             if (payBtn) payBtn.disabled = false;
           }
-        });
+        };
 
         return;
       }
@@ -160,11 +180,46 @@
 
       const j2 = await api("/api/stripe/checkout-embedded", {
         plan: payload.plan,
-        addons: payload.addons
+        addons: payload.addons,
       });
 
       // déjà abonné => update direct
       if (j2.ok) {
+        // ✅ si prorata à payer (et ton backend renvoie le client_secret ici aussi)
+        if (j2.paymentIntentClientSecret) {
+          setMsg("Paiement requis (prorata).");
+          if (embeddedContainer) embeddedContainer.innerHTML = "";
+          if (piForm) piForm.style.display = "block";
+
+          const elements = stripe.elements({
+            clientSecret: j2.paymentIntentClientSecret,
+            appearance: stripeAppearance(),
+          });
+
+          const pe = elements.create("payment");
+          pe.mount("#payment-element");
+
+          piForm.onsubmit = async (e) => {
+            e.preventDefault();
+            if (payBtn) payBtn.disabled = true;
+
+            const { error } = await stripe.confirmPayment({
+              elements,
+              confirmParams: {
+                return_url:
+                  window.location.origin + "/success.html?next=/dashboard.html",
+              },
+            });
+
+            if (error) {
+              setMsg(error.message || "Erreur paiement");
+              if (payBtn) payBtn.disabled = false;
+            }
+          };
+
+          return;
+        }
+
         setMsg(j2.updated ? "Abonnement mis à jour ✅" : "Aucun changement.");
         setTimeout(() => (window.location.href = "/dashboard.html"), 800);
         return;
@@ -173,7 +228,12 @@
       if (!j2.clientSecret) throw new Error("clientSecret manquant (embedded)");
       if (piForm) piForm.style.display = "none";
 
-      const checkout = await stripe.initEmbeddedCheckout({ clientSecret: j2.clientSecret });
+      // ✅ appearance ici
+      const checkout = await stripe.initEmbeddedCheckout({
+        clientSecret: j2.clientSecret,
+        appearance: stripeAppearance(),
+      });
+
       checkout.mount("#embedded-checkout");
       setMsg("");
     } catch (e) {
