@@ -716,3 +716,45 @@ body{
   }
   .fpRowBtns{ justify-content:flex-start; }
 }
+/* =========================================================
+   TYPO PATCH — make it less bold / more academic
+   Paste at END of dashboard.css
+   ========================================================= */
+
+/* Global base weight */
+body { font-weight: 500; }
+
+/* Titles keep strong, but not ultra heavy */
+.fpBrandName,
+.fpCardTitle,
+.fpSectionTitle,
+.fpHelloTitle{
+  font-weight: 800;
+}
+
+/* Reduce heaviness on UI text */
+.fpNavItem{ font-weight: 700; }
+.fpSmall,
+.fpRow,
+.fpUsageNums,
+.fpKpiHint,
+.fpPlanList,
+.fpHelloSub{
+  font-weight: 600;
+}
+
+/* KPI numbers can stay bold but not too “black” */
+.fpKpiValue{ font-weight: 850; }
+.fpKpiLabel{ font-weight: 700; }
+
+/* Buttons: slightly less aggressive */
+.fpBtn{ font-weight: 800; }
+.fpMenuItem{ font-weight: 800; }
+.fpStatus{ font-weight: 800; }
+.fpUrl{ font-weight: 800; }
+
+/* Mobile: avoid “thick” feeling */
+@media (max-width: 700px){
+  .fpHelloTitle{ font-weight: 800; }
+  .fpNavItem{ font-weight: 700; }
+}
