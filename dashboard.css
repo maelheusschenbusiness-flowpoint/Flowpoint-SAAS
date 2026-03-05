@@ -796,3 +796,41 @@ body{
   .fpSidebar.open{ transform:translateX(0); }
   .fpGrid{ grid-template-columns: 1fr; }
 }
+/* =========================
+   PATCH (add at the END)
+   ========================= */
+
+/* Make sure overlay is always above main but under sidebar */
+.fpOverlay{ z-index: 60; }
+.fpSidebar{ z-index: 70; }
+.fpTopbar{ position: sticky; top: 14px; z-index: 20; }
+
+/* Prevent horizontal overflow on mobile */
+.fpMain{ min-width:0; }
+.fpGrid, .fpCol, .fpRightCol, .fpCard{ min-width:0; }
+.fpTr{ min-width:0; }
+.fpUrl{ overflow:hidden; text-overflow:ellipsis; }
+
+/* Better topbar wrapping on small screens */
+@media (max-width: 520px){
+  .fpTopbar{ gap:10px; }
+  .fpHelloTitle{ font-size:18px; }
+  .fpTopActions{ width:100%; justify-content:flex-start; }
+  .fpStatus{ width:100%; justify-content:center; }
+}
+
+/* KPI grid more responsive */
+@media (max-width: 900px){
+  .fpKpiGrid{ grid-template-columns: 1fr; }
+  .fpKpiValue{ font-size:28px; }
+}
+
+/* Table: stack rows on very small screens */
+@media (max-width: 520px){
+  .fpTr.th{ display:none; }
+  .fpTr.row{
+    grid-template-columns: 1fr;
+    gap:8px;
+  }
+  .fpRowBtns{ justify-content:flex-start; }
+}
