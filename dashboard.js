@@ -1,224 +1,139 @@
-/* ===========================
-   FlowPoint AI — dashboard.js
-   Hash router + theme + toasts + mission (done/not done)
-   + fetchWithAuth (auto refresh/retry) to stop “request expired”
-   =========================== */
+/* =========================================================
+   FlowPoint — dashboard.js (MATCHES YOUR HTML)
+   - Hash router: #overview #missions #audits #monitors #reports #billing #settings
+   - Mobile sidebar toggle + overlay
+   - Exports dropdown
+   - Missions: done / not done ✔ + preview on overview
+   - fetchWithAuth: handles expired token (retry/refresh) to stop “request expired”
+   ========================================================= */
 
 (() => {
   "use strict";
 
-  // ---------- Config ----------
-  const API_BASE = ""; // keep "" if same domain. otherwise "https://api.yourdomain.com"
+  // -------------------- CONFIG --------------------
+  const API_BASE = ""; // keep "" if same origin
+  const TOKEN_KEY = "token"; // your HTML checks localStorage.getItem("token")
+
+  // Optional if your backend supports refresh:
+  const REFRESH_TOKEN_KEY = "refreshToken"; // if you store it
+  const REFRESH_ENDPOINT = "/api/auth/refresh"; // if exists
+
   const ROUTES = [
-    { hash: "#overview", label: "Overview" },
-    { hash: "#monitors", label: "Monitoring" },
-    { hash: "#reports", label: "Reports" },
-    { hash: "#logs", label: "Logs" },
-    { hash: "#billing", label: "Billing" },
-    { hash: "#settings", label: "Settings" },
-    { hash: "#mission", label: "Mission" },
+    { hash: "#overview", key: "overview", label: "Overview" },
+    { hash: "#missions", key: "missions", label: "Missions" },
+    { hash: "#audits", key: "audits", label: "Audits" },
+    { hash: "#monitors", key: "monitors", label: "Monitors" },
+    { hash: "#reports", key: "reports", label: "Reports" },
+    { hash: "#billing", key: "billing", label: "Billing" },
+    { hash: "#settings", key: "settings", label: "Settings" },
   ];
 
-  // ---------- DOM ----------
-  const $ = (sel, root = document) => root.querySelector(sel);
-  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  // -------------------- DOM HELPERS --------------------
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
   const els = {
-    app: $("#app") || document.body,
-    view: $("#view"),
-    nav: $("#sidebarNav"),
-    topTitle: $("#pageTitle"),
-    themeToggle: $("#themeToggle"),
-    toast: $("#toast"),
-    toastMsg: $("#toastMsg"),
+    overlay: $("#overlay"),
+    app: $(".fpApp"),
+    sidebar: $("#sidebar"),
+    navItems: $$(".fpNavItem"),
+    pageContainer: $("#pageContainer"),
+
+    // topbar
+    btnMenu: $("#btnMenu"),
+    btnRefresh: $("#btnRefresh"),
+    rangeSelect: $("#rangeSelect"),
+    statusPill: $("#statusPill"),
+    statusDot: $("#statusDot"),
+    statusText: $("#statusText"),
+
+    // dropdown exports
+    btnExports: $("#btnExports"),
+    exportsMenu: $("#exportsMenu"),
+    btnExportAudits: $("#btnExportAudits"),
+    btnExportMonitors: $("#btnExportMonitors"),
+
+    // header texts
+    helloTitle: $("#helloTitle"),
+    helloSub: $("#helloSub"),
+    avatarText: $("#avatarText"),
+
+    // account box
+    accPlan: $("#accPlan"),
+    accOrg: $("#accOrg"),
+    accRole: $("#accRole"),
+    accTrial: $("#accTrial"),
+
+    // usage
+    uAudits: $("#uAudits"),
+    uPdf: $("#uPdf"),
+    uExports: $("#uExports"),
+    uMonitors: $("#uMonitors"),
+    barAudits: $("#barAudits"),
+    barPdf: $("#barPdf"),
+    barExports: $("#barExports"),
+
+    // overview hero
+    kpiRange: $("#kpiRange"),
+    orgChip: $("#orgChip"),
+    seoScore: $("#seoScore"),
+    seoHint: $("#seoHint"),
+    monActive: $("#monActive"),
+    monLimit: $("#monLimit"),
+    monInc: $("#monInc"),
+    subStatus: $("#subStatus"),
+    subHint: $("#subHint"),
+    missionPreview: $("#missionPreview"),
+
+    // quick actions
+    btnRunAudit: $("#btnRunAudit"),
+    btnAddMonitor: $("#btnAddMonitor"),
+    btnGoMissions: $("#btnGoMissions"),
+    btnOpenBilling: $("#btnOpenBilling"),
+
+    // monitors table
+    monitorsRows: $("#monitorsRows"),
+    monitorsEmpty: $("#monitorsEmpty"),
+    btnAddMonitor2: $("#btnAddMonitor2"),
+
+    // plans buttons
+    planBtns: $$("[data-plan-btn]"),
+    btnSeePlans: $("#btnSeePlans"),
+
+    // addons
+    addonsList: $("#addonsList"),
+    btnManageAddons: $("#btnManageAddons"),
+
+    // account actions
+    btnPortal: $("#btnPortal"),
+    btnLogout: $("#btnLogout"),
   };
 
-  // If your HTML doesn't have these, the code still works, but you should add:
-  // <div id="view"></div> somewhere, and #sidebarNav for nav highlight.
-
-  // ---------- State ----------
+  // -------------------- STATE --------------------
   const state = {
     route: location.hash || "#overview",
-    loading: false,
-    controller: null,
-    user: null,
-    org: null,
+    rangeDays: 30,
+    aborter: null,
+    missions: [],
+    me: null,
+    overview: null,
+    monitors: [],
+    addons: [],
   };
 
-  // ---------- Theme ----------
-  function getTheme() {
-    return localStorage.getItem("fp_theme") || "dark";
-  }
-  function setTheme(theme) {
-    localStorage.setItem("fp_theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
-    if (els.themeToggle) {
-      els.themeToggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
-      els.themeToggle.textContent = theme === "dark" ? "🌙" : "☀️";
-      els.themeToggle.title = theme === "dark" ? "Dark mode" : "Light mode";
-    }
+  // -------------------- UTIL --------------------
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function setStatus(text, mode = "ok") {
+    if (els.statusText) els.statusText.textContent = text;
+    if (!els.statusDot) return;
+    els.statusDot.classList.remove("warn", "danger");
+    if (mode === "warn") els.statusDot.classList.add("warn");
+    if (mode === "danger") els.statusDot.classList.add("danger");
   }
 
-  // ---------- Toast ----------
-  let toastTimer = null;
-  function toast(message = "Done.", type = "info") {
-    if (!els.toast) return;
-    els.toast.dataset.type = type;
-    if (els.toastMsg) els.toastMsg.textContent = message;
-    els.toast.classList.add("show");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => els.toast.classList.remove("show"), 2600);
-  }
-
-  // ---------- Auth / Token helpers ----------
-  function getAccessToken() {
-    return localStorage.getItem("fp_access_token") || "";
-  }
-  function setAccessToken(token) {
-    if (token) localStorage.setItem("fp_access_token", token);
-  }
-  function clearTokens() {
-    localStorage.removeItem("fp_access_token");
-    localStorage.removeItem("fp_refresh_token");
-  }
-
-  async function refreshToken() {
-    // Try refresh endpoint if you have one. If not, this will fail gracefully.
-    const refresh = localStorage.getItem("fp_refresh_token");
-    if (!refresh) throw new Error("No refresh token");
-
-    const r = await fetch(`${API_BASE}/api/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: refresh }),
-    });
-
-    if (!r.ok) throw new Error("Refresh failed");
-    const data = await r.json().catch(() => ({}));
-    if (data?.accessToken) setAccessToken(data.accessToken);
-    if (data?.refreshToken) localStorage.setItem("fp_refresh_token", data.refreshToken);
-    return true;
-  }
-
-  // ---------- fetchWithAuth (fix “request expired”) ----------
-  async function fetchWithAuth(path, options = {}) {
-    const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
-    const headers = new Headers(options.headers || {});
-    const token = getAccessToken();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    if (!headers.has("Content-Type") && options.body) headers.set("Content-Type", "application/json");
-
-    // Abort previous view requests
-    if (state.controller) state.controller.abort();
-    state.controller = new AbortController();
-
-    const doFetch = () =>
-      fetch(url, {
-        ...options,
-        headers,
-        signal: state.controller.signal,
-        credentials: "include", // helps if you use cookies too
-      });
-
-    let res = await doFetch();
-
-    // If token expired, attempt refresh then retry once
-    if (res.status === 401 || res.status === 403) {
-      try {
-        await refreshToken();
-        const token2 = getAccessToken();
-        if (token2) headers.set("Authorization", `Bearer ${token2}`);
-        res = await doFetch();
-      } catch (e) {
-        // Logout UX
-        toast("Session expired. Please log in again.", "error");
-        clearTokens();
-        // Optional redirect
-        // location.href = "/login";
-        throw e;
-      }
-    }
-
-    // Handle rate limits / transient errors
-    if (res.status === 429) {
-      await sleep(700);
-      res = await doFetch();
-    }
-
-    return res;
-  }
-
-  function sleep(ms) {
-    return new Promise((r) => setTimeout(r, ms));
-  }
-
-  // ---------- Router ----------
-  function setActiveNav(hash) {
-    if (!els.nav) return;
-    $$("a[data-route]", els.nav).forEach((a) => {
-      a.classList.toggle("active", a.getAttribute("data-route") === hash);
-    });
-  }
-
-  function setTitle(text) {
-    if (els.topTitle) els.topTitle.textContent = text;
-    document.title = `FlowPoint AI — ${text}`;
-  }
-
-  function routeLabel(hash) {
-    return ROUTES.find((r) => r.hash === hash)?.label || "Dashboard";
-  }
-
-  async function navigate(hash) {
-    const h = hash || "#overview";
-    if (!ROUTES.some((r) => r.hash === h)) {
-      location.hash = "#overview";
-      return;
-    }
-
-    state.route = h;
-    setActiveNav(h);
-    setTitle(routeLabel(h));
-
-    // Render
-    if (!els.view) return;
-    els.view.classList.add("fadeIn");
-    try {
-      if (h === "#overview") await renderOverview();
-      else if (h === "#monitors") await renderMonitors();
-      else if (h === "#reports") await renderReports();
-      else if (h === "#logs") await renderLogs();
-      else if (h === "#billing") await renderBilling();
-      else if (h === "#settings") await renderSettings();
-      else if (h === "#mission") await renderMission();
-    } finally {
-      setTimeout(() => els.view && els.view.classList.remove("fadeIn"), 250);
-    }
-  }
-
-  // ---------- Render helpers ----------
-  function view(html) {
-    if (!els.view) return;
-    els.view.innerHTML = html;
-  }
-
-  function card({ title, subtitle = "", right = "", body = "" }) {
-    return `
-      <section class="card">
-        <div class="card__head">
-          <div>
-            <h3 class="card__title">${escapeHtml(title)}</h3>
-            ${subtitle ? `<p class="card__sub">${escapeHtml(subtitle)}</p>` : ""}
-          </div>
-          ${right ? `<div class="card__right">${right}</div>` : ""}
-        </div>
-        <div class="card__body">${body}</div>
-      </section>
-    `;
-  }
-
-  function escapeHtml(s) {
-    return String(s)
+  function esc(s) {
+    return String(s ?? "")
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
@@ -226,617 +141,772 @@
       .replaceAll("'", "&#039;");
   }
 
-  function fmtPct(n) {
-    if (n == null || Number.isNaN(Number(n))) return "—";
-    return `${Math.round(Number(n) * 100)}%`;
+  function pctBar(fillEl, used, limit) {
+    if (!fillEl) return;
+    const u = Number(used || 0);
+    const l = Math.max(1, Number(limit || 0) || 1);
+    const p = Math.min(100, Math.round((u / l) * 100));
+    fillEl.style.width = `${p}%`;
   }
 
-  function fmtMs(n) {
-    if (n == null || Number.isNaN(Number(n))) return "—";
-    const v = Number(n);
-    if (v < 1000) return `${Math.round(v)} ms`;
-    return `${(v / 1000).toFixed(2)} s`;
+  // -------------------- AUTH --------------------
+  function getToken() {
+    return localStorage.getItem(TOKEN_KEY) || "";
+  }
+  function setToken(t) {
+    if (t) localStorage.setItem(TOKEN_KEY, t);
+  }
+  function clearAuth() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
   }
 
-  // ---------- Data loaders ----------
-  async function loadMe() {
-    // Optional endpoint. If you don’t have it, it’ll fail quietly.
-    try {
-      const r = await fetchWithAuth("/api/me");
-      if (!r.ok) return null;
-      return await r.json();
-    } catch {
-      return null;
-    }
+  async function refreshTokenIfPossible() {
+    const refresh = localStorage.getItem(REFRESH_TOKEN_KEY);
+    if (!refresh) throw new Error("No refresh token");
+
+    const r = await fetch(`${API_BASE}${REFRESH_ENDPOINT}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: refresh }),
+      credentials: "include",
+    });
+
+    if (!r.ok) throw new Error("Refresh failed");
+    const data = await r.json().catch(() => ({}));
+
+    if (data?.token) setToken(data.token);
+    if (data?.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+    return true;
   }
 
-  async function loadOverview() {
-    try {
-      const r = await fetchWithAuth("/api/dashboard/overview");
-      if (!r.ok) return null;
-      return await r.json();
-    } catch {
-      return null;
-    }
-  }
+  async function fetchWithAuth(path, options = {}) {
+    const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+    const headers = new Headers(options.headers || {});
+    const tok = getToken();
+    if (tok) headers.set("Authorization", `Bearer ${tok}`);
+    if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
-  async function loadMonitors() {
-    try {
-      const r = await fetchWithAuth("/api/monitors");
-      if (!r.ok) return [];
-      return await r.json();
-    } catch {
-      return [];
-    }
-  }
+    if (state.aborter) state.aborter.abort();
+    state.aborter = new AbortController();
 
-  async function loadLogs() {
-    try {
-      const r = await fetchWithAuth("/api/logs?limit=50");
-      if (!r.ok) return [];
-      return await r.json();
-    } catch {
-      return [];
-    }
-  }
+    const doFetch = () =>
+      fetch(url, {
+        ...options,
+        headers,
+        signal: state.aborter.signal,
+        credentials: "include",
+      });
 
-  // ---------- Pages ----------
-  async function renderOverview() {
-    view(`
-      <div class="grid">
-        ${skeletonCard("Quick stats")}
-        ${skeletonCard("Uptime")}
-        ${skeletonCard("Latest events")}
-      </div>
-    `);
+    let res = await doFetch();
 
-    if (!state.user) state.user = await loadMe();
-
-    const data = await loadOverview();
-
-    const stats = data?.stats || {
-      sites: data?.sites ?? 0,
-      monitors: data?.monitors ?? 0,
-      alerts: data?.alerts ?? 0,
-      avgResponseMs: data?.avgResponseMs ?? null,
-      uptime7d: data?.uptime7d ?? null,
-    };
-
-    const events = data?.events || [];
-
-    view(`
-      <div class="grid">
-        ${card({
-          title: "Quick stats",
-          subtitle: state.user?.email ? `Signed in as ${state.user.email}` : "Your workspace at a glance",
-          body: `
-            <div class="kpis">
-              <div class="kpi"><div class="kpi__label">Sites</div><div class="kpi__value">${escapeHtml(stats.sites)}</div></div>
-              <div class="kpi"><div class="kpi__label">Monitors</div><div class="kpi__value">${escapeHtml(stats.monitors)}</div></div>
-              <div class="kpi"><div class="kpi__label">Alerts (7d)</div><div class="kpi__value">${escapeHtml(stats.alerts)}</div></div>
-              <div class="kpi"><div class="kpi__label">Avg response</div><div class="kpi__value">${escapeHtml(fmtMs(stats.avgResponseMs))}</div></div>
-            </div>
-            <div class="card__actions">
-              <button class="btn" data-action="go" data-to="#monitors">View monitoring</button>
-              <button class="btn btn--ghost" data-action="go" data-to="#reports">Open reports</button>
-            </div>
-          `,
-        })}
-        ${card({
-          title: "Uptime",
-          subtitle: "Rolling 7 days",
-          body: `
-            <div class="uptime">
-              <div class="uptime__big">${escapeHtml(fmtPct(stats.uptime7d))}</div>
-              <div class="uptime__meta">
-                <div class="pill">Auto-retry on auth expiry ✅</div>
-                <div class="pill pill--soft">Hash routes enabled</div>
-              </div>
-            </div>
-          `,
-        })}
-        ${card({
-          title: "Latest events",
-          subtitle: "Most recent activity",
-          body: events?.length
-            ? `<div class="list">
-                ${events
-                  .slice(0, 8)
-                  .map(
-                    (e) => `
-                  <div class="row">
-                    <div class="dot ${escapeHtml(e.type || "info")}"></div>
-                    <div class="row__main">
-                      <div class="row__title">${escapeHtml(e.title || "Event")}</div>
-                      <div class="row__sub">${escapeHtml(e.time || e.createdAt || "")}</div>
-                    </div>
-                    ${e.ctaHash ? `<button class="btn btn--xs" data-action="go" data-to="${escapeHtml(e.ctaHash)}">Open</button>` : ""}
-                  </div>`
-                  )
-                  .join("")}
-              </div>`
-            : `<div class="empty">
-                <div class="empty__title">No events yet</div>
-                <div class="empty__sub">Once monitors and reports run, you'll see them here.</div>
-              </div>`,
-        })}
-      </div>
-    `);
-  }
-
-  async function renderMonitors() {
-    view(`
-      <div class="grid">
-        ${skeletonCard("Monitors")}
-        ${skeletonCard("Health")}
-      </div>
-    `);
-
-    const monitors = await loadMonitors();
-
-    const up = monitors.filter((m) => (m.status || "").toLowerCase() === "up").length;
-    const down = monitors.filter((m) => (m.status || "").toLowerCase() === "down").length;
-
-    view(`
-      <div class="grid">
-        ${card({
-          title: "Monitors",
-          subtitle: "Your endpoints & site checks",
-          right: `<button class="btn" data-action="addMonitor">+ New monitor</button>`,
-          body: monitors.length
-            ? `<div class="table">
-                <div class="table__row table__head">
-                  <div>Name</div><div>Status</div><div>Response</div><div>Actions</div>
-                </div>
-                ${monitors
-                  .map((m) => {
-                    const s = (m.status || "unknown").toLowerCase();
-                    return `
-                      <div class="table__row">
-                        <div class="mono">${escapeHtml(m.name || m.url || "Monitor")}</div>
-                        <div><span class="badge badge--${escapeHtml(s)}">${escapeHtml(s.toUpperCase())}</span></div>
-                        <div>${escapeHtml(fmtMs(m.lastResponseMs))}</div>
-                        <div class="table__actions">
-                          <button class="btn btn--xs btn--ghost" data-action="ping" data-id="${escapeHtml(m.id)}">Test</button>
-                          <button class="btn btn--xs btn--ghost" data-action="editMonitor" data-id="${escapeHtml(m.id)}">Edit</button>
-                          <button class="btn btn--xs btn--danger" data-action="deleteMonitor" data-id="${escapeHtml(m.id)}">Delete</button>
-                        </div>
-                      </div>
-                    `;
-                  })
-                  .join("")}
-              </div>`
-            : `<div class="empty">
-                <div class="empty__title">No monitors</div>
-                <div class="empty__sub">Create your first monitor to track uptime and performance.</div>
-                <div class="card__actions">
-                  <button class="btn" data-action="addMonitor">+ New monitor</button>
-                </div>
-              </div>`,
-        })}
-        ${card({
-          title: "Health",
-          subtitle: "Current snapshot",
-          body: `
-            <div class="kpis">
-              <div class="kpi"><div class="kpi__label">UP</div><div class="kpi__value">${escapeHtml(up)}</div></div>
-              <div class="kpi"><div class="kpi__label">DOWN</div><div class="kpi__value">${escapeHtml(down)}</div></div>
-              <div class="kpi"><div class="kpi__label">TOTAL</div><div class="kpi__value">${escapeHtml(monitors.length)}</div></div>
-              <div class="kpi"><div class="kpi__label">Retry</div><div class="kpi__value">ON</div></div>
-            </div>
-            <div class="hint">Tip: if your API uses short-lived JWTs, keep <span class="mono">/api/auth/refresh</span> enabled.</div>
-          `,
-        })}
-      </div>
-    `);
-  }
-
-  async function renderReports() {
-    view(`
-      <div class="grid">
-        ${card({
-          title: "Reports",
-          subtitle: "Exports & monthly summaries",
-          right: `<button class="btn" data-action="exportPdf">Export PDF</button>`,
-          body: `
-            <div class="empty">
-              <div class="empty__title">Ready when you are</div>
-              <div class="empty__sub">Generate a report, then export it as PDF / CSV.</div>
-              <div class="card__actions">
-                <button class="btn" data-action="generateReport">Generate report</button>
-                <button class="btn btn--ghost" data-action="go" data-to="#logs">See logs</button>
-              </div>
-            </div>
-          `,
-        })}
-        ${card({
-          title: "Automations",
-          subtitle: "Cron + alerts",
-          body: `
-            <div class="list">
-              <div class="row">
-                <div class="dot success"></div>
-                <div class="row__main">
-                  <div class="row__title">Cron runner</div>
-                  <div class="row__sub">Secured endpoint for monitor runs</div>
-                </div>
-                <button class="btn btn--xs btn--ghost" data-action="runCron">Run now</button>
-              </div>
-              <div class="row">
-                <div class="dot info"></div>
-                <div class="row__main">
-                  <div class="row__title">Email alerts</div>
-                  <div class="row__sub">UP/DOWN notifications</div>
-                </div>
-                <button class="btn btn--xs btn--ghost" data-action="go" data-to="#settings">Configure</button>
-              </div>
-            </div>
-          `,
-        })}
-      </div>
-    `);
-  }
-
-  async function renderLogs() {
-    view(`
-      <div class="grid">
-        ${skeletonCard("Latest logs")}
-      </div>
-    `);
-
-    const logs = await loadLogs();
-
-    view(`
-      <div class="grid">
-        ${card({
-          title: "Latest logs",
-          subtitle: "Last 50 entries",
-          right: `<button class="btn btn--ghost" data-action="refreshLogs">Refresh</button>`,
-          body: logs.length
-            ? `<div class="loglist">
-                ${logs
-                  .slice(0, 50)
-                  .map(
-                    (l) => `
-                  <div class="log">
-                    <div class="log__lvl lvl-${escapeHtml((l.level || "info").toLowerCase())}">${escapeHtml(
-                      (l.level || "INFO").toUpperCase()
-                    )}</div>
-                    <div class="log__msg">${escapeHtml(l.message || l.msg || "—")}</div>
-                    <div class="log__ts mono">${escapeHtml(l.time || l.createdAt || "")}</div>
-                  </div>`
-                  )
-                  .join("")}
-              </div>`
-            : `<div class="empty">
-                <div class="empty__title">No logs</div>
-                <div class="empty__sub">Once cron runs and monitoring starts, logs will appear here.</div>
-              </div>`,
-        })}
-      </div>
-    `);
-  }
-
-  async function renderBilling() {
-    view(`
-      <div class="grid">
-        ${card({
-          title: "Billing",
-          subtitle: "Plan & invoices",
-          body: `
-            <div class="empty">
-              <div class="empty__title">Manage your plan</div>
-              <div class="empty__sub">Update plan, view invoices, and manage trial status.</div>
-              <div class="card__actions">
-                <button class="btn" data-action="openStripePortal">Open customer portal</button>
-              </div>
-            </div>
-          `,
-        })}
-      </div>
-    `);
-  }
-
-  async function renderSettings() {
-    view(`
-      <div class="grid">
-        ${card({
-          title: "Settings",
-          subtitle: "Theme, notifications, org configuration",
-          body: `
-            <div class="form">
-              <div class="field">
-                <label>Theme</label>
-                <div class="seg">
-                  <button class="seg__btn" data-action="setTheme" data-theme="light">Light</button>
-                  <button class="seg__btn" data-action="setTheme" data-theme="dark">Dark</button>
-                </div>
-              </div>
-              <div class="field">
-                <label>Alerts recipients</label>
-                <input class="input" id="alertRecipients" placeholder="name@domain.com, name2@domain.com" />
-                <div class="hint">Comma-separated emails. Saved locally unless your endpoint exists.</div>
-              </div>
-              <div class="field">
-                <button class="btn" data-action="saveSettings">Save</button>
-                <button class="btn btn--ghost" data-action="testEmail">Send test email</button>
-              </div>
-            </div>
-          `,
-        })}
-      </div>
-    `);
-
-    // hydrate saved local setting
-    const saved = localStorage.getItem("fp_alert_recipients");
-    const input = $("#alertRecipients");
-    if (input && saved) input.value = saved;
-    // mark active theme button
-    const t = getTheme();
-    $$(`.seg__btn[data-theme="${t}"]`).forEach((b) => b.classList.add("active"));
-  }
-
-  // ✅ Mission page (done/not done)
-  async function renderMission() {
-    const key = "fp_missions_v1";
-    const defaults = [
-      { id: "m1", title: "Setup at least 1 monitor", done: false },
-      { id: "m2", title: "Run cron manually once", done: false },
-      { id: "m3", title: "Enable email alerts", done: false },
-      { id: "m4", title: "Export a PDF report", done: false },
-      { id: "m5", title: "Invite a teammate (Ultra)", done: false },
-    ];
-
-    const missions = (() => {
+    // Handle expired token
+    if (res.status === 401 || res.status === 403) {
       try {
-        const parsed = JSON.parse(localStorage.getItem(key) || "null");
-        if (Array.isArray(parsed) && parsed.length) return parsed;
-      } catch {}
-      return defaults;
-    })();
+        await refreshTokenIfPossible();
+        const tok2 = getToken();
+        if (tok2) headers.set("Authorization", `Bearer ${tok2}`);
+        res = await doFetch();
+      } catch (e) {
+        // logout clean
+        clearAuth();
+        window.location.replace("/login.html");
+        throw e;
+      }
+    }
 
-    const doneCount = missions.filter((m) => m.done).length;
+    // small retry for rate-limit
+    if (res.status === 429) {
+      await sleep(600);
+      res = await doFetch();
+    }
 
-    view(`
-      <div class="grid">
-        ${card({
-          title: "Mission",
-          subtitle: "Mark as done or not done ✔️",
-          right: `<div class="pill">${doneCount}/${missions.length} done</div>`,
-          body: `
-            <div class="mission">
-              ${missions
-                .map(
-                  (m) => `
-                <label class="mission__item">
-                  <input type="checkbox" data-action="toggleMission" data-id="${escapeHtml(m.id)}" ${
-                    m.done ? "checked" : ""
-                  } />
-                  <span class="mission__check"></span>
-                  <span class="mission__text">${escapeHtml(m.title)}</span>
-                </label>
-              `
-                )
-                .join("")}
-            </div>
-            <div class="card__actions">
-              <button class="btn btn--ghost" data-action="resetMissions">Reset</button>
-              <button class="btn" data-action="saveMissions">Save</button>
-            </div>
-          `,
-        })}
-        ${card({
-          title: "Tips",
-          subtitle: "To keep everything stable",
-          body: `
-            <div class="list">
-              <div class="row">
-                <div class="dot success"></div>
-                <div class="row__main">
-                  <div class="row__title">No more “request expired”</div>
-                  <div class="row__sub">Auto refresh + retry on 401/403</div>
-                </div>
-              </div>
-              <div class="row">
-                <div class="dot info"></div>
-                <div class="row__main">
-                  <div class="row__title">Hash router</div>
-                  <div class="row__sub">Fast navigation without reload</div>
-                </div>
-              </div>
-            </div>
-          `,
-        })}
-      </div>
-    `);
-
-    // store missions in memory for toggles
-    state._missions = missions;
+    return res;
   }
 
-  function skeletonCard(title) {
-    return `
-      <section class="card">
-        <div class="card__head">
+  // -------------------- MISSIONS --------------------
+  const MISSIONS_KEY = "fp_missions_v1";
+  const defaultMissions = [
+    { id: "m1", title: "Créer ton 1er monitor", meta: "Monitoring", done: false },
+    { id: "m2", title: "Lancer un SEO audit", meta: "Audits", done: false },
+    { id: "m3", title: "Ouvrir Billing Portal", meta: "Billing", done: false },
+    { id: "m4", title: "Exporter audits CSV", meta: "Exports", done: false },
+    { id: "m5", title: "Activer un add-on", meta: "Add-ons", done: false },
+  ];
+
+  function loadMissions() {
+    try {
+      const raw = localStorage.getItem(MISSIONS_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch {}
+    return JSON.parse(JSON.stringify(defaultMissions));
+  }
+
+  function saveMissions(missions) {
+    localStorage.setItem(MISSIONS_KEY, JSON.stringify(missions));
+  }
+
+  function renderMissionPreview() {
+    if (!els.missionPreview) return;
+    const missions = state.missions.slice(0, 4);
+    els.missionPreview.innerHTML = missions
+      .map((m) => {
+        const doneClass = m.done ? "done" : "";
+        const doneWrap = m.done ? "isDone" : "";
+        return `
+          <div class="fpMission ${doneWrap}">
+            <div class="fpCheck ${doneClass}" data-mission-toggle="${esc(m.id)}">${m.done ? "✓" : ""}</div>
+            <div class="fpMissionBody">
+              <div class="fpMissionTitle">${esc(m.title)}</div>
+              <div class="fpMissionMeta">${esc(m.meta || "")}</div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  function renderMissionsPage() {
+    const missions = state.missions;
+    const done = missions.filter((m) => m.done).length;
+
+    els.pageContainer.innerHTML = `
+      <div class="fpCard" style="margin-top:14px">
+        <div class="fpCardHead">
           <div>
-            <h3 class="card__title">${escapeHtml(title)}</h3>
-            <p class="card__sub">Loading…</p>
+            <div class="fpCardTitle">Missions</div>
+            <div class="fpSmall">Marque comme fait / pas fait ✔ — ${done}/${missions.length} complétées</div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="fpBtn small" id="btnResetMissions" type="button">Reset</button>
+            <button class="fpBtn small primary" id="btnSaveMissions" type="button">Save</button>
           </div>
         </div>
-        <div class="card__body">
-          <div class="skeleton sk1"></div>
-          <div class="skeleton sk2"></div>
-          <div class="skeleton sk3"></div>
+
+        <div class="fpMissionList" style="margin-top:12px">
+          ${missions
+            .map((m) => {
+              const doneClass = m.done ? "done" : "";
+              const doneWrap = m.done ? "isDone" : "";
+              return `
+                <div class="fpMission ${doneWrap}">
+                  <div class="fpCheck ${doneClass}" data-mission-toggle="${esc(m.id)}">${m.done ? "✓" : ""}</div>
+                  <div class="fpMissionBody">
+                    <div class="fpMissionTitle">${esc(m.title)}</div>
+                    <div class="fpMissionMeta">${esc(m.meta || "")}</div>
+                  </div>
+                </div>
+              `;
+            })
+            .join("")}
         </div>
-      </section>
+      </div>
     `;
-  }
 
-  // ---------- Actions (buttons that “did nothing” before) ----------
-  document.addEventListener("click", async (e) => {
-    const btn = e.target.closest("[data-action]");
-    if (!btn) return;
+    const btnReset = $("#btnResetMissions");
+    const btnSave = $("#btnSaveMissions");
 
-    const action = btn.getAttribute("data-action");
-
-    try {
-      if (action === "go") {
-        const to = btn.getAttribute("data-to") || "#overview";
-        location.hash = to;
-      }
-
-      if (action === "setTheme") {
-        const t = btn.getAttribute("data-theme");
-        if (t === "light" || t === "dark") {
-          setTheme(t);
-          $$(".seg__btn").forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-          toast(`Theme set to ${t}`, "success");
-        }
-      }
-
-      if (action === "refreshLogs") {
-        await renderLogs();
-        toast("Logs refreshed", "success");
-      }
-
-      if (action === "addMonitor") {
-        toast("Add monitor: connect this to your modal/form.", "info");
-      }
-
-      if (action === "ping") {
-        const id = btn.getAttribute("data-id");
-        btn.disabled = true;
-        btn.textContent = "Testing…";
-        const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}/ping`, { method: "POST" });
-        btn.disabled = false;
-        btn.textContent = "Test";
-        toast(r.ok ? "Ping OK" : "Ping failed", r.ok ? "success" : "error");
-      }
-
-      if (action === "deleteMonitor") {
-        const id = btn.getAttribute("data-id");
-        btn.disabled = true;
-        const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}`, { method: "DELETE" });
-        toast(r.ok ? "Deleted" : "Delete failed", r.ok ? "success" : "error");
-        await renderMonitors();
-      }
-
-      if (action === "generateReport") {
-        toast("Generating…", "info");
-        const r = await fetchWithAuth(`/api/reports/generate`, { method: "POST" });
-        toast(r.ok ? "Report generated" : "Failed", r.ok ? "success" : "error");
-      }
-
-      if (action === "exportPdf") {
-        toast("Preparing PDF…", "info");
-        const r = await fetchWithAuth(`/api/reports/export/pdf`, { method: "GET" });
-        if (!r.ok) return toast("Export failed", "error");
-        // Download
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "flowpoint-report.pdf";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        toast("PDF downloaded", "success");
-      }
-
-      if (action === "runCron") {
-        toast("Running cron…", "info");
-        const r = await fetchWithAuth(`/api/cron/run`, { method: "POST" });
-        toast(r.ok ? "Cron executed" : "Cron failed", r.ok ? "success" : "error");
-      }
-
-      if (action === "openStripePortal") {
-        const r = await fetchWithAuth(`/api/billing/portal`, { method: "POST" });
-        if (!r.ok) return toast("Portal error", "error");
-        const data = await r.json().catch(() => ({}));
-        if (data?.url) location.href = data.url;
-        else toast("Portal URL missing", "error");
-      }
-
-      if (action === "saveSettings") {
-        const input = $("#alertRecipients");
-        const value = (input?.value || "").trim();
-        localStorage.setItem("fp_alert_recipients", value);
-        // Optional: push to backend if exists
-        try {
-          await fetchWithAuth("/api/org/settings", {
-            method: "POST",
-            body: JSON.stringify({ alertRecipients: value }),
-          });
-        } catch {}
-        toast("Settings saved", "success");
-      }
-
-      if (action === "testEmail") {
-        toast("Sending…", "info");
-        const r = await fetchWithAuth(`/api/email/test`, { method: "POST" });
-        toast(r.ok ? "Test email sent" : "Email failed", r.ok ? "success" : "error");
-      }
-
-      // Mission actions
-      if (action === "toggleMission") {
-        // handled in change event (checkbox), but keep safe
-      }
-      if (action === "resetMissions") {
-        localStorage.removeItem("fp_missions_v1");
-        toast("Missions reset", "success");
-        await renderMission();
-      }
-      if (action === "saveMissions") {
-        if (state._missions) {
-          localStorage.setItem("fp_missions_v1", JSON.stringify(state._missions));
-          toast("Missions saved ✔️", "success");
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      toast("Something went wrong", "error");
-    }
-  });
-
-  document.addEventListener("change", (e) => {
-    const cb = e.target.closest('input[type="checkbox"][data-action="toggleMission"]');
-    if (!cb) return;
-    const id = cb.getAttribute("data-id");
-    const missions = state._missions || [];
-    const m = missions.find((x) => x.id === id);
-    if (m) m.done = !!cb.checked;
-  });
-
-  // ---------- Init ----------
-  function buildNavIfMissing() {
-    if (!els.nav) return;
-    // If your HTML already has links, skip.
-    if ($$("a[data-route]", els.nav).length) return;
-
-    els.nav.innerHTML = ROUTES.map(
-      (r) => `<a class="nav__link" href="${r.hash}" data-route="${r.hash}">
-                <span class="nav__dot"></span>
-                <span>${r.label}</span>
-              </a>`
-    ).join("");
-  }
-
-  function init() {
-    setTheme(getTheme());
-
-    if (els.themeToggle) {
-      els.themeToggle.addEventListener("click", () => {
-        setTheme(getTheme() === "dark" ? "light" : "dark");
+    if (btnReset) {
+      btnReset.addEventListener("click", () => {
+        state.missions = JSON.parse(JSON.stringify(defaultMissions));
+        saveMissions(state.missions);
+        renderMissionPreview();
+        renderMissionsPage();
+        setStatus("Missions réinitialisées — OK", "ok");
       });
     }
 
-    buildNavIfMissing();
-    window.addEventListener("hashchange", () => navigate(location.hash || "#overview"));
+    if (btnSave) {
+      btnSave.addEventListener("click", () => {
+        saveMissions(state.missions);
+        renderMissionPreview();
+        setStatus("Missions sauvegardées — OK", "ok");
+      });
+    }
+  }
 
-    // First route
-    navigate(location.hash || "#overview").catch(() => navigate("#overview"));
+  function toggleMission(id) {
+    const m = state.missions.find((x) => x.id === id);
+    if (!m) return;
+    m.done = !m.done;
+    saveMissions(state.missions);
+  }
+
+  // -------------------- RENDER PAGES --------------------
+  function renderSimplePage(title, subtitle, html = "") {
+    els.pageContainer.innerHTML = `
+      <div class="fpCard" style="margin-top:14px">
+        <div class="fpCardHead">
+          <div>
+            <div class="fpCardTitle">${esc(title)}</div>
+            <div class="fpSmall">${esc(subtitle)}</div>
+          </div>
+        </div>
+        <div style="margin-top:12px">${html}</div>
+      </div>
+    `;
+  }
+
+  function renderAudits() {
+    renderSimplePage(
+      "Audits",
+      "Lance des audits SEO et retrouve ton historique.",
+      `
+      <div class="fpDetailActions">
+        <button class="fpBtn primary" id="audBtnRun" type="button">Run SEO audit</button>
+        <button class="fpBtn" id="audBtnExport" type="button">Export audits CSV</button>
+      </div>
+      <div class="fpNote">Connecte ces boutons à tes endpoints: <span class="fpMono">/api/audits/run</span> et <span class="fpMono">/api/audits/export.csv</span>.</div>
+      `
+    );
+
+    const run = $("#audBtnRun");
+    const exp = $("#audBtnExport");
+
+    if (run) run.addEventListener("click", () => safeRunAudit());
+    if (exp) exp.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv"));
+  }
+
+  function renderMonitors() {
+    renderSimplePage(
+      "Monitors",
+      "Ajoute, supprime et surveille tes URLs.",
+      `
+      <div class="fpDetailActions">
+        <button class="fpBtn primary" id="monBtnAdd" type="button">Add monitor</button>
+        <button class="fpBtn" id="monBtnExport" type="button">Export monitors CSV</button>
+      </div>
+      <div class="fpNote">La liste en temps réel reste sur la colonne de droite. Ici tu peux ajouter une page détail si tu veux.</div>
+      `
+    );
+
+    const add = $("#monBtnAdd");
+    const exp = $("#monBtnExport");
+    if (add) add.addEventListener("click", () => safeAddMonitor());
+    if (exp) exp.addEventListener("click", () => safeExport("/api/exports/monitors.csv", "monitors.csv"));
+  }
+
+  function renderReports() {
+    renderSimplePage(
+      "Reports",
+      "Exports PDF/CSV et rapports mensuels.",
+      `
+      <div class="fpDetailActions">
+        <button class="fpBtn primary" id="repBtnPdf" type="button">Export PDF</button>
+        <button class="fpBtn" id="repBtnCsv" type="button">Export CSV</button>
+      </div>
+      <div class="fpNote">Branche ces actions sur tes routes: <span class="fpMono">/api/reports/export/pdf</span> et <span class="fpMono">/api/reports/export/csv</span>.</div>
+      `
+    );
+
+    const pdf = $("#repBtnPdf");
+    const csv = $("#repBtnCsv");
+    if (pdf) pdf.addEventListener("click", () => safeExport("/api/reports/export/pdf", "report.pdf"));
+    if (csv) csv.addEventListener("click", () => safeExport("/api/reports/export/csv", "report.csv"));
+  }
+
+  function renderBilling() {
+    renderSimplePage(
+      "Billing",
+      "Gère ton abonnement via Stripe Billing Portal.",
+      `
+      <div class="fpDetailActions">
+        <button class="fpBtn primary" id="billBtnPortal" type="button">Open Billing Portal</button>
+      </div>
+      <div class="fpNote">Le portal doit renvoyer une URL: <span class="fpMono">POST /api/billing/portal</span> → {"url":"https://..."}</div>
+      `
+    );
+
+    const b = $("#billBtnPortal");
+    if (b) b.addEventListener("click", () => openBillingPortal());
+  }
+
+  function renderSettings() {
+    renderSimplePage(
+      "Settings",
+      "Config organisation: alert emails, options, etc.",
+      `
+      <div class="fpSettingsGrid" style="margin-top:10px">
+        <div class="fpCardInner">
+          <div class="fpCardInnerTitle">Alert emails</div>
+          <div class="fpField">
+            <label class="fpLabel">Recipients (comma-separated)</label>
+            <input class="fpInput" id="setRecipients" placeholder="name@domain.com, other@domain.com" />
+          </div>
+          <div class="fpDetailActions">
+            <button class="fpBtn primary" id="setSave" type="button">Save</button>
+            <button class="fpBtn" id="setTest" type="button">Send test</button>
+          </div>
+        </div>
+
+        <div class="fpCardInner">
+          <div class="fpCardInnerTitle">UI</div>
+          <div class="fpSmall">Ton thème suit le système (light/dark). Si tu veux un toggle, je te l’ajoute.</div>
+        </div>
+      </div>
+      `
+    );
+
+    const input = $("#setRecipients");
+    const saved = localStorage.getItem("fp_alert_recipients") || "";
+    if (input) input.value = saved;
+
+    const save = $("#setSave");
+    const test = $("#setTest");
+
+    if (save) {
+      save.addEventListener("click", async () => {
+        const val = (input?.value || "").trim();
+        localStorage.setItem("fp_alert_recipients", val);
+        setStatus("Settings saved — OK", "ok");
+        // optional backend save if exists
+        try {
+          await fetchWithAuth("/api/org/settings", {
+            method: "POST",
+            body: JSON.stringify({ alertRecipients: val }),
+          });
+        } catch {}
+      });
+    }
+
+    if (test) {
+      test.addEventListener("click", async () => {
+        setStatus("Sending test…", "warn");
+        try {
+          const r = await fetchWithAuth("/api/email/test", { method: "POST" });
+          setStatus(r.ok ? "Test email sent — OK" : "Test failed", r.ok ? "ok" : "danger");
+        } catch {
+          setStatus("Test failed", "danger");
+        }
+      });
+    }
+  }
+
+  // -------------------- OVERVIEW DATA (SAFE DEFAULTS) --------------------
+  function hydrateOverviewFallback() {
+    // Range
+    if (els.kpiRange) els.kpiRange.textContent = `LAST ${state.rangeDays} DAYS`;
+    if (els.seoHint) els.seoHint.textContent = `Last ${state.rangeDays} days`;
+
+    // If no API, keep UI stable
+    if (els.seoScore) els.seoScore.textContent = String(state.overview?.seoScore ?? 0);
+    if (els.monActive) els.monActive.textContent = String(state.overview?.monActive ?? 0);
+    if (els.monLimit) els.monLimit.textContent = String(state.overview?.monLimit ?? 0);
+    if (els.monInc) els.monInc.textContent = String(state.overview?.incidentsDown ?? 0);
+    if (els.subStatus) els.subStatus.textContent = String(state.overview?.subStatus ?? "—");
+    if (els.subHint) els.subHint.textContent = String(state.overview?.subHint ?? "—");
+    if (els.orgChip) els.orgChip.textContent = String(state.me?.orgName ?? "—");
+  }
+
+  function hydrateAccountFallback() {
+    const me = state.me || {};
+    if (els.helloTitle) els.helloTitle.textContent = `Bonjour, ${me.firstName || me.name || "—"}`;
+    if (els.avatarText) {
+      const s = (me.name || "FlowPoint").trim();
+      els.avatarText.textContent = (s[0] || "F").toUpperCase() + (s.split(" ")[1]?.[0] || "P").toUpperCase();
+    }
+
+    if (els.accPlan) els.accPlan.textContent = me.plan || "—";
+    if (els.accOrg) els.accOrg.textContent = me.orgName || "—";
+    if (els.accRole) els.accRole.textContent = me.role || "—";
+    if (els.accTrial) els.accTrial.textContent = me.trial || "—";
+
+    const usage = me.usage || {};
+    if (els.uAudits) els.uAudits.textContent = usage.audits ?? "—";
+    if (els.uPdf) els.uPdf.textContent = usage.pdf ?? "—";
+    if (els.uExports) els.uExports.textContent = usage.exports ?? "—";
+    if (els.uMonitors) els.uMonitors.textContent = usage.monitors ?? "—";
+
+    pctBar(els.barAudits, usage.auditsUsed, usage.auditsLimit);
+    pctBar(els.barPdf, usage.pdfUsed, usage.pdfLimit);
+    pctBar(els.barExports, usage.exportsUsed, usage.exportsLimit);
+  }
+
+  async function loadData() {
+    // NOTE: these endpoints are OPTIONAL. If they don't exist, dashboard still runs.
+    // You can rename them to match your backend easily.
+
+    setStatus("Refreshing…", "warn");
+
+    // Basic fallback first (prevents UI from looking broken)
+    hydrateAccountFallback();
+    hydrateOverviewFallback();
+
+    // Attempt API calls
+    try {
+      // /api/me
+      try {
+        const rMe = await fetchWithAuth("/api/me");
+        if (rMe.ok) state.me = await rMe.json();
+      } catch {}
+
+      // /api/dashboard/overview?range=30
+      try {
+        const rOv = await fetchWithAuth(`/api/dashboard/overview?range=${encodeURIComponent(state.rangeDays)}`);
+        if (rOv.ok) state.overview = await rOv.json();
+      } catch {}
+
+      // /api/monitors
+      try {
+        const rMon = await fetchWithAuth("/api/monitors");
+        if (rMon.ok) state.monitors = await rMon.json();
+      } catch {}
+
+      // /api/addons
+      try {
+        const rAd = await fetchWithAuth("/api/addons");
+        if (rAd.ok) state.addons = await rAd.json();
+      } catch {}
+
+      hydrateAccountFallback();
+      hydrateOverviewFallback();
+      renderMonitorsTable();
+      renderAddons();
+      renderMissionPreview();
+
+      setStatus("Dashboard à jour — OK", "ok");
+    } catch (e) {
+      console.error(e);
+      setStatus("Erreur réseau / session — vérifie ton token", "danger");
+    }
+  }
+
+  // -------------------- MONITORS TABLE (RIGHT COLUMN) --------------------
+  function renderMonitorsTable() {
+    if (!els.monitorsRows || !els.monitorsEmpty) return;
+
+    const arr = Array.isArray(state.monitors) ? state.monitors : [];
+    if (!arr.length) {
+      els.monitorsRows.innerHTML = "";
+      els.monitorsEmpty.style.display = "block";
+      return;
+    }
+
+    els.monitorsEmpty.style.display = "none";
+    els.monitorsRows.innerHTML = arr
+      .slice(0, 30)
+      .map((m) => {
+        const url = m.url || m.endpoint || m.name || "—";
+        const status = String(m.status || "unknown").toLowerCase();
+        const interval = m.interval || m.intervalMin || "—";
+        const last = m.lastCheck || m.lastCheckedAt || m.updatedAt || "—";
+
+        return `
+          <div class="fpTr row">
+            <div class="fpUrl">${esc(url)}</div>
+            <div>
+              <span class="fpBadge ${status === "up" ? "up" : status === "down" ? "down" : ""}">
+                <span class="fpBadgeDot"></span>
+                ${esc(status.toUpperCase())}
+              </span>
+            </div>
+            <div class="fpMono">${esc(interval)}</div>
+            <div class="fpMono">${esc(last)}</div>
+            <div class="fpRowBtns">
+              <button class="fpBtn small" data-mon-action="test" data-id="${esc(m.id)}" type="button">Test</button>
+            </div>
+            <div class="fpRowBtns">
+              <button class="fpBtn small danger" data-mon-action="del" data-id="${esc(m.id)}" type="button">Del</button>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  // -------------------- ADDONS (RIGHT COLUMN) --------------------
+  function renderAddons() {
+    if (!els.addonsList) return;
+
+    const arr = Array.isArray(state.addons) ? state.addons : [];
+    if (!arr.length) {
+      els.addonsList.innerHTML = `
+        <div class="fpAddonRow">
+          <div class="fpAddonLabel">No add-ons</div>
+          <span class="fpAddonPill off">OFF</span>
+        </div>
+      `;
+      return;
+    }
+
+    els.addonsList.innerHTML = arr
+      .map((a) => {
+        const label = a.name || a.key || "Addon";
+        const on = !!(a.enabled ?? a.active ?? a.on);
+        const pillClass = on ? "on" : "off";
+        return `
+          <div class="fpAddonRow">
+            <div class="fpAddonLabel">${esc(label)}</div>
+            <span class="fpAddonPill ${pillClass}">${on ? "ON" : "OFF"}</span>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  // -------------------- ROUTER --------------------
+  function setActiveNav(hash) {
+    const key = hash.replace("#", "");
+    els.navItems.forEach((a) => {
+      const r = a.getAttribute("data-route");
+      a.classList.toggle("active", r === key);
+    });
+  }
+
+  function navigate(hash) {
+    const h = hash || "#overview";
+    const exists = ROUTES.some((r) => r.hash === h);
+    state.route = exists ? h : "#overview";
+    if (!exists) location.hash = "#overview";
+
+    setActiveNav(state.route);
+
+    // Only render into pageContainer for non-overview
+    if (!els.pageContainer) return;
+    if (state.route === "#overview") {
+      els.pageContainer.innerHTML = "";
+      return;
+    }
+
+    if (state.route === "#missions") return renderMissionsPage();
+    if (state.route === "#audits") return renderAudits();
+    if (state.route === "#monitors") return renderMonitors();
+    if (state.route === "#reports") return renderReports();
+    if (state.route === "#billing") return renderBilling();
+    if (state.route === "#settings") return renderSettings();
+  }
+
+  // -------------------- UI ACTIONS --------------------
+  function openSidebar() {
+    if (!els.sidebar || !els.overlay) return;
+    els.sidebar.classList.add("open");
+    els.overlay.classList.add("show");
+    els.overlay.setAttribute("aria-hidden", "false");
+  }
+  function closeSidebar() {
+    if (!els.sidebar || !els.overlay) return;
+    els.sidebar.classList.remove("open");
+    els.overlay.classList.remove("show");
+    els.overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function toggleExportsMenu(force) {
+    if (!els.exportsMenu) return;
+    const isOpen = els.exportsMenu.classList.contains("show");
+    const next = typeof force === "boolean" ? force : !isOpen;
+    els.exportsMenu.classList.toggle("show", next);
+    els.exportsMenu.setAttribute("aria-hidden", next ? "false" : "true");
+  }
+
+  async function openBillingPortal() {
+    setStatus("Opening billing portal…", "warn");
+    try {
+      const r = await fetchWithAuth("/api/billing/portal", { method: "POST" });
+      if (!r.ok) throw new Error("portal failed");
+      const data = await r.json().catch(() => ({}));
+      if (data?.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setStatus("Portal URL missing", "danger");
+    } catch (e) {
+      console.error(e);
+      setStatus("Billing portal error", "danger");
+    }
+  }
+
+  async function safeExport(endpoint, filename) {
+    setStatus("Preparing export…", "warn");
+    try {
+      const r = await fetchWithAuth(endpoint, { method: "GET" });
+      if (!r.ok) throw new Error("export failed");
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "export";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus("Export downloaded — OK", "ok");
+    } catch (e) {
+      console.error(e);
+      setStatus("Export failed", "danger");
+    }
+  }
+
+  async function safeRunAudit() {
+    setStatus("Running audit…", "warn");
+    try {
+      const r = await fetchWithAuth("/api/audits/run", { method: "POST" });
+      setStatus(r.ok ? "Audit started — OK" : "Audit failed", r.ok ? "ok" : "danger");
+    } catch (e) {
+      console.error(e);
+      setStatus("Audit failed", "danger");
+    }
+  }
+
+  async function safeAddMonitor() {
+    // Minimal prompt to avoid modal dependency
+    const url = prompt("URL à monitor (ex: https://site.com) ?");
+    if (!url) return;
+
+    setStatus("Creating monitor…", "warn");
+    try {
+      const r = await fetchWithAuth("/api/monitors", {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      });
+      if (!r.ok) throw new Error("create monitor failed");
+      setStatus("Monitor created — OK", "ok");
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      setStatus("Create monitor failed", "danger");
+    }
+  }
+
+  async function safeTestMonitor(id) {
+    if (!id) return;
+    setStatus("Testing monitor…", "warn");
+    try {
+      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}/ping`, { method: "POST" });
+      setStatus(r.ok ? "Test OK — UP" : "Test failed", r.ok ? "ok" : "danger");
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      setStatus("Test failed", "danger");
+    }
+  }
+
+  async function safeDeleteMonitor(id) {
+    if (!id) return;
+    if (!confirm("Supprimer ce monitor ?")) return;
+    setStatus("Deleting monitor…", "warn");
+    try {
+      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}`, { method: "DELETE" });
+      setStatus(r.ok ? "Monitor deleted — OK" : "Delete failed", r.ok ? "ok" : "danger");
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      setStatus("Delete failed", "danger");
+    }
+  }
+
+  function logout() {
+    clearAuth();
+    window.location.replace("/login.html");
+  }
+
+  // -------------------- EVENT BINDINGS --------------------
+  function bind() {
+    // mobile menu
+    if (els.btnMenu) els.btnMenu.addEventListener("click", openSidebar);
+    if (els.overlay) els.overlay.addEventListener("click", closeSidebar);
+
+    // close sidebar when clicking nav on mobile
+    els.navItems.forEach((a) =>
+      a.addEventListener("click", () => {
+        // allow hash change, then close
+        closeSidebar();
+      })
+    );
+
+    // dropdown exports
+    if (els.btnExports) els.btnExports.addEventListener("click", () => toggleExportsMenu());
+    document.addEventListener("click", (e) => {
+      const inside = e.target.closest(".fpDropdown");
+      if (!inside) toggleExportsMenu(false);
+    });
+
+    if (els.btnExportAudits) {
+      els.btnExportAudits.addEventListener("click", () => {
+        toggleExportsMenu(false);
+        safeExport("/api/exports/audits.csv", "audits.csv");
+      });
+    }
+    if (els.btnExportMonitors) {
+      els.btnExportMonitors.addEventListener("click", () => {
+        toggleExportsMenu(false);
+        safeExport("/api/exports/monitors.csv", "monitors.csv");
+      });
+    }
+
+    // refresh + range
+    if (els.btnRefresh) els.btnRefresh.addEventListener("click", loadData);
+    if (els.rangeSelect) {
+      els.rangeSelect.addEventListener("change", () => {
+        const v = Number(els.rangeSelect.value || 30);
+        state.rangeDays = [30, 7, 3].includes(v) ? v : 30;
+        if (els.kpiRange) els.kpiRange.textContent = `LAST ${state.rangeDays} DAYS`;
+        if (els.seoHint) els.seoHint.textContent = `Last ${state.rangeDays} days`;
+        loadData();
+      });
+    }
+
+    // quick actions
+    if (els.btnRunAudit) els.btnRunAudit.addEventListener("click", safeRunAudit);
+    if (els.btnAddMonitor) els.btnAddMonitor.addEventListener("click", safeAddMonitor);
+    if (els.btnAddMonitor2) els.btnAddMonitor2.addEventListener("click", safeAddMonitor);
+
+    if (els.btnGoMissions) {
+      els.btnGoMissions.addEventListener("click", () => {
+        location.hash = "#missions";
+      });
+    }
+
+    if (els.btnOpenBilling) els.btnOpenBilling.addEventListener("click", openBillingPortal);
+
+    // account buttons
+    if (els.btnPortal) els.btnPortal.addEventListener("click", openBillingPortal);
+    if (els.btnLogout) els.btnLogout.addEventListener("click", logout);
+
+    // plans/manage buttons (all route to portal for now)
+    els.planBtns.forEach((b) => b.addEventListener("click", openBillingPortal));
+    if (els.btnSeePlans) els.btnSeePlans.addEventListener("click", openBillingPortal);
+    if (els.btnManageAddons) els.btnManageAddons.addEventListener("click", openBillingPortal);
+
+    // mission toggle (preview + page) via event delegation
+    document.addEventListener("click", (e) => {
+      const t = e.target.closest("[data-mission-toggle]");
+      if (t) {
+        const id = t.getAttribute("data-mission-toggle");
+        toggleMission(id);
+        renderMissionPreview();
+        if (location.hash === "#missions") renderMissionsPage();
+      }
+
+      const mon = e.target.closest("[data-mon-action]");
+      if (mon) {
+        const act = mon.getAttribute("data-mon-action");
+        const id = mon.getAttribute("data-id");
+        if (act === "test") safeTestMonitor(id);
+        if (act === "del") safeDeleteMonitor(id);
+      }
+    });
+
+    // router
+    window.addEventListener("hashchange", () => navigate(location.hash));
+  }
+
+  // -------------------- INIT --------------------
+  function init() {
+    state.missions = loadMissions();
+
+    // ensure hash is valid
+    if (!ROUTES.some((r) => r.hash === location.hash)) {
+      if (!location.hash) location.hash = "#overview";
+    }
+
+    // set select default
+    if (els.rangeSelect) els.rangeSelect.value = String(state.rangeDays);
+
+    renderMissionPreview();
+    navigate(location.hash || "#overview");
+    bind();
+    loadData();
   }
 
   init();
