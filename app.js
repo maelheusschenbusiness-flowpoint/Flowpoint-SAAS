@@ -1,10 +1,8 @@
 /* =========================================================
-   FLOWPOINT — DASHBOARD V3 (FULL RESET)
-   - Real dedicated pages: overview.html, missions.html, etc.
-   - Shared CSS/JS
-   - Highlights active nav based on <body data-page="">
-   - Robust API fetch (optional refresh token)
-   - Pages render content dynamically into #grid
+   FLOWPOINT — APP.JS (SAFE PUBLIC + PRIVATE PAGES)
+   - Public pages do NOT redirect
+   - Private dashboard pages require token
+   - Uses your real backend routes
    ========================================================= */
 
 (() => {
@@ -13,12 +11,25 @@
   // --------- CONFIG ---------
   const API_BASE = "";
   const TOKEN_KEY = "token";
-  const REFRESH_TOKEN_KEY = "refreshToken"; // optional
-  const REFRESH_ENDPOINT = "/api/auth/refresh"; // optional
+  const REFRESH_TOKEN_KEY = "refreshToken";
+  const REFRESH_ENDPOINT = "/api/auth/refresh";
+
+  const PUBLIC_PAGES = new Set([
+    "public",
+    "index",
+    "login",
+    "pricing",
+    "checkout",
+    "success",
+    "cancel"
+  ]);
 
   // --------- DOM ---------
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+
+  const pageType = (document.body?.dataset?.page || "public").toLowerCase();
+  const isPublicPage = PUBLIC_PAGES.has(pageType);
 
   const els = {
     overlay: $("#overlay"),
@@ -29,13 +40,11 @@
     statusText: $("#statusText"),
     helloTitle: $("#helloTitle"),
 
-    // account
     accPlan: $("#accPlan"),
     accOrg: $("#accOrg"),
     accRole: $("#accRole"),
     accTrial: $("#accTrial"),
 
-    // usage
     uAudits: $("#uAudits"),
     uPdf: $("#uPdf"),
     uExports: $("#uExports"),
@@ -44,13 +53,11 @@
     barPdf: $("#barPdf"),
     barExports: $("#barExports"),
 
-    // page head
     pageTitle: $("#pageTitle"),
     pageDesc: $("#pageDesc"),
     pageActions: $("#pageActions"),
     grid: $("#grid"),
 
-    // sidebar actions
     btnPortal: $("#btnPortal"),
     btnLogout: $("#btnLogout"),
 
@@ -59,16 +66,12 @@
 
   // --------- STATE ---------
   const state = {
-    page: (document.body.getAttribute("data-page") || "overview").toLowerCase(),
+    page: pageType,
     controller: null,
-
     me: null,
     overview: null,
     audits: [],
     monitors: [],
-    subscription: null,
-    addons: [],
-
     missions: [],
   };
 
@@ -115,12 +118,30 @@
   function getToken() {
     return localStorage.getItem(TOKEN_KEY) || "";
   }
+
   function setToken(t) {
     if (t) localStorage.setItem(TOKEN_KEY, t);
   }
+
   function clearAuth() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
+
+  function requirePrivateToken() {
+    if (isPublicPage) return true;
+
+    try {
+      const tok = getToken();
+      if (!tok || tok.trim().length < 10) {
+        window.location.replace("/login.html");
+        return false;
+      }
+      return true;
+    } catch {
+      window.location.replace("/login.html");
+      return false;
+    }
   }
 
   async function refreshTokenIfPossible() {
@@ -135,6 +156,7 @@
     });
 
     if (!r.ok) throw new Error("Refresh failed");
+
     const data = await r.json().catch(() => ({}));
     if (data?.token) setToken(data.token);
     if (data?.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
@@ -145,8 +167,11 @@
     const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
     const headers = new Headers(options.headers || {});
     const tok = getToken();
+
     if (tok) headers.set("Authorization", `Bearer ${tok}`);
-    if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    if (options.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
 
     const doFetch = () =>
       fetch(url, {
@@ -166,7 +191,7 @@
         res = await doFetch();
       } catch (e) {
         clearAuth();
-        window.location.replace("/login.html");
+        if (!isPublicPage) window.location.replace("/login.html");
         throw e;
       }
     }
@@ -179,13 +204,14 @@
     return res;
   }
 
-  // --------- SIDEBAR (mobile) ---------
+  // --------- SIDEBAR ---------
   function openSidebar() {
     if (!els.sidebar || !els.overlay) return;
     els.sidebar.classList.add("open");
     els.overlay.classList.add("show");
     els.overlay.setAttribute("aria-hidden", "false");
   }
+
   function closeSidebar() {
     if (!els.sidebar || !els.overlay) return;
     els.sidebar.classList.remove("open");
@@ -236,7 +262,7 @@
   async function openBillingPortal() {
     setStatus("Ouverture Billing Portal…", "warn");
     try {
-      const r = await fetchWithAuth("/api/billing/portal", { method: "POST" });
+      const r = await fetchWithAuth("/api/stripe/portal", { method: "POST" });
       if (!r.ok) throw new Error("portal failed");
       const data = await r.json().catch(() => ({}));
       if (data?.url) {
@@ -276,10 +302,17 @@
   }
 
   async function safeRunAudit() {
+    const url = prompt("URL à auditer (ex: https://site.com) ?");
+    if (!url) return false;
+
     setStatus("Lancement audit…", "warn");
     try {
-      const r = await fetchWithAuth("/api/audits/run", { method: "POST" });
+      const r = await fetchWithAuth("/api/audits/run", {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      });
       setStatus(r.ok ? "Audit lancé — OK" : "Audit échoué", r.ok ? "ok" : "danger");
+      if (r.ok) await loadData();
       return !!r.ok;
     } catch (e) {
       console.error(e);
@@ -296,7 +329,7 @@
     try {
       const r = await fetchWithAuth("/api/monitors", {
         method: "POST",
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, intervalMinutes: 60 }),
       });
       if (!r.ok) throw new Error("create monitor failed");
       setStatus("Monitor créé — OK", "ok");
@@ -313,7 +346,7 @@
     if (!id) return;
     setStatus("Test monitor…", "warn");
     try {
-      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}/ping`, { method: "POST" });
+      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}/run`, { method: "POST" });
       setStatus(r.ok ? "Test OK — UP" : "Test échoué", r.ok ? "ok" : "danger");
       await loadData();
     } catch (e) {
@@ -343,6 +376,8 @@
 
   // --------- LOAD DATA ---------
   async function loadData() {
+    if (isPublicPage) return;
+
     if (state.controller) state.controller.abort();
     state.controller = new AbortController();
     const signal = state.controller.signal;
@@ -350,46 +385,30 @@
     setStatus("Chargement…", "warn");
 
     try {
-      // /api/me
       try {
         const r = await fetchWithAuth("/api/me", { signal });
         if (r.ok) state.me = await r.json();
       } catch {}
 
-      // /api/dashboard/overview
       try {
-        const r = await fetchWithAuth("/api/dashboard/overview?range=30", { signal });
+        const r = await fetchWithAuth("/api/overview?days=30", { signal });
         if (r.ok) state.overview = await r.json();
       } catch {}
 
-      // /api/monitors
       try {
         const r = await fetchWithAuth("/api/monitors", { signal });
-        if (r.ok) state.monitors = await r.json();
+        if (r.ok) {
+          const data = await r.json().catch(() => ({}));
+          state.monitors = Array.isArray(data?.monitors) ? data.monitors : [];
+        }
       } catch {}
 
-      // /api/audits (optional)
       try {
         const r = await fetchWithAuth("/api/audits", { signal });
         if (r.ok) {
-          const data = await r.json().catch(() => []);
-          state.audits = Array.isArray(data) ? data : [];
+          const data = await r.json().catch(() => ({}));
+          state.audits = Array.isArray(data?.audits) ? data.audits : [];
         }
-      } catch {}
-
-      // /api/addons (optional)
-      try {
-        const r = await fetchWithAuth("/api/addons", { signal });
-        if (r.ok) {
-          const data = await r.json().catch(() => []);
-          state.addons = Array.isArray(data) ? data : [];
-        }
-      } catch {}
-
-      // /api/billing/subscription (optional)
-      try {
-        const r = await fetchWithAuth("/api/billing/subscription", { signal });
-        if (r.ok) state.subscription = await r.json().catch(() => null);
       } catch {}
 
       hydrateAccount();
@@ -404,13 +423,19 @@
 
   function hydrateAccount() {
     const me = state.me || {};
-    const name = me.firstName || me.name || "—";
+    const name = me.name || "—";
+
     if (els.helloTitle) els.helloTitle.textContent = `Bonjour, ${name}`;
 
     if (els.accPlan) els.accPlan.textContent = me.plan || "—";
-    if (els.accOrg) els.accOrg.textContent = me.orgName || "—";
+    if (els.accOrg) els.accOrg.textContent = me.org?.name || "—";
     if (els.accRole) els.accRole.textContent = me.role || "—";
-    if (els.accTrial) els.accTrial.textContent = me.trial || "—";
+
+    let trialText = "—";
+    if (me.hasTrial && me.trialEndsAt) {
+      trialText = new Date(me.trialEndsAt).toLocaleDateString("fr-FR");
+    }
+    if (els.accTrial) els.accTrial.textContent = trialText;
 
     const usage = me.usage || {};
     if (els.uAudits) els.uAudits.textContent = formatUsage(usage.audits);
@@ -418,9 +443,9 @@
     if (els.uExports) els.uExports.textContent = formatUsage(usage.exports);
     if (els.uMonitors) els.uMonitors.textContent = formatUsage(usage.monitors);
 
-    pctBar(els.barAudits, usage.auditsUsed ?? usage.audits?.used, usage.auditsLimit ?? usage.audits?.limit);
-    pctBar(els.barPdf, usage.pdfUsed ?? usage.pdf?.used, usage.pdfLimit ?? usage.pdf?.limit);
-    pctBar(els.barExports, usage.exportsUsed ?? usage.exports?.used, usage.exportsLimit ?? usage.exports?.limit);
+    pctBar(els.barAudits, usage.audits?.used, usage.audits?.limit);
+    pctBar(els.barPdf, usage.pdf?.used, usage.pdf?.limit);
+    pctBar(els.barExports, usage.exports?.used, usage.exports?.limit);
   }
 
   // --------- PAGE RENDERERS ---------
@@ -435,6 +460,7 @@
   }
 
   function renderPage() {
+    if (isPublicPage) return;
     setActiveNav();
 
     if (state.page === "overview") return renderOverview();
@@ -445,7 +471,6 @@
     if (state.page === "billing") return renderBilling();
     if (state.page === "settings") return renderSettings();
 
-    // fallback
     state.page = "overview";
     return renderOverview();
   }
@@ -463,18 +488,16 @@
 
     const ov = state.overview || {};
     const seoScore = ov.seoScore ?? 0;
-    const monActive = ov.monActive ?? (Array.isArray(state.monitors) ? state.monitors.length : 0);
-    const monLimit = ov.monLimit ?? 0;
-    const incidentsDown = ov.incidentsDown ?? 0;
-
-    const sub = state.subscription || {};
-    const subStatus = sub.status || ov.subStatus || "—";
-    const subPlan = sub.plan || sub.priceId || ov.subHint || "—";
+    const monActive = ov.monitors?.active ?? state.monitors.length;
+    const monLimit = state.me?.usage?.monitors?.limit ?? 0;
+    const incidentsDown = ov.monitors?.down ?? 0;
+    const subStatus = state.me?.subscriptionStatus || "—";
+    const subPlan = state.me?.plan || "—";
 
     setGrid(`
       <div class="fpCard">
         <div class="fpCardTitle">KPI (30 jours)</div>
-        <div class="fpSmall">Données récupérées via API (fallback si endpoints manquent).</div>
+        <div class="fpSmall">Données récupérées via API.</div>
 
         <div class="fpKpis">
           <div class="fpKpi">
@@ -588,7 +611,7 @@
           <div class="fpRowCard">
             <div class="fpRowMain">
               <div class="fpRowTitle">Conseil UI</div>
-              <div class="fpRowMeta">Police et poids réduits pour éviter l’effet “trop gras”.</div>
+              <div class="fpRowMeta">Police et poids réduits pour éviter l’effet trop gras.</div>
             </div>
           </div>
         </div>
@@ -641,7 +664,7 @@
     setGrid(`
       <div class="fpCard">
         <div class="fpCardTitle">Historique</div>
-        <div class="fpSmall">GET /api/audits (optionnel). Tu peux brancher plus tard.</div>
+        <div class="fpSmall">GET /api/audits</div>
         <div class="fpRows" id="auditRows"></div>
       </div>
 
@@ -652,7 +675,7 @@
           <div class="fpRowCard">
             <div class="fpRowMain">
               <div class="fpRowTitle">Astuce</div>
-              <div class="fpRowMeta">Si l’endpoint /api/audits n’existe pas encore : aucun crash.</div>
+              <div class="fpRowMeta">Le prompt te demande l’URL avant le lancement.</div>
             </div>
           </div>
         </div>
@@ -667,14 +690,14 @@
     if (!host) return;
 
     if (!state.audits.length) {
-      host.innerHTML = `<div class="fpEmpty">Aucun audit chargé (endpoint optionnel).</div>`;
+      host.innerHTML = `<div class="fpEmpty">Aucun audit pour le moment.</div>`;
       return;
     }
 
     host.innerHTML = state.audits.slice(0, 12).map((a) => {
-      const url = a.url || a.target || "—";
-      const score = a.score ?? a.seoScore ?? "—";
-      const date = a.createdAt || a.date || a.updatedAt || "—";
+      const url = a.url || "—";
+      const score = a.score ?? "—";
+      const date = a.createdAt || "—";
       return `
         <div class="fpRowCard">
           <div class="fpRowMain">
@@ -703,7 +726,7 @@
     setGrid(`
       <div class="fpCard">
         <div class="fpCardTitle">Liste</div>
-        <div class="fpSmall">GET /api/monitors • POST /api/monitors/:id/ping • DELETE /api/monitors/:id</div>
+        <div class="fpSmall">GET /api/monitors • POST /api/monitors/:id/run • DELETE /api/monitors/:id</div>
         <div class="fpRows" id="monRows"></div>
       </div>
 
@@ -714,7 +737,7 @@
           <div class="fpRowCard">
             <div class="fpRowMain">
               <div class="fpRowTitle">Conseil</div>
-              <div class="fpRowMeta">Ajoute le “lastCheck” côté API pour enrichir l’affichage.</div>
+              <div class="fpRowMeta">Le statut réel affiché vient de lastStatus.</div>
             </div>
           </div>
         </div>
@@ -735,24 +758,24 @@
     }
 
     host.innerHTML = arr.slice(0, 20).map((m) => {
-      const url = m.url || m.endpoint || m.name || "—";
-      const status = String(m.status || "unknown").toLowerCase();
-      const interval = m.interval || m.intervalMin || "—";
-      const last = m.lastCheck || m.lastCheckedAt || m.updatedAt || "—";
+      const url = m.url || "—";
+      const status = String(m.lastStatus || "unknown").toLowerCase();
+      const interval = m.intervalMinutes || "—";
+      const last = m.lastCheckedAt || "—";
       const badgeClass = status === "up" ? "up" : status === "down" ? "down" : "";
 
       return `
         <div class="fpRowCard">
           <div class="fpRowMain">
             <div class="fpRowTitle">${esc(url)}</div>
-            <div class="fpRowMeta">Interval: ${esc(interval)} • Last: ${esc(last)}</div>
+            <div class="fpRowMeta">Interval: ${esc(interval)} min • Last: ${esc(last)}</div>
           </div>
           <div class="fpRowRight">
             <span class="fpBadge ${badgeClass}">
               <span class="fpBadgeDot"></span>${esc(status.toUpperCase())}
             </span>
-            <button class="fpBtn sm" type="button" data-mon-action="test" data-id="${esc(m.id)}">Test</button>
-            <button class="fpBtn sm danger" type="button" data-mon-action="del" data-id="${esc(m.id)}">Del</button>
+            <button class="fpBtn sm" type="button" data-mon-action="test" data-id="${esc(m._id || m.id)}">Test</button>
+            <button class="fpBtn sm danger" type="button" data-mon-action="del" data-id="${esc(m._id || m.id)}">Del</button>
           </div>
         </div>
       `;
@@ -762,7 +785,7 @@
   function renderReports() {
     setHead(
       "Reports",
-      "Exports PDF/CSV + rapport mensuel (optionnel).",
+      "Exports PDF/CSV + rapport mensuel.",
       `
         <button class="fpBtn primary" id="btnPdf" type="button">Export PDF</button>
         <button class="fpBtn" id="btnCsv" type="button">Export CSV</button>
@@ -772,18 +795,18 @@
     setGrid(`
       <div class="fpCard">
         <div class="fpCardTitle">Exports</div>
-        <div class="fpSmall">GET /api/reports/export/pdf • GET /api/reports/export/csv</div>
+        <div class="fpSmall">Le backend actuel expose surtout les exports audits/monitors.</div>
         <div class="fpRows">
           <div class="fpRowCard">
             <div class="fpRowMain">
-              <div class="fpRowTitle">PDF</div>
-              <div class="fpRowMeta">Export client (si branché côté backend).</div>
+              <div class="fpRowTitle">Audits CSV</div>
+              <div class="fpRowMeta">Téléchargement direct depuis l’API.</div>
             </div>
           </div>
           <div class="fpRowCard">
             <div class="fpRowMain">
-              <div class="fpRowTitle">CSV</div>
-              <div class="fpRowMeta">Données brutes (si branché côté backend).</div>
+              <div class="fpRowTitle">Monitors CSV</div>
+              <div class="fpRowMeta">Téléchargement direct depuis l’API.</div>
             </div>
           </div>
         </div>
@@ -791,40 +814,13 @@
 
       <div class="fpCard">
         <div class="fpCardTitle">Mensuel</div>
-        <div class="fpSmall">Optionnel : GET /api/reports/monthly</div>
-        <div class="fpRows" id="monthlyBox"></div>
+        <div class="fpSmall">Tu pourras brancher un vrai rapport plus tard.</div>
+        <div class="fpEmpty">Aucun module mensuel dédié pour le moment.</div>
       </div>
     `);
 
-    $("#btnPdf")?.addEventListener("click", () => safeExport("/api/reports/export/pdf", "report.pdf"));
-    $("#btnCsv")?.addEventListener("click", () => safeExport("/api/reports/export/csv", "report.csv"));
-
-    loadMonthlyIfPossible();
-  }
-
-  async function loadMonthlyIfPossible() {
-    const host = $("#monthlyBox");
-    if (!host) return;
-
-    host.innerHTML = `<div class="fpEmpty">Chargement… (optionnel)</div>`;
-    try {
-      const r = await fetchWithAuth("/api/reports/monthly");
-      if (!r.ok) {
-        host.innerHTML = `<div class="fpEmpty">Endpoint absent (optionnel).</div>`;
-        return;
-      }
-      const data = await r.json().catch(() => ({}));
-      host.innerHTML = `
-        <div class="fpRowCard">
-          <div class="fpRowMain">
-            <div class="fpRowTitle">Résumé</div>
-            <div class="fpRowMeta"><pre style="margin:0; white-space:pre-wrap; color: rgba(240,246,255,.72)">${esc(JSON.stringify(data, null, 2))}</pre></div>
-          </div>
-        </div>
-      `;
-    } catch {
-      host.innerHTML = `<div class="fpEmpty">Endpoint absent (optionnel).</div>`;
-    }
+    $("#btnPdf")?.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv"));
+    $("#btnCsv")?.addEventListener("click", () => safeExport("/api/exports/monitors.csv", "monitors.csv"));
   }
 
   function renderBilling() {
@@ -837,30 +833,29 @@
       `
     );
 
-    const sub = state.subscription || {};
-    const plan = sub.plan || sub.priceId || "—";
-    const status = sub.status || "—";
-    const renew = sub.current_period_end || sub.renewAt || "—";
+    const plan = state.me?.plan || "—";
+    const status = state.me?.subscriptionStatus || "—";
+    const renew = state.me?.trialEndsAt || "—";
 
     setGrid(`
       <div class="fpCard">
         <div class="fpCardTitle">Abonnement</div>
-        <div class="fpSmall">GET /api/billing/subscription (optionnel).</div>
+        <div class="fpSmall">Données depuis /api/me.</div>
         <div class="fpRows">
           <div class="fpRowCard"><div class="fpRowMain"><div class="fpRowTitle">Plan</div><div class="fpRowMeta">${esc(plan)}</div></div></div>
           <div class="fpRowCard"><div class="fpRowMain"><div class="fpRowTitle">Status</div><div class="fpRowMeta">${esc(status)}</div></div></div>
-          <div class="fpRowCard"><div class="fpRowMain"><div class="fpRowTitle">Renouvellement</div><div class="fpRowMeta">${esc(renew)}</div></div></div>
+          <div class="fpRowCard"><div class="fpRowMain"><div class="fpRowTitle">Trial / échéance</div><div class="fpRowMeta">${esc(renew)}</div></div></div>
         </div>
       </div>
 
       <div class="fpCard">
         <div class="fpCardTitle">Actions</div>
-        <div class="fpSmall">POST /api/billing/portal doit renvoyer { url }.</div>
+        <div class="fpSmall">Tout passe par Stripe Portal.</div>
         <div class="fpRows">
           <div class="fpRowCard">
             <div class="fpRowMain">
               <div class="fpRowTitle">Gérer plan / add-ons</div>
-              <div class="fpRowMeta">Tout passe par Stripe Portal.</div>
+              <div class="fpRowMeta">Ouverture sécurisée du portail Stripe.</div>
             </div>
           </div>
         </div>
@@ -873,10 +868,9 @@
   function renderSettings() {
     setHead(
       "Settings",
-      "Alert emails, organisation, tests email.",
+      "Alert emails et organisation.",
       `
         <button class="fpBtn primary" id="btnSave" type="button">Save</button>
-        <button class="fpBtn" id="btnTest" type="button">Send test</button>
       `
     );
 
@@ -885,13 +879,10 @@
     setGrid(`
       <div class="fpCard">
         <div class="fpCardTitle">Alert emails</div>
-        <div class="fpSmall">Recipients (comma-separated). Sauvegarde locale + POST optionnel.</div>
+        <div class="fpSmall">Sauvegarde locale + POST API si dispo.</div>
         <div class="fpField">
           <label class="fpLabel">Emails</label>
           <input class="fpInput" id="setRecipients" placeholder="name@domain.com, other@domain.com" />
-        </div>
-        <div class="fpSmall" style="margin-top:10px; opacity:.9">
-          Optionnel : POST /api/org/settings avec { alertRecipients: "..." }
         </div>
       </div>
 
@@ -899,7 +890,7 @@
         <div class="fpCardTitle">Organisation</div>
         <div class="fpSmall">Infos depuis /api/me.</div>
         <div class="fpRows">
-          <div class="fpRowCard"><div class="fpRowMain"><div class="fpRowTitle">Org</div><div class="fpRowMeta">${esc(state.me?.orgName || "—")}</div></div></div>
+          <div class="fpRowCard"><div class="fpRowMain"><div class="fpRowTitle">Org</div><div class="fpRowMeta">${esc(state.me?.org?.name || "—")}</div></div></div>
           <div class="fpRowCard"><div class="fpRowMain"><div class="fpRowTitle">Plan</div><div class="fpRowMeta">${esc(state.me?.plan || "—")}</div></div></div>
           <div class="fpRowCard"><div class="fpRowMain"><div class="fpRowTitle">Role</div><div class="fpRowMeta">${esc(state.me?.role || "—")}</div></div></div>
         </div>
@@ -920,30 +911,17 @@
         });
       } catch {}
     });
-
-    $("#btnTest")?.addEventListener("click", async () => {
-      setStatus("Sending test…", "warn");
-      try {
-        const r = await fetchWithAuth("/api/email/test", { method: "POST" });
-        setStatus(r.ok ? "Test email sent — OK" : "Test failed", r.ok ? "ok" : "danger");
-      } catch {
-        setStatus("Test failed", "danger");
-      }
-    });
   }
 
   // --------- EVENTS ---------
   function bind() {
-    // mobile sidebar
     els.btnMenu?.addEventListener("click", openSidebar);
     els.overlay?.addEventListener("click", closeSidebar);
     els.navItems.forEach((a) => a.addEventListener("click", () => closeSidebar()));
 
-    // sidebar actions
     els.btnPortal?.addEventListener("click", openBillingPortal);
     els.btnLogout?.addEventListener("click", logout);
 
-    // delegation
     document.addEventListener("click", (e) => {
       const t = e.target.closest("[data-mission-toggle]");
       if (t) {
@@ -951,11 +929,13 @@
         renderPage();
         return;
       }
+
       const d = e.target.closest("[data-mission-do]");
       if (d) {
         doMission(d.getAttribute("data-mission-do"));
         return;
       }
+
       const mon = e.target.closest("[data-mon-action]");
       if (mon) {
         const act = mon.getAttribute("data-mon-action");
@@ -968,13 +948,17 @@
 
   // --------- INIT ---------
   function init() {
-    // missions
+    if (!isPublicPage && !requirePrivateToken()) return;
+
     state.missions = loadMissions();
     saveMissions();
 
     setActiveNav();
     bind();
-    loadData();
+
+    if (!isPublicPage) {
+      loadData();
+    }
   }
 
   init();
