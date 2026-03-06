@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FlowPoint — Audits</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="./app.css" />
+
+  <script>
+    (function () {
+      try {
+        const tok = localStorage.getItem("token");
+        if (!tok || (typeof tok === "string" && tok.trim().length < 10)) {
+          window.location.replace("/login.html");
+          return;
+        }
+      } catch (e) {
+        window.location.replace("/login.html");
+      }
+    })();
+  </script>
+</head>
+<body data-page="audits">
+  <div id="overlay" class="fpOverlay" aria-hidden="true"></div>
+
+  <div class="fpApp">
+    <aside class="fpSidebar" id="sidebar" aria-label="Navigation">
+      <div class="fpBrand">
+        <div class="fpLogoBox" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18">
+            <path d="M13 2c.5 0 .9.4.8.9l-2 7h4.9c.7 0 1.1.7.7 1.3l-7.2 10.2c-.4.6-1.3.1-1.1-.6l2.1-7.2H6.3c-.7 0-1.1-.7-.7-1.3L12.3 2.4c.2-.2.4-.4.7-.4Z" fill="currentColor"/>
+          </svg>
+        </div>
+        <div>
+          <div class="fpBrandName">FlowPoint</div>
+          <div class="fpBrandSub">Client Dashboard</div>
+        </div>
+      </div>
+
+      <nav class="fpNav">
+        <a class="fpNavItem" data-page="overview" href="./overview.html">
+          <span class="fpNavIco">▢</span><span>Overview</span>
+        </a>
+        <a class="fpNavItem" data-page="missions" href="./missions.html">
+          <span class="fpNavIco">✓</span><span>Missions</span><span class="fpPill">✔</span>
+        </a>
+        <a class="fpNavItem" data-page="audits" href="./audits.html">
+          <span class="fpNavIco">⌁</span><span>Audits</span>
+        </a>
+        <a class="fpNavItem" data-page="monitors" href="./monitors.html">
+          <span class="fpNavIco">◌</span><span>Monitors</span>
+        </a>
+        <a class="fpNavItem" data-page="reports" href="./reports.html">
+          <span class="fpNavIco">▤</span><span>Reports</span><span class="fpPill pro">PRO</span>
+        </a>
+        <a class="fpNavItem" data-page="billing" href="./billing.html">
+          <span class="fpNavIco">€</span><span>Billing</span>
+        </a>
+        <a class="fpNavItem" data-page="settings" href="./settings.html">
+          <span class="fpNavIco">⚙</span><span>Settings</span>
+        </a>
+      </nav>
+
+      <div class="fpSideCard">
+        <div class="fpSideTitle">Account</div>
+
+        <div class="fpSideRow"><span>Plan</span><span id="accPlan">—</span></div>
+        <div class="fpSideRow"><span>Org</span><span id="accOrg">—</span></div>
+        <div class="fpSideRow"><span>Role</span><span id="accRole">—</span></div>
+        <div class="fpSideRow"><span>Trial</span><span id="accTrial">—</span></div>
+
+        <div class="fpSideDivider"></div>
+
+        <div class="fpSideTitle">Usage</div>
+        <div class="fpBars">
+          <div class="fpBarRow">
+            <span>Audits</span><span id="uAudits">—</span>
+            <div class="fpBar"><div class="fpBarFill" id="barAudits"></div></div>
+          </div>
+          <div class="fpBarRow">
+            <span>PDF</span><span id="uPdf">—</span>
+            <div class="fpBar"><div class="fpBarFill" id="barPdf"></div></div>
+          </div>
+          <div class="fpBarRow">
+            <span>Exports</span><span id="uExports">—</span>
+            <div class="fpBar"><div class="fpBarFill" id="barExports"></div></div>
+          </div>
+          <div class="fpBarRow">
+            <span>Monitors</span><span id="uMonitors">—</span>
+          </div>
+        </div>
+
+        <div class="fpSideActions">
+          <button class="fpBtn ghost" id="btnPortal" type="button">Billing portal</button>
+          <button class="fpBtn danger" id="btnLogout" type="button">Logout</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="fpMain">
+      <header class="fpTopbar">
+        <button class="fpIconBtn" id="btnMenu" type="button" aria-label="Menu">
+          <svg width="18" height="18" viewBox="0 0 24 24">
+            <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <div class="fpTopText">
+          <div class="fpHello" id="helloTitle">Bonjour, —</div>
+          <div class="fpSub">SEO • Monitoring • Reports • Billing</div>
+        </div>
+
+        <div class="fpTopRight">
+          <a class="fpBtn ghost" href="/pricing.html">Pricing</a>
+          <div class="fpStatus">
+            <span class="fpDot" id="statusDot"></span>
+            <span id="statusText">Statut : connecté</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="fpPage">
+        <div class="fpPageHead">
+          <div>
+            <div class="fpTitle" id="pageTitle">—</div>
+            <div class="fpDesc" id="pageDesc">—</div>
+          </div>
+          <div class="fpActions" id="pageActions"></div>
+        </div>
+
+        <div class="fpGrid" id="grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
