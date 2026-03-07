@@ -22,8 +22,8 @@
   const els = {
     overlay: $("#fpOverlay"),
     sidebar: $("#fpSidebar"),
-    sidebarClose: $("#fpSidebarClose"),
     menuBtn: $("#fpMenuBtn"),
+    sidebarClose: $("#fpSidebarClose"),
 
     helloTitle: $("#helloTitle"),
     statusDot: $("#statusDot"),
@@ -42,10 +42,12 @@
     barPdf: $("#barPdf"),
     barExports: $("#barExports"),
 
-    pageTitle: $("#pageTitle"),
-    pageDesc: $("#pageDesc"),
-    pageActions: $("#pageActions"),
-    grid: $("#grid"),
+    pageHeroTitle: $("#pageHeroTitle"),
+    pageHeroText: $("#pageHeroText"),
+    pageHeroActions: $("#pageHeroActions"),
+
+    gridMain: $("#gridMain"),
+    gridSide: $("#gridSide"),
 
     btnPortal: $("#btnPortal"),
     btnLogout: $("#btnLogout"),
@@ -53,13 +55,13 @@
     navItems: $$(".fpNavItem"),
   };
 
-  const MISSIONS_KEY = "fp_new_dashboard_missions_v1";
+  const MISSIONS_KEY = "fp_dashboard_v4_missions";
 
   const defaultMissions = [
     { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor" },
     { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit" },
     { id: "m3", title: "Exporter un rapport audits", meta: "Reports", done: false, action: "export_audits" },
-    { id: "m4", title: "Ouvrir le portail Stripe", meta: "Billing", done: false, action: "open_billing" },
+    { id: "m4", title: "Ouvrir le portail Stripe", meta: "Billing", done: false, action: "open_billing" }
   ];
 
   function esc(s) {
@@ -77,23 +79,6 @@
     els.statusDot.classList.remove("warn", "danger");
     if (mode === "warn") els.statusDot.classList.add("warn");
     if (mode === "danger") els.statusDot.classList.add("danger");
-  }
-
-  function setActiveNav() {
-    els.navItems.forEach((item) => {
-      const page = (item.getAttribute("data-page") || "").toLowerCase();
-      item.classList.toggle("active", page === state.page);
-    });
-  }
-
-  function openSidebar() {
-    els.sidebar?.classList.add("open");
-    els.overlay?.classList.add("show");
-  }
-
-  function closeSidebar() {
-    els.sidebar?.classList.remove("open");
-    els.overlay?.classList.remove("show");
   }
 
   function getToken() {
@@ -125,7 +110,6 @@
 
     if (data?.token) setToken(data.token);
     if (data?.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-    return true;
   }
 
   async function fetchWithAuth(path, options = {}) {
@@ -164,14 +148,30 @@
     return res;
   }
 
+  function openSidebar() {
+    els.sidebar?.classList.add("open");
+    els.overlay?.classList.add("show");
+  }
+
+  function closeSidebar() {
+    els.sidebar?.classList.remove("open");
+    els.overlay?.classList.remove("show");
+  }
+
+  function setActiveNav() {
+    els.navItems.forEach((item) => {
+      const page = (item.getAttribute("data-page") || "").toLowerCase();
+      item.classList.toggle("active", page === state.page);
+    });
+  }
+
   function formatUsage(v) {
-    if (v == null) return "—";
-    if (typeof v === "number" || typeof v === "string") return String(v);
+    if (!v) return "—";
+    if (typeof v === "string" || typeof v === "number") return String(v);
     if (typeof v === "object") {
       const used = v.used ?? null;
       const limit = v.limit ?? null;
       if (used != null && limit != null) return `${used}/${limit}`;
-      if (used != null) return String(used);
     }
     return "—";
   }
@@ -181,40 +181,6 @@
     const u = Number(used || 0);
     const l = Math.max(1, Number(limit || 0));
     el.style.width = `${Math.min(100, Math.round((u / l) * 100))}%`;
-  }
-
-  function hydrateAccount() {
-    const me = state.me || {};
-    const usage = me.usage || {};
-
-    if (els.helloTitle) els.helloTitle.textContent = `Bonjour, ${me.name || "—"}`;
-    if (els.accPlan) els.accPlan.textContent = me.plan || "—";
-    if (els.accOrg) els.accOrg.textContent = me.org?.name || "—";
-    if (els.accRole) els.accRole.textContent = me.role || "—";
-    if (els.accTrial) {
-      els.accTrial.textContent = me.trialEndsAt
-        ? new Date(me.trialEndsAt).toLocaleDateString("fr-FR")
-        : "—";
-    }
-
-    if (els.uAudits) els.uAudits.textContent = formatUsage(usage.audits);
-    if (els.uPdf) els.uPdf.textContent = formatUsage(usage.pdf);
-    if (els.uExports) els.uExports.textContent = formatUsage(usage.exports);
-    if (els.uMonitors) els.uMonitors.textContent = formatUsage(usage.monitors);
-
-    fillBar(els.barAudits, usage.audits?.used, usage.audits?.limit);
-    fillBar(els.barPdf, usage.pdf?.used, usage.pdf?.limit);
-    fillBar(els.barExports, usage.exports?.used, usage.exports?.limit);
-  }
-
-  function setHead(title, desc, actions = "") {
-    if (els.pageTitle) els.pageTitle.textContent = title;
-    if (els.pageDesc) els.pageDesc.textContent = desc;
-    if (els.pageActions) els.pageActions.innerHTML = actions;
-  }
-
-  function setGrid(html) {
-    if (els.grid) els.grid.innerHTML = html;
   }
 
   function loadMissions() {
@@ -237,21 +203,64 @@
     saveMissions();
   }
 
+  function hydrateAccount() {
+    const me = state.me || {};
+    const usage = me.usage || {};
+
+    if (els.helloTitle) {
+      els.helloTitle.textContent = `Bonjour, ${me.name || "—"}`;
+    }
+
+    if (els.accPlan) els.accPlan.textContent = me.plan || "—";
+    if (els.accOrg) els.accOrg.textContent = me.org?.name || "—";
+    if (els.accRole) els.accRole.textContent = me.role || "—";
+    if (els.accTrial) {
+      els.accTrial.textContent = me.trialEndsAt
+        ? new Date(me.trialEndsAt).toLocaleDateString("fr-FR")
+        : "—";
+    }
+
+    if (els.uAudits) els.uAudits.textContent = formatUsage(usage.audits);
+    if (els.uPdf) els.uPdf.textContent = formatUsage(usage.pdf);
+    if (els.uExports) els.uExports.textContent = formatUsage(usage.exports);
+    if (els.uMonitors) els.uMonitors.textContent = formatUsage(usage.monitors);
+
+    fillBar(els.barAudits, usage.audits?.used, usage.audits?.limit);
+    fillBar(els.barPdf, usage.pdf?.used, usage.pdf?.limit);
+    fillBar(els.barExports, usage.exports?.used, usage.exports?.limit);
+  }
+
+  function setHero(title, text, actions = "") {
+    if (els.pageHeroTitle) els.pageHeroTitle.textContent = title;
+    if (els.pageHeroText) els.pageHeroText.textContent = text;
+    if (els.pageHeroActions) els.pageHeroActions.innerHTML = actions;
+  }
+
+  function setMain(html) {
+    if (els.gridMain) els.gridMain.innerHTML = html;
+  }
+
+  function setSide(html) {
+    if (els.gridSide) els.gridSide.innerHTML = html;
+  }
+
   async function openBillingPortal() {
-    setStatus("Ouverture Billing Portal…", "warn");
+    setStatus("Ouverture du portail Stripe…", "warn");
     try {
       const r = await fetchWithAuth("/api/stripe/portal", { method: "POST" });
       if (!r.ok) throw new Error("Portal failed");
+
       const data = await r.json().catch(() => ({}));
       if (data?.url) {
         window.location.href = data.url;
         return true;
       }
-      setStatus("URL portail manquante", "danger");
+
+      setStatus("URL du portail manquante", "danger");
       return false;
     } catch (e) {
       console.error(e);
-      setStatus("Erreur portail Stripe", "danger");
+      setStatus("Erreur Billing Portal", "danger");
       return false;
     }
   }
@@ -260,12 +269,13 @@
     const url = prompt("URL à auditer (ex: https://site.com) ?");
     if (!url) return false;
 
-    setStatus("Lancement audit…", "warn");
+    setStatus("Lancement de l’audit…", "warn");
     try {
       const r = await fetchWithAuth("/api/audits/run", {
         method: "POST",
         body: JSON.stringify({ url }),
       });
+
       if (!r.ok) throw new Error("Audit failed");
       setStatus("Audit lancé — OK", "ok");
       await loadData();
@@ -278,15 +288,16 @@
   }
 
   async function safeAddMonitor() {
-    const url = prompt("URL à monitor (ex: https://site.com) ?");
+    const url = prompt("URL à monitorer (ex: https://site.com) ?");
     if (!url) return false;
 
-    setStatus("Création monitor…", "warn");
+    setStatus("Création du monitor…", "warn");
     try {
       const r = await fetchWithAuth("/api/monitors", {
         method: "POST",
         body: JSON.stringify({ url, intervalMinutes: 60 }),
       });
+
       if (!r.ok) throw new Error("Monitor failed");
       setStatus("Monitor créé — OK", "ok");
       await loadData();
@@ -298,47 +309,8 @@
     }
   }
 
-  async function safeTestMonitor(id) {
-    if (!id) return false;
-
-    setStatus("Test monitor…", "warn");
-    try {
-      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}/run`, {
-        method: "POST",
-      });
-      if (!r.ok) throw new Error("Monitor test failed");
-      setStatus("Test monitor — OK", "ok");
-      await loadData();
-      return true;
-    } catch (e) {
-      console.error(e);
-      setStatus("Test monitor échoué", "danger");
-      return false;
-    }
-  }
-
-  async function safeDeleteMonitor(id) {
-    if (!id) return false;
-    if (!confirm("Supprimer ce monitor ?")) return false;
-
-    setStatus("Suppression monitor…", "warn");
-    try {
-      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
-      if (!r.ok) throw new Error("Monitor delete failed");
-      setStatus("Monitor supprimé — OK", "ok");
-      await loadData();
-      return true;
-    } catch (e) {
-      console.error(e);
-      setStatus("Suppression monitor échouée", "danger");
-      return false;
-    }
-  }
-
   async function safeExport(endpoint, filename) {
-    setStatus("Préparation export…", "warn");
+    setStatus("Préparation de l’export…", "warn");
     try {
       const r = await fetchWithAuth(endpoint, { method: "GET" });
       if (!r.ok) throw new Error("Export failed");
@@ -362,27 +334,35 @@
     }
   }
 
-  async function saveAlertSettings() {
-    const input = $("#settingsRecipients");
-    const value = (input?.value || "").trim();
-
-    localStorage.setItem("fp_alert_emails", value);
-
+  async function safeRunMonitor(id) {
+    setStatus("Test du monitor…", "warn");
     try {
-      await fetchWithAuth("/api/org/settings", {
+      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}/run`, {
         method: "POST",
-        body: JSON.stringify({
-          alertRecipients: "all",
-          alertExtraEmails: value
-            .split(",")
-            .map((x) => x.trim())
-            .filter(Boolean),
-        }),
       });
-      setStatus("Settings sauvegardés", "ok");
+      if (!r.ok) throw new Error("Run failed");
+      setStatus("Test monitor terminé — OK", "ok");
+      await loadData();
     } catch (e) {
       console.error(e);
-      setStatus("Sauvegarde partielle", "warn");
+      setStatus("Test monitor échoué", "danger");
+    }
+  }
+
+  async function safeDeleteMonitor(id) {
+    if (!confirm("Supprimer ce monitor ?")) return;
+
+    setStatus("Suppression du monitor…", "warn");
+    try {
+      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!r.ok) throw new Error("Delete failed");
+      setStatus("Monitor supprimé — OK", "ok");
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      setStatus("Suppression échouée", "danger");
     }
   }
 
@@ -391,7 +371,6 @@
     if (!m) return;
 
     let ok = false;
-
     if (m.action === "add_monitor") ok = await safeAddMonitor();
     if (m.action === "run_audit") ok = await safeRunAudit();
     if (m.action === "export_audits") ok = await safeExport("/api/exports/audits.csv", "audits.csv");
@@ -402,6 +381,11 @@
       saveMissions();
       renderPage();
     }
+  }
+
+  function logout() {
+    clearAuth();
+    window.location.replace("/login.html");
   }
 
   async function loadData() {
@@ -440,7 +424,7 @@
 
       hydrateAccount();
       renderPage();
-      setStatus("Dashboard à jour", "ok");
+      setStatus("Dashboard à jour — OK", "ok");
     } catch (e) {
       if (e?.name === "AbortError") return;
       console.error(e);
@@ -448,63 +432,8 @@
     }
   }
 
-  function renderOverview() {
-    const ov = state.overview || {};
-    const seoScore = ov.seoScore ?? 0;
-    const activeMonitors = ov.monitors?.active ?? state.monitors.length;
-    const downMonitors = ov.monitors?.down ?? 0;
-    const monitorLimit = state.me?.usage?.monitors?.limit ?? 0;
-
-    setHead(
-      "Overview",
-      "Vue générale de ton activité, de tes quotas et des actions prioritaires.",
-      `
-        <button class="fpBtn fpBtnPrimary" id="btnRunAudit" type="button">Run SEO audit</button>
-        <button class="fpBtn fpBtnSoft" id="btnAddMonitor" type="button">Add monitor</button>
-      `
-    );
-
-    setGrid(`
-      <div class="fpCard">
-        <div class="fpCardTitle">Performance</div>
-        <div class="fpSmall">Indicateurs principaux sur les 30 derniers jours.</div>
-
-        <div class="fpKpis">
-          <div class="fpKpi">
-            <div class="fpKpiLabel">SEO Score</div>
-            <div class="fpKpiVal">${esc(seoScore)}<span class="fpKpiUnit">/100</span></div>
-            <div class="fpKpiHint">Dernier score disponible</div>
-          </div>
-
-          <div class="fpKpi">
-            <div class="fpKpiLabel">Monitors</div>
-            <div class="fpKpiVal">${esc(activeMonitors)}<span class="fpKpiUnit">/ ${esc(monitorLimit)}</span></div>
-            <div class="fpKpiHint">${esc(downMonitors)} DOWN actuellement</div>
-          </div>
-
-          <div class="fpKpi">
-            <div class="fpKpiLabel">Plan</div>
-            <div class="fpKpiVal">${esc(state.me?.plan || "—")}</div>
-            <div class="fpKpiHint">${esc(state.me?.subscriptionStatus || "—")}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="fpCard">
-        <div class="fpCardTitle">Quick setup</div>
-        <div class="fpSmall">Actions utiles pour démarrer proprement.</div>
-        <div class="fpMissionGrid" id="missionList"></div>
-      </div>
-    `);
-
-    $("#btnRunAudit")?.addEventListener("click", safeRunAudit);
-    $("#btnAddMonitor")?.addEventListener("click", safeAddMonitor);
-
-    renderMissionList();
-  }
-
-  function renderMissionList() {
-    const host = $("#missionList");
+  function renderMissionList(hostSelector, withViewLink = false) {
+    const host = $(hostSelector);
     if (!host) return;
 
     host.innerHTML = state.missions.map((m) => `
@@ -517,75 +446,177 @@
 
           <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
             <button class="fpBtn fpBtnPrimary sm" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-            <a class="fpBtn fpBtnGhost sm" href="./missions.html">Voir</a>
+            ${withViewLink ? `<a class="fpBtn fpBtnGhost sm" href="./missions.html">Voir</a>` : ""}
           </div>
         </div>
       </div>
     `).join("");
   }
 
-  function renderMissionsPage() {
-    const done = state.missions.filter((m) => m.done).length;
+  function renderOverview() {
+    const ov = state.overview || {};
+    const activeMonitors = ov.monitors?.active ?? state.monitors.length;
+    const downMonitors = ov.monitors?.down ?? 0;
+    const seoScore = ov.seoScore ?? 0;
+    const monitorLimit = state.me?.usage?.monitors?.limit ?? 0;
 
-    setHead(
-      "Missions",
-      `${done}/${state.missions.length} complétées. Utilise cette page comme checklist d’onboarding.`,
+    setHero(
+      "Overview",
+      "Vue générale de ton compte, de tes performances et des actions prioritaires.",
       `
-        <button class="fpBtn fpBtnSoft" id="btnResetMissions" type="button">Reset</button>
-        <button class="fpBtn fpBtnPrimary" id="btnSaveMissions" type="button">Save</button>
+        <button class="fpBtn fpBtnPrimary" id="btnRunAudit">Run SEO audit</button>
+        <button class="fpBtn fpBtnSoft" id="btnAddMonitor">Add monitor</button>
+        <a class="fpBtn fpBtnGhost" href="./billing.html">Billing</a>
       `
     );
 
-    setGrid(`
+    setMain(`
       <div class="fpCard">
-        <div class="fpCardTitle">Checklist principale</div>
-        <div class="fpSmall">Chaque mission peut être cochée ou exécutée directement.</div>
-        <div class="fpMissionGrid" id="missionsFullList"></div>
+        <div class="fpCardHead">
+          <div>
+            <div class="fpCardTitle">Performance globale</div>
+            <div class="fpCardSub">Les indicateurs principaux de ton activité.</div>
+          </div>
+        </div>
+
+        <div class="fpKpis">
+          <div class="fpKpi">
+            <div class="fpKpiLabel">SEO Score</div>
+            <div class="fpKpiVal">${esc(seoScore)}<span class="fpKpiUnit">/100</span></div>
+            <div class="fpKpiHint">Dernier audit disponible</div>
+          </div>
+
+          <div class="fpKpi">
+            <div class="fpKpiLabel">Monitors actifs</div>
+            <div class="fpKpiVal">${esc(activeMonitors)}<span class="fpKpiUnit">/ ${esc(monitorLimit)}</span></div>
+            <div class="fpKpiHint">${esc(downMonitors)} monitor(s) DOWN</div>
+          </div>
+
+          <div class="fpKpi">
+            <div class="fpKpiLabel">Plan</div>
+            <div class="fpKpiVal">${esc(state.me?.plan || "—")}</div>
+            <div class="fpKpiHint">${esc(state.me?.subscriptionStatus || "Sans statut")}</div>
+          </div>
+        </div>
       </div>
 
       <div class="fpCard">
-        <div class="fpCardTitle">Progression</div>
-        <div class="fpSmall">Utilise cette page pour organiser le setup du compte client.</div>
-        <div class="fpRows">
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Missions terminées</div>
-              <div class="fpRowMeta">${done} sur ${state.missions.length}</div>
-            </div>
+        <div class="fpCardHead">
+          <div>
+            <div class="fpCardTitle">Missions rapides</div>
+            <div class="fpCardSub">Checklist d’onboarding et de setup.</div>
           </div>
+        </div>
+        <div class="fpMissionGrid" id="overviewMissionList"></div>
+      </div>
+    `);
 
+    setSide(`
+      <div class="fpCard">
+        <div class="fpCardHead">
+          <div>
+            <div class="fpCardTitle">Derniers audits</div>
+            <div class="fpCardSub">Historique récent récupéré via l’API.</div>
+          </div>
+        </div>
+        <div class="fpRows">
+          ${
+            state.audits.length
+              ? state.audits.slice(0, 4).map((a) => `
+                <div class="fpRowCard">
+                  <div class="fpRowMain">
+                    <div class="fpRowTitle">${esc(a.url || "—")}</div>
+                    <div class="fpRowMeta">Score : ${esc(a.score ?? "—")}</div>
+                  </div>
+                </div>
+              `).join("")
+              : `<div class="fpEmpty">Aucun audit disponible.</div>`
+          }
+        </div>
+      </div>
+
+      <div class="fpCard">
+        <div class="fpCardHead">
+          <div>
+            <div class="fpCardTitle">Monitors</div>
+            <div class="fpCardSub">État rapide des URLs surveillées.</div>
+          </div>
+        </div>
+        <div class="fpRows">
+          ${
+            state.monitors.length
+              ? state.monitors.slice(0, 4).map((m) => {
+                  const status = String(m.lastStatus || "unknown").toLowerCase();
+                  return `
+                    <div class="fpRowCard">
+                      <div class="fpRowMain">
+                        <div class="fpRowTitle">${esc(m.url || "—")}</div>
+                        <div class="fpRowMeta">Interval : ${esc(m.intervalMinutes || 60)} min</div>
+                      </div>
+                      <div class="fpRowRight">
+                        <span class="fpBadge ${status === "up" ? "up" : status === "down" ? "down" : ""}">
+                          <span class="fpBadgeDot"></span>${esc(status.toUpperCase())}
+                        </span>
+                      </div>
+                    </div>
+                  `;
+                }).join("")
+              : `<div class="fpEmpty">Aucun monitor disponible.</div>`
+          }
+        </div>
+      </div>
+    `);
+
+    $("#btnRunAudit")?.addEventListener("click", safeRunAudit);
+    $("#btnAddMonitor")?.addEventListener("click", safeAddMonitor);
+    renderMissionList("#overviewMissionList", true);
+  }
+
+  function renderMissionsPage() {
+    const done = state.missions.filter((m) => m.done).length;
+
+    setHero(
+      "Missions",
+      "Checklist complète pour configurer proprement le compte client.",
+      `
+        <button class="fpBtn fpBtnSoft" id="btnResetMissions">Reset</button>
+        <button class="fpBtn fpBtnPrimary" id="btnSaveMissions">Save</button>
+      `
+    );
+
+    setMain(`
+      <div class="fpCard">
+        <div class="fpCardHead">
+          <div>
+            <div class="fpCardTitle">Checklist principale</div>
+            <div class="fpCardSub">${done}/${state.missions.length} mission(s) complétée(s).</div>
+          </div>
+        </div>
+        <div class="fpMissionGrid" id="missionsFullList"></div>
+      </div>
+    `);
+
+    setSide(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Progression</div>
+        <div class="fpCardSub">Commence par monitors, puis audits, puis billing.</div>
+        <div class="fpRows" style="margin-top:12px">
           <div class="fpRowCard">
             <div class="fpRowMain">
-              <div class="fpRowTitle">Conseil</div>
-              <div class="fpRowMeta">Commence par monitors, puis audit, puis exports et billing.</div>
+              <div class="fpRowTitle">Terminées</div>
+              <div class="fpRowMeta">${done} sur ${state.missions.length}</div>
             </div>
           </div>
         </div>
       </div>
     `);
 
-    const host = $("#missionsFullList");
-    if (host) {
-      host.innerHTML = state.missions.map((m) => `
-        <div class="fpMission">
-          <div class="fpCheck ${m.done ? "done" : ""}" data-mission-toggle="${esc(m.id)}">${m.done ? "✓" : ""}</div>
-
-          <div style="min-width:0;flex:1">
-            <div class="fpMissionTitle">${esc(m.title)}</div>
-            <div class="fpMissionMeta">${esc(m.meta)}</div>
-
-            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-              <button class="fpBtn fpBtnPrimary sm" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-            </div>
-          </div>
-        </div>
-      `).join("");
-    }
+    renderMissionList("#missionsFullList", false);
 
     $("#btnResetMissions")?.addEventListener("click", () => {
       state.missions = JSON.parse(JSON.stringify(defaultMissions));
       saveMissions();
-      renderMissionsPage();
+      renderPage();
       setStatus("Missions réinitialisées", "ok");
     });
 
@@ -596,35 +627,56 @@
   }
 
   function renderAuditsPage() {
-    setHead(
+    setHero(
       "Audits",
-      "Historique des audits SEO et accès rapide aux exports.",
+      "Historique des audits SEO, lancement manuel et export CSV.",
       `
-        <button class="fpBtn fpBtnPrimary" id="btnAuditRun" type="button">Run SEO audit</button>
-        <button class="fpBtn fpBtnSoft" id="btnAuditExport" type="button">Export audits CSV</button>
+        <button class="fpBtn fpBtnPrimary" id="btnAuditRun">Run SEO audit</button>
+        <button class="fpBtn fpBtnSoft" id="btnAuditExport">Export audits CSV</button>
       `
     );
 
-    const list = Array.isArray(state.audits) ? state.audits : [];
-
-    setGrid(`
+    setMain(`
       <div class="fpCard">
-        <div class="fpCardTitle">Historique</div>
-        <div class="fpSmall">Derniers audits récupérés depuis l’API.</div>
-        <div class="fpRows" id="auditList"></div>
-      </div>
-
-      <div class="fpCard">
-        <div class="fpCardTitle">Actions</div>
-        <div class="fpSmall">Lance un audit manuel ou exporte les données CSV.</div>
+        <div class="fpCardHead">
+          <div>
+            <div class="fpCardTitle">Historique des audits</div>
+            <div class="fpCardSub">Derniers audits récupérés depuis ton API.</div>
+          </div>
+        </div>
         <div class="fpRows">
+          ${
+            state.audits.length
+              ? state.audits.slice(0, 20).map((a) => `
+                <div class="fpRowCard">
+                  <div class="fpRowMain">
+                    <div class="fpRowTitle">${esc(a.url || "—")}</div>
+                    <div class="fpRowMeta">
+                      Score : ${esc(a.score ?? "—")} • ${esc(a.createdAt ? new Date(a.createdAt).toLocaleString("fr-FR") : "—")}
+                    </div>
+                  </div>
+                  <div class="fpRowRight">
+                    <span class="fpBadge"><span class="fpBadgeDot"></span>Audit</span>
+                  </div>
+                </div>
+              `).join("")
+              : `<div class="fpEmpty">Aucun audit disponible pour le moment.</div>`
+          }
+        </div>
+      </div>
+    `);
+
+    setSide(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Actions rapides</div>
+        <div class="fpCardSub">Lance un nouvel audit ou exporte ton historique.</div>
+        <div class="fpRows" style="margin-top:12px">
           <div class="fpRowCard">
             <div class="fpRowMain">
-              <div class="fpRowTitle">Route audit</div>
+              <div class="fpRowTitle">Route lancement</div>
               <div class="fpRowMeta">POST /api/audits/run</div>
             </div>
           </div>
-
           <div class="fpRowCard">
             <div class="fpRowMain">
               <div class="fpRowTitle">Route export</div>
@@ -637,265 +689,6 @@
 
     $("#btnAuditRun")?.addEventListener("click", safeRunAudit);
     $("#btnAuditExport")?.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv"));
-
-    const host = $("#auditList");
-    if (!host) return;
-
-    if (!list.length) {
-      host.innerHTML = `<div class="fpEmpty">Aucun audit disponible pour le moment.</div>`;
-      return;
-    }
-
-    host.innerHTML = list.slice(0, 15).map((a) => `
-      <div class="fpRowCard">
-        <div class="fpRowMain">
-          <div class="fpRowTitle">${esc(a.url || "—")}</div>
-          <div class="fpRowMeta">
-            Score: ${esc(a.score ?? "—")} • ${esc(a.createdAt || "—")}
-          </div>
-        </div>
-        <div class="fpRowRight">
-          <span class="fpBadge">
-            <span class="fpBadgeDot"></span>Audit
-          </span>
-        </div>
-      </div>
-    `).join("");
-  }
-
-  function renderMonitorsPage() {
-    const list = Array.isArray(state.monitors) ? state.monitors : [];
-
-    setHead(
-      "Monitors",
-      "Surveille tes URLs et teste leur disponibilité.",
-      `
-        <button class="fpBtn fpBtnPrimary" id="btnMonitorAdd" type="button">Add monitor</button>
-        <button class="fpBtn fpBtnSoft" id="btnMonitorExport" type="button">Export monitors CSV</button>
-      `
-    );
-
-    setGrid(`
-      <div class="fpCard">
-        <div class="fpCardTitle">Liste des monitors</div>
-        <div class="fpSmall">État, fréquence et actions rapides.</div>
-        <div class="fpRows" id="monitorList"></div>
-      </div>
-
-      <div class="fpCard">
-        <div class="fpCardTitle">Guides</div>
-        <div class="fpSmall">Utilise cette section pour contrôler l’uptime client.</div>
-        <div class="fpRows">
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Tester un monitor</div>
-              <div class="fpRowMeta">Déclenche immédiatement une vérification.</div>
-            </div>
-          </div>
-
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Exporter</div>
-              <div class="fpRowMeta">Télécharge l’état global en CSV.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `);
-
-    $("#btnMonitorAdd")?.addEventListener("click", safeAddMonitor);
-    $("#btnMonitorExport")?.addEventListener("click", () => safeExport("/api/exports/monitors.csv", "monitors.csv"));
-
-    const host = $("#monitorList");
-    if (!host) return;
-
-    if (!list.length) {
-      host.innerHTML = `<div class="fpEmpty">Aucun monitor disponible pour le moment.</div>`;
-      return;
-    }
-
-    host.innerHTML = list.slice(0, 20).map((m) => {
-      const id = m._id || m.id || "";
-      const status = String(m.lastStatus || "unknown").toLowerCase();
-      const badgeClass = status === "up" ? "up" : status === "down" ? "down" : "";
-      return `
-        <div class="fpRowCard">
-          <div class="fpRowMain">
-            <div class="fpRowTitle">${esc(m.url || "—")}</div>
-            <div class="fpRowMeta">
-              Interval: ${esc(m.intervalMinutes ?? "—")} min • Last check: ${esc(m.lastCheckedAt || "—")}
-            </div>
-          </div>
-
-          <div class="fpRowRight">
-            <span class="fpBadge ${badgeClass}">
-              <span class="fpBadgeDot"></span>${esc(status.toUpperCase())}
-            </span>
-            <button class="fpBtn fpBtnSoft sm" type="button" data-monitor-test="${esc(id)}">Test</button>
-            <button class="fpBtn fpBtnDanger sm" type="button" data-monitor-del="${esc(id)}">Delete</button>
-          </div>
-        </div>
-      `;
-    }).join("");
-  }
-
-  function renderReportsPage() {
-    setHead(
-      "Reports",
-      "Exports et rapports disponibles pour ton organisation.",
-      `
-        <button class="fpBtn fpBtnPrimary" id="btnReportAudits" type="button">Export audits CSV</button>
-        <button class="fpBtn fpBtnSoft" id="btnReportMonitors" type="button">Export monitors CSV</button>
-      `
-    );
-
-    setGrid(`
-      <div class="fpCard">
-        <div class="fpCardTitle">Exports disponibles</div>
-        <div class="fpSmall">Télécharge tes données pour reporting ou client delivery.</div>
-
-        <div class="fpRows">
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Audits CSV</div>
-              <div class="fpRowMeta">Historique et scores SEO exportables.</div>
-            </div>
-          </div>
-
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Monitors CSV</div>
-              <div class="fpRowMeta">État des URLs et fréquence des checks.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="fpCard">
-        <div class="fpCardTitle">Usage</div>
-        <div class="fpSmall">Les exports utilisent ton quota mensuel si applicable.</div>
-        <div class="fpRows">
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Conseil</div>
-              <div class="fpRowMeta">Garde cette page pour toutes les livraisons client et exports internes.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `);
-
-    $("#btnReportAudits")?.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv"));
-    $("#btnReportMonitors")?.addEventListener("click", () => safeExport("/api/exports/monitors.csv", "monitors.csv"));
-  }
-
-  function renderBillingPage() {
-    setHead(
-      "Billing",
-      "Gère ton abonnement et accède à Stripe.",
-      `
-        <button class="fpBtn fpBtnPrimary" id="btnBillingPortalMain" type="button">Open Billing Portal</button>
-      `
-    );
-
-    setGrid(`
-      <div class="fpCard">
-        <div class="fpCardTitle">Abonnement</div>
-        <div class="fpSmall">Informations générales du plan actif.</div>
-
-        <div class="fpRows">
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Plan actuel</div>
-              <div class="fpRowMeta">${esc(state.me?.plan || "—")}</div>
-            </div>
-          </div>
-
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Statut</div>
-              <div class="fpRowMeta">${esc(state.me?.subscriptionStatus || "—")}</div>
-            </div>
-          </div>
-
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Fin trial / échéance</div>
-              <div class="fpRowMeta">${esc(state.me?.trialEndsAt || "—")}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="fpCard">
-        <div class="fpCardTitle">Gestion</div>
-        <div class="fpSmall">Toutes les modifications passent par Stripe Billing Portal.</div>
-        <div class="fpRows">
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Upgrade / downgrade</div>
-              <div class="fpRowMeta">Gère ton abonnement sans toucher au code.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `);
-
-    $("#btnBillingPortalMain")?.addEventListener("click", openBillingPortal);
-  }
-
-  function renderSettingsPage() {
-    const saved = localStorage.getItem("fp_alert_emails") || "";
-
-    setHead(
-      "Settings",
-      "Paramètres de base de l’organisation et alert emails.",
-      `
-        <button class="fpBtn fpBtnPrimary" id="btnSaveSettings" type="button">Save settings</button>
-      `
-    );
-
-    setGrid(`
-      <div class="fpCard">
-        <div class="fpCardTitle">Alert emails</div>
-        <div class="fpSmall">Ajoute ici les emails qui doivent recevoir les alertes.</div>
-
-        <div class="fpField">
-          <label class="fpLabel" for="settingsRecipients">Recipients</label>
-          <input class="fpInput" id="settingsRecipients" type="text" placeholder="support@flowpoint.pro, alert@flowpoint.pro" value="${esc(saved)}" />
-        </div>
-      </div>
-
-      <div class="fpCard">
-        <div class="fpCardTitle">Organisation</div>
-        <div class="fpSmall">Récapitulatif actuel.</div>
-
-        <div class="fpRows">
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Nom</div>
-              <div class="fpRowMeta">${esc(state.me?.org?.name || "—")}</div>
-            </div>
-          </div>
-
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Plan</div>
-              <div class="fpRowMeta">${esc(state.me?.plan || "—")}</div>
-            </div>
-          </div>
-
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">Role</div>
-              <div class="fpRowMeta">${esc(state.me?.role || "—")}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `);
-
-    $("#btnSaveSettings")?.addEventListener("click", saveAlertSettings);
   }
 
   function renderPage() {
@@ -904,12 +697,26 @@
     if (state.page === "overview") return renderOverview();
     if (state.page === "missions") return renderMissionsPage();
     if (state.page === "audits") return renderAuditsPage();
-    if (state.page === "monitors") return renderMonitorsPage();
-    if (state.page === "reports") return renderReportsPage();
-    if (state.page === "billing") return renderBillingPage();
-    if (state.page === "settings") return renderSettingsPage();
 
-    return renderOverview();
+    setHero(
+      "Page en préparation",
+      "La base visuelle est prête. Cette section sera branchée dans le même style.",
+      ""
+    );
+
+    setMain(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Section : ${esc(state.page)}</div>
+        <div class="fpCardSub">Cette page sera fournie dans le prochain lot.</div>
+      </div>
+    `);
+
+    setSide(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Style actif</div>
+        <div class="fpCardSub">Même shell, mêmes couleurs, light/dark automatique.</div>
+      </div>
+    `);
   }
 
   function bind() {
@@ -917,17 +724,14 @@
     els.sidebarClose?.addEventListener("click", closeSidebar);
     els.overlay?.addEventListener("click", closeSidebar);
 
-    els.navItems.forEach((item) => {
-      item.addEventListener("click", () => closeSidebar());
+    els.navItems.forEach((a) => {
+      a.addEventListener("click", () => closeSidebar());
     });
 
     els.btnPortal?.addEventListener("click", openBillingPortal);
-    els.btnLogout?.addEventListener("click", () => {
-      clearAuth();
-      window.location.replace("/login.html");
-    });
+    els.btnLogout?.addEventListener("click", logout);
 
-    document.addEventListener("click", async (e) => {
+    document.addEventListener("click", (e) => {
       const toggle = e.target.closest("[data-mission-toggle]");
       if (toggle) {
         toggleMission(toggle.getAttribute("data-mission-toggle"));
@@ -937,19 +741,19 @@
 
       const action = e.target.closest("[data-mission-do]");
       if (action) {
-        await doMission(action.getAttribute("data-mission-do"));
+        doMission(action.getAttribute("data-mission-do"));
         return;
       }
 
-      const monitorTest = e.target.closest("[data-monitor-test]");
-      if (monitorTest) {
-        await safeTestMonitor(monitorTest.getAttribute("data-monitor-test"));
+      const monRun = e.target.closest("[data-monitor-run]");
+      if (monRun) {
+        safeRunMonitor(monRun.getAttribute("data-monitor-run"));
         return;
       }
 
-      const monitorDel = e.target.closest("[data-monitor-del]");
-      if (monitorDel) {
-        await safeDeleteMonitor(monitorDel.getAttribute("data-monitor-del"));
+      const monDel = e.target.closest("[data-monitor-del]");
+      if (monDel) {
+        safeDeleteMonitor(monDel.getAttribute("data-monitor-del"));
       }
     });
   }
@@ -958,6 +762,7 @@
     state.missions = loadMissions();
     saveMissions();
     bind();
+    setActiveNav();
     loadData();
   }
 
