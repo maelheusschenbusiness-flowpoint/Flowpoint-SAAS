@@ -461,70 +461,168 @@
     `).join("");
   }
 
-  function renderPage() {
-    setActiveNav();
+  function renderMissionsPage() {
+  const done = state.missions.filter((m) => m.done).length;
 
-    if (state.page === "overview") {
-      renderOverview();
-      return;
-    }
+  setHead(
+    "Missions",
+    `${done}/${state.missions.length} complétées. Utilise cette page comme checklist d’onboarding.`,
+    `
+      <button class="fpBtn fpBtnSoft" id="btnResetMissions" type="button">Reset</button>
+      <button class="fpBtn fpBtnPrimary" id="btnSaveMissions" type="button">Save</button>
+    `
+  );
 
-    setHead(
-      "Page dédiée",
-      "Cette section sera branchée à sa page personnalisée dédiée.",
-      ""
-    );
+  setGrid(`
+    <div class="fpCard">
+      <div class="fpCardTitle">Checklist principale</div>
+      <div class="fpSmall">Chaque mission peut être cochée ou exécutée directement.</div>
+      <div class="fpMissionGrid" id="missionsFullList"></div>
+    </div>
 
-    setGrid(`
-      <div class="fpCard">
-        <div class="fpCardTitle">Section en cours</div>
-        <div class="fpSmall">La nouvelle base visuelle est prête. On va maintenant créer les autres pages une par une avec ce style.</div>
-        <div class="fpEmpty">Page : ${esc(state.page)}</div>
+    <div class="fpCard">
+      <div class="fpCardTitle">Progression</div>
+      <div class="fpSmall">Utilise cette page pour organiser le setup du compte client.</div>
+      <div class="fpRows">
+        <div class="fpRowCard">
+          <div class="fpRowMain">
+            <div class="fpRowTitle">Missions terminées</div>
+            <div class="fpRowMeta">${done} sur ${state.missions.length}</div>
+          </div>
+        </div>
+
+        <div class="fpRowCard">
+          <div class="fpRowMain">
+            <div class="fpRowTitle">Conseil</div>
+            <div class="fpRowMeta">Commence par monitors, puis audit, puis exports et billing.</div>
+          </div>
+        </div>
       </div>
+    </div>
+  `);
 
-      <div class="fpCard">
-        <div class="fpCardTitle">Base propre</div>
-        <div class="fpSmall">Sidebar, topbar, light/dark, quotas, billing et overview sont déjà préparés.</div>
+  const host = $("#missionsFullList");
+  if (host) {
+    host.innerHTML = state.missions.map((m) => `
+      <div class="fpMission">
+        <div class="fpCheck ${m.done ? "done" : ""}" data-mission-toggle="${esc(m.id)}">${m.done ? "✓" : ""}</div>
+
+        <div style="min-width:0;flex:1">
+          <div class="fpMissionTitle">${esc(m.title)}</div>
+          <div class="fpMissionMeta">${esc(m.meta)}</div>
+
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="fpBtn fpBtnPrimary sm" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+          </div>
+        </div>
       </div>
-    `);
+    `).join("");
   }
 
-  function bind() {
-    els.menuBtn?.addEventListener("click", openSidebar);
-    els.sidebarClose?.addEventListener("click", closeSidebar);
-    els.overlay?.addEventListener("click", closeSidebar);
-
-    els.navItems.forEach((item) => {
-      item.addEventListener("click", () => closeSidebar());
-    });
-
-    els.btnPortal?.addEventListener("click", openBillingPortal);
-    els.btnLogout?.addEventListener("click", () => {
-      clearAuth();
-      window.location.replace("/login.html");
-    });
-
-    document.addEventListener("click", (e) => {
-      const toggle = e.target.closest("[data-mission-toggle]");
-      if (toggle) {
-        toggleMission(toggle.getAttribute("data-mission-toggle"));
-        renderPage();
-        return;
-      }
-
-      const action = e.target.closest("[data-mission-do]");
-      if (action) {
-        doMission(action.getAttribute("data-mission-do"));
-      }
-    });
-  }
-
-  function init() {
-    state.missions = loadMissions();
+  $("#btnResetMissions")?.addEventListener("click", () => {
+    state.missions = JSON.parse(JSON.stringify(defaultMissions));
     saveMissions();
-    bind();
-    loadData();
+    renderMissionsPage();
+    setStatus("Missions réinitialisées", "ok");
+  });
+
+  $("#btnSaveMissions")?.addEventListener("click", () => {
+    saveMissions();
+    setStatus("Missions sauvegardées", "ok");
+  });
+}
+
+function renderAuditsPage() {
+  setHead(
+    "Audits",
+    "Historique des audits SEO et accès rapide aux exports.",
+    `
+      <button class="fpBtn fpBtnPrimary" id="btnAuditRun" type="button">Run SEO audit</button>
+      <button class="fpBtn fpBtnSoft" id="btnAuditExport" type="button">Export audits CSV</button>
+    `
+  );
+
+  const list = Array.isArray(state.audits) ? state.audits : [];
+
+  setGrid(`
+    <div class="fpCard">
+      <div class="fpCardTitle">Historique</div>
+      <div class="fpSmall">Derniers audits récupérés depuis l’API.</div>
+      <div class="fpRows" id="auditList"></div>
+    </div>
+
+    <div class="fpCard">
+      <div class="fpCardTitle">Actions</div>
+      <div class="fpSmall">Lance un audit manuel ou exporte les données CSV.</div>
+      <div class="fpRows">
+        <div class="fpRowCard">
+          <div class="fpRowMain">
+            <div class="fpRowTitle">Route audit</div>
+            <div class="fpRowMeta">POST /api/audits/run</div>
+          </div>
+        </div>
+
+        <div class="fpRowCard">
+          <div class="fpRowMain">
+            <div class="fpRowTitle">Route export</div>
+            <div class="fpRowMeta">GET /api/exports/audits.csv</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  $("#btnAuditRun")?.addEventListener("click", safeRunAudit);
+  $("#btnAuditExport")?.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv"));
+
+  const host = $("#auditList");
+  if (!host) return;
+
+  if (!list.length) {
+    host.innerHTML = `<div class="fpEmpty">Aucun audit disponible pour le moment.</div>`;
+    return;
   }
 
-  init();
-})();
+  host.innerHTML = list.slice(0, 15).map((a) => `
+    <div class="fpRowCard">
+      <div class="fpRowMain">
+        <div class="fpRowTitle">${esc(a.url || "—")}</div>
+        <div class="fpRowMeta">
+          Score: ${esc(a.score ?? "—")} • ${esc(a.createdAt || "—")}
+        </div>
+      </div>
+      <div class="fpRowRight">
+        <span class="fpBadge">
+          <span class="fpBadgeDot"></span>Audit
+        </span>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderPage() {
+  setActiveNav();
+
+  if (state.page === "overview") return renderOverview();
+  if (state.page === "missions") return renderMissionsPage();
+  if (state.page === "audits") return renderAuditsPage();
+
+  setHead(
+    "Page dédiée",
+    "Cette section sera branchée à sa page personnalisée dédiée.",
+    ""
+  );
+
+  setGrid(`
+    <div class="fpCard">
+      <div class="fpCardTitle">Section en cours</div>
+      <div class="fpSmall">La nouvelle base visuelle est prête. On va maintenant créer les autres pages avec ce style.</div>
+      <div class="fpEmpty">Page : ${esc(state.page)}</div>
+    </div>
+
+    <div class="fpCard">
+      <div class="fpCardTitle">Base propre</div>
+      <div class="fpSmall">Sidebar, topbar, light/dark, quotas et structure sont déjà en place.</div>
+    </div>
+  `);
+}
