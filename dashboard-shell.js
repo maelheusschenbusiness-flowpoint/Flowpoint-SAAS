@@ -298,6 +298,45 @@
     }
   }
 
+  async function safeTestMonitor(id) {
+    if (!id) return false;
+
+    setStatus("Test monitor…", "warn");
+    try {
+      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}/run`, {
+        method: "POST",
+      });
+      if (!r.ok) throw new Error("Monitor test failed");
+      setStatus("Test monitor — OK", "ok");
+      await loadData();
+      return true;
+    } catch (e) {
+      console.error(e);
+      setStatus("Test monitor échoué", "danger");
+      return false;
+    }
+  }
+
+  async function safeDeleteMonitor(id) {
+    if (!id) return false;
+    if (!confirm("Supprimer ce monitor ?")) return false;
+
+    setStatus("Suppression monitor…", "warn");
+    try {
+      const r = await fetchWithAuth(`/api/monitors/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!r.ok) throw new Error("Monitor delete failed");
+      setStatus("Monitor supprimé — OK", "ok");
+      await loadData();
+      return true;
+    } catch (e) {
+      console.error(e);
+      setStatus("Suppression monitor échouée", "danger");
+      return false;
+    }
+  }
+
   async function safeExport(endpoint, filename) {
     setStatus("Préparation export…", "warn");
     try {
@@ -320,6 +359,30 @@
       console.error(e);
       setStatus("Export échoué", "danger");
       return false;
+    }
+  }
+
+  async function saveAlertSettings() {
+    const input = $("#settingsRecipients");
+    const value = (input?.value || "").trim();
+
+    localStorage.setItem("fp_alert_emails", value);
+
+    try {
+      await fetchWithAuth("/api/org/settings", {
+        method: "POST",
+        body: JSON.stringify({
+          alertRecipients: "all",
+          alertExtraEmails: value
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+        }),
+      });
+      setStatus("Settings sauvegardés", "ok");
+    } catch (e) {
+      console.error(e);
+      setStatus("Sauvegarde partielle", "warn");
     }
   }
 
@@ -462,167 +525,441 @@
   }
 
   function renderMissionsPage() {
-  const done = state.missions.filter((m) => m.done).length;
+    const done = state.missions.filter((m) => m.done).length;
 
-  setHead(
-    "Missions",
-    `${done}/${state.missions.length} complétées. Utilise cette page comme checklist d’onboarding.`,
-    `
-      <button class="fpBtn fpBtnSoft" id="btnResetMissions" type="button">Reset</button>
-      <button class="fpBtn fpBtnPrimary" id="btnSaveMissions" type="button">Save</button>
-    `
-  );
+    setHead(
+      "Missions",
+      `${done}/${state.missions.length} complétées. Utilise cette page comme checklist d’onboarding.`,
+      `
+        <button class="fpBtn fpBtnSoft" id="btnResetMissions" type="button">Reset</button>
+        <button class="fpBtn fpBtnPrimary" id="btnSaveMissions" type="button">Save</button>
+      `
+    );
 
-  setGrid(`
-    <div class="fpCard">
-      <div class="fpCardTitle">Checklist principale</div>
-      <div class="fpSmall">Chaque mission peut être cochée ou exécutée directement.</div>
-      <div class="fpMissionGrid" id="missionsFullList"></div>
-    </div>
+    setGrid(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Checklist principale</div>
+        <div class="fpSmall">Chaque mission peut être cochée ou exécutée directement.</div>
+        <div class="fpMissionGrid" id="missionsFullList"></div>
+      </div>
 
-    <div class="fpCard">
-      <div class="fpCardTitle">Progression</div>
-      <div class="fpSmall">Utilise cette page pour organiser le setup du compte client.</div>
-      <div class="fpRows">
-        <div class="fpRowCard">
-          <div class="fpRowMain">
-            <div class="fpRowTitle">Missions terminées</div>
-            <div class="fpRowMeta">${done} sur ${state.missions.length}</div>
+      <div class="fpCard">
+        <div class="fpCardTitle">Progression</div>
+        <div class="fpSmall">Utilise cette page pour organiser le setup du compte client.</div>
+        <div class="fpRows">
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Missions terminées</div>
+              <div class="fpRowMeta">${done} sur ${state.missions.length}</div>
+            </div>
           </div>
-        </div>
 
-        <div class="fpRowCard">
-          <div class="fpRowMain">
-            <div class="fpRowTitle">Conseil</div>
-            <div class="fpRowMeta">Commence par monitors, puis audit, puis exports et billing.</div>
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Conseil</div>
+              <div class="fpRowMeta">Commence par monitors, puis audit, puis exports et billing.</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  `);
+    `);
 
-  const host = $("#missionsFullList");
-  if (host) {
-    host.innerHTML = state.missions.map((m) => `
-      <div class="fpMission">
-        <div class="fpCheck ${m.done ? "done" : ""}" data-mission-toggle="${esc(m.id)}">${m.done ? "✓" : ""}</div>
+    const host = $("#missionsFullList");
+    if (host) {
+      host.innerHTML = state.missions.map((m) => `
+        <div class="fpMission">
+          <div class="fpCheck ${m.done ? "done" : ""}" data-mission-toggle="${esc(m.id)}">${m.done ? "✓" : ""}</div>
 
-        <div style="min-width:0;flex:1">
-          <div class="fpMissionTitle">${esc(m.title)}</div>
-          <div class="fpMissionMeta">${esc(m.meta)}</div>
+          <div style="min-width:0;flex:1">
+            <div class="fpMissionTitle">${esc(m.title)}</div>
+            <div class="fpMissionMeta">${esc(m.meta)}</div>
 
-          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-            <button class="fpBtn fpBtnPrimary sm" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="fpBtn fpBtnPrimary sm" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+            </div>
           </div>
+        </div>
+      `).join("");
+    }
+
+    $("#btnResetMissions")?.addEventListener("click", () => {
+      state.missions = JSON.parse(JSON.stringify(defaultMissions));
+      saveMissions();
+      renderMissionsPage();
+      setStatus("Missions réinitialisées", "ok");
+    });
+
+    $("#btnSaveMissions")?.addEventListener("click", () => {
+      saveMissions();
+      setStatus("Missions sauvegardées", "ok");
+    });
+  }
+
+  function renderAuditsPage() {
+    setHead(
+      "Audits",
+      "Historique des audits SEO et accès rapide aux exports.",
+      `
+        <button class="fpBtn fpBtnPrimary" id="btnAuditRun" type="button">Run SEO audit</button>
+        <button class="fpBtn fpBtnSoft" id="btnAuditExport" type="button">Export audits CSV</button>
+      `
+    );
+
+    const list = Array.isArray(state.audits) ? state.audits : [];
+
+    setGrid(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Historique</div>
+        <div class="fpSmall">Derniers audits récupérés depuis l’API.</div>
+        <div class="fpRows" id="auditList"></div>
+      </div>
+
+      <div class="fpCard">
+        <div class="fpCardTitle">Actions</div>
+        <div class="fpSmall">Lance un audit manuel ou exporte les données CSV.</div>
+        <div class="fpRows">
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Route audit</div>
+              <div class="fpRowMeta">POST /api/audits/run</div>
+            </div>
+          </div>
+
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Route export</div>
+              <div class="fpRowMeta">GET /api/exports/audits.csv</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+
+    $("#btnAuditRun")?.addEventListener("click", safeRunAudit);
+    $("#btnAuditExport")?.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv"));
+
+    const host = $("#auditList");
+    if (!host) return;
+
+    if (!list.length) {
+      host.innerHTML = `<div class="fpEmpty">Aucun audit disponible pour le moment.</div>`;
+      return;
+    }
+
+    host.innerHTML = list.slice(0, 15).map((a) => `
+      <div class="fpRowCard">
+        <div class="fpRowMain">
+          <div class="fpRowTitle">${esc(a.url || "—")}</div>
+          <div class="fpRowMeta">
+            Score: ${esc(a.score ?? "—")} • ${esc(a.createdAt || "—")}
+          </div>
+        </div>
+        <div class="fpRowRight">
+          <span class="fpBadge">
+            <span class="fpBadgeDot"></span>Audit
+          </span>
         </div>
       </div>
     `).join("");
   }
 
-  $("#btnResetMissions")?.addEventListener("click", () => {
-    state.missions = JSON.parse(JSON.stringify(defaultMissions));
-    saveMissions();
-    renderMissionsPage();
-    setStatus("Missions réinitialisées", "ok");
-  });
+  function renderMonitorsPage() {
+    const list = Array.isArray(state.monitors) ? state.monitors : [];
 
-  $("#btnSaveMissions")?.addEventListener("click", () => {
-    saveMissions();
-    setStatus("Missions sauvegardées", "ok");
-  });
-}
+    setHead(
+      "Monitors",
+      "Surveille tes URLs et teste leur disponibilité.",
+      `
+        <button class="fpBtn fpBtnPrimary" id="btnMonitorAdd" type="button">Add monitor</button>
+        <button class="fpBtn fpBtnSoft" id="btnMonitorExport" type="button">Export monitors CSV</button>
+      `
+    );
 
-function renderAuditsPage() {
-  setHead(
-    "Audits",
-    "Historique des audits SEO et accès rapide aux exports.",
-    `
-      <button class="fpBtn fpBtnPrimary" id="btnAuditRun" type="button">Run SEO audit</button>
-      <button class="fpBtn fpBtnSoft" id="btnAuditExport" type="button">Export audits CSV</button>
-    `
-  );
+    setGrid(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Liste des monitors</div>
+        <div class="fpSmall">État, fréquence et actions rapides.</div>
+        <div class="fpRows" id="monitorList"></div>
+      </div>
 
-  const list = Array.isArray(state.audits) ? state.audits : [];
-
-  setGrid(`
-    <div class="fpCard">
-      <div class="fpCardTitle">Historique</div>
-      <div class="fpSmall">Derniers audits récupérés depuis l’API.</div>
-      <div class="fpRows" id="auditList"></div>
-    </div>
-
-    <div class="fpCard">
-      <div class="fpCardTitle">Actions</div>
-      <div class="fpSmall">Lance un audit manuel ou exporte les données CSV.</div>
-      <div class="fpRows">
-        <div class="fpRowCard">
-          <div class="fpRowMain">
-            <div class="fpRowTitle">Route audit</div>
-            <div class="fpRowMeta">POST /api/audits/run</div>
+      <div class="fpCard">
+        <div class="fpCardTitle">Guides</div>
+        <div class="fpSmall">Utilise cette section pour contrôler l’uptime client.</div>
+        <div class="fpRows">
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Tester un monitor</div>
+              <div class="fpRowMeta">Déclenche immédiatement une vérification.</div>
+            </div>
           </div>
-        </div>
 
-        <div class="fpRowCard">
-          <div class="fpRowMain">
-            <div class="fpRowTitle">Route export</div>
-            <div class="fpRowMeta">GET /api/exports/audits.csv</div>
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Exporter</div>
+              <div class="fpRowMeta">Télécharge l’état global en CSV.</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  `);
+    `);
 
-  $("#btnAuditRun")?.addEventListener("click", safeRunAudit);
-  $("#btnAuditExport")?.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv"));
+    $("#btnMonitorAdd")?.addEventListener("click", safeAddMonitor);
+    $("#btnMonitorExport")?.addEventListener("click", () => safeExport("/api/exports/monitors.csv", "monitors.csv"));
 
-  const host = $("#auditList");
-  if (!host) return;
+    const host = $("#monitorList");
+    if (!host) return;
 
-  if (!list.length) {
-    host.innerHTML = `<div class="fpEmpty">Aucun audit disponible pour le moment.</div>`;
-    return;
+    if (!list.length) {
+      host.innerHTML = `<div class="fpEmpty">Aucun monitor disponible pour le moment.</div>`;
+      return;
+    }
+
+    host.innerHTML = list.slice(0, 20).map((m) => {
+      const id = m._id || m.id || "";
+      const status = String(m.lastStatus || "unknown").toLowerCase();
+      const badgeClass = status === "up" ? "up" : status === "down" ? "down" : "";
+      return `
+        <div class="fpRowCard">
+          <div class="fpRowMain">
+            <div class="fpRowTitle">${esc(m.url || "—")}</div>
+            <div class="fpRowMeta">
+              Interval: ${esc(m.intervalMinutes ?? "—")} min • Last check: ${esc(m.lastCheckedAt || "—")}
+            </div>
+          </div>
+
+          <div class="fpRowRight">
+            <span class="fpBadge ${badgeClass}">
+              <span class="fpBadgeDot"></span>${esc(status.toUpperCase())}
+            </span>
+            <button class="fpBtn fpBtnSoft sm" type="button" data-monitor-test="${esc(id)}">Test</button>
+            <button class="fpBtn fpBtnDanger sm" type="button" data-monitor-del="${esc(id)}">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join("");
   }
 
-  host.innerHTML = list.slice(0, 15).map((a) => `
-    <div class="fpRowCard">
-      <div class="fpRowMain">
-        <div class="fpRowTitle">${esc(a.url || "—")}</div>
-        <div class="fpRowMeta">
-          Score: ${esc(a.score ?? "—")} • ${esc(a.createdAt || "—")}
+  function renderReportsPage() {
+    setHead(
+      "Reports",
+      "Exports et rapports disponibles pour ton organisation.",
+      `
+        <button class="fpBtn fpBtnPrimary" id="btnReportAudits" type="button">Export audits CSV</button>
+        <button class="fpBtn fpBtnSoft" id="btnReportMonitors" type="button">Export monitors CSV</button>
+      `
+    );
+
+    setGrid(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Exports disponibles</div>
+        <div class="fpSmall">Télécharge tes données pour reporting ou client delivery.</div>
+
+        <div class="fpRows">
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Audits CSV</div>
+              <div class="fpRowMeta">Historique et scores SEO exportables.</div>
+            </div>
+          </div>
+
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Monitors CSV</div>
+              <div class="fpRowMeta">État des URLs et fréquence des checks.</div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="fpRowRight">
-        <span class="fpBadge">
-          <span class="fpBadgeDot"></span>Audit
-        </span>
+
+      <div class="fpCard">
+        <div class="fpCardTitle">Usage</div>
+        <div class="fpSmall">Les exports utilisent ton quota mensuel si applicable.</div>
+        <div class="fpRows">
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Conseil</div>
+              <div class="fpRowMeta">Garde cette page pour toutes les livraisons client et exports internes.</div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  `).join("");
-}
+    `);
 
-function renderPage() {
-  setActiveNav();
+    $("#btnReportAudits")?.addEventListener("click", () => safeExport("/api/exports/audits.csv", "audits.csv"));
+    $("#btnReportMonitors")?.addEventListener("click", () => safeExport("/api/exports/monitors.csv", "monitors.csv"));
+  }
 
-  if (state.page === "overview") return renderOverview();
-  if (state.page === "missions") return renderMissionsPage();
-  if (state.page === "audits") return renderAuditsPage();
+  function renderBillingPage() {
+    setHead(
+      "Billing",
+      "Gère ton abonnement et accède à Stripe.",
+      `
+        <button class="fpBtn fpBtnPrimary" id="btnBillingPortalMain" type="button">Open Billing Portal</button>
+      `
+    );
 
-  setHead(
-    "Page dédiée",
-    "Cette section sera branchée à sa page personnalisée dédiée.",
-    ""
-  );
+    setGrid(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Abonnement</div>
+        <div class="fpSmall">Informations générales du plan actif.</div>
 
-  setGrid(`
-    <div class="fpCard">
-      <div class="fpCardTitle">Section en cours</div>
-      <div class="fpSmall">La nouvelle base visuelle est prête. On va maintenant créer les autres pages avec ce style.</div>
-      <div class="fpEmpty">Page : ${esc(state.page)}</div>
-    </div>
+        <div class="fpRows">
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Plan actuel</div>
+              <div class="fpRowMeta">${esc(state.me?.plan || "—")}</div>
+            </div>
+          </div>
 
-    <div class="fpCard">
-      <div class="fpCardTitle">Base propre</div>
-      <div class="fpSmall">Sidebar, topbar, light/dark, quotas et structure sont déjà en place.</div>
-    </div>
-  `);
-}
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Statut</div>
+              <div class="fpRowMeta">${esc(state.me?.subscriptionStatus || "—")}</div>
+            </div>
+          </div>
+
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Fin trial / échéance</div>
+              <div class="fpRowMeta">${esc(state.me?.trialEndsAt || "—")}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fpCard">
+        <div class="fpCardTitle">Gestion</div>
+        <div class="fpSmall">Toutes les modifications passent par Stripe Billing Portal.</div>
+        <div class="fpRows">
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Upgrade / downgrade</div>
+              <div class="fpRowMeta">Gère ton abonnement sans toucher au code.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+
+    $("#btnBillingPortalMain")?.addEventListener("click", openBillingPortal);
+  }
+
+  function renderSettingsPage() {
+    const saved = localStorage.getItem("fp_alert_emails") || "";
+
+    setHead(
+      "Settings",
+      "Paramètres de base de l’organisation et alert emails.",
+      `
+        <button class="fpBtn fpBtnPrimary" id="btnSaveSettings" type="button">Save settings</button>
+      `
+    );
+
+    setGrid(`
+      <div class="fpCard">
+        <div class="fpCardTitle">Alert emails</div>
+        <div class="fpSmall">Ajoute ici les emails qui doivent recevoir les alertes.</div>
+
+        <div class="fpField">
+          <label class="fpLabel" for="settingsRecipients">Recipients</label>
+          <input class="fpInput" id="settingsRecipients" type="text" placeholder="support@flowpoint.pro, alert@flowpoint.pro" value="${esc(saved)}" />
+        </div>
+      </div>
+
+      <div class="fpCard">
+        <div class="fpCardTitle">Organisation</div>
+        <div class="fpSmall">Récapitulatif actuel.</div>
+
+        <div class="fpRows">
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Nom</div>
+              <div class="fpRowMeta">${esc(state.me?.org?.name || "—")}</div>
+            </div>
+          </div>
+
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Plan</div>
+              <div class="fpRowMeta">${esc(state.me?.plan || "—")}</div>
+            </div>
+          </div>
+
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">Role</div>
+              <div class="fpRowMeta">${esc(state.me?.role || "—")}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+
+    $("#btnSaveSettings")?.addEventListener("click", saveAlertSettings);
+  }
+
+  function renderPage() {
+    setActiveNav();
+
+    if (state.page === "overview") return renderOverview();
+    if (state.page === "missions") return renderMissionsPage();
+    if (state.page === "audits") return renderAuditsPage();
+    if (state.page === "monitors") return renderMonitorsPage();
+    if (state.page === "reports") return renderReportsPage();
+    if (state.page === "billing") return renderBillingPage();
+    if (state.page === "settings") return renderSettingsPage();
+
+    return renderOverview();
+  }
+
+  function bind() {
+    els.menuBtn?.addEventListener("click", openSidebar);
+    els.sidebarClose?.addEventListener("click", closeSidebar);
+    els.overlay?.addEventListener("click", closeSidebar);
+
+    els.navItems.forEach((item) => {
+      item.addEventListener("click", () => closeSidebar());
+    });
+
+    els.btnPortal?.addEventListener("click", openBillingPortal);
+    els.btnLogout?.addEventListener("click", () => {
+      clearAuth();
+      window.location.replace("/login.html");
+    });
+
+    document.addEventListener("click", async (e) => {
+      const toggle = e.target.closest("[data-mission-toggle]");
+      if (toggle) {
+        toggleMission(toggle.getAttribute("data-mission-toggle"));
+        renderPage();
+        return;
+      }
+
+      const action = e.target.closest("[data-mission-do]");
+      if (action) {
+        await doMission(action.getAttribute("data-mission-do"));
+        return;
+      }
+
+      const monitorTest = e.target.closest("[data-monitor-test]");
+      if (monitorTest) {
+        await safeTestMonitor(monitorTest.getAttribute("data-monitor-test"));
+        return;
+      }
+
+      const monitorDel = e.target.closest("[data-monitor-del]");
+      if (monitorDel) {
+        await safeDeleteMonitor(monitorDel.getAttribute("data-monitor-del"));
+      }
+    });
+  }
+
+  function init() {
+    state.missions = loadMissions();
+    saveMissions();
+    bind();
+    loadData();
+  }
+
+  init();
+})();
