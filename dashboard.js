@@ -218,7 +218,10 @@
 
   function formatUsage(v) {
     if (v == null) return "—";
-    if (typeof v === "number" || typeof v === "string") return String(v);
+
+    if (typeof v === "number" || typeof v === "string") {
+      return String(v);
+    }
 
     if (typeof v === "object") {
       const used = v.used ?? 0;
@@ -277,7 +280,9 @@
     const headers = new Headers(options.headers || {});
     const token = getToken();
 
-    if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
 
     if (options.body && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
@@ -315,11 +320,15 @@
   }
 
   async function parseJsonSafe(res) {
+    if (!res) return {};
     return res.json().catch(() => ({}));
   }
 
   function setStatus(text, mode = "ok") {
-    if (els.statusText) els.statusText.textContent = text || "";
+    if (els.statusText) {
+      els.statusText.textContent = text || "";
+    }
+
     if (!els.statusDot) return;
 
     els.statusDot.classList.remove("warn", "danger");
@@ -333,7 +342,12 @@
   }
 
   function normalizeMonitorStatus(monitor) {
-    return String(monitor?.lastStatus || "unknown").toLowerCase();
+    return String(
+      monitor?.lastStatus ||
+      monitor?.status ||
+      monitor?.state ||
+      "unknown"
+    ).toLowerCase();
   }
 
   function normalizeMonitorId(monitor) {
@@ -367,7 +381,9 @@
   }
 
   function setPage(html) {
-    if (els.pageContainer) els.pageContainer.innerHTML = html;
+    if (els.pageContainer) {
+      els.pageContainer.innerHTML = html;
+    }
   }
 
   function shuffleArray(arr) {
@@ -384,7 +400,9 @@
       const raw = localStorage.getItem(MISSIONS_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : null;
       if (Array.isArray(parsed) && parsed.length) return parsed;
-    } catch {}
+    } catch (e) {
+      console.error("Erreur lecture missions :", e);
+    }
     return shuffleArray(getDefaultMissions());
   }
 
@@ -787,7 +805,6 @@
 
     const chartW = width - padLeft - padRight;
     const chartH = height - padTop - padBottom;
-
     const gridLines = 5;
 
     ctx.strokeStyle = line;
