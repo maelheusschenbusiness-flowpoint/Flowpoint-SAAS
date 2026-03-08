@@ -1677,3 +1677,152 @@ a{
     height:260px;
   }
 }
+/* FIXES FINAUX */
+body,
+.fpMain,
+.fpPageWrap,
+.fpCard,
+.fpCardInner,
+.fpPageHero{
+  min-width:0;
+}
+
+.fpSidebar{
+  -webkit-overflow-scrolling:touch;
+}
+
+.fpExportMenu{
+  overflow:hidden;
+}
+
+.fpChartBox canvas{
+  max-width:100%;
+}
+
+@supports (-webkit-touch-callout: none){
+  body{
+    min-height:-webkit-fill-available;
+  }
+
+  .fpSidebar{
+    height:100dvh;
+  }
+}
+
+/* MODE CLAIR AUTO SI LE NAVIGATEUR EST EN CLAIR */
+@media (prefers-color-scheme: light){
+  :root{
+    --fpBg:#eef3ff;
+    --fpBg2:#dfe7ff;
+    --fpPanel:#ffffff;
+    --fpPanel2:#f6f8ff;
+    --fpPanel3:#edf2ff;
+
+    --fpBorder:rgba(15,23,42,.08);
+    --fpBorderStrong:rgba(15,23,42,.14);
+
+    --fpText:#10182b;
+    --fpTextSoft:#425074;
+    --fpMuted:#6d7a9d;
+
+    --fpShadow:0 18px 40px rgba(27,45,94,.10);
+    --fpShadowLg:0 28px 70px rgba(27,45,94,.14);
+  }
+
+  body{
+    background:
+      radial-gradient(1000px 500px at 12% 0%, rgba(47,91,255,.18), transparent 60%),
+      radial-gradient(900px 500px at 100% 8%, rgba(91,124,255,.14), transparent 58%),
+      radial-gradient(900px 700px at 50% 100%, rgba(27,69,255,.08), transparent 62%),
+      linear-gradient(180deg, var(--fpBg), var(--fpBg2));
+  }
+
+  .fpSidebar{
+    background:
+      radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.12), transparent 62%),
+      linear-gradient(180deg, rgba(255,255,255,.92), rgba(240,245,255,.96));
+  }
+
+  .fpNavItem:hover{
+    background:rgba(47,91,255,.06);
+  }
+
+  .fpCard,
+  .fpCardInner,
+  .fpPageHero,
+  .fpAccountCard,
+  .fpPlanCard{
+    background:
+      radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.08), transparent 55%),
+      linear-gradient(180deg, rgba(255,255,255,.96), rgba(245,248,255,.96));
+  }
+
+  .fpCardAccent{
+    background:
+      radial-gradient(120% 140% at 20% 0%, rgba(47,91,255,.18), transparent 52%),
+      linear-gradient(180deg, rgba(255,255,255,.98), rgba(240,245,255,.98));
+  }
+
+  .fpBtnGhost,
+  .fpSelect,
+  .fpStatusPill,
+  .fpExportMenu,
+  .fpInput,
+  .fpTextarea,
+  .fpBadge,
+  .fpPill,
+  .fpInfoBox,
+  .fpMissionCard,
+  .fpTableRow,
+  .fpTr.row,
+  .fpSettingsRow,
+  .fpToggleRow,
+  .fpQuotaRow,
+  .fpAddonRow,
+  .fpTimelineItem,
+  .fpActionItem{
+    background:rgba(255,255,255,.72);
+    color:var(--fpText);
+  }
+
+  .fpExportMenu button{
+    color:var(--fpText);
+  }
+
+  .fpExportMenu button:hover{
+    background:rgba(47,91,255,.06);
+  }
+
+  .fpMenuBtn span{
+    background:var(--fpText);
+  }
+
+  .fpLegendItem,
+  .fpCardText,
+  .fpSmall,
+  .fpPageDesc,
+  .fpHelloSub,
+  .fpMissionMeta,
+  .fpMissionDesc,
+  .fpInfoHint,
+  .fpTimelineMeta,
+  .fpActionMeta,
+  .fpToggleHint,
+  .fpPlanList,
+  .fpKpiSub{
+    color:var(--fpTextSoft);
+  }
+
+  .fpStatusPill,
+  .fpBtnGhost,
+  .fpSelect,
+  .fpInput,
+  .fpTextarea{
+    border-color:rgba(15,23,42,.10);
+  }
+
+  .fpChartBox{
+    background:linear-gradient(180deg, rgba(47,91,255,.04), rgba(47,91,255,.01));
+    border-color:rgba(15,23,42,.08);
+  }
+}
