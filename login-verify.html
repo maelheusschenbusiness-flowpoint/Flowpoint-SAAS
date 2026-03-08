@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>FlowPoint — Vérification de connexion</title>
 
+  <meta name="color-scheme" content="light dark" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -105,14 +107,14 @@
       align-items:center;
       justify-content:center;
       flex:0 0 auto;
+      overflow:hidden;
     }
 
-    .logoCore{
-      width:32px;
-      height:32px;
-      border-radius:10px;
-      background:linear-gradient(180deg,var(--brand),var(--brand2));
-      box-shadow:0 14px 40px rgba(47,91,255,.28);
+    .logoSvg{
+      width:44px;
+      height:44px;
+      display:block;
+      flex:0 0 auto;
     }
 
     .brandTitle{
@@ -217,6 +219,7 @@
       .page{padding:22px 14px}
       .card{padding:20px}
       .logoBox{width:60px;height:60px;border-radius:20px}
+      .logoSvg{width:40px;height:40px}
       .title{font-size:24px}
       .desc,.foot{font-size:15px}
       .actions{flex-direction:column}
@@ -230,8 +233,22 @@
       <div class="card">
         <div class="brand">
           <div class="logoBox" aria-hidden="true">
-            <div class="logoCore"></div>
+            <svg class="logoSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+              <defs>
+                <linearGradient id="flowpointLogoGrad" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2F6BFF"/>
+                  <stop offset="1" stop-color="#1D4ED8"/>
+                </linearGradient>
+              </defs>
+              <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#flowpointLogoGrad)"/>
+              <path
+                d="M36 14L23 37h10.4L29.6 50 44.8 28.2H34.4L36 14Z"
+                fill="#fff"
+                opacity="0.98"
+              />
+            </svg>
           </div>
+
           <div>
             <h1 class="brandTitle">FlowPoint</h1>
             <div class="brandSub">Connexion sécurisée (sans mot de passe)</div>
