@@ -1355,7 +1355,7 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${BRAND_NAME}</title>
+<title>FlowPoint</title>
 </head>
 
 <body style="margin:0;background:#f5f7fb;font-family:Arial,Helvetica,sans-serif">
@@ -1373,14 +1373,15 @@ box-shadow:0 10px 30px rgba(29,41,57,.08);
 <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
 
 <img
-src="${safeBaseUrl(req)}/assets/flowpoint-logo.png"
+src="https://app.flowpoint.pro/assets/flowpoint-logo.png"
 width="56"
 height="56"
+alt="FlowPoint"
 style="display:block"
 />
 
 <div>
-<div style="font-size:20px;font-weight:800">${BRAND_NAME}</div>
+<div style="font-size:20px;font-weight:800">FlowPoint</div>
 <div style="font-size:14px;color:#6b7280">
 Connexion sécurisée (sans mot de passe)
 </div>
@@ -1436,7 +1437,7 @@ font-size:12px;
 color:#9ca3af;
 ">
 
-© ${new Date().getFullYear()} ${BRAND_NAME}
+© ${new Date().getFullYear()} FlowPoint
 
 </div>
 
@@ -1446,7 +1447,6 @@ color:#9ca3af;
 </body>
 </html>
 `;
-
     const r = await sendEmail({
       to: user.email,
       subject: `${BRAND_NAME} — Ton lien de connexion`,
