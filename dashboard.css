@@ -2003,3 +2003,514 @@ Logo + tailles + select jours + finitions
     height:28px;
   }
 }
+/* ===== FIX LOGOS ===== */
+.fpBrandLogoImg,
+.fpHelloLogoImg{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  border-radius:inherit;
+}
+
+.fpHelloWrap{
+  min-width:0;
+}
+
+.fpHelloHead{
+  display:flex;
+  align-items:flex-start;
+  gap:16px;
+}
+
+.fpHelloLogo{
+  width:64px;
+  height:64px;
+  border-radius:20px;
+  overflow:hidden;
+  flex:0 0 auto;
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255,255,255,.18), transparent 36%),
+    linear-gradient(180deg, var(--fpBrand3), var(--fpBrand), var(--fpBrand2));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.18),
+    inset 0 -8px 18px rgba(0,0,0,.18),
+    0 18px 34px rgba(47,91,255,.26);
+}
+
+/* ===== TITRES UN PEU PLUS PETITS ===== */
+.fpHelloTitle{
+  font-size:54px;
+  line-height:.96;
+}
+
+.fpHeroTitle{
+  font-size:64px;
+  line-height:.96;
+}
+
+@media (max-width:1080px){
+  .fpHelloTitle{
+    font-size:42px;
+  }
+
+  .fpHeroTitle{
+    font-size:52px;
+  }
+}
+
+@media (max-width:760px){
+  .fpHelloHead{
+    align-items:flex-start;
+  }
+
+  .fpHelloLogo{
+    width:56px;
+    height:56px;
+    border-radius:18px;
+  }
+
+  .fpHelloTitle{
+    font-size:34px;
+  }
+
+  .fpHeroTitle{
+    font-size:44px;
+  }
+}
+
+/* ===== SELECT FIX ===== */
+.fpSelect{
+  padding-right:44px;
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='white'><path d='M7 10l5 5 5-5z'/></svg>");
+  background-repeat:no-repeat,no-repeat;
+  background-position:center center,right 14px center;
+  background-size:auto,18px;
+}
+
+.fpSelect option{
+  background:#182452;
+  color:#fff;
+}
+
+@media (prefers-color-scheme: light){
+  .fpSelect option{
+    background:#ffffff;
+    color:#10182b;
+  }
+}
+
+/* ===== CLASSES MANQUANTES UTILISÉES PAR LE JS ===== */
+.fpPageContainer{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+
+.fpGrid{
+  display:grid;
+  gap:18px;
+}
+
+.fpGridMain{
+  grid-template-columns:minmax(0,1.3fr) minmax(320px,.9fr);
+  align-items:start;
+}
+
+.fpCol{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+
+.fpColMain,
+.fpColSide{
+  min-width:0;
+}
+
+.fpHeroWide{
+  padding:30px;
+}
+
+.fpHeroContent{
+  min-width:0;
+  max-width:760px;
+}
+
+.fpHeroStats{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+  width:100%;
+  margin-top:18px;
+}
+
+.fpMiniStat,
+.fpReportCard,
+.fpBillingCard,
+.fpStatCard,
+.fpTextPanel,
+.fpRowCard,
+.fpInfoRow{
+  border-radius:20px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+}
+
+.fpMiniStat{
+  padding:18px;
+}
+
+.fpMiniStatLabel,
+.fpStatLabel{
+  font-size:12px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.16em;
+  color:var(--fpMuted);
+}
+
+.fpMiniStatValue,
+.fpStatValue{
+  margin-top:8px;
+  font-size:28px;
+  font-weight:900;
+  letter-spacing:-.04em;
+  line-height:1.05;
+  overflow-wrap:anywhere;
+}
+
+.fpMiniStatMeta,
+.fpStatMeta{
+  margin-top:8px;
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.5;
+  font-weight:700;
+}
+
+.fpInfoList,
+.fpRows,
+.fpMissionStack,
+.fpReportsGrid,
+.fpStatsGrid{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-top:14px;
+}
+
+.fpInfoRow{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  padding:14px 16px;
+}
+
+.fpInfoRow strong{
+  text-align:right;
+  overflow-wrap:anywhere;
+}
+
+.fpRowCard{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:16px;
+}
+
+.fpRowMain{
+  min-width:0;
+  flex:1;
+}
+
+.fpRowTitle{
+  font-size:15px;
+  font-weight:800;
+  overflow-wrap:anywhere;
+}
+
+.fpRowMeta{
+  margin-top:6px;
+  font-size:13px;
+  color:var(--fpTextSoft);
+  font-weight:700;
+}
+
+.fpScore{
+  font-size:24px;
+  font-weight:900;
+}
+
+.fpChartCard{
+  margin-top:14px;
+}
+
+.fpChartLegendText,
+.fpChartInsight{
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.55;
+  font-weight:700;
+}
+
+.fpChartInsight{
+  margin-top:12px;
+}
+
+.fpMissionTop{
+  display:flex;
+  align-items:flex-start;
+  gap:14px;
+}
+
+.fpMissionInfo{
+  min-width:0;
+  flex:1;
+}
+
+.fpMissionCardLarge{
+  flex-direction:column;
+}
+
+.fpMissionCardLarge .fpMissionActions{
+  margin-left:38px;
+}
+
+.fpMissionPageGrid{
+  display:grid;
+  grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);
+  gap:18px;
+  margin-top:14px;
+}
+
+.fpMissionPageMain,
+.fpMissionPageSide{
+  min-width:0;
+}
+
+.fpStatsGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+}
+
+.fpStatsGridSingle{
+  grid-template-columns:1fr;
+}
+
+.fpStatCard{
+  padding:18px;
+}
+
+.fpReportsGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+  margin-top:14px;
+}
+
+.fpReportCard{
+  padding:18px;
+}
+
+.fpReportTitle,
+.fpBillingTitle{
+  font-size:18px;
+  font-weight:900;
+  line-height:1.2;
+}
+
+.fpReportMeta,
+.fpBillingStatus{
+  margin-top:8px;
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.5;
+  font-weight:700;
+}
+
+.fpBillingCard{
+  padding:18px;
+}
+
+.fpBillingPlan{
+  margin-top:8px;
+  font-size:34px;
+  font-weight:900;
+  letter-spacing:-.04em;
+  line-height:1;
+}
+
+.fpTopActionsRow,
+.fpCardActions,
+.fpTableActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+}
+
+.fpTable{
+  margin-top:14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.fpTableHead{
+  display:grid;
+  grid-template-columns:1.4fr .8fr .8fr .9fr 1fr;
+  gap:12px;
+  padding:0 8px;
+  color:var(--fpMuted);
+  font-size:12px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.14em;
+}
+
+.fpTableUrl{
+  overflow-wrap:anywhere;
+  font-weight:800;
+}
+
+.fpTextPanel{
+  padding:18px;
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.6;
+  font-weight:700;
+}
+
+/* ===== ESPACEMENT GLOBAL ===== */
+.fpCard,
+.fpCardInner,
+.fpPageHero,
+.fpAccountCard,
+.fpReportCard,
+.fpBillingCard,
+.fpStatCard,
+.fpMiniStat,
+.fpTextPanel,
+.fpMissionCard,
+.fpRowCard,
+.fpInfoRow{
+  box-shadow:var(--fpShadow);
+}
+
+/* ===== THÈME CLAIR : corrige la carte noire sur mobile ===== */
+@media (prefers-color-scheme: light){
+  .fpMiniStat,
+  .fpReportCard,
+  .fpBillingCard,
+  .fpStatCard,
+  .fpTextPanel,
+  .fpRowCard,
+  .fpInfoRow,
+  .fpTableRow,
+  .fpTable,
+  .fpChartCard{
+    background:rgba(255,255,255,.78);
+    color:var(--fpText);
+  }
+
+  .fpHero{
+    background:
+      radial-gradient(900px 300px at 15% 0%, rgba(47,91,255,.18), transparent 58%),
+      radial-gradient(700px 300px at 95% 5%, rgba(91,124,255,.12), transparent 62%),
+      linear-gradient(180deg, rgba(255,255,255,.96), rgba(240,245,255,.96));
+  }
+
+  .fpHeroText,
+  .fpReportMeta,
+  .fpBillingStatus,
+  .fpMiniStatMeta,
+  .fpStatMeta,
+  .fpRowMeta,
+  .fpChartLegendText,
+  .fpChartInsight,
+  .fpTextPanel{
+    color:var(--fpTextSoft);
+  }
+
+  .fpHeroTitle,
+  .fpHelloTitle,
+  .fpSectionTitle,
+  .fpCardInnerTitle,
+  .fpReportTitle,
+  .fpBillingTitle,
+  .fpMiniStatValue,
+  .fpStatValue{
+    color:var(--fpText);
+  }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width:1200px){
+  .fpGridMain,
+  .fpMissionPageGrid{
+    grid-template-columns:1fr;
+  }
+
+  .fpHeroStats,
+  .fpReportsGrid,
+  .fpStatsGrid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width:760px){
+  .fpTopbar{
+    gap:14px;
+  }
+
+  .fpTopbarRight{
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .fpTopbarRight > *{
+    width:100%;
+  }
+
+  .fpGrid,
+  .fpGridMain,
+  .fpMissionPageGrid{
+    gap:16px;
+  }
+
+  .fpCard,
+  .fpCardInner,
+  .fpPageHero,
+  .fpAccountCard{
+    padding:18px;
+  }
+
+  .fpTableHead{
+    display:none;
+  }
+
+  .fpTableRow{
+    grid-template-columns:1fr !important;
+  }
+
+  .fpTableActions{
+    margin-top:6px;
+  }
+
+  .fpRowCard,
+  .fpInfoRow{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .fpMissionCardLarge .fpMissionActions{
+    margin-left:0;
+  }
+}
