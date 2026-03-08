@@ -1677,3 +1677,170 @@ a{
     height:260px;
   }
 }
+/* =======================================================
+FLOWPOINT DASHBOARD
+PARTIE 2
+Router + Navigation + Boutons + Dark mode
+======================================================= */
+
+const routes = {
+  overview: renderOverview,
+  missions: renderMissions,
+  audits: renderAudits,
+  monitors: renderMonitors,
+  reports: renderReports,
+  billing: renderBilling,
+  settings: renderSettings
+}
+
+function router() {
+
+  const hash = window.location.hash.replace("#","")
+
+  const page = hash || "overview"
+
+  if(routes[page]){
+    routes[page]()
+  } else {
+    renderOverview()
+  }
+
+  setActiveNav(page)
+
+}
+
+function setActiveNav(page){
+
+  document.querySelectorAll(".fpNavItem").forEach(el=>{
+    el.classList.remove("active")
+
+    if(el.dataset.route === page){
+      el.classList.add("active")
+    }
+  })
+
+}
+
+window.addEventListener("hashchange", router)
+
+document.addEventListener("DOMContentLoaded", router)
+
+
+
+/* =======================================================
+BOUTONS DASHBOARD
+======================================================= */
+
+function bindButtons(){
+
+  const auditBtn = document.querySelector("#btnAudit")
+  const monitorBtn = document.querySelector("#btnMonitor")
+  const missionsBtn = document.querySelector("#btnMissions")
+  const billingBtn = document.querySelector("#btnBilling")
+
+  if(auditBtn){
+    auditBtn.onclick = ()=>{
+      window.location.hash = "audits"
+    }
+  }
+
+  if(monitorBtn){
+    monitorBtn.onclick = ()=>{
+      window.location.hash = "monitors"
+    }
+  }
+
+  if(missionsBtn){
+    missionsBtn.onclick = ()=>{
+      window.location.hash = "missions"
+    }
+  }
+
+  if(billingBtn){
+    billingBtn.onclick = ()=>{
+      window.location.hash = "billing"
+    }
+  }
+
+}
+
+
+
+/* =======================================================
+DARK MODE AUTO
+======================================================= */
+
+function initTheme(){
+
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+
+  if(prefersDark){
+    document.body.classList.add("dark")
+  }else{
+    document.body.classList.add("light")
+  }
+
+}
+
+initTheme()
+
+
+
+/* =======================================================
+SUPPRESSION LIGNES BLANCHES MOBILE
+======================================================= */
+
+function fixMobileLines(){
+
+  if(window.innerWidth < 700){
+
+    document.body.style.background = "radial-gradient(circle at 20% 20%,#0f1b44,#020617)"
+
+    document.body.style.border = "none"
+
+  }
+
+}
+
+fixMobileLines()
+
+
+
+/* =======================================================
+FLOWPOINT LOGO HEADER
+======================================================= */
+
+function setHeaderLogo(){
+
+  const logo = document.querySelector("#headerLogo")
+
+  if(!logo) return
+
+  logo.innerHTML = `
+  <img src="/assets/flowpoint-logo.svg" 
+       style="
+       width:32px;
+       height:32px;
+       border-radius:10px;
+       ">
+  `
+}
+
+setHeaderLogo()
+
+
+
+/* =======================================================
+INIT PAGE
+======================================================= */
+
+function initDashboard(){
+
+  bindButtons()
+  fixMobileLines()
+  setHeaderLogo()
+
+}
+
+document.addEventListener("DOMContentLoaded", initDashboard)
+  
