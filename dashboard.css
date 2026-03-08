@@ -1838,3 +1838,168 @@ body,
 .fpMain{
   min-height:0;
 }
+/* =======================================================
+CORRECTIONS FINALES FLOWPOINT
+Logo + tailles + select jours + finitions
+======================================================= */
+
+/* Logo sidebar */
+.fpBrandLogo{
+  overflow:hidden;
+}
+
+.fpBrandLogo img,
+.fpBrandLogoImg{
+  width:30px;
+  height:30px;
+  object-fit:contain;
+  display:block;
+}
+
+/* Réduire un peu Bonjour */
+.fpHelloTitle{
+  font-size:54px;
+  line-height:.95;
+  letter-spacing:-.05em;
+}
+
+/* Réduire un peu Overview */
+.fpHeroTitle{
+  font-size:64px;
+  line-height:.95;
+  letter-spacing:-.055em;
+}
+
+/* Si certaines pages utilisent fpPageTitle */
+.fpPageTitle{
+  font-size:48px;
+  line-height:.98;
+}
+
+/* Select jours mieux fini */
+.fpSelect{
+  appearance:none;
+  -webkit-appearance:none;
+  -moz-appearance:none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255,255,255,.9) 50%),
+    linear-gradient(135deg, rgba(255,255,255,.9) 50%, transparent 50%),
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  background-position:
+    calc(100% - 20px) calc(50% - 3px),
+    calc(100% - 14px) calc(50% - 3px),
+    0 0;
+  background-size:
+    6px 6px,
+    6px 6px,
+    100% 100%;
+  background-repeat:no-repeat;
+  padding-right:42px;
+  cursor:pointer;
+}
+
+.fpSelect option{
+  background:#111a3d;
+  color:#fff;
+}
+
+/* Mode clair */
+@media (prefers-color-scheme: light){
+  .fpSelect{
+    background-image:
+      linear-gradient(45deg, transparent 50%, rgba(16,24,43,.75) 50%),
+      linear-gradient(135deg, rgba(16,24,43,.75) 50%, transparent 50%),
+      linear-gradient(180deg, rgba(255,255,255,.9), rgba(245,248,255,.95));
+  }
+
+  .fpSelect option{
+    background:#ffffff;
+    color:#10182b;
+  }
+}
+
+/* Meilleur alignement du header */
+.fpTopbarRight{
+  align-items:flex-start;
+}
+
+.fpStatusPill{
+  white-space:nowrap;
+}
+
+/* Hero un peu plus propre */
+.fpHero{
+  align-items:center;
+}
+
+.fpHeroRight{
+  align-items:center;
+}
+
+/* Evite que certains contenus cassent la largeur */
+.fpHeroTitle,
+.fpHelloTitle,
+.fpBigValue,
+.fpProjectName,
+.fpSectionTitle,
+.fpPageTitle{
+  overflow-wrap:anywhere;
+}
+
+/* Mobile */
+@media (max-width: 1080px){
+  .fpHelloTitle{
+    font-size:46px;
+  }
+
+  .fpHeroTitle{
+    font-size:56px;
+  }
+
+  .fpPageTitle{
+    font-size:42px;
+  }
+}
+
+@media (max-width: 760px){
+  .fpHelloTitle{
+    font-size:38px;
+  }
+
+  .fpHeroTitle{
+    font-size:46px;
+  }
+
+  .fpPageTitle{
+    font-size:36px;
+  }
+
+  .fpSelect{
+    width:100%;
+  }
+}
+
+@media (max-width: 520px){
+  .fpHelloTitle{
+    font-size:32px;
+  }
+
+  .fpHeroTitle{
+    font-size:38px;
+  }
+
+  .fpPageTitle{
+    font-size:32px;
+  }
+
+  .fpBrandLogo{
+    width:50px;
+    height:50px;
+  }
+
+  .fpBrandLogo img,
+  .fpBrandLogoImg{
+    width:28px;
+    height:28px;
+  }
+}
