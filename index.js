@@ -1370,23 +1370,11 @@ border:1px solid rgba(0,0,0,.06);
 box-shadow:0 10px 30px rgba(29,41,57,.08);
 ">
 
-<div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
-
-<img
-src="https://app.flowpoint.pro/assets/flowpoint-logo.png"
-width="56"
-height="56"
-alt="FlowPoint"
-style="display:block"
-/>
-
-<div>
-<div style="font-size:20px;font-weight:800">FlowPoint</div>
+<div style="margin-bottom:24px">
+<div style="font-size:22px;font-weight:800">FlowPoint</div>
 <div style="font-size:14px;color:#6b7280">
 Connexion sécurisée (sans mot de passe)
 </div>
-</div>
-
 </div>
 
 <div style="font-size:20px;font-weight:800;margin-bottom:12px">
