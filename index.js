@@ -1373,7 +1373,7 @@ box-shadow:0 20px 60px rgba(0,0,0,.08);
 <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
 
 <img
-src="https://app.flowpoint.pro/flowpoint-logo.svg"
+src="https://app.flowpoint.pro/flowpoint-logo.png"
 width="48"
 height="48"
 style="display:block"
