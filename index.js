@@ -1351,14 +1351,14 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
 
     const html = `
 <!doctype html>
-<html>
+<html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${BRAND_NAME}</title>
 </head>
 
-<body style="margin:0;background:#f6f7fb;font-family:Inter,Arial,sans-serif">
+<body style="margin:0;background:#f5f7fb;font-family:Arial,Helvetica,sans-serif">
 
 <div style="max-width:620px;margin:auto;padding:40px 20px">
 
@@ -1367,38 +1367,21 @@ background:#ffffff;
 border-radius:24px;
 padding:32px;
 border:1px solid rgba(0,0,0,.06);
-box-shadow:0 20px 60px rgba(0,0,0,.08);
+box-shadow:0 10px 30px rgba(29,41,57,.08);
 ">
 
-<div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;">
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
 
-<div style="width:56px;height:56px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;">
-<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 64 64" fill="none">
-
-<defs>
-<linearGradient id="g" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
-<stop stop-color="#2F6BFF"/>
-<stop offset="1" stop-color="#1D4ED8"/>
-</linearGradient>
-</defs>
-
-<rect x="6" y="6" width="52" height="52" rx="14" fill="url(#g)"/>
-
-<path
-d="M36 14L23 37h10.4L29.6 50 44.8 28.2H34.4L36 14Z"
-fill="#ffffff"
-opacity="0.98"
+<img
+src="${safeBaseUrl(req)}/assets/flowpoint-logo.png"
+width="56"
+height="56"
+style="display:block"
 />
 
-</svg>
-</div>
-
 <div>
-<div style="font-size:20px;font-weight:800;line-height:1.1;">
-FlowPoint
-</div>
-
-<div style="margin-top:4px;color:#667085;font-size:14px;">
+<div style="font-size:20px;font-weight:800">${BRAND_NAME}</div>
+<div style="font-size:14px;color:#6b7280">
 Connexion sécurisée (sans mot de passe)
 </div>
 </div>
@@ -1410,7 +1393,7 @@ Ton lien de connexion
 </div>
 
 <div style="color:#6b7280;font-size:15px;margin-bottom:22px">
-Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>.  
+Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>.
 Si tu n’es pas à l’origine de cette demande, ignore cet email.
 </div>
 
