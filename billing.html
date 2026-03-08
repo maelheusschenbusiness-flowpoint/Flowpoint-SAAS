@@ -1,111 +1,104 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FlowPoint — Billing</title>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./dashboard-shell.css" />
-
-  <script>
-    (function () {
-      try {
-        const tok = localStorage.getItem("token");
-        if (!tok || tok.trim().length < 10) window.location.replace("/login.html");
-      } catch (e) {
-        window.location.replace("/login.html");
-      }
-    })();
-  </script>
+<meta charset="UTF-8">
+<title>FlowPoint - Billing</title>
+<link rel="stylesheet" href="dashboard.css">
 </head>
-<body data-page="billing">
-  <div class="fpOverlay" id="fpOverlay"></div>
 
-  <div class="fpLayout">
-    <aside class="fpSidebar" id="fpSidebar">
-      <div class="fpSidebarTop">
-        <a class="fpBrand" href="./overview.html" aria-label="FlowPoint">
-          <span class="fpBrandMark">
-            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M13 2c.4 0 .7.3.6.8L11.7 9H16c.6 0 .9.6.6 1L9.8 22c-.3.5-1.1.1-.9-.4l1.9-6.8H6.5c-.6 0-.9-.6-.6-1l6.5-11.5c.1-.2.4-.3.6-.3Z" fill="currentColor"/></svg>
-          </span>
-          <span class="fpBrandText"><strong>FlowPoint</strong><small>Client Dashboard</small></span>
-        </a>
-        <button class="fpSidebarClose" id="fpSidebarClose" type="button" aria-label="Fermer">
-          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        </button>
-      </div>
+<body>
 
-      <nav class="fpNav">
-        <a class="fpNavItem" data-page="overview" href="./overview.html"><span class="fpNavIcon">◫</span><span>Overview</span></a>
-        <a class="fpNavItem" data-page="missions" href="./missions.html"><span class="fpNavIcon">✓</span><span>Missions</span></a>
-        <a class="fpNavItem" data-page="audits" href="./audits.html"><span class="fpNavIcon">⌁</span><span>Audits</span></a>
-        <a class="fpNavItem" data-page="monitors" href="./monitors.html"><span class="fpNavIcon">◎</span><span>Monitors</span></a>
-        <a class="fpNavItem" data-page="reports" href="./reports.html"><span class="fpNavIcon">▤</span><span>Reports</span></a>
-        <a class="fpNavItem" data-page="billing" href="./billing.html"><span class="fpNavIcon">€</span><span>Billing</span></a>
-        <a class="fpNavItem" data-page="settings" href="./settings.html"><span class="fpNavIcon">⚙</span><span>Settings</span></a>
-      </nav>
+<div class="dashboard">
 
-      <div class="fpSidebarCard">
-        <div class="fpSidebarCardHead">
-          <span class="fpSidebarLabel">Organisation</span>
-          <span class="fpSidebarPlan" id="accPlan">—</span>
-        </div>
+<aside class="sidebar">
 
-        <div class="fpMiniList">
-          <div class="fpMiniRow"><span>Org</span><strong id="accOrg">—</strong></div>
-          <div class="fpMiniRow"><span>Role</span><strong id="accRole">—</strong></div>
-          <div class="fpMiniRow"><span>Trial</span><strong id="accTrial">—</strong></div>
-        </div>
+<div class="logo">
+<img src="flowpoint-logo.svg">
+<h2>FlowPoint</h2>
+<p>Control center</p>
+</div>
 
-        <div class="fpUsageBlock">
-          <div class="fpUsageRow"><div class="fpUsageTop"><span>Audits</span><strong id="uAudits">—</strong></div><div class="fpUsageBar"><span id="barAudits"></span></div></div>
-          <div class="fpUsageRow"><div class="fpUsageTop"><span>PDF</span><strong id="uPdf">—</strong></div><div class="fpUsageBar"><span id="barPdf"></span></div></div>
-          <div class="fpUsageRow"><div class="fpUsageTop"><span>Exports</span><strong id="uExports">—</strong></div><div class="fpUsageBar"><span id="barExports"></span></div></div>
-          <div class="fpUsageTop fpUsageFlat"><span>Monitors</span><strong id="uMonitors">—</strong></div>
-        </div>
+<nav>
 
-        <div class="fpSidebarActions">
-          <button class="fpBtn fpBtnSoft" id="btnPortal" type="button">Billing Portal</button>
-          <button class="fpBtn fpBtnDanger" id="btnLogout" type="button">Logout</button>
-        </div>
-      </div>
-    </aside>
+<a href="dashboard.html#overview">Overview</a>
+<a href="dashboard.html#missions">Missions</a>
+<a href="dashboard.html#audits">Audits</a>
+<a href="dashboard.html#monitors">Monitors</a>
+<a href="dashboard.html#reports">Reports</a>
+<a class="active">Billing</a>
+<a href="dashboard.html#settings">Paramètres</a>
 
-    <main class="fpMain">
-      <header class="fpTopbar">
-        <div class="fpTopbarLeft">
-          <button class="fpMenuBtn" id="fpMenuBtn" type="button" aria-label="Menu">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          </button>
-          <div>
-            <div class="fpEyebrow">FLOWPOINT</div>
-            <h1 class="fpPageTitle" id="helloTitle">Bonjour, —</h1>
-          </div>
-        </div>
+</nav>
 
-        <div class="fpTopbarRight">
-          <div class="fpStatus">
-            <span class="fpStatusDot" id="statusDot"></span>
-            <span id="statusText">Chargement…</span>
-          </div>
-        </div>
-      </header>
+</aside>
 
-      <section class="fpPageIntro">
-        <div>
-          <h2 class="fpSectionTitle" id="pageTitle">Billing</h2>
-          <p class="fpSectionText" id="pageDesc">Gère ton abonnement et accède à Stripe.</p>
-        </div>
-        <div class="fpSectionActions" id="pageActions"></div>
-      </section>
 
-      <section class="fpContentGrid" id="grid"></section>
-    </main>
-  </div>
+<main class="content">
 
-  <script src="./dashboard-shell.js"></script>
+<h1>Facturation</h1>
+
+<div class="billing-grid">
+
+<div class="card">
+
+<h3>Plan actuel</h3>
+
+<div class="plan-box">
+
+<div>
+<p>Plan</p>
+<h2>Ultra</h2>
+</div>
+
+<div>
+<p>Status</p>
+<h2>Trialing</h2>
+</div>
+
+<div>
+<p>Prochain paiement</p>
+<h2>13 mars</h2>
+</div>
+
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h3>Moyen de paiement</h3>
+
+<p>Carte enregistrée</p>
+
+<div class="payment-card">
+Mastercard •••• 9515
+</div>
+
+<button class="btn">Modifier la carte</button>
+
+</div>
+
+
+<div class="card">
+
+<h3>Actions abonnement</h3>
+
+<button class="btn big">
+Changer de plan
+</button>
+
+<button class="btn secondary">
+Accéder portail Stripe
+</button>
+
+</div>
+
+</div>
+
+</main>
+
+</div>
+
 </body>
 </html>
