@@ -1370,18 +1370,35 @@ border:1px solid rgba(0,0,0,.06);
 box-shadow:0 20px 60px rgba(0,0,0,.08);
 ">
 
-<div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;">
 
-<img
-src="https://app.flowpoint.pro/flowpoint-logo.png"
-width="48"
-height="48"
-style="display:block"
+<div style="width:56px;height:56px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;">
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 64 64" fill="none">
+
+<defs>
+<linearGradient id="g" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+<stop stop-color="#2F6BFF"/>
+<stop offset="1" stop-color="#1D4ED8"/>
+</linearGradient>
+</defs>
+
+<rect x="6" y="6" width="52" height="52" rx="14" fill="url(#g)"/>
+
+<path
+d="M36 14L23 37h10.4L29.6 50 44.8 28.2H34.4L36 14Z"
+fill="#ffffff"
+opacity="0.98"
 />
 
+</svg>
+</div>
+
 <div>
-<div style="font-size:20px;font-weight:800">${BRAND_NAME}</div>
-<div style="font-size:14px;color:#6b7280">
+<div style="font-size:20px;font-weight:800;line-height:1.1;">
+FlowPoint
+</div>
+
+<div style="margin-top:4px;color:#667085;font-size:14px;">
 Connexion sécurisée (sans mot de passe)
 </div>
 </div>
