@@ -1,115 +1,261 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>FlowPoint — Connexion</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FlowPoint — Vérification de connexion</title>
 
-  <meta name="color-scheme" content="light dark">
-  <meta name="supported-color-schemes" content="light dark">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
   <style>
     :root{
-      --bg:#0b1220;
-      --card:#111a2e;
-      --text:#e5e7eb;
-      --muted:#a3a3a3;
-      --primary:#0052CC;
-      --danger:#ff5a6a;
-      --ok:#2ee59d;
+      --bg:#eef3ff;
+      --bg2:#e8eeff;
+      --card:rgba(255,255,255,.82);
+      --cardBorder:rgba(20,28,48,.08);
+      --text:#0f172a;
+      --muted:#667085;
+      --brand:#2f5bff;
+      --brand2:#2449ff;
+      --shadow:0 30px 80px rgba(29,41,57,.10);
+      --soft:rgba(47,91,255,.10);
+      --softBorder:rgba(47,91,255,.16);
+      --inputBg:rgba(255,255,255,.70);
+      --inputBorder:rgba(20,28,48,.10);
+      --dangerBg:rgba(220,38,38,.10);
+      --dangerBorder:rgba(220,38,38,.18);
+      --dangerText:#b42318;
+      --okBg:rgba(22,163,74,.10);
+      --okBorder:rgba(22,163,74,.18);
+      --okText:#15803d;
+      --radius:28px;
     }
+
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#020817;
+        --bg2:#091327;
+        --card:rgba(10,19,40,.74);
+        --cardBorder:rgba(255,255,255,.08);
+        --text:#f3f7ff;
+        --muted:rgba(236,242,255,.70);
+        --shadow:0 30px 90px rgba(0,0,0,.42);
+        --soft:rgba(47,91,255,.14);
+        --softBorder:rgba(255,255,255,.09);
+        --inputBg:rgba(255,255,255,.05);
+        --inputBorder:rgba(255,255,255,.08);
+        --dangerBg:rgba(220,38,38,.14);
+        --dangerBorder:rgba(220,38,38,.20);
+        --dangerText:#fecaca;
+        --okBg:rgba(22,163,74,.14);
+        --okBorder:rgba(22,163,74,.20);
+        --okText:#bbf7d0;
+      }
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
     body{
-      margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-      background:linear-gradient(180deg,#070b14,#0b1220);
+      margin:0;
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
       color:var(--text);
-      min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;
+      background:
+        radial-gradient(1100px 720px at 12% 0%, rgba(47,91,255,.18), transparent 58%),
+        radial-gradient(900px 600px at 100% 0%, rgba(72,110,255,.12), transparent 45%),
+        linear-gradient(180deg,var(--bg),var(--bg2));
     }
+
+    .page{
+      min-height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:32px 18px;
+    }
+
+    .shell{
+      width:min(100%, 760px);
+    }
+
     .card{
-      width:100%;max-width:520px;background:rgba(17,26,46,.92);
-      border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;
-      box-shadow:0 20px 50px rgba(0,0,0,.35)
+      background:var(--card);
+      border:1px solid var(--cardBorder);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      backdrop-filter:blur(18px) saturate(170%);
+      padding:26px;
     }
-    .row{display:flex;align-items:center;gap:12px}
-    .logo{width:44px;height:44px;border-radius:14px;background:rgba(0,82,204,.18);display:flex;align-items:center;justify-content:center}
-    .logo i{width:18px;height:18px;border-radius:6px;background:var(--primary);display:block}
-    h1{margin:14px 0 6px;font-size:18px}
-    p{margin:0;color:var(--muted);line-height:1.5}
-    .msg{margin-top:14px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:var(--muted)}
-    .ok{color:var(--ok);font-weight:700}
-    .danger{color:var(--danger);font-weight:700}
-    .small{margin-top:10px;font-size:12px;color:var(--muted)}
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:16px;
+      margin-bottom:24px;
+    }
+
+    .logoBox{
+      width:68px;
+      height:68px;
+      border-radius:22px;
+      background:linear-gradient(180deg, rgba(47,91,255,.16), rgba(47,91,255,.08));
+      border:1px solid var(--softBorder);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 auto;
+    }
+
+    .logoCore{
+      width:32px;
+      height:32px;
+      border-radius:10px;
+      background:linear-gradient(180deg,var(--brand),var(--brand2));
+      box-shadow:0 14px 40px rgba(47,91,255,.28);
+    }
+
+    .brandTitle{
+      font-size:20px;
+      font-weight:900;
+      letter-spacing:-.03em;
+      line-height:1.05;
+      margin:0;
+    }
+
+    .brandSub{
+      margin-top:4px;
+      color:var(--muted);
+      font-size:14px;
+      font-weight:500;
+    }
+
+    .title{
+      margin:0 0 8px;
+      font-size:28px;
+      font-weight:800;
+      letter-spacing:-.04em;
+      line-height:1.05;
+    }
+
+    .desc{
+      margin:0 0 20px;
+      color:var(--muted);
+      font-size:16px;
+      line-height:1.6;
+      font-weight:500;
+    }
+
+    .statusBox{
+      border-radius:20px;
+      padding:18px 18px;
+      border:1px solid var(--inputBorder);
+      background:var(--inputBg);
+      font-size:16px;
+      font-weight:600;
+      margin-bottom:18px;
+    }
+
+    .statusBox.error{
+      background:var(--dangerBg);
+      border-color:var(--dangerBorder);
+      color:var(--dangerText);
+    }
+
+    .statusBox.success{
+      background:var(--okBg);
+      border-color:var(--okBorder);
+      color:var(--okText);
+    }
+
+    .actions{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:8px;
+    }
+
+    .btn{
+      min-height:50px;
+      padding:0 20px;
+      border-radius:999px;
+      border:1px solid var(--inputBorder);
+      background:var(--inputBg);
+      color:var(--text);
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:800;
+      font-size:15px;
+      transition:.18s ease;
+    }
+
+    .btn:hover{
+      transform:translateY(-1px);
+      border-color:var(--softBorder);
+    }
+
+    .btn.primary{
+      background:linear-gradient(180deg,var(--brand),var(--brand2));
+      border-color:rgba(47,91,255,.26);
+      color:#fff;
+      box-shadow:0 14px 34px rgba(47,91,255,.24);
+    }
+
+    .foot{
+      margin-top:16px;
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.6;
+      font-weight:500;
+    }
+
+    .hidden{display:none}
+
+    @media (max-width:640px){
+      .page{padding:22px 14px}
+      .card{padding:20px}
+      .logoBox{width:60px;height:60px;border-radius:20px}
+      .title{font-size:24px}
+      .desc,.foot{font-size:15px}
+      .actions{flex-direction:column}
+      .btn{width:100%}
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="row">
-      <div class="logo"><i></i></div>
-      <div>
-        <div style="font-weight:800">FlowPoint</div>
-        <div style="color:var(--muted);font-size:13px">Connexion sécurisée (sans mot de passe)</div>
+  <main class="page">
+    <section class="shell">
+      <div class="card">
+        <div class="brand">
+          <div class="logoBox" aria-hidden="true">
+            <div class="logoCore"></div>
+          </div>
+          <div>
+            <h1 class="brandTitle">FlowPoint</h1>
+            <div class="brandSub">Connexion sécurisée (sans mot de passe)</div>
+          </div>
+        </div>
+
+        <h2 class="title" id="title">Connexion…</h2>
+        <p class="desc" id="desc">Validation du lien.</p>
+
+        <div class="statusBox" id="statusBox">Vérification en cours…</div>
+
+        <div class="actions" id="actions">
+          <a class="btn hidden" id="btnDashboard" href="/dashboard.html">Ouvrir le dashboard</a>
+          <a class="btn primary hidden" id="btnLogin" href="/login.html">Retour à la connexion</a>
+          <a class="btn hidden" id="btnRetry" href="/login.html">Demander un nouveau lien</a>
+        </div>
+
+        <div class="foot" id="foot">
+          Si tu restes bloqué, retourne sur la page de connexion et demande un nouveau lien.
+        </div>
       </div>
-    </div>
+    </section>
+  </main>
 
-    <h1>Connexion…</h1>
-    <p>Validation du lien.</p>
-
-    <div id="msg" class="msg">Initialisation…</div>
-    <div class="small">Si tu restes bloqué, retourne sur la page de connexion et demande un nouveau lien.</div>
-  </div>
-
-  <script>
-(function () {
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get("token");
-
-  const statusEl =
-    document.querySelector("#status") ||
-    document.querySelector("#msg") ||
-    document.querySelector(".status") ||
-    null;
-
-  function setStatus(txt) {
-    if (statusEl) statusEl.textContent = txt;
-    console.log(txt);
-  }
-
-  async function run() {
-    try {
-      if (!raw) {
-        setStatus("Token manquant.");
-        return;
-      }
-
-      setStatus("Vérification du lien…");
-
-      const r = await fetch(`/api/auth/login-verify?token=${encodeURIComponent(raw)}`, {
-        method: "GET",
-        headers: { "Accept": "application/json" },
-        cache: "no-store",
-      });
-
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data?.token) {
-        setStatus(data?.error || "Lien invalide / expiré.");
-        return;
-      }
-
-      // ✅ IMPORTANT : toujours la même clé partout
-      localStorage.setItem("token", data.token);
-
-      // nettoie l’URL pour éviter des relinks chelous
-      window.history.replaceState({}, "", "/login-verify.html");
-
-      setStatus("Token OK. Redirection…");
-      window.location.replace("/dashboard.html");
-    } catch (e) {
-      console.error(e);
-      setStatus("Erreur. Réessaie.");
-    }
-  }
-
-  run();
-})();
-</script>
+  <script src="/login-verify.js"></script>
 </body>
 </html>
