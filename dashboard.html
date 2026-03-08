@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="./dashboard.css" />
+  <link rel="stylesheet" href="./dashboard-shell.css" />
 
   <script>
     (function () {
@@ -25,124 +25,110 @@
   </script>
 </head>
 
-<body>
-  <div class="fpMobileOverlay" id="mobileOverlay"></div>
+<body data-page="overview">
+  <div class="fpOverlay" id="fpOverlay"></div>
 
   <div class="fpShell">
-    <aside class="fpSidebar" id="sidebar">
+    <aside class="fpSidebar" id="fpSidebar">
       <div class="fpSidebarTop">
-        <a href="#overview" class="fpLogoWrap">
-          <div class="fpLogoBox">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path d="M13 2c.4 0 .7.3.6.8L11.8 9H16c.6 0 .9.6.6 1.1L9.8 22c-.3.5-1.1.1-.9-.4l1.9-6.8H6.5c-.6 0-.9-.6-.6-1.1l6.4-11.3c.2-.3.4-.4.7-.4Z" fill="currentColor"/>
+        <a class="fpBrand" href="./dashboard.html">
+          <div class="fpBrandMark" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M13 2L4 14h7l-1 8 10-14h-7l0-6Z" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
             </svg>
           </div>
-          <div class="fpLogoText">
-            <strong>FlowPoint</strong>
-            <span>Client Dashboard</span>
+          <div>
+            <div class="fpBrandName">FlowPoint</div>
+            <div class="fpBrandSub">Control center</div>
           </div>
         </a>
 
-        <button class="fpSidebarClose" id="btnCloseSidebar" type="button" aria-label="Fermer">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </button>
+        <nav class="fpNav">
+          <a class="fpNavItem active" href="./dashboard.html" data-page="overview">
+            <span class="fpNavDot"></span>
+            <span>Overview</span>
+          </a>
+
+          <a class="fpNavItem" href="./missions.html" data-page="missions">
+            <span class="fpNavDot"></span>
+            <span>Missions</span>
+          </a>
+
+          <a class="fpNavItem" href="./audits.html" data-page="audits">
+            <span class="fpNavDot"></span>
+            <span>Audits</span>
+          </a>
+
+          <a class="fpNavItem" href="./monitors.html" data-page="monitors">
+            <span class="fpNavDot"></span>
+            <span>Monitors</span>
+          </a>
+
+          <a class="fpNavItem" href="./reports.html" data-page="reports">
+            <span class="fpNavDot"></span>
+            <span>Reports</span>
+          </a>
+
+          <a class="fpNavItem" href="./billing.html" data-page="billing">
+            <span class="fpNavDot"></span>
+            <span>Billing</span>
+          </a>
+
+          <a class="fpNavItem" href="./settings.html" data-page="settings">
+            <span class="fpNavDot"></span>
+            <span>Settings</span>
+          </a>
+        </nav>
       </div>
 
-      <nav class="fpNav">
-        <a href="#overview" class="fpNavItem active" data-route="overview">
-          <span class="fpNavDot"></span>
-          <span>Overview</span>
-        </a>
+      <div class="fpSidebarBottom">
+        <div class="fpPanel fpAccountPanel">
+          <div class="fpPanelKicker">Account</div>
 
-        <a href="#missions" class="fpNavItem" data-route="missions">
-          <span class="fpNavDot"></span>
-          <span>Missions</span>
-        </a>
-
-        <a href="#audits" class="fpNavItem" data-route="audits">
-          <span class="fpNavDot"></span>
-          <span>Audits</span>
-        </a>
-
-        <a href="#monitors" class="fpNavItem" data-route="monitors">
-          <span class="fpNavDot"></span>
-          <span>Monitors</span>
-        </a>
-
-        <a href="#reports" class="fpNavItem" data-route="reports">
-          <span class="fpNavDot"></span>
-          <span>Reports</span>
-        </a>
-
-        <a href="#billing" class="fpNavItem" data-route="billing">
-          <span class="fpNavDot"></span>
-          <span>Billing</span>
-        </a>
-
-        <a href="#settings" class="fpNavItem" data-route="settings">
-          <span class="fpNavDot"></span>
-          <span>Settings</span>
-        </a>
-      </nav>
-
-      <div class="fpSidebarCard">
-        <div class="fpSidebarCardTitle">Account</div>
-
-        <div class="fpMiniStats">
-          <div class="fpMiniRow">
-            <span>Plan</span>
-            <strong id="accPlan">—</strong>
+          <div class="fpMetaList">
+            <div class="fpMetaRow"><span>Plan</span><strong id="accPlan">—</strong></div>
+            <div class="fpMetaRow"><span>Organisation</span><strong id="accOrg">—</strong></div>
+            <div class="fpMetaRow"><span>Role</span><strong id="accRole">—</strong></div>
+            <div class="fpMetaRow"><span>Trial</span><strong id="accTrial">—</strong></div>
           </div>
-          <div class="fpMiniRow">
-            <span>Org</span>
-            <strong id="accOrg">—</strong>
-          </div>
-          <div class="fpMiniRow">
-            <span>Role</span>
-            <strong id="accRole">—</strong>
-          </div>
-          <div class="fpMiniRow">
-            <span>Trial</span>
-            <strong id="accTrial">—</strong>
-          </div>
-        </div>
 
-        <div class="fpUsage">
-          <div class="fpUsageItem">
-            <div class="fpUsageTop">
-              <span>Audits</span>
-              <strong id="uAudits">—</strong>
+          <div class="fpUsageStack">
+            <div class="fpUsageItem">
+              <div class="fpUsageTop">
+                <span>Audits</span>
+                <strong id="uAudits">—</strong>
+              </div>
+              <div class="fpBar"><div class="fpBarFill" id="barAudits"></div></div>
             </div>
-            <div class="fpUsageBar"><span id="barAudits"></span></div>
-          </div>
 
-          <div class="fpUsageItem">
-            <div class="fpUsageTop">
-              <span>PDF</span>
-              <strong id="uPdf">—</strong>
+            <div class="fpUsageItem">
+              <div class="fpUsageTop">
+                <span>PDF</span>
+                <strong id="uPdf">—</strong>
+              </div>
+              <div class="fpBar"><div class="fpBarFill" id="barPdf"></div></div>
             </div>
-            <div class="fpUsageBar"><span id="barPdf"></span></div>
-          </div>
 
-          <div class="fpUsageItem">
-            <div class="fpUsageTop">
-              <span>Exports</span>
-              <strong id="uExports">—</strong>
+            <div class="fpUsageItem">
+              <div class="fpUsageTop">
+                <span>Exports</span>
+                <strong id="uExports">—</strong>
+              </div>
+              <div class="fpBar"><div class="fpBarFill" id="barExports"></div></div>
             </div>
-            <div class="fpUsageBar"><span id="barExports"></span></div>
+
+            <div class="fpUsageItem fpUsageInline">
+              <div class="fpUsageTop">
+                <span>Monitors</span>
+                <strong id="uMonitors">—</strong>
+              </div>
+            </div>
           </div>
 
-          <div class="fpUsageFlat">
-            <span>Monitors</span>
-            <strong id="uMonitors">—</strong>
+          <div class="fpSideActions">
+            <button class="fpBtn fpBtnSoft fpBtnFull" id="btnPortal" type="button">Billing Portal</button>
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="btnLogout" type="button">Logout</button>
           </div>
-        </div>
-
-        <div class="fpSidebarActions">
-          <button class="fpBtn fpBtnSoft" id="btnPortal" type="button">Billing Portal</button>
-          <button class="fpBtn fpBtnDanger" id="btnLogout" type="button">Logout</button>
         </div>
       </div>
     </aside>
@@ -150,16 +136,16 @@
     <main class="fpMain">
       <header class="fpTopbar">
         <div class="fpTopbarLeft">
-          <button class="fpMenuBtn" id="btnMenu" type="button" aria-label="Menu">
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <button class="fpMenuBtn" id="fpMenuBtn" type="button" aria-label="Menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
           </button>
 
-          <div>
-            <div class="fpEyebrow">FLOWPOINT</div>
-            <div class="fpHelloTitle" id="helloTitle">Bonjour, —</div>
-            <div class="fpHelloSub">SEO · Monitoring · Reports · Billing</div>
+          <div class="fpWelcome">
+            <div class="fpWelcomeLabel">FlowPoint</div>
+            <h1 class="fpWelcomeTitle" id="helloTitle">Bonjour, —</h1>
+            <div class="fpWelcomeSub">SEO · Monitoring · Reports · Billing</div>
           </div>
         </div>
 
@@ -174,24 +160,28 @@
 
           <div class="fpStatus">
             <span class="fpStatusDot" id="statusDot"></span>
-            <span id="statusText">Chargement…</span>
+            <span id="statusText">Dashboard à jour — OK</span>
           </div>
         </div>
       </header>
 
       <section class="fpHero">
-        <div class="fpHeroLeft">
-          <div class="fpHeroLabel" id="pageKicker">Dashboard</div>
-          <h1 class="fpHeroTitle" id="pageTitle">Overview</h1>
+        <div class="fpHeroCopy">
+          <div class="fpHeroKicker">Dashboard</div>
+          <h2 class="fpHeroTitle" id="pageTitle">Overview</h2>
           <p class="fpHeroText" id="pageDesc">Vue générale de ton compte et de tes performances.</p>
         </div>
+
         <div class="fpHeroActions" id="pageActions"></div>
       </section>
 
-      <section class="fpPageGrid" id="pageGrid"></section>
+      <section class="fpLayout">
+        <div class="fpMainColumn" id="gridMain"></div>
+        <div class="fpSideColumn" id="gridSide"></div>
+      </section>
     </main>
   </div>
 
-  <script src="./dashboard.js"></script>
+  <script src="./dashboard-shell.js"></script>
 </body>
 </html>
