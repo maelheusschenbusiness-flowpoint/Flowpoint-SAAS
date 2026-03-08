@@ -1,31 +1,3 @@
-/* =========================================================
-   FlowPoint — dashboard.js (FULL RESET / BACKEND ALIGNED)
-   Compatible avec ton backend actuel :
-   - GET  /api/me
-   - GET  /api/overview?days=
-   - GET  /api/audits
-   - POST /api/audits/run
-   - GET  /api/monitors
-   - POST /api/monitors
-   - PATCH /api/monitors/:id
-   - DELETE /api/monitors/:id
-   - POST /api/monitors/:id/run
-   - GET  /api/monitors/:id/logs
-   - GET  /api/monitors/:id/uptime
-   - GET  /api/org/settings
-   - POST /api/org/settings
-   - POST /api/stripe/portal
-   - GET  /api/exports/audits.csv
-   - GET  /api/exports/monitors.csv
-
-   Objectif :
-   - nouveau comportement propre
-   - pages hash dédiées
-   - vrai rendu dynamique
-   - graphiques canvas sans lib
-   - mobile plus propre
-   ========================================================= */
-
 (() => {
   "use strict";
 
@@ -66,7 +38,6 @@
 
     helloTitle: $("#helloTitle"),
     helloSub: $("#helloSub"),
-    avatarText: $("#avatarText"),
 
     accPlan: $("#accPlan"),
     accOrg: $("#accOrg"),
@@ -126,55 +97,18 @@
       alertExtraEmails: [],
     },
     missions: [],
-
     lastLoadedAt: null,
   };
 
-  const MISSIONS_KEY = "fp_dashboard_missions_reset_v2";
+  const MISSIONS_KEY = "fp_dashboard_missions_reset_v3";
 
   const defaultMissions = [
-    {
-      id: "m1",
-      title: "Créer ton premier monitor",
-      meta: "Monitoring",
-      done: false,
-      action: "add_monitor",
-    },
-    {
-      id: "m2",
-      title: "Lancer un audit SEO",
-      meta: "Audits",
-      done: false,
-      action: "run_audit",
-    },
-    {
-      id: "m3",
-      title: "Exporter les audits CSV",
-      meta: "Reports",
-      done: false,
-      action: "export_audits",
-    },
-    {
-      id: "m4",
-      title: "Exporter les monitors CSV",
-      meta: "Reports",
-      done: false,
-      action: "export_monitors",
-    },
-    {
-      id: "m5",
-      title: "Ouvrir le portail billing",
-      meta: "Billing",
-      done: false,
-      action: "open_billing",
-    },
-    {
-      id: "m6",
-      title: "Configurer les alertes email",
-      meta: "Settings",
-      done: false,
-      action: "goto_settings",
-    },
+    { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor" },
+    { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit" },
+    { id: "m3", title: "Exporter les audits CSV", meta: "Reports", done: false, action: "export_audits" },
+    { id: "m4", title: "Exporter les monitors CSV", meta: "Reports", done: false, action: "export_monitors" },
+    { id: "m5", title: "Ouvrir le portail billing", meta: "Billing", done: false, action: "open_billing" },
+    { id: "m6", title: "Configurer les alertes email", meta: "Settings", done: false, action: "goto_settings" },
   ];
 
   function esc(s) {
@@ -236,9 +170,7 @@
     const token = getToken();
 
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    if (options.body && !headers.has("Content-Type")) {
-      headers.set("Content-Type", "application/json");
-    }
+    if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
     const doFetch = () =>
       fetch(url, {
@@ -264,24 +196,26 @@
     }
 
     if (res.status === 429) {
-      await sleep(500);
+      await sleep(400);
       res = await doFetch();
     }
 
     return res;
   }
 
+  function parseJsonSafe(res) {
+    return res.json().catch(() => ({}));
+  }
+
   function openSidebar() {
     els.sidebar?.classList.add("open");
     els.overlay?.classList.add("show");
-    els.overlay?.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
   }
 
   function closeSidebar() {
     els.sidebar?.classList.remove("open");
     els.overlay?.classList.remove("show");
-    els.overlay?.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
   }
 
@@ -310,7 +244,6 @@
   function formatUsage(v) {
     if (v == null) return "—";
     if (typeof v === "number" || typeof v === "string") return String(v);
-
     if (typeof v === "object") {
       const used = v.used ?? null;
       const limit = v.limit ?? null;
@@ -374,16 +307,6 @@
     if (els.helloTitle) els.helloTitle.textContent = `Bonjour, ${me.name || "—"}`;
     if (els.helloSub) els.helloSub.textContent = "SEO · Monitoring · Reports · Billing";
 
-    if (els.avatarText) {
-      const text = String(me.name || "FP").trim();
-      const parts = text.split(/\s+/).filter(Boolean);
-      const initials =
-        parts.length >= 2
-          ? `${parts[0][0] || "F"}${parts[1][0] || "P"}`
-          : `${text[0] || "F"}${text[1] || "P"}`;
-      els.avatarText.textContent = initials.toUpperCase();
-    }
-
     if (els.accPlan) els.accPlan.textContent = me.plan || "—";
     if (els.accOrg) els.accOrg.textContent = normalizeOrgName();
     if (els.accRole) els.accRole.textContent = me.role || "—";
@@ -399,18 +322,19 @@
     setBar(els.barExports, usage.exports?.used, usage.exports?.limit);
   }
 
-  function hydrateOverviewHero() {
+  function hydrateHeroKpis() {
     const ov = state.overview || {};
     const me = state.me || {};
     const monitorLimit = me.usage?.monitors?.limit ?? 0;
 
     if (els.kpiRange) els.kpiRange.textContent = `LAST ${state.rangeDays} DAYS`;
     if (els.orgChip) els.orgChip.textContent = normalizeOrgName();
-
     if (els.seoScore) els.seoScore.textContent = String(ov.seoScore ?? 0);
+
     if (els.seoHint) {
-      const suffix = ov.lastAuditAt ? `Dernier audit: ${formatShortDate(ov.lastAuditAt)}` : `Période ${state.rangeDays} jours`;
-      els.seoHint.textContent = suffix;
+      els.seoHint.textContent = ov.lastAuditAt
+        ? `Dernier audit : ${formatShortDate(ov.lastAuditAt)}`
+        : "Aucun audit récent";
     }
 
     if (els.monActive) els.monActive.textContent = String(ov.monitors?.active ?? 0);
@@ -419,8 +343,7 @@
 
     if (els.subStatus) els.subStatus.textContent = me.subscriptionStatus || me.plan || "—";
     if (els.subHint) {
-      const hint = me.lastPaymentStatus || (me.hasTrial ? "Essai actif" : "Compte actif");
-      els.subHint.textContent = hint || "—";
+      els.subHint.textContent = me.lastPaymentStatus || (me.hasTrial ? "Essai actif" : "Compte actif");
     }
 
     renderMissionPreview();
@@ -437,7 +360,7 @@
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     const width = Math.max(280, Math.round(rect.width || canvas.clientWidth || 600));
-    const height = 120;
+    const height = 160;
 
     canvas.width = width * dpr;
     canvas.height = height * dpr;
@@ -447,7 +370,7 @@
 
     const data = Array.isArray(state.overview?.chart) && state.overview.chart.length
       ? state.overview.chart.map((n) => Number(n || 0))
-      : [0, 0, 0, 0, 0, 0, 0];
+      : [0, 8, 15, 12, 22, 18, 26];
 
     ctx.clearRect(0, 0, width, height);
 
@@ -458,7 +381,7 @@
     const muted = styles.getPropertyValue("--fpMuted").trim() || "#667085";
 
     for (let i = 0; i < 4; i += 1) {
-      const y = 18 + i * 24;
+      const y = 22 + i * 30;
       ctx.strokeStyle = bgLine;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -468,10 +391,10 @@
     }
 
     const max = Math.max(100, ...data);
-    const left = 8;
-    const right = width - 8;
-    const top = 12;
-    const bottom = height - 16;
+    const left = 10;
+    const right = width - 10;
+    const top = 14;
+    const bottom = height - 22;
     const chartH = bottom - top;
     const step = data.length > 1 ? (right - left) / (data.length - 1) : 0;
 
@@ -503,41 +426,40 @@
     ctx.closePath();
 
     const fill = ctx.createLinearGradient(0, top, 0, bottom);
-    fill.addColorStop(0, "rgba(47,91,255,.28)");
+    fill.addColorStop(0, "rgba(47,91,255,.30)");
     fill.addColorStop(1, "rgba(47,91,255,0)");
     ctx.fillStyle = fill;
     ctx.fill();
 
     points.forEach((p) => {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
       ctx.fillStyle = brand;
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
+      ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
       ctx.fill();
     });
 
     ctx.fillStyle = muted;
     ctx.font = "12px Inter, system-ui, sans-serif";
-    ctx.fillText("0", 6, bottom + 10);
+    ctx.fillText("0", 6, bottom + 14);
     ctx.fillText("100", 6, top + 10);
   }
 
   function renderMissionPreview() {
     if (!els.missionPreview) return;
 
-    const items = state.missions.slice(0, 4);
-    els.missionPreview.innerHTML = items.map((m) => `
+    els.missionPreview.innerHTML = state.missions.slice(0, 4).map((m) => `
       <div class="fpMission ${m.done ? "isDone" : ""}">
         <div class="fpCheck ${m.done ? "done" : ""}" data-mission-toggle="${esc(m.id)}">${m.done ? "✓" : ""}</div>
         <div class="fpMissionBody">
           <div class="fpMissionTitle">${esc(m.title)}</div>
           <div class="fpMissionMeta">${esc(m.meta)}</div>
-          <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
-            <button class="fpBtn small primary" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-            <button class="fpBtn small" type="button" data-mission-open="${esc(m.id)}">Voir</button>
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="fpBtn small fpBtnPrimary" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+            <button class="fpBtn small fpBtnGhost" type="button" data-mission-open="${esc(m.id)}">Voir</button>
           </div>
         </div>
       </div>
@@ -560,22 +482,22 @@
       const status = normalizeMonitorStatus(m);
       const interval = m.intervalMinutes ?? "—";
       const last = formatDate(m.lastCheckedAt);
+
       return `
         <div class="fpTr row">
           <div class="fpUrl">${esc(m.url || "—")}</div>
           <div>
             <span class="fpBadge ${status === "up" ? "up" : status === "down" ? "down" : ""}">
-              <span class="fpBadgeDot"></span>
-              ${esc(status.toUpperCase())}
+              <span class="fpBadgeDot"></span>${esc(status.toUpperCase())}
             </span>
           </div>
           <div class="fpMono">${esc(interval)} min</div>
           <div class="fpMono">${esc(last)}</div>
           <div class="fpRowBtns">
-            <button class="fpBtn small" data-mon-test="${esc(id)}" type="button">Test</button>
+            <button class="fpBtn small fpBtnGhost" data-mon-test="${esc(id)}" type="button">Test</button>
           </div>
           <div class="fpRowBtns">
-            <button class="fpBtn small danger" data-mon-delete="${esc(id)}" type="button">Del</button>
+            <button class="fpBtn small fpBtnDanger" data-mon-delete="${esc(id)}" type="button">Del</button>
           </div>
         </div>
       `;
@@ -625,45 +547,37 @@
     const liveMonitors = state.monitors.slice(0, 4);
 
     setPage(`
-      <div class="fpCard" style="margin-top:14px">
+      <div class="fpCard">
         <div class="fpCardHead">
           <div>
-            <div class="fpKicker">DASHBOARD</div>
-            <div class="fpCardTitle" style="font-size:46px;line-height:1.02;margin-top:8px">Overview</div>
-            <div class="fpSmall" style="margin-top:10px;max-width:780px">
-              Vue générale de ton compte, de tes performances et de tes actions prioritaires.
-            </div>
+            <div class="fpKicker">OVERVIEW</div>
+            <div class="fpCardTitle">Business overview</div>
+            <div class="fpSmall">Vue générale du workspace, des audits récents et des monitors actifs.</div>
           </div>
-        </div>
-
-        <div class="fpDetailActions" style="margin-top:18px">
-          <button class="fpBtn primary" id="overviewRunAudit" type="button">Run SEO audit</button>
-          <button class="fpBtn" id="overviewAddMonitor" type="button">Add monitor</button>
-          <button class="fpBtn ghost" id="overviewOpenBilling" type="button">Billing</button>
         </div>
       </div>
 
-      <div class="fpSettingsGrid" style="margin-top:14px">
+      <div class="fpSettingsGrid" style="margin-top:18px">
         <div class="fpCardInner">
           <div class="fpCardInnerTitle">Performance snapshot</div>
-          <div class="fpSmall">Les indicateurs clés sur la période sélectionnée.</div>
+          <div class="fpSmall">Résumé rapide de la période sélectionnée.</div>
 
           <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-top:14px">
-            <div class="fpKpi">
+            <div class="fpKpiCard">
               <div class="fpKpiLabel">SEO SCORE</div>
               <div class="fpKpiValue">${esc(ov.seoScore ?? 0)}</div>
               <div class="fpKpiHint">${ov.lastAuditAt ? `Dernier audit le ${esc(formatShortDate(ov.lastAuditAt))}` : "Aucun audit récent"}</div>
             </div>
 
-            <div class="fpKpi">
+            <div class="fpKpiCard">
               <div class="fpKpiLabel">MONITORS ACTIFS</div>
-              <div class="fpKpiValue">${esc(ov.monitors?.active ?? 0)}<span class="fpKpiUnit">/ ${esc(me.usage?.monitors?.limit ?? 0)}</span></div>
-              <div class="fpKpiHint">${esc(ov.monitors?.down ?? 0)} DOWN actuellement</div>
+              <div class="fpKpiValue">${esc(ov.monitors?.active ?? 0)}<span class="fpKpiUnit"> / ${esc(me.usage?.monitors?.limit ?? 0)}</span></div>
+              <div class="fpKpiHint">${esc(ov.monitors?.down ?? 0)} down actuellement</div>
             </div>
 
-            <div class="fpKpi">
+            <div class="fpKpiCard">
               <div class="fpKpiLabel">PLAN</div>
-              <div class="fpKpiValue" style="font-size:28px">${esc(me.plan || "—")}</div>
+              <div class="fpKpiValue fpKpiValueSmall">${esc(me.plan || "—")}</div>
               <div class="fpKpiHint">${esc(me.subscriptionStatus || "Compte actif")}</div>
             </div>
           </div>
@@ -671,8 +585,9 @@
 
         <div class="fpCardInner">
           <div class="fpCardInnerTitle">Quick setup</div>
-          <div class="fpSmall">Checklist rapide pour avancer sans oublier les étapes importantes.</div>
-          <div class="fpMissionList" style="margin-top:14px">
+          <div class="fpSmall">Checklist rapide pour lancer ton espace correctement.</div>
+
+          <div style="margin-top:14px">
             ${state.missions.slice(0, 4).map((m) => `
               <div class="fpMission ${m.done ? "isDone" : ""}">
                 <div class="fpCheck ${m.done ? "done" : ""}" data-mission-toggle="${esc(m.id)}">${m.done ? "✓" : ""}</div>
@@ -680,7 +595,7 @@
                   <div class="fpMissionTitle">${esc(m.title)}</div>
                   <div class="fpMissionMeta">${esc(m.meta)}</div>
                   <div style="margin-top:10px">
-                    <button class="fpBtn small primary" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+                    <button class="fpBtn small fpBtnPrimary" type="button" data-mission-do="${esc(m.id)}">Faire</button>
                   </div>
                 </div>
               </div>
@@ -689,7 +604,7 @@
         </div>
       </div>
 
-      <div class="fpSettingsGrid" style="margin-top:14px">
+      <div class="fpSettingsGrid" style="margin-top:18px">
         <div class="fpCardInner">
           <div class="fpCardInnerTitle">Recent audits</div>
           <div class="fpSmall">Les derniers audits lancés depuis ton compte.</div>
@@ -698,7 +613,7 @@
             ${
               recentAudits.length
                 ? recentAudits.map((a) => `
-                  <div class="fpTr row" style="grid-template-columns:1.3fr .5fr .8fr;margin-top:8px">
+                  <div class="fpTr row" style="grid-template-columns:1.4fr .5fr .8fr">
                     <div class="fpUrl">${esc(a.url || "—")}</div>
                     <div class="fpMono">${esc(a.score ?? "—")}</div>
                     <div class="fpMono">${esc(formatShortDate(a.createdAt))}</div>
@@ -719,7 +634,7 @@
                 ? liveMonitors.map((m) => `
                   <div class="fpCardInner">
                     <div class="fpUrl">${esc(m.url || "—")}</div>
-                    <div class="fpSmall" style="margin-top:8px">Interval: ${esc(m.intervalMinutes ?? "—")} min</div>
+                    <div class="fpSmall" style="margin-top:8px">Interval : ${esc(m.intervalMinutes ?? "—")} min</div>
                     <div style="margin-top:12px">
                       <span class="fpBadge ${normalizeMonitorStatus(m) === "up" ? "up" : normalizeMonitorStatus(m) === "down" ? "down" : ""}">
                         <span class="fpBadgeDot"></span>${esc(normalizeMonitorStatus(m).toUpperCase())}
@@ -733,47 +648,41 @@
         </div>
       </div>
     `);
-
-    $("#overviewRunAudit")?.addEventListener("click", () => safeRunAudit(false));
-    $("#overviewAddMonitor")?.addEventListener("click", () => safeAddMonitor(false));
-    $("#overviewOpenBilling")?.addEventListener("click", () => openBillingPortal(false));
   }
 
   function renderMissionsPage() {
     const done = state.missions.filter((m) => m.done).length;
 
     setPage(`
-      <div class="fpCard" style="margin-top:14px">
+      <div class="fpCard">
         <div class="fpCardHead">
           <div>
-            <div class="fpKicker">SETUP</div>
-            <div class="fpCardTitle" style="font-size:46px;line-height:1.02;margin-top:8px">Missions</div>
-            <div class="fpSmall" style="margin-top:10px;max-width:780px">
-              Utilise cette page comme checklist de mise en route pour ton compte client.
-            </div>
+            <div class="fpKicker">MISSIONS</div>
+            <div class="fpCardTitle">Workspace missions</div>
+            <div class="fpSmall">Checklist onboarding, quick actions et progression.</div>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <button class="fpBtn small" id="missionsReset" type="button">Reset</button>
-            <button class="fpBtn small primary" id="missionsSave" type="button">Save</button>
+            <button class="fpBtn fpBtnGhost" id="missionsReset" type="button">Reset</button>
+            <button class="fpBtn fpBtnPrimary" id="missionsSave" type="button">Save</button>
           </div>
         </div>
       </div>
 
-      <div class="fpSettingsGrid" style="margin-top:14px">
+      <div class="fpSettingsGrid" style="margin-top:18px">
         <div class="fpCardInner">
-          <div class="fpCardInnerTitle">Missions</div>
-          <div class="fpSmall">Checklist onboarding, quick actions et progression.</div>
+          <div class="fpCardInnerTitle">Checklist</div>
+          <div class="fpSmall">Organise le lancement de ton compte client.</div>
 
-          <div class="fpMissionList" style="margin-top:14px">
+          <div style="margin-top:14px">
             ${state.missions.map((m) => `
               <div class="fpMission ${m.done ? "isDone" : ""}">
                 <div class="fpCheck ${m.done ? "done" : ""}" data-mission-toggle="${esc(m.id)}">${m.done ? "✓" : ""}</div>
                 <div class="fpMissionBody">
                   <div class="fpMissionTitle">${esc(m.title)}</div>
                   <div class="fpMissionMeta">${esc(m.meta)}</div>
-                  <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
-                    <button class="fpBtn small primary" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-                    <button class="fpBtn small" type="button" data-mission-open="${esc(m.id)}">Voir</button>
+                  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="fpBtn small fpBtnPrimary" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+                    <button class="fpBtn small fpBtnGhost" type="button" data-mission-open="${esc(m.id)}">Voir</button>
                   </div>
                 </div>
               </div>
@@ -782,18 +691,13 @@
         </div>
 
         <div class="fpCardInner">
-          <div class="fpCardInnerTitle">Workspace</div>
-          <div class="fpSmall">La base visuelle et les endpoints sont maintenant alignés avec ton backend.</div>
+          <div class="fpCardInnerTitle">Progression</div>
+          <div class="fpSmall">Visualise rapidement l’avancement du setup.</div>
 
-          <div class="fpKpi" style="margin-top:14px">
-            <div class="fpKpiLabel">PROGRESSION</div>
-            <div class="fpKpiValue">${done}<span class="fpKpiUnit">/ ${state.missions.length}</span></div>
-            <div class="fpKpiHint">Missions terminées</div>
-          </div>
-
-          <div class="fpCardInner" style="margin-top:14px">
-            <div class="fpCardInnerTitle">Style</div>
-            <div class="fpSmall">Nouveau layout, nouvelle hiérarchie, ancien dashboard abandonné.</div>
+          <div class="fpKpiCard" style="margin-top:14px">
+            <div class="fpKpiLabel">MISSIONS TERMINÉES</div>
+            <div class="fpKpiValue">${done}<span class="fpKpiUnit"> / ${state.missions.length}</span></div>
+            <div class="fpKpiHint">Progression globale</div>
           </div>
         </div>
       </div>
@@ -815,78 +719,61 @@
 
   function renderAuditsPage() {
     setPage(`
-      <div class="fpCard" style="margin-top:14px">
+      <div class="fpCard">
         <div class="fpCardHead">
           <div>
-            <div class="fpKicker">SEO</div>
-            <div class="fpCardTitle" style="font-size:46px;line-height:1.02;margin-top:8px">Audits</div>
-            <div class="fpSmall" style="margin-top:10px;max-width:780px">
-              Lance des audits SEO, consulte l’historique et exporte les résultats.
-            </div>
+            <div class="fpKicker">AUDITS</div>
+            <div class="fpCardTitle">SEO audits</div>
+            <div class="fpSmall">Lance des audits SEO, consulte l’historique et exporte les résultats.</div>
           </div>
           <div class="fpDetailActions">
-            <button class="fpBtn primary" id="auditsRun" type="button">Run SEO audit</button>
-            <button class="fpBtn" id="auditsExport" type="button">Export CSV</button>
+            <button class="fpBtn fpBtnPrimary" id="auditsRun" type="button">Run SEO audit</button>
+            <button class="fpBtn fpBtnGhost" id="auditsExport" type="button">Export CSV</button>
           </div>
         </div>
       </div>
 
-      <div class="fpSettingsGrid" style="margin-top:14px">
-        <div class="fpCardInner">
-          <div class="fpCardInnerTitle">Historique des audits</div>
-          <div class="fpSmall">Derniers audits disponibles sur ton organisation.</div>
+      <div class="fpCardInner" style="margin-top:18px">
+        <div class="fpCardInnerTitle">Historique des audits</div>
+        <div class="fpSmall">Derniers audits disponibles sur ton organisation.</div>
 
-          <div style="margin-top:14px">
-            ${
-              state.audits.length
-                ? state.audits.map((a) => `
-                  <div class="fpTr row" style="grid-template-columns:1.4fr .5fr .9fr;margin-top:8px">
-                    <div class="fpUrl">${esc(a.url || "—")}</div>
-                    <div class="fpMono">${esc(a.score ?? "—")}</div>
-                    <div class="fpMono">${esc(formatDate(a.createdAt))}</div>
-                  </div>
-                `).join("")
-                : `<div class="fpEmpty">Aucun audit pour le moment.</div>`
-            }
-          </div>
-        </div>
-
-        <div class="fpCardInner">
-          <div class="fpCardInnerTitle">Résumé</div>
-          <div class="fpSmall">Ce bloc est branché sur ton backend actuel.</div>
-
-          <div class="fpKpi" style="margin-top:14px">
-            <div class="fpKpiLabel">TOTAL AUDITS CHARGÉS</div>
-            <div class="fpKpiValue">${state.audits.length}</div>
-            <div class="fpKpiHint">Limite d’affichage actuelle: 50</div>
-          </div>
+        <div style="margin-top:14px">
+          ${
+            state.audits.length
+              ? state.audits.map((a) => `
+                <div class="fpTr row" style="grid-template-columns:1.6fr .5fr .9fr">
+                  <div class="fpUrl">${esc(a.url || "—")}</div>
+                  <div class="fpMono">${esc(a.score ?? "—")}</div>
+                  <div class="fpMono">${esc(formatDate(a.createdAt))}</div>
+                </div>
+              `).join("")
+              : `<div class="fpEmpty">Aucun audit pour le moment.</div>`
+          }
         </div>
       </div>
     `);
 
-    $("#auditsRun")?.addEventListener("click", () => safeRunAudit(false));
+    $("#auditsRun")?.addEventListener("click", () => safeRunAudit());
     $("#auditsExport")?.addEventListener("click", () => safeExport("/api/exports/audits.csv", "flowpoint-audits.csv"));
   }
 
   function renderMonitorsPage() {
     setPage(`
-      <div class="fpCard" style="margin-top:14px">
+      <div class="fpCard">
         <div class="fpCardHead">
           <div>
-            <div class="fpKicker">MONITORING</div>
-            <div class="fpCardTitle" style="font-size:46px;line-height:1.02;margin-top:8px">Monitors</div>
-            <div class="fpSmall" style="margin-top:10px;max-width:780px">
-              Gère les URLs surveillées, teste leur disponibilité et pilote les incidents.
-            </div>
+            <div class="fpKicker">MONITORS</div>
+            <div class="fpCardTitle">URL monitoring</div>
+            <div class="fpSmall">Gère les URLs surveillées, teste leur disponibilité et pilote les incidents.</div>
           </div>
           <div class="fpDetailActions">
-            <button class="fpBtn primary" id="monitorsAdd" type="button">Add monitor</button>
-            <button class="fpBtn" id="monitorsExport" type="button">Export CSV</button>
+            <button class="fpBtn fpBtnPrimary" id="monitorsAdd" type="button">Add monitor</button>
+            <button class="fpBtn fpBtnGhost" id="monitorsExport" type="button">Export CSV</button>
           </div>
         </div>
       </div>
 
-      <div class="fpCardInner" style="margin-top:14px">
+      <div class="fpCardInner" style="margin-top:18px">
         <div class="fpCardInnerTitle">Liste monitors</div>
         <div class="fpSmall">Uptime, statut, dernier check et actions rapides.</div>
 
@@ -897,7 +784,7 @@
                 const id = normalizeMonitorId(m);
                 const status = normalizeMonitorStatus(m);
                 return `
-                  <div class="fpTr row" style="grid-template-columns:1.6fr .7fr .7fr 1fr .7fr .7fr;margin-top:8px">
+                  <div class="fpTr row" style="grid-template-columns:1.7fr .8fr .8fr 1fr .6fr .6fr">
                     <div class="fpUrl">${esc(m.url || "—")}</div>
                     <div>
                       <span class="fpBadge ${status === "up" ? "up" : status === "down" ? "down" : ""}">
@@ -907,10 +794,10 @@
                     <div class="fpMono">${esc(m.intervalMinutes ?? "—")} min</div>
                     <div class="fpMono">${esc(formatDate(m.lastCheckedAt))}</div>
                     <div class="fpRowBtns">
-                      <button class="fpBtn small" data-mon-test="${esc(id)}" type="button">Test</button>
+                      <button class="fpBtn small fpBtnGhost" data-mon-test="${esc(id)}" type="button">Test</button>
                     </div>
                     <div class="fpRowBtns">
-                      <button class="fpBtn small danger" data-mon-delete="${esc(id)}" type="button">Del</button>
+                      <button class="fpBtn small fpBtnDanger" data-mon-delete="${esc(id)}" type="button">Del</button>
                     </div>
                   </div>
                 `;
@@ -921,51 +808,46 @@
       </div>
     `);
 
-    $("#monitorsAdd")?.addEventListener("click", () => safeAddMonitor(false));
+    $("#monitorsAdd")?.addEventListener("click", () => safeAddMonitor());
     $("#monitorsExport")?.addEventListener("click", () => safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv"));
   }
 
   function renderReportsPage() {
-    const auditCount = state.audits.length;
-    const monitorCount = state.monitors.length;
-
     setPage(`
-      <div class="fpCard" style="margin-top:14px">
+      <div class="fpCard">
         <div class="fpCardHead">
           <div>
             <div class="fpKicker">REPORTS</div>
-            <div class="fpCardTitle" style="font-size:46px;line-height:1.02;margin-top:8px">Reports</div>
-            <div class="fpSmall" style="margin-top:10px;max-width:780px">
-              Exporte tes audits et tes monitors au format CSV depuis ton backend.
-            </div>
+            <div class="fpCardTitle">Exports & reports</div>
+            <div class="fpSmall">Exporte tes audits et tes monitors au format CSV depuis ton backend.</div>
           </div>
           <div class="fpDetailActions">
-            <button class="fpBtn primary" id="reportsAuditsCsv" type="button">Audits CSV</button>
-            <button class="fpBtn" id="reportsMonitorsCsv" type="button">Monitors CSV</button>
+            <button class="fpBtn fpBtnPrimary" id="reportsAuditsCsv" type="button">Audits CSV</button>
+            <button class="fpBtn fpBtnGhost" id="reportsMonitorsCsv" type="button">Monitors CSV</button>
           </div>
         </div>
       </div>
 
-      <div class="fpSettingsGrid" style="margin-top:14px">
+      <div class="fpSettingsGrid" style="margin-top:18px">
         <div class="fpCardInner">
           <div class="fpCardInnerTitle">Exports disponibles</div>
           <div class="fpSmall">Ton backend expose déjà les deux routes CSV.</div>
 
-          <div class="fpKpi" style="margin-top:14px">
+          <div class="fpKpiCard" style="margin-top:14px">
             <div class="fpKpiLabel">AUDITS EXPORTABLES</div>
-            <div class="fpKpiValue">${auditCount}</div>
-            <div class="fpKpiHint">Source: GET /api/exports/audits.csv</div>
+            <div class="fpKpiValue">${state.audits.length}</div>
+            <div class="fpKpiHint">GET /api/exports/audits.csv</div>
           </div>
 
-          <div class="fpKpi" style="margin-top:14px">
+          <div class="fpKpiCard" style="margin-top:14px">
             <div class="fpKpiLabel">MONITORS EXPORTABLES</div>
-            <div class="fpKpiValue">${monitorCount}</div>
-            <div class="fpKpiHint">Source: GET /api/exports/monitors.csv</div>
+            <div class="fpKpiValue">${state.monitors.length}</div>
+            <div class="fpKpiHint">GET /api/exports/monitors.csv</div>
           </div>
         </div>
 
         <div class="fpCardInner">
-          <div class="fpCardInnerTitle">Utilisation</div>
+          <div class="fpCardInnerTitle">Usage</div>
           <div class="fpSmall">Chaque export consomme le quota exports de ton plan.</div>
 
           <div class="fpCardInner" style="margin-top:14px">
@@ -985,28 +867,27 @@
     const quotas = me.usage || {};
 
     setPage(`
-      <div class="fpCard" style="margin-top:14px">
+      <div class="fpCard">
         <div class="fpCardHead">
           <div>
             <div class="fpKicker">BILLING</div>
-            <div class="fpCardTitle" style="font-size:46px;line-height:1.02;margin-top:8px">Billing</div>
-            <div class="fpSmall" style="margin-top:10px;max-width:780px">
-              Plans, quotas, add-ons et portail Stripe.
-            </div>
+            <div class="fpCardTitle">Billing & subscription</div>
+            <div class="fpSmall">Plans, quotas, add-ons et portail Stripe.</div>
           </div>
           <div class="fpDetailActions">
-            <button class="fpBtn primary" id="billingPortalBtn" type="button">Open billing portal</button>
-            <button class="fpBtn" id="billingPricingBtn" type="button">Pricing</button>
+            <button class="fpBtn fpBtnPrimary" id="billingPortalBtn" type="button">Open billing portal</button>
+            <button class="fpBtn fpBtnGhost" id="billingPricingBtn" type="button">Pricing</button>
           </div>
         </div>
       </div>
 
-      <div class="fpSettingsGrid" style="margin-top:14px">
+      <div class="fpSettingsGrid" style="margin-top:18px">
         <div class="fpCardInner">
           <div class="fpCardInnerTitle">Plan actuel</div>
-          <div class="fpKpi" style="margin-top:14px">
+
+          <div class="fpKpiCard" style="margin-top:14px">
             <div class="fpKpiLabel">PLAN</div>
-            <div class="fpKpiValue">${esc(me.plan || "—")}</div>
+            <div class="fpKpiValue fpKpiValueSmall">${esc(me.plan || "—")}</div>
             <div class="fpKpiHint">${esc(me.subscriptionStatus || "Compte actif")}</div>
           </div>
         </div>
@@ -1025,7 +906,7 @@
       </div>
     `);
 
-    $("#billingPortalBtn")?.addEventListener("click", () => openBillingPortal(false));
+    $("#billingPortalBtn")?.addEventListener("click", () => openBillingPortal());
     $("#billingPricingBtn")?.addEventListener("click", () => {
       window.location.href = "/pricing.html";
     });
@@ -1035,25 +916,22 @@
     const orgName = normalizeOrgName();
     const plan = state.me?.plan || "—";
     const role = state.me?.role || "—";
-
     const extraEmails = Array.isArray(state.orgSettings.alertExtraEmails)
       ? state.orgSettings.alertExtraEmails.join(", ")
       : "";
 
     setPage(`
-      <div class="fpCard" style="margin-top:14px">
+      <div class="fpCard">
         <div class="fpCardHead">
           <div>
             <div class="fpKicker">SETTINGS</div>
-            <div class="fpCardTitle" style="font-size:46px;line-height:1.02;margin-top:8px">Settings</div>
-            <div class="fpSmall" style="margin-top:10px;max-width:780px">
-              Emails d’alerte, organisation et préférences.
-            </div>
+            <div class="fpCardTitle">Workspace settings</div>
+            <div class="fpSmall">Emails d’alerte, organisation et préférences.</div>
           </div>
         </div>
       </div>
 
-      <div class="fpSettingsGrid" style="margin-top:14px">
+      <div class="fpSettingsGrid" style="margin-top:18px">
         <div class="fpCardInner">
           <div class="fpCardInnerTitle">Alert emails</div>
           <div class="fpSmall">Paramètres branchés sur /api/org/settings.</div>
@@ -1072,7 +950,7 @@
           </div>
 
           <div class="fpDetailActions">
-            <button class="fpBtn primary" id="settingsSaveBtn" type="button">Save</button>
+            <button class="fpBtn fpBtnPrimary" id="settingsSaveBtn" type="button">Save settings</button>
           </div>
         </div>
 
@@ -1109,7 +987,7 @@
 
   function drawInitialUi() {
     hydrateAccount();
-    hydrateOverviewHero();
+    hydrateHeroKpis();
     renderRightMonitors();
     renderAddons();
     renderCurrentRoute();
@@ -1144,10 +1022,6 @@
       setStatus("Export échoué", "danger");
       return false;
     }
-  }
-
-  function parseJsonSafe(res) {
-    return res.json().catch(() => ({}));
   }
 
   async function openBillingPortal() {
@@ -1193,16 +1067,16 @@
       card.style.width = "min(560px, 100%)";
       card.style.borderRadius = "24px";
       card.style.border = "1px solid rgba(255,255,255,.16)";
-      card.style.background = "var(--fpCard)";
+      card.style.background = "var(--fpCardStrong)";
       card.style.boxShadow = "0 30px 90px rgba(0,0,0,.25)";
       card.style.padding = "22px";
 
       card.innerHTML = `
-        <div style="font-weight:900;font-size:18px;line-height:1.25;margin-bottom:14px">${esc(title)}</div>
+        <div style="font-weight:800;font-size:18px;line-height:1.25;margin-bottom:14px">${esc(title)}</div>
         <input id="fpModalInput" class="fpInput" placeholder="${esc(placeholder)}" value="${esc(value)}" />
-        <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:16px">
-          <button class="fpBtn" type="button" id="fpModalCancel">Annuler</button>
-          <button class="fpBtn primary" type="button" id="fpModalOk">${esc(confirmText)}</button>
+        <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:16px;flex-wrap:wrap">
+          <button class="fpBtn fpBtnGhost" type="button" id="fpModalCancel">Annuler</button>
+          <button class="fpBtn fpBtnPrimary" type="button" id="fpModalOk">${esc(confirmText)}</button>
         </div>
       `;
 
@@ -1381,9 +1255,7 @@
     if (mission.action === "export_monitors") return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
     if (mission.action === "open_billing") return openBillingPortal();
     if (mission.action === "goto_settings") {
-      state.route = "#settings";
       location.hash = "#settings";
-      renderCurrentRoute();
       return true;
     }
   }
@@ -1415,19 +1287,12 @@
         fetchWithAuth("/api/org/settings", { signal }).catch(() => null),
       ]);
 
-      if (meRes?.ok) {
-        state.me = await parseJsonSafe(meRes);
-      }
+      if (meRes?.ok) state.me = await parseJsonSafe(meRes);
 
       if (overviewRes?.ok) {
         state.overview = await parseJsonSafe(overviewRes);
       } else {
-        state.overview = {
-          seoScore: 0,
-          chart: [],
-          monitors: { active: 0, down: 0 },
-          rangeDays: state.rangeDays,
-        };
+        state.overview = { seoScore: 0, chart: [], monitors: { active: 0, down: 0 }, rangeDays: state.rangeDays };
       }
 
       if (auditsRes?.ok) {
@@ -1471,10 +1336,11 @@
     els.navItems.forEach((item) => item.addEventListener("click", closeSidebar));
 
     els.btnRefresh?.addEventListener("click", () => loadData());
+
     els.rangeSelect?.addEventListener("change", () => {
       const v = Number(els.rangeSelect.value || 30);
       state.rangeDays = [30, 7, 3].includes(v) ? v : 30;
-      hydrateOverviewHero();
+      hydrateHeroKpis();
       loadData();
     });
 
@@ -1484,7 +1350,6 @@
     });
 
     els.exportsMenu?.addEventListener("click", (e) => e.stopPropagation());
-
     document.addEventListener("click", () => toggleExportsMenu(false));
 
     els.btnExportAudits?.addEventListener("click", () => {
@@ -1500,16 +1365,12 @@
     els.btnRunAudit?.addEventListener("click", () => safeRunAudit());
     els.btnAddMonitor?.addEventListener("click", () => safeAddMonitor());
     els.btnAddMonitor2?.addEventListener("click", () => safeAddMonitor());
-    els.btnGoMissions?.addEventListener("click", () => {
-      location.hash = "#missions";
-    });
+    els.btnGoMissions?.addEventListener("click", () => { location.hash = "#missions"; });
     els.btnOpenBilling?.addEventListener("click", () => openBillingPortal());
 
     els.btnPortal?.addEventListener("click", () => openBillingPortal());
     els.btnLogout?.addEventListener("click", logout);
-    els.btnSeePlans?.addEventListener("click", () => {
-      window.location.href = "/pricing.html";
-    });
+    els.btnSeePlans?.addEventListener("click", () => { window.location.href = "/pricing.html"; });
     els.btnManageAddons?.addEventListener("click", () => openBillingPortal());
     els.planBtns.forEach((btn) => btn.addEventListener("click", () => openBillingPortal()));
 
@@ -1564,12 +1425,7 @@
 
     if (els.rangeSelect) els.rangeSelect.value = String(state.rangeDays);
 
-    hydrateAccount();
-    hydrateOverviewHero();
-    renderAddons();
-    renderRightMonitors();
-    renderCurrentRoute();
-
+    drawInitialUi();
     bindEvents();
     loadData();
   }
