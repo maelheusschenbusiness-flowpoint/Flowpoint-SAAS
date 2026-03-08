@@ -3,12 +3,12 @@
 
   /* =========================================================
      FlowPoint Dashboard.js
-     PARTIE 1/3
+     PARTIE 1/4
      - config
      - state
-     - auth/fetch
      - helpers
-     - missions reset auto 3 jours + ordre dynamique
+     - auth/fetch
+     - missions
      - utilitaires UI
      ========================================================= */
 
@@ -27,8 +27,8 @@
     "#settings",
   ]);
 
-  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v7";
-  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v7";
+  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v8";
+  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v8";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -70,6 +70,13 @@
     barPdf: $("#fpBarPdf"),
     barExports: $("#fpBarExports"),
     barMonitors: $("#fpBarMonitors"),
+
+    openBillingSide: $("#fpOpenBillingSide"),
+    openSettingsSide: $("#fpOpenSettingsSide"),
+    logoutBtn: $("#fpLogoutBtn"),
+
+    sidebarLogo: $("#fpSidebarLogo"),
+    topLogo: $("#fpTopLogo"),
   };
 
   const state = {
@@ -93,62 +100,14 @@
 
   function getDefaultMissions() {
     return [
-      {
-        id: "m1",
-        title: "Créer ton premier monitor",
-        meta: "Monitoring",
-        done: false,
-        action: "add_monitor",
-      },
-      {
-        id: "m2",
-        title: "Lancer un audit SEO",
-        meta: "Audits",
-        done: false,
-        action: "run_audit",
-      },
-      {
-        id: "m3",
-        title: "Exporter les audits CSV",
-        meta: "Rapports",
-        done: false,
-        action: "export_audits",
-      },
-      {
-        id: "m4",
-        title: "Exporter les monitors CSV",
-        meta: "Rapports",
-        done: false,
-        action: "export_monitors",
-      },
-      {
-        id: "m5",
-        title: "Ouvrir la facturation",
-        meta: "Facturation",
-        done: false,
-        action: "open_billing",
-      },
-      {
-        id: "m6",
-        title: "Configurer les alertes email",
-        meta: "Paramètres",
-        done: false,
-        action: "goto_settings",
-      },
-      {
-        id: "m7",
-        title: "Tester un monitor existant",
-        meta: "Monitoring",
-        done: false,
-        action: "test_monitor",
-      },
-      {
-        id: "m8",
-        title: "Consulter les quotas du plan",
-        meta: "Facturation",
-        done: false,
-        action: "view_billing",
-      },
+      { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor" },
+      { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit" },
+      { id: "m3", title: "Exporter les audits CSV", meta: "Rapports", done: false, action: "export_audits" },
+      { id: "m4", title: "Exporter les monitors CSV", meta: "Rapports", done: false, action: "export_monitors" },
+      { id: "m5", title: "Ouvrir la facturation", meta: "Facturation", done: false, action: "open_billing" },
+      { id: "m6", title: "Configurer les alertes email", meta: "Paramètres", done: false, action: "goto_settings" },
+      { id: "m7", title: "Tester un monitor existant", meta: "Monitoring", done: false, action: "test_monitor" },
+      { id: "m8", title: "Consulter les quotas du plan", meta: "Facturation", done: false, action: "view_billing" },
     ];
   }
 
@@ -332,13 +291,17 @@
     if (!els.statusDot) return;
 
     els.statusDot.classList.remove("warn", "danger");
-
     if (mode === "warn") els.statusDot.classList.add("warn");
     if (mode === "danger") els.statusDot.classList.add("danger");
   }
 
   function normalizeOrgName() {
-    return state.me?.org?.name || "Organisation";
+    return (
+      state.me?.org?.name ||
+      state.me?.organization?.name ||
+      state.me?.workspace?.name ||
+      "Organisation"
+    );
   }
 
   function normalizeMonitorStatus(monitor) {
@@ -562,6 +525,37 @@
     });
   }
 
+  function fixLogos() {
+    const addFallback = (img) => {
+      if (!img) return;
+
+      img.addEventListener("error", () => {
+        const parent = img.parentElement;
+        if (!parent) return;
+        parent.innerHTML = `
+          <div style="
+            width:100%;
+            height:100%;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color:#fff;
+            font-weight:900;
+            font-size:22px;
+          ">F</div>
+        `;
+      });
+    };
+
+    addFallback(els.sidebarLogo);
+    addFallback(els.topLogo);
+  }
+
+  function logout() {
+    clearAuth();
+    window.location.href = "/login.html";
+  }
+
   async function openBillingPortal() {
     setStatus("Ouverture de la facturation…", "warn");
 
@@ -759,11 +753,11 @@
     }
   }
     /* =========================================================
-     PARTIE 2/3
-     - rendu Overview
+     PARTIE 2/4
      - graphique
-     - rendu Missions
-     - rendu Audits
+     - overview
+     - missions
+     - audits
      ========================================================= */
 
   function drawOverviewChart() {
@@ -832,7 +826,7 @@
     const points = data.map((value, i) => {
       const x = padLeft + i * stepX;
       const y = padTop + chartH - (value / 100) * chartH;
-      return { x, y, value };
+      return { x, y };
     });
 
     const areaGradient = ctx.createLinearGradient(0, padTop, 0, padTop + chartH);
@@ -841,9 +835,7 @@
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, padTop + chartH);
-    points.forEach((p) => {
-      ctx.lineTo(p.x, p.y);
-    });
+    points.forEach((p) => ctx.lineTo(p.x, p.y));
     ctx.lineTo(points[points.length - 1].x, padTop + chartH);
     ctx.closePath();
     ctx.fillStyle = areaGradient;
@@ -892,18 +884,18 @@
     const diff = Math.round(last - first);
 
     if (diff >= 12) {
-      return "La tendance est positive sur la période sélectionnée. Le score SEO progresse nettement, ce qui indique une amélioration visible de la qualité globale du site.";
+      return "La tendance est positive sur la période sélectionnée. Le score SEO progresse nettement.";
     }
 
     if (diff >= 1) {
-      return "La courbe reste orientée à la hausse. Les optimisations récentes semblent produire un effet progressif, même si la marge d’amélioration reste importante.";
+      return "La courbe reste orientée à la hausse. Les optimisations récentes semblent produire un effet progressif.";
     }
 
     if (diff <= -8) {
-      return "Le score est en baisse sur la période. Il faut vérifier les derniers audits, les temps de réponse et les éléments SEO critiques pour corriger rapidement.";
+      return "Le score est en baisse sur la période. Vérifie les derniers audits et les points SEO critiques.";
     }
 
-    return "La performance reste relativement stable sur la période. Un nouvel audit et quelques ajustements SEO pourraient aider à relancer la progression.";
+    return "La performance reste relativement stable sur la période.";
   }
 
   function renderOverviewHero() {
@@ -916,8 +908,6 @@
 
     return `
       <section class="fpHero fpHeroWide">
-        <div class="fpHeroGlow"></div>
-
         <div class="fpHeroContent">
           <div class="fpCardKicker">FlowPoint</div>
           <h1 class="fpHeroTitle fpHeroTitleSmall">Overview</h1>
@@ -972,7 +962,6 @@
                   <canvas id="fpOverviewChart"></canvas>
                 </div>
                 <div class="fpChartLegend">
-                  <div class="fpChartLegendLine"></div>
                   <div class="fpChartLegendText">Lecture rapide de la progression globale du score SEO.</div>
                 </div>
                 <div class="fpChartInsight">
@@ -1021,26 +1010,11 @@
             "Vue synthétique du compte actif",
             `
               <div class="fpInfoList">
-                <div class="fpInfoRow">
-                  <span>Plan</span>
-                  <strong>${esc(planLabel(me.plan))}</strong>
-                </div>
-                <div class="fpInfoRow">
-                  <span>Statut</span>
-                  <strong>${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</strong>
-                </div>
-                <div class="fpInfoRow">
-                  <span>Monitors actifs</span>
-                  <strong>${esc(ov.monitors?.active ?? 0)}/${esc(monitorLimit)}</strong>
-                </div>
-                <div class="fpInfoRow">
-                  <span>Incidents</span>
-                  <strong>${esc(ov.monitors?.down ?? 0)}</strong>
-                </div>
-                <div class="fpInfoRow">
-                  <span>Dernier audit</span>
-                  <strong>${esc(ov.lastAuditAt ? formatShortDate(ov.lastAuditAt) : "—")}</strong>
-                </div>
+                <div class="fpInfoRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
+                <div class="fpInfoRow"><span>Statut</span><strong>${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</strong></div>
+                <div class="fpInfoRow"><span>Monitors actifs</span><strong>${esc(ov.monitors?.active ?? 0)}/${esc(monitorLimit)}</strong></div>
+                <div class="fpInfoRow"><span>Incidents</span><strong>${esc(ov.monitors?.down ?? 0)}</strong></div>
+                <div class="fpInfoRow"><span>Dernier audit</span><strong>${esc(ov.lastAuditAt ? formatShortDate(ov.lastAuditAt) : "—")}</strong></div>
               </div>
             `
           )}
@@ -1105,7 +1079,7 @@
       ${createSectionCard(
         "Missions",
         "Checklist d’activation",
-        "Les missions se réinitialisent automatiquement tous les 3 jours et changent d’ordre pour éviter d’être toujours identiques.",
+        "Les missions se réinitialisent automatiquement tous les 3 jours et changent d’ordre.",
         `
           <div class="fpMissionPageGrid">
             <div class="fpMissionPageMain">
@@ -1152,11 +1126,6 @@
                   <div class="fpStatMeta">Les missions varient</div>
                 </div>
               </div>
-
-              <div class="fpTextPanel">
-                Les missions sont conçues pour remettre le client dans un parcours simple :
-                monitor, audit, export, paramètres et facturation.
-              </div>
             </div>
           </div>
         `
@@ -1174,7 +1143,7 @@
       ${createSectionCard(
         "Audits",
         "Centre SEO",
-        "Lance des audits, consulte l’historique et identifie rapidement les priorités.",
+        "Lance des audits et consulte l’historique.",
         `
           <div class="fpTopActionsRow">
             <button class="fpBtn fpBtnPrimary" id="fpAuditsRunBtn" type="button">Lancer un audit SEO</button>
@@ -1244,18 +1213,6 @@
             `
           )}
 
-          ${createSectionCard(
-            "Conseil",
-            "Lecture client",
-            "Comment présenter la page audit de manière pro",
-            `
-              <div class="fpTextPanel">
-                Utilise cette section pour montrer l’historique, la régularité des audits et la progression du score.
-                C’est une bonne base pour un rendu SaaS propre et vendable.
-              </div>
-            `
-          )}
-
         </div>
       </div>
     `);
@@ -1270,15 +1227,11 @@
     });
   }
     /* =========================================================
-     PARTIE 3/3
-     - Monitors
-     - Reports
-     - Billing
-     - Settings
-     - Router
-     - Data loading
-     - Events
-     - Init
+     PARTIE 3/4
+     - monitors
+     - reports
+     - billing
+     - settings
      ========================================================= */
 
   function renderMonitorsPage() {
@@ -1290,7 +1243,7 @@
       ${createSectionCard(
         "Monitoring",
         "Surveillance des sites",
-        "Ajoute des URLs, contrôle leur disponibilité et pilote les incidents plus rapidement.",
+        "Ajoute des URLs et contrôle leur disponibilité.",
         `
           <div class="fpTopActionsRow">
             <button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn" type="button">Ajouter un monitor</button>
@@ -1305,7 +1258,7 @@
           ${createSectionCard(
             "Monitors",
             "Liste active",
-            "Tous les monitors actuellement chargés depuis ton backend",
+            "Tous les monitors actuellement chargés",
             monitors.length
               ? `
                 <div class="fpTable">
@@ -1365,18 +1318,6 @@
             `
           )}
 
-          ${createSectionCard(
-            "Conseil",
-            "Utilisation pro",
-            "Comment rendre cette page plus crédible côté client",
-            `
-              <div class="fpTextPanel">
-                Mets en avant les statuts, les derniers checks et la stabilité du service.
-                Cette page doit donner une impression de contrôle, de réactivité et de fiabilité.
-              </div>
-            `
-          )}
-
         </div>
       </div>
     `);
@@ -1408,14 +1349,11 @@
   }
 
   function renderReportsPage() {
-    const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
-    const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
-
     setPage(`
       ${createSectionCard(
         "Rapports",
-        "Exports et historiques",
-        "Télécharge les données importantes du dashboard et prépare des livrables clients plus propres.",
+        "Exports",
+        "Télécharge directement les données utiles du dashboard.",
         `
           <div class="fpReportsGrid">
             <div class="fpReportCard">
@@ -1432,57 +1370,12 @@
 
             <div class="fpReportCard">
               <div class="fpReportTitle">Rapport PDF</div>
-              <div class="fpReportMeta">Prévu pour une version client plus premium.</div>
+              <div class="fpReportMeta">Fonction bientôt disponible.</div>
               <button class="fpBtn fpBtnGhost" type="button" disabled>Bientôt disponible</button>
             </div>
           </div>
         `
       )}
-
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Historique",
-            "Données exportables",
-            "Résumé rapide des volumes actuellement disponibles",
-            `
-              <div class="fpStatsGrid">
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Audits</div>
-                  <div class="fpStatValue">${auditsCount}</div>
-                  <div class="fpStatMeta">Lignes exportables</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Monitors</div>
-                  <div class="fpStatValue">${monitorsCount}</div>
-                  <div class="fpStatMeta">Lignes exportables</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Format</div>
-                  <div class="fpStatValue">CSV</div>
-                  <div class="fpStatMeta">Téléchargement direct</div>
-                </div>
-              </div>
-            `
-          )}
-        </div>
-
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Conseil",
-            "Usage commercial",
-            "À quoi sert cette page dans un vrai SaaS",
-            `
-              <div class="fpTextPanel">
-                La page reports sert à transformer tes données en livrables. C’est utile pour les clients,
-                les suivis internes et les comptes-rendus mensuels.
-              </div>
-            `
-          )}
-        </div>
-      </div>
     `);
 
     $("#fpExportAuditsBtn")?.addEventListener("click", async () => {
@@ -1503,7 +1396,7 @@
       ${createSectionCard(
         "Facturation",
         "Abonnement",
-        "Consulte le plan actuel, les quotas et ouvre le portail Stripe pour gérer l’abonnement.",
+        "Consulte ton plan, tes quotas et tes modules actifs.",
         `
           <div class="fpTopActionsRow">
             <button class="fpBtn fpBtnPrimary" id="fpBillingPortalBtn" type="button">Gérer l’abonnement</button>
@@ -1518,7 +1411,7 @@
           ${createSectionCard(
             "Plan",
             "Abonnement actif",
-            "État actuel de la facturation",
+            "",
             `
               <div class="fpBillingGrid">
                 <div class="fpBillingCard">
@@ -1539,7 +1432,7 @@
           ${createSectionCard(
             "Quotas",
             "Limites du plan",
-            "Consommation visible dans l’espace client",
+            "",
             `
               <div class="fpQuotaList">
                 <div class="fpQuotaRow"><span>Audits</span><strong>${esc(formatUsage(usage.audits))}</strong></div>
@@ -1557,7 +1450,7 @@
           ${createSectionCard(
             "Add-ons",
             "Modules actifs",
-            "État rapide des options complémentaires",
+            "",
             `
               <div class="fpAddonsList">
                 <div class="fpAddonRow">
@@ -1588,18 +1481,6 @@
             `
           )}
 
-          ${createSectionCard(
-            "Portail Stripe",
-            "Modification possible",
-            "La page de billing peut être modifiée côté code, mais le portail Stripe dépend de ce qui est configuré dans Stripe.",
-            `
-              <div class="fpTextPanel">
-                Tu peux personnaliser ton interface dashboard, mais certaines parties finales du portail de gestion
-                d’abonnement sont pilotées directement par Stripe.
-              </div>
-            `
-          )}
-
         </div>
       </div>
     `);
@@ -1616,7 +1497,7 @@
       ${createSectionCard(
         "Paramètres",
         "Préférences du workspace",
-        "Configure les alertes, la réception email et les informations générales du compte.",
+        "Configure les alertes et les informations générales du compte.",
         `
           <div class="fpGrid fpGridMain">
             <div class="fpCol fpColMain">
@@ -1648,27 +1529,6 @@
                 </div>
               </div>
 
-              <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Préférences interface</div>
-                <div class="fpSmall">Le mode clair ou sombre suit automatiquement les paramètres du navigateur.</div>
-
-                <div class="fpToggleRow">
-                  <div class="fpToggleText">
-                    <div class="fpToggleTitle">Thème automatique</div>
-                    <div class="fpToggleHint">Basé sur les préférences système du client</div>
-                  </div>
-                  <div class="fpSwitch on" aria-hidden="true"></div>
-                </div>
-
-                <div class="fpToggleRow">
-                  <div class="fpToggleText">
-                    <div class="fpToggleTitle">Statut temps réel</div>
-                    <div class="fpToggleHint">Affichage de l’état courant du dashboard</div>
-                  </div>
-                  <div class="fpSwitch on" aria-hidden="true"></div>
-                </div>
-              </div>
-
             </div>
 
             <div class="fpCol fpColSide">
@@ -1686,14 +1546,6 @@
                 </div>
               </div>
 
-              <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Conseil</div>
-                <div class="fpSmall">
-                  Cette page peut aussi accueillir plus tard des options de branding, langue,
-                  domaine personnalisé ou préférences de rapports.
-                </div>
-              </div>
-
             </div>
           </div>
         `
@@ -1705,6 +1557,14 @@
       if (ok) loadData({ silent: true });
     });
   }
+    /* =========================================================
+     PARTIE 4/4
+     - routing missions
+     - router
+     - data loading
+     - events
+     - init
+     ========================================================= */
 
   function openMissionPage(id) {
     const mission = state.missions.find((m) => m.id === id);
@@ -1981,6 +1841,16 @@
       await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
     });
 
+    els.openBillingSide?.addEventListener("click", () => {
+      location.hash = "#billing";
+    });
+
+    els.openSettingsSide?.addEventListener("click", () => {
+      location.hash = "#settings";
+    });
+
+    els.logoutBtn?.addEventListener("click", logout);
+
     bindGlobalActions();
   }
 
@@ -1997,6 +1867,7 @@
       els.rangeSelect.value = String(state.rangeDays);
     }
 
+    fixLogos();
     initEvents();
     loadData();
   }
