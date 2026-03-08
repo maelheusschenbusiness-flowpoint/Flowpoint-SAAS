@@ -1,8 +1,8 @@
 :root{
   --fpBg:#edf2ff;
   --fpBg2:#e8eeff;
-  --fpPanel:rgba(255,255,255,.76);
-  --fpPanelStrong:rgba(255,255,255,.88);
+  --fpPanel:rgba(255,255,255,.78);
+  --fpPanelStrong:rgba(255,255,255,.90);
   --fpBorder:rgba(15,23,42,.08);
   --fpText:#0f172a;
   --fpMuted:#667085;
@@ -29,7 +29,7 @@
     --fpBg:#030817;
     --fpBg2:#091226;
     --fpPanel:rgba(10,18,38,.72);
-    --fpPanelStrong:rgba(12,21,44,.82);
+    --fpPanelStrong:rgba(12,21,44,.84);
     --fpBorder:rgba(255,255,255,.08);
     --fpText:#edf3ff;
     --fpMuted:rgba(237,243,255,.68);
@@ -55,7 +55,7 @@ body{
   overflow-x:hidden;
 }
 
-button,input,select{
+button,input,select,textarea{
   font:inherit;
 }
 
@@ -64,9 +64,7 @@ a{
   text-decoration:none;
 }
 
-.hidden{display:none!important}
-
-.fpBackdrop{
+.fpOverlay{
   position:fixed;
   inset:0;
   background:rgba(15,23,42,.26);
@@ -75,7 +73,7 @@ a{
   transition:.2s ease;
   z-index:80;
 }
-.fpBackdrop.show{
+.fpOverlay.show{
   opacity:1;
   pointer-events:auto;
 }
@@ -142,17 +140,6 @@ a{
   font-size:13px;
   color:var(--fpMuted);
   font-weight:500;
-}
-
-.fpSidebarClose{
-  display:none;
-  width:42px;
-  height:42px;
-  border-radius:14px;
-  border:1px solid var(--fpBorder);
-  background:var(--fpPanelStrong);
-  color:var(--fpText);
-  cursor:pointer;
 }
 
 .fpNav{
@@ -261,7 +248,7 @@ a{
   background:rgba(148,163,184,.18);
   overflow:hidden;
 }
-.fpProgress>div{
+.fpProgress > div{
   width:0%;
   height:100%;
   border-radius:999px;
@@ -396,6 +383,41 @@ a{
   font-size:14px;
 }
 
+.fpDropdown{
+  position:relative;
+}
+.fpMenu{
+  position:absolute;
+  top:calc(100% + 10px);
+  right:0;
+  min-width:220px;
+  padding:8px;
+  border-radius:20px;
+  border:1px solid var(--fpBorder);
+  background:var(--fpPanelStrong);
+  box-shadow:var(--fpShadowSoft);
+  display:none;
+  z-index:20;
+}
+.fpMenu.show{
+  display:block;
+}
+.fpMenuItem{
+  width:100%;
+  min-height:44px;
+  border:0;
+  border-radius:14px;
+  background:transparent;
+  color:var(--fpText);
+  text-align:left;
+  padding:10px 12px;
+  cursor:pointer;
+  font-weight:600;
+}
+.fpMenuItem:hover{
+  background:var(--fpBrandSoft);
+}
+
 .fpStatus{
   min-height:54px;
   padding:0 18px;
@@ -423,6 +445,18 @@ a{
   box-shadow:0 0 0 7px rgba(220,38,38,.14);
 }
 
+.fpAvatar{
+  width:54px;
+  height:54px;
+  border-radius:18px;
+  border:1px solid var(--fpBorder);
+  background:var(--fpPanelStrong);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:800;
+}
+
 .fpHero{
   margin-top:18px;
   padding:22px 24px;
@@ -438,7 +472,8 @@ a{
   gap:20px;
 }
 
-.fpHeroKicker{
+.fpHeroKicker,
+.fpCardKicker{
   font-size:12px;
   text-transform:uppercase;
   letter-spacing:.22em;
@@ -468,32 +503,40 @@ a{
   justify-content:flex-end;
 }
 
+.fpOverviewTop,
+.fpBottomGrid,
 .fpPageContent{
   margin-top:18px;
 }
 
-.fpGrid2{
+.fpOverviewTop,
+.fpBottomGrid{
   display:grid;
   grid-template-columns:1.25fr .95fr;
   gap:18px;
 }
-.fpGrid1{
-  display:grid;
-  grid-template-columns:1fr;
-  gap:18px;
-}
+
 .fpGridCards{
   display:grid;
   grid-template-columns:repeat(3,1fr);
   gap:14px;
+  margin-top:16px;
 }
 
-.fpCard{
+.fpCard,
+.fpCardInner{
   padding:22px;
   border-radius:28px;
   border:1px solid var(--fpBorder);
   background:var(--fpPanel);
   box-shadow:var(--fpShadowSoft);
+}
+
+.fpCardHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
 }
 
 .fpCardTitle{
@@ -509,6 +552,17 @@ a{
   font-size:16px;
   line-height:1.6;
   font-weight:500;
+}
+
+.fpChip{
+  min-height:40px;
+  padding:0 14px;
+  border-radius:999px;
+  border:1px solid var(--fpBorder);
+  background:var(--fpPanelStrong);
+  display:flex;
+  align-items:center;
+  font-weight:700;
 }
 
 .fpMetric{
@@ -531,73 +585,18 @@ a{
   font-weight:800;
   letter-spacing:-.06em;
 }
+.fpMetricText{
+  font-size:34px;
+}
+.fpMetricTiny{
+  font-size:22px;
+  color:var(--fpMuted);
+}
 .fpMetricHint{
   margin-top:10px;
   color:var(--fpMuted);
   font-size:16px;
   font-weight:500;
-}
-
-.fpSectionList{
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-}
-
-.fpMissionCard,
-.fpAuditRow,
-.fpMonitorRow,
-.fpReportRow,
-.fpSettingRow{
-  padding:18px;
-  border-radius:24px;
-  border:1px solid var(--fpBorder);
-  background:var(--fpPanelStrong);
-}
-
-.fpMissionCard{
-  display:flex;
-  gap:16px;
-  align-items:flex-start;
-}
-.fpMissionCheck{
-  width:34px;
-  height:34px;
-  border-radius:12px;
-  border:1px solid var(--fpBorder);
-  background:transparent;
-  cursor:pointer;
-  flex:0 0 auto;
-}
-.fpMissionCheck.done{
-  background:linear-gradient(180deg,var(--fpBrand),var(--fpBrand2));
-  border-color:rgba(47,91,255,.2);
-  position:relative;
-}
-.fpMissionCheck.done::after{
-  content:"✓";
-  color:#fff;
-  font-weight:800;
-  position:absolute;
-  inset:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-.fpMissionTitle{
-  font-size:18px;
-  font-weight:700;
-}
-.fpMissionMeta{
-  margin-top:6px;
-  color:var(--fpMuted);
-  font-size:15px;
-}
-.fpMissionActions{
-  margin-top:14px;
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
 }
 
 .fpChart{
@@ -613,6 +612,87 @@ a{
   height:220px;
 }
 
+.fpSectionList,
+.fpMissionList{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+.fpMission,
+.fpAddonRow,
+.fpTr.row{
+  padding:18px;
+  border-radius:24px;
+  border:1px solid var(--fpBorder);
+  background:var(--fpPanelStrong);
+}
+
+.fpMission{
+  display:flex;
+  gap:16px;
+  align-items:flex-start;
+}
+
+.fpMission.isDone{
+  border-color:rgba(47,91,255,.18);
+  box-shadow:0 12px 26px rgba(47,91,255,.08);
+}
+
+.fpCheck{
+  width:34px;
+  height:34px;
+  border-radius:12px;
+  border:1px solid var(--fpBorder);
+  background:transparent;
+  cursor:pointer;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:800;
+}
+.fpCheck.done{
+  background:linear-gradient(180deg,var(--fpBrand),var(--fpBrand2));
+  color:#fff;
+  border-color:rgba(47,91,255,.2);
+}
+
+.fpMissionBody{
+  flex:1;
+  min-width:0;
+}
+.fpMissionTitle{
+  font-size:18px;
+  font-weight:700;
+}
+.fpMissionMeta{
+  margin-top:6px;
+  color:var(--fpMuted);
+  font-size:15px;
+}
+
+.fpDetailActions,
+.fpInlineActions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:16px;
+}
+
+.fpSettingsGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px;
+}
+
+.fpCardInnerTitle{
+  margin:0;
+  font-size:20px;
+  font-weight:800;
+  letter-spacing:-.03em;
+}
+
 .fpEmpty{
   padding:22px;
   border-radius:22px;
@@ -623,31 +703,21 @@ a{
   font-weight:500;
 }
 
-.fpInlineActions{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  margin-top:16px;
+.fpTr.row{
+  display:grid;
+  gap:12px;
+  align-items:center;
 }
 
-.fpRowHead{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:14px;
-}
-.fpRowTitle{
-  font-size:18px;
+.fpUrl{
   font-weight:700;
-  line-height:1.35;
   word-break:break-word;
 }
-.fpRowSub{
-  margin-top:8px;
-  color:var(--fpMuted);
-  font-size:15px;
-  line-height:1.55;
+
+.fpMono{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
 }
+
 .fpBadge{
   display:inline-flex;
   align-items:center;
@@ -665,25 +735,15 @@ a{
   border-radius:999px;
   background:#94a3b8;
 }
-.fpBadge.up .fpBadgeDot{
-  background:var(--fpSuccess);
-}
-.fpBadge.down .fpBadgeDot{
-  background:var(--fpDanger);
-}
-.fpBadge.unknown .fpBadgeDot{
-  background:#94a3b8;
+.fpBadge.up .fpBadgeDot{ background:var(--fpSuccess); }
+.fpBadge.down .fpBadgeDot{ background:var(--fpDanger); }
+
+.fpRowBtns{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
 }
 
-.fpSplit{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:14px;
-}
-
-.fpField{
-  margin-top:14px;
-}
 .fpLabel{
   display:block;
   margin-bottom:8px;
@@ -691,8 +751,10 @@ a{
   font-size:14px;
   font-weight:700;
 }
-.fpInput,
-.fpTextarea{
+.fpField{
+  margin-top:14px;
+}
+.fpInput{
   width:100%;
   border-radius:20px;
   border:1px solid var(--fpBorder);
@@ -701,66 +763,11 @@ a{
   padding:16px 18px;
   outline:none;
 }
-.fpTextarea{
-  min-height:140px;
-  resize:vertical;
-}
-
-.fpModalWrap{
-  position:fixed;
-  inset:0;
-  background:rgba(15,23,42,.30);
-  backdrop-filter:blur(8px);
-  z-index:100;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:16px;
-}
-.fpModalCard{
-  width:min(100%,560px);
-  border-radius:30px;
-  border:1px solid var(--fpBorder);
-  background:var(--fpPanelStrong);
-  box-shadow:var(--fpShadow);
-  padding:22px;
-}
-.fpModalHead{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-}
-.fpModalHead h3{
-  margin:0;
-  font-size:28px;
-  font-weight:800;
-  letter-spacing:-.04em;
-}
-.fpModalClose{
-  width:42px;
-  height:42px;
-  border-radius:14px;
-  border:1px solid var(--fpBorder);
-  background:transparent;
-  color:var(--fpText);
-  cursor:pointer;
-}
-.fpModalText{
-  margin:10px 0 0;
-  color:var(--fpMuted);
-  font-size:16px;
-  line-height:1.6;
-}
-.fpModalActions{
-  display:flex;
-  justify-content:flex-end;
-  gap:10px;
-  margin-top:18px;
-}
 
 @media (max-width:1200px){
-  .fpGrid2{
+  .fpOverviewTop,
+  .fpBottomGrid,
+  .fpSettingsGrid{
     grid-template-columns:1fr;
   }
   .fpGridCards{
@@ -786,11 +793,6 @@ a{
   .fpSidebar.open{
     transform:translateX(0);
   }
-  .fpSidebarClose{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-  }
 
   .fpMain{
     padding:16px;
@@ -812,12 +814,9 @@ a{
     align-items:flex-start;
     padding:20px;
   }
+
   .fpHero h2{
     font-size:48px;
-  }
-
-  .fpSplit{
-    grid-template-columns:1fr;
   }
 }
 
@@ -834,6 +833,7 @@ a{
   .fpTopText h1{
     font-size:24px;
   }
+
   .fpTopSub{
     font-size:14px;
   }
@@ -843,28 +843,39 @@ a{
     grid-template-columns:1fr 1fr;
     gap:10px;
   }
+
   .fpStatus{
     grid-column:1 / -1;
   }
+
   .fpSelect,
   .fpBtn{
     min-height:52px;
     padding:0 18px;
   }
 
+  .fpMenu{
+    left:0;
+    right:auto;
+    min-width:200px;
+  }
+
   .fpHero h2{
     font-size:40px;
   }
+
   .fpHero p{
     font-size:16px;
   }
+
   .fpHeroActions{
     width:100%;
     display:grid;
     grid-template-columns:1fr;
   }
 
-  .fpCard{
+  .fpCard,
+  .fpCardInner{
     padding:18px;
   }
 
@@ -872,24 +883,18 @@ a{
     font-size:44px;
   }
 
-  .fpMissionCard,
-  .fpAuditRow,
-  .fpMonitorRow,
-  .fpReportRow,
-  .fpSettingRow{
+  .fpMission,
+  .fpAddonRow,
+  .fpTr.row{
     padding:16px;
   }
 
-  .fpRowHead{
+  .fpCardHead{
     flex-direction:column;
     align-items:flex-start;
   }
 
-  .fpModalCard{
-    padding:18px;
-    border-radius:26px;
-  }
-  .fpModalHead h3{
-    font-size:24px;
+  .fpTr.row{
+    grid-template-columns:1fr !important;
   }
 }
