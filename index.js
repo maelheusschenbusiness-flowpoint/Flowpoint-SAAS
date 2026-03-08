@@ -1371,31 +1371,53 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
       ">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
           <div style="
-            width:68px;
-            height:68px;
-            border-radius:22px;
-            background:linear-gradient(180deg, rgba(47,91,255,.16), rgba(47,91,255,.08));
-            border:1px solid rgba(47,91,255,.16);
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            flex:0 0 auto;
-          ">
-            <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 64 64" fill="none" aria-hidden="true" style="display:block;">
-              <defs>
-                <linearGradient id="flowpointMailGrad" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#2F6BFF"/>
-                  <stop offset="1" stop-color="#1D4ED8"/>
-                </linearGradient>
-              </defs>
-              <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#flowpointMailGrad)"/>
-              <path
-                d="M36 14L23 37h10.4L29.6 50 44.8 28.2H34.4L36 14Z"
-                fill="#ffffff"
-                opacity="0.98"
-              />
-            </svg>
-          </div>
+width:68px;
+height:68px;
+border-radius:22px;
+display:flex;
+align-items:center;
+justify-content:center;
+flex:0 0 auto;
+">
+
+<svg xmlns="http://www.w3.org/2000/svg"
+width="54"
+height="54"
+viewBox="0 0 64 64"
+fill="none">
+
+<defs>
+<linearGradient id="flowpointGrad"
+x1="10"
+y1="6"
+x2="54"
+y2="58"
+gradientUnits="userSpaceOnUse">
+
+<stop stop-color="#2F6BFF"/>
+<stop offset="1" stop-color="#1D4ED8"/>
+
+</linearGradient>
+</defs>
+
+<rect
+x="6"
+y="6"
+width="52"
+height="52"
+rx="14"
+fill="url(#flowpointGrad)"
+/>
+
+<path
+d="M36 14L23 37h10.4L29.6 50 44.8 28.2H34.4L36 14Z"
+fill="#ffffff"
+opacity="0.98"
+/>
+
+</svg>
+
+</div>
 
           <div>
             <div style="font-size:20px;font-weight:900;letter-spacing:-.03em;line-height:1.05;color:#0f172a;">
