@@ -27,16 +27,16 @@
     "#settings",
   ]);
 
-  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v6";
-  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v6";
+  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v7";
+  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v7";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
-  const $ = (s, r = document) => r.querySelector(s);
-  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
   const els = {
-    overlay: $("#fpOverlay"),
-    sidebar: $("#fpSidebar"),
+    overlay: $("#overlay"),
+    sidebar: $("#sidebar"),
     pageContainer: $("#fpPageContainer"),
 
     navItems: $$(".fpNavItem"),
@@ -51,7 +51,7 @@
     rangeSelect: $("#fpRangeSelect"),
 
     helloTitle: $("#fpHelloTitle"),
-    helloSub: $("#fpHelloSub"),
+    helloSub: $(".fpHelloSub"),
 
     statusDot: $("#fpStatusDot"),
     statusText: $("#fpStatusText"),
@@ -69,6 +69,7 @@
     barAudits: $("#fpBarAudits"),
     barPdf: $("#fpBarPdf"),
     barExports: $("#fpBarExports"),
+    barMonitors: $("#fpBarMonitors"),
   };
 
   const state = {
@@ -264,6 +265,7 @@
     if (!r.ok) throw new Error("Refresh failed");
 
     const data = await r.json().catch(() => ({}));
+
     if (data?.token) setToken(data.token);
     if (data?.refreshToken) {
       localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
@@ -276,6 +278,7 @@
     const token = getToken();
 
     if (token) headers.set("Authorization", `Bearer ${token}`);
+
     if (options.body && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
@@ -320,6 +323,7 @@
     if (!els.statusDot) return;
 
     els.statusDot.classList.remove("warn", "danger");
+
     if (mode === "warn") els.statusDot.classList.add("warn");
     if (mode === "danger") els.statusDot.classList.add("danger");
   }
@@ -436,13 +440,16 @@
     setBar(els.barAudits, usage.audits?.used, usage.audits?.limit);
     setBar(els.barPdf, usage.pdf?.used, usage.pdf?.limit);
     setBar(els.barExports, usage.exports?.used, usage.exports?.limit);
+    setBar(els.barMonitors, usage.monitors?.used, usage.monitors?.limit);
   }
 
   function hydrateTopbar() {
     const me = state.me || {};
+
     if (els.helloTitle) {
       els.helloTitle.textContent = `Bonjour, ${me.name || "Client"}`;
     }
+
     if (els.helloSub) {
       els.helloSub.textContent = "SEO · Monitoring · Rapports · Facturation";
     }
@@ -450,6 +457,7 @@
 
   function createBadge(status) {
     const s = String(status || "").toLowerCase();
+
     const label =
       s === "up" ? "UP" :
       s === "down" ? "DOWN" :
@@ -482,8 +490,8 @@
       <section class="fpCard">
         <div class="fpCardHead">
           <div>
-            ${kicker ? `<div class="fpKicker">${esc(kicker)}</div>` : ""}
-            <h2 class="fpCardTitle">${esc(title)}</h2>
+            ${kicker ? `<div class="fpCardKicker">${esc(kicker)}</div>` : ""}
+            <h2 class="fpSectionTitle">${esc(title)}</h2>
             ${text ? `<p class="fpCardText">${esc(text)}</p>` : ""}
           </div>
           ${actions ? `<div class="fpCardActions">${actions}</div>` : ""}
@@ -500,13 +508,14 @@
 
       const overlay = document.createElement("div");
       overlay.id = "fpModalOverlay";
-      overlay.className = "fpModalOverlay";
-
+      overlay.className = "fpOverlay show";
       overlay.innerHTML = `
-        <div class="fpModalCard">
-          <div class="fpModalTitle">${esc(title)}</div>
-          <input id="fpModalInput" class="fpModalInput" placeholder="${esc(placeholder)}" value="${esc(value)}" />
-          <div class="fpModalActions">
+        <div class="fpCard" style="max-width:560px;width:calc(100% - 24px);margin:auto">
+          <div class="fpSectionTitle" style="font-size:24px">${esc(title)}</div>
+          <div style="margin-top:14px">
+            <input id="fpModalInput" class="fpInput" placeholder="${esc(placeholder)}" value="${esc(value)}" />
+          </div>
+          <div class="fpDetailActions" style="margin-top:16px">
             <button type="button" class="fpBtn fpBtnGhost" id="fpModalCancel">Annuler</button>
             <button type="button" class="fpBtn fpBtnPrimary" id="fpModalOk">${esc(confirmText)}</button>
           </div>
@@ -537,6 +546,7 @@
 
   async function openBillingPortal() {
     setStatus("Ouverture de la facturation…", "warn");
+
     try {
       const r = await fetchWithAuth("/api/stripe/portal", { method: "POST" });
       const data = await parseJsonSafe(r);
@@ -765,10 +775,10 @@
         : [8, 16, 22, 20, 34, 41, 38, 48, 57, 61];
 
     const styles = getComputedStyle(document.documentElement);
-    const brand = styles.getPropertyValue("--fp-blue").trim() || "#2f5bff";
-    const brand2 = styles.getPropertyValue("--fp-blue-2").trim() || "#2449ff";
-    const line = styles.getPropertyValue("--fp-line").trim() || "rgba(255,255,255,.1)";
-    const text = styles.getPropertyValue("--fp-muted").trim() || "#94a3b8";
+    const brand = styles.getPropertyValue("--fpBrand").trim() || "#2f5bff";
+    const brand2 = styles.getPropertyValue("--fpBrand2").trim() || "#1b45ff";
+    const line = styles.getPropertyValue("--fpBorder").trim() || "rgba(255,255,255,.1)";
+    const text = styles.getPropertyValue("--fpMuted").trim() || "#94a3b8";
 
     const padLeft = 42;
     const padRight = 18;
@@ -814,9 +824,8 @@
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, padTop + chartH);
-    points.forEach((p, i) => {
-      if (i === 0) ctx.lineTo(p.x, p.y);
-      else ctx.lineTo(p.x, p.y);
+    points.forEach((p) => {
+      ctx.lineTo(p.x, p.y);
     });
     ctx.lineTo(points[points.length - 1].x, padTop + chartH);
     ctx.closePath();
@@ -893,7 +902,7 @@
         <div class="fpHeroGlow"></div>
 
         <div class="fpHeroContent">
-          <div class="fpKicker">FLOWPOINT</div>
+          <div class="fpCardKicker">FlowPoint</div>
           <h1 class="fpHeroTitle fpHeroTitleSmall">Overview</h1>
           <p class="fpHeroText">
             Suis tes performances, ton activité et les prochaines actions utiles depuis un seul dashboard.
@@ -927,8 +936,8 @@
     const me = state.me || {};
     const ov = state.overview || {};
     const monitorLimit = me.usage?.monitors?.limit ?? 0;
-    const recentAudits = state.audits.slice(0, 5);
-    const recentMonitors = state.monitors.slice(0, 5);
+    const recentAudits = Array.isArray(state.audits) ? state.audits.slice(0, 5) : [];
+    const recentMonitors = Array.isArray(state.monitors) ? state.monitors.slice(0, 5) : [];
 
     setPage(`
       ${renderOverviewHero()}
@@ -1243,457 +1252,737 @@
       await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
     });
   }
-  /* =========================================================
-PARTIE 3/3
-Pages restantes + router + events + init
-========================================================= */
-
-/* ---------------------------------------------------------
-MONITORS PAGE
---------------------------------------------------------- */
-
-function renderMonitorsPage(){
-
-const monitors = Array.isArray(state.monitors) ? state.monitors : []
-
-setPage(`
-
-${createSectionCard(
-"Monitoring",
-"Surveillance des sites",
-"Ajoute des URLs et vérifie leur disponibilité en temps réel.",
-`
-<div class="fpTopActionsRow">
-<button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn">Ajouter un monitor</button>
-<button class="fpBtn fpBtnGhost" id="fpExportMonitorsBtn">Exporter CSV</button>
-</div>
-`
-)}
-
-${monitors.length ? `
-<div class="fpTable">
-
-<div class="fpTableHead">
-<div>URL</div>
-<div>Status</div>
-<div>Intervalle</div>
-<div>Dernier check</div>
-<div>Actions</div>
-</div>
-
-${monitors.map(m => `
-
-<div class="fpTableRow">
-
-<div class="fpTableUrl">${esc(m.url)}</div>
-
-<div>
-${createBadge(normalizeMonitorStatus(m))}
-</div>
-
-<div>${esc(m.intervalMinutes || 60)} min</div>
-
-<div>${esc(formatDate(m.lastCheckedAt))}</div>
-
-<div class="fpTableActions">
-
-<button class="fpBtn fpBtnGhost fpBtnSmall" data-monitor-test="${normalizeMonitorId(m)}">
-Tester
-</button>
-
-<button class="fpBtn fpBtnDanger fpBtnSmall" data-monitor-delete="${normalizeMonitorId(m)}">
-Supprimer
-</button>
-
-</div>
-
-</div>
-
-`).join("")}
-
-</div>
-
-` : createEmpty("Aucun monitor actif.")}
-
-`)
-
-$("#fpAddMonitorBtn")?.addEventListener("click", async () => {
-
-const ok = await safeAddMonitor()
-
-if(ok) loadData({silent:true})
-
-})
-
-$("#fpExportMonitorsBtn")?.addEventListener("click", async () => {
-
-await safeExport("/api/exports/monitors.csv","flowpoint-monitors.csv")
-
-})
-
-$$("[data-monitor-test]").forEach(btn=>{
-
-btn.addEventListener("click", async ()=>{
-
-const id = btn.dataset.monitorTest
-
-const ok = await safeTestMonitor(id)
-
-if(ok) loadData({silent:true})
-
-})
-
-})
-
-$$("[data-monitor-delete]").forEach(btn=>{
-
-btn.addEventListener("click", async ()=>{
-
-const id = btn.dataset.monitorDelete
-
-const ok = await safeDeleteMonitor(id)
-
-if(ok) loadData({silent:true})
-
-})
-
-})
-
-}
-
-/* ---------------------------------------------------------
-REPORTS PAGE
---------------------------------------------------------- */
-
-function renderReportsPage(){
-
-setPage(`
-
-${createSectionCard(
-"Rapports",
-"Exports et historiques",
-"Télécharge les données importantes du dashboard.",
-`
-<div class="fpReportsGrid">
-
-<div class="fpReportCard">
-
-<div class="fpReportTitle">Export Audits</div>
-
-<div class="fpReportMeta">
-Télécharger tous les audits SEO en CSV.
-</div>
-
-<button class="fpBtn fpBtnPrimary" id="fpExportAuditsBtn">
-Exporter audits
-</button>
-
-</div>
-
-<div class="fpReportCard">
-
-<div class="fpReportTitle">Export Monitors</div>
-
-<div class="fpReportMeta">
-Télécharger tous les monitors uptime.
-</div>
-
-<button class="fpBtn fpBtnPrimary" id="fpExportMonitorsBtn2">
-Exporter monitors
-</button>
-
-</div>
-
-<div class="fpReportCard">
-
-<div class="fpReportTitle">Rapport PDF</div>
-
-<div class="fpReportMeta">
-Générer un rapport client PDF.
-</div>
-
-<button class="fpBtn fpBtnGhost" disabled>
-Bientôt disponible
-</button>
-
-</div>
-
-</div>
-`
-)}
-
-`)
-
-$("#fpExportAuditsBtn")?.addEventListener("click", async ()=>{
-
-await safeExport("/api/exports/audits.csv","flowpoint-audits.csv")
-
-})
-
-$("#fpExportMonitorsBtn2")?.addEventListener("click", async ()=>{
-
-await safeExport("/api/exports/monitors.csv","flowpoint-monitors.csv")
-
-})
-
-}
-
-/* ---------------------------------------------------------
-BILLING PAGE
---------------------------------------------------------- */
-
-function renderBillingPage(){
-
-const me = state.me || {}
-
-setPage(`
-
-${createSectionCard(
-"Facturation",
-"Abonnement",
-"Consulte le plan actuel, les quotas et ouvre le portail Stripe.",
-`
-<div class="fpBillingGrid">
-
-<div class="fpBillingCard">
-
-<div class="fpBillingTitle">Plan actuel</div>
-
-<div class="fpBillingPlan">
-${esc(planLabel(me.plan))}
-</div>
-
-<div class="fpBillingStatus">
-${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}
-</div>
-
-<button class="fpBtn fpBtnPrimary" id="fpBillingPortalBtn">
-Gérer abonnement
-</button>
-
-</div>
-
-<div class="fpBillingCard">
-
-<div class="fpBillingTitle">Quotas actifs</div>
-
-<div class="fpBillingMeta">
-
-Audits : ${formatUsage(me.usage?.audits)}<br>
-PDF : ${formatUsage(me.usage?.pdf)}<br>
-Exports : ${formatUsage(me.usage?.exports)}<br>
-Monitors : ${formatUsage(me.usage?.monitors)}
-
-</div>
-
-</div>
-
-</div>
-`
-)}
-
-`)
-
-$("#fpBillingPortalBtn")?.addEventListener("click",openBillingPortal)
-
-}
-
-/* ---------------------------------------------------------
-SETTINGS PAGE
---------------------------------------------------------- */
-
-function renderSettingsPage(){
-
-const s = state.orgSettings || {}
-
-setPage(`
-
-${createSectionCard(
-"Paramètres",
-"Notifications monitoring",
-"Configure les emails qui recevront les alertes.",
-`
-<div class="fpSettingsGrid">
-
-<div class="fpSettingsCard">
-
-<label class="fpLabel">Mode destinataires</label>
-
-<select id="fpSettingsRecipientsMode" class="fpInput">
-
-<option value="all" ${s.alertRecipients==="all"?"selected":""}>
-Toute l'équipe
-</option>
-
-<option value="owner" ${s.alertRecipients==="owner"?"selected":""}>
-Owner uniquement
-</option>
-
-</select>
-
-<label class="fpLabel">Emails supplémentaires</label>
-
-<input
-id="fpSettingsExtraEmails"
-class="fpInput"
-placeholder="mail@site.com, mail2@site.com"
-value="${esc((s.alertExtraEmails||[]).join(","))}"
->
-
-<button class="fpBtn fpBtnPrimary" id="fpSaveSettingsBtn">
-Sauvegarder
-</button>
-
-</div>
-
-</div>
-`
-)}
-
-$("#fpSaveSettingsBtn")?.addEventListener("click",saveOrgSettings)
-
-}
-
-/* ---------------------------------------------------------
-ROUTER
---------------------------------------------------------- */
-
-function renderRoute(){
-
-switch(state.route){
-
-case "#overview":
-renderOverviewPage()
-break
-
-case "#missions":
-renderMissionsPage()
-break
-
-case "#audits":
-renderAuditsPage()
-break
-
-case "#monitors":
-renderMonitorsPage()
-break
-
-case "#reports":
-renderReportsPage()
-break
-
-case "#billing":
-renderBillingPage()
-break
-
-case "#settings":
-renderSettingsPage()
-break
-
-default:
-renderOverviewPage()
-
-}
-
-setActiveNav()
-
-}
-
-/* ---------------------------------------------------------
-LOAD DATA
---------------------------------------------------------- */
-
-async function loadData({silent=false}={}){
-
-if(state.loading) return
-
-state.loading = true
-
-if(!silent) setStatus("Chargement des données…","warn")
-
-try{
-
-const [meRes,ovRes,audRes,monRes,setRes] = await Promise.all([
-
-fetchWithAuth("/api/me"),
-fetchWithAuth("/api/overview"),
-fetchWithAuth("/api/audits"),
-fetchWithAuth("/api/monitors"),
-fetchWithAuth("/api/org/settings")
-
-])
-
-state.me = await parseJsonSafe(meRes)
-state.overview = await parseJsonSafe(ovRes)
-state.audits = await parseJsonSafe(audRes)
-state.monitors = await parseJsonSafe(monRes)
-state.orgSettings = await parseJsonSafe(setRes)
-
-hydrateSidebarAccount()
-hydrateTopbar()
-
-renderRoute()
-
-setStatus("Dashboard prêt","ok")
-
-}catch(e){
-
-console.error(e)
-
-setStatus("Erreur chargement dashboard","danger")
-
-}
-
-state.loading = false
-
-}
-
-/* ---------------------------------------------------------
-EVENTS
---------------------------------------------------------- */
-
-function initEvents(){
-
-window.addEventListener("hashchange",()=>{
-
-state.route = ROUTES.has(location.hash) ? location.hash : "#overview"
-
-renderRoute()
-
-})
-
-els.navItems.forEach(item=>{
-
-item.addEventListener("click",e=>{
-
-e.preventDefault()
-
-location.hash = item.getAttribute("href")
-
-})
-
-})
-
-els.btnRefresh?.addEventListener("click",()=>loadData())
-
-els.overlay?.addEventListener("click",closeSidebar)
-
-}
-
-/* ---------------------------------------------------------
-INIT
---------------------------------------------------------- */
-
-function init(){
-
-resetMissionsIfNeeded()
-
-state.missions = loadMissions()
-
-initEvents()
-
-loadData()
-
-}
-
-document.addEventListener("DOMContentLoaded",init)
+    /* =========================================================
+     PARTIE 3/3
+     - Monitors
+     - Reports
+     - Billing
+     - Settings
+     - Router
+     - Data loading
+     - Events
+     - Init
+     ========================================================= */
+
+  function renderMonitorsPage() {
+    const monitors = Array.isArray(state.monitors) ? state.monitors : [];
+    const upCount = monitors.filter((m) => normalizeMonitorStatus(m) === "up").length;
+    const downCount = monitors.filter((m) => normalizeMonitorStatus(m) === "down").length;
+
+    setPage(`
+      ${createSectionCard(
+        "Monitoring",
+        "Surveillance des sites",
+        "Ajoute des URLs, contrôle leur disponibilité et pilote les incidents plus rapidement.",
+        `
+          <div class="fpTopActionsRow">
+            <button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn" type="button">Ajouter un monitor</button>
+            <button class="fpBtn fpBtnGhost" id="fpExportMonitorsBtn" type="button">Exporter en CSV</button>
+          </div>
+        `
+      )}
+
+      <div class="fpGrid fpGridMain">
+        <div class="fpCol fpColMain">
+
+          ${createSectionCard(
+            "Monitors",
+            "Liste active",
+            "Tous les monitors actuellement chargés depuis ton backend",
+            monitors.length
+              ? `
+                <div class="fpTable">
+                  <div class="fpTableHead">
+                    <div>URL</div>
+                    <div>Statut</div>
+                    <div>Intervalle</div>
+                    <div>Dernier check</div>
+                    <div>Actions</div>
+                  </div>
+
+                  ${monitors.map((m) => `
+                    <div class="fpTableRow">
+                      <div class="fpTableUrl">${esc(m.url || "—")}</div>
+                      <div>${createBadge(normalizeMonitorStatus(m))}</div>
+                      <div>${esc(m.intervalMinutes ?? 60)} min</div>
+                      <div>${esc(formatDate(m.lastCheckedAt))}</div>
+                      <div class="fpTableActions">
+                        <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-monitor-test="${esc(normalizeMonitorId(m))}">Tester</button>
+                        <button class="fpBtn fpBtnDanger fpBtnSmall" type="button" data-monitor-delete="${esc(normalizeMonitorId(m))}">Supprimer</button>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              `
+              : createEmpty("Aucun monitor actif pour le moment.")
+          )}
+
+        </div>
+
+        <div class="fpCol fpColSide">
+
+          ${createSectionCard(
+            "Résumé",
+            "État du monitoring",
+            "Vue rapide de la surveillance active",
+            `
+              <div class="fpStatsGrid fpStatsGridSingle">
+                <div class="fpStatCard">
+                  <div class="fpStatLabel">Total</div>
+                  <div class="fpStatValue">${monitors.length}</div>
+                  <div class="fpStatMeta">Monitors chargés</div>
+                </div>
+
+                <div class="fpStatCard">
+                  <div class="fpStatLabel">UP</div>
+                  <div class="fpStatValue">${upCount}</div>
+                  <div class="fpStatMeta">Services disponibles</div>
+                </div>
+
+                <div class="fpStatCard">
+                  <div class="fpStatLabel">DOWN</div>
+                  <div class="fpStatValue">${downCount}</div>
+                  <div class="fpStatMeta">Incidents détectés</div>
+                </div>
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Conseil",
+            "Utilisation pro",
+            "Comment rendre cette page plus crédible côté client",
+            `
+              <div class="fpTextPanel">
+                Mets en avant les statuts, les derniers checks et la stabilité du service.
+                Cette page doit donner une impression de contrôle, de réactivité et de fiabilité.
+              </div>
+            `
+          )}
+
+        </div>
+      </div>
+    `);
+
+    $("#fpAddMonitorBtn")?.addEventListener("click", async () => {
+      const ok = await safeAddMonitor();
+      if (ok) loadData({ silent: true });
+    });
+
+    $("#fpExportMonitorsBtn")?.addEventListener("click", async () => {
+      await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+    });
+
+    $$("[data-monitor-test]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-monitor-test");
+        const ok = await safeTestMonitor(id);
+        if (ok) loadData({ silent: true });
+      });
+    });
+
+    $$("[data-monitor-delete]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-monitor-delete");
+        const ok = await safeDeleteMonitor(id);
+        if (ok) loadData({ silent: true });
+      });
+    });
+  }
+
+  function renderReportsPage() {
+    const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
+    const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
+
+    setPage(`
+      ${createSectionCard(
+        "Rapports",
+        "Exports et historiques",
+        "Télécharge les données importantes du dashboard et prépare des livrables clients plus propres.",
+        `
+          <div class="fpReportsGrid">
+            <div class="fpReportCard">
+              <div class="fpReportTitle">Export audits</div>
+              <div class="fpReportMeta">Télécharge tous les audits SEO en CSV.</div>
+              <button class="fpBtn fpBtnPrimary" id="fpExportAuditsBtn" type="button">Exporter audits</button>
+            </div>
+
+            <div class="fpReportCard">
+              <div class="fpReportTitle">Export monitors</div>
+              <div class="fpReportMeta">Télécharge les données de monitoring en CSV.</div>
+              <button class="fpBtn fpBtnPrimary" id="fpExportMonitorsBtn2" type="button">Exporter monitors</button>
+            </div>
+
+            <div class="fpReportCard">
+              <div class="fpReportTitle">Rapport PDF</div>
+              <div class="fpReportMeta">Prévu pour une version client plus premium.</div>
+              <button class="fpBtn fpBtnGhost" type="button" disabled>Bientôt disponible</button>
+            </div>
+          </div>
+        `
+      )}
+
+      <div class="fpGrid fpGridMain">
+        <div class="fpCol fpColMain">
+          ${createSectionCard(
+            "Historique",
+            "Données exportables",
+            "Résumé rapide des volumes actuellement disponibles",
+            `
+              <div class="fpStatsGrid">
+                <div class="fpStatCard">
+                  <div class="fpStatLabel">Audits</div>
+                  <div class="fpStatValue">${auditsCount}</div>
+                  <div class="fpStatMeta">Lignes exportables</div>
+                </div>
+
+                <div class="fpStatCard">
+                  <div class="fpStatLabel">Monitors</div>
+                  <div class="fpStatValue">${monitorsCount}</div>
+                  <div class="fpStatMeta">Lignes exportables</div>
+                </div>
+
+                <div class="fpStatCard">
+                  <div class="fpStatLabel">Format</div>
+                  <div class="fpStatValue">CSV</div>
+                  <div class="fpStatMeta">Téléchargement direct</div>
+                </div>
+              </div>
+            `
+          )}
+        </div>
+
+        <div class="fpCol fpColSide">
+          ${createSectionCard(
+            "Conseil",
+            "Usage commercial",
+            "À quoi sert cette page dans un vrai SaaS",
+            `
+              <div class="fpTextPanel">
+                La page reports sert à transformer tes données en livrables. C’est utile pour les clients,
+                les suivis internes et les comptes-rendus mensuels.
+              </div>
+            `
+          )}
+        </div>
+      </div>
+    `);
+
+    $("#fpExportAuditsBtn")?.addEventListener("click", async () => {
+      await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+    });
+
+    $("#fpExportMonitorsBtn2")?.addEventListener("click", async () => {
+      await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+    });
+  }
+
+  function renderBillingPage() {
+    const me = state.me || {};
+    const usage = me.usage || {};
+    const addons = me.addons || {};
+
+    setPage(`
+      ${createSectionCard(
+        "Facturation",
+        "Abonnement",
+        "Consulte le plan actuel, les quotas et ouvre le portail Stripe pour gérer l’abonnement.",
+        `
+          <div class="fpTopActionsRow">
+            <button class="fpBtn fpBtnPrimary" id="fpBillingPortalBtn" type="button">Gérer l’abonnement</button>
+            <button class="fpBtn fpBtnGhost" id="fpBillingRefreshBtn" type="button">Actualiser</button>
+          </div>
+        `
+      )}
+
+      <div class="fpGrid fpGridMain">
+        <div class="fpCol fpColMain">
+
+          ${createSectionCard(
+            "Plan",
+            "Abonnement actif",
+            "État actuel de la facturation",
+            `
+              <div class="fpBillingGrid">
+                <div class="fpBillingCard">
+                  <div class="fpBillingTitle">Plan actuel</div>
+                  <div class="fpBillingPlan">${esc(planLabel(me.plan))}</div>
+                  <div class="fpBillingStatus">${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</div>
+                </div>
+
+                <div class="fpBillingCard">
+                  <div class="fpBillingTitle">Essai</div>
+                  <div class="fpBillingPlan">${me.trialEndsAt ? esc(formatShortDate(me.trialEndsAt)) : "—"}</div>
+                  <div class="fpBillingStatus">${me.trialEndsAt ? "Date de fin d’essai" : "Aucun essai actif"}</div>
+                </div>
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Quotas",
+            "Limites du plan",
+            "Consommation visible dans l’espace client",
+            `
+              <div class="fpQuotaList">
+                <div class="fpQuotaRow"><span>Audits</span><strong>${esc(formatUsage(usage.audits))}</strong></div>
+                <div class="fpQuotaRow"><span>PDF</span><strong>${esc(formatUsage(usage.pdf))}</strong></div>
+                <div class="fpQuotaRow"><span>Exports</span><strong>${esc(formatUsage(usage.exports))}</strong></div>
+                <div class="fpQuotaRow"><span>Monitors</span><strong>${esc(formatUsage(usage.monitors))}</strong></div>
+              </div>
+            `
+          )}
+
+        </div>
+
+        <div class="fpCol fpColSide">
+
+          ${createSectionCard(
+            "Add-ons",
+            "Modules actifs",
+            "État rapide des options complémentaires",
+            `
+              <div class="fpAddonsList">
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">White label</div>
+                  <div class="fpAddonPill on">ON</div>
+                </div>
+
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">Monitors +50</div>
+                  <div class="fpAddonPill ${Number(addons.monitorsPack50 || 0) > 0 ? "on" : "off"}">${Number(addons.monitorsPack50 || 0) > 0 ? "ON" : "OFF"}</div>
+                </div>
+
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">Extra seats</div>
+                  <div class="fpAddonPill ${Number(addons.extraSeats || 0) > 0 ? "on" : "off"}">${Number(addons.extraSeats || 0) > 0 ? "ON" : "OFF"}</div>
+                </div>
+
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">Priority support</div>
+                  <div class="fpAddonPill ${addons.prioritySupport ? "on" : "off"}">${addons.prioritySupport ? "ON" : "OFF"}</div>
+                </div>
+
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">Custom domain</div>
+                  <div class="fpAddonPill ${addons.customDomain ? "on" : "off"}">${addons.customDomain ? "ON" : "OFF"}</div>
+                </div>
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Portail Stripe",
+            "Modification possible",
+            "La page de billing peut être modifiée côté code, mais le portail Stripe dépend de ce qui est configuré dans Stripe.",
+            `
+              <div class="fpTextPanel">
+                Tu peux personnaliser ton interface dashboard, mais certaines parties finales du portail de gestion
+                d’abonnement sont pilotées directement par Stripe.
+              </div>
+            `
+          )}
+
+        </div>
+      </div>
+    `);
+
+    $("#fpBillingPortalBtn")?.addEventListener("click", openBillingPortal);
+    $("#fpBillingRefreshBtn")?.addEventListener("click", () => loadData());
+  }
+
+  function renderSettingsPage() {
+    const s = state.orgSettings || {};
+    const me = state.me || {};
+
+    setPage(`
+      ${createSectionCard(
+        "Paramètres",
+        "Préférences du workspace",
+        "Configure les alertes, la réception email et les informations générales du compte.",
+        `
+          <div class="fpGrid fpGridMain">
+            <div class="fpCol fpColMain">
+
+              <div class="fpCardInner">
+                <div class="fpCardInnerTitle">Alertes email</div>
+                <div class="fpSmall">Définis qui reçoit les alertes monitoring.</div>
+
+                <div class="fpField">
+                  <label class="fpLabel" for="fpSettingsRecipientsMode">Mode destinataires</label>
+                  <select id="fpSettingsRecipientsMode" class="fpInput">
+                    <option value="all" ${String(s.alertRecipients || "all") === "all" ? "selected" : ""}>Toute l'équipe</option>
+                    <option value="owner" ${String(s.alertRecipients || "all") === "owner" ? "selected" : ""}>Owner uniquement</option>
+                  </select>
+                </div>
+
+                <div class="fpField">
+                  <label class="fpLabel" for="fpSettingsExtraEmails">Emails supplémentaires</label>
+                  <input
+                    id="fpSettingsExtraEmails"
+                    class="fpInput"
+                    placeholder="mail@site.com, mail2@site.com"
+                    value="${esc(Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "")}"
+                  />
+                </div>
+
+                <div class="fpDetailActions">
+                  <button class="fpBtn fpBtnPrimary" id="fpSaveSettingsBtn" type="button">Sauvegarder</button>
+                </div>
+              </div>
+
+              <div class="fpCardInner">
+                <div class="fpCardInnerTitle">Préférences interface</div>
+                <div class="fpSmall">Le mode clair ou sombre suit automatiquement les paramètres du navigateur.</div>
+
+                <div class="fpToggleRow">
+                  <div class="fpToggleText">
+                    <div class="fpToggleTitle">Thème automatique</div>
+                    <div class="fpToggleHint">Basé sur les préférences système du client</div>
+                  </div>
+                  <div class="fpSwitch on" aria-hidden="true"></div>
+                </div>
+
+                <div class="fpToggleRow">
+                  <div class="fpToggleText">
+                    <div class="fpToggleTitle">Statut temps réel</div>
+                    <div class="fpToggleHint">Affichage de l’état courant du dashboard</div>
+                  </div>
+                  <div class="fpSwitch on" aria-hidden="true"></div>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="fpCol fpColSide">
+
+              <div class="fpCardInner">
+                <div class="fpCardInnerTitle">Informations du compte</div>
+                <div class="fpSmall">Résumé de l’espace actuellement connecté.</div>
+
+                <div class="fpSettingsList">
+                  <div class="fpSettingsRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
+                  <div class="fpSettingsRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
+                  <div class="fpSettingsRow"><span>Rôle</span><strong>${esc(cap(me.role || "owner"))}</strong></div>
+                  <div class="fpSettingsRow"><span>Destinataires</span><strong>${esc(recipientsLabel(s.alertRecipients))}</strong></div>
+                  <div class="fpSettingsRow"><span>Essai</span><strong>${esc(me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "—")}</strong></div>
+                </div>
+              </div>
+
+              <div class="fpCardInner">
+                <div class="fpCardInnerTitle">Conseil</div>
+                <div class="fpSmall">
+                  Cette page peut aussi accueillir plus tard des options de branding, langue,
+                  domaine personnalisé ou préférences de rapports.
+                </div>
+              </div>
+
+            </div>
+          </div>
+        `
+      )}
+    `);
+
+    $("#fpSaveSettingsBtn")?.addEventListener("click", async () => {
+      const ok = await saveOrgSettings();
+      if (ok) loadData({ silent: true });
+    });
+  }
+
+  function openMissionPage(id) {
+    const mission = state.missions.find((m) => m.id === id);
+    if (!mission) return;
+
+    if (mission.action === "run_audit") {
+      location.hash = "#audits";
+      return;
+    }
+
+    if (mission.action === "add_monitor" || mission.action === "test_monitor") {
+      location.hash = "#monitors";
+      return;
+    }
+
+    if (mission.action === "export_audits" || mission.action === "export_monitors") {
+      location.hash = "#reports";
+      return;
+    }
+
+    if (mission.action === "open_billing" || mission.action === "view_billing") {
+      location.hash = "#billing";
+      return;
+    }
+
+    if (mission.action === "goto_settings") {
+      location.hash = "#settings";
+    }
+  }
+
+  async function runMission(id) {
+    const mission = state.missions.find((m) => m.id === id);
+    if (!mission) return false;
+
+    if (mission.action === "run_audit") {
+      const ok = await safeRunAudit();
+      if (ok) await loadData({ silent: true });
+      return ok;
+    }
+
+    if (mission.action === "add_monitor") {
+      const ok = await safeAddMonitor();
+      if (ok) await loadData({ silent: true });
+      return ok;
+    }
+
+    if (mission.action === "export_audits") {
+      return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+    }
+
+    if (mission.action === "export_monitors") {
+      return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+    }
+
+    if (mission.action === "open_billing") {
+      return openBillingPortal();
+    }
+
+    if (mission.action === "goto_settings") {
+      location.hash = "#settings";
+      setMissionDoneByAction("goto_settings", true);
+      saveMissions();
+      renderRoute();
+      return true;
+    }
+
+    if (mission.action === "test_monitor") {
+      const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
+      if (!firstMonitor) {
+        setStatus("Aucun monitor à tester", "danger");
+        return false;
+      }
+      const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
+      if (ok) await loadData({ silent: true });
+      return ok;
+    }
+
+    if (mission.action === "view_billing") {
+      location.hash = "#billing";
+      setMissionDoneByAction("view_billing", true);
+      saveMissions();
+      renderRoute();
+      return true;
+    }
+
+    return false;
+  }
+
+  function renderRoute() {
+    setActiveNav();
+
+    switch (state.route) {
+      case "#overview":
+        renderOverviewPage();
+        break;
+      case "#missions":
+        renderMissionsPage();
+        break;
+      case "#audits":
+        renderAuditsPage();
+        break;
+      case "#monitors":
+        renderMonitorsPage();
+        break;
+      case "#reports":
+        renderReportsPage();
+        break;
+      case "#billing":
+        renderBillingPage();
+        break;
+      case "#settings":
+        renderSettingsPage();
+        break;
+      default:
+        renderOverviewPage();
+        break;
+    }
+  }
+
+  async function loadData({ silent = false } = {}) {
+    if (state.loading) return;
+
+    state.loading = true;
+    if (!silent) setStatus("Chargement des données…", "warn");
+
+    if (state.controller) state.controller.abort();
+    state.controller = new AbortController();
+    const signal = state.controller.signal;
+
+    try {
+      const [meRes, ovRes, audRes, monRes, setRes] = await Promise.all([
+        fetchWithAuth("/api/me", { signal }).catch(() => null),
+        fetchWithAuth(`/api/overview?days=${encodeURIComponent(state.rangeDays)}`, { signal }).catch(() => null),
+        fetchWithAuth("/api/audits", { signal }).catch(() => null),
+        fetchWithAuth("/api/monitors", { signal }).catch(() => null),
+        fetchWithAuth("/api/org/settings", { signal }).catch(() => null),
+      ]);
+
+      if (meRes?.ok) {
+        state.me = await parseJsonSafe(meRes);
+      }
+
+      if (ovRes?.ok) {
+        state.overview = await parseJsonSafe(ovRes);
+      } else {
+        state.overview = {
+          seoScore: 0,
+          chart: [],
+          monitors: { active: 0, down: 0 },
+        };
+      }
+
+      if (audRes?.ok) {
+        const auditsData = await parseJsonSafe(audRes);
+        state.audits = Array.isArray(auditsData?.audits)
+          ? auditsData.audits
+          : Array.isArray(auditsData)
+            ? auditsData
+            : [];
+      } else {
+        state.audits = [];
+      }
+
+      if (monRes?.ok) {
+        const monitorsData = await parseJsonSafe(monRes);
+        state.monitors = Array.isArray(monitorsData?.monitors)
+          ? monitorsData.monitors
+          : Array.isArray(monitorsData)
+            ? monitorsData
+            : [];
+      } else {
+        state.monitors = [];
+      }
+
+      if (setRes?.ok) {
+        const settingsData = await parseJsonSafe(setRes);
+        state.orgSettings = settingsData?.settings || settingsData || state.orgSettings;
+      }
+
+      state.lastLoadedAt = new Date().toISOString();
+
+      hydrateSidebarAccount();
+      hydrateTopbar();
+      renderRoute();
+      setStatus("Dashboard prêt", "ok");
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        console.error(e);
+        setStatus("Erreur chargement dashboard", "danger");
+      }
+    } finally {
+      state.loading = false;
+    }
+  }
+
+  function bindGlobalActions() {
+    document.addEventListener("click", async (e) => {
+      const toggleBtn = e.target.closest("[data-mission-toggle]");
+      if (toggleBtn) {
+        const id = toggleBtn.getAttribute("data-mission-toggle");
+        toggleMission(id);
+        renderRoute();
+        return;
+      }
+
+      const runBtn = e.target.closest("[data-mission-do]");
+      if (runBtn) {
+        const id = runBtn.getAttribute("data-mission-do");
+        await runMission(id);
+        renderRoute();
+        return;
+      }
+
+      const openBtn = e.target.closest("[data-mission-open]");
+      if (openBtn) {
+        const id = openBtn.getAttribute("data-mission-open");
+        openMissionPage(id);
+      }
+    });
+  }
+
+  function initEvents() {
+    window.addEventListener("hashchange", () => {
+      state.route = ROUTES.has(location.hash) ? location.hash : "#overview";
+      renderRoute();
+      closeSidebar();
+    });
+
+    window.addEventListener("resize", () => {
+      if (state.route === "#overview") {
+        requestAnimationFrame(drawOverviewChart);
+      }
+    });
+
+    els.navItems.forEach((item) => {
+      item.addEventListener("click", () => {
+        closeSidebar();
+      });
+    });
+
+    els.btnMenu?.addEventListener("click", openSidebar);
+    els.overlay?.addEventListener("click", closeSidebar);
+
+    els.btnRefresh?.addEventListener("click", () => {
+      loadData();
+    });
+
+    els.rangeSelect?.addEventListener("change", () => {
+      const v = Number(els.rangeSelect.value || 30);
+      state.rangeDays = [30, 7, 3].includes(v) ? v : 30;
+      loadData();
+    });
+
+    els.btnExportToggle?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleExportMenu();
+    });
+
+    els.exportMenu?.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+
+    document.addEventListener("click", () => {
+      toggleExportMenu(false);
+    });
+
+    els.btnExportAudits?.addEventListener("click", async () => {
+      toggleExportMenu(false);
+      await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+    });
+
+    els.btnExportMonitors?.addEventListener("click", async () => {
+      toggleExportMenu(false);
+      await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+    });
+
+    bindGlobalActions();
+  }
+
+  function init() {
+    resetMissionsIfNeeded();
+    state.missions = loadMissions();
+
+    if (!ROUTES.has(location.hash)) {
+      location.hash = "#overview";
+      state.route = "#overview";
+    }
+
+    if (els.rangeSelect) {
+      els.rangeSelect.value = String(state.rangeDays);
+    }
+
+    initEvents();
+    loadData();
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
