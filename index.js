@@ -1336,7 +1336,11 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
     const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
     const expiresAt = new Date(Date.now() + LOGIN_LINK_TTL_MINUTES * 60 * 1000);
 
-    await LoginToken.create({ userId: user._id, tokenHash, expiresAt });
+    await LoginToken.create({
+      userId: user._id,
+      tokenHash,
+      expiresAt
+    });
 
     const baseUrl = safeBaseUrl(req);
     const link = `${baseUrl}/login-verify.html?token=${raw}`;
@@ -1347,145 +1351,98 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
 
     const html = `
 <!doctype html>
-<html lang="fr">
+<html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <meta name="supported-color-schemes" content="light dark">
-  <title>${BRAND_NAME} — Ton lien de connexion</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>${BRAND_NAME}</title>
 </head>
-<body style="margin:0;padding:0;background:#eef3ff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;">
-  <div style="margin:0;padding:32px 16px;background:
-    radial-gradient(1100px 720px at 12% 0%, rgba(47,91,255,.18), transparent 58%),
-    radial-gradient(900px 600px at 100% 0%, rgba(72,110,255,.12), transparent 45%),
-    linear-gradient(180deg,#eef3ff,#e8eeff);">
 
-    <div style="max-width:620px;margin:0 auto;">
-      <div style="
-        background:rgba(255,255,255,.92);
-        border:1px solid rgba(20,28,48,.08);
-        border-radius:28px;
-        box-shadow:0 30px 80px rgba(29,41,57,.10);
-        padding:26px;
-      ">
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
-          <div style="
-width:68px;
-height:68px;
-border-radius:22px;
-display:flex;
-align-items:center;
-justify-content:center;
-flex:0 0 auto;
+<body style="margin:0;background:#f6f7fb;font-family:Inter,Arial,sans-serif">
+
+<div style="max-width:620px;margin:auto;padding:40px 20px">
+
+<div style="
+background:#ffffff;
+border-radius:24px;
+padding:32px;
+border:1px solid rgba(0,0,0,.06);
+box-shadow:0 20px 60px rgba(0,0,0,.08);
 ">
 
-<svg xmlns="http://www.w3.org/2000/svg"
-width="54"
-height="54"
-viewBox="0 0 64 64"
-fill="none">
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
 
-<defs>
-<linearGradient id="flowpointGrad"
-x1="10"
-y1="6"
-x2="54"
-y2="58"
-gradientUnits="userSpaceOnUse">
-
-<stop stop-color="#2F6BFF"/>
-<stop offset="1" stop-color="#1D4ED8"/>
-
-</linearGradient>
-</defs>
-
-<rect
-x="6"
-y="6"
-width="52"
-height="52"
-rx="14"
-fill="url(#flowpointGrad)"
+<img
+src="https://app.flowpoint.pro/flowpoint-logo.svg"
+width="48"
+height="48"
+style="display:block"
 />
 
-<path
-d="M36 14L23 37h10.4L29.6 50 44.8 28.2H34.4L36 14Z"
-fill="#ffffff"
-opacity="0.98"
-/>
-
-</svg>
+<div>
+<div style="font-size:20px;font-weight:800">${BRAND_NAME}</div>
+<div style="font-size:14px;color:#6b7280">
+Connexion sécurisée (sans mot de passe)
+</div>
+</div>
 
 </div>
 
-          <div>
-            <div style="font-size:20px;font-weight:900;letter-spacing:-.03em;line-height:1.05;color:#0f172a;">
-              ${BRAND_NAME}
-            </div>
-            <div style="margin-top:4px;color:#667085;font-size:14px;font-weight:500;">
-              Connexion sécurisée (sans mot de passe)
-            </div>
-          </div>
-        </div>
+<div style="font-size:20px;font-weight:800;margin-bottom:12px">
+Ton lien de connexion
+</div>
 
-        <div style="font-size:18px;font-weight:800;letter-spacing:-.02em;color:#0f172a;margin:0 0 10px 0;">
-          Ton lien de connexion
-        </div>
+<div style="color:#6b7280;font-size:15px;margin-bottom:22px">
+Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>.  
+Si tu n’es pas à l’origine de cette demande, ignore cet email.
+</div>
 
-        <div style="margin:0 0 18px 0;color:#667085;font-size:15px;line-height:1.65;font-weight:500;">
-          Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
-        </div>
+<a
+href="${link}"
+style="
+display:inline-block;
+padding:14px 26px;
+background:#2f5bff;
+color:#ffffff;
+text-decoration:none;
+border-radius:10px;
+font-weight:700;
+font-size:15px;
+"
+>
+Se connecter
+</a>
 
-        <div style="margin-bottom:18px;">
-          <a
-            href="${link}"
-            style="
-              display:inline-block;
-              min-height:50px;
-              line-height:50px;
-              padding:0 22px;
-              border-radius:999px;
-              background:linear-gradient(180deg,#2f5bff,#2449ff);
-              color:#ffffff;
-              text-decoration:none;
-              font-weight:800;
-              font-size:15px;
-              box-shadow:0 14px 34px rgba(47,91,255,.24);
-            "
-          >
-            Se connecter
-          </a>
-        </div>
+<div style="
+margin-top:24px;
+padding:16px;
+border-radius:14px;
+background:#f3f4f6;
+font-size:13px;
+color:#6b7280;
+word-break:break-all;
+">
 
-        <div style="
-          border-radius:20px;
-          padding:16px 18px;
-          border:1px solid rgba(20,28,48,.10);
-          background:rgba(255,255,255,.70);
-          margin-bottom:18px;
-        ">
-          <div style="margin:0 0 8px 0;color:#667085;font-size:13px;font-weight:700;">
-            Bouton bloqué ? Copie-colle :
-          </div>
-          <div style="margin:0;color:#0f172a;font-size:12px;line-height:1.7;word-break:break-all;">
-            ${link}
-          </div>
-        </div>
+<b>Bouton bloqué ? Copie-colle :</b><br><br>
+${link}
 
-        <div style="
-          margin-top:18px;
-          padding-top:14px;
-          border-top:1px solid rgba(15,23,42,.08);
-          color:#667085;
-          font-size:12px;
-          line-height:1.6;
-        ">
-          © ${new Date().getFullYear()} ${BRAND_NAME}
-        </div>
-      </div>
-    </div>
-  </div>
+</div>
+
+<div style="
+margin-top:28px;
+padding-top:16px;
+border-top:1px solid #e5e7eb;
+font-size:12px;
+color:#9ca3af;
+">
+
+© ${new Date().getFullYear()} ${BRAND_NAME}
+
+</div>
+
+</div>
+</div>
+
 </body>
 </html>
 `;
@@ -1493,8 +1450,8 @@ opacity="0.98"
     const r = await sendEmail({
       to: user.email,
       subject: `${BRAND_NAME} — Ton lien de connexion`,
-      text: `Lien (valide ${LOGIN_LINK_TTL_MINUTES} min): ${link}`,
-      html,
+      text: `Lien de connexion (valide ${LOGIN_LINK_TTL_MINUTES} minutes): ${link}`,
+      html
     });
 
     if (!r.ok) {
@@ -1502,12 +1459,12 @@ opacity="0.98"
     }
 
     return res.json({ ok: true });
+
   } catch (e) {
     console.log("login-request error:", e.message);
     return res.status(500).json({ error: "Erreur login-request" });
   }
 });
-
 app.get("/api/auth/login-verify", async (req, res) => {
   try {
     const raw = String(req.query?.token || "");
