@@ -27,10 +27,10 @@
   </script>
 </head>
 <body>
-  <div class="fpBackdrop" id="fpBackdrop"></div>
+  <div id="overlay" class="fpOverlay" aria-hidden="true"></div>
 
   <div class="fpApp">
-    <aside class="fpSidebar" id="fpSidebar">
+    <aside class="fpSidebar" id="sidebar" aria-label="Navigation principale">
       <div class="fpSidebarTop">
         <a class="fpBrand" href="#overview">
           <div class="fpBrandLogo" aria-hidden="true">
@@ -43,36 +43,40 @@
             <div class="fpBrandSub">Control center</div>
           </div>
         </a>
-
-        <button class="fpSidebarClose" id="fpSidebarClose" type="button" aria-label="Fermer">✕</button>
       </div>
 
       <nav class="fpNav">
-        <a class="fpNavItem active" href="#overview" data-page="overview">
+        <a class="fpNavItem active" href="#overview" data-route="overview">
           <span class="fpNavDot"></span>
           <span>Overview</span>
         </a>
-        <a class="fpNavItem" href="#missions" data-page="missions">
+
+        <a class="fpNavItem" href="#missions" data-route="missions">
           <span class="fpNavDot"></span>
           <span>Missions</span>
         </a>
-        <a class="fpNavItem" href="#audits" data-page="audits">
+
+        <a class="fpNavItem" href="#audits" data-route="audits">
           <span class="fpNavDot"></span>
           <span>Audits</span>
         </a>
-        <a class="fpNavItem" href="#monitors" data-page="monitors">
+
+        <a class="fpNavItem" href="#monitors" data-route="monitors">
           <span class="fpNavDot"></span>
           <span>Monitors</span>
         </a>
-        <a class="fpNavItem" href="#reports" data-page="reports">
+
+        <a class="fpNavItem" href="#reports" data-route="reports">
           <span class="fpNavDot"></span>
           <span>Reports</span>
         </a>
-        <a class="fpNavItem" href="#billing" data-page="billing">
+
+        <a class="fpNavItem" href="#billing" data-route="billing">
           <span class="fpNavDot"></span>
           <span>Billing</span>
         </a>
-        <a class="fpNavItem" href="#settings" data-page="settings">
+
+        <a class="fpNavItem" href="#settings" data-route="settings">
           <span class="fpNavDot"></span>
           <span>Settings</span>
         </a>
@@ -131,7 +135,7 @@
     <main class="fpMain">
       <header class="fpTopbar">
         <div class="fpTopLeft">
-          <button class="fpMenuBtn" id="fpMenuBtn" type="button" aria-label="Ouvrir le menu">
+          <button class="fpMenuBtn" id="btnMenu" type="button" aria-label="Ouvrir le menu">
             <svg viewBox="0 0 24 24" width="22" height="22">
               <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
             </svg>
@@ -140,7 +144,7 @@
           <div class="fpTopText">
             <div class="fpTopKicker">FLOWPOINT</div>
             <h1 id="helloTitle">Bonjour, —</h1>
-            <div class="fpTopSub" id="helloSub">SEO • Monitoring • Reports • Billing</div>
+            <div class="fpTopSub" id="helloSub">SEO · Monitoring · Reports · Billing</div>
           </div>
         </div>
 
@@ -153,50 +157,132 @@
 
           <button class="fpBtn fpBtnPrimary" id="btnRefresh" type="button">Refresh</button>
 
+          <div class="fpDropdown">
+            <button class="fpBtn fpBtnGhost" id="btnExports" type="button">
+              Exports
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+
+            <div class="fpMenu" id="exportsMenu" role="menu" aria-hidden="true">
+              <button class="fpMenuItem" id="btnExportAudits" type="button">Export audits CSV</button>
+              <button class="fpMenuItem" id="btnExportMonitors" type="button">Export monitors CSV</button>
+            </div>
+          </div>
+
           <div class="fpStatus">
             <span class="fpStatusDot" id="statusDot"></span>
             <span id="statusText">Chargement…</span>
+          </div>
+
+          <div class="fpAvatar">
+            <span id="avatarText">FP</span>
           </div>
         </div>
       </header>
 
       <section class="fpHero">
-        <div>
+        <div class="fpHeroLeft">
           <div class="fpHeroKicker" id="pageKicker">DASHBOARD</div>
           <h2 id="pageTitle">Overview</h2>
           <p id="pageDesc">Vue générale de ton compte et de tes performances.</p>
         </div>
 
         <div class="fpHeroActions" id="heroActions">
-          <button class="fpBtn fpBtnPrimary" id="heroBtnAudit" type="button">Run SEO audit</button>
-          <button class="fpBtn fpBtnSoft" id="heroBtnMonitor" type="button">Add monitor</button>
-          <button class="fpBtn fpBtnGhost" id="heroBtnBilling" type="button">Billing</button>
+          <button class="fpBtn fpBtnPrimary" id="btnRunAudit" type="button">Run SEO audit</button>
+          <button class="fpBtn fpBtnSoft" id="btnAddMonitor" type="button">Add monitor</button>
+          <button class="fpBtn fpBtnGhost" id="btnOpenBilling" type="button">Billing</button>
         </div>
       </section>
 
-      <section id="pageContent" class="fpPageContent">
+      <section class="fpOverviewTop">
+        <div class="fpCard">
+          <div class="fpCardHead">
+            <div>
+              <div class="fpCardKicker" id="kpiRange">LAST 30 DAYS</div>
+              <h3 class="fpCardTitle">Performance</h3>
+              <p class="fpCardSub">Vue rapide des indicateurs principaux.</p>
+            </div>
+            <div class="fpChip" id="orgChip">—</div>
+          </div>
+
+          <div class="fpGridCards">
+            <div class="fpMetric">
+              <div class="fpMetricLabel">SEO Score</div>
+              <div class="fpMetricValue"><span id="seoScore">0</span></div>
+              <div class="fpMetricHint" id="seoHint">Aucun audit récent</div>
+            </div>
+
+            <div class="fpMetric">
+              <div class="fpMetricLabel">Monitors actifs</div>
+              <div class="fpMetricValue">
+                <span id="monActive">0</span>
+                <span class="fpMetricTiny">/ <span id="monLimit">0</span></span>
+              </div>
+              <div class="fpMetricHint"><span id="monInc">0</span> DOWN actuellement</div>
+            </div>
+
+            <div class="fpMetric">
+              <div class="fpMetricLabel">Subscription</div>
+              <div class="fpMetricValue fpMetricText"><span id="subStatus">—</span></div>
+              <div class="fpMetricHint" id="subHint">—</div>
+            </div>
+          </div>
+
+          <div class="fpChart">
+            <canvas id="chart"></canvas>
+          </div>
+        </div>
+
+        <div class="fpCard">
+          <div class="fpCardHead">
+            <div>
+              <h3 class="fpCardTitle">Quick setup</h3>
+              <p class="fpCardSub">Les missions prioritaires de démarrage.</p>
+            </div>
+          </div>
+
+          <div class="fpSectionList" id="missionPreview"></div>
+        </div>
+      </section>
+
+      <section class="fpPageContent" id="pageContainer">
         <!-- Injecté par dashboard.js -->
       </section>
+
+      <section class="fpBottomGrid">
+        <div class="fpCard">
+          <div class="fpCardHead">
+            <div>
+              <h3 class="fpCardTitle">Live monitors</h3>
+              <p class="fpCardSub">Etat courant des URLs surveillées.</p>
+            </div>
+            <button class="fpBtn fpBtnSoft small" id="btnAddMonitor2" type="button">Add</button>
+          </div>
+
+          <div class="fpSectionList" id="monitorsRows"></div>
+          <div class="fpEmpty" id="monitorsEmpty">Aucun monitor pour le moment.</div>
+        </div>
+
+        <div class="fpCard">
+          <div class="fpCardHead">
+            <div>
+              <h3 class="fpCardTitle">Add-ons</h3>
+              <p class="fpCardSub">Etat des options actives sur l’organisation.</p>
+            </div>
+            <button class="fpBtn fpBtnGhost small" id="btnManageAddons" type="button">Manage</button>
+          </div>
+
+          <div class="fpSectionList" id="addonsList"></div>
+
+          <div class="fpInlineActions" style="margin-top:16px">
+            <button class="fpBtn fpBtnGhost small" id="btnSeePlans" type="button">Pricing</button>
+            <button class="fpBtn fpBtnPrimary small" data-plan-btn="pro" type="button">Upgrade</button>
+          </div>
+        </div>
+      </section>
     </main>
-  </div>
-
-  <!-- Modal -->
-  <div class="fpModalWrap hidden" id="modalWrap" aria-hidden="true">
-    <div class="fpModalCard">
-      <div class="fpModalHead">
-        <h3 id="modalTitle">Action</h3>
-        <button class="fpModalClose" id="modalClose" type="button" aria-label="Fermer">✕</button>
-      </div>
-      <p class="fpModalText" id="modalText">—</p>
-
-      <label class="fpLabel" id="modalLabel" for="modalInput">Valeur</label>
-      <input class="fpInput" id="modalInput" type="text" placeholder="" />
-
-      <div class="fpModalActions">
-        <button class="fpBtn fpBtnGhost" id="modalCancel" type="button">Annuler</button>
-        <button class="fpBtn fpBtnPrimary" id="modalConfirm" type="button">OK</button>
-      </div>
-    </div>
   </div>
 
   <script src="./dashboard.js"></script>
