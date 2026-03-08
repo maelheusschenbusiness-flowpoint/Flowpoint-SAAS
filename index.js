@@ -1346,39 +1346,119 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
     }
 
     const html = `
-  <div style="background:#f6f7fb;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;">
-    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:18px;padding:24px;border:1px solid rgba(15,23,42,.08)">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-<div style="width:44px;height:44px;border-radius:14px;background:#2F6BFF;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(47,107,255,.22), inset 0 0 0 1px rgba(255,255,255,.18);">
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M13 2L4 14h7l-1 8 10-14h-7l0-6Z"
-          stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
-  </svg>
-</div>
-        <div>
-          <div style="color:#0f172a;font-weight:800;font-size:18px;line-height:1">${BRAND_NAME}</div>
-          <div style="color:#667085;font-size:13px">Connexion sécurisée (sans mot de passe)</div>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>${BRAND_NAME} — Ton lien de connexion</title>
+</head>
+<body style="margin:0;padding:0;background:#eef3ff;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;">
+  <div style="margin:0;padding:32px 16px;background:
+    radial-gradient(1100px 720px at 12% 0%, rgba(47,91,255,.18), transparent 58%),
+    radial-gradient(900px 600px at 100% 0%, rgba(72,110,255,.12), transparent 45%),
+    linear-gradient(180deg,#eef3ff,#e8eeff);">
+
+    <div style="max-width:620px;margin:0 auto;">
+      <div style="
+        background:rgba(255,255,255,.92);
+        border:1px solid rgba(20,28,48,.08);
+        border-radius:28px;
+        box-shadow:0 30px 80px rgba(29,41,57,.10);
+        padding:26px;
+      ">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
+          <div style="
+            width:68px;
+            height:68px;
+            border-radius:22px;
+            background:linear-gradient(180deg, rgba(47,91,255,.16), rgba(47,91,255,.08));
+            border:1px solid rgba(47,91,255,.16);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            flex:0 0 auto;
+          ">
+            <img
+              src="${safeBaseUrl(req)}/assets/flowpoint-logo.png"
+              alt="${BRAND_NAME}"
+              width="38"
+              height="38"
+              style="display:block;width:38px;height:38px;border:0;outline:none;text-decoration:none;"
+            />
+          </div>
+
+          <div>
+            <div style="font-size:20px;font-weight:900;letter-spacing:-.03em;line-height:1.05;color:#0f172a;">
+              ${BRAND_NAME}
+            </div>
+            <div style="margin-top:4px;color:#667085;font-size:14px;font-weight:500;">
+              Connexion sécurisée (sans mot de passe)
+            </div>
+          </div>
         </div>
-      </div>
 
-      <h2 style="margin:10px 0 8px;color:#0f172a;font-size:18px">Ton lien de connexion</h2>
-      <p style="margin:0 0 16px;color:#667085;font-size:14px;line-height:1.55">
-        Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
-      </p>
+        <div style="font-size:18px;font-weight:800;letter-spacing:-.02em;color:#0f172a;margin:0 0 10px 0;">
+          Ton lien de connexion
+        </div>
 
-      <a href="${link}"
-         style="display:inline-block;background:#0052CC;color:white;text-decoration:none;padding:12px 16px;border-radius:12px;font-weight:800;">
-        Se connecter
-      </a>
+        <div style="margin:0 0 18px 0;color:#667085;font-size:15px;line-height:1.65;font-weight:500;">
+          Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>. Si tu n’es pas à l’origine de cette demande, ignore cet email.
+        </div>
 
-      <p style="margin:16px 0 6px;color:#667085;font-size:12px">Bouton bloqué ? Copie-colle :</p>
-      <p style="margin:0;color:#0f172a;font-size:12px;word-break:break-all">${link}</p>
+        <div style="margin-bottom:18px;">
+          <a
+            href="${link}"
+            style="
+              display:inline-block;
+              min-height:50px;
+              line-height:50px;
+              padding:0 22px;
+              border-radius:999px;
+              background:linear-gradient(180deg,#2f5bff,#2449ff);
+              color:#ffffff;
+              text-decoration:none;
+              font-weight:800;
+              font-size:15px;
+              box-shadow:0 14px 34px rgba(47,91,255,.24);
+            "
+          >
+            Se connecter
+          </a>
+        </div>
 
-      <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(15,23,42,.08);color:#667085;font-size:12px">
-        © ${new Date().getFullYear()} ${BRAND_NAME}
+        <div style="
+          border-radius:20px;
+          padding:16px 18px;
+          border:1px solid rgba(20,28,48,.10);
+          background:rgba(255,255,255,.70);
+          margin-bottom:18px;
+        ">
+          <div style="margin:0 0 8px 0;color:#667085;font-size:13px;font-weight:700;">
+            Bouton bloqué ? Copie-colle :
+          </div>
+          <div style="margin:0;color:#0f172a;font-size:12px;line-height:1.7;word-break:break-all;">
+            ${link}
+          </div>
+        </div>
+
+        <div style="
+          margin-top:18px;
+          padding-top:14px;
+          border-top:1px solid rgba(15,23,42,.08);
+          color:#667085;
+          font-size:12px;
+          line-height:1.6;
+        ">
+          © ${new Date().getFullYear()} ${BRAND_NAME}
+        </div>
       </div>
     </div>
   </div>
+</body>
+</html>
 `;
 
     const r = await sendEmail({
