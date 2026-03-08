@@ -1826,3 +1826,15 @@ body,
     border-color:rgba(15,23,42,.08);
   }
 }
+.fpSelect,
+.fpInput,
+.fpTextarea,
+.fpBtn{
+  appearance:none;
+  -webkit-appearance:none;
+}
+
+.fpSidebar,
+.fpMain{
+  min-height:0;
+}
