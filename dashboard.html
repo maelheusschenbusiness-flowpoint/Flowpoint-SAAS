@@ -10,130 +10,120 @@
   <div class="fpOverlay" id="overlay"></div>
 
   <div class="fpAppShell">
-    <!-- SIDEBAR -->
-    <aside class="fpSidebar" id="sidebar">
-      <div class="fpSidebarTop">
-        <div class="fpBrand">
-          <div class="fpBrandLogo" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
-              <path d="M13.5 2L6 13h4.7L10 22l8-12h-4.8L13.5 2Z" fill="white"/>
-            </svg>
-          </div>
+    <!-- SHELL -->
+<div class="fpShell">
 
-          <div class="fpBrandText">
-            <div class="fpBrandName">FlowPoint</div>
-            <div class="fpBrandSub">Centre de contrôle</div>
+  <!-- OVERLAY MOBILE -->
+  <div id="overlay" class="fpOverlay"></div>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar" class="fpSidebar">
+
+    <div class="fpSidebarTop">
+
+      <div class="fpBrand">
+        <div class="fpBrandLogo">
+          <img src="/assets/flowpoint-logo.png" alt="FlowPoint" class="fpBrandLogoImg">
+        </div>
+        <div class="fpBrandText">
+          <div class="fpBrandName">FlowPoint</div>
+          <div class="fpBrandSub">Centre de contrôle</div>
+        </div>
+      </div>
+
+      <nav class="fpNav">
+        <a href="#overview" class="fpNavItem" data-route="overview">Overview</a>
+        <a href="#missions" class="fpNavItem" data-route="missions">Missions</a>
+        <a href="#audits" class="fpNavItem" data-route="audits">Audits</a>
+        <a href="#monitors" class="fpNavItem" data-route="monitors">Monitors</a>
+        <a href="#reports" class="fpNavItem" data-route="reports">Rapports</a>
+        <a href="#billing" class="fpNavItem" data-route="billing">Facturation</a>
+        <a href="#settings" class="fpNavItem" data-route="settings">Paramètres</a>
+      </nav>
+
+    </div>
+
+    <div class="fpSidebarBottom">
+      <div class="fpAccountCard" id="fpAccountCard">
+        <div class="fpAccountTitle">Compte</div>
+
+        <div class="fpAccountRow">
+          <span>Plan</span>
+          <strong id="fpAccPlan">—</strong>
+        </div>
+
+        <div class="fpAccountRow">
+          <span>Organisation</span>
+          <strong id="fpAccOrg">—</strong>
+        </div>
+
+        <div class="fpAccountRow">
+          <span>Rôle</span>
+          <strong id="fpAccRole">—</strong>
+        </div>
+
+        <div class="fpAccountRow">
+          <span>Essai</span>
+          <strong id="fpAccTrial">—</strong>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- MAIN -->
+  <main class="fpMain">
+
+    <header class="fpTopbar">
+
+      <div class="fpTopbarLeft">
+        <button id="fpMenuBtn" class="fpMenuBtn" type="button" aria-label="Ouvrir le menu">
+          ☰
+        </button>
+
+        <div class="fpHelloBlock">
+          <div class="fpHelloKicker">FLOWPOINT</div>
+          <h1 id="fpHelloTitle" class="fpHelloTitle">Bonjour, —</h1>
+          <div class="fpHelloSub">SEO • Monitoring • Rapports • Facturation</div>
+        </div>
+      </div>
+
+      <div class="fpTopbarRight">
+
+        <select id="fpRangeSelect" class="fpSelect">
+          <option value="30">30 derniers jours</option>
+          <option value="7">7 derniers jours</option>
+          <option value="3">3 derniers jours</option>
+        </select>
+
+        <button id="fpRefreshBtn" class="fpBtn fpBtnPrimary" type="button">
+          Actualiser
+        </button>
+
+        <div class="fpExportWrap">
+          <button id="fpExportToggle" class="fpBtn fpBtnGhost" type="button">
+            Exports
+          </button>
+
+          <div id="fpExportMenu" class="fpExportMenu">
+            <button id="fpExportAudits" type="button">Exporter audits CSV</button>
+            <button id="fpExportMonitors" type="button">Exporter monitors CSV</button>
           </div>
         </div>
 
-        <nav class="fpNav">
-          <a href="#overview" class="fpNavItem active" data-route="overview">
-            <span class="fpNavDot"></span>
-            <span>Overview</span>
-          </a>
+        <div class="fpStatusPill">
+          <span id="fpStatusDot" class="fpStatusDot"></span>
+          <span id="fpStatusText">Dashboard prêt</span>
+        </div>
 
-          <a href="#missions" class="fpNavItem" data-route="missions">
-            <span class="fpNavDot"></span>
-            <span>Missions</span>
-          </a>
-
-          <a href="#audits" class="fpNavItem" data-route="audits">
-            <span class="fpNavDot"></span>
-            <span>Audits</span>
-          </a>
-
-          <a href="#monitors" class="fpNavItem" data-route="monitors">
-            <span class="fpNavDot"></span>
-            <span>Monitors</span>
-          </a>
-
-          <a href="#reports" class="fpNavItem" data-route="reports">
-            <span class="fpNavDot"></span>
-            <span>Rapports</span>
-          </a>
-
-          <a href="#billing" class="fpNavItem" data-route="billing">
-            <span class="fpNavDot"></span>
-            <span>Facturation</span>
-          </a>
-
-          <a href="#settings" class="fpNavItem" data-route="settings">
-            <span class="fpNavDot"></span>
-            <span>Paramètres</span>
-          </a>
-        </nav>
       </div>
+    </header>
 
-      <div class="fpSidebarBottom">
-        <section class="fpAccountCard">
-          <div class="fpCardKicker">Compte</div>
+    <!-- PAGE CONTENT -->
+    <div id="fpPageContainer"></div>
 
-          <div class="fpAccountRows">
-            <div class="fpAccountRow">
-              <span>Plan</span>
-              <strong id="accPlan">—</strong>
-            </div>
-
-            <div class="fpAccountRow">
-              <span>Organisation</span>
-              <strong id="accOrg">—</strong>
-            </div>
-
-            <div class="fpAccountRow">
-              <span>Rôle</span>
-              <strong id="accRole">—</strong>
-            </div>
-
-            <div class="fpAccountRow">
-              <span>Essai</span>
-              <strong id="accTrial">—</strong>
-            </div>
-          </div>
-
-          <div class="fpUsageStack">
-            <div class="fpUsageItem">
-              <div class="fpUsageTop">
-                <span>Audits</span>
-                <strong id="uAudits">—</strong>
-              </div>
-              <div class="fpBar"><div class="fpBarFill" id="barAudits"></div></div>
-            </div>
-
-            <div class="fpUsageItem">
-              <div class="fpUsageTop">
-                <span>PDF</span>
-                <strong id="uPdf">—</strong>
-              </div>
-              <div class="fpBar"><div class="fpBarFill" id="barPdf"></div></div>
-            </div>
-
-            <div class="fpUsageItem">
-              <div class="fpUsageTop">
-                <span>Exports</span>
-                <strong id="uExports">—</strong>
-              </div>
-              <div class="fpBar"><div class="fpBarFill" id="barExports"></div></div>
-            </div>
-
-            <div class="fpUsageItem">
-              <div class="fpUsageTop">
-                <span>Monitors</span>
-                <strong id="uMonitors">—</strong>
-              </div>
-            </div>
-          </div>
-
-          <div class="fpSidebarActions">
-            <button class="fpBtn fpBtnGhost fpBtnFull" id="btnPortal" type="button">
-              Portail billing
-            </button>
-            <button class="fpBtn fpBtnDanger fpBtnFull" id="btnLogout" type="button">
-              Déconnexion
-            </button>
-          </div>
-        </section>
-      </div>
-    </aside>
+  </main>
+</div>
 
     <!-- MAIN -->
     <main class="fpMain">
