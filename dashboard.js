@@ -1,17 +1,6 @@
 (() => {
   "use strict";
 
-  /* =========================================================
-     FlowPoint Dashboard.js
-     PARTIE 1/4
-     - config
-     - state
-     - helpers
-     - auth/fetch
-     - missions
-     - utilitaires UI
-     ========================================================= */
-
   const API_BASE = "";
   const TOKEN_KEY = "token";
   const REFRESH_TOKEN_KEY = "refreshToken";
@@ -31,11 +20,13 @@
   const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v8";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
+  const LOGO_SRC = "/assets/flowpoint-logo.svg";
+
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
   const els = {
-    overlay: $("#overlay"),
+    overlay: $("#fpOverlay"),
     sidebar: $("#sidebar"),
     pageContainer: $("#fpPageContainer"),
 
@@ -47,6 +38,10 @@
     exportMenu: $("#fpExportMenu"),
     btnExportAudits: $("#fpExportAudits"),
     btnExportMonitors: $("#fpExportMonitors"),
+
+    btnOpenBillingSide: $("#fpOpenBillingSide"),
+    btnOpenSettingsSide: $("#fpOpenSettingsSide"),
+    btnLogout: $("#fpLogoutBtn"),
 
     rangeSelect: $("#fpRangeSelect"),
 
@@ -70,10 +65,6 @@
     barPdf: $("#fpBarPdf"),
     barExports: $("#fpBarExports"),
     barMonitors: $("#fpBarMonitors"),
-
-    openBillingSide: $("#fpOpenBillingSide"),
-    openSettingsSide: $("#fpOpenSettingsSide"),
-    logoutBtn: $("#fpLogoutBtn"),
 
     sidebarLogo: $("#fpSidebarLogo"),
     topLogo: $("#fpTopLogo"),
@@ -132,6 +123,11 @@
     const s = String(str || "").trim();
     if (!s) return "—";
     return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function formatNumber(v) {
+    const n = Number(v || 0);
+    return Number.isFinite(n) ? n.toLocaleString("fr-FR") : "0";
   }
 
   function planLabel(plan) {
@@ -213,6 +209,33 @@
     localStorage.removeItem(REFRESH_TOKEN_KEY);
   }
 
+  function getFirstName(me) {
+    const direct =
+      me?.firstName ||
+      me?.firstname ||
+      me?.givenName ||
+      me?.profile?.firstName ||
+      "";
+
+    if (direct) return String(direct).trim();
+
+    const full =
+      me?.name ||
+      me?.fullName ||
+      me?.email?.split("@")[0] ||
+      "";
+
+    const clean = String(full).trim();
+    if (!clean) return "";
+
+    return clean.split(/\s+/)[0] || "";
+  }
+
+  function hydrateLogos() {
+    if (els.sidebarLogo) els.sidebarLogo.src = LOGO_SRC;
+    if (els.topLogo) els.topLogo.src = LOGO_SRC;
+  }
+
   async function refreshTokenIfPossible() {
     const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
     if (!refreshToken) throw new Error("No refresh token");
@@ -229,9 +252,7 @@
     const data = await r.json().catch(() => ({}));
 
     if (data?.token) setToken(data.token);
-    if (data?.refreshToken) {
-      localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-    }
+    if (data?.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
   }
 
   async function fetchWithAuth(path, options = {}) {
@@ -239,10 +260,7 @@
     const headers = new Headers(options.headers || {});
     const token = getToken();
 
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
-    }
-
+    if (token) headers.set("Authorization", `Bearer ${token}`);
     if (options.body && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
@@ -284,10 +302,7 @@
   }
 
   function setStatus(text, mode = "ok") {
-    if (els.statusText) {
-      els.statusText.textContent = text || "";
-    }
-
+    if (els.statusText) els.statusText.textContent = text || "";
     if (!els.statusDot) return;
 
     els.statusDot.classList.remove("warn", "danger");
@@ -296,12 +311,7 @@
   }
 
   function normalizeOrgName() {
-    return (
-      state.me?.org?.name ||
-      state.me?.organization?.name ||
-      state.me?.workspace?.name ||
-      "Organisation"
-    );
+    return state.me?.org?.name || state.me?.organization?.name || "Organisation";
   }
 
   function normalizeMonitorStatus(monitor) {
@@ -344,9 +354,7 @@
   }
 
   function setPage(html) {
-    if (els.pageContainer) {
-      els.pageContainer.innerHTML = html;
-    }
+    if (els.pageContainer) els.pageContainer.innerHTML = html;
   }
 
   function shuffleArray(arr) {
@@ -409,9 +417,7 @@
     if (els.accPlan) els.accPlan.textContent = planLabel(me.plan);
     if (els.accOrg) els.accOrg.textContent = normalizeOrgName();
     if (els.accRole) els.accRole.textContent = cap(me.role || "owner");
-    if (els.accTrial) {
-      els.accTrial.textContent = me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "—";
-    }
+    if (els.accTrial) els.accTrial.textContent = me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "—";
 
     if (els.usageAudits) els.usageAudits.textContent = formatUsage(usage.audits);
     if (els.usagePdf) els.usagePdf.textContent = formatUsage(usage.pdf);
@@ -426,13 +432,21 @@
 
   function hydrateTopbar() {
     const me = state.me || {};
+    const firstName = getFirstName(me);
 
     if (els.helloTitle) {
-      els.helloTitle.textContent = `Bonjour, ${me.name || "Client"}`;
+      els.helloTitle.textContent = firstName ? `Bonjour, ${firstName}` : "Bonjour";
     }
 
     if (els.helloSub) {
       els.helloSub.textContent = "SEO · Monitoring · Rapports · Facturation";
+    }
+
+    if (els.rangeSelect) {
+      const allowed = ["30", "7", "3"];
+      const v = String(state.rangeDays);
+      els.rangeSelect.value = allowed.includes(v) ? v : "30";
+      if (!els.rangeSelect.value) els.rangeSelect.value = "30";
     }
   }
 
@@ -482,6 +496,51 @@
     `;
   }
 
+  function createInlineLinks(items = []) {
+    const valid = items.filter((x) => x?.href && x?.label);
+    if (!valid.length) return "";
+    return `
+      <div class="fpInlineLinks">
+        ${valid.map((item) => `
+          <a href="${esc(item.href)}">${esc(item.label)}</a>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  function getAddonEntries() {
+    const addons = state.me?.addons || {};
+    const rawEntries = [
+      ["whiteLabel", "White label"],
+      ["monitorsPack50", "Monitors +50"],
+      ["extraSeats", "Extra seats"],
+      ["prioritySupport", "Priority support"],
+      ["customDomain", "Custom domain"],
+      ["brandingPack", "Branding pack"],
+      ["extraExports", "Extra exports"],
+      ["extraPdf", "PDF supplémentaires"],
+      ["advancedReports", "Advanced reports"],
+      ["teamPack", "Team pack"],
+      ["apiAccess", "API access"],
+      ["localSeoPack", "Local SEO pack"],
+    ];
+
+    return rawEntries.map(([key, label]) => {
+      const value = addons[key];
+      const enabled =
+        typeof value === "boolean" ? value :
+        typeof value === "number" ? value > 0 :
+        !!value;
+
+      return {
+        key,
+        label,
+        enabled,
+        text: typeof value === "number" && value > 1 ? `ON ×${value}` : enabled ? "ON" : "OFF",
+      };
+    });
+  }
+
   function openTextModal({ title, placeholder = "", confirmText = "Valider", value = "" }) {
     return new Promise((resolve) => {
       const old = document.getElementById("fpModalOverlay");
@@ -516,44 +575,12 @@
 
       cancelBtn?.addEventListener("click", () => close(null));
       okBtn?.addEventListener("click", () => close(input?.value?.trim() || null));
-
       overlay.addEventListener("click", (e) => {
         if (e.target === overlay) close(null);
       });
 
       input?.focus();
     });
-  }
-
-  function fixLogos() {
-    const addFallback = (img) => {
-      if (!img) return;
-
-      img.addEventListener("error", () => {
-        const parent = img.parentElement;
-        if (!parent) return;
-        parent.innerHTML = `
-          <div style="
-            width:100%;
-            height:100%;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            color:#fff;
-            font-weight:900;
-            font-size:22px;
-          ">F</div>
-        `;
-      });
-    };
-
-    addFallback(els.sidebarLogo);
-    addFallback(els.topLogo);
-  }
-
-  function logout() {
-    clearAuth();
-    window.location.href = "/login.html";
   }
 
   async function openBillingPortal() {
@@ -752,13 +779,6 @@
       return false;
     }
   }
-    /* =========================================================
-     PARTIE 2/4
-     - graphique
-     - overview
-     - missions
-     - audits
-     ========================================================= */
 
   function drawOverviewChart() {
     const canvas = $("#fpOverviewChart");
@@ -771,7 +791,7 @@
     const dpr = window.devicePixelRatio || 1;
 
     const width = Math.max(320, Math.round(rect.width || 760));
-    const height = 300;
+    const height = 320;
 
     canvas.width = width * dpr;
     canvas.height = height * dpr;
@@ -781,27 +801,31 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const data =
+    const scoreData =
       Array.isArray(state.overview?.chart) && state.overview.chart.length
         ? state.overview.chart.map((n) => clamp(Number(n || 0), 0, 100))
         : [8, 16, 22, 20, 34, 41, 38, 48, 57, 61];
 
+    const healthData = scoreData.map((n, i) => clamp(n - 8 + (i % 3) * 2, 0, 100));
+    const seoData = scoreData;
+
     const styles = getComputedStyle(document.documentElement);
     const brand = styles.getPropertyValue("--fpBrand").trim() || "#2f5bff";
     const brand2 = styles.getPropertyValue("--fpBrand2").trim() || "#1b45ff";
-    const line = styles.getPropertyValue("--fpBorder").trim() || "rgba(255,255,255,.1)";
     const text = styles.getPropertyValue("--fpMuted").trim() || "#94a3b8";
+    const grid = styles.getPropertyValue("--fpBorderStrong").trim() || "rgba(255,255,255,.14)";
 
     const padLeft = 42;
-    const padRight = 18;
+    const padRight = 20;
     const padTop = 18;
     const padBottom = 34;
 
     const chartW = width - padLeft - padRight;
     const chartH = height - padTop - padBottom;
+
     const gridLines = 5;
 
-    ctx.strokeStyle = line;
+    ctx.strokeStyle = grid;
     ctx.lineWidth = 1;
 
     for (let i = 0; i <= gridLines; i += 1) {
@@ -821,32 +845,47 @@
     ctx.fillText("20", 14, padTop + chartH * 0.8 + 4);
     ctx.fillText("0", 20, padTop + chartH + 4);
 
-    const stepX = data.length > 1 ? chartW / (data.length - 1) : chartW;
+    function buildPoints(data) {
+      const stepX = data.length > 1 ? chartW / (data.length - 1) : chartW;
+      return data.map((value, i) => {
+        const x = padLeft + i * stepX;
+        const y = padTop + chartH - (value / 100) * chartH;
+        return { x, y, value };
+      });
+    }
 
-    const points = data.map((value, i) => {
-      const x = padLeft + i * stepX;
-      const y = padTop + chartH - (value / 100) * chartH;
-      return { x, y };
-    });
+    const seoPoints = buildPoints(seoData);
+    const healthPoints = buildPoints(healthData);
 
     const areaGradient = ctx.createLinearGradient(0, padTop, 0, padTop + chartH);
-    areaGradient.addColorStop(0, "rgba(47,91,255,.28)");
+    areaGradient.addColorStop(0, "rgba(47,91,255,.24)");
     areaGradient.addColorStop(1, "rgba(47,91,255,0)");
 
     ctx.beginPath();
-    ctx.moveTo(points[0].x, padTop + chartH);
-    points.forEach((p) => ctx.lineTo(p.x, p.y));
-    ctx.lineTo(points[points.length - 1].x, padTop + chartH);
+    ctx.moveTo(seoPoints[0].x, padTop + chartH);
+    seoPoints.forEach((p) => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(seoPoints[seoPoints.length - 1].x, padTop + chartH);
     ctx.closePath();
     ctx.fillStyle = areaGradient;
     ctx.fill();
+
+    ctx.beginPath();
+    healthPoints.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.strokeStyle = "rgba(255,255,255,.28)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     const strokeGradient = ctx.createLinearGradient(padLeft, 0, width - padRight, 0);
     strokeGradient.addColorStop(0, brand);
     strokeGradient.addColorStop(1, brand2);
 
     ctx.beginPath();
-    points.forEach((p, i) => {
+    seoPoints.forEach((p, i) => {
       if (i === 0) ctx.moveTo(p.x, p.y);
       else ctx.lineTo(p.x, p.y);
     });
@@ -856,7 +895,7 @@
     ctx.lineCap = "round";
     ctx.stroke();
 
-    points.forEach((p) => {
+    seoPoints.forEach((p) => {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
       ctx.fillStyle = brand;
@@ -892,10 +931,10 @@
     }
 
     if (diff <= -8) {
-      return "Le score est en baisse sur la période. Vérifie les derniers audits et les points SEO critiques.";
+      return "Le score est en baisse sur la période. Il faut vérifier les derniers audits et les points critiques.";
     }
 
-    return "La performance reste relativement stable sur la période.";
+    return "La performance reste relativement stable sur la période. Quelques ajustements peuvent relancer la progression.";
   }
 
   function renderOverviewHero() {
@@ -910,29 +949,29 @@
       <section class="fpHero fpHeroWide">
         <div class="fpHeroContent">
           <div class="fpCardKicker">FlowPoint</div>
-          <h1 class="fpHeroTitle fpHeroTitleSmall">Overview</h1>
+          <h1 class="fpHeroTitle">Overview</h1>
           <p class="fpHeroText">
             Suis tes performances, ton activité et les prochaines actions utiles depuis un seul dashboard.
           </p>
-        </div>
 
-        <div class="fpHeroStats">
-          <div class="fpMiniStat">
-            <div class="fpMiniStatLabel">Organisation</div>
-            <div class="fpMiniStatValue">${esc(normalizeOrgName())}</div>
-            <div class="fpMiniStatMeta">Workspace actuellement chargé</div>
-          </div>
+          <div class="fpHeroStats">
+            <div class="fpMiniStat">
+              <div class="fpMiniStatLabel">Organisation</div>
+              <div class="fpMiniStatValue">${esc(normalizeOrgName())}</div>
+              <div class="fpMiniStatMeta">Workspace actuellement chargé</div>
+            </div>
 
-          <div class="fpMiniStat">
-            <div class="fpMiniStatLabel">Score SEO</div>
-            <div class="fpMiniStatValue">${esc(ov.seoScore ?? 0)}</div>
-            <div class="fpMiniStatMeta">${esc(lastAuditText)}</div>
-          </div>
+            <div class="fpMiniStat">
+              <div class="fpMiniStatLabel">Score SEO</div>
+              <div class="fpMiniStatValue">${esc(ov.seoScore ?? 0)}</div>
+              <div class="fpMiniStatMeta">${esc(lastAuditText)}</div>
+            </div>
 
-          <div class="fpMiniStat">
-            <div class="fpMiniStatLabel">Abonnement</div>
-            <div class="fpMiniStatValue">${esc(planLabel(me.plan))}</div>
-            <div class="fpMiniStatMeta">${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</div>
+            <div class="fpMiniStat">
+              <div class="fpMiniStatLabel">Abonnement</div>
+              <div class="fpMiniStatValue">${esc(planLabel(me.plan))}</div>
+              <div class="fpMiniStatMeta">${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</div>
+            </div>
           </div>
         </div>
       </section>
@@ -942,31 +981,29 @@
   function renderOverviewPage() {
     const me = state.me || {};
     const ov = state.overview || {};
-    const monitorLimit = me.usage?.monitors?.limit ?? 0;
     const recentAudits = Array.isArray(state.audits) ? state.audits.slice(0, 5) : [];
     const recentMonitors = Array.isArray(state.monitors) ? state.monitors.slice(0, 5) : [];
+    const done = countDoneMissions();
 
     setPage(`
       ${renderOverviewHero()}
 
       <div class="fpGrid fpGridMain">
         <div class="fpCol fpColMain">
-
           ${createSectionCard(
             "Performance",
             "Évolution SEO",
-            "Tendance du score sur la période sélectionnée",
+            "Lecture multi-indicateurs sur la période sélectionnée",
             `
               <div class="fpChartCard">
                 <div class="fpChartBox">
                   <canvas id="fpOverviewChart"></canvas>
                 </div>
                 <div class="fpChartLegend">
-                  <div class="fpChartLegendText">Lecture rapide de la progression globale du score SEO.</div>
+                  <div class="fpLegendItem"><span class="fpLegendDot"></span> Score SEO</div>
+                  <div class="fpLegendItem"><span class="fpLegendDot" style="background:rgba(255,255,255,.55)"></span> Santé technique</div>
                 </div>
-                <div class="fpChartInsight">
-                  ${esc(getOverviewInsight())}
-                </div>
+                <div class="fpChartInsight">${esc(getOverviewInsight())}</div>
               </div>
             `
           )}
@@ -999,11 +1036,9 @@
               </div>
             `
           )}
-
         </div>
 
         <div class="fpCol fpColSide">
-
           ${createSectionCard(
             "Organisation",
             "Résumé chargé",
@@ -1012,9 +1047,9 @@
               <div class="fpInfoList">
                 <div class="fpInfoRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
                 <div class="fpInfoRow"><span>Statut</span><strong>${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</strong></div>
-                <div class="fpInfoRow"><span>Monitors actifs</span><strong>${esc(ov.monitors?.active ?? 0)}/${esc(monitorLimit)}</strong></div>
+                <div class="fpInfoRow"><span>Monitors actifs</span><strong>${esc(ov.monitors?.active ?? 0)}/${esc(me.usage?.monitors?.limit ?? 0)}</strong></div>
                 <div class="fpInfoRow"><span>Incidents</span><strong>${esc(ov.monitors?.down ?? 0)}</strong></div>
-                <div class="fpInfoRow"><span>Dernier audit</span><strong>${esc(ov.lastAuditAt ? formatShortDate(ov.lastAuditAt) : "—")}</strong></div>
+                <div class="fpInfoRow"><span>Missions faites</span><strong>${done}/${state.missions.length}</strong></div>
               </div>
             `
           )}
@@ -1032,9 +1067,7 @@
                         <div class="fpRowTitle">${esc(a.url || "—")}</div>
                         <div class="fpRowMeta">${esc(formatDate(a.createdAt))}</div>
                       </div>
-                      <div class="fpRowRight">
-                        <div class="fpScore">${esc(a.score ?? "—")}</div>
-                      </div>
+                      <div class="fpRowRight"><div class="fpScore">${esc(a.score ?? "—")}</div></div>
                     </div>
                   `).join("")}
                 </div>
@@ -1055,9 +1088,7 @@
                         <div class="fpRowTitle">${esc(m.url || "—")}</div>
                         <div class="fpRowMeta">${esc(m.intervalMinutes ?? 60)} min · ${esc(formatDate(m.lastCheckedAt))}</div>
                       </div>
-                      <div class="fpRowRight">
-                        ${createBadge(normalizeMonitorStatus(m))}
-                      </div>
+                      <div class="fpRowRight">${createBadge(normalizeMonitorStatus(m))}</div>
                     </div>
                   `).join("")}
                 </div>
@@ -1065,6 +1096,18 @@
               : createEmpty("Aucun monitor disponible pour le moment.")
           )}
 
+          ${createSectionCard(
+            "Liens utiles",
+            "Accès rapide",
+            "Navigation complémentaire du workspace",
+            `
+              ${createInlineLinks([
+                { href: "/pricing.html", label: "Retour pricing" },
+                { href: "/billing.html", label: "Billing FlowPoint" },
+                { href: "/addons.html", label: "Voir add-ons" },
+              ])}
+            `
+          )}
         </div>
       </div>
     `);
@@ -1079,7 +1122,7 @@
       ${createSectionCard(
         "Missions",
         "Checklist d’activation",
-        "Les missions se réinitialisent automatiquement tous les 3 jours et changent d’ordre.",
+        "Les missions se réinitialisent automatiquement tous les 3 jours et changent d’ordre pour éviter d’être toujours identiques.",
         `
           <div class="fpMissionPageGrid">
             <div class="fpMissionPageMain">
@@ -1126,6 +1169,22 @@
                   <div class="fpStatMeta">Les missions varient</div>
                 </div>
               </div>
+
+              <div class="fpTextPanel">
+                Les missions sont conçues pour remettre le client dans un parcours simple :
+                monitor, audit, export, paramètres et facturation.
+              </div>
+
+              <div class="fpTextPanel">
+                Conseil : complète d’abord monitor + audit + paramètres. C’est le trio qui active vraiment le dashboard.
+              </div>
+
+              <div class="fpTextPanel">
+                ${createInlineLinks([
+                  { href: "/pricing.html", label: "Retour pricing" },
+                  { href: "/addons.html", label: "Voir add-ons" },
+                ])}
+              </div>
             </div>
           </div>
         `
@@ -1143,7 +1202,7 @@
       ${createSectionCard(
         "Audits",
         "Centre SEO",
-        "Lance des audits et consulte l’historique.",
+        "Lance des audits, consulte l’historique et identifie rapidement les priorités.",
         `
           <div class="fpTopActionsRow">
             <button class="fpBtn fpBtnPrimary" id="fpAuditsRunBtn" type="button">Lancer un audit SEO</button>
@@ -1154,7 +1213,6 @@
 
       <div class="fpGrid fpGridMain">
         <div class="fpCol fpColMain">
-
           ${createSectionCard(
             "Historique",
             "Liste des audits",
@@ -1167,6 +1225,7 @@
                     <div>Score</div>
                     <div>Date</div>
                     <div>Statut</div>
+                    <div>Action</div>
                   </div>
 
                   ${audits.map((a) => `
@@ -1175,17 +1234,16 @@
                       <div>${esc(a.score ?? "—")}</div>
                       <div>${esc(formatDate(a.createdAt))}</div>
                       <div>${createBadge(a.status === "ok" ? "up" : "down")}</div>
+                      <div>${createBadge("active")}</div>
                     </div>
                   `).join("")}
                 </div>
               `
               : createEmpty("Aucun audit pour le moment.")
           )}
-
         </div>
 
         <div class="fpCol fpColSide">
-
           ${createSectionCard(
             "Résumé",
             "Vue synthétique",
@@ -1213,6 +1271,28 @@
             `
           )}
 
+          ${createSectionCard(
+            "Conseil",
+            "Lecture client",
+            "Comment présenter la page audit",
+            `
+              <div class="fpTextPanel">
+                Montre l’historique, la régularité des audits et la progression du score. Cette page doit rassurer et montrer une logique de suivi.
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Liens utiles",
+            "Navigation",
+            "Accès rapide lié aux audits",
+            `
+              ${createInlineLinks([
+                { href: "/reports.html", label: "Voir rapports" },
+                { href: "/pricing.html", label: "Retour pricing" },
+              ])}
+            `
+          )}
         </div>
       </div>
     `);
@@ -1226,13 +1306,6 @@
       await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
     });
   }
-    /* =========================================================
-     PARTIE 3/4
-     - monitors
-     - reports
-     - billing
-     - settings
-     ========================================================= */
 
   function renderMonitorsPage() {
     const monitors = Array.isArray(state.monitors) ? state.monitors : [];
@@ -1243,7 +1316,7 @@
       ${createSectionCard(
         "Monitoring",
         "Surveillance des sites",
-        "Ajoute des URLs et contrôle leur disponibilité.",
+        "Ajoute des URLs, contrôle leur disponibilité et pilote les incidents plus rapidement.",
         `
           <div class="fpTopActionsRow">
             <button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn" type="button">Ajouter un monitor</button>
@@ -1254,11 +1327,10 @@
 
       <div class="fpGrid fpGridMain">
         <div class="fpCol fpColMain">
-
           ${createSectionCard(
             "Monitors",
             "Liste active",
-            "Tous les monitors actuellement chargés",
+            "Tous les monitors actuellement chargés depuis ton backend",
             monitors.length
               ? `
                 <div class="fpTable">
@@ -1286,11 +1358,9 @@
               `
               : createEmpty("Aucun monitor actif pour le moment.")
           )}
-
         </div>
 
         <div class="fpCol fpColSide">
-
           ${createSectionCard(
             "Résumé",
             "État du monitoring",
@@ -1318,6 +1388,29 @@
             `
           )}
 
+          ${createSectionCard(
+            "Alertes",
+            "Réception email",
+            "Résumé de la configuration courante",
+            `
+              <div class="fpInfoList">
+                <div class="fpInfoRow"><span>Mode</span><strong>${esc(recipientsLabel(state.orgSettings?.alertRecipients))}</strong></div>
+                <div class="fpInfoRow"><span>Emails extra</span><strong>${esc((state.orgSettings?.alertExtraEmails || []).join(", ") || "—")}</strong></div>
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Liens utiles",
+            "Navigation",
+            "Accès rapide du monitoring",
+            `
+              ${createInlineLinks([
+                { href: "/settings.html", label: "Paramètres" },
+                { href: "/reports.html", label: "Rapports" },
+              ])}
+            `
+          )}
         </div>
       </div>
     `);
@@ -1349,33 +1442,109 @@
   }
 
   function renderReportsPage() {
+    const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
+    const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
+
     setPage(`
       ${createSectionCard(
         "Rapports",
-        "Exports",
-        "Télécharge directement les données utiles du dashboard.",
+        "Exports et historiques",
+        "Télécharge les données importantes du dashboard et prépare des livrables clients plus propres.",
         `
           <div class="fpReportsGrid">
             <div class="fpReportCard">
               <div class="fpReportTitle">Export audits</div>
               <div class="fpReportMeta">Télécharge tous les audits SEO en CSV.</div>
-              <button class="fpBtn fpBtnPrimary" id="fpExportAuditsBtn" type="button">Exporter audits</button>
+              <div class="fpDetailActions">
+                <button class="fpBtn fpBtnPrimary" id="fpExportAuditsBtn" type="button">Exporter audits</button>
+              </div>
             </div>
 
             <div class="fpReportCard">
               <div class="fpReportTitle">Export monitors</div>
               <div class="fpReportMeta">Télécharge les données de monitoring en CSV.</div>
-              <button class="fpBtn fpBtnPrimary" id="fpExportMonitorsBtn2" type="button">Exporter monitors</button>
+              <div class="fpDetailActions">
+                <button class="fpBtn fpBtnPrimary" id="fpExportMonitorsBtn2" type="button">Exporter monitors</button>
+              </div>
             </div>
 
             <div class="fpReportCard">
-              <div class="fpReportTitle">Rapport PDF</div>
-              <div class="fpReportMeta">Fonction bientôt disponible.</div>
-              <button class="fpBtn fpBtnGhost" type="button" disabled>Bientôt disponible</button>
+              <div class="fpReportTitle">Accès pricing</div>
+              <div class="fpReportMeta">Retour rapide vers l’offre FlowPoint.</div>
+              <div class="fpDetailActions">
+                <a class="fpBtn fpBtnGhost" href="/pricing.html">Voir pricing</a>
+              </div>
             </div>
           </div>
         `
       )}
+
+      <div class="fpGrid fpGridMain">
+        <div class="fpCol fpColMain">
+          ${createSectionCard(
+            "Historique",
+            "Données exportables",
+            "Résumé rapide des volumes actuellement disponibles",
+            `
+              <div class="fpStatsGrid">
+                <div class="fpStatCard">
+                  <div class="fpStatLabel">Audits</div>
+                  <div class="fpStatValue">${auditsCount}</div>
+                  <div class="fpStatMeta">Lignes exportables</div>
+                </div>
+
+                <div class="fpStatCard">
+                  <div class="fpStatLabel">Monitors</div>
+                  <div class="fpStatValue">${monitorsCount}</div>
+                  <div class="fpStatMeta">Lignes exportables</div>
+                </div>
+
+                <div class="fpStatCard">
+                  <div class="fpStatLabel">Format</div>
+                  <div class="fpStatValue">CSV</div>
+                  <div class="fpStatMeta">Téléchargement direct</div>
+                </div>
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Livrables",
+            "Utilisation commerciale",
+            "Cette zone peut servir pour la livraison client",
+            `
+              <div class="fpTextPanel">
+                Utilise les exports pour les comptes-rendus, suivis mensuels, comparatifs avant/après et reporting interne.
+              </div>
+            `
+          )}
+        </div>
+
+        <div class="fpCol fpColSide">
+          ${createSectionCard(
+            "Conseil",
+            "Usage commercial",
+            "À quoi sert cette page",
+            `
+              <div class="fpTextPanel">
+                La page reports sert à transformer tes données en livrables. C’est utile pour les clients, les suivis internes et les comptes-rendus mensuels.
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Liens utiles",
+            "Navigation",
+            "Accès rapide",
+            `
+              ${createInlineLinks([
+                { href: "/pricing.html", label: "Retour pricing" },
+                { href: "/billing.html", label: "Billing FlowPoint" },
+              ])}
+            `
+          )}
+        </div>
+      </div>
     `);
 
     $("#fpExportAuditsBtn")?.addEventListener("click", async () => {
@@ -1390,16 +1559,19 @@
   function renderBillingPage() {
     const me = state.me || {};
     const usage = me.usage || {};
-    const addons = me.addons || {};
+    const addons = getAddonEntries();
 
     setPage(`
       ${createSectionCard(
         "Facturation",
         "Abonnement",
-        "Consulte ton plan, tes quotas et tes modules actifs.",
+        "Consulte le plan actuel, les quotas et la gestion complète FlowPoint.",
         `
           <div class="fpTopActionsRow">
-            <button class="fpBtn fpBtnPrimary" id="fpBillingPortalBtn" type="button">Gérer l’abonnement</button>
+            <a class="fpBtn fpBtnGhost" href="/billing.html">Billing FlowPoint</a>
+            <a class="fpBtn fpBtnGhost" href="/pricing.html">Retour pricing</a>
+            <a class="fpBtn fpBtnGhost" href="/addons.html">Voir les add-ons</a>
+            <button class="fpBtn fpBtnPrimary" id="fpBillingPortalBtn" type="button">Portail Stripe</button>
             <button class="fpBtn fpBtnGhost" id="fpBillingRefreshBtn" type="button">Actualiser</button>
           </div>
         `
@@ -1407,11 +1579,10 @@
 
       <div class="fpGrid fpGridMain">
         <div class="fpCol fpColMain">
-
           ${createSectionCard(
             "Plan",
             "Abonnement actif",
-            "",
+            "État actuel de la facturation",
             `
               <div class="fpBillingGrid">
                 <div class="fpBillingCard">
@@ -1432,7 +1603,7 @@
           ${createSectionCard(
             "Quotas",
             "Limites du plan",
-            "",
+            "Consommation visible dans l’espace client",
             `
               <div class="fpQuotaList">
                 <div class="fpQuotaRow"><span>Audits</span><strong>${esc(formatUsage(usage.audits))}</strong></div>
@@ -1442,45 +1613,37 @@
               </div>
             `
           )}
-
         </div>
 
         <div class="fpCol fpColSide">
-
           ${createSectionCard(
             "Add-ons",
             "Modules actifs",
-            "",
+            "Résumé des modules et options disponibles",
             `
               <div class="fpAddonsList">
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">White label</div>
-                  <div class="fpAddonPill on">ON</div>
-                </div>
-
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">Monitors +50</div>
-                  <div class="fpAddonPill ${Number(addons.monitorsPack50 || 0) > 0 ? "on" : "off"}">${Number(addons.monitorsPack50 || 0) > 0 ? "ON" : "OFF"}</div>
-                </div>
-
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">Extra seats</div>
-                  <div class="fpAddonPill ${Number(addons.extraSeats || 0) > 0 ? "on" : "off"}">${Number(addons.extraSeats || 0) > 0 ? "ON" : "OFF"}</div>
-                </div>
-
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">Priority support</div>
-                  <div class="fpAddonPill ${addons.prioritySupport ? "on" : "off"}">${addons.prioritySupport ? "ON" : "OFF"}</div>
-                </div>
-
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">Custom domain</div>
-                  <div class="fpAddonPill ${addons.customDomain ? "on" : "off"}">${addons.customDomain ? "ON" : "OFF"}</div>
-                </div>
+                ${addons.map((a) => `
+                  <div class="fpAddonRow">
+                    <div class="fpAddonLabel">${esc(a.label)}</div>
+                    <div class="fpAddonPill ${a.enabled ? "on" : "off"}">${esc(a.text)}</div>
+                  </div>
+                `).join("")}
               </div>
             `
           )}
 
+          ${createSectionCard(
+            "Gestion",
+            "Actions utiles",
+            "Accès direct aux pages liées à la facturation",
+            `
+              ${createInlineLinks([
+                { href: "/addons.html", label: "Gérer les add-ons" },
+                { href: "/billing.html", label: "Billing FlowPoint" },
+                { href: "/pricing.html", label: "Retour pricing" },
+              ])}
+            `
+          )}
         </div>
       </div>
     `);
@@ -1492,6 +1655,7 @@
   function renderSettingsPage() {
     const s = state.orgSettings || {};
     const me = state.me || {};
+    const extraEmails = Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "";
 
     setPage(`
       ${createSectionCard(
@@ -1501,7 +1665,6 @@
         `
           <div class="fpGrid fpGridMain">
             <div class="fpCol fpColMain">
-
               <div class="fpCardInner">
                 <div class="fpCardInnerTitle">Alertes email</div>
                 <div class="fpSmall">Définis qui reçoit les alertes monitoring.</div>
@@ -1520,7 +1683,7 @@
                     id="fpSettingsExtraEmails"
                     class="fpInput"
                     placeholder="mail@site.com, mail2@site.com"
-                    value="${esc(Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "")}"
+                    value="${esc(extraEmails)}"
                   />
                 </div>
 
@@ -1529,10 +1692,39 @@
                 </div>
               </div>
 
+              <div class="fpCardInner">
+                <div class="fpCardInnerTitle">Préférences interface</div>
+                <div class="fpSmall">Le mode clair ou sombre suit automatiquement les paramètres du navigateur.</div>
+
+                <div class="fpToggleRow">
+                  <div class="fpToggleText">
+                    <div class="fpToggleTitle">Thème automatique</div>
+                    <div class="fpToggleHint">Basé sur les préférences système du client</div>
+                  </div>
+                  <div class="fpSwitch on" aria-hidden="true"></div>
+                </div>
+
+                <div class="fpToggleRow">
+                  <div class="fpToggleText">
+                    <div class="fpToggleTitle">Statut temps réel</div>
+                    <div class="fpToggleHint">Affichage de l’état courant du dashboard</div>
+                  </div>
+                  <div class="fpSwitch on" aria-hidden="true"></div>
+                </div>
+              </div>
+
+              <div class="fpCardInner">
+                <div class="fpCardInnerTitle">Liens utiles</div>
+                <div class="fpSmall">Accès rapide aux pages liées au compte.</div>
+                ${createInlineLinks([
+                  { href: "/billing.html", label: "Billing FlowPoint" },
+                  { href: "/pricing.html", label: "Retour pricing" },
+                  { href: "/addons.html", label: "Voir add-ons" },
+                ])}
+              </div>
             </div>
 
             <div class="fpCol fpColSide">
-
               <div class="fpCardInner">
                 <div class="fpCardInnerTitle">Informations du compte</div>
                 <div class="fpSmall">Résumé de l’espace actuellement connecté.</div>
@@ -1543,9 +1735,18 @@
                   <div class="fpSettingsRow"><span>Rôle</span><strong>${esc(cap(me.role || "owner"))}</strong></div>
                   <div class="fpSettingsRow"><span>Destinataires</span><strong>${esc(recipientsLabel(s.alertRecipients))}</strong></div>
                   <div class="fpSettingsRow"><span>Essai</span><strong>${esc(me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "—")}</strong></div>
+                  <div class="fpSettingsRow"><span>Dernière synchro</span><strong>${esc(state.lastLoadedAt ? formatDate(state.lastLoadedAt) : "—")}</strong></div>
                 </div>
               </div>
 
+              <div class="fpCardInner">
+                <div class="fpCardInnerTitle">Données utiles</div>
+                <div class="fpSettingsList">
+                  <div class="fpSettingsRow"><span>Audits</span><strong>${esc(formatUsage(me.usage?.audits))}</strong></div>
+                  <div class="fpSettingsRow"><span>Exports</span><strong>${esc(formatUsage(me.usage?.exports))}</strong></div>
+                  <div class="fpSettingsRow"><span>Monitors</span><strong>${esc(formatUsage(me.usage?.monitors))}</strong></div>
+                </div>
+              </div>
             </div>
           </div>
         `
@@ -1557,14 +1758,6 @@
       if (ok) loadData({ silent: true });
     });
   }
-    /* =========================================================
-     PARTIE 4/4
-     - routing missions
-     - router
-     - data loading
-     - events
-     - init
-     ========================================================= */
 
   function openMissionPage(id) {
     const mission = state.missions.find((m) => m.id === id);
@@ -1746,6 +1939,7 @@
 
       state.lastLoadedAt = new Date().toISOString();
 
+      hydrateLogos();
       hydrateSidebarAccount();
       hydrateTopbar();
       renderRoute();
@@ -1786,6 +1980,11 @@
     });
   }
 
+  function logout() {
+    clearAuth();
+    window.location.href = "/login.html";
+  }
+
   function initEvents() {
     window.addEventListener("hashchange", () => {
       state.route = ROUTES.has(location.hash) ? location.hash : "#overview";
@@ -1813,8 +2012,8 @@
     });
 
     els.rangeSelect?.addEventListener("change", () => {
-      const v = Number(els.rangeSelect.value || 30);
-      state.rangeDays = [30, 7, 3].includes(v) ? v : 30;
+      const raw = String(els.rangeSelect.value || "30");
+      state.rangeDays = raw === "7" ? 7 : raw === "3" ? 3 : 30;
       loadData();
     });
 
@@ -1841,20 +2040,23 @@
       await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
     });
 
-    els.openBillingSide?.addEventListener("click", () => {
+    els.btnOpenBillingSide?.addEventListener("click", () => {
       location.hash = "#billing";
+      closeSidebar();
     });
 
-    els.openSettingsSide?.addEventListener("click", () => {
+    els.btnOpenSettingsSide?.addEventListener("click", () => {
       location.hash = "#settings";
+      closeSidebar();
     });
 
-    els.logoutBtn?.addEventListener("click", logout);
+    els.btnLogout?.addEventListener("click", logout);
 
     bindGlobalActions();
   }
 
   function init() {
+    hydrateLogos();
     resetMissionsIfNeeded();
     state.missions = loadMissions();
 
@@ -1865,13 +2067,12 @@
 
     if (els.rangeSelect) {
       els.rangeSelect.value = String(state.rangeDays);
+      if (!els.rangeSelect.value) els.rangeSelect.value = "30";
     }
 
-    fixLogos();
     initEvents();
     loadData();
   }
 
   document.addEventListener("DOMContentLoaded", init);
 })();
-  
