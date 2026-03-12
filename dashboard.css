@@ -2294,3 +2294,83 @@ a{
     height:100dvh;
   }
 }
+/* ===== PATCH FINAL FLOWPOINT ===== */
+
+/* corrige le select blanc / vide */
+#fpRangeSelect{
+  color:var(--fpText) !important;
+  -webkit-text-fill-color:var(--fpText) !important;
+  background-color:rgba(255,255,255,.04) !important;
+}
+
+#fpRangeSelect option{
+  color:#fff;
+  background:#182452;
+}
+
+@media (prefers-color-scheme: light){
+  #fpRangeSelect{
+    color:var(--fpText) !important;
+    -webkit-text-fill-color:var(--fpText) !important;
+    background-color:rgba(255,255,255,.9) !important;
+  }
+
+  #fpRangeSelect option{
+    color:#10182b;
+    background:#ffffff;
+  }
+}
+
+/* supprime le petit bloc logo "F" à côté du bonjour */
+.fpHelloLogo{
+  display:none !important;
+}
+
+/* le header reste bien aligné sans ce logo */
+.fpHelloHead{
+  display:block !important;
+}
+
+/* évite des trous trop visibles */
+.fpColSide > .fpCard,
+.fpColMain > .fpCard{
+  min-height:unset;
+}
+
+/* meilleure homogénéité visuelle */
+.fpMiniStat,
+.fpInfoRow,
+.fpRowCard,
+.fpStatCard,
+.fpReportCard,
+.fpBillingCard,
+.fpAddonRow,
+.fpSettingsRow,
+.fpToggleRow,
+.fpQuotaRow{
+  min-height:86px;
+}
+
+/* liens utilitaires */
+.fpInlineLinks{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:14px;
+}
+
+.fpInlineLinks a{
+  min-height:40px;
+  padding:0 14px;
+  border-radius:999px;
+  border:1px solid var(--fpBorderStrong);
+  background:rgba(255,255,255,.04);
+  display:inline-flex;
+  align-items:center;
+  font-size:13px;
+  font-weight:800;
+}
+
+.fpInlineLinks a:hover{
+  background:rgba(255,255,255,.08);
+}
