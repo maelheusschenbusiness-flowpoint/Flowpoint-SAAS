@@ -1,104 +1,362 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<title>FlowPoint - Billing</title>
-<link rel="stylesheet" href="dashboard.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FlowPoint — Billing</title>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
+  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
+  <link rel="stylesheet" href="/dashboard.css" />
 </head>
-
 <body>
+  <div class="fpOverlay" id="fpOverlay"></div>
 
-<div class="dashboard">
+  <div class="fpAppShell">
+    <aside id="sidebar" class="fpSidebar">
+      <div class="fpSidebarTop">
+        <div class="fpBrand">
+          <div class="fpBrandLogo">
+            <img
+              src="/assets/flowpoint-logo.svg"
+              alt="FlowPoint"
+              class="fpBrandLogoImg"
+            />
+          </div>
 
-<aside class="sidebar">
+          <div class="fpBrandText">
+            <div class="fpBrandName">FlowPoint</div>
+            <div class="fpBrandSub">Centre de contrôle</div>
+          </div>
+        </div>
 
-<div class="logo">
-<img src="flowpoint-logo.svg">
-<h2>FlowPoint</h2>
-<p>Control center</p>
-</div>
+        <nav class="fpNav">
+          <a href="/dashboard.html#overview" class="fpNavItem"><span class="fpNavDot"></span>Overview</a>
+          <a href="/dashboard.html#missions" class="fpNavItem"><span class="fpNavDot"></span>Missions</a>
+          <a href="/dashboard.html#audits" class="fpNavItem"><span class="fpNavDot"></span>Audits</a>
+          <a href="/dashboard.html#monitors" class="fpNavItem"><span class="fpNavDot"></span>Monitors</a>
+          <a href="/dashboard.html#reports" class="fpNavItem"><span class="fpNavDot"></span>Rapports</a>
+          <a href="/dashboard.html#billing" class="fpNavItem active"><span class="fpNavDot"></span>Facturation</a>
+          <a href="/dashboard.html#settings" class="fpNavItem"><span class="fpNavDot"></span>Paramètres</a>
+        </nav>
+      </div>
 
-<nav>
+      <div class="fpSidebarBottom">
+        <div class="fpAccountCard">
+          <div class="fpCardKicker">Navigation</div>
 
-<a href="dashboard.html#overview">Overview</a>
-<a href="dashboard.html#missions">Missions</a>
-<a href="dashboard.html#audits">Audits</a>
-<a href="dashboard.html#monitors">Monitors</a>
-<a href="dashboard.html#reports">Reports</a>
-<a class="active">Billing</a>
-<a href="dashboard.html#settings">Paramètres</a>
+          <div class="fpSidebarActions">
+            <a class="fpBtn fpBtnGhost fpBtnFull" href="/pricing.html">Retour pricing</a>
+            <a class="fpBtn fpBtnGhost fpBtnFull" href="/addons.html">Voir les add-ons</a>
+            <a class="fpBtn fpBtnGhost fpBtnFull" href="/dashboard.html">Retour dashboard</a>
+            <a class="fpBtn fpBtnDanger fpBtnFull" href="/login.html">Log out</a>
+          </div>
+        </div>
+      </div>
+    </aside>
 
-</nav>
+    <main class="fpMain">
+      <header class="fpTopbar">
+        <div class="fpTopbarLeft">
+          <button id="fpMenuBtn" class="fpMenuBtn" type="button" aria-label="Ouvrir le menu">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
 
-</aside>
+          <div class="fpHelloWrap">
+            <div class="fpHelloHead">
+              <div class="fpHelloBlock">
+                <div class="fpHelloKicker">FLOWPOINT</div>
+                <h1 class="fpHelloTitle">Billing</h1>
+                <div class="fpHelloSub">Plan · Paiement · Add-ons · Gestion d’abonnement</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
+        <div class="fpTopbarRight">
+          <a class="fpBtn fpBtnGhost" href="/pricing.html">Pricing</a>
+          <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
+          <a class="fpBtn fpBtnPrimary" href="/dashboard.html#billing">Dashboard</a>
 
-<main class="content">
+          <div class="fpStatusPill">
+            <span class="fpStatusDot"></span>
+            <span>Billing prêt</span>
+          </div>
+        </div>
+      </header>
 
-<h1>Facturation</h1>
+      <div class="fpPageContainer">
+        <section class="fpHero fpHeroWide">
+          <div class="fpHeroContent">
+            <div class="fpCardKicker">Facturation</div>
+            <h2 class="fpHeroTitle">Ton espace billing</h2>
+            <p class="fpHeroText">
+              Gère ton plan, tes paiements, tes modules actifs et tes prochaines évolutions
+              depuis une interface plus propre et cohérente avec le reste de FlowPoint.
+            </p>
 
-<div class="billing-grid">
+            <div class="fpHeroStats">
+              <div class="fpMiniStat">
+                <div class="fpMiniStatLabel">Plan actuel</div>
+                <div class="fpMiniStatValue">Ultra</div>
+                <div class="fpMiniStatMeta">Accès complet FlowPoint</div>
+              </div>
 
-<div class="card">
+              <div class="fpMiniStat">
+                <div class="fpMiniStatLabel">Statut</div>
+                <div class="fpMiniStatValue">Trialing</div>
+                <div class="fpMiniStatMeta">Essai actif</div>
+              </div>
 
-<h3>Plan actuel</h3>
+              <div class="fpMiniStat">
+                <div class="fpMiniStatLabel">Prochain paiement</div>
+                <div class="fpMiniStatValue">13 mars</div>
+                <div class="fpMiniStatMeta">Facturation suivante estimée</div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-<div class="plan-box">
+        <div class="fpGrid fpGridMain">
+          <div class="fpCol fpColMain">
+            <section class="fpCard">
+              <div class="fpCardHead">
+                <div>
+                  <div class="fpCardKicker">Abonnement</div>
+                  <h2 class="fpSectionTitle">Plan actuel</h2>
+                  <p class="fpCardText">
+                    Vue claire de ton abonnement principal, de son état et des informations liées au cycle.
+                  </p>
+                </div>
+              </div>
 
-<div>
-<p>Plan</p>
-<h2>Ultra</h2>
-</div>
+              <div class="fpBillingGrid">
+                <div class="fpBillingCard">
+                  <div class="fpBillingTitle">Plan</div>
+                  <div class="fpBillingPlan">Ultra</div>
+                  <div class="fpBillingStatus">149€/mois</div>
+                </div>
 
-<div>
-<p>Status</p>
-<h2>Trialing</h2>
-</div>
+                <div class="fpBillingCard">
+                  <div class="fpBillingTitle">Statut</div>
+                  <div class="fpBillingPlan">Trialing</div>
+                  <div class="fpBillingStatus">Essai actif actuellement</div>
+                </div>
 
-<div>
-<p>Prochain paiement</p>
-<h2>13 mars</h2>
-</div>
+                <div class="fpBillingCard">
+                  <div class="fpBillingTitle">Prochain paiement</div>
+                  <div class="fpBillingPlan">13 mars</div>
+                  <div class="fpBillingStatus">Date estimée du prochain prélèvement</div>
+                </div>
 
-</div>
+                <div class="fpBillingCard">
+                  <div class="fpBillingTitle">Workspace</div>
+                  <div class="fpBillingPlan">FlowPoint</div>
+                  <div class="fpBillingStatus">Compte principal connecté</div>
+                </div>
+              </div>
+            </section>
 
-</div>
+            <section class="fpCard">
+              <div class="fpCardHead">
+                <div>
+                  <div class="fpCardKicker">Paiement</div>
+                  <h2 class="fpSectionTitle">Moyen de paiement</h2>
+                  <p class="fpCardText">
+                    Carte utilisée pour les paiements et accès rapide aux modifications.
+                  </p>
+                </div>
+              </div>
 
+              <div class="fpRows">
+                <div class="fpRowCard">
+                  <div class="fpRowMain">
+                    <div class="fpRowTitle">Carte enregistrée</div>
+                    <div class="fpRowMeta">Mastercard •••• 9515</div>
+                  </div>
+                  <div class="fpRowRight">
+                    <span class="fpBadge up">
+                      <span class="fpBadgeDot"></span>
+                      Valide
+                    </span>
+                  </div>
+                </div>
 
-<div class="card">
+                <div class="fpRowCard">
+                  <div class="fpRowMain">
+                    <div class="fpRowTitle">Facturation</div>
+                    <div class="fpRowMeta">Mensuelle · devise EUR</div>
+                  </div>
+                  <div class="fpRowRight">
+                    <span class="fpBadge">
+                      <span class="fpBadgeDot"></span>
+                      EUR
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-<h3>Moyen de paiement</h3>
+              <div class="fpDetailActions">
+                <button class="fpBtn fpBtnPrimary" type="button">Modifier la carte</button>
+                <button class="fpBtn fpBtnGhost" type="button">Télécharger facture</button>
+              </div>
+            </section>
 
-<p>Carte enregistrée</p>
+            <section class="fpCard">
+              <div class="fpCardHead">
+                <div>
+                  <div class="fpCardKicker">Quotas</div>
+                  <h2 class="fpSectionTitle">Limites du plan</h2>
+                  <p class="fpCardText">
+                    Lecture rapide de la consommation et des volumes inclus dans ton abonnement.
+                  </p>
+                </div>
+              </div>
 
-<div class="payment-card">
-Mastercard •••• 9515
-</div>
+              <div class="fpQuotaList">
+                <div class="fpQuotaRow"><span>Audits</span><strong>0 / 2000</strong></div>
+                <div class="fpQuotaRow"><span>Exports</span><strong>0 / 300</strong></div>
+                <div class="fpQuotaRow"><span>PDF</span><strong>0 / 150</strong></div>
+                <div class="fpQuotaRow"><span>Monitors</span><strong>0 / 300</strong></div>
+                <div class="fpQuotaRow"><span>Utilisateurs</span><strong>1 / 10</strong></div>
+              </div>
+            </section>
+          </div>
 
-<button class="btn">Modifier la carte</button>
+          <div class="fpCol fpColSide">
+            <section class="fpCard">
+              <div class="fpCardHead">
+                <div>
+                  <div class="fpCardKicker">Actions</div>
+                  <h2 class="fpSectionTitle">Gestion abonnement</h2>
+                  <p class="fpCardText">
+                    Les actions principales de gestion réunies au même endroit.
+                  </p>
+                </div>
+              </div>
 
-</div>
+              <div class="fpReportsGrid" style="grid-template-columns:1fr;">
+                <div class="fpReportCard">
+                  <div class="fpReportTitle">Changer de plan</div>
+                  <div class="fpReportMeta">Passer sur une autre formule selon tes besoins.</div>
+                  <div class="fpDetailActions">
+                    <button class="fpBtn fpBtnPrimary" type="button">Changer de plan</button>
+                  </div>
+                </div>
 
+                <div class="fpReportCard">
+                  <div class="fpReportTitle">Portail Stripe</div>
+                  <div class="fpReportMeta">Accéder à la gestion externe du paiement.</div>
+                  <div class="fpDetailActions">
+                    <button class="fpBtn fpBtnGhost" type="button">Accéder portail Stripe</button>
+                  </div>
+                </div>
 
-<div class="card">
+                <div class="fpReportCard">
+                  <div class="fpReportTitle">Add-ons</div>
+                  <div class="fpReportMeta">Gérer les modules complémentaires et options actives.</div>
+                  <div class="fpDetailActions">
+                    <a class="fpBtn fpBtnGhost" href="/addons.html">Gérer mes add-ons</a>
+                  </div>
+                </div>
+              </div>
+            </section>
 
-<h3>Actions abonnement</h3>
+            <section class="fpCard">
+              <div class="fpCardHead">
+                <div>
+                  <div class="fpCardKicker">Add-ons</div>
+                  <h2 class="fpSectionTitle">Modules actifs</h2>
+                  <p class="fpCardText">
+                    Résumé des extensions principales actuellement associées au compte.
+                  </p>
+                </div>
+              </div>
 
-<button class="btn big">
-Changer de plan
-</button>
+              <div class="fpAddonsList">
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">White label</div>
+                  <div class="fpAddonPill on">ON</div>
+                </div>
 
-<button class="btn secondary">
-Accéder portail Stripe
-</button>
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">Monitors +50</div>
+                  <div class="fpAddonPill off">OFF</div>
+                </div>
 
-</div>
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">Extra seats</div>
+                  <div class="fpAddonPill off">OFF</div>
+                </div>
 
-</div>
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">Priority support</div>
+                  <div class="fpAddonPill off">OFF</div>
+                </div>
 
-</main>
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">Custom domain</div>
+                  <div class="fpAddonPill off">OFF</div>
+                </div>
 
-</div>
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">Advanced reports</div>
+                  <div class="fpAddonPill off">OFF</div>
+                </div>
+              </div>
 
+              <div class="fpDetailActions">
+                <a class="fpBtn fpBtnPrimary" href="/addons.html">Voir tous les add-ons</a>
+              </div>
+            </section>
+
+            <section class="fpCard">
+              <div class="fpCardHead">
+                <div>
+                  <div class="fpCardKicker">Liens utiles</div>
+                  <h2 class="fpSectionTitle">Navigation</h2>
+                  <p class="fpCardText">
+                    Retour rapide vers les autres espaces importants.
+                  </p>
+                </div>
+              </div>
+
+              <div class="fpInlineLinks">
+                <a href="/dashboard.html#overview">Dashboard</a>
+                <a href="/pricing.html">Pricing</a>
+                <a href="/addons.html">Add-ons</a>
+                <a href="/dashboard.html#settings">Paramètres</a>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const menuBtn = document.getElementById("fpMenuBtn");
+      const sidebar = document.getElementById("sidebar");
+      const overlay = document.getElementById("fpOverlay");
+
+      function openSidebar() {
+        sidebar?.classList.add("open");
+        overlay?.classList.add("show");
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeSidebar() {
+        sidebar?.classList.remove("open");
+        overlay?.classList.remove("show");
+        document.body.style.overflow = "";
+      }
+
+      menuBtn?.addEventListener("click", openSidebar);
+      overlay?.addEventListener("click", closeSidebar);
+    })();
+  </script>
 </body>
 </html>
