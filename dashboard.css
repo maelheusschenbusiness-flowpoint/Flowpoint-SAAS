@@ -2374,3 +2374,45 @@ a{
 .fpInlineLinks a:hover{
   background:rgba(255,255,255,.08);
 }
+/* ===== BILLING.HTML PATCH ===== */
+
+.fpInlineLinks{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:14px;
+}
+
+.fpInlineLinks a{
+  min-height:40px;
+  padding:0 14px;
+  border-radius:999px;
+  border:1px solid var(--fpBorderStrong);
+  background:rgba(255,255,255,.04);
+  display:inline-flex;
+  align-items:center;
+  font-size:13px;
+  font-weight:800;
+}
+
+.fpInlineLinks a:hover{
+  background:rgba(255,255,255,.08);
+}
+
+@media (prefers-color-scheme: light){
+  .fpInlineLinks a{
+    background:rgba(255,255,255,.78);
+    color:var(--fpText);
+  }
+}
+
+@media (max-width:760px){
+  .fpInlineLinks{
+    flex-direction:column;
+  }
+
+  .fpInlineLinks a{
+    width:100%;
+    justify-content:center;
+  }
+}
