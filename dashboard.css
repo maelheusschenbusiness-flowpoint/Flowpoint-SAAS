@@ -1,9 +1,7 @@
 :root{
   --fpBg:#070b19;
   --fpBg2:#0b1230;
-  --fpPanel:#0d1533;
-  --fpPanel2:#121b42;
-  --fpPanel3:#0e1638;
+  --fpBg3:#081126;
 
   --fpBorder:rgba(255,255,255,.08);
   --fpBorderStrong:rgba(255,255,255,.14);
@@ -15,72 +13,39 @@
   --fpBrand:#2f5bff;
   --fpBrand2:#1b45ff;
   --fpBrand3:#5b7cff;
-  --fpBrandSoft:rgba(47,91,255,.16);
   --fpBrandGlow:0 16px 40px rgba(47,91,255,.30);
 
   --fpSuccess:#22c55e;
   --fpWarning:#f59e0b;
   --fpDanger:#ef4444;
 
-  --fpRadius:24px;
-  --fpRadiusMd:18px;
-  --fpRadiusSm:14px;
-
   --fpShadow:0 18px 40px rgba(0,0,0,.22);
   --fpShadowLg:0 28px 70px rgba(0,0,0,.32);
 
   --fpSidebarW:320px;
-  --fpTopGap:20px;
 }
 
-*{
-  box-sizing:border-box;
-}
-
-html,
-body{
-  margin:0;
-  padding:0;
-  min-height:100%;
-}
-
-html{
-  scroll-behavior:smooth;
-}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;min-height:100%}
+html{scroll-behavior:smooth}
 
 body{
   font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
   color:var(--fpText);
   background:
-    radial-gradient(1000px 500px at 12% 0%, rgba(47,91,255,.34), transparent 60%),
-    radial-gradient(900px 500px at 100% 8%, rgba(91,124,255,.22), transparent 58%),
-    radial-gradient(900px 700px at 50% 100%, rgba(27,69,255,.16), transparent 62%),
-    linear-gradient(180deg, var(--fpBg), var(--fpBg2));
+    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
+    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
+    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
+    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+  background-attachment:fixed;
   overflow-x:hidden;
 }
 
-img,
-svg{
-  display:block;
-  max-width:100%;
-}
+img,svg{display:block;max-width:100%}
+button,input,select,textarea{font:inherit}
+a{color:inherit;text-decoration:none}
 
-button,
-input,
-select,
-textarea{
-  font:inherit;
-}
-
-a{
-  color:inherit;
-  text-decoration:none;
-}
-
-.fpSelect,
-.fpInput,
-.fpTextarea,
-.fpBtn{
+.fpSelect,.fpInput,.fpTextarea,.fpBtn{
   appearance:none;
   -webkit-appearance:none;
   -moz-appearance:none;
@@ -104,14 +69,11 @@ a{
 
 .fpAppShell{
   display:grid;
-  grid-template-columns:var(--fpSidebarW) 1fr;
+  grid-template-columns:var(--fpSidebarW) minmax(0,1fr);
   min-height:100vh;
 }
 
-/* =========================================================
-   SIDEBAR
-   ========================================================= */
-
+/* SIDEBAR */
 .fpSidebar{
   position:sticky;
   top:0;
@@ -132,10 +94,7 @@ a{
   -webkit-overflow-scrolling:touch;
 }
 
-.fpSidebar::-webkit-scrollbar{
-  width:10px;
-}
-
+.fpSidebar::-webkit-scrollbar{width:10px}
 .fpSidebar::-webkit-scrollbar-thumb{
   background:rgba(255,255,255,.12);
   border-radius:999px;
@@ -143,11 +102,8 @@ a{
   background-clip:padding-box;
 }
 
-.fpSidebarTop{
-  display:flex;
-  flex-direction:column;
-  gap:22px;
-}
+.fpSidebarTop{display:flex;flex-direction:column;gap:22px}
+.fpSidebarBottom{margin-top:auto;padding-top:4px}
 
 .fpBrand{
   display:flex;
@@ -182,17 +138,13 @@ a{
   border-radius:inherit;
 }
 
-.fpBrandText{
-  min-width:0;
-}
-
+.fpBrandText{min-width:0}
 .fpBrandName{
   font-size:20px;
   font-weight:800;
   line-height:1.05;
   letter-spacing:-.03em;
 }
-
 .fpBrandSub{
   margin-top:4px;
   font-size:13px;
@@ -246,11 +198,6 @@ a{
   box-shadow:0 0 0 3px rgba(255,255,255,.06);
 }
 
-.fpSidebarBottom{
-  margin-top:auto;
-  padding-top:4px;
-}
-
 .fpAccountCard{
   border-radius:24px;
   border:1px solid var(--fpBorder);
@@ -271,11 +218,16 @@ a{
   margin-bottom:14px;
 }
 
-.fpAccountRows{
+.fpAccountRows,
+.fpUsageStack,
+.fpSidebarActions{
   display:flex;
   flex-direction:column;
-  gap:10px;
 }
+
+.fpAccountRows{gap:10px}
+.fpUsageStack{gap:14px;margin-top:16px}
+.fpSidebarActions{gap:10px;margin-top:18px}
 
 .fpAccountRow{
   display:flex;
@@ -291,22 +243,11 @@ a{
   font-size:15px;
   font-weight:800;
   text-align:right;
-  max-width:150px;
+  max-width:160px;
   overflow-wrap:anywhere;
 }
 
-.fpUsageStack{
-  margin-top:16px;
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-}
-
-.fpUsageItem{
-  display:flex;
-  flex-direction:column;
-  gap:7px;
-}
+.fpUsageItem{display:flex;flex-direction:column;gap:7px}
 
 .fpUsageTop{
   display:flex;
@@ -335,36 +276,24 @@ a{
   width:0%;
   height:100%;
   border-radius:999px;
-  background:
-    linear-gradient(90deg, var(--fpBrand3), var(--fpBrand), var(--fpBrand2));
+  background:linear-gradient(90deg, var(--fpBrand3), var(--fpBrand), var(--fpBrand2));
   box-shadow:0 0 20px rgba(47,91,255,.4);
 }
 
-.fpSidebarActions{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  margin-top:18px;
-}
-
-/* =========================================================
-   MAIN / TOPBAR
-   ========================================================= */
-
+/* MAIN */
 .fpMain{
   min-width:0;
-  min-height:0;
   padding:22px;
   display:flex;
   flex-direction:column;
-  gap:18px;
+  gap:22px;
 }
 
 .fpTopbar{
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
-  gap:16px;
+  gap:18px;
 }
 
 .fpTopbarLeft{
@@ -377,7 +306,7 @@ a{
 .fpTopbarRight{
   display:flex;
   align-items:flex-start;
-  gap:10px;
+  gap:12px;
   flex-wrap:wrap;
   justify-content:flex-end;
 }
@@ -407,42 +336,11 @@ a{
   display:block;
 }
 
-.fpHelloWrap{
-  min-width:0;
-}
+.fpHelloWrap{min-width:0}
+.fpHelloHead{display:block}
+.fpHelloLogo{display:none !important}
 
-.fpHelloHead{
-  display:flex;
-  align-items:flex-start;
-  gap:16px;
-}
-
-.fpHelloLogo{
-  width:64px;
-  height:64px;
-  border-radius:20px;
-  overflow:hidden;
-  flex:0 0 auto;
-  background:
-    radial-gradient(circle at 32% 24%, rgba(255,255,255,.18), transparent 36%),
-    linear-gradient(180deg, var(--fpBrand3), var(--fpBrand), var(--fpBrand2));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.18),
-    inset 0 -8px 18px rgba(0,0,0,.18),
-    0 18px 34px rgba(47,91,255,.26);
-}
-
-.fpHelloLogoImg{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  border-radius:inherit;
-}
-
-.fpHelloBlock{
-  min-width:0;
-}
-
+.fpHelloBlock{min-width:0}
 .fpHelloKicker{
   font-size:12px;
   font-weight:900;
@@ -451,7 +349,6 @@ a{
   opacity:.92;
   text-transform:uppercase;
 }
-
 .fpHelloTitle{
   margin:4px 0 0;
   font-size:54px;
@@ -460,7 +357,6 @@ a{
   font-weight:900;
   overflow-wrap:anywhere;
 }
-
 .fpHelloSub{
   margin:10px 0 0;
   font-size:17px;
@@ -469,29 +365,28 @@ a{
   line-height:1.35;
 }
 
-.fpSelect,
-.fpBtn,
-.fpStatusPill{
+.fpSelect,.fpBtn,.fpStatusPill{
   min-height:50px;
   border-radius:16px;
 }
 
 .fpSelect{
-  min-width:190px;
+  min-width:210px;
   padding:0 16px;
-  padding-right:44px;
+  padding-right:48px;
   border:1px solid var(--fpBorderStrong);
-  color:#fff;
+  color:var(--fpText);
   outline:none;
   box-shadow:var(--fpShadow);
   font-weight:800;
   cursor:pointer;
-  background-image:
+  background:
     linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)),
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='white'><path d='M7 10l5 5 5-5z'/></svg>");
   background-repeat:no-repeat,no-repeat;
-  background-position:center center,right 14px center;
-  background-size:auto,18px;
+  background-position:0 0,right 14px center;
+  background-size:100% 100%,18px;
+  background-clip:padding-box;
 }
 
 .fpSelect option{
@@ -512,13 +407,8 @@ a{
   transition:.18s ease;
 }
 
-.fpBtn:hover{
-  transform:translateY(-1px);
-}
-
-.fpBtnFull{
-  width:100%;
-}
+.fpBtn:hover{transform:translateY(-1px)}
+.fpBtnFull{width:100%}
 
 .fpBtnPrimary{
   color:#fff;
@@ -531,8 +421,7 @@ a{
 .fpBtnGhost{
   color:#fff;
   border:1px solid var(--fpBorderStrong);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
 }
 
 .fpBtnSoft{
@@ -556,9 +445,7 @@ a{
   font-size:14px;
 }
 
-.fpExportWrap{
-  position:relative;
-}
+.fpExportWrap{position:relative}
 
 .fpExportMenu{
   position:absolute;
@@ -575,9 +462,7 @@ a{
   overflow:hidden;
 }
 
-.fpExportMenu.show{
-  display:block;
-}
+.fpExportMenu.show{display:block}
 
 .fpExportMenu button{
   width:100%;
@@ -592,9 +477,7 @@ a{
   font-weight:700;
 }
 
-.fpExportMenu button:hover{
-  background:rgba(255,255,255,.05);
-}
+.fpExportMenu button:hover{background:rgba(255,255,255,.05)}
 
 .fpStatusPill{
   display:flex;
@@ -602,8 +485,7 @@ a{
   gap:10px;
   padding:0 16px;
   border:1px solid var(--fpBorderStrong);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
   box-shadow:var(--fpShadow);
   font-size:14px;
   font-weight:800;
@@ -618,29 +500,36 @@ a{
   background:var(--fpSuccess);
   box-shadow:0 0 0 6px rgba(34,197,94,.14);
 }
-
 .fpStatusDot.warn{
   background:var(--fpWarning);
   box-shadow:0 0 0 6px rgba(245,158,11,.14);
 }
-
 .fpStatusDot.danger{
   background:var(--fpDanger);
   box-shadow:0 0 0 6px rgba(239,68,68,.14);
 }
 
-/* =========================================================
-   GLOBAL PAGE / GRID
-   ========================================================= */
-
+/* GLOBAL */
 .fpPageContainer{
   display:flex;
   flex-direction:column;
-  gap:18px;
+  gap:20px;
   min-width:0;
 }
 
-.fpGrid{
+.fpGrid,
+.fpGridMain,
+.fpMissionPageGrid,
+.fpBillingGrid,
+.fpReportsGrid,
+.fpStatsGrid,
+.fpInfoGrid,
+.fpBottomGrid,
+.fpPageGrid,
+.fpPageTwoCols,
+.fpHeroStats,
+.fpPlanGrid,
+.fpProjectStats{
   display:grid;
   gap:18px;
 }
@@ -650,6 +539,30 @@ a{
   align-items:start;
 }
 
+.fpMissionPageGrid{
+  grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);
+  align-items:start;
+}
+
+.fpBillingGrid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+
+.fpReportsGrid,
+.fpStatsGrid{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+
+.fpStatsGridSingle{grid-template-columns:1fr}
+
+.fpInfoGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.fpBottomGrid{grid-template-columns:1.2fr 1fr}
+.fpPageGrid{grid-template-columns:1.2fr .8fr}
+.fpPageTwoCols{grid-template-columns:1fr 1fr}
+.fpHeroStats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.fpPlanGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.fpProjectStats{grid-template-columns:repeat(3,minmax(0,1fr))}
+
 .fpCol{
   min-width:0;
   display:flex;
@@ -657,49 +570,30 @@ a{
   gap:18px;
 }
 
-.fpColMain,
-.fpColSide{
-  min-width:0;
-}
+.fpColMain,.fpColSide,.fpPageWrap,.fpCard,.fpCardInner,.fpPageHero{min-width:0}
 
-.fpPageWrap,
+/* CARDS */
 .fpCard,
 .fpCardInner,
-.fpPageHero{
-  min-width:0;
+.fpMiniStat,
+.fpReportCard,
+.fpBillingCard,
+.fpStatCard,
+.fpTextPanel,
+.fpRowCard,
+.fpInfoRow,
+.fpInfoBox,
+.fpMissionCard,
+.fpSettingsRow,
+.fpToggleRow,
+.fpQuotaRow,
+.fpAddonRow,
+.fpTimelineItem,
+.fpActionItem,
+.fpPlanCard,
+.fpAccountCard{
+  box-shadow:var(--fpShadow);
 }
-
-.fpBottomGrid{
-  display:grid;
-  grid-template-columns:1.2fr 1fr;
-  gap:16px;
-}
-
-.fpBottomGrid > .fpCard{
-  min-width:0;
-}
-
-.fpPageGrid{
-  display:grid;
-  grid-template-columns:1.2fr .8fr;
-  gap:16px;
-}
-
-.fpPageStack{
-  display:flex;
-  flex-direction:column;
-  gap:16px;
-}
-
-.fpPageTwoCols{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:16px;
-}
-
-/* =========================================================
-   CARDS / TYPO
-   ========================================================= */
 
 .fpCard{
   position:relative;
@@ -709,8 +603,7 @@ a{
   background:
     radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.12), transparent 55%),
     linear-gradient(180deg, rgba(17,25,59,.96), rgba(12,18,44,.96));
-  box-shadow:var(--fpShadow);
-  padding:22px;
+  padding:24px;
 }
 
 .fpCardAccent{
@@ -725,7 +618,6 @@ a{
   background:
     radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.10), transparent 55%),
     linear-gradient(180deg, rgba(17,25,59,.96), rgba(12,18,44,.96));
-  box-shadow:var(--fpShadow);
   padding:22px;
 }
 
@@ -733,7 +625,7 @@ a{
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
-  gap:14px;
+  gap:16px;
 }
 
 .fpCardActions,
@@ -755,7 +647,6 @@ a{
   font-weight:900;
   overflow-wrap:anywhere;
 }
-
 .fpCardInnerTitle{
   font-size:34px;
   line-height:1.02;
@@ -763,7 +654,6 @@ a{
   font-weight:900;
   overflow-wrap:anywhere;
 }
-
 .fpBigValue{
   font-size:30px;
   line-height:1.04;
@@ -771,30 +661,17 @@ a{
   font-weight:900;
   overflow-wrap:anywhere;
 }
-
-.fpCardText{
-  margin:10px 0 0;
+.fpCardText,
+.fpSmall,
+.fpTextPanel{
   color:var(--fpTextSoft);
   font-size:15px;
-  line-height:1.55;
+  line-height:1.6;
   font-weight:700;
 }
-
-.fpSmall{
-  margin-top:8px;
-  color:var(--fpTextSoft);
-  font-size:15px;
-  line-height:1.55;
-  font-weight:700;
-}
-
-.fpMuted{
-  color:var(--fpMuted);
-}
-
-.fpMono{
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-}
+.fpSmall{margin-top:8px}
+.fpMuted{color:var(--fpMuted)}
+.fpMono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 
 .fpEmpty{
   min-height:62px;
@@ -809,12 +686,7 @@ a{
   font-weight:700;
 }
 
-.fpPillRow{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-}
-
+.fpPillRow{display:flex;flex-wrap:wrap;gap:10px}
 .fpPill{
   min-height:42px;
   padding:0 14px;
@@ -829,10 +701,7 @@ a{
   font-weight:800;
 }
 
-/* =========================================================
-   HERO
-   ========================================================= */
-
+/* HERO */
 .fpHero{
   position:relative;
   overflow:hidden;
@@ -840,7 +709,7 @@ a{
   align-items:center;
   justify-content:space-between;
   gap:20px;
-  padding:28px;
+  padding:30px;
   border-radius:30px;
   border:1px solid var(--fpBorderStrong);
   background:
@@ -850,16 +719,8 @@ a{
   box-shadow:var(--fpShadowLg);
 }
 
-.fpHeroWide{
-  padding:30px;
-}
-
-.fpHeroLeft,
-.fpHeroContent{
-  max-width:760px;
-  min-width:0;
-}
-
+.fpHeroWide{padding:30px}
+.fpHeroLeft,.fpHeroContent{max-width:760px;min-width:0}
 .fpHeroRight{
   display:flex;
   flex-wrap:wrap;
@@ -867,7 +728,6 @@ a{
   gap:10px;
   align-items:center;
 }
-
 .fpHeroKicker{
   font-size:13px;
   font-weight:900;
@@ -876,7 +736,6 @@ a{
   color:#eef3ff;
   opacity:.92;
 }
-
 .fpHeroTitle{
   margin:8px 0 0;
   font-size:64px;
@@ -885,7 +744,6 @@ a{
   font-weight:900;
   overflow-wrap:anywhere;
 }
-
 .fpHeroText{
   margin:14px 0 0;
   max-width:760px;
@@ -895,41 +753,40 @@ a{
   font-weight:700;
 }
 
-.fpHeroStats{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:14px;
-  width:100%;
-  margin-top:18px;
-}
-
-/* =========================================================
-   MINI STATS / INFO
-   ========================================================= */
-
+/* MINI STATS */
 .fpMiniStat,
 .fpReportCard,
 .fpBillingCard,
 .fpStatCard,
 .fpTextPanel,
 .fpRowCard,
-.fpInfoRow{
+.fpInfoRow,
+.fpInfoBox,
+.fpSettingsRow,
+.fpToggleRow,
+.fpQuotaRow,
+.fpAddonRow,
+.fpTimelineItem,
+.fpActionItem,
+.fpPlanCard{
   border-radius:20px;
   border:1px solid var(--fpBorder);
   background:rgba(255,255,255,.03);
-  box-shadow:var(--fpShadow);
 }
 
 .fpMiniStat,
 .fpReportCard,
 .fpBillingCard,
 .fpStatCard,
-.fpTextPanel{
+.fpTextPanel,
+.fpInfoBox,
+.fpPlanCard{
   padding:18px;
 }
 
 .fpMiniStatLabel,
-.fpStatLabel{
+.fpStatLabel,
+.fpInfoLabel{
   font-size:12px;
   font-weight:900;
   text-transform:uppercase;
@@ -948,7 +805,21 @@ a{
 }
 
 .fpMiniStatMeta,
-.fpStatMeta{
+.fpStatMeta,
+.fpInfoHint,
+.fpBillingStatus,
+.fpReportMeta,
+.fpTimelineMeta,
+.fpActionMeta,
+.fpToggleHint,
+.fpChartLegendText,
+.fpChartInsight,
+.fpChartNote,
+.fpRowMeta,
+.fpMissionMeta,
+.fpMissionDesc,
+.fpProjectMeta,
+.fpKpiSub{
   margin-top:8px;
   color:var(--fpTextSoft);
   font-size:14px;
@@ -956,105 +827,59 @@ a{
   font-weight:700;
 }
 
-.fpInfoGrid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:14px;
-  margin-top:16px;
-}
-
-.fpInfoBox{
-  border-radius:22px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-  padding:18px;
-}
-
-.fpInfoLabel{
-  color:#eef3ff;
-  font-size:13px;
-  font-weight:900;
-  text-transform:uppercase;
-  letter-spacing:.18em;
-}
-
-.fpInfoValue{
-  margin-top:8px;
-  font-size:22px;
-  line-height:1.15;
-  font-weight:900;
-  letter-spacing:-.03em;
-  overflow-wrap:anywhere;
-}
-
-.fpInfoHint{
-  margin-top:8px;
-  color:var(--fpTextSoft);
-  font-size:14px;
-  line-height:1.5;
-  font-weight:700;
-}
-
-.fpInfoList{
+/* ROWS / TABLES */
+.fpInfoList,
+.fpRows,
+.fpMissionStack,
+.fpQuotaList,
+.fpAddonsList,
+.fpTimeline,
+.fpActionsList,
+.fpProjectBox,
+.fpTableRows{
   display:flex;
   flex-direction:column;
   gap:14px;
   margin-top:14px;
 }
 
-.fpInfoRow{
-  display:flex;
-  justify-content:space-between;
-  gap:14px;
+.fpInfoRow,
+.fpRowCard,
+.fpSettingsRow,
+.fpToggleRow,
+.fpQuotaRow,
+.fpAddonRow,
+.fpTimelineItem,
+.fpActionItem{
   padding:14px 16px;
 }
 
-.fpInfoRow strong{
+.fpInfoRow,
+.fpRowCard,
+.fpQuotaRow,
+.fpAddonRow,
+.fpTimelineItemTop,
+.fpActionItemTop{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:flex-start;
+}
+
+.fpInfoRow strong,
+.fpSettingsRow strong{
   text-align:right;
   overflow-wrap:anywhere;
 }
 
-/* =========================================================
-   TABLE / ROWS
-   ========================================================= */
-
-.fpRows{
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-  margin-top:14px;
-}
-
-.fpRowCard{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:14px;
-  padding:16px;
-}
-
-.fpRowMain{
-  min-width:0;
-  flex:1;
-}
-
-.fpRowTitle{
+.fpRowMain{min-width:0;flex:1}
+.fpRowRight{flex:0 0 auto}
+.fpRowTitle,.fpTimelineTitle,.fpActionTitle,.fpAddonLabel,.fpToggleTitle{
   font-size:15px;
   font-weight:800;
+  line-height:1.4;
   overflow-wrap:anywhere;
 }
-
-.fpRowMeta{
-  margin-top:6px;
-  font-size:13px;
-  color:var(--fpTextSoft);
-  font-weight:700;
-}
-
-.fpRowRight{
-  flex:0 0 auto;
-}
-
 .fpScore{
   font-size:24px;
   font-weight:900;
@@ -1079,13 +904,6 @@ a{
   letter-spacing:.14em;
 }
 
-.fpTableRows{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  margin-top:14px;
-}
-
 .fpTableRow{
   display:grid;
   grid-template-columns:1.6fr .8fr .7fr .8fr 1fr;
@@ -1097,8 +915,7 @@ a{
   padding:14px 16px;
 }
 
-.fpTableUrl,
-.fpUrl{
+.fpTableUrl,.fpUrl{
   overflow-wrap:anywhere;
   font-size:15px;
   font-weight:800;
@@ -1115,15 +932,9 @@ a{
   overflow:hidden;
 }
 
-.fpRowBtns{
-  display:flex;
-  justify-content:flex-start;
-}
+.fpRowBtns{display:flex;justify-content:flex-start}
 
-/* =========================================================
-   BADGES
-   ========================================================= */
-
+/* BADGES */
 .fpBadge{
   min-height:38px;
   padding:0 12px;
@@ -1136,26 +947,16 @@ a{
   font-size:13px;
   font-weight:800;
 }
-
 .fpBadgeDot{
   width:9px;
   height:9px;
   border-radius:999px;
   background:#97a2ca;
 }
+.fpBadge.up .fpBadgeDot{background:var(--fpSuccess)}
+.fpBadge.down .fpBadgeDot{background:var(--fpDanger)}
 
-.fpBadge.up .fpBadgeDot{
-  background:var(--fpSuccess);
-}
-
-.fpBadge.down .fpBadgeDot{
-  background:var(--fpDanger);
-}
-
-/* =========================================================
-   CHART
-   ========================================================= */
-
+/* CHART */
 .fpChartWrap{
   margin-top:14px;
   border-radius:24px;
@@ -1166,17 +967,15 @@ a{
   padding:18px 18px 12px;
 }
 
-.fpChartCard{
-  margin-top:14px;
-}
+.fpChartCard{margin-top:14px}
 
 .fpChartBox{
   height:330px;
   border-radius:22px;
   border:1px solid rgba(255,255,255,.08);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+  background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
   padding:12px;
+  overflow:hidden;
 }
 
 .fpChartBox canvas{
@@ -1214,68 +1013,15 @@ a{
   background:var(--fpBrand);
 }
 
-.fpChartLegendText,
-.fpChartInsight,
-.fpChartNote{
-  color:var(--fpTextSoft);
-  font-size:14px;
-  line-height:1.55;
-  font-weight:700;
-}
-
-.fpChartInsight{
-  margin-top:12px;
-}
-
-.fpChartNote{
-  margin-top:12px;
-}
-
-/* =========================================================
-   MISSIONS
-   ========================================================= */
-
-.fpMissionGrid{
-  display:grid;
-  grid-template-columns:1.2fr .8fr;
-  gap:16px;
-  margin-top:16px;
-}
-
-.fpMissionPageGrid{
-  display:grid;
-  grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);
-  gap:18px;
-  margin-top:14px;
-}
-
-.fpMissionPageMain,
-.fpMissionPageSide{
-  min-width:0;
-}
-
-.fpMissionList,
-.fpMissionStack{
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-  margin-top:14px;
-}
-
+/* MISSIONS */
 .fpMissionCard{
   display:flex;
   align-items:flex-start;
   gap:14px;
-  border-radius:22px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-  box-shadow:var(--fpShadow);
   padding:18px;
 }
 
-.fpMissionCardLarge{
-  flex-direction:column;
-}
+.fpMissionCardLarge{flex-direction:column}
 
 .fpMissionTop{
   display:flex;
@@ -1284,11 +1030,7 @@ a{
   width:100%;
 }
 
-.fpMissionBody,
-.fpMissionInfo{
-  min-width:0;
-  flex:1;
-}
+.fpMissionBody,.fpMissionInfo{min-width:0;flex:1}
 
 .fpMissionCheck{
   width:24px;
@@ -1320,21 +1062,6 @@ a{
   font-weight:900;
 }
 
-.fpMissionMeta{
-  margin-top:6px;
-  color:var(--fpTextSoft);
-  font-size:15px;
-  font-weight:700;
-}
-
-.fpMissionDesc{
-  margin-top:10px;
-  color:var(--fpMuted);
-  font-size:14px;
-  line-height:1.55;
-  font-weight:700;
-}
-
 .fpMissionActions{
   display:flex;
   gap:10px;
@@ -1342,20 +1069,10 @@ a{
   margin-top:14px;
 }
 
-.fpMissionCardLarge .fpMissionActions{
-  margin-left:38px;
-}
+.fpMissionCardLarge .fpMissionActions{margin-left:38px}
+.fpMissionAside{display:flex;flex-direction:column;gap:16px}
 
-.fpMissionAside{
-  display:flex;
-  flex-direction:column;
-  gap:16px;
-}
-
-/* =========================================================
-   SETTINGS
-   ========================================================= */
-
+/* SETTINGS */
 .fpSettingsGrid{
   display:grid;
   grid-template-columns:1fr 1fr;
@@ -1388,71 +1105,19 @@ a{
   box-shadow:none;
 }
 
-.fpInput{
-  min-height:52px;
-}
-
+.fpInput{min-height:52px}
 .fpTextarea{
   min-height:140px;
   resize:vertical;
   padding:14px 16px;
 }
-
-.fpInput::placeholder,
-.fpTextarea::placeholder{
-  color:var(--fpMuted);
-}
+.fpInput::placeholder,.fpTextarea::placeholder{color:var(--fpMuted)}
 
 .fpSettingsList{
   display:flex;
   flex-direction:column;
   gap:10px;
   margin-top:14px;
-}
-
-.fpSettingsRow{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  align-items:flex-start;
-  border-radius:16px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-  padding:14px 16px;
-}
-
-.fpSettingsRow strong{
-  text-align:right;
-  overflow-wrap:anywhere;
-}
-
-.fpToggleRow{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  border-radius:16px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-  padding:14px 16px;
-  margin-top:10px;
-}
-
-.fpToggleText{
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-}
-
-.fpToggleTitle{
-  font-size:15px;
-  font-weight:800;
-}
-
-.fpToggleHint{
-  font-size:13px;
-  color:var(--fpTextSoft);
-  font-weight:700;
 }
 
 .fpSwitch{
@@ -1483,30 +1148,22 @@ a{
   box-shadow:var(--fpBrandGlow);
 }
 
-.fpSwitch.on::after{
-  left:29px;
+.fpSwitch.on::after{left:29px}
+
+/* BILLING / ADDONS */
+.fpBillingTitle,
+.fpReportTitle{
+  font-size:18px;
+  font-weight:900;
+  line-height:1.2;
 }
 
-/* =========================================================
-   BILLING / PLANS / ADDONS
-   ========================================================= */
-
-.fpPlanGrid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:16px;
-  margin-top:16px;
-}
-
-.fpPlanCard{
-  position:relative;
-  border-radius:24px;
-  border:1px solid var(--fpBorderStrong);
-  background:
-    radial-gradient(120% 120% at 20% 0%, rgba(47,91,255,.22), transparent 58%),
-    linear-gradient(180deg, rgba(18,28,69,.98), rgba(12,18,44,.98));
-  padding:20px;
-  box-shadow:var(--fpShadow);
+.fpBillingPlan{
+  margin-top:8px;
+  font-size:34px;
+  font-weight:900;
+  letter-spacing:-.04em;
+  line-height:1;
 }
 
 .fpPlanBadge{
@@ -1557,86 +1214,6 @@ a{
   font-weight:700;
 }
 
-.fpBillingGrid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:16px;
-  margin-top:16px;
-}
-
-.fpBillingCard{
-  padding:18px;
-}
-
-.fpBillingTitle{
-  font-size:18px;
-  font-weight:900;
-  line-height:1.2;
-}
-
-.fpBillingPlan{
-  margin-top:8px;
-  font-size:34px;
-  font-weight:900;
-  letter-spacing:-.04em;
-  line-height:1;
-}
-
-.fpBillingStatus{
-  margin-top:8px;
-  color:var(--fpTextSoft);
-  font-size:14px;
-  line-height:1.5;
-  font-weight:700;
-}
-
-.fpQuotaList{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  margin-top:14px;
-}
-
-.fpQuotaRow{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  align-items:center;
-  border-radius:16px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-  padding:14px 16px;
-}
-
-.fpQuotaRow strong{
-  font-size:18px;
-  font-weight:900;
-}
-
-.fpAddonsList{
-  margin-top:14px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-
-.fpAddonRow{
-  border-radius:18px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-  padding:14px 16px;
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:14px;
-}
-
-.fpAddonLabel{
-  font-size:15px;
-  font-weight:800;
-  line-height:1.4;
-}
-
 .fpAddonPill{
   min-height:36px;
   padding:0 12px;
@@ -1662,75 +1239,12 @@ a{
   border:1px solid var(--fpBorderStrong);
 }
 
-/* =========================================================
-   TIMELINE / ACTIONS / PROJECT
-   ========================================================= */
-
-.fpTimeline,
-.fpActionsList{
-  margin-top:14px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-
-.fpTimelineItem,
-.fpActionItem{
-  border-radius:18px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-  padding:14px 16px;
-}
-
-.fpTimelineItemTop,
-.fpActionItemTop{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:14px;
-}
-
-.fpTimelineTitle,
-.fpActionTitle{
-  font-size:15px;
-  font-weight:800;
-  line-height:1.4;
-}
-
-.fpTimelineMeta,
-.fpActionMeta{
-  margin-top:6px;
-  color:var(--fpTextSoft);
-  font-size:13px;
-  line-height:1.5;
-  font-weight:700;
-}
-
-.fpProjectBox{
-  margin-top:14px;
-  display:flex;
-  flex-direction:column;
-  gap:18px;
-}
-
+/* PROJECT / KPI */
 .fpProjectName{
   font-size:24px;
   font-weight:900;
   letter-spacing:-.03em;
   overflow-wrap:anywhere;
-}
-
-.fpProjectMeta{
-  margin-top:6px;
-  color:var(--fpTextSoft);
-  font-size:15px;
-  font-weight:700;
-}
-
-.fpProjectStats{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:12px;
 }
 
 .fpProjectStat{
@@ -1771,24 +1285,7 @@ a{
   font-weight:900;
 }
 
-.fpKpiSub{
-  font-size:15px;
-  color:var(--fpTextSoft);
-  font-weight:700;
-  margin-top:8px;
-}
-
-.fpTextPanel{
-  color:var(--fpTextSoft);
-  font-size:14px;
-  line-height:1.6;
-  font-weight:700;
-}
-
-/* =========================================================
-   PAGE HERO
-   ========================================================= */
-
+/* PAGE HERO */
 .fpPageHero{
   position:relative;
   overflow:hidden;
@@ -1834,45 +1331,57 @@ a{
   font-weight:700;
 }
 
-/* =========================================================
-   RESPONSIVE
-   ========================================================= */
+/* LINKS */
+.fpInlineLinks{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:14px;
+}
 
+.fpInlineLinks a{
+  min-height:42px;
+  padding:0 14px;
+  border-radius:999px;
+  border:1px solid var(--fpBorderStrong);
+  background:rgba(255,255,255,.04);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:13px;
+  font-weight:800;
+  transition:.18s ease;
+}
+
+.fpInlineLinks a:hover{
+  background:rgba(255,255,255,.08);
+  transform:translateY(-1px);
+}
+
+/* RESPONSIVE */
 @media (max-width:1320px){
-  .fpOverviewGrid{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
-
   .fpBottomGrid,
   .fpPageGrid,
   .fpMissionGrid,
   .fpSettingsGrid,
-  .fpBillingGrid{
-    grid-template-columns:1fr;
-  }
-
-  .fpPlanGrid{
-    grid-template-columns:1fr;
-  }
-}
-
-@media (max-width:1200px){
+  .fpBillingGrid,
   .fpGridMain,
   .fpMissionPageGrid{
     grid-template-columns:1fr;
   }
 
-  .fpHeroStats,
+  .fpPlanGrid,
   .fpReportsGrid,
-  .fpStatsGrid{
+  .fpStatsGrid,
+  .fpHeroStats,
+  .fpProjectStats,
+  .fpInfoGrid{
     grid-template-columns:1fr;
   }
 }
 
 @media (max-width:1080px){
-  .fpAppShell{
-    grid-template-columns:1fr;
-  }
+  .fpAppShell{grid-template-columns:1fr}
 
   .fpSidebar{
     position:fixed;
@@ -1885,57 +1394,25 @@ a{
     height:100vh;
   }
 
-  .fpSidebar.open{
-    transform:translateX(0);
-  }
-
-  .fpMenuBtn{
-    display:flex;
-  }
+  .fpSidebar.open{transform:translateX(0)}
+  .fpMenuBtn{display:flex}
 
   .fpTopbar{
     flex-direction:column;
     align-items:stretch;
   }
 
-  .fpTopbarRight{
-    justify-content:flex-start;
-  }
-
-  .fpHero{
-    flex-direction:column;
-    align-items:flex-start;
-  }
-
-  .fpHeroRight{
-    justify-content:flex-start;
-  }
-
-  .fpHelloTitle{
-    font-size:42px;
-  }
-
-  .fpHeroTitle{
-    font-size:52px;
-  }
-
-  .fpPageTitle{
-    font-size:42px;
-  }
-
-  .fpInfoGrid{
-    grid-template-columns:1fr;
-  }
+  .fpTopbarRight{justify-content:flex-start}
+  .fpHero{flex-direction:column;align-items:flex-start}
+  .fpHeroRight{justify-content:flex-start}
+  .fpHelloTitle{font-size:42px}
+  .fpHeroTitle{font-size:52px}
+  .fpPageTitle{font-size:42px}
 }
 
 @media (max-width:760px){
-  .fpMain{
-    padding:14px;
-  }
-
-  .fpTopbar{
-    gap:14px;
-  }
+  .fpMain{padding:14px}
+  .fpTopbar{gap:14px}
 
   .fpTopbarRight{
     width:100%;
@@ -1944,63 +1421,16 @@ a{
     align-items:stretch;
   }
 
-  .fpTopbarRight > *{
-    width:100%;
-  }
+  .fpTopbarRight > *{width:100%}
 
-  .fpGrid,
-  .fpGridMain,
-  .fpMissionPageGrid{
-    gap:16px;
-  }
-
-  .fpOverviewGrid,
-  .fpProjectStats{
-    grid-template-columns:1fr;
-  }
-
-  .fpHelloHead{
-    align-items:flex-start;
-  }
-
-  .fpHelloLogo{
-    width:56px;
-    height:56px;
-    border-radius:18px;
-  }
-
-  .fpHelloTitle{
-    font-size:34px;
-  }
-
-  .fpHeroTitle{
-    font-size:44px;
-  }
-
-  .fpPageTitle{
-    font-size:36px;
-  }
-
-  .fpSectionTitle,
-  .fpCardInnerTitle{
-    font-size:28px;
-  }
-
-  .fpBigValue{
-    font-size:26px;
-  }
-
-  .fpKpiMain{
-    font-size:42px;
-  }
-
-  .fpMissionTitle{
-    font-size:22px;
-  }
-
-  .fpPlanPrice{
-    font-size:38px;
-  }
+  .fpHelloTitle{font-size:34px}
+  .fpHeroTitle{font-size:42px}
+  .fpPageTitle{font-size:36px}
+  .fpSectionTitle,.fpCardInnerTitle{font-size:28px}
+  .fpBigValue{font-size:26px}
+  .fpKpiMain{font-size:42px}
+  .fpMissionTitle{font-size:22px}
+  .fpPlanPrice{font-size:38px}
 
   .fpStatusPill,
   .fpSelect,
@@ -2023,60 +1453,73 @@ a{
   .fpPageActions,
   .fpDetailActions,
   .fpMissionActions{
-    justify-content:flex-start;
     width:100%;
+    justify-content:flex-start;
   }
 
   .fpDetailActions,
-  .fpMissionActions{
+  .fpMissionActions,
+  .fpInlineLinks{
     flex-direction:column;
   }
 
-  .fpTableHead{
-    display:none;
+  .fpInlineLinks a{
+    width:100%;
+    justify-content:center;
   }
+
+  .fpTableHead{display:none}
 
   .fpTableRow,
   .fpTr.row{
     grid-template-columns:1fr !important;
   }
 
-  .fpTableActions{
-    margin-top:6px;
-  }
-
   .fpRowCard,
-  .fpInfoRow{
+  .fpInfoRow,
+  .fpSettingsRow,
+  .fpAddonRow,
+  .fpQuotaRow{
     flex-direction:column;
     align-items:flex-start;
   }
 
-  .fpMissionCardLarge .fpMissionActions{
-    margin-left:0;
+  .fpMissionCardLarge .fpMissionActions{margin-left:0}
+
+  .fpChartBox{
+    height:250px;
+    padding:8px;
+  }
+
+  .fpChartLegend{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .fpLegendItem{
+    width:100%;
+    justify-content:flex-start;
+  }
+
+  #fpRangeSelect{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='white'><path d='M7 10l5 5 5-5z'/></svg>");
+    background-repeat:no-repeat,no-repeat;
+    background-position:0 0,right 14px center;
+    background-size:100% 100%,18px;
   }
 }
 
 @media (max-width:520px){
-  .fpHelloTitle{
-    font-size:32px;
-  }
-
+  .fpHelloTitle{font-size:32px}
   .fpHero{
     padding:20px;
     border-radius:24px;
   }
-
-  .fpHeroTitle{
-    font-size:38px;
-  }
-
-  .fpPageTitle{
-    font-size:32px;
-  }
-
-  .fpHeroText{
-    font-size:16px;
-  }
+  .fpHeroTitle{font-size:38px}
+  .fpPageTitle{font-size:32px}
+  .fpHeroText{font-size:16px}
 
   .fpCard,
   .fpCardInner,
@@ -2095,30 +1538,17 @@ a{
     width:50px;
     height:50px;
   }
-
-  .fpMissionCard{
-    padding:16px;
-  }
-
-  .fpChartBox{
-    height:260px;
-  }
 }
 
-/* =========================================================
-   MODE CLAIR
-   ========================================================= */
-
+/* LIGHT MODE */
 @media (prefers-color-scheme: light){
   :root{
-    --fpBg:#eef3ff;
-    --fpBg2:#dfe7ff;
-    --fpPanel:#ffffff;
-    --fpPanel2:#f6f8ff;
-    --fpPanel3:#edf2ff;
+    --fpBg:#e8eefc;
+    --fpBg2:#dbe5fb;
+    --fpBg3:#d2defa;
 
     --fpBorder:rgba(15,23,42,.08);
-    --fpBorderStrong:rgba(15,23,42,.14);
+    --fpBorderStrong:rgba(15,23,42,.12);
 
     --fpText:#10182b;
     --fpTextSoft:#425074;
@@ -2130,10 +1560,11 @@ a{
 
   body{
     background:
-      radial-gradient(1000px 500px at 12% 0%, rgba(47,91,255,.18), transparent 60%),
-      radial-gradient(900px 500px at 100% 8%, rgba(91,124,255,.14), transparent 58%),
+      radial-gradient(1000px 500px at 12% 0%, rgba(47,91,255,.16), transparent 60%),
+      radial-gradient(900px 500px at 100% 8%, rgba(91,124,255,.12), transparent 58%),
       radial-gradient(900px 700px at 50% 100%, rgba(27,69,255,.08), transparent 62%),
-      linear-gradient(180deg, var(--fpBg), var(--fpBg2));
+      linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+    background-attachment:fixed;
   }
 
   .fpSidebar{
@@ -2142,9 +1573,7 @@ a{
       linear-gradient(180deg, rgba(255,255,255,.92), rgba(240,245,255,.96));
   }
 
-  .fpNavItem:hover{
-    background:rgba(47,91,255,.06);
-  }
+  .fpNavItem:hover{background:rgba(47,91,255,.06)}
 
   .fpCard,
   .fpCardInner,
@@ -2152,14 +1581,14 @@ a{
   .fpAccountCard,
   .fpPlanCard{
     background:
-      radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.08), transparent 55%),
-      linear-gradient(180deg, rgba(255,255,255,.96), rgba(245,248,255,.96));
+      radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.07), transparent 55%),
+      linear-gradient(180deg, rgba(255,255,255,.78), rgba(245,248,255,.82));
   }
 
   .fpCardAccent{
     background:
-      radial-gradient(120% 140% at 20% 0%, rgba(47,91,255,.18), transparent 52%),
-      linear-gradient(180deg, rgba(255,255,255,.98), rgba(240,245,255,.98));
+      radial-gradient(120% 140% at 20% 0%, rgba(47,91,255,.14), transparent 52%),
+      linear-gradient(180deg, rgba(255,255,255,.86), rgba(240,245,255,.90));
   }
 
   .fpMiniStat,
@@ -2184,29 +1613,24 @@ a{
   .fpStatusPill,
   .fpExportMenu,
   .fpSelect,
-  .fpInfoBox{
-    background:rgba(255,255,255,.78);
+  .fpInfoBox,
+  .fpLegendItem,
+  .fpInlineLinks a{
+    background:rgba(255,255,255,.52);
     color:var(--fpText);
+    backdrop-filter:blur(12px);
   }
 
   .fpHero{
     background:
-      radial-gradient(900px 300px at 15% 0%, rgba(47,91,255,.18), transparent 58%),
-      radial-gradient(700px 300px at 95% 5%, rgba(91,124,255,.12), transparent 62%),
-      linear-gradient(180deg, rgba(255,255,255,.96), rgba(240,245,255,.96));
+      radial-gradient(900px 300px at 15% 0%, rgba(47,91,255,.14), transparent 58%),
+      radial-gradient(700px 300px at 95% 5%, rgba(91,124,255,.10), transparent 62%),
+      linear-gradient(180deg, rgba(255,255,255,.74), rgba(240,245,255,.84));
   }
 
-  .fpExportMenu button{
-    color:var(--fpText);
-  }
-
-  .fpExportMenu button:hover{
-    background:rgba(47,91,255,.06);
-  }
-
-  .fpMenuBtn span{
-    background:var(--fpText);
-  }
+  .fpExportMenu button{color:var(--fpText)}
+  .fpExportMenu button:hover{background:rgba(47,91,255,.06)}
+  .fpMenuBtn span{background:var(--fpText)}
 
   .fpLegendItem,
   .fpCardText,
@@ -2243,7 +1667,9 @@ a{
   .fpStatValue,
   .fpBrandName,
   .fpAccountRow strong,
-  .fpUsageTop strong{
+  .fpUsageTop strong,
+  .fpMissionTitle,
+  .fpProjectName{
     color:var(--fpText);
   }
 
@@ -2264,19 +1690,25 @@ a{
   .fpInfoBox,
   .fpInfoRow,
   .fpRowCard,
-  .fpMissionCard{
+  .fpMissionCard,
+  .fpLegendItem,
+  .fpInlineLinks a{
     border-color:rgba(15,23,42,.10);
   }
 
   .fpChartBox{
-    background:linear-gradient(180deg, rgba(47,91,255,.04), rgba(47,91,255,.01));
+    background:linear-gradient(180deg, rgba(47,91,255,.03), rgba(47,91,255,.01));
     border-color:rgba(15,23,42,.08);
   }
 
   .fpSelect{
-    background-image:
-      linear-gradient(180deg, rgba(255,255,255,.96), rgba(245,248,255,.96)),
+    color:var(--fpText);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.70), rgba(245,248,255,.82)),
       url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='%2310182b'><path d='M7 10l5 5 5-5z'/></svg>");
+    background-repeat:no-repeat,no-repeat;
+    background-position:0 0,right 14px center;
+    background-size:100% 100%,18px;
   }
 
   .fpSelect option{
@@ -2286,133 +1718,6 @@ a{
 }
 
 @supports (-webkit-touch-callout:none){
-  body{
-    min-height:-webkit-fill-available;
-  }
-
-  .fpSidebar{
-    height:100dvh;
-  }
-}
-/* ===== PATCH FINAL FLOWPOINT ===== */
-
-/* corrige le select blanc / vide */
-#fpRangeSelect{
-  color:var(--fpText) !important;
-  -webkit-text-fill-color:var(--fpText) !important;
-  background-color:rgba(255,255,255,.04) !important;
-}
-
-#fpRangeSelect option{
-  color:#fff;
-  background:#182452;
-}
-
-@media (prefers-color-scheme: light){
-  #fpRangeSelect{
-    color:var(--fpText) !important;
-    -webkit-text-fill-color:var(--fpText) !important;
-    background-color:rgba(255,255,255,.9) !important;
-  }
-
-  #fpRangeSelect option{
-    color:#10182b;
-    background:#ffffff;
-  }
-}
-
-/* supprime le petit bloc logo "F" à côté du bonjour */
-.fpHelloLogo{
-  display:none !important;
-}
-
-/* le header reste bien aligné sans ce logo */
-.fpHelloHead{
-  display:block !important;
-}
-
-/* évite des trous trop visibles */
-.fpColSide > .fpCard,
-.fpColMain > .fpCard{
-  min-height:unset;
-}
-
-/* meilleure homogénéité visuelle */
-.fpMiniStat,
-.fpInfoRow,
-.fpRowCard,
-.fpStatCard,
-.fpReportCard,
-.fpBillingCard,
-.fpAddonRow,
-.fpSettingsRow,
-.fpToggleRow,
-.fpQuotaRow{
-  min-height:86px;
-}
-
-/* liens utilitaires */
-.fpInlineLinks{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  margin-top:14px;
-}
-
-.fpInlineLinks a{
-  min-height:40px;
-  padding:0 14px;
-  border-radius:999px;
-  border:1px solid var(--fpBorderStrong);
-  background:rgba(255,255,255,.04);
-  display:inline-flex;
-  align-items:center;
-  font-size:13px;
-  font-weight:800;
-}
-
-.fpInlineLinks a:hover{
-  background:rgba(255,255,255,.08);
-}
-/* ===== BILLING.HTML PATCH ===== */
-
-.fpInlineLinks{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  margin-top:14px;
-}
-
-.fpInlineLinks a{
-  min-height:40px;
-  padding:0 14px;
-  border-radius:999px;
-  border:1px solid var(--fpBorderStrong);
-  background:rgba(255,255,255,.04);
-  display:inline-flex;
-  align-items:center;
-  font-size:13px;
-  font-weight:800;
-}
-
-.fpInlineLinks a:hover{
-  background:rgba(255,255,255,.08);
-}
-
-@media (prefers-color-scheme: light){
-  .fpInlineLinks a{
-    background:rgba(255,255,255,.78);
-    color:var(--fpText);
-  }
-}
-
-@media (max-width:760px){
-  .fpInlineLinks{
-    flex-direction:column;
-  }
-
-  .fpInlineLinks a{
-    width:100%;
-    justify-content:center;
-  }
+  body{min-height:-webkit-fill-available}
+  .fpSidebar{height:100dvh}
 }
