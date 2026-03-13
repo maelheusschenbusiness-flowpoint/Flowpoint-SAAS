@@ -16,10 +16,9 @@
     "#settings",
   ]);
 
-  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v8";
-  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v8";
+  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v9";
+  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v9";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-
   const LOGO_SRC = "/assets/flowpoint-logo.svg";
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -67,13 +66,11 @@
     barMonitors: $("#fpBarMonitors"),
 
     sidebarLogo: $("#fpSidebarLogo"),
-    topLogo: $("#fpTopLogo"),
   };
 
   const state = {
     route: ROUTES.has(location.hash) ? location.hash : "#overview",
     rangeDays: 30,
-
     me: null,
     overview: null,
     audits: [],
@@ -82,7 +79,6 @@
       alertRecipients: "all",
       alertExtraEmails: [],
     },
-
     missions: [],
     controller: null,
     loading: false,
@@ -135,13 +131,13 @@
     if (p === "standard") return "Standard";
     if (p === "pro") return "Pro";
     if (p === "ultra") return "Ultra";
-    if (!p) return "—";
+    if (!p) return "Plan non synchronisé";
     return cap(p);
   }
 
   function statusLabel(status) {
     const s = String(status || "").toLowerCase();
-    if (!s) return "—";
+    if (!s) return "Statut en attente";
     if (s === "trialing") return "Essai actif";
     if (s === "active") return "Actif";
     if (s === "past_due") return "Paiement en retard";
@@ -158,25 +154,22 @@
   }
 
   function formatDate(value) {
-    if (!value) return "—";
+    if (!value) return "Récemment";
     const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "—";
+    if (Number.isNaN(d.getTime())) return "Récemment";
     return d.toLocaleString("fr-FR");
   }
 
   function formatShortDate(value) {
-    if (!value) return "—";
+    if (!value) return "Bientôt";
     const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "—";
+    if (Number.isNaN(d.getTime())) return "Bientôt";
     return d.toLocaleDateString("fr-FR");
   }
 
   function formatUsage(v) {
-    if (v == null) return "—";
-
-    if (typeof v === "number" || typeof v === "string") {
-      return String(v);
-    }
+    if (v == null) return "0";
+    if (typeof v === "number" || typeof v === "string") return String(v);
 
     if (typeof v === "object") {
       const used = v.used ?? 0;
@@ -185,7 +178,7 @@
       return `${used}/${limit}`;
     }
 
-    return "—";
+    return "0";
   }
 
   function setBar(el, used, limit) {
@@ -226,14 +219,18 @@
       "";
 
     const clean = String(full).trim();
-    if (!clean) return "";
+    if (clean) return clean.split(/\s+/)[0] || "";
 
-    return clean.split(/\s+/)[0] || "";
+    const org = me?.org?.name || me?.organization?.name || "";
+    return String(org).trim();
+  }
+
+  function normalizeOrgName() {
+    return state.me?.org?.name || state.me?.organization?.name || "Workspace principal";
   }
 
   function hydrateLogos() {
     if (els.sidebarLogo) els.sidebarLogo.src = LOGO_SRC;
-    if (els.topLogo) els.topLogo.src = LOGO_SRC;
   }
 
   async function refreshTokenIfPossible() {
@@ -261,9 +258,7 @@
     const token = getToken();
 
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    if (options.body && !headers.has("Content-Type")) {
-      headers.set("Content-Type", "application/json");
-    }
+    if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
     const doFetch = () =>
       fetch(url, {
@@ -310,17 +305,8 @@
     if (mode === "danger") els.statusDot.classList.add("danger");
   }
 
-  function normalizeOrgName() {
-    return state.me?.org?.name || state.me?.organization?.name || "Organisation";
-  }
-
   function normalizeMonitorStatus(monitor) {
-    return String(
-      monitor?.lastStatus ||
-      monitor?.status ||
-      monitor?.state ||
-      "unknown"
-    ).toLowerCase();
+    return String(monitor?.lastStatus || monitor?.status || monitor?.state || "unknown").toLowerCase();
   }
 
   function normalizeMonitorId(monitor) {
@@ -417,7 +403,7 @@
     if (els.accPlan) els.accPlan.textContent = planLabel(me.plan);
     if (els.accOrg) els.accOrg.textContent = normalizeOrgName();
     if (els.accRole) els.accRole.textContent = cap(me.role || "owner");
-    if (els.accTrial) els.accTrial.textContent = me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "—";
+    if (els.accTrial) els.accTrial.textContent = me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "Essai non défini";
 
     if (els.usageAudits) els.usageAudits.textContent = formatUsage(usage.audits);
     if (els.usagePdf) els.usagePdf.textContent = formatUsage(usage.pdf);
@@ -433,9 +419,11 @@
   function hydrateTopbar() {
     const me = state.me || {};
     const firstName = getFirstName(me);
+    const orgName = normalizeOrgName();
+    const helloName = firstName || orgName;
 
     if (els.helloTitle) {
-      els.helloTitle.textContent = firstName ? `Bonjour, ${firstName}` : "Bonjour";
+      els.helloTitle.textContent = helloName ? `Bonjour, ${helloName}` : "Bonjour";
     }
 
     if (els.helloSub) {
@@ -501,9 +489,7 @@
     if (!valid.length) return "";
     return `
       <div class="fpInlineLinks">
-        ${valid.map((item) => `
-          <a href="${esc(item.href)}">${esc(item.label)}</a>
-        `).join("")}
+        ${valid.map((item) => `<a href="${esc(item.href)}">${esc(item.label)}</a>`).join("")}
       </div>
     `;
   }
@@ -591,15 +577,12 @@
       const data = await parseJsonSafe(r);
 
       if (!r.ok) throw new Error(data?.error || "Portal failed");
+      if (!data?.url) throw new Error("URL du portail absente");
 
-      if (data?.url) {
-        setMissionDoneByAction("open_billing", true);
-        saveMissions();
-        window.location.href = data.url;
-        return true;
-      }
-
-      throw new Error("URL du portail absente");
+      setMissionDoneByAction("open_billing", true);
+      saveMissions();
+      window.location.href = data.url;
+      return true;
     } catch (e) {
       console.error(e);
       setStatus("Erreur portail Stripe", "danger");
@@ -746,10 +729,7 @@
   async function saveOrgSettings() {
     const mode = $("#fpSettingsRecipientsMode")?.value || "all";
     const raw = $("#fpSettingsExtraEmails")?.value || "";
-    const extraEmails = raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const extraEmails = raw.split(",").map((s) => s.trim()).filter(Boolean);
 
     setStatus("Sauvegarde des paramètres…", "warn");
 
@@ -790,12 +770,13 @@
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
 
-    const width = Math.max(320, Math.round(rect.width || 760));
-    const height = 320;
+    const width = Math.max(220, Math.round(rect.width || 760));
+    const mobile = window.innerWidth <= 760;
+    const height = mobile ? 220 : 320;
 
     canvas.width = width * dpr;
     canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
+    canvas.style.width = "100%";
     canvas.style.height = `${height}px`;
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -815,14 +796,13 @@
     const text = styles.getPropertyValue("--fpMuted").trim() || "#94a3b8";
     const grid = styles.getPropertyValue("--fpBorderStrong").trim() || "rgba(255,255,255,.14)";
 
-    const padLeft = 42;
-    const padRight = 20;
+    const padLeft = mobile ? 34 : 42;
+    const padRight = mobile ? 12 : 20;
     const padTop = 18;
-    const padBottom = 34;
+    const padBottom = mobile ? 24 : 34;
 
     const chartW = width - padLeft - padRight;
     const chartH = height - padTop - padBottom;
-
     const gridLines = 5;
 
     ctx.strokeStyle = grid;
@@ -837,13 +817,13 @@
     }
 
     ctx.fillStyle = text;
-    ctx.font = "12px Inter, system-ui, sans-serif";
-    ctx.fillText("100", 8, padTop + 4);
-    ctx.fillText("80", 14, padTop + chartH * 0.2 + 4);
-    ctx.fillText("60", 14, padTop + chartH * 0.4 + 4);
-    ctx.fillText("40", 14, padTop + chartH * 0.6 + 4);
-    ctx.fillText("20", 14, padTop + chartH * 0.8 + 4);
-    ctx.fillText("0", 20, padTop + chartH + 4);
+    ctx.font = mobile ? "11px Inter, system-ui, sans-serif" : "12px Inter, system-ui, sans-serif";
+    ctx.fillText("100", 6, padTop + 4);
+    ctx.fillText("80", 12, padTop + chartH * 0.2 + 4);
+    ctx.fillText("60", 12, padTop + chartH * 0.4 + 4);
+    ctx.fillText("40", 12, padTop + chartH * 0.6 + 4);
+    ctx.fillText("20", 12, padTop + chartH * 0.8 + 4);
+    ctx.fillText("0", 18, padTop + chartH + 4);
 
     function buildPoints(data) {
       const stepX = data.length > 1 ? chartW / (data.length - 1) : chartW;
@@ -890,19 +870,19 @@
       else ctx.lineTo(p.x, p.y);
     });
     ctx.strokeStyle = strokeGradient;
-    ctx.lineWidth = 4;
+    ctx.lineWidth = mobile ? 3.2 : 4;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     ctx.stroke();
 
     seoPoints.forEach((p) => {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, mobile ? 4 : 5, 0, Math.PI * 2);
       ctx.fillStyle = brand;
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, mobile ? 1.8 : 2.2, 0, Math.PI * 2);
       ctx.fillStyle = "#ffffff";
       ctx.fill();
     });
@@ -922,28 +902,19 @@
     const last = chart[chart.length - 1] || 0;
     const diff = Math.round(last - first);
 
-    if (diff >= 12) {
-      return "La tendance est positive sur la période sélectionnée. Le score SEO progresse nettement.";
-    }
-
-    if (diff >= 1) {
-      return "La courbe reste orientée à la hausse. Les optimisations récentes semblent produire un effet progressif.";
-    }
-
-    if (diff <= -8) {
-      return "Le score est en baisse sur la période. Il faut vérifier les derniers audits et les points critiques.";
-    }
-
+    if (diff >= 12) return "La tendance est positive sur la période sélectionnée. Le score SEO progresse nettement.";
+    if (diff >= 1) return "La courbe reste orientée à la hausse. Les optimisations récentes semblent produire un effet progressif.";
+    if (diff <= -8) return "Le score est en baisse sur la période. Il faut vérifier les derniers audits et les points critiques.";
     return "La performance reste relativement stable sur la période. Quelques ajustements peuvent relancer la progression.";
   }
 
   function renderOverviewHero() {
     const me = state.me || {};
     const ov = state.overview || {};
-
-    const lastAuditText = ov.lastAuditAt
-      ? `Dernier audit le ${formatShortDate(ov.lastAuditAt)}`
-      : "Aucun audit récent";
+    const lastAuditText = ov.lastAuditAt ? `Dernier audit le ${formatShortDate(ov.lastAuditAt)}` : "Aucun audit récent";
+    const orgName = normalizeOrgName();
+    const currentPlan = planLabel(me.plan);
+    const subscriptionState = statusLabel(me.subscriptionStatus || me.lastPaymentStatus);
 
     return `
       <section class="fpHero fpHeroWide">
@@ -957,7 +928,7 @@
           <div class="fpHeroStats">
             <div class="fpMiniStat">
               <div class="fpMiniStatLabel">Organisation</div>
-              <div class="fpMiniStatValue">${esc(normalizeOrgName())}</div>
+              <div class="fpMiniStatValue">${esc(orgName)}</div>
               <div class="fpMiniStatMeta">Workspace actuellement chargé</div>
             </div>
 
@@ -969,8 +940,8 @@
 
             <div class="fpMiniStat">
               <div class="fpMiniStatLabel">Abonnement</div>
-              <div class="fpMiniStatValue">${esc(planLabel(me.plan))}</div>
-              <div class="fpMiniStatMeta">${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</div>
+              <div class="fpMiniStatValue">${esc(currentPlan)}</div>
+              <div class="fpMiniStatMeta">${esc(subscriptionState)}</div>
             </div>
           </div>
         </div>
@@ -1046,6 +1017,7 @@
             `
               <div class="fpInfoList">
                 <div class="fpInfoRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
+                <div class="fpInfoRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
                 <div class="fpInfoRow"><span>Statut</span><strong>${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</strong></div>
                 <div class="fpInfoRow"><span>Monitors actifs</span><strong>${esc(ov.monitors?.active ?? 0)}/${esc(me.usage?.monitors?.limit ?? 0)}</strong></div>
                 <div class="fpInfoRow"><span>Incidents</span><strong>${esc(ov.monitors?.down ?? 0)}</strong></div>
@@ -1064,10 +1036,10 @@
                   ${recentAudits.map((a) => `
                     <div class="fpRowCard">
                       <div class="fpRowMain">
-                        <div class="fpRowTitle">${esc(a.url || "—")}</div>
+                        <div class="fpRowTitle">${esc(a.url || "Audit SEO")}</div>
                         <div class="fpRowMeta">${esc(formatDate(a.createdAt))}</div>
                       </div>
-                      <div class="fpRowRight"><div class="fpScore">${esc(a.score ?? "—")}</div></div>
+                      <div class="fpRowRight"><div class="fpScore">${esc(a.score ?? 0)}</div></div>
                     </div>
                   `).join("")}
                 </div>
@@ -1085,7 +1057,7 @@
                   ${recentMonitors.map((m) => `
                     <div class="fpRowCard">
                       <div class="fpRowMain">
-                        <div class="fpRowTitle">${esc(m.url || "—")}</div>
+                        <div class="fpRowTitle">${esc(m.url || "Monitor")}</div>
                         <div class="fpRowMeta">${esc(m.intervalMinutes ?? 60)} min · ${esc(formatDate(m.lastCheckedAt))}</div>
                       </div>
                       <div class="fpRowRight">${createBadge(normalizeMonitorStatus(m))}</div>
@@ -1100,13 +1072,11 @@
             "Liens utiles",
             "Accès rapide",
             "Navigation complémentaire du workspace",
-            `
-              ${createInlineLinks([
-                { href: "/pricing.html", label: "Retour pricing" },
-                { href: "/billing.html", label: "Billing FlowPoint" },
-                { href: "/addons.html", label: "Voir add-ons" },
-              ])}
-            `
+            `${createInlineLinks([
+              { href: "/pricing.html", label: "Retour pricing" },
+              { href: "/billing.html", label: "Billing FlowPoint" },
+              { href: "/addons.html", label: "Voir add-ons" },
+            ])}`
           )}
         </div>
       </div>
@@ -1171,8 +1141,7 @@
               </div>
 
               <div class="fpTextPanel">
-                Les missions sont conçues pour remettre le client dans un parcours simple :
-                monitor, audit, export, paramètres et facturation.
+                Les missions sont conçues pour remettre le client dans un parcours simple : monitor, audit, export, paramètres et facturation.
               </div>
 
               <div class="fpTextPanel">
@@ -1230,8 +1199,8 @@
 
                   ${audits.map((a) => `
                     <div class="fpTableRow">
-                      <div class="fpTableUrl">${esc(a.url || "—")}</div>
-                      <div>${esc(a.score ?? "—")}</div>
+                      <div class="fpTableUrl">${esc(a.url || "Audit SEO")}</div>
+                      <div>${esc(a.score ?? 0)}</div>
                       <div>${esc(formatDate(a.createdAt))}</div>
                       <div>${createBadge(a.status === "ok" ? "up" : "down")}</div>
                       <div>${createBadge("active")}</div>
@@ -1286,12 +1255,10 @@
             "Liens utiles",
             "Navigation",
             "Accès rapide lié aux audits",
-            `
-              ${createInlineLinks([
-                { href: "/reports.html", label: "Voir rapports" },
-                { href: "/pricing.html", label: "Retour pricing" },
-              ])}
-            `
+            `${createInlineLinks([
+              { href: "/reports.html", label: "Voir rapports" },
+              { href: "/pricing.html", label: "Retour pricing" },
+            ])}`
           )}
         </div>
       </div>
@@ -1344,7 +1311,7 @@
 
                   ${monitors.map((m) => `
                     <div class="fpTableRow">
-                      <div class="fpTableUrl">${esc(m.url || "—")}</div>
+                      <div class="fpTableUrl">${esc(m.url || "Monitor")}</div>
                       <div>${createBadge(normalizeMonitorStatus(m))}</div>
                       <div>${esc(m.intervalMinutes ?? 60)} min</div>
                       <div>${esc(formatDate(m.lastCheckedAt))}</div>
@@ -1395,7 +1362,7 @@
             `
               <div class="fpInfoList">
                 <div class="fpInfoRow"><span>Mode</span><strong>${esc(recipientsLabel(state.orgSettings?.alertRecipients))}</strong></div>
-                <div class="fpInfoRow"><span>Emails extra</span><strong>${esc((state.orgSettings?.alertExtraEmails || []).join(", ") || "—")}</strong></div>
+                <div class="fpInfoRow"><span>Emails extra</span><strong>${esc((state.orgSettings?.alertExtraEmails || []).join(", ") || "Aucun")}</strong></div>
               </div>
             `
           )}
@@ -1404,12 +1371,10 @@
             "Liens utiles",
             "Navigation",
             "Accès rapide du monitoring",
-            `
-              ${createInlineLinks([
-                { href: "/settings.html", label: "Paramètres" },
-                { href: "/reports.html", label: "Rapports" },
-              ])}
-            `
+            `${createInlineLinks([
+              { href: "/settings.html", label: "Paramètres" },
+              { href: "/reports.html", label: "Rapports" },
+            ])}`
           )}
         </div>
       </div>
@@ -1536,12 +1501,10 @@
             "Liens utiles",
             "Navigation",
             "Accès rapide",
-            `
-              ${createInlineLinks([
-                { href: "/pricing.html", label: "Retour pricing" },
-                { href: "/billing.html", label: "Billing FlowPoint" },
-              ])}
-            `
+            `${createInlineLinks([
+              { href: "/pricing.html", label: "Retour pricing" },
+              { href: "/billing.html", label: "Billing FlowPoint" },
+            ])}`
           )}
         </div>
       </div>
@@ -1560,6 +1523,7 @@
     const me = state.me || {};
     const usage = me.usage || {};
     const addons = getAddonEntries();
+    const orgName = normalizeOrgName();
 
     setPage(`
       ${createSectionCard(
@@ -1592,9 +1556,21 @@
                 </div>
 
                 <div class="fpBillingCard">
+                  <div class="fpBillingTitle">Organisation</div>
+                  <div class="fpBillingPlan">${esc(orgName)}</div>
+                  <div class="fpBillingStatus">Workspace actuellement connecté</div>
+                </div>
+
+                <div class="fpBillingCard">
                   <div class="fpBillingTitle">Essai</div>
                   <div class="fpBillingPlan">${me.trialEndsAt ? esc(formatShortDate(me.trialEndsAt)) : "—"}</div>
                   <div class="fpBillingStatus">${me.trialEndsAt ? "Date de fin d’essai" : "Aucun essai actif"}</div>
+                </div>
+
+                <div class="fpBillingCard">
+                  <div class="fpBillingTitle">Rôle</div>
+                  <div class="fpBillingPlan">${esc(cap(me.role || "owner"))}</div>
+                  <div class="fpBillingStatus">Niveau d’accès actuel</div>
                 </div>
               </div>
             `
@@ -1636,13 +1612,11 @@
             "Gestion",
             "Actions utiles",
             "Accès direct aux pages liées à la facturation",
-            `
-              ${createInlineLinks([
-                { href: "/addons.html", label: "Gérer les add-ons" },
-                { href: "/billing.html", label: "Billing FlowPoint" },
-                { href: "/pricing.html", label: "Retour pricing" },
-              ])}
-            `
+            `${createInlineLinks([
+              { href: "/addons.html", label: "Gérer les add-ons" },
+              { href: "/billing.html", label: "Billing FlowPoint" },
+              { href: "/pricing.html", label: "Retour pricing" },
+            ])}`
           )}
         </div>
       </div>
@@ -1734,8 +1708,8 @@
                   <div class="fpSettingsRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
                   <div class="fpSettingsRow"><span>Rôle</span><strong>${esc(cap(me.role || "owner"))}</strong></div>
                   <div class="fpSettingsRow"><span>Destinataires</span><strong>${esc(recipientsLabel(s.alertRecipients))}</strong></div>
-                  <div class="fpSettingsRow"><span>Essai</span><strong>${esc(me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "—")}</strong></div>
-                  <div class="fpSettingsRow"><span>Dernière synchro</span><strong>${esc(state.lastLoadedAt ? formatDate(state.lastLoadedAt) : "—")}</strong></div>
+                  <div class="fpSettingsRow"><span>Essai</span><strong>${esc(me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "Aucun")}</strong></div>
+                  <div class="fpSettingsRow"><span>Dernière synchro</span><strong>${esc(state.lastLoadedAt ? formatDate(state.lastLoadedAt) : "Récente")}</strong></div>
                 </div>
               </div>
 
@@ -1763,29 +1737,11 @@
     const mission = state.missions.find((m) => m.id === id);
     if (!mission) return;
 
-    if (mission.action === "run_audit") {
-      location.hash = "#audits";
-      return;
-    }
-
-    if (mission.action === "add_monitor" || mission.action === "test_monitor") {
-      location.hash = "#monitors";
-      return;
-    }
-
-    if (mission.action === "export_audits" || mission.action === "export_monitors") {
-      location.hash = "#reports";
-      return;
-    }
-
-    if (mission.action === "open_billing" || mission.action === "view_billing") {
-      location.hash = "#billing";
-      return;
-    }
-
-    if (mission.action === "goto_settings") {
-      location.hash = "#settings";
-    }
+    if (mission.action === "run_audit") return void (location.hash = "#audits");
+    if (mission.action === "add_monitor" || mission.action === "test_monitor") return void (location.hash = "#monitors");
+    if (mission.action === "export_audits" || mission.action === "export_monitors") return void (location.hash = "#reports");
+    if (mission.action === "open_billing" || mission.action === "view_billing") return void (location.hash = "#billing");
+    if (mission.action === "goto_settings") return void (location.hash = "#settings");
   }
 
   async function runMission(id) {
@@ -1804,17 +1760,9 @@
       return ok;
     }
 
-    if (mission.action === "export_audits") {
-      return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
-    }
-
-    if (mission.action === "export_monitors") {
-      return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
-    }
-
-    if (mission.action === "open_billing") {
-      return openBillingPortal();
-    }
+    if (mission.action === "export_audits") return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+    if (mission.action === "export_monitors") return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+    if (mission.action === "open_billing") return openBillingPortal();
 
     if (mission.action === "goto_settings") {
       location.hash = "#settings";
@@ -1850,30 +1798,14 @@
     setActiveNav();
 
     switch (state.route) {
-      case "#overview":
-        renderOverviewPage();
-        break;
-      case "#missions":
-        renderMissionsPage();
-        break;
-      case "#audits":
-        renderAuditsPage();
-        break;
-      case "#monitors":
-        renderMonitorsPage();
-        break;
-      case "#reports":
-        renderReportsPage();
-        break;
-      case "#billing":
-        renderBillingPage();
-        break;
-      case "#settings":
-        renderSettingsPage();
-        break;
-      default:
-        renderOverviewPage();
-        break;
+      case "#overview": renderOverviewPage(); break;
+      case "#missions": renderMissionsPage(); break;
+      case "#audits": renderAuditsPage(); break;
+      case "#monitors": renderMonitorsPage(); break;
+      case "#reports": renderReportsPage(); break;
+      case "#billing": renderBillingPage(); break;
+      case "#settings": renderSettingsPage(); break;
+      default: renderOverviewPage(); break;
     }
   }
 
@@ -1896,9 +1828,7 @@
         fetchWithAuth("/api/org/settings", { signal }).catch(() => null),
       ]);
 
-      if (meRes?.ok) {
-        state.me = await parseJsonSafe(meRes);
-      }
+      if (meRes?.ok) state.me = await parseJsonSafe(meRes);
 
       if (ovRes?.ok) {
         state.overview = await parseJsonSafe(ovRes);
@@ -1912,22 +1842,14 @@
 
       if (audRes?.ok) {
         const auditsData = await parseJsonSafe(audRes);
-        state.audits = Array.isArray(auditsData?.audits)
-          ? auditsData.audits
-          : Array.isArray(auditsData)
-            ? auditsData
-            : [];
+        state.audits = Array.isArray(auditsData?.audits) ? auditsData.audits : Array.isArray(auditsData) ? auditsData : [];
       } else {
         state.audits = [];
       }
 
       if (monRes?.ok) {
         const monitorsData = await parseJsonSafe(monRes);
-        state.monitors = Array.isArray(monitorsData?.monitors)
-          ? monitorsData.monitors
-          : Array.isArray(monitorsData)
-            ? monitorsData
-            : [];
+        state.monitors = Array.isArray(monitorsData?.monitors) ? monitorsData.monitors : Array.isArray(monitorsData) ? monitorsData : [];
       } else {
         state.monitors = [];
       }
@@ -1958,25 +1880,20 @@
     document.addEventListener("click", async (e) => {
       const toggleBtn = e.target.closest("[data-mission-toggle]");
       if (toggleBtn) {
-        const id = toggleBtn.getAttribute("data-mission-toggle");
-        toggleMission(id);
+        toggleMission(toggleBtn.getAttribute("data-mission-toggle"));
         renderRoute();
         return;
       }
 
       const runBtn = e.target.closest("[data-mission-do]");
       if (runBtn) {
-        const id = runBtn.getAttribute("data-mission-do");
-        await runMission(id);
+        await runMission(runBtn.getAttribute("data-mission-do"));
         renderRoute();
         return;
       }
 
       const openBtn = e.target.closest("[data-mission-open]");
-      if (openBtn) {
-        const id = openBtn.getAttribute("data-mission-open");
-        openMissionPage(id);
-      }
+      if (openBtn) openMissionPage(openBtn.getAttribute("data-mission-open"));
     });
   }
 
@@ -1993,23 +1910,17 @@
     });
 
     window.addEventListener("resize", () => {
-      if (state.route === "#overview") {
-        requestAnimationFrame(drawOverviewChart);
-      }
+      if (state.route === "#overview") requestAnimationFrame(drawOverviewChart);
     });
 
     els.navItems.forEach((item) => {
-      item.addEventListener("click", () => {
-        closeSidebar();
-      });
+      item.addEventListener("click", closeSidebar);
     });
 
     els.btnMenu?.addEventListener("click", openSidebar);
     els.overlay?.addEventListener("click", closeSidebar);
 
-    els.btnRefresh?.addEventListener("click", () => {
-      loadData();
-    });
+    els.btnRefresh?.addEventListener("click", () => loadData());
 
     els.rangeSelect?.addEventListener("change", () => {
       const raw = String(els.rangeSelect.value || "30");
@@ -2022,13 +1933,8 @@
       toggleExportMenu();
     });
 
-    els.exportMenu?.addEventListener("click", (e) => {
-      e.stopPropagation();
-    });
-
-    document.addEventListener("click", () => {
-      toggleExportMenu(false);
-    });
+    els.exportMenu?.addEventListener("click", (e) => e.stopPropagation());
+    document.addEventListener("click", () => toggleExportMenu(false));
 
     els.btnExportAudits?.addEventListener("click", async () => {
       toggleExportMenu(false);
