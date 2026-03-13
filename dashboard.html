@@ -5,21 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FlowPoint — Dashboard</title>
 
-  <link rel="icon" type="image/png" href="/assets/flowpoint-logo.svg" />
+  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
   <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
-
   <link rel="stylesheet" href="/dashboard.css" />
 </head>
 <body>
-  <div class="fpOverlay" id="overlay"></div>
+  <div class="fpOverlay" id="fpOverlay"></div>
 
   <div class="fpAppShell">
     <aside id="sidebar" class="fpSidebar">
       <div class="fpSidebarTop">
         <div class="fpBrand">
-          <div class="fpBrandLogo" id="fpBrandLogoWrap">
+          <div class="fpBrandLogo">
             <img
-              src="/assets/flowpoint-log.svg"
+              src="/assets/flowpoint-logo.svg"
               alt="FlowPoint"
               class="fpBrandLogoImg"
               id="fpSidebarLogo"
@@ -50,22 +49,22 @@
           <div class="fpAccountRows">
             <div class="fpAccountRow">
               <span>Plan</span>
-              <strong id="fpAccPlan">—</strong>
+              <strong id="fpAccPlan">Plan non synchronisé</strong>
             </div>
 
             <div class="fpAccountRow">
               <span>Organisation</span>
-              <strong id="fpAccOrg">—</strong>
+              <strong id="fpAccOrg">Workspace principal</strong>
             </div>
 
             <div class="fpAccountRow">
               <span>Rôle</span>
-              <strong id="fpAccRole">—</strong>
+              <strong id="fpAccRole">Owner</strong>
             </div>
 
             <div class="fpAccountRow">
               <span>Essai</span>
-              <strong id="fpAccTrial">—</strong>
+              <strong id="fpAccTrial">En vérification</strong>
             </div>
           </div>
 
@@ -73,7 +72,7 @@
             <div class="fpUsageItem">
               <div class="fpUsageTop">
                 <span>Audits</span>
-                <strong id="fpUsageAudits">—</strong>
+                <strong id="fpUsageAudits">0</strong>
               </div>
               <div class="fpBar"><div class="fpBarFill" id="fpBarAudits"></div></div>
             </div>
@@ -81,7 +80,7 @@
             <div class="fpUsageItem">
               <div class="fpUsageTop">
                 <span>PDF</span>
-                <strong id="fpUsagePdf">—</strong>
+                <strong id="fpUsagePdf">0</strong>
               </div>
               <div class="fpBar"><div class="fpBarFill" id="fpBarPdf"></div></div>
             </div>
@@ -89,7 +88,7 @@
             <div class="fpUsageItem">
               <div class="fpUsageTop">
                 <span>Exports</span>
-                <strong id="fpUsageExports">—</strong>
+                <strong id="fpUsageExports">0</strong>
               </div>
               <div class="fpBar"><div class="fpBarFill" id="fpBarExports"></div></div>
             </div>
@@ -97,7 +96,7 @@
             <div class="fpUsageItem">
               <div class="fpUsageTop">
                 <span>Monitors</span>
-                <strong id="fpUsageMonitors">—</strong>
+                <strong id="fpUsageMonitors">0</strong>
               </div>
               <div class="fpBar"><div class="fpBarFill" id="fpBarMonitors"></div></div>
             </div>
@@ -123,18 +122,9 @@
 
           <div class="fpHelloWrap">
             <div class="fpHelloHead">
-              <div class="fpHelloLogo" id="fpHelloLogoWrap">
-                <img
-                  src="/assets/flowpoint-logo.svg"
-                  alt="FlowPoint"
-                  class="fpHelloLogoImg"
-                  id="fpTopLogo"
-                />
-              </div>
-
               <div class="fpHelloBlock">
                 <div class="fpHelloKicker">FLOWPOINT</div>
-                <h1 id="fpHelloTitle" class="fpHelloTitle">Bonjour, —</h1>
+                <h1 id="fpHelloTitle" class="fpHelloTitle">Bonjour</h1>
                 <div class="fpHelloSub">SEO · Monitoring · Rapports · Facturation</div>
               </div>
             </div>
