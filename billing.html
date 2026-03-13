@@ -17,11 +17,7 @@
       <div class="fpSidebarTop">
         <div class="fpBrand">
           <div class="fpBrandLogo">
-            <img
-              src="/assets/flowpoint-logo.svg"
-              alt="FlowPoint"
-              class="fpBrandLogoImg"
-            />
+            <img src="/assets/flowpoint-logo.svg" alt="FlowPoint" class="fpBrandLogoImg" />
           </div>
 
           <div class="fpBrandText">
@@ -82,7 +78,7 @@
 
           <div class="fpStatusPill">
             <span class="fpStatusDot"></span>
-            <span>Billing prêt</span>
+            <span id="fpBillingStatusText">Billing prêt</span>
           </div>
         </div>
       </header>
@@ -94,26 +90,26 @@
             <h2 class="fpHeroTitle">Ton espace billing</h2>
             <p class="fpHeroText">
               Gère ton plan, tes paiements, tes modules actifs et tes prochaines évolutions
-              depuis une interface plus propre et cohérente avec le reste de FlowPoint.
+              depuis une interface cohérente avec le reste de FlowPoint.
             </p>
 
             <div class="fpHeroStats">
               <div class="fpMiniStat">
                 <div class="fpMiniStatLabel">Plan actuel</div>
-                <div class="fpMiniStatValue">Ultra</div>
-                <div class="fpMiniStatMeta">Accès complet FlowPoint</div>
+                <div class="fpMiniStatValue" id="fpBillPlanHero">Plan</div>
+                <div class="fpMiniStatMeta">Accès FlowPoint</div>
               </div>
 
               <div class="fpMiniStat">
                 <div class="fpMiniStatLabel">Statut</div>
-                <div class="fpMiniStatValue">Trialing</div>
-                <div class="fpMiniStatMeta">Essai actif</div>
+                <div class="fpMiniStatValue" id="fpBillStatusHero">Actif</div>
+                <div class="fpMiniStatMeta">État courant</div>
               </div>
 
               <div class="fpMiniStat">
-                <div class="fpMiniStatLabel">Prochain paiement</div>
-                <div class="fpMiniStatValue">13 mars</div>
-                <div class="fpMiniStatMeta">Facturation suivante estimée</div>
+                <div class="fpMiniStatLabel">Organisation</div>
+                <div class="fpMiniStatValue" id="fpBillOrgHero">Workspace</div>
+                <div class="fpMiniStatMeta">Compte principal connecté</div>
               </div>
             </div>
           </div>
@@ -127,7 +123,7 @@
                   <div class="fpCardKicker">Abonnement</div>
                   <h2 class="fpSectionTitle">Plan actuel</h2>
                   <p class="fpCardText">
-                    Vue claire de ton abonnement principal, de son état et des informations liées au cycle.
+                    Vue claire du plan, de l’organisation et de l’état du compte.
                   </p>
                 </div>
               </div>
@@ -135,26 +131,26 @@
               <div class="fpBillingGrid">
                 <div class="fpBillingCard">
                   <div class="fpBillingTitle">Plan</div>
-                  <div class="fpBillingPlan">Ultra</div>
-                  <div class="fpBillingStatus">149€/mois</div>
+                  <div class="fpBillingPlan" id="fpBillPlanMain">Plan non synchronisé</div>
+                  <div class="fpBillingStatus" id="fpBillPlanMeta">Information en attente</div>
                 </div>
 
                 <div class="fpBillingCard">
                   <div class="fpBillingTitle">Statut</div>
-                  <div class="fpBillingPlan">Trialing</div>
-                  <div class="fpBillingStatus">Essai actif actuellement</div>
+                  <div class="fpBillingPlan" id="fpBillStatusMain">Statut</div>
+                  <div class="fpBillingStatus">État actuel de l’abonnement</div>
                 </div>
 
                 <div class="fpBillingCard">
-                  <div class="fpBillingTitle">Prochain paiement</div>
-                  <div class="fpBillingPlan">13 mars</div>
-                  <div class="fpBillingStatus">Date estimée du prochain prélèvement</div>
+                  <div class="fpBillingTitle">Organisation</div>
+                  <div class="fpBillingPlan" id="fpBillOrgMain">Workspace principal</div>
+                  <div class="fpBillingStatus">Espace actuellement connecté</div>
                 </div>
 
                 <div class="fpBillingCard">
-                  <div class="fpBillingTitle">Workspace</div>
-                  <div class="fpBillingPlan">FlowPoint</div>
-                  <div class="fpBillingStatus">Compte principal connecté</div>
+                  <div class="fpBillingTitle">Essai</div>
+                  <div class="fpBillingPlan" id="fpBillTrialMain">—</div>
+                  <div class="fpBillingStatus">Fin d’essai ou statut neutre</div>
                 </div>
               </div>
             </section>
@@ -163,107 +159,34 @@
               <div class="fpCardHead">
                 <div>
                   <div class="fpCardKicker">Paiement</div>
-                  <h2 class="fpSectionTitle">Moyen de paiement</h2>
+                  <h2 class="fpSectionTitle">Gestion Stripe</h2>
                   <p class="fpCardText">
-                    Carte utilisée pour les paiements et accès rapide aux modifications.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpRows">
-                <div class="fpRowCard">
-                  <div class="fpRowMain">
-                    <div class="fpRowTitle">Carte enregistrée</div>
-                    <div class="fpRowMeta">Mastercard •••• 9515</div>
-                  </div>
-                  <div class="fpRowRight">
-                    <span class="fpBadge up">
-                      <span class="fpBadgeDot"></span>
-                      Valide
-                    </span>
-                  </div>
-                </div>
-
-                <div class="fpRowCard">
-                  <div class="fpRowMain">
-                    <div class="fpRowTitle">Facturation</div>
-                    <div class="fpRowMeta">Mensuelle · devise EUR</div>
-                  </div>
-                  <div class="fpRowRight">
-                    <span class="fpBadge">
-                      <span class="fpBadgeDot"></span>
-                      EUR
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="fpDetailActions">
-                <button class="fpBtn fpBtnPrimary" type="button">Modifier la carte</button>
-                <button class="fpBtn fpBtnGhost" type="button">Télécharger facture</button>
-              </div>
-            </section>
-
-            <section class="fpCard">
-              <div class="fpCardHead">
-                <div>
-                  <div class="fpCardKicker">Quotas</div>
-                  <h2 class="fpSectionTitle">Limites du plan</h2>
-                  <p class="fpCardText">
-                    Lecture rapide de la consommation et des volumes inclus dans ton abonnement.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpQuotaList">
-                <div class="fpQuotaRow"><span>Audits</span><strong>0 / 2000</strong></div>
-                <div class="fpQuotaRow"><span>Exports</span><strong>0 / 300</strong></div>
-                <div class="fpQuotaRow"><span>PDF</span><strong>0 / 150</strong></div>
-                <div class="fpQuotaRow"><span>Monitors</span><strong>0 / 300</strong></div>
-                <div class="fpQuotaRow"><span>Utilisateurs</span><strong>1 / 10</strong></div>
-              </div>
-            </section>
-          </div>
-
-          <div class="fpCol fpColSide">
-            <section class="fpCard">
-              <div class="fpCardHead">
-                <div>
-                  <div class="fpCardKicker">Actions</div>
-                  <h2 class="fpSectionTitle">Gestion abonnement</h2>
-                  <p class="fpCardText">
-                    Les actions principales de gestion réunies au même endroit.
+                    Accès direct au portail Stripe pour gérer le paiement et l’abonnement.
                   </p>
                 </div>
               </div>
 
               <div class="fpReportsGrid" style="grid-template-columns:1fr;">
                 <div class="fpReportCard">
-                  <div class="fpReportTitle">Changer de plan</div>
-                  <div class="fpReportMeta">Passer sur une autre formule selon tes besoins.</div>
-                  <div class="fpDetailActions">
-                    <button class="fpBtn fpBtnPrimary" type="button">Changer de plan</button>
-                  </div>
-                </div>
-
-                <div class="fpReportCard">
                   <div class="fpReportTitle">Portail Stripe</div>
-                  <div class="fpReportMeta">Accéder à la gestion externe du paiement.</div>
+                  <div class="fpReportMeta">Gestion externe du paiement, du moyen de paiement et de la facturation.</div>
                   <div class="fpDetailActions">
-                    <button class="fpBtn fpBtnGhost" type="button">Accéder portail Stripe</button>
+                    <button class="fpBtn fpBtnPrimary" type="button" id="fpStandalonePortalBtn">Accéder portail Stripe</button>
                   </div>
                 </div>
 
                 <div class="fpReportCard">
-                  <div class="fpReportTitle">Add-ons</div>
-                  <div class="fpReportMeta">Gérer les modules complémentaires et options actives.</div>
+                  <div class="fpReportTitle">Retour dashboard</div>
+                  <div class="fpReportMeta">Revenir directement au dashboard principal.</div>
                   <div class="fpDetailActions">
-                    <a class="fpBtn fpBtnGhost" href="/addons.html">Gérer mes add-ons</a>
+                    <a class="fpBtn fpBtnGhost" href="/dashboard.html#billing">Voir dans le dashboard</a>
                   </div>
                 </div>
               </div>
             </section>
+          </div>
 
+          <div class="fpCol fpColSide">
             <section class="fpCard">
               <div class="fpCardHead">
                 <div>
@@ -276,35 +199,12 @@
               </div>
 
               <div class="fpAddonsList">
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">White label</div>
-                  <div class="fpAddonPill on">ON</div>
-                </div>
-
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">Monitors +50</div>
-                  <div class="fpAddonPill off">OFF</div>
-                </div>
-
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">Extra seats</div>
-                  <div class="fpAddonPill off">OFF</div>
-                </div>
-
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">Priority support</div>
-                  <div class="fpAddonPill off">OFF</div>
-                </div>
-
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">Custom domain</div>
-                  <div class="fpAddonPill off">OFF</div>
-                </div>
-
-                <div class="fpAddonRow">
-                  <div class="fpAddonLabel">Advanced reports</div>
-                  <div class="fpAddonPill off">OFF</div>
-                </div>
+                <div class="fpAddonRow"><div class="fpAddonLabel">White label</div><div class="fpAddonPill on">ON</div></div>
+                <div class="fpAddonRow"><div class="fpAddonLabel">Monitors +50</div><div class="fpAddonPill off">OFF</div></div>
+                <div class="fpAddonRow"><div class="fpAddonLabel">Extra seats</div><div class="fpAddonPill off">OFF</div></div>
+                <div class="fpAddonRow"><div class="fpAddonLabel">Priority support</div><div class="fpAddonPill off">OFF</div></div>
+                <div class="fpAddonRow"><div class="fpAddonLabel">Custom domain</div><div class="fpAddonPill off">OFF</div></div>
+                <div class="fpAddonRow"><div class="fpAddonLabel">Advanced reports</div><div class="fpAddonPill off">OFF</div></div>
               </div>
 
               <div class="fpDetailActions">
@@ -338,9 +238,19 @@
 
   <script>
     (() => {
+      const TOKEN_KEY = "token";
+      const REFRESH_TOKEN_KEY = "refreshToken";
+      const REFRESH_ENDPOINT = "/api/auth/refresh";
+
       const menuBtn = document.getElementById("fpMenuBtn");
       const sidebar = document.getElementById("sidebar");
       const overlay = document.getElementById("fpOverlay");
+      const portalBtn = document.getElementById("fpStandalonePortalBtn");
+      const statusText = document.getElementById("fpBillingStatusText");
+
+      function setStatus(text) {
+        if (statusText) statusText.textContent = text;
+      }
 
       function openSidebar() {
         sidebar?.classList.add("open");
@@ -354,8 +264,100 @@
         document.body.style.overflow = "";
       }
 
+      function getToken() {
+        return localStorage.getItem(TOKEN_KEY) || "";
+      }
+
+      function setToken(token) {
+        if (token) localStorage.setItem(TOKEN_KEY, token);
+      }
+
+      async function refreshTokenIfPossible() {
+        const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+        if (!refreshToken) throw new Error("No refresh token");
+
+        const r = await fetch(REFRESH_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        if (!r.ok) throw new Error("Refresh failed");
+
+        const data = await r.json().catch(() => ({}));
+        if (data?.token) setToken(data.token);
+        if (data?.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+      }
+
+      async function fetchWithAuth(path, options = {}) {
+        const headers = new Headers(options.headers || {});
+        const token = getToken();
+        if (token) headers.set("Authorization", "Bearer " + token);
+
+        const doFetch = () => fetch(path, {
+          ...options,
+          headers,
+          credentials: "include"
+        });
+
+        let res = await doFetch();
+
+        if (res.status === 401) {
+          await refreshTokenIfPossible();
+          const newToken = getToken();
+          if (newToken) headers.set("Authorization", "Bearer " + newToken);
+          res = await doFetch();
+        }
+
+        return res;
+      }
+
+      async function openStripePortal() {
+        setStatus("Ouverture Stripe…");
+
+        try {
+          const r = await fetchWithAuth("/api/stripe/portal", { method: "POST" });
+          const data = await r.json().catch(() => ({}));
+
+          if (!r.ok || !data?.url) throw new Error(data?.error || "Erreur portail Stripe");
+
+          window.location.href = data.url;
+        } catch (e) {
+          console.error(e);
+          setStatus("Erreur portail Stripe");
+        }
+      }
+
+      async function loadBillingInfo() {
+        try {
+          const r = await fetchWithAuth("/api/me");
+          const me = await r.json().catch(() => ({}));
+
+          const plan = me?.plan ? String(me.plan) : "Plan non synchronisé";
+          const status = me?.subscriptionStatus || me?.lastPaymentStatus || "Statut en attente";
+          const org = me?.org?.name || me?.organization?.name || "Workspace principal";
+          const trial = me?.trialEndsAt ? new Date(me.trialEndsAt).toLocaleDateString("fr-FR") : "—";
+
+          document.getElementById("fpBillPlanHero").textContent = plan;
+          document.getElementById("fpBillStatusHero").textContent = status;
+          document.getElementById("fpBillOrgHero").textContent = org;
+
+          document.getElementById("fpBillPlanMain").textContent = plan;
+          document.getElementById("fpBillPlanMeta").textContent = status;
+          document.getElementById("fpBillStatusMain").textContent = status;
+          document.getElementById("fpBillOrgMain").textContent = org;
+          document.getElementById("fpBillTrialMain").textContent = trial;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
       menuBtn?.addEventListener("click", openSidebar);
       overlay?.addEventListener("click", closeSidebar);
+      portalBtn?.addEventListener("click", openStripePortal);
+
+      loadBillingInfo();
     })();
   </script>
 </body>
