@@ -2456,3 +2456,224 @@ body{
     }
   }
 }
+/* =========================================================
+   BILLING FINAL FIX
+   à mettre TOUT EN BAS du fichier
+   ========================================================= */
+
+.fpBillingCard,
+.fpReportCard,
+.fpAddonRow{
+  position:relative;
+  overflow:hidden;
+}
+
+.fpBillingCard::before,
+.fpReportCard::before,
+.fpAddonRow::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:
+    radial-gradient(120% 120% at 12% 0%, rgba(91,124,255,.10), transparent 42%);
+  opacity:.9;
+}
+
+.fpBillingCard,
+.fpReportCard{
+  min-height:100%;
+}
+
+.fpBillingPlan{
+  line-height:1.04;
+}
+
+.fpBillingStatus{
+  line-height:1.5;
+}
+
+.fpAddonRow{
+  align-items:center;
+}
+
+.fpAddonLabel{
+  flex:1;
+  min-width:0;
+}
+
+.fpAddonPill{
+  flex:0 0 auto;
+}
+
+.fpDetailActions{
+  margin-top:16px;
+}
+
+.fpDetailActions > .fpBtn,
+.fpDetailActions > a.fpBtn{
+  min-height:50px;
+}
+
+.fpTopbarRight > .fpBtn,
+.fpTopbarRight > a.fpBtn,
+.fpTopbarRight > .fpStatusPill{
+  min-height:50px;
+}
+
+/* évite les boutons collés sur billing */
+.fpTopbarRight,
+.fpDetailActions,
+.fpSidebarActions,
+.fpInlineLinks{
+  gap:16px !important;
+  row-gap:16px !important;
+  column-gap:16px !important;
+}
+
+/* meilleur rendu des lignes utiles */
+.fpInlineLinks a{
+  min-height:48px;
+  padding-inline:16px;
+}
+
+/* =========================
+   BILLING MOBILE
+   ========================= */
+@media (max-width:760px){
+  .fpTopbarRight{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:14px !important;
+  }
+
+  .fpTopbarRight > *{
+    width:100%;
+  }
+
+  .fpDetailActions{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:14px !important;
+  }
+
+  .fpDetailActions > .fpBtn,
+  .fpDetailActions > a.fpBtn{
+    width:100%;
+  }
+
+  .fpBillingCard{
+    padding:18px;
+  }
+
+  .fpBillingPlan{
+    font-size:30px;
+  }
+
+  .fpReportCard,
+  .fpBillingCard{
+    border-radius:22px;
+  }
+}
+
+@media (max-width:520px){
+  .fpBillingPlan{
+    font-size:26px;
+  }
+
+  .fpReportTitle,
+  .fpBillingTitle{
+    font-size:17px;
+  }
+}
+
+/* =========================
+   LIGHT MODE BILLING FIX
+   ========================= */
+@media (prefers-color-scheme: light){
+
+  /* cartes billing plus bleutées, moins blanches */
+  .fpBillingCard,
+  .fpReportCard,
+  .fpAddonRow{
+    background:
+      radial-gradient(130% 120% at 10% 0%, rgba(47,91,255,.12), transparent 44%),
+      linear-gradient(180deg, rgba(255,255,255,.84), rgba(239,245,255,.95)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+    box-shadow:
+      0 12px 30px rgba(41,64,122,.08),
+      inset 0 1px 0 rgba(255,255,255,.42) !important;
+  }
+
+  /* texte billing toujours foncé */
+  .fpBillingTitle,
+  .fpBillingPlan,
+  .fpReportTitle,
+  .fpAddonLabel,
+  #fpBillPlanHero,
+  #fpBillStatusHero,
+  #fpBillOrgHero,
+  #fpBillPlanMain,
+  #fpBillStatusMain,
+  #fpBillOrgMain,
+  #fpBillTrialMain{
+    color:var(--fpText) !important;
+    -webkit-text-fill-color:var(--fpText) !important;
+  }
+
+  .fpBillingStatus,
+  .fpReportMeta,
+  #fpBillPlanMeta,
+  #fpBillTrialMeta{
+    color:var(--fpTextSoft) !important;
+    -webkit-text-fill-color:var(--fpTextSoft) !important;
+  }
+
+  /* boutons ghost bien visibles */
+  .fpBtnGhost{
+    color:var(--fpText) !important;
+    -webkit-text-fill-color:var(--fpText) !important;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.86), rgba(241,246,255,.96)) !important;
+    border-color:rgba(59,78,130,.14) !important;
+  }
+
+  .fpBtnGhost:hover{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.94), rgba(234,242,255,.99)) !important;
+  }
+
+  /* liens utiles plus lisibles */
+  .fpInlineLinks a{
+    color:var(--fpText) !important;
+    -webkit-text-fill-color:var(--fpText) !important;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.82), rgba(242,247,255,.95)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+  }
+
+  /* pill OFF plus visible */
+  .fpAddonPill.off{
+    color:var(--fpTextSoft) !important;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.76), rgba(243,247,255,.92)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+  }
+
+  /* statut prêt visible */
+  .fpStatusPill{
+    color:var(--fpText) !important;
+    -webkit-text-fill-color:var(--fpText) !important;
+  }
+
+  /* sidebar billing claire propre */
+  .fpAccountCard{
+    background:
+      radial-gradient(120% 120% at 15% 0%, rgba(47,91,255,.10), transparent 52%),
+      linear-gradient(180deg, rgba(255,255,255,.86), rgba(239,245,255,.95)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+  }
+}
