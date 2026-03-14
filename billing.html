@@ -2,7 +2,12 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  />
+  <meta name="theme-color" content="#0a1230" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#dfe8ff" media="(prefers-color-scheme: light)" />
   <title>FlowPoint — Billing</title>
 
   <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
@@ -44,7 +49,7 @@
           <div class="fpSidebarActions">
             <a class="fpBtn fpBtnGhost fpBtnFull" href="/pricing.html">Retour pricing</a>
             <a class="fpBtn fpBtnGhost fpBtnFull" href="/addons.html">Voir les add-ons</a>
-            <a class="fpBtn fpBtnGhost fpBtnFull" href="/dashboard.html">Retour dashboard</a>
+            <a class="fpBtn fpBtnGhost fpBtnFull" href="/dashboard.html#billing">Retour dashboard</a>
             <a class="fpBtn fpBtnDanger fpBtnFull" href="/login.html">Log out</a>
           </div>
         </div>
@@ -89,8 +94,8 @@
             <div class="fpCardKicker">Facturation</div>
             <h2 class="fpHeroTitle">Ton espace billing</h2>
             <p class="fpHeroText">
-              Gère ton plan, tes paiements, tes modules actifs et tes prochaines évolutions
-              depuis une interface cohérente avec le reste de FlowPoint.
+              Gère ton plan, tes paiements, tes modules actifs et les options liées à ton abonnement
+              depuis une interface cohérente avec le dashboard FlowPoint.
             </p>
 
             <div class="fpHeroStats">
@@ -123,7 +128,7 @@
                   <div class="fpCardKicker">Abonnement</div>
                   <h2 class="fpSectionTitle">Plan actuel</h2>
                   <p class="fpCardText">
-                    Vue claire du plan, de l’organisation et de l’état du compte.
+                    Vue claire du plan, du statut, de l’organisation et de l’essai éventuel.
                   </p>
                 </div>
               </div>
@@ -161,25 +166,34 @@
                   <div class="fpCardKicker">Paiement</div>
                   <h2 class="fpSectionTitle">Gestion Stripe</h2>
                   <p class="fpCardText">
-                    Accès direct au portail Stripe pour gérer le paiement et l’abonnement.
+                    Accès direct au portail Stripe pour gérer le moyen de paiement, la facturation
+                    et l’abonnement.
                   </p>
                 </div>
               </div>
 
-              <div class="fpReportsGrid" style="grid-template-columns:1fr;">
+              <div class="fpRows">
                 <div class="fpReportCard">
                   <div class="fpReportTitle">Portail Stripe</div>
-                  <div class="fpReportMeta">Gestion externe du paiement, du moyen de paiement et de la facturation.</div>
+                  <div class="fpReportMeta">
+                    Ouvre l’espace sécurisé Stripe pour gérer ton abonnement FlowPoint.
+                  </div>
                   <div class="fpDetailActions">
-                    <button class="fpBtn fpBtnPrimary" type="button" id="fpStandalonePortalBtn">Accéder portail Stripe</button>
+                    <button class="fpBtn fpBtnPrimary" type="button" id="fpStandalonePortalBtn">
+                      Accéder portail Stripe
+                    </button>
                   </div>
                 </div>
 
                 <div class="fpReportCard">
                   <div class="fpReportTitle">Retour dashboard</div>
-                  <div class="fpReportMeta">Revenir directement au dashboard principal.</div>
+                  <div class="fpReportMeta">
+                    Revenir directement à la section billing du dashboard principal.
+                  </div>
                   <div class="fpDetailActions">
-                    <a class="fpBtn fpBtnGhost" href="/dashboard.html#billing">Voir dans le dashboard</a>
+                    <a class="fpBtn fpBtnGhost" href="/dashboard.html#billing">
+                      Voir dans le dashboard
+                    </a>
                   </div>
                 </div>
               </div>
@@ -193,7 +207,7 @@
                   <div class="fpCardKicker">Add-ons</div>
                   <h2 class="fpSectionTitle">Modules actifs</h2>
                   <p class="fpCardText">
-                    Résumé des extensions principales actuellement associées au compte.
+                    Résumé des extensions principales associées au compte.
                   </p>
                 </div>
               </div>
@@ -317,21 +331,37 @@
         return cap(s.replaceAll("_", " "));
       }
 
-      function trialLabel(value) {
-        if (!value) return "Essai non défini";
+      function trialLabel(value, me = {}) {
+        const status = String(me?.subscriptionStatus || me?.lastPaymentStatus || "").toLowerCase();
+
+        if (!value) {
+          if (status === "trialing") return "Essai actif";
+          return "Essai non défini";
+        }
 
         const d = new Date(value);
-        if (Number.isNaN(d.getTime())) return "Essai non défini";
+        if (Number.isNaN(d.getTime())) {
+          if (status === "trialing") return "Essai actif";
+          return "Essai non défini";
+        }
 
         const now = new Date();
         return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
       }
 
-      function trialMetaLabel(value) {
-        if (!value) return "Aucun essai actif";
+      function trialMetaLabel(value, me = {}) {
+        const status = String(me?.subscriptionStatus || me?.lastPaymentStatus || "").toLowerCase();
+
+        if (!value) {
+          if (status === "trialing") return "Essai en cours";
+          return "Aucun essai actif";
+        }
 
         const d = new Date(value);
-        if (Number.isNaN(d.getTime())) return "Aucun essai actif";
+        if (Number.isNaN(d.getTime())) {
+          if (status === "trialing") return "Essai en cours";
+          return "Aucun essai actif";
+        }
 
         const now = new Date();
         return d.getTime() >= now.getTime()
@@ -458,19 +488,30 @@
           const plan = planLabel(me?.plan);
           const status = statusLabel(me?.subscriptionStatus || me?.lastPaymentStatus);
           const org = me?.org?.name || me?.organization?.name || "Workspace principal";
-          const trial = trialLabel(me?.trialEndsAt);
-          const trialMeta = trialMetaLabel(me?.trialEndsAt);
+          const trial = trialLabel(me?.trialEndsAt, me);
+          const trialMeta = trialMetaLabel(me?.trialEndsAt, me);
 
-          document.getElementById("fpBillPlanHero").textContent = plan;
-          document.getElementById("fpBillStatusHero").textContent = status;
-          document.getElementById("fpBillOrgHero").textContent = org;
+          const planHero = document.getElementById("fpBillPlanHero");
+          const statusHero = document.getElementById("fpBillStatusHero");
+          const orgHero = document.getElementById("fpBillOrgHero");
 
-          document.getElementById("fpBillPlanMain").textContent = plan;
-          document.getElementById("fpBillPlanMeta").textContent = status;
-          document.getElementById("fpBillStatusMain").textContent = status;
-          document.getElementById("fpBillOrgMain").textContent = org;
-          document.getElementById("fpBillTrialMain").textContent = trial;
-          document.getElementById("fpBillTrialMeta").textContent = trialMeta;
+          const planMain = document.getElementById("fpBillPlanMain");
+          const planMeta = document.getElementById("fpBillPlanMeta");
+          const statusMain = document.getElementById("fpBillStatusMain");
+          const orgMain = document.getElementById("fpBillOrgMain");
+          const trialMain = document.getElementById("fpBillTrialMain");
+          const trialMetaEl = document.getElementById("fpBillTrialMeta");
+
+          if (planHero) planHero.textContent = plan;
+          if (statusHero) statusHero.textContent = status;
+          if (orgHero) orgHero.textContent = org;
+
+          if (planMain) planMain.textContent = plan;
+          if (planMeta) planMeta.textContent = status;
+          if (statusMain) statusMain.textContent = status;
+          if (orgMain) orgMain.textContent = org;
+          if (trialMain) trialMain.textContent = trial;
+          if (trialMetaEl) trialMetaEl.textContent = trialMeta;
 
           renderAddons(me);
           setStatus("Billing prêt", "ok");
