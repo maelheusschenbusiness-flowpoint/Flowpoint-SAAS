@@ -168,27 +168,49 @@
   }
 
   function trialLabel(value) {
-    if (!value) return "Essai non défini";
+  const status = String(
+    state.me?.subscriptionStatus ||
+    state.me?.lastPaymentStatus ||
+    ""
+  ).toLowerCase();
 
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "Essai non défini";
-
-    const now = new Date();
-    return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
+  if (!value) {
+    if (status === "trialing") return "Essai actif";
+    return "Essai non défini";
   }
 
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    if (status === "trialing") return "Essai actif";
+    return "Essai non défini";
+  }
+
+  const now = new Date();
+  return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
+}
   function trialMetaLabel(value) {
-    if (!value) return "Aucun essai actif";
+  const status = String(
+    state.me?.subscriptionStatus ||
+    state.me?.lastPaymentStatus ||
+    ""
+  ).toLowerCase();
 
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "Aucun essai actif";
-
-    const now = new Date();
-    return d.getTime() >= now.getTime()
-      ? `Jusqu’au ${formatShortDate(value)}`
-      : `Terminé le ${formatShortDate(value)}`;
+  if (!value) {
+    if (status === "trialing") return "Essai en cours";
+    return "Aucun essai actif";
   }
 
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    if (status === "trialing") return "Essai en cours";
+    return "Aucun essai actif";
+  }
+
+  const now = new Date();
+  return d.getTime() >= now.getTime()
+    ? `Jusqu’au ${formatShortDate(value)}`
+    : `Terminé le ${formatShortDate(value)}`;
+}
   function formatUsage(v) {
     if (v == null) return "0";
 
