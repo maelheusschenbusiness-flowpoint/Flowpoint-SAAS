@@ -77,7 +77,7 @@
           <a class="fpBtn fpBtnPrimary" href="/dashboard.html#billing">Dashboard</a>
 
           <div class="fpStatusPill">
-            <span class="fpStatusDot"></span>
+            <span class="fpStatusDot" id="fpBillingStatusDot"></span>
             <span id="fpBillingStatusText">Billing prêt</span>
           </div>
         </div>
@@ -198,8 +198,8 @@
                 </div>
               </div>
 
-              <div class="fpAddonsList">
-                <div class="fpAddonRow"><div class="fpAddonLabel">White label</div><div class="fpAddonPill on">ON</div></div>
+              <div class="fpAddonsList" id="fpBillingAddonsList">
+                <div class="fpAddonRow"><div class="fpAddonLabel">White label</div><div class="fpAddonPill off">OFF</div></div>
                 <div class="fpAddonRow"><div class="fpAddonLabel">Monitors +50</div><div class="fpAddonPill off">OFF</div></div>
                 <div class="fpAddonRow"><div class="fpAddonLabel">Extra seats</div><div class="fpAddonPill off">OFF</div></div>
                 <div class="fpAddonRow"><div class="fpAddonLabel">Priority support</div><div class="fpAddonPill off">OFF</div></div>
@@ -238,6 +238,8 @@
 
   <script>
     (() => {
+      "use strict";
+
       const TOKEN_KEY = "token";
       const REFRESH_TOKEN_KEY = "refreshToken";
       const REFRESH_ENDPOINT = "/api/auth/refresh";
@@ -247,9 +249,25 @@
       const overlay = document.getElementById("fpOverlay");
       const portalBtn = document.getElementById("fpStandalonePortalBtn");
       const statusText = document.getElementById("fpBillingStatusText");
+      const statusDot = document.getElementById("fpBillingStatusDot");
 
-      function setStatus(text) {
-        if (statusText) statusText.textContent = text;
+      function esc(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function setStatus(text, mode = "ok") {
+        if (statusText) statusText.textContent = text || "";
+
+        if (!statusDot) return;
+        statusDot.classList.remove("warn", "danger");
+
+        if (mode === "warn") statusDot.classList.add("warn");
+        if (mode === "danger") statusDot.classList.add("danger");
       }
 
       function openSidebar() {
@@ -270,6 +288,86 @@
 
       function setToken(token) {
         if (token) localStorage.setItem(TOKEN_KEY, token);
+      }
+
+      function cap(str) {
+        const s = String(str || "").trim();
+        if (!s) return "—";
+        return s.charAt(0).toUpperCase() + s.slice(1);
+      }
+
+      function planLabel(plan) {
+        const p = String(plan || "").toLowerCase();
+        if (p === "standard") return "Standard";
+        if (p === "pro") return "Pro";
+        if (p === "ultra") return "Ultra";
+        if (!p) return "Plan non synchronisé";
+        return cap(p);
+      }
+
+      function statusLabel(status) {
+        const s = String(status || "").toLowerCase();
+        if (!s) return "Statut en attente";
+        if (s === "trialing") return "Essai actif";
+        if (s === "active") return "Actif";
+        if (s === "past_due") return "Paiement en retard";
+        if (s === "canceled") return "Annulé";
+        if (s === "incomplete") return "Incomplet";
+        if (s === "payment_succeeded") return "Paiement validé";
+        return cap(s.replaceAll("_", " "));
+      }
+
+      function formatShortDate(value) {
+        if (!value) return "—";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return "—";
+        return d.toLocaleDateString("fr-FR");
+      }
+
+      function getAddonEntries(me) {
+        const addons = me?.addons || {};
+        const rawEntries = [
+          ["whiteLabel", "White label"],
+          ["monitorsPack50", "Monitors +50"],
+          ["extraSeats", "Extra seats"],
+          ["prioritySupport", "Priority support"],
+          ["customDomain", "Custom domain"],
+          ["brandingPack", "Branding pack"],
+          ["extraExports", "Extra exports"],
+          ["extraPdf", "PDF supplémentaires"],
+          ["advancedReports", "Advanced reports"],
+          ["teamPack", "Team pack"],
+          ["apiAccess", "API access"],
+          ["localSeoPack", "Local SEO pack"],
+        ];
+
+        return rawEntries.map(([key, label]) => {
+          const value = addons[key];
+          const enabled =
+            typeof value === "boolean" ? value :
+            typeof value === "number" ? value > 0 :
+            !!value;
+
+          return {
+            label,
+            enabled,
+            text: typeof value === "number" && value > 1 ? `ON ×${value}` : enabled ? "ON" : "OFF",
+          };
+        });
+      }
+
+      function renderAddons(me) {
+        const target = document.getElementById("fpBillingAddonsList");
+        if (!target) return;
+
+        const addons = getAddonEntries(me);
+
+        target.innerHTML = addons.map((a) => `
+          <div class="fpAddonRow">
+            <div class="fpAddonLabel">${esc(a.label)}</div>
+            <div class="fpAddonPill ${a.enabled ? "on" : "off"}">${esc(a.text)}</div>
+          </div>
+        `).join("");
       }
 
       async function refreshTokenIfPossible() {
@@ -293,7 +391,11 @@
       async function fetchWithAuth(path, options = {}) {
         const headers = new Headers(options.headers || {});
         const token = getToken();
+
         if (token) headers.set("Authorization", "Bearer " + token);
+        if (options.body && !headers.has("Content-Type")) {
+          headers.set("Content-Type", "application/json");
+        }
 
         const doFetch = () => fetch(path, {
           ...options,
@@ -314,30 +416,34 @@
       }
 
       async function openStripePortal() {
-        setStatus("Ouverture Stripe…");
+        setStatus("Ouverture Stripe…", "warn");
 
         try {
           const r = await fetchWithAuth("/api/stripe/portal", { method: "POST" });
           const data = await r.json().catch(() => ({}));
 
-          if (!r.ok || !data?.url) throw new Error(data?.error || "Erreur portail Stripe");
+          if (!r.ok || !data?.url) {
+            throw new Error(data?.error || "Erreur portail Stripe");
+          }
 
           window.location.href = data.url;
         } catch (e) {
           console.error(e);
-          setStatus("Erreur portail Stripe");
+          setStatus("Erreur portail Stripe", "danger");
         }
       }
 
       async function loadBillingInfo() {
+        setStatus("Chargement billing…", "warn");
+
         try {
           const r = await fetchWithAuth("/api/me");
           const me = await r.json().catch(() => ({}));
 
-          const plan = me?.plan ? String(me.plan) : "Plan non synchronisé";
-          const status = me?.subscriptionStatus || me?.lastPaymentStatus || "Statut en attente";
+          const plan = planLabel(me?.plan);
+          const status = statusLabel(me?.subscriptionStatus || me?.lastPaymentStatus);
           const org = me?.org?.name || me?.organization?.name || "Workspace principal";
-          const trial = me?.trialEndsAt ? new Date(me.trialEndsAt).toLocaleDateString("fr-FR") : "—";
+          const trial = me?.trialEndsAt ? formatShortDate(me.trialEndsAt) : "—";
 
           document.getElementById("fpBillPlanHero").textContent = plan;
           document.getElementById("fpBillStatusHero").textContent = status;
@@ -348,8 +454,12 @@
           document.getElementById("fpBillStatusMain").textContent = status;
           document.getElementById("fpBillOrgMain").textContent = org;
           document.getElementById("fpBillTrialMain").textContent = trial;
+
+          renderAddons(me);
+          setStatus("Billing prêt", "ok");
         } catch (e) {
           console.error(e);
+          setStatus("Erreur chargement billing", "danger");
         }
       }
 
