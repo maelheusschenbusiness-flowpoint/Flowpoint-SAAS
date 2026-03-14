@@ -1971,12 +1971,17 @@ body{
 .fpBtn:active{
   transform:scale(.97);
 }
+
 /* =========================================================
-   FIX FLOWPOINT — spacing / light theme / mobile layout
-   À laisser TOUT EN BAS du fichier pour écraser le reste
+   FINAL FIX UNIQUE
+   - ne touche pas aux missions
+   - corrige paramètres collés
+   - corrige mobile
+   - supprime les bandes/blocs séparés iPhone
+   - garde dark + light mode
    ========================================================= */
 
-/* base plus propre */
+/* base */
 .fpPageContainer,
 .fpCard,
 .fpCardInner,
@@ -2002,43 +2007,54 @@ body{
   background-clip:padding-box;
 }
 
-/* boutons mieux espacés partout */
+/* espacements généraux */
 .fpTopbarRight,
 .fpCardActions,
 .fpTopActionsRow,
 .fpTableActions,
 .fpDetailActions,
 .fpPageActions,
-.fpMissionActions,
 .fpInlineLinks,
 .fpSidebarActions{
-  gap:16px !important;
-  row-gap:16px !important;
-  column-gap:16px !important;
+  gap:14px !important;
+  row-gap:14px !important;
+  column-gap:14px !important;
 }
 
 .fpBtn{
   margin:0 !important;
 }
 
-
 .fpTextPanel{
   padding:20px;
   border-radius:22px;
 }
 
-/* cartes et sections un peu plus remplies */
+/* on garde les missions comme elles sont */
+.fpMissionActions{
+  gap:12px;
+  row-gap:12px;
+  column-gap:12px;
+}
+
+/* un léger glow propre sur les cartes */
 .fpCard,
 .fpCardInner,
 .fpHero,
-.fpPageHero{
+.fpPageHero,
+.fpBillingCard,
+.fpReportCard,
+.fpAddonRow{
   position:relative;
 }
 
 .fpCard::before,
 .fpCardInner::before,
 .fpHero::before,
-.fpPageHero::before{
+.fpPageHero::before,
+.fpBillingCard::before,
+.fpReportCard::before,
+.fpAddonRow::before{
   content:"";
   position:absolute;
   inset:0;
@@ -2049,66 +2065,483 @@ body{
   opacity:.9;
 }
 
-/* boutons ghost visibles */
-.fpBtnGhost{
-  backdrop-filter:blur(12px);
-}
-
-/* champs/select plus lisibles */
+/* meilleurs champs */
 .fpInput,
 .fpTextarea,
 .fpSelect{
   -webkit-text-fill-color:currentColor !important;
 }
 
-/* évite les zones trop vides ou blanches */
-.fpEmpty{
-  min-height:84px;
-  border-radius:20px;
+.fpBtnGhost{
+  backdrop-filter:blur(12px);
 }
 
-/* mobile */
-@media (max-width:760px){
-  
+/* =========================
+   SETTINGS FIX
+   ========================= */
+
+.fpSettingsGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px !important;
+  margin-top:16px;
+}
+
+.fpSettingsGrid .fpCardInner{
+  padding:24px;
+}
+
+.fpSettingsGrid .fpCardInner > .fpSmall + .fpField,
+.fpSettingsGrid .fpCardInner > .fpSmall + .fpSettingsList,
+.fpSettingsGrid .fpCardInner > .fpSmall + .fpToggleRow,
+.fpSettingsGrid .fpCardInner > .fpSmall + .fpDetailActions{
+  margin-top:16px;
+}
+
+.fpSettingsGrid .fpCardInner > .fpField + .fpField,
+.fpSettingsGrid .fpCardInner > .fpField + .fpDetailActions,
+.fpSettingsGrid .fpCardInner > .fpToggleRow + .fpToggleRow,
+.fpSettingsGrid .fpCardInner > .fpSettingsList + .fpSettingsList,
+.fpSettingsList > * + *{
+  margin-top:16px;
+}
+
+.fpSettingsRow,
+.fpToggleRow{
+  border-radius:20px;
+  padding:16px 18px;
+}
+
+.fpSettingsRow{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+}
+
+.fpToggleRow{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+}
+
+/* =========================
+   BILLING / LIENS / ACTIONS
+   ========================= */
+
+.fpBillingCard,
+.fpReportCard{
+  min-height:100%;
+}
+
+.fpBillingPlan{
+  line-height:1.04;
+}
+
+.fpBillingStatus{
+  line-height:1.5;
+}
+
+.fpAddonRow{
+  align-items:center;
+}
+
+.fpAddonLabel{
+  flex:1;
+  min-width:0;
+}
+
+.fpAddonPill{
+  flex:0 0 auto;
+}
+
+.fpDetailActions{
+  margin-top:16px;
+}
+
+.fpDetailActions > .fpBtn,
+.fpDetailActions > a.fpBtn,
+.fpTopbarRight > .fpBtn,
+.fpTopbarRight > a.fpBtn,
+.fpTopbarRight > .fpStatusPill{
+  min-height:50px;
+}
+
+.fpInlineLinks a{
+  min-height:48px;
+  padding-inline:16px;
+}
+
+/* =========================
+   FOND CONTINU / IPHONE FIX
+   ========================= */
+
+/* on annule les anciens safe-area qui créaient l'effet coupé */
+html,
+body{
+  margin:0;
+  min-height:100%;
+  background:transparent !important;
+  background-color:transparent !important;
+}
+
+body{
+  padding-top:0 !important;
+  padding-bottom:0 !important;
+}
+
+/* fond unique continu comme ton site vitrine */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-2;
+  pointer-events:none;
+  background:
+    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
+    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
+    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
+    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+  background-repeat:no-repeat;
+  background-size:cover;
+  background-attachment:fixed;
+}
+
+/* le shell ne doit plus faire bloc séparé */
+.fpAppShell{
+  position:relative;
+  min-height:100svh;
+  min-height:100dvh;
+  background:transparent !important;
+}
+
+.fpMain,
+.fpSidebar,
+.fpPageContainer{
+  background:transparent !important;
+}
+
+/* =========================
+   MOBILE
+   ========================= */
+
+@media (max-width:1080px){
+  .fpAppShell{
+    grid-template-columns:1fr;
+  }
+
+  .fpSidebar{
+    position:fixed;
+    left:0;
+    top:0;
+    width:min(92vw, 360px);
+    transform:translateX(-105%);
+    transition:.22s ease;
+    box-shadow:var(--fpShadowLg);
+    height:100dvh;
+    background:
+      radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.22), transparent 62%),
+      linear-gradient(180deg, rgba(14,22,56,.97), rgba(9,15,38,.985)) !important;
+  }
+
+  .fpSidebar.open{
+    transform:translateX(0);
+  }
+
+  .fpMenuBtn{
+    display:flex;
+  }
+
+  .fpTopbar{
+    flex-direction:column;
+    align-items:stretch;
+  }
 
   .fpTopbarRight{
-    gap:14px !important;
+    justify-content:flex-start;
   }
 
-  .fpInlineLinks,
-  .fpSidebarActions,
+  .fpHero{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .fpHeroRight{
+    justify-content:flex-start;
+  }
+
+  .fpHelloTitle{
+    font-size:42px;
+  }
+
+  .fpHeroTitle{
+    font-size:52px;
+  }
+
+  .fpPageTitle{
+    font-size:42px;
+  }
+}
+
+@media (max-width:760px){
+  html{
+    background:var(--fpBg2) !important;
+  }
+
+  body{
+    background:transparent !important;
+  }
+
+  .fpMain{
+    padding:14px;
+    padding-top:calc(14px + env(safe-area-inset-top, 0px));
+    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+    background:transparent !important;
+    box-shadow:none !important;
+    border:none !important;
+  }
+
+  .fpPageContainer{
+    background:transparent !important;
+    box-shadow:none !important;
+    border:none !important;
+  }
+
+  .fpTopbar{
+    gap:14px;
+  }
+
+  .fpTopbarRight{
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px !important;
+  }
+
+  .fpTopbarRight > *{
+    width:100%;
+  }
+
+  .fpHelloTitle{
+    font-size:34px;
+  }
+
+  .fpHeroTitle{
+    font-size:42px;
+  }
+
+  .fpPageTitle{
+    font-size:36px;
+  }
+
+  .fpSectionTitle,
+  .fpCardInnerTitle{
+    font-size:28px;
+  }
+
+  .fpBigValue{
+    font-size:26px;
+  }
+
+  .fpKpiMain{
+    font-size:42px;
+  }
+
+  .fpPlanPrice{
+    font-size:38px;
+  }
+
+  .fpStatusPill,
+  .fpSelect,
+  .fpBtn,
+  .fpExportWrap{
+    width:100%;
+  }
+
+  .fpExportMenu{
+    left:0;
+    right:auto;
+    width:100%;
+  }
+
+  .fpPageHeroHead{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .fpPageActions,
   .fpDetailActions,
-  .fpTopActionsRow{
-    gap:14px !important;
+  .fpTopActionsRow,
+  .fpTableActions,
+  .fpCardActions{
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px !important;
   }
 
-  .fpCard,
-  .fpCardInner,
-  .fpPageHero,
-  .fpHero,
-  .fpAccountCard{
-    padding:20px;
+  .fpInlineLinks{
+    flex-direction:column;
+    gap:12px !important;
   }
 
-  .fpHelloSub{
+  .fpInlineLinks a{
+    width:100%;
+    justify-content:center;
+  }
+
+  .fpTopActionsRow > .fpBtn,
+  .fpTopActionsRow > a.fpBtn,
+  .fpDetailActions > .fpBtn,
+  .fpDetailActions > a.fpBtn,
+  .fpTableActions > .fpBtn,
+  .fpTableActions > a.fpBtn,
+  .fpCardActions > .fpBtn,
+  .fpCardActions > a.fpBtn,
+  .fpPageActions > .fpBtn,
+  .fpPageActions > a.fpBtn{
+    width:100%;
+    min-height:48px;
+  }
+
+  .fpTableHead{
+    display:none;
+  }
+
+  .fpTableRow,
+  .fpTr.row{
+    grid-template-columns:1fr !important;
+  }
+
+  .fpRowCard,
+  .fpInfoRow,
+  .fpSettingsRow,
+  .fpAddonRow,
+  .fpQuotaRow,
+  .fpTimelineItem,
+  .fpActionItem{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:10px;
+  }
+
+  .fpInfoRow strong,
+  .fpSettingsRow strong{
+    text-align:left;
+  }
+
+  .fpChartCard{
+    overflow:hidden;
+  }
+
+  .fpChartBox{
+    width:100%;
+    min-width:0;
+    height:240px;
+    padding:10px;
+    border-radius:20px;
+  }
+
+  .fpChartBox canvas{
+    width:100% !important;
+    height:100% !important;
     max-width:100%;
-    line-height:1.35;
+  }
+
+  .fpChartLegend{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .fpLegendItem{
+    width:100%;
+    justify-content:flex-start;
   }
 
   .fpBillingGrid{
     grid-template-columns:1fr !important;
   }
+
+  .fpBillingCard{
+    padding:18px;
+    border-radius:22px;
+  }
+
+  .fpBillingPlan{
+    font-size:30px;
+  }
+
+  /* paramètres téléphone */
+  .fpSettingsGrid{
+    grid-template-columns:1fr !important;
+    gap:18px !important;
+  }
+
+  .fpSettingsGrid .fpCardInner{
+    padding:20px;
+    border-radius:22px;
+  }
+
+  .fpSettingsRow,
+  .fpToggleRow{
+    padding:14px 16px;
+  }
+
+  .fpSettingsRow span,
+  .fpSettingsRow strong{
+    display:block;
+    width:100%;
+  }
+
+  .fpSettingsRow strong{
+    margin-top:6px;
+    text-align:left !important;
+  }
+
+  #fpRangeSelect{
+    color:var(--fpText) !important;
+    -webkit-text-fill-color:var(--fpText) !important;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='white'><path d='M7 10l5 5 5-5z'/></svg>");
+    background-repeat:no-repeat,no-repeat;
+    background-position:0 0,right 14px center;
+    background-size:100% 100%,18px;
+  }
 }
 
 @media (max-width:520px){
-  .fpMissionTitle{
-    font-size:22px;
-    line-height:1.12;
-  }
-
   .fpHelloTitle{
     font-size:30px;
     line-height:1;
+  }
+
+  .fpHero{
+    padding:20px;
+    border-radius:24px;
+  }
+
+  .fpHeroTitle{
+    font-size:38px;
+  }
+
+  .fpPageTitle{
+    font-size:32px;
+  }
+
+  .fpHeroText{
+    font-size:16px;
+  }
+
+  .fpCard,
+  .fpCardInner,
+  .fpPageHero,
+  .fpAccountCard{
+    padding:18px;
+    border-radius:22px;
   }
 
   .fpSectionTitle,
@@ -2116,11 +2549,31 @@ body{
     font-size:26px;
     line-height:1.04;
   }
+
+  .fpBillingPlan{
+    font-size:26px;
+  }
+
+  .fpReportTitle,
+  .fpBillingTitle{
+    font-size:17px;
+  }
+
+  .fpNavItem{
+    min-height:54px;
+    font-size:16px;
+  }
+
+  .fpBrandLogo{
+    width:50px;
+    height:50px;
+  }
 }
 
 /* =========================
-   LIGHT MODE FIX COMPLET
+   LIGHT MODE FINAL
    ========================= */
+
 @media (prefers-color-scheme: light){
   :root{
     --fpBg:#eaf1ff;
@@ -2138,21 +2591,21 @@ body{
     --fpShadowLg:0 28px 70px rgba(41,64,122,.16);
   }
 
-  html,
-  body{
+  body::before{
     background:
       radial-gradient(1100px 700px at 10% 0%, rgba(47,91,255,.18), transparent 58%),
       radial-gradient(1000px 700px at 100% 0%, rgba(106,142,255,.16), transparent 60%),
       radial-gradient(900px 700px at 50% 100%, rgba(47,91,255,.10), transparent 60%),
-      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%) !important;
-    background-attachment:fixed !important;
+      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%);
+    background-repeat:no-repeat;
+    background-size:cover;
+    background-attachment:fixed;
   }
 
   .fpMain{
-    background:
-      radial-gradient(900px 400px at 10% 0%, rgba(47,91,255,.06), transparent 50%),
-      radial-gradient(700px 300px at 100% 0%, rgba(91,124,255,.08), transparent 52%);
-    border-left:1px solid rgba(59,78,130,.08);
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
   }
 
   .fpSidebar{
@@ -2205,28 +2658,6 @@ body{
     border-color:rgba(59,78,130,.12) !important;
     color:var(--fpText) !important;
     backdrop-filter:blur(14px);
-  }
-
-  /* supprime l'effet "lignes blanches" */
-  .fpMiniStat,
-  .fpReportCard,
-  .fpBillingCard,
-  .fpStatCard,
-  .fpTextPanel,
-  .fpRowCard,
-  .fpInfoRow,
-  .fpTableRow,
-  .fpMissionCard,
-  .fpSettingsRow,
-  .fpToggleRow,
-  .fpQuotaRow,
-  .fpAddonRow,
-  .fpTimelineItem,
-  .fpActionItem,
-  .fpInfoBox,
-  .fpLegendItem,
-  .fpInlineLinks a,
-  .fpEmpty{
     box-shadow:
       0 12px 30px rgba(41,64,122,.08),
       inset 0 1px 0 rgba(255,255,255,.45) !important;
@@ -2315,7 +2746,6 @@ body{
     color:var(--fpTextSoft) !important;
   }
 
-  /* LE BUG DE TEXTE BLANC EN THEME CLAIR */
   .fpBtnGhost,
   .fpBtnSoft,
   .fpStatusPill,
@@ -2403,154 +2833,6 @@ body{
     border:1px dashed rgba(59,78,130,.16) !important;
   }
 
-  @media (max-width:1080px){
-    .fpSidebar{
-      background:
-        radial-gradient(700px 420px at 15% 8%, rgba(47,91,255,.12), transparent 62%),
-        linear-gradient(180deg, rgba(248,251,255,.98), rgba(234,242,255,.99)) !important;
-    }
-  }
-}
-/* =========================================================
-   BILLING FINAL FIX
-   à mettre TOUT EN BAS du fichier
-   ========================================================= */
-
-.fpBillingCard,
-.fpReportCard,
-.fpAddonRow{
-  position:relative;
-  overflow:hidden;
-}
-
-.fpBillingCard::before,
-.fpReportCard::before,
-.fpAddonRow::before{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  border-radius:inherit;
-  background:
-    radial-gradient(120% 120% at 12% 0%, rgba(91,124,255,.10), transparent 42%);
-  opacity:.9;
-}
-
-.fpBillingCard,
-.fpReportCard{
-  min-height:100%;
-}
-
-.fpBillingPlan{
-  line-height:1.04;
-}
-
-.fpBillingStatus{
-  line-height:1.5;
-}
-
-.fpAddonRow{
-  align-items:center;
-}
-
-.fpAddonLabel{
-  flex:1;
-  min-width:0;
-}
-
-.fpAddonPill{
-  flex:0 0 auto;
-}
-
-.fpDetailActions{
-  margin-top:16px;
-}
-
-.fpDetailActions > .fpBtn,
-.fpDetailActions > a.fpBtn{
-  min-height:50px;
-}
-
-.fpTopbarRight > .fpBtn,
-.fpTopbarRight > a.fpBtn,
-.fpTopbarRight > .fpStatusPill{
-  min-height:50px;
-}
-
-/* évite les boutons collés sur billing */
-.fpTopbarRight,
-.fpDetailActions,
-.fpSidebarActions,
-.fpInlineLinks{
-  gap:16px !important;
-  row-gap:16px !important;
-  column-gap:16px !important;
-}
-
-/* meilleur rendu des lignes utiles */
-.fpInlineLinks a{
-  min-height:48px;
-  padding-inline:16px;
-}
-
-/* =========================
-   BILLING MOBILE
-   ========================= */
-@media (max-width:760px){
-  .fpTopbarRight{
-    display:flex;
-    flex-direction:column;
-    align-items:stretch;
-    gap:14px !important;
-  }
-
-  .fpTopbarRight > *{
-    width:100%;
-  }
-
-  .fpDetailActions{
-    display:flex;
-    flex-direction:column;
-    align-items:stretch;
-    gap:14px !important;
-  }
-
-  .fpDetailActions > .fpBtn,
-  .fpDetailActions > a.fpBtn{
-    width:100%;
-  }
-
-  .fpBillingCard{
-    padding:18px;
-  }
-
-  .fpBillingPlan{
-    font-size:30px;
-  }
-
-  .fpReportCard,
-  .fpBillingCard{
-    border-radius:22px;
-  }
-}
-
-@media (max-width:520px){
-  .fpBillingPlan{
-    font-size:26px;
-  }
-
-  .fpReportTitle,
-  .fpBillingTitle{
-    font-size:17px;
-  }
-}
-
-/* =========================
-   LIGHT MODE BILLING FIX
-   ========================= */
-@media (prefers-color-scheme: light){
-
-  /* cartes billing plus bleutées, moins blanches */
   .fpBillingCard,
   .fpReportCard,
   .fpAddonRow{
@@ -2563,337 +2845,11 @@ body{
       inset 0 1px 0 rgba(255,255,255,.42) !important;
   }
 
-  /* texte billing toujours foncé */
-  .fpBillingTitle,
-  .fpBillingPlan,
-  .fpReportTitle,
-  .fpAddonLabel,
-  #fpBillPlanHero,
-  #fpBillStatusHero,
-  #fpBillOrgHero,
-  #fpBillPlanMain,
-  #fpBillStatusMain,
-  #fpBillOrgMain,
-  #fpBillTrialMain{
-    color:var(--fpText) !important;
-    -webkit-text-fill-color:var(--fpText) !important;
-  }
-
-  .fpBillingStatus,
-  .fpReportMeta,
-  #fpBillPlanMeta,
-  #fpBillTrialMeta{
-    color:var(--fpTextSoft) !important;
-    -webkit-text-fill-color:var(--fpTextSoft) !important;
-  }
-
-  /* boutons ghost bien visibles */
-  .fpBtnGhost{
-    color:var(--fpText) !important;
-    -webkit-text-fill-color:var(--fpText) !important;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.86), rgba(241,246,255,.96)) !important;
-    border-color:rgba(59,78,130,.14) !important;
-  }
-
-  .fpBtnGhost:hover{
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.94), rgba(234,242,255,.99)) !important;
-  }
-
-  /* liens utiles plus lisibles */
-  .fpInlineLinks a{
-    color:var(--fpText) !important;
-    -webkit-text-fill-color:var(--fpText) !important;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.82), rgba(242,247,255,.95)) !important;
-    border-color:rgba(59,78,130,.12) !important;
-  }
-
-  /* pill OFF plus visible */
   .fpAddonPill.off{
     color:var(--fpTextSoft) !important;
     background:
       linear-gradient(180deg, rgba(255,255,255,.76), rgba(243,247,255,.92)) !important;
     border-color:rgba(59,78,130,.12) !important;
-  }
-
-  /* statut prêt visible */
-  .fpStatusPill{
-    color:var(--fpText) !important;
-    -webkit-text-fill-color:var(--fpText) !important;
-  }
-
-  /* sidebar billing claire propre */
-  .fpAccountCard{
-    background:
-      radial-gradient(120% 120% at 15% 0%, rgba(47,91,255,.10), transparent 52%),
-      linear-gradient(180deg, rgba(255,255,255,.86), rgba(239,245,255,.95)) !important;
-    border-color:rgba(59,78,130,.12) !important;
-  }
-}
-/* =========================================================
-   PATCH FINAL SIMPLE
-   - espace seulement les blocs collés
-   - garde le dark mode
-   - supprime les bandes iPhone
-   ========================================================= */
-
-/* 1) On espace juste les cartes / cases collées */
-.fpMissionPageSide .fpStatCard,
-.fpMissionPageSide .fpTextPanel,
-.fpMissionPageSide .fpInlineLinks,
-.fpMissionPageSide .fpCard,
-.fpMissionPageSide .fpCardInner{
-  margin-bottom:16px;
-}
-
-.fpMissionPageSide > * + *{
-  margin-top:16px;
-}
-
-.fpSettingsList > * + *,
-.fpInfoList > * + *,
-.fpRows > * + *,
-.fpAddonsList > * + *,
-.fpQuotaList > * + *{
-  margin-top:2px;
-}
-
-/* 2) Liens utiles un peu plus espacés sans toucher aux missions */
-.fpInlineLinks{
-  gap:14px !important;
-  row-gap:14px !important;
-  column-gap:14px !important;
-}
-
-.fpSidebarActions,
-.fpTopbarRight,
-.fpDetailActions,
-.fpTopActionsRow{
-  gap:14px !important;
-  row-gap:14px !important;
-  column-gap:14px !important;
-}
-
-/* 3) Fond plein écran pour supprimer les bandes blanches/noires iPhone */
-html,
-body{
-  min-height:100%;
-}
-
-html{
-  background-color:var(--fpBg2);
-}
-
-body{
-  background-color:var(--fpBg2);
-  padding-top:0 !important;
-  padding-bottom:0 !important;
-}
-
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  z-index:-1;
-  pointer-events:none;
-  background:
-    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
-    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
-    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
-    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
-  background-repeat:no-repeat;
-  background-size:cover;
-}
-
-.fpAppShell{
-  position:relative;
-  min-height:100dvh;
-  min-height:100svh;
-}
-
-/* 4) Sur mobile on garde juste des espacements propres */
-@media (max-width:760px){
-  .fpMain{
-    padding-top:calc(14px + env(safe-area-inset-top, 0px));
-    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
-  }
-
-  .fpTopbarRight{
-    gap:12px !important;
-  }
-
-  .fpSidebarActions,
-  .fpDetailActions,
-  .fpTopActionsRow,
-  .fpInlineLinks{
-    gap:12px !important;
-  }
-}
-
-/* 5) Light mode : même fond plein écran, sans casser le dark */
-@media (prefers-color-scheme: light){
-  html{
-    background-color:#dfe9ff;
-  }
-
-  body{
-    background-color:#dfe9ff;
-  }
-
-  body::before{
-    background:
-      radial-gradient(1100px 700px at 10% 0%, rgba(47,91,255,.18), transparent 58%),
-      radial-gradient(1000px 700px at 100% 0%, rgba(106,142,255,.16), transparent 60%),
-      radial-gradient(900px 700px at 50% 100%, rgba(47,91,255,.10), transparent 60%),
-      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%);
-    background-repeat:no-repeat;
-    background-size:cover;
-  }
-}
-/* =========================================================
-   FINAL MOBILE + SETTINGS FIX
-   - ne touche pas aux missions
-   - espace mieux la page paramètres
-   - fond continu mobile comme la vitrine
-   ========================================================= */
-
-/* 1) PARAMÈTRES : on espace seulement cette page */
-.fpSettingsList > * + *,
-.fpSettingsGrid .fpCardInner > * + .fpSettingsList,
-.fpSettingsGrid .fpCardInner > * + .fpDetailActions,
-.fpSettingsGrid .fpCardInner > * + .fpField,
-.fpSettingsGrid .fpCardInner > * + .fpToggleRow{
-  margin-top:16px;
-}
-
-.fpSettingsGrid .fpCardInner{
-  padding:24px;
-}
-
-.fpSettingsRow,
-.fpToggleRow{
-  border-radius:20px;
-}
-
-/* évite les lignes trop collées dans paramètres */
-.fpToggleRow{
-  padding:16px 18px;
-}
-
-.fpSettingsRow{
-  padding:16px 18px;
-}
-
-/* 2) FOND GLOBAL CONTINU */
-html,
-body{
-  margin:0;
-  min-height:100%;
-  background:transparent !important;
-}
-
-body{
-  padding-top:0 !important;
-  padding-bottom:0 !important;
-}
-
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  z-index:-2;
-  pointer-events:none;
-  background:
-    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
-    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
-    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
-    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
-  background-repeat:no-repeat;
-  background-size:cover;
-}
-
-/* 3) le shell ne doit plus ressembler à un bloc séparé */
-.fpAppShell{
-  min-height:100svh;
-  min-height:100dvh;
-  background:transparent !important;
-}
-
-.fpMain,
-.fpSidebar{
-  background-color:transparent;
-}
-
-/* 4) SUR MOBILE : fond fusionné avec les barres navigateur */
-@media (max-width:760px){
-  html{
-    background:var(--fpBg2) !important;
-  }
-
-  body{
-    background:transparent !important;
-  }
-
-  .fpAppShell{
-    min-height:100svh;
-    min-height:100dvh;
-  }
-
-  .fpMain{
-    padding-top:calc(14px + env(safe-area-inset-top, 0px));
-    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
-    background:transparent !important;
-    box-shadow:none !important;
-    border:none !important;
-  }
-
-  /* enlève l'effet "gros cadre clair/sombre autour du contenu" */
-  .fpPageContainer{
-    background:transparent !important;
-    box-shadow:none !important;
-    border:none !important;
-  }
-
-  /* paramètres : meilleure mise en page téléphone */
-  .fpSettingsGrid{
-    grid-template-columns:1fr !important;
-    gap:18px !important;
-  }
-
-  .fpSettingsGrid .fpCardInner{
-    padding:20px;
-    border-radius:22px;
-  }
-
-  .fpSettingsRow,
-  .fpToggleRow{
-    padding:14px 16px;
-  }
-
-  .fpSettingsRow span,
-  .fpSettingsRow strong{
-    display:block;
-    width:100%;
-  }
-
-  .fpSettingsRow strong{
-    margin-top:6px;
-    text-align:left !important;
-  }
-}
-
-/* 5) LIGHT MODE : fond continu clair comme la vitrine */
-@media (prefers-color-scheme: light){
-  body::before{
-    background:
-      radial-gradient(1100px 700px at 10% 0%, rgba(47,91,255,.18), transparent 58%),
-      radial-gradient(1000px 700px at 100% 0%, rgba(106,142,255,.16), transparent 60%),
-      radial-gradient(900px 700px at 50% 100%, rgba(47,91,255,.10), transparent 60%),
-      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%);
-    background-repeat:no-repeat;
-    background-size:cover;
   }
 
   @media (max-width:760px){
@@ -2906,6 +2862,14 @@ body::before{
       background:transparent !important;
       border:none !important;
       box-shadow:none !important;
+    }
+  }
+
+  @media (max-width:1080px){
+    .fpSidebar{
+      background:
+        radial-gradient(700px 420px at 15% 8%, rgba(47,91,255,.12), transparent 62%),
+        linear-gradient(180deg, rgba(248,251,255,.98), rgba(234,242,255,.99)) !important;
     }
   }
 }
