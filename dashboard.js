@@ -18,6 +18,7 @@
 
   const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v10";
   const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v10";
+  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v1";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
   const LOGO_SRC = "/assets/flowpoint-logo.svg";
 
@@ -83,6 +84,10 @@
     controller: null,
     loading: false,
     lastLoadedAt: null,
+    uiPrefs: {
+      themeAuto: true,
+      liveStatus: true,
+    },
   };
 
   function getDefaultMissions() {
@@ -161,15 +166,29 @@
     if (Number.isNaN(d.getTime())) return "Bientôt";
     return d.toLocaleDateString("fr-FR");
   }
-function trialLabel(value) {
-  if (!value) return "Essai non défini";
 
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "Essai non défini";
+  function trialLabel(value) {
+    if (!value) return "Essai non défini";
 
-  const now = new Date();
-  return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
-}
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "Essai non défini";
+
+    const now = new Date();
+    return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
+  }
+
+  function trialMetaLabel(value) {
+    if (!value) return "Aucun essai actif";
+
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "Aucun essai actif";
+
+    const now = new Date();
+    return d.getTime() >= now.getTime()
+      ? `Jusqu’au ${formatShortDate(value)}`
+      : `Terminé le ${formatShortDate(value)}`;
+  }
+
   function formatUsage(v) {
     if (v == null) return "0";
 
@@ -206,6 +225,42 @@ function trialLabel(value) {
   function clearAuth() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
+
+  function loadUiPrefs() {
+    try {
+      const raw = localStorage.getItem(UI_PREFS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      state.uiPrefs = {
+        themeAuto: parsed?.themeAuto !== false,
+        liveStatus: parsed?.liveStatus !== false,
+      };
+    } catch (e) {
+      console.error("Erreur lecture préférences UI :", e);
+    }
+  }
+
+  function saveUiPrefs() {
+    localStorage.setItem(UI_PREFS_STORAGE_KEY, JSON.stringify(state.uiPrefs));
+  }
+
+  function toggleUiPref(key) {
+    if (!(key in state.uiPrefs)) return;
+    state.uiPrefs[key] = !state.uiPrefs[key];
+    saveUiPrefs();
+
+    if (key === "liveStatus") {
+      if (state.uiPrefs.liveStatus) {
+        setStatus("Dashboard prêt", "ok");
+      } else if (els.statusText) {
+        els.statusText.textContent = "Statut masqué";
+      }
+    }
+
+    if (state.route === "#settings") {
+      renderSettingsPage();
+    }
   }
 
   function getFirstName(me) {
@@ -305,6 +360,11 @@ function trialLabel(value) {
   }
 
   function setStatus(text, mode = "ok") {
+    if (!state.uiPrefs.liveStatus) {
+      if (els.statusText) els.statusText.textContent = "Statut masqué";
+      return;
+    }
+
     if (els.statusText) els.statusText.textContent = text || "";
     if (!els.statusDot) return;
 
@@ -1027,6 +1087,7 @@ function trialLabel(value) {
                 <div class="fpInfoRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
                 <div class="fpInfoRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
                 <div class="fpInfoRow"><span>Statut</span><strong>${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</strong></div>
+                <div class="fpInfoRow"><span>Essai</span><strong>${esc(trialLabel(me.trialEndsAt))}</strong></div>
                 <div class="fpInfoRow"><span>Monitors actifs</span><strong>${esc(ov.monitors?.active ?? 0)}/${esc(me.usage?.monitors?.limit ?? 0)}</strong></div>
                 <div class="fpInfoRow"><span>Incidents</span><strong>${esc(ov.monitors?.down ?? 0)}</strong></div>
                 <div class="fpInfoRow"><span>Missions faites</span><strong>${done}/${state.missions.length}</strong></div>
@@ -1571,8 +1632,8 @@ function trialLabel(value) {
 
                 <div class="fpBillingCard">
                   <div class="fpBillingTitle">Essai</div>
-                  <div class="fpBillingPlan">${me.trialEndsAt ? esc(formatShortDate(me.trialEndsAt)) : "—"}</div>
-                  <div class="fpBillingStatus">${me.trialEndsAt ? "Date de fin d’essai" : "Aucun essai actif"}</div>
+                  <div class="fpBillingPlan">${esc(trialLabel(me.trialEndsAt))}</div>
+                  <div class="fpBillingStatus">${esc(trialMetaLabel(me.trialEndsAt))}</div>
                 </div>
 
                 <div class="fpBillingCard">
@@ -1683,7 +1744,13 @@ function trialLabel(value) {
                     <div class="fpToggleTitle">Thème automatique</div>
                     <div class="fpToggleHint">Basé sur les préférences système du client</div>
                   </div>
-                  <div class="fpSwitch on" aria-hidden="true"></div>
+                  <button
+                    type="button"
+                    class="fpSwitch ${state.uiPrefs.themeAuto ? "on" : ""}"
+                    id="fpThemeAutoToggle"
+                    aria-pressed="${state.uiPrefs.themeAuto ? "true" : "false"}"
+                    title="Activer ou désactiver le thème automatique"
+                  ></button>
                 </div>
 
                 <div class="fpToggleRow">
@@ -1691,7 +1758,13 @@ function trialLabel(value) {
                     <div class="fpToggleTitle">Statut temps réel</div>
                     <div class="fpToggleHint">Affichage de l’état courant du dashboard</div>
                   </div>
-                  <div class="fpSwitch on" aria-hidden="true"></div>
+                  <button
+                    type="button"
+                    class="fpSwitch ${state.uiPrefs.liveStatus ? "on" : ""}"
+                    id="fpLiveStatusToggle"
+                    aria-pressed="${state.uiPrefs.liveStatus ? "true" : "false"}"
+                    title="Afficher ou masquer le statut temps réel"
+                  ></button>
                 </div>
               </div>
 
@@ -1716,7 +1789,7 @@ function trialLabel(value) {
                   <div class="fpSettingsRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
                   <div class="fpSettingsRow"><span>Rôle</span><strong>${esc(cap(me.role || "owner"))}</strong></div>
                   <div class="fpSettingsRow"><span>Destinataires</span><strong>${esc(recipientsLabel(s.alertRecipients))}</strong></div>
-                  <div class="fpSettingsRow"><span>Essai</span><strong>${esc(me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "Aucun")}</strong></div>
+                  <div class="fpSettingsRow"><span>Essai</span><strong>${esc(trialLabel(me.trialEndsAt))}</strong></div>
                   <div class="fpSettingsRow"><span>Dernière synchro</span><strong>${esc(state.lastLoadedAt ? formatDate(state.lastLoadedAt) : "Récente")}</strong></div>
                 </div>
               </div>
@@ -1738,6 +1811,14 @@ function trialLabel(value) {
     $("#fpSaveSettingsBtn")?.addEventListener("click", async () => {
       const ok = await saveOrgSettings();
       if (ok) loadData({ silent: true });
+    });
+
+    $("#fpThemeAutoToggle")?.addEventListener("click", () => {
+      toggleUiPref("themeAuto");
+    });
+
+    $("#fpLiveStatusToggle")?.addEventListener("click", () => {
+      toggleUiPref("liveStatus");
     });
   }
 
@@ -1971,6 +2052,7 @@ function trialLabel(value) {
 
   function init() {
     hydrateLogos();
+    loadUiPrefs();
     resetMissionsIfNeeded();
     state.missions = loadMissions();
 
