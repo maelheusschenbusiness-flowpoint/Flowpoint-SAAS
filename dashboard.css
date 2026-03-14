@@ -1857,3 +1857,284 @@ body{
 .fpBtn:active{
   transform:scale(.97);
 }
+/* =========================================================
+   PARTIE 5 — PATCH FINAL MOBILE / LISIBILITÉ / ESPACEMENTS
+   ========================================================= */
+
+/* coins plus arrondis pour les missions checklist */
+.fpMissionCard,
+.fpMissionCardLarge{
+  border-radius:24px;
+}
+
+/* espace mieux les groupes de boutons pour éviter qu'ils soient collés */
+.fpTopActionsRow,
+.fpDetailActions,
+.fpMissionActions,
+.fpTableActions,
+.fpCardActions,
+.fpPageActions,
+.fpSidebarActions,
+.fpTopbarRight{
+  row-gap:12px;
+  column-gap:12px;
+}
+
+/* évite les boutons trop collés dans les cartes */
+.fpReportCard .fpDetailActions,
+.fpCard .fpDetailActions,
+.fpCard .fpTopActionsRow,
+.fpMissionCard .fpMissionActions{
+  margin-top:14px;
+}
+
+/* meilleurs espacements entre boutons sur mobile */
+@media (max-width:760px){
+  .fpTopActionsRow,
+  .fpDetailActions,
+  .fpMissionActions,
+  .fpTableActions,
+  .fpCardActions,
+  .fpPageActions{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
+  }
+
+  .fpTopActionsRow > .fpBtn,
+  .fpTopActionsRow > a.fpBtn,
+  .fpDetailActions > .fpBtn,
+  .fpDetailActions > a.fpBtn,
+  .fpMissionActions > .fpBtn,
+  .fpMissionActions > a.fpBtn,
+  .fpTableActions > .fpBtn,
+  .fpTableActions > a.fpBtn,
+  .fpCardActions > .fpBtn,
+  .fpCardActions > a.fpBtn,
+  .fpPageActions > .fpBtn,
+  .fpPageActions > a.fpBtn{
+    width:100%;
+    min-height:48px;
+  }
+
+  .fpTableActions{
+    margin-top:8px;
+  }
+}
+
+/* meilleure lisibilité globale */
+.fpAccountRow span,
+.fpUsageTop span,
+.fpMiniStatLabel,
+.fpStatLabel,
+.fpInfoLabel,
+.fpCardKicker,
+.fpHelloKicker,
+.fpPageKicker{
+  color:var(--fpTextSoft);
+}
+
+/* textes secondaires mieux visibles */
+.fpCardText,
+.fpSmall,
+.fpTextPanel,
+.fpMiniStatMeta,
+.fpStatMeta,
+.fpBillingStatus,
+.fpReportMeta,
+.fpTimelineMeta,
+.fpActionMeta,
+.fpToggleHint,
+.fpChartInsight,
+.fpRowMeta,
+.fpMissionMeta,
+.fpMissionDesc,
+.fpProjectMeta,
+.fpKpiSub,
+.fpInfoHint,
+.fpPageDesc,
+.fpHeroText,
+.fpHelloSub{
+  color:var(--fpTextSoft);
+}
+
+/* labels et lignes plus lisibles dans les cartes */
+.fpInfoRow span,
+.fpSettingsRow span,
+.fpQuotaRow span,
+.fpAddonLabel,
+.fpRowTitle,
+.fpTimelineTitle,
+.fpActionTitle,
+.fpToggleTitle{
+  color:var(--fpText);
+}
+
+/* améliore la lisibilité du select */
+.fpSelect{
+  color:var(--fpText) !important;
+  -webkit-text-fill-color:var(--fpText) !important;
+}
+
+/* stabilise le rendu du graphique sur téléphone */
+@media (max-width:760px){
+  .fpChartCard{
+    overflow:hidden;
+  }
+
+  .fpChartBox{
+    width:100%;
+    min-width:0;
+    height:240px;
+    padding:10px;
+    border-radius:20px;
+  }
+
+  .fpChartBox canvas{
+    width:100% !important;
+    height:100% !important;
+    max-width:100%;
+  }
+}
+
+/* évite que les grandes valeurs débordent */
+.fpMiniStatValue,
+.fpStatValue,
+.fpBillingPlan,
+.fpBigValue,
+.fpScore,
+.fpProjectName,
+.fpMissionTitle,
+.fpSectionTitle,
+.fpCardInnerTitle,
+.fpHeroTitle,
+.fpPageTitle,
+.fpHelloTitle{
+  word-break:break-word;
+  overflow-wrap:anywhere;
+}
+
+/* meilleure structure des rows sur petits écrans */
+@media (max-width:760px){
+  .fpInfoRow,
+  .fpRowCard,
+  .fpSettingsRow,
+  .fpAddonRow,
+  .fpQuotaRow,
+  .fpTimelineItem,
+  .fpActionItem{
+    gap:10px;
+  }
+
+  .fpInfoRow strong,
+  .fpSettingsRow strong{
+    text-align:left;
+  }
+}
+
+/* remplace les bandes haut / bas iPhone par le vrai fond */
+html{
+  background:
+    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
+    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
+    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
+    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+}
+
+/* mode clair cohérent partout */
+@media (prefers-color-scheme: light){
+  html{
+    background:
+      radial-gradient(1000px 500px at 12% 0%, rgba(47,91,255,.16), transparent 60%),
+      radial-gradient(900px 500px at 100% 8%, rgba(91,124,255,.12), transparent 58%),
+      radial-gradient(900px 700px at 50% 100%, rgba(27,69,255,.08), transparent 62%),
+      linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+  }
+
+  .fpAccountRow span,
+  .fpUsageTop span,
+  .fpCardKicker,
+  .fpHelloKicker,
+  .fpPageKicker,
+  .fpMiniStatLabel,
+  .fpStatLabel,
+  .fpInfoLabel{
+    color:var(--fpMuted);
+  }
+
+  .fpInfoRow span,
+  .fpSettingsRow span,
+  .fpQuotaRow span,
+  .fpAddonLabel,
+  .fpRowTitle,
+  .fpTimelineTitle,
+  .fpActionTitle,
+  .fpToggleTitle{
+    color:var(--fpText);
+  }
+
+  .fpCardText,
+  .fpSmall,
+  .fpTextPanel,
+  .fpMiniStatMeta,
+  .fpStatMeta,
+  .fpBillingStatus,
+  .fpReportMeta,
+  .fpTimelineMeta,
+  .fpActionMeta,
+  .fpToggleHint,
+  .fpChartInsight,
+  .fpRowMeta,
+  .fpMissionMeta,
+  .fpMissionDesc,
+  .fpProjectMeta,
+  .fpKpiSub,
+  .fpInfoHint,
+  .fpPageDesc,
+  .fpHeroText,
+  .fpHelloSub{
+    color:var(--fpTextSoft);
+  }
+
+  .fpExportMenu{
+    background:rgba(255,255,255,.94);
+    color:var(--fpText);
+  }
+
+  .fpExportMenu button{
+    color:var(--fpText);
+  }
+}
+
+/* iPhone safe area */
+body{
+  padding-bottom:env(safe-area-inset-bottom, 0);
+}
+
+.fpMain{
+  padding-bottom:calc(22px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width:760px){
+  .fpMain{
+    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* sidebar mobile conserve bien le sombre et le clair */
+@media (max-width:1080px){
+  .fpSidebar{
+    background:
+      radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.22), transparent 62%),
+      linear-gradient(180deg, rgba(14,22,56,.97), rgba(9,15,38,.985));
+  }
+}
+
+@media (max-width:1080px) and (prefers-color-scheme: light){
+  .fpSidebar{
+    background:
+      radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.12), transparent 62%),
+      linear-gradient(180deg, rgba(255,255,255,.97), rgba(240,245,255,.985));
+  }
+}
