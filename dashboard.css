@@ -1721,3 +1721,139 @@ a{color:inherit;text-decoration:none}
   body{min-height:-webkit-fill-available}
   .fpSidebar{height:100dvh}
 }
+/* =========================================
+   MOBILE SAFE AREAS (supprime les bandes)
+   ========================================= */
+
+html, body {
+  min-height:100%;
+  background:inherit;
+}
+
+body{
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+
+/* iOS safari */
+.fpAppShell{
+  min-height:100dvh;
+}
+
+/* =========================================
+   MOBILE DARK MODE FIX
+   ========================================= */
+
+@media (prefers-color-scheme: dark){
+
+  body{
+    background:
+      radial-gradient(1000px 500px at 12% 0%, rgba(47,91,255,.34), transparent 60%),
+      radial-gradient(900px 500px at 100% 8%, rgba(91,124,255,.22), transparent 58%),
+      radial-gradient(900px 700px at 50% 100%, rgba(27,69,255,.16), transparent 62%),
+      linear-gradient(180deg, #070b19, #0b1230);
+  }
+
+}
+
+/* =========================================
+   TEXT VISIBILITY MOBILE
+   ========================================= */
+
+@media (max-width:760px){
+
+  .fpCardText,
+  .fpSmall,
+  .fpRowMeta,
+  .fpMissionMeta,
+  .fpMissionDesc{
+    color:var(--fpTextSoft);
+  }
+
+  .fpSectionTitle,
+  .fpCardInnerTitle,
+  .fpHeroTitle,
+  .fpPageTitle{
+    color:var(--fpText);
+  }
+
+}
+
+/* =========================================
+   BUTTON SPACING FIX
+   ========================================= */
+
+.fpBtn{
+  margin:4px 0;
+}
+
+.fpMissionActions{
+  gap:12px;
+}
+
+.fpTopbarRight{
+  gap:12px;
+}
+
+/* =========================================
+   MISSION CARDS (arrondir coins checklist)
+   ========================================= */
+
+.fpMissionCard{
+  border-radius:26px;
+}
+
+.fpMissionCheck{
+  border-radius:12px;
+}
+
+/* =========================================
+   EXPORT / ACTION BUTTON SPACING
+   ========================================= */
+
+.fpCardActions,
+.fpMissionActions,
+.fpTopActionsRow{
+  gap:14px;
+}
+
+/* =========================================
+   MOBILE BUTTON STACK
+   ========================================= */
+
+@media (max-width:760px){
+
+  .fpMissionActions .fpBtn{
+    width:100%;
+  }
+
+}
+
+/* =========================================
+   UX IMPROVEMENT 1
+   hover cards
+   ========================================= */
+
+.fpCard:hover{
+  transform:translateY(-2px);
+  transition:.2s;
+}
+
+/* =========================================
+   UX IMPROVEMENT 2
+   smooth card hover
+   ========================================= */
+
+.fpRowCard:hover,
+.fpMissionCard:hover{
+  background:rgba(255,255,255,.05);
+}
+
+/* =========================================
+   UX IMPROVEMENT 3
+   better button feedback
+   ========================================= */
+
+.fpBtn:active{
+  transform:scale(.97);
+}
