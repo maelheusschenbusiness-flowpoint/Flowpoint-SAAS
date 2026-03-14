@@ -149,8 +149,8 @@
 
                 <div class="fpBillingCard">
                   <div class="fpBillingTitle">Essai</div>
-                  <div class="fpBillingPlan" id="fpBillTrialMain">—</div>
-                  <div class="fpBillingStatus">Fin d’essai ou statut neutre</div>
+                  <div class="fpBillingPlan" id="fpBillTrialMain">Essai non défini</div>
+                  <div class="fpBillingStatus" id="fpBillTrialMeta">Aucun essai actif</div>
                 </div>
               </div>
             </section>
@@ -317,11 +317,26 @@
         return cap(s.replaceAll("_", " "));
       }
 
-      function formatShortDate(value) {
-        if (!value) return "—";
+      function trialLabel(value) {
+        if (!value) return "Essai non défini";
+
         const d = new Date(value);
-        if (Number.isNaN(d.getTime())) return "—";
-        return d.toLocaleDateString("fr-FR");
+        if (Number.isNaN(d.getTime())) return "Essai non défini";
+
+        const now = new Date();
+        return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
+      }
+
+      function trialMetaLabel(value) {
+        if (!value) return "Aucun essai actif";
+
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return "Aucun essai actif";
+
+        const now = new Date();
+        return d.getTime() >= now.getTime()
+          ? `Jusqu’au ${d.toLocaleDateString("fr-FR")}`
+          : `Terminé le ${d.toLocaleDateString("fr-FR")}`;
       }
 
       function getAddonEntries(me) {
@@ -443,7 +458,8 @@
           const plan = planLabel(me?.plan);
           const status = statusLabel(me?.subscriptionStatus || me?.lastPaymentStatus);
           const org = me?.org?.name || me?.organization?.name || "Workspace principal";
-          const trial = me?.trialEndsAt ? formatShortDate(me.trialEndsAt) : "—";
+          const trial = trialLabel(me?.trialEndsAt);
+          const trialMeta = trialMetaLabel(me?.trialEndsAt);
 
           document.getElementById("fpBillPlanHero").textContent = plan;
           document.getElementById("fpBillStatusHero").textContent = status;
@@ -454,6 +470,7 @@
           document.getElementById("fpBillStatusMain").textContent = status;
           document.getElementById("fpBillOrgMain").textContent = org;
           document.getElementById("fpBillTrialMain").textContent = trial;
+          document.getElementById("fpBillTrialMeta").textContent = trialMeta;
 
           renderAddons(me);
           setStatus("Billing prêt", "ok");
