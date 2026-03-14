@@ -2752,3 +2752,160 @@ body::before{
     background-size:cover;
   }
 }
+/* =========================================================
+   FINAL MOBILE + SETTINGS FIX
+   - ne touche pas aux missions
+   - espace mieux la page paramètres
+   - fond continu mobile comme la vitrine
+   ========================================================= */
+
+/* 1) PARAMÈTRES : on espace seulement cette page */
+.fpSettingsList > * + *,
+.fpSettingsGrid .fpCardInner > * + .fpSettingsList,
+.fpSettingsGrid .fpCardInner > * + .fpDetailActions,
+.fpSettingsGrid .fpCardInner > * + .fpField,
+.fpSettingsGrid .fpCardInner > * + .fpToggleRow{
+  margin-top:16px;
+}
+
+.fpSettingsGrid .fpCardInner{
+  padding:24px;
+}
+
+.fpSettingsRow,
+.fpToggleRow{
+  border-radius:20px;
+}
+
+/* évite les lignes trop collées dans paramètres */
+.fpToggleRow{
+  padding:16px 18px;
+}
+
+.fpSettingsRow{
+  padding:16px 18px;
+}
+
+/* 2) FOND GLOBAL CONTINU */
+html,
+body{
+  margin:0;
+  min-height:100%;
+  background:transparent !important;
+}
+
+body{
+  padding-top:0 !important;
+  padding-bottom:0 !important;
+}
+
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-2;
+  pointer-events:none;
+  background:
+    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
+    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
+    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
+    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+  background-repeat:no-repeat;
+  background-size:cover;
+}
+
+/* 3) le shell ne doit plus ressembler à un bloc séparé */
+.fpAppShell{
+  min-height:100svh;
+  min-height:100dvh;
+  background:transparent !important;
+}
+
+.fpMain,
+.fpSidebar{
+  background-color:transparent;
+}
+
+/* 4) SUR MOBILE : fond fusionné avec les barres navigateur */
+@media (max-width:760px){
+  html{
+    background:var(--fpBg2) !important;
+  }
+
+  body{
+    background:transparent !important;
+  }
+
+  .fpAppShell{
+    min-height:100svh;
+    min-height:100dvh;
+  }
+
+  .fpMain{
+    padding-top:calc(14px + env(safe-area-inset-top, 0px));
+    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+    background:transparent !important;
+    box-shadow:none !important;
+    border:none !important;
+  }
+
+  /* enlève l'effet "gros cadre clair/sombre autour du contenu" */
+  .fpPageContainer{
+    background:transparent !important;
+    box-shadow:none !important;
+    border:none !important;
+  }
+
+  /* paramètres : meilleure mise en page téléphone */
+  .fpSettingsGrid{
+    grid-template-columns:1fr !important;
+    gap:18px !important;
+  }
+
+  .fpSettingsGrid .fpCardInner{
+    padding:20px;
+    border-radius:22px;
+  }
+
+  .fpSettingsRow,
+  .fpToggleRow{
+    padding:14px 16px;
+  }
+
+  .fpSettingsRow span,
+  .fpSettingsRow strong{
+    display:block;
+    width:100%;
+  }
+
+  .fpSettingsRow strong{
+    margin-top:6px;
+    text-align:left !important;
+  }
+}
+
+/* 5) LIGHT MODE : fond continu clair comme la vitrine */
+@media (prefers-color-scheme: light){
+  body::before{
+    background:
+      radial-gradient(1100px 700px at 10% 0%, rgba(47,91,255,.18), transparent 58%),
+      radial-gradient(1000px 700px at 100% 0%, rgba(106,142,255,.16), transparent 60%),
+      radial-gradient(900px 700px at 50% 100%, rgba(47,91,255,.10), transparent 60%),
+      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%);
+    background-repeat:no-repeat;
+    background-size:cover;
+  }
+
+  @media (max-width:760px){
+    html{
+      background:#dfe8ff !important;
+    }
+
+    .fpMain,
+    .fpPageContainer{
+      background:transparent !important;
+      border:none !important;
+      box-shadow:none !important;
+    }
+  }
+}
