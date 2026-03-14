@@ -2021,44 +2021,6 @@ body{
   margin:0 !important;
 }
 
-/* actions missions beaucoup plus propres */
-.fpMissionCard{
-  display:flex;
-  flex-direction:column;
-  gap:18px;
-}
-
-.fpMissionTop{
-  width:100%;
-}
-
-.fpMissionInfo{
-  min-width:0;
-}
-
-.fpMissionTitle{
-  font-size:clamp(24px, 3vw, 34px);
-  line-height:1.08;
-  word-break:normal;
-  overflow-wrap:anywhere;
-}
-
-.fpMissionActions{
-  display:grid !important;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
-  width:100%;
-  margin-top:0;
-  margin-left:0 !important;
-}
-
-.fpMissionActions .fpBtn{
-  width:100%;
-  min-height:54px;
-}
-
-.fpMissionCardLarge .fpMissionActions{
-  margin-left:0 !important;
-}
 
 .fpTextPanel{
   padding:20px;
@@ -2107,14 +2069,7 @@ body{
 
 /* mobile */
 @media (max-width:760px){
-  .fpMissionActions{
-    grid-template-columns:1fr !important;
-  }
-
-  .fpMissionCard{
-    padding:20px;
-    gap:16px;
-  }
+  
 
   .fpTopbarRight{
     gap:14px !important;
