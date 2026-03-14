@@ -2632,3 +2632,123 @@ body{
     border-color:rgba(59,78,130,.12) !important;
   }
 }
+/* =========================================================
+   PATCH FINAL SIMPLE
+   - espace seulement les blocs collés
+   - garde le dark mode
+   - supprime les bandes iPhone
+   ========================================================= */
+
+/* 1) On espace juste les cartes / cases collées */
+.fpMissionPageSide .fpStatCard,
+.fpMissionPageSide .fpTextPanel,
+.fpMissionPageSide .fpInlineLinks,
+.fpMissionPageSide .fpCard,
+.fpMissionPageSide .fpCardInner{
+  margin-bottom:16px;
+}
+
+.fpMissionPageSide > * + *{
+  margin-top:16px;
+}
+
+.fpSettingsList > * + *,
+.fpInfoList > * + *,
+.fpRows > * + *,
+.fpAddonsList > * + *,
+.fpQuotaList > * + *{
+  margin-top:2px;
+}
+
+/* 2) Liens utiles un peu plus espacés sans toucher aux missions */
+.fpInlineLinks{
+  gap:14px !important;
+  row-gap:14px !important;
+  column-gap:14px !important;
+}
+
+.fpSidebarActions,
+.fpTopbarRight,
+.fpDetailActions,
+.fpTopActionsRow{
+  gap:14px !important;
+  row-gap:14px !important;
+  column-gap:14px !important;
+}
+
+/* 3) Fond plein écran pour supprimer les bandes blanches/noires iPhone */
+html,
+body{
+  min-height:100%;
+}
+
+html{
+  background-color:var(--fpBg2);
+}
+
+body{
+  background-color:var(--fpBg2);
+  padding-top:0 !important;
+  padding-bottom:0 !important;
+}
+
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  background:
+    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
+    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
+    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
+    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+  background-repeat:no-repeat;
+  background-size:cover;
+}
+
+.fpAppShell{
+  position:relative;
+  min-height:100dvh;
+  min-height:100svh;
+}
+
+/* 4) Sur mobile on garde juste des espacements propres */
+@media (max-width:760px){
+  .fpMain{
+    padding-top:calc(14px + env(safe-area-inset-top, 0px));
+    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .fpTopbarRight{
+    gap:12px !important;
+  }
+
+  .fpSidebarActions,
+  .fpDetailActions,
+  .fpTopActionsRow,
+  .fpInlineLinks{
+    gap:12px !important;
+  }
+}
+
+/* 5) Light mode : même fond plein écran, sans casser le dark */
+@media (prefers-color-scheme: light){
+  html{
+    background-color:#dfe9ff;
+  }
+
+  body{
+    background-color:#dfe9ff;
+  }
+
+  body::before{
+    background:
+      radial-gradient(1100px 700px at 10% 0%, rgba(47,91,255,.18), transparent 58%),
+      radial-gradient(1000px 700px at 100% 0%, rgba(106,142,255,.16), transparent 60%),
+      radial-gradient(900px 700px at 50% 100%, rgba(47,91,255,.10), transparent 60%),
+      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%);
+    background-repeat:no-repeat;
+    background-size:cover;
+  }
+}
