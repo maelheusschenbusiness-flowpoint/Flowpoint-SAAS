@@ -29,6 +29,14 @@
 html,body{margin:0;padding:0;min-height:100%}
 html{scroll-behavior:smooth}
 
+html{
+  background:
+    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
+    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
+    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
+    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+}
+
 body{
   font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
   color:var(--fpText);
@@ -39,6 +47,7 @@ body{
     linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
   background-attachment:fixed;
   overflow-x:hidden;
+  padding-bottom:env(safe-area-inset-bottom, 0);
 }
 
 img,svg{display:block;max-width:100%}
@@ -71,6 +80,7 @@ a{color:inherit;text-decoration:none}
   display:grid;
   grid-template-columns:var(--fpSidebarW) minmax(0,1fr);
   min-height:100vh;
+  min-height:100dvh;
 }
 
 /* SIDEBAR */
@@ -279,11 +289,11 @@ a{color:inherit;text-decoration:none}
   background:linear-gradient(90deg, var(--fpBrand3), var(--fpBrand), var(--fpBrand2));
   box-shadow:0 0 20px rgba(47,91,255,.4);
 }
-
 /* MAIN */
 .fpMain{
   min-width:0;
   padding:22px;
+  padding-bottom:calc(22px + env(safe-area-inset-bottom, 0px));
   display:flex;
   flex-direction:column;
   gap:22px;
@@ -309,6 +319,8 @@ a{color:inherit;text-decoration:none}
   gap:12px;
   flex-wrap:wrap;
   justify-content:flex-end;
+  row-gap:12px;
+  column-gap:12px;
 }
 
 .fpMenuBtn{
@@ -356,6 +368,7 @@ a{color:inherit;text-decoration:none}
   letter-spacing:-.05em;
   font-weight:900;
   overflow-wrap:anywhere;
+  word-break:break-word;
 }
 .fpHelloSub{
   margin:10px 0 0;
@@ -387,6 +400,7 @@ a{color:inherit;text-decoration:none}
   background-position:0 0,right 14px center;
   background-size:100% 100%,18px;
   background-clip:padding-box;
+  -webkit-text-fill-color:var(--fpText) !important;
 }
 
 .fpSelect option{
@@ -405,9 +419,11 @@ a{color:inherit;text-decoration:none}
   font-weight:800;
   letter-spacing:-.01em;
   transition:.18s ease;
+  margin:4px 0;
 }
 
 .fpBtn:hover{transform:translateY(-1px)}
+.fpBtn:active{transform:scale(.97)}
 .fpBtnFull{width:100%}
 
 .fpBtnPrimary{
@@ -571,7 +587,6 @@ a{color:inherit;text-decoration:none}
 }
 
 .fpColMain,.fpColSide,.fpPageWrap,.fpCard,.fpCardInner,.fpPageHero{min-width:0}
-
 /* CARDS */
 .fpCard,
 .fpCardInner,
@@ -604,6 +619,11 @@ a{color:inherit;text-decoration:none}
     radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.12), transparent 55%),
     linear-gradient(180deg, rgba(17,25,59,.96), rgba(12,18,44,.96));
   padding:24px;
+  transition:transform .2s ease, background .2s ease;
+}
+
+.fpCard:hover{
+  transform:translateY(-2px);
 }
 
 .fpCardAccent{
@@ -635,8 +655,17 @@ a{color:inherit;text-decoration:none}
 .fpPageActions{
   display:flex;
   flex-wrap:wrap;
-  gap:10px;
+  gap:14px;
   align-items:center;
+  row-gap:12px;
+  column-gap:12px;
+}
+
+.fpReportCard .fpDetailActions,
+.fpCard .fpDetailActions,
+.fpCard .fpTopActionsRow,
+.fpMissionCard .fpMissionActions{
+  margin-top:14px;
 }
 
 .fpSectionTitle{
@@ -646,21 +675,27 @@ a{color:inherit;text-decoration:none}
   letter-spacing:-.05em;
   font-weight:900;
   overflow-wrap:anywhere;
+  word-break:break-word;
 }
+
 .fpCardInnerTitle{
   font-size:34px;
   line-height:1.02;
   letter-spacing:-.05em;
   font-weight:900;
   overflow-wrap:anywhere;
+  word-break:break-word;
 }
+
 .fpBigValue{
   font-size:30px;
   line-height:1.04;
   letter-spacing:-.04em;
   font-weight:900;
   overflow-wrap:anywhere;
+  word-break:break-word;
 }
+
 .fpCardText,
 .fpSmall,
 .fpTextPanel{
@@ -669,6 +704,7 @@ a{color:inherit;text-decoration:none}
   line-height:1.6;
   font-weight:700;
 }
+
 .fpSmall{margin-top:8px}
 .fpMuted{color:var(--fpMuted)}
 .fpMono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
@@ -687,6 +723,7 @@ a{color:inherit;text-decoration:none}
 }
 
 .fpPillRow{display:flex;flex-wrap:wrap;gap:10px}
+
 .fpPill{
   min-height:42px;
   padding:0 14px;
@@ -721,6 +758,7 @@ a{color:inherit;text-decoration:none}
 
 .fpHeroWide{padding:30px}
 .fpHeroLeft,.fpHeroContent{max-width:760px;min-width:0}
+
 .fpHeroRight{
   display:flex;
   flex-wrap:wrap;
@@ -728,6 +766,7 @@ a{color:inherit;text-decoration:none}
   gap:10px;
   align-items:center;
 }
+
 .fpHeroKicker{
   font-size:13px;
   font-weight:900;
@@ -736,6 +775,7 @@ a{color:inherit;text-decoration:none}
   color:#eef3ff;
   opacity:.92;
 }
+
 .fpHeroTitle{
   margin:8px 0 0;
   font-size:64px;
@@ -743,7 +783,9 @@ a{color:inherit;text-decoration:none}
   letter-spacing:-.055em;
   font-weight:900;
   overflow-wrap:anywhere;
+  word-break:break-word;
 }
+
 .fpHeroText{
   margin:14px 0 0;
   max-width:760px;
@@ -791,7 +833,7 @@ a{color:inherit;text-decoration:none}
   font-weight:900;
   text-transform:uppercase;
   letter-spacing:.16em;
-  color:var(--fpMuted);
+  color:var(--fpTextSoft);
 }
 
 .fpMiniStatValue,
@@ -802,6 +844,7 @@ a{color:inherit;text-decoration:none}
   letter-spacing:-.04em;
   line-height:1.05;
   overflow-wrap:anywhere;
+  word-break:break-word;
 }
 
 .fpMiniStatMeta,
@@ -866,6 +909,11 @@ a{color:inherit;text-decoration:none}
   align-items:flex-start;
 }
 
+.fpRowCard:hover,
+.fpMissionCard:hover{
+  background:rgba(255,255,255,.05);
+}
+
 .fpInfoRow strong,
 .fpSettingsRow strong{
   text-align:right;
@@ -874,15 +922,23 @@ a{color:inherit;text-decoration:none}
 
 .fpRowMain{min-width:0;flex:1}
 .fpRowRight{flex:0 0 auto}
-.fpRowTitle,.fpTimelineTitle,.fpActionTitle,.fpAddonLabel,.fpToggleTitle{
+
+.fpRowTitle,
+.fpTimelineTitle,
+.fpActionTitle,
+.fpAddonLabel,
+.fpToggleTitle{
   font-size:15px;
   font-weight:800;
   line-height:1.4;
   overflow-wrap:anywhere;
+  color:var(--fpText);
 }
+
 .fpScore{
   font-size:24px;
   font-weight:900;
+  word-break:break-word;
 }
 
 .fpTable{
@@ -933,7 +989,6 @@ a{color:inherit;text-decoration:none}
 }
 
 .fpRowBtns{display:flex;justify-content:flex-start}
-
 /* BADGES */
 .fpBadge{
   min-height:38px;
@@ -947,12 +1002,14 @@ a{color:inherit;text-decoration:none}
   font-size:13px;
   font-weight:800;
 }
+
 .fpBadgeDot{
   width:9px;
   height:9px;
   border-radius:999px;
   background:#97a2ca;
 }
+
 .fpBadge.up .fpBadgeDot{background:var(--fpSuccess)}
 .fpBadge.down .fpBadgeDot{background:var(--fpDanger)}
 
@@ -967,7 +1024,9 @@ a{color:inherit;text-decoration:none}
   padding:18px 18px 12px;
 }
 
-.fpChartCard{margin-top:14px}
+.fpChartCard{
+  margin-top:14px;
+}
 
 .fpChartBox{
   height:330px;
@@ -1019,9 +1078,13 @@ a{color:inherit;text-decoration:none}
   align-items:flex-start;
   gap:14px;
   padding:18px;
+  border-radius:24px;
 }
 
-.fpMissionCardLarge{flex-direction:column}
+.fpMissionCardLarge{
+  flex-direction:column;
+  border-radius:24px;
+}
 
 .fpMissionTop{
   display:flex;
@@ -1030,12 +1093,16 @@ a{color:inherit;text-decoration:none}
   width:100%;
 }
 
-.fpMissionBody,.fpMissionInfo{min-width:0;flex:1}
+.fpMissionBody,
+.fpMissionInfo{
+  min-width:0;
+  flex:1;
+}
 
 .fpMissionCheck{
   width:24px;
   height:24px;
-  border-radius:9px;
+  border-radius:12px;
   border:1px solid rgba(255,255,255,.18);
   background:rgba(255,255,255,.04);
   flex:0 0 auto;
@@ -1060,17 +1127,28 @@ a{color:inherit;text-decoration:none}
   line-height:1.15;
   letter-spacing:-.03em;
   font-weight:900;
+  word-break:break-word;
+  overflow-wrap:anywhere;
 }
 
 .fpMissionActions{
   display:flex;
-  gap:10px;
+  gap:12px;
   flex-wrap:wrap;
   margin-top:14px;
+  row-gap:12px;
+  column-gap:12px;
 }
 
-.fpMissionCardLarge .fpMissionActions{margin-left:38px}
-.fpMissionAside{display:flex;flex-direction:column;gap:16px}
+.fpMissionCardLarge .fpMissionActions{
+  margin-left:38px;
+}
+
+.fpMissionAside{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
 
 /* SETTINGS */
 .fpSettingsGrid{
@@ -1105,13 +1183,20 @@ a{color:inherit;text-decoration:none}
   box-shadow:none;
 }
 
-.fpInput{min-height:52px}
+.fpInput{
+  min-height:52px;
+}
+
 .fpTextarea{
   min-height:140px;
   resize:vertical;
   padding:14px 16px;
 }
-.fpInput::placeholder,.fpTextarea::placeholder{color:var(--fpMuted)}
+
+.fpInput::placeholder,
+.fpTextarea::placeholder{
+  color:var(--fpMuted);
+}
 
 .fpSettingsList{
   display:flex;
@@ -1148,7 +1233,9 @@ a{color:inherit;text-decoration:none}
   box-shadow:var(--fpBrandGlow);
 }
 
-.fpSwitch.on::after{left:29px}
+.fpSwitch.on::after{
+  left:29px;
+}
 
 /* BILLING / ADDONS */
 .fpBillingTitle,
@@ -1164,6 +1251,8 @@ a{color:inherit;text-decoration:none}
   font-weight:900;
   letter-spacing:-.04em;
   line-height:1;
+  overflow-wrap:anywhere;
+  word-break:break-word;
 }
 
 .fpPlanBadge{
@@ -1245,6 +1334,7 @@ a{color:inherit;text-decoration:none}
   font-weight:900;
   letter-spacing:-.03em;
   overflow-wrap:anywhere;
+  word-break:break-word;
 }
 
 .fpProjectStat{
@@ -1320,6 +1410,7 @@ a{color:inherit;text-decoration:none}
   letter-spacing:-.05em;
   font-weight:900;
   overflow-wrap:anywhere;
+  word-break:break-word;
 }
 
 .fpPageDesc{
@@ -1357,7 +1448,6 @@ a{color:inherit;text-decoration:none}
   background:rgba(255,255,255,.08);
   transform:translateY(-1px);
 }
-
 /* RESPONSIVE */
 @media (max-width:1320px){
   .fpBottomGrid,
@@ -1391,7 +1481,10 @@ a{color:inherit;text-decoration:none}
     transform:translateX(-105%);
     transition:.22s ease;
     box-shadow:var(--fpShadowLg);
-    height:100vh;
+    height:100dvh;
+    background:
+      radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.22), transparent 62%),
+      linear-gradient(180deg, rgba(14,22,56,.97), rgba(9,15,38,.985));
   }
 
   .fpSidebar.open{transform:translateX(0)}
@@ -1402,7 +1495,12 @@ a{color:inherit;text-decoration:none}
     align-items:stretch;
   }
 
-  .fpTopbarRight{justify-content:flex-start}
+  .fpTopbarRight{
+    justify-content:flex-start;
+    row-gap:12px;
+    column-gap:12px;
+  }
+
   .fpHero{flex-direction:column;align-items:flex-start}
   .fpHeroRight{justify-content:flex-start}
   .fpHelloTitle{font-size:42px}
@@ -1411,7 +1509,11 @@ a{color:inherit;text-decoration:none}
 }
 
 @media (max-width:760px){
-  .fpMain{padding:14px}
+  .fpMain{
+    padding:14px;
+    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
   .fpTopbar{gap:14px}
 
   .fpTopbarRight{
@@ -1419,6 +1521,7 @@ a{color:inherit;text-decoration:none}
     display:flex;
     flex-direction:column;
     align-items:stretch;
+    gap:12px;
   }
 
   .fpTopbarRight > *{width:100%}
@@ -1452,13 +1555,18 @@ a{color:inherit;text-decoration:none}
 
   .fpPageActions,
   .fpDetailActions,
-  .fpMissionActions{
+  .fpMissionActions,
+  .fpTopActionsRow,
+  .fpTableActions,
+  .fpCardActions{
     width:100%;
     justify-content:flex-start;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
   }
 
-  .fpDetailActions,
-  .fpMissionActions,
   .fpInlineLinks{
     flex-direction:column;
   }
@@ -1466,6 +1574,22 @@ a{color:inherit;text-decoration:none}
   .fpInlineLinks a{
     width:100%;
     justify-content:center;
+  }
+
+  .fpTopActionsRow > .fpBtn,
+  .fpTopActionsRow > a.fpBtn,
+  .fpDetailActions > .fpBtn,
+  .fpDetailActions > a.fpBtn,
+  .fpMissionActions > .fpBtn,
+  .fpMissionActions > a.fpBtn,
+  .fpTableActions > .fpBtn,
+  .fpTableActions > a.fpBtn,
+  .fpCardActions > .fpBtn,
+  .fpCardActions > a.fpBtn,
+  .fpPageActions > .fpBtn,
+  .fpPageActions > a.fpBtn{
+    width:100%;
+    min-height:48px;
   }
 
   .fpTableHead{display:none}
@@ -1479,16 +1603,37 @@ a{color:inherit;text-decoration:none}
   .fpInfoRow,
   .fpSettingsRow,
   .fpAddonRow,
-  .fpQuotaRow{
+  .fpQuotaRow,
+  .fpTimelineItem,
+  .fpActionItem{
     flex-direction:column;
     align-items:flex-start;
+    gap:10px;
+  }
+
+  .fpInfoRow strong,
+  .fpSettingsRow strong{
+    text-align:left;
   }
 
   .fpMissionCardLarge .fpMissionActions{margin-left:0}
 
+  .fpChartCard{
+    overflow:hidden;
+  }
+
   .fpChartBox{
-    height:250px;
-    padding:8px;
+    width:100%;
+    min-width:0;
+    height:240px;
+    padding:10px;
+    border-radius:20px;
+  }
+
+  .fpChartBox canvas{
+    width:100% !important;
+    height:100% !important;
+    max-width:100%;
   }
 
   .fpChartLegend{
@@ -1502,6 +1647,8 @@ a{color:inherit;text-decoration:none}
   }
 
   #fpRangeSelect{
+    color:var(--fpText) !important;
+    -webkit-text-fill-color:var(--fpText) !important;
     background:
       linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)),
       url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='white'><path d='M7 10l5 5 5-5z'/></svg>");
@@ -1513,10 +1660,12 @@ a{color:inherit;text-decoration:none}
 
 @media (max-width:520px){
   .fpHelloTitle{font-size:32px}
+
   .fpHero{
     padding:20px;
     border-radius:24px;
   }
+
   .fpHeroTitle{font-size:38px}
   .fpPageTitle{font-size:32px}
   .fpHeroText{font-size:16px}
@@ -1543,26 +1692,34 @@ a{color:inherit;text-decoration:none}
 /* LIGHT MODE */
 @media (prefers-color-scheme: light){
   :root{
-    --fpBg:#e8eefc;
-    --fpBg2:#dbe5fb;
-    --fpBg3:#d2defa;
+    --fpBg:#edf3ff;
+    --fpBg2:#dfe9ff;
+    --fpBg3:#d4e1ff;
 
     --fpBorder:rgba(15,23,42,.08);
     --fpBorderStrong:rgba(15,23,42,.12);
 
     --fpText:#10182b;
     --fpTextSoft:#425074;
-    --fpMuted:#6d7a9d;
+    --fpMuted:#667699;
 
     --fpShadow:0 18px 40px rgba(27,45,94,.10);
     --fpShadowLg:0 28px 70px rgba(27,45,94,.14);
   }
 
+  html{
+    background:
+      radial-gradient(1000px 540px at 12% 0%, rgba(47,91,255,.18), transparent 60%),
+      radial-gradient(920px 540px at 100% 8%, rgba(91,124,255,.14), transparent 58%),
+      radial-gradient(980px 760px at 50% 100%, rgba(27,69,255,.10), transparent 62%),
+      linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+  }
+
   body{
     background:
-      radial-gradient(1000px 500px at 12% 0%, rgba(47,91,255,.16), transparent 60%),
-      radial-gradient(900px 500px at 100% 8%, rgba(91,124,255,.12), transparent 58%),
-      radial-gradient(900px 700px at 50% 100%, rgba(27,69,255,.08), transparent 62%),
+      radial-gradient(1000px 540px at 12% 0%, rgba(47,91,255,.18), transparent 60%),
+      radial-gradient(920px 540px at 100% 8%, rgba(91,124,255,.14), transparent 58%),
+      radial-gradient(980px 760px at 50% 100%, rgba(27,69,255,.10), transparent 62%),
       linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
     background-attachment:fixed;
   }
@@ -1573,7 +1730,14 @@ a{color:inherit;text-decoration:none}
       linear-gradient(180deg, rgba(255,255,255,.92), rgba(240,245,255,.96));
   }
 
-  .fpNavItem:hover{background:rgba(47,91,255,.06)}
+  .fpNavItem{
+    color:#4c5a7e;
+  }
+
+  .fpNavItem:hover{
+    color:var(--fpText);
+    background:rgba(47,91,255,.06);
+  }
 
   .fpCard,
   .fpCardInner,
@@ -1581,14 +1745,14 @@ a{color:inherit;text-decoration:none}
   .fpAccountCard,
   .fpPlanCard{
     background:
-      radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.07), transparent 55%),
-      linear-gradient(180deg, rgba(255,255,255,.78), rgba(245,248,255,.82));
+      radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.10), transparent 55%),
+      linear-gradient(180deg, rgba(255,255,255,.84), rgba(241,246,255,.90));
   }
 
   .fpCardAccent{
     background:
-      radial-gradient(120% 140% at 20% 0%, rgba(47,91,255,.14), transparent 52%),
-      linear-gradient(180deg, rgba(255,255,255,.86), rgba(240,245,255,.90));
+      radial-gradient(120% 140% at 20% 0%, rgba(47,91,255,.18), transparent 52%),
+      linear-gradient(180deg, rgba(255,255,255,.90), rgba(236,243,255,.94));
   }
 
   .fpMiniStat,
@@ -1616,21 +1780,45 @@ a{color:inherit;text-decoration:none}
   .fpInfoBox,
   .fpLegendItem,
   .fpInlineLinks a{
-    background:rgba(255,255,255,.52);
+    background:rgba(255,255,255,.62);
     color:var(--fpText);
     backdrop-filter:blur(12px);
   }
 
   .fpHero{
     background:
-      radial-gradient(900px 300px at 15% 0%, rgba(47,91,255,.14), transparent 58%),
-      radial-gradient(700px 300px at 95% 5%, rgba(91,124,255,.10), transparent 62%),
-      linear-gradient(180deg, rgba(255,255,255,.74), rgba(240,245,255,.84));
+      radial-gradient(900px 300px at 15% 0%, rgba(47,91,255,.18), transparent 58%),
+      radial-gradient(700px 300px at 95% 5%, rgba(91,124,255,.12), transparent 62%),
+      linear-gradient(180deg, rgba(255,255,255,.82), rgba(238,245,255,.92));
   }
 
-  .fpExportMenu button{color:var(--fpText)}
-  .fpExportMenu button:hover{background:rgba(47,91,255,.06)}
-  .fpMenuBtn span{background:var(--fpText)}
+  .fpExportMenu{
+    background:rgba(255,255,255,.95);
+    color:var(--fpText);
+  }
+
+  .fpExportMenu button{
+    color:var(--fpText);
+  }
+
+  .fpExportMenu button:hover{
+    background:rgba(47,91,255,.06);
+  }
+
+  .fpMenuBtn span{
+    background:var(--fpText);
+  }
+
+  .fpCardKicker,
+  .fpHelloKicker,
+  .fpPageKicker,
+  .fpMiniStatLabel,
+  .fpStatLabel,
+  .fpInfoLabel,
+  .fpAccountRow span,
+  .fpUsageTop span{
+    color:var(--fpMuted);
+  }
 
   .fpLegendItem,
   .fpCardText,
@@ -1669,7 +1857,15 @@ a{color:inherit;text-decoration:none}
   .fpAccountRow strong,
   .fpUsageTop strong,
   .fpMissionTitle,
-  .fpProjectName{
+  .fpProjectName,
+  .fpInfoRow span,
+  .fpSettingsRow span,
+  .fpQuotaRow span,
+  .fpAddonLabel,
+  .fpRowTitle,
+  .fpTimelineTitle,
+  .fpActionTitle,
+  .fpToggleTitle{
     color:var(--fpText);
   }
 
@@ -1697,14 +1893,14 @@ a{color:inherit;text-decoration:none}
   }
 
   .fpChartBox{
-    background:linear-gradient(180deg, rgba(47,91,255,.03), rgba(47,91,255,.01));
+    background:linear-gradient(180deg, rgba(47,91,255,.04), rgba(47,91,255,.015));
     border-color:rgba(15,23,42,.08);
   }
 
   .fpSelect{
-    color:var(--fpText);
+    color:var(--fpText) !important;
     background:
-      linear-gradient(180deg, rgba(255,255,255,.70), rgba(245,248,255,.82)),
+      linear-gradient(180deg, rgba(255,255,255,.78), rgba(245,248,255,.88)),
       url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='%2310182b'><path d='M7 10l5 5 5-5z'/></svg>");
     background-repeat:no-repeat,no-repeat;
     background-position:0 0,right 14px center;
@@ -1715,325 +1911,23 @@ a{color:inherit;text-decoration:none}
     background:#ffffff;
     color:#10182b;
   }
+
+  @media (max-width:1080px){
+    .fpSidebar{
+      background:
+        radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.12), transparent 62%),
+        linear-gradient(180deg, rgba(255,255,255,.97), rgba(240,245,255,.985));
+    }
+  }
 }
 
-@supports (-webkit-touch-callout:none){
-  body{min-height:-webkit-fill-available}
-  .fpSidebar{height:100dvh}
-}
-/* =========================================
-   MOBILE SAFE AREAS (supprime les bandes)
-   ========================================= */
-
-html, body {
-  min-height:100%;
-  background:inherit;
-}
-
+/* SAFE AREAS / bandes haut-bas iPhone */
+html,
 body{
-  padding-top:env(safe-area-inset-top);
-  padding-bottom:env(safe-area-inset-bottom);
+  min-height:100%;
+  background-color:transparent;
 }
 
-/* iOS safari */
-.fpAppShell{
-  min-height:100dvh;
-}
-
-/* =========================================
-   MOBILE DARK MODE FIX
-   ========================================= */
-
-@media (prefers-color-scheme: dark){
-
-  body{
-    background:
-      radial-gradient(1000px 500px at 12% 0%, rgba(47,91,255,.34), transparent 60%),
-      radial-gradient(900px 500px at 100% 8%, rgba(91,124,255,.22), transparent 58%),
-      radial-gradient(900px 700px at 50% 100%, rgba(27,69,255,.16), transparent 62%),
-      linear-gradient(180deg, #070b19, #0b1230);
-  }
-
-}
-
-/* =========================================
-   TEXT VISIBILITY MOBILE
-   ========================================= */
-
-@media (max-width:760px){
-
-  .fpCardText,
-  .fpSmall,
-  .fpRowMeta,
-  .fpMissionMeta,
-  .fpMissionDesc{
-    color:var(--fpTextSoft);
-  }
-
-  .fpSectionTitle,
-  .fpCardInnerTitle,
-  .fpHeroTitle,
-  .fpPageTitle{
-    color:var(--fpText);
-  }
-
-}
-
-/* =========================================
-   BUTTON SPACING FIX
-   ========================================= */
-
-.fpBtn{
-  margin:4px 0;
-}
-
-.fpMissionActions{
-  gap:12px;
-}
-
-.fpTopbarRight{
-  gap:12px;
-}
-
-/* =========================================
-   MISSION CARDS (arrondir coins checklist)
-   ========================================= */
-
-.fpMissionCard{
-  border-radius:26px;
-}
-
-.fpMissionCheck{
-  border-radius:12px;
-}
-
-/* =========================================
-   EXPORT / ACTION BUTTON SPACING
-   ========================================= */
-
-.fpCardActions,
-.fpMissionActions,
-.fpTopActionsRow{
-  gap:14px;
-}
-
-/* =========================================
-   MOBILE BUTTON STACK
-   ========================================= */
-
-@media (max-width:760px){
-
-  .fpMissionActions .fpBtn{
-    width:100%;
-  }
-
-}
-
-/* =========================================
-   UX IMPROVEMENT 1
-   hover cards
-   ========================================= */
-
-.fpCard:hover{
-  transform:translateY(-2px);
-  transition:.2s;
-}
-
-/* =========================================
-   UX IMPROVEMENT 2
-   smooth card hover
-   ========================================= */
-
-.fpRowCard:hover,
-.fpMissionCard:hover{
-  background:rgba(255,255,255,.05);
-}
-
-/* =========================================
-   UX IMPROVEMENT 3
-   better button feedback
-   ========================================= */
-
-.fpBtn:active{
-  transform:scale(.97);
-}
-/* =========================================================
-   PARTIE 5 — PATCH FINAL MOBILE / LISIBILITÉ / ESPACEMENTS
-   ========================================================= */
-
-/* coins plus arrondis pour les missions checklist */
-.fpMissionCard,
-.fpMissionCardLarge{
-  border-radius:24px;
-}
-
-/* espace mieux les groupes de boutons pour éviter qu'ils soient collés */
-.fpTopActionsRow,
-.fpDetailActions,
-.fpMissionActions,
-.fpTableActions,
-.fpCardActions,
-.fpPageActions,
-.fpSidebarActions,
-.fpTopbarRight{
-  row-gap:12px;
-  column-gap:12px;
-}
-
-/* évite les boutons trop collés dans les cartes */
-.fpReportCard .fpDetailActions,
-.fpCard .fpDetailActions,
-.fpCard .fpTopActionsRow,
-.fpMissionCard .fpMissionActions{
-  margin-top:14px;
-}
-
-/* meilleurs espacements entre boutons sur mobile */
-@media (max-width:760px){
-  .fpTopActionsRow,
-  .fpDetailActions,
-  .fpMissionActions,
-  .fpTableActions,
-  .fpCardActions,
-  .fpPageActions{
-    display:flex;
-    flex-direction:column;
-    align-items:stretch;
-    gap:12px;
-  }
-
-  .fpTopActionsRow > .fpBtn,
-  .fpTopActionsRow > a.fpBtn,
-  .fpDetailActions > .fpBtn,
-  .fpDetailActions > a.fpBtn,
-  .fpMissionActions > .fpBtn,
-  .fpMissionActions > a.fpBtn,
-  .fpTableActions > .fpBtn,
-  .fpTableActions > a.fpBtn,
-  .fpCardActions > .fpBtn,
-  .fpCardActions > a.fpBtn,
-  .fpPageActions > .fpBtn,
-  .fpPageActions > a.fpBtn{
-    width:100%;
-    min-height:48px;
-  }
-
-  .fpTableActions{
-    margin-top:8px;
-  }
-}
-
-/* meilleure lisibilité globale */
-.fpAccountRow span,
-.fpUsageTop span,
-.fpMiniStatLabel,
-.fpStatLabel,
-.fpInfoLabel,
-.fpCardKicker,
-.fpHelloKicker,
-.fpPageKicker{
-  color:var(--fpTextSoft);
-}
-
-/* textes secondaires mieux visibles */
-.fpCardText,
-.fpSmall,
-.fpTextPanel,
-.fpMiniStatMeta,
-.fpStatMeta,
-.fpBillingStatus,
-.fpReportMeta,
-.fpTimelineMeta,
-.fpActionMeta,
-.fpToggleHint,
-.fpChartInsight,
-.fpRowMeta,
-.fpMissionMeta,
-.fpMissionDesc,
-.fpProjectMeta,
-.fpKpiSub,
-.fpInfoHint,
-.fpPageDesc,
-.fpHeroText,
-.fpHelloSub{
-  color:var(--fpTextSoft);
-}
-
-/* labels et lignes plus lisibles dans les cartes */
-.fpInfoRow span,
-.fpSettingsRow span,
-.fpQuotaRow span,
-.fpAddonLabel,
-.fpRowTitle,
-.fpTimelineTitle,
-.fpActionTitle,
-.fpToggleTitle{
-  color:var(--fpText);
-}
-
-/* améliore la lisibilité du select */
-.fpSelect{
-  color:var(--fpText) !important;
-  -webkit-text-fill-color:var(--fpText) !important;
-}
-
-/* stabilise le rendu du graphique sur téléphone */
-@media (max-width:760px){
-  .fpChartCard{
-    overflow:hidden;
-  }
-
-  .fpChartBox{
-    width:100%;
-    min-width:0;
-    height:240px;
-    padding:10px;
-    border-radius:20px;
-  }
-
-  .fpChartBox canvas{
-    width:100% !important;
-    height:100% !important;
-    max-width:100%;
-  }
-}
-
-/* évite que les grandes valeurs débordent */
-.fpMiniStatValue,
-.fpStatValue,
-.fpBillingPlan,
-.fpBigValue,
-.fpScore,
-.fpProjectName,
-.fpMissionTitle,
-.fpSectionTitle,
-.fpCardInnerTitle,
-.fpHeroTitle,
-.fpPageTitle,
-.fpHelloTitle{
-  word-break:break-word;
-  overflow-wrap:anywhere;
-}
-
-/* meilleure structure des rows sur petits écrans */
-@media (max-width:760px){
-  .fpInfoRow,
-  .fpRowCard,
-  .fpSettingsRow,
-  .fpAddonRow,
-  .fpQuotaRow,
-  .fpTimelineItem,
-  .fpActionItem{
-    gap:10px;
-  }
-
-  .fpInfoRow strong,
-  .fpSettingsRow strong{
-    text-align:left;
-  }
-}
-
-/* remplace les bandes haut / bas iPhone par le vrai fond */
 html{
   background:
     radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
@@ -2042,99 +1936,44 @@ html{
     linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
 }
 
-/* mode clair cohérent partout */
-@media (prefers-color-scheme: light){
-  html{
-    background:
-      radial-gradient(1000px 500px at 12% 0%, rgba(47,91,255,.16), transparent 60%),
-      radial-gradient(900px 500px at 100% 8%, rgba(91,124,255,.12), transparent 58%),
-      radial-gradient(900px 700px at 50% 100%, rgba(27,69,255,.08), transparent 62%),
-      linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
-  }
-
-  .fpAccountRow span,
-  .fpUsageTop span,
-  .fpCardKicker,
-  .fpHelloKicker,
-  .fpPageKicker,
-  .fpMiniStatLabel,
-  .fpStatLabel,
-  .fpInfoLabel{
-    color:var(--fpMuted);
-  }
-
-  .fpInfoRow span,
-  .fpSettingsRow span,
-  .fpQuotaRow span,
-  .fpAddonLabel,
-  .fpRowTitle,
-  .fpTimelineTitle,
-  .fpActionTitle,
-  .fpToggleTitle{
-    color:var(--fpText);
-  }
-
-  .fpCardText,
-  .fpSmall,
-  .fpTextPanel,
-  .fpMiniStatMeta,
-  .fpStatMeta,
-  .fpBillingStatus,
-  .fpReportMeta,
-  .fpTimelineMeta,
-  .fpActionMeta,
-  .fpToggleHint,
-  .fpChartInsight,
-  .fpRowMeta,
-  .fpMissionMeta,
-  .fpMissionDesc,
-  .fpProjectMeta,
-  .fpKpiSub,
-  .fpInfoHint,
-  .fpPageDesc,
-  .fpHeroText,
-  .fpHelloSub{
-    color:var(--fpTextSoft);
-  }
-
-  .fpExportMenu{
-    background:rgba(255,255,255,.94);
-    color:var(--fpText);
-  }
-
-  .fpExportMenu button{
-    color:var(--fpText);
-  }
+body{
+  padding-top:env(safe-area-inset-top, 0);
+  padding-bottom:env(safe-area-inset-bottom, 0);
 }
 
-/* iPhone safe area */
-body{
-  padding-bottom:env(safe-area-inset-bottom, 0);
+.fpAppShell{
+  min-height:100dvh;
 }
 
 .fpMain{
   padding-bottom:calc(22px + env(safe-area-inset-bottom, 0px));
 }
 
-@media (max-width:760px){
-  .fpMain{
-    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+@supports (-webkit-touch-callout:none){
+  body{
+    min-height:-webkit-fill-available;
+  }
+
+  .fpSidebar{
+    height:100dvh;
   }
 }
 
-/* sidebar mobile conserve bien le sombre et le clair */
-@media (max-width:1080px){
-  .fpSidebar{
-    background:
-      radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.22), transparent 62%),
-      linear-gradient(180deg, rgba(14,22,56,.97), rgba(9,15,38,.985));
-  }
+/* petits bonus UX déjà demandés */
+.fpBtn{
+  margin:4px 0;
 }
 
-@media (max-width:1080px) and (prefers-color-scheme: light){
-  .fpSidebar{
-    background:
-      radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.12), transparent 62%),
-      linear-gradient(180deg, rgba(255,255,255,.97), rgba(240,245,255,.985));
-  }
+.fpCard:hover{
+  transform:translateY(-2px);
+  transition:.2s;
+}
+
+.fpRowCard:hover,
+.fpMissionCard:hover{
+  background:rgba(255,255,255,.05);
+}
+
+.fpBtn:active{
+  transform:scale(.97);
 }
