@@ -2169,17 +2169,18 @@ body::before{
 }
 
 .fpSettingsList{
-  gap:14px !important;
+  display:flex;
+  flex-direction:column;
+  gap:16px !important;
 }
 
 .fpSettingsList > *{
-  margin:0 !important;
+  margin:0;
 }
-
 .fpSettingsRow,
 .fpToggleRow{
-  border-radius:20px;
-  padding:16px 18px;
+  padding:18px 20px;
+  border-radius:22px;
 }
 
 .fpSettingsRow{
@@ -2919,5 +2920,94 @@ body::before{
         radial-gradient(700px 420px at 15% 8%, rgba(47,91,255,.12), transparent 62%),
         linear-gradient(180deg, rgba(248,251,255,.98), rgba(234,242,255,.99)) !important;
     }
+  }
+}
+/* =========================================================
+   SETTINGS SPACING FINAL
+   ========================================================= */
+
+/* espace global entre les gros blocs de la colonne settings */
+.fpSettingsGrid{
+  gap:24px !important;
+}
+
+/* chaque bloc interne prend plus d'air */
+.fpSettingsGrid .fpCardInner{
+  padding:26px !important;
+}
+
+/* espace entre le titre/texte et le contenu */
+.fpSettingsGrid .fpCardInner > .fpSmall{
+  margin-bottom:18px !important;
+}
+
+/* espace vertical propre entre les éléments internes */
+.fpSettingsGrid .fpCardInner > * + *{
+  margin-top:18px !important;
+}
+
+/* mais on évite de casser les lignes flex */
+.fpSettingsGrid .fpCardInner > .fpToggleRow + .fpToggleRow,
+.fpSettingsGrid .fpCardInner > .fpSettingsList + .fpSettingsList,
+.fpSettingsGrid .fpCardInner > .fpField + .fpField,
+.fpSettingsGrid .fpCardInner > .fpField + .fpDetailActions{
+  margin-top:18px !important;
+}
+
+/* rangées paramètres plus hautes et mieux espacées */
+.fpToggleRow,
+.fpSettingsRow{
+  min-height:92px;
+  padding:20px 22px !important;
+  border-radius:22px !important;
+}
+
+/* liens utiles : vrai espace entre le texte et les boutons */
+.fpCardInner .fpInlineLinks,
+.fpCard .fpInlineLinks{
+  margin-top:20px !important;
+  gap:14px !important;
+  row-gap:14px !important;
+  column-gap:14px !important;
+}
+
+/* desktop : liens utiles pas collés au bord */
+.fpInlineLinks a{
+  min-height:46px;
+  padding:0 18px !important;
+  border-radius:999px !important;
+}
+
+/* =========================================================
+   MOBILE SETTINGS
+   ========================================================= */
+@media (max-width:760px){
+  .fpSettingsGrid{
+    gap:20px !important;
+  }
+
+  .fpSettingsGrid .fpCardInner{
+    padding:22px !important;
+  }
+
+  .fpSettingsGrid .fpCardInner > * + *{
+    margin-top:16px !important;
+  }
+
+  .fpToggleRow,
+  .fpSettingsRow{
+    min-height:auto;
+    padding:16px 18px !important;
+    border-radius:20px !important;
+  }
+
+  .fpInlineLinks{
+    gap:12px !important;
+  }
+
+  .fpInlineLinks a{
+    width:100%;
+    min-height:52px;
+    border-radius:18px !important;
   }
 }
