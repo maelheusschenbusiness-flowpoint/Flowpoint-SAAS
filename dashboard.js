@@ -16,8 +16,8 @@
     "#settings",
   ]);
 
-  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v9";
-  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v9";
+  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v10";
+  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v10";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
   const LOGO_SRC = "/assets/flowpoint-logo.svg";
 
@@ -121,11 +121,6 @@
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
-  function formatNumber(v) {
-    const n = Number(v || 0);
-    return Number.isFinite(n) ? n.toLocaleString("fr-FR") : "0";
-  }
-
   function planLabel(plan) {
     const p = String(plan || "").toLowerCase();
     if (p === "standard") return "Standard";
@@ -169,7 +164,10 @@
 
   function formatUsage(v) {
     if (v == null) return "0";
-    if (typeof v === "number" || typeof v === "string") return String(v);
+
+    if (typeof v === "number" || typeof v === "string") {
+      return String(v);
+    }
 
     if (typeof v === "object") {
       const used = v.used ?? 0;
@@ -258,7 +256,9 @@
     const token = getToken();
 
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    if (options.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
 
     const doFetch = () =>
       fetch(url, {
