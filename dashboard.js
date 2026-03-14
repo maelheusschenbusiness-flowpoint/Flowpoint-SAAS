@@ -161,7 +161,15 @@
     if (Number.isNaN(d.getTime())) return "Bientôt";
     return d.toLocaleDateString("fr-FR");
   }
+function trialLabel(value) {
+  if (!value) return "Essai non défini";
 
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Essai non défini";
+
+  const now = new Date();
+  return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
+}
   function formatUsage(v) {
     if (v == null) return "0";
 
@@ -403,7 +411,7 @@
     if (els.accPlan) els.accPlan.textContent = planLabel(me.plan);
     if (els.accOrg) els.accOrg.textContent = normalizeOrgName();
     if (els.accRole) els.accRole.textContent = cap(me.role || "owner");
-    if (els.accTrial) els.accTrial.textContent = me.trialEndsAt ? formatShortDate(me.trialEndsAt) : "Essai non défini";
+    if (els.accTrial) els.accTrial.textContent = trialLabel(me.trialEndsAt);
 
     if (els.usageAudits) els.usageAudits.textContent = formatUsage(usage.audits);
     if (els.usagePdf) els.usagePdf.textContent = formatUsage(usage.pdf);
