@@ -1973,12 +1973,11 @@ body{
 }
 
 /* =========================================================
-   FINAL FIX UNIQUE
-   - ne touche pas aux missions
-   - corrige paramètres collés
-   - corrige mobile
-   - supprime les bandes/blocs séparés iPhone
-   - garde dark + light mode
+   PATCH FINAL UNIQUE
+   - missions re-espacées
+   - settings re-espacés
+   - boutons mobile plus propres
+   - fond continu iPhone
    ========================================================= */
 
 /* base */
@@ -2007,37 +2006,49 @@ body{
   background-clip:padding-box;
 }
 
-/* espacements généraux */
-.fpTopbarRight,
-.fpCardActions,
-.fpTopActionsRow,
-.fpTableActions,
-.fpDetailActions,
-.fpPageActions,
-.fpInlineLinks,
-.fpSidebarActions{
-  gap:14px !important;
-  row-gap:14px !important;
-  column-gap:14px !important;
+/* fond continu */
+html,
+body{
+  margin:0;
+  min-height:100%;
+  background:transparent !important;
+  background-color:transparent !important;
 }
 
-.fpBtn{
-  margin:0 !important;
+body{
+  padding-top:0 !important;
+  padding-bottom:0 !important;
 }
 
-.fpTextPanel{
-  padding:20px;
-  border-radius:22px;
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-2;
+  pointer-events:none;
+  background:
+    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
+    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
+    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
+    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
+  background-repeat:no-repeat;
+  background-size:cover;
+  background-attachment:fixed;
 }
 
-/* on garde les missions comme elles sont */
-.fpMissionActions{
-  gap:12px;
-  row-gap:12px;
-  column-gap:12px;
+.fpAppShell{
+  position:relative;
+  min-height:100svh;
+  min-height:100dvh;
+  background:transparent !important;
 }
 
-/* un léger glow propre sur les cartes */
+.fpMain,
+.fpPageContainer{
+  background:transparent !important;
+}
+
+/* glow léger */
 .fpCard,
 .fpCardInner,
 .fpHero,
@@ -2065,20 +2076,72 @@ body{
   opacity:.9;
 }
 
-/* meilleurs champs */
-.fpInput,
-.fpTextarea,
-.fpSelect{
-  -webkit-text-fill-color:currentColor !important;
+/* espacements généraux */
+.fpTopbarRight,
+.fpCardActions,
+.fpTopActionsRow,
+.fpTableActions,
+.fpDetailActions,
+.fpPageActions,
+.fpInlineLinks,
+.fpSidebarActions{
+  gap:14px !important;
+  row-gap:14px !important;
+  column-gap:14px !important;
 }
 
-.fpBtnGhost{
-  backdrop-filter:blur(12px);
+.fpBtn{
+  margin:0 !important;
 }
 
-/* =========================
-   SETTINGS FIX
-   ========================= */
+.fpTextPanel{
+  padding:20px;
+  border-radius:22px;
+}
+
+/* =========================================================
+   MISSIONS — on remet bien de l’espace
+   ========================================================= */
+
+.fpMissionPageSide{
+  display:flex;
+  flex-direction:column;
+  gap:18px !important;
+}
+
+.fpMissionPageSide > *{
+  margin:0 !important;
+}
+
+.fpMissionPageSide .fpStatCard,
+.fpMissionPageSide .fpTextPanel,
+.fpMissionPageSide .fpInlineLinks,
+.fpMissionPageSide .fpCard,
+.fpMissionPageSide .fpCardInner{
+  margin:0 !important;
+}
+
+.fpMissionStack{
+  gap:16px !important;
+}
+
+.fpMissionCard{
+  padding:18px;
+}
+
+.fpMissionActions{
+  gap:12px !important;
+  row-gap:12px !important;
+  column-gap:12px !important;
+}
+
+.fpMissionCardLarge .fpMissionActions{
+  margin-left:38px;
+}
+
+/* =========================================================
+   SETTINGS — on re-espace correctement
+   ========================================================= */
 
 .fpSettingsGrid{
   display:grid;
@@ -2101,9 +2164,16 @@ body{
 .fpSettingsGrid .fpCardInner > .fpField + .fpField,
 .fpSettingsGrid .fpCardInner > .fpField + .fpDetailActions,
 .fpSettingsGrid .fpCardInner > .fpToggleRow + .fpToggleRow,
-.fpSettingsGrid .fpCardInner > .fpSettingsList + .fpSettingsList,
-.fpSettingsList > * + *{
+.fpSettingsGrid .fpCardInner > .fpSettingsList + .fpSettingsList{
   margin-top:16px;
+}
+
+.fpSettingsList{
+  gap:14px !important;
+}
+
+.fpSettingsList > *{
+  margin:0 !important;
 }
 
 .fpSettingsRow,
@@ -2126,9 +2196,14 @@ body{
   gap:14px;
 }
 
-/* =========================
-   BILLING / LIENS / ACTIONS
-   ========================= */
+.fpField{
+  gap:10px;
+  margin-top:16px;
+}
+
+/* =========================================================
+   BILLING / LIENS
+   ========================================================= */
 
 .fpBillingCard,
 .fpReportCard{
@@ -2160,71 +2235,19 @@ body{
   margin-top:16px;
 }
 
-.fpDetailActions > .fpBtn,
-.fpDetailActions > a.fpBtn,
-.fpTopbarRight > .fpBtn,
-.fpTopbarRight > a.fpBtn,
-.fpTopbarRight > .fpStatusPill{
-  min-height:50px;
+.fpInlineLinks{
+  gap:14px !important;
 }
 
 .fpInlineLinks a{
   min-height:48px;
-  padding-inline:16px;
+  padding-inline:18px;
+  border-radius:999px;
 }
 
-/* =========================
-   FOND CONTINU / IPHONE FIX
-   ========================= */
-
-/* on annule les anciens safe-area qui créaient l'effet coupé */
-html,
-body{
-  margin:0;
-  min-height:100%;
-  background:transparent !important;
-  background-color:transparent !important;
-}
-
-body{
-  padding-top:0 !important;
-  padding-bottom:0 !important;
-}
-
-/* fond unique continu comme ton site vitrine */
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  z-index:-2;
-  pointer-events:none;
-  background:
-    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
-    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
-    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
-    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
-  background-repeat:no-repeat;
-  background-size:cover;
-  background-attachment:fixed;
-}
-
-/* le shell ne doit plus faire bloc séparé */
-.fpAppShell{
-  position:relative;
-  min-height:100svh;
-  min-height:100dvh;
-  background:transparent !important;
-}
-
-.fpMain,
-.fpSidebar,
-.fpPageContainer{
-  background:transparent !important;
-}
-
-/* =========================
+/* =========================================================
    MOBILE
-   ========================= */
+   ========================================================= */
 
 @media (max-width:1080px){
   .fpAppShell{
@@ -2366,11 +2389,6 @@ body::before{
     width:100%;
   }
 
-  .fpPageHeroHead{
-    flex-direction:column;
-    align-items:flex-start;
-  }
-
   .fpPageActions,
   .fpDetailActions,
   .fpTopActionsRow,
@@ -2383,16 +2401,8 @@ body::before{
     gap:12px !important;
   }
 
-  .fpInlineLinks{
-    flex-direction:column;
-    gap:12px !important;
-  }
-
-  .fpInlineLinks a{
-    width:100%;
-    justify-content:center;
-  }
-
+  /* boutons mobile plus jolis */
+  .fpBtn,
   .fpTopActionsRow > .fpBtn,
   .fpTopActionsRow > a.fpBtn,
   .fpDetailActions > .fpBtn,
@@ -2402,9 +2412,32 @@ body::before{
   .fpCardActions > .fpBtn,
   .fpCardActions > a.fpBtn,
   .fpPageActions > .fpBtn,
-  .fpPageActions > a.fpBtn{
+  .fpPageActions > a.fpBtn,
+  .fpInlineLinks a{
     width:100%;
-    min-height:48px;
+    min-height:52px;
+    border-radius:18px !important;
+    font-size:16px;
+    font-weight:800;
+    justify-content:center;
+  }
+
+  .fpBtnGhost,
+  .fpInlineLinks a{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
+    border:1px solid var(--fpBorderStrong);
+  }
+
+  .fpBtnPrimary{
+    box-shadow:
+      0 12px 28px rgba(47,91,255,.28),
+      inset 0 1px 0 rgba(255,255,255,.10);
+  }
+
+  .fpInlineLinks{
+    flex-direction:column;
+    gap:12px !important;
   }
 
   .fpTableHead{
@@ -2461,20 +2494,22 @@ body::before{
     justify-content:flex-start;
   }
 
-  .fpBillingGrid{
-    grid-template-columns:1fr !important;
+  /* missions mobile : propres et espacées */
+  .fpMissionStack{
+    gap:16px !important;
   }
 
-  .fpBillingCard{
+  .fpMissionCard{
     padding:18px;
     border-radius:22px;
   }
 
-  .fpBillingPlan{
-    font-size:30px;
+  .fpMissionCardLarge .fpMissionActions{
+    margin-left:0;
+    margin-top:14px;
   }
 
-  /* paramètres téléphone */
+  /* settings mobile */
   .fpSettingsGrid{
     grid-template-columns:1fr !important;
     gap:18px !important;
@@ -2499,6 +2534,19 @@ body::before{
   .fpSettingsRow strong{
     margin-top:6px;
     text-align:left !important;
+  }
+
+  .fpBillingGrid{
+    grid-template-columns:1fr !important;
+  }
+
+  .fpBillingCard{
+    padding:18px;
+    border-radius:22px;
+  }
+
+  .fpBillingPlan{
+    font-size:30px;
   }
 
   #fpRangeSelect{
@@ -2570,9 +2618,9 @@ body::before{
   }
 }
 
-/* =========================
-   LIGHT MODE FINAL
-   ========================= */
+/* =========================================================
+   LIGHT MODE
+   ========================================================= */
 
 @media (prefers-color-scheme: light){
   :root{
