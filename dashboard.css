@@ -1977,3 +1977,488 @@ body{
 .fpBtn:active{
   transform:scale(.97);
 }
+/* =========================================================
+   FIX FLOWPOINT — spacing / light theme / mobile layout
+   À laisser TOUT EN BAS du fichier pour écraser le reste
+   ========================================================= */
+
+/* base plus propre */
+.fpPageContainer,
+.fpCard,
+.fpCardInner,
+.fpHero,
+.fpPageHero,
+.fpMiniStat,
+.fpReportCard,
+.fpBillingCard,
+.fpStatCard,
+.fpTextPanel,
+.fpRowCard,
+.fpInfoRow,
+.fpInfoBox,
+.fpMissionCard,
+.fpSettingsRow,
+.fpToggleRow,
+.fpQuotaRow,
+.fpAddonRow,
+.fpTimelineItem,
+.fpActionItem,
+.fpPlanCard,
+.fpAccountCard{
+  background-clip:padding-box;
+}
+
+/* boutons mieux espacés partout */
+.fpTopbarRight,
+.fpCardActions,
+.fpTopActionsRow,
+.fpTableActions,
+.fpDetailActions,
+.fpPageActions,
+.fpMissionActions,
+.fpInlineLinks,
+.fpSidebarActions{
+  gap:16px !important;
+  row-gap:16px !important;
+  column-gap:16px !important;
+}
+
+.fpBtn{
+  margin:0 !important;
+}
+
+/* actions missions beaucoup plus propres */
+.fpMissionCard{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+
+.fpMissionTop{
+  width:100%;
+}
+
+.fpMissionInfo{
+  min-width:0;
+}
+
+.fpMissionTitle{
+  font-size:clamp(24px, 3vw, 34px);
+  line-height:1.08;
+  word-break:normal;
+  overflow-wrap:anywhere;
+}
+
+.fpMissionActions{
+  display:grid !important;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  width:100%;
+  margin-top:0;
+  margin-left:0 !important;
+}
+
+.fpMissionActions .fpBtn{
+  width:100%;
+  min-height:54px;
+}
+
+.fpMissionCardLarge .fpMissionActions{
+  margin-left:0 !important;
+}
+
+.fpTextPanel{
+  padding:20px;
+  border-radius:22px;
+}
+
+/* cartes et sections un peu plus remplies */
+.fpCard,
+.fpCardInner,
+.fpHero,
+.fpPageHero{
+  position:relative;
+}
+
+.fpCard::before,
+.fpCardInner::before,
+.fpHero::before,
+.fpPageHero::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:
+    radial-gradient(120% 120% at 14% 0%, rgba(91,124,255,.10), transparent 45%);
+  opacity:.9;
+}
+
+/* boutons ghost visibles */
+.fpBtnGhost{
+  backdrop-filter:blur(12px);
+}
+
+/* champs/select plus lisibles */
+.fpInput,
+.fpTextarea,
+.fpSelect{
+  -webkit-text-fill-color:currentColor !important;
+}
+
+/* évite les zones trop vides ou blanches */
+.fpEmpty{
+  min-height:84px;
+  border-radius:20px;
+}
+
+/* mobile */
+@media (max-width:760px){
+  .fpMissionActions{
+    grid-template-columns:1fr !important;
+  }
+
+  .fpMissionCard{
+    padding:20px;
+    gap:16px;
+  }
+
+  .fpTopbarRight{
+    gap:14px !important;
+  }
+
+  .fpInlineLinks,
+  .fpSidebarActions,
+  .fpDetailActions,
+  .fpTopActionsRow{
+    gap:14px !important;
+  }
+
+  .fpCard,
+  .fpCardInner,
+  .fpPageHero,
+  .fpHero,
+  .fpAccountCard{
+    padding:20px;
+  }
+
+  .fpHelloSub{
+    max-width:100%;
+    line-height:1.35;
+  }
+
+  .fpBillingGrid{
+    grid-template-columns:1fr !important;
+  }
+}
+
+@media (max-width:520px){
+  .fpMissionTitle{
+    font-size:22px;
+    line-height:1.12;
+  }
+
+  .fpHelloTitle{
+    font-size:30px;
+    line-height:1;
+  }
+
+  .fpSectionTitle,
+  .fpCardInnerTitle{
+    font-size:26px;
+    line-height:1.04;
+  }
+}
+
+/* =========================
+   LIGHT MODE FIX COMPLET
+   ========================= */
+@media (prefers-color-scheme: light){
+  :root{
+    --fpBg:#eaf1ff;
+    --fpBg2:#dfe9ff;
+    --fpBg3:#d3e1ff;
+
+    --fpBorder:rgba(59,78,130,.14);
+    --fpBorderStrong:rgba(59,78,130,.18);
+
+    --fpText:#0f1830;
+    --fpTextSoft:#4a5d86;
+    --fpMuted:#7281a6;
+
+    --fpShadow:0 18px 40px rgba(41,64,122,.10);
+    --fpShadowLg:0 28px 70px rgba(41,64,122,.16);
+  }
+
+  html,
+  body{
+    background:
+      radial-gradient(1100px 700px at 10% 0%, rgba(47,91,255,.18), transparent 58%),
+      radial-gradient(1000px 700px at 100% 0%, rgba(106,142,255,.16), transparent 60%),
+      radial-gradient(900px 700px at 50% 100%, rgba(47,91,255,.10), transparent 60%),
+      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%) !important;
+    background-attachment:fixed !important;
+  }
+
+  .fpMain{
+    background:
+      radial-gradient(900px 400px at 10% 0%, rgba(47,91,255,.06), transparent 50%),
+      radial-gradient(700px 300px at 100% 0%, rgba(91,124,255,.08), transparent 52%);
+    border-left:1px solid rgba(59,78,130,.08);
+  }
+
+  .fpSidebar{
+    background:
+      radial-gradient(700px 420px at 15% 8%, rgba(47,91,255,.12), transparent 62%),
+      linear-gradient(180deg, rgba(248,251,255,.96), rgba(234,242,255,.98)) !important;
+    border-right:1px solid rgba(59,78,130,.10);
+  }
+
+  .fpCard,
+  .fpCardInner,
+  .fpPageHero,
+  .fpAccountCard,
+  .fpPlanCard,
+  .fpHero{
+    background:
+      radial-gradient(120% 120% at 14% 0%, rgba(47,91,255,.12), transparent 50%),
+      linear-gradient(180deg, rgba(255,255,255,.86), rgba(239,245,255,.94)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+  }
+
+  .fpMiniStat,
+  .fpReportCard,
+  .fpBillingCard,
+  .fpStatCard,
+  .fpTextPanel,
+  .fpRowCard,
+  .fpInfoRow,
+  .fpTableRow,
+  .fpMissionCard,
+  .fpSettingsRow,
+  .fpToggleRow,
+  .fpQuotaRow,
+  .fpAddonRow,
+  .fpTimelineItem,
+  .fpActionItem,
+  .fpBadge,
+  .fpPill,
+  .fpInput,
+  .fpTextarea,
+  .fpStatusPill,
+  .fpExportMenu,
+  .fpSelect,
+  .fpInfoBox,
+  .fpLegendItem,
+  .fpInlineLinks a,
+  .fpEmpty{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.78), rgba(244,248,255,.92)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+    color:var(--fpText) !important;
+    backdrop-filter:blur(14px);
+  }
+
+  /* supprime l'effet "lignes blanches" */
+  .fpMiniStat,
+  .fpReportCard,
+  .fpBillingCard,
+  .fpStatCard,
+  .fpTextPanel,
+  .fpRowCard,
+  .fpInfoRow,
+  .fpTableRow,
+  .fpMissionCard,
+  .fpSettingsRow,
+  .fpToggleRow,
+  .fpQuotaRow,
+  .fpAddonRow,
+  .fpTimelineItem,
+  .fpActionItem,
+  .fpInfoBox,
+  .fpLegendItem,
+  .fpInlineLinks a,
+  .fpEmpty{
+    box-shadow:
+      0 12px 30px rgba(41,64,122,.08),
+      inset 0 1px 0 rgba(255,255,255,.45) !important;
+  }
+
+  .fpHero{
+    background:
+      radial-gradient(900px 300px at 15% 0%, rgba(47,91,255,.18), transparent 58%),
+      radial-gradient(700px 300px at 95% 5%, rgba(91,124,255,.14), transparent 62%),
+      linear-gradient(180deg, rgba(247,250,255,.90), rgba(232,240,255,.96)) !important;
+  }
+
+  .fpNavItem{
+    color:#4f628b;
+  }
+
+  .fpNavItem:hover{
+    color:var(--fpText);
+    background:rgba(47,91,255,.08);
+    border-color:rgba(59,78,130,.10);
+  }
+
+  .fpNavItem.active{
+    color:#fff;
+  }
+
+  .fpCardKicker,
+  .fpHelloKicker,
+  .fpPageKicker,
+  .fpMiniStatLabel,
+  .fpStatLabel,
+  .fpInfoLabel,
+  .fpAccountRow span,
+  .fpUsageTop span{
+    color:var(--fpMuted) !important;
+  }
+
+  .fpHeroTitle,
+  .fpHelloTitle,
+  .fpSectionTitle,
+  .fpCardInnerTitle,
+  .fpReportTitle,
+  .fpBillingTitle,
+  .fpMiniStatValue,
+  .fpStatValue,
+  .fpBrandName,
+  .fpAccountRow strong,
+  .fpUsageTop strong,
+  .fpMissionTitle,
+  .fpProjectName,
+  .fpInfoRow span,
+  .fpSettingsRow span,
+  .fpQuotaRow span,
+  .fpAddonLabel,
+  .fpRowTitle,
+  .fpTimelineTitle,
+  .fpActionTitle,
+  .fpToggleTitle,
+  .fpBillingPlan,
+  .fpScore{
+    color:var(--fpText) !important;
+  }
+
+  .fpLegendItem,
+  .fpCardText,
+  .fpSmall,
+  .fpPageDesc,
+  .fpHelloSub,
+  .fpMissionMeta,
+  .fpMissionDesc,
+  .fpInfoHint,
+  .fpTimelineMeta,
+  .fpActionMeta,
+  .fpToggleHint,
+  .fpPlanList,
+  .fpKpiSub,
+  .fpHeroText,
+  .fpReportMeta,
+  .fpBillingStatus,
+  .fpMiniStatMeta,
+  .fpStatMeta,
+  .fpRowMeta,
+  .fpChartLegendText,
+  .fpChartInsight,
+  .fpTextPanel{
+    color:var(--fpTextSoft) !important;
+  }
+
+  /* LE BUG DE TEXTE BLANC EN THEME CLAIR */
+  .fpBtnGhost,
+  .fpBtnSoft,
+  .fpStatusPill,
+  .fpSelect,
+  .fpInput,
+  .fpTextarea,
+  .fpExportMenu,
+  .fpExportMenu button{
+    color:var(--fpText) !important;
+    -webkit-text-fill-color:var(--fpText) !important;
+  }
+
+  .fpBtnGhost{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.94)) !important;
+    border:1px solid rgba(59,78,130,.14) !important;
+  }
+
+  .fpBtnGhost:hover{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.92), rgba(234,242,255,.98)) !important;
+  }
+
+  .fpBtnSoft{
+    background:
+      linear-gradient(180deg, rgba(86,121,255,.14), rgba(86,121,255,.08)) !important;
+    border:1px solid rgba(86,121,255,.18) !important;
+  }
+
+  .fpBtnPrimary{
+    color:#fff !important;
+  }
+
+  .fpBtn:disabled,
+  .fpBtn[disabled]{
+    color:#a8b3cc !important;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.70), rgba(242,245,252,.88)) !important;
+    border:1px solid rgba(59,78,130,.10) !important;
+    box-shadow:none !important;
+    opacity:1 !important;
+  }
+
+  .fpSelect{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.86), rgba(241,246,255,.96)),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='%230f1830'><path d='M7 10l5 5 5-5z'/></svg>") !important;
+    background-repeat:no-repeat,no-repeat !important;
+    background-position:0 0,right 14px center !important;
+    background-size:100% 100%,18px !important;
+  }
+
+  .fpSelect option{
+    background:#ffffff;
+    color:#0f1830;
+  }
+
+  .fpInput,
+  .fpTextarea{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.84), rgba(242,247,255,.94)) !important;
+  }
+
+  .fpLabel{
+    color:var(--fpText) !important;
+  }
+
+  .fpMenuBtn{
+    background:
+      radial-gradient(circle at 30% 20%, rgba(47,91,255,.10), transparent 30%),
+      linear-gradient(180deg, rgba(255,255,255,.86), rgba(241,246,255,.96)) !important;
+  }
+
+  .fpMenuBtn span{
+    background:var(--fpText) !important;
+  }
+
+  .fpChartBox{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.68), rgba(235,242,255,.88)) !important;
+    border-color:rgba(59,78,130,.10) !important;
+  }
+
+  .fpEmpty{
+    border:1px dashed rgba(59,78,130,.16) !important;
+  }
+
+  @media (max-width:1080px){
+    .fpSidebar{
+      background:
+        radial-gradient(700px 420px at 15% 8%, rgba(47,91,255,.12), transparent 62%),
+        linear-gradient(180deg, rgba(248,251,255,.98), rgba(234,242,255,.99)) !important;
+    }
+  }
+}
