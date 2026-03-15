@@ -1,294 +1,252 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FlowPoint — Essai 14 jours</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowPoint — Essai 14 jours</title>
 
-  <meta name="color-scheme" content="light dark" />
+<meta name="color-scheme" content="light dark">
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-    rel="stylesheet"
-  >
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-  <style>
-    :root{
-      --bg:#f6f7fb;
-      --card:rgba(255,255,255,.92);
-      --text:#0f172a;
-      --muted:#667085;
-      --border:#e6eaf2;
-      --primary:#2f5bff;
-      --shadow:0 10px 30px rgba(16,24,40,.06);
-      --r:16px;
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-      --field:#ffffff;
-      --fieldBorder:#d9deea;
-    }
+<style>
 
-    @media (prefers-color-scheme: dark){
-      :root{
-        --bg:#070b18;
-        --card:rgba(12,18,40,.72);
-        --text:#e8eeff;
-        --muted:#aab7e1;
-        --border:rgba(255,255,255,.10);
-        --shadow:0 18px 70px rgba(0,0,0,.45);
+:root{
+--bg:#f6f7fb;
+--card:rgba(255,255,255,.92);
+--text:#0f172a;
+--muted:#667085;
+--border:#e6eaf2;
+--primary:#2f5bff;
+--shadow:0 10px 30px rgba(16,24,40,.06);
+--r:16px;
 
-        --field:rgba(255,255,255,.06);
-        --fieldBorder:rgba(255,255,255,.12);
-      }
-    }
+--field:#ffffff;
+--fieldBorder:#d9deea;
+}
 
-    *{
-      box-sizing:border-box;
-    }
+@media (prefers-color-scheme: dark){
+:root{
+--bg:#070b18;
+--card:rgba(12,18,40,.72);
+--text:#e8eeff;
+--muted:#aab7e1;
+--border:rgba(255,255,255,.10);
+--shadow:0 18px 70px rgba(0,0,0,.45);
 
-    body{
-      margin:0;
-      font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      background:
-        radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.16), transparent 55%),
-        radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.16), transparent 55%),
-        var(--bg);
-      color:var(--text);
-    }
+--field:rgba(255,255,255,.06);
+--fieldBorder:rgba(255,255,255,.12);
+}
+}
 
-    .wrap{
-      max-width:860px;
-      margin:44px auto;
-      padding:0 16px;
-    }
+*{box-sizing:border-box}
 
-    .topbar{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:16px;
-      margin-bottom:14px;
-    }
+body{
+margin:0;
+font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+background:
+radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.16), transparent 55%),
+radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.16), transparent 55%),
+var(--bg);
+color:var(--text);
+}
 
-    .brand{
-      display:flex;
-      align-items:flex-start;
-      gap:12px;
-      min-width:0;
-    }
+.wrap{
+max-width:860px;
+margin:44px auto;
+padding:0 16px;
+}
 
-    .brandLogo{
-      width:46px;
-      height:46px;
-      object-fit:contain;
-      border-radius:12px;
-      display:block;
-      flex:0 0 auto;
-      filter:drop-shadow(0 10px 22px rgba(0,0,0,.22));
-    }
+.topbar{
+display:flex;
+justify-content:space-between;
+align-items:center;
+gap:12px;
+margin-bottom:14px;
+}
 
-    .brandText{
-      min-width:0;
-    }
+.brand h1{
+margin:0;
+font-size:26px;
+letter-spacing:-.02em;
+font-weight:800;
+}
 
-    .brandText h1{
-      margin:0;
-      font-size:26px;
-      letter-spacing:-.02em;
-      font-weight:800;
-      line-height:1.05;
-    }
+.brand .sub{
+margin-top:6px;
+color:var(--muted);
+font-size:14px;
+line-height:1.45;
+}
 
-    .brandText .sub{
-      margin-top:6px;
-      color:var(--muted);
-      font-size:14px;
-      line-height:1.45;
-    }
+.links{
+display:flex;
+gap:12px;
+align-items:center;
+flex-wrap:wrap;
+}
 
-    .links{
-      display:flex;
-      gap:12px;
-      align-items:center;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
+.link{
+color:var(--primary);
+font-weight:800;
+text-decoration:none;
+background:rgba(47,91,255,.10);
+border:1px solid rgba(47,91,255,.18);
+padding:9px 12px;
+border-radius:999px;
+white-space:nowrap;
+}
 
-    .link{
-      color:var(--primary);
-      font-weight:700;
-      text-decoration:none;
-      background:rgba(47,91,255,.10);
-      border:1px solid rgba(47,91,255,.18);
-      padding:9px 12px;
-      border-radius:999px;
-      white-space:nowrap;
-    }
+.card{
+background:var(--card);
+border:1px solid var(--border);
+border-radius:var(--r);
+padding:20px;
+box-shadow:var(--shadow);
+backdrop-filter:saturate(180%) blur(12px);
+}
 
-    @media (prefers-color-scheme: dark){
-      .link{
-        color:#86a2ff;
-      }
-    }
+.grid{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:12px;
+}
 
-    .card{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:var(--r);
-      padding:20px;
-      box-shadow:var(--shadow);
-      backdrop-filter:saturate(180%) blur(12px);
-    }
+@media (max-width:720px){
+.grid{grid-template-columns:1fr}
+}
 
-    .grid{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:12px;
-    }
+label{
+display:block;
+margin-top:12px;
+font-size:13px;
+font-weight:800;
+color:var(--text);
+opacity:.9;
+}
 
-    @media (max-width:720px){
-      .grid{
-        grid-template-columns:1fr;
-      }
+input,select,button{
+width:100%;
+padding:12px;
+border-radius:12px;
+margin-top:6px;
+font-size:14px;
+outline:none;
+}
 
-      .topbar{
-        flex-direction:column;
-      }
+input,select{
+border:1px solid var(--fieldBorder);
+background:var(--field);
+color:var(--text);
+}
 
-      .links{
-        width:100%;
-        justify-content:flex-start;
-      }
-    }
+button{
+border:none;
+background:linear-gradient(180deg,var(--primary),#2449ff);
+color:#fff;
 
-    label{
-      display:block;
-      margin-top:12px;
-      font-size:13px;
-      font-weight:800;
-      color:var(--text);
-      opacity:.9;
-    }
+/* seule modification */
+font-weight:600;
 
-    input,
-    select,
-    button{
-      width:100%;
-      padding:12px;
-      border-radius:12px;
-      margin-top:6px;
-      font-size:14px;
-      outline:none;
-    }
+cursor:pointer;
+margin-top:14px;
+}
 
-    input,
-    select{
-      border:1px solid var(--fieldBorder);
-      background:var(--field);
-      color:var(--text);
-    }
+button:disabled{
+opacity:.65;
+cursor:not-allowed;
+}
 
-    input:focus,
-    select:focus{
-      border-color:rgba(47,91,255,.55);
-      box-shadow:0 0 0 4px rgba(47,91,255,.12);
-    }
+#msg{
+margin-top:12px;
+font-size:14px;
+}
 
-    button{
-      border:none;
-      background:linear-gradient(180deg, var(--primary), #2449ff);
-      color:#fff;
-      font-weight:600;
-      cursor:pointer;
-      margin-top:14px;
-    }
+.note{
+margin-top:10px;
+color:var(--muted);
+font-size:12.5px;
+line-height:1.45;
+}
 
-    button:disabled{
-      opacity:.65;
-      cursor:not-allowed;
-    }
+.tiny{
+font-size:12px;
+color:var(--muted);
+margin-top:10px;
+}
 
-    #msg{
-      margin-top:12px;
-      font-size:14px;
-    }
-
-    .note{
-      margin-top:10px;
-      color:var(--muted);
-      font-size:12.5px;
-      line-height:1.45;
-    }
-
-    .tiny{
-      font-size:12px;
-      color:var(--muted);
-      margin-top:10px;
-    }
-  </style>
+</style>
 </head>
 
-<body data-page="public">
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <img
-          class="brandLogo"
-          src="/assets/flowpoint-logo.svg"
-          alt="FlowPoint"
-        />
+<body>
 
-        <div class="brandText">
-          <h1>FlowPoint</h1>
-          <div class="sub">
-            Essai gratuit 14 jours — carte requise. Accès bloqué si paiement échoue.
-          </div>
-        </div>
-      </div>
+<div class="wrap">
 
-      <div class="links">
-        <a class="link" href="/pricing.html">Voir les offres</a>
-        <a class="link" href="/login.html">Se connecter</a>
-      </div>
-    </div>
+<div class="topbar">
 
-    <div class="card">
-      <form id="signupForm">
-        <div class="grid">
-          <div>
-            <label for="firstName">Prénom</label>
-            <input id="firstName" type="text" placeholder="Jean" />
-          </div>
+<div class="brand">
+<h1>FlowPoint</h1>
+<div class="sub">Essai gratuit 14 jours — carte requise. Accès bloqué si paiement échoue.</div>
+</div>
 
-          <div>
-            <label for="email">Email</label>
-            <input id="email" type="email" placeholder="jean@entreprise.com" required />
-          </div>
-        </div>
+<div class="links">
+<a class="link" href="/pricing.html">Voir les offres</a>
+<a class="link" href="/login.html">Se connecter</a>
+</div>
 
-        <label for="companyName">Entreprise</label>
-        <input id="companyName" type="text" placeholder="Entreprise ABC" required />
+</div>
 
-        <label for="plan">Offre</label>
-        <select id="plan" required>
-          <option value="standard">Standard</option>
-          <option value="pro" selected>Pro</option>
-          <option value="ultra">Ultra</option>
-        </select>
+<div class="card">
 
-        <button id="btn" type="submit">Commencer l’essai</button>
-        <div id="msg"></div>
+<form id="signupForm">
 
-        <div class="note">
-          En continuant, tu acceptes que les emails d’alertes et rapports soient envoyés à ton équipe
-          (selon les réglages d’organisation).
-        </div>
-        <div class="tiny">Tip : tu peux choisir un plan depuis la page “Offres”.</div>
-      </form>
-    </div>
-  </div>
+<div class="grid">
 
-  <script src="/app.js?v=2"></script>
+<div>
+<label for="firstName">Prénom</label>
+<input id="firstName" type="text" placeholder="Jean">
+</div>
+
+<div>
+<label for="email">Email</label>
+<input id="email" type="email" placeholder="jean@entreprise.com" required>
+</div>
+
+</div>
+
+<label for="companyName">Entreprise</label>
+<input id="companyName" type="text" placeholder="Entreprise ABC" required>
+
+<label for="plan">Offre</label>
+
+<select id="plan" required>
+<option value="standard">Standard</option>
+<option value="pro" selected>Pro</option>
+<option value="ultra">Ultra</option>
+</select>
+
+<button id="btn" type="submit">Commencer l’essai</button>
+
+<div id="msg"></div>
+
+<div class="note">
+En continuant, tu acceptes que les emails d’alertes et rapports soient envoyés à ton équipe (selon les réglages d’organisation).
+</div>
+
+<div class="tiny">
+Tip : tu peux choisir un plan depuis la page “Offres”.
+</div>
+
+</form>
+
+</div>
+
+</div>
+
+<script src="/app.js?v=2"></script>
+
 </body>
 </html>
