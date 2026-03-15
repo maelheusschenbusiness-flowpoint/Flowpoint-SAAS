@@ -29,23 +29,19 @@
 html,body{margin:0;padding:0;min-height:100%}
 html{scroll-behavior:smooth}
 
-html{
-  background:
-    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
-    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
-    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
-    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
-}
-
+html,
 body{
-  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-  color:var(--fpText);
   background:
     radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
     radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
     radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
     linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
   background-attachment:fixed;
+}
+
+body{
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  color:var(--fpText);
   overflow-x:hidden;
   padding-bottom:env(safe-area-inset-bottom, 0);
 }
@@ -54,7 +50,10 @@ img,svg{display:block;max-width:100%}
 button,input,select,textarea{font:inherit}
 a{color:inherit;text-decoration:none}
 
-.fpSelect,.fpInput,.fpTextarea,.fpBtn{
+.fpSelect,
+.fpInput,
+.fpTextarea,
+.fpBtn{
   appearance:none;
   -webkit-appearance:none;
   -moz-appearance:none;
@@ -81,6 +80,7 @@ a{color:inherit;text-decoration:none}
   grid-template-columns:var(--fpSidebarW) minmax(0,1fr);
   min-height:100vh;
   min-height:100dvh;
+  background:transparent;
 }
 
 /* SIDEBAR */
@@ -208,16 +208,6 @@ a{color:inherit;text-decoration:none}
   box-shadow:0 0 0 3px rgba(255,255,255,.06);
 }
 
-.fpAccountCard{
-  border-radius:24px;
-  border:1px solid var(--fpBorder);
-  background:
-    radial-gradient(120% 120% at 20% 0%, rgba(47,91,255,.12), transparent 58%),
-    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.02));
-  box-shadow:var(--fpShadow);
-  padding:18px 16px;
-}
-
 .fpCardKicker{
   font-size:13px;
   font-weight:900;
@@ -226,6 +216,16 @@ a{color:inherit;text-decoration:none}
   color:#eef3ff;
   opacity:.95;
   margin-bottom:14px;
+}
+
+.fpAccountCard{
+  border-radius:24px;
+  border:1px solid var(--fpBorder);
+  background:
+    radial-gradient(120% 120% at 20% 0%, rgba(47,91,255,.12), transparent 58%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.02));
+  box-shadow:var(--fpShadow);
+  padding:18px 16px;
 }
 
 .fpAccountRows,
@@ -237,7 +237,7 @@ a{color:inherit;text-decoration:none}
 
 .fpAccountRows{gap:10px}
 .fpUsageStack{gap:14px;margin-top:16px}
-.fpSidebarActions{gap:10px;margin-top:18px}
+.fpSidebarActions{gap:12px;margin-top:18px}
 
 .fpAccountRow{
   display:flex;
@@ -289,6 +289,7 @@ a{color:inherit;text-decoration:none}
   background:linear-gradient(90deg, var(--fpBrand3), var(--fpBrand), var(--fpBrand2));
   box-shadow:0 0 20px rgba(47,91,255,.4);
 }
+
 /* MAIN */
 .fpMain{
   min-width:0;
@@ -297,6 +298,7 @@ a{color:inherit;text-decoration:none}
   display:flex;
   flex-direction:column;
   gap:22px;
+  background:transparent;
 }
 
 .fpTopbar{
@@ -316,11 +318,11 @@ a{color:inherit;text-decoration:none}
 .fpTopbarRight{
   display:flex;
   align-items:flex-start;
-  gap:12px;
+  gap:14px;
   flex-wrap:wrap;
   justify-content:flex-end;
-  row-gap:12px;
-  column-gap:12px;
+  row-gap:14px;
+  column-gap:14px;
 }
 
 .fpMenuBtn{
@@ -351,8 +353,8 @@ a{color:inherit;text-decoration:none}
 .fpHelloWrap{min-width:0}
 .fpHelloHead{display:block}
 .fpHelloLogo{display:none !important}
-
 .fpHelloBlock{min-width:0}
+
 .fpHelloKicker{
   font-size:12px;
   font-weight:900;
@@ -361,6 +363,7 @@ a{color:inherit;text-decoration:none}
   opacity:.92;
   text-transform:uppercase;
 }
+
 .fpHelloTitle{
   margin:4px 0 0;
   font-size:54px;
@@ -370,6 +373,7 @@ a{color:inherit;text-decoration:none}
   overflow-wrap:anywhere;
   word-break:break-word;
 }
+
 .fpHelloSub{
   margin:10px 0 0;
   font-size:17px;
@@ -378,7 +382,9 @@ a{color:inherit;text-decoration:none}
   line-height:1.35;
 }
 
-.fpSelect,.fpBtn,.fpStatusPill{
+.fpSelect,
+.fpBtn,
+.fpStatusPill{
   min-height:50px;
   border-radius:16px;
 }
@@ -419,7 +425,7 @@ a{color:inherit;text-decoration:none}
   font-weight:800;
   letter-spacing:-.01em;
   transition:.18s ease;
-  margin:4px 0;
+  margin:0;
 }
 
 .fpBtn:hover{transform:translateY(-1px)}
@@ -524,8 +530,7 @@ a{color:inherit;text-decoration:none}
   background:var(--fpDanger);
   box-shadow:0 0 0 6px rgba(239,68,68,.14);
 }
-
-/* GLOBAL */
+/* GLOBAL LAYOUT */
 .fpPageContainer{
   display:flex;
   flex-direction:column;
@@ -560,17 +565,10 @@ a{color:inherit;text-decoration:none}
   align-items:start;
 }
 
-.fpBillingGrid{
-  grid-template-columns:repeat(2,minmax(0,1fr));
-}
-
+.fpBillingGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .fpReportsGrid,
-.fpStatsGrid{
-  grid-template-columns:repeat(3,minmax(0,1fr));
-}
-
+.fpStatsGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fpStatsGridSingle{grid-template-columns:1fr}
-
 .fpInfoGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fpBottomGrid{grid-template-columns:1.2fr 1fr}
 .fpPageGrid{grid-template-columns:1.2fr .8fr}
@@ -586,7 +584,13 @@ a{color:inherit;text-decoration:none}
   gap:18px;
 }
 
-.fpColMain,.fpColSide,.fpPageWrap,.fpCard,.fpCardInner,.fpPageHero{min-width:0}
+.fpColMain,
+.fpColSide,
+.fpPageWrap,
+.fpCard,
+.fpCardInner,
+.fpPageHero{min-width:0}
+
 /* CARDS */
 .fpCard,
 .fpCardInner,
@@ -608,10 +612,36 @@ a{color:inherit;text-decoration:none}
 .fpPlanCard,
 .fpAccountCard{
   box-shadow:var(--fpShadow);
+  background-clip:padding-box;
+}
+
+.fpCard,
+.fpCardInner,
+.fpHero,
+.fpPageHero,
+.fpBillingCard,
+.fpReportCard,
+.fpAddonRow{
+  position:relative;
+}
+
+.fpCard::before,
+.fpCardInner::before,
+.fpHero::before,
+.fpPageHero::before,
+.fpBillingCard::before,
+.fpReportCard::before,
+.fpAddonRow::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:radial-gradient(120% 120% at 14% 0%, rgba(91,124,255,.10), transparent 45%);
+  opacity:.9;
 }
 
 .fpCard{
-  position:relative;
   overflow:hidden;
   border-radius:26px;
   border:1px solid var(--fpBorder);
@@ -622,9 +652,7 @@ a{color:inherit;text-decoration:none}
   transition:transform .2s ease, background .2s ease;
 }
 
-.fpCard:hover{
-  transform:translateY(-2px);
-}
+.fpCard:hover{transform:translateY(-2px)}
 
 .fpCardAccent{
   background:
@@ -652,13 +680,15 @@ a{color:inherit;text-decoration:none}
 .fpTopActionsRow,
 .fpTableActions,
 .fpDetailActions,
-.fpPageActions{
+.fpPageActions,
+.fpMissionActions,
+.fpInlineLinks{
   display:flex;
   flex-wrap:wrap;
   gap:14px;
+  row-gap:14px;
+  column-gap:14px;
   align-items:center;
-  row-gap:12px;
-  column-gap:12px;
 }
 
 .fpReportCard .fpDetailActions,
@@ -710,8 +740,8 @@ a{color:inherit;text-decoration:none}
 .fpMono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 
 .fpEmpty{
-  min-height:62px;
-  border-radius:18px;
+  min-height:84px;
+  border-radius:20px;
   border:1px dashed rgba(255,255,255,.12);
   background:rgba(255,255,255,.03);
   display:flex;
@@ -740,7 +770,6 @@ a{color:inherit;text-decoration:none}
 
 /* HERO */
 .fpHero{
-  position:relative;
   overflow:hidden;
   display:flex;
   align-items:center;
@@ -971,7 +1000,8 @@ a{color:inherit;text-decoration:none}
   padding:14px 16px;
 }
 
-.fpTableUrl,.fpUrl{
+.fpTableUrl,
+.fpUrl{
   overflow-wrap:anywhere;
   font-size:15px;
   font-weight:800;
@@ -989,6 +1019,7 @@ a{color:inherit;text-decoration:none}
 }
 
 .fpRowBtns{display:flex;justify-content:flex-start}
+
 /* BADGES */
 .fpBadge{
   min-height:38px;
@@ -1024,9 +1055,7 @@ a{color:inherit;text-decoration:none}
   padding:18px 18px 12px;
 }
 
-.fpChartCard{
-  margin-top:14px;
-}
+.fpChartCard{margin-top:14px}
 
 .fpChartBox{
   height:330px;
@@ -1071,7 +1100,6 @@ a{color:inherit;text-decoration:none}
   border-radius:999px;
   background:var(--fpBrand);
 }
-
 /* MISSIONS */
 .fpMissionCard{
   display:flex;
@@ -1154,15 +1182,35 @@ a{color:inherit;text-decoration:none}
 .fpSettingsGrid{
   display:grid;
   grid-template-columns:1fr 1fr;
-  gap:16px;
-  margin-top:16px;
+  gap:28px;
+  margin-top:18px;
+  align-items:start;
+}
+
+.fpSettingsGrid > *{min-width:0}
+
+.fpSettingsGrid .fpCard,
+.fpSettingsGrid .fpCardInner{
+  padding:28px;
+  border-radius:26px;
+}
+
+.fpSettingsGrid .fpSectionTitle,
+.fpSettingsGrid .fpCardInnerTitle{
+  margin-bottom:10px;
+}
+
+.fpSettingsGrid .fpSmall,
+.fpSettingsGrid .fpCardText{
+  margin-top:0;
+  margin-bottom:20px;
 }
 
 .fpField{
   display:flex;
   flex-direction:column;
-  gap:8px;
-  margin-top:14px;
+  gap:10px;
+  margin-top:18px;
 }
 
 .fpLabel{
@@ -1181,11 +1229,10 @@ a{color:inherit;text-decoration:none}
   padding:0 16px;
   outline:none;
   box-shadow:none;
+  -webkit-text-fill-color:currentColor !important;
 }
 
-.fpInput{
-  min-height:52px;
-}
+.fpInput{min-height:52px}
 
 .fpTextarea{
   min-height:140px;
@@ -1201,8 +1248,31 @@ a{color:inherit;text-decoration:none}
 .fpSettingsList{
   display:flex;
   flex-direction:column;
-  gap:10px;
-  margin-top:14px;
+  gap:18px;
+  margin-top:20px;
+}
+
+.fpSettingsList > *{margin:0 !important}
+
+.fpSettingsRow,
+.fpToggleRow{
+  min-height:96px;
+  padding:20px 22px;
+  border-radius:22px;
+}
+
+.fpSettingsRow{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:16px;
+}
+
+.fpToggleRow{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
 }
 
 .fpSwitch{
@@ -1214,6 +1284,7 @@ a{color:inherit;text-decoration:none}
   border:1px solid var(--fpBorderStrong);
   cursor:pointer;
   transition:.18s ease;
+  flex:0 0 auto;
 }
 
 .fpSwitch::after{
@@ -1245,15 +1316,22 @@ a{color:inherit;text-decoration:none}
   line-height:1.2;
 }
 
+.fpBillingCard,
+.fpReportCard{
+  min-height:100%;
+}
+
 .fpBillingPlan{
   margin-top:8px;
   font-size:34px;
   font-weight:900;
   letter-spacing:-.04em;
-  line-height:1;
+  line-height:1.04;
   overflow-wrap:anywhere;
   word-break:break-word;
 }
+
+.fpBillingStatus{line-height:1.5}
 
 .fpPlanBadge{
   display:inline-flex;
@@ -1303,6 +1381,9 @@ a{color:inherit;text-decoration:none}
   font-weight:700;
 }
 
+.fpAddonRow{align-items:center}
+.fpAddonLabel{flex:1;min-width:0}
+
 .fpAddonPill{
   min-height:36px;
   padding:0 12px;
@@ -1314,6 +1395,7 @@ a{color:inherit;text-decoration:none}
   font-weight:900;
   letter-spacing:.12em;
   text-transform:uppercase;
+  flex:0 0 auto;
 }
 
 .fpAddonPill.on{
@@ -1377,7 +1459,6 @@ a{color:inherit;text-decoration:none}
 
 /* PAGE HERO */
 .fpPageHero{
-  position:relative;
   overflow:hidden;
   border-radius:28px;
   border:1px solid var(--fpBorderStrong);
@@ -1424,15 +1505,12 @@ a{color:inherit;text-decoration:none}
 
 /* LINKS */
 .fpInlineLinks{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  margin-top:14px;
+  margin-top:20px;
 }
 
 .fpInlineLinks a{
-  min-height:42px;
-  padding:0 14px;
+  min-height:46px;
+  padding:0 18px;
   border-radius:999px;
   border:1px solid var(--fpBorderStrong);
   background:rgba(255,255,255,.04);
@@ -1448,6 +1526,7 @@ a{color:inherit;text-decoration:none}
   background:rgba(255,255,255,.08);
   transform:translateY(-1px);
 }
+
 /* RESPONSIVE */
 @media (max-width:1320px){
   .fpBottomGrid,
@@ -1495,12 +1574,7 @@ a{color:inherit;text-decoration:none}
     align-items:stretch;
   }
 
-  .fpTopbarRight{
-    justify-content:flex-start;
-    row-gap:12px;
-    column-gap:12px;
-  }
-
+  .fpTopbarRight{justify-content:flex-start}
   .fpHero{flex-direction:column;align-items:flex-start}
   .fpHeroRight{justify-content:flex-start}
   .fpHelloTitle{font-size:42px}
@@ -1509,9 +1583,17 @@ a{color:inherit;text-decoration:none}
 }
 
 @media (max-width:760px){
+  html{background:var(--fpBg2) !important}
+  body{background:transparent !important}
+
   .fpMain{
     padding:14px;
+    padding-top:calc(14px + env(safe-area-inset-top, 0px));
     padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .fpPageContainer{
+    gap:20px;
   }
 
   .fpTopbar{gap:14px}
@@ -1532,7 +1614,6 @@ a{color:inherit;text-decoration:none}
   .fpSectionTitle,.fpCardInnerTitle{font-size:28px}
   .fpBigValue{font-size:26px}
   .fpKpiMain{font-size:42px}
-  .fpMissionTitle{font-size:22px}
   .fpPlanPrice{font-size:38px}
 
   .fpStatusPill,
@@ -1555,27 +1636,17 @@ a{color:inherit;text-decoration:none}
 
   .fpPageActions,
   .fpDetailActions,
-  .fpMissionActions,
   .fpTopActionsRow,
   .fpTableActions,
   .fpCardActions{
     width:100%;
-    justify-content:flex-start;
     display:flex;
     flex-direction:column;
     align-items:stretch;
     gap:12px;
   }
 
-  .fpInlineLinks{
-    flex-direction:column;
-  }
-
-  .fpInlineLinks a{
-    width:100%;
-    justify-content:center;
-  }
-
+  .fpBtn,
   .fpTopActionsRow > .fpBtn,
   .fpTopActionsRow > a.fpBtn,
   .fpDetailActions > .fpBtn,
@@ -1587,9 +1658,33 @@ a{color:inherit;text-decoration:none}
   .fpCardActions > .fpBtn,
   .fpCardActions > a.fpBtn,
   .fpPageActions > .fpBtn,
-  .fpPageActions > a.fpBtn{
+  .fpPageActions > a.fpBtn,
+  .fpInlineLinks a{
     width:100%;
-    min-height:48px;
+    min-height:50px;
+    padding:0 16px;
+    border-radius:16px !important;
+    font-size:15px !important;
+    font-weight:800 !important;
+    justify-content:center;
+  }
+
+  .fpBtnPrimary{
+    box-shadow:
+      0 10px 24px rgba(47,91,255,.22),
+      inset 0 1px 0 rgba(255,255,255,.08);
+  }
+
+  .fpBtnGhost,
+  .fpInlineLinks a{
+    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025)) !important;
+    border:1px solid var(--fpBorderStrong) !important;
+  }
+
+  .fpInlineLinks{
+    flex-direction:column;
+    gap:12px;
+    margin-top:18px;
   }
 
   .fpTableHead{display:none}
@@ -1616,11 +1711,7 @@ a{color:inherit;text-decoration:none}
     text-align:left;
   }
 
-  .fpMissionCardLarge .fpMissionActions{margin-left:0}
-
-  .fpChartCard{
-    overflow:hidden;
-  }
+  .fpChartCard{overflow:hidden}
 
   .fpChartBox{
     width:100%;
@@ -1644,886 +1735,31 @@ a{color:inherit;text-decoration:none}
   .fpLegendItem{
     width:100%;
     justify-content:flex-start;
-  }
-
-  #fpRangeSelect{
-    color:var(--fpText) !important;
-    -webkit-text-fill-color:var(--fpText) !important;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)),
-      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='white'><path d='M7 10l5 5 5-5z'/></svg>");
-    background-repeat:no-repeat,no-repeat;
-    background-position:0 0,right 14px center;
-    background-size:100% 100%,18px;
-  }
-}
-
-@media (max-width:520px){
-  .fpHelloTitle{font-size:32px}
-
-  .fpHero{
-    padding:20px;
-    border-radius:24px;
-  }
-
-  .fpHeroTitle{font-size:38px}
-  .fpPageTitle{font-size:32px}
-  .fpHeroText{font-size:16px}
-
-  .fpCard,
-  .fpCardInner,
-  .fpPageHero,
-  .fpAccountCard{
-    padding:18px;
-    border-radius:22px;
-  }
-
-  .fpNavItem{
-    min-height:54px;
-    font-size:16px;
-  }
-
-  .fpBrandLogo{
-    width:50px;
-    height:50px;
-  }
-}
-
-/* LIGHT MODE */
-@media (prefers-color-scheme: light){
-  :root{
-    --fpBg:#edf3ff;
-    --fpBg2:#dfe9ff;
-    --fpBg3:#d4e1ff;
-
-    --fpBorder:rgba(15,23,42,.08);
-    --fpBorderStrong:rgba(15,23,42,.12);
-
-    --fpText:#10182b;
-    --fpTextSoft:#425074;
-    --fpMuted:#667699;
-
-    --fpShadow:0 18px 40px rgba(27,45,94,.10);
-    --fpShadowLg:0 28px 70px rgba(27,45,94,.14);
-  }
-
-  html{
-    background:
-      radial-gradient(1000px 540px at 12% 0%, rgba(47,91,255,.18), transparent 60%),
-      radial-gradient(920px 540px at 100% 8%, rgba(91,124,255,.14), transparent 58%),
-      radial-gradient(980px 760px at 50% 100%, rgba(27,69,255,.10), transparent 62%),
-      linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
-  }
-
-  body{
-    background:
-      radial-gradient(1000px 540px at 12% 0%, rgba(47,91,255,.18), transparent 60%),
-      radial-gradient(920px 540px at 100% 8%, rgba(91,124,255,.14), transparent 58%),
-      radial-gradient(980px 760px at 50% 100%, rgba(27,69,255,.10), transparent 62%),
-      linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
-    background-attachment:fixed;
-  }
-
-  .fpSidebar{
-    background:
-      radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.12), transparent 62%),
-      linear-gradient(180deg, rgba(255,255,255,.92), rgba(240,245,255,.96));
-  }
-
-  .fpNavItem{
-    color:#4c5a7e;
-  }
-
-  .fpNavItem:hover{
-    color:var(--fpText);
-    background:rgba(47,91,255,.06);
-  }
-
-  .fpCard,
-  .fpCardInner,
-  .fpPageHero,
-  .fpAccountCard,
-  .fpPlanCard{
-    background:
-      radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.10), transparent 55%),
-      linear-gradient(180deg, rgba(255,255,255,.84), rgba(241,246,255,.90));
-  }
-
-  .fpCardAccent{
-    background:
-      radial-gradient(120% 140% at 20% 0%, rgba(47,91,255,.18), transparent 52%),
-      linear-gradient(180deg, rgba(255,255,255,.90), rgba(236,243,255,.94));
-  }
-
-  .fpMiniStat,
-  .fpReportCard,
-  .fpBillingCard,
-  .fpStatCard,
-  .fpTextPanel,
-  .fpRowCard,
-  .fpInfoRow,
-  .fpTableRow,
-  .fpMissionCard,
-  .fpSettingsRow,
-  .fpToggleRow,
-  .fpQuotaRow,
-  .fpAddonRow,
-  .fpTimelineItem,
-  .fpActionItem,
-  .fpBadge,
-  .fpPill,
-  .fpInput,
-  .fpTextarea,
-  .fpStatusPill,
-  .fpExportMenu,
-  .fpSelect,
-  .fpInfoBox,
-  .fpLegendItem,
-  .fpInlineLinks a{
-    background:rgba(255,255,255,.62);
-    color:var(--fpText);
-    backdrop-filter:blur(12px);
-  }
-
-  .fpHero{
-    background:
-      radial-gradient(900px 300px at 15% 0%, rgba(47,91,255,.18), transparent 58%),
-      radial-gradient(700px 300px at 95% 5%, rgba(91,124,255,.12), transparent 62%),
-      linear-gradient(180deg, rgba(255,255,255,.82), rgba(238,245,255,.92));
-  }
-
-  .fpExportMenu{
-    background:rgba(255,255,255,.95);
-    color:var(--fpText);
-  }
-
-  .fpExportMenu button{
-    color:var(--fpText);
-  }
-
-  .fpExportMenu button:hover{
-    background:rgba(47,91,255,.06);
-  }
-
-  .fpMenuBtn span{
-    background:var(--fpText);
-  }
-
-  .fpCardKicker,
-  .fpHelloKicker,
-  .fpPageKicker,
-  .fpMiniStatLabel,
-  .fpStatLabel,
-  .fpInfoLabel,
-  .fpAccountRow span,
-  .fpUsageTop span{
-    color:var(--fpMuted);
-  }
-
-  .fpLegendItem,
-  .fpCardText,
-  .fpSmall,
-  .fpPageDesc,
-  .fpHelloSub,
-  .fpMissionMeta,
-  .fpMissionDesc,
-  .fpInfoHint,
-  .fpTimelineMeta,
-  .fpActionMeta,
-  .fpToggleHint,
-  .fpPlanList,
-  .fpKpiSub,
-  .fpHeroText,
-  .fpReportMeta,
-  .fpBillingStatus,
-  .fpMiniStatMeta,
-  .fpStatMeta,
-  .fpRowMeta,
-  .fpChartLegendText,
-  .fpChartInsight,
-  .fpTextPanel{
-    color:var(--fpTextSoft);
-  }
-
-  .fpHeroTitle,
-  .fpHelloTitle,
-  .fpSectionTitle,
-  .fpCardInnerTitle,
-  .fpReportTitle,
-  .fpBillingTitle,
-  .fpMiniStatValue,
-  .fpStatValue,
-  .fpBrandName,
-  .fpAccountRow strong,
-  .fpUsageTop strong,
-  .fpMissionTitle,
-  .fpProjectName,
-  .fpInfoRow span,
-  .fpSettingsRow span,
-  .fpQuotaRow span,
-  .fpAddonLabel,
-  .fpRowTitle,
-  .fpTimelineTitle,
-  .fpActionTitle,
-  .fpToggleTitle{
-    color:var(--fpText);
-  }
-
-  .fpStatusPill,
-  .fpBtnGhost,
-  .fpSelect,
-  .fpInput,
-  .fpTextarea,
-  .fpBadge,
-  .fpPill,
-  .fpSettingsRow,
-  .fpToggleRow,
-  .fpQuotaRow,
-  .fpAddonRow,
-  .fpTimelineItem,
-  .fpActionItem,
-  .fpTableRow,
-  .fpInfoBox,
-  .fpInfoRow,
-  .fpRowCard,
-  .fpMissionCard,
-  .fpLegendItem,
-  .fpInlineLinks a{
-    border-color:rgba(15,23,42,.10);
-  }
-
-  .fpChartBox{
-    background:linear-gradient(180deg, rgba(47,91,255,.04), rgba(47,91,255,.015));
-    border-color:rgba(15,23,42,.08);
-  }
-
-  .fpSelect{
-    color:var(--fpText) !important;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.78), rgba(245,248,255,.88)),
-      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='%2310182b'><path d='M7 10l5 5 5-5z'/></svg>");
-    background-repeat:no-repeat,no-repeat;
-    background-position:0 0,right 14px center;
-    background-size:100% 100%,18px;
-  }
-
-  .fpSelect option{
-    background:#ffffff;
-    color:#10182b;
-  }
-
-  @media (max-width:1080px){
-    .fpSidebar{
-      background:
-        radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.12), transparent 62%),
-        linear-gradient(180deg, rgba(255,255,255,.97), rgba(240,245,255,.985));
-    }
-  }
-}
-
-/* SAFE AREAS / bandes haut-bas iPhone */
-html,
-body{
-  min-height:100%;
-  background-color:transparent;
-}
-
-
-
-body{
-  padding-top:env(safe-area-inset-top, 0);
-  padding-bottom:env(safe-area-inset-bottom, 0);
-}
-
-.fpAppShell{
-  min-height:100dvh;
-}
-
-.fpMain{
-  padding-bottom:calc(22px + env(safe-area-inset-bottom, 0px));
-}
-
-@supports (-webkit-touch-callout:none){
-  body{
-    min-height:-webkit-fill-available;
-  }
-
-  .fpSidebar{
-    height:100dvh;
-  }
-}
-
-/* petits bonus UX déjà demandés */
-.fpBtn{
-  margin:4px 0;
-}
-
-.fpCard:hover{
-  transform:translateY(-2px);
-  transition:.2s;
-}
-
-.fpRowCard:hover,
-.fpMissionCard:hover{
-  background:rgba(255,255,255,.05);
-}
-
-.fpBtn:active{
-  transform:scale(.97);
-}
-
-/* =========================================================
-   PATCH FINAL UNIQUE
-   - missions re-espacées
-   - settings re-espacés
-   - boutons mobile plus propres
-   - fond continu iPhone
-   ========================================================= */
-
-/* base */
-.fpPageContainer,
-.fpCard,
-.fpCardInner,
-.fpHero,
-.fpPageHero,
-.fpMiniStat,
-.fpReportCard,
-.fpBillingCard,
-.fpStatCard,
-.fpTextPanel,
-.fpRowCard,
-.fpInfoRow,
-.fpInfoBox,
-.fpMissionCard,
-.fpSettingsRow,
-.fpToggleRow,
-.fpQuotaRow,
-.fpAddonRow,
-.fpTimelineItem,
-.fpActionItem,
-.fpPlanCard,
-.fpAccountCard{
-  background-clip:padding-box;
-}
-
-/* fond continu */
-html,
-body{
-  margin:0;
-  min-height:100%;
-  background:transparent !important;
-  background-color:transparent !important;
-}
-
-body{
-  padding-top:0 !important;
-  padding-bottom:0 !important;
-}
-
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  z-index:-2;
-  pointer-events:none;
-  background:
-    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
-    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
-    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
-    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
-  background-repeat:no-repeat;
-  background-size:cover;
-  background-attachment:fixed;
-}
-
-.fpAppShell{
-  position:relative;
-  min-height:100svh;
-  min-height:100dvh;
-  background:transparent !important;
-}
-
-.fpMain,
-.fpPageContainer{
-  background:transparent !important;
-}
-
-/* glow léger */
-.fpCard,
-.fpCardInner,
-.fpHero,
-.fpPageHero,
-.fpBillingCard,
-.fpReportCard,
-.fpAddonRow{
-  position:relative;
-}
-
-.fpCard::before,
-.fpCardInner::before,
-.fpHero::before,
-.fpPageHero::before,
-.fpBillingCard::before,
-.fpReportCard::before,
-.fpAddonRow::before{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  border-radius:inherit;
-  background:
-    radial-gradient(120% 120% at 14% 0%, rgba(91,124,255,.10), transparent 45%);
-  opacity:.9;
-}
-
-/* espacements généraux */
-.fpTopbarRight,
-.fpCardActions,
-.fpTopActionsRow,
-.fpTableActions,
-.fpDetailActions,
-.fpPageActions,
-.fpInlineLinks,
-.fpSidebarActions{
-  gap:14px !important;
-  row-gap:14px !important;
-  column-gap:14px !important;
-}
-
-.fpBtn{
-  margin:0 !important;
-}
-
-.fpTextPanel{
-  padding:20px;
-  border-radius:22px;
-}
-
-/* =========================================================
-   MISSIONS — on remet bien de l’espace
-   ========================================================= */
-
-.fpMissionPageSide{
-  display:flex;
-  flex-direction:column;
-  gap:18px !important;
-}
-
-.fpMissionPageSide > *{
-  margin:0 !important;
-}
-
-.fpMissionPageSide .fpStatCard,
-.fpMissionPageSide .fpTextPanel,
-.fpMissionPageSide .fpInlineLinks,
-.fpMissionPageSide .fpCard,
-.fpMissionPageSide .fpCardInner{
-  margin:0 !important;
-}
-
-.fpMissionStack{
-  gap:16px !important;
-}
-
-.fpMissionCard{
-  padding:18px;
-}
-
-.fpMissionActions{
-  gap:12px !important;
-  row-gap:12px !important;
-  column-gap:12px !important;
-}
-
-.fpMissionCardLarge .fpMissionActions{
-  margin-left:38px;
-}
-
-/* =========================================================
-   SETTINGS — on re-espace correctement
-   ========================================================= */
-
-.fpSettingsGrid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:18px !important;
-  margin-top:16px;
-}
-
-.fpSettingsGrid .fpCardInner{
-  padding:24px;
-}
-
-.fpSettingsGrid .fpCardInner > .fpSmall + .fpField,
-.fpSettingsGrid .fpCardInner > .fpSmall + .fpSettingsList,
-.fpSettingsGrid .fpCardInner > .fpSmall + .fpToggleRow,
-.fpSettingsGrid .fpCardInner > .fpSmall + .fpDetailActions{
-  margin-top:16px;
-}
-
-.fpSettingsGrid .fpCardInner > .fpField + .fpField,
-.fpSettingsGrid .fpCardInner > .fpField + .fpDetailActions,
-.fpSettingsGrid .fpCardInner > .fpToggleRow + .fpToggleRow,
-.fpSettingsGrid .fpCardInner > .fpSettingsList + .fpSettingsList{
-  margin-top:16px;
-}
-
-.fpSettingsList{
-  display:flex;
-  flex-direction:column;
-  gap:16px !important;
-}
-
-.fpSettingsList > *{
-  margin:0;
-}
-.fpSettingsRow,
-.fpToggleRow{
-  padding:18px 20px;
-  border-radius:22px;
-}
-
-.fpSettingsRow{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:14px;
-}
-
-.fpToggleRow{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:14px;
-}
-
-.fpField{
-  gap:10px;
-  margin-top:16px;
-}
-
-/* =========================================================
-   BILLING / LIENS
-   ========================================================= */
-
-.fpBillingCard,
-.fpReportCard{
-  min-height:100%;
-}
-
-.fpBillingPlan{
-  line-height:1.04;
-}
-
-.fpBillingStatus{
-  line-height:1.5;
-}
-
-.fpAddonRow{
-  align-items:center;
-}
-
-.fpAddonLabel{
-  flex:1;
-  min-width:0;
-}
-
-.fpAddonPill{
-  flex:0 0 auto;
-}
-
-.fpDetailActions{
-  margin-top:16px;
-}
-
-.fpInlineLinks{
-  gap:14px !important;
-}
-
-.fpInlineLinks a{
-  min-height:48px;
-  padding-inline:18px;
-  border-radius:999px;
-}
-
-/* =========================================================
-   MOBILE
-   ========================================================= */
-
-@media (max-width:1080px){
-  .fpAppShell{
-    grid-template-columns:1fr;
-  }
-
-  .fpSidebar{
-    position:fixed;
-    left:0;
-    top:0;
-    width:min(92vw, 360px);
-    transform:translateX(-105%);
-    transition:.22s ease;
-    box-shadow:var(--fpShadowLg);
-    height:100dvh;
-    background:
-      radial-gradient(700px 420px at 20% 8%, rgba(47,91,255,.22), transparent 62%),
-      linear-gradient(180deg, rgba(14,22,56,.97), rgba(9,15,38,.985)) !important;
-  }
-
-  .fpSidebar.open{
-    transform:translateX(0);
-  }
-
-  .fpMenuBtn{
-    display:flex;
-  }
-
-  .fpTopbar{
-    flex-direction:column;
-    align-items:stretch;
-  }
-
-  .fpTopbarRight{
-    justify-content:flex-start;
-  }
-
-  .fpHero{
-    flex-direction:column;
-    align-items:flex-start;
-  }
-
-  .fpHeroRight{
-    justify-content:flex-start;
-  }
-
-  .fpHelloTitle{
-    font-size:42px;
-  }
-
-  .fpHeroTitle{
-    font-size:52px;
-  }
-
-  .fpPageTitle{
-    font-size:42px;
-  }
-}
-
-@media (max-width:760px){
-  html{
-    background:var(--fpBg2) !important;
-  }
-
-  body{
-    background:transparent !important;
-  }
-
-  .fpMain{
-    padding:14px;
-    padding-top:calc(14px + env(safe-area-inset-top, 0px));
-    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
-    background:transparent !important;
-    box-shadow:none !important;
-    border:none !important;
-  }
-
-  .fpPageContainer{
-    background:transparent !important;
-    box-shadow:none !important;
-    border:none !important;
-  }
-
-  .fpTopbar{
-    gap:14px;
-  }
-
-  .fpTopbarRight{
-    width:100%;
-    display:flex;
-    flex-direction:column;
-    align-items:stretch;
-    gap:12px !important;
-  }
-
-  .fpTopbarRight > *{
-    width:100%;
-  }
-
-  .fpHelloTitle{
-    font-size:34px;
-  }
-
-  .fpHeroTitle{
-    font-size:42px;
-  }
-
-  .fpPageTitle{
-    font-size:36px;
-  }
-
-  .fpSectionTitle,
-  .fpCardInnerTitle{
-    font-size:28px;
-  }
-
-  .fpBigValue{
-    font-size:26px;
-  }
-
-  .fpKpiMain{
-    font-size:42px;
-  }
-
-  .fpPlanPrice{
-    font-size:38px;
-  }
-
-  .fpStatusPill,
-  .fpSelect,
-  .fpBtn,
-  .fpExportWrap{
-    width:100%;
-  }
-
-  .fpExportMenu{
-    left:0;
-    right:auto;
-    width:100%;
-  }
-
-  .fpPageActions,
-  .fpDetailActions,
-  .fpTopActionsRow,
-  .fpTableActions,
-  .fpCardActions{
-    width:100%;
-    display:flex;
-    flex-direction:column;
-    align-items:stretch;
-    gap:12px !important;
-  }
-
-  /* boutons mobile plus jolis */
-  .fpBtn,
-  .fpTopActionsRow > .fpBtn,
-  .fpTopActionsRow > a.fpBtn,
-  .fpDetailActions > .fpBtn,
-  .fpDetailActions > a.fpBtn,
-  .fpTableActions > .fpBtn,
-  .fpTableActions > a.fpBtn,
-  .fpCardActions > .fpBtn,
-  .fpCardActions > a.fpBtn,
-  .fpPageActions > .fpBtn,
-  .fpPageActions > a.fpBtn,
-  .fpInlineLinks a{
-    width:100%;
-    min-height:52px;
-    border-radius:18px !important;
-    font-size:16px;
-    font-weight:800;
-    justify-content:center;
-  }
-
-  .fpBtnGhost,
-  .fpInlineLinks a{
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
-    border:1px solid var(--fpBorderStrong);
-  }
-
-  .fpBtnPrimary{
-    box-shadow:
-      0 12px 28px rgba(47,91,255,.28),
-      inset 0 1px 0 rgba(255,255,255,.10);
-  }
-
-  .fpInlineLinks{
-    flex-direction:column;
-    gap:12px !important;
-  }
-
-  .fpTableHead{
-    display:none;
-  }
-
-  .fpTableRow,
-  .fpTr.row{
-    grid-template-columns:1fr !important;
-  }
-
-  .fpRowCard,
-  .fpInfoRow,
-  .fpSettingsRow,
-  .fpAddonRow,
-  .fpQuotaRow,
-  .fpTimelineItem,
-  .fpActionItem{
-    flex-direction:column;
-    align-items:flex-start;
-    gap:10px;
-  }
-
-  .fpInfoRow strong,
-  .fpSettingsRow strong{
-    text-align:left;
-  }
-
-  .fpChartCard{
-    overflow:hidden;
-  }
-
-  .fpChartBox{
-    width:100%;
-    min-width:0;
-    height:240px;
-    padding:10px;
-    border-radius:20px;
-  }
-
-  .fpChartBox canvas{
-    width:100% !important;
-    height:100% !important;
-    max-width:100%;
-  }
-
-  .fpChartLegend{
-    flex-direction:column;
-    align-items:stretch;
-  }
-
-  .fpLegendItem{
-    width:100%;
-    justify-content:flex-start;
-  }
-
-  /* missions mobile : propres et espacées */
-  .fpMissionStack{
-    gap:16px !important;
-  }
-
-  .fpMissionCard{
-    padding:18px;
-    border-radius:22px;
-  }
-
-  .fpMissionCardLarge .fpMissionActions{
-    margin-left:0;
-    margin-top:14px;
   }
 
   /* settings mobile */
   .fpSettingsGrid{
     grid-template-columns:1fr !important;
-    gap:18px !important;
+    gap:22px;
+    margin-top:18px;
   }
 
+  .fpSettingsGrid .fpCard,
   .fpSettingsGrid .fpCardInner{
-    padding:20px;
-    border-radius:22px;
+    padding:22px;
+    border-radius:24px;
+  }
+
+  .fpSettingsList{
+    gap:16px;
+    margin-top:18px;
   }
 
   .fpSettingsRow,
   .fpToggleRow{
-    padding:14px 16px;
+    min-height:auto;
+    padding:18px;
+    border-radius:20px;
   }
 
   .fpSettingsRow span,
@@ -2533,22 +1769,32 @@ body::before{
   }
 
   .fpSettingsRow strong{
-    margin-top:6px;
+    margin-top:4px;
     text-align:left !important;
   }
 
-  .fpBillingGrid{
-    grid-template-columns:1fr !important;
-  }
+  .fpBillingGrid{grid-template-columns:1fr !important}
 
   .fpBillingCard{
     padding:18px;
     border-radius:22px;
   }
 
-  .fpBillingPlan{
-    font-size:30px;
+  .fpBillingPlan{font-size:30px}
+
+  /* missions mobile : juste police réduite */
+  .fpMissionTitle{
+    font-size:19px;
+    line-height:1.08;
   }
+
+  .fpMissionMeta,
+  .fpMissionDesc{
+    font-size:13px;
+    line-height:1.4;
+  }
+
+  .fpMissionActions{gap:10px}
 
   #fpRangeSelect{
     color:var(--fpText) !important;
@@ -2573,17 +1819,9 @@ body::before{
     border-radius:24px;
   }
 
-  .fpHeroTitle{
-    font-size:38px;
-  }
-
-  .fpPageTitle{
-    font-size:32px;
-  }
-
-  .fpHeroText{
-    font-size:16px;
-  }
+  .fpHeroTitle{font-size:38px}
+  .fpPageTitle{font-size:32px}
+  .fpHeroText{font-size:16px}
 
   .fpCard,
   .fpCardInner,
@@ -2599,14 +1837,9 @@ body::before{
     line-height:1.04;
   }
 
-  .fpBillingPlan{
-    font-size:26px;
-  }
-
+  .fpBillingPlan{font-size:26px}
   .fpReportTitle,
-  .fpBillingTitle{
-    font-size:17px;
-  }
+  .fpBillingTitle{font-size:17px}
 
   .fpNavItem{
     min-height:54px;
@@ -2619,10 +1852,7 @@ body::before{
   }
 }
 
-/* =========================================================
-   LIGHT MODE
-   ========================================================= */
-
+/* LIGHT MODE */
 @media (prefers-color-scheme: light){
   :root{
     --fpBg:#eaf1ff;
@@ -2640,21 +1870,14 @@ body::before{
     --fpShadowLg:0 28px 70px rgba(41,64,122,.16);
   }
 
-  body::before{
+  html,
+  body{
     background:
       radial-gradient(1100px 700px at 10% 0%, rgba(47,91,255,.18), transparent 58%),
       radial-gradient(1000px 700px at 100% 0%, rgba(106,142,255,.16), transparent 60%),
       radial-gradient(900px 700px at 50% 100%, rgba(47,91,255,.10), transparent 60%),
-      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%);
-    background-repeat:no-repeat;
-    background-size:cover;
-    background-attachment:fixed;
-  }
-
-  .fpMain{
-    background:transparent !important;
-    border:none !important;
-    box-shadow:none !important;
+      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%) !important;
+    background-attachment:fixed !important;
   }
 
   .fpSidebar{
@@ -2719,9 +1942,7 @@ body::before{
       linear-gradient(180deg, rgba(247,250,255,.90), rgba(232,240,255,.96)) !important;
   }
 
-  .fpNavItem{
-    color:#4f628b;
-  }
+  .fpNavItem{color:#4f628b}
 
   .fpNavItem:hover{
     color:var(--fpText);
@@ -2729,9 +1950,7 @@ body::before{
     border-color:rgba(59,78,130,.10);
   }
 
-  .fpNavItem.active{
-    color:#fff;
-  }
+  .fpNavItem.active{color:#fff}
 
   .fpCardKicker,
   .fpHelloKicker,
@@ -2824,19 +2043,7 @@ body::before{
     border:1px solid rgba(86,121,255,.18) !important;
   }
 
-  .fpBtnPrimary{
-    color:#fff !important;
-  }
-
-  .fpBtn:disabled,
-  .fpBtn[disabled]{
-    color:#a8b3cc !important;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.70), rgba(242,245,252,.88)) !important;
-    border:1px solid rgba(59,78,130,.10) !important;
-    box-shadow:none !important;
-    opacity:1 !important;
-  }
+  .fpBtnPrimary{color:#fff !important}
 
   .fpSelect{
     background:
@@ -2858,9 +2065,7 @@ body::before{
       linear-gradient(180deg, rgba(255,255,255,.84), rgba(242,247,255,.94)) !important;
   }
 
-  .fpLabel{
-    color:var(--fpText) !important;
-  }
+  .fpLabel{color:var(--fpText) !important}
 
   .fpMenuBtn{
     background:
@@ -2868,18 +2073,12 @@ body::before{
       linear-gradient(180deg, rgba(255,255,255,.86), rgba(241,246,255,.96)) !important;
   }
 
-  .fpMenuBtn span{
-    background:var(--fpText) !important;
-  }
+  .fpMenuBtn span{background:var(--fpText) !important}
 
   .fpChartBox{
     background:
       linear-gradient(180deg, rgba(255,255,255,.68), rgba(235,242,255,.88)) !important;
     border-color:rgba(59,78,130,.10) !important;
-  }
-
-  .fpEmpty{
-    border:1px dashed rgba(59,78,130,.16) !important;
   }
 
   .fpBillingCard,
@@ -2902,9 +2101,7 @@ body::before{
   }
 
   @media (max-width:760px){
-    html{
-      background:#dfe8ff !important;
-    }
+    html{background:#dfe8ff !important}
 
     .fpMain,
     .fpPageContainer{
@@ -2922,216 +2119,9 @@ body::before{
     }
   }
 }
-/* =========================================================
-   FINAL FIX SETTINGS + MOBILE BUTTONS
-   à mettre TOUT EN BAS du fichier
-   ========================================================= */
 
-/* ===== SETTINGS DESKTOP ===== */
-.fpSettingsGrid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:26px !important;
-  align-items:start;
-}
-
-.fpSettingsGrid > .fpCard,
-.fpSettingsGrid > .fpCardInner,
-.fpSettingsGrid > div{
-  min-width:0;
-}
-
-.fpSettingsGrid .fpCard,
-.fpSettingsGrid .fpCardInner{
-  padding:28px !important;
-}
-
-.fpSettingsGrid .fpCard > h2,
-.fpSettingsGrid .fpCardInner > h2,
-.fpSettingsGrid .fpCard > .fpSectionTitle,
-.fpSettingsGrid .fpCardInner > .fpSectionTitle{
-  margin-bottom:10px !important;
-}
-
-.fpSettingsGrid .fpCard > .fpSmall,
-.fpSettingsGrid .fpCardInner > .fpSmall,
-.fpSettingsGrid .fpCard > .fpCardText,
-.fpSettingsGrid .fpCardInner > .fpCardText{
-  margin-top:0 !important;
-  margin-bottom:20px !important;
-}
-
-/* espace entre les grosses zones internes */
-.fpSettingsGrid .fpCard > .fpSettingsList,
-.fpSettingsGrid .fpCardInner > .fpSettingsList,
-.fpSettingsGrid .fpCard > .fpInlineLinks,
-.fpSettingsGrid .fpCardInner > .fpInlineLinks,
-.fpSettingsGrid .fpCard > .fpInfoList,
-.fpSettingsGrid .fpCardInner > .fpInfoList{
-  margin-top:20px !important;
-}
-
-/* espace ENTRE les rangées */
-.fpSettingsList{
-  display:flex;
-  flex-direction:column;
-  gap:18px !important;
-  margin-top:0 !important;
-}
-
-.fpSettingsList > *{
-  margin:0 !important;
-}
-
-/* cases paramètres */
-.fpSettingsRow,
-.fpToggleRow{
-  min-height:96px;
-  padding:20px 22px !important;
-  border-radius:22px !important;
-}
-
-.fpSettingsRow{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:16px;
-}
-
-.fpToggleRow{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:16px;
-}
-
-/* liens utiles : vrai espace */
-.fpInlineLinks{
-  display:flex;
-  flex-wrap:wrap;
-  gap:14px !important;
-  row-gap:14px !important;
-  column-gap:14px !important;
-  margin-top:20px !important;
-}
-
-.fpInlineLinks a{
-  min-height:46px;
-  padding:0 18px !important;
-  border-radius:999px !important;
-}
-
-/* ===== MOBILE ===== */
-@media (max-width:760px){
-
-  /* gros blocs mieux séparés */
-  .fpPageContainer{
-    gap:18px !important;
-  }
-
-  .fpSettingsGrid{
-    grid-template-columns:1fr !important;
-    gap:22px !important;
-    margin-top:18px !important;
-  }
-
-  .fpSettingsGrid .fpCard,
-  .fpSettingsGrid .fpCardInner{
-    padding:22px !important;
-    border-radius:24px !important;
-  }
-
-  .fpSettingsGrid .fpCard > .fpSmall,
-  .fpSettingsGrid .fpCardInner > .fpSmall,
-  .fpSettingsGrid .fpCard > .fpCardText,
-  .fpSettingsGrid .fpCardInner > .fpCardText{
-    margin-bottom:18px !important;
-  }
-
-  .fpSettingsList{
-    gap:16px !important;
-  }
-
-  .fpSettingsRow,
-  .fpToggleRow{
-    min-height:auto;
-    padding:18px !important;
-    border-radius:20px !important;
-  }
-
-  .fpSettingsRow{
-    gap:10px !important;
-  }
-
-  .fpSettingsRow span,
-  .fpSettingsRow strong{
-    display:block;
-    width:100%;
-  }
-
-  .fpSettingsRow strong{
-    margin-top:4px !important;
-    text-align:left !important;
-  }
-
-  /* boutons téléphone plus propres */
-  .fpInlineLinks{
-    flex-direction:column;
-    gap:12px !important;
-    margin-top:18px !important;
-  }
-
-  .fpInlineLinks a,
-  .fpBtn,
-  .fpTopActionsRow > .fpBtn,
-  .fpTopActionsRow > a.fpBtn,
-  .fpDetailActions > .fpBtn,
-  .fpDetailActions > a.fpBtn,
-  .fpCardActions > .fpBtn,
-  .fpCardActions > a.fpBtn,
-  .fpPageActions > .fpBtn,
-  .fpPageActions > a.fpBtn{
-    width:100%;
-    min-height:50px !important;
-    padding:0 16px !important;
-    border-radius:16px !important;
-    font-size:15px !important;
-    font-weight:800 !important;
-    justify-content:center;
-  }
-
-  .fpBtnPrimary{
-    box-shadow:
-      0 10px 24px rgba(47,91,255,.22),
-      inset 0 1px 0 rgba(255,255,255,.08);
-  }
-
-  .fpBtnGhost,
-  .fpInlineLinks a{
-    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025)) !important;
-    border:1px solid var(--fpBorderStrong) !important;
-  }
-
-  /* cartes mission téléphone : police un peu réduite */
-  .fpMissionTitle{
-    font-size:19px !important;
-    line-height:1.08 !important;
-  }
-
-  .fpMissionMeta,
-  .fpMissionDesc{
-    font-size:13px !important;
-    line-height:1.4 !important;
-  }
-
-  .fpMissionActions{
-    gap:10px !important;
-  }
-
-  .fpMissionActions > .fpBtn,
-  .fpMissionActions > a.fpBtn{
-    min-height:48px !important;
-    border-radius:16px !important;
-    font-size:15px !important;
-  }
+/* SAFE AREAS */
+@supports (-webkit-touch-callout:none){
+  body{min-height:-webkit-fill-available}
+  .fpSidebar{height:100dvh}
 }
