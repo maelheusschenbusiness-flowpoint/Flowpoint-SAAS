@@ -16,35 +16,33 @@
   <link rel="stylesheet" href="/style.css" />
 
   <style>
-    .topbar{
-      align-items:flex-start !important;
-    }
-
+    /* logo exactement comme addons / checkout */
     .logoBox{
       display:flex;
       align-items:center;
       justify-content:center;
       flex:0 0 auto;
-      margin-top:14px;
+      margin-top:10px;
     }
 
     .logoBox .brandLogo{
-      width:54px !important;
-      height:54px !important;
-      max-width:54px !important;
-      max-height:54px !important;
+      width:34px !important;
+      height:34px !important;
+      max-width:34px !important;
+      max-height:34px !important;
       object-fit:contain;
       display:block;
-      border-radius:16px;
+      border-radius:10px;
     }
 
+    /* bloc bouton + statut comme sur addons */
     .actions{
       display:flex;
       align-items:center !important;
       justify-content:flex-end;
       gap:10px;
       flex-wrap:wrap;
-      margin-top:14px;
+      margin-top:10px;
     }
 
     .actions .linkBtn,
@@ -55,19 +53,11 @@
       min-height:40px;
       line-height:1 !important;
       vertical-align:middle;
+      margin:0 !important;
     }
 
     @media (max-width:900px){
-      .topbar{
-        align-items:flex-start !important;
-      }
-
-      .logoBox{
-        margin-top:10px;
-      }
-
       .actions{
-        margin-top:10px;
         justify-content:flex-start;
       }
     }
