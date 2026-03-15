@@ -92,6 +92,16 @@
       min-height:120px;
     }
 
+    .checkoutPage .checkoutPlaceholder{
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.07);
+      background:rgba(255,255,255,.015);
+      padding:16px;
+      color:rgba(255,255,255,.82);
+      font-size:14px;
+      line-height:1.55;
+    }
+
     .checkoutPage .miniInfo{
       margin-top:12px;
       border-radius:16px;
@@ -169,6 +179,11 @@
               <div id="checkoutMsg" class="small">Préparation...</div>
 
               <div class="checkoutShell">
+                <div class="checkoutPlaceholder">
+                  Le module de paiement sécurisé va s’afficher ici automatiquement.<br/>
+                  Vérifie bien ton plan, tes add-ons et attends le chargement de Stripe avant de valider.
+                </div>
+
                 <div id="embedded-checkout"></div>
 
                 <form id="piForm" style="display:none;">
@@ -187,8 +202,7 @@
                 <div class="small">
                   • Le paiement valide ton plan et les add-ons sélectionnés.<br/>
                   • En cas de mise à jour d’abonnement, Stripe peut calculer un prorata.<br/>
-                  • Une fois validé, ton espace FlowPoint est mis à jour automatiquement.<br/>
-                  • Tu pourras revenir ensuite sur pricing ou add-ons pour modifier ton abonnement.
+                  • Une fois validé, ton espace FlowPoint est mis à jour automatiquement.
                 </div>
               </div>
             </div>
