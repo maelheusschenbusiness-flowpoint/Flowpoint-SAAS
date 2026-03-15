@@ -5,7 +5,26 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Checkout — FlowPoint</title>
   <meta name="color-scheme" content="light dark" />
+  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
+  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
   <link rel="stylesheet" href="/style.css" />
+
+  <style>
+    .logoBox{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .logoBox .brandLogo{
+      width:34px !important;
+      height:34px !important;
+      max-width:34px !important;
+      max-height:34px !important;
+      object-fit:contain;
+      display:block;
+    }
+  </style>
 </head>
 
 <body>
@@ -17,6 +36,7 @@
              alt="FlowPoint"
              onerror="this.src='/assets/flowpoint-logo.png'">
       </div>
+
       <div class="actions">
         <a class="linkBtn" href="/pricing.html">← Retour pricing</a>
         <div class="pill" id="authPill">Statut : …</div>
@@ -78,6 +98,30 @@
             </div>
           </div>
         </div>
+
+        <div class="card">
+          <div class="cardHead">Ce que tu confirmes</div>
+          <div class="cardBody">
+            <ul class="miniList">
+              <li>Le plan choisi ou la mise à jour de ton abonnement</li>
+              <li>Les add-ons sélectionnés avant validation</li>
+              <li>Le paiement immédiat si un prorata Stripe est demandé</li>
+              <li>La mise à jour automatique de ton espace FlowPoint</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="cardHead">Après paiement</div>
+          <div class="cardBody">
+            <ul class="miniList">
+              <li>Retour automatique vers le dashboard</li>
+              <li>Activation du plan ou des options validées</li>
+              <li>Synchronisation des accès et des quotas</li>
+              <li>Possibilité de gérer à nouveau les add-ons ensuite</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -88,7 +132,6 @@
   <!-- IMPORTANT: la clé doit être sur window pour checkout.js -->
   <script>
     window.STRIPE_PUBLISHABLE_KEY = "pk_live_51StVIr9eqtbj6iPB07lwbilmCrWyiNYvupqep7WV7BwxljclefFqISYc6GHW9RFEoohaXVHdyXu43ivcAWSRf2gp00QEjt2RSe";
-    // Remplace par TA clé publique Stripe (pk_live_...)
   </script>
 
   <script src="/checkout.js"></script>
