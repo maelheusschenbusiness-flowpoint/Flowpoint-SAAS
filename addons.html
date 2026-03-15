@@ -5,7 +5,26 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Add-ons — FlowPoint</title>
   <meta name="color-scheme" content="light dark"/>
+  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
+  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
   <link rel="stylesheet" href="/style.css" />
+
+  <style>
+    .logoBox{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .logoBox .brandLogo{
+      width:34px !important;
+      height:34px !important;
+      max-width:34px !important;
+      max-height:34px !important;
+      object-fit:contain;
+      display:block;
+    }
+  </style>
 </head>
 <body>
   <div class="page">
@@ -14,6 +33,7 @@
         <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
              onerror="this.src='/assets/flowpoint-logo.png'">
       </div>
+
       <div class="actions">
         <a class="linkBtn" href="/pricing.html">← Retour pricing</a>
         <div class="pill" id="authPill">Statut : …</div>
@@ -55,6 +75,30 @@
               • Si un prorata est généré, tu payeras via /checkout.html.<br/>
               • White label est forcé ON.
             </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="cardHead">Comment ça fonctionne</div>
+          <div class="cardBody">
+            <ul class="miniList">
+              <li>Tu coches ou décoches les options disponibles</li>
+              <li>FlowPoint prépare la mise à jour de ton abonnement Stripe</li>
+              <li>Si un prorata est dû, un passage par checkout est proposé</li>
+              <li>Sinon la modification est appliquée directement</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="cardHead">Bon à savoir</div>
+          <div class="cardBody">
+            <ul class="miniList">
+              <li>Les add-ons améliorent les capacités sans changer tout le plan</li>
+              <li>Tu peux revenir ici à tout moment pour ajuster</li>
+              <li>Les changements suivent l’abonnement déjà actif</li>
+              <li>Le white label reste inclus et actif par défaut</li>
+            </ul>
           </div>
         </div>
       </div>
