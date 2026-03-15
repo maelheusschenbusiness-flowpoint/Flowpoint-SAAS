@@ -18,7 +18,7 @@
   <style>
     .topbar{
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:space-between;
       gap:12px;
       margin-bottom:18px;
@@ -26,9 +26,11 @@
 
     .logoBox{
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:center;
       flex:0 0 auto;
+      padding-top:10px;
+      min-width:44px;
     }
 
     .logoBox .brandLogo{
@@ -38,6 +40,11 @@
       max-height:34px !important;
       object-fit:contain;
       display:block;
+      border-radius:0 !important;
+      box-shadow:none !important;
+      background:none !important;
+      padding:0 !important;
+      filter:none !important;
     }
 
     .actions{
@@ -49,10 +56,21 @@
       margin-left:auto;
     }
 
+    .actions .linkBtn,
+    .actions .pill{
+      margin-top:0 !important;
+      position:relative;
+      top:0;
+      vertical-align:middle;
+    }
+
     @media (max-width: 720px){
       .topbar{
-        flex-direction:row;
-        align-items:center;
+        align-items:flex-start;
+      }
+
+      .logoBox{
+        padding-top:8px;
       }
 
       .actions{
