@@ -20,7 +20,11 @@
       --danger:#b00020;
       --shadow:0 16px 60px rgba(16,24,40,.10);
       --r:18px;
+
+      --field:#ffffff;
+      --fieldBorder:#d9deea;
     }
+
     @media (prefers-color-scheme: dark){
       :root{
         --bg:#070b18;
@@ -29,10 +33,14 @@
         --muted:rgba(234,240,255,.72);
         --border:rgba(255,255,255,.10);
         --shadow:0 24px 90px rgba(0,0,0,.45);
+
+        --field:#0f172a;
+        --fieldBorder:#243045;
       }
     }
 
     *{box-sizing:border-box}
+
     body{
       margin:0;
       font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
@@ -72,7 +80,7 @@
       object-fit:contain;
       border-radius:12px;
       display:block;
-      filter:drop-shadow(0 10px 22px rgba(0,0,0,.22));
+      filter: drop-shadow(0 10px 22px rgba(0,0,0,.22));
     }
 
     h1{
@@ -100,30 +108,35 @@
       width:100%;
       padding:12px;
       border-radius:12px;
-      border:1px solid rgba(120,130,160,.35);
       margin-top:8px;
       font-size:14px;
-      background:transparent;
+    }
+
+    input{
+      border:1px solid var(--fieldBorder);
+      background:var(--field);
       color:var(--text);
+      transition:all .15s;
+    }
+
+    input::placeholder{
+      color:var(--muted);
+      opacity:.9;
     }
 
     input:focus{
       outline:none;
       border-color:rgba(47,91,255,.65);
-      box-shadow:0 0 0 4px rgba(47,91,255,.16);
+      box-shadow:0 0 0 4px rgba(47,91,255,.16)
     }
 
     button{
       border:0;
       background:linear-gradient(180deg,var(--primary),#2449ff);
       color:#fff;
+      font-weight:600;
       cursor:pointer;
       margin-top:12px;
-    }
-
-    /* juste ce bouton moins gras */
-    #btn{
-      font-weight:600;
     }
 
     button:disabled{
