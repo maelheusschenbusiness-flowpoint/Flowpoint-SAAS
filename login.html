@@ -1,186 +1,224 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>FlowPoint — Connexion</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>FlowPoint — Connexion</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <style>
-    :root{
-      --bg:#f6f7fb;
-      --card:rgba(255,255,255,.92);
-      --text:#0f172a;
-      --muted:#667085;
-      --border:#e6eaf2;
-      --primary:#2f5bff;
-      --danger:#b00020;
-      --shadow:0 16px 60px rgba(16,24,40,.10);
-      --r:18px;
-    }
-    @media (prefers-color-scheme: dark){
-      :root{
-        --bg:#070b18;
-        --card:rgba(14,18,40,.78);
-        --text:#eaf0ff;
-        --muted:rgba(234,240,255,.72);
-        --border:rgba(255,255,255,.10);
-        --shadow:0 24px 90px rgba(0,0,0,.45);
-      }
-    }
-
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
-      background:
-        radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.18), transparent 55%),
-        radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.14), transparent 55%),
-        var(--bg);
-      min-height:100vh;
-      display:flex;align-items:center;justify-content:center;
-      padding:18px;
-      color:var(--text);
-    }
-    .card{
-      width:100%;max-width:560px;
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:var(--r);
-      padding:22px;
-      box-shadow:var(--shadow);
-      backdrop-filter:saturate(180%) blur(14px);
-    }
-    .brandRow{display:flex;align-items:center;gap:12px;margin-bottom:8px}
-    .brandLogo{
-      width:44px;height:44px;
-      object-fit:contain;
-      border-radius:12px;
-      display:block;
-      filter: drop-shadow(0 10px 22px rgba(0,0,0,.22));
-    }
-
-    h1{margin:10px 0 6px;font-size:20px;font-weight:700;letter-spacing:-.02em}
-    p{margin:0;color:var(--muted);line-height:1.55;font-size:14px}
-
-    label{display:block;margin-top:14px;font-size:13px;font-weight:600}
-    input,button{
-      width:100%;
-      padding:12px;
-      border-radius:12px;
-      border:1px solid rgba(120,130,160,.35);
-      margin-top:8px;
-      font-size:14px;
-      background:transparent;
-      color:var(--text);
-    }
-    input:focus{
-      outline:none;
-      border-color:rgba(47,91,255,.65);
-      box-shadow:0 0 0 4px rgba(47,91,255,.16)
-    }
-    button{
-  border:0;
-  background:linear-gradient(180deg,var(--primary),#2449ff);
-  color:#fff;
-  font-weight:600;
-  cursor:pointer;
-  margin-top:12px;
+<style>
+:root{
+--bg:#f6f7fb;
+--card:rgba(255,255,255,.92);
+--text:#0f172a;
+--muted:#667085;
+--border:#e6eaf2;
+--primary:#2f5bff;
+--danger:#b00020;
+--shadow:0 16px 60px rgba(16,24,40,.10);
+--r:18px;
 }
-    button:disabled{opacity:.65;cursor:not-allowed}
 
-    .msg{
-      margin-top:12px;
-      padding:12px 14px;
-      border-radius:12px;
-      background:rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.10);
-      color:var(--muted);
-      font-size:13.5px;
-      line-height:1.45;
-    }
-    @media (prefers-color-scheme: light){
-      .msg{
-        background:rgba(15,23,42,.04);
-        border:1px solid rgba(15,23,42,.06);
-      }
-    }
-    .ok{color:#18a558;font-weight:700}
-    .danger{color:var(--danger);font-weight:700}
+@media (prefers-color-scheme: dark){
+:root{
+--bg:#070b18;
+--card:rgba(14,18,40,.78);
+--text:#eaf0ff;
+--muted:rgba(234,240,255,.72);
+--border:rgba(255,255,255,.10);
+--shadow:0 24px 90px rgba(0,0,0,.45);
+}
+}
 
-    .links{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
-    .link{color:#1d4ed8;text-decoration:none;font-weight:700}
-  </style>
+*{box-sizing:border-box}
+
+body{
+margin:0;
+font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+background:
+radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.18), transparent 55%),
+radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.14), transparent 55%),
+var(--bg);
+min-height:100vh;
+display:flex;
+align-items:center;
+justify-content:center;
+padding:18px;
+color:var(--text);
+}
+
+.card{
+width:100%;
+max-width:560px;
+background:var(--card);
+border:1px solid var(--border);
+border-radius:var(--r);
+padding:24px;
+box-shadow:var(--shadow);
+backdrop-filter:saturate(180%) blur(14px);
+}
+
+.brandRow{
+display:flex;
+align-items:center;
+gap:12px;
+margin-bottom:10px;
+}
+
+.brandLogo{
+width:44px;
+height:44px;
+border-radius:12px;
+object-fit:contain;
+filter:drop-shadow(0 10px 22px rgba(0,0,0,.22));
+}
+
+h1{
+margin:10px 0 6px;
+font-size:20px;
+font-weight:700;
+letter-spacing:-.02em;
+}
+
+p{
+margin:0;
+color:var(--muted);
+line-height:1.55;
+font-size:14px;
+}
+
+label{
+display:block;
+margin-top:14px;
+font-size:13px;
+font-weight:600;
+}
+
+input,button{
+width:100%;
+padding:12px;
+border-radius:12px;
+border:1px solid rgba(120,130,160,.35);
+margin-top:8px;
+font-size:14px;
+background:transparent;
+color:var(--text);
+}
+
+input:focus{
+outline:none;
+border-color:rgba(47,91,255,.65);
+box-shadow:0 0 0 4px rgba(47,91,255,.16);
+}
+
+button{
+border:none;
+background:linear-gradient(180deg,var(--primary),#2449ff);
+color:#fff;
+font-weight:600;
+cursor:pointer;
+margin-top:12px;
+}
+
+button:disabled{opacity:.65}
+
+.msg{
+margin-top:12px;
+padding:12px 14px;
+border-radius:12px;
+background:rgba(255,255,255,.06);
+border:1px solid rgba(255,255,255,.10);
+color:var(--muted);
+font-size:13.5px;
+}
+
+.ok{color:#18a558;font-weight:600}
+.danger{color:var(--danger);font-weight:600}
+
+.links{
+margin-top:12px;
+display:flex;
+gap:10px;
+flex-wrap:wrap;
+}
+
+.link{
+color:#1d4ed8;
+text-decoration:none;
+font-weight:600;
+}
+</style>
 </head>
 
 <body>
-  <div class="card">
-    <!-- Logo SEUL (comme tu veux) -->
-    <div class="brandRow">
-      <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint">
-      <div style="color:var(--muted);font-size:13px;font-weight:600">
-        Connexion sécurisée (sans mot de passe)
-      </div>
-    </div>
 
-    <h1>Connexion</h1>
-    <p>Entre ton email : on t’envoie un lien de connexion.</p>
+<div class="card">
 
-    <label for="email">Email</label>
-    <input id="email" type="email" placeholder="toi@entreprise.com" autocomplete="email" />
+<div class="brandRow">
+<img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint">
+<div style="color:var(--muted);font-size:13px;font-weight:600">
+Connexion sécurisée (sans mot de passe)
+</div>
+</div>
 
-    <button id="btn">Recevoir le lien</button>
+<h1>Connexion</h1>
+<p>Entre ton email : on t’envoie un lien de connexion.</p>
 
-    <div id="msg" class="msg">—</div>
+<label>Email</label>
+<input id="email" type="email" placeholder="toi@entreprise.com"/>
 
-    <div class="links">
-      <a class="link" href="/index.html">Créer un compte</a>
-      <a class="link" href="/pricing.html">Voir les offres</a>
-    </div>
-  </div>
+<button id="btn">Recevoir le lien</button>
 
-  <script>
-    const btn = document.getElementById("btn");
-    const emailEl = document.getElementById("email");
-    const msg = document.getElementById("msg");
+<div id="msg" class="msg">—</div>
 
-    function setMsg(t, type){
-      msg.textContent = t || "";
-      msg.classList.remove("ok","danger");
-      if(type) msg.classList.add(type);
-    }
+<div class="links">
+<a class="link" href="/index.html">Créer un compte</a>
+<a class="link" href="/pricing.html">Voir les offres</a>
+</div>
 
-    btn.addEventListener("click", async () => {
-      const email = String(emailEl.value || "").trim();
-      if(!email) return setMsg("Email requis.", "danger");
+</div>
 
-      btn.disabled = true;
-      setMsg("Envoi…");
+<script>
+const btn=document.getElementById("btn")
+const email=document.getElementById("email")
+const msg=document.getElementById("msg")
 
-      try{
-        const r = await fetch("/api/auth/login-request", {
-          method:"POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ email })
-        });
-        const j = await r.json().catch(()=> ({}));
-        if(!r.ok) throw new Error(j.error || "Erreur");
+function setMsg(t,type){
+msg.textContent=t
+msg.classList.remove("ok","danger")
+if(type) msg.classList.add(type)
+}
 
-        if(j.debugLink){
-          setMsg("✅ Lien généré (mode debug). Regarde la console.", "ok");
-          console.log("DEBUG LOGIN LINK:", j.debugLink);
-        } else {
-          setMsg("✅ Lien envoyé. Vérifie ton email.", "ok");
-        }
-      }catch(e){
-        setMsg(e.message || "Erreur", "danger");
-      }finally{
-        btn.disabled = false;
-      }
-    });
-  </script>
+btn.onclick=async()=>{
+if(!email.value) return setMsg("Email requis.","danger")
+
+btn.disabled=true
+setMsg("Envoi...")
+
+try{
+const r=await fetch("/api/auth/login-request",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({email:email.value})
+})
+
+const j=await r.json()
+
+if(!r.ok) throw new Error(j.error||"Erreur")
+
+setMsg("Lien envoyé. Vérifie ton email.","ok")
+}
+catch(e){
+setMsg(e.message,"danger")
+}
+finally{
+btn.disabled=false
+}
+}
+</script>
+
 </body>
 </html>
