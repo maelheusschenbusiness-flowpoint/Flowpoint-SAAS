@@ -2923,127 +2923,59 @@ body::before{
   }
 }
 /* =========================================================
-   FINAL PATCH CLEAN
-   - corrige l'espacement encore collé
-   - garde missions stables
-   - améliore les boutons mobile
-   - réduit la typo mobile des missions
+   FINAL FIX SETTINGS + MOBILE BUTTONS
+   à mettre TOUT EN BAS du fichier
    ========================================================= */
 
-/* fond continu */
-html,
-body{
-  margin:0;
-  min-height:100%;
-  background:transparent !important;
-  background-color:transparent !important;
-}
-
-body{
-  padding-top:0 !important;
-  padding-bottom:0 !important;
-}
-
-body::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  z-index:-2;
-  pointer-events:none;
-  background:
-    radial-gradient(1100px 600px at 10% 0%, rgba(47,91,255,.34), transparent 60%),
-    radial-gradient(900px 600px at 100% 8%, rgba(91,124,255,.22), transparent 56%),
-    radial-gradient(1000px 760px at 50% 100%, rgba(27,69,255,.16), transparent 60%),
-    linear-gradient(180deg, var(--fpBg), var(--fpBg2) 45%, var(--fpBg3) 100%);
-  background-repeat:no-repeat;
-  background-size:cover;
-  background-attachment:fixed;
-}
-
-.fpAppShell{
-  position:relative;
-  min-height:100svh;
-  min-height:100dvh;
-  background:transparent !important;
-}
-
-.fpMain,
-.fpPageContainer{
-  background:transparent !important;
-}
-
-/* =========================================================
-   ESPACEMENT GLOBAL ENTRE GROS BLOCS
-   ========================================================= */
-
-/* empêche les blocs empilés d'être collés */
-.fpPageContainer > .fpCard + .fpCard,
-.fpPageContainer > .fpCard + .fpPageHero,
-.fpPageContainer > .fpPageHero + .fpCard,
-.fpPageContainer > .fpPageHero + .fpPageHero,
-.fpCol > .fpCard + .fpCard,
-.fpCol > .fpCardInner + .fpCard,
-.fpCol > .fpCard + .fpCardInner,
-.fpCol > .fpCardInner + .fpCardInner,
-.fpColMain > .fpCard + .fpCard,
-.fpColMain > .fpCardInner + .fpCard,
-.fpColSide > .fpCard + .fpCard,
-.fpColSide > .fpCardInner + .fpCard,
-.fpColSide > .fpCard + .fpCardInner{
-  margin-top:22px !important;
-}
-
-/* si des sections settings / links sont dans le même wrapper */
-.fpCard > .fpCardInner + .fpCardInner,
-.fpCard > .fpInlineLinks + .fpCardInner,
-.fpCard > .fpSettingsList + .fpCardInner,
-.fpCard > .fpCardText + .fpInlineLinks{
-  margin-top:18px !important;
-}
-
-/* liens utiles pas collés au texte */
-.fpInlineLinks{
-  display:flex;
-  flex-wrap:wrap;
-  gap:14px !important;
-  row-gap:14px !important;
-  column-gap:14px !important;
-  margin-top:18px !important;
-}
-
-.fpInlineLinks a{
-  min-height:46px;
-  padding:0 18px !important;
-  border-radius:999px !important;
-}
-
-/* =========================================================
-   SETTINGS
-   ========================================================= */
-
+/* ===== SETTINGS DESKTOP ===== */
 .fpSettingsGrid{
-  gap:24px !important;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:26px !important;
   align-items:start;
+}
+
+.fpSettingsGrid > .fpCard,
+.fpSettingsGrid > .fpCardInner,
+.fpSettingsGrid > div{
+  min-width:0;
 }
 
 .fpSettingsGrid .fpCard,
 .fpSettingsGrid .fpCardInner{
-  margin:0 !important;
+  padding:28px !important;
 }
 
-.fpSettingsGrid .fpCardInner{
-  padding:26px !important;
-  border-radius:24px !important;
+.fpSettingsGrid .fpCard > h2,
+.fpSettingsGrid .fpCardInner > h2,
+.fpSettingsGrid .fpCard > .fpSectionTitle,
+.fpSettingsGrid .fpCardInner > .fpSectionTitle{
+  margin-bottom:10px !important;
 }
 
-.fpSettingsGrid .fpCardInner > * + *{
-  margin-top:18px !important;
+.fpSettingsGrid .fpCard > .fpSmall,
+.fpSettingsGrid .fpCardInner > .fpSmall,
+.fpSettingsGrid .fpCard > .fpCardText,
+.fpSettingsGrid .fpCardInner > .fpCardText{
+  margin-top:0 !important;
+  margin-bottom:20px !important;
 }
 
+/* espace entre les grosses zones internes */
+.fpSettingsGrid .fpCard > .fpSettingsList,
+.fpSettingsGrid .fpCardInner > .fpSettingsList,
+.fpSettingsGrid .fpCard > .fpInlineLinks,
+.fpSettingsGrid .fpCardInner > .fpInlineLinks,
+.fpSettingsGrid .fpCard > .fpInfoList,
+.fpSettingsGrid .fpCardInner > .fpInfoList{
+  margin-top:20px !important;
+}
+
+/* espace ENTRE les rangées */
 .fpSettingsList{
   display:flex;
   flex-direction:column;
-  gap:16px !important;
+  gap:18px !important;
   margin-top:0 !important;
 }
 
@@ -3051,9 +2983,10 @@ body::before{
   margin:0 !important;
 }
 
+/* cases paramètres */
 .fpSettingsRow,
 .fpToggleRow{
-  min-height:92px;
+  min-height:96px;
   padding:20px 22px !important;
   border-radius:22px !important;
 }
@@ -3062,100 +2995,71 @@ body::before{
   display:flex;
   justify-content:space-between;
   align-items:flex-start;
-  gap:14px;
+  gap:16px;
 }
 
 .fpToggleRow{
   display:flex;
   justify-content:space-between;
   align-items:center;
-  gap:14px;
+  gap:16px;
 }
 
-/* =========================================================
-   MISSIONS
-   ========================================================= */
-
-/* on garde l'espace entre les cartes mission */
-.fpMissionStack{
-  gap:16px !important;
+/* liens utiles : vrai espace */
+.fpInlineLinks{
+  display:flex;
+  flex-wrap:wrap;
+  gap:14px !important;
+  row-gap:14px !important;
+  column-gap:14px !important;
+  margin-top:20px !important;
 }
 
-.fpMissionCard{
-  padding:18px !important;
+.fpInlineLinks a{
+  min-height:46px;
+  padding:0 18px !important;
+  border-radius:999px !important;
 }
 
-.fpMissionActions{
-  gap:12px !important;
-  row-gap:12px !important;
-  column-gap:12px !important;
-}
-
-/* =========================================================
-   MOBILE
-   ========================================================= */
-
+/* ===== MOBILE ===== */
 @media (max-width:760px){
-  html{
-    background:var(--fpBg2) !important;
-  }
 
-  body{
-    background:transparent !important;
-  }
-
-  .fpMain{
-    padding:14px;
-    padding-top:calc(14px + env(safe-area-inset-top, 0px));
-    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
-    background:transparent !important;
-    box-shadow:none !important;
-    border:none !important;
-  }
-
+  /* gros blocs mieux séparés */
   .fpPageContainer{
-    background:transparent !important;
-    box-shadow:none !important;
-    border:none !important;
-  }
-
-  /* espacement mobile entre gros blocs */
-  .fpPageContainer > .fpCard + .fpCard,
-  .fpPageContainer > .fpCard + .fpPageHero,
-  .fpPageContainer > .fpPageHero + .fpCard,
-  .fpCol > .fpCard + .fpCard,
-  .fpCol > .fpCardInner + .fpCard,
-  .fpCol > .fpCard + .fpCardInner,
-  .fpCol > .fpCardInner + .fpCardInner,
-  .fpColMain > .fpCard + .fpCard,
-  .fpColSide > .fpCard + .fpCard{
-    margin-top:18px !important;
+    gap:18px !important;
   }
 
   .fpSettingsGrid{
     grid-template-columns:1fr !important;
-    gap:20px !important;
+    gap:22px !important;
+    margin-top:18px !important;
   }
 
+  .fpSettingsGrid .fpCard,
   .fpSettingsGrid .fpCardInner{
     padding:22px !important;
-    border-radius:22px !important;
+    border-radius:24px !important;
   }
 
-  .fpSettingsGrid .fpCardInner > * + *{
-    margin-top:16px !important;
+  .fpSettingsGrid .fpCard > .fpSmall,
+  .fpSettingsGrid .fpCardInner > .fpSmall,
+  .fpSettingsGrid .fpCard > .fpCardText,
+  .fpSettingsGrid .fpCardInner > .fpCardText{
+    margin-bottom:18px !important;
+  }
+
+  .fpSettingsList{
+    gap:16px !important;
   }
 
   .fpSettingsRow,
   .fpToggleRow{
     min-height:auto;
-    padding:16px 18px !important;
+    padding:18px !important;
     border-radius:20px !important;
   }
 
   .fpSettingsRow{
-    flex-direction:column;
-    align-items:flex-start;
     gap:10px !important;
   }
 
@@ -3166,139 +3070,68 @@ body::before{
   }
 
   .fpSettingsRow strong{
-    margin-top:4px;
+    margin-top:4px !important;
     text-align:left !important;
   }
 
-  /* liens utiles mobile */
+  /* boutons téléphone plus propres */
   .fpInlineLinks{
     flex-direction:column;
     gap:12px !important;
-    margin-top:16px !important;
+    margin-top:18px !important;
   }
 
-  .fpInlineLinks a{
-    width:100%;
-    min-height:50px;
-    padding:0 16px !important;
-    border-radius:16px !important;
-    font-size:15px !important;
-    font-weight:800;
-    justify-content:center;
-  }
-
-  /* boutons mobile plus propres */
+  .fpInlineLinks a,
   .fpBtn,
   .fpTopActionsRow > .fpBtn,
   .fpTopActionsRow > a.fpBtn,
   .fpDetailActions > .fpBtn,
   .fpDetailActions > a.fpBtn,
-  .fpMissionActions > .fpBtn,
-  .fpMissionActions > a.fpBtn,
-  .fpTableActions > .fpBtn,
-  .fpTableActions > a.fpBtn,
   .fpCardActions > .fpBtn,
   .fpCardActions > a.fpBtn,
   .fpPageActions > .fpBtn,
   .fpPageActions > a.fpBtn{
     width:100%;
-    min-height:50px;
+    min-height:50px !important;
     padding:0 16px !important;
     border-radius:16px !important;
     font-size:15px !important;
-    font-weight:800;
+    font-weight:800 !important;
     justify-content:center;
+  }
+
+  .fpBtnPrimary{
+    box-shadow:
+      0 10px 24px rgba(47,91,255,.22),
+      inset 0 1px 0 rgba(255,255,255,.08);
   }
 
   .fpBtnGhost,
   .fpInlineLinks a{
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
-    border:1px solid var(--fpBorderStrong);
+    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025)) !important;
+    border:1px solid var(--fpBorderStrong) !important;
   }
 
-  /* missions mobile : texte un peu plus petit */
+  /* cartes mission téléphone : police un peu réduite */
   .fpMissionTitle{
-    font-size:18px !important;
-    line-height:1.12 !important;
+    font-size:19px !important;
+    line-height:1.08 !important;
   }
 
   .fpMissionMeta,
   .fpMissionDesc{
     font-size:13px !important;
-    line-height:1.45 !important;
-  }
-
-  .fpMissionCard{
-    border-radius:22px !important;
-    padding:16px !important;
+    line-height:1.4 !important;
   }
 
   .fpMissionActions{
     gap:10px !important;
-    row-gap:10px !important;
-    column-gap:10px !important;
-    margin-top:12px !important;
   }
 
-  .fpMissionCardLarge .fpMissionActions{
-    margin-left:0 !important;
-  }
-
-  .fpMissionActions .fpBtn,
-  .fpMissionActions a.fpBtn{
+  .fpMissionActions > .fpBtn,
+  .fpMissionActions > a.fpBtn{
     min-height:48px !important;
     border-radius:16px !important;
     font-size:15px !important;
-  }
-}
-
-@media (max-width:520px){
-  .fpInlineLinks a,
-  .fpBtn{
-    min-height:48px;
-    font-size:14px !important;
-  }
-
-  .fpMissionTitle{
-    font-size:17px !important;
-  }
-}
-
-/* =========================================================
-   LIGHT MODE
-   ========================================================= */
-
-@media (prefers-color-scheme: light){
-  body::before{
-    background:
-      radial-gradient(1100px 700px at 10% 0%, rgba(47,91,255,.18), transparent 58%),
-      radial-gradient(1000px 700px at 100% 0%, rgba(106,142,255,.16), transparent 60%),
-      radial-gradient(900px 700px at 50% 100%, rgba(47,91,255,.10), transparent 60%),
-      linear-gradient(180deg, #edf3ff 0%, #e2ebff 46%, #d7e4ff 100%);
-    background-repeat:no-repeat;
-    background-size:cover;
-    background-attachment:fixed;
-  }
-
-  .fpInlineLinks a{
-    color:var(--fpText) !important;
-    -webkit-text-fill-color:var(--fpText) !important;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.82), rgba(242,247,255,.95)) !important;
-    border-color:rgba(59,78,130,.12) !important;
-  }
-
-  .fpBtnGhost{
-    color:var(--fpText) !important;
-    -webkit-text-fill-color:var(--fpText) !important;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.86), rgba(241,246,255,.96)) !important;
-    border-color:rgba(59,78,130,.14) !important;
-  }
-
-  .fpBtnGhost:hover{
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.94), rgba(234,242,255,.99)) !important;
   }
 }
