@@ -24,27 +24,26 @@
       margin-top:10px;
     }
 
-    .logoBox .brandLogo{
-      width:34px !important;
-      height:34px !important;
-      max-width:34px !important;
-      max-height:34px !important;
-      min-width:34px !important;
-      min-height:34px !important;
-      object-fit:contain;
-      display:block;
-      border-radius:10px;
-      flex:0 0 34px;
-    }
+   .logoBox .brandLogo{
+  width:34px;
+  height:34px;
+  object-fit:contain;
+  display:block;
+
+  background:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+}
+    .logoBox{
+  background:none !important;
+  box-shadow:none !important;
+}
 
     .actions{
-      display:flex;
-      align-items:center !important;
-      justify-content:flex-end;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-top:10px;
-    }
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
 
     .actions .linkBtn,
     .actions .pill{
@@ -62,6 +61,11 @@
         justify-content:flex-start;
       }
     }
+    .topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
   </style>
 </head>
 
