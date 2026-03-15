@@ -10,29 +10,29 @@
   <link rel="stylesheet" href="/style.css" />
 
   <style>
-    .logoBox{
-      display:flex;
-      align-items:center;
-      justify-content:center;
-    }
-
-    .logoBox .brandLogo{
-      width:34px !important;
-      height:34px !important;
-      max-width:34px !important;
-      max-height:34px !important;
+    .topBrandLogo{
+      width:46px;
+      height:46px;
+      border-radius:14px;
       object-fit:contain;
       display:block;
+      flex:0 0 auto;
+      filter:drop-shadow(0 10px 18px rgba(0,0,0,.22));
+      margin-bottom:14px;
     }
   </style>
 </head>
 <body>
   <div class="page">
+    <img
+      class="topBrandLogo"
+      src="/assets/flowpoint-logo.svg"
+      alt="FlowPoint"
+      onerror="this.src='/assets/flowpoint-logo.png'"
+    />
+
     <div class="topbar">
-      <div class="logoBox">
-        <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint"
-             onerror="this.src='/assets/flowpoint-logo.png'">
-      </div>
+      <div></div>
 
       <div class="actions">
         <a class="linkBtn" href="/pricing.html">← Retour pricing</a>
