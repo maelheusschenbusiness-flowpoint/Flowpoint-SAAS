@@ -29,8 +29,8 @@
       align-items:flex-start;
       justify-content:center;
       flex:0 0 auto;
-      padding-top:10px;
       min-width:44px;
+      padding-top:22px; /* abaissé pour matcher checkout */
     }
 
     .logoBox .brandLogo{
@@ -41,41 +41,46 @@
       object-fit:contain;
       display:block;
       border-radius:0 !important;
-      box-shadow:none !important;
       background:none !important;
-      padding:0 !important;
+      box-shadow:none !important;
       filter:none !important;
+      padding:0 !important;
     }
 
     .actions{
       display:flex;
-      align-items:center;
+      align-items:center; /* centre le statut comme sur ta photo 2 */
       justify-content:flex-end;
       gap:10px;
       flex-wrap:wrap;
       margin-left:auto;
+      min-height:40px;
     }
 
     .actions .linkBtn,
     .actions .pill{
-      margin-top:0 !important;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      margin:0 !important;
+      vertical-align:middle;
       position:relative;
       top:0;
-      vertical-align:middle;
     }
 
-    @media (max-width: 720px){
+    @media (max-width:720px){
       .topbar{
+        flex-direction:column;
         align-items:flex-start;
       }
 
       .logoBox{
-        padding-top:8px;
+        padding-top:14px;
       }
 
       .actions{
-        justify-content:flex-end;
-        margin-left:auto;
+        width:100%;
+        justify-content:flex-start;
       }
     }
   </style>
@@ -174,6 +179,7 @@
           </div>
         </div>
       </div>
+
     </div>
   </div>
 
