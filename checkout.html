@@ -79,6 +79,19 @@
             </div>
           </div>
         </div>
+
+        <!-- AJOUT pour rééquilibrer la page comme pricing -->
+        <div class="card" style="margin-top:16px">
+          <div class="cardHead">Informations utiles</div>
+          <div class="cardBody">
+            <ul class="miniList">
+              <li>Le paiement valide ton plan et les add-ons sélectionnés</li>
+              <li>En cas de mise à jour d’abonnement, Stripe peut calculer un prorata</li>
+              <li>Une fois validé, ton espace FlowPoint est mis à jour automatiquement</li>
+              <li>Tu pourras revenir ensuite sur pricing ou add-ons pour modifier ton abonnement</li>
+            </ul>
+          </div>
+        </div>
       </div>
 
       <div class="side">
@@ -129,7 +142,6 @@
   <!-- Stripe.js (UNE SEULE FOIS) -->
   <script src="https://js.stripe.com/v3/"></script>
 
-  <!-- IMPORTANT: la clé doit être sur window pour checkout.js -->
   <script>
     window.STRIPE_PUBLISHABLE_KEY = "pk_live_51StVIr9eqtbj6iPB07lwbilmCrWyiNYvupqep7WV7BwxljclefFqISYc6GHW9RFEoohaXVHdyXu43ivcAWSRf2gp00QEjt2RSe";
   </script>
