@@ -1,110 +1,190 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pricing — Plans + Add-ons</title>
-  <meta name="color-scheme" content="light dark"/>
 
-  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
-  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<title>Pricing — Plans + Add-ons</title>
 
-  <link rel="stylesheet" href="/style.css" />
+<meta name="color-scheme" content="light dark"/>
+
+<link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg"/>
+<link rel="shortcut icon" href="/assets/flowpoint-logo.svg"/>
+
+<link rel="stylesheet" href="/style.css"/>
+
+<style>
+
+.topHeader{
+display:flex;
+align-items:center;
+justify-content:space-between;
+margin-bottom:18px;
+}
+
+.brandMini{
+display:flex;
+align-items:center;
+}
+
+.brandMiniLogo{
+width:40px;
+height:40px;
+border-radius:12px;
+object-fit:contain;
+display:block;
+filter:drop-shadow(0 10px 18px rgba(0,0,0,.22));
+}
+
+.actions{
+display:flex;
+gap:10px;
+align-items:center;
+}
+
+</style>
+
 </head>
 
 <body>
-  <div class="page">
-    <div class="topbar">
-      <div></div>
 
-      <div class="actions">
-        <a class="linkBtn" href="/pricing.html">← Retour pricing</a>
-        <div class="pill" id="authPill">Statut : …</div>
-      </div>
-    </div>
+<div class="page">
 
-    <div class="grid">
-      <div>
-        <div class="hero">
-          <h1>Choisis ton plan + tes options</h1>
-          <p>
-            1) Clique <b>Checkout</b> pour payer le plan + add-ons sélectionnés (dans une page FlowPoint).<br/>
-            2) Clique <b>Gérer mes add-ons</b> pour ajouter/retirer des options (dans une page FlowPoint).
-          </p>
-          <div class="small" id="pricingMsg"></div>
-        </div>
+<div class="topHeader">
 
-        <div class="section">
-          <div class="sectionHead">
-            <div class="title">Plans</div>
-            <div class="hint">Essai via Stripe (Billing).</div>
-          </div>
-          <div class="plans" id="plans"></div>
-        </div>
+<div class="brandMini">
+<img class="brandMiniLogo"
+src="/assets/flowpoint-logo.svg"
+alt="FlowPoint"
+onerror="this.src='/assets/flowpoint-logo.png'">
+</div>
 
-        <div class="section">
-          <div class="sectionHead">
-            <div class="title">Add-ons</div>
-            <div class="hint">Sélection UI (puis paiement/MAJ dans Checkout ou Add-ons).</div>
-          </div>
-          <div class="addons" id="addonsList"></div>
-        </div>
-      </div>
+<div class="actions">
+<a class="linkBtn" href="/pricing.html">← Retour pricing</a>
+<div class="pill" id="authPill">Statut : …</div>
+</div>
 
-      <div class="side">
-        <div class="card">
-          <div class="cardHead">Inclus dans tous les plans</div>
-          <div class="cardBody">
-            <ul class="miniList">
-              <li>Rapports PDF + exports CSV</li>
-              <li>Alertes email + pages de rapports</li>
-              <li>White label inclus (gratuit)</li>
-              <li>Support email + onboarding</li>
-              <li>Historique d’incidents (selon rétention)</li>
-              <li>Exports & partage équipe (selon plan)</li>
-            </ul>
-          </div>
-        </div>
+</div>
 
-        <div class="card">
-          <div class="cardHead">Résumé</div>
-          <div class="cardBody">
-            <div class="row2"><span class="muted">Plan</span> <span id="sumPlan">—</span></div>
-            <div class="row2"><span class="muted">Prix du plan</span> <span id="sumPlanPrice">—</span></div>
-            <div class="row2"><span class="muted">White label</span> <span>Inclus (gratuit)</span></div>
-            <div class="row2" style="align-items:flex-start">
-              <span class="muted">Add-ons</span>
-              <span id="sumAddOns" style="text-align:right">—</span>
-            </div>
+<div class="grid">
 
-            <button class="primaryBtn" id="btnCheckout">Continuer checkout</button>
-            <button class="ghostBtn" id="btnPortal">Gérer mes add-ons</button>
+<div>
 
-            <div class="small">
-              Si tu n’es pas connecté, tu seras renvoyé vers l’inscription / login.
-            </div>
-          </div>
-        </div>
+<div class="hero">
+<h1>Choisis ton plan + tes options</h1>
 
-        <div class="card">
-          <div class="cardHead">Pourquoi c’est rentable</div>
-          <div class="cardBody">
-            <ul class="miniList">
-              <li>Audits rapides → recommandations actionnables</li>
-              <li>Monitors → alertes instantanées + logs</li>
-              <li>Rapports partageables → ventes + rétention</li>
-              <li>Crédits add-ons → tu scales sans changer de plan</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+<p>
+1) Clique <b>Checkout</b> pour payer le plan + add-ons sélectionnés.<br>
+2) Clique <b>Gérer mes add-ons</b> pour ajouter/retirer des options.
+</p>
 
-  <script src="/pricing.js"></script>
+<div class="small" id="pricingMsg"></div>
+
+</div>
+
+<div class="section">
+
+<div class="sectionHead">
+<div class="title">Plans</div>
+<div class="hint">Essai via Stripe (Billing).</div>
+</div>
+
+<div class="plans" id="plans"></div>
+
+</div>
+
+<div class="section">
+
+<div class="sectionHead">
+<div class="title">Add-ons</div>
+<div class="hint">Sélection UI (puis paiement/MAJ dans Checkout ou Add-ons).</div>
+</div>
+
+<div class="addons" id="addonsList"></div>
+
+</div>
+
+</div>
+
+<div class="side">
+
+<div class="card">
+<div class="cardHead">Inclus dans tous les plans</div>
+
+<div class="cardBody">
+
+<ul class="miniList">
+<li>Rapports PDF + exports CSV</li>
+<li>Alertes email + pages de rapports</li>
+<li>White label inclus (gratuit)</li>
+<li>Support email + onboarding</li>
+<li>Historique d’incidents (selon rétention)</li>
+<li>Exports & partage équipe (selon plan)</li>
+</ul>
+
+</div>
+</div>
+
+<div class="card">
+
+<div class="cardHead">Résumé</div>
+
+<div class="cardBody">
+
+<div class="row2">
+<span class="muted">Plan</span>
+<span id="sumPlan">—</span>
+</div>
+
+<div class="row2">
+<span class="muted">Prix du plan</span>
+<span id="sumPlanPrice">—</span>
+</div>
+
+<div class="row2">
+<span class="muted">White label</span>
+<span>Inclus (gratuit)</span>
+</div>
+
+<div class="row2" style="align-items:flex-start">
+<span class="muted">Add-ons</span>
+<span id="sumAddOns" style="text-align:right">—</span>
+</div>
+
+<button class="primaryBtn" id="btnCheckout">Continuer checkout</button>
+<button class="ghostBtn" id="btnPortal">Gérer mes add-ons</button>
+
+<div class="small">
+Si tu n’es pas connecté, tu seras renvoyé vers l’inscription / login.
+</div>
+
+</div>
+</div>
+
+<div class="card">
+
+<div class="cardHead">Pourquoi c’est rentable</div>
+
+<div class="cardBody">
+
+<ul class="miniList">
+<li>Audits rapides → recommandations actionnables</li>
+<li>Monitors → alertes instantanées + logs</li>
+<li>Rapports partageables → ventes + rétention</li>
+<li>Crédits add-ons → tu scales sans changer de plan</li>
+</ul>
+
+</div>
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<script src="/pricing.js"></script>
+
 </body>
 </html>
