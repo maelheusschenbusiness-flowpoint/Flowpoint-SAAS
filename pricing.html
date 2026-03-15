@@ -17,18 +17,20 @@
 
 <style>
   .topbar{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    flex-wrap:wrap;
-    gap:12px;
+    display:grid !important;
+    grid-template-columns: 34px 1fr;
+    align-items:start;
+    column-gap:18px;
+    row-gap:10px;
+    margin-bottom:16px;
   }
 
   .logoBox{
+    width:34px;
+    height:34px;
     display:flex;
     align-items:center;
     justify-content:center;
-    flex:0 0 auto;
     margin-top:10px;
     background:transparent !important;
     background-image:none !important;
@@ -48,10 +50,10 @@
   .logoBox .brandLogo{
     width:34px !important;
     height:34px !important;
-    max-width:34px !important;
-    max-height:34px !important;
     min-width:34px !important;
     min-height:34px !important;
+    max-width:34px !important;
+    max-height:34px !important;
     object-fit:contain;
     display:block;
     background:transparent !important;
@@ -66,11 +68,12 @@
 
   .actions{
     display:flex !important;
-    align-items:center !important;
     justify-content:flex-end !important;
+    align-items:center !important;
     gap:10px !important;
-    flex-wrap:wrap;
-    margin-top:10px;
+    flex-wrap:wrap !important;
+    width:100%;
+    margin-top:6px;
   }
 
   .actions .linkBtn,
@@ -86,7 +89,7 @@
 
   @media (max-width:900px){
     .topbar{
-      align-items:flex-start;
+      grid-template-columns:1fr;
     }
 
     .actions{
