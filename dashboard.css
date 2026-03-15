@@ -2251,3 +2251,133 @@ body::before{
     line-height:1.4 !important;
   }
 }
+/* =========================================
+   FIX RÉEL SETTINGS + MOBILE
+   À METTRE TOUT EN BAS
+   ========================================= */
+
+/* 1) espace entre les cartes empilées dans paramètres */
+#fpPageContainer .fpCol.fpColMain > .fpCardInner + .fpCardInner,
+#fpPageContainer .fpCol.fpColSide > .fpCardInner + .fpCardInner{
+  margin-top:24px !important;
+}
+
+/* 2) espace interne dans chaque carte paramètres */
+#fpPageContainer .fpCardInner > .fpSmall{
+  margin-bottom:18px !important;
+}
+
+#fpPageContainer .fpCardInner > .fpField + .fpField,
+#fpPageContainer .fpCardInner > .fpField + .fpDetailActions,
+#fpPageContainer .fpCardInner > .fpToggleRow + .fpToggleRow,
+#fpPageContainer .fpCardInner > .fpSettingsRow + .fpSettingsRow,
+#fpPageContainer .fpCardInner > .fpInlineLinks,
+#fpPageContainer .fpCardInner > .fpSettingsList{
+  margin-top:18px !important;
+}
+
+/* 3) rangées paramètres plus aérées */
+#fpPageContainer .fpToggleRow,
+#fpPageContainer .fpSettingsRow{
+  min-height:96px !important;
+  padding:20px 22px !important;
+  border-radius:22px !important;
+}
+
+#fpPageContainer .fpToggleRow{
+  display:flex !important;
+  justify-content:space-between !important;
+  align-items:center !important;
+  gap:16px !important;
+}
+
+#fpPageContainer .fpSettingsRow{
+  display:flex !important;
+  justify-content:space-between !important;
+  align-items:flex-start !important;
+  gap:16px !important;
+}
+
+/* 4) liens utiles desktop */
+#fpPageContainer .fpInlineLinks{
+  display:flex !important;
+  flex-wrap:wrap !important;
+  gap:14px !important;
+}
+
+#fpPageContainer .fpInlineLinks a{
+  min-height:46px !important;
+  padding:0 18px !important;
+  border-radius:999px !important;
+}
+
+/* 5) mobile */
+@media (max-width:760px){
+
+  /* cartes paramètres */
+  #fpPageContainer .fpCol.fpColMain > .fpCardInner + .fpCardInner,
+  #fpPageContainer .fpCol.fpColSide > .fpCardInner + .fpCardInner{
+    margin-top:20px !important;
+  }
+
+  #fpPageContainer .fpCardInner{
+    padding:22px !important;
+    border-radius:24px !important;
+  }
+
+  #fpPageContainer .fpCardInner > .fpField + .fpField,
+  #fpPageContainer .fpCardInner > .fpField + .fpDetailActions,
+  #fpPageContainer .fpCardInner > .fpToggleRow + .fpToggleRow,
+  #fpPageContainer .fpCardInner > .fpSettingsRow + .fpSettingsRow,
+  #fpPageContainer .fpCardInner > .fpInlineLinks,
+  #fpPageContainer .fpCardInner > .fpSettingsList{
+    margin-top:16px !important;
+  }
+
+  #fpPageContainer .fpToggleRow,
+  #fpPageContainer .fpSettingsRow{
+    min-height:auto !important;
+    padding:18px !important;
+    border-radius:20px !important;
+  }
+
+  /* boutons téléphone moins moches */
+  #fpPageContainer .fpInlineLinks a,
+  .fpBtn,
+  .fpTopActionsRow > .fpBtn,
+  .fpTopActionsRow > a.fpBtn,
+  .fpDetailActions > .fpBtn,
+  .fpDetailActions > a.fpBtn,
+  .fpCardActions > .fpBtn,
+  .fpCardActions > a.fpBtn,
+  .fpPageActions > .fpBtn,
+  .fpPageActions > a.fpBtn,
+  .fpMissionActions > .fpBtn,
+  .fpMissionActions > a.fpBtn{
+    width:100% !important;
+    min-height:48px !important;
+    padding:0 14px !important;
+    border-radius:14px !important;
+    font-size:14px !important;
+    font-weight:800 !important;
+    justify-content:center !important;
+  }
+
+  .fpBtnGhost,
+  #fpPageContainer .fpInlineLinks a{
+    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025)) !important;
+    border:1px solid var(--fpBorderStrong) !important;
+  }
+
+  /* typo mobile des missions un peu réduite */
+  .fpMissionTitle{
+    font-size:19px !important;
+    line-height:1.08 !important;
+  }
+
+  .fpMissionMeta,
+  .fpMissionDesc{
+    font-size:13px !important;
+    line-height:1.4 !important;
+  }
+}
