@@ -16,34 +16,43 @@
   <link rel="stylesheet" href="/style.css" />
 
   <style>
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      gap:12px;
+    }
+
     .logoBox{
       display:flex;
       align-items:center;
       justify-content:center;
       flex:0 0 auto;
       margin-top:10px;
+      background:none !important;
+      box-shadow:none !important;
     }
 
-   .logoBox .brandLogo{
-  width:34px;
-  height:34px;
-  object-fit:contain;
-  display:block;
-
-  background:none !important;
-  box-shadow:none !important;
-  padding:0 !important;
-}
-    .logoBox{
-  background:none !important;
-  box-shadow:none !important;
-}
+    .logoBox .brandLogo{
+      width:34px;
+      height:34px;
+      object-fit:contain;
+      display:block;
+      background:none !important;
+      box-shadow:none !important;
+      padding:0 !important;
+      border:none !important;
+    }
 
     .actions{
-  display:flex;
-  align-items:center;
-  gap:10px;
-}
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:10px;
+    }
 
     .actions .linkBtn,
     .actions .pill{
@@ -61,11 +70,6 @@
         justify-content:flex-start;
       }
     }
-    .topbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-}
   </style>
 </head>
 
