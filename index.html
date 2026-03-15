@@ -1,187 +1,268 @@
 <!doctype html>
 <html lang="fr">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FlowPoint — Essai 14 jours</title>
 
-<title>FlowPoint — Essai 14 jours</title>
+  <meta name="color-scheme" content="light dark"/>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-<style>
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --card:rgba(255,255,255,.92);
+      --text:#0f172a;
+      --muted:#667085;
+      --border:#e6eaf2;
+      --primary:#2f5bff;
+      --shadow:0 10px 30px rgba(16,24,40,.06);
+      --r:16px;
 
-:root{
---bg:#f6f7fb;
---card:rgba(255,255,255,.92);
---text:#0f172a;
---muted:#667085;
---border:#e6eaf2;
---primary:#2f5bff;
---shadow:0 10px 30px rgba(16,24,40,.06);
---r:16px;
-}
+      --field:#ffffff;
+      --fieldBorder:#d9deea;
+    }
 
-@media (prefers-color-scheme: dark){
-:root{
---bg:#070b18;
---card:rgba(12,18,40,.72);
---text:#e8eeff;
---muted:#aab7e1;
---border:rgba(255,255,255,.10);
-}
-}
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#070b18;
+        --card:rgba(12,18,40,.72);
+        --text:#e8eeff;
+        --muted:#aab7e1;
+        --border:rgba(255,255,255,.10);
+        --shadow:0 18px 70px rgba(0,0,0,.45);
 
-*{box-sizing:border-box}
+        --field:rgba(255,255,255,.06);
+        --fieldBorder:rgba(255,255,255,.12);
+      }
+    }
 
-body{
-margin:0;
-font-family:Inter,system-ui,-apple-system;
-background:var(--bg);
-color:var(--text);
-}
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background:
+        radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.16), transparent 55%),
+        radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.16), transparent 55%),
+        var(--bg);
+      color:var(--text);
+    }
 
-.wrap{
-max-width:860px;
-margin:50px auto;
-padding:0 16px;
-}
+    .wrap{
+      max-width:860px;
+      margin:44px auto;
+      padding:0 16px;
+    }
 
-.topbar{
-display:flex;
-justify-content:space-between;
-align-items:center;
-margin-bottom:16px;
-}
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-bottom:14px;
+    }
 
-.brand h1{
-margin:0;
-font-size:26px;
-font-weight:800;
-}
+    .brand{
+      display:flex;
+      align-items:flex-start;
+      gap:12px;
+    }
 
-.brand .sub{
-margin-top:6px;
-color:var(--muted);
-font-size:14px;
-}
+    .brandLogo{
+      width:46px;
+      height:46px;
+      object-fit:contain;
+      border-radius:12px;
+      display:block;
+      filter:drop-shadow(0 10px 22px rgba(0,0,0,.22));
+      flex:0 0 auto;
+      margin-top:2px;
+    }
 
-.links a{
-color:var(--primary);
-font-weight:700;
-text-decoration:none;
-margin-left:12px;
-}
+    .brandText h1{
+      margin:0;
+      font-size:26px;
+      letter-spacing:-.02em;
+      font-weight:800;
+    }
 
-.card{
-background:var(--card);
-border:1px solid var(--border);
-border-radius:var(--r);
-padding:20px;
-box-shadow:var(--shadow);
-}
+    .brandText .sub{
+      margin-top:6px;
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.45;
+    }
 
-.grid{
-display:grid;
-grid-template-columns:1fr 1fr;
-gap:12px;
-}
+    .links{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
 
-@media (max-width:720px){
-.grid{grid-template-columns:1fr;}
-}
+    .link{
+      color:var(--primary);
+      font-weight:800;
+      text-decoration:none;
+      background:rgba(47,91,255,.10);
+      border:1px solid rgba(47,91,255,.18);
+      padding:9px 12px;
+      border-radius:999px;
+      white-space:nowrap;
+    }
 
-label{
-display:block;
-margin-top:12px;
-font-size:13px;
-font-weight:600;
-}
+    @media (prefers-color-scheme: dark){
+      .link{color:#86a2ff;}
+    }
 
-input,select,button{
-width:100%;
-padding:12px;
-border-radius:12px;
-border:1px solid var(--border);
-margin-top:6px;
-font-size:14px;
-}
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--r);
+      padding:20px;
+      box-shadow:var(--shadow);
+      backdrop-filter:saturate(180%) blur(12px);
+    }
 
-button{
-border:none;
-background:linear-gradient(180deg,var(--primary),#2449ff);
-color:#fff;
-font-weight:700;
-cursor:pointer;
-margin-top:14px;
-}
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+    }
 
-#msg{
-margin-top:12px;
-}
+    @media (max-width: 720px){
+      .grid{grid-template-columns:1fr;}
+      .topbar{
+        flex-direction:column;
+        align-items:flex-start;
+      }
+      .links{
+        width:100%;
+      }
+    }
 
-</style>
+    label{
+      display:block;
+      margin-top:12px;
+      font-size:13px;
+      font-weight:800;
+      color:var(--text);
+      opacity:.9;
+    }
+
+    input,select,button{
+      width:100%;
+      padding:12px;
+      border-radius:12px;
+      margin-top:6px;
+      font-size:14px;
+      outline:none;
+    }
+
+    input,select{
+      border:1px solid var(--fieldBorder);
+      background:var(--field);
+      color:var(--text);
+    }
+
+    input:focus,select:focus{
+      border-color:rgba(47,91,255,.55);
+      box-shadow:0 0 0 4px rgba(47,91,255,.12);
+    }
+
+    button{
+      border:none;
+      background:linear-gradient(180deg, var(--primary), #2449ff);
+      color:#fff;
+      cursor:pointer;
+      margin-top:14px;
+    }
+
+    /* juste ce bouton moins gras */
+    #btn{
+      font-weight:600;
+    }
+
+    button:disabled{
+      opacity:.65;
+      cursor:not-allowed;
+    }
+
+    #msg{
+      margin-top:12px;
+      font-size:14px;
+    }
+
+    .note{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:12.5px;
+      line-height:1.45;
+    }
+
+    .tiny{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:10px;
+    }
+  </style>
 </head>
 
-<body>
+<body data-page="public">
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <img class="brandLogo" src="/assets/flowpoint-logo.svg" alt="FlowPoint">
+        <div class="brandText">
+          <h1>FlowPoint</h1>
+          <div class="sub">Essai gratuit 14 jours — carte requise. Accès bloqué si paiement échoue.</div>
+        </div>
+      </div>
 
-<div class="wrap">
+      <div class="links">
+        <a class="link" href="/pricing.html">Voir les offres</a>
+        <a class="link" href="/login.html">Se connecter</a>
+      </div>
+    </div>
 
-<div class="topbar">
-<div class="brand">
-<h1>FlowPoint</h1>
-<div class="sub">Essai gratuit 14 jours</div>
-</div>
+    <div class="card">
+      <form id="signupForm">
+        <div class="grid">
+          <div>
+            <label for="firstName">Prénom</label>
+            <input id="firstName" type="text" placeholder="Jean" />
+          </div>
 
-<div class="links">
-<a href="/pricing.html">Offres</a>
-<a href="/login.html">Connexion</a>
-</div>
-</div>
+          <div>
+            <label for="email">Email</label>
+            <input id="email" type="email" placeholder="jean@entreprise.com" required />
+          </div>
+        </div>
 
-<div class="card">
+        <label for="companyName">Entreprise</label>
+        <input id="companyName" type="text" placeholder="Entreprise ABC" required />
 
-<form id="signupForm">
+        <label for="plan">Offre</label>
+        <select id="plan" required>
+          <option value="standard">Standard</option>
+          <option value="pro" selected>Pro</option>
+          <option value="ultra">Ultra</option>
+        </select>
 
-<div class="grid">
+        <button id="btn" type="submit">Commencer l’essai</button>
+        <div id="msg"></div>
 
-<div>
-<label>Prénom</label>
-<input id="firstName" placeholder="Jean">
-</div>
+        <div class="note">
+          En continuant, tu acceptes que les emails d’alertes et rapports soient envoyés à ton équipe (selon les réglages d’organisation).
+        </div>
+        <div class="tiny">Tip : tu peux choisir un plan depuis la page “Offres”.</div>
+      </form>
+    </div>
+  </div>
 
-<div>
-<label>Email</label>
-<input id="email" type="email" required>
-</div>
-
-</div>
-
-<label>Entreprise</label>
-<input id="companyName">
-
-<label>Offre</label>
-
-<select id="plan">
-<option value="standard">Standard</option>
-<option value="pro" selected>Pro</option>
-<option value="ultra">Ultra</option>
-</select>
-
-<button id="btn" type="submit">
-Commencer l’essai
-</button>
-
-<div id="msg"></div>
-
-</form>
-
-</div>
-
-</div>
-
-<script src="/app.js"></script>
-
+  <script src="/app.js?v=2"></script>
 </body>
 </html>
