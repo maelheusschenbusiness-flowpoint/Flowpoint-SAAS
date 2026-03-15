@@ -8,24 +8,81 @@
   <link rel="stylesheet" href="/style.css" />
 
   <style>
-    .logoBox{
+    /* uniquement pour checkout */
+    .checkoutPage .topbar{
       display:flex;
       align-items:center;
-      justify-content:center;
-      flex:0 0 auto;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:16px;
     }
 
-    .brandLogo{
-      width:36px;
-      height:36px;
+    .checkoutPage .logoBox{
+      display:flex !important;
+      align-items:center;
+      justify-content:center;
+      width:44px;
+      height:44px;
+      min-width:44px;
+      min-height:44px;
+      flex:0 0 44px;
+    }
+
+    .checkoutPage .brandLogo{
+      display:block !important;
+      width:30px !important;
+      height:30px !important;
       object-fit:contain;
-      display:block;
+    }
+
+    .checkoutPage .grid{
+      display:grid;
+      grid-template-columns:minmax(0, 1.45fr) minmax(320px, .92fr);
+      gap:16px;
+      align-items:stretch;
+    }
+
+    .checkoutPage .mainCol,
+    .checkoutPage .side{
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+
+    .checkoutPage .section{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      flex:1;
+    }
+
+    .checkoutPage .checkoutCard{
+      flex:1;
+    }
+
+    .checkoutPage .side .card{
+      margin-top:0 !important;
+    }
+
+    .checkoutPage .side .card + .card{
+      margin-top:12px !important;
+    }
+
+    .checkoutPage .cardBody{
+      height:100%;
+    }
+
+    @media (max-width: 980px){
+      .checkoutPage .grid{
+        grid-template-columns:1fr;
+      }
     }
   </style>
 </head>
 
 <body>
-  <div class="page">
+  <div class="page checkoutPage">
     <div class="topbar">
       <div class="logoBox">
         <img
@@ -33,7 +90,7 @@
           src="/assets/flowpoint-logo.svg"
           alt="FlowPoint"
           onerror="this.src='/assets/flowpoint-logo.png'"
-        >
+        />
       </div>
 
       <div class="actions">
@@ -43,7 +100,7 @@
     </div>
 
     <div class="grid">
-      <div>
+      <div class="mainCol">
         <div class="hero">
           <h1>Paiement sécurisé</h1>
           <p>
@@ -58,7 +115,7 @@
             <div class="hint">Paiement intégré (FlowPoint).</div>
           </div>
 
-          <div class="card" style="margin-top:12px">
+          <div class="card checkoutCard">
             <div class="cardBody">
               <div id="checkoutMsg" class="small">Chargement du paiement…</div>
 
@@ -76,10 +133,10 @@
             </div>
           </div>
 
-          <div class="card" style="margin-top:12px">
+          <div class="card">
+            <div class="cardHead">Informations utiles</div>
             <div class="cardBody">
-              <div class="cardHead">Informations utiles</div>
-              <div class="small" style="margin-top:10px">
+              <div class="small">
                 • Le paiement valide ton plan et les add-ons sélectionnés.<br/>
                 • En cas de mise à jour d’abonnement, Stripe peut calculer un prorata.<br/>
                 • Une fois validé, ton espace FlowPoint est mis à jour automatiquement.<br/>
@@ -108,7 +165,7 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:12px">
+        <div class="card">
           <div class="cardHead">Ce que tu confirmes</div>
           <div class="cardBody">
             <div class="small">
@@ -120,7 +177,7 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:12px">
+        <div class="card">
           <div class="cardHead">Après paiement</div>
           <div class="cardBody">
             <div class="small">
