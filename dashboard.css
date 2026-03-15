@@ -2092,3 +2092,200 @@ body::before{
     }
   }
 }
+/* =========================================================
+   FIX FINAL — contenu injecté par dashboard.js
+   ========================================================= */
+
+/* Le conteneur principal doit vraiment espacer ses sections */
+#fpPageContainer{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:22px !important;
+}
+
+/* espace entre CHAQUE gros bloc injecté */
+#fpPageContainer > * + *{
+  margin-top:22px !important;
+}
+
+/* si une page injectée contient plusieurs cartes, on espace */
+#fpPageContainer .fpCol,
+#fpPageContainer .fpColMain,
+#fpPageContainer .fpColSide,
+#fpPageContainer .fpMissionAside,
+#fpPageContainer .fpMissionPageSide{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:18px !important;
+}
+
+/* évite les blocs collés dans paramètres / side panels */
+#fpPageContainer .fpCol > * + *,
+#fpPageContainer .fpColMain > * + *,
+#fpPageContainer .fpColSide > * + *,
+#fpPageContainer .fpMissionAside > * + *,
+#fpPageContainer .fpMissionPageSide > * + *{
+  margin-top:18px !important;
+}
+
+/* SETTINGS : espace vertical fort */
+#fpPageContainer .fpSettingsGrid{
+  gap:24px !important;
+}
+
+#fpPageContainer .fpSettingsGrid .fpCard,
+#fpPageContainer .fpSettingsGrid .fpCardInner{
+  padding:26px !important;
+}
+
+#fpPageContainer .fpSettingsGrid .fpCard > * + *,
+#fpPageContainer .fpSettingsGrid .fpCardInner > * + *{
+  margin-top:18px !important;
+}
+
+/* liste de réglages */
+#fpPageContainer .fpSettingsList{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:18px !important;
+  margin-top:0 !important;
+}
+
+#fpPageContainer .fpSettingsList > *{
+  margin:0 !important;
+}
+
+/* cases paramètres */
+#fpPageContainer .fpSettingsRow,
+#fpPageContainer .fpToggleRow{
+  min-height:92px !important;
+  padding:20px 22px !important;
+  border-radius:22px !important;
+}
+
+#fpPageContainer .fpSettingsRow{
+  display:flex !important;
+  justify-content:space-between !important;
+  align-items:flex-start !important;
+  gap:16px !important;
+}
+
+#fpPageContainer .fpToggleRow{
+  display:flex !important;
+  justify-content:space-between !important;
+  align-items:center !important;
+  gap:16px !important;
+}
+
+/* liens utiles */
+#fpPageContainer .fpInlineLinks{
+  display:flex !important;
+  flex-wrap:wrap !important;
+  gap:14px !important;
+  margin-top:20px !important;
+}
+
+#fpPageContainer .fpInlineLinks a{
+  min-height:46px !important;
+  padding:0 18px !important;
+  border-radius:999px !important;
+}
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+@media (max-width:760px){
+
+  #fpPageContainer{
+    gap:18px !important;
+  }
+
+  #fpPageContainer > * + *{
+    margin-top:18px !important;
+  }
+
+  #fpPageContainer .fpSettingsGrid{
+    grid-template-columns:1fr !important;
+    gap:20px !important;
+    margin-top:18px !important;
+  }
+
+  #fpPageContainer .fpSettingsGrid .fpCard,
+  #fpPageContainer .fpSettingsGrid .fpCardInner{
+    padding:22px !important;
+    border-radius:24px !important;
+  }
+
+  #fpPageContainer .fpSettingsGrid .fpCard > * + *,
+  #fpPageContainer .fpSettingsGrid .fpCardInner > * + *{
+    margin-top:16px !important;
+  }
+
+  #fpPageContainer .fpSettingsList{
+    gap:16px !important;
+  }
+
+  #fpPageContainer .fpSettingsRow,
+  #fpPageContainer .fpToggleRow{
+    min-height:auto !important;
+    padding:18px !important;
+    border-radius:20px !important;
+  }
+
+  #fpPageContainer .fpSettingsRow span,
+  #fpPageContainer .fpSettingsRow strong{
+    display:block !important;
+    width:100% !important;
+  }
+
+  #fpPageContainer .fpSettingsRow strong{
+    margin-top:4px !important;
+    text-align:left !important;
+  }
+
+  /* boutons téléphone */
+  #fpPageContainer .fpInlineLinks{
+    flex-direction:column !important;
+    gap:12px !important;
+    margin-top:18px !important;
+  }
+
+  #fpPageContainer .fpInlineLinks a,
+  .fpBtn,
+  .fpTopActionsRow > .fpBtn,
+  .fpTopActionsRow > a.fpBtn,
+  .fpDetailActions > .fpBtn,
+  .fpDetailActions > a.fpBtn,
+  .fpCardActions > .fpBtn,
+  .fpCardActions > a.fpBtn,
+  .fpPageActions > .fpBtn,
+  .fpPageActions > a.fpBtn,
+  .fpMissionActions > .fpBtn,
+  .fpMissionActions > a.fpBtn{
+    width:100% !important;
+    min-height:50px !important;
+    padding:0 16px !important;
+    border-radius:16px !important;
+    font-size:15px !important;
+    font-weight:800 !important;
+    justify-content:center !important;
+  }
+
+  .fpBtnGhost,
+  #fpPageContainer .fpInlineLinks a{
+    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025)) !important;
+    border:1px solid var(--fpBorderStrong) !important;
+  }
+
+  /* typo mobile légèrement plus petite */
+  .fpMissionTitle{
+    font-size:19px !important;
+    line-height:1.08 !important;
+  }
+
+  .fpMissionMeta,
+  .fpMissionDesc{
+    font-size:13px !important;
+    line-height:1.4 !important;
+  }
+}
