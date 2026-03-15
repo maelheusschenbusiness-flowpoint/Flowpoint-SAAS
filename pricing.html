@@ -15,62 +15,85 @@
 
   <link rel="stylesheet" href="/style.css" />
 
-  <style>
+<style>
+  .topbar{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+
+  .logoBox{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex:0 0 auto;
+    margin-top:10px;
+    background:transparent !important;
+    background-image:none !important;
+    box-shadow:none !important;
+    border:none !important;
+    border-radius:0 !important;
+    padding:0 !important;
+    overflow:visible !important;
+  }
+
+  .logoBox::before,
+  .logoBox::after{
+    content:none !important;
+    display:none !important;
+  }
+
+  .logoBox .brandLogo{
+    width:34px !important;
+    height:34px !important;
+    max-width:34px !important;
+    max-height:34px !important;
+    min-width:34px !important;
+    min-height:34px !important;
+    object-fit:contain;
+    display:block;
+    background:transparent !important;
+    background-image:none !important;
+    box-shadow:none !important;
+    border:none !important;
+    outline:none !important;
+    border-radius:0 !important;
+    padding:0 !important;
+    margin:0 !important;
+  }
+
+  .actions{
+    display:flex !important;
+    align-items:center !important;
+    justify-content:flex-end !important;
+    gap:10px !important;
+    flex-wrap:wrap;
+    margin-top:10px;
+  }
+
+  .actions .linkBtn,
+  .actions .pill{
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    min-height:40px;
+    line-height:1 !important;
+    margin:0 !important;
+    vertical-align:middle !important;
+  }
+
+  @media (max-width:900px){
     .topbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      flex-wrap:wrap;
-      gap:12px;
-    }
-
-    .logoBox{
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      flex:0 0 auto;
-      margin-top:10px;
-      background:none !important;
-      box-shadow:none !important;
-    }
-
-    .logoBox .brandLogo{
-      width:34px;
-      height:34px;
-      object-fit:contain;
-      display:block;
-      background:none !important;
-      box-shadow:none !important;
-      padding:0 !important;
-      border:none !important;
+      align-items:flex-start;
     }
 
     .actions{
-      display:flex;
-      align-items:center;
-      justify-content:flex-end;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-top:10px;
+      justify-content:flex-start !important;
     }
-
-    .actions .linkBtn,
-    .actions .pill{
-      display:inline-flex !important;
-      align-items:center !important;
-      justify-content:center !important;
-      min-height:40px;
-      line-height:1 !important;
-      vertical-align:middle;
-      margin:0 !important;
-    }
-
-    @media (max-width:900px){
-      .actions{
-        justify-content:flex-start;
-      }
-    }
-  </style>
+  }
+</style>
 </head>
 
 <body>
