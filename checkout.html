@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Checkout — FlowPoint</title>
   <meta name="color-scheme" content="light dark" />
-  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
-  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
   <link rel="stylesheet" href="/style.css" />
 
   <style>
@@ -23,6 +21,72 @@
       max-height:34px !important;
       object-fit:contain;
       display:block;
+    }
+
+    /* grille checkout alignée comme pricing */
+    .grid{
+      align-items:stretch !important;
+    }
+
+    .grid > div,
+    .grid > .side{
+      display:flex;
+      flex-direction:column;
+      min-height:100%;
+    }
+
+    .grid > div > .section{
+      display:flex;
+      flex-direction:column;
+      flex:1 1 auto;
+    }
+
+    .grid > div > .section .card{
+      flex:1 1 auto;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .grid > div > .section .card .cardBody{
+      flex:1 1 auto;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .side{
+      display:flex !important;
+      flex-direction:column !important;
+      gap:12px;
+      min-height:100%;
+    }
+
+    .side .card{
+      margin-top:0 !important;
+    }
+
+    .side .card:last-child{
+      flex:1 1 auto;
+    }
+
+    @media (max-width:980px){
+      .grid{
+        align-items:start !important;
+      }
+
+      .grid > div,
+      .grid > .side,
+      .grid > div > .section,
+      .side{
+        display:block !important;
+        min-height:0 !important;
+        height:auto !important;
+      }
+
+      .grid > div > .section .card,
+      .grid > div > .section .card .cardBody,
+      .side .card:last-child{
+        flex:none !important;
+      }
     }
   </style>
 </head>
@@ -63,10 +127,8 @@
             <div class="cardBody">
               <div id="checkoutMsg" class="small">Chargement du paiement…</div>
 
-              <!-- 1) Embedded Checkout (nouvelle souscription) -->
               <div id="embedded-checkout" style="margin-top:10px"></div>
 
-              <!-- 2) Payment Element (prorata sur update) -->
               <form id="piForm" style="display:none; margin-top:10px">
                 <div id="payment-element"></div>
                 <div style="height:10px"></div>
@@ -76,20 +138,19 @@
               <button class="ghostBtn" id="retryBtn" style="display:none;margin-top:10px" type="button">
                 Réessayer
               </button>
-            </div>
-          </div>
-        </div>
 
-        <!-- AJOUT pour rééquilibrer la page comme pricing -->
-        <div class="card" style="margin-top:16px">
-          <div class="cardHead">Informations utiles</div>
-          <div class="cardBody">
-            <ul class="miniList">
-              <li>Le paiement valide ton plan et les add-ons sélectionnés</li>
-              <li>En cas de mise à jour d’abonnement, Stripe peut calculer un prorata</li>
-              <li>Une fois validé, ton espace FlowPoint est mis à jour automatiquement</li>
-              <li>Tu pourras revenir ensuite sur pricing ou add-ons pour modifier ton abonnement</li>
-            </ul>
+              <div class="card" style="margin-top:14px">
+                <div class="cardHead">Informations utiles</div>
+                <div class="cardBody">
+                  <div class="small">
+                    • Le paiement valide ton plan et les add-ons sélectionnés<br/>
+                    • En cas de mise à jour d’abonnement, Stripe peut calculer un prorata<br/>
+                    • Une fois validé, ton espace FlowPoint est mis à jour automatiquement<br/>
+                    • Tu pourras revenir ensuite sur pricing ou add-ons pour modifier ton abonnement
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -115,31 +176,30 @@
         <div class="card">
           <div class="cardHead">Ce que tu confirmes</div>
           <div class="cardBody">
-            <ul class="miniList">
-              <li>Le plan choisi ou la mise à jour de ton abonnement</li>
-              <li>Les add-ons sélectionnés avant validation</li>
-              <li>Le paiement immédiat si un prorata Stripe est demandé</li>
-              <li>La mise à jour automatique de ton espace FlowPoint</li>
-            </ul>
+            <div class="small">
+              • Le plan choisi ou la mise à jour de ton abonnement<br/>
+              • Les add-ons sélectionnés avant validation<br/>
+              • Le paiement immédiat si un prorata Stripe est demandé<br/>
+              • La mise à jour automatique de ton espace FlowPoint
+            </div>
           </div>
         </div>
 
         <div class="card">
           <div class="cardHead">Après paiement</div>
           <div class="cardBody">
-            <ul class="miniList">
-              <li>Retour automatique vers le dashboard</li>
-              <li>Activation du plan ou des options validées</li>
-              <li>Synchronisation des accès et des quotas</li>
-              <li>Possibilité de gérer à nouveau les add-ons ensuite</li>
-            </ul>
+            <div class="small">
+              • Retour automatique vers le dashboard<br/>
+              • Activation du plan ou des options validées<br/>
+              • Synchronisation des accès et des quotas<br/>
+              • Possibilité de gérer à nouveau les add-ons ensuite
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Stripe.js (UNE SEULE FOIS) -->
   <script src="https://js.stripe.com/v3/"></script>
 
   <script>
