@@ -15,107 +15,105 @@
 
   <link rel="stylesheet" href="/style.css" />
 
-<style>
-  .topbar{
-    display:grid !important;
-    grid-template-columns: 34px 1fr;
-    align-items:start;
-    column-gap:18px;
-    row-gap:10px;
-    margin-bottom:16px;
-  }
-
-  .logoBox{
-    width:34px;
-    height:34px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    margin-top:10px;
-    background:transparent !important;
-    background-image:none !important;
-    box-shadow:none !important;
-    border:none !important;
-    border-radius:0 !important;
-    padding:0 !important;
-    overflow:visible !important;
-  }
-
-  .logoBox::before,
-  .logoBox::after{
-    content:none !important;
-    display:none !important;
-  }
-
-  .logoBox .brandLogo{
-    width:34px !important;
-    height:34px !important;
-    min-width:34px !important;
-    min-height:34px !important;
-    max-width:34px !important;
-    max-height:34px !important;
-    object-fit:contain;
-    display:block;
-    background:transparent !important;
-    background-image:none !important;
-    box-shadow:none !important;
-    border:none !important;
-    outline:none !important;
-    border-radius:0 !important;
-    padding:0 !important;
-    margin:0 !important;
-  }
-
-  .actions{
-    display:flex !important;
-    justify-content:flex-end !important;
-    align-items:center !important;
-    gap:10px !important;
-    flex-wrap:wrap !important;
-    width:100%;
-    margin-top:6px;
-  }
-
-  .actions .linkBtn,
-  .actions .pill{
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    min-height:40px;
-    line-height:1 !important;
-    margin:0 !important;
-    vertical-align:middle !important;
-  }
-
-  @media (max-width:900px){
-    .topbar{
-      grid-template-columns:1fr;
+  <style>
+    .pricingTopbar{
+      display:grid;
+      grid-template-columns:34px minmax(0,1fr);
+      align-items:start;
+      gap:16px;
+      margin-bottom:16px;
     }
 
-    .actions{
-      justify-content:flex-start !important;
+    .pricingLogoBox{
+      width:34px;
+      height:34px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      margin-top:10px;
+      background:none !important;
+      background-image:none !important;
+      box-shadow:none !important;
+      border:none !important;
+      border-radius:0 !important;
+      padding:0 !important;
+      overflow:visible !important;
     }
-  }
-</style>
+
+    .pricingLogoBox::before,
+    .pricingLogoBox::after{
+      content:none !important;
+      display:none !important;
+    }
+
+    .pricingLogo{
+      width:34px !important;
+      height:34px !important;
+      min-width:34px !important;
+      min-height:34px !important;
+      max-width:34px !important;
+      max-height:34px !important;
+      object-fit:contain;
+      display:block;
+      background:none !important;
+      background-image:none !important;
+      box-shadow:none !important;
+      border:none !important;
+      outline:none !important;
+      border-radius:0 !important;
+      padding:0 !important;
+      margin:0 !important;
+      filter:none !important;
+    }
+
+    .pricingTopbarRight{
+      display:flex;
+      justify-content:flex-end;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      width:100%;
+      margin-top:6px;
+    }
+
+    .pricingTopbarRight .linkBtn,
+    .pricingTopbarRight .pill{
+      display:inline-flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      min-height:40px;
+      line-height:1 !important;
+      margin:0 !important;
+      vertical-align:middle !important;
+    }
+
+    @media (max-width:900px){
+      .pricingTopbar{
+        grid-template-columns:1fr;
+      }
+
+      .pricingTopbarRight{
+        justify-content:flex-start;
+      }
+    }
+  </style>
 </head>
 
 <body>
   <div class="page">
-    <div class="topbar">
-
-      <div class="logoBox">
+    <div class="pricingTopbar">
+      <div class="pricingLogoBox">
         <img
-          class="brandLogo"
+          class="pricingLogo"
           src="/assets/flowpoint-logo.svg"
           alt="FlowPoint"
           onerror="this.src='/assets/flowpoint-logo.png'">
       </div>
 
-      <div class="actions">
-        <a class="linkBtn" href="./login.html">Retour à l’accueil</a>
+      <div class="pricingTopbarRight">
+        <a class="linkBtn" href="/login.html">Retour à l’accueil</a>
         <div class="pill" id="authPill">Statut : …</div>
       </div>
-
     </div>
 
     <div class="grid">
@@ -193,7 +191,6 @@
           </div>
         </div>
       </div>
-
     </div>
   </div>
 
