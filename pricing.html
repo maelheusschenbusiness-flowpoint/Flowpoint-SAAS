@@ -16,106 +16,101 @@
   <link rel="stylesheet" href="/style.css" />
 
   <style>
-    .pricingTopbar{
-  display:grid;
-  grid-template-columns:34px 1fr;
-  align-items:center;
-  gap:16px;
-  margin-bottom:16px;
-}
+  .pricingHeader{
+    display:grid;
+    grid-template-columns:34px 1fr auto;
+    align-items:start;
+    gap:16px;
+    margin-bottom:16px;
+  }
 
-    .pricingLogoBox{
-      width:34px;
-      height:34px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      margin-top:10px;
-      background:none !important;
-      background-image:none !important;
-      box-shadow:none !important;
-      border:none !important;
-      border-radius:0 !important;
-      padding:0 !important;
-      overflow:visible !important;
+  .pricingLogoBox{
+    width:34px;
+    height:34px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:none !important;
+    background-image:none !important;
+    box-shadow:none !important;
+    border:none !important;
+    border-radius:0 !important;
+    padding:0 !important;
+    margin:0 !important;
+  }
+
+  .pricingLogoBox::before,
+  .pricingLogoBox::after{
+    content:none !important;
+    display:none !important;
+  }
+
+  .pricingLogo{
+    width:34px !important;
+    height:34px !important;
+    display:block;
+    object-fit:contain;
+    background:none !important;
+    background-image:none !important;
+    box-shadow:none !important;
+    border:none !important;
+    outline:none !important;
+    border-radius:0 !important;
+    padding:0 !important;
+    margin:0 !important;
+    filter:none !important;
+  }
+
+  .pricingHeaderActions{
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    gap:10px;
+    min-height:34px;
+  }
+
+  .pricingHeaderActions .linkBtn,
+  .pricingHeaderActions .pill{
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    min-height:40px;
+    margin:0 !important;
+    line-height:1 !important;
+  }
+
+  @media (max-width:900px){
+    .pricingHeader{
+      grid-template-columns:34px 1fr;
     }
 
-    .pricingLogoBox::before,
-    .pricingLogoBox::after{
-      content:none !important;
-      display:none !important;
-      margin-top:0;
-    }
-
-    .pricingLogo{
-      width:34px !important;
-      height:34px !important;
-      min-width:34px !important;
-      min-height:34px !important;
-      max-width:34px !important;
-      max-height:34px !important;
-      object-fit:contain;
-      display:block;
-      background:none !important;
-      background-image:none !important;
-      box-shadow:none !important;
-      border:none !important;
-      outline:none !important;
-      border-radius:0 !important;
-      padding:0 !important;
-      margin:0 !important;
-      filter:none !important;
-    }
-
-    .pricingTopbarRight{
-      display:flex;
-      justify-content:flex-end;
-      align-items:center;
-      gap:10px;
+    .pricingHeaderActions{
+      grid-column:1 / -1;
+      justify-content:flex-start;
       flex-wrap:wrap;
-      width:100%;
-      margin-top:6px;
     }
-
-    .pricingTopbarRight .linkBtn,
-    .pricingTopbarRight .pill{
-      display:inline-flex !important;
-      align-items:center !important;
-      justify-content:center !important;
-      min-height:40px;
-      line-height:1 !important;
-      margin:0 !important;
-      vertical-align:middle !important;
-    }
-
-    @media (max-width:900px){
-      .pricingTopbar{
-        grid-template-columns:1fr;
-      }
-
-      .pricingTopbarRight{
-        justify-content:flex-start;
-      }
-    }
-  </style>
+  }
+</style>
 </head>
 
 <body>
-  <div class="page">
-    <div class="pricingTopbar">
-      <div class="pricingLogoBox">
-        <img
-          class="pricingLogo"
-          src="/assets/flowpoint-logo.svg"
-          alt="FlowPoint"
-          onerror="this.src='/assets/flowpoint-logo.png'">
-      </div>
+ 
+      <div class="pricingHeader">
+  <div class="pricingLogoBox">
+    <img
+      class="pricingLogo"
+      src="/assets/flowpoint-logo.svg"
+      alt="FlowPoint"
+      onerror="this.src='/assets/flowpoint-logo.png'">
+  </div>
 
-      <div class="pricingTopbarRight">
-        <a class="linkBtn" href="/login.html">Retour à l’accueil</a>
-        <div class="pill" id="authPill">Statut : …</div>
-      </div>
-    </div>
+  <div></div>
+
+  <div class="pricingHeaderActions">
+    <a class="linkBtn" href="/login.html">Retour à l’accueil</a>
+    <div class="pill" id="authPill">Statut : …</div>
+  </div>
+</div>
 
     <div class="grid">
       <div>
