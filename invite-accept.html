@@ -1,141 +1,187 @@
 <!doctype html>
 <html lang="fr">
 <head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Invitation — FlowPoint</title>
 
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="color-scheme" content="light dark"/>
 
-<title>Invitation — FlowPoint</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg"/>
+  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg"/>
 
-<meta name="color-scheme" content="light dark"/>
+  <link rel="stylesheet" href="/style.css"/>
 
-<link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg"/>
-<link rel="shortcut icon" href="/assets/flowpoint-logo.svg"/>
+  <style>
+    .centerBox{
+      max-width:520px;
+      margin:60px auto;
+    }
 
-<link rel="stylesheet" href="/style.css"/>
+    .field{
+      margin-top:12px;
+    }
 
-<style>
+    .field label{
+      display:block;
+      margin-bottom:6px;
+      font-size:13px;
+      font-weight:800;
+      color:var(--text);
+    }
 
-.centerBox{
-max-width:520px;
-margin:60px auto;
-}
+    .input{
+      width:100%;
+      padding:12px 14px;
+      border-radius:12px;
+      border:1px solid var(--inputBorder);
+      background:var(--inputBg);
+      color:var(--text);
+      box-sizing:border-box;
+      font:inherit;
+      outline:none;
+    }
 
-.input{
-width:100%;
-padding:12px 14px;
-border-radius:12px;
-border:1px solid rgba(255,255,255,.15);
-background:rgba(255,255,255,.05);
-color:white;
-margin-top:10px;
-box-sizing:border-box;
-}
+    .input::placeholder{
+      color:var(--muted);
+      opacity:.85;
+    }
 
-.input::placeholder{
-color:rgba(255,255,255,.5);
-}
+    .input:focus{
+      border-color:rgba(47,91,255,.55);
+      box-shadow:0 0 0 4px rgba(47,91,255,.12);
+    }
 
-.msg{
-margin-top:10px;
-font-size:14px;
-}
+    .msg{
+      margin-top:10px;
+      font-size:14px;
+      line-height:1.45;
+    }
 
-.error{color:#ff6b6b;font-weight:700}
-.ok{color:#4cff8d;font-weight:700}
+    .error{
+      color:#ff6b6b;
+      font-weight:700;
+    }
 
-</style>
+    .ok{
+      color:#4cff8d;
+      font-weight:700;
+    }
 
+    @media (prefers-color-scheme: light){
+      .centerBox .card{
+        background:rgba(255,255,255,.96);
+      }
+
+      .input{
+        background:#ffffff;
+        border:1px solid #d9deea;
+        color:#0f172a;
+      }
+
+      .input::placeholder{
+        color:#667085;
+        opacity:.9;
+      }
+    }
+
+    @media (max-width:640px){
+      .centerBox{
+        margin:28px auto;
+      }
+    }
+  </style>
 </head>
 
 <body>
+  <div class="page">
+    <div class="centerBox">
 
-<div class="page">
+      <div class="hero">
+        <h1>Rejoindre l’équipe</h1>
+        <p>Entre ton email invité et ton nom pour accepter l’invitation.</p>
+      </div>
 
-<div class="centerBox">
+      <div class="card" style="margin-top:12px">
+        <div class="cardBody">
 
-<div class="hero">
-<h1>Rejoindre l’équipe</h1>
-<p>Entre ton email invité et ton nom pour accepter l’invitation.</p>
-</div>
+          <div class="field">
+            <label for="name">Nom</label>
+            <input
+              id="name"
+              class="input"
+              type="text"
+              placeholder="Nom (optionnel)"
+              autocomplete="name"
+            />
+          </div>
 
-<div class="card" style="margin-top:12px">
-<div class="cardBody">
+          <div class="field">
+            <label for="email">Email invité</label>
+            <input
+              id="email"
+              class="input"
+              type="email"
+              placeholder="Email invité"
+              autocomplete="email"
+              required
+            />
+          </div>
 
-<input id="name" class="input" placeholder="Nom (optionnel)"/>
+          <div style="height:12px"></div>
 
-<input id="email" class="input" type="email" placeholder="Email invité"/>
+          <button class="primaryBtn" id="btn">
+            Accepter l’invitation
+          </button>
 
-<div style="height:12px"></div>
+          <div id="msg" class="msg muted"></div>
 
-<button class="primaryBtn" id="btn">
-Accepter l’invitation
-</button>
+        </div>
+      </div>
 
-<div id="msg" class="msg muted"></div>
+    </div>
+  </div>
 
-</div>
-</div>
+  <script>
+    const msg = document.getElementById("msg");
+    const btn = document.getElementById("btn");
 
-</div>
+    function setMsg(t, type = "") {
+      msg.className = "msg " + (type === "error" ? "error" : type === "ok" ? "ok" : "muted");
+      msg.textContent = t || "";
+    }
 
-</div>
+    btn.addEventListener("click", async () => {
+      const params = new URLSearchParams(location.search);
+      const token = params.get("token");
+      const email = document.getElementById("email").value.trim();
+      const name = document.getElementById("name").value.trim();
 
-<script>
+      if (!token) return setMsg("Token manquant.", "error");
+      if (!email) return setMsg("Email requis.", "error");
 
-const msg = document.getElementById("msg");
-const btn = document.getElementById("btn");
+      btn.disabled = true;
+      setMsg("Acceptation…");
 
-function setMsg(t,type=""){
-msg.className="msg "+(type==="error"?"error":type==="ok"?"ok":"muted");
-msg.textContent=t||"";
-}
+      try {
+        const r = await fetch("/api/org/invite/accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, email, name })
+        });
 
-btn.addEventListener("click",async()=>{
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Erreur");
 
-const params=new URLSearchParams(location.search);
-const token=params.get("token");
-
-const email=document.getElementById("email").value.trim();
-const name=document.getElementById("name").value.trim();
-
-if(!token)return setMsg("Token manquant.","error");
-if(!email)return setMsg("Email requis.","error");
-
-btn.disabled=true;
-setMsg("Acceptation…");
-
-try{
-
-const r=await fetch("/api/org/invite/accept",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({token,email,name})
-});
-
-const d=await r.json().catch(()=>({}));
-
-if(!r.ok)throw new Error(d.error||"Erreur");
-
-localStorage.setItem("fp_token",d.token);
-
-setMsg("✅ Invitation acceptée. Redirection…","ok");
-
-setTimeout(()=>location.href="/dashboard.html",800);
-
-}catch(e){
-
-setMsg(e.message||"Erreur","error");
-
-}finally{
-
-btn.disabled=false;
-
-}
-
-});
-
-</script>
-
+        localStorage.setItem("fp_token", d.token);
+        setMsg("✅ Invitation acceptée. Redirection…", "ok");
+        setTimeout(() => location.href = "/dashboard.html", 800);
+      } catch (e) {
+        setMsg(e.message || "Erreur", "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>
