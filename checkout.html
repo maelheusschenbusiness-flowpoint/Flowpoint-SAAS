@@ -76,14 +76,6 @@
       margin-bottom:8px;
     }
 
-    .checkoutPage #embedded-checkout{
-      min-height:0 !important;
-    }
-
-    .checkoutPage #piForm{
-      margin-top:10px;
-    }
-
     .checkoutPage .checkoutShell{
       border-radius:16px;
       border:1px solid rgba(255,255,255,.08);
@@ -102,12 +94,32 @@
       line-height:1.55;
     }
 
+    @media (prefers-color-scheme: light){
+      .checkoutPage .checkoutShell{
+        border:1px solid rgba(15,23,42,.08);
+        background:rgba(15,23,42,.02);
+      }
+
+      .checkoutPage .checkoutPlaceholder{
+        border:1px solid rgba(15,23,42,.07);
+        background:rgba(15,23,42,.025);
+        color:#334155;
+      }
+    }
+
     .checkoutPage .miniInfo{
       margin-top:12px;
       border-radius:16px;
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.02);
       padding:14px 16px;
+    }
+
+    @media (prefers-color-scheme: light){
+      .checkoutPage .miniInfo{
+        border:1px solid rgba(15,23,42,.08);
+        background:rgba(15,23,42,.02);
+      }
     }
 
     .checkoutPage .miniInfoTitle{
@@ -163,15 +175,15 @@
         <div class="hero">
           <h1>Paiement sécurisé</h1>
           <p>
-            Tu confirmes ton plan et tes add-ons. Si tu es déjà abonné, FlowPoint applique la modification
-            et, s’il y a un prorata à payer, tu le règles ici.
+            Tu confirmes ton plan et tes add-ons. Le paiement FlowPoint se fait ensuite
+            dans l’interface checkout intégrée.
           </p>
         </div>
 
         <div class="section">
           <div class="sectionHead">
             <div class="title">Checkout</div>
-            <div class="hint">Paiement intégré (FlowPoint).</div>
+            <div class="hint">Paiement FlowPoint.</div>
           </div>
 
           <div class="card checkoutCard">
@@ -180,17 +192,12 @@
 
               <div class="checkoutShell">
                 <div class="checkoutPlaceholder">
-                  Le module de paiement sécurisé va s’afficher ici automatiquement.<br/>
-                  Vérifie bien ton plan, tes add-ons et attends le chargement de Stripe avant de valider.
+                  Le paiement s’ouvrira dans la page checkout intégrée FlowPoint.<br/>
+                  Vérifie bien ton plan et tes add-ons avant de continuer.
                 </div>
 
-                <div id="embedded-checkout"></div>
-
-                <form id="piForm" style="display:none;">
-                  <div id="payment-element"></div>
-                  <div style="height:10px"></div>
-                  <button class="primaryBtn" id="payBtn" type="submit">Payer maintenant</button>
-                </form>
+                <div style="height:12px"></div>
+                <button class="primaryBtn" id="goEmbeddedBtn" type="button">Continuer vers le paiement</button>
               </div>
 
               <button class="ghostBtn" id="retryBtn" style="display:none;margin-top:10px" type="button">
@@ -201,7 +208,7 @@
                 <div class="miniInfoTitle">Informations utiles</div>
                 <div class="small">
                   • Le paiement valide ton plan et les add-ons sélectionnés.<br/>
-                  • En cas de mise à jour d’abonnement, Stripe peut calculer un prorata.<br/>
+                  • En cas de mise à jour d’abonnement, un prorata peut être calculé.<br/>
                   • Une fois validé, ton espace FlowPoint est mis à jour automatiquement.
                 </div>
               </div>
@@ -222,8 +229,8 @@
             </div>
 
             <div class="small" style="margin-top:10px">
-              • Si tu annules le paiement, tu reviens sur /cancel.html.<br/>
-              • Si paiement OK, on redirige vers /dashboard.html.
+              • Si tu annules, tu reviens sur /cancel.html.<br/>
+              • Si le paiement est validé, retour vers /dashboard.html.
             </div>
           </div>
         </div>
@@ -234,7 +241,7 @@
             <div class="small">
               • Le plan choisi ou la mise à jour de ton abonnement<br/>
               • Les add-ons sélectionnés avant validation<br/>
-              • Le paiement immédiat si un prorata Stripe est demandé<br/>
+              • Le paiement immédiat si nécessaire<br/>
               • La mise à jour automatique de ton espace FlowPoint
             </div>
           </div>
@@ -254,12 +261,6 @@
       </div>
     </div>
   </div>
-
-  <script src="https://js.stripe.com/v3/"></script>
-
-  <script>
-    window.STRIPE_PUBLISHABLE_KEY = "pk_live_51StVIr9eqtbj6iPB07lwbilmCrWyiNYvupqep7WV7BwxljclefFqISYc6GHW9RFEoohaXVHdyXu43ivcAWSRf2gp00QEjt2RSe";
-  </script>
 
   <script src="/checkout.js"></script>
 </body>
