@@ -164,36 +164,31 @@
               <div class="fpCardHead">
                 <div>
                   <div class="fpCardKicker">Paiement</div>
-                  <h2 class="fpSectionTitle">Gestion Stripe</h2>
+                  <h2 class="fpSectionTitle">Gestion FlowPoint</h2>
                   <p class="fpCardText">
-                    Accès direct au portail Stripe pour gérer le moyen de paiement, la facturation
-                    et l’abonnement.
+                    Accès direct aux pages de gestion de l’abonnement sans lien portail externe visible.
                   </p>
                 </div>
               </div>
 
               <div class="fpRows">
                 <div class="fpReportCard">
-                  <div class="fpReportTitle">Portail Stripe</div>
+                  <div class="fpReportTitle">Gérer le plan</div>
                   <div class="fpReportMeta">
-                    Ouvre l’espace sécurisé Stripe pour gérer ton abonnement FlowPoint.
+                    Modifie ton plan directement depuis la page pricing FlowPoint.
                   </div>
                   <div class="fpDetailActions">
-                    <button class="fpBtn fpBtnPrimary" type="button" id="fpStandalonePortalBtn">
-                      Accéder portail Stripe
-                    </button>
+                    <a class="fpBtn fpBtnPrimary" href="/pricing.html">Ouvrir pricing</a>
                   </div>
                 </div>
 
                 <div class="fpReportCard">
-                  <div class="fpReportTitle">Retour dashboard</div>
+                  <div class="fpReportTitle">Gérer les add-ons</div>
                   <div class="fpReportMeta">
-                    Revenir directement à la section billing du dashboard principal.
+                    Active ou désactive les modules directement dans FlowPoint.
                   </div>
                   <div class="fpDetailActions">
-                    <a class="fpBtn fpBtnGhost" href="/dashboard.html#billing">
-                      Voir dans le dashboard
-                    </a>
+                    <a class="fpBtn fpBtnGhost" href="/addons.html">Ouvrir add-ons</a>
                   </div>
                 </div>
               </div>
@@ -261,7 +256,6 @@
       const menuBtn = document.getElementById("fpMenuBtn");
       const sidebar = document.getElementById("sidebar");
       const overlay = document.getElementById("fpOverlay");
-      const portalBtn = document.getElementById("fpStandalonePortalBtn");
       const statusText = document.getElementById("fpBillingStatusText");
       const statusDot = document.getElementById("fpBillingStatusDot");
 
@@ -460,24 +454,6 @@
         return res;
       }
 
-      async function openStripePortal() {
-        setStatus("Ouverture Stripe…", "warn");
-
-        try {
-          const r = await fetchWithAuth("/api/stripe/portal", { method: "POST" });
-          const data = await r.json().catch(() => ({}));
-
-          if (!r.ok || !data?.url) {
-            throw new Error(data?.error || "Erreur portail Stripe");
-          }
-
-          window.location.href = data.url;
-        } catch (e) {
-          console.error(e);
-          setStatus("Erreur portail Stripe", "danger");
-        }
-      }
-
       async function loadBillingInfo() {
         setStatus("Chargement billing…", "warn");
 
@@ -523,7 +499,6 @@
 
       menuBtn?.addEventListener("click", openSidebar);
       overlay?.addEventListener("click", closeSidebar);
-      portalBtn?.addEventListener("click", openStripePortal);
 
       loadBillingInfo();
     })();
