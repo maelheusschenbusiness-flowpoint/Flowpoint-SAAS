@@ -4,18 +4,69 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Paiement réussi — FlowPoint</title>
+
   <meta name="color-scheme" content="light dark"/>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
+  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
+
   <link rel="stylesheet" href="/style.css" />
+
+  <style>
+    .centerBox{
+      max-width:760px;
+      margin:56px auto;
+    }
+
+    .actionsRow{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:14px;
+    }
+
+    .actionsRow .primaryBtn,
+    .actionsRow .ghostBtn{
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    @media (max-width:640px){
+      .centerBox{
+        margin:28px auto;
+      }
+
+      .actionsRow{
+        flex-direction:column;
+      }
+    }
+  </style>
 </head>
 <body>
   <div class="page">
-    <div class="hero" style="max-width:720px; margin:40px auto;">
-      <h1>Paiement réussi ✅</h1>
-      <p id="msg">Redirection…</p>
+    <div class="centerBox">
+      <div class="hero">
+        <h1>Paiement réussi ✅</h1>
+        <p id="msg">Redirection en cours vers ton espace FlowPoint…</p>
+      </div>
 
-      <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
-        <a class="primaryBtn" href="/dashboard.html">Dashboard</a>
-        <a class="ghostBtn" href="/pricing.html">Pricing</a>
+      <div class="card" style="margin-top:12px">
+        <div class="cardBody">
+          <div class="small">
+            Ton paiement a bien été validé. Ton plan ou tes options sont en cours de synchronisation.
+          </div>
+
+          <div class="actionsRow">
+            <a class="primaryBtn" href="/dashboard.html">Dashboard</a>
+            <a class="ghostBtn" href="/pricing.html">Pricing</a>
+          </div>
+
+          <div class="small">
+            Tu vas être redirigé automatiquement dans quelques instants.
+          </div>
+        </div>
       </div>
     </div>
   </div>
