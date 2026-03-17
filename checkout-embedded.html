@@ -3,32 +3,138 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Checkout</title>
+  <title>Finaliser le paiement — FlowPoint</title>
+
+  <meta name="color-scheme" content="light dark"/>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg"/>
+  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg"/>
+
+  <link rel="stylesheet" href="/style.css"/>
   <script src="https://js.stripe.com/v3/"></script>
+
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#0b1020;color:#eaf0ff;}
-    .wrap{max-width:960px;margin:0 auto;padding:24px;}
-    .card{background:#0f1733;border:1px solid rgba(255,255,255,.10);border-radius:18px;padding:18px;}
-    .muted{color:rgba(234,240,255,.70);font-size:13px}
+    .centerBox{
+      max-width:980px;
+      margin:40px auto 56px;
+    }
+
+    .checkoutShell{
+      display:grid;
+      grid-template-columns:1.2fr .8fr;
+      gap:16px;
+      align-items:start;
+    }
+
+    .checkoutHost{
+      min-height:520px;
+      border-radius:18px;
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 70%);
+      overflow:hidden;
+    }
+
+    .emptyState{
+      min-height:520px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      padding:24px;
+      color:var(--muted);
+      font-weight:800;
+      line-height:1.6;
+    }
+
+    .stateBox{
+      max-width:420px;
+    }
+
+    @media (max-width:980px){
+      .checkoutShell{
+        grid-template-columns:1fr;
+      }
+
+      .centerBox{
+        margin:28px auto 40px;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1 style="margin:0 0 8px">Finaliser</h1>
-    <div class="muted" style="margin-bottom:16px">Paiement sécurisé via Stripe</div>
-    <div class="card">
-      <div id="checkout"></div>
+  <div class="page">
+    <div class="centerBox">
+
+      <div class="hero">
+        <h1>Finaliser</h1>
+        <p>Paiement sécurisé via Stripe pour confirmer ton plan et tes options FlowPoint.</p>
+      </div>
+
+      <div class="checkoutShell" style="margin-top:12px">
+
+        <div>
+          <div class="section">
+            <div class="sectionHead">
+              <div class="title">Paiement Stripe</div>
+              <div class="hint">Checkout embarqué</div>
+            </div>
+
+            <div class="card" style="margin-top:12px">
+              <div class="cardBody">
+                <div id="checkoutMsg" class="small">Préparation du paiement sécurisé…</div>
+
+                <div class="checkoutHost" id="checkoutWrap">
+                  <div id="checkout">
+                    <div class="emptyState">
+                      <div class="stateBox">
+                        Chargement du checkout…
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="side" style="position:static">
+          <div class="card">
+            <div class="cardHead">Avant de payer</div>
+            <div class="cardBody">
+              <ul class="miniList">
+                <li>Le montant affiché vient de ton plan et de tes add-ons</li>
+                <li>Stripe sécurise la validation du paiement</li>
+                <li>En cas d’annulation, tu reviens sur la page d’annulation</li>
+                <li>Une fois validé, FlowPoint synchronise ton accès</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="cardHead">Après validation</div>
+            <div class="cardBody">
+              <ul class="miniList">
+                <li>Activation du plan ou des options choisies</li>
+                <li>Redirection vers le dashboard ou la page prévue</li>
+                <li>Mise à jour des quotas et accès associés</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
 
   <script>
-    // ✅ Mets ta publishable key
     const stripe = Stripe("pk_live_51StVIr9eqtbj6iPB07lwbilmCrWyiNYvupqep7WV7BwxljclefFqISYc6GHW9RFEoohaXVHdyXu43ivcAWSRf2gp00QEjt2RSe");
 
-    // Exemple: tu récupères ce que l’utilisateur a choisi sur pricing
-    // (toi: remplace par ton vrai state)
+    const checkoutMsg = document.getElementById("checkoutMsg");
+    const checkoutEl = document.getElementById("checkout");
+
     const selection = {
-      plan: "standard", // ou null si déjà abonné et tu veux juste des add-ons
+      plan: "standard",
       addons: {
         auditsPack1000: 1,
         customDomain: true
@@ -37,7 +143,11 @@
 
     async function initialize() {
       const fetchClientSecret = async () => {
-        const token = localStorage.getItem("token"); // si tu stockes le JWT
+        const token =
+          localStorage.getItem("fp_token") ||
+          localStorage.getItem("token") ||
+          "";
+
         const res = await fetch("/api/stripe/checkout-embedded", {
           method: "POST",
           headers: {
@@ -46,18 +156,35 @@
           },
           body: JSON.stringify(selection)
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "checkout error");
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || "Impossible d’initialiser le checkout");
+        }
+
         return data.clientSecret;
       };
 
-      const checkout = await stripe.initEmbeddedCheckout({ fetchClientSecret });
+      checkoutMsg.textContent = "Connexion sécurisée à Stripe…";
+
+      const checkout = await stripe.initEmbeddedCheckout({
+        fetchClientSecret
+      });
+
+      checkoutMsg.textContent = "Checkout prêt.";
       checkout.mount("#checkout");
     }
 
     initialize().catch(err => {
-      document.getElementById("checkout").innerHTML =
-        `<div style="padding:12px">Erreur: ${String(err.message || err)}</div>`;
+      checkoutMsg.textContent = "Erreur de chargement du checkout.";
+      checkoutEl.innerHTML = `
+        <div class="emptyState">
+          <div class="stateBox">
+            Erreur : ${String(err.message || err)}<br><br>
+            Vérifie la session, le token et la réponse de /api/stripe/checkout-embedded.
+          </div>
+        </div>
+      `;
     });
   </script>
 </body>
