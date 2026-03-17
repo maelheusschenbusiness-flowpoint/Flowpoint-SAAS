@@ -326,13 +326,8 @@
       window.scrollTo(0, 0);
     }
 
-    if (els.main) {
-      els.main.scrollTop = 0;
-    }
-
-    if (els.pageContainer) {
-      els.pageContainer.scrollTop = 0;
-    }
+    if (els.main) els.main.scrollTop = 0;
+    if (els.pageContainer) els.pageContainer.scrollTop = 0;
 
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
@@ -682,10 +677,10 @@
   }
 
   function openBillingCenter() {
-    setStatus("Ouverture de la facturation FlowPoint…", "warn");
+    setStatus("Ouverture du paiement FlowPoint…", "warn");
     setMissionDoneByAction("open_billing", true);
     saveMissions();
-    window.location.href = "/billing.html";
+    window.location.href = "/checkout-embedded.html";
     return true;
   }
 
@@ -1635,7 +1630,7 @@
             <a class="fpBtn fpBtnGhost" href="/billing.html">Billing FlowPoint</a>
             <a class="fpBtn fpBtnGhost" href="/pricing.html">Retour pricing</a>
             <a class="fpBtn fpBtnGhost" href="/addons.html">Voir les add-ons</a>
-            <button class="fpBtn fpBtnPrimary" id="fpBillingCenterBtn" type="button">Continuer vers le paiement</button>
+            <button class="fpBtn fpBtnPrimary" id="fpBillingCenterBtn" type="button">Paiement</button>
             <button class="fpBtn fpBtnGhost" id="fpBillingRefreshBtn" type="button">Actualiser</button>
           </div>
         `
