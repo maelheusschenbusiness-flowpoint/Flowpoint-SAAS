@@ -1635,7 +1635,7 @@
             <a class="fpBtn fpBtnGhost" href="/billing.html">Billing FlowPoint</a>
             <a class="fpBtn fpBtnGhost" href="/pricing.html">Retour pricing</a>
             <a class="fpBtn fpBtnGhost" href="/addons.html">Voir les add-ons</a>
-            <button class="fpBtn fpBtnPrimary" id="fpBillingCenterBtn" type="button">Ouvrir billing</button>
+            <button class="fpBtn fpBtnPrimary" id="fpBillingCenterBtn" type="button">Continuer vers le paiement</button>
             <button class="fpBtn fpBtnGhost" id="fpBillingRefreshBtn" type="button">Actualiser</button>
           </div>
         `
