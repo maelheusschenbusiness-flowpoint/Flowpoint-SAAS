@@ -29,6 +29,7 @@
     overlay: $("#fpOverlay"),
     sidebar: $("#sidebar"),
     pageContainer: $("#fpPageContainer"),
+    main: $(".fpMain"),
 
     navItems: $$(".fpNavItem"),
 
@@ -168,49 +169,51 @@
   }
 
   function trialLabel(value) {
-  const status = String(
-    state.me?.subscriptionStatus ||
-    state.me?.lastPaymentStatus ||
-    ""
-  ).toLowerCase();
+    const status = String(
+      state.me?.subscriptionStatus ||
+      state.me?.lastPaymentStatus ||
+      ""
+    ).toLowerCase();
 
-  if (!value) {
-    if (status === "trialing") return "Essai actif";
-    return "Essai non défini";
+    if (!value) {
+      if (status === "trialing") return "Essai actif";
+      return "Essai non défini";
+    }
+
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) {
+      if (status === "trialing") return "Essai actif";
+      return "Essai non défini";
+    }
+
+    const now = new Date();
+    return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
   }
 
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    if (status === "trialing") return "Essai actif";
-    return "Essai non défini";
-  }
-
-  const now = new Date();
-  return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
-}
   function trialMetaLabel(value) {
-  const status = String(
-    state.me?.subscriptionStatus ||
-    state.me?.lastPaymentStatus ||
-    ""
-  ).toLowerCase();
+    const status = String(
+      state.me?.subscriptionStatus ||
+      state.me?.lastPaymentStatus ||
+      ""
+    ).toLowerCase();
 
-  if (!value) {
-    if (status === "trialing") return "Essai en cours";
-    return "Aucun essai actif";
+    if (!value) {
+      if (status === "trialing") return "Essai en cours";
+      return "Aucun essai actif";
+    }
+
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) {
+      if (status === "trialing") return "Essai en cours";
+      return "Aucun essai actif";
+    }
+
+    const now = new Date();
+    return d.getTime() >= now.getTime()
+      ? `Jusqu’au ${formatShortDate(value)}`
+      : `Terminé le ${formatShortDate(value)}`;
   }
 
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    if (status === "trialing") return "Essai en cours";
-    return "Aucun essai actif";
-  }
-
-  const now = new Date();
-  return d.getTime() >= now.getTime()
-    ? `Jusqu’au ${formatShortDate(value)}`
-    : `Terminé le ${formatShortDate(value)}`;
-}
   function formatUsage(v) {
     if (v == null) return "0";
 
@@ -314,6 +317,25 @@
 
   function hydrateLogos() {
     if (els.sidebarLogo) els.sidebarLogo.src = LOGO_SRC;
+  }
+
+  function scrollPageTop() {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+
+    if (els.main) {
+      els.main.scrollTop = 0;
+    }
+
+    if (els.pageContainer) {
+      els.pageContainer.scrollTop = 0;
+    }
+
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   }
 
   async function refreshTokenIfPossible() {
@@ -659,25 +681,12 @@
     });
   }
 
-  async function openBillingPortal() {
-    setStatus("Ouverture de la facturation…", "warn");
-
-    try {
-      const r = await fetchWithAuth("/api/stripe/portal", { method: "POST" });
-      const data = await parseJsonSafe(r);
-
-      if (!r.ok) throw new Error(data?.error || "Portal failed");
-      if (!data?.url) throw new Error("URL du portail absente");
-
-      setMissionDoneByAction("open_billing", true);
-      saveMissions();
-      window.location.href = data.url;
-      return true;
-    } catch (e) {
-      console.error(e);
-      setStatus("Erreur portail Stripe", "danger");
-      return false;
-    }
+  function openBillingCenter() {
+    setStatus("Ouverture de la facturation FlowPoint…", "warn");
+    setMissionDoneByAction("open_billing", true);
+    saveMissions();
+    window.location.href = "/billing.html";
+    return true;
   }
 
   async function safeExport(endpoint, filename) {
@@ -1626,7 +1635,7 @@
             <a class="fpBtn fpBtnGhost" href="/billing.html">Billing FlowPoint</a>
             <a class="fpBtn fpBtnGhost" href="/pricing.html">Retour pricing</a>
             <a class="fpBtn fpBtnGhost" href="/addons.html">Voir les add-ons</a>
-            <button class="fpBtn fpBtnPrimary" id="fpBillingPortalBtn" type="button">Portail Stripe</button>
+            <button class="fpBtn fpBtnPrimary" id="fpBillingCenterBtn" type="button">Ouvrir billing</button>
             <button class="fpBtn fpBtnGhost" id="fpBillingRefreshBtn" type="button">Actualiser</button>
           </div>
         `
@@ -1713,7 +1722,7 @@
       </div>
     `);
 
-    $("#fpBillingPortalBtn")?.addEventListener("click", openBillingPortal);
+    $("#fpBillingCenterBtn")?.addEventListener("click", openBillingCenter);
     $("#fpBillingRefreshBtn")?.addEventListener("click", () => loadData());
   }
 
@@ -1873,13 +1882,14 @@
 
     if (mission.action === "export_audits") return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
     if (mission.action === "export_monitors") return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
-    if (mission.action === "open_billing") return openBillingPortal();
+    if (mission.action === "open_billing") return openBillingCenter();
 
     if (mission.action === "goto_settings") {
       location.hash = "#settings";
       setMissionDoneByAction("goto_settings", true);
       saveMissions();
       renderRoute();
+      scrollPageTop();
       return true;
     }
 
@@ -1899,6 +1909,7 @@
       setMissionDoneByAction("view_billing", true);
       saveMissions();
       renderRoute();
+      scrollPageTop();
       return true;
     }
 
@@ -1918,6 +1929,8 @@
       case "#settings": renderSettingsPage(); break;
       default: renderOverviewPage(); break;
     }
+
+    requestAnimationFrame(scrollPageTop);
   }
 
   async function loadData({ silent = false } = {}) {
@@ -2018,6 +2031,7 @@
       state.route = ROUTES.has(location.hash) ? location.hash : "#overview";
       renderRoute();
       closeSidebar();
+      scrollPageTop();
     });
 
     window.addEventListener("resize", () => {
@@ -2025,7 +2039,10 @@
     });
 
     els.navItems.forEach((item) => {
-      item.addEventListener("click", closeSidebar);
+      item.addEventListener("click", () => {
+        closeSidebar();
+        requestAnimationFrame(scrollPageTop);
+      });
     });
 
     els.btnMenu?.addEventListener("click", openSidebar);
@@ -2037,6 +2054,7 @@
       const raw = String(els.rangeSelect.value || "30");
       state.rangeDays = raw === "7" ? 7 : raw === "3" ? 3 : 30;
       loadData();
+      scrollPageTop();
     });
 
     els.btnExportToggle?.addEventListener("click", (e) => {
@@ -2060,11 +2078,13 @@
     els.btnOpenBillingSide?.addEventListener("click", () => {
       location.hash = "#billing";
       closeSidebar();
+      requestAnimationFrame(scrollPageTop);
     });
 
     els.btnOpenSettingsSide?.addEventListener("click", () => {
       location.hash = "#settings";
       closeSidebar();
+      requestAnimationFrame(scrollPageTop);
     });
 
     els.btnLogout?.addEventListener("click", logout);
@@ -2090,6 +2110,7 @@
 
     initEvents();
     loadData();
+    scrollPageTop();
   }
 
   document.addEventListener("DOMContentLoaded", init);
