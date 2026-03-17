@@ -15,8 +15,38 @@
 
   <style>
     .centerBox{
-      max-width:980px;
-      margin:40px auto 56px;
+      max-width:1120px;
+      margin:36px auto 56px;
+    }
+
+    .topHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:18px;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+
+    .brandMini{
+      display:flex;
+      align-items:center;
+    }
+
+    .brandMiniLogo{
+      width:40px;
+      height:40px;
+      border-radius:12px;
+      object-fit:contain;
+      display:block;
+      filter:drop-shadow(0 10px 18px rgba(0,0,0,.22));
+    }
+
+    .actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
     }
 
     .checkoutShell{
@@ -26,28 +56,50 @@
       align-items:start;
     }
 
-    .checkoutHost{
+    .checkoutPanel{
+      min-height:620px;
+    }
+
+    .checkoutFrame{
       min-height:520px;
       border-radius:18px;
       border:1px solid var(--border);
       background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 70%);
       overflow:hidden;
+      padding:0;
     }
 
-    .emptyState{
-      min-height:520px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      text-align:center;
-      padding:24px;
+    .checkoutStatus{
+      margin-bottom:12px;
+      padding:12px 14px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
       color:var(--muted);
       font-weight:800;
-      line-height:1.6;
+      line-height:1.5;
     }
 
-    .stateBox{
-      max-width:420px;
+    .checkoutStatus.error{
+      color:#ffb4b4;
+      border-color:rgba(255,120,120,.24);
+      background:rgba(255,80,80,.08);
+    }
+
+    @media (prefers-color-scheme: light){
+      .checkoutStatus.error{
+        color:#b42318;
+        border-color:rgba(180,35,24,.18);
+        background:rgba(180,35,24,.06);
+      }
+    }
+
+    #checkout{
+      min-height:520px;
+    }
+
+    .helperCard .miniList{
+      gap:10px;
     }
 
     @media (max-width:980px){
@@ -56,7 +108,23 @@
       }
 
       .centerBox{
-        margin:28px auto 40px;
+        margin:24px auto 40px;
+      }
+    }
+
+    @media (max-width:640px){
+      .topHeader{
+        align-items:flex-start;
+      }
+
+      .actions{
+        width:100%;
+      }
+
+      .actions .linkBtn,
+      .actions .pill{
+        flex:1 1 auto;
+        justify-content:center;
       }
     }
   </style>
@@ -65,6 +133,21 @@
   <div class="page">
     <div class="centerBox">
 
+      <div class="topHeader">
+        <div class="brandMini">
+          <img
+            class="brandMiniLogo"
+            src="/assets/flowpoint-logo.svg"
+            alt="FlowPoint"
+            onerror="this.src='/assets/flowpoint-logo.png'">
+        </div>
+
+        <div class="actions">
+          <a class="linkBtn" href="/pricing.html">← Retour au pricing</a>
+          <div class="pill">Paiement sécurisé</div>
+        </div>
+      </div>
+
       <div class="hero">
         <h1>Finaliser</h1>
         <p>Paiement sécurisé via Stripe pour confirmer ton plan et tes options FlowPoint.</p>
@@ -72,7 +155,7 @@
 
       <div class="checkoutShell" style="margin-top:12px">
 
-        <div>
+        <div class="checkoutPanel">
           <div class="section">
             <div class="sectionHead">
               <div class="title">Paiement Stripe</div>
@@ -81,16 +164,14 @@
 
             <div class="card" style="margin-top:12px">
               <div class="cardBody">
-                <div id="checkoutMsg" class="small">Préparation du paiement sécurisé…</div>
 
-                <div class="checkoutHost" id="checkoutWrap">
-                  <div id="checkout">
-                    <div class="emptyState">
-                      <div class="stateBox">
-                        Chargement du checkout…
-                      </div>
-                    </div>
-                  </div>
+                <div id="checkoutMsg" class="checkoutStatus">
+                  Préparation du paiement sécurisé…
+                </div>
+
+                <div class="checkoutFrame">
+                  <!-- IMPORTANT : doit rester vide pour Stripe -->
+                  <div id="checkout"></div>
                 </div>
 
               </div>
@@ -99,7 +180,7 @@
         </div>
 
         <div class="side" style="position:static">
-          <div class="card">
+          <div class="card helperCard">
             <div class="cardHead">Avant de payer</div>
             <div class="cardBody">
               <ul class="miniList">
@@ -111,13 +192,24 @@
             </div>
           </div>
 
-          <div class="card">
+          <div class="card helperCard">
             <div class="cardHead">Après validation</div>
             <div class="cardBody">
               <ul class="miniList">
                 <li>Activation du plan ou des options choisies</li>
                 <li>Redirection vers le dashboard ou la page prévue</li>
                 <li>Mise à jour des quotas et accès associés</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="card helperCard">
+            <div class="cardHead">En cas de problème</div>
+            <div class="cardBody">
+              <ul class="miniList">
+                <li>Vérifie que tu es bien connecté à FlowPoint</li>
+                <li>Vérifie que ton token est stocké correctement</li>
+                <li>Le backend doit répondre sur <b>/api/stripe/checkout-embedded</b></li>
               </ul>
             </div>
           </div>
@@ -158,8 +250,13 @@
         });
 
         const data = await res.json().catch(() => ({}));
+
         if (!res.ok) {
           throw new Error(data?.error || "Impossible d’initialiser le checkout");
+        }
+
+        if (!data.clientSecret) {
+          throw new Error("clientSecret manquant");
         }
 
         return data.clientSecret;
@@ -176,15 +273,20 @@
     }
 
     initialize().catch(err => {
+      checkoutMsg.classList.add("error");
       checkoutMsg.textContent = "Erreur de chargement du checkout.";
-      checkoutEl.innerHTML = `
-        <div class="emptyState">
-          <div class="stateBox">
-            Erreur : ${String(err.message || err)}<br><br>
-            Vérifie la session, le token et la réponse de /api/stripe/checkout-embedded.
-          </div>
-        </div>
-      `;
+
+      // le conteneur checkout doit rester vide tant qu’on ne mount pas Stripe
+      checkoutEl.innerHTML = "";
+
+      const details = document.createElement("div");
+      details.className = "checkoutStatus error";
+      details.style.marginTop = "12px";
+      details.innerHTML =
+        `Erreur : ${String(err.message || err)}<br><br>
+         Vérifie la session, le token et la réponse de <b>/api/stripe/checkout-embedded</b>.`;
+
+      checkoutEl.parentNode.appendChild(details);
     });
   </script>
 </body>
