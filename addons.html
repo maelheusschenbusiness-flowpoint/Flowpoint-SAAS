@@ -41,6 +41,50 @@ gap:10px;
 align-items:center;
 }
 
+
+  .summaryListBlue,
+  .summaryListBlue ul{
+    list-style:none;
+    margin:0;
+    padding:0;
+    display:grid;
+    gap:12px;
+  }
+
+  .summaryListBlue li{
+    position:relative;
+    padding-left:30px;
+    line-height:1.6;
+    font-weight:600;
+  }
+
+  .summaryListBlue li::before{
+    content:"";
+    position:absolute;
+    left:0;
+    top:.72em;
+    width:10px;
+    height:10px;
+    border-radius:999px;
+    background:linear-gradient(180deg,#3368ff,#2452ff);
+    border:1px solid rgba(255,255,255,.14);
+    box-shadow:
+      0 0 0 4px rgba(56,100,255,.14),
+      inset 0 1px 0 rgba(255,255,255,.24);
+    transform:translateY(-50%);
+  }
+
+  .summaryListBlue li::after{
+    content:"";
+    position:absolute;
+    left:3px;
+    top:.72em;
+    width:4px;
+    height:4px;
+    border-radius:999px;
+    background:#9bb7ff;
+    transform:translateY(-50%);
+  }
 </style>
 
 </head>
