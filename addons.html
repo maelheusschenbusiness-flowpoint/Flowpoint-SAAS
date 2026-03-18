@@ -39,6 +39,45 @@
   align-items:center;
 }
 
+.miniList{
+  list-style:none;
+  padding:0;
+  margin:0;
+  display:grid;
+  gap:10px;
+}
+
+.miniList li{
+  position:relative;
+  padding-left:26px;
+  line-height:1.6;
+}
+
+.miniList li::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:.62em;
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:#2f5bff;
+  box-shadow:0 0 0 4px rgba(47,91,255,.15);
+  transform:translateY(-50%);
+}
+
+.miniList li::after{
+  content:"";
+  position:absolute;
+  left:2px;
+  top:.62em;
+  width:4px;
+  height:4px;
+  border-radius:999px;
+  background:#8fb0ff;
+  transform:translateY(-50%);
+}
+
 .summaryListBlue,
 .summaryListBlue ul{
   list-style:none;
@@ -50,7 +89,7 @@
 
 .summaryListBlue li{
   position:relative;
-  padding-left:30px;
+  padding-left:26px;
   line-height:1.6;
   font-weight:600;
 }
@@ -59,54 +98,24 @@
   content:"";
   position:absolute;
   left:0;
-  top:.72em;
-  width:10px;
-  height:10px;
+  top:.62em;
+  width:8px;
+  height:8px;
   border-radius:999px;
-  background:linear-gradient(180deg,#3368ff,#2452ff);
-  border:1px solid rgba(255,255,255,.14);
-  box-shadow:
-    0 0 0 4px rgba(56,100,255,.14),
-    inset 0 1px 0 rgba(255,255,255,.24);
+  background:#2f5bff;
+  box-shadow:0 0 0 4px rgba(47,91,255,.15);
   transform:translateY(-50%);
 }
 
 .summaryListBlue li::after{
   content:"";
   position:absolute;
-  left:3px;
-  top:.72em;
+  left:2px;
+  top:.62em;
   width:4px;
   height:4px;
   border-radius:999px;
-  background:#9bb7ff;
-  transform:translateY(-50%);
-}
-
-.summaryNoteBlue{
-  list-style:none;
-  margin:10px 0 0;
-  padding:0;
-  display:grid;
-  gap:10px;
-}
-
-.summaryNoteBlue li{
-  position:relative;
-  padding-left:24px;
-  line-height:1.6;
-}
-
-.summaryNoteBlue li::before{
-  content:"";
-  position:absolute;
-  left:0;
-  top:.72em;
-  width:8px;
-  height:8px;
-  border-radius:999px;
-  background:linear-gradient(180deg,#3368ff,#2452ff);
-  box-shadow:0 0 0 4px rgba(56,100,255,.14);
+  background:#8fb0ff;
   transform:translateY(-50%);
 }
 
@@ -127,12 +136,15 @@
 
 <body>
 <div class="page">
+
   <div class="topHeader">
     <div class="brandMini">
-      <img class="brandMiniLogo"
+      <img
+        class="brandMiniLogo"
         src="/assets/flowpoint-logo.svg"
         alt="FlowPoint"
-        onerror="this.src='/assets/flowpoint-logo.png'">
+        onerror="this.src='/assets/flowpoint-logo.png'"
+      >
     </div>
 
     <div class="actions">
@@ -145,7 +157,7 @@
     <div>
       <div class="hero">
         <h1>Gérer mes add-ons</h1>
-        <p>Ici tu ajoutes ou supprimes des options. Cela s’applique à ton abonnement existant.</p>
+        <p>Ici tu ajoutes ou supprimes des options. Ça s’applique à ton abonnement existant.</p>
       </div>
 
       <div class="section">
@@ -177,17 +189,19 @@
             <span id="sumAddOns">—</span>
           </div>
 
-          <ul class="summaryNoteBlue small">
-            <li>Si un prorata est généré, tu payeras via /checkout.html.</li>
-            <li>White Label est forcé sur ON.</li>
-          </ul>
+          <div style="margin-top:12px">
+            <ul class="summaryListBlue small">
+              <li>Si un prorata est généré, tu payeras via /checkout.html.</li>
+              <li>White Label est forcé sur ON.</li>
+            </ul>
+          </div>
         </div>
       </div>
 
       <div class="card">
         <div class="cardHead">Comment ça fonctionne</div>
         <div class="cardBody">
-          <ul class="summaryListBlue small">
+          <ul class="miniList">
             <li>Tu coches ou décoches les options disponibles</li>
             <li>FlowPoint prépare la mise à jour de ton abonnement Stripe</li>
             <li>Si un prorata est dû, un passage par checkout est proposé</li>
@@ -199,7 +213,7 @@
       <div class="card">
         <div class="cardHead">Bon à savoir</div>
         <div class="cardBody">
-          <ul class="summaryListBlue small">
+          <ul class="miniList">
             <li>Les add-ons améliorent les capacités sans changer tout le plan</li>
             <li>Tu peux revenir ici à tout moment pour ajuster</li>
             <li>Les changements suivent l’abonnement déjà actif</li>
