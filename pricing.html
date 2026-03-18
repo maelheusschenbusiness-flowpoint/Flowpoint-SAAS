@@ -17,10 +17,12 @@
 <link rel="stylesheet" href="/style.css"/>
 
 <style>
+/* ===== PAGE ===== */
 .pricingPage{
   max-width:1180px;
 }
 
+/* ===== HEADER ===== */
 .pricingTopHeader{
   display:flex;
   align-items:center;
@@ -32,7 +34,6 @@
 .pricingBrandMini{
   display:flex;
   align-items:center;
-  flex:0 0 auto;
 }
 
 .pricingBrandMiniLogo{
@@ -40,58 +41,52 @@
   height:40px;
   border-radius:12px;
   object-fit:contain;
-  display:block;
-  flex:0 0 auto;
   filter:drop-shadow(0 10px 18px rgba(0,0,0,.22));
 }
 
 .pricingHeaderActions{
   display:flex;
   align-items:center;
-  justify-content:flex-end;
   gap:10px;
-  flex-wrap:nowrap;
-  margin-left:auto;
 }
 
-.pricingHeaderActions .linkBtn,
-.pricingHeaderActions .pill{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-height:42px;
-  white-space:nowrap;
-  margin:0;
-}
-
+/* ===== GRID FIX ===== */
 .pricingPage .grid{
   align-items:start;
 }
 
+/* ✅ ALIGNEMENT DES CARTES */
 .pricingPage .plans{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
   gap:12px;
-  align-items:start;
+  align-items:stretch;
 }
 
+/* ===== CARTES ===== */
 .pricingPage .planCard{
-  min-height:auto !important;
+  display:flex;
+  flex-direction:column;
+  height:100%;
   padding:16px !important;
   border-radius:18px;
 }
 
-.pricingPage .planTop{
-  gap:8px;
-  align-items:flex-start;
+/* contenu flexible */
+.pricingPage .features{
+  flex:1;
+  margin-top:10px !important;
+  font-size:12.5px !important;
+  line-height:1.42 !important;
 }
 
+/* ===== TEXT ===== */
 .pricingPage .planName{
   font-size:17px !important;
-  line-height:1.1;
 }
 
 .pricingPage .price{
   font-size:26px !important;
-  line-height:1;
 }
 
 .pricingPage .per{
@@ -99,21 +94,12 @@
 }
 
 .pricingPage .badge{
-  margin-top:8px !important;
-  padding:5px 9px !important;
-  font-size:11px !important;
+  margin-top:8px;
+  font-size:11px;
+  padding:5px 9px;
 }
 
-.pricingPage .features{
-  margin-top:10px !important;
-  font-size:12.5px !important;
-  line-height:1.42 !important;
-}
-
-.pricingPage .features li{
-  gap:6px;
-}
-
+/* ===== HERO ===== */
 .pricingPage .hero h1{
   font-size:30px;
 }
@@ -123,35 +109,15 @@
   line-height:1.55;
 }
 
-.pricingPage .cardBody{
-  gap:8px;
-}
-
-.pricingPage .row2{
-  gap:10px;
-}
-
-@media (max-width:1100px){
-  .pricingPage .price{
-    font-size:24px !important;
-  }
-
-  .pricingPage .features{
-    font-size:12px !important;
-  }
-}
-
+/* ===== RESPONSIVE ===== */
 @media (max-width:900px){
-  .pricingTopHeader{
-    flex-wrap:wrap;
-    align-items:flex-start;
+  .pricingPage .plans{
+    grid-template-columns:1fr;
   }
 
-  .pricingHeaderActions{
-    width:100%;
-    justify-content:flex-start;
-    flex-wrap:wrap;
-    margin-left:0;
+  .pricingTopHeader{
+    flex-direction:column;
+    align-items:flex-start;
   }
 }
 </style>
@@ -162,6 +128,7 @@
 
 <div class="page pricingPage">
 
+  <!-- HEADER -->
   <div class="pricingTopHeader">
     <div class="pricingBrandMini">
       <img class="pricingBrandMiniLogo"
@@ -178,35 +145,41 @@
 
   <div class="grid">
 
+    <!-- LEFT -->
     <div>
 
       <div class="hero">
         <h1>Choisis ton plan + tes options</h1>
         <p>
-          1) Clique <b>Checkout</b> pour payer le plan + add-ons sélectionnés (dans une page FlowPoint).<br>
-          2) Clique <b>Gérer mes add-ons</b> pour ajouter/retirer des options (dans une page FlowPoint).
+          1) Clique <b>Checkout</b> pour payer le plan + add-ons.<br>
+          2) Clique <b>Gérer mes add-ons</b> pour modifier tes options.
         </p>
         <div class="small" id="pricingMsg"></div>
       </div>
 
+      <!-- PLANS -->
       <div class="section">
         <div class="sectionHead">
           <div class="title">Plans</div>
           <div class="hint">Essai via Stripe (Billing).</div>
         </div>
+
         <div class="plans" id="plans"></div>
       </div>
 
+      <!-- ADDONS -->
       <div class="section">
         <div class="sectionHead">
           <div class="title">Add-ons</div>
-          <div class="hint">Sélection UI (puis paiement/MAJ dans Checkout ou Add-ons).</div>
+          <div class="hint">Sélection UI (paiement ensuite).</div>
         </div>
+
         <div class="addons" id="addonsList"></div>
       </div>
 
     </div>
 
+    <!-- RIGHT -->
     <div class="side">
 
       <div class="card">
@@ -217,8 +190,8 @@
             <li>Alertes email + pages de rapports</li>
             <li>White label inclus (gratuit)</li>
             <li>Support email + onboarding</li>
-            <li>Historique d’incidents (selon rétention)</li>
-            <li>Exports & partage équipe (selon plan)</li>
+            <li>Historique d’incidents</li>
+            <li>Exports & partage équipe</li>
           </ul>
         </div>
       </div>
@@ -239,20 +212,16 @@
 
           <div class="row2">
             <span class="muted">White label</span>
-            <span>Inclus (gratuit)</span>
+            <span>Inclus</span>
           </div>
 
-          <div class="row2" style="align-items:flex-start">
+          <div class="row2">
             <span class="muted">Add-ons</span>
-            <span id="sumAddOns" style="text-align:right">—</span>
+            <span id="sumAddOns">—</span>
           </div>
 
           <button class="primaryBtn" id="btnCheckout">Continuer</button>
           <button class="ghostBtn" id="btnPortal">Gérer mes add-ons</button>
-
-          <div class="small">
-            Si tu n’es pas connecté, tu seras renvoyé vers l’inscription / login.
-          </div>
 
         </div>
       </div>
@@ -261,10 +230,10 @@
         <div class="cardHead">Pourquoi c’est rentable</div>
         <div class="cardBody">
           <ul class="miniList">
-            <li>Audits rapides → recommandations actionnables</li>
-            <li>Monitors → alertes instantanées + logs</li>
-            <li>Rapports partageables → ventes + rétention</li>
-            <li>Crédits add-ons → tu scales sans changer de plan</li>
+            <li>Audits rapides</li>
+            <li>Monitoring temps réel</li>
+            <li>Rapports clients</li>
+            <li>Scaling avec add-ons</li>
           </ul>
         </div>
       </div>
