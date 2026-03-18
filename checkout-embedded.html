@@ -15,7 +15,7 @@
       display:grid;
       grid-template-columns:minmax(0,1.42fr) minmax(320px,.9fr);
       gap:14px;
-      align-items:start;
+      align-items:stretch;
     }
 
     .embeddedPage .mainCol,
@@ -30,12 +30,22 @@
       margin-top:0;
     }
 
+    .embeddedPage .card{
+      height:100%;
+    }
+
+    .embeddedPage .cardBody{
+      display:flex;
+      flex-direction:column;
+    }
+
     .embeddedPage .checkoutWrap{
       border-radius:18px;
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.02);
       padding:14px;
       min-height:560px;
+      transition:.25s ease;
     }
 
     @media (prefers-color-scheme: light){
@@ -43,6 +53,10 @@
         border:1px solid rgba(15,23,42,.08);
         background:rgba(15,23,42,.02);
       }
+    }
+
+    .embeddedPage .checkoutWrap.hidden{
+      display:none;
     }
 
     .embeddedPage .checkoutMount{
@@ -53,23 +67,140 @@
       background:#fff;
     }
 
+    .embeddedPage .checkoutMount.hidden{
+      display:none;
+    }
+
     .embeddedPage .statusBox{
-      margin-bottom:10px;
+      margin-bottom:12px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.03);
+      font-size:14px;
+      line-height:1.5;
     }
 
     .embeddedPage .statusBox.error{
       color:#ff8a8a;
+      border-color:rgba(255,138,138,.28);
+      background:rgba(255,90,90,.08);
+    }
+
+    .embeddedPage .statusBox.success{
+      color:#86efac;
+      border-color:rgba(134,239,172,.24);
+      background:rgba(34,197,94,.08);
     }
 
     @media (prefers-color-scheme: light){
+      .embeddedPage .statusBox{
+        border:1px solid rgba(15,23,42,.08);
+        background:rgba(15,23,42,.03);
+      }
+
       .embeddedPage .statusBox.error{
         color:#b42318;
+        border-color:rgba(180,35,24,.18);
+        background:rgba(180,35,24,.06);
       }
+
+      .embeddedPage .statusBox.success{
+        color:#067647;
+        border-color:rgba(6,118,71,.16);
+        background:rgba(6,118,71,.06);
+      }
+    }
+
+    .embeddedPage .stateCard{
+      display:none;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.08);
+      background:linear-gradient(180deg, rgba(47,91,255,.14), rgba(255,255,255,.02));
+      padding:20px;
+    }
+
+    .embeddedPage .stateCard.show{
+      display:block;
+    }
+
+    .embeddedPage .stateIcon{
+      width:52px;
+      height:52px;
+      border-radius:16px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:24px;
+      margin-bottom:14px;
+      background:linear-gradient(180deg,#2f5bff,#2449ff);
+      color:#fff;
+      box-shadow:0 12px 28px rgba(47,91,255,.28);
+    }
+
+    .embeddedPage .stateTitle{
+      font-size:24px;
+      font-weight:800;
+      line-height:1.1;
+      margin:0 0 10px;
+    }
+
+    .embeddedPage .stateText{
+      margin:0;
+      opacity:.9;
+      line-height:1.65;
+      font-size:14px;
+    }
+
+    .embeddedPage .stateActions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:18px;
+    }
+
+    .embeddedPage .stateActions .primaryBtn,
+    .embeddedPage .stateActions .ghostBtn{
+      width:auto;
+      min-width:190px;
+    }
+
+    .embeddedPage .side .card:last-child{
+      margin-top:auto;
+    }
+
+    .embeddedPage .side .cardBody{
+      justify-content:flex-start;
+    }
+
+    .embeddedPage .helperList{
+      margin:0;
+      padding-left:18px;
+    }
+
+    .embeddedPage .helperList li{
+      margin:0 0 8px;
+      line-height:1.55;
+    }
+
+    .embeddedPage .miniNote{
+      margin-top:12px;
+      font-size:13px;
+      opacity:.78;
+      line-height:1.6;
     }
 
     @media (max-width:980px){
       .embeddedPage .grid{
         grid-template-columns:1fr;
+      }
+
+      .embeddedPage .checkoutWrap{
+        min-height:auto;
+      }
+
+      .embeddedPage .checkoutMount{
+        min-height:460px;
       }
     }
   </style>
@@ -93,8 +224,25 @@
             <div class="cardBody">
               <div id="checkoutMsg" class="small statusBox">Préparation du paiement…</div>
 
-              <div class="checkoutWrap">
-                <!-- IMPORTANT : ce bloc doit rester vide -->
+              <div id="successState" class="stateCard">
+                <div class="stateIcon">✓</div>
+                <h2 class="stateTitle">Modification enregistrée</h2>
+                <p class="stateText" id="successText">
+                  Ton abonnement et tes options ont bien été mis à jour. Tu peux maintenant revenir sur ton dashboard ou gérer à nouveau tes add-ons.
+                </p>
+
+                <div class="stateActions">
+                  <a href="/dashboard.html#billing" class="primaryBtn">Voir le dashboard</a>
+                  <a href="/billing.html" class="ghostBtn">Gérer abonnement</a>
+                  <a href="/addons.html" class="ghostBtn">Gérer les add-ons</a>
+                </div>
+
+                <div class="miniNote">
+                  Aucun paiement supplémentaire n’est nécessaire pour cette modification, sauf si Stripe te le demande explicitement.
+                </div>
+              </div>
+
+              <div id="checkoutWrap" class="checkoutWrap">
                 <div id="embedded-checkout" class="checkoutMount"></div>
               </div>
 
@@ -110,37 +258,40 @@
         <div class="card">
           <div class="cardHead">Avant de payer</div>
           <div class="cardBody">
-            <div class="small">
-              • Le montant affiché vient de ton plan et de tes add-ons<br/>
-              • Stripe sécurise la validation du paiement<br/>
-              • En cas d’annulation, tu reviens sur la page d’annulation<br/>
-              • Une fois validé, FlowPoint synchronise ton accès
-            </div>
+            <ul class="small helperList">
+              <li>Le montant affiché vient de ton plan et de tes add-ons</li>
+              <li>Stripe sécurise la validation du paiement</li>
+              <li>En cas d’annulation, tu reviens sur la page prévue</li>
+              <li>Une fois validé, FlowPoint synchronise ton accès</li>
+            </ul>
           </div>
         </div>
 
         <div class="card">
           <div class="cardHead">Après validation</div>
           <div class="cardBody">
-            <div class="small">
-              • Activation du plan ou des options choisies<br/>
-              • Redirection vers le dashboard ou la page prévue<br/>
-              • Mise à jour des quotas et accès associés
-            </div>
+            <ul class="small helperList">
+              <li>Activation du plan ou des options choisies</li>
+              <li>Redirection vers le dashboard ou la page prévue</li>
+              <li>Mise à jour des quotas et accès associés</li>
+            </ul>
           </div>
         </div>
 
         <div class="card">
-  <div class="cardHead">Suite du parcours</div>
-  <div class="cardBody">
-    <div class="small">
-      • Accès mis à jour après confirmation du paiement<br/>
-      • Tu pourras ensuite revenir sur Billing pour voir ton abonnement<br/>
-      • Les add-ons restent modifiables à tout moment depuis FlowPoint<br/>
-      • Aucun réglage technique n’est nécessaire côté client
+          <div class="cardHead">Suite du parcours</div>
+          <div class="cardBody">
+            <ul class="small helperList">
+              <li>Accès mis à jour après confirmation du paiement</li>
+              <li>Tu pourras ensuite revenir sur Billing pour voir ton abonnement</li>
+              <li>Les add-ons restent modifiables à tout moment depuis FlowPoint</li>
+              <li>Aucun réglage technique n’est nécessaire côté client</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-</div>
 
   <script src="https://js.stripe.com/v3/"></script>
   <script>
@@ -148,209 +299,199 @@
   </script>
 
   <script>
-  (() => {
-    const TOKEN_KEYS = ["token", "fp_token"];
-    const CHECKOUT_PAYLOAD_KEY = "fp_checkout_payload";
+    (() => {
+      const TOKEN_KEYS = ["token", "fp_token"];
+      const CHECKOUT_PAYLOAD_KEY = "fp_checkout_payload";
 
-    const $ = (q) => document.querySelector(q);
+      const $ = (q) => document.querySelector(q);
 
-    const msg = $("#checkoutMsg");
-    const retryBtn = $("#retryBtn");
-    const mountNode = $("#embedded-checkout");
+      const msg = $("#checkoutMsg");
+      const retryBtn = $("#retryBtn");
+      const mountNode = $("#embedded-checkout");
+      const checkoutWrap = $("#checkoutWrap");
+      const successState = $("#successState");
+      const successText = $("#successText");
 
-    function getToken() {
-      for (const k of TOKEN_KEYS) {
-        const v = localStorage.getItem(k);
-        if (v) return v;
-      }
-      return null;
-    }
-
-    function setMsg(text, isError = false) {
-      if (!msg) return;
-      msg.textContent = text || "";
-      msg.classList.toggle("error", !!isError);
-    }
-
-    function readPayload() {
-      try {
-        return JSON.parse(localStorage.getItem(CHECKOUT_PAYLOAD_KEY) || "null");
-      } catch {
+      function getToken() {
+        for (const k of TOKEN_KEYS) {
+          const v = localStorage.getItem(k);
+          if (v) return v;
+        }
         return null;
       }
-    }
 
-    async function postJson(url, body) {
-      const token = getToken();
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        credentials: "include",
-        body: JSON.stringify(body || {})
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(data?.error || "Erreur API checkout-embedded");
+      function setMsg(text, type = "") {
+        if (!msg) return;
+        msg.textContent = text || "";
+        msg.classList.remove("error", "success");
+        if (type) msg.classList.add(type);
       }
 
-      return data;
-    }
-
-    async function mountEmbeddedCheckout(stripe, clientSecret) {
-      if (!clientSecret) {
-        throw new Error("clientSecret embedded manquant.");
-      }
-
-      if (!mountNode) {
-        throw new Error("Zone de montage checkout introuvable.");
-      }
-
-      mountNode.innerHTML = "";
-
-      const checkout = await stripe.initEmbeddedCheckout({
-        clientSecret
-      });
-
-      checkout.mount("#embedded-checkout");
-      setMsg("Checkout prêt.");
-    }
-
-    async function mountPaymentElement(stripe, paymentIntentClientSecret) {
-      if (!paymentIntentClientSecret) {
-        throw new Error("paymentIntentClientSecret manquant.");
-      }
-
-      if (!mountNode) {
-        throw new Error("Zone de montage paiement introuvable.");
-      }
-
-      mountNode.innerHTML = `
-        <form id="payment-intent-form" style="padding:20px;background:#fff;border-radius:14px;">
-          <div id="payment-element"></div>
-          <button type="submit" class="primaryBtn" style="margin-top:14px;width:100%;">
-            Payer maintenant
-          </button>
-        </form>
-      `;
-
-      const isDark =
-        window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-      const elements = stripe.elements({
-        clientSecret: paymentIntentClientSecret,
-        appearance: {
-          theme: isDark ? "night" : "stripe"
+      function readPayload() {
+        try {
+          return JSON.parse(localStorage.getItem(CHECKOUT_PAYLOAD_KEY) || "null");
+        } catch {
+          return null;
         }
-      });
+      }
 
-      const paymentElement = elements.create("payment");
-      paymentElement.mount("#payment-element");
+      function showSuccess(text) {
+        if (checkoutWrap) checkoutWrap.classList.add("hidden");
+        if (mountNode) mountNode.classList.add("hidden");
+        if (successState) successState.classList.add("show");
+        if (successText) successText.textContent = text || "Ton abonnement a été mis à jour avec succès.";
+        setMsg("Modification enregistrée avec succès.", "success");
+      }
 
-      const form = document.getElementById("payment-intent-form");
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        setMsg("Validation du paiement…");
+      function showRetry(action) {
+        if (!retryBtn) return;
+        retryBtn.style.display = "inline-block";
+        retryBtn.onclick = action || (() => window.location.reload());
+      }
 
-        const { error } = await stripe.confirmPayment({
-          elements,
-          confirmParams: {
-            return_url: `${window.location.origin}/success.html?next=/dashboard.html`
-          }
-        });
-
-        if (error) {
-          setMsg(error.message || "Erreur de paiement.", true);
-        }
-      });
-
-      setMsg("Paiement requis pour finaliser la mise à jour.");
-    }
-
-    async function startEmbeddedCheckout() {
-      try {
+      async function postJson(url, body) {
         const token = getToken();
-        if (!token) {
-          window.location.href = "/login.html";
-          return;
-        }
 
-        const payload = readPayload();
-        if (!payload) {
-          setMsg("Aucune sélection trouvée. Retourne sur pricing.", true);
-          if (retryBtn) {
-            retryBtn.style.display = "inline-block";
-            retryBtn.onclick = () => window.location.href = "/pricing.html";
-          }
-          return;
-        }
-
-        const pk = window.STRIPE_PUBLISHABLE_KEY;
-        if (!pk || !pk.startsWith("pk_")) {
-          throw new Error("Clé Stripe publique manquante.");
-        }
-
-        const stripe = Stripe(pk);
-
-        setMsg("Chargement du paiement sécurisé…");
-
-        const data = await postJson("/api/stripe/checkout-embedded", {
-          plan: payload.mode === "addons" ? null : payload.plan,
-          addons: payload.addons || {}
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          credentials: "include",
+          body: JSON.stringify(body || {})
         });
 
-        console.log("checkout-embedded response:", data);
+        const data = await res.json().catch(() => ({}));
 
-        // CAS 1 : nouveau checkout embedded
-        if (data.clientSecret) {
-          await mountEmbeddedCheckout(stripe, data.clientSecret);
-          return;
+        if (!res.ok) {
+          throw new Error(data?.error || "Erreur API checkout-embedded");
         }
 
-        // CAS 2 : abonnement existant avec paiement de prorata
-        if (data.paymentIntentClientSecret) {
-          await mountPaymentElement(stripe, data.paymentIntentClientSecret);
-          return;
-        }
+        return data;
+      }
 
-        // CAS 3 : abonnement existant mis à jour sans paiement
-        if (data.ok && data.updated) {
-          setMsg("Abonnement mis à jour avec succès. Redirection…");
-          setTimeout(() => {
-            window.location.href = "/dashboard.html#billing";
-          }, 1200);
-          return;
-        }
+      async function mountEmbeddedCheckout(stripe, clientSecret) {
+        mountNode.innerHTML = "";
+        mountNode.classList.remove("hidden");
+        checkoutWrap.classList.remove("hidden");
+        if (successState) successState.classList.remove("show");
 
-        // CAS 4 : aucun changement
-        if (data.ok && data.subscriptionId) {
-          setMsg("Aucun paiement nécessaire. Redirection…");
-          setTimeout(() => {
-            window.location.href = "/dashboard.html#billing";
-          }, 1200);
-          return;
-        }
+        const checkout = await stripe.initEmbeddedCheckout({
+          clientSecret
+        });
 
-        throw new Error("Réponse Stripe inconnue.");
-      } catch (err) {
-        console.error("checkout-embedded error:", err);
-        setMsg(err?.message || "Erreur de chargement du checkout.", true);
+        checkout.mount("#embedded-checkout");
+        setMsg("Paiement sécurisé prêt.", "success");
+      }
 
-        if (retryBtn) {
-          retryBtn.style.display = "inline-block";
-          retryBtn.onclick = () => window.location.reload();
+      async function mountPaymentElement(stripe, paymentIntentClientSecret) {
+        mountNode.classList.remove("hidden");
+        checkoutWrap.classList.remove("hidden");
+        if (successState) successState.classList.remove("show");
+
+        mountNode.innerHTML = `
+          <form id="payment-intent-form" style="padding:20px;background:#fff;border-radius:14px;">
+            <div id="payment-element"></div>
+            <button type="submit" class="primaryBtn" style="margin-top:14px;width:100%;">
+              Payer maintenant
+            </button>
+          </form>
+        `;
+
+        const isDark =
+          window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+        const elements = stripe.elements({
+          clientSecret: paymentIntentClientSecret,
+          appearance: { theme: isDark ? "night" : "stripe" }
+        });
+
+        const paymentElement = elements.create("payment");
+        paymentElement.mount("#payment-element");
+
+        const form = document.getElementById("payment-intent-form");
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          setMsg("Validation du paiement…");
+
+          const { error } = await stripe.confirmPayment({
+            elements,
+            confirmParams: {
+              return_url: `${window.location.origin}/success.html?next=/dashboard.html#billing`
+            }
+          });
+
+          if (error) {
+            setMsg(error.message || "Erreur de paiement.", "error");
+          }
+        });
+
+        setMsg("Un paiement est requis pour finaliser cette mise à jour.");
+      }
+
+      async function startEmbeddedCheckout() {
+        try {
+          const token = getToken();
+          if (!token) {
+            window.location.href = "/login.html";
+            return;
+          }
+
+          const payload = readPayload();
+          if (!payload) {
+            setMsg("Aucune sélection trouvée. Retourne sur pricing.", "error");
+            showRetry(() => window.location.href = "/pricing.html");
+            return;
+          }
+
+          const pk = window.STRIPE_PUBLISHABLE_KEY;
+          if (!pk || !pk.startsWith("pk_")) {
+            throw new Error("Clé Stripe publique manquante.");
+          }
+
+          const stripe = Stripe(pk);
+
+          setMsg("Chargement du paiement sécurisé…");
+
+          const data = await postJson("/api/stripe/checkout-embedded", {
+            plan: payload.mode === "addons" ? null : payload.plan,
+            addons: payload.addons || {}
+          });
+
+          console.log("checkout-embedded response:", data);
+
+          if (data.clientSecret) {
+            await mountEmbeddedCheckout(stripe, data.clientSecret);
+            return;
+          }
+
+          if (data.paymentIntentClientSecret) {
+            await mountPaymentElement(stripe, data.paymentIntentClientSecret);
+            return;
+          }
+
+          if (data.ok && data.updated) {
+            showSuccess("Ton abonnement a bien été modifié. Tu peux revenir sur le dashboard, consulter ton espace billing ou gérer de nouveau tes add-ons.");
+            return;
+          }
+
+          if (data.ok && data.subscriptionId) {
+            showSuccess("Ton abonnement est déjà à jour. Tu peux revenir sur ton dashboard ou ouvrir l’espace billing.");
+            return;
+          }
+
+          throw new Error("Réponse Stripe inconnue.");
+        } catch (err) {
+          console.error("checkout-embedded error:", err);
+          setMsg(err?.message || "Erreur de chargement du checkout.", "error");
+          showRetry(() => window.location.reload());
         }
       }
-    }
 
-    startEmbeddedCheckout();
-  })();
-</script>
+      startEmbeddedCheckout();
+    })();
+  </script>
 </body>
 </html>
