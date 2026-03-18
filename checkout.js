@@ -38,21 +38,55 @@
     }
   }
 
+  function labelize(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "—";
+
+    const map = {
+      standard: "Standard",
+      pro: "Pro",
+      ultra: "Ultra",
+      customDomain: "Custom Domain",
+      prioritySupport: "Priority Support",
+      whiteLabel: "White Label",
+      retention90d: "Retention 90 Days",
+      retention365d: "Retention 365 Days",
+      monitorsPack50: "Monitors Pack +50",
+      auditsPack200: "Audits Pack +200",
+      auditsPack1000: "Audits Pack +1000",
+      pdfPack200: "PDF Pack +200",
+      exportsPack1000: "Exports Pack +1000",
+      extraSeats: "Extra Seats"
+    };
+
+    if (map[raw]) return map[raw];
+
+    return raw
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (m) => m.toUpperCase());
+  }
+
   function summarize(payload) {
     if (!payload) return;
 
-    if (sumPlan) sumPlan.textContent = payload.plan || "—";
+    if (sumPlan) {
+      sumPlan.textContent = payload.plan ? labelize(payload.plan) : "—";
+    }
 
     const addons = payload.addons || {};
     const lines = [];
+
     for (const [k, v] of Object.entries(addons)) {
       if (k === "whiteLabel") continue;
+
       if (typeof v === "boolean") {
-        if (v) lines.push(k);
+        if (v) lines.push(labelize(k));
       } else if (Number(v) > 0) {
-        lines.push(`${k}×${Number(v)}`);
+        lines.push(`${labelize(k)} × ${Number(v)}`);
       }
     }
+
     if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
   }
 
