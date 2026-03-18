@@ -26,17 +26,12 @@
       gap:14px;
     }
 
-    .embeddedPage .section{
-      margin-top:0;
-    }
-
-    .embeddedPage .card{
+    .embeddedPage .side{
       height:100%;
     }
 
-    .embeddedPage .cardBody{
-      display:flex;
-      flex-direction:column;
+    .embeddedPage .section{
+      margin-top:0;
     }
 
     .embeddedPage .checkoutWrap{
@@ -45,7 +40,8 @@
       background:rgba(255,255,255,.02);
       padding:14px;
       min-height:560px;
-      transition:.25s ease;
+      position:relative;
+      overflow:hidden;
     }
 
     @media (prefers-color-scheme: light){
@@ -55,139 +51,307 @@
       }
     }
 
-    .embeddedPage .checkoutWrap.hidden{
-      display:none;
-    }
-
     .embeddedPage .checkoutMount{
       width:100%;
       min-height:520px;
       border-radius:14px;
       overflow:hidden;
-      background:#fff;
-    }
-
-    .embeddedPage .checkoutMount.hidden{
-      display:none;
+      background:transparent;
+      position:relative;
     }
 
     .embeddedPage .statusBox{
-      margin-bottom:12px;
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.08);
-      background:rgba(255,255,255,.03);
-      font-size:14px;
-      line-height:1.5;
+      margin-bottom:10px;
+      font-weight:600;
     }
 
     .embeddedPage .statusBox.error{
       color:#ff8a8a;
-      border-color:rgba(255,138,138,.28);
-      background:rgba(255,90,90,.08);
     }
 
     .embeddedPage .statusBox.success{
-      color:#86efac;
-      border-color:rgba(134,239,172,.24);
-      background:rgba(34,197,94,.08);
+      color:#79f2a7;
     }
 
     @media (prefers-color-scheme: light){
-      .embeddedPage .statusBox{
-        border:1px solid rgba(15,23,42,.08);
-        background:rgba(15,23,42,.03);
-      }
-
       .embeddedPage .statusBox.error{
         color:#b42318;
-        border-color:rgba(180,35,24,.18);
-        background:rgba(180,35,24,.06);
       }
-
       .embeddedPage .statusBox.success{
         color:#067647;
-        border-color:rgba(6,118,71,.16);
-        background:rgba(6,118,71,.06);
       }
     }
 
-    .embeddedPage .stateCard{
-      display:none;
-      border-radius:18px;
-      border:1px solid rgba(255,255,255,.08);
-      background:linear-gradient(180deg, rgba(47,91,255,.14), rgba(255,255,255,.02));
-      padding:20px;
-    }
-
-    .embeddedPage .stateCard.show{
-      display:block;
-    }
-
-    .embeddedPage .stateIcon{
-      width:52px;
-      height:52px;
+    .embeddedPage .checkoutLoading{
+      min-height:520px;
       border-radius:16px;
+      border:1px solid rgba(255,255,255,.08);
+      background:
+        radial-gradient(circle at top left, rgba(47,91,255,.22), transparent 38%),
+        linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015));
       display:flex;
       align-items:center;
       justify-content:center;
-      font-size:24px;
-      margin-bottom:14px;
-      background:linear-gradient(180deg,#2f5bff,#2449ff);
-      color:#fff;
-      box-shadow:0 12px 28px rgba(47,91,255,.28);
+      padding:28px;
     }
 
-    .embeddedPage .stateTitle{
-      font-size:24px;
+    @media (prefers-color-scheme: light){
+      .embeddedPage .checkoutLoading{
+        border:1px solid rgba(15,23,42,.08);
+        background:
+          radial-gradient(circle at top left, rgba(47,91,255,.12), transparent 38%),
+          linear-gradient(180deg, rgba(15,23,42,.03), rgba(15,23,42,.015));
+      }
+    }
+
+    .embeddedPage .loadingCard{
+      width:min(100%, 520px);
+      border-radius:22px;
+      padding:28px 24px;
+      background:rgba(7,11,24,.72);
+      border:1px solid rgba(255,255,255,.08);
+      box-shadow:0 22px 60px rgba(0,0,0,.26);
+      text-align:center;
+    }
+
+    @media (prefers-color-scheme: light){
+      .embeddedPage .loadingCard{
+        background:rgba(255,255,255,.92);
+        border:1px solid rgba(15,23,42,.08);
+        box-shadow:0 22px 60px rgba(15,23,42,.10);
+      }
+    }
+
+    .embeddedPage .loadingOrb{
+      width:74px;
+      height:74px;
+      margin:0 auto 18px;
+      border-radius:22px;
+      display:grid;
+      place-items:center;
+      background:linear-gradient(135deg,#2f5bff,#1d46ff);
+      box-shadow:0 18px 40px rgba(47,91,255,.32);
+      position:relative;
+    }
+
+    .embeddedPage .loadingOrb::before{
+      content:"";
+      position:absolute;
+      inset:-8px;
+      border-radius:28px;
+      border:2px solid rgba(47,91,255,.25);
+      animation:fpPulse 1.8s ease-out infinite;
+    }
+
+    .embeddedPage .spinner{
+      width:28px;
+      height:28px;
+      border-radius:999px;
+      border:3px solid rgba(255,255,255,.28);
+      border-top-color:#fff;
+      animation:fpSpin .85s linear infinite;
+    }
+
+    .embeddedPage .loadingTitle{
+      font-size:28px;
+      line-height:1.05;
       font-weight:800;
-      line-height:1.1;
+      letter-spacing:-.03em;
       margin:0 0 10px;
     }
 
-    .embeddedPage .stateText{
+    .embeddedPage .loadingText{
       margin:0;
       opacity:.9;
-      line-height:1.65;
-      font-size:14px;
+      line-height:1.7;
+      font-size:15px;
     }
 
-    .embeddedPage .stateActions{
-      display:flex;
+    .embeddedPage .loadingSteps{
+      margin:18px 0 0;
+      padding:0;
+      list-style:none;
+      display:grid;
       gap:10px;
-      flex-wrap:wrap;
-      margin-top:18px;
+      text-align:left;
     }
 
-    .embeddedPage .stateActions .primaryBtn,
-    .embeddedPage .stateActions .ghostBtn{
-      width:auto;
-      min-width:190px;
+    .embeddedPage .loadingSteps li{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:14px;
+      opacity:.95;
+    }
+
+    .embeddedPage .loadingDot{
+      width:9px;
+      height:9px;
+      border-radius:999px;
+      background:#5b86ff;
+      box-shadow:0 0 0 6px rgba(91,134,255,.14);
+      flex:0 0 auto;
+    }
+
+    .embeddedPage .side .card{
+      display:flex;
+      flex-direction:column;
     }
 
     .embeddedPage .side .card:last-child{
-      margin-top:auto;
+      flex:1;
     }
 
-    .embeddedPage .side .cardBody{
-      justify-content:flex-start;
-    }
-
-    .embeddedPage .helperList{
+    .embeddedPage .infoList{
+      list-style:none;
       margin:0;
+      padding:0;
+      display:grid;
+      gap:12px;
+    }
+
+    .embeddedPage .infoList li{
+      position:relative;
       padding-left:18px;
-    }
-
-    .embeddedPage .helperList li{
-      margin:0 0 8px;
-      line-height:1.55;
-    }
-
-    .embeddedPage .miniNote{
-      margin-top:12px;
-      font-size:13px;
-      opacity:.78;
       line-height:1.6;
+    }
+
+    .embeddedPage .infoList li::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:.62em;
+      width:7px;
+      height:7px;
+      border-radius:999px;
+      background:#4d7bff;
+      box-shadow:0 0 0 5px rgba(77,123,255,.14);
+      transform:translateY(-50%);
+    }
+
+    .embeddedPage .successPanel{
+      display:none;
+      border-radius:22px;
+      border:1px solid rgba(124,239,176,.16);
+      background:
+        radial-gradient(circle at top left, rgba(47,91,255,.18), transparent 40%),
+        linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
+      padding:24px;
+      box-shadow:0 14px 34px rgba(0,0,0,.16);
+    }
+
+    .embeddedPage .successPanel.show{
+      display:block;
+    }
+
+    .embeddedPage .successTop{
+      display:flex;
+      align-items:flex-start;
+      gap:16px;
+      margin-bottom:18px;
+    }
+
+    .embeddedPage .successIcon{
+      width:68px;
+      height:68px;
+      border-radius:20px;
+      background:linear-gradient(135deg,#2f5bff,#173fff);
+      display:grid;
+      place-items:center;
+      flex:0 0 auto;
+      box-shadow:0 18px 34px rgba(47,91,255,.28);
+      position:relative;
+      overflow:hidden;
+    }
+
+    .embeddedPage .successIcon::after{
+      content:"";
+      position:absolute;
+      inset:1px;
+      border-radius:19px;
+      border:1px solid rgba(255,255,255,.12);
+      pointer-events:none;
+    }
+
+    .embeddedPage .successIcon svg{
+      width:34px;
+      height:34px;
+      display:block;
+      filter:drop-shadow(0 6px 14px rgba(0,0,0,.18));
+    }
+
+    .embeddedPage .successTitle{
+      margin:0 0 8px;
+      font-size:18px;
+      line-height:1.15;
+      font-weight:800;
+      letter-spacing:-.02em;
+    }
+
+    .embeddedPage .successText{
+      margin:0;
+      opacity:.95;
+      line-height:1.65;
+    }
+
+    .embeddedPage .successActions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      margin-top:16px;
+    }
+
+    .embeddedPage .successActions .primaryBtn,
+    .embeddedPage .successActions .ghostBtn{
+      margin:0;
+    }
+
+    .embeddedPage .successFoot{
+      margin-top:14px;
+      font-size:14px;
+      opacity:.86;
+      line-height:1.6;
+    }
+
+    .embeddedPage .checkoutShell.hidden,
+    .embeddedPage .checkoutWrap.hidden{
+      display:none;
+    }
+
+    .embeddedPage .helperBadge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      min-height:44px;
+      padding:0 14px;
+      border-radius:999px;
+      border:1px solid rgba(124,239,176,.22);
+      background:rgba(124,239,176,.08);
+      color:#86efac;
+      font-weight:700;
+      margin-bottom:12px;
+    }
+
+    .embeddedPage .helperBadgeDot{
+      width:8px;
+      height:8px;
+      border-radius:999px;
+      background:#7cefaf;
+      box-shadow:0 0 0 6px rgba(124,239,176,.12);
+    }
+
+    .embeddedPage .stickySummary{
+      border-radius:18px;
+      padding:16px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.02);
+    }
+
+    @media (prefers-color-scheme: light){
+      .embeddedPage .stickySummary{
+        border:1px solid rgba(15,23,42,.08);
+        background:rgba(15,23,42,.02);
+      }
     }
 
     @media (max-width:980px){
@@ -199,9 +363,31 @@
         min-height:auto;
       }
 
-      .embeddedPage .checkoutMount{
-        min-height:460px;
+      .embeddedPage .checkoutMount,
+      .embeddedPage .checkoutLoading{
+        min-height:420px;
       }
+
+      .embeddedPage .side .card:last-child{
+        flex:unset;
+      }
+
+      .embeddedPage .successTop{
+        flex-direction:column;
+      }
+
+      .embeddedPage .loadingTitle{
+        font-size:24px;
+      }
+    }
+
+    @keyframes fpSpin{
+      to{ transform:rotate(360deg); }
+    }
+
+    @keyframes fpPulse{
+      0%{ transform:scale(.92); opacity:.9; }
+      100%{ transform:scale(1.16); opacity:0; }
     }
   </style>
 </head>
@@ -224,26 +410,70 @@
             <div class="cardBody">
               <div id="checkoutMsg" class="small statusBox">Préparation du paiement…</div>
 
-              <div id="successState" class="stateCard">
-                <div class="stateIcon">✓</div>
-                <h2 class="stateTitle">Modification enregistrée</h2>
-                <p class="stateText" id="successText">
-                  Ton abonnement et tes options ont bien été mis à jour. Tu peux maintenant revenir sur ton dashboard ou gérer à nouveau tes add-ons.
-                </p>
-
-                <div class="stateActions">
-                  <a href="/dashboard.html#billing" class="primaryBtn">Voir le dashboard</a>
-                  <a href="/billing.html" class="ghostBtn">Gérer abonnement</a>
-                  <a href="/addons.html" class="ghostBtn">Gérer les add-ons</a>
-                </div>
-
-                <div class="miniNote">
-                  Aucun paiement supplémentaire n’est nécessaire pour cette modification, sauf si Stripe te le demande explicitement.
-                </div>
+              <div id="successPill" class="helperBadge" style="display:none;">
+                <span class="helperBadgeDot"></span>
+                <span>Modification enregistrée avec succès.</span>
               </div>
 
               <div id="checkoutWrap" class="checkoutWrap">
-                <div id="embedded-checkout" class="checkoutMount"></div>
+                <div id="checkoutShell" class="checkoutShell">
+                  <div id="embedded-checkout" class="checkoutMount">
+                    <div id="checkoutLoading" class="checkoutLoading">
+                      <div class="loadingCard">
+                        <div class="loadingOrb">
+                          <div class="spinner"></div>
+                        </div>
+
+                        <h2 class="loadingTitle">Préparation du paiement</h2>
+                        <p class="loadingText">
+                          FlowPoint initialise ton espace sécurisé Stripe et vérifie ton abonnement
+                          avant d’afficher le bon écran.
+                        </p>
+
+                        <ul class="loadingSteps">
+                          <li><span class="loadingDot"></span> Vérification de ton espace client</li>
+                          <li><span class="loadingDot"></span> Chargement du plan et des add-ons</li>
+                          <li><span class="loadingDot"></span> Ouverture du paiement sécurisé</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="successPanel" class="successPanel">
+                  <div class="successTop">
+                    <div class="successIcon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M6 12.5L10.1 16.6L18.2 7.8"
+                          stroke="white"
+                          stroke-width="2.9"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </div>
+
+                    <div>
+                      <h2 class="successTitle">Modification enregistrée</h2>
+                      <p id="successText" class="successText">
+                        Ton abonnement a bien été mis à jour. Tu peux revenir sur le dashboard,
+                        consulter ton espace billing ou gérer de nouveau tes add-ons.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div class="successActions">
+                    <a class="primaryBtn" href="/dashboard.html">Voir le dashboard</a>
+                    <a class="ghostBtn" href="/billing.html">Changer l’abonnement</a>
+                    <a class="ghostBtn" href="/addons.html">Gérer les add-ons</a>
+                  </div>
+
+                  <div class="successFoot">
+                    Aucun paiement supplémentaire n’est nécessaire pour cette modification,
+                    sauf si Stripe demande explicitement une validation.
+                  </div>
+                </div>
               </div>
 
               <button class="ghostBtn" id="retryBtn" type="button" style="display:none;margin-top:12px;">
@@ -258,7 +488,7 @@
         <div class="card">
           <div class="cardHead">Avant de payer</div>
           <div class="cardBody">
-            <ul class="small helperList">
+            <ul class="infoList small">
               <li>Le montant affiché vient de ton plan et de tes add-ons</li>
               <li>Stripe sécurise la validation du paiement</li>
               <li>En cas d’annulation, tu reviens sur la page prévue</li>
@@ -270,7 +500,7 @@
         <div class="card">
           <div class="cardHead">Après validation</div>
           <div class="cardBody">
-            <ul class="small helperList">
+            <ul class="infoList small">
               <li>Activation du plan ou des options choisies</li>
               <li>Redirection vers le dashboard ou la page prévue</li>
               <li>Mise à jour des quotas et accès associés</li>
@@ -280,13 +510,15 @@
 
         <div class="card">
           <div class="cardHead">Suite du parcours</div>
-          <div class="cardBody">
-            <ul class="small helperList">
-              <li>Accès mis à jour après confirmation du paiement</li>
-              <li>Tu pourras ensuite revenir sur Billing pour voir ton abonnement</li>
-              <li>Les add-ons restent modifiables à tout moment depuis FlowPoint</li>
-              <li>Aucun réglage technique n’est nécessaire côté client</li>
-            </ul>
+          <div class="cardBody" style="display:flex;flex:1;">
+            <div class="stickySummary small" style="width:100%;">
+              <ul class="infoList">
+                <li>Accès mis à jour après confirmation du paiement</li>
+                <li>Tu pourras ensuite revenir sur Billing pour voir ton abonnement</li>
+                <li>Les add-ons restent modifiables à tout moment depuis FlowPoint</li>
+                <li>Aucun réglage technique n’est nécessaire côté client</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -308,8 +540,11 @@
       const msg = $("#checkoutMsg");
       const retryBtn = $("#retryBtn");
       const mountNode = $("#embedded-checkout");
+      const checkoutLoading = $("#checkoutLoading");
       const checkoutWrap = $("#checkoutWrap");
-      const successState = $("#successState");
+      const checkoutShell = $("#checkoutShell");
+      const successPanel = $("#successPanel");
+      const successPill = $("#successPill");
       const successText = $("#successText");
 
       function getToken() {
@@ -335,20 +570,6 @@
         }
       }
 
-      function showSuccess(text) {
-        if (checkoutWrap) checkoutWrap.classList.add("hidden");
-        if (mountNode) mountNode.classList.add("hidden");
-        if (successState) successState.classList.add("show");
-        if (successText) successText.textContent = text || "Ton abonnement a été mis à jour avec succès.";
-        setMsg("Modification enregistrée avec succès.", "success");
-      }
-
-      function showRetry(action) {
-        if (!retryBtn) return;
-        retryBtn.style.display = "inline-block";
-        retryBtn.onclick = action || (() => window.location.reload());
-      }
-
       async function postJson(url, body) {
         const token = getToken();
 
@@ -356,7 +577,7 @@
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
+            "Authorization": token ? `Bearer ${token}` : ""
           },
           credentials: "include",
           body: JSON.stringify(body || {})
@@ -371,64 +592,35 @@
         return data;
       }
 
-      async function mountEmbeddedCheckout(stripe, clientSecret) {
-        mountNode.innerHTML = "";
-        mountNode.classList.remove("hidden");
-        checkoutWrap.classList.remove("hidden");
-        if (successState) successState.classList.remove("show");
-
-        const checkout = await stripe.initEmbeddedCheckout({
-          clientSecret
-        });
-
-        checkout.mount("#embedded-checkout");
-        setMsg("Paiement sécurisé prêt.", "success");
+      function showRetry(action) {
+        if (!retryBtn) return;
+        retryBtn.style.display = "inline-block";
+        retryBtn.onclick = action || (() => window.location.reload());
       }
 
-      async function mountPaymentElement(stripe, paymentIntentClientSecret) {
-        mountNode.classList.remove("hidden");
-        checkoutWrap.classList.remove("hidden");
-        if (successState) successState.classList.remove("show");
+      function hideLoader() {
+        if (checkoutLoading) checkoutLoading.style.display = "none";
+      }
 
-        mountNode.innerHTML = `
-          <form id="payment-intent-form" style="padding:20px;background:#fff;border-radius:14px;">
-            <div id="payment-element"></div>
-            <button type="submit" class="primaryBtn" style="margin-top:14px;width:100%;">
-              Payer maintenant
-            </button>
-          </form>
-        `;
+      function showLoader() {
+        if (checkoutLoading) checkoutLoading.style.display = "flex";
+      }
 
-        const isDark =
-          window.matchMedia &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches;
+      function showSuccessMode(text) {
+        if (checkoutShell) checkoutShell.classList.add("hidden");
+        if (successPanel) successPanel.classList.add("show");
+        if (successPill) successPill.style.display = "inline-flex";
+        hideLoader();
 
-        const elements = stripe.elements({
-          clientSecret: paymentIntentClientSecret,
-          appearance: { theme: isDark ? "night" : "stripe" }
-        });
+        if (text && successText) {
+          successText.textContent = text;
+        }
 
-        const paymentElement = elements.create("payment");
-        paymentElement.mount("#payment-element");
+        setMsg("Modification enregistrée avec succès.", "success");
 
-        const form = document.getElementById("payment-intent-form");
-        form.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          setMsg("Validation du paiement…");
-
-          const { error } = await stripe.confirmPayment({
-            elements,
-            confirmParams: {
-              return_url: `${window.location.origin}/success.html?next=/dashboard.html#billing`
-            }
-          });
-
-          if (error) {
-            setMsg(error.message || "Erreur de paiement.", "error");
-          }
-        });
-
-        setMsg("Un paiement est requis pour finaliser cette mise à jour.");
+        if (retryBtn) {
+          retryBtn.style.display = "none";
+        }
       }
 
       async function startEmbeddedCheckout() {
@@ -451,6 +643,13 @@
             throw new Error("Clé Stripe publique manquante.");
           }
 
+          if (!mountNode) {
+            throw new Error("Zone de montage checkout introuvable.");
+          }
+
+          mountNode.innerHTML = "";
+          showLoader();
+
           const stripe = Stripe(pk);
 
           setMsg("Chargement du paiement sécurisé…");
@@ -460,32 +659,30 @@
             addons: payload.addons || {}
           });
 
-          console.log("checkout-embedded response:", data);
-
-          if (data.clientSecret) {
-            await mountEmbeddedCheckout(stripe, data.clientSecret);
+          if (data?.updated || data?.subscriptionId) {
+            showSuccessMode(
+              data?.paymentIntentClientSecret
+                ? "Ta modification a été enregistrée. Stripe peut encore demander une validation complémentaire si un paiement de prorata est nécessaire."
+                : "Ton abonnement a bien été modifié. Tu peux revenir sur le dashboard, consulter ton espace billing ou gérer de nouveau tes add-ons."
+            );
             return;
           }
 
-          if (data.paymentIntentClientSecret) {
-            await mountPaymentElement(stripe, data.paymentIntentClientSecret);
-            return;
+          if (!data.clientSecret) {
+            throw new Error("clientSecret embedded manquant.");
           }
 
-          if (data.ok && data.updated) {
-            showSuccess("Ton abonnement a bien été modifié. Tu peux revenir sur le dashboard, consulter ton espace billing ou gérer de nouveau tes add-ons.");
-            return;
-          }
+          const checkout = await stripe.initEmbeddedCheckout({
+            clientSecret: data.clientSecret
+          });
 
-          if (data.ok && data.subscriptionId) {
-            showSuccess("Ton abonnement est déjà à jour. Tu peux revenir sur ton dashboard ou ouvrir l’espace billing.");
-            return;
-          }
-
-          throw new Error("Réponse Stripe inconnue.");
+          hideLoader();
+          checkout.mount("#embedded-checkout");
+          setMsg("Paiement sécurisé prêt.");
         } catch (err) {
           console.error("checkout-embedded error:", err);
           setMsg(err?.message || "Erreur de chargement du checkout.", "error");
+          hideLoader();
           showRetry(() => window.location.reload());
         }
       }
