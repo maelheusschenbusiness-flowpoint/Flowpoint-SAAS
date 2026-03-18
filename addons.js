@@ -34,12 +34,41 @@
     if (msg) msg.textContent = t || "";
   }
 
+  function labelize(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "—";
+
+    const map = {
+      standard: "Standard",
+      pro: "Pro",
+      ultra: "Ultra",
+      customDomain: "Custom Domain",
+      prioritySupport: "Priority Support",
+      whiteLabel: "White Label",
+      retention90d: "Retention 90 Days",
+      retention365d: "Retention 365 Days",
+      monitorsPack50: "Monitors Pack +50",
+      auditsPack200: "Audits Pack +200",
+      auditsPack1000: "Audits Pack +1000",
+      pdfPack200: "PDF Pack +200",
+      exportsPack1000: "Exports Pack +1000",
+      extraSeats: "Extra Seats"
+    };
+
+    if (map[raw]) return map[raw];
+
+    return raw
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (m) => m.toUpperCase());
+  }
+
   const ADDONS = [
-    { key: "whiteLabel", name: "White label", desc: "Marque blanche (inclus).", price: "Inclus (gratuit)", type: "flag", lockedOn: true },
+    { key: "whiteLabel", name: "White Label", desc: "Marque blanche (inclus).", price: "Inclus (gratuit)", type: "flag", lockedOn: true },
     { key: "customDomain", name: "Custom Domain", desc: "Utilise ton propre domaine.", price: "9€ / mois", type: "flag" },
     { key: "prioritySupport", name: "Priority Support", desc: "Support prioritaire.", price: "29€ / mois", type: "flag" },
-    { key: "retention90d", name: "Retention +90 days", desc: "Rétention 90 jours.", price: "9€ / mois", type: "flag" },
-    { key: "retention365d", name: "Retention +365 days", desc: "Rétention 365 jours.", price: "19€ / mois", type: "flag" },
+    { key: "retention90d", name: "Retention +90 Days", desc: "Rétention 90 jours.", price: "9€ / mois", type: "flag" },
+    { key: "retention365d", name: "Retention +365 Days", desc: "Rétention 365 jours.", price: "19€ / mois", type: "flag" },
 
     { key: "auditsPack200", name: "Audits Pack +200", desc: "+200 audits / mois.", price: "9€ / mois", type: "qty", max: 50 },
     { key: "auditsPack1000", name: "Audits Pack +1000", desc: "+1000 audits / mois.", price: "29€ / mois", type: "qty", max: 20 },
@@ -51,18 +80,22 @@
 
   function loadAddons() {
     let addons = {};
-    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {}; } catch {}
-    // defaults
+    try {
+      addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {};
+    } catch {}
+
     for (const a of ADDONS) {
       if (a.type === "flag" && addons[a.key] === undefined) addons[a.key] = (a.key === "whiteLabel");
       if (a.type === "qty" && addons[a.key] === undefined) addons[a.key] = 0;
     }
+
     addons.whiteLabel = true;
-    // migration ancienne clé
+
     if (addons.extraSeat != null && addons.extraSeats == null) {
       addons.extraSeats = Number(addons.extraSeat || 0);
       delete addons.extraSeat;
     }
+
     return addons;
   }
 
@@ -72,11 +105,17 @@
 
   function updateSummary(addons) {
     const lines = [];
+
     for (const [k, v] of Object.entries(addons || {})) {
       if (k === "whiteLabel") continue;
-      if (typeof v === "boolean") { if (v) lines.push(k); }
-      else if (Number(v) > 0) lines.push(`${k}×${Number(v)}`);
+
+      if (typeof v === "boolean") {
+        if (v) lines.push(labelize(k));
+      } else if (Number(v) > 0) {
+        lines.push(`${labelize(k)} × ${Number(v)}`);
+      }
     }
+
     if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
   }
 
@@ -91,7 +130,7 @@
       left.innerHTML = `
         <p class="addonTitle">${a.name}</p>
         <p class="addonDesc">${a.desc || ""}</p>
-        <span class="keyChip">${a.key}</span>
+        <span class="keyChip">${labelize(a.key)}</span>
       `;
 
       const right = document.createElement("div");
@@ -184,7 +223,6 @@
     try {
       const j = await apiApply(addons);
 
-      // Update sans paiement
       if (j.ok && !j.paymentIntentClientSecret) {
         setMsg(j.updated ? "Add-ons mis à jour ✅" : "Aucun changement.");
         applyBtn.disabled = false;
@@ -192,7 +230,6 @@
         return;
       }
 
-      // Update avec paiement prorata requis
       if (j.paymentIntentClientSecret) {
         setMsg("Add-ons mis à jour ✅ Paiement requis (prorata).");
         setCheckoutPayloadForPay(addons);
@@ -213,8 +250,8 @@
     }
   }
 
-  // init
   setAuthBadge();
+
   if (!getToken()) {
     window.location.href = "/login.html";
     return;
