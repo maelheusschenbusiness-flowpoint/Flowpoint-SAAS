@@ -367,6 +367,7 @@
       line-height:1.65;
     }
 
+    /* IMPORTANT : mêmes boutons que pricing, sans style bizarre */
     .embeddedPage .successActions{
       display:grid;
       grid-template-columns:1fr;
@@ -374,12 +375,12 @@
       margin-top:16px;
     }
 
-    .embeddedPage .successActions .primaryBtn,
-    .embeddedPage .successActions .ghostBtn{
+    .embeddedPage .successActions a{
+      display:block;
       width:100%;
-      justify-content:center;
       text-align:center;
-      margin:0;
+      appearance:none;
+      -webkit-appearance:none;
     }
 
     .embeddedPage .successFoot{
