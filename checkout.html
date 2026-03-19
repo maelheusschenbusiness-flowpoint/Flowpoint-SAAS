@@ -67,20 +67,11 @@
       margin-top:12px;
     }
 
-    .checkoutPage .checkoutCard .cardBody{
-      padding-bottom:16px;
-    }
-
-    .checkoutPage #checkoutMsg{
-      margin-bottom:8px;
-    }
-
     .checkoutPage .checkoutShell{
       border-radius:16px;
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.02);
       padding:12px;
-      min-height:120px;
     }
 
     .checkoutPage .checkoutPlaceholder{
@@ -126,11 +117,6 @@
       margin-bottom:8px;
     }
 
-    .checkoutPage .miniInfo .small{
-      margin:0;
-      line-height:1.55;
-    }
-
     .miniList{
       list-style:none;
       padding:0;
@@ -141,43 +127,44 @@
 
     .miniList li{
       position:relative;
-      padding-left:26px;
+      padding-left:18px;
       line-height:1.6;
     }
 
     .miniList li::before{
-      content:"";
+      content:"•";
       position:absolute;
       left:0;
-      top:.62em;
-      width:8px;
-      height:8px;
-      border-radius:999px;
-      background:#2f5bff;
-      box-shadow:0 0 0 4px rgba(47,91,255,.15);
-      transform:translateY(-50%);
+      top:0;
+      color:rgba(47,91,255,.95);
+      font-weight:950;
     }
 
-    .miniList li::after{
-      content:"";
-      position:absolute;
-      left:2px;
-      top:.62em;
-      width:4px;
-      height:4px;
-      border-radius:999px;
-      background:#8fb0ff;
-      transform:translateY(-50%);
-    }
-
-    /* mêmes boutons que pricing */
     #goEmbeddedBtn,
     #retryBtn{
-      appearance:none;
-      -webkit-appearance:none;
-      display:block;
       width:100%;
-      text-align:center;
+      min-height:48px;
+      border-radius:14px;
+      font-weight:950;
+    }
+
+    #goEmbeddedBtn{
+      border:0;
+      color:#fff;
+      background:linear-gradient(180deg,var(--primary),var(--primary2));
+      box-shadow:0 16px 50px rgba(47,91,255,.30);
+    }
+
+    #retryBtn{
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+    }
+
+    @media (prefers-color-scheme: light){
+      #retryBtn{
+        background:#fff;
+      }
     }
 
     @media (max-width:980px){
@@ -197,66 +184,7 @@
         justify-content:flex-start;
       }
     }
-
-/* ... ton CSS actuel ... */
-
-#goEmbeddedBtn,
-#retryBtn{
-  width:100%;
-  border-radius:16px;
-  min-height:52px;
-  font-weight:900;
-  font-size:15px;
-  letter-spacing:-.01em;
-  transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
-}
-
-#goEmbeddedBtn{
-  border:0;
-  color:#fff;
-  background:linear-gradient(180deg,#2f5bff 0%, #2449ff 100%);
-  box-shadow:
-    0 16px 38px rgba(47,91,255,.28),
-    inset 0 1px 0 rgba(255,255,255,.18);
-}
-
-#goEmbeddedBtn:hover{
-  transform:translateY(-1px);
-  box-shadow:
-    0 18px 42px rgba(47,91,255,.34),
-    inset 0 1px 0 rgba(255,255,255,.2);
-}
-
-#retryBtn{
-  border:1px solid rgba(255,255,255,.14);
-  color:var(--text);
-  background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.05));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.08),
-    0 10px 28px rgba(0,0,0,.14);
-}
-
-#retryBtn:hover{
-  transform:translateY(-1px);
-  border-color:rgba(255,255,255,.22);
-  background:linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.07));
-}
-
-@media (prefers-color-scheme: light){
-  #retryBtn{
-    border:1px solid rgba(15,23,42,.10);
-    background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(244,247,255,.96));
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.8),
-      0 10px 24px rgba(15,23,42,.08);
-  }
-
-  #retryBtn:hover{
-    border-color:rgba(36,73,255,.18);
-    background:linear-gradient(180deg, #ffffff, #eef3ff);
-  }
-}
-</style>
+  </style>
 </head>
 
 <body>
