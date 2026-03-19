@@ -1,7 +1,4 @@
 // addons.js — FlowPoint Add-ons UI
-// - Lit prefs (fp_addon_prefs)
-// - Apply => POST /api/stripe/checkout { plan:null, addons }
-// - Si backend renvoie paymentIntentClientSecret => on propose "Payer maintenant" (redirect /checkout.html)
 
 (() => {
   const TOKEN_KEYS = ["token", "fp_token"];
@@ -30,28 +27,29 @@
     authPill.textContent = tok ? "Statut : Connecté" : "Statut : Non connecté";
   }
 
-  function setMsg(t) {
-    if (msg) msg.textContent = t || "";
+  function setMsg(text) {
+    if (msg) msg.textContent = text || "";
   }
 
   function labelize(value) {
     const raw = String(value || "").trim();
     if (!raw) return "—";
 
-    if (raw === "standard") return "Standard";
-    if (raw === "pro") return "Pro";
-    if (raw === "ultra") return "Ultra";
-    if (raw === "customDomain") return "Custom Domain";
-    if (raw === "prioritySupport") return "Priority Support";
-    if (raw === "whiteLabel") return "White Label";
-    if (raw === "retention90d") return "Retention 90 Days";
-    if (raw === "retention365d") return "Retention 365 Days";
-    if (raw === "monitorsPack50") return "Monitors Pack 50";
-    if (raw === "auditsPack200") return "Audits Pack 200";
-    if (raw === "auditsPack1000") return "Audits Pack 1000";
-    if (raw === "pdfPack200") return "PDF Pack 200";
-    if (raw === "exportsPack1000") return "Exports Pack 1000";
-    if (raw === "extraSeats") return "Extra Seats";
+    const map = {
+      whiteLabel: "White Label",
+      customDomain: "Custom Domain",
+      prioritySupport: "Priority Support",
+      retention90d: "Retention 90 Days",
+      retention365d: "Retention 365 Days",
+      auditsPack200: "Audits Pack 200",
+      auditsPack1000: "Audits Pack 1000",
+      pdfPack200: "PDF Pack 200",
+      exportsPack1000: "Exports Pack 1000",
+      monitorsPack50: "Monitors Pack 50",
+      extraSeats: "Extra Seats"
+    };
+
+    if (map[raw]) return map[raw];
 
     return raw
       .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -63,33 +61,34 @@
     { key: "whiteLabel", name: "White Label", desc: "Marque blanche (inclus).", price: "Inclus (gratuit)", type: "flag", lockedOn: true },
     { key: "customDomain", name: "Custom Domain", desc: "Utilise ton propre domaine.", price: "9€ / mois", type: "flag" },
     { key: "prioritySupport", name: "Priority Support", desc: "Support prioritaire.", price: "29€ / mois", type: "flag" },
-    { key: "retention90d", name: "Retention +90 Days", desc: "Rétention 90 jours.", price: "9€ / mois", type: "flag" },
-    { key: "retention365d", name: "Retention +365 Days", desc: "Rétention 365 jours.", price: "19€ / mois", type: "flag" },
+    { key: "retention90d", name: "Retention 90 Days", desc: "Rétention 90 jours.", price: "9€ / mois", type: "flag" },
+    { key: "retention365d", name: "Retention 365 Days", desc: "Rétention 365 jours.", price: "19€ / mois", type: "flag" },
 
-    { key: "auditsPack200", name: "Audits Pack +200", desc: "+200 audits / mois.", price: "9€ / mois", type: "qty", max: 50 },
-    { key: "auditsPack1000", name: "Audits Pack +1000", desc: "+1000 audits / mois.", price: "29€ / mois", type: "qty", max: 20 },
-    { key: "pdfPack200", name: "PDF Pack +200", desc: "+200 PDFs / mois.", price: "9€ / mois", type: "qty", max: 50 },
-    { key: "exportsPack1000", name: "Exports Pack +1000", desc: "+1000 exports / mois.", price: "19€ / mois", type: "qty", max: 50 },
-    { key: "monitorsPack50", name: "Monitors Pack +50", desc: "+50 monitors.", price: "19€ / mois", type: "qty", max: 10 },
-    { key: "extraSeats", name: "Extra Seats", desc: "Seats supplémentaires.", price: "7€ / mois", type: "qty", max: 50 },
+    { key: "auditsPack200", name: "Audits Pack 200", desc: "+200 audits / mois.", price: "9€ / mois", type: "qty", max: 50 },
+    { key: "auditsPack1000", name: "Audits Pack 1000", desc: "+1000 audits / mois.", price: "29€ / mois", type: "qty", max: 20 },
+    { key: "pdfPack200", name: "PDF Pack 200", desc: "+200 PDFs / mois.", price: "9€ / mois", type: "qty", max: 50 },
+    { key: "exportsPack1000", name: "Exports Pack 1000", desc: "+1000 exports / mois.", price: "19€ / mois", type: "qty", max: 50 },
+    { key: "monitorsPack50", name: "Monitors Pack 50", desc: "+50 monitors.", price: "19€ / mois", type: "qty", max: 10 },
+    { key: "extraSeats", name: "Extra Seats", desc: "Seats supplémentaires.", price: "7€ / mois", type: "qty", max: 50 }
   ];
 
   function loadAddons() {
     let addons = {};
-    try { addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {}; } catch {}
+    try {
+      addons = JSON.parse(localStorage.getItem(ADDON_PREF_KEY) || "{}") || {};
+    } catch {}
 
     for (const a of ADDONS) {
-      if (a.type === "flag" && addons[a.key] === undefined) addons[a.key] = (a.key === "whiteLabel");
+      if (a.type === "flag" && addons[a.key] === undefined) addons[a.key] = a.key === "whiteLabel";
       if (a.type === "qty" && addons[a.key] === undefined) addons[a.key] = 0;
     }
-
-    addons.whiteLabel = true;
 
     if (addons.extraSeat != null && addons.extraSeats == null) {
       addons.extraSeats = Number(addons.extraSeat || 0);
       delete addons.extraSeat;
     }
 
+    addons.whiteLabel = true;
     return addons;
   }
 
@@ -106,14 +105,17 @@
       if (typeof v === "boolean") {
         if (v) lines.push(labelize(k));
       } else if (Number(v) > 0) {
-        lines.push(`${labelize(k)} × ${Number(v)}`);
+        lines.push(`${labelize(k)} ×${Number(v)}`);
       }
     }
 
-    if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
+    if (sumAddOns) {
+      sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
+    }
   }
 
   function render(addons) {
+    if (!root) return;
     root.innerHTML = "";
 
     for (const a of ADDONS) {
@@ -123,8 +125,8 @@
       const left = document.createElement("div");
       left.innerHTML = `
         <p class="addonTitle">${a.name}</p>
-        <p class="addonDesc">${a.desc || ""}</p>
-        <span class="keyChip">${labelize(a.key)}</span>
+        <p class="addonDesc">${a.desc}</p>
+        <span class="keyChip">${a.name}</span>
       `;
 
       const right = document.createElement("div");
@@ -139,13 +141,14 @@
           <input class="qtyInput" type="number" min="0" max="${a.max ?? 999}" step="1" value="${Number(addons[a.key] || 0)}" />
           <button class="qtyBtn" type="button" data-act="inc">+</button>
         `;
+
         const input = wrap.querySelector(".qtyInput");
 
         const setVal = (v) => {
           const max = Number(a.max ?? 999);
-          const nv = Math.max(0, Math.min(max, Number(v || 0)));
-          input.value = String(nv);
-          addons[a.key] = nv;
+          const nextVal = Math.max(0, Math.min(max, Number(v || 0)));
+          input.value = String(nextVal);
+          addons[a.key] = nextVal;
           saveAddons(addons);
           updateSummary(addons);
         };
@@ -162,11 +165,13 @@
       } else {
         const toggle = document.createElement("label");
         toggle.className = "toggle";
-        const on = !!addons[a.key];
+
+        const checked = !!addons[a.key];
         toggle.innerHTML = `
-          <input type="checkbox" ${on ? "checked" : ""} ${a.lockedOn ? "disabled" : ""} />
+          <input type="checkbox" ${checked ? "checked" : ""} ${a.lockedOn ? "disabled" : ""}>
           <span class="track"></span>
         `;
+
         const input = toggle.querySelector("input");
         input.addEventListener("change", () => {
           addons[a.key] = !!input.checked;
@@ -174,6 +179,7 @@
           saveAddons(addons);
           updateSummary(addons);
         });
+
         right.appendChild(toggle);
       }
 
@@ -185,6 +191,7 @@
 
   async function apiApply(addons) {
     const tok = getToken();
+
     const r = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: {
@@ -193,6 +200,7 @@
       },
       body: JSON.stringify({ plan: null, addons })
     });
+
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "Erreur apply");
     return j;
@@ -209,7 +217,7 @@
 
   async function onApply(addons) {
     setMsg("");
-    toPayBtn.style.display = "none";
+    if (toPayBtn) toPayBtn.style.display = "none";
 
     applyBtn.disabled = true;
     applyBtn.textContent = "Application…";
@@ -219,32 +227,26 @@
 
       if (j.ok && !j.paymentIntentClientSecret) {
         setMsg(j.updated ? "Add-ons mis à jour ✅" : "Aucun changement.");
-        applyBtn.disabled = false;
-        applyBtn.textContent = "Appliquer";
-        return;
-      }
-
-      if (j.paymentIntentClientSecret) {
+      } else if (j.paymentIntentClientSecret) {
         setMsg("Add-ons mis à jour ✅ Paiement requis (prorata).");
         setCheckoutPayloadForPay(addons);
-        toPayBtn.style.display = "inline-block";
-        toPayBtn.onclick = () => window.location.href = "/checkout.html";
-        applyBtn.disabled = false;
-        applyBtn.textContent = "Appliquer";
-        return;
+        if (toPayBtn) {
+          toPayBtn.style.display = "inline-block";
+          toPayBtn.onclick = () => window.location.href = "/checkout.html";
+        }
+      } else {
+        setMsg("Réponse inattendue.");
       }
-
-      setMsg("Réponse inattendue.");
-      applyBtn.disabled = false;
-      applyBtn.textContent = "Appliquer";
     } catch (e) {
       setMsg(e.message || "Erreur");
+    } finally {
       applyBtn.disabled = false;
       applyBtn.textContent = "Appliquer";
     }
   }
 
   setAuthBadge();
+
   if (!getToken()) {
     window.location.href = "/login.html";
     return;
