@@ -59,12 +59,26 @@
       gap:14px;
     }
 
+    .checkoutPage .side .card:last-child{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .checkoutPage .side .card:last-child .cardBody{
+      flex:1;
+    }
+
     .checkoutPage .section{
       margin-top:0;
     }
 
     .checkoutPage .checkoutCard{
       margin-top:12px;
+    }
+
+    .checkoutPage #checkoutMsg{
+      margin-bottom:8px;
     }
 
     .checkoutPage .checkoutShell{
@@ -79,9 +93,10 @@
       border:1px solid rgba(255,255,255,.07);
       background:rgba(255,255,255,.015);
       padding:16px;
-      color:rgba(255,255,255,.82);
+      color:var(--text);
       font-size:14px;
       line-height:1.55;
+      font-weight:800;
     }
 
     @media (prefers-color-scheme: light){
@@ -113,99 +128,58 @@
     }
 
     .checkoutPage .miniInfoTitle{
-      font-weight:800;
-      margin-bottom:8px;
-    }
-
-    .miniList{
-  list-style:none;
-  padding:0;
-  margin:0;
-  display:grid;
-  gap:10px;
-}
-
-.miniList li{
-  position:relative;
-  padding-left:18px;
-  line-height:1.6;
-  font-weight:800;
-  color:var(--text);
-}
-
-.miniList li::before{
-  content:"•";
-  position:absolute;
-  left:0;
-  top:0;
-  color:rgba(47,91,255,.95);
-  font-weight:950;
-}
-    .checkoutPage .grid{
-  align-items:stretch;
-}
-
-.checkoutPage .side{
-  min-width:0;
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-  height:100%;
-}
-
-.checkoutPage .side .card{
-  display:flex;
-  flex-direction:column;
-}
-
-.checkoutPage .side .card:last-child{
-  flex:1;
-}
-
-.checkoutPage .side .card:last-child .cardBody{
-  height:100%;
-}
-.checkoutPage .side .cardBody{
-  gap:12px;
-}
-
-.checkoutPage .row2,
-.checkoutPage .row2 span,
-#sumPlan,
-#sumAddOns{
-  font-weight:800;
-  color:var(--text);
-}
-    #goEmbeddedBtn,
-    #retryBtn{
-      width:100%;
-      min-height:48px;
-      border-radius:14px;
       font-weight:950;
+      margin-bottom:10px;
     }
 
-    #goEmbeddedBtn{
-      border:0;
-      color:#fff;
-      background:linear-gradient(180deg,var(--primary),var(--primary2));
-      box-shadow:0 16px 50px rgba(47,91,255,.30);
+    .checkoutPage .miniList{
+      list-style:none;
+      padding:0;
+      margin:0;
+      display:grid;
+      gap:12px;
     }
 
-    #retryBtn{
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
+    .checkoutPage .miniList li{
+      position:relative;
+      padding-left:26px;
+      line-height:1.6;
+      font-weight:800;
       color:var(--text);
     }
 
-    @media (prefers-color-scheme: light){
-      #retryBtn{
-        background:#fff;
-      }
+    .checkoutPage .miniList li::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:.68em;
+      width:8px;
+      height:8px;
+      border-radius:999px;
+      background:#2f5bff;
+      box-shadow:0 0 0 4px rgba(47,91,255,.15);
+      transform:translateY(-50%);
+    }
+
+    .checkoutPage .miniList li::after{
+      content:"";
+      position:absolute;
+      left:2px;
+      top:.68em;
+      width:4px;
+      height:4px;
+      border-radius:999px;
+      background:#8fb0ff;
+      transform:translateY(-50%);
     }
 
     @media (max-width:980px){
       .checkoutPage .grid{
         grid-template-columns:1fr;
+      }
+
+      .checkoutPage .side .card:last-child{
+        flex:unset;
       }
     }
 
@@ -263,7 +237,7 @@
 
               <div class="checkoutShell">
                 <div class="checkoutPlaceholder">
-                  Le paiement s’ouvrira dans la page checkout intégrée FlowPoint.<br/>
+                  Le paiement s’ouvrira dans la page checkout intégrée FlowPoint.<br>
                   Vérifie bien ton plan et tes add-ons avant de continuer.
                 </div>
 
