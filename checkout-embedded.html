@@ -26,10 +26,6 @@
       gap:14px;
     }
 
-    .embeddedPage .side{
-      height:100%;
-    }
-
     .embeddedPage .side .card{
       display:flex;
       flex-direction:column;
@@ -37,10 +33,6 @@
 
     .embeddedPage .side .card:last-child{
       flex:1;
-    }
-
-    .embeddedPage .section{
-      margin-top:0;
     }
 
     .embeddedPage .checkoutWrap{
@@ -69,17 +61,17 @@
       min-height:520px;
       border-radius:14px;
       overflow:hidden;
+      position:relative;
       background:
         radial-gradient(circle at top left, rgba(47,91,255,.10), transparent 42%),
-        linear-gradient(180deg, rgba(15,23,42,.24), rgba(15,23,42,.14));
-      position:relative;
+        linear-gradient(180deg, rgba(18,26,56,.92), rgba(12,18,40,.88));
     }
 
     @media (prefers-color-scheme: light){
       .embeddedPage .checkoutMount{
         background:
           radial-gradient(circle at top left, rgba(47,91,255,.08), transparent 42%),
-          linear-gradient(180deg, rgba(255,255,255,.88), rgba(246,248,255,.94));
+          linear-gradient(180deg, rgba(255,255,255,.96), rgba(246,248,255,.98));
       }
     }
 
@@ -98,15 +90,6 @@
 
     .embeddedPage .statusBox.success{
       color:#7ef0ad;
-    }
-
-    @media (prefers-color-scheme: light){
-      .embeddedPage .statusBox.error{
-        color:#b42318;
-      }
-      .embeddedPage .statusBox.success{
-        color:#067647;
-      }
     }
 
     .embeddedPage .helperBadge{
@@ -132,24 +115,24 @@
     }
 
     .embeddedPage .checkoutLoading{
-      min-height:520px;
-      border-radius:16px;
-      border:1px solid rgba(255,255,255,.08);
-      background:
-        radial-gradient(circle at top left, rgba(47,91,255,.22), transparent 38%),
-        linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015));
+      position:absolute;
+      inset:0;
+      z-index:3;
       display:flex;
       align-items:center;
       justify-content:center;
       padding:28px;
+      border-radius:16px;
+      background:
+        radial-gradient(circle at top left, rgba(47,91,255,.22), transparent 38%),
+        linear-gradient(180deg, rgba(10,14,28,.94), rgba(7,11,24,.96));
     }
 
     @media (prefers-color-scheme: light){
       .embeddedPage .checkoutLoading{
-        border:1px solid rgba(15,23,42,.08);
         background:
           radial-gradient(circle at top left, rgba(47,91,255,.12), transparent 38%),
-          linear-gradient(180deg, rgba(15,23,42,.03), rgba(15,23,42,.015));
+          linear-gradient(180deg, rgba(255,255,255,.98), rgba(246,248,255,.98));
       }
     }
 
@@ -165,7 +148,7 @@
 
     @media (prefers-color-scheme: light){
       .embeddedPage .loadingCard{
-        background:rgba(255,255,255,.92);
+        background:rgba(255,255,255,.94);
         border:1px solid rgba(15,23,42,.08);
         box-shadow:0 22px 60px rgba(15,23,42,.10);
       }
@@ -216,74 +199,30 @@
       font-size:15px;
     }
 
-    .embeddedPage .loadingSteps{
-      margin:18px 0 0;
-      padding:0;
-      list-style:none;
-      display:grid;
-      gap:10px;
-      text-align:left;
-    }
-
-    .embeddedPage .loadingSteps li{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      font-size:14px;
-      opacity:.95;
-    }
-
-    .embeddedPage .loadingDot{
-      width:10px;
-      height:10px;
-      border-radius:999px;
-      background:#2f5bff;
-      box-shadow:0 0 0 6px rgba(47,91,255,.14);
-      flex:0 0 auto;
-    }
-
+    .embeddedPage .loadingSteps,
     .embeddedPage .infoList{
       list-style:none;
-      margin:0;
+      margin:18px 0 0;
       padding:0;
       display:grid;
-      gap:14px;
+      gap:10px;
     }
 
+    .embeddedPage .loadingSteps li,
     .embeddedPage .infoList li{
       position:relative;
-      padding-left:34px;
-      line-height:1.62;
-      font-weight:600;
+      padding-left:18px;
+      line-height:1.6;
     }
 
+    .embeddedPage .loadingSteps li::before,
     .embeddedPage .infoList li::before{
-      content:"";
+      content:"•";
       position:absolute;
       left:0;
-      top:.72em;
-      width:12px;
-      height:12px;
-      border-radius:999px;
-      background:linear-gradient(180deg,#3368ff,#2452ff);
-      border:1px solid rgba(255,255,255,.14);
-      box-shadow:
-        0 0 0 4px rgba(56,100,255,.14),
-        inset 0 1px 0 rgba(255,255,255,.24);
-      transform:translateY(-50%);
-    }
-
-    .embeddedPage .infoList li::after{
-      content:"";
-      position:absolute;
-      left:4px;
-      top:.72em;
-      width:4px;
-      height:4px;
-      border-radius:999px;
-      background:#9bb7ff;
-      transform:translateY(-50%);
-      opacity:.95;
+      top:0;
+      color:rgba(47,91,255,.95);
+      font-weight:950;
     }
 
     .embeddedPage .stickySummary{
@@ -333,24 +272,13 @@
       place-items:center;
       flex:0 0 auto;
       box-shadow:0 18px 34px rgba(47,91,255,.28);
-      position:relative;
       overflow:hidden;
-    }
-
-    .embeddedPage .successIcon::after{
-      content:"";
-      position:absolute;
-      inset:1px;
-      border-radius:21px;
-      border:1px solid rgba(255,255,255,.12);
-      pointer-events:none;
     }
 
     .embeddedPage .successIcon svg{
       width:36px;
       height:36px;
       display:block;
-      filter:drop-shadow(0 6px 14px rgba(0,0,0,.18));
     }
 
     .embeddedPage .successTitle{
@@ -367,7 +295,6 @@
       line-height:1.65;
     }
 
-    /* IMPORTANT : mêmes boutons que pricing, sans style bizarre */
     .embeddedPage .successActions{
       display:grid;
       grid-template-columns:1fr;
@@ -375,12 +302,35 @@
       margin-top:16px;
     }
 
-    .embeddedPage .successActions a{
-      display:block;
+    .embeddedPage .successActions .primaryBtn,
+    .embeddedPage .successActions .ghostBtn,
+    .embeddedPage #retryBtn{
       width:100%;
+      min-height:48px;
+      border-radius:14px;
+      font-weight:950;
       text-align:center;
-      appearance:none;
-      -webkit-appearance:none;
+    }
+
+    .embeddedPage .successActions .primaryBtn{
+      border:0;
+      color:#fff;
+      background:linear-gradient(180deg,var(--primary),var(--primary2));
+      box-shadow:0 16px 50px rgba(47,91,255,.30);
+    }
+
+    .embeddedPage .successActions .ghostBtn,
+    .embeddedPage #retryBtn{
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+    }
+
+    @media (prefers-color-scheme: light){
+      .embeddedPage .successActions .ghostBtn,
+      .embeddedPage #retryBtn{
+        background:#fff;
+      }
     }
 
     .embeddedPage .successFoot{
@@ -410,26 +360,14 @@
         grid-template-columns:1fr;
       }
 
-      .embeddedPage .checkoutWrap{
-        min-height:auto;
-      }
-
-      .embeddedPage .checkoutMount,
-      .embeddedPage .checkoutLoading,
-      .embeddedPage .successPanel{
-        min-height:420px;
-      }
-
-      .embeddedPage .side .card:last-child{
-        flex:unset;
-      }
-
       .embeddedPage .successTop{
         flex-direction:column;
       }
 
-      .embeddedPage .loadingTitle{
-        font-size:24px;
+      .embeddedPage .checkoutWrap,
+      .embeddedPage .checkoutMount,
+      .embeddedPage .successPanel{
+        min-height:420px;
       }
     }
 
@@ -483,9 +421,9 @@
                         </p>
 
                         <ul class="loadingSteps">
-                          <li><span class="loadingDot"></span> Vérification de ton espace client</li>
-                          <li><span class="loadingDot"></span> Chargement du plan et des add-ons</li>
-                          <li><span class="loadingDot"></span> Ouverture du paiement sécurisé</li>
+                          <li>Vérification de ton espace client</li>
+                          <li>Chargement du plan et des add-ons</li>
+                          <li>Ouverture du paiement sécurisé</li>
                         </ul>
                       </div>
                     </div>
@@ -671,27 +609,17 @@
       }
 
       function showSuccessMode(text) {
+        if (checkoutShell) checkoutShell.classList.add("hidden");
+        if (successPanel) successPanel.classList.add("show");
+        if (successPill) successPill.style.display = "inline-flex";
         hideLoader();
-
-        if (mountNode) {
-          mountNode.innerHTML = "";
-          mountNode.style.minHeight = "0";
-        }
-
-        if (checkoutShell) {
-          checkoutShell.classList.add("hidden");
-        }
-
-        if (successPanel) {
-          successPanel.classList.add("show");
-        }
-
-        if (successPill) {
-          successPill.style.display = "inline-flex";
-        }
 
         if (text && successText) {
           successText.textContent = text;
+        }
+
+        if (mountNode) {
+          mountNode.innerHTML = "";
         }
 
         setMsg("Modification enregistrée avec succès.", "success");
@@ -725,12 +653,10 @@
             throw new Error("Zone de montage checkout introuvable.");
           }
 
-          mountNode.innerHTML = "";
           showLoader();
           setMsg("Chargement du paiement sécurisé…");
 
           const stripe = Stripe(pk);
-
           const startedAt = Date.now();
 
           const data = await postJson("/api/stripe/checkout-embedded", {
@@ -757,13 +683,14 @@
             throw new Error("clientSecret embedded manquant.");
           }
 
-          hideLoader();
-
           const checkout = await stripe.initEmbeddedCheckout({
             clientSecret: data.clientSecret
           });
 
           checkout.mount("#embedded-checkout");
+
+          await wait(350);
+          hideLoader();
           setMsg("Paiement sécurisé prêt.");
         } catch (err) {
           console.error("checkout-embedded error:", err);
