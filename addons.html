@@ -1,285 +1,233 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Add-ons — FlowPoint</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Add-ons — FlowPoint</title>
 
-  <meta name="color-scheme" content="light dark"/>
+<meta name="color-scheme" content="light dark"/>
 
-  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg"/>
-  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg"/>
-  <link rel="stylesheet" href="/style.css"/>
+<link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg"/>
+<link rel="shortcut icon" href="/assets/flowpoint-logo.svg"/>
+<link rel="stylesheet" href="/style.css"/>
 
-  <style>
-    .topHeader{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:14px;
-      margin-bottom:18px;
-    }
+<style>
+.topHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:18px;
+  gap:12px;
+}
 
-    .brandMini{
-      display:flex;
-      align-items:center;
-    }
+.brandMini{
+  display:flex;
+  align-items:center;
+}
 
-    .brandMiniLogo{
-      width:40px;
-      height:40px;
-      border-radius:12px;
-      object-fit:contain;
-      display:block;
-      filter:drop-shadow(0 10px 18px rgba(0,0,0,.22));
-    }
+.brandMiniLogo{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  object-fit:contain;
+  display:block;
+  filter:drop-shadow(0 10px 18px rgba(0,0,0,.22));
+}
 
-    .actions{
-      display:flex;
-      gap:10px;
-      align-items:center;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
+.actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
 
-    .addonsPage .grid{
-      align-items:start;
-    }
+.addonsPage .grid{
+  align-items:start;
+}
 
-    .addonsPage .side{
-      display:grid;
-      gap:14px;
-      align-self:start;
-    }
+.addonsPage .side{
+  position:sticky;
+  top:14px;
+  display:grid;
+  gap:14px;
+}
 
-    .addonsPage .addonRow{
-      display:grid;
-      grid-template-columns:minmax(0,1fr) auto;
-      gap:16px;
-      align-items:center;
-      padding:18px;
-      border-radius:18px;
-      border:1px solid var(--border);
-      background:linear-gradient(180deg, rgba(47,91,255,.08), transparent 70%);
-    }
+.addonsPage .cardBody{
+  display:grid;
+  gap:10px;
+}
 
-    .addonsPage .addonRow + .addonRow{
-      margin-top:12px;
-    }
+.miniList,
+.summaryListBlue{
+  list-style:none;
+  padding:0;
+  margin:0;
+  display:grid;
+  gap:12px;
+}
 
-    .addonsPage .addonTitle{
-      font-size:17px;
-      font-weight:950;
-      letter-spacing:-.02em;
-      margin:0 0 6px;
-    }
+.miniList li,
+.summaryListBlue li{
+  position:relative;
+  padding-left:34px;
+  line-height:1.62;
+  font-weight:800;
+  color:var(--text);
+}
 
-    .addonsPage .addonDesc{
-      margin:0;
-      color:var(--text);
-      font-size:13px;
-      line-height:1.5;
-      font-weight:800;
-      opacity:.96;
-    }
+.miniList li::before,
+.summaryListBlue li::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:.72em;
+  width:12px;
+  height:12px;
+  border-radius:999px;
+  background:linear-gradient(180deg,#3368ff,#2452ff);
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:
+    0 0 0 4px rgba(56,100,255,.14),
+    inset 0 1px 0 rgba(255,255,255,.24);
+  transform:translateY(-50%);
+}
 
-    .addonsPage .keyChip{
-      margin-top:12px;
-      display:inline-flex;
-      padding:6px 12px;
-      border-radius:999px;
-      background:rgba(112,87,255,.24);
-      border:1px solid rgba(146,126,255,.26);
-      color:#efeaff;
-      font-weight:900;
-      font-size:12px;
-    }
+.miniList li::after,
+.summaryListBlue li::after{
+  content:"";
+  position:absolute;
+  left:4px;
+  top:.72em;
+  width:4px;
+  height:4px;
+  border-radius:999px;
+  background:#9bb7ff;
+  transform:translateY(-50%);
+  opacity:.95;
+}
 
-    @media (prefers-color-scheme: light){
-      .addonsPage .keyChip{
-        background:#efeaff;
-        border-color:#ddd2ff;
-        color:#5b32ff;
-      }
-    }
+.addonsPage .primaryBtn{
+  margin-top:2px;
+}
 
-    .addonsPage .addonRight{
-      min-width:220px;
-      display:flex;
-      flex-direction:column;
-      align-items:flex-end;
-      gap:14px;
-    }
+.addonsPage .ghostBtn{
+  margin-top:0;
+}
 
-    .addonsPage .addonPrice{
-      font-size:18px;
-      font-weight:950;
-      letter-spacing:-.02em;
-      white-space:nowrap;
-    }
+.addonsPage #toPayBtn{
+  display:none;
+}
 
-    .addonsPage .miniList,
-    .addonsPage .summaryListBlue{
-      list-style:none;
-      padding:0;
-      margin:0;
-      display:grid;
-      gap:12px;
-    }
+@media (max-width:980px){
+  .addonsPage .side{
+    position:static;
+  }
+}
 
-    .addonsPage .miniList li,
-    .addonsPage .summaryListBlue li{
-      position:relative;
-      padding-left:26px;
-      line-height:1.6;
-      font-weight:800;
-      color:var(--text);
-    }
+@media (max-width:900px){
+  .topHeader{
+    flex-wrap:wrap;
+  }
 
-    .addonsPage .miniList li::before,
-    .addonsPage .summaryListBlue li::before{
-      content:"";
-      position:absolute;
-      left:0;
-      top:.68em;
-      width:8px;
-      height:8px;
-      border-radius:999px;
-      background:#2f5bff;
-      box-shadow:0 0 0 4px rgba(47,91,255,.15);
-      transform:translateY(-50%);
-    }
-
-    .addonsPage .miniList li::after,
-    .addonsPage .summaryListBlue li::after{
-      content:"";
-      position:absolute;
-      left:2px;
-      top:.68em;
-      width:4px;
-      height:4px;
-      border-radius:999px;
-      background:#8fb0ff;
-      transform:translateY(-50%);
-    }
-
-    @media (max-width:980px){
-      .addonsPage .addonRight{
-        min-width:unset;
-        align-items:flex-start;
-      }
-
-      .addonsPage .addonRow{
-        grid-template-columns:1fr;
-      }
-    }
-
-    @media (max-width:900px){
-      .topHeader{
-        flex-wrap:wrap;
-        gap:10px;
-      }
-
-      .actions{
-        width:100%;
-        justify-content:flex-start;
-      }
-    }
-  </style>
+  .actions{
+    width:100%;
+    justify-content:flex-start;
+  }
+}
+</style>
 </head>
 
 <body>
-  <div class="page addonsPage">
+<div class="page addonsPage">
 
-    <div class="topHeader">
-      <div class="brandMini">
-        <img
-          class="brandMiniLogo"
-          src="/assets/flowpoint-logo.svg"
-          alt="FlowPoint"
-          onerror="this.src='/assets/flowpoint-logo.png'"
-        >
-      </div>
-
-      <div class="actions">
-        <a class="linkBtn" href="/pricing.html">← Retour pricing</a>
-        <div class="pill" id="authPill">Statut : …</div>
-      </div>
+  <div class="topHeader">
+    <div class="brandMini">
+      <img
+        class="brandMiniLogo"
+        src="/assets/flowpoint-logo.svg"
+        alt="FlowPoint"
+        onerror="this.src='/assets/flowpoint-logo.png'"
+      >
     </div>
 
-    <div class="grid">
-      <div>
-        <div class="hero">
-          <h1>Gérer mes add-ons</h1>
-          <p>Ici tu ajoutes ou supprimes des options. Ça s’applique à ton abonnement existant.</p>
-        </div>
-
-        <div class="section">
-          <div class="sectionHead">
-            <div class="title">Add-ons</div>
-            <div class="hint">FlowPoint UI → applique sur Stripe (subscription update).</div>
-          </div>
-
-          <div class="card" style="margin-top:12px">
-            <div class="cardBody">
-              <div id="addonsMsg" class="small"></div>
-              <div id="addonsList"></div>
-
-              <div style="height:10px"></div>
-
-              <button class="primaryBtn" id="applyBtn" type="button">Appliquer</button>
-              <button class="ghostBtn" id="toPayBtn" type="button" style="display:none">Payer maintenant</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="side">
-        <div class="card">
-          <div class="cardHead">Résumé</div>
-          <div class="cardBody">
-            <div class="row2">
-              <span class="muted">Add-ons</span>
-              <span id="sumAddOns">—</span>
-            </div>
-
-            <div style="margin-top:12px">
-              <ul class="summaryListBlue small">
-                <li>Si un prorata est généré, tu payeras via /checkout.html.</li>
-                <li>White Label est forcé sur ON.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="cardHead">Comment ça fonctionne</div>
-          <div class="cardBody">
-            <ul class="miniList">
-              <li>Tu coches ou décoches les options disponibles</li>
-              <li>FlowPoint prépare la mise à jour de ton abonnement Stripe</li>
-              <li>Si un prorata est dû, un passage par checkout est proposé</li>
-              <li>Sinon la modification est appliquée directement</li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="cardHead">Bon à savoir</div>
-          <div class="cardBody">
-            <ul class="miniList">
-              <li>Les add-ons améliorent les capacités sans changer tout le plan</li>
-              <li>Tu peux revenir ici à tout moment pour ajuster</li>
-              <li>Les changements suivent l’abonnement déjà actif</li>
-              <li>Le White Label reste inclus et actif par défaut</li>
-            </ul>
-          </div>
-        </div>
-      </div>
+    <div class="actions">
+      <a class="linkBtn" href="/pricing.html">← Retour pricing</a>
+      <div class="pill" id="authPill">Statut : …</div>
     </div>
-
   </div>
 
-  <script src="/addons.js"></script>
+  <div class="grid">
+    <div>
+      <div class="hero">
+        <h1>Gérer mes add-ons</h1>
+        <p>Ici tu ajoutes ou supprimes des options. Ça s’applique à ton abonnement existant.</p>
+      </div>
+
+      <div class="section">
+        <div class="sectionHead">
+          <div class="title">Add-ons</div>
+          <div class="hint">FlowPoint UI → applique sur Stripe (subscription update).</div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <div class="cardBody">
+            <div id="addonsMsg" class="small"></div>
+            <div id="addonsList"></div>
+
+            <div style="height:10px"></div>
+
+            <button class="primaryBtn" id="applyBtn" type="button">Appliquer</button>
+            <button class="ghostBtn" id="toPayBtn" type="button">Payer maintenant</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <div class="cardHead">Résumé</div>
+        <div class="cardBody">
+          <div class="row2">
+            <span class="muted">Add-ons</span>
+            <span id="sumAddOns">—</span>
+          </div>
+
+          <div style="margin-top:12px">
+            <ul class="summaryListBlue small">
+              <li>Si un prorata est généré, tu payeras via /checkout.html.</li>
+              <li>White Label est forcé sur ON.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardHead">Comment ça fonctionne</div>
+        <div class="cardBody">
+          <ul class="miniList small">
+            <li>Tu coches ou décoches les options disponibles</li>
+            <li>FlowPoint prépare la mise à jour de ton abonnement Stripe</li>
+            <li>Si un prorata est dû, un passage par checkout est proposé</li>
+            <li>Sinon la modification est appliquée directement</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardHead">Bon à savoir</div>
+        <div class="cardBody">
+          <ul class="miniList small">
+            <li>Les add-ons améliorent les capacités sans changer tout le plan</li>
+            <li>Tu peux revenir ici à tout moment pour ajuster</li>
+            <li>Les changements suivent l’abonnement déjà actif</li>
+            <li>Le White Label reste inclus et actif par défaut</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/addons.js"></script>
 </body>
 </html>
