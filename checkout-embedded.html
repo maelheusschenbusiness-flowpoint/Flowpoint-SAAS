@@ -90,7 +90,7 @@
 
     .embeddedPage .statusBox{
       margin-bottom:10px;
-      font-weight:700;
+      font-weight:600;
     }
 
     .embeddedPage .statusBox.error{
@@ -540,6 +540,8 @@
                 <li>Tu pourras ensuite revenir sur Billing pour voir ton abonnement</li>
                 <li>Les add-ons restent modifiables à tout moment depuis FlowPoint</li>
                 <li>Aucun réglage technique n’est nécessaire côté client</li>
+                <li>Les changements sont appliqués automatiquement sur ton espace après validation</li>
+                <li>Tu peux relancer un ajustement d’options sans refaire tout le parcours depuis zéro</li>
               </ul>
             </div>
           </div>
@@ -671,10 +673,6 @@
           const pk = window.STRIPE_PUBLISHABLE_KEY;
           if (!pk || !pk.startsWith("pk_")) {
             throw new Error("Clé Stripe publique manquante.");
-          }
-
-          if (!mountNode) {
-            throw new Error("Zone de montage checkout introuvable.");
           }
 
           showLoader();
