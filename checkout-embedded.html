@@ -35,6 +35,15 @@
       flex:1;
     }
 
+    .embeddedPage .side .card:last-child .cardBody{
+      flex:1;
+      display:flex;
+    }
+
+    .embeddedPage .section{
+      margin-top:0;
+    }
+
     .embeddedPage .checkoutWrap{
       border-radius:18px;
       border:1px solid rgba(255,255,255,.08);
@@ -56,32 +65,33 @@
       }
     }
 
-    .embeddedPage .checkoutMount{
-      width:100%;
+    .embeddedPage .checkoutShell{
+      position:relative;
       min-height:520px;
       border-radius:14px;
       overflow:hidden;
-      position:relative;
       background:
-        radial-gradient(circle at top left, rgba(47,91,255,.10), transparent 42%),
-        linear-gradient(180deg, rgba(18,26,56,.92), rgba(12,18,40,.88));
-    }
-
-    @media (prefers-color-scheme: light){
-      .embeddedPage .checkoutMount{
-        background:
-          radial-gradient(circle at top left, rgba(47,91,255,.08), transparent 42%),
-          linear-gradient(180deg, rgba(255,255,255,.96), rgba(246,248,255,.98));
-      }
+        radial-gradient(circle at top left, rgba(47,91,255,.08), transparent 42%),
+        rgba(255,255,255,.01);
     }
 
     .embeddedPage .checkoutShell.hidden{
       display:none;
     }
 
+    .embeddedPage .checkoutMount{
+      width:100%;
+      min-height:520px;
+      border-radius:14px;
+      overflow:hidden;
+      background:transparent;
+      position:relative;
+      z-index:1;
+    }
+
     .embeddedPage .statusBox{
       margin-bottom:10px;
-      font-weight:600;
+      font-weight:700;
     }
 
     .embeddedPage .statusBox.error{
@@ -90,6 +100,16 @@
 
     .embeddedPage .statusBox.success{
       color:#7ef0ad;
+    }
+
+    @media (prefers-color-scheme: light){
+      .embeddedPage .statusBox.error{
+        color:#b42318;
+      }
+
+      .embeddedPage .statusBox.success{
+        color:#067647;
+      }
     }
 
     .embeddedPage .helperBadge{
@@ -102,7 +122,7 @@
       border:1px solid rgba(124,239,176,.22);
       background:rgba(124,239,176,.08);
       color:#86efac;
-      font-weight:700;
+      font-weight:800;
       margin-bottom:12px;
     }
 
@@ -117,22 +137,25 @@
     .embeddedPage .checkoutLoading{
       position:absolute;
       inset:0;
-      z-index:3;
+      min-height:520px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.08);
+      background:
+        radial-gradient(circle at top left, rgba(47,91,255,.22), transparent 38%),
+        linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015));
       display:flex;
       align-items:center;
       justify-content:center;
       padding:28px;
-      border-radius:16px;
-      background:
-        radial-gradient(circle at top left, rgba(47,91,255,.22), transparent 38%),
-        linear-gradient(180deg, rgba(10,14,28,.94), rgba(7,11,24,.96));
+      z-index:3;
     }
 
     @media (prefers-color-scheme: light){
       .embeddedPage .checkoutLoading{
+        border:1px solid rgba(15,23,42,.08);
         background:
           radial-gradient(circle at top left, rgba(47,91,255,.12), transparent 38%),
-          linear-gradient(180deg, rgba(255,255,255,.98), rgba(246,248,255,.98));
+          linear-gradient(180deg, rgba(15,23,42,.03), rgba(15,23,42,.015));
       }
     }
 
@@ -148,7 +171,7 @@
 
     @media (prefers-color-scheme: light){
       .embeddedPage .loadingCard{
-        background:rgba(255,255,255,.94);
+        background:rgba(255,255,255,.92);
         border:1px solid rgba(15,23,42,.08);
         box-shadow:0 22px 60px rgba(15,23,42,.10);
       }
@@ -187,42 +210,86 @@
     .embeddedPage .loadingTitle{
       font-size:28px;
       line-height:1.05;
-      font-weight:800;
+      font-weight:900;
       letter-spacing:-.03em;
       margin:0 0 10px;
     }
 
     .embeddedPage .loadingText{
       margin:0;
-      opacity:.9;
+      opacity:.95;
       line-height:1.7;
       font-size:15px;
+      font-weight:700;
     }
 
-    .embeddedPage .loadingSteps,
-    .embeddedPage .infoList{
-      list-style:none;
+    .embeddedPage .loadingSteps{
       margin:18px 0 0;
       padding:0;
+      list-style:none;
       display:grid;
       gap:10px;
+      text-align:left;
     }
 
-    .embeddedPage .loadingSteps li,
+    .embeddedPage .loadingSteps li{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:14px;
+      font-weight:800;
+      opacity:.96;
+    }
+
+    .embeddedPage .loadingDot{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:#2f5bff;
+      box-shadow:0 0 0 6px rgba(47,91,255,.14);
+      flex:0 0 auto;
+    }
+
+    .embeddedPage .infoList{
+      list-style:none;
+      margin:0;
+      padding:0;
+      display:grid;
+      gap:14px;
+    }
+
     .embeddedPage .infoList li{
       position:relative;
-      padding-left:18px;
-      line-height:1.6;
+      padding-left:26px;
+      line-height:1.62;
+      font-weight:800;
+      color:var(--text);
     }
 
-    .embeddedPage .loadingSteps li::before,
     .embeddedPage .infoList li::before{
-      content:"•";
+      content:"";
       position:absolute;
       left:0;
-      top:0;
-      color:rgba(47,91,255,.95);
-      font-weight:950;
+      top:.68em;
+      width:8px;
+      height:8px;
+      border-radius:999px;
+      background:#2f5bff;
+      box-shadow:0 0 0 4px rgba(47,91,255,.15);
+      transform:translateY(-50%);
+    }
+
+    .embeddedPage .infoList li::after{
+      content:"";
+      position:absolute;
+      left:2px;
+      top:.68em;
+      width:4px;
+      height:4px;
+      border-radius:999px;
+      background:#8fb0ff;
+      transform:translateY(-50%);
+      opacity:.95;
     }
 
     .embeddedPage .stickySummary{
@@ -230,6 +297,7 @@
       padding:16px;
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.02);
+      width:100%;
       height:100%;
     }
 
@@ -272,27 +340,39 @@
       place-items:center;
       flex:0 0 auto;
       box-shadow:0 18px 34px rgba(47,91,255,.28);
+      position:relative;
       overflow:hidden;
+    }
+
+    .embeddedPage .successIcon::after{
+      content:"";
+      position:absolute;
+      inset:1px;
+      border-radius:21px;
+      border:1px solid rgba(255,255,255,.12);
+      pointer-events:none;
     }
 
     .embeddedPage .successIcon svg{
       width:36px;
       height:36px;
       display:block;
+      filter:drop-shadow(0 6px 14px rgba(0,0,0,.18));
     }
 
     .embeddedPage .successTitle{
       margin:0 0 8px;
       font-size:18px;
       line-height:1.15;
-      font-weight:800;
+      font-weight:900;
       letter-spacing:-.02em;
     }
 
     .embeddedPage .successText{
       margin:0;
-      opacity:.95;
       line-height:1.65;
+      font-weight:800;
+      color:var(--text);
     }
 
     .embeddedPage .successActions{
@@ -303,41 +383,18 @@
     }
 
     .embeddedPage .successActions .primaryBtn,
-    .embeddedPage .successActions .ghostBtn,
-    .embeddedPage #retryBtn{
+    .embeddedPage .successActions .ghostBtn{
       width:100%;
-      min-height:48px;
-      border-radius:14px;
-      font-weight:950;
+      margin:0;
       text-align:center;
-    }
-
-    .embeddedPage .successActions .primaryBtn{
-      border:0;
-      color:#fff;
-      background:linear-gradient(180deg,var(--primary),var(--primary2));
-      box-shadow:0 16px 50px rgba(47,91,255,.30);
-    }
-
-    .embeddedPage .successActions .ghostBtn,
-    .embeddedPage #retryBtn{
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
-      color:var(--text);
-    }
-
-    @media (prefers-color-scheme: light){
-      .embeddedPage .successActions .ghostBtn,
-      .embeddedPage #retryBtn{
-        background:#fff;
-      }
     }
 
     .embeddedPage .successFoot{
       margin-top:16px;
       font-size:14px;
-      opacity:.9;
       line-height:1.65;
+      font-weight:800;
+      color:var(--text);
     }
 
     .embeddedPage .successExtra{
@@ -360,14 +417,27 @@
         grid-template-columns:1fr;
       }
 
+      .embeddedPage .checkoutWrap{
+        min-height:auto;
+      }
+
+      .embeddedPage .checkoutShell,
+      .embeddedPage .checkoutMount,
+      .embeddedPage .checkoutLoading,
+      .embeddedPage .successPanel{
+        min-height:420px;
+      }
+
+      .embeddedPage .side .card:last-child{
+        flex:unset;
+      }
+
       .embeddedPage .successTop{
         flex-direction:column;
       }
 
-      .embeddedPage .checkoutWrap,
-      .embeddedPage .checkoutMount,
-      .embeddedPage .successPanel{
-        min-height:420px;
+      .embeddedPage .loadingTitle{
+        font-size:24px;
       }
     }
 
@@ -407,25 +477,25 @@
 
               <div id="checkoutWrap" class="checkoutWrap">
                 <div id="checkoutShell" class="checkoutShell">
-                  <div id="embedded-checkout" class="checkoutMount">
-                    <div id="checkoutLoading" class="checkoutLoading">
-                      <div class="loadingCard">
-                        <div class="loadingOrb">
-                          <div class="spinner"></div>
-                        </div>
+                  <div id="embedded-checkout" class="checkoutMount"></div>
 
-                        <h2 class="loadingTitle">Préparation du paiement</h2>
-                        <p class="loadingText">
-                          FlowPoint initialise ton espace sécurisé Stripe et vérifie ton abonnement
-                          avant d’afficher le bon écran.
-                        </p>
-
-                        <ul class="loadingSteps">
-                          <li>Vérification de ton espace client</li>
-                          <li>Chargement du plan et des add-ons</li>
-                          <li>Ouverture du paiement sécurisé</li>
-                        </ul>
+                  <div id="checkoutLoading" class="checkoutLoading">
+                    <div class="loadingCard">
+                      <div class="loadingOrb">
+                        <div class="spinner"></div>
                       </div>
+
+                      <h2 class="loadingTitle">Préparation du paiement</h2>
+                      <p class="loadingText">
+                        FlowPoint initialise ton espace sécurisé Stripe et vérifie ton abonnement
+                        avant d’afficher le bon écran.
+                      </p>
+
+                      <ul class="loadingSteps">
+                        <li><span class="loadingDot"></span> Vérification de ton espace client</li>
+                        <li><span class="loadingDot"></span> Chargement du plan et des add-ons</li>
+                        <li><span class="loadingDot"></span> Ouverture du paiement sécurisé</li>
+                      </ul>
                     </div>
                   </div>
                 </div>
@@ -434,13 +504,7 @@
                   <div class="successTop">
                     <div class="successIcon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" fill="none">
-                        <path
-                          d="M5.8 12.5L10.2 16.8L18.4 7.6"
-                          stroke="white"
-                          stroke-width="3"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        />
+                        <path d="M5.8 12.5L10.2 16.8L18.4 7.6" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
                     </div>
 
@@ -509,8 +573,8 @@
 
         <div class="card">
           <div class="cardHead">Suite du parcours</div>
-          <div class="cardBody" style="display:flex;flex:1;">
-            <div class="stickySummary small" style="width:100%;">
+          <div class="cardBody">
+            <div class="stickySummary small">
               <ul class="infoList">
                 <li>Accès mis à jour après confirmation du paiement</li>
                 <li>Tu pourras ensuite revenir sur Billing pour voir ton abonnement</li>
@@ -609,24 +673,19 @@
       }
 
       function showSuccessMode(text) {
+        hideLoader();
+
         if (checkoutShell) checkoutShell.classList.add("hidden");
         if (successPanel) successPanel.classList.add("show");
         if (successPill) successPill.style.display = "inline-flex";
-        hideLoader();
 
         if (text && successText) {
           successText.textContent = text;
         }
 
-        if (mountNode) {
-          mountNode.innerHTML = "";
-        }
-
         setMsg("Modification enregistrée avec succès.", "success");
 
-        if (retryBtn) {
-          retryBtn.style.display = "none";
-        }
+        if (retryBtn) retryBtn.style.display = "none";
       }
 
       async function startEmbeddedCheckout() {
@@ -653,6 +712,7 @@
             throw new Error("Zone de montage checkout introuvable.");
           }
 
+          mountNode.innerHTML = "";
           showLoader();
           setMsg("Chargement du paiement sécurisé…");
 
@@ -687,10 +747,8 @@
             clientSecret: data.clientSecret
           });
 
-          checkout.mount("#embedded-checkout");
-
-          await wait(350);
           hideLoader();
+          checkout.mount("#embedded-checkout");
           setMsg("Paiement sécurisé prêt.");
         } catch (err) {
           console.error("checkout-embedded error:", err);
