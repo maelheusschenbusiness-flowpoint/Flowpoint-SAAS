@@ -59,6 +59,12 @@
       gap:14px;
     }
 
+    .checkoutPage .side{
+      display:grid;
+      gap:14px;
+      align-content:start;
+    }
+
     .checkoutPage .section{
       margin-top:0;
     }
@@ -68,13 +74,8 @@
     }
 
     .checkoutPage .checkoutCard .cardBody{
-      padding-bottom:16px;
       display:grid;
       gap:12px;
-    }
-
-    .checkoutPage #checkoutMsg{
-      margin-bottom:0;
     }
 
     .checkoutPage .checkoutShell{
@@ -82,7 +83,6 @@
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.02);
       padding:12px;
-      min-height:120px;
     }
 
     .checkoutPage .checkoutPlaceholder{
@@ -90,9 +90,9 @@
       border:1px solid rgba(255,255,255,.07);
       background:rgba(255,255,255,.015);
       padding:16px;
-      color:var(--text);
+      color:rgba(255,255,255,.82);
       font-size:14px;
-      line-height:1.6;
+      line-height:1.55;
       font-weight:800;
     }
 
@@ -127,7 +127,6 @@
     .checkoutPage .miniInfoTitle{
       font-weight:900;
       margin-bottom:8px;
-      color:var(--text);
     }
 
     .miniList{
@@ -135,44 +134,51 @@
       padding:0;
       margin:0;
       display:grid;
-      gap:12px;
+      gap:10px;
     }
 
     .miniList li{
       position:relative;
-      padding-left:34px;
-      line-height:1.62;
+      padding-left:18px;
+      line-height:1.6;
       font-weight:800;
       color:var(--text);
     }
 
     .miniList li::before{
-      content:"";
+      content:"•";
       position:absolute;
       left:0;
-      top:.72em;
-      width:12px;
-      height:12px;
-      border-radius:999px;
-      background:linear-gradient(180deg,#3368ff,#2452ff);
-      border:1px solid rgba(255,255,255,.14);
-      box-shadow:
-        0 0 0 4px rgba(56,100,255,.14),
-        inset 0 1px 0 rgba(255,255,255,.24);
-      transform:translateY(-50%);
+      top:0;
+      color:rgba(47,91,255,.95);
+      font-weight:950;
     }
 
-    .miniList li::after{
-      content:"";
-      position:absolute;
-      left:4px;
-      top:.72em;
-      width:4px;
-      height:4px;
-      border-radius:999px;
-      background:#9bb7ff;
-      transform:translateY(-50%);
-      opacity:.95;
+    #goEmbeddedBtn,
+    #retryBtn{
+      width:100%;
+      min-height:48px;
+      border-radius:14px;
+      font-weight:950;
+    }
+
+    #goEmbeddedBtn{
+      border:0;
+      color:#fff;
+      background:linear-gradient(180deg,var(--primary),var(--primary2));
+      box-shadow:0 16px 50px rgba(47,91,255,.30);
+    }
+
+    #retryBtn{
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+    }
+
+    @media (prefers-color-scheme: light){
+      #retryBtn{
+        background:#fff;
+      }
     }
 
     @media (max-width:980px){
