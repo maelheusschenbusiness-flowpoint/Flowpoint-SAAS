@@ -118,28 +118,64 @@
     }
 
     .miniList{
-      list-style:none;
-      padding:0;
-      margin:0;
-      display:grid;
-      gap:10px;
-    }
+  list-style:none;
+  padding:0;
+  margin:0;
+  display:grid;
+  gap:10px;
+}
 
-    .miniList li{
-      position:relative;
-      padding-left:18px;
-      line-height:1.6;
-    }
+.miniList li{
+  position:relative;
+  padding-left:18px;
+  line-height:1.6;
+  font-weight:800;
+  color:var(--text);
+}
 
-    .miniList li::before{
-      content:"•";
-      position:absolute;
-      left:0;
-      top:0;
-      color:rgba(47,91,255,.95);
-      font-weight:950;
-    }
+.miniList li::before{
+  content:"•";
+  position:absolute;
+  left:0;
+  top:0;
+  color:rgba(47,91,255,.95);
+  font-weight:950;
+}
+    .checkoutPage .grid{
+  align-items:stretch;
+}
 
+.checkoutPage .side{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  height:100%;
+}
+
+.checkoutPage .side .card{
+  display:flex;
+  flex-direction:column;
+}
+
+.checkoutPage .side .card:last-child{
+  flex:1;
+}
+
+.checkoutPage .side .card:last-child .cardBody{
+  height:100%;
+}
+.checkoutPage .side .cardBody{
+  gap:12px;
+}
+
+.checkoutPage .row2,
+.checkoutPage .row2 span,
+#sumPlan,
+#sumAddOns{
+  font-weight:800;
+  color:var(--text);
+}
     #goEmbeddedBtn,
     #retryBtn{
       width:100%;
