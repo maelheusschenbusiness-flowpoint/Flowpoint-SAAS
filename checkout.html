@@ -197,7 +197,66 @@
         justify-content:flex-start;
       }
     }
-  </style>
+
+/* ... ton CSS actuel ... */
+
+#goEmbeddedBtn,
+#retryBtn{
+  width:100%;
+  border-radius:16px;
+  min-height:52px;
+  font-weight:900;
+  font-size:15px;
+  letter-spacing:-.01em;
+  transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
+}
+
+#goEmbeddedBtn{
+  border:0;
+  color:#fff;
+  background:linear-gradient(180deg,#2f5bff 0%, #2449ff 100%);
+  box-shadow:
+    0 16px 38px rgba(47,91,255,.28),
+    inset 0 1px 0 rgba(255,255,255,.18);
+}
+
+#goEmbeddedBtn:hover{
+  transform:translateY(-1px);
+  box-shadow:
+    0 18px 42px rgba(47,91,255,.34),
+    inset 0 1px 0 rgba(255,255,255,.2);
+}
+
+#retryBtn{
+  border:1px solid rgba(255,255,255,.14);
+  color:var(--text);
+  background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.05));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 10px 28px rgba(0,0,0,.14);
+}
+
+#retryBtn:hover{
+  transform:translateY(-1px);
+  border-color:rgba(255,255,255,.22);
+  background:linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.07));
+}
+
+@media (prefers-color-scheme: light){
+  #retryBtn{
+    border:1px solid rgba(15,23,42,.10);
+    background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(244,247,255,.96));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.8),
+      0 10px 24px rgba(15,23,42,.08);
+  }
+
+  #retryBtn:hover{
+    border-color:rgba(36,73,255,.18);
+    background:linear-gradient(180deg, #ffffff, #eef3ff);
+  }
+}
+</style>
 </head>
 
 <body>
