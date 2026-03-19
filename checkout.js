@@ -66,10 +66,13 @@
   function summarize(payload) {
     if (!payload) return;
 
-    if (sumPlan) sumPlan.textContent = payload.plan ? labelize(payload.plan) : "—";
+    if (sumPlan) {
+      sumPlan.textContent = payload.plan ? labelize(payload.plan) : "—";
+    }
 
     const addons = payload.addons || {};
     const lines = [];
+
     for (const [k, v] of Object.entries(addons)) {
       if (k === "whiteLabel") continue;
 
@@ -80,7 +83,9 @@
       }
     }
 
-    if (sumAddOns) sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
+    if (sumAddOns) {
+      sumAddOns.textContent = lines.length ? lines.join(" • ") : "—";
+    }
   }
 
   function start() {
