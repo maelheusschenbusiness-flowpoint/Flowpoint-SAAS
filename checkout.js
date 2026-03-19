@@ -8,7 +8,6 @@
   const msg = $("#checkoutMsg");
   const retryBtn = $("#retryBtn");
   const goEmbeddedBtn = $("#goEmbeddedBtn");
-
   const sumPlan = $("#sumPlan");
   const sumAddOns = $("#sumAddOns");
 
@@ -42,20 +41,24 @@
     const raw = String(value || "").trim();
     if (!raw) return "—";
 
-    if (raw === "standard") return "Standard";
-    if (raw === "pro") return "Pro";
-    if (raw === "ultra") return "Ultra";
-    if (raw === "customDomain") return "Custom Domain";
-    if (raw === "prioritySupport") return "Priority Support";
-    if (raw === "whiteLabel") return "White Label";
-    if (raw === "retention90d") return "Retention 90 Days";
-    if (raw === "retention365d") return "Retention 365 Days";
-    if (raw === "monitorsPack50") return "Monitors Pack 50";
-    if (raw === "auditsPack200") return "Audits Pack 200";
-    if (raw === "auditsPack1000") return "Audits Pack 1000";
-    if (raw === "pdfPack200") return "PDF Pack 200";
-    if (raw === "exportsPack1000") return "Exports Pack 1000";
-    if (raw === "extraSeats") return "Extra Seats";
+    const map = {
+      standard: "Standard",
+      pro: "Pro",
+      ultra: "Ultra",
+      whiteLabel: "White Label",
+      customDomain: "Custom Domain",
+      prioritySupport: "Priority Support",
+      retention90d: "Retention 90 Days",
+      retention365d: "Retention 365 Days",
+      auditsPack200: "Audits Pack 200",
+      auditsPack1000: "Audits Pack 1000",
+      pdfPack200: "PDF Pack 200",
+      exportsPack1000: "Exports Pack 1000",
+      monitorsPack50: "Monitors Pack 50",
+      extraSeats: "Extra Seats"
+    };
+
+    if (map[raw]) return map[raw];
 
     return raw
       .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -79,7 +82,7 @@
       if (typeof v === "boolean") {
         if (v) lines.push(labelize(k));
       } else if (Number(v) > 0) {
-        lines.push(`${labelize(k)} × ${Number(v)}`);
+        lines.push(`${labelize(k)} ×${Number(v)}`);
       }
     }
 
