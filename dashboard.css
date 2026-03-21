@@ -2490,3 +2490,98 @@ body::before{
 html{
   scroll-behavior: smooth;
 }
+/* =========================================
+   FIX DASHBOARD FINAL
+   À AJOUTER TOUT EN BAS DE dashboard.css
+   ========================================= */
+
+/* Graphique plus visible en mode clair */
+@media (prefers-color-scheme: light){
+  .fpChartBox{
+    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(236,243,255,.96)) !important;
+    border-color:rgba(59,78,130,.14) !important;
+  }
+
+  .fpLegendItem{
+    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.96)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+    color:var(--fpText) !important;
+  }
+
+  .fpChartInsight{
+    color:var(--fpTextSoft) !important;
+  }
+}
+
+/* Missions : cases à cocher plus visibles en clair */
+.fpMissionCheck{
+  width:24px;
+  height:24px;
+  min-width:24px;
+  min-height:24px;
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,.18);
+  background:rgba(255,255,255,.04);
+  flex:0 0 auto;
+  margin-top:2px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition:.18s ease;
+  color:transparent;
+  box-shadow:none;
+}
+
+.fpMissionCheck svg{
+  width:12px;
+  height:12px;
+  display:block;
+  opacity:0;
+  transition:.18s ease;
+}
+
+.fpMissionCheck.done svg{
+  opacity:1;
+}
+
+.fpMissionCheck.done{
+  background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
+  border-color:transparent;
+  box-shadow:var(--fpBrandGlow);
+}
+
+@media (prefers-color-scheme: light){
+  .fpMissionCheck{
+    border-color:rgba(47,91,255,.30) !important;
+    background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(240,245,255,.98)) !important;
+    box-shadow:
+      0 6px 16px rgba(41,64,122,.08),
+      inset 0 1px 0 rgba(255,255,255,.65) !important;
+  }
+
+  .fpMissionCheck.done{
+    background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2)) !important;
+    border-color:rgba(47,91,255,.60) !important;
+    box-shadow:
+      0 0 0 4px rgba(47,91,255,.10),
+      0 10px 22px rgba(47,91,255,.18) !important;
+  }
+
+  .fpMissionCheck.done svg{
+    opacity:1;
+  }
+}
+
+/* petit confort visuel dans les cartes missions */
+.fpMissionCard,
+.fpMissionCardLarge{
+  transition:.18s ease;
+}
+
+@media (prefers-color-scheme: light){
+  .fpMissionCard:hover,
+  .fpMissionCardLarge:hover{
+    background:rgba(47,91,255,.04) !important;
+  }
+}
