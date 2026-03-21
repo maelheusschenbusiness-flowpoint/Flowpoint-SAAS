@@ -731,3 +731,39 @@ input:focus, select:focus, textarea:focus{
     left:25px;
   }
 }
+/* ===== FIX VISIBILITÉ TOGGLE (A METTRE TOUT EN BAS) ===== */
+
+@media (prefers-color-scheme: light){
+  .toggle .track{
+    background:#eef2f8;
+    border-color:#cfd7e6;
+  }
+
+  .toggle .track::after{
+    background:#ffffff;
+    box-shadow:0 6px 14px rgba(15,23,42,.14);
+  }
+}
+
+/* Mobile */
+@media (max-width:600px){
+  .toggle{
+    width:56px;
+    height:34px;
+  }
+
+  .toggle .track{
+    width:56px;
+    height:34px;
+  }
+
+  .toggle .track::after{
+    width:28px;
+    height:28px;
+    left:3px;
+  }
+
+  .toggle input:checked + .track::after{
+    left:25px;
+  }
+}
