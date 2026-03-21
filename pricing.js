@@ -52,6 +52,12 @@
     localStorage.setItem(ADDON_PREF_KEY, JSON.stringify(state.addons || {}));
   }
 
+  function labelizeAddonKey(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }
+
   // ✅ Si tu veux réduire le badge trop large "Pour démarrer", change ici :
   const PLANS = [
     {
@@ -59,7 +65,7 @@
       name: "Standard",
       priceLabel: "29€",
       per: "/ mois",
-      tag: "Starter", // ✅ ICI (au lieu de "Pour démarrer")
+      tag: "Starter",
       features: [
         "30 audits / mois (SEO instantané)",
         "3 monitors actifs (uptime)",
@@ -127,7 +133,6 @@
 
     state.addons.whiteLabel = true;
 
-    // migration ancienne clé
     if (state.addons.extraSeat != null && state.addons.extraSeats == null) {
       state.addons.extraSeats = Number(state.addons.extraSeat || 0);
       delete state.addons.extraSeat;
@@ -186,7 +191,7 @@
       left.innerHTML = `
         <p class="addonTitle">${a.name}</p>
         <p class="addonDesc">${a.desc || ""}</p>
-        <span class="keyChip">${a.key}</span>
+        <span class="keyChip">${labelizeAddonKey(a.key)}</span>
       `;
 
       const right = document.createElement("div");
@@ -272,7 +277,7 @@
 
   function setCheckoutPayload(state, mode) {
     localStorage.setItem(CHECKOUT_PAYLOAD_KEY, JSON.stringify({
-      mode: mode || "plan", // "plan" ou "addons"
+      mode: mode || "plan",
       plan: state.plan,
       addons: state.addons || {},
       ts: Date.now()
@@ -308,7 +313,6 @@
   renderAll(state);
 
   if (btnCheckout) {
-    // ✅ tu voulais juste "Continuer"
     btnCheckout.textContent = "Continuer";
     btnCheckout.addEventListener("click", () => goCheckout(state));
   }
