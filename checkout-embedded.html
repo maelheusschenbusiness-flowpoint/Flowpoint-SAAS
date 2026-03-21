@@ -403,6 +403,156 @@
       0%{ transform:scale(.92); opacity:.9; }
       100%{ transform:scale(1.16); opacity:0; }
     }
+    /* ===== MOBILE FIX PROPRE ===== */
+@media (max-width: 600px){
+
+  .embeddedPage .cardBody{
+    padding:12px;
+  }
+
+  .embeddedPage .sectionHead{
+    align-items:flex-start;
+  }
+
+  .embeddedPage .sectionHead .title,
+  .embeddedPage .sectionHead .hint{
+    font-size:13px;
+    line-height:1.25;
+  }
+
+  /* loader mieux centré */
+  .embeddedPage .checkoutLoading{
+    padding:16px;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .embeddedPage .loadingCard{
+    width:100%;
+    max-width:100%;
+    padding:18px 16px;
+    border-radius:18px;
+    text-align:center;
+    margin:0 auto;
+  }
+
+  .embeddedPage .loadingOrb{
+    width:58px;
+    height:58px;
+    margin:0 auto 14px;
+    border-radius:18px;
+  }
+
+  .embeddedPage .spinner{
+    width:22px;
+    height:22px;
+  }
+
+  .embeddedPage .loadingTitle{
+    font-size:18px;
+    line-height:1.1;
+    margin-bottom:8px;
+  }
+
+  .embeddedPage .loadingText{
+    font-size:13px;
+    line-height:1.55;
+  }
+
+  .embeddedPage .loadingSteps{
+    margin-top:14px;
+    gap:8px;
+  }
+
+  .embeddedPage .loadingSteps li{
+    font-size:13px;
+    line-height:1.45;
+    padding-left:16px;
+  }
+
+  /* succès plus compact */
+  .embeddedPage .successPanel{
+    padding:16px;
+    min-height:auto;
+  }
+
+  .embeddedPage .successTop{
+    gap:12px;
+    margin-bottom:14px;
+  }
+
+  .embeddedPage .successIcon{
+    width:58px;
+    height:58px;
+    border-radius:18px;
+  }
+
+  .embeddedPage .successIcon svg{
+    width:28px;
+    height:28px;
+  }
+
+  .embeddedPage .successTitle{
+    font-size:15px;
+    line-height:1.15;
+    margin-bottom:6px;
+    letter-spacing:-0.01em;
+  }
+
+  .embeddedPage .successText{
+    font-size:13px;
+    line-height:1.5;
+  }
+
+  .embeddedPage .successFoot{
+    font-size:13px;
+    line-height:1.55;
+    margin-top:14px;
+  }
+
+  .embeddedPage .successExtra{
+    margin-top:14px;
+    padding:14px;
+    border-radius:16px;
+  }
+
+  .embeddedPage .successActions{
+    gap:10px;
+    margin-top:14px;
+  }
+
+  .embeddedPage .successActions .primaryBtn,
+  .embeddedPage .successActions .ghostBtn{
+    min-height:46px;
+    font-size:14px;
+  }
+
+  /* badge vert moins énorme */
+  .embeddedPage .helperBadge{
+    min-height:40px;
+    padding:0 12px;
+    font-size:13px;
+    margin-bottom:10px;
+  }
+
+  /* listes plus propres */
+  .embeddedPage .infoList{
+    gap:8px;
+    margin-top:12px;
+  }
+
+  .embeddedPage .infoList li{
+    font-size:13px;
+    line-height:1.5;
+    padding-left:16px;
+  }
+
+  /* évite les gros blocs trop hauts sur mobile */
+  .embeddedPage .checkoutWrap,
+  .embeddedPage .checkoutMount{
+    min-height:auto;
+  }
+}
   </style>
 </head>
 <body>
