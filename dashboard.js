@@ -2110,3 +2110,157 @@
 
   document.addEventListener("DOMContentLoaded", init);
 })();
+/* =========================
+   FLOWPOINT DASHBOARD FIXES
+   ========================= */
+
+function normalizeTrialTexts() {
+  const allTextNodes = [
+    ...document.querySelectorAll(".statCard, .overviewCard, .infoCard, .metaCard, .summaryCard")
+  ];
+
+  allTextNodes.forEach((card) => {
+    const labelEl = card.querySelector(".label, .cardLabel, .statLabel, .metaLabel, .titleSmall");
+    const valueEl = card.querySelector(".value, .statValue, .mainValue, .bigValue, .cardValue");
+
+    if (!labelEl || !valueEl) return;
+
+    const label = (labelEl.textContent || "").trim().toLowerCase();
+    const value = (valueEl.textContent || "").trim().toLowerCase();
+
+    if ((label === "statut" || label === "status") && value === "essai actif") {
+      valueEl.textContent = "À l’essai";
+    }
+
+    if ((label === "essai" || label === "trial") && value === "essai actif") {
+      valueEl.textContent = "Essai actif";
+    }
+  });
+}
+
+function enhanceMissionChecks() {
+  const selectors = [
+    ".missionCheck",
+    ".missionToggle",
+    ".missionDone",
+    ".taskCheck",
+    ".taskToggle"
+  ];
+
+  const nodes = document.querySelectorAll(selectors.join(","));
+  nodes.forEach((el) => {
+    const checked =
+      el.classList.contains("is-done") ||
+      el.getAttribute("aria-checked") === "true" ||
+      el.dataset.done === "true";
+
+    if (checked) {
+      el.classList.add("is-done");
+    }
+
+    if (!el.querySelector("svg")) {
+      el.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M6.5 12.5L10.2 16.2L17.5 8.8"
+            stroke="white"
+            stroke-width="3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      `;
+    }
+
+    const svg = el.querySelector("svg");
+    if (svg && !checked) {
+      svg.style.opacity = "0";
+    }
+
+    if (checked && svg) {
+      svg.style.opacity = "1";
+    }
+  });
+}
+
+function preventSectionJumpOnDesktop() {
+  const desktop = window.matchMedia("(min-width: 981px)");
+  const navLinks = document.querySelectorAll('a[href^="#"], [data-route], [data-tab], [data-section]');
+
+  navLinks.forEach((link) => {
+    link.addEventListener("click", (e) => {
+      if (!desktop.matches) return;
+
+      const currentY = window.scrollY || window.pageYOffset || 0;
+      const href = link.getAttribute("href");
+      const dataSection = link.getAttribute("data-section");
+      const dataTab = link.getAttribute("data-tab");
+      const dataRoute = link.getAttribute("data-route");
+
+      const targetId =
+        (href && href.startsWith("#") ? href.slice(1) : null) ||
+        dataSection ||
+        dataTab ||
+        dataRoute;
+
+      if (!targetId) return;
+
+      const target =
+        document.getElementById(targetId) ||
+        document.querySelector(`[data-section-panel="${targetId}"]`) ||
+        document.querySelector(`[data-tab-panel="${targetId}"]`) ||
+        document.querySelector(`[data-route-panel="${targetId}"]`);
+
+      if (!target) return;
+
+      e.preventDefault();
+
+      if (href && href.startsWith("#")) {
+        history.replaceState(null, "", `#${targetId}`);
+      }
+
+      document.querySelectorAll("[data-section-panel], [data-tab-panel], [data-route-panel], .dashSection")
+        .forEach((panel) => {
+          const isMatch =
+            panel.id === targetId ||
+            panel.getAttribute("data-section-panel") === targetId ||
+            panel.getAttribute("data-tab-panel") === targetId ||
+            panel.getAttribute("data-route-panel") === targetId;
+
+          panel.hidden = !isMatch;
+          panel.style.display = isMatch ? "" : "none";
+        });
+
+      window.scrollTo({
+        top: currentY,
+        behavior: "auto"
+      });
+    });
+  });
+}
+
+function strengthenChartGridIfChartJsExists() {
+  if (!window.Chart) return;
+
+  Chart.defaults.scale.grid.color = (ctx) => {
+    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return dark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.14)";
+  };
+
+  Chart.defaults.scale.border.color = window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "rgba(255,255,255,0.14)"
+    : "rgba(15,23,42,0.16)";
+
+  Chart.defaults.plugins.legend.labels.color = window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "#eaf0ff"
+    : "#0f172a";
+}
+
+function initDashboardUiFixes() {
+  normalizeTrialTexts();
+  enhanceMissionChecks();
+  preventSectionJumpOnDesktop();
+  strengthenChartGridIfChartJsExists();
+}
+
+document.addEventListener("DOMContentLoaded", initDashboardUiFixes);
