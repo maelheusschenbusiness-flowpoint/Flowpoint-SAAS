@@ -2381,3 +2381,112 @@ body::before{
     line-height:1.4 !important;
   }
 }
+/* =========================
+   FLOWPOINT DASHBOARD FIXES
+   ========================= */
+
+/* ----- Mode clair : graphique plus visible ----- */
+@media (prefers-color-scheme: light){
+  .chartCard canvas,
+  .analyticsCard canvas,
+  .overviewChart canvas{
+    filter: contrast(1.04) saturate(1.02);
+  }
+
+  /* si tu as des lignes/grilles SVG */
+  .chartCard svg .grid line,
+  .analyticsCard svg .grid line,
+  .overviewChart svg .grid line{
+    stroke: rgba(15, 23, 42, 0.14) !important;
+  }
+
+  .chartCard svg .grid path,
+  .analyticsCard svg .grid path,
+  .overviewChart svg .grid path{
+    stroke: rgba(15, 23, 42, 0.12) !important;
+  }
+}
+
+/* ----- Missions : cases cochées / non cochées plus visibles ----- */
+.missionCheck,
+.missionToggle,
+.missionDone,
+.taskCheck,
+.taskToggle{
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: 999px;
+  border: 2px solid rgba(47, 91, 255, 0.42);
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: .18s ease;
+}
+
+.missionCheck.is-done,
+.missionToggle.is-done,
+.missionDone.is-done,
+.taskCheck.is-done,
+.taskToggle.is-done,
+.missionCheck[aria-checked="true"],
+.missionToggle[aria-checked="true"],
+.taskCheck[aria-checked="true"],
+.taskToggle[aria-checked="true"]{
+  background: linear-gradient(180deg, #2f5bff, #2449ff);
+  border-color: rgba(47, 91, 255, 0.75);
+  box-shadow:
+    0 0 0 4px rgba(47, 91, 255, 0.10),
+    0 10px 22px rgba(47, 91, 255, 0.18);
+}
+
+.missionCheck svg,
+.missionToggle svg,
+.missionDone svg,
+.taskCheck svg,
+.taskToggle svg{
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.missionCheck.is-done svg path,
+.missionToggle.is-done svg path,
+.missionDone.is-done svg path,
+.taskCheck.is-done svg path,
+.taskToggle.is-done svg path,
+.missionCheck[aria-checked="true"] svg path,
+.missionToggle[aria-checked="true"] svg path,
+.taskCheck[aria-checked="true"] svg path,
+.taskToggle[aria-checked="true"] svg path{
+  stroke: #ffffff !important;
+}
+
+/* si les missions sont des cartes */
+.missionCard,
+.taskCard,
+.priorityMission{
+  transition: .18s ease;
+}
+
+.missionCard.is-done,
+.taskCard.is-done,
+.priorityMission.is-done{
+  border-color: rgba(47, 91, 255, 0.24);
+  box-shadow: 0 10px 24px rgba(47, 91, 255, 0.08);
+}
+
+/* ----- Texte de statut plus propre ----- */
+.statusTrialLabel,
+.trialStatusLabel{
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* ----- Scroll plus stable dans les sections ----- */
+html{
+  scroll-behavior: smooth;
+}
