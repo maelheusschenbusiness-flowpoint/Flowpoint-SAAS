@@ -139,7 +139,7 @@
   function statusLabel(status) {
     const s = String(status || "").toLowerCase();
     if (!s) return "Statut en attente";
-    if (s === "trialing") return "Essai actif";
+    if (s === "trialing") return "À l’essai";
     if (s === "active") return "Actif";
     if (s === "past_due") return "Paiement en retard";
     if (s === "canceled") return "Annulé";
@@ -331,6 +331,10 @@
 
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
+  }
+
+  function shouldAutoScrollTop() {
+    return window.innerWidth <= 1080;
   }
 
   async function refreshTokenIfPossible() {
@@ -866,6 +870,7 @@
 
     const width = Math.max(220, Math.round(rect.width || 760));
     const mobile = window.innerWidth <= 760;
+    const lightMode = window.matchMedia("(prefers-color-scheme: light)").matches;
     const height = mobile ? 220 : 320;
 
     canvas.width = width * dpr;
@@ -888,7 +893,16 @@
     const brand = styles.getPropertyValue("--fpBrand").trim() || "#2f5bff";
     const brand2 = styles.getPropertyValue("--fpBrand2").trim() || "#1b45ff";
     const text = styles.getPropertyValue("--fpMuted").trim() || "#94a3b8";
-    const grid = styles.getPropertyValue("--fpBorderStrong").trim() || "rgba(255,255,255,.14)";
+
+    const grid = lightMode
+      ? "rgba(15,24,48,.18)"
+      : (styles.getPropertyValue("--fpBorderStrong").trim() || "rgba(255,255,255,.14)");
+
+    const dashedGrid = lightMode
+      ? "rgba(15,24,48,.24)"
+      : "rgba(255,255,255,.28)";
+
+    const labelColor = lightMode ? "rgba(15,24,48,.72)" : text;
 
     const padLeft = mobile ? 34 : 42;
     const padRight = mobile ? 12 : 20;
@@ -910,7 +924,7 @@
       ctx.stroke();
     }
 
-    ctx.fillStyle = text;
+    ctx.fillStyle = labelColor;
     ctx.font = mobile ? "11px Inter, system-ui, sans-serif" : "12px Inter, system-ui, sans-serif";
     ctx.fillText("100", 6, padTop + 4);
     ctx.fillText("80", 12, padTop + chartH * 0.2 + 4);
@@ -932,7 +946,7 @@
     const healthPoints = buildPoints(healthData);
 
     const areaGradient = ctx.createLinearGradient(0, padTop, 0, padTop + chartH);
-    areaGradient.addColorStop(0, "rgba(47,91,255,.24)");
+    areaGradient.addColorStop(0, lightMode ? "rgba(47,91,255,.20)" : "rgba(47,91,255,.24)");
     areaGradient.addColorStop(1, "rgba(47,91,255,0)");
 
     ctx.beginPath();
@@ -948,8 +962,8 @@
       if (i === 0) ctx.moveTo(p.x, p.y);
       else ctx.lineTo(p.x, p.y);
     });
-    ctx.strokeStyle = "rgba(255,255,255,.28)";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = dashedGrid;
+    ctx.lineWidth = lightMode ? 2.4 : 2;
     ctx.setLineDash([6, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
@@ -1082,8 +1096,21 @@
                 ${state.missions.slice(0, 4).map((m) => `
                   <div class="fpMissionCard">
                     <div class="fpMissionTop">
-                      <button class="fpMissionCheck ${m.done ? "done" : ""}" data-mission-toggle="${esc(m.id)}" type="button">
-                        ${m.done ? "✓" : ""}
+                      <button
+                        class="fpMissionCheck ${m.done ? "done" : ""}"
+                        data-mission-toggle="${esc(m.id)}"
+                        type="button"
+                        aria-checked="${m.done ? "true" : "false"}"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path
+                            d="M6.5 12.5L10.2 16.2L17.5 8.8"
+                            stroke="white"
+                            stroke-width="3"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
                       </button>
 
                       <div class="fpMissionInfo">
@@ -1195,8 +1222,21 @@
                 ${state.missions.map((m) => `
                   <div class="fpMissionCard fpMissionCardLarge">
                     <div class="fpMissionTop">
-                      <button class="fpMissionCheck ${m.done ? "done" : ""}" data-mission-toggle="${esc(m.id)}" type="button">
-                        ${m.done ? "✓" : ""}
+                      <button
+                        class="fpMissionCheck ${m.done ? "done" : ""}"
+                        data-mission-toggle="${esc(m.id)}"
+                        type="button"
+                        aria-checked="${m.done ? "true" : "false"}"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path
+                            d="M6.5 12.5L10.2 16.2L17.5 8.8"
+                            stroke="white"
+                            stroke-width="3"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
                       </button>
 
                       <div class="fpMissionInfo">
@@ -1884,7 +1924,7 @@
       setMissionDoneByAction("goto_settings", true);
       saveMissions();
       renderRoute();
-      scrollPageTop();
+      if (shouldAutoScrollTop()) scrollPageTop();
       return true;
     }
 
@@ -1904,7 +1944,7 @@
       setMissionDoneByAction("view_billing", true);
       saveMissions();
       renderRoute();
-      scrollPageTop();
+      if (shouldAutoScrollTop()) scrollPageTop();
       return true;
     }
 
@@ -1925,7 +1965,9 @@
       default: renderOverviewPage(); break;
     }
 
-    requestAnimationFrame(scrollPageTop);
+    if (shouldAutoScrollTop()) {
+      requestAnimationFrame(scrollPageTop);
+    }
   }
 
   async function loadData({ silent = false } = {}) {
@@ -2026,7 +2068,7 @@
       state.route = ROUTES.has(location.hash) ? location.hash : "#overview";
       renderRoute();
       closeSidebar();
-      scrollPageTop();
+      if (shouldAutoScrollTop()) scrollPageTop();
     });
 
     window.addEventListener("resize", () => {
@@ -2036,7 +2078,9 @@
     els.navItems.forEach((item) => {
       item.addEventListener("click", () => {
         closeSidebar();
-        requestAnimationFrame(scrollPageTop);
+        if (shouldAutoScrollTop()) {
+          requestAnimationFrame(scrollPageTop);
+        }
       });
     });
 
@@ -2049,7 +2093,7 @@
       const raw = String(els.rangeSelect.value || "30");
       state.rangeDays = raw === "7" ? 7 : raw === "3" ? 3 : 30;
       loadData();
-      scrollPageTop();
+      if (shouldAutoScrollTop()) scrollPageTop();
     });
 
     els.btnExportToggle?.addEventListener("click", (e) => {
@@ -2073,13 +2117,13 @@
     els.btnOpenBillingSide?.addEventListener("click", () => {
       location.hash = "#billing";
       closeSidebar();
-      requestAnimationFrame(scrollPageTop);
+      if (shouldAutoScrollTop()) requestAnimationFrame(scrollPageTop);
     });
 
     els.btnOpenSettingsSide?.addEventListener("click", () => {
       location.hash = "#settings";
       closeSidebar();
-      requestAnimationFrame(scrollPageTop);
+      if (shouldAutoScrollTop()) requestAnimationFrame(scrollPageTop);
     });
 
     els.btnLogout?.addEventListener("click", logout);
@@ -2105,162 +2149,11 @@
 
     initEvents();
     loadData();
-    scrollPageTop();
+
+    if (shouldAutoScrollTop()) {
+      scrollPageTop();
+    }
   }
 
   document.addEventListener("DOMContentLoaded", init);
 })();
-/* =========================
-   FLOWPOINT DASHBOARD FIXES
-   ========================= */
-
-function normalizeTrialTexts() {
-  const allTextNodes = [
-    ...document.querySelectorAll(".statCard, .overviewCard, .infoCard, .metaCard, .summaryCard")
-  ];
-
-  allTextNodes.forEach((card) => {
-    const labelEl = card.querySelector(".label, .cardLabel, .statLabel, .metaLabel, .titleSmall");
-    const valueEl = card.querySelector(".value, .statValue, .mainValue, .bigValue, .cardValue");
-
-    if (!labelEl || !valueEl) return;
-
-    const label = (labelEl.textContent || "").trim().toLowerCase();
-    const value = (valueEl.textContent || "").trim().toLowerCase();
-
-    if ((label === "statut" || label === "status") && value === "essai actif") {
-      valueEl.textContent = "À l’essai";
-    }
-
-    if ((label === "essai" || label === "trial") && value === "essai actif") {
-      valueEl.textContent = "Essai actif";
-    }
-  });
-}
-
-function enhanceMissionChecks() {
-  const selectors = [
-    ".missionCheck",
-    ".missionToggle",
-    ".missionDone",
-    ".taskCheck",
-    ".taskToggle"
-  ];
-
-  const nodes = document.querySelectorAll(selectors.join(","));
-  nodes.forEach((el) => {
-    const checked =
-      el.classList.contains("is-done") ||
-      el.getAttribute("aria-checked") === "true" ||
-      el.dataset.done === "true";
-
-    if (checked) {
-      el.classList.add("is-done");
-    }
-
-    if (!el.querySelector("svg")) {
-      el.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path
-            d="M6.5 12.5L10.2 16.2L17.5 8.8"
-            stroke="white"
-            stroke-width="3"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      `;
-    }
-
-    const svg = el.querySelector("svg");
-    if (svg && !checked) {
-      svg.style.opacity = "0";
-    }
-
-    if (checked && svg) {
-      svg.style.opacity = "1";
-    }
-  });
-}
-
-function preventSectionJumpOnDesktop() {
-  const desktop = window.matchMedia("(min-width: 981px)");
-  const navLinks = document.querySelectorAll('a[href^="#"], [data-route], [data-tab], [data-section]');
-
-  navLinks.forEach((link) => {
-    link.addEventListener("click", (e) => {
-      if (!desktop.matches) return;
-
-      const currentY = window.scrollY || window.pageYOffset || 0;
-      const href = link.getAttribute("href");
-      const dataSection = link.getAttribute("data-section");
-      const dataTab = link.getAttribute("data-tab");
-      const dataRoute = link.getAttribute("data-route");
-
-      const targetId =
-        (href && href.startsWith("#") ? href.slice(1) : null) ||
-        dataSection ||
-        dataTab ||
-        dataRoute;
-
-      if (!targetId) return;
-
-      const target =
-        document.getElementById(targetId) ||
-        document.querySelector(`[data-section-panel="${targetId}"]`) ||
-        document.querySelector(`[data-tab-panel="${targetId}"]`) ||
-        document.querySelector(`[data-route-panel="${targetId}"]`);
-
-      if (!target) return;
-
-      e.preventDefault();
-
-      if (href && href.startsWith("#")) {
-        history.replaceState(null, "", `#${targetId}`);
-      }
-
-      document.querySelectorAll("[data-section-panel], [data-tab-panel], [data-route-panel], .dashSection")
-        .forEach((panel) => {
-          const isMatch =
-            panel.id === targetId ||
-            panel.getAttribute("data-section-panel") === targetId ||
-            panel.getAttribute("data-tab-panel") === targetId ||
-            panel.getAttribute("data-route-panel") === targetId;
-
-          panel.hidden = !isMatch;
-          panel.style.display = isMatch ? "" : "none";
-        });
-
-      window.scrollTo({
-        top: currentY,
-        behavior: "auto"
-      });
-    });
-  });
-}
-
-function strengthenChartGridIfChartJsExists() {
-  if (!window.Chart) return;
-
-  Chart.defaults.scale.grid.color = (ctx) => {
-    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return dark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.14)";
-  };
-
-  Chart.defaults.scale.border.color = window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "rgba(255,255,255,0.14)"
-    : "rgba(15,23,42,0.16)";
-
-  Chart.defaults.plugins.legend.labels.color = window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "#eaf0ff"
-    : "#0f172a";
-}
-
-function initDashboardUiFixes() {
-  normalizeTrialTexts();
-  enhanceMissionChecks();
-  preventSectionJumpOnDesktop();
-  strengthenChartGridIfChartJsExists();
-}
-
-document.addEventListener("DOMContentLoaded", initDashboardUiFixes);
