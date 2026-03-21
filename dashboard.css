@@ -2585,3 +2585,48 @@ html{
     background:rgba(47,91,255,.04) !important;
   }
 }
+.fpMissionCheck{
+  width:30px;
+  height:30px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(255,255,255,.04);
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  transition:all .2s ease;
+}
+
+.fpMissionCheckIcon{
+  width:16px;
+  height:16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.fpMissionCheckIcon svg{
+  width:16px;
+  height:16px;
+}
+
+.fpMissionCheckIcon path{
+  fill:none;
+  stroke:#fff;
+  stroke-width:3;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  opacity:0;
+}
+
+.fpMissionCheck.done{
+  background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
+  border:none;
+  box-shadow:0 0 12px rgba(47,107,255,.6);
+}
+
+.fpMissionCheck.done .fpMissionCheckIcon path{
+  opacity:1;
+}
