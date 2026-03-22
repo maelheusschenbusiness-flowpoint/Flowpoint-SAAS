@@ -314,34 +314,34 @@
       }
 
       function statusLabel(status) {
-        const s = String(status || "").toLowerCase();
-        if (!s) return "Statut en attente";
-        if (s === "trialing") return "Essai actif";
-        if (s === "active") return "Actif";
-        if (s === "past_due") return "Paiement en retard";
-        if (s === "canceled") return "Annulé";
-        if (s === "incomplete") return "Incomplet";
-        if (s === "payment_succeeded") return "Paiement validé";
-        return cap(s.replaceAll("_", " "));
-      }
+  const s = String(status || "").toLowerCase();
+  if (!s) return "Statut en attente";
+  if (s === "trialing") return "À l’essai";
+  if (s === "active") return "Actif";
+  if (s === "past_due") return "Paiement en retard";
+  if (s === "canceled") return "Annulé";
+  if (s === "incomplete") return "Incomplet";
+  if (s === "payment_succeeded") return "Paiement validé";
+  return cap(s.replaceAll("_", " "));
+}
 
       function trialLabel(value, me = {}) {
-        const status = String(me?.subscriptionStatus || me?.lastPaymentStatus || "").toLowerCase();
+  const status = String(me?.subscriptionStatus || me?.lastPaymentStatus || "").toLowerCase();
 
-        if (!value) {
-          if (status === "trialing") return "Essai actif";
-          return "Essai non défini";
-        }
+  if (!value) {
+    if (status === "trialing") return "Essai actif";
+    return "Essai non défini";
+  }
 
-        const d = new Date(value);
-        if (Number.isNaN(d.getTime())) {
-          if (status === "trialing") return "Essai actif";
-          return "Essai non défini";
-        }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    if (status === "trialing") return "Essai actif";
+    return "Essai non défini";
+  }
 
-        const now = new Date();
-        return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
-      }
+  const now = new Date();
+  return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
+}
 
       function trialMetaLabel(value, me = {}) {
         const status = String(me?.subscriptionStatus || me?.lastPaymentStatus || "").toLowerCase();
