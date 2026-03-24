@@ -2513,3 +2513,47 @@ body::before{
     align-items:stretch;
   }
 }
+/* =========================================
+   FIX ESPACES ENTRE BLOCS / CARTES
+   ========================================= */
+
+.fpCard > .fpTextPanel + .fpTextPanel,
+.fpCard > .fpCardInner + .fpCardInner,
+.fpCard > .fpInfoList + .fpTextPanel,
+.fpCard > .fpTextPanel + .fpInfoList,
+.fpCard > .fpRows + .fpRows,
+.fpCard > .fpStatsGrid + .fpTextPanel,
+.fpCard > .fpTextPanel + .fpStatsGrid {
+  margin-top: 14px !important;
+}
+
+.fpCard .fpTextPanel {
+  margin-top: 14px;
+}
+
+.fpCard .fpTextPanel:first-of-type {
+  margin-top: 0;
+}
+
+.fpCol > .fpCard + .fpCard {
+  margin-top: 18px;
+}
+
+.fpFeatureStack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+@media (max-width: 760px) {
+  .fpCard > .fpTextPanel + .fpTextPanel,
+  .fpCard > .fpCardInner + .fpCardInner,
+  .fpCol > .fpCard + .fpCard {
+    margin-top: 16px !important;
+  }
+
+  .fpFeatureStack {
+    gap: 16px;
+  }
+}
