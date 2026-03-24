@@ -1704,9 +1704,11 @@
         "Centre SEO",
         "Lance des audits, consulte l’historique et identifie rapidement les priorités.",
         `
-          <div class="fpTopActionsRow">
+                    <div class="fpTopActionsRow">
             <button class="fpBtn fpBtnPrimary" id="fpAuditsRunBtn" type="button">Lancer un audit SEO</button>
             <button class="fpBtn fpBtnGhost" id="fpAuditsExportBtn" type="button">Exporter en CSV</button>
+            <a class="fpBtn fpBtnGhost" href="#billing">Billing</a>
+            <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
           </div>
           ${createToolbar({
             searchId: "fpAuditsSearch",
@@ -1876,9 +1878,11 @@
         "Surveillance des sites",
         "Ajoute des URLs, contrôle leur disponibilité et pilote les incidents plus rapidement.",
         `
-          <div class="fpTopActionsRow">
+                    <div class="fpTopActionsRow">
             <button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn" type="button">Ajouter un monitor</button>
             <button class="fpBtn fpBtnGhost" id="fpExportMonitorsBtn" type="button">Exporter en CSV</button>
+            <a class="fpBtn fpBtnGhost" href="#billing">Billing</a>
+            <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
           </div>
           ${createToolbar({
             searchId: "fpMonitorsSearch",
@@ -2079,6 +2083,21 @@
         "Exports et historiques",
         "Télécharge les données importantes du dashboard et prépare des livrables clients plus propres.",
         `
+                    <div class="fpReportCard">
+              <div class="fpReportTitle">Billing</div>
+              <div class="fpReportMeta">Accès rapide à la facturation.</div>
+              <div class="fpDetailActions">
+                <a class="fpBtn fpBtnGhost" href="#billing">Ouvrir Billing</a>
+              </div>
+            </div>
+
+            <div class="fpReportCard">
+              <div class="fpReportTitle">Add-ons</div>
+              <div class="fpReportMeta">Ajuste les options de ton abonnement.</div>
+              <div class="fpDetailActions">
+                <a class="fpBtn fpBtnGhost" href="/addons.html">Ouvrir Add-ons</a>
+              </div>
+            </div>
           <div class="fpReportsGrid">
             <div class="fpReportCard">
               <div class="fpReportTitle">Export audits</div>
@@ -2555,7 +2574,16 @@
     return false;
   }
 
-  function renderRoute() {
+    function renderRoute(options = {}) {
+    const {
+      scrollTop = false,
+      preserveScroll = false,
+    } = options;
+
+    const previousWindowY = window.scrollY || 0;
+    const previousMainY = els.main?.scrollTop || 0;
+    const previousPageY = els.pageContainer?.scrollTop || 0;
+
     setActiveNav();
 
     document.body.classList.toggle("fpCompactMode", !!state.uiPrefs.compactLists);
@@ -2587,11 +2615,21 @@
         break;
     }
 
-    if (shouldAutoScrollTop()) {
-      requestAnimationFrame(scrollPageTop);
+    if (preserveScroll) {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, previousWindowY);
+        if (els.main) els.main.scrollTop = previousMainY;
+        if (els.pageContainer) els.pageContainer.scrollTop = previousPageY;
+      });
+      return;
+    }
+
+    if (scrollTop) {
+      requestAnimationFrame(() => {
+        scrollPageTop();
+      });
     }
   }
-
   async function loadData({ silent = false } = {}) {
     if (state.loading) return;
 
@@ -2671,40 +2709,44 @@
     }
   }
 
-  function bindGlobalActions() {
+      function bindGlobalActions() {
     document.addEventListener("click", async (e) => {
       const toggleBtn = e.target.closest("[data-mission-toggle]");
       if (toggleBtn) {
+        e.preventDefault();
+        e.stopPropagation();
         toggleMission(toggleBtn.getAttribute("data-mission-toggle"));
-        renderRoute();
+        renderRoute({ preserveScroll: true });
         return;
       }
 
       const runBtn = e.target.closest("[data-mission-do]");
       if (runBtn) {
+        e.preventDefault();
+        e.stopPropagation();
         await runMission(runBtn.getAttribute("data-mission-do"));
-        renderRoute();
+        renderRoute({ preserveScroll: true });
         return;
       }
 
       const openBtn = e.target.closest("[data-mission-open]");
       if (openBtn) {
+        e.preventDefault();
+        e.stopPropagation();
         openMissionPage(openBtn.getAttribute("data-mission-open"));
       }
     });
   }
-
   function logout() {
     clearAuth();
     window.location.href = "/login.html";
   }
 
   function initEvents() {
-    window.addEventListener("hashchange", () => {
+        window.addEventListener("hashchange", () => {
       state.route = ROUTES.has(location.hash) ? location.hash : "#overview";
-      renderRoute();
       closeSidebar();
-      if (shouldAutoScrollTop()) scrollPageTop();
+      renderRoute({ scrollTop: true });
     });
 
     window.addEventListener("resize", () => {
