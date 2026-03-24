@@ -33,8 +33,6 @@ const app = express();
 app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 5000;
-
-// ✅ BRAND
 const BRAND_NAME = "FlowPoint";
 
 // ---------- ENV CHECK ----------
@@ -47,23 +45,32 @@ const REQUIRED = [
   "STRIPE_PRICE_ID_ULTRA",
   "PUBLIC_BASE_URL",
 ];
+
 for (const k of REQUIRED) {
   if (!process.env[k]) console.log("❌ ENV manquante:", k);
 }
 
 const STRIPE_WEBHOOK_SECRET =
   process.env.STRIPE_WEBHOOK_SECRET_RENDER || process.env.STRIPE_WEBHOOK_SECRET;
-if (!STRIPE_WEBHOOK_SECRET) console.log("⚠️ STRIPE_WEBHOOK_SECRET manquante (webhook non validable)");
+
+if (!STRIPE_WEBHOOK_SECRET) {
+  console.log("⚠️ STRIPE_WEBHOOK_SECRET manquante (webhook non validable)");
+}
 
 const ADMIN_KEY = process.env.ADMIN_KEY || "";
 const CRON_KEY = process.env.CRON_KEY || "";
-if (!CRON_KEY) console.log("⚠️ CRON_KEY manquante (cron monitors non sécurisé)");
+
+if (!CRON_KEY) {
+  console.log("⚠️ CRON_KEY manquante (cron monitors non sécurisé)");
+}
 
 const LOGIN_LINK_TTL_MINUTES = Number(process.env.LOGIN_LINK_TTL_MINUTES || 30);
 const AUDIT_CACHE_HOURS = Number(process.env.AUDIT_CACHE_HOURS || 24);
-
 const MONITOR_HTTP_TIMEOUT_MS = Number(process.env.MONITOR_HTTP_TIMEOUT_MS || 8000);
-const CRON_CONCURRENCY = Math.min(25, Math.max(2, Number(process.env.CRON_CONCURRENCY || 10)));
+const CRON_CONCURRENCY = Math.min(
+  25,
+  Math.max(2, Number(process.env.CRON_CONCURRENCY || 10))
+);
 
 // ---------- SMTP / Resend ----------
 const SMTP_READY =
@@ -78,6 +85,7 @@ function boolEnv(v) {
 }
 
 let _cachedTransport = null;
+
 function getMailer() {
   if (!SMTP_READY) return null;
   if (_cachedTransport) return _cachedTransport;
@@ -86,7 +94,10 @@ function getMailer() {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: boolEnv(process.env.SMTP_SECURE),
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 20000,
@@ -95,33 +106,28 @@ function getMailer() {
   return _cachedTransport;
 }
 
-/**
- * safeBaseUrl(req)
- * - Utilise PUBLIC_BASE_URL si présent (recommandé)
- * - Sinon reconstruit depuis req (proxy-friendly)
- * - Évite les valeurs foireuses (host vide / injections)
- */
 function safeBaseUrl(req) {
   const env = String(process.env.PUBLIC_BASE_URL || "").trim();
   if (env) return env.replace(/\/+$/, "");
 
-  const protoRaw = String(req.headers["x-forwarded-proto"] || req.protocol || "https");
+  const protoRaw = String(
+    req.headers["x-forwarded-proto"] || req.protocol || "https"
+  );
   const proto = protoRaw.split(",")[0].trim().toLowerCase();
   const safeProto = proto === "http" || proto === "https" ? proto : "https";
 
-  const hostRaw = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  const hostRaw = String(
+    req.headers["x-forwarded-host"] || req.headers.host || ""
+  )
+    .split(",")[0]
+    .trim();
+
   const host = hostRaw.replace(/[\r\n]/g, "");
   if (!host) return "https://localhost";
 
   return `${safeProto}://${host}`.replace(/\/+$/, "");
 }
 
-/**
- * sendEmail
- * Priority:
- *  1) Resend API (HTTPS / port 443) if RESEND_API_KEY is set
- *  2) SMTP fallback
- */
 async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   try {
     const from = String(process.env.ALERT_EMAIL_FROM || "").trim();
@@ -132,7 +138,9 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
 
     const normalizeList = (v) => {
       if (!v) return [];
-      if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
+      if (Array.isArray(v)) {
+        return v.map(String).map((s) => s.trim()).filter(Boolean);
+      }
       return String(v)
         .split(",")
         .map((s) => s.trim())
@@ -147,7 +155,7 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
       return { ok: false, error: "Recipient missing" };
     }
 
-    // 1) Resend API
+    // 1) Resend
     if (process.env.RESEND_API_KEY) {
       const payload = {
         from,
@@ -203,10 +211,14 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
   }
 }
 
-/**
- * buildDailyReportEmail
- */
-function buildDailyReportEmail({ brandName, orgName, usersCount, monitorsDown, audits24hCount, logsDown24hCount }) {
+function buildDailyReportEmail({
+  brandName,
+  orgName,
+  usersCount,
+  monitorsDown,
+  audits24hCount,
+  logsDown24hCount,
+}) {
   const bn = String(brandName || BRAND_NAME || "FlowPoint")
     .replace(/\s*AI\s*$/i, "")
     .trim();
@@ -249,8 +261,6 @@ Email envoyé automatiquement.
       --brand:#2f5bff;
       --brand2:#2449ff;
       --chip:#eef2ff;
-      --down:#b00020;
-      --ok:#0a7a2f;
     }
     @media (prefers-color-scheme: dark){
       :root{
@@ -265,113 +275,62 @@ Email envoyé automatiquement.
     body{
       margin:0;
       background:var(--bg);
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
       color:var(--text);
     }
-    .wrap{ padding:28px 14px; }
-    .container{ max-width:620px; margin:0 auto; }
+    .wrap{padding:28px 14px}
+    .container{max-width:620px;margin:0 auto}
     .hero{
-      background: linear-gradient(180deg, rgba(47,91,255,.22), transparent 55%);
+      background:linear-gradient(180deg, rgba(47,91,255,.22), transparent 55%);
       border:1px solid var(--border);
       border-radius:18px;
       padding:18px;
     }
-    .brandRow{ display:flex; gap:12px; align-items:center; }
-    .logo{
-      width:44px;height:44px;border-radius:14px;
-      background:linear-gradient(180deg,var(--brand),var(--brand2));
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 12px 30px rgba(47,91,255,.25);
-      flex:0 0 auto;
-    }
-    h1{ margin:12px 0 2px; font-size:22px; letter-spacing:-.02em; }
-    .sub{ color:var(--muted); font-size:13.5px; line-height:1.6; }
-    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
-    .card{
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+    .card,.section{
       background:var(--card);
       border:1px solid var(--border);
       border-radius:16px;
       padding:14px;
     }
-    .k{ color:var(--muted); font-size:12px; font-weight:800; }
-    .v{ margin-top:6px; font-size:20px; font-weight:900; letter-spacing:-.02em; }
+    .sub,.footer,ul{color:var(--muted)}
+    .footer{margin-top:14px;font-size:12px;text-align:center;line-height:1.6}
     .pill{
       display:inline-block;
       margin-top:10px;
       padding:6px 10px;
       border-radius:999px;
       background:var(--chip);
-      color:var(--muted);
       font-weight:800;
       font-size:12px;
     }
-    .section{
-      margin-top:12px;
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:14px;
-    }
-    .sectionTitle{ font-weight:900; margin:0 0 8px; letter-spacing:-.01em; }
-    ul{ margin:0; padding-left:18px; color:var(--muted); line-height:1.7; }
-    .footer{
-      margin-top:14px;
-      color:var(--muted);
-      font-size:12px;
-      text-align:center;
-      line-height:1.6;
-    }
-    @media (max-width:520px){
-      .grid{ grid-template-columns:1fr; }
-    }
+    @media (max-width:520px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="container">
       <div class="hero">
-        <div class="brandRow">
-          <div class="logo" aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path d="M13 2L4 14h7l-1 8 10-14h-7l0-6Z" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <div>
-            <div style="font-weight:900; font-size:16px; line-height:1">${brandName}</div>
-            <div class="sub">Rapport quotidien (automatique)</div>
-          </div>
-        </div>
-
-        <h1>${brandName} — Rapport quotidien</h1>
+        <h1 style="margin:0 0 8px 0">${brandName} — Rapport quotidien</h1>
         <div class="sub">
-          Organisation : <b>${orgName}</b>
+          Organisation : <b>${orgName}</b><br>
           <span class="pill">${dateLabel}</span>
         </div>
 
         <div class="grid">
-          <div class="card">
-            <div class="k">Users</div>
-            <div class="v">${usersCount}</div>
-          </div>
-          <div class="card">
-            <div class="k">Monitors DOWN</div>
-            <div class="v">${monitorsDown}</div>
-          </div>
+          <div class="card"><b>Users</b><div style="margin-top:8px;font-size:22px;font-weight:900">${usersCount}</div></div>
+          <div class="card"><b>Monitors DOWN</b><div style="margin-top:8px;font-size:22px;font-weight:900">${monitorsDown}</div></div>
         </div>
       </div>
 
-      <div class="section">
-        <div class="sectionTitle">Audits (24h)</div>
-        <ul>
-          <li>${audits24hCount ? `${audits24hCount} audit(s) effectué(s)` : "Aucun"}</li>
-        </ul>
+      <div class="section" style="margin-top:12px">
+        <b>Audits (24h)</b>
+        <ul><li>${audits24hCount ? `${audits24hCount} audit(s) effectué(s)` : "Aucun"}</li></ul>
       </div>
 
-      <div class="section">
-        <div class="sectionTitle">Logs DOWN (24h)</div>
-        <ul>
-          <li>${logsDown24hCount ? `${logsDown24hCount} incident(s) détecté(s)` : "Aucun"}</li>
-        </ul>
+      <div class="section" style="margin-top:12px">
+        <b>Logs DOWN (24h)</b>
+        <ul><li>${logsDown24hCount ? `${logsDown24hCount} incident(s) détecté(s)` : "Aucun"}</li></ul>
       </div>
 
       <div class="footer">
@@ -449,11 +408,14 @@ async function consume(user, org, key, amount = 1) {
     pdf: ["usedPdf", q.pdf],
     exports: ["usedExports", q.exports],
   };
+
   const item = map[key];
   if (!item) return false;
+
   const [field, limit] = item;
   if (limit <= 0) return false;
-  if (user[field] + amount > limit) return false;
+  if ((user[field] || 0) + amount > limit) return false;
+
   user[field] += amount;
   await user.save();
   return true;
@@ -465,7 +427,6 @@ function priceIdForPlan(plan) {
   if (plan === "ultra") return process.env.STRIPE_PRICE_ID_ULTRA;
   return null;
 }
-
 // ---------- ANTI-ABUS ----------
 const PUBLIC_EMAIL_DOMAINS = new Set([
   "gmail.com",
@@ -482,6 +443,7 @@ function normalizeEmail(emailRaw) {
   const email = String(emailRaw || "").trim().toLowerCase();
   const parts = email.split("@");
   if (parts.length !== 2) return email;
+
   let [local, domain] = parts;
 
   if (domain === "googlemail.com") domain = "gmail.com";
@@ -490,11 +452,12 @@ function normalizeEmail(emailRaw) {
     if (plusIndex >= 0) local = local.slice(0, plusIndex);
     local = local.replace(/\./g, "");
   }
+
   return `${local}@${domain}`;
 }
 
 function normalizeCompanyName(s) {
-  return (s || "")
+  return String(s || "")
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ")
@@ -520,10 +483,12 @@ function isPrivateIp(ip) {
     if (ip.startsWith("10.")) return true;
     if (ip.startsWith("192.168.")) return true;
     if (ip.startsWith("169.254.")) return true;
+
     if (ip.startsWith("172.")) {
       const second = Number(ip.split(".")[1]);
       if (second >= 16 && second <= 31) return true;
     }
+
     return false;
   }
 
@@ -531,6 +496,7 @@ function isPrivateIp(ip) {
   if (v === "::1") return true;
   if (v.startsWith("fc") || v.startsWith("fd")) return true;
   if (v.startsWith("fe80")) return true;
+
   return false;
 }
 
@@ -542,17 +508,30 @@ async function assertSafePublicUrl(rawUrl) {
     throw new Error("URL invalide");
   }
 
-  if (!["http:", "https:"].includes(u.protocol)) throw new Error("Protocole interdit");
-  if (!u.hostname) throw new Error("Hostname manquant");
-  if (u.username || u.password) throw new Error("Credentials interdits dans l'URL");
+  if (!["http:", "https:"].includes(u.protocol)) {
+    throw new Error("Protocole interdit");
+  }
+  if (!u.hostname) {
+    throw new Error("Hostname manquant");
+  }
+  if (u.username || u.password) {
+    throw new Error("Credentials interdits dans l'URL");
+  }
 
   const host = u.hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".local")) throw new Error("Hostname interdit");
+  if (host === "localhost" || host.endsWith(".local")) {
+    throw new Error("Hostname interdit");
+  }
 
   const res = await dns.lookup(host, { all: true, verbatim: true });
-  if (!res?.length) throw new Error("DNS lookup failed");
+  if (!res?.length) {
+    throw new Error("DNS lookup failed");
+  }
+
   for (const r of res) {
-    if (isPrivateIp(r.address)) throw new Error("Destination réseau privée interdite");
+    if (isPrivateIp(r.address)) {
+      throw new Error("Destination réseau privée interdite");
+    }
   }
 
   u.hash = "";
@@ -573,19 +552,15 @@ const OrgSchema = new mongoose.Schema(
     billingAddons: {
       monitorsPack50: { type: Number, default: 0 },
       extraSeats: { type: Number, default: 0 },
-
       retention90d: { type: Boolean, default: false },
       retention365d: { type: Boolean, default: false },
-
       auditsPack200: { type: Number, default: 0 },
       auditsPack1000: { type: Number, default: 0 },
       pdfPack200: { type: Number, default: 0 },
       exportsPack1000: { type: Number, default: 0 },
-
       prioritySupport: { type: Boolean, default: false },
       customDomain: { type: Boolean, default: false },
-
-      whiteLabel: { type: Boolean, default: true }, // ✅ gratuit
+      whiteLabel: { type: Boolean, default: true },
     },
 
     branding: {
@@ -739,13 +714,19 @@ const MonitorLog = mongoose.model("MonitorLog", MonitorLogSchema);
 
 // ---------- AUTH ----------
 function signToken(user) {
-  return jwt.sign({ uid: user._id.toString(), email: user.email }, process.env.JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign(
+    { uid: user._id.toString(), email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: "30d" }
+  );
 }
 
 function auth(req, res, next) {
   const h = req.headers.authorization || "";
   const tok = h.startsWith("Bearer ") ? h.slice(7) : null;
+
   if (!tok) return res.status(401).json({ error: "Non autorisé" });
+
   try {
     req.user = jwt.verify(tok, process.env.JWT_SECRET);
     next();
@@ -768,18 +749,14 @@ async function ensureOrgDefaults(org) {
     org.billingAddons = {
       monitorsPack50: 0,
       extraSeats: 0,
-
       retention90d: false,
       retention365d: false,
-
       auditsPack200: 0,
       auditsPack1000: 0,
       pdfPack200: 0,
       exportsPack1000: 0,
-
       prioritySupport: false,
       customDomain: false,
-
       whiteLabel: true,
     };
     changed = true;
@@ -788,24 +765,19 @@ async function ensureOrgDefaults(org) {
 
     if (b.monitorsPack50 == null) { b.monitorsPack50 = 0; changed = true; }
     if (b.extraSeats == null) { b.extraSeats = 0; changed = true; }
-
     if (b.retention90d == null) { b.retention90d = false; changed = true; }
     if (b.retention365d == null) { b.retention365d = false; changed = true; }
-
     if (b.auditsPack200 == null) { b.auditsPack200 = 0; changed = true; }
     if (b.auditsPack1000 == null) { b.auditsPack1000 = 0; changed = true; }
     if (b.pdfPack200 == null) { b.pdfPack200 = 0; changed = true; }
     if (b.exportsPack1000 == null) { b.exportsPack1000 = 0; changed = true; }
-
     if (b.prioritySupport == null) { b.prioritySupport = false; changed = true; }
     if (b.customDomain == null) { b.customDomain = false; changed = true; }
-
     if (b.whiteLabel == null) { b.whiteLabel = true; changed = true; }
-    b.whiteLabel = true;
 
+    b.whiteLabel = true;
     b.monitorsPack50 = clampInt(b.monitorsPack50, 0, 200);
     b.extraSeats = clampInt(b.extraSeats, 0, 500);
-
     b.auditsPack200 = clampInt(b.auditsPack200, 0, 10000);
     b.auditsPack1000 = clampInt(b.auditsPack1000, 0, 10000);
     b.pdfPack200 = clampInt(b.pdfPack200, 0, 10000);
@@ -836,7 +808,11 @@ async function ensureOrgDefaults(org) {
   org.retentionDays = clampInt(org.retentionDays, 7, 3650);
 
   if (!org.integrations || typeof org.integrations !== "object") {
-    org.integrations = { slackWebhookUrl: "", discordWebhookUrl: "", zapierHookUrl: "" };
+    org.integrations = {
+      slackWebhookUrl: "",
+      discordWebhookUrl: "",
+      zapierHookUrl: "",
+    };
     changed = true;
   } else {
     if (org.integrations.slackWebhookUrl == null) { org.integrations.slackWebhookUrl = ""; changed = true; }
@@ -889,6 +865,7 @@ async function ensureOrgForUser(user) {
   user.orgId = org._id;
   user.role = user.role || "owner";
   await user.save();
+
   return user;
 }
 
@@ -906,41 +883,53 @@ async function requireActive(req, res, next) {
     }
   }
 
-  if (user.accessBlocked) return res.status(403).json({ error: "Accès bloqué (paiement échoué / essai terminé)" });
+  if (user.accessBlocked) {
+    return res.status(403).json({ error: "Accès bloqué (paiement échoué / essai terminé)" });
+  }
 
   await resetUsageIfNewMonth(user);
   await ensureOrgForUser(user);
 
   const org = user.orgId ? await Org.findById(user.orgId) : null;
   req.dbOrg = org ? await ensureOrgDefaults(org) : null;
-
   req.dbUser = user;
+
   next();
 }
 
 function requireOwner(req, res, next) {
-  if (req.dbUser.role !== "owner") return res.status(403).json({ error: "Owner requis" });
+  if (req.dbUser.role !== "owner") {
+    return res.status(403).json({ error: "Owner requis" });
+  }
   next();
 }
 
 function requireAdmin(req, res, next) {
   if (!ADMIN_KEY) return res.status(500).json({ error: "ADMIN_KEY manquante" });
+
   const k = req.headers["x-admin-key"] || req.query.admin_key;
-  if (k !== ADMIN_KEY) return res.status(401).json({ error: "Admin non autorisé" });
+  if (k !== ADMIN_KEY) {
+    return res.status(401).json({ error: "Admin non autorisé" });
+  }
+
   next();
 }
 
 function requireCron(req, res, next) {
   if (!CRON_KEY) return res.status(500).json({ error: "CRON_KEY manquante" });
+
   const k = req.headers["x-cron-key"] || req.query.cron_key;
-  if (k !== CRON_KEY) return res.status(401).json({ error: "Cron non autorisé" });
+  if (k !== CRON_KEY) {
+    return res.status(401).json({ error: "Cron non autorisé" });
+  }
+
   next();
 }
-
 // ---------- Helpers alerting ----------
 function uniqEmails(arr) {
   const out = [];
   const seen = new Set();
+
   for (const x of arr || []) {
     const e = String(x || "").trim().toLowerCase();
     if (!e) continue;
@@ -948,19 +937,24 @@ function uniqEmails(arr) {
     seen.add(e);
     out.push(e);
   }
+
   return out;
 }
 
 async function getOrgAlertEmails(orgId) {
-  const org = await Org.findById(orgId).select("alertRecipients alertExtraEmails ownerUserId name");
+  const org = await Org.findById(orgId).select("alertRecipients alertExtraEmails ownerUserId");
   if (!org) return [];
 
   const recipientsMode = String(org.alertRecipients || "all").toLowerCase();
   const extra = Array.isArray(org.alertExtraEmails) ? org.alertExtraEmails : [];
 
   let base = [];
+
   if (recipientsMode === "owner") {
-    const owner = org.ownerUserId ? await User.findById(org.ownerUserId).select("email") : null;
+    const owner = org.ownerUserId
+      ? await User.findById(org.ownerUserId).select("email")
+      : null;
+
     if (owner?.email) base.push(owner.email);
   } else {
     const users = await User.find({ orgId }).select("email");
@@ -970,10 +964,22 @@ async function getOrgAlertEmails(orgId) {
   return uniqEmails([...base, ...extra]).slice(0, 60);
 }
 
-function formatMonitorEmail({ orgName, monitorUrl, status, httpStatus, responseTimeMs, checkedAt, error }) {
-  const when = checkedAt ? new Date(checkedAt).toLocaleString("fr-FR") : new Date().toLocaleString("fr-FR");
+function formatMonitorEmail({
+  orgName,
+  monitorUrl,
+  status,
+  httpStatus,
+  responseTimeMs,
+  checkedAt,
+  error,
+}) {
+  const when = checkedAt
+    ? new Date(checkedAt).toLocaleString("fr-FR")
+    : new Date().toLocaleString("fr-FR");
+
   const statusLabel = status === "down" ? "DOWN" : "UP";
   const subject = `${BRAND_NAME} — ${statusLabel}: ${monitorUrl}`;
+
   const text = `Organisation: ${orgName}
 URL: ${monitorUrl}
 Status: ${statusLabel}
@@ -991,6 +997,7 @@ Erreur: ${error || "-"}`;
     <p><b>Date</b>: ${when}</p>
     ${error ? `<p><b>Erreur</b>: ${String(error).slice(0, 400)}</p>` : ""}
   `;
+
   return { subject, text, html };
 }
 
@@ -998,12 +1005,20 @@ async function maybeSendMonitorAlert(monitor, result) {
   const newStatus = String(result.status || "unknown").toLowerCase();
   const last = String(monitor.lastAlertStatus || "unknown").toLowerCase();
 
-  if (newStatus !== "up" && newStatus !== "down") return { sent: false, reason: "unknown status" };
-  if (newStatus === last) return { sent: false, reason: "no change" };
+  if (newStatus !== "up" && newStatus !== "down") {
+    return { sent: false, reason: "unknown status" };
+  }
+
+  if (newStatus === last) {
+    return { sent: false, reason: "no change" };
+  }
 
   const org = await Org.findById(monitor.orgId).select("name");
   const to = await getOrgAlertEmails(monitor.orgId);
-  if (!to.length) return { sent: false, reason: "no recipients" };
+
+  if (!to.length) {
+    return { sent: false, reason: "no recipients" };
+  }
 
   const payload = formatMonitorEmail({
     orgName: org?.name || "Organisation",
@@ -1034,12 +1049,14 @@ async function runWithConcurrency(items, limit, worker) {
   const results = new Array(items.length);
   let idx = 0;
 
-  const runners = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
-    while (idx < items.length) {
-      const cur = idx++;
-      results[cur] = await worker(items[cur], cur);
-    }
-  });
+  const runners = new Array(Math.min(limit, items.length))
+    .fill(0)
+    .map(async () => {
+      while (idx < items.length) {
+        const cur = idx++;
+        results[cur] = await worker(items[cur], cur);
+      }
+    });
 
   await Promise.all(runners);
   return results;
@@ -1053,16 +1070,33 @@ async function checkUrlOnce(url) {
   const id = setTimeout(() => controller.abort(), MONITOR_HTTP_TIMEOUT_MS);
 
   const t0 = Date.now();
+
   try {
-    const r = await fetch(safeUrl, { redirect: "follow", signal: controller.signal });
+    const r = await fetch(safeUrl, {
+      redirect: "follow",
+      signal: controller.signal,
+    });
+
     const ms = Date.now() - t0;
     clearTimeout(id);
+
     const up = r.status >= 200 && r.status < 400;
-    return { status: up ? "up" : "down", httpStatus: r.status, responseTimeMs: ms, error: "" };
+    return {
+      status: up ? "up" : "down",
+      httpStatus: r.status,
+      responseTimeMs: ms,
+      error: "",
+    };
   } catch (e) {
     const ms = Date.now() - t0;
     clearTimeout(id);
-    return { status: "down", httpStatus: 0, responseTimeMs: ms, error: e.message || "fetch failed" };
+
+    return {
+      status: "down",
+      httpStatus: 0,
+      responseTimeMs: ms,
+      error: e.message || "fetch failed",
+    };
   }
 }
 
@@ -1071,15 +1105,28 @@ async function fetchWithTiming(url) {
   const safeUrl = await assertSafePublicUrl(url);
 
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), Math.min(15000, MONITOR_HTTP_TIMEOUT_MS * 2));
+  const id = setTimeout(
+    () => controller.abort(),
+    Math.min(15000, MONITOR_HTTP_TIMEOUT_MS * 2)
+  );
 
   const t0 = Date.now();
-  const r = await fetch(safeUrl, { redirect: "follow", signal: controller.signal });
+  const r = await fetch(safeUrl, {
+    redirect: "follow",
+    signal: controller.signal,
+  });
   const t1 = Date.now();
   const text = await r.text();
   clearTimeout(id);
 
-  return { status: r.status, ok: r.ok, headers: r.headers, text, ms: t1 - t0, finalUrl: r.url };
+  return {
+    status: r.status,
+    ok: r.ok,
+    headers: r.headers,
+    text,
+    ms: t1 - t0,
+    finalUrl: r.url,
+  };
 }
 
 function normalizeUrl(url) {
@@ -1094,7 +1141,10 @@ function normalizeUrl(url) {
 
 function scoreAudit(checks) {
   let score = 100;
-  const penalize = (cond, points) => { if (cond) score -= points; };
+  const penalize = (cond, points) => {
+    if (cond) score -= points;
+  };
+
   penalize(!checks.title.ok, 15);
   penalize(!checks.metaDescription.ok, 12);
   penalize(!checks.h1.ok, 10);
@@ -1105,6 +1155,7 @@ function scoreAudit(checks) {
   penalize(!checks.viewport.ok, 6);
   penalize(!checks.og.ok, 4);
   penalize(!checks.responseTime.ok, 8);
+
   if (score < 0) score = 0;
   return score;
 }
@@ -1129,10 +1180,19 @@ function buildRecommendations(checks) {
 
 async function runSeoAudit(url) {
   let fetched;
+
   try {
     fetched = await fetchWithTiming(url);
   } catch (e) {
-    return { status: "error", score: 0, summary: "Impossible de charger l’URL.", findings: {}, recommendations: [], htmlSnapshot: "", error: e.message };
+    return {
+      status: "error",
+      score: 0,
+      summary: "Impossible de charger l’URL.",
+      findings: {},
+      recommendations: [],
+      htmlSnapshot: "",
+      error: e.message,
+    };
   }
 
   const $ = cheerio.load(fetched.text);
@@ -1182,16 +1242,19 @@ async function runSeoAudit(url) {
   };
 }
 
-// ---------- Monitor quota = ACTIVE count (+ addons) ----------
+// ---------- Monitor quota = ACTIVE count ----------
 async function canCreateActiveMonitor(user, org) {
   const q = effectiveQuotas(user, org);
-  const countActive = await Monitor.countDocuments({ orgId: user.orgId, active: true });
+  const countActive = await Monitor.countDocuments({
+    orgId: user.orgId,
+    active: true,
+  });
+
   return countActive < q.monitors;
 }
-
 // =======================
 // STRIPE (via stripe.js)
-// IMPORTANT: webhook RAW doit être AVANT express.json()
+// IMPORTANT: webhook RAW avant express.json()
 // =======================
 const stripeModule = buildStripeModule({
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
@@ -1209,15 +1272,19 @@ const stripeModule = buildStripeModule({
   sendEmail,
 });
 
-// 1) WEBHOOK (RAW)
-app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeModule.webhookHandler);
+// 1) WEBHOOK RAW AVANT JSON
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeModule.webhookHandler
+);
 
-// 2) SECURITY (GLOBAL)
+// 2) SECURITY
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: true, credentials: false }));
+app.use(cors({ origin: true, credentials: true }));
 app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
 
-// 3) BODY PARSERS (APRES WEBHOOK)
+// 3) BODY PARSERS APRES WEBHOOK
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -1225,20 +1292,48 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname)));
 
 // ---------- PAGES ----------
-app.get("/", (_, res) => res.sendFile(path.join(__dirname, "index.html")));
-app.get("/dashboard", (_, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
-app.get("/pricing", (_, res) => res.sendFile(path.join(__dirname, "pricing.html")));
-app.get("/success", (_, res) => res.sendFile(path.join(__dirname, "success.html")));
-app.get("/cancel", (_, res) => res.sendFile(path.join(__dirname, "cancel.html")));
-app.get("/login", (_, res) => res.sendFile(path.join(__dirname, "login.html")));
-app.get("/login-verify", (_, res) => res.sendFile(path.join(__dirname, "login-verify.html")));
-app.get("/invite-accept", (_, res) => res.sendFile(path.join(__dirname, "invite-accept.html")));
-app.get("/admin", (_, res) => res.sendFile(path.join(__dirname, "admin.html")));
+function sendPage(res, file) {
+  return res.sendFile(path.join(__dirname, file));
+}
+
+app.get("/", (_, res) => sendPage(res, "index.html"));
+app.get("/index.html", (_, res) => sendPage(res, "index.html"));
+app.get("/dashboard", (_, res) => sendPage(res, "dashboard.html"));
+app.get("/dashboard.html", (_, res) => sendPage(res, "dashboard.html"));
+app.get("/pricing", (_, res) => sendPage(res, "pricing.html"));
+app.get("/pricing.html", (_, res) => sendPage(res, "pricing.html"));
+app.get("/success", (_, res) => sendPage(res, "success.html"));
+app.get("/success.html", (_, res) => sendPage(res, "success.html"));
+app.get("/cancel", (_, res) => sendPage(res, "cancel.html"));
+app.get("/cancel.html", (_, res) => sendPage(res, "cancel.html"));
+app.get("/login", (_, res) => sendPage(res, "login.html"));
+app.get("/login.html", (_, res) => sendPage(res, "login.html"));
+app.get("/login-verify", (_, res) => sendPage(res, "login-verify.html"));
+app.get("/login-verify.html", (_, res) => sendPage(res, "login-verify.html"));
+app.get("/invite-accept", (_, res) => sendPage(res, "invite-accept.html"));
+app.get("/invite-accept.html", (_, res) => sendPage(res, "invite-accept.html"));
+app.get("/admin", (_, res) => sendPage(res, "admin.html"));
+app.get("/admin.html", (_, res) => sendPage(res, "admin.html"));
+
+// pages front liées au dashboard / Stripe si elles existent
+app.get("/checkout-embedded.html", (_, res) => sendPage(res, "checkout-embedded.html"));
+app.get("/checkout-return.html", (_, res) => sendPage(res, "checkout-return.html"));
+app.get("/billing.html", (_, res) => sendPage(res, "billing.html"));
+app.get("/addons.html", (_, res) => sendPage(res, "addons.html"));
+app.get("/reports.html", (_, res) => sendPage(res, "reports.html"));
+app.get("/settings.html", (_, res) => sendPage(res, "settings.html"));
 
 // ---------- API ----------
-app.get("/api/health", (_, res) => res.json({ ok: true }));
+app.get("/api/health", (_, res) => {
+  return res.json({
+    ok: true,
+    brand: BRAND_NAME,
+    uptimeSec: Math.round(process.uptime()),
+    now: new Date().toISOString(),
+  });
+});
 
-// ---------- STRIPE ROUTES (1 seule fois) ----------
+// ---------- STRIPE ROUTES ----------
 app.post("/api/stripe/checkout", auth, requireActive, stripeModule.checkoutPlan);
 app.post("/api/stripe/checkout-embedded", auth, requireActive, stripeModule.checkoutEmbedded);
 app.get("/api/stripe/verify", stripeModule.verifyCheckout);
@@ -1250,10 +1345,15 @@ const leadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
 app.post("/api/auth/lead", leadLimiter, async (req, res) => {
   try {
     const { firstName, email, companyName, plan } = req.body || {};
-    if (!email || !companyName) return res.status(400).json({ error: "Email + entreprise requis" });
+
+    if (!email || !companyName) {
+      return res.status(400).json({ error: "Email + entreprise requis" });
+    }
 
     const chosenPlan = String(plan || "").toLowerCase();
-    if (!["standard", "pro", "ultra"].includes(chosenPlan)) return res.status(400).json({ error: "Plan invalide" });
+    if (!["standard", "pro", "ultra"].includes(chosenPlan)) {
+      return res.status(400).json({ error: "Plan invalide" });
+    }
 
     const emailNorm = normalizeEmail(email);
     const domain = domainFromEmail(emailNorm);
@@ -1263,22 +1363,27 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     const adminBypass = ADMIN_KEY && req.headers["x-admin-key"] === ADMIN_KEY;
 
     if (!adminBypass) {
-      if (await TrialRegistry.findOne({ emailNormalized: emailNorm }))
+      if (await TrialRegistry.findOne({ emailNormalized: emailNorm })) {
         return res.status(403).json({ error: "Essai déjà utilisé pour cet email." });
-
-      if (await TrialRegistry.findOne({ companyNameNormalized: companyNorm }))
-        return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
-
-      if (domain && !PUBLIC_EMAIL_DOMAINS.has(domain)) {
-        if (await TrialRegistry.findOne({ companyDomain: domain }))
-          return res.status(403).json({ error: "Essai déjà utilisé pour ce domaine entreprise." });
       }
 
-      if (await TrialRegistry.findOne({ ipua }))
+      if (await TrialRegistry.findOne({ companyNameNormalized: companyNorm })) {
+        return res.status(403).json({ error: "Essai déjà utilisé pour cette entreprise." });
+      }
+
+      if (domain && !PUBLIC_EMAIL_DOMAINS.has(domain)) {
+        if (await TrialRegistry.findOne({ companyDomain: domain })) {
+          return res.status(403).json({ error: "Essai déjà utilisé pour ce domaine entreprise." });
+        }
+      }
+
+      if (await TrialRegistry.findOne({ ipua })) {
         return res.status(403).json({ error: "Essai déjà utilisé (anti-abus navigateur/IP)." });
+      }
     }
 
     let user = await User.findOne({ emailNormalized: emailNorm });
+
     if (!user) {
       user = await User.create({
         email: String(email).toLowerCase(),
@@ -1314,8 +1419,11 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     return res.json({ ok: true, token: signToken(user) });
   } catch (e) {
     console.log("lead error:", e.message);
-    if (String(e.message || "").includes("duplicate key"))
+
+    if (String(e.message || "").includes("duplicate key")) {
       return res.status(403).json({ error: "Essai déjà utilisé (anti-abus)." });
+    }
+
     return res.status(500).json({ error: "Erreur serveur lead" });
   }
 });
@@ -1339,7 +1447,7 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
     await LoginToken.create({
       userId: user._id,
       tokenHash,
-      expiresAt
+      expiresAt,
     });
 
     const baseUrl = safeBaseUrl(req);
@@ -1357,89 +1465,42 @@ app.post("/api/auth/login-request", loginLimiter, async (req, res) => {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FlowPoint</title>
 </head>
-
 <body style="margin:0;background:#f5f7fb;font-family:Arial,Helvetica,sans-serif">
-
 <div style="max-width:620px;margin:auto;padding:40px 20px">
-
-<div style="
-background:#ffffff;
-border-radius:24px;
-padding:32px;
-border:1px solid rgba(0,0,0,.06);
-box-shadow:0 10px 30px rgba(29,41,57,.08);
-">
-
+<div style="background:#ffffff;border-radius:24px;padding:32px;border:1px solid rgba(0,0,0,.06);box-shadow:0 10px 30px rgba(29,41,57,.08);">
 <div style="margin-bottom:24px">
 <div style="font-size:22px;font-weight:800">FlowPoint</div>
-<div style="font-size:14px;color:#6b7280">
-Connexion sécurisée (sans mot de passe)
-</div>
+<div style="font-size:14px;color:#6b7280">Connexion sécurisée (sans mot de passe)</div>
 </div>
 
-<div style="font-size:20px;font-weight:800;margin-bottom:12px">
-Ton lien de connexion
-</div>
+<div style="font-size:20px;font-weight:800;margin-bottom:12px">Ton lien de connexion</div>
 
 <div style="color:#6b7280;font-size:15px;margin-bottom:22px">
-Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>.
+Ce lien est valide <b>${LOGIN_LINK_TTL_MINUTES} minutes</b>.<br>
 Si tu n’es pas à l’origine de cette demande, ignore cet email.
 </div>
 
-<a
-href="${link}"
-style="
-display:inline-block;
-padding:14px 26px;
-background:#2f5bff;
-color:#ffffff;
-text-decoration:none;
-border-radius:10px;
-font-weight:700;
-font-size:15px;
-"
->
+<a href="${link}" style="display:inline-block;padding:14px 26px;background:#2f5bff;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px;">
 Se connecter
 </a>
 
-<div style="
-margin-top:24px;
-padding:16px;
-border-radius:14px;
-background:#f3f4f6;
-font-size:13px;
-color:#6b7280;
-word-break:break-all;
-">
-
-<b>Bouton bloqué ? Copie-colle :</b><br><br>
-${link}
-
+<div style="margin-top:24px;padding:16px;border-radius:14px;background:#f3f4f6;font-size:13px;color:#6b7280;word-break:break-all;">
+<b>Bouton bloqué ? Copie-colle :</b><br><br>${link}
 </div>
 
-<div style="
-margin-top:28px;
-padding-top:16px;
-border-top:1px solid #e5e7eb;
-font-size:12px;
-color:#9ca3af;
-">
-
+<div style="margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#9ca3af;">
 © ${new Date().getFullYear()} FlowPoint
-
-</div>
-
 </div>
 </div>
-
+</div>
 </body>
-</html>
-`;
+</html>`;
+
     const r = await sendEmail({
       to: user.email,
       subject: `${BRAND_NAME} — Ton lien de connexion`,
       text: `Lien de connexion (valide ${LOGIN_LINK_TTL_MINUTES} minutes): ${link}`,
-      html
+      html,
     });
 
     if (!r.ok) {
@@ -1447,12 +1508,12 @@ color:#9ca3af;
     }
 
     return res.json({ ok: true });
-
   } catch (e) {
     console.log("login-request error:", e.message);
     return res.status(500).json({ error: "Erreur login-request" });
   }
 });
+
 app.get("/api/auth/login-verify", async (req, res) => {
   try {
     const raw = String(req.query?.token || "");
@@ -1460,9 +1521,12 @@ app.get("/api/auth/login-verify", async (req, res) => {
 
     const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
     const lt = await LoginToken.findOne({ tokenHash });
+
     if (!lt) return res.status(400).json({ error: "Token invalide" });
     if (lt.usedAt) return res.status(400).json({ error: "Token déjà utilisé" });
-    if (lt.expiresAt && new Date(lt.expiresAt).getTime() < Date.now()) return res.status(400).json({ error: "Token expiré" });
+    if (lt.expiresAt && new Date(lt.expiresAt).getTime() < Date.now()) {
+      return res.status(400).json({ error: "Token expiré" });
+    }
 
     const user = await User.findById(lt.userId);
     if (!user) return res.status(404).json({ error: "User introuvable" });
@@ -1515,16 +1579,30 @@ app.get("/api/overview", auth, requireActive, async (req, res) => {
   const days = Math.min(30, Math.max(1, Number(req.query.days || 30)));
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const lastAudit = await Audit.findOne({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).select("score createdAt url");
-  const audits = await Audit.find({ orgId: req.dbUser.orgId, createdAt: { $gte: since } })
+  const lastAudit = await Audit.findOne({ orgId: req.dbUser.orgId })
+    .sort({ createdAt: -1 })
+    .select("score createdAt url");
+
+  const audits = await Audit.find({
+    orgId: req.dbUser.orgId,
+    createdAt: { $gte: since },
+  })
     .sort({ createdAt: 1 })
     .limit(120)
     .select("score createdAt");
 
   const chart = audits.map((a) => a.score ?? 0);
 
-  const activeMonitors = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true });
-  const downMonitors = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true, lastStatus: "down" });
+  const activeMonitors = await Monitor.countDocuments({
+    orgId: req.dbUser.orgId,
+    active: true,
+  });
+
+  const downMonitors = await Monitor.countDocuments({
+    orgId: req.dbUser.orgId,
+    active: true,
+    lastStatus: "down",
+  });
 
   return res.json({
     ok: true,
@@ -1533,7 +1611,10 @@ app.get("/api/overview", auth, requireActive, async (req, res) => {
     lastAuditUrl: lastAudit?.url || null,
     localVis: "+0%",
     chart,
-    monitors: { active: activeMonitors, down: downMonitors },
+    monitors: {
+      active: activeMonitors,
+      down: downMonitors,
+    },
     rangeDays: days,
   });
 });
@@ -1541,28 +1622,42 @@ app.get("/api/overview", auth, requireActive, async (req, res) => {
 // ---------- ORG SETTINGS ----------
 app.get("/api/org/settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
-  return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
+  return res.json({
+    ok: true,
+    settings: org || { alertRecipients: "all", alertExtraEmails: [] },
+  });
 });
 
 app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res) => {
   const recipients = String(req.body?.alertRecipients || "all").toLowerCase();
   const extra = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
 
-  await Org.updateOne({ _id: req.dbUser.orgId }, { $set: { alertRecipients: recipients, alertExtraEmails: extra } });
+  await Org.updateOne(
+    { _id: req.dbUser.orgId },
+    { $set: { alertRecipients: recipients, alertExtraEmails: extra } }
+  );
+
   return res.json({ ok: true });
 });
 
-// Aliases
+// aliases settings
 app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
-  return res.json({ ok: true, settings: org || { alertRecipients: "all", alertExtraEmails: [] } });
+  return res.json({
+    ok: true,
+    settings: org || { alertRecipients: "all", alertExtraEmails: [] },
+  });
 });
 
 app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (req, res) => {
   const recipients = String(req.body?.alertRecipients || "all").toLowerCase();
   const extra = Array.isArray(req.body?.alertExtraEmails) ? req.body.alertExtraEmails : [];
 
-  await Org.updateOne({ _id: req.dbUser.orgId }, { $set: { alertRecipients: recipients, alertExtraEmails: extra } });
+  await Org.updateOne(
+    { _id: req.dbUser.orgId },
+    { $set: { alertRecipients: recipients, alertExtraEmails: extra } }
+  );
+
   return res.json({ ok: true });
 });
 
@@ -1570,7 +1665,9 @@ app.post("/api/org/monitor-settings", auth, requireActive, requireOwner, async (
 app.post("/api/audits/run", auth, requireActive, async (req, res) => {
   try {
     const url = String(req.body?.url || "").trim();
-    if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide (http/https)" });
+    if (!url || !/^https?:\/\//i.test(url)) {
+      return res.status(400).json({ error: "URL invalide (http/https)" });
+    }
 
     const urlNorm = normalizeUrl(url);
     const cutoff = new Date(Date.now() - AUDIT_CACHE_HOURS * 60 * 60 * 1000);
@@ -1587,7 +1684,7 @@ app.post("/api/audits/run", auth, requireActive, async (req, res) => {
         cached: true,
         auditId: cached._id,
         score: cached.score,
-        summary: `Cache (${AUDIT_CACHE_HOURS}h) — ` + (cached.summary || ""),
+        summary: `Cache (${AUDIT_CACHE_HOURS}h) — ${cached.summary || ""}`,
       });
     }
 
@@ -1609,25 +1706,42 @@ app.post("/api/audits/run", auth, requireActive, async (req, res) => {
       htmlSnapshot: out.htmlSnapshot,
     });
 
-    return res.json({ ok: true, cached: false, auditId: audit._id, score: audit.score, summary: audit.summary });
+    return res.json({
+      ok: true,
+      cached: false,
+      auditId: audit._id,
+      score: audit.score,
+      summary: audit.summary,
+    });
   } catch (e) {
     return res.status(400).json({ error: e.message || "Erreur audit" });
   }
 });
 
 app.get("/api/audits", auth, requireActive, async (req, res) => {
-  const list = await Audit.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(50);
+  const list = await Audit.find({ orgId: req.dbUser.orgId })
+    .sort({ createdAt: -1 })
+    .limit(50);
+
   return res.json({ ok: true, audits: list });
 });
 
 app.get("/api/audits/:id", auth, requireActive, async (req, res) => {
-  const a = await Audit.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
+  const a = await Audit.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
   if (!a) return res.status(404).json({ error: "Audit introuvable" });
   return res.json({ ok: true, audit: a });
 });
 
 app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
-  const a = await Audit.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
+  const a = await Audit.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
   if (!a) return res.status(404).json({ error: "Audit introuvable" });
 
   const ok = await consume(req.dbUser, req.dbOrg, "pdf", 1);
@@ -1653,15 +1767,23 @@ app.get("/api/audits/:id/pdf", auth, requireActive, async (req, res) => {
   doc.fontSize(14).text("Recommandations (priorisées)", { underline: true });
   doc.moveDown(0.25);
   const rec = Array.isArray(a.recommendations) ? a.recommendations : [];
-  if (!rec.length) doc.fontSize(12).text("Aucune recommandation.");
-  for (const r of rec) doc.fontSize(12).text("• " + r);
-  doc.moveDown();
 
+  if (!rec.length) doc.fontSize(12).text("Aucune recommandation.");
+  for (const r of rec) {
+    doc.fontSize(12).text("• " + r);
+  }
+
+  doc.moveDown();
   doc.fontSize(14).text("Checks", { underline: true });
   doc.moveDown(0.25);
+
   const f = a.findings || {};
   for (const [k, v] of Object.entries(f)) {
-    const vv = typeof v?.value === "object" ? JSON.stringify(v.value) : String(v?.value ?? "");
+    const vv =
+      typeof v?.value === "object"
+        ? JSON.stringify(v.value)
+        : String(v?.value ?? "");
+
     doc.fontSize(12).text(`${k}: ${v?.ok ? "OK" : "À corriger"} — ${vv}`);
   }
 
@@ -1674,13 +1796,20 @@ app.post("/api/monitors", auth, requireActive, async (req, res) => {
     const url = String(req.body?.url || "").trim();
     const intervalMinutes = Number(req.body?.intervalMinutes || 60);
 
-    if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: "URL invalide" });
-    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5) return res.status(400).json({ error: "intervalMinutes min = 5" });
+    if (!url || !/^https?:\/\//i.test(url)) {
+      return res.status(400).json({ error: "URL invalide" });
+    }
+
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 5) {
+      return res.status(400).json({ error: "intervalMinutes min = 5" });
+    }
 
     await assertSafePublicUrl(url);
 
     const allowed = await canCreateActiveMonitor(req.dbUser, req.dbOrg);
-    if (!allowed) return res.status(429).json({ error: "Quota monitors actifs dépassé" });
+    if (!allowed) {
+      return res.status(429).json({ error: "Quota monitors actifs dépassé" });
+    }
 
     const m = await Monitor.create({
       orgId: req.dbUser.orgId,
@@ -1697,26 +1826,44 @@ app.post("/api/monitors", auth, requireActive, async (req, res) => {
 });
 
 app.get("/api/monitors", auth, requireActive, async (req, res) => {
-  const list = await Monitor.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(50);
+  const list = await Monitor.find({ orgId: req.dbUser.orgId })
+    .sort({ createdAt: -1 })
+    .limit(50);
+
   return res.json({ ok: true, monitors: list });
 });
 
 app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
-  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
+  const m = await Monitor.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
-  if (typeof req.body?.active === "boolean") m.active = req.body.active;
+  if (typeof req.body?.active === "boolean") {
+    m.active = req.body.active;
+  }
 
-  if (req.body?.intervalMinutes) {
+  if (req.body?.intervalMinutes != null) {
     const im = Number(req.body.intervalMinutes);
-    if (!Number.isFinite(im) || im < 5) return res.status(400).json({ error: "intervalMinutes min = 5" });
+    if (!Number.isFinite(im) || im < 5) {
+      return res.status(400).json({ error: "intervalMinutes min = 5" });
+    }
     m.intervalMinutes = im;
   }
 
   if (m.active === true) {
     const q = effectiveQuotas(req.dbUser, req.dbOrg);
-    const countActive = await Monitor.countDocuments({ orgId: req.dbUser.orgId, active: true, _id: { $ne: m._id } });
-    if (countActive + 1 > q.monitors) return res.status(429).json({ error: "Quota monitors actifs dépassé" });
+    const countActive = await Monitor.countDocuments({
+      orgId: req.dbUser.orgId,
+      active: true,
+      _id: { $ne: m._id },
+    });
+
+    if (countActive + 1 > q.monitors) {
+      return res.status(429).json({ error: "Quota monitors actifs dépassé" });
+    }
   }
 
   await m.save();
@@ -1724,15 +1871,27 @@ app.patch("/api/monitors/:id", auth, requireActive, async (req, res) => {
 });
 
 app.delete("/api/monitors/:id", auth, requireActive, async (req, res) => {
-  const m = await Monitor.findOneAndDelete({ _id: req.params.id, orgId: req.dbUser.orgId });
+  const m = await Monitor.findOneAndDelete({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
-  await MonitorLog.deleteMany({ orgId: req.dbUser.orgId, monitorId: m._id }).catch(() => {});
+  await MonitorLog.deleteMany({
+    orgId: req.dbUser.orgId,
+    monitorId: m._id,
+  }).catch(() => {});
+
   return res.json({ ok: true });
 });
 
 app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
-  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
+  const m = await Monitor.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
   if (!m.active) return res.status(400).json({ error: "Monitor inactif" });
 
@@ -1759,10 +1918,17 @@ app.post("/api/monitors/:id/run", auth, requireActive, async (req, res) => {
 });
 
 app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
-  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
+  const m = await Monitor.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
-  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id })
+  const logs = await MonitorLog.find({
+    orgId: req.dbUser.orgId,
+    monitorId: m._id,
+  })
     .sort({ checkedAt: -1 })
     .limit(200);
 
@@ -1770,13 +1936,21 @@ app.get("/api/monitors/:id/logs", auth, requireActive, async (req, res) => {
 });
 
 app.get("/api/monitors/:id/uptime", auth, requireActive, async (req, res) => {
-  const m = await Monitor.findOne({ _id: req.params.id, orgId: req.dbUser.orgId });
+  const m = await Monitor.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
   if (!m) return res.status(404).json({ error: "Monitor introuvable" });
 
   const days = Math.min(30, Math.max(1, Number(req.query.days || 7)));
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const logs = await MonitorLog.find({ orgId: req.dbUser.orgId, monitorId: m._id, checkedAt: { $gte: since } })
+  const logs = await MonitorLog.find({
+    orgId: req.dbUser.orgId,
+    monitorId: m._id,
+    checkedAt: { $gte: since },
+  })
     .select("status checkedAt")
     .sort({ checkedAt: 1 });
 
@@ -1784,16 +1958,27 @@ app.get("/api/monitors/:id/uptime", auth, requireActive, async (req, res) => {
   const up = logs.filter((l) => l.status === "up").length;
   const uptime = total ? Math.round((up / total) * 10000) / 100 : null;
 
-  return res.json({ ok: true, days, totalChecks: total, upChecks: up, uptimePercent: uptime });
+  return res.json({
+    ok: true,
+    days,
+    totalChecks: total,
+    upChecks: up,
+    uptimePercent: uptime,
+  });
 });
 
 // ---------- CRON ----------
 app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
   try {
     const now = Date.now();
-    const limit = Math.min(500, Math.max(1, Number(req.body?.limit || req.query.limit || 200)));
+    const limit = Math.min(
+      500,
+      Math.max(1, Number(req.body?.limit || req.query.limit || 200))
+    );
 
-    const activeMonitors = await Monitor.find({ active: true }).sort({ updatedAt: 1 }).limit(limit);
+    const activeMonitors = await Monitor.find({ active: true })
+      .sort({ updatedAt: 1 })
+      .limit(limit);
 
     let checked = 0;
     let alertsSent = 0;
@@ -1802,6 +1987,7 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
       const last = m.lastCheckedAt ? new Date(m.lastCheckedAt).getTime() : 0;
       const dueMs = Number(m.intervalMinutes || 60) * 60 * 1000;
       const due = !last || now - last >= dueMs;
+
       if (!due) return;
 
       const r = await checkUrlOnce(m.url);
@@ -1827,7 +2013,13 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
       checked += 1;
     });
 
-    return res.json({ ok: true, checked, alertsSent, scanned: activeMonitors.length, concurrency: CRON_CONCURRENCY });
+    return res.json({
+      ok: true,
+      checked,
+      alertsSent,
+      scanned: activeMonitors.length,
+      concurrency: CRON_CONCURRENCY,
+    });
   } catch (e) {
     console.log("cron monitors-run error:", e.message);
     return res.status(500).json({ error: "Erreur cron monitors-run" });
@@ -1841,11 +2033,13 @@ function csvEscape(v) {
   return s;
 }
 
-app.get("/api/export/audits.csv", auth, requireActive, async (req, res) => {
+async function sendAuditsCsv(req, res) {
   const ok = await consume(req.dbUser, req.dbOrg, "exports", 1);
   if (!ok) return res.status(429).json({ error: "Quota exports dépassé" });
 
-  const list = await Audit.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(500);
+  const list = await Audit.find({ orgId: req.dbUser.orgId })
+    .sort({ createdAt: -1 })
+    .limit(500);
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="flowpoint-audits.csv"`);
@@ -1853,20 +2047,28 @@ app.get("/api/export/audits.csv", auth, requireActive, async (req, res) => {
   const header = ["createdAt", "url", "status", "score", "summary"].join(",") + "\n";
   const rows = list
     .map((a) =>
-      [a.createdAt?.toISOString?.() || "", a.url || "", a.status || "", a.score ?? "", a.summary || ""]
+      [
+        a.createdAt?.toISOString?.() || "",
+        a.url || "",
+        a.status || "",
+        a.score ?? "",
+        a.summary || "",
+      ]
         .map(csvEscape)
         .join(",")
     )
     .join("\n");
 
-  res.send(header + rows + "\n");
-});
+  return res.send(header + rows + "\n");
+}
 
-app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
+async function sendMonitorsCsv(req, res) {
   const ok = await consume(req.dbUser, req.dbOrg, "exports", 1);
   if (!ok) return res.status(429).json({ error: "Quota exports dépassé" });
 
-  const list = await Monitor.find({ orgId: req.dbUser.orgId }).sort({ createdAt: -1 }).limit(500);
+  const list = await Monitor.find({ orgId: req.dbUser.orgId })
+    .sort({ createdAt: -1 })
+    .limit(500);
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="flowpoint-monitors.csv"`);
@@ -1887,51 +2089,63 @@ app.get("/api/export/monitors.csv", auth, requireActive, async (req, res) => {
     )
     .join("\n");
 
-  res.send(header + rows + "\n");
-});
+  return res.send(header + rows + "\n");
+}
 
-// aliases
-app.get("/api/exports/audits.csv", auth, requireActive, (req, res) => {
-  req.url = "/api/export/audits.csv";
-  app.handle(req, res);
-});
-app.get("/api/exports/monitors.csv", auth, requireActive, (req, res) => {
-  req.url = "/api/export/monitors.csv";
-  app.handle(req, res);
-});
+app.get("/api/export/audits.csv", auth, requireActive, sendAuditsCsv);
+app.get("/api/export/monitors.csv", auth, requireActive, sendMonitorsCsv);
+
+// aliases corrigés
+app.get("/api/exports/audits.csv", auth, requireActive, sendAuditsCsv);
+app.get("/api/exports/monitors.csv", auth, requireActive, sendMonitorsCsv);
 
 // ---------- ADMIN ----------
 app.get("/api/admin/users", requireAdmin, async (req, res) => {
   const list = await User.find({}).sort({ createdAt: -1 }).limit(200);
-  res.json({ ok: true, users: list });
+  return res.json({ ok: true, users: list });
 });
 
 app.post("/api/admin/user/block", requireAdmin, async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const blocked = !!req.body?.blocked;
+
   if (!email) return res.status(400).json({ error: "email manquant" });
-  await User.updateOne({ email }, { $set: { accessBlocked: blocked } });
-  res.json({ ok: true });
+
+  await User.updateOne(
+    { email },
+    { $set: { accessBlocked: blocked } }
+  );
+
+  return res.json({ ok: true });
 });
 
 app.post("/api/admin/user/reset-usage", requireAdmin, async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   if (!email) return res.status(400).json({ error: "email manquant" });
+
   await User.updateOne(
     { email },
-    { $set: { usageMonth: firstDayOfThisMonthUTC(), usedAudits: 0, usedPdf: 0, usedExports: 0 } }
+    {
+      $set: {
+        usageMonth: firstDayOfThisMonthUTC(),
+        usedAudits: 0,
+        usedPdf: 0,
+        usedExports: 0,
+      },
+    }
   );
-  res.json({ ok: true });
+
+  return res.json({ ok: true });
 });
 
-// ---------- KEEP ALIVE (empêche le cold start Render) ----------
+// ---------- KEEP ALIVE ----------
 if (process.env.RENDER) {
   const SELF_URL = process.env.PUBLIC_BASE_URL;
 
   if (SELF_URL) {
     setInterval(async () => {
       try {
-        await fetch(`${SELF_URL}/api/health`);
+        await fetch(`${SELF_URL.replace(/\/+$/, "")}/api/health`);
         console.log("🔁 Keep alive ping");
       } catch (e) {
         console.log("Keep alive failed:", e.message);
@@ -1940,5 +2154,12 @@ if (process.env.RENDER) {
   }
 }
 
+// ---------- API 404 ----------
+app.use("/api", (req, res) => {
+  return res.status(404).json({ error: "Route API introuvable" });
+});
+
 // ---------- START ----------
-app.listen(PORT, () => console.log(`✅ ${BRAND_NAME} lancé sur port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ ${BRAND_NAME} lancé sur port ${PORT}`);
+});
