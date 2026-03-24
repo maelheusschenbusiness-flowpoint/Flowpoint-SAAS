@@ -1,16 +1,16 @@
-// stripe.js — FlowPoint Stripe (helpers + routes + webhook)
-// ✅ Checkout redirect + Embedded checkout + Update subscription if already active + Portal + Webhook
-// ✅ FIX: extraSeat -> extraSeats (cohérent avec OrgSchema.billingAddons.extraSeats)
-// ✅ FIX: cancel redirect (checkout redirect -> cancel.html?next=...)
-// ✅ Embedded: Stripe renvoie sur return_url avec redirect_status => à gérer dans checkout-return.html
-// ✅ FIX: Active sub (embedded/redirect) -> renvoie paymentIntentClientSecret si prorata à payer
+// stripe.js — FlowPoint Stripe
+// Checkout redirect + Embedded checkout + Portal + Webhook
+// Sync plan/add-ons -> user/org
+// FIX: extraSeat -> extraSeats
+// FIX: verifyCheckout trial sync depuis Stripe
+// FIX: subscription.deleted reset plus propre
 
 const Stripe = require("stripe");
 
-// ---- Add-ons price IDs (TES 10 add-ons) ----
+// ---- Add-ons price IDs ----
 const ADDON_PRICE_ID_TO_KEY = {
   "price_1T6A839eqtbj6iPBTXCaiv0W": "monitorsPack50",
-  "price_1T6AB29eqtbj6iPBYcWdWqXZ": "extraSeats", // ✅ FIX (avant: extraSeat)
+  "price_1T6AB29eqtbj6iPBYcWdWqXZ": "extraSeats",
   "price_1T6AFo9eqtbj6iPBz8eEQaWu": "retention90d",
   "price_1T6AIu9eqtbj6iPBKFWQBxXz": "retention365d",
   "price_1T6AMF9eqtbj6iPB03qrHCdP": "auditsPack200",
@@ -18,7 +18,7 @@ const ADDON_PRICE_ID_TO_KEY = {
   "price_1T6ARC9eqtbj6iPBHu7KoqLn": "pdfPack200",
   "price_1T6ATb9eqtbj6iPBTc6dCm5q": "exportsPack1000",
   "price_1T6AXP9eqtbj6iPBVSbenAbR": "prioritySupport",
-  "price_1T6AZ39eqtbj6iPB93TgRJvI": "customDomain",
+  "price_1T6AZ39eqtbj6iPB93TgRJvI": "customDomain"
 };
 
 const ADDON_KEY_TO_PRICE_ID = Object.fromEntries(
@@ -29,22 +29,17 @@ function buildStripeModule(ctx) {
   const {
     STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET,
-    BRAND_NAME,
     priceIdForPlan,
     safeBaseUrl,
     signToken,
     ensureOrgForUser,
     ensureOrgDefaults,
     User,
-    Org,
-    sendEmail,
+    Org
   } = ctx;
 
   const stripe = Stripe(STRIPE_SECRET_KEY);
 
-  // ----------------------------
-  // Helpers
-  // ----------------------------
   function planRank(p) {
     const map = { standard: 1, pro: 2, ultra: 3 };
     return map[String(p || "").toLowerCase()] || 0;
@@ -56,57 +51,42 @@ function buildStripeModule(ctx) {
   }
 
   async function getOrCreateCustomer(user) {
-    let customerId = user.stripeCustomerId;
+    if (user.stripeCustomerId) return user.stripeCustomerId;
 
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        name: user.companyName || user.name || undefined,
-        metadata: { uid: user._id.toString() },
-      });
-      customerId = customer.id;
-      user.stripeCustomerId = customerId;
-      await user.save();
-    }
+    const customer = await stripe.customers.create({
+      email: user.email,
+      name: user.companyName || user.name || undefined,
+      metadata: { uid: user._id.toString() }
+    });
 
-    return customerId;
+    user.stripeCustomerId = customer.id;
+    await user.save();
+    return customer.id;
   }
 
   async function getActiveSubscriptionForUser(user) {
-    // 1) via stripeSubscriptionId si présent
     if (user.stripeSubscriptionId) {
       try {
         const sub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
-          expand: ["items.data.price"],
+          expand: ["items.data.price", "latest_invoice.payment_intent"]
         });
         if (sub && isActiveStatus(sub.status)) return sub;
-      } catch {
-        // ignore
-      }
+      } catch (_) {}
     }
 
-    // 2) sinon liste subscriptions du customer (si customer)
     if (!user.stripeCustomerId) return null;
 
     const list = await stripe.subscriptions.list({
       customer: user.stripeCustomerId,
       status: "all",
       limit: 10,
-      expand: ["data.items.data.price"],
+      expand: ["data.items.data.price", "data.latest_invoice.payment_intent"]
     });
 
-    const active = (list.data || []).find((s) => isActiveStatus(s.status));
-    if (active) return active;
-
-    return null;
+    return (list.data || []).find((s) => isActiveStatus(s.status)) || null;
   }
 
   function normalizeAddonSelection(addonsRaw) {
-    // Accepte:
-    // - array: [{ priceId, quantity }]
-    // - object: { monitorsPack50: 2, prioritySupport: true, ... }
-    // - object: { "price_xxx": 2 } (optionnel)
-    // ✅ compat: extraSeat (ancien) -> extraSeats (nouveau)
     const out = [];
     if (!addonsRaw) return out;
 
@@ -114,6 +94,7 @@ function buildStripeModule(ctx) {
       for (const a of addonsRaw) {
         const priceId = String(a?.priceId || "").trim();
         if (!ADDON_PRICE_ID_TO_KEY[priceId]) continue;
+
         const q = Number(a?.quantity ?? 1);
         const qty = Number.isFinite(q) && q > 0 ? Math.floor(q) : 1;
         out.push({ price: priceId, quantity: qty });
@@ -123,15 +104,10 @@ function buildStripeModule(ctx) {
 
     if (typeof addonsRaw === "object") {
       for (let [k, v] of Object.entries(addonsRaw)) {
-        // ✅ compat old key
         if (k === "extraSeat") k = "extraSeats";
 
-        // 1) si key = addonKey
         let priceId = ADDON_KEY_TO_PRICE_ID[k];
-
-        // 2) si key = priceId direct
         if (!priceId && ADDON_PRICE_ID_TO_KEY[k]) priceId = k;
-
         if (!priceId || !ADDON_PRICE_ID_TO_KEY[priceId]) continue;
 
         if (typeof v === "boolean") {
@@ -149,18 +125,17 @@ function buildStripeModule(ctx) {
   }
 
   function buildDesiredPriceQty({ chosenPlan, addonsRaw }) {
-    // Retourne: Map priceId -> quantity (int)
     const desired = new Map();
 
-    // Plan (optionnel)
     if (chosenPlan) {
       const planPriceId = priceIdForPlan(chosenPlan);
       if (planPriceId) desired.set(planPriceId, 1);
     }
 
-    // Addons
     const addonItems = normalizeAddonSelection(addonsRaw);
-    for (const it of addonItems) desired.set(it.price, it.quantity || 1);
+    for (const it of addonItems) {
+      desired.set(it.price, it.quantity || 1);
+    }
 
     return desired;
   }
@@ -169,18 +144,17 @@ function buildStripeModule(ctx) {
     return [
       process.env.STRIPE_PRICE_ID_STANDARD,
       process.env.STRIPE_PRICE_ID_PRO,
-      process.env.STRIPE_PRICE_ID_ULTRA,
+      process.env.STRIPE_PRICE_ID_ULTRA
     ].filter(Boolean);
   }
 
   async function updateExistingSubscription({ sub, chosenPlan, addonsRaw }) {
     const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw });
     const planPriceIds = new Set(getPlanPriceIds());
-
+    const addonPriceIds = new Set(Object.keys(ADDON_PRICE_ID_TO_KEY));
     const items = sub.items?.data || [];
-
-    // Index existing items by priceId
     const existingByPrice = new Map();
+
     for (const it of items) {
       const pid = it?.price?.id;
       if (pid) existingByPrice.set(pid, it);
@@ -188,12 +162,10 @@ function buildStripeModule(ctx) {
 
     const updates = [];
 
-    // 1) Gérer plan si demandé
     if (chosenPlan) {
       const wantedPlanPrice = priceIdForPlan(chosenPlan);
       if (!wantedPlanPrice) throw new Error("PriceId plan manquant");
 
-      // supprimer tous les autres plans
       for (const it of items) {
         const pid = it?.price?.id;
         if (pid && planPriceIds.has(pid) && pid !== wantedPlanPrice) {
@@ -201,7 +173,6 @@ function buildStripeModule(ctx) {
         }
       }
 
-      // s'assurer que wantedPlanPrice existe (ou update qty)
       const existingPlanItem = existingByPrice.get(wantedPlanPrice);
       if (existingPlanItem) {
         updates.push({ id: existingPlanItem.id, quantity: 1 });
@@ -210,19 +181,12 @@ function buildStripeModule(ctx) {
       }
     }
 
-    // 2) Add-ons: support désélection
-    const addonPriceIds = new Set(Object.keys(ADDON_PRICE_ID_TO_KEY));
-
-    // delete addons non désirés
     for (const it of items) {
       const pid = it?.price?.id;
       if (!pid || !addonPriceIds.has(pid)) continue;
-      if (!desired.has(pid)) {
-        updates.push({ id: it.id, deleted: true });
-      }
+      if (!desired.has(pid)) updates.push({ id: it.id, deleted: true });
     }
 
-    // add/update desired addons
     for (const [pid, qty] of desired.entries()) {
       if (!addonPriceIds.has(pid)) continue;
       const ex = existingByPrice.get(pid);
@@ -238,22 +202,19 @@ function buildStripeModule(ctx) {
       items: updates,
       proration_behavior: "create_prorations",
       payment_behavior: "default_incomplete",
-      expand: ["latest_invoice.payment_intent", "items.data.price"],
+      expand: ["latest_invoice.payment_intent", "items.data.price"]
     });
 
     return { updated: true, subscription: updated };
   }
 
-  // ----------------------------
-  // Entitlements from subscription
-  // ----------------------------
   function extractEntitlementsFromSubscription(sub) {
     const items = sub?.items?.data || [];
     let plan = null;
 
     const addons = {
       monitorsPack50: 0,
-      extraSeats: 0, // ✅ FIX
+      extraSeats: 0,
       retention90d: false,
       retention365d: false,
       auditsPack200: 0,
@@ -261,7 +222,7 @@ function buildStripeModule(ctx) {
       pdfPack200: 0,
       exportsPack1000: 0,
       prioritySupport: false,
-      customDomain: false,
+      customDomain: false
     };
 
     let creditAudits = 0;
@@ -273,18 +234,10 @@ function buildStripeModule(ctx) {
       const priceId = it?.price?.id;
       const qty = Number(it?.quantity || 1);
 
-      // Plans
-      if (priceId === process.env.STRIPE_PRICE_ID_STANDARD) {
-        if (planRank(plan) < 1) plan = "standard";
-      }
-      if (priceId === process.env.STRIPE_PRICE_ID_PRO) {
-        if (planRank(plan) < 2) plan = "pro";
-      }
-      if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) {
-        plan = "ultra";
-      }
+      if (priceId === process.env.STRIPE_PRICE_ID_STANDARD && planRank(plan) < 1) plan = "standard";
+      if (priceId === process.env.STRIPE_PRICE_ID_PRO && planRank(plan) < 2) plan = "pro";
+      if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) plan = "ultra";
 
-      // Add-ons
       const addonKey = ADDON_PRICE_ID_TO_KEY[priceId];
       if (!addonKey) continue;
 
@@ -323,8 +276,6 @@ function buildStripeModule(ctx) {
         case "customDomain":
           addons.customDomain = true;
           break;
-        default:
-          break;
       }
     }
 
@@ -334,8 +285,12 @@ function buildStripeModule(ctx) {
     return {
       plan: plan || null,
       addons,
-      credits: { audits: creditAudits, pdf: creditPdf, exports: creditExports },
-      retentionDays,
+      credits: {
+        audits: creditAudits,
+        pdf: creditPdf,
+        exports: creditExports
+      },
+      retentionDays
     };
   }
 
@@ -352,9 +307,19 @@ function buildStripeModule(ctx) {
 
     const st = String(sub.status || "").toLowerCase();
     if (st === "active" || st === "trialing") user.accessBlocked = false;
-    if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(st)) user.accessBlocked = true;
+    if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(st)) {
+      user.accessBlocked = true;
+    }
 
     if (ent.plan) user.plan = ent.plan;
+
+    if (sub.trial_end) {
+      user.hasTrial = true;
+      user.trialEndsAt = new Date(sub.trial_end * 1000);
+      if (!user.trialStartedAt && sub.trial_start) {
+        user.trialStartedAt = new Date(sub.trial_start * 1000);
+      }
+    }
 
     await ensureOrgForUser(user);
     await user.save();
@@ -365,19 +330,15 @@ function buildStripeModule(ctx) {
     await ensureOrgDefaults(org);
 
     org.billingAddons.monitorsPack50 = ent.addons.monitorsPack50 || 0;
-    org.billingAddons.extraSeats = ent.addons.extraSeats || 0; // ✅ FIX
-
+    org.billingAddons.extraSeats = ent.addons.extraSeats || 0;
     org.billingAddons.retention90d = !!ent.addons.retention90d;
     org.billingAddons.retention365d = !!ent.addons.retention365d;
-
     org.billingAddons.auditsPack200 = ent.addons.auditsPack200 || 0;
     org.billingAddons.auditsPack1000 = ent.addons.auditsPack1000 || 0;
     org.billingAddons.pdfPack200 = ent.addons.pdfPack200 || 0;
     org.billingAddons.exportsPack1000 = ent.addons.exportsPack1000 || 0;
-
     org.billingAddons.prioritySupport = !!ent.addons.prioritySupport;
     org.billingAddons.customDomain = !!ent.addons.customDomain;
-
     org.billingAddons.whiteLabel = true;
 
     org.retentionDays = ent.retentionDays;
@@ -387,13 +348,7 @@ function buildStripeModule(ctx) {
 
     await org.save();
   }
-
-  // =========================================================
-  // ROUTE — Checkout redirect (plan optionnel + addons)
-  // Body: { plan?: "standard"|"pro"|"ultra"|null, addons?: ... }
-  // - Si subscription active => UPDATE subscription (pas de nouvelle)
-  // =========================================================
-  async function checkoutPlan(req, res) {
+    async function checkoutPlan(req, res) {
     try {
       const chosenPlanRaw = req.body?.plan;
       const chosenPlan = chosenPlanRaw ? String(chosenPlanRaw).toLowerCase() : null;
@@ -404,47 +359,50 @@ function buildStripeModule(ctx) {
 
       const user = req.dbUser;
       await getOrCreateCustomer(user);
-
       const activeSub = await getActiveSubscriptionForUser(user);
 
-      // ✅ déjà abonné => update subscription (retour ok)
       if (activeSub) {
         const { updated, subscription } = await updateExistingSubscription({
           sub: activeSub,
           chosenPlan,
-          addonsRaw: req.body?.addons,
+          addonsRaw: req.body?.addons
         });
 
         await applySubscriptionToUserAndOrg(subscription);
 
         const pi = subscription?.latest_invoice?.payment_intent;
-
         if (pi && pi.client_secret && pi.status && pi.status !== "succeeded") {
           return res.json({
             ok: true,
             updated,
             subscriptionId: subscription.id,
             paymentIntentClientSecret: pi.client_secret,
-            paymentIntentStatus: pi.status,
+            paymentIntentStatus: pi.status
           });
         }
 
-        return res.json({ ok: true, updated, subscriptionId: subscription.id });
+        return res.json({
+          ok: true,
+          updated,
+          subscriptionId: subscription.id
+        });
       }
 
-      // ✅ pas abonné => créer Checkout Session (nouvelle subscription)
-      const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw: req.body?.addons });
+      const desired = buildDesiredPriceQty({
+        chosenPlan,
+        addonsRaw: req.body?.addons
+      });
 
       const lineItems = [];
       for (const [pid, qty] of desired.entries()) {
         lineItems.push({ price: pid, quantity: qty });
       }
 
-      if (!lineItems.length) return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
+      if (!lineItems.length) {
+        return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
+      }
 
       const baseUrl = safeBaseUrl(req);
-
-      // ✅ Cancel: renvoie sur cancel.html + param next (tu gères ensuite la redirection)
       const cancelNext = encodeURIComponent("/pricing.html");
 
       const session = await stripe.checkout.sessions.create({
@@ -453,17 +411,18 @@ function buildStripeModule(ctx) {
         line_items: lineItems,
         subscription_data: {
           trial_period_days: chosenPlan ? 14 : undefined,
-          metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
+          metadata: {
+            uid: user._id.toString(),
+            plan: chosenPlan || ""
+          }
         },
-        metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
-
-        // ✅ success / cancel
-        success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}&next=${encodeURIComponent(
-          "/dashboard.html"
-        )}`,
+        metadata: {
+          uid: user._id.toString(),
+          plan: chosenPlan || ""
+        },
+        success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}&next=${encodeURIComponent("/dashboard.html")}`,
         cancel_url: `${baseUrl}/cancel.html?next=${cancelNext}`,
-
-        allow_promotion_codes: true,
+        allow_promotion_codes: true
       });
 
       return res.json({ url: session.url });
@@ -473,12 +432,6 @@ function buildStripeModule(ctx) {
     }
   }
 
-  // =========================================================
-  // ROUTE — Embedded Checkout (plan optionnel + addons)
-  // Body: { plan?: "...", addons?: ... }
-  // - Si subscription active => UPDATE subscription
-  // - Sinon => session embedded + clientSecret
-  // =========================================================
   async function checkoutEmbedded(req, res) {
     try {
       const chosenPlanRaw = req.body?.plan;
@@ -490,44 +443,48 @@ function buildStripeModule(ctx) {
 
       const user = req.dbUser;
       await getOrCreateCustomer(user);
-
       const activeSub = await getActiveSubscriptionForUser(user);
 
-      // ✅ déjà abonné => update subscription direct
-      // ✅ IMPORTANT: si Stripe génère une invoice (prorata), on renvoie le paymentIntent client_secret
       if (activeSub) {
         const { updated, subscription } = await updateExistingSubscription({
           sub: activeSub,
           chosenPlan,
-          addonsRaw: req.body?.addons,
+          addonsRaw: req.body?.addons
         });
 
         await applySubscriptionToUserAndOrg(subscription);
 
         const pi = subscription?.latest_invoice?.payment_intent;
-
         if (pi && pi.client_secret && pi.status && pi.status !== "succeeded") {
           return res.json({
             ok: true,
             updated,
             subscriptionId: subscription.id,
             paymentIntentClientSecret: pi.client_secret,
-            paymentIntentStatus: pi.status,
+            paymentIntentStatus: pi.status
           });
         }
 
-        return res.json({ ok: true, updated, subscriptionId: subscription.id });
+        return res.json({
+          ok: true,
+          updated,
+          subscriptionId: subscription.id
+        });
       }
 
-      // ✅ nouveau => embedded checkout
-      const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw: req.body?.addons });
+      const desired = buildDesiredPriceQty({
+        chosenPlan,
+        addonsRaw: req.body?.addons
+      });
 
       const lineItems = [];
       for (const [pid, qty] of desired.entries()) {
         lineItems.push({ price: pid, quantity: qty });
       }
 
-      if (!lineItems.length) return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
+      if (!lineItems.length) {
+        return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
+      }
 
       const baseUrl = safeBaseUrl(req);
 
@@ -538,14 +495,17 @@ function buildStripeModule(ctx) {
         line_items: lineItems,
         subscription_data: {
           trial_period_days: chosenPlan ? 14 : undefined,
-          metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
+          metadata: {
+            uid: user._id.toString(),
+            plan: chosenPlan || ""
+          }
         },
-        metadata: { uid: user._id.toString(), plan: chosenPlan || "" },
-
-        // ✅ Stripe va ajouter automatiquement &redirect_status=succeeded|failed|canceled
+        metadata: {
+          uid: user._id.toString(),
+          plan: chosenPlan || ""
+        },
         return_url: `${baseUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
-
-        allow_promotion_codes: true,
+        allow_promotion_codes: true
       });
 
       return res.json({ clientSecret: session.client_secret });
@@ -555,17 +515,13 @@ function buildStripeModule(ctx) {
     }
   }
 
-  // =========================================================
-  // VERIFY — récup session + applique (utile pour embedded return)
-  // GET /api/stripe/verify?session_id=...
-  // =========================================================
   async function verifyCheckout(req, res) {
     try {
       const sessionId = req.query.session_id;
       if (!sessionId) return res.status(400).json({ error: "session_id manquant" });
 
       const session = await stripe.checkout.sessions.retrieve(sessionId, {
-        expand: ["subscription", "customer"],
+        expand: ["subscription", "customer"]
       });
 
       const uid = session.metadata?.uid || session.subscription?.metadata?.uid;
@@ -577,44 +533,49 @@ function buildStripeModule(ctx) {
       if (session.customer?.id) user.stripeCustomerId = session.customer.id;
       if (session.subscription?.id) user.stripeSubscriptionId = session.subscription.id;
 
-      // (optionnel) trial flags
-      if (!user.hasTrial) {
-        user.hasTrial = true;
-        user.trialStartedAt = new Date();
-        user.trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-      }
-
       user.accessBlocked = false;
       user.lastPaymentStatus = "checkout_verified";
-      user.subscriptionStatus = user.subscriptionStatus || "trialing";
+
+      if (session.subscription) {
+        await applySubscriptionToUserAndOrg(session.subscription);
+
+        const subStatus = String(session.subscription.status || "").toLowerCase();
+        user.subscriptionStatus = subStatus || user.subscriptionStatus;
+
+        if (session.subscription.trial_end) {
+          user.hasTrial = true;
+          user.trialEndsAt = new Date(session.subscription.trial_end * 1000);
+          if (!user.trialStartedAt && session.subscription.trial_start) {
+            user.trialStartedAt = new Date(session.subscription.trial_start * 1000);
+          }
+        }
+      }
 
       await ensureOrgForUser(user);
       await user.save();
 
-      if (session.subscription) await applySubscriptionToUserAndOrg(session.subscription);
-
-      return res.json({ ok: true, token: signToken(user) });
+      return res.json({
+        ok: true,
+        token: signToken(user)
+      });
     } catch (e) {
       console.log("verifyCheckout error:", e.message);
       return res.status(500).json({ error: "Erreur verify" });
     }
   }
 
-  // =========================================================
-  // PORTAL
-  // =========================================================
   async function customerPortal(req, res) {
     try {
       const user = req.dbUser;
-      if (!user.stripeCustomerId) return res.status(400).json({ error: "Customer Stripe manquant" });
+      if (!user.stripeCustomerId) {
+        return res.status(400).json({ error: "Customer Stripe manquant" });
+      }
 
       const baseUrl = safeBaseUrl(req);
 
       const session = await stripe.billingPortal.sessions.create({
         customer: user.stripeCustomerId,
-        // ✅ tu peux changer le return_url si tu préfères pricing
-        return_url: `${baseUrl}/dashboard.html`,
-        // configuration: process.env.STRIPE_PORTAL_CONFIGURATION_ID, // optionnel
+        return_url: `${baseUrl}/dashboard.html`
       });
 
       return res.json({ url: session.url });
@@ -624,9 +585,31 @@ function buildStripeModule(ctx) {
     }
   }
 
-  // =========================================================
-  // WEBHOOK (RAW)
-  // =========================================================
+  async function resetOrgAfterSubscriptionDelete(user) {
+    if (!user?.orgId) return;
+
+    const org = await Org.findById(user.orgId);
+    if (!org) return;
+
+    await ensureOrgDefaults(org);
+
+    org.billingAddons.monitorsPack50 = 0;
+    org.billingAddons.extraSeats = 0;
+    org.billingAddons.retention90d = false;
+    org.billingAddons.retention365d = false;
+    org.billingAddons.auditsPack200 = 0;
+    org.billingAddons.auditsPack1000 = 0;
+    org.billingAddons.pdfPack200 = 0;
+    org.billingAddons.exportsPack1000 = 0;
+    org.billingAddons.prioritySupport = false;
+    org.billingAddons.customDomain = false;
+    org.billingAddons.whiteLabel = true;
+    org.retentionDays = 30;
+    org.credits = { audits: 0, pdf: 0, exports: 0 };
+
+    await org.save();
+  }
+
   async function webhookHandler(req, res) {
     try {
       if (!STRIPE_WEBHOOK_SECRET) return res.status(200).send("no webhook secret");
@@ -651,7 +634,10 @@ function buildStripeModule(ctx) {
         await setBlockedByCustomer(inv.customer, false, "payment_succeeded");
       }
 
-      if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
+      if (
+        event.type === "customer.subscription.updated" ||
+        event.type === "customer.subscription.created"
+      ) {
         const sub = event.data.object;
         await applySubscriptionToUserAndOrg(sub);
       }
@@ -661,29 +647,19 @@ function buildStripeModule(ctx) {
 
         await User.updateOne(
           { stripeCustomerId: sub.customer },
-          { $set: { accessBlocked: true, subscriptionStatus: "canceled", lastPaymentStatus: "subscription_deleted" } }
+          {
+            $set: {
+              accessBlocked: true,
+              subscriptionStatus: "canceled",
+              lastPaymentStatus: "subscription_deleted",
+              stripeSubscriptionId: sub.id
+            }
+          }
         );
 
         const user = await User.findOne({ stripeCustomerId: sub.customer });
-        if (user?.orgId) {
-          const org = await Org.findById(user.orgId);
-          if (org) {
-            await ensureOrgDefaults(org);
-            org.billingAddons.monitorsPack50 = 0;
-            org.billingAddons.extraSeats = 0; // ✅ FIX
-            org.billingAddons.retention90d = false;
-            org.billingAddons.retention365d = false;
-            org.billingAddons.auditsPack200 = 0;
-            org.billingAddons.auditsPack1000 = 0;
-            org.billingAddons.pdfPack200 = 0;
-            org.billingAddons.exportsPack1000 = 0;
-            org.billingAddons.prioritySupport = false;
-            org.billingAddons.customDomain = false;
-            org.billingAddons.whiteLabel = true;
-            org.retentionDays = 30;
-            org.credits = { audits: 0, pdf: 0, exports: 0 };
-            await org.save();
-          }
+        if (user) {
+          await resetOrgAfterSubscriptionDelete(user);
         }
       }
 
@@ -700,7 +676,7 @@ function buildStripeModule(ctx) {
     checkoutPlan,
     checkoutEmbedded,
     verifyCheckout,
-    customerPortal,
+    customerPortal
   };
 }
 
