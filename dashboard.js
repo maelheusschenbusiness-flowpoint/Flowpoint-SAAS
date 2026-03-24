@@ -2300,11 +2300,13 @@ function initEvents() {
   });
 
   els.navItems.forEach((item) => {
-    item.addEventListener("click", () => {
-      closeSidebar();
+  item.addEventListener("click", () => {
+    closeSidebar();
+    if (shouldAutoScrollTop()) {
       requestAnimationFrame(() => scrollPageTop());
-    });
+    }
   });
+});
 
   els.btnMenu?.addEventListener("click", openSidebar);
   els.overlay?.addEventListener("click", closeSidebar);
