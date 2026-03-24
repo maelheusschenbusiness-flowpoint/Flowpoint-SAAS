@@ -2167,6 +2167,108 @@ body::before{
   border-radius:999px !important;
 }
 
+/* espace entre les cartes empilées dans paramètres */
+#fpPageContainer .fpCol.fpColMain > .fpCardInner + .fpCardInner,
+#fpPageContainer .fpCol.fpColSide > .fpCardInner + .fpCardInner{
+  margin-top:24px !important;
+}
+
+/* espace interne dans chaque carte paramètres */
+#fpPageContainer .fpCardInner > .fpSmall{
+  margin-bottom:18px !important;
+}
+
+#fpPageContainer .fpCardInner > .fpField + .fpField,
+#fpPageContainer .fpCardInner > .fpField + .fpDetailActions,
+#fpPageContainer .fpCardInner > .fpToggleRow + .fpToggleRow,
+#fpPageContainer .fpCardInner > .fpSettingsRow + .fpSettingsRow,
+#fpPageContainer .fpCardInner > .fpInlineLinks,
+#fpPageContainer .fpCardInner > .fpSettingsList{
+  margin-top:18px !important;
+}
+
+/* Graphique plus visible en mode clair */
+@media (prefers-color-scheme: light){
+  .fpChartBox{
+    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(236,243,255,.96)) !important;
+    border-color:rgba(59,78,130,.14) !important;
+  }
+
+  .fpLegendItem{
+    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.96)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+    color:var(--fpText) !important;
+  }
+
+  .fpChartInsight{
+    color:var(--fpTextSoft) !important;
+  }
+}
+
+/* Missions : style final unique des checks */
+.fpMissionCheck{
+  width:30px;
+  height:30px;
+  min-width:30px;
+  min-height:30px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(255,255,255,.04);
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  transition:all .2s ease;
+  color:transparent;
+}
+
+.fpMissionCheck svg{
+  width:16px;
+  height:16px;
+  display:block;
+  opacity:0;
+  transition:.18s ease;
+}
+
+.fpMissionCheck.done{
+  background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
+  border:none;
+  box-shadow:0 0 12px rgba(47,107,255,.6);
+}
+
+.fpMissionCheck.done svg{
+  opacity:1;
+}
+
+.fpMissionCheck.done svg path{
+  stroke:#ffffff;
+}
+
+/* mode clair : cases missions plus visibles */
+@media (prefers-color-scheme: light){
+  .fpMissionCheck{
+    border-color:rgba(47,91,255,.30) !important;
+    background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(240,245,255,.98)) !important;
+    box-shadow:
+      0 6px 16px rgba(41,64,122,.08),
+      inset 0 1px 0 rgba(255,255,255,.65) !important;
+  }
+
+  .fpMissionCheck.done{
+    background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2)) !important;
+    border-color:rgba(47,91,255,.60) !important;
+    box-shadow:
+      0 0 0 4px rgba(47,91,255,.10),
+      0 10px 22px rgba(47,91,255,.18) !important;
+  }
+
+  .fpMissionCard:hover,
+  .fpMissionCardLarge:hover{
+    background:rgba(47,91,255,.04) !important;
+  }
+}
+
 /* mobile */
 @media (max-width:760px){
   #fpPageContainer{
@@ -2180,7 +2282,8 @@ body::before{
   }
 
   #fpPageContainer .fpSettingsGrid .fpCard,
-  #fpPageContainer .fpSettingsGrid .fpCardInner{
+  #fpPageContainer .fpSettingsGrid .fpCardInner,
+  #fpPageContainer .fpCardInner{
     padding:22px !important;
     border-radius:24px !important;
   }
@@ -2226,135 +2329,6 @@ body::before{
   .fpMissionActions > .fpBtn,
   .fpMissionActions > a.fpBtn{
     width:100% !important;
-    min-height:50px !important;
-    padding:0 16px !important;
-    border-radius:16px !important;
-    font-size:15px !important;
-    font-weight:800 !important;
-    justify-content:center !important;
-  }
-
-  .fpBtnGhost,
-  #fpPageContainer .fpInlineLinks a{
-    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025)) !important;
-    border:1px solid var(--fpBorderStrong) !important;
-  }
-
-  .fpMissionTitle{
-    font-size:19px !important;
-    line-height:1.08 !important;
-  }
-
-  .fpMissionMeta,
-  .fpMissionDesc{
-    font-size:13px !important;
-    line-height:1.4 !important;
-  }
-}
-/* =========================================
-   FIX RÉEL SETTINGS + MOBILE
-   À METTRE TOUT EN BAS
-   ========================================= */
-
-/* 1) espace entre les cartes empilées dans paramètres */
-#fpPageContainer .fpCol.fpColMain > .fpCardInner + .fpCardInner,
-#fpPageContainer .fpCol.fpColSide > .fpCardInner + .fpCardInner{
-  margin-top:24px !important;
-}
-
-/* 2) espace interne dans chaque carte paramètres */
-#fpPageContainer .fpCardInner > .fpSmall{
-  margin-bottom:18px !important;
-}
-
-#fpPageContainer .fpCardInner > .fpField + .fpField,
-#fpPageContainer .fpCardInner > .fpField + .fpDetailActions,
-#fpPageContainer .fpCardInner > .fpToggleRow + .fpToggleRow,
-#fpPageContainer .fpCardInner > .fpSettingsRow + .fpSettingsRow,
-#fpPageContainer .fpCardInner > .fpInlineLinks,
-#fpPageContainer .fpCardInner > .fpSettingsList{
-  margin-top:18px !important;
-}
-
-/* 3) rangées paramètres plus aérées */
-#fpPageContainer .fpToggleRow,
-#fpPageContainer .fpSettingsRow{
-  min-height:96px !important;
-  padding:20px 22px !important;
-  border-radius:22px !important;
-}
-
-#fpPageContainer .fpToggleRow{
-  display:flex !important;
-  justify-content:space-between !important;
-  align-items:center !important;
-  gap:16px !important;
-}
-
-#fpPageContainer .fpSettingsRow{
-  display:flex !important;
-  justify-content:space-between !important;
-  align-items:flex-start !important;
-  gap:16px !important;
-}
-
-/* 4) liens utiles desktop */
-#fpPageContainer .fpInlineLinks{
-  display:flex !important;
-  flex-wrap:wrap !important;
-  gap:14px !important;
-}
-
-#fpPageContainer .fpInlineLinks a{
-  min-height:46px !important;
-  padding:0 18px !important;
-  border-radius:999px !important;
-}
-
-/* 5) mobile */
-@media (max-width:760px){
-
-  /* cartes paramètres */
-  #fpPageContainer .fpCol.fpColMain > .fpCardInner + .fpCardInner,
-  #fpPageContainer .fpCol.fpColSide > .fpCardInner + .fpCardInner{
-    margin-top:20px !important;
-  }
-
-  #fpPageContainer .fpCardInner{
-    padding:22px !important;
-    border-radius:24px !important;
-  }
-
-  #fpPageContainer .fpCardInner > .fpField + .fpField,
-  #fpPageContainer .fpCardInner > .fpField + .fpDetailActions,
-  #fpPageContainer .fpCardInner > .fpToggleRow + .fpToggleRow,
-  #fpPageContainer .fpCardInner > .fpSettingsRow + .fpSettingsRow,
-  #fpPageContainer .fpCardInner > .fpInlineLinks,
-  #fpPageContainer .fpCardInner > .fpSettingsList{
-    margin-top:16px !important;
-  }
-
-  #fpPageContainer .fpToggleRow,
-  #fpPageContainer .fpSettingsRow{
-    min-height:auto !important;
-    padding:18px !important;
-    border-radius:20px !important;
-  }
-
-  /* boutons téléphone moins moches */
-  #fpPageContainer .fpInlineLinks a,
-  .fpBtn,
-  .fpTopActionsRow > .fpBtn,
-  .fpTopActionsRow > a.fpBtn,
-  .fpDetailActions > .fpBtn,
-  .fpDetailActions > a.fpBtn,
-  .fpCardActions > .fpBtn,
-  .fpCardActions > a.fpBtn,
-  .fpPageActions > .fpBtn,
-  .fpPageActions > a.fpBtn,
-  .fpMissionActions > .fpBtn,
-  .fpMissionActions > a.fpBtn{
-    width:100% !important;
     min-height:48px !important;
     padding:0 14px !important;
     border-radius:14px !important;
@@ -2369,7 +2343,6 @@ body::before{
     border:1px solid var(--fpBorderStrong) !important;
   }
 
-  /* typo mobile des missions un peu réduite */
   .fpMissionTitle{
     font-size:19px !important;
     line-height:1.08 !important;
@@ -2380,253 +2353,18 @@ body::before{
     font-size:13px !important;
     line-height:1.4 !important;
   }
-}
-/* =========================
-   FLOWPOINT DASHBOARD FIXES
-   ========================= */
 
-/* ----- Mode clair : graphique plus visible ----- */
-@media (prefers-color-scheme: light){
-  .chartCard canvas,
-  .analyticsCard canvas,
-  .overviewChart canvas{
-    filter: contrast(1.04) saturate(1.02);
+  #fpPageContainer .fpCol.fpColMain > .fpCardInner + .fpCardInner,
+  #fpPageContainer .fpCol.fpColSide > .fpCardInner + .fpCardInner{
+    margin-top:20px !important;
   }
 
-  /* si tu as des lignes/grilles SVG */
-  .chartCard svg .grid line,
-  .analyticsCard svg .grid line,
-  .overviewChart svg .grid line{
-    stroke: rgba(15, 23, 42, 0.14) !important;
+  #fpPageContainer .fpCardInner > .fpField + .fpField,
+  #fpPageContainer .fpCardInner > .fpField + .fpDetailActions,
+  #fpPageContainer .fpCardInner > .fpToggleRow + .fpToggleRow,
+  #fpPageContainer .fpCardInner > .fpSettingsRow + .fpSettingsRow,
+  #fpPageContainer .fpCardInner > .fpInlineLinks,
+  #fpPageContainer .fpCardInner > .fpSettingsList{
+    margin-top:16px !important;
   }
-
-  .chartCard svg .grid path,
-  .analyticsCard svg .grid path,
-  .overviewChart svg .grid path{
-    stroke: rgba(15, 23, 42, 0.12) !important;
-  }
-}
-
-/* ----- Missions : cases cochées / non cochées plus visibles ----- */
-.missionCheck,
-.missionToggle,
-.missionDone,
-.taskCheck,
-.taskToggle{
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  min-height: 22px;
-  border-radius: 999px;
-  border: 2px solid rgba(47, 91, 255, 0.42);
-  background: #ffffff;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: .18s ease;
-}
-
-.missionCheck.is-done,
-.missionToggle.is-done,
-.missionDone.is-done,
-.taskCheck.is-done,
-.taskToggle.is-done,
-.missionCheck[aria-checked="true"],
-.missionToggle[aria-checked="true"],
-.taskCheck[aria-checked="true"],
-.taskToggle[aria-checked="true"]{
-  background: linear-gradient(180deg, #2f5bff, #2449ff);
-  border-color: rgba(47, 91, 255, 0.75);
-  box-shadow:
-    0 0 0 4px rgba(47, 91, 255, 0.10),
-    0 10px 22px rgba(47, 91, 255, 0.18);
-}
-
-.missionCheck svg,
-.missionToggle svg,
-.missionDone svg,
-.taskCheck svg,
-.taskToggle svg{
-  width: 12px;
-  height: 12px;
-  display: block;
-}
-
-.missionCheck.is-done svg path,
-.missionToggle.is-done svg path,
-.missionDone.is-done svg path,
-.taskCheck.is-done svg path,
-.taskToggle.is-done svg path,
-.missionCheck[aria-checked="true"] svg path,
-.missionToggle[aria-checked="true"] svg path,
-.taskCheck[aria-checked="true"] svg path,
-.taskToggle[aria-checked="true"] svg path{
-  stroke: #ffffff !important;
-}
-
-/* si les missions sont des cartes */
-.missionCard,
-.taskCard,
-.priorityMission{
-  transition: .18s ease;
-}
-
-.missionCard.is-done,
-.taskCard.is-done,
-.priorityMission.is-done{
-  border-color: rgba(47, 91, 255, 0.24);
-  box-shadow: 0 10px 24px rgba(47, 91, 255, 0.08);
-}
-
-/* ----- Texte de statut plus propre ----- */
-.statusTrialLabel,
-.trialStatusLabel{
-  color: var(--muted);
-  font-weight: 700;
-}
-
-/* ----- Scroll plus stable dans les sections ----- */
-html{
-  scroll-behavior: smooth;
-}
-/* =========================================
-   FIX DASHBOARD FINAL
-   À AJOUTER TOUT EN BAS DE dashboard.css
-   ========================================= */
-
-/* Graphique plus visible en mode clair */
-@media (prefers-color-scheme: light){
-  .fpChartBox{
-    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(236,243,255,.96)) !important;
-    border-color:rgba(59,78,130,.14) !important;
-  }
-
-  .fpLegendItem{
-    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.96)) !important;
-    border-color:rgba(59,78,130,.12) !important;
-    color:var(--fpText) !important;
-  }
-
-  .fpChartInsight{
-    color:var(--fpTextSoft) !important;
-  }
-}
-
-/* Missions : cases à cocher plus visibles en clair */
-.fpMissionCheck{
-  width:24px;
-  height:24px;
-  min-width:24px;
-  min-height:24px;
-  border-radius:999px;
-  border:2px solid rgba(255,255,255,.18);
-  background:rgba(255,255,255,.04);
-  flex:0 0 auto;
-  margin-top:2px;
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  transition:.18s ease;
-  color:transparent;
-  box-shadow:none;
-}
-
-.fpMissionCheck svg{
-  width:12px;
-  height:12px;
-  display:block;
-  opacity:0;
-  transition:.18s ease;
-}
-
-.fpMissionCheck.done svg{
-  opacity:1;
-}
-
-.fpMissionCheck.done{
-  background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
-  border-color:transparent;
-  box-shadow:var(--fpBrandGlow);
-}
-
-@media (prefers-color-scheme: light){
-  .fpMissionCheck{
-    border-color:rgba(47,91,255,.30) !important;
-    background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(240,245,255,.98)) !important;
-    box-shadow:
-      0 6px 16px rgba(41,64,122,.08),
-      inset 0 1px 0 rgba(255,255,255,.65) !important;
-  }
-
-  .fpMissionCheck.done{
-    background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2)) !important;
-    border-color:rgba(47,91,255,.60) !important;
-    box-shadow:
-      0 0 0 4px rgba(47,91,255,.10),
-      0 10px 22px rgba(47,91,255,.18) !important;
-  }
-
-  .fpMissionCheck.done svg{
-    opacity:1;
-  }
-}
-
-/* petit confort visuel dans les cartes missions */
-.fpMissionCard,
-.fpMissionCardLarge{
-  transition:.18s ease;
-}
-
-@media (prefers-color-scheme: light){
-  .fpMissionCard:hover,
-  .fpMissionCardLarge:hover{
-    background:rgba(47,91,255,.04) !important;
-  }
-}
-.fpMissionCheck{
-  width:30px;
-  height:30px;
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,.18);
-  background:rgba(255,255,255,.04);
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:0;
-  transition:all .2s ease;
-}
-
-.fpMissionCheckIcon{
-  width:16px;
-  height:16px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-
-.fpMissionCheckIcon svg{
-  width:16px;
-  height:16px;
-}
-
-.fpMissionCheckIcon path{
-  fill:none;
-  stroke:#fff;
-  stroke-width:3;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-  opacity:0;
-}
-
-.fpMissionCheck.done{
-  background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
-  border:none;
-  box-shadow:0 0 12px rgba(47,107,255,.6);
-}
-
-.fpMissionCheck.done .fpMissionCheckIcon path{
-  opacity:1;
 }
