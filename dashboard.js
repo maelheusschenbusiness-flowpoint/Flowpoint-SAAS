@@ -2078,57 +2078,23 @@ function renderMonitorsPage() {
   });
 }
 
-function renderReportsPage() {
-  const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
-  const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
-  const usage = state.me?.usage || {};
+function renderBillingPage() {
+  const me = state.me || {};
+  const usage = me.usage || {};
+  const addons = getAddonEntries();
+  const orgName = normalizeOrgName();
 
   setPage(`
     ${createSectionCard(
-      "Rapports",
-      "Exports et historiques",
-      "Télécharge les données importantes du dashboard et prépare des livrables clients plus propres.",
+      "Facturation",
+      "Abonnement",
+      "Consulte le plan actuel, les quotas et la gestion complète FlowPoint.",
       `
-        <div class="fpReportsGrid">
-          <div class="fpReportCard">
-            <div class="fpReportTitle">Billing</div>
-            <div class="fpReportMeta">Accès rapide à la facturation.</div>
-            <div class="fpDetailActions">
-              <a class="fpBtn fpBtnGhost" href="#billing">Ouvrir Billing</a>
-            </div>
-          </div>
-
-          <div class="fpReportCard">
-            <div class="fpReportTitle">Add-ons</div>
-            <div class="fpReportMeta">Ajuste les options de ton abonnement.</div>
-            <div class="fpDetailActions">
-              <a class="fpBtn fpBtnGhost" href="/addons.html">Ouvrir Add-ons</a>
-            </div>
-          </div>
-
-          <div class="fpReportCard">
-            <div class="fpReportTitle">Export audits</div>
-            <div class="fpReportMeta">Télécharge tous les audits SEO en CSV.</div>
-            <div class="fpDetailActions">
-              <button class="fpBtn fpBtnPrimary" id="fpExportAuditsBtn" type="button">Exporter audits</button>
-            </div>
-          </div>
-
-          <div class="fpReportCard">
-            <div class="fpReportTitle">Export monitors</div>
-            <div class="fpReportMeta">Télécharge les données de monitoring en CSV.</div>
-            <div class="fpDetailActions">
-              <button class="fpBtn fpBtnPrimary" id="fpExportMonitorsBtn2" type="button">Exporter monitors</button>
-            </div>
-          </div>
-
-          <div class="fpReportCard">
-            <div class="fpReportTitle">Accès pricing</div>
-            <div class="fpReportMeta">Retour rapide vers l’offre FlowPoint.</div>
-            <div class="fpDetailActions">
-              <a class="fpBtn fpBtnGhost" href="/pricing.html">Voir pricing</a>
-            </div>
-          </div>
+        <div class="fpTopActionsRow">
+          <a class="fpBtn fpBtnGhost" href="/pricing.html">Retour pricing</a>
+          <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
+          <button class="fpBtn fpBtnPrimary" id="fpBillingCenterBtn" type="button">Paiement</button>
+          <button class="fpBtn fpBtnGhost" id="fpBillingRefreshBtn" type="button">Actualiser</button>
         </div>
       `
     )}
@@ -2136,98 +2102,335 @@ function renderReportsPage() {
     <div class="fpGrid fpGridMain">
       <div class="fpCol fpColMain">
         ${createSectionCard(
-          "Historique",
-          "Données exportables",
-          "Résumé rapide des volumes actuellement disponibles",
+          "Plan",
+          "Abonnement actif",
+          "État actuel de la facturation",
           `
-            <div class="fpStatsGrid">
-              <div class="fpStatCard">
-                <div class="fpStatLabel">Audits</div>
-                <div class="fpStatValue">${auditsCount}</div>
-                <div class="fpStatMeta">Lignes exportables</div>
+            <div class="fpBillingGrid">
+              <div class="fpBillingCard">
+                <div class="fpBillingTitle">Plan actuel</div>
+                <div class="fpBillingPlan">${esc(planLabel(me.plan))}</div>
+                <div class="fpBillingStatus">${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</div>
               </div>
 
-              <div class="fpStatCard">
-                <div class="fpStatLabel">Monitors</div>
-                <div class="fpStatValue">${monitorsCount}</div>
-                <div class="fpStatMeta">Lignes exportables</div>
+              <div class="fpBillingCard">
+                <div class="fpBillingTitle">Organisation</div>
+                <div class="fpBillingPlan">${esc(orgName)}</div>
+                <div class="fpBillingStatus">Workspace actuellement connecté</div>
               </div>
 
-              <div class="fpStatCard">
-                <div class="fpStatLabel">Exports restants</div>
-                <div class="fpStatValue">${esc(formatUsage(usage.exports))}</div>
-                <div class="fpStatMeta">Quota actuel</div>
+              <div class="fpBillingCard">
+                <div class="fpBillingTitle">Essai</div>
+                <div class="fpBillingPlan">${esc(trialLabel(me.trialEndsAt))}</div>
+                <div class="fpBillingStatus">${esc(trialMetaLabel(me.trialEndsAt))}</div>
+              </div>
+
+              <div class="fpBillingCard">
+                <div class="fpBillingTitle">Rôle</div>
+                <div class="fpBillingPlan">${esc(cap(me.role || "owner"))}</div>
+                <div class="fpBillingStatus">Niveau d’accès actuel</div>
               </div>
             </div>
           `
         )}
 
         ${createSectionCard(
-          "Livrables",
-          "Utilisation commerciale",
-          "Cette zone peut servir pour la livraison client",
+          "Quotas",
+          "Limites du plan",
+          "Consommation visible dans l’espace client",
           `
-            <div class="fpTextPanel">
-              Utilise les exports pour les comptes-rendus, suivis mensuels, comparatifs avant/après et reporting interne.
+            <div class="fpQuotaList">
+              <div class="fpQuotaRow"><span>Audits</span><strong>${esc(formatUsage(usage.audits))}</strong></div>
+              <div class="fpQuotaRow"><span>PDF</span><strong>${esc(formatUsage(usage.pdf))}</strong></div>
+              <div class="fpQuotaRow"><span>Exports</span><strong>${esc(formatUsage(usage.exports))}</strong></div>
+              <div class="fpQuotaRow"><span>Monitors</span><strong>${esc(formatUsage(usage.monitors))}</strong></div>
+              <div class="fpQuotaRow"><span>Team seats</span><strong>${esc(formatUsage(usage.teamSeats))}</strong></div>
             </div>
           `
         )}
 
         ${createSectionCard(
-          "Fonctions premium",
-          "Rapports avancés",
-          "Modules à plus forte valeur pour un SaaS scalable",
-          `
-            <div class="fpFeatureStack">
-              ${featureGate(
-                "pro",
-                `<div class="fpTextPanel">Le plan Pro est plus adapté pour générer des livrables réguliers, des exports fréquents et un usage client plus crédible.</div>`,
-                "Reporting plus sérieux",
-                "Le plan Standard reste volontairement plus serré sur la partie reporting."
-              )}
-              ${featureGate(
-                "ultra",
-                `<div class="fpTextPanel">Le plan Ultra est conçu pour un usage intensif, plusieurs clients et davantage d’opérations mensuelles.</div>`,
-                "Scale reportings",
-                "Pensé pour la volumétrie élevée."
-              )}
-            </div>
-          `
+          "Comparatif",
+          "Bénéfices par plan",
+          "Structure plus scalable pour guider l’upgrade",
+          buildPlanBenefitsCard()
         )}
       </div>
 
       <div class="fpCol fpColSide">
         ${createSectionCard(
-          "Conseil",
-          "Usage commercial",
-          "À quoi sert cette page",
+          "Add-ons",
+          "Modules actifs",
+          "Résumé des modules et options disponibles",
           `
-            <div class="fpTextPanel">
-              La page reports sert à transformer tes données en livrables. C’est utile pour les clients, les suivis internes et les comptes-rendus mensuels.
+            <div class="fpAddonsList">
+              ${addons.map((a) => `
+                <div class="fpAddonRow">
+                  <div class="fpAddonLabel">${esc(a.label)}</div>
+                  <div class="fpAddonPill ${a.enabled ? "on" : "off"}">${esc(a.text)}</div>
+                </div>
+              `).join("")}
             </div>
           `
         )}
 
         ${createSectionCard(
-          "Liens utiles",
-          "Navigation",
-          "Accès rapide",
+          "Gestion",
+          "Actions utiles",
+          "Accès direct aux pages liées à la facturation",
           `${createInlineLinks([
             { href: "/pricing.html", label: "Retour pricing" },
-            { href: "#billing", label: "Facturation" },
+            { href: "/addons.html", label: "Add-ons" },
+            { href: "#settings", label: "Paramètres" },
+            { href: "#reports", label: "Rapports" },
           ])}`
         )}
       </div>
     </div>
   `);
 
-  $("#fpExportAuditsBtn")?.addEventListener("click", async () => {
-    await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+  $("#fpBillingCenterBtn")?.addEventListener("click", openBillingCenter);
+  $("#fpBillingRefreshBtn")?.addEventListener("click", () => loadData());
+}
+
+function renderSettingsPage() {
+  const s = state.orgSettings || {};
+  const me = state.me || {};
+  const extraEmails = Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "";
+
+  setPage(`
+    ${createSectionCard(
+      "Paramètres",
+      "Préférences du workspace",
+      "Configure les alertes et les informations générales du compte.",
+      `
+        <div class="fpGrid fpGridMain">
+          <div class="fpCol fpColMain">
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Alertes email</div>
+              <div class="fpSmall">Définis qui reçoit les alertes monitoring.</div>
+
+              <div class="fpField">
+                <label class="fpLabel" for="fpSettingsRecipientsMode">Mode destinataires</label>
+                <select id="fpSettingsRecipientsMode" class="fpInput">
+                  <option value="all" ${String(s.alertRecipients || "all") === "all" ? "selected" : ""}>Toute l'équipe</option>
+                  <option value="owner" ${String(s.alertRecipients || "all") === "owner" ? "selected" : ""}>Owner uniquement</option>
+                </select>
+              </div>
+
+              <div class="fpField">
+                <label class="fpLabel" for="fpSettingsExtraEmails">Emails supplémentaires</label>
+                <input
+                  id="fpSettingsExtraEmails"
+                  class="fpInput"
+                  placeholder="mail@site.com, mail2@site.com"
+                  value="${esc(extraEmails)}"
+                />
+              </div>
+
+              <div class="fpDetailActions">
+                <button class="fpBtn fpBtnPrimary" id="fpSaveSettingsBtn" type="button">Sauvegarder</button>
+              </div>
+            </div>
+
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Préférences interface</div>
+              <div class="fpSmall">Le mode clair ou sombre suit automatiquement les paramètres du navigateur.</div>
+
+              <div class="fpToggleRow">
+                <div class="fpToggleText">
+                  <div class="fpToggleTitle">Thème automatique</div>
+                  <div class="fpToggleHint">Basé sur les préférences système du client</div>
+                </div>
+                <button
+                  type="button"
+                  class="fpSwitch ${state.uiPrefs.themeAuto ? "on" : ""}"
+                  id="fpThemeAutoToggle"
+                  aria-pressed="${state.uiPrefs.themeAuto ? "true" : "false"}"
+                  title="Activer ou désactiver le thème automatique"
+                ></button>
+              </div>
+
+              <div class="fpToggleRow">
+                <div class="fpToggleText">
+                  <div class="fpToggleTitle">Statut temps réel</div>
+                  <div class="fpToggleHint">Affichage de l’état courant du dashboard</div>
+                </div>
+                <button
+                  type="button"
+                  class="fpSwitch ${state.uiPrefs.liveStatus ? "on" : ""}"
+                  id="fpLiveStatusToggle"
+                  aria-pressed="${state.uiPrefs.liveStatus ? "true" : "false"}"
+                  title="Afficher ou masquer le statut temps réel"
+                ></button>
+              </div>
+
+              <div class="fpToggleRow">
+                <div class="fpToggleText">
+                  <div class="fpToggleTitle">Listes compactes</div>
+                  <div class="fpToggleHint">Réduit un peu la densité visuelle</div>
+                </div>
+                <button
+                  type="button"
+                  class="fpSwitch ${state.uiPrefs.compactLists ? "on" : ""}"
+                  id="fpCompactListsToggle"
+                  aria-pressed="${state.uiPrefs.compactLists ? "true" : "false"}"
+                ></button>
+              </div>
+
+              <div class="fpToggleRow">
+                <div class="fpToggleText">
+                  <div class="fpToggleTitle">Cartes avancées</div>
+                  <div class="fpToggleHint">Affiche plus de blocs analytiques</div>
+                </div>
+                <button
+                  type="button"
+                  class="fpSwitch ${state.uiPrefs.showAdvancedCards ? "on" : ""}"
+                  id="fpAdvancedCardsToggle"
+                  aria-pressed="${state.uiPrefs.showAdvancedCards ? "true" : "false"}"
+                ></button>
+              </div>
+            </div>
+
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Liens utiles</div>
+              <div class="fpSmall">Accès rapide aux pages liées au compte.</div>
+              ${createInlineLinks([
+                { href: "#billing", label: "Facturation" },
+                { href: "/addons.html", label: "Add-ons" },
+                { href: "/pricing.html", label: "Retour pricing" },
+                { href: "#reports", label: "Rapports" },
+              ])}
+            </div>
+          </div>
+
+          <div class="fpCol fpColSide">
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Informations du compte</div>
+              <div class="fpSmall">Résumé de l’espace actuellement connecté.</div>
+
+              <div class="fpSettingsList">
+                <div class="fpSettingsRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
+                <div class="fpSettingsRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
+                <div class="fpSettingsRow"><span>Rôle</span><strong>${esc(cap(me.role || "owner"))}</strong></div>
+                <div class="fpSettingsRow"><span>Destinataires</span><strong>${esc(recipientsLabel(s.alertRecipients))}</strong></div>
+                <div class="fpSettingsRow"><span>Essai</span><strong>${esc(trialLabel(me.trialEndsAt))}</strong></div>
+                <div class="fpSettingsRow"><span>Dernière synchro</span><strong>${esc(state.lastLoadedAt ? formatDate(state.lastLoadedAt) : "Récente")}</strong></div>
+              </div>
+            </div>
+
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Données utiles</div>
+              <div class="fpSettingsList">
+                <div class="fpSettingsRow"><span>Audits</span><strong>${esc(formatUsage(me.usage?.audits))}</strong></div>
+                <div class="fpSettingsRow"><span>Exports</span><strong>${esc(formatUsage(me.usage?.exports))}</strong></div>
+                <div class="fpSettingsRow"><span>Monitors</span><strong>${esc(formatUsage(me.usage?.monitors))}</strong></div>
+                <div class="fpSettingsRow"><span>PDF</span><strong>${esc(formatUsage(me.usage?.pdf))}</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `
+    )}
+  `);
+
+  $("#fpSaveSettingsBtn")?.addEventListener("click", async () => {
+    const ok = await saveOrgSettings();
+    if (ok) loadData({ silent: true });
   });
 
-  $("#fpExportMonitorsBtn2")?.addEventListener("click", async () => {
-    await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
-  });
+  $("#fpThemeAutoToggle")?.addEventListener("click", () => toggleUiPref("themeAuto"));
+  $("#fpLiveStatusToggle")?.addEventListener("click", () => toggleUiPref("liveStatus"));
+  $("#fpCompactListsToggle")?.addEventListener("click", () => toggleUiPref("compactLists"));
+  $("#fpAdvancedCardsToggle")?.addEventListener("click", () => toggleUiPref("showAdvancedCards"));
+}
+
+function openMissionPage(id) {
+  const mission = state.missions.find((m) => m.id === id);
+  if (!mission) return;
+
+  if (mission.action === "run_audit") {
+    location.hash = "#audits";
+    return;
+  }
+
+  if (mission.action === "add_monitor" || mission.action === "test_monitor") {
+    location.hash = "#monitors";
+    return;
+  }
+
+  if (mission.action === "export_audits" || mission.action === "export_monitors") {
+    location.hash = "#reports";
+    return;
+  }
+
+  if (mission.action === "open_billing" || mission.action === "view_billing") {
+    location.hash = "#billing";
+    return;
+  }
+
+  if (mission.action === "goto_settings") {
+    location.hash = "#settings";
+  }
+}
+
+async function runMission(id) {
+  const mission = state.missions.find((m) => m.id === id);
+  if (!mission) return false;
+
+  if (mission.action === "run_audit") {
+    const ok = await safeRunAudit();
+    if (ok) await loadData({ silent: true });
+    return ok;
+  }
+
+  if (mission.action === "add_monitor") {
+    const ok = await safeAddMonitor();
+    if (ok) await loadData({ silent: true });
+    return ok;
+  }
+
+  if (mission.action === "export_audits") {
+    return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+  }
+
+  if (mission.action === "export_monitors") {
+    return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+  }
+
+  if (mission.action === "open_billing") {
+    return openBillingCenter();
+  }
+
+  if (mission.action === "goto_settings") {
+    location.hash = "#settings";
+    setMissionDoneByAction("goto_settings", true);
+    saveMissions();
+    renderRoute({ scrollTop: true });
+    return true;
+  }
+
+  if (mission.action === "test_monitor") {
+    const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
+    if (!firstMonitor) {
+      setStatus("Aucun monitor à tester", "danger");
+      return false;
+    }
+
+    const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
+    if (ok) await loadData({ silent: true });
+    return ok;
+  }
+
+  if (mission.action === "view_billing") {
+    location.hash = "#billing";
+    setMissionDoneByAction("view_billing", true);
+    saveMissions();
+    renderRoute({ scrollTop: true });
+    return true;
+  }
+
+  return false;
 }
 
 function renderRoute(options = {}) {
@@ -2286,6 +2489,119 @@ function renderRoute(options = {}) {
   }
 }
 
+async function loadData({ silent = false } = {}) {
+  if (state.loading) return;
+
+  state.loading = true;
+  if (!silent) setStatus("Chargement des données…", "warn");
+
+  if (state.controller) state.controller.abort();
+  state.controller = new AbortController();
+  const signal = state.controller.signal;
+
+  try {
+    const [meRes, ovRes, audRes, monRes, setRes] = await Promise.all([
+      fetchWithAuth("/api/me", { signal }).catch(() => null),
+      fetchWithAuth(`/api/overview?days=${encodeURIComponent(state.rangeDays)}`, { signal }).catch(() => null),
+      fetchWithAuth("/api/audits", { signal }).catch(() => null),
+      fetchWithAuth("/api/monitors", { signal }).catch(() => null),
+      fetchWithAuth("/api/org/settings", { signal }).catch(() => null),
+    ]);
+
+    if (meRes?.ok) {
+      state.me = await parseJsonSafe(meRes);
+    } else {
+      state.me = null;
+    }
+
+    if (ovRes?.ok) {
+      state.overview = await parseJsonSafe(ovRes);
+    } else {
+      state.overview = {
+        seoScore: 0,
+        chart: [],
+        monitors: { active: 0, down: 0 },
+      };
+    }
+
+    if (audRes?.ok) {
+      const auditsData = await parseJsonSafe(audRes);
+      state.audits = Array.isArray(auditsData?.audits)
+        ? auditsData.audits
+        : Array.isArray(auditsData)
+          ? auditsData
+          : [];
+    } else {
+      state.audits = [];
+    }
+
+    if (monRes?.ok) {
+      const monitorsData = await parseJsonSafe(monRes);
+      state.monitors = Array.isArray(monitorsData?.monitors)
+        ? monitorsData.monitors
+        : Array.isArray(monitorsData)
+          ? monitorsData
+          : [];
+    } else {
+      state.monitors = [];
+    }
+
+    if (setRes?.ok) {
+      const settingsData = await parseJsonSafe(setRes);
+      state.orgSettings = settingsData?.settings || settingsData || state.orgSettings;
+    }
+
+    state.lastLoadedAt = new Date().toISOString();
+
+    hydrateLogos();
+    hydrateSidebarAccount();
+    hydrateTopbar();
+    renderRoute();
+    setStatus("Dashboard prêt", "ok");
+  } catch (e) {
+    if (e?.name !== "AbortError") {
+      console.error(e);
+      setStatus("Erreur chargement dashboard", "danger");
+    }
+  } finally {
+    state.loading = false;
+  }
+}
+
+function bindGlobalActions() {
+  document.addEventListener("click", async (e) => {
+    const toggleBtn = e.target.closest("[data-mission-toggle]");
+    if (toggleBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleMission(toggleBtn.getAttribute("data-mission-toggle"));
+      renderRoute({ preserveScroll: true });
+      return;
+    }
+
+    const runBtn = e.target.closest("[data-mission-do]");
+    if (runBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      await runMission(runBtn.getAttribute("data-mission-do"));
+      renderRoute({ preserveScroll: true });
+      return;
+    }
+
+    const openBtn = e.target.closest("[data-mission-open]");
+    if (openBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      openMissionPage(openBtn.getAttribute("data-mission-open"));
+    }
+  });
+}
+
+function logout() {
+  clearAuth();
+  window.location.href = "/login.html";
+}
+
 function initEvents() {
   window.addEventListener("hashchange", () => {
     state.route = ROUTES.has(location.hash) ? location.hash : "#overview";
@@ -2300,13 +2616,13 @@ function initEvents() {
   });
 
   els.navItems.forEach((item) => {
-  item.addEventListener("click", () => {
-    closeSidebar();
-    if (shouldAutoScrollTop()) {
-      requestAnimationFrame(() => scrollPageTop());
-    }
+    item.addEventListener("click", () => {
+      closeSidebar();
+      if (shouldAutoScrollTop()) {
+        requestAnimationFrame(scrollPageTop);
+      }
+    });
   });
-});
 
   els.btnMenu?.addEventListener("click", openSidebar);
   els.overlay?.addEventListener("click", closeSidebar);
@@ -2317,7 +2633,7 @@ function initEvents() {
     const raw = String(els.rangeSelect.value || "30");
     state.rangeDays = raw === "7" ? 7 : raw === "3" ? 3 : 30;
     loadData();
-    scrollPageTop();
+    if (shouldAutoScrollTop()) scrollPageTop();
   });
 
   els.btnExportToggle?.addEventListener("click", (e) => {
@@ -2341,15 +2657,47 @@ function initEvents() {
   els.btnOpenBillingSide?.addEventListener("click", () => {
     location.hash = "#billing";
     closeSidebar();
-    requestAnimationFrame(() => scrollPageTop());
+    if (shouldAutoScrollTop()) {
+      requestAnimationFrame(scrollPageTop);
+    }
   });
 
   els.btnOpenSettingsSide?.addEventListener("click", () => {
     location.hash = "#settings";
     closeSidebar();
-    requestAnimationFrame(() => scrollPageTop());
+    if (shouldAutoScrollTop()) {
+      requestAnimationFrame(scrollPageTop);
+    }
   });
 
   els.btnLogout?.addEventListener("click", logout);
+
   bindGlobalActions();
 }
+
+function init() {
+  hydrateLogos();
+  loadUiPrefs();
+  resetMissionsIfNeeded();
+  state.missions = loadMissions();
+
+  if (!ROUTES.has(location.hash)) {
+    location.hash = "#overview";
+    state.route = "#overview";
+  }
+
+  if (els.rangeSelect) {
+    els.rangeSelect.value = String(state.rangeDays);
+    if (!els.rangeSelect.value) els.rangeSelect.value = "30";
+  }
+
+  initEvents();
+  loadData();
+
+  if (shouldAutoScrollTop()) {
+    scrollPageTop();
+  }
+}
+
+document.addEventListener("DOMContentLoaded", init);
+})();
