@@ -2093,7 +2093,7 @@ body::before{
   }
 }
 /* =========================================================
-   FIX FINAL — contenu injecté par dashboard.js
+   FIX FINAL — dashboard.js / mobile / spacing / modals
    ========================================================= */
 
 /* conteneur principal injecté */
@@ -2103,7 +2103,7 @@ body::before{
   gap:22px !important;
 }
 
-/* colonnes latérales et colonnes internes */
+/* colonnes internes */
 #fpPageContainer .fpCol,
 #fpPageContainer .fpColMain,
 #fpPageContainer .fpColSide,
@@ -2167,13 +2167,7 @@ body::before{
   border-radius:999px !important;
 }
 
-/* espace entre les cartes empilées dans paramètres */
-#fpPageContainer .fpCol.fpColMain > .fpCardInner + .fpCardInner,
-#fpPageContainer .fpCol.fpColSide > .fpCardInner + .fpCardInner{
-  margin-top:24px !important;
-}
-
-/* espace interne dans chaque carte paramètres */
+/* espaces internes cartes */
 #fpPageContainer .fpCardInner > .fpSmall{
   margin-bottom:18px !important;
 }
@@ -2187,25 +2181,170 @@ body::before{
   margin-top:18px !important;
 }
 
-/* Graphique plus visible en mode clair */
-@media (prefers-color-scheme: light){
-  .fpChartBox{
-    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(236,243,255,.96)) !important;
-    border-color:rgba(59,78,130,.14) !important;
-  }
-
-  .fpLegendItem{
-    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.96)) !important;
-    border-color:rgba(59,78,130,.12) !important;
-    color:var(--fpText) !important;
-  }
-
-  .fpChartInsight{
-    color:var(--fpTextSoft) !important;
-  }
+/* espaces entre cartes empilées */
+#fpPageContainer .fpCol > .fpCard + .fpCard,
+#fpPageContainer .fpCol > .fpCardInner + .fpCardInner,
+#fpPageContainer .fpCol.fpColMain > .fpCardInner + .fpCardInner,
+#fpPageContainer .fpCol.fpColSide > .fpCardInner + .fpCardInner{
+  margin-top:24px !important;
 }
 
-/* Missions : style final unique des checks */
+/* espaces entre blocs internes */
+.fpCard > .fpTextPanel + .fpTextPanel,
+.fpCard > .fpCardInner + .fpCardInner,
+.fpCard > .fpInfoList + .fpTextPanel,
+.fpCard > .fpTextPanel + .fpInfoList,
+.fpCard > .fpRows + .fpRows,
+.fpCard > .fpRows + .fpTextPanel,
+.fpCard > .fpTextPanel + .fpRows,
+.fpCard > .fpStatsGrid + .fpTextPanel,
+.fpCard > .fpTextPanel + .fpStatsGrid{
+  margin-top:14px !important;
+}
+
+.fpCard .fpTextPanel{
+  margin-top:14px;
+}
+
+.fpCard .fpTextPanel:first-of-type{
+  margin-top:0;
+}
+
+/* bloc premium / features */
+.fpFeatureStack{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:16px !important;
+  margin-top:14px !important;
+}
+
+.fpFeatureStack > .fpTextPanel{
+  margin:0 !important;
+}
+
+/* reports */
+.fpReportsGrid{
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:18px !important;
+  margin-top:14px !important;
+}
+
+/* toolbar / filtres */
+.fpToolbar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:12px;
+}
+
+.fpToolbar .fpInput,
+.fpToolbar input,
+.fpToolbar select{
+  min-height:46px;
+  padding:0 14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--fpBorder);
+  color:var(--fpText);
+  outline:none;
+}
+
+.fpToolbar .fpInput::placeholder,
+.fpToolbar input::placeholder{
+  color:var(--fpMuted);
+}
+
+/* actions table */
+.fpTableActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+/* feature lock */
+.fpFeatureLock{
+  border:1px dashed var(--fpBorderStrong);
+  border-radius:16px;
+  padding:14px;
+  margin-top:10px;
+  background:rgba(255,255,255,.03);
+}
+
+.fpFeatureLockTitle{
+  font-weight:800;
+  margin-bottom:6px;
+  color:var(--fpText);
+}
+
+.fpFeatureLockHint{
+  font-size:13px;
+  color:var(--fpTextSoft);
+  line-height:1.5;
+}
+
+/* plan benefits */
+.fpPlanBenefits{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.fpPlanBenefit{
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+}
+
+.fpPlanBenefitTitle{
+  font-weight:800;
+  margin-bottom:4px;
+  color:var(--fpText);
+}
+
+.fpPlanBenefitText{
+  font-size:13px;
+  color:var(--fpTextSoft);
+  line-height:1.5;
+}
+
+/* modal injectée par JS */
+#fpModalOverlay{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:rgba(2,6,18,.58);
+  backdrop-filter:blur(8px);
+}
+
+#fpModalOverlay .fpCard{
+  box-shadow:var(--fpShadowLg);
+}
+
+/* mode compact */
+.fpCompactMode .fpRowCard,
+.fpCompactMode .fpInfoRow,
+.fpCompactMode .fpSettingsRow,
+.fpCompactMode .fpQuotaRow,
+.fpCompactMode .fpAddonRow,
+.fpCompactMode .fpMissionCard,
+.fpCompactMode .fpTableRow{
+  padding:10px 12px !important;
+}
+
+.fpCompactMode .fpMissionTitle{
+  font-size:20px !important;
+}
+
+.fpCompactMode .fpRowMeta,
+.fpCompactMode .fpMissionMeta,
+.fpCompactMode .fpMissionDesc{
+  font-size:12px !important;
+}
+
+/* missions check */
 .fpMissionCheck{
   width:30px;
   height:30px;
@@ -2245,8 +2384,37 @@ body::before{
   stroke:#ffffff;
 }
 
-/* mode clair : cases missions plus visibles */
+/* light mode */
 @media (prefers-color-scheme: light){
+  .fpChartBox{
+    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(236,243,255,.96)) !important;
+    border-color:rgba(59,78,130,.14) !important;
+  }
+
+  .fpLegendItem{
+    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.96)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+    color:var(--fpText) !important;
+  }
+
+  .fpChartInsight{
+    color:var(--fpTextSoft) !important;
+  }
+
+  .fpToolbar .fpInput,
+  .fpToolbar input,
+  .fpToolbar select{
+    background:linear-gradient(180deg, rgba(255,255,255,.84), rgba(242,247,255,.94)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+    color:var(--fpText) !important;
+  }
+
+  .fpFeatureLock,
+  .fpPlanBenefit{
+    background:linear-gradient(180deg, rgba(255,255,255,.78), rgba(244,248,255,.92)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+  }
+
   .fpMissionCheck{
     border-color:rgba(47,91,255,.30) !important;
     background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(240,245,255,.98)) !important;
@@ -2269,7 +2437,30 @@ body::before{
   }
 }
 
-/* mobile */
+/* responsive */
+@media (max-width:1320px){
+  .fpReportsGrid{
+    grid-template-columns:1fr !important;
+  }
+}
+
+@media (max-width:768px){
+  .fpToolbar{
+    flex-direction:column;
+  }
+
+  .fpToolbar .fpInput,
+  .fpToolbar input,
+  .fpToolbar select{
+    width:100%;
+  }
+
+  .fpTableActions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+}
+
 @media (max-width:760px){
   #fpPageContainer{
     gap:18px !important;
@@ -2354,6 +2545,7 @@ body::before{
     line-height:1.4 !important;
   }
 
+  #fpPageContainer .fpCol > .fpCard + .fpCard,
   #fpPageContainer .fpCol.fpColMain > .fpCardInner + .fpCardInner,
   #fpPageContainer .fpCol.fpColSide > .fpCardInner + .fpCardInner{
     margin-top:20px !important;
@@ -2367,267 +2559,19 @@ body::before{
   #fpPageContainer .fpCardInner > .fpSettingsList{
     margin-top:16px !important;
   }
-}
-/* ========================= */
-/* TOOLBAR / FILTERS / MODALS */
-/* ========================= */
 
-.fpToolbar{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  margin-top:12px;
-}
-
-.fpToolbar .fpInput,
-.fpToolbar input,
-.fpToolbar select{
-  min-height:46px;
-  padding:0 14px;
-  border-radius:14px;
-  background:rgba(255,255,255,.04);
-  border:1px solid var(--fpBorder);
-  color:var(--fpText);
-  outline:none;
-}
-
-.fpToolbar .fpInput::placeholder,
-.fpToolbar input::placeholder{
-  color:var(--fpMuted);
-}
-
-.fpTableActions{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  align-items:center;
-}
-
-.fpFeatureLock{
-  border:1px dashed var(--fpBorderStrong);
-  border-radius:16px;
-  padding:14px;
-  margin-top:10px;
-  background:rgba(255,255,255,.03);
-}
-
-.fpFeatureLockTitle{
-  font-weight:800;
-  margin-bottom:6px;
-  color:var(--fpText);
-}
-
-.fpFeatureLockHint{
-  font-size:13px;
-  color:var(--fpTextSoft);
-  line-height:1.5;
-}
-
-.fpPlanBenefits{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-
-.fpPlanBenefit{
-  padding:12px 14px;
-  border-radius:16px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-}
-
-.fpPlanBenefitTitle{
-  font-weight:800;
-  margin-bottom:4px;
-  color:var(--fpText);
-}
-
-.fpPlanBenefitText{
-  font-size:13px;
-  color:var(--fpTextSoft);
-  line-height:1.5;
-}
-
-/* modal injectée par JS */
-#fpModalOverlay{
-  position:fixed;
-  inset:0;
-  z-index:9999;
-  background:rgba(2,6,18,.58);
-  backdrop-filter:blur(8px);
-}
-
-#fpModalOverlay .fpCard{
-  box-shadow:var(--fpShadowLg);
-}
-
-.fpCompactMode .fpRowCard,
-.fpCompactMode .fpInfoRow,
-.fpCompactMode .fpSettingsRow,
-.fpCompactMode .fpQuotaRow,
-.fpCompactMode .fpAddonRow,
-.fpCompactMode .fpMissionCard,
-.fpCompactMode .fpTableRow{
-  padding:10px 12px !important;
-}
-
-.fpCompactMode .fpMissionTitle{
-  font-size:20px !important;
-}
-
-.fpCompactMode .fpRowMeta,
-.fpCompactMode .fpMissionMeta,
-.fpCompactMode .fpMissionDesc{
-  font-size:12px !important;
-}
-
-@media (prefers-color-scheme: light){
-  .fpToolbar .fpInput,
-  .fpToolbar input,
-  .fpToolbar select{
-    background:linear-gradient(180deg, rgba(255,255,255,.84), rgba(242,247,255,.94)) !important;
-    border-color:rgba(59,78,130,.12) !important;
-    color:var(--fpText) !important;
-  }
-
-  .fpFeatureLock,
-  .fpPlanBenefit{
-    background:linear-gradient(180deg, rgba(255,255,255,.78), rgba(244,248,255,.92)) !important;
-    border-color:rgba(59,78,130,.12) !important;
-  }
-}
-
-@media (max-width:768px){
-  .fpToolbar{
-    flex-direction:column;
-  }
-
-  .fpToolbar .fpInput,
-  .fpToolbar input,
-  .fpToolbar select{
-    width:100%;
-  }
-
-  .fpTableActions{
-    flex-direction:column;
-    align-items:stretch;
-  }
-}
-/* =========================================
-   FIX ESPACES ENTRE BLOCS / CARTES
-   ========================================= */
-
-.fpCard > .fpTextPanel + .fpTextPanel,
-.fpCard > .fpCardInner + .fpCardInner,
-.fpCard > .fpInfoList + .fpTextPanel,
-.fpCard > .fpTextPanel + .fpInfoList,
-.fpCard > .fpRows + .fpRows,
-.fpCard > .fpStatsGrid + .fpTextPanel,
-.fpCard > .fpTextPanel + .fpStatsGrid {
-  margin-top: 14px !important;
-}
-
-.fpCard .fpTextPanel {
-  margin-top: 14px;
-}
-
-.fpCard .fpTextPanel:first-of-type {
-  margin-top: 0;
-}
-
-.fpCol > .fpCard + .fpCard {
-  margin-top: 18px;
-}
-
-.fpFeatureStack {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 14px;
-}
-
-@media (max-width: 760px) {
-  .fpCard > .fpTextPanel + .fpTextPanel,
-  .fpCard > .fpCardInner + .fpCardInner,
-  .fpCol > .fpCard + .fpCard {
-    margin-top: 16px !important;
-  }
-
-  .fpFeatureStack {
-    gap: 16px;
-  }
-}
-/* =========================================================
-   FIX ESPACES — Audits / Monitors / Reports
-   ========================================================= */
-
-.fpFeatureStack{
-  display:flex !important;
-  flex-direction:column !important;
-  gap:16px !important;
-  margin-top:14px !important;
-}
-
-.fpFeatureStack > .fpTextPanel{
-  margin:0 !important;
-}
-
-.fpCol > .fpCard + .fpCard{
-  margin-top:18px !important;
-}
-
-.fpCard .fpTextPanel + .fpTextPanel{
-  margin-top:14px !important;
-}
-
-.fpCard .fpStatsGrid + .fpTextPanel,
-.fpCard .fpTextPanel + .fpStatsGrid,
-.fpCard .fpInfoList + .fpTextPanel,
-.fpCard .fpTextPanel + .fpInfoList,
-.fpCard .fpRows + .fpTextPanel,
-.fpCard .fpTextPanel + .fpRows{
-  margin-top:14px !important;
-}
-
-/* espace spécial colonnes de droite */
-.fpColSide .fpCard{
-  margin-bottom:0 !important;
-}
-
-/* reports: cartes du haut mieux espacées */
-.fpReportsGrid{
-  display:grid !important;
-  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
-  gap:18px !important;
-  margin-top:14px !important;
-}
-
-@media (max-width:1320px){
-  .fpReportsGrid{
-    grid-template-columns:1fr !important;
-  }
-}
-
-@media (max-width:760px){
   .fpFeatureStack{
     gap:18px !important;
     margin-top:16px !important;
   }
 
-  .fpCard .fpTextPanel + .fpTextPanel{
+  .fpCard .fpTextPanel + .fpTextPanel,
+  .fpCard > .fpInfoList + .fpTextPanel,
+  .fpCard > .fpTextPanel + .fpInfoList,
+  .fpCard > .fpRows + .fpTextPanel,
+  .fpCard > .fpTextPanel + .fpRows,
+  .fpCard > .fpStatsGrid + .fpTextPanel,
+  .fpCard > .fpTextPanel + .fpStatsGrid{
     margin-top:16px !important;
-  }
-
-  .fpCard .fpStatsGrid + .fpTextPanel,
-  .fpCard .fpTextPanel + .fpStatsGrid,
-  .fpCard .fpInfoList + .fpTextPanel,
-  .fpCard .fpTextPanel + .fpInfoList,
-  .fpCard .fpRows + .fpTextPanel,
-  .fpCard .fpTextPanel + .fpRows{
-    margin-top:16px !important;
-  }
-
-  .fpCol > .fpCard + .fpCard{
-    margin-top:20px !important;
   }
 }
