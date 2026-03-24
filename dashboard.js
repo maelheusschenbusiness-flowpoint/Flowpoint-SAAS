@@ -16,9 +16,9 @@
     "#settings",
   ]);
 
-  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v10";
-  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v10";
-  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v1";
+  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v11";
+  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v11";
+  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v2";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
   const LOGO_SRC = "/assets/flowpoint-logo.svg";
 
@@ -145,6 +145,7 @@
     if (s === "canceled") return "Annulé";
     if (s === "incomplete") return "Incomplet";
     if (s === "payment_succeeded") return "Paiement validé";
+    if (s === "checkout_verified") return "Paiement vérifié";
     return cap(s.replaceAll("_", " "));
   }
 
@@ -186,8 +187,7 @@
       return "Essai non défini";
     }
 
-    const now = new Date();
-    return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
+    return d.getTime() >= Date.now() ? "Essai actif" : "Essai terminé";
   }
 
   function trialMetaLabel(value) {
@@ -208,8 +208,7 @@
       return "Aucun essai actif";
     }
 
-    const now = new Date();
-    return d.getTime() >= now.getTime()
+    return d.getTime() >= Date.now()
       ? `Jusqu’au ${formatShortDate(value)}`
       : `Terminé le ${formatShortDate(value)}`;
   }
@@ -351,7 +350,6 @@
     if (!r.ok) throw new Error("Refresh failed");
 
     const data = await r.json().catch(() => ({}));
-
     if (data?.token) setToken(data.token);
     if (data?.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
   }
@@ -613,13 +611,12 @@
       ["extraSeats", "Extra seats"],
       ["prioritySupport", "Priority support"],
       ["customDomain", "Custom domain"],
-      ["brandingPack", "Branding pack"],
-      ["extraExports", "Extra exports"],
-      ["extraPdf", "PDF supplémentaires"],
-      ["advancedReports", "Advanced reports"],
-      ["teamPack", "Team pack"],
-      ["apiAccess", "API access"],
-      ["localSeoPack", "Local SEO pack"],
+      ["retention90d", "Retention 90 jours"],
+      ["retention365d", "Retention 365 jours"],
+      ["auditsPack200", "Audits +200"],
+      ["auditsPack1000", "Audits +1000"],
+      ["pdfPack200", "PDF +200"],
+      ["exportsPack1000", "Exports +1000"],
     ];
 
     return rawEntries.map(([key, label]) => {
@@ -693,7 +690,10 @@
 
     try {
       const r = await fetchWithAuth(endpoint, { method: "GET" });
-      if (!r.ok) throw new Error("Export failed");
+      if (!r.ok) {
+        const data = await parseJsonSafe(r);
+        throw new Error(data?.error || "Export failed");
+      }
 
       const blob = await r.blob();
       const objectUrl = URL.createObjectURL(blob);
@@ -1015,8 +1015,7 @@
     if (diff <= -8) return "Le score est en baisse sur la période. Il faut vérifier les derniers audits et les points critiques.";
     return "La performance reste relativement stable sur la période. Quelques ajustements peuvent relancer la progression.";
   }
-
-  function renderOverviewHero() {
+    function renderOverviewHero() {
     const me = state.me || {};
     const ov = state.overview || {};
     const lastAuditText = ov.lastAuditAt ? `Dernier audit le ${formatShortDate(ov.lastAuditAt)}` : "Aucun audit récent";
@@ -1195,9 +1194,9 @@
             "Accès rapide",
             "Navigation complémentaire du workspace",
             `${createInlineLinks([
+              { href: "#billing", label: "Facturation" },
+              { href: "#settings", label: "Paramètres" },
               { href: "/pricing.html", label: "Retour pricing" },
-              { href: "/billing.html", label: "Billing FlowPoint" },
-              { href: "/addons.html", label: "Voir add-ons" },
             ])}`
           )}
         </div>
@@ -1286,7 +1285,7 @@
               <div class="fpTextPanel">
                 ${createInlineLinks([
                   { href: "/pricing.html", label: "Retour pricing" },
-                  { href: "/addons.html", label: "Voir add-ons" },
+                  { href: "#billing", label: "Facturation" },
                 ])}
               </div>
             </div>
@@ -1391,7 +1390,7 @@
             "Navigation",
             "Accès rapide lié aux audits",
             `${createInlineLinks([
-              { href: "/reports.html", label: "Voir rapports" },
+              { href: "#reports", label: "Voir rapports" },
               { href: "/pricing.html", label: "Retour pricing" },
             ])}`
           )}
@@ -1507,8 +1506,8 @@
             "Navigation",
             "Accès rapide du monitoring",
             `${createInlineLinks([
-              { href: "/settings.html", label: "Paramètres" },
-              { href: "/reports.html", label: "Rapports" },
+              { href: "#settings", label: "Paramètres" },
+              { href: "#reports", label: "Rapports" },
             ])}`
           )}
         </div>
@@ -1638,7 +1637,7 @@
             "Accès rapide",
             `${createInlineLinks([
               { href: "/pricing.html", label: "Retour pricing" },
-              { href: "/billing.html", label: "Billing FlowPoint" },
+              { href: "#billing", label: "Facturation" },
             ])}`
           )}
         </div>
@@ -1667,9 +1666,7 @@
         "Consulte le plan actuel, les quotas et la gestion complète FlowPoint.",
         `
           <div class="fpTopActionsRow">
-            <a class="fpBtn fpBtnGhost" href="/billing.html">Billing FlowPoint</a>
             <a class="fpBtn fpBtnGhost" href="/pricing.html">Retour pricing</a>
-            <a class="fpBtn fpBtnGhost" href="/addons.html">Voir les add-ons</a>
             <button class="fpBtn fpBtnPrimary" id="fpBillingCenterBtn" type="button">Paiement</button>
             <button class="fpBtn fpBtnGhost" id="fpBillingRefreshBtn" type="button">Actualiser</button>
           </div>
@@ -1748,9 +1745,9 @@
             "Actions utiles",
             "Accès direct aux pages liées à la facturation",
             `${createInlineLinks([
-              { href: "/addons.html", label: "Gérer les add-ons" },
-              { href: "/billing.html", label: "Billing FlowPoint" },
               { href: "/pricing.html", label: "Retour pricing" },
+              { href: "#settings", label: "Paramètres" },
+              { href: "#reports", label: "Rapports" },
             ])}`
           )}
         </div>
@@ -1838,9 +1835,9 @@
                 <div class="fpCardInnerTitle">Liens utiles</div>
                 <div class="fpSmall">Accès rapide aux pages liées au compte.</div>
                 ${createInlineLinks([
-                  { href: "/billing.html", label: "Billing FlowPoint" },
+                  { href: "#billing", label: "Facturation" },
                   { href: "/pricing.html", label: "Retour pricing" },
-                  { href: "/addons.html", label: "Voir add-ons" },
+                  { href: "#reports", label: "Rapports" },
                 ])}
               </div>
             </div>
@@ -1887,8 +1884,7 @@
       toggleUiPref("liveStatus");
     });
   }
-
-  function openMissionPage(id) {
+    function openMissionPage(id) {
     const mission = state.missions.find((m) => m.id === id);
     if (!mission) return;
 
@@ -1955,14 +1951,30 @@
     setActiveNav();
 
     switch (state.route) {
-      case "#overview": renderOverviewPage(); break;
-      case "#missions": renderMissionsPage(); break;
-      case "#audits": renderAuditsPage(); break;
-      case "#monitors": renderMonitorsPage(); break;
-      case "#reports": renderReportsPage(); break;
-      case "#billing": renderBillingPage(); break;
-      case "#settings": renderSettingsPage(); break;
-      default: renderOverviewPage(); break;
+      case "#overview":
+        renderOverviewPage();
+        break;
+      case "#missions":
+        renderMissionsPage();
+        break;
+      case "#audits":
+        renderAuditsPage();
+        break;
+      case "#monitors":
+        renderMonitorsPage();
+        break;
+      case "#reports":
+        renderReportsPage();
+        break;
+      case "#billing":
+        renderBillingPage();
+        break;
+      case "#settings":
+        renderSettingsPage();
+        break;
+      default:
+        renderOverviewPage();
+        break;
     }
 
     if (shouldAutoScrollTop()) {
@@ -1989,7 +2001,11 @@
         fetchWithAuth("/api/org/settings", { signal }).catch(() => null),
       ]);
 
-      if (meRes?.ok) state.me = await parseJsonSafe(meRes);
+      if (meRes?.ok) {
+        state.me = await parseJsonSafe(meRes);
+      } else {
+        state.me = null;
+      }
 
       if (ovRes?.ok) {
         state.overview = await parseJsonSafe(ovRes);
@@ -2003,14 +2019,22 @@
 
       if (audRes?.ok) {
         const auditsData = await parseJsonSafe(audRes);
-        state.audits = Array.isArray(auditsData?.audits) ? auditsData.audits : Array.isArray(auditsData) ? auditsData : [];
+        state.audits = Array.isArray(auditsData?.audits)
+          ? auditsData.audits
+          : Array.isArray(auditsData)
+            ? auditsData
+            : [];
       } else {
         state.audits = [];
       }
 
       if (monRes?.ok) {
         const monitorsData = await parseJsonSafe(monRes);
-        state.monitors = Array.isArray(monitorsData?.monitors) ? monitorsData.monitors : Array.isArray(monitorsData) ? monitorsData : [];
+        state.monitors = Array.isArray(monitorsData?.monitors)
+          ? monitorsData.monitors
+          : Array.isArray(monitorsData)
+            ? monitorsData
+            : [];
       } else {
         state.monitors = [];
       }
@@ -2054,7 +2078,9 @@
       }
 
       const openBtn = e.target.closest("[data-mission-open]");
-      if (openBtn) openMissionPage(openBtn.getAttribute("data-mission-open"));
+      if (openBtn) {
+        openMissionPage(openBtn.getAttribute("data-mission-open"));
+      }
     });
   }
 
@@ -2072,7 +2098,9 @@
     });
 
     window.addEventListener("resize", () => {
-      if (state.route === "#overview") requestAnimationFrame(drawOverviewChart);
+      if (state.route === "#overview") {
+        requestAnimationFrame(drawOverviewChart);
+      }
     });
 
     els.navItems.forEach((item) => {
