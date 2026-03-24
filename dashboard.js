@@ -2593,6 +2593,23 @@ function bindGlobalActions() {
       e.preventDefault();
       e.stopPropagation();
       openMissionPage(openBtn.getAttribute("data-mission-open"));
+      return;
+    }
+
+    const billingBtn = e.target.closest('[data-go-billing]');
+    if (billingBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      location.hash = "#billing";
+      return;
+    }
+
+    const reportsBtn = e.target.closest('[data-go-reports]');
+    if (reportsBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      location.hash = "#reports";
+      return;
     }
   });
 }
