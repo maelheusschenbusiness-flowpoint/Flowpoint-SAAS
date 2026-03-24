@@ -1,6 +1,9 @@
 (() => {
   "use strict";
 
+  const TOKEN_KEY = "token";
+  const REFRESH_TOKEN_KEY = "refreshToken";
+
   const $ = (s) => document.querySelector(s);
 
   const els = {
@@ -13,7 +16,16 @@
     btnRetry: $("#btnRetry"),
   };
 
-  function setState({ title, desc, status, kind = "", showDashboard = false, showLogin = false, showRetry = false, foot = "" }) {
+  function setState({
+    title,
+    desc,
+    status,
+    kind = "",
+    showDashboard = false,
+    showLogin = false,
+    showRetry = false,
+    foot = ""
+  }) {
     if (els.title) els.title.textContent = title || "";
     if (els.desc) els.desc.textContent = desc || "";
     if (els.statusBox) {
@@ -28,15 +40,27 @@
     els.btnRetry?.classList.toggle("hidden", !showRetry);
   }
 
-  function getTokenFromUrl() {
+  function getUrlParams() {
     const url = new URL(window.location.href);
-    return url.searchParams.get("token") || "";
+    return {
+      token: url.searchParams.get("token") || "",
+      refreshToken: url.searchParams.get("refreshToken") || "",
+    };
+  }
+
+  function storeTokens(token, refreshToken) {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    }
+    if (refreshToken) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    }
   }
 
   async function verify() {
-    const token = getTokenFromUrl();
+    const { token: tokenFromUrl, refreshToken: refreshTokenFromUrl } = getUrlParams();
 
-    if (!token) {
+    if (!tokenFromUrl) {
       setState({
         title: "Lien invalide",
         desc: "Aucun token n’a été trouvé dans l’URL.",
@@ -50,7 +74,7 @@
     }
 
     try {
-      const r = await fetch(`/api/auth/login-verify?token=${encodeURIComponent(token)}`, {
+      const r = await fetch(`/api/auth/login-verify?token=${encodeURIComponent(tokenFromUrl)}`, {
         method: "GET",
         credentials: "include",
       });
@@ -58,23 +82,22 @@
       const data = await r.json().catch(() => ({}));
 
       if (!r.ok) {
-        const msg = String(data?.error || "Validation impossible");
-
         setState({
-          title: "Connexion…",
-          desc: "Validation du lien.",
-          status: msg,
+          title: "Lien invalide ou expiré",
+          desc: "La validation du lien a échoué.",
+          status: String(data?.error || "Validation impossible"),
           kind: "error",
           showLogin: true,
           showRetry: true,
-          foot: "Si tu restes bloqué, retourne sur la page de connexion et demande un nouveau lien."
+          foot: "Demande un nouveau lien de connexion."
         });
         return;
       }
 
-      if (data?.token) {
-        localStorage.setItem("token", data.token);
-      }
+      const finalToken = data?.token || tokenFromUrl;
+      const finalRefreshToken = data?.refreshToken || refreshTokenFromUrl || "";
+
+      storeTokens(finalToken, finalRefreshToken);
 
       setState({
         title: "Connexion réussie",
@@ -96,10 +119,14 @@
         kind: "error",
         showLogin: true,
         showRetry: true,
-        foot: "Vérifie ta connexion puis redemande un nouveau lien si nécessaire."
+        foot: "Vérifie ta connexion puis réessaie."
       });
     }
   }
+
+  els.btnRetry?.addEventListener("click", () => {
+    verify();
+  });
 
   verify();
 })();
