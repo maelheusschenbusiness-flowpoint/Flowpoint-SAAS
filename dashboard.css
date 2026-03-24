@@ -2369,7 +2369,7 @@ body::before{
   }
 }
 /* ========================= */
-/* TOOLBAR (search / filters) */
+/* TOOLBAR / FILTERS / MODALS */
 /* ========================= */
 
 .fpToolbar{
@@ -2379,70 +2379,49 @@ body::before{
   margin-top:12px;
 }
 
+.fpToolbar .fpInput,
 .fpToolbar input,
 .fpToolbar select{
-  background:var(--card);
-  border:1px solid var(--line);
-  border-radius:10px;
-  padding:8px 10px;
-  font-size:13px;
-  color:var(--text);
+  min-height:46px;
+  padding:0 14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--fpBorder);
+  color:var(--fpText);
+  outline:none;
 }
 
-/* ========================= */
-/* TABLE ACTIONS + BUTTONS */
-/* ========================= */
+.fpToolbar .fpInput::placeholder,
+.fpToolbar input::placeholder{
+  color:var(--fpMuted);
+}
 
 .fpTableActions{
   display:flex;
-  gap:6px;
+  gap:8px;
   flex-wrap:wrap;
-}
-
-/* ========================= */
-/* MODAL (audit detail, logs) */
-/* ========================= */
-
-.fpOverlay{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,0.45);
-  display:flex;
   align-items:center;
-  justify-content:center;
-  z-index:9999;
 }
-
-.fpOverlay .fpCard{
-  max-width:720px;
-  width:calc(100% - 20px);
-  border-radius:16px;
-}
-
-/* ========================= */
-/* FEATURE LOCK (upgrade) */
-/* ========================= */
 
 .fpFeatureLock{
-  border:1px dashed var(--line);
-  border-radius:12px;
-  padding:12px;
+  border:1px dashed var(--fpBorderStrong);
+  border-radius:16px;
+  padding:14px;
   margin-top:10px;
+  background:rgba(255,255,255,.03);
 }
 
 .fpFeatureLockTitle{
-  font-weight:600;
-  margin-bottom:4px;
+  font-weight:800;
+  margin-bottom:6px;
+  color:var(--fpText);
 }
 
 .fpFeatureLockHint{
-  font-size:12px;
-  color:var(--muted);
+  font-size:13px;
+  color:var(--fpTextSoft);
+  line-height:1.5;
 }
-
-/* ========================= */
-/* PLAN BENEFITS */
-/* ========================= */
 
 .fpPlanBenefits{
   display:flex;
@@ -2451,32 +2430,86 @@ body::before{
 }
 
 .fpPlanBenefit{
-  padding:10px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:var(--card);
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
 }
 
 .fpPlanBenefitTitle{
-  font-weight:600;
+  font-weight:800;
   margin-bottom:4px;
+  color:var(--fpText);
 }
 
 .fpPlanBenefitText{
   font-size:13px;
-  color:var(--muted);
+  color:var(--fpTextSoft);
+  line-height:1.5;
 }
 
-/* ========================= */
-/* RESPONSIVE FIX */
-/* ========================= */
+/* modal injectée par JS */
+#fpModalOverlay{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:rgba(2,6,18,.58);
+  backdrop-filter:blur(8px);
+}
+
+#fpModalOverlay .fpCard{
+  box-shadow:var(--fpShadowLg);
+}
+
+.fpCompactMode .fpRowCard,
+.fpCompactMode .fpInfoRow,
+.fpCompactMode .fpSettingsRow,
+.fpCompactMode .fpQuotaRow,
+.fpCompactMode .fpAddonRow,
+.fpCompactMode .fpMissionCard,
+.fpCompactMode .fpTableRow{
+  padding:10px 12px !important;
+}
+
+.fpCompactMode .fpMissionTitle{
+  font-size:20px !important;
+}
+
+.fpCompactMode .fpRowMeta,
+.fpCompactMode .fpMissionMeta,
+.fpCompactMode .fpMissionDesc{
+  font-size:12px !important;
+}
+
+@media (prefers-color-scheme: light){
+  .fpToolbar .fpInput,
+  .fpToolbar input,
+  .fpToolbar select{
+    background:linear-gradient(180deg, rgba(255,255,255,.84), rgba(242,247,255,.94)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+    color:var(--fpText) !important;
+  }
+
+  .fpFeatureLock,
+  .fpPlanBenefit{
+    background:linear-gradient(180deg, rgba(255,255,255,.78), rgba(244,248,255,.92)) !important;
+    border-color:rgba(59,78,130,.12) !important;
+  }
+}
 
 @media (max-width:768px){
   .fpToolbar{
     flex-direction:column;
   }
 
+  .fpToolbar .fpInput,
+  .fpToolbar input,
+  .fpToolbar select{
+    width:100%;
+  }
+
   .fpTableActions{
     flex-direction:column;
+    align-items:stretch;
   }
 }
