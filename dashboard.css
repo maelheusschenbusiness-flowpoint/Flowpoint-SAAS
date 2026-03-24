@@ -2557,3 +2557,77 @@ body::before{
     gap: 16px;
   }
 }
+/* =========================================================
+   FIX ESPACES — Audits / Monitors / Reports
+   ========================================================= */
+
+.fpFeatureStack{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:16px !important;
+  margin-top:14px !important;
+}
+
+.fpFeatureStack > .fpTextPanel{
+  margin:0 !important;
+}
+
+.fpCol > .fpCard + .fpCard{
+  margin-top:18px !important;
+}
+
+.fpCard .fpTextPanel + .fpTextPanel{
+  margin-top:14px !important;
+}
+
+.fpCard .fpStatsGrid + .fpTextPanel,
+.fpCard .fpTextPanel + .fpStatsGrid,
+.fpCard .fpInfoList + .fpTextPanel,
+.fpCard .fpTextPanel + .fpInfoList,
+.fpCard .fpRows + .fpTextPanel,
+.fpCard .fpTextPanel + .fpRows{
+  margin-top:14px !important;
+}
+
+/* espace spécial colonnes de droite */
+.fpColSide .fpCard{
+  margin-bottom:0 !important;
+}
+
+/* reports: cartes du haut mieux espacées */
+.fpReportsGrid{
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:18px !important;
+  margin-top:14px !important;
+}
+
+@media (max-width:1320px){
+  .fpReportsGrid{
+    grid-template-columns:1fr !important;
+  }
+}
+
+@media (max-width:760px){
+  .fpFeatureStack{
+    gap:18px !important;
+    margin-top:16px !important;
+  }
+
+  .fpCard .fpTextPanel + .fpTextPanel{
+    margin-top:16px !important;
+  }
+
+  .fpCard .fpStatsGrid + .fpTextPanel,
+  .fpCard .fpTextPanel + .fpStatsGrid,
+  .fpCard .fpInfoList + .fpTextPanel,
+  .fpCard .fpTextPanel + .fpInfoList,
+  .fpCard .fpRows + .fpTextPanel,
+  .fpCard .fpTextPanel + .fpRows{
+    margin-top:16px !important;
+  }
+
+  .fpCol > .fpCard + .fpCard{
+    margin-top:20px !important;
+  }
+}
