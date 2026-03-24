@@ -2465,3 +2465,333 @@
     $("#fpCompactListsToggle")?.addEventListener("click", () => toggleUiPref("compactLists"));
     $("#fpAdvancedCardsToggle")?.addEventListener("click", () => toggleUiPref("showAdvancedCards"));
   }
+  function openMissionPage(id) {
+    const mission = state.missions.find((m) => m.id === id);
+    if (!mission) return;
+
+    if (mission.action === "run_audit") {
+      location.hash = "#audits";
+      return;
+    }
+
+    if (mission.action === "add_monitor" || mission.action === "test_monitor") {
+      location.hash = "#monitors";
+      return;
+    }
+
+    if (mission.action === "export_audits" || mission.action === "export_monitors") {
+      location.hash = "#reports";
+      return;
+    }
+
+    if (mission.action === "open_billing" || mission.action === "view_billing") {
+      location.hash = "#billing";
+      return;
+    }
+
+    if (mission.action === "goto_settings") {
+      location.hash = "#settings";
+    }
+  }
+
+  async function runMission(id) {
+    const mission = state.missions.find((m) => m.id === id);
+    if (!mission) return false;
+
+    if (mission.action === "run_audit") {
+      const ok = await safeRunAudit();
+      if (ok) await loadData({ silent: true });
+      return ok;
+    }
+
+    if (mission.action === "add_monitor") {
+      const ok = await safeAddMonitor();
+      if (ok) await loadData({ silent: true });
+      return ok;
+    }
+
+    if (mission.action === "export_audits") {
+      return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+    }
+
+    if (mission.action === "export_monitors") {
+      return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+    }
+
+    if (mission.action === "open_billing") {
+      return openBillingCenter();
+    }
+
+    if (mission.action === "goto_settings") {
+      location.hash = "#settings";
+      setMissionDoneByAction("goto_settings", true);
+      saveMissions();
+      renderRoute();
+      if (shouldAutoScrollTop()) scrollPageTop();
+      return true;
+    }
+
+    if (mission.action === "test_monitor") {
+      const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
+      if (!firstMonitor) {
+        setStatus("Aucun monitor à tester", "danger");
+        return false;
+      }
+
+      const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
+      if (ok) await loadData({ silent: true });
+      return ok;
+    }
+
+    if (mission.action === "view_billing") {
+      location.hash = "#billing";
+      setMissionDoneByAction("view_billing", true);
+      saveMissions();
+      renderRoute();
+      if (shouldAutoScrollTop()) scrollPageTop();
+      return true;
+    }
+
+    return false;
+  }
+
+  function renderRoute() {
+    setActiveNav();
+
+    document.body.classList.toggle("fpCompactMode", !!state.uiPrefs.compactLists);
+
+    switch (state.route) {
+      case "#overview":
+        renderOverviewPage();
+        break;
+      case "#missions":
+        renderMissionsPage();
+        break;
+      case "#audits":
+        renderAuditsPage();
+        break;
+      case "#monitors":
+        renderMonitorsPage();
+        break;
+      case "#reports":
+        renderReportsPage();
+        break;
+      case "#billing":
+        renderBillingPage();
+        break;
+      case "#settings":
+        renderSettingsPage();
+        break;
+      default:
+        renderOverviewPage();
+        break;
+    }
+
+    if (shouldAutoScrollTop()) {
+      requestAnimationFrame(scrollPageTop);
+    }
+  }
+
+  async function loadData({ silent = false } = {}) {
+    if (state.loading) return;
+
+    state.loading = true;
+    if (!silent) setStatus("Chargement des données…", "warn");
+
+    if (state.controller) state.controller.abort();
+    state.controller = new AbortController();
+    const signal = state.controller.signal;
+
+    try {
+      const [meRes, ovRes, audRes, monRes, setRes] = await Promise.all([
+        fetchWithAuth("/api/me", { signal }).catch(() => null),
+        fetchWithAuth(`/api/overview?days=${encodeURIComponent(state.rangeDays)}`, { signal }).catch(() => null),
+        fetchWithAuth("/api/audits", { signal }).catch(() => null),
+        fetchWithAuth("/api/monitors", { signal }).catch(() => null),
+        fetchWithAuth("/api/org/settings", { signal }).catch(() => null),
+      ]);
+
+      if (meRes?.ok) {
+        state.me = await parseJsonSafe(meRes);
+      } else {
+        state.me = null;
+      }
+
+      if (ovRes?.ok) {
+        state.overview = await parseJsonSafe(ovRes);
+      } else {
+        state.overview = {
+          seoScore: 0,
+          chart: [],
+          monitors: { active: 0, down: 0 },
+        };
+      }
+
+      if (audRes?.ok) {
+        const auditsData = await parseJsonSafe(audRes);
+        state.audits = Array.isArray(auditsData?.audits)
+          ? auditsData.audits
+          : Array.isArray(auditsData)
+            ? auditsData
+            : [];
+      } else {
+        state.audits = [];
+      }
+
+      if (monRes?.ok) {
+        const monitorsData = await parseJsonSafe(monRes);
+        state.monitors = Array.isArray(monitorsData?.monitors)
+          ? monitorsData.monitors
+          : Array.isArray(monitorsData)
+            ? monitorsData
+            : [];
+      } else {
+        state.monitors = [];
+      }
+
+      if (setRes?.ok) {
+        const settingsData = await parseJsonSafe(setRes);
+        state.orgSettings = settingsData?.settings || settingsData || state.orgSettings;
+      }
+
+      state.lastLoadedAt = new Date().toISOString();
+
+      hydrateLogos();
+      hydrateSidebarAccount();
+      hydrateTopbar();
+      renderRoute();
+      setStatus("Dashboard prêt", "ok");
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        console.error(e);
+        setStatus("Erreur chargement dashboard", "danger");
+      }
+    } finally {
+      state.loading = false;
+    }
+  }
+
+  function bindGlobalActions() {
+    document.addEventListener("click", async (e) => {
+      const toggleBtn = e.target.closest("[data-mission-toggle]");
+      if (toggleBtn) {
+        toggleMission(toggleBtn.getAttribute("data-mission-toggle"));
+        renderRoute();
+        return;
+      }
+
+      const runBtn = e.target.closest("[data-mission-do]");
+      if (runBtn) {
+        await runMission(runBtn.getAttribute("data-mission-do"));
+        renderRoute();
+        return;
+      }
+
+      const openBtn = e.target.closest("[data-mission-open]");
+      if (openBtn) {
+        openMissionPage(openBtn.getAttribute("data-mission-open"));
+      }
+    });
+  }
+
+  function logout() {
+    clearAuth();
+    window.location.href = "/login.html";
+  }
+
+  function initEvents() {
+    window.addEventListener("hashchange", () => {
+      state.route = ROUTES.has(location.hash) ? location.hash : "#overview";
+      renderRoute();
+      closeSidebar();
+      if (shouldAutoScrollTop()) scrollPageTop();
+    });
+
+    window.addEventListener("resize", () => {
+      if (state.route === "#overview") {
+        requestAnimationFrame(drawOverviewChart);
+      }
+    });
+
+    els.navItems.forEach((item) => {
+      item.addEventListener("click", () => {
+        closeSidebar();
+        if (shouldAutoScrollTop()) {
+          requestAnimationFrame(scrollPageTop);
+        }
+      });
+    });
+
+    els.btnMenu?.addEventListener("click", openSidebar);
+    els.overlay?.addEventListener("click", closeSidebar);
+
+    els.btnRefresh?.addEventListener("click", () => loadData());
+
+    els.rangeSelect?.addEventListener("change", () => {
+      const raw = String(els.rangeSelect.value || "30");
+      state.rangeDays = raw === "7" ? 7 : raw === "3" ? 3 : 30;
+      loadData();
+      if (shouldAutoScrollTop()) scrollPageTop();
+    });
+
+    els.btnExportToggle?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleExportMenu();
+    });
+
+    els.exportMenu?.addEventListener("click", (e) => e.stopPropagation());
+    document.addEventListener("click", () => toggleExportMenu(false));
+
+    els.btnExportAudits?.addEventListener("click", async () => {
+      toggleExportMenu(false);
+      await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+    });
+
+    els.btnExportMonitors?.addEventListener("click", async () => {
+      toggleExportMenu(false);
+      await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+    });
+
+    els.btnOpenBillingSide?.addEventListener("click", () => {
+      location.hash = "#billing";
+      closeSidebar();
+      if (shouldAutoScrollTop()) requestAnimationFrame(scrollPageTop);
+    });
+
+    els.btnOpenSettingsSide?.addEventListener("click", () => {
+      location.hash = "#settings";
+      closeSidebar();
+      if (shouldAutoScrollTop()) requestAnimationFrame(scrollPageTop);
+    });
+
+    els.btnLogout?.addEventListener("click", logout);
+
+    bindGlobalActions();
+  }
+
+  function init() {
+    hydrateLogos();
+    loadUiPrefs();
+    resetMissionsIfNeeded();
+    state.missions = loadMissions();
+
+    if (!ROUTES.has(location.hash)) {
+      location.hash = "#overview";
+      state.route = "#overview";
+    }
+
+    if (els.rangeSelect) {
+      els.rangeSelect.value = String(state.rangeDays);
+      if (!els.rangeSelect.value) els.rangeSelect.value = "30";
+    }
+
+    initEvents();
+    loadData();
+
+    if (shouldAutoScrollTop()) {
+      scrollPageTop();
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
