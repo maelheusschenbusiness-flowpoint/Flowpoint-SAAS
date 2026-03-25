@@ -1,5 +1,5 @@
-<!-- /assets/flowpoint-logo.svg  (ICON ONLY) -->
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+<!-- /assets/flowpoint-logo.svg  (ICON ONLY, TRANSPARENT BACKGROUND) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
     <linearGradient id="g" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
       <stop stop-color="#2F6BFF"/>
@@ -7,13 +7,13 @@
     </linearGradient>
   </defs>
 
-  <!-- carré -->
+  <!-- carré (fond dégradé du logo, pas de fond global blanc) -->
   <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#g)"/>
 
-  <!-- éclair (centré) -->
+  <!-- éclair -->
   <path
     d="M36 14L23 37h10.4L29.6 50 44.8 28.2H34.4L36 14Z"
-    fill="#fff"
+    fill="#ffffff"
     opacity="0.98"
   />
 </svg>
