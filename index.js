@@ -1,13 +1,13 @@
 // =======================
-// FlowPoint — SaaS Backend (Pack A + Pack B)
+// FlowPoint — SaaS Backend
 // Plans: Standard / Pro / Ultra
-// Pack A: SEO Audit + Cache + PDF + Monitoring + Logs + CSV + Magic Link + Admin
-// Pack B: Orgs + Team Ultra (Invites) + Roles + Shared data per org
-// + Fixes: SSRF protection, Monitor quota = active count, Cron concurrency,
-//          /api/overview for dashboard, exports aliases, uptime endpoint.
-// + Stripe Option B: stripe.js (central helpers + webhook + routes)
-// + Add-ons: monitors +50, extra seat, retention 90/365, audits packs, pdf pack, exports pack, priority support, custom domain
-// White label: GRATUIT (toujours activé)
+// Core: SEO Audit + PDF + Monitoring + Logs + CSV + Magic Link + Orgs + Team + Stripe
+// Clean version:
+// - routes mortes supprimées
+// - refresh token ajouté
+// - invite accept ajouté
+// - pages actives uniquement
+// - cron monitors conservé
 // =======================
 
 require("dotenv").config();
@@ -34,6 +34,12 @@ app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 5000;
 const BRAND_NAME = "FlowPoint";
+
+const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || "30d";
+const REFRESH_TOKEN_TTL = process.env.REFRESH_TOKEN_TTL || "90d";
+const REFRESH_SECRET =
+  process.env.JWT_REFRESH_SECRET ||
+  `${process.env.JWT_SECRET || "flowpoint"}_refresh`;
 
 // ---------- ENV CHECK ----------
 const REQUIRED = [
@@ -155,7 +161,6 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
       return { ok: false, error: "Recipient missing" };
     }
 
-    // 1) Resend
     if (process.env.RESEND_API_KEY) {
       const payload = {
         from,
@@ -186,7 +191,6 @@ async function sendEmail({ to, subject, text, html, attachments, bcc }) {
       return { ok: true, id: data?.id };
     }
 
-    // 2) SMTP fallback
     const t = getMailer();
     if (!t) {
       console.log("⚠️ SMTP non configuré et RESEND_API_KEY absent => email ignoré:", subject);
@@ -219,19 +223,15 @@ function buildDailyReportEmail({
   audits24hCount,
   logsDown24hCount,
 }) {
-  const bn = String(brandName || BRAND_NAME || "FlowPoint")
-    .replace(/\s*AI\s*$/i, "")
-    .trim();
+  const subject = `${brandName} — Rapport quotidien — ${orgName}`;
 
-  const subject = `${bn} — Rapport quotidien — ${orgName}`;
   const text = `${brandName} — Rapport quotidien
 Organisation: ${orgName}
 
 • Users: ${usersCount}
 • Monitors DOWN: ${monitorsDown}
-
-Audits (24h): ${audits24hCount || 0}
-Logs DOWN (24h): ${logsDown24hCount || 0}
+• Audits (24h): ${audits24hCount || 0}
+• Logs DOWN (24h): ${logsDown24hCount || 0}
 
 Email envoyé automatiquement.
 `;
@@ -249,7 +249,6 @@ Email envoyé automatiquement.
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="supported-color-schemes" content="light dark">
   <title>${brandName} — Rapport quotidien</title>
   <style>
     :root{
@@ -259,7 +258,6 @@ Email envoyé automatiquement.
       --text:#0f172a;
       --border:rgba(15,23,42,.10);
       --brand:#2f5bff;
-      --brand2:#2449ff;
       --chip:#eef2ff;
     }
     @media (prefers-color-scheme: dark){
@@ -427,6 +425,7 @@ function priceIdForPlan(plan) {
   if (plan === "ultra") return process.env.STRIPE_PRICE_ID_ULTRA;
   return null;
 }
+
 // ---------- ANTI-ABUS ----------
 const PUBLIC_EMAIL_DOMAINS = new Set([
   "gmail.com",
@@ -524,9 +523,7 @@ async function assertSafePublicUrl(rawUrl) {
   }
 
   const res = await dns.lookup(host, { all: true, verbatim: true });
-  if (!res?.length) {
-    throw new Error("DNS lookup failed");
-  }
+  if (!res?.length) throw new Error("DNS lookup failed");
 
   for (const r of res) {
     if (isPrivateIp(r.address)) {
@@ -537,7 +534,6 @@ async function assertSafePublicUrl(rawUrl) {
   u.hash = "";
   return u.toString();
 }
-
 // ---------- MODELS ----------
 const OrgSchema = new mongoose.Schema(
   {
@@ -713,12 +709,32 @@ const Monitor = mongoose.model("Monitor", MonitorSchema);
 const MonitorLog = mongoose.model("MonitorLog", MonitorLogSchema);
 
 // ---------- AUTH ----------
-function signToken(user) {
+function signAccessToken(user) {
   return jwt.sign(
-    { uid: user._id.toString(), email: user.email },
+    { uid: user._id.toString(), email: user.email, type: "access" },
     process.env.JWT_SECRET,
-    { expiresIn: "30d" }
+    { expiresIn: ACCESS_TOKEN_TTL }
   );
+}
+
+function signRefreshToken(user) {
+  return jwt.sign(
+    { uid: user._id.toString(), email: user.email, type: "refresh" },
+    REFRESH_SECRET,
+    { expiresIn: REFRESH_TOKEN_TTL }
+  );
+}
+
+// compat stripe.js
+function signToken(user) {
+  return signAccessToken(user);
+}
+
+function issueAuthPayload(user) {
+  return {
+    token: signAccessToken(user),
+    refreshToken: signRefreshToken(user),
+  };
 }
 
 function auth(req, res, next) {
@@ -762,7 +778,6 @@ async function ensureOrgDefaults(org) {
     changed = true;
   } else {
     const b = org.billingAddons;
-
     if (b.monitorsPack50 == null) { b.monitorsPack50 = 0; changed = true; }
     if (b.extraSeats == null) { b.extraSeats = 0; changed = true; }
     if (b.retention90d == null) { b.retention90d = false; changed = true; }
@@ -925,6 +940,7 @@ function requireCron(req, res, next) {
 
   next();
 }
+
 // ---------- Helpers alerting ----------
 function uniqEmails(arr) {
   const out = [];
@@ -1061,14 +1077,12 @@ async function runWithConcurrency(items, limit, worker) {
   await Promise.all(runners);
   return results;
 }
-
 // ---------- MONITOR CHECK ----------
 async function checkUrlOnce(url) {
   const safeUrl = await assertSafePublicUrl(url);
 
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), MONITOR_HTTP_TIMEOUT_MS);
-
   const t0 = Date.now();
 
   try {
@@ -1141,9 +1155,7 @@ function normalizeUrl(url) {
 
 function scoreAudit(checks) {
   let score = 100;
-  const penalize = (cond, points) => {
-    if (cond) score -= points;
-  };
+  const penalize = (cond, points) => { if (cond) score -= points; };
 
   penalize(!checks.title.ok, 15);
   penalize(!checks.metaDescription.ok, 12);
@@ -1252,6 +1264,7 @@ async function canCreateActiveMonitor(user, org) {
 
   return countActive < q.monitors;
 }
+
 // =======================
 // STRIPE (via stripe.js)
 // IMPORTANT: webhook RAW avant express.json()
@@ -1291,37 +1304,44 @@ app.use(express.urlencoded({ extended: true }));
 // ---------- STATIC ----------
 app.use(express.static(path.join(__dirname)));
 
-// ---------- PAGES ----------
 function sendPage(res, file) {
   return res.sendFile(path.join(__dirname, file));
 }
 
+// ---------- PAGES ----------
 app.get("/", (_, res) => sendPage(res, "index.html"));
 app.get("/index.html", (_, res) => sendPage(res, "index.html"));
+
 app.get("/dashboard", (_, res) => sendPage(res, "dashboard.html"));
 app.get("/dashboard.html", (_, res) => sendPage(res, "dashboard.html"));
+
 app.get("/pricing", (_, res) => sendPage(res, "pricing.html"));
 app.get("/pricing.html", (_, res) => sendPage(res, "pricing.html"));
+
 app.get("/success", (_, res) => sendPage(res, "success.html"));
 app.get("/success.html", (_, res) => sendPage(res, "success.html"));
+
 app.get("/cancel", (_, res) => sendPage(res, "cancel.html"));
 app.get("/cancel.html", (_, res) => sendPage(res, "cancel.html"));
+
 app.get("/login", (_, res) => sendPage(res, "login.html"));
 app.get("/login.html", (_, res) => sendPage(res, "login.html"));
+
 app.get("/login-verify", (_, res) => sendPage(res, "login-verify.html"));
 app.get("/login-verify.html", (_, res) => sendPage(res, "login-verify.html"));
+
 app.get("/invite-accept", (_, res) => sendPage(res, "invite-accept.html"));
 app.get("/invite-accept.html", (_, res) => sendPage(res, "invite-accept.html"));
+
 app.get("/admin", (_, res) => sendPage(res, "admin.html"));
 app.get("/admin.html", (_, res) => sendPage(res, "admin.html"));
 
-// pages front liées au dashboard / Stripe si elles existent
+app.get("/checkout.html", (_, res) => sendPage(res, "checkout.html"));
 app.get("/checkout-embedded.html", (_, res) => sendPage(res, "checkout-embedded.html"));
 app.get("/checkout-return.html", (_, res) => sendPage(res, "checkout-return.html"));
+
 app.get("/billing.html", (_, res) => sendPage(res, "billing.html"));
 app.get("/addons.html", (_, res) => sendPage(res, "addons.html"));
-app.get("/reports.html", (_, res) => sendPage(res, "reports.html"));
-app.get("/settings.html", (_, res) => sendPage(res, "settings.html"));
 
 // ---------- API ----------
 app.get("/api/health", (_, res) => {
@@ -1416,7 +1436,11 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     }
 
     await ensureOrgForUser(user);
-    return res.json({ ok: true, token: signToken(user) });
+
+    return res.json({
+      ok: true,
+      ...issueAuthPayload(user),
+    });
   } catch (e) {
     console.log("lead error:", e.message);
 
@@ -1425,6 +1449,35 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
     }
 
     return res.status(500).json({ error: "Erreur serveur lead" });
+  }
+});
+
+// ---------- AUTH: REFRESH ----------
+app.post("/api/auth/refresh", async (req, res) => {
+  try {
+    const refreshToken = String(req.body?.refreshToken || "").trim();
+    if (!refreshToken) {
+      return res.status(400).json({ error: "Refresh token manquant" });
+    }
+
+    const decoded = jwt.verify(refreshToken, REFRESH_SECRET);
+    if (!decoded?.uid) {
+      return res.status(401).json({ error: "Refresh token invalide" });
+    }
+
+    const user = await User.findById(decoded.uid);
+    if (!user) {
+      return res.status(404).json({ error: "User introuvable" });
+    }
+
+    await ensureOrgForUser(user);
+
+    return res.json({
+      ok: true,
+      ...issueAuthPayload(user),
+    });
+  } catch (e) {
+    return res.status(401).json({ error: "Refresh token invalide" });
   }
 });
 
@@ -1535,13 +1588,85 @@ app.get("/api/auth/login-verify", async (req, res) => {
     await lt.save();
 
     await ensureOrgForUser(user);
-    return res.json({ ok: true, token: signToken(user) });
+
+    return res.json({
+      ok: true,
+      ...issueAuthPayload(user),
+    });
   } catch (e) {
     console.log("login-verify error:", e.message);
     return res.status(500).json({ error: "Erreur login-verify" });
   }
 });
 
+// ---------- INVITE ACCEPT ----------
+app.post("/api/org/invite/accept", async (req, res) => {
+  try {
+    const token = String(req.body?.token || "").trim();
+    const email = String(req.body?.email || "").trim();
+    const name = String(req.body?.name || "").trim();
+
+    if (!token) return res.status(400).json({ error: "Token manquant" });
+    if (!email) return res.status(400).json({ error: "Email requis" });
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const invite = await Invite.findOne({ tokenHash });
+
+    if (!invite) return res.status(404).json({ error: "Invitation introuvable" });
+    if (invite.acceptedAt) return res.status(400).json({ error: "Invitation déjà utilisée" });
+    if (invite.expiresAt && new Date(invite.expiresAt).getTime() < Date.now()) {
+      return res.status(400).json({ error: "Invitation expirée" });
+    }
+
+    const emailNorm = normalizeEmail(email);
+    if (invite.invitedEmailNormalized && invite.invitedEmailNormalized !== emailNorm) {
+      return res.status(403).json({ error: "Cet email ne correspond pas à l’invitation" });
+    }
+
+    const org = await Org.findById(invite.orgId);
+    if (!org) return res.status(404).json({ error: "Organisation introuvable" });
+
+    let user = await User.findOne({ emailNormalized: emailNorm });
+
+    if (!user) {
+      user = await User.create({
+        email: email.toLowerCase(),
+        emailNormalized: emailNorm,
+        name: name || "",
+        companyName: org.name,
+        companyNameNormalized: org.normalizedName,
+        companyDomain: org.createdFromEmailDomain || "",
+        orgId: org._id,
+        role: "member",
+        plan: "standard",
+      });
+    } else {
+      if (user.orgId && String(user.orgId) !== String(org._id)) {
+        return res.status(409).json({ error: "Cet utilisateur appartient déjà à une autre organisation" });
+      }
+
+      user.name = name || user.name;
+      user.orgId = org._id;
+      user.role = "member";
+      if (!user.companyName) user.companyName = org.name;
+      if (!user.companyNameNormalized) user.companyNameNormalized = org.normalizedName;
+      await user.save();
+    }
+
+    invite.acceptedAt = new Date();
+    await invite.save();
+
+    await ensureOrgDefaults(org);
+
+    return res.json({
+      ok: true,
+      ...issueAuthPayload(user),
+    });
+  } catch (e) {
+    console.log("invite-accept error:", e.message);
+    return res.status(500).json({ error: "Erreur acceptation invitation" });
+  }
+});
 // ---------- ME ----------
 app.get("/api/me", auth, requireActive, async (req, res) => {
   const u = req.dbUser;
@@ -1640,7 +1765,7 @@ app.post("/api/org/settings", auth, requireActive, requireOwner, async (req, res
   return res.json({ ok: true });
 });
 
-// aliases settings
+// alias monitor-settings
 app.get("/api/org/monitor-settings", auth, requireActive, async (req, res) => {
   const org = await Org.findById(req.dbUser.orgId).select("alertRecipients alertExtraEmails");
   return res.json({
@@ -2025,7 +2150,6 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
     return res.status(500).json({ error: "Erreur cron monitors-run" });
   }
 });
-
 // ---------- EXPORTS ----------
 function csvEscape(v) {
   const s = String(v ?? "");
@@ -2094,8 +2218,6 @@ async function sendMonitorsCsv(req, res) {
 
 app.get("/api/export/audits.csv", auth, requireActive, sendAuditsCsv);
 app.get("/api/export/monitors.csv", auth, requireActive, sendMonitorsCsv);
-
-// aliases corrigés
 app.get("/api/exports/audits.csv", auth, requireActive, sendAuditsCsv);
 app.get("/api/exports/monitors.csv", auth, requireActive, sendMonitorsCsv);
 
