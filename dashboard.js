@@ -1397,299 +1397,298 @@
   }
 
   function renderOverviewPage() {
-    const me = state.me || {};
-    const ov = state.overview || {};
-    const recentAudits = Array.isArray(state.audits) ? state.audits.slice(0, 5) : [];
-    const recentMonitors = Array.isArray(state.monitors) ? state.monitors.slice(0, 5) : [];
-    const done = countDoneMissions();
-    const auditBuckets = getAuditHealthBuckets();
-    const monitorBuckets = getMonitorHealthBuckets();
+  const me = state.me || {};
+  const ov = state.overview || {};
+  const recentAudits = Array.isArray(state.audits) ? state.audits.slice(0, 5) : [];
+  const recentMonitors = Array.isArray(state.monitors) ? state.monitors.slice(0, 5) : [];
+  const done = countDoneMissions();
+  const auditBuckets = getAuditHealthBuckets();
+  const monitorBuckets = getMonitorHealthBuckets();
 
-    setPage(`
-      ${renderOverviewHero()}
+  setPage(`
+    ${renderOverviewHero()}
 
-      <div class="fpStatsGrid">
-        <div class="fpStatCard">
-          <div class="fpStatLabel">Audits utilisés</div>
-          <div class="fpStatValue">${esc(formatUsage(me.usage?.audits))}</div>
-          <div class="fpStatMeta">${usagePercent(me.usage?.audits)}% du quota</div>
-        </div>
-
-        <div class="fpStatCard">
-          <div class="fpStatLabel">PDF utilisés</div>
-          <div class="fpStatValue">${esc(formatUsage(me.usage?.pdf))}</div>
-          <div class="fpStatMeta">${usagePercent(me.usage?.pdf)}% du quota</div>
-        </div>
-
-        <div class="fpStatCard">
-          <div class="fpStatLabel">Exports utilisés</div>
-          <div class="fpStatValue">${esc(formatUsage(me.usage?.exports))}</div>
-          <div class="fpStatMeta">${usagePercent(me.usage?.exports)}% du quota</div>
-        </div>
+    <div class="fpStatsGrid">
+      <div class="fpStatCard">
+        <div class="fpStatLabel">Audits utilisés</div>
+        <div class="fpStatValue">${esc(formatUsage(me.usage?.audits))}</div>
+        <div class="fpStatMeta">${usagePercent(me.usage?.audits)}% du quota</div>
       </div>
 
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Performance",
-            "Évolution SEO",
-            "Lecture multi-indicateurs sur la période sélectionnée",
-            `
-              <div class="fpChartCard">
-                <div class="fpChartBox">
-                  <canvas id="fpOverviewChart"></canvas>
-                </div>
-                <div class="fpChartLegend">
-                  <div class="fpLegendItem"><span class="fpLegendDot"></span> Score SEO</div>
-                  <div class="fpLegendItem"><span class="fpLegendDot" style="background:rgba(255,255,255,.55)"></span> Santé technique</div>
-                </div>
-                <div class="fpChartInsight">${esc(getOverviewInsight())}</div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Quick setup",
-            "Missions prioritaires",
-            "Checklist rapide pour avancer plus vite",
-            `
-              <div class="fpMissionStack">
-                ${state.missions.slice(0, 4).map((m) => `
-                  <div class="fpMissionCard">
-                    <div class="fpMissionTop">
-                      <button
-                        class="fpMissionCheck ${m.done ? "done" : ""}"
-                        data-mission-toggle="${esc(m.id)}"
-                        type="button"
-                        aria-checked="${m.done ? "true" : "false"}"
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          <path d="M6.5 12.5L10.2 16.2L17.5 8.8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                      </button>
-
-                      <div class="fpMissionInfo">
-                        <div class="fpMissionTitle">${esc(m.title)}</div>
-                        <div class="fpMissionMeta">${esc(m.meta)}</div>
-                      </div>
-                    </div>
-
-                    <div class="fpMissionActions">
-                      <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Voir</button>
-                    </div>
-                  </div>
-                `).join("")}
-              </div>
-            `
-          )}
-
-          ${
-            state.uiPrefs.showAdvancedCards
-              ? createSectionCard(
-                  "Santé globale",
-                  "Répartition des scores et états",
-                  "Vue plus scalable pour piloter plus de clients",
-                  `
-                    <div class="fpStatsGrid">
-                      <div class="fpStatCard">
-                        <div class="fpStatLabel">Audits forts</div>
-                        <div class="fpStatValue">${auditBuckets.strong}</div>
-                        <div class="fpStatMeta">Score ≥ 75</div>
-                      </div>
-                      <div class="fpStatCard">
-                        <div class="fpStatLabel">Audits moyens</div>
-                        <div class="fpStatValue">${auditBuckets.mid}</div>
-                        <div class="fpStatMeta">45 à 74</div>
-                      </div>
-                      <div class="fpStatCard">
-                        <div class="fpStatLabel">Audits faibles</div>
-                        <div class="fpStatValue">${auditBuckets.weak}</div>
-                        <div class="fpStatMeta">&lt; 45</div>
-                      </div>
-                      <div class="fpStatCard">
-                        <div class="fpStatLabel">Monitors UP</div>
-                        <div class="fpStatValue">${monitorBuckets.up}</div>
-                        <div class="fpStatMeta">Disponibles</div>
-                      </div>
-                      <div class="fpStatCard">
-                        <div class="fpStatLabel">Monitors DOWN</div>
-                        <div class="fpStatValue">${monitorBuckets.down}</div>
-                        <div class="fpStatMeta">Incidents détectés</div>
-                      </div>
-                      <div class="fpStatCard">
-                        <div class="fpStatLabel">Monitors inactifs</div>
-                        <div class="fpStatValue">${monitorBuckets.unknown}</div>
-                        <div class="fpStatMeta">Sans historique</div>
-                      </div>
-                    </div>
-                  `
-                )
-              : ""
-          }
-        </div>
-
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Organisation",
-            "Résumé chargé",
-            "Vue synthétique du compte actif",
-            `
-              <div class="fpInfoList">
-                <div class="fpInfoRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
-                <div class="fpInfoRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
-                <div class="fpInfoRow"><span>Statut</span><strong>${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</strong></div>
-                <div class="fpInfoRow"><span>Essai</span><strong>${esc(trialLabel(me.trialEndsAt))}</strong></div>
-                <div class="fpInfoRow"><span>Monitors actifs</span><strong>${esc(ov.monitors?.active ?? 0)}/${esc(me.usage?.monitors?.limit ?? 0)}</strong></div>
-                <div class="fpInfoRow"><span>Incidents</span><strong>${esc(ov.monitors?.down ?? 0)}</strong></div>
-                <div class="fpInfoRow"><span>Missions faites</span><strong>${done}/${state.missions.length}</strong></div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Audits récents",
-            "Historique rapide",
-            "Derniers audits chargés depuis l’API",
-            recentAudits.length
-              ? `
-                <div class="fpRows">
-                  ${recentAudits.map((a) => `
-                    <div class="fpRowCard">
-                      <div class="fpRowMain">
-                        <div class="fpRowTitle">${esc(a.url || "Audit SEO")}</div>
-                        <div class="fpRowMeta">${esc(formatDate(a.createdAt))}</div>
-                      </div>
-                      <div class="fpRowRight"><div class="fpScore">${esc(a.score ?? 0)}</div></div>
-                    </div>
-                  `).join("")}
-                </div>
-              `
-              : createEmpty("Aucun audit disponible pour le moment.")
-          )}
-
-          ${createSectionCard(
-            "Monitors live",
-            "État rapide",
-            "Surveillance en direct des URLs",
-            recentMonitors.length
-              ? `
-                <div class="fpRows">
-                  ${recentMonitors.map((m) => `
-                    <div class="fpRowCard">
-                      <div class="fpRowMain">
-                        <div class="fpRowTitle">${esc(m.url || "Monitor")}</div>
-                        <div class="fpRowMeta">${esc(m.intervalMinutes ?? 60)} min · ${esc(formatDate(m.lastCheckedAt))}</div>
-                      </div>
-                      <div class="fpRowRight">${createBadge(normalizeMonitorStatus(m))}</div>
-                    </div>
-                  `).join("")}
-                </div>
-              `
-              : createEmpty("Aucun monitor disponible pour le moment.")
-          )}
-
-          ${createSectionCard(
-            "Liens utiles",
-            "Accès rapide",
-            "Navigation complémentaire du workspace",
-            `${createInlineLinks([
-              { href: "#billing", label: "Facturation" },
-              { href: "#reports", label: "Rapports" },
-              { href: "#settings", label: "Paramètres" },
-              { href: "/pricing.html", label: "Retour pricing" },
-            ])}`
-          )}
-        </div>
+      <div class="fpStatCard">
+        <div class="fpStatLabel">PDF utilisés</div>
+        <div class="fpStatValue">${esc(formatUsage(me.usage?.pdf))}</div>
+        <div class="fpStatMeta">${usagePercent(me.usage?.pdf)}% du quota</div>
       </div>
-    `);
 
-    requestAnimationFrame(drawOverviewChart);
-  }
+      <div class="fpStatCard">
+        <div class="fpStatLabel">Exports utilisés</div>
+        <div class="fpStatValue">${esc(formatUsage(me.usage?.exports))}</div>
+        <div class="fpStatMeta">${usagePercent(me.usage?.exports)}% du quota</div>
+      </div>
+    </div>
 
-  function renderMissionsPage() {
-    const done = countDoneMissions();
-
-    setPage(`
-      ${createSectionCard(
-        "Missions",
-        "Checklist d’activation",
-        "Les missions se réinitialisent automatiquement tous les 3 jours et changent d’ordre pour éviter d’être toujours identiques.",
-        `
-          <div class="fpMissionPageGrid">
-            <div class="fpMissionPageMain">
-              <div class="fpMissionStack">
-                ${state.missions.map((m) => `
-                  <div class="fpMissionCard fpMissionCardLarge">
-                    <div class="fpMissionTop">
-                      <button
-                        class="fpMissionCheck ${m.done ? "done" : ""}"
-                        data-mission-toggle="${esc(m.id)}"
-                        type="button"
-                        aria-checked="${m.done ? "true" : "false"}"
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          <path d="M6.5 12.5L10.2 16.2L17.5 8.8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                      </button>
-
-                      <div class="fpMissionInfo">
-                        <div class="fpMissionTitle">${esc(m.title)}</div>
-                        <div class="fpMissionMeta">${esc(m.meta)}</div>
-                      </div>
-                    </div>
-
-                    <div class="fpMissionActions">
-                      <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Ouvrir</button>
-                    </div>
-                  </div>
-                `).join("")}
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Performance",
+          "Évolution SEO",
+          "Lecture multi-indicateurs sur la période sélectionnée",
+          `
+            <div class="fpChartCard">
+              <div class="fpChartBox">
+                <canvas id="fpOverviewChart"></canvas>
               </div>
+              <div class="fpChartLegend">
+                <div class="fpLegendItem"><span class="fpLegendDot"></span> Score SEO</div>
+                <div class="fpLegendItem"><span class="fpLegendDot" style="background:rgba(255,255,255,.55)"></span> Santé technique</div>
+              </div>
+              <div class="fpChartInsight">${esc(getOverviewInsight())}</div>
             </div>
+          `
+        )}
 
-            <div class="fpMissionPageSide">
-              <div class="fpStatsGrid">
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Terminées</div>
-                  <div class="fpStatValue">${done}/${state.missions.length}</div>
-                  <div class="fpStatMeta">Missions complétées</div>
+        ${createSectionCard(
+          "Quick setup",
+          "Missions prioritaires",
+          "Checklist rapide pour avancer plus vite",
+          `
+            <div class="fpMissionStack">
+              ${state.missions.slice(0, 4).map((m) => `
+                <div class="fpMissionCard">
+                  <div class="fpMissionTop">
+                    <button
+                      class="fpMissionCheck ${m.done ? "done" : ""}"
+                      data-mission-toggle="${esc(m.id)}"
+                      type="button"
+                      aria-checked="${m.done ? "true" : "false"}"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M6.5 12.5L10.2 16.2L17.5 8.8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </button>
+
+                    <div class="fpMissionInfo">
+                      <div class="fpMissionTitle">${esc(m.title)}</div>
+                      <div class="fpMissionMeta">${esc(m.meta)}</div>
+                    </div>
+                  </div>
+
+                  <div class="fpMissionActions">
+                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Voir</button>
+                  </div>
                 </div>
+              `).join("")}
+            </div>
+          `
+        )}
 
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Reset auto</div>
-                  <div class="fpStatValue">3 jours</div>
-                  <div class="fpStatMeta">Remise à zéro automatique</div>
+        ${
+          state.uiPrefs.showAdvancedCards
+            ? createSectionCard(
+                "Santé globale",
+                "Répartition des scores et états",
+                "Vue plus scalable pour piloter plus de clients",
+                `
+                  <div class="fpStatsGrid">
+                    <div class="fpStatCard">
+                      <div class="fpStatLabel">Audits forts</div>
+                      <div class="fpStatValue">${auditBuckets.strong}</div>
+                      <div class="fpStatMeta">Score ≥ 75</div>
+                    </div>
+                    <div class="fpStatCard">
+                      <div class="fpStatLabel">Audits moyens</div>
+                      <div class="fpStatValue">${auditBuckets.mid}</div>
+                      <div class="fpStatMeta">45 à 74</div>
+                    </div>
+                    <div class="fpStatCard">
+                      <div class="fpStatLabel">Audits faibles</div>
+                      <div class="fpStatValue">${auditBuckets.weak}</div>
+                      <div class="fpStatMeta">&lt; 45</div>
+                    </div>
+                    <div class="fpStatCard">
+                      <div class="fpStatLabel">Monitors UP</div>
+                      <div class="fpStatValue">${monitorBuckets.up}</div>
+                      <div class="fpStatMeta">Disponibles</div>
+                    </div>
+                    <div class="fpStatCard">
+                      <div class="fpStatLabel">Monitors DOWN</div>
+                      <div class="fpStatValue">${monitorBuckets.down}</div>
+                      <div class="fpStatMeta">Incidents détectés</div>
+                    </div>
+                    <div class="fpStatCard">
+                      <div class="fpStatLabel">Monitors inactifs</div>
+                      <div class="fpStatValue">${monitorBuckets.unknown}</div>
+                      <div class="fpStatMeta">Sans historique</div>
+                    </div>
+                  </div>
+                `
+              )
+            : ""
+        }
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Organisation",
+          "Résumé chargé",
+          "Vue synthétique du compte actif",
+          `
+            <div class="fpInfoList">
+              <div class="fpInfoRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
+              <div class="fpInfoRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
+              <div class="fpInfoRow"><span>Statut</span><strong>${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</strong></div>
+              <div class="fpInfoRow"><span>Essai</span><strong>${esc(trialLabel(me.trialEndsAt))}</strong></div>
+              <div class="fpInfoRow"><span>Monitors actifs</span><strong>${esc(ov.monitors?.active ?? 0)}/${esc(me.usage?.monitors?.limit ?? 0)}</strong></div>
+              <div class="fpInfoRow"><span>Incidents</span><strong>${esc(ov.monitors?.down ?? 0)}</strong></div>
+              <div class="fpInfoRow"><span>Missions faites</span><strong>${done}/${state.missions.length}</strong></div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Audits récents",
+          "Historique rapide",
+          "Derniers audits chargés depuis l’API",
+          recentAudits.length
+            ? `
+              <div class="fpRows">
+                ${recentAudits.map((a) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(a.url || "Audit SEO")}</div>
+                      <div class="fpRowMeta">${esc(formatDate(a.createdAt))}</div>
+                    </div>
+                    <div class="fpRowRight"><div class="fpScore">${esc(a.score ?? 0)}</div></div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucun audit disponible pour le moment.")
+        )}
+
+        ${createSectionCard(
+          "Monitors live",
+          "État rapide",
+          "Surveillance en direct des URLs",
+          recentMonitors.length
+            ? `
+              <div class="fpRows">
+                ${recentMonitors.map((m) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(m.url || "Monitor")}</div>
+                      <div class="fpRowMeta">${esc(m.intervalMinutes ?? 60)} min · ${esc(formatDate(m.lastCheckedAt))}</div>
+                    </div>
+                    <div class="fpRowRight">${createBadge(normalizeMonitorStatus(m))}</div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucun monitor disponible pour le moment.")
+        )}
+
+        ${createSectionCard(
+          "Liens utiles",
+          "Accès rapide",
+          "Navigation complémentaire du workspace",
+          `${createInlineLinks([
+            { href: "/billing.html", label: "Facturation" },
+            { href: "#reports", label: "Rapports" },
+            { href: "#settings", label: "Paramètres" },
+            { href: "/pricing.html", label: "Retour pricing" },
+          ])}`
+        )}
+      </div>
+    </div>
+  `);
+
+  requestAnimationFrame(drawOverviewChart);
+}
+  function renderMissionsPage() {
+  const done = countDoneMissions();
+
+  setPage(`
+    ${createSectionCard(
+      "Missions",
+      "Checklist d’activation",
+      "Les missions se réinitialisent automatiquement tous les 3 jours et changent d’ordre pour éviter d’être toujours identiques.",
+      `
+        <div class="fpMissionPageGrid">
+          <div class="fpMissionPageMain">
+            <div class="fpMissionStack">
+              ${state.missions.map((m) => `
+                <div class="fpMissionCard fpMissionCardLarge">
+                  <div class="fpMissionTop">
+                    <button
+                      class="fpMissionCheck ${m.done ? "done" : ""}"
+                      data-mission-toggle="${esc(m.id)}"
+                      type="button"
+                      aria-checked="${m.done ? "true" : "false"}"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M6.5 12.5L10.2 16.2L17.5 8.8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </button>
+
+                    <div class="fpMissionInfo">
+                      <div class="fpMissionTitle">${esc(m.title)}</div>
+                      <div class="fpMissionMeta">${esc(m.meta)}</div>
+                    </div>
+                  </div>
+
+                  <div class="fpMissionActions">
+                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Ouvrir</button>
+                  </div>
                 </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Ordre</div>
-                  <div class="fpStatValue">Dynamique</div>
-                  <div class="fpStatMeta">Les missions varient</div>
-                </div>
-              </div>
-
-              <div class="fpTextPanel">
-                Les missions sont conçues pour remettre le client dans un parcours simple : monitor, audit, export, paramètres et facturation.
-              </div>
-
-              <div class="fpTextPanel">
-                Conseil : complète d’abord monitor + audit + paramètres. C’est le trio qui active vraiment le dashboard.
-              </div>
-
-              <div class="fpTextPanel">
-                ${createInlineLinks([
-                  { href: "#billing", label: "Facturation" },
-                  { href: "#reports", label: "Rapports" },
-                  { href: "/pricing.html", label: "Retour pricing" },
-                ])}
-              </div>
+              `).join("")}
             </div>
           </div>
-        `
-      )}
-    `);
-  }
+
+          <div class="fpMissionPageSide">
+            <div class="fpStatsGrid">
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Terminées</div>
+                <div class="fpStatValue">${done}/${state.missions.length}</div>
+                <div class="fpStatMeta">Missions complétées</div>
+              </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Reset auto</div>
+                <div class="fpStatValue">3 jours</div>
+                <div class="fpStatMeta">Remise à zéro automatique</div>
+              </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Ordre</div>
+                <div class="fpStatValue">Dynamique</div>
+                <div class="fpStatMeta">Les missions varient</div>
+              </div>
+            </div>
+
+            <div class="fpTextPanel">
+              Les missions sont conçues pour remettre le client dans un parcours simple : monitor, audit, export, paramètres et facturation.
+            </div>
+
+            <div class="fpTextPanel">
+              Conseil : complète d’abord monitor + audit + paramètres. C’est le trio qui active vraiment le dashboard.
+            </div>
+
+            <div class="fpTextPanel">
+              ${createInlineLinks([
+                { href: "/billing.html", label: "Facturation" },
+                { href: "#reports", label: "Rapports" },
+                { href: "/pricing.html", label: "Retour pricing" },
+              ])}
+            </div>
+          </div>
+        </div>
+      `
+    )}
+  `);
+}
 
   function renderAuditsPage() {
     const audits = getFilteredAudits();
@@ -2234,122 +2233,8 @@
   }
 
   function renderBillingPage() {
-    const me = state.me || {};
-    const usage = me.usage || {};
-    const addons = getAddonEntries();
-    const orgName = normalizeOrgName();
-
-    setPage(`
-      ${createSectionCard(
-        "Facturation",
-        "Abonnement",
-        "Consulte le plan actuel, les quotas et la gestion complète FlowPoint.",
-        `
-          <div class="fpTopActionsRow">
-            <a class="fpBtn fpBtnGhost" href="/pricing.html">Retour pricing</a>
-            <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
-            <button class="fpBtn fpBtnGhost" type="button" data-go-reports>Rapports</button>
-            <button class="fpBtn fpBtnPrimary" id="fpBillingCenterBtn" type="button">Paiement</button>
-            <button class="fpBtn fpBtnGhost" id="fpBillingRefreshBtn" type="button">Actualiser</button>
-          </div>
-        `
-      )}
-
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Plan",
-            "Abonnement actif",
-            "État actuel de la facturation",
-            `
-              <div class="fpBillingGrid">
-                <div class="fpBillingCard">
-                  <div class="fpBillingTitle">Plan actuel</div>
-                  <div class="fpBillingPlan">${esc(planLabel(me.plan))}</div>
-                  <div class="fpBillingStatus">${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</div>
-                </div>
-
-                <div class="fpBillingCard">
-                  <div class="fpBillingTitle">Organisation</div>
-                  <div class="fpBillingPlan">${esc(orgName)}</div>
-                  <div class="fpBillingStatus">Workspace actuellement connecté</div>
-                </div>
-
-                <div class="fpBillingCard">
-                  <div class="fpBillingTitle">Essai</div>
-                  <div class="fpBillingPlan">${esc(trialLabel(me.trialEndsAt))}</div>
-                  <div class="fpBillingStatus">${esc(trialMetaLabel(me.trialEndsAt))}</div>
-                </div>
-
-                <div class="fpBillingCard">
-                  <div class="fpBillingTitle">Rôle</div>
-                  <div class="fpBillingPlan">${esc(cap(me.role || "owner"))}</div>
-                  <div class="fpBillingStatus">Niveau d’accès actuel</div>
-                </div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Quotas",
-            "Limites du plan",
-            "Consommation visible dans l’espace client",
-            `
-              <div class="fpQuotaList">
-                <div class="fpQuotaRow"><span>Audits</span><strong>${esc(formatUsage(usage.audits))}</strong></div>
-                <div class="fpQuotaRow"><span>PDF</span><strong>${esc(formatUsage(usage.pdf))}</strong></div>
-                <div class="fpQuotaRow"><span>Exports</span><strong>${esc(formatUsage(usage.exports))}</strong></div>
-                <div class="fpQuotaRow"><span>Monitors</span><strong>${esc(formatUsage(usage.monitors))}</strong></div>
-                <div class="fpQuotaRow"><span>Team seats</span><strong>${esc(formatUsage(usage.teamSeats))}</strong></div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Comparatif",
-            "Bénéfices par plan",
-            "Structure plus scalable pour guider l’upgrade",
-            buildPlanBenefitsCard()
-          )}
-        </div>
-
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Add-ons",
-            "Modules actifs",
-            "Résumé des modules et options disponibles",
-            `
-              <div class="fpAddonsList">
-                ${addons.map((a) => `
-                  <div class="fpAddonRow">
-                    <div class="fpAddonLabel">${esc(a.label)}</div>
-                    <div class="fpAddonPill ${a.enabled ? "on" : "off"}">${esc(a.text)}</div>
-                  </div>
-                `).join("")}
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Gestion",
-            "Actions utiles",
-            "Accès direct aux pages liées à la facturation",
-            `${createInlineLinks([
-              { href: "/pricing.html", label: "Retour pricing" },
-              { href: "/addons.html", label: "Add-ons" },
-              { href: "#settings", label: "Paramètres" },
-              { href: "#reports", label: "Rapports" },
-              { href: "#billing", label: "Billing" },
-            ])}`
-          )}
-        </div>
-      </div>
-    `);
-
-    $("#fpBillingCenterBtn")?.addEventListener("click", openBillingCenter);
-    $("#fpBillingRefreshBtn")?.addEventListener("click", () => loadData());
-  }
-
+  window.location.href = "/billing.html";
+}
   function renderSettingsPage() {
     const s = state.orgSettings || {};
     const me = state.me || {};
@@ -2503,94 +2388,89 @@
   }
 
   function openMissionPage(id) {
-    const mission = state.missions.find((m) => m.id === id);
-    if (!mission) return;
+  const mission = state.missions.find((m) => m.id === id);
+  if (!mission) return;
 
-    if (mission.action === "run_audit") {
-      navigateToHash("audits");
-      return;
-    }
-
-    if (mission.action === "add_monitor" || mission.action === "test_monitor") {
-      navigateToHash("monitors");
-      return;
-    }
-
-    if (mission.action === "export_audits" || mission.action === "export_monitors") {
-      navigateToHash("reports");
-      return;
-    }
-
-    if (mission.action === "open_billing" || mission.action === "view_billing") {
-      navigateToHash("billing");
-      return;
-    }
-
-    if (mission.action === "goto_settings") {
-      navigateToHash("settings");
-    }
+  if (mission.action === "run_audit") {
+    location.hash = "#audits";
+    return;
   }
 
+  if (mission.action === "add_monitor" || mission.action === "test_monitor") {
+    location.hash = "#monitors";
+    return;
+  }
+
+  if (mission.action === "export_audits" || mission.action === "export_monitors") {
+    location.hash = "#reports";
+    return;
+  }
+
+  if (mission.action === "open_billing" || mission.action === "view_billing") {
+    window.location.href = "/billing.html";
+    return;
+  }
+
+  if (mission.action === "goto_settings") {
+    location.hash = "#settings";
+  }
+}
   async function runMission(id) {
-    const mission = state.missions.find((m) => m.id === id);
-    if (!mission) return false;
+  const mission = state.missions.find((m) => m.id === id);
+  if (!mission) return false;
 
-    if (mission.action === "run_audit") {
-      const ok = await safeRunAudit();
-      if (ok) await loadData({ silent: true });
-      return ok;
-    }
-
-    if (mission.action === "add_monitor") {
-      const ok = await safeAddMonitor();
-      if (ok) await loadData({ silent: true });
-      return ok;
-    }
-
-    if (mission.action === "export_audits") {
-      return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
-    }
-
-    if (mission.action === "export_monitors") {
-      return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
-    }
-
-    if (mission.action === "open_billing") {
-      navigateToHash("billing");
-      setMissionDoneByAction("open_billing", true);
-      saveMissions();
-      return true;
-    }
-
-    if (mission.action === "goto_settings") {
-      navigateToHash("settings");
-      setMissionDoneByAction("goto_settings", true);
-      saveMissions();
-      return true;
-    }
-
-    if (mission.action === "test_monitor") {
-      const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
-      if (!firstMonitor) {
-        setStatus("Aucun monitor à tester", "danger");
-        return false;
-      }
-
-      const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
-      if (ok) await loadData({ silent: true });
-      return ok;
-    }
-
-    if (mission.action === "view_billing") {
-      navigateToHash("billing");
-      setMissionDoneByAction("view_billing", true);
-      saveMissions();
-      return true;
-    }
-
-    return false;
+  if (mission.action === "run_audit") {
+    const ok = await safeRunAudit();
+    if (ok) await loadData({ silent: true });
+    return ok;
   }
 
+  if (mission.action === "add_monitor") {
+    const ok = await safeAddMonitor();
+    if (ok) await loadData({ silent: true });
+    return ok;
+  }
+
+  if (mission.action === "export_audits") {
+    return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+  }
+
+  if (mission.action === "export_monitors") {
+    return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+  }
+
+  if (mission.action === "open_billing") {
+    window.location.href = "/billing.html";
+    return true;
+  }
+
+  if (mission.action === "goto_settings") {
+    location.hash = "#settings";
+    setMissionDoneByAction("goto_settings", true);
+    saveMissions();
+    renderRoute({ scrollTop: true });
+    return true;
+  }
+
+  if (mission.action === "test_monitor") {
+    const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
+    if (!firstMonitor) {
+      setStatus("Aucun monitor à tester", "danger");
+      return false;
+    }
+
+    const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
+    if (ok) await loadData({ silent: true });
+    return ok;
+  }
+
+  if (mission.action === "view_billing") {
+    window.location.href = "/billing.html";
+    return true;
+  }
+
+  return false;
+}
   function renderRoute(options = {}) {
     const {
       scrollTop = false,
@@ -2621,8 +2501,8 @@
         renderReportsPage();
         break;
       case "#billing":
-        renderBillingPage();
-        break;
+  window.location.href = "/billing.html";
+  return;
       case "#settings":
         renderSettingsPage();
         break;
@@ -2754,22 +2634,21 @@
         return;
       }
 
-      const billingBtn = e.target.closest("[data-go-billing]");
-      if (billingBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        navigateToHash("billing");
-        return;
-      }
+      const billingBtn = e.target.closest('[data-go-billing]');
+if (billingBtn) {
+  e.preventDefault();
+  e.stopPropagation();
+  window.location.href = "/billing.html";
+  return;
+}
 
-      const reportsBtn = e.target.closest("[data-go-reports]");
-      if (reportsBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        navigateToHash("reports");
-      }
-    });
-  }
+const reportsBtn = e.target.closest('[data-go-reports]');
+if (reportsBtn) {
+  e.preventDefault();
+  e.stopPropagation();
+  location.hash = "#reports";
+  return;
+}
 
   function logout() {
     clearAuth();
@@ -2829,12 +2708,8 @@
     });
 
     els.btnOpenBillingSide?.addEventListener("click", () => {
-      navigateToHash("billing");
-      closeSidebar();
-      if (shouldAutoScrollTop()) {
-        requestAnimationFrame(scrollPageTop);
-      }
-    });
+  window.location.href = "/billing.html";
+});
 
     els.btnOpenSettingsSide?.addEventListener("click", () => {
       navigateToHash("settings");
