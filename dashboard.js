@@ -1190,7 +1190,140 @@
 
     return { up, down, unknown };
   }
+function drawOverviewChart() {
+  const canvas = $("#fpOverviewChart");
+  if (!canvas) return;
 
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(260, Math.round(rect.width || 760));
+  const mobile = window.innerWidth <= 760;
+  const lightMode = window.matchMedia("(prefers-color-scheme: light)").matches;
+  const height = mobile ? 220 : 320;
+
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.width = "100%";
+  canvas.style.height = `${height}px`;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const rawChart =
+    Array.isArray(state.overview?.chart) && state.overview.chart.length
+      ? state.overview.chart
+      : [];
+
+  const seoData = rawChart.length
+    ? rawChart.map((n) => clamp(Number(n || 0), 0, 100))
+    : [8, 16, 22, 20, 34, 41, 38, 48, 57, 61];
+
+  const healthData = seoData.map((n, i) => clamp(n - 8 + (i % 3) * 2, 0, 100));
+
+  const styles = getComputedStyle(document.documentElement);
+  const brand = styles.getPropertyValue("--fpBrand").trim() || "#2f5bff";
+  const brand2 = styles.getPropertyValue("--fpBrand2").trim() || "#1b45ff";
+  const text = styles.getPropertyValue("--fpMuted").trim() || "#94a3b8";
+  const grid = lightMode
+    ? "rgba(15,24,48,.12)"
+    : (styles.getPropertyValue("--fpBorderStrong").trim() || "rgba(255,255,255,.14)");
+  const dashedGrid = lightMode ? "rgba(15,24,48,.22)" : "rgba(255,255,255,.25)";
+  const labelColor = lightMode ? "rgba(15,24,48,.72)" : text;
+
+  const padLeft = mobile ? 34 : 44;
+  const padRight = mobile ? 14 : 20;
+  const padTop = 18;
+  const padBottom = mobile ? 26 : 34;
+
+  const chartW = width - padLeft - padRight;
+  const chartH = height - padTop - padBottom;
+  const gridLines = 5;
+
+  ctx.strokeStyle = grid;
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i <= gridLines; i += 1) {
+    const y = padTop + (chartH / gridLines) * i;
+    ctx.beginPath();
+    ctx.moveTo(padLeft, y);
+    ctx.lineTo(width - padRight, y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = labelColor;
+  ctx.font = mobile ? "11px Inter, system-ui, sans-serif" : "12px Inter, system-ui, sans-serif";
+
+  const labels = ["100", "80", "60", "40", "20", "0"];
+  for (let i = 0; i < labels.length; i += 1) {
+    const y = padTop + (chartH / 5) * i;
+    ctx.fillText(labels[i], labels[i] === "100" ? 6 : 12, y + 4);
+  }
+
+  function buildPoints(data) {
+    const stepX = data.length > 1 ? chartW / (data.length - 1) : chartW;
+    return data.map((value, i) => ({
+      x: padLeft + i * stepX,
+      y: padTop + chartH - (value / 100) * chartH,
+      value,
+    }));
+  }
+
+  const seoPoints = buildPoints(seoData);
+  const healthPoints = buildPoints(healthData);
+
+  const areaGradient = ctx.createLinearGradient(0, padTop, 0, padTop + chartH);
+  areaGradient.addColorStop(0, lightMode ? "rgba(47,91,255,.18)" : "rgba(47,91,255,.24)");
+  areaGradient.addColorStop(1, "rgba(47,91,255,0)");
+
+  ctx.beginPath();
+  ctx.moveTo(seoPoints[0].x, padTop + chartH);
+  seoPoints.forEach((p) => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(seoPoints[seoPoints.length - 1].x, padTop + chartH);
+  ctx.closePath();
+  ctx.fillStyle = areaGradient;
+  ctx.fill();
+
+  ctx.beginPath();
+  healthPoints.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  });
+  ctx.strokeStyle = dashedGrid;
+  ctx.lineWidth = lightMode ? 2.2 : 2;
+  ctx.setLineDash([6, 6]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const strokeGradient = ctx.createLinearGradient(padLeft, 0, width - padRight, 0);
+  strokeGradient.addColorStop(0, brand);
+  strokeGradient.addColorStop(1, brand2);
+
+  ctx.beginPath();
+  seoPoints.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  });
+  ctx.strokeStyle = strokeGradient;
+  ctx.lineWidth = mobile ? 3.2 : 4;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.stroke();
+
+  seoPoints.forEach((p) => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, mobile ? 4 : 5, 0, Math.PI * 2);
+    ctx.fillStyle = brand;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, mobile ? 1.8 : 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+  });
+}
   function getOverviewInsight() {
     const chart =
       Array.isArray(state.overview?.chart) && state.overview.chart.length
