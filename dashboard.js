@@ -587,29 +587,30 @@
   }
 
   function createBadge(status) {
-    const s = lower(status);
+  const s = lower(status);
 
-    const label =
-      s === "up" ? "UP" :
-      s === "down" ? "DOWN" :
-      s === "active" ? "Actif" :
-      s === "trialing" ? "Essai" :
-      s === "unknown" ? "UNKNOWN" :
-      cap(s);
+  const label =
+    s === "up" ? "UP" :
+    s === "down" ? "DOWN" :
+    s === "active" ? "Actif" :
+    s === "trialing" ? "Essai" :
+    s === "unknown" ? "Inactif" :
+    s === "inactive" ? "Inactif" :
+    cap(s);
 
-    const cls =
-      s === "up" ? "up" :
-      s === "down" ? "down" :
-      s === "active" ? "up" :
-      s === "trialing" ? "warn" :
-      "";
+  const cls =
+    s === "up" ? "up" :
+    s === "active" ? "up" :
+    s === "down" ? "down" :
+    s === "trialing" ? "warn" :
+    "";
 
-    return `
-      <span class="fpBadge ${cls}">
-        <span class="fpBadgeDot"></span>
-        ${esc(label)}
-      </span>
-    `;
+  return `
+    <span class="fpBadge ${cls}">
+      <span class="fpBadgeDot"></span>
+      ${esc(label)}
+    </span>
+  `;
   }
 
   function createEmpty(message) {
@@ -1148,29 +1149,33 @@
   }
 
   function buildPlanBenefitsCard() {
-    const current = lower(state.me?.plan);
-    const rows = [
-      { plan: "standard", audits: "30", monitors: "3", pdf: "30", exports: "30", extras: "Base" },
-      { plan: "pro", audits: "300", monitors: "50", pdf: "300", exports: "300", extras: "Plus de volume" },
-      { plan: "ultra", audits: "2000", monitors: "300", pdf: "2000", exports: "2000", extras: "Équipe + scale" },
-    ];
+  const current = lower(state.me?.plan);
+  const rows = [
+    { plan: "standard", audits: "30", monitors: "3", pdf: "30", exports: "30", extras: "Base" },
+    { plan: "pro", audits: "300", monitors: "50", pdf: "300", exports: "300", extras: "Plus de volume" },
+    { plan: "ultra", audits: "2000", monitors: "300", pdf: "2000", exports: "2000", extras: "Équipe + scale" },
+  ];
 
-    return `
-      <div class="fpRows">
-        ${rows.map((r) => `
+  return `
+    <div class="fpRows">
+      ${rows.map((r) => {
+        const isCurrent = current === r.plan;
+        return `
           <div class="fpRowCard">
             <div class="fpRowMain">
-              <div class="fpRowTitle">${esc(planLabel(r.plan))}${current === r.plan ? " · actuel" : ""}</div>
+              <div class="fpRowTitle">${esc(planLabel(r.plan))}${isCurrent ? " · actuel" : ""}</div>
               <div class="fpRowMeta">
                 Audits ${esc(r.audits)} · Monitors ${esc(r.monitors)} · PDF ${esc(r.pdf)} · Exports ${esc(r.exports)} · ${esc(r.extras)}
               </div>
             </div>
-            <div class="fpRowRight">${createBadge(current === r.plan ? "active" : "unknown")}</div>
+            <div class="fpRowRight">${createBadge(isCurrent ? "active" : "inactive")}</div>
           </div>
-        `).join("")}
-      </div>
-    `;
-  }
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+  
 
   function getAuditHealthBuckets() {
     const audits = Array.isArray(state.audits) ? state.audits : [];
@@ -1520,10 +1525,11 @@
                         <div class="fpStatMeta">Incidents détectés</div>
                       </div>
                       <div class="fpStatCard">
-                        <div class="fpStatLabel">Monitors unknown</div>
-                        <div class="fpStatValue">${monitorBuckets.unknown}</div>
-                        <div class="fpStatMeta">Sans historique</div>
-                      </div>
+                      <div class="fpStatCard">
+                     <div class="fpStatLabel">Monitors inactifs</div>
+                       <div class="fpStatValue">${monitorBuckets.unknown}</div>
+                       <div class="fpStatMeta">Sans historique récent</div>
+                     </div>
                     </div>
                   `
                 )
@@ -1708,6 +1714,7 @@
           <button class="fpBtn fpBtnPrimary" id="fpAuditsRunBtn" type="button">Lancer un audit SEO</button>
           <button class="fpBtn fpBtnGhost" id="fpAuditsExportBtn" type="button">Exporter en CSV</button>
           <a class="fpBtn fpBtnGhost" href="#billing">Billing</a>
+          <a class="fpBtn fpBtnGhost" href="#reports">Rapports</a>
           <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
         </div>
 
@@ -1867,13 +1874,12 @@
     });
   });
 }
-
 function renderMonitorsPage() {
   const allMonitors = Array.isArray(state.monitors) ? state.monitors : [];
   const monitors = getFilteredMonitors();
   const upCount = allMonitors.filter((m) => normalizeMonitorStatus(m) === "up").length;
   const downCount = allMonitors.filter((m) => normalizeMonitorStatus(m) === "down").length;
-  const unknownCount = allMonitors.filter((m) => normalizeMonitorStatus(m) === "unknown").length;
+  const inactiveCount = allMonitors.filter((m) => normalizeMonitorStatus(m) === "unknown").length;
 
   setPage(`
     ${createSectionCard(
@@ -1885,6 +1891,7 @@ function renderMonitorsPage() {
           <button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn" type="button">Ajouter un monitor</button>
           <button class="fpBtn fpBtnGhost" id="fpExportMonitorsBtn" type="button">Exporter en CSV</button>
           <a class="fpBtn fpBtnGhost" href="#billing">Billing</a>
+          <a class="fpBtn fpBtnGhost" href="#reports">Rapports</a>
           <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
         </div>
 
@@ -1900,7 +1907,7 @@ function renderMonitorsPage() {
             { value: "all", label: "Tous les statuts" },
             { value: "up", label: "UP" },
             { value: "down", label: "DOWN" },
-            { value: "unknown", label: "UNKNOWN" },
+            { value: "unknown", label: "Inactif" },
           ],
           sorts: [
             { value: "date_desc", label: "Date décroissante" },
@@ -1980,8 +1987,8 @@ function renderMonitorsPage() {
               </div>
 
               <div class="fpStatCard">
-                <div class="fpStatLabel">UNKNOWN</div>
-                <div class="fpStatValue">${unknownCount}</div>
+                <div class="fpStatLabel">Inactifs</div>
+                <div class="fpStatValue">${inactiveCount}</div>
                 <div class="fpStatMeta">Sans historique récent</div>
               </div>
             </div>
@@ -2077,7 +2084,6 @@ function renderMonitorsPage() {
     });
   });
 }
-
 function renderBillingPage() {
   const me = state.me || {};
   const usage = me.usage || {};
@@ -2093,6 +2099,7 @@ function renderBillingPage() {
         <div class="fpTopActionsRow">
           <a class="fpBtn fpBtnGhost" href="/pricing.html">Retour pricing</a>
           <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
+          <a class="fpBtn fpBtnGhost" href="#reports">Rapports</a>
           <button class="fpBtn fpBtnPrimary" id="fpBillingCenterBtn" type="button">Paiement</button>
           <button class="fpBtn fpBtnGhost" id="fpBillingRefreshBtn" type="button">Actualiser</button>
         </div>
@@ -2183,6 +2190,7 @@ function renderBillingPage() {
             { href: "/addons.html", label: "Add-ons" },
             { href: "#settings", label: "Paramètres" },
             { href: "#reports", label: "Rapports" },
+            { href: "#billing", label: "Billing" },
           ])}`
         )}
       </div>
@@ -2192,7 +2200,6 @@ function renderBillingPage() {
   $("#fpBillingCenterBtn")?.addEventListener("click", openBillingCenter);
   $("#fpBillingRefreshBtn")?.addEventListener("click", () => loadData());
 }
-
 function renderSettingsPage() {
   const s = state.orgSettings || {};
   const me = state.me || {};
@@ -2296,11 +2303,11 @@ function renderSettingsPage() {
               <div class="fpCardInnerTitle">Liens utiles</div>
               <div class="fpSmall">Accès rapide aux pages liées au compte.</div>
               ${createInlineLinks([
-                { href: "#billing", label: "Facturation" },
-                { href: "/addons.html", label: "Add-ons" },
-                { href: "/pricing.html", label: "Retour pricing" },
-                { href: "#reports", label: "Rapports" },
-              ])}
+  { href: "#billing", label: "Billing" },
+  { href: "#reports", label: "Rapports" },
+  { href: "/addons.html", label: "Add-ons" },
+  { href: "/pricing.html", label: "Retour pricing" },
+])}
             </div>
           </div>
 
@@ -2691,7 +2698,43 @@ function initEvents() {
 
   bindGlobalActions();
 }
+// --------- ROUTER HASH (FIX NAVIGATION) ---------
+function getRoute() {
+  return window.location.hash.replace("#", "") || "overview";
+}
 
+function navigate(route) {
+  window.location.hash = route;
+}
+
+function handleRoute() {
+  const route = getRoute();
+  state.page = route;
+  renderPage();
+}
+
+// click sidebar → navigation
+function bindNavigation() {
+  document.querySelectorAll("[data-route]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      const route = el.getAttribute("data-route");
+      navigate(route);
+      closeSidebar();
+    });
+  });
+
+  // boutons externes (billing etc)
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-go]");
+    if (!btn) return;
+
+    const route = btn.getAttribute("data-go");
+    if (route) navigate(route);
+  });
+
+  window.addEventListener("hashchange", handleRoute);
+}
 function init() {
   hydrateLogos();
   loadUiPrefs();
