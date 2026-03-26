@@ -16,9 +16,9 @@
     "#settings",
   ]);
 
-  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v20";
-  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v20";
-  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v20";
+  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v30";
+  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v30";
+  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v30";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
   const LOGO_SRC = "/assets/flowpoint-logo.svg";
 
@@ -42,6 +42,7 @@
 
     btnOpenBillingSide: $("#fpOpenBillingSide"),
     btnOpenSettingsSide: $("#fpOpenSettingsSide"),
+    btnOpenInviteSide: $("#fpOpenInviteSide"),
     btnLogout: $("#fpLogoutBtn"),
 
     rangeSelect: $("#fpRangeSelect"),
@@ -114,7 +115,7 @@
       { id: "m5", title: "Ouvrir la facturation", meta: "Facturation", done: false, action: "open_billing" },
       { id: "m6", title: "Configurer les alertes email", meta: "Paramètres", done: false, action: "goto_settings" },
       { id: "m7", title: "Tester un monitor existant", meta: "Monitoring", done: false, action: "test_monitor" },
-      { id: "m8", title: "Consulter les quotas du plan", meta: "Facturation", done: false, action: "view_billing" },
+      { id: "m8", title: "Ouvrir l’espace invitation", meta: "Équipe", done: false, action: "open_invite" },
     ];
   }
 
@@ -166,17 +167,6 @@
     return planRank(state.me?.plan) >= planRank(minPlan);
   }
 
-  function featureGate(minPlan, okHtml, lockedTitle = "Fonction Premium", lockedText = "Disponible sur un plan supérieur.") {
-    if (hasPlan(minPlan)) return okHtml;
-    return `
-      <div class="fpTextPanel">
-        <strong>${esc(lockedTitle)}</strong><br>
-        ${esc(lockedText)}<br>
-        <span class="fpMuted">Niveau requis : ${esc(planLabel(minPlan))}</span>
-      </div>
-    `;
-  }
-
   function statusLabel(status) {
     const s = lower(status);
     if (!s) return "Statut en attente";
@@ -187,6 +177,7 @@
     if (s === "incomplete") return "Incomplet";
     if (s === "payment_succeeded") return "Paiement validé";
     if (s === "checkout_verified") return "Paiement vérifié";
+    if (s === "subscription_deleted") return "Abonnement supprimé";
     return cap(s.replaceAll("_", " "));
   }
 
@@ -202,9 +193,9 @@
   }
 
   function formatShortDate(value) {
-    if (!value) return "Bientôt";
+    if (!value) return "—";
     const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "Bientôt";
+    if (Number.isNaN(d.getTime())) return "—";
     return d.toLocaleDateString("fr-FR");
   }
 
@@ -302,12 +293,6 @@
     if (!(key in state.uiPrefs)) return;
     state.uiPrefs[key] = !state.uiPrefs[key];
     saveUiPrefs();
-
-    if (key === "liveStatus") {
-      if (state.uiPrefs.liveStatus) setStatus("Dashboard prêt", "ok");
-      else if (els.statusText) els.statusText.textContent = "Statut masqué";
-    }
-
     renderRoute({ preserveScroll: true });
   }
 
@@ -625,7 +610,17 @@
     `;
   }
 
-  function createToolbar({ searchId, searchPlaceholder, searchValue, statusId, statusValue, sortId, sortValue, statuses = [], sorts = [] }) {
+  function createToolbar({
+    searchId,
+    searchPlaceholder,
+    searchValue,
+    statusId,
+    statusValue,
+    sortId,
+    sortValue,
+    statuses = [],
+    sorts = [],
+  }) {
     return `
       <div class="fpTopActionsRow" style="margin-top:14px">
         <input
@@ -755,12 +750,19 @@
       input?.focus();
     });
   }
-
-  function openBillingCenter() {
-    setStatus("Ouverture du paiement FlowPoint…", "warn");
+    function openBillingCenter() {
+    setStatus("Ouverture de la facturation…", "warn");
     setMissionDoneByAction("open_billing", true);
     saveMissions();
-    window.location.href = "/checkout-embedded.html";
+    window.location.href = "/billing.html";
+    return true;
+  }
+
+  function openInvitePage() {
+    setStatus("Ouverture de la page invitation…", "warn");
+    setMissionDoneByAction("open_invite", true);
+    saveMissions();
+    window.location.href = "/invite-accept.html";
     return true;
   }
 
@@ -1131,34 +1133,6 @@
     }
   }
 
-  function buildPlanBenefitsCard() {
-    const current = lower(state.me?.plan);
-    const rows = [
-      { plan: "standard", audits: "30", monitors: "3", pdf: "30", exports: "30", extras: "Base" },
-      { plan: "pro", audits: "300", monitors: "50", pdf: "300", exports: "300", extras: "Plus de volume" },
-      { plan: "ultra", audits: "2000", monitors: "300", pdf: "2000", exports: "2000", extras: "Équipe + scale" },
-    ];
-
-    return `
-      <div class="fpRows">
-        ${rows.map((r) => {
-          const isCurrent = current === r.plan;
-          return `
-            <div class="fpRowCard">
-              <div class="fpRowMain">
-                <div class="fpRowTitle">${esc(planLabel(r.plan))}${isCurrent ? " · actuel" : ""}</div>
-                <div class="fpRowMeta">
-                  Audits ${esc(r.audits)} · Monitors ${esc(r.monitors)} · PDF ${esc(r.pdf)} · Exports ${esc(r.exports)} · ${esc(r.extras)}
-                </div>
-              </div>
-              <div class="fpRowRight">${createBadge(isCurrent ? "active" : "inactive")}</div>
-            </div>
-          `;
-        }).join("")}
-      </div>
-    `;
-  }
-
   function getAuditHealthBuckets() {
     const audits = Array.isArray(state.audits) ? state.audits : [];
     let strong = 0;
@@ -1190,140 +1164,138 @@
 
     return { up, down, unknown };
   }
-function drawOverviewChart() {
-  const canvas = $("#fpOverviewChart");
-  if (!canvas) return;
 
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  function drawOverviewChart() {
+    const canvas = $("#fpOverviewChart");
+    if (!canvas) return;
 
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const width = Math.max(260, Math.round(rect.width || 760));
-  const mobile = window.innerWidth <= 760;
-  const lightMode = window.matchMedia("(prefers-color-scheme: light)").matches;
-  const height = mobile ? 220 : 320;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
-  canvas.style.width = "100%";
-  canvas.style.height = `${height}px`;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(260, Math.round(rect.width || 760));
+    const mobile = window.innerWidth <= 760;
+    const height = mobile ? 220 : 320;
 
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, width, height);
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = "100%";
+    canvas.style.height = `${height}px`;
 
-  const rawChart =
-    Array.isArray(state.overview?.chart) && state.overview.chart.length
-      ? state.overview.chart
-      : [];
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
 
-  const seoData = rawChart.length
-    ? rawChart.map((n) => clamp(Number(n || 0), 0, 100))
-    : [8, 16, 22, 20, 34, 41, 38, 48, 57, 61];
+    const rawChart =
+      Array.isArray(state.overview?.chart) && state.overview.chart.length
+        ? state.overview.chart
+        : [];
 
-  const healthData = seoData.map((n, i) => clamp(n - 8 + (i % 3) * 2, 0, 100));
+    const seoData = rawChart.length
+      ? rawChart.map((n) => clamp(Number(n || 0), 0, 100))
+      : [8, 16, 22, 20, 34, 41, 38, 48, 57, 61];
 
-  const styles = getComputedStyle(document.documentElement);
-  const brand = styles.getPropertyValue("--fpBrand").trim() || "#2f5bff";
-  const brand2 = styles.getPropertyValue("--fpBrand2").trim() || "#1b45ff";
-  const text = styles.getPropertyValue("--fpMuted").trim() || "#94a3b8";
-  const grid = lightMode
-    ? "rgba(15,24,48,.12)"
-    : (styles.getPropertyValue("--fpBorderStrong").trim() || "rgba(255,255,255,.14)");
-  const dashedGrid = lightMode ? "rgba(15,24,48,.22)" : "rgba(255,255,255,.25)";
-  const labelColor = lightMode ? "rgba(15,24,48,.72)" : text;
+    const healthData = seoData.map((n, i) => clamp(n - 8 + (i % 3) * 2, 0, 100));
 
-  const padLeft = mobile ? 34 : 44;
-  const padRight = mobile ? 14 : 20;
-  const padTop = 18;
-  const padBottom = mobile ? 26 : 34;
+    const styles = getComputedStyle(document.documentElement);
+    const brand = styles.getPropertyValue("--fpBrand").trim() || "#2f5bff";
+    const brand2 = styles.getPropertyValue("--fpBrand2").trim() || "#1b45ff";
+    const text = styles.getPropertyValue("--fpMuted").trim() || "#94a3b8";
+    const grid = "rgba(148,163,184,.20)";
+    const dashedGrid = "rgba(148,163,184,.34)";
 
-  const chartW = width - padLeft - padRight;
-  const chartH = height - padTop - padBottom;
-  const gridLines = 5;
+    const padLeft = mobile ? 34 : 44;
+    const padRight = mobile ? 14 : 20;
+    const padTop = 18;
+    const padBottom = mobile ? 26 : 34;
 
-  ctx.strokeStyle = grid;
-  ctx.lineWidth = 1;
+    const chartW = width - padLeft - padRight;
+    const chartH = height - padTop - padBottom;
+    const gridLines = 5;
 
-  for (let i = 0; i <= gridLines; i += 1) {
-    const y = padTop + (chartH / gridLines) * i;
+    ctx.strokeStyle = grid;
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i <= gridLines; i += 1) {
+      const y = padTop + (chartH / gridLines) * i;
+      ctx.beginPath();
+      ctx.moveTo(padLeft, y);
+      ctx.lineTo(width - padRight, y);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = text;
+    ctx.font = mobile ? "11px Inter, system-ui, sans-serif" : "12px Inter, system-ui, sans-serif";
+
+    const labels = ["100", "80", "60", "40", "20", "0"];
+    for (let i = 0; i < labels.length; i += 1) {
+      const y = padTop + (chartH / 5) * i;
+      ctx.fillText(labels[i], labels[i] === "100" ? 6 : 12, y + 4);
+    }
+
+    function buildPoints(data) {
+      const stepX = data.length > 1 ? chartW / (data.length - 1) : chartW;
+      return data.map((value, i) => ({
+        x: padLeft + i * stepX,
+        y: padTop + chartH - (value / 100) * chartH,
+        value,
+      }));
+    }
+
+    const seoPoints = buildPoints(seoData);
+    const healthPoints = buildPoints(healthData);
+
+    const areaGradient = ctx.createLinearGradient(0, padTop, 0, padTop + chartH);
+    areaGradient.addColorStop(0, "rgba(47,91,255,.18)");
+    areaGradient.addColorStop(1, "rgba(47,91,255,0)");
+
     ctx.beginPath();
-    ctx.moveTo(padLeft, y);
-    ctx.lineTo(width - padRight, y);
+    ctx.moveTo(seoPoints[0].x, padTop + chartH);
+    seoPoints.forEach((p) => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(seoPoints[seoPoints.length - 1].x, padTop + chartH);
+    ctx.closePath();
+    ctx.fillStyle = areaGradient;
+    ctx.fill();
+
+    ctx.beginPath();
+    healthPoints.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.strokeStyle = dashedGrid;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
     ctx.stroke();
-  }
+    ctx.setLineDash([]);
 
-  ctx.fillStyle = labelColor;
-  ctx.font = mobile ? "11px Inter, system-ui, sans-serif" : "12px Inter, system-ui, sans-serif";
-
-  const labels = ["100", "80", "60", "40", "20", "0"];
-  for (let i = 0; i < labels.length; i += 1) {
-    const y = padTop + (chartH / 5) * i;
-    ctx.fillText(labels[i], labels[i] === "100" ? 6 : 12, y + 4);
-  }
-
-  function buildPoints(data) {
-    const stepX = data.length > 1 ? chartW / (data.length - 1) : chartW;
-    return data.map((value, i) => ({
-      x: padLeft + i * stepX,
-      y: padTop + chartH - (value / 100) * chartH,
-      value,
-    }));
-  }
-
-  const seoPoints = buildPoints(seoData);
-  const healthPoints = buildPoints(healthData);
-
-  const areaGradient = ctx.createLinearGradient(0, padTop, 0, padTop + chartH);
-  areaGradient.addColorStop(0, lightMode ? "rgba(47,91,255,.18)" : "rgba(47,91,255,.24)");
-  areaGradient.addColorStop(1, "rgba(47,91,255,0)");
-
-  ctx.beginPath();
-  ctx.moveTo(seoPoints[0].x, padTop + chartH);
-  seoPoints.forEach((p) => ctx.lineTo(p.x, p.y));
-  ctx.lineTo(seoPoints[seoPoints.length - 1].x, padTop + chartH);
-  ctx.closePath();
-  ctx.fillStyle = areaGradient;
-  ctx.fill();
-
-  ctx.beginPath();
-  healthPoints.forEach((p, i) => {
-    if (i === 0) ctx.moveTo(p.x, p.y);
-    else ctx.lineTo(p.x, p.y);
-  });
-  ctx.strokeStyle = dashedGrid;
-  ctx.lineWidth = lightMode ? 2.2 : 2;
-  ctx.setLineDash([6, 6]);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  const strokeGradient = ctx.createLinearGradient(padLeft, 0, width - padRight, 0);
-  strokeGradient.addColorStop(0, brand);
-  strokeGradient.addColorStop(1, brand2);
-
-  ctx.beginPath();
-  seoPoints.forEach((p, i) => {
-    if (i === 0) ctx.moveTo(p.x, p.y);
-    else ctx.lineTo(p.x, p.y);
-  });
-  ctx.strokeStyle = strokeGradient;
-  ctx.lineWidth = mobile ? 3.2 : 4;
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  ctx.stroke();
-
-  seoPoints.forEach((p) => {
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, mobile ? 4 : 5, 0, Math.PI * 2);
-    ctx.fillStyle = brand;
-    ctx.fill();
+    const strokeGradient = ctx.createLinearGradient(padLeft, 0, width - padRight, 0);
+    strokeGradient.addColorStop(0, brand);
+    strokeGradient.addColorStop(1, brand2);
 
     ctx.beginPath();
-    ctx.arc(p.x, p.y, mobile ? 1.8 : 2.2, 0, Math.PI * 2);
-    ctx.fillStyle = "#ffffff";
-    ctx.fill();
-  });
-}
+    seoPoints.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.strokeStyle = strokeGradient;
+    ctx.lineWidth = mobile ? 3.2 : 4;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    seoPoints.forEach((p) => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, mobile ? 4 : 5, 0, Math.PI * 2);
+      ctx.fillStyle = brand;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, mobile ? 1.8 : 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+    });
+  }
+
   function getOverviewInsight() {
     const chart =
       Array.isArray(state.overview?.chart) && state.overview.chart.length
@@ -1331,17 +1303,17 @@ function drawOverviewChart() {
         : [];
 
     if (!chart.length) {
-      return "Aucune donnée récente disponible. Lance un audit SEO pour générer une première courbe et suivre l’évolution de la performance.";
+      return "Aucune donnée récente disponible. Lance un audit SEO pour générer une première courbe.";
     }
 
     const first = chart[0] || 0;
     const last = chart[chart.length - 1] || 0;
     const diff = Math.round(last - first);
 
-    if (diff >= 12) return "La tendance est positive sur la période sélectionnée. Le score SEO progresse nettement.";
-    if (diff >= 1) return "La courbe reste orientée à la hausse. Les optimisations récentes semblent produire un effet progressif.";
-    if (diff <= -8) return "Le score est en baisse sur la période. Il faut vérifier les derniers audits et les points critiques.";
-    return "La performance reste relativement stable sur la période. Quelques ajustements peuvent relancer la progression.";
+    if (diff >= 12) return "La tendance est clairement positive sur la période sélectionnée.";
+    if (diff >= 1) return "La courbe est orientée à la hausse.";
+    if (diff <= -8) return "Le score est en baisse. Vérifie les derniers audits.";
+    return "La performance reste relativement stable sur la période.";
   }
 
   function renderOverviewHero() {
@@ -1358,7 +1330,7 @@ function drawOverviewChart() {
           <div class="fpCardKicker">FlowPoint</div>
           <h1 class="fpHeroTitle">Overview</h1>
           <p class="fpHeroText">
-            Suis tes performances, ton activité et les prochaines actions utiles depuis un seul dashboard.
+            Suis tes performances, ton activité, tes modules actifs et les prochaines actions utiles depuis un seul dashboard.
           </p>
 
           <div class="fpHeroStats">
@@ -1393,6 +1365,7 @@ function drawOverviewChart() {
     const done = countDoneMissions();
     const auditBuckets = getAuditHealthBuckets();
     const monitorBuckets = getMonitorHealthBuckets();
+    const addons = getAddonEntries().filter((a) => a.enabled).slice(0, 6);
 
     setPage(`
       ${renderOverviewHero()}
@@ -1537,6 +1510,25 @@ function drawOverviewChart() {
           )}
 
           ${createSectionCard(
+            "Add-ons actifs",
+            "Modules actuellement détectés",
+            "Lecture rapide de ce qui est vraiment actif sur le compte",
+            addons.length
+              ? `<div class="fpRows">
+                  ${addons.map((a) => `
+                    <div class="fpRowCard">
+                      <div class="fpRowMain">
+                        <div class="fpRowTitle">${esc(a.label)}</div>
+                        <div class="fpRowMeta">État détecté depuis /api/me</div>
+                      </div>
+                      <div class="fpRowRight"><div class="fpAddonPill on">${esc(a.text)}</div></div>
+                    </div>
+                  `).join("")}
+                </div>`
+              : createEmpty("Aucun add-on actif détecté pour le moment.")
+          )}
+
+          ${createSectionCard(
             "Audits récents",
             "Historique rapide",
             "Derniers audits chargés depuis l’API",
@@ -1577,18 +1569,6 @@ function drawOverviewChart() {
               `
               : createEmpty("Aucun monitor disponible pour le moment.")
           )}
-
-          ${createSectionCard(
-            "Liens utiles",
-            "Accès rapide",
-            "Navigation complémentaire du workspace",
-            `${createInlineLinks([
-              { href: "/billing.html", label: "Facturation" },
-              { href: "#reports", label: "Rapports" },
-              { href: "#settings", label: "Paramètres" },
-              { href: "/pricing.html", label: "Retour pricing" },
-            ])}`
-          )}
         </div>
       </div>
     `);
@@ -1603,7 +1583,7 @@ function drawOverviewChart() {
       ${createSectionCard(
         "Missions",
         "Checklist d’activation",
-        "Les missions se réinitialisent automatiquement tous les 3 jours et changent d’ordre pour éviter d’être toujours identiques.",
+        "Les missions se réinitialisent automatiquement tous les 3 jours et changent d’ordre.",
         `
           <div class="fpMissionPageGrid">
             <div class="fpMissionPageMain">
@@ -1659,19 +1639,11 @@ function drawOverviewChart() {
               </div>
 
               <div class="fpTextPanel">
-                Les missions sont conçues pour remettre le client dans un parcours simple : monitor, audit, export, paramètres et facturation.
+                Commence par monitor + audit + paramètres. C’est le trio qui active vraiment l’usage du dashboard.
               </div>
 
               <div class="fpTextPanel">
-                Conseil : complète d’abord monitor + audit + paramètres. C’est le trio qui active vraiment le dashboard.
-              </div>
-
-              <div class="fpTextPanel">
-                ${createInlineLinks([
-                  { href: "/billing.html", label: "Facturation" },
-                  { href: "#reports", label: "Rapports" },
-                  { href: "/pricing.html", label: "Retour pricing" },
-                ])}
+                Ajoute aussi l’espace équipe / invitation si tu veux rendre le workspace plus scalable.
               </div>
             </div>
           </div>
@@ -1679,8 +1651,7 @@ function drawOverviewChart() {
       )}
     `);
   }
-
-  function renderAuditsPage() {
+    function renderAuditsPage() {
     const audits = getFilteredAudits();
     const allAudits = Array.isArray(state.audits) ? state.audits : [];
     const avgScore = allAudits.length
@@ -1697,7 +1668,6 @@ function drawOverviewChart() {
             <button class="fpBtn fpBtnPrimary" id="fpAuditsRunBtn" type="button">Lancer un audit SEO</button>
             <button class="fpBtn fpBtnGhost" id="fpAuditsExportBtn" type="button">Exporter en CSV</button>
             <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Billing</button>
-            <button class="fpBtn fpBtnGhost" type="button" data-go-reports>Rapports</button>
             <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
           </div>
 
@@ -1790,39 +1760,6 @@ function drawOverviewChart() {
               </div>
             `
           )}
-
-          ${createSectionCard(
-            "Conseil",
-            "Lecture client",
-            "Comment présenter la page audit",
-            `
-              <div class="fpTextPanel">
-                Montre l’historique, la régularité des audits et la progression du score. Cette page doit rassurer et montrer une logique de suivi.
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Fonctions avancées",
-            "Niveau par plan",
-            "Capacités premium liées aux audits",
-            `
-              <div class="fpFeatureStack">
-                ${featureGate(
-                  "pro",
-                  `<div class="fpTextPanel">Le plan Pro débloque l’usage PDF plus crédible pour la livraison client et un volume d’audits bien plus élevé.</div>`,
-                  "PDF & volume",
-                  "Le plan Standard reste volontairement plus limité pour garder une vraie montée en gamme."
-                )}
-                ${featureGate(
-                  "ultra",
-                  `<div class="fpTextPanel">Le plan Ultra est pensé pour les grosses charges, plusieurs clients, davantage d’automatisation et une volumétrie forte.</div>`,
-                  "Scale multi-clients",
-                  "Disponible surtout pour les équipes ou les clients avec gros volume."
-                )}
-              </div>
-            `
-          )}
         </div>
       </div>
     `);
@@ -1875,7 +1812,6 @@ function drawOverviewChart() {
             <button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn" type="button">Ajouter un monitor</button>
             <button class="fpBtn fpBtnGhost" id="fpExportMonitorsBtn" type="button">Exporter en CSV</button>
             <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Billing</button>
-            <button class="fpBtn fpBtnGhost" type="button" data-go-reports>Rapports</button>
             <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
           </div>
 
@@ -1990,28 +1926,6 @@ function drawOverviewChart() {
               </div>
             `
           )}
-
-          ${createSectionCard(
-            "Capacités Pro / Ultra",
-            "Monitoring avancé",
-            "Fonctions qui rendent la page plus scalable",
-            `
-              <div class="fpFeatureStack">
-                ${featureGate(
-                  "pro",
-                  `<div class="fpTextPanel">Le plan Pro débloque la lecture uptime et améliore la supervision des services dans le temps.</div>`,
-                  "Uptime avancé",
-                  "Le plan Standard garde le monitoring simple."
-                )}
-                ${featureGate(
-                  "ultra",
-                  `<div class="fpTextPanel">Le plan Ultra est le plus adapté à de gros volumes de monitors, plus d’alertes et un usage orienté équipe / portefeuille clients.</div>`,
-                  "Monitoring à grande échelle",
-                  "Réservé au niveau le plus scalable."
-                )}
-              </div>
-            `
-          )}
         </div>
       </div>
     `);
@@ -2082,22 +1996,6 @@ function drawOverviewChart() {
         `
           <div class="fpReportsGrid">
             <div class="fpReportCard">
-              <div class="fpReportTitle">Billing</div>
-              <div class="fpReportMeta">Accès rapide à la facturation.</div>
-              <div class="fpDetailActions">
-                <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Ouvrir Billing</button>
-              </div>
-            </div>
-
-            <div class="fpReportCard">
-              <div class="fpReportTitle">Add-ons</div>
-              <div class="fpReportMeta">Ajuste les options de ton abonnement.</div>
-              <div class="fpDetailActions">
-                <a class="fpBtn fpBtnGhost" href="/addons.html">Ouvrir Add-ons</a>
-              </div>
-            </div>
-
-            <div class="fpReportCard">
               <div class="fpReportTitle">Export audits</div>
               <div class="fpReportMeta">Télécharge tous les audits SEO en CSV.</div>
               <div class="fpDetailActions">
@@ -2114,10 +2012,18 @@ function drawOverviewChart() {
             </div>
 
             <div class="fpReportCard">
-              <div class="fpReportTitle">Accès pricing</div>
-              <div class="fpReportMeta">Retour rapide vers l’offre FlowPoint.</div>
+              <div class="fpReportTitle">Facturation</div>
+              <div class="fpReportMeta">Ouvre l’espace de gestion du compte.</div>
               <div class="fpDetailActions">
-                <a class="fpBtn fpBtnGhost" href="/pricing.html">Voir pricing</a>
+                <a class="fpBtn fpBtnGhost" href="/billing.html">Ouvrir billing</a>
+              </div>
+            </div>
+
+            <div class="fpReportCard">
+              <div class="fpReportTitle">Add-ons</div>
+              <div class="fpReportMeta">Ajuste les options de ton abonnement.</div>
+              <div class="fpDetailActions">
+                <a class="fpBtn fpBtnGhost" href="/addons.html">Ouvrir add-ons</a>
               </div>
             </div>
           </div>
@@ -2152,62 +2058,18 @@ function drawOverviewChart() {
               </div>
             `
           )}
-
-          ${createSectionCard(
-            "Livrables",
-            "Utilisation commerciale",
-            "Cette zone peut servir pour la livraison client",
-            `
-              <div class="fpTextPanel">
-                Utilise les exports pour les comptes-rendus, suivis mensuels, comparatifs avant/après et reporting interne.
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Fonctions premium",
-            "Rapports avancés",
-            "Modules à plus forte valeur pour un SaaS scalable",
-            `
-              <div class="fpFeatureStack">
-                ${featureGate(
-                  "pro",
-                  `<div class="fpTextPanel">Le plan Pro est plus adapté pour générer des livrables réguliers, des exports fréquents et un usage client plus crédible.</div>`,
-                  "Reporting plus sérieux",
-                  "Le plan Standard reste volontairement plus serré sur la partie reporting."
-                )}
-                ${featureGate(
-                  "ultra",
-                  `<div class="fpTextPanel">Le plan Ultra est conçu pour un usage intensif, plusieurs clients et davantage d’opérations mensuelles.</div>`,
-                  "Scale reportings",
-                  "Pensé pour la volumétrie élevée."
-                )}
-              </div>
-            `
-          )}
         </div>
 
         <div class="fpCol fpColSide">
           ${createSectionCard(
             "Conseil",
             "Usage commercial",
-            "À quoi sert cette page",
+            "Transforme les données en livrables",
             `
               <div class="fpTextPanel">
-                La page reports sert à transformer tes données en livrables. C’est utile pour les clients, les suivis internes et les comptes-rendus mensuels.
+                Utilise les exports pour les comptes-rendus, suivis mensuels, comparatifs avant/après et reporting interne.
               </div>
             `
-          )}
-
-          ${createSectionCard(
-            "Liens utiles",
-            "Navigation",
-            "Accès rapide",
-            `${createInlineLinks([
-              { href: "/billing.html", label: "Billing" },
-              { href: "#reports", label: "Rapports" },
-              { href: "/pricing.html", label: "Retour pricing" },
-            ])}`
           )}
         </div>
       </div>
@@ -2230,12 +2092,13 @@ function drawOverviewChart() {
     const s = state.orgSettings || {};
     const me = state.me || {};
     const extraEmails = Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "";
+    const addons = getAddonEntries();
 
     setPage(`
       ${createSectionCard(
         "Paramètres",
         "Préférences du workspace",
-        "Configure les alertes et les informations générales du compte.",
+        "Configure les alertes, l’interface et les accès rapides liés à l’organisation.",
         `
           <div class="fpGrid fpGridMain">
             <div class="fpCol fpColMain">
@@ -2268,20 +2131,13 @@ function drawOverviewChart() {
 
               <div class="fpCardInner">
                 <div class="fpCardInnerTitle">Préférences interface</div>
-                <div class="fpSmall">Le mode clair ou sombre suit automatiquement les paramètres du navigateur.</div>
 
                 <div class="fpToggleRow">
                   <div class="fpToggleText">
                     <div class="fpToggleTitle">Thème automatique</div>
-                    <div class="fpToggleHint">Basé sur les préférences système du client</div>
+                    <div class="fpToggleHint">Basé sur les préférences système du navigateur</div>
                   </div>
-                  <button
-                    type="button"
-                    class="fpSwitch ${state.uiPrefs.themeAuto ? "on" : ""}"
-                    id="fpThemeAutoToggle"
-                    aria-pressed="${state.uiPrefs.themeAuto ? "true" : "false"}"
-                    title="Activer ou désactiver le thème automatique"
-                  ></button>
+                  <button type="button" class="fpSwitch ${state.uiPrefs.themeAuto ? "on" : ""}" id="fpThemeAutoToggle"></button>
                 </div>
 
                 <div class="fpToggleRow">
@@ -2289,13 +2145,7 @@ function drawOverviewChart() {
                     <div class="fpToggleTitle">Statut temps réel</div>
                     <div class="fpToggleHint">Affichage de l’état courant du dashboard</div>
                   </div>
-                  <button
-                    type="button"
-                    class="fpSwitch ${state.uiPrefs.liveStatus ? "on" : ""}"
-                    id="fpLiveStatusToggle"
-                    aria-pressed="${state.uiPrefs.liveStatus ? "true" : "false"}"
-                    title="Afficher ou masquer le statut temps réel"
-                  ></button>
+                  <button type="button" class="fpSwitch ${state.uiPrefs.liveStatus ? "on" : ""}" id="fpLiveStatusToggle"></button>
                 </div>
 
                 <div class="fpToggleRow">
@@ -2303,12 +2153,7 @@ function drawOverviewChart() {
                     <div class="fpToggleTitle">Listes compactes</div>
                     <div class="fpToggleHint">Réduit un peu la densité visuelle</div>
                   </div>
-                  <button
-                    type="button"
-                    class="fpSwitch ${state.uiPrefs.compactLists ? "on" : ""}"
-                    id="fpCompactListsToggle"
-                    aria-pressed="${state.uiPrefs.compactLists ? "true" : "false"}"
-                  ></button>
+                  <button type="button" class="fpSwitch ${state.uiPrefs.compactLists ? "on" : ""}" id="fpCompactListsToggle"></button>
                 </div>
 
                 <div class="fpToggleRow">
@@ -2316,31 +2161,27 @@ function drawOverviewChart() {
                     <div class="fpToggleTitle">Cartes avancées</div>
                     <div class="fpToggleHint">Affiche plus de blocs analytiques</div>
                   </div>
-                  <button
-                    type="button"
-                    class="fpSwitch ${state.uiPrefs.showAdvancedCards ? "on" : ""}"
-                    id="fpAdvancedCardsToggle"
-                    aria-pressed="${state.uiPrefs.showAdvancedCards ? "true" : "false"}"
-                  ></button>
+                  <button type="button" class="fpSwitch ${state.uiPrefs.showAdvancedCards ? "on" : ""}" id="fpAdvancedCardsToggle"></button>
                 </div>
               </div>
 
               <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Liens utiles</div>
-                <div class="fpSmall">Accès rapide aux pages liées au compte.</div>
-                ${createInlineLinks([
-                  { href: "/billing.html", label: "Billing" },
-                  { href: "#reports", label: "Rapports" },
-                  { href: "/addons.html", label: "Add-ons" },
-                  { href: "/pricing.html", label: "Retour pricing" },
-                ])}
+                <div class="fpCardInnerTitle">Équipe / invitation</div>
+                <div class="fpSmall">
+                  La page invite-accept est maintenant accessible depuis le dashboard.
+                  Le workflow complet d’invitation sera finalisé côté backend.
+                </div>
+
+                <div class="fpDetailActions" style="margin-top:12px">
+                  <a class="fpBtn fpBtnPrimary" href="/invite-accept.html">Ouvrir invite-accept</a>
+                  <a class="fpBtn fpBtnGhost" href="/billing.html">Billing</a>
+                </div>
               </div>
             </div>
 
             <div class="fpCol fpColSide">
               <div class="fpCardInner">
                 <div class="fpCardInnerTitle">Informations du compte</div>
-                <div class="fpSmall">Résumé de l’espace actuellement connecté.</div>
 
                 <div class="fpSettingsList">
                   <div class="fpSettingsRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
@@ -2353,13 +2194,23 @@ function drawOverviewChart() {
               </div>
 
               <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Données utiles</div>
-                <div class="fpSettingsList">
-                  <div class="fpSettingsRow"><span>Audits</span><strong>${esc(formatUsage(me.usage?.audits))}</strong></div>
-                  <div class="fpSettingsRow"><span>Exports</span><strong>${esc(formatUsage(me.usage?.exports))}</strong></div>
-                  <div class="fpSettingsRow"><span>Monitors</span><strong>${esc(formatUsage(me.usage?.monitors))}</strong></div>
-                  <div class="fpSettingsRow"><span>PDF</span><strong>${esc(formatUsage(me.usage?.pdf))}</strong></div>
-                </div>
+                <div class="fpCardInnerTitle">Add-ons détectés</div>
+                ${
+                  addons.length
+                    ? `<div class="fpRows">
+                        ${addons.map((a) => `
+                          <div class="fpRowCard">
+                            <div class="fpRowMain">
+                              <div class="fpRowTitle">${esc(a.label)}</div>
+                            </div>
+                            <div class="fpRowRight">
+                              <div class="fpAddonPill ${a.enabled ? "on" : "off"}">${esc(a.text)}</div>
+                            </div>
+                          </div>
+                        `).join("")}
+                      </div>`
+                    : `<div class="fpEmpty">Aucun add-on détecté.</div>`
+                }
               </div>
             </div>
           </div>
@@ -2397,8 +2248,13 @@ function drawOverviewChart() {
       return;
     }
 
-    if (mission.action === "open_billing" || mission.action === "view_billing") {
+    if (mission.action === "open_billing") {
       window.location.href = "/billing.html";
+      return;
+    }
+
+    if (mission.action === "open_invite") {
+      window.location.href = "/invite-accept.html";
       return;
     }
 
@@ -2432,8 +2288,11 @@ function drawOverviewChart() {
     }
 
     if (mission.action === "open_billing") {
-      window.location.href = "/billing.html";
-      return true;
+      return openBillingCenter();
+    }
+
+    if (mission.action === "open_invite") {
+      return openInvitePage();
     }
 
     if (mission.action === "goto_settings") {
@@ -2454,11 +2313,6 @@ function drawOverviewChart() {
       const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
       if (ok) await loadData({ silent: true });
       return ok;
-    }
-
-    if (mission.action === "view_billing") {
-      window.location.href = "/billing.html";
-      return true;
     }
 
     return false;
@@ -2494,7 +2348,7 @@ function drawOverviewChart() {
         renderReportsPage();
         break;
       case "#billing":
-        window.location.href = "/billing.html";
+        renderBillingPage();
         return;
       case "#settings":
         renderSettingsPage();
@@ -2632,14 +2486,6 @@ function drawOverviewChart() {
         e.preventDefault();
         e.stopPropagation();
         window.location.href = "/billing.html";
-        return;
-      }
-
-      const reportsBtn = e.target.closest("[data-go-reports]");
-      if (reportsBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        location.hash = "#reports";
       }
     });
   }
@@ -2701,18 +2547,15 @@ function drawOverviewChart() {
       await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
     });
 
-    els.btnOpenBillingSide?.addEventListener("click", () => {
-      window.location.href = "/billing.html";
-    });
+    els.btnOpenBillingSide?.addEventListener("click", openBillingCenter);
 
     els.btnOpenSettingsSide?.addEventListener("click", () => {
       location.hash = "#settings";
       closeSidebar();
-      if (shouldAutoScrollTop()) {
-        requestAnimationFrame(scrollPageTop);
-      }
+      if (shouldAutoScrollTop()) requestAnimationFrame(scrollPageTop);
     });
 
+    els.btnOpenInviteSide?.addEventListener("click", openInvitePage);
     els.btnLogout?.addEventListener("click", logout);
 
     bindGlobalActions();
