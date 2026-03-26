@@ -37,13 +37,40 @@
         </div>
 
         <nav class="fpNav">
-          <a href="#overview" class="fpNavItem" data-route="overview"><span class="fpNavDot"></span>Overview</a>
-          <a href="#missions" class="fpNavItem" data-route="missions"><span class="fpNavDot"></span>Missions</a>
-          <a href="#audits" class="fpNavItem" data-route="audits"><span class="fpNavDot"></span>Audits</a>
-          <a href="#monitors" class="fpNavItem" data-route="monitors"><span class="fpNavDot"></span>Monitors</a>
-          <a href="#reports" class="fpNavItem" data-route="reports"><span class="fpNavDot"></span>Rapports</a>
-          <a href="#billing" class="fpNavItem" data-route="billing"><span class="fpNavDot"></span>Facturation</a>
-          <a href="#settings" class="fpNavItem" data-route="settings"><span class="fpNavDot"></span>Paramètres</a>
+          <a href="#overview" class="fpNavItem" data-route="overview">
+            <span class="fpNavDot"></span>
+            <span>Overview</span>
+          </a>
+
+          <a href="#missions" class="fpNavItem" data-route="missions">
+            <span class="fpNavDot"></span>
+            <span>Missions</span>
+          </a>
+
+          <a href="#audits" class="fpNavItem" data-route="audits">
+            <span class="fpNavDot"></span>
+            <span>Audits</span>
+          </a>
+
+          <a href="#monitors" class="fpNavItem" data-route="monitors">
+            <span class="fpNavDot"></span>
+            <span>Monitors</span>
+          </a>
+
+          <a href="#reports" class="fpNavItem" data-route="reports">
+            <span class="fpNavDot"></span>
+            <span>Rapports</span>
+          </a>
+
+          <a href="#billing" class="fpNavItem" data-route="billing">
+            <span class="fpNavDot"></span>
+            <span>Facturation</span>
+          </a>
+
+          <a href="#settings" class="fpNavItem" data-route="settings">
+            <span class="fpNavDot"></span>
+            <span>Paramètres</span>
+          </a>
         </nav>
       </div>
 
@@ -79,7 +106,9 @@
                 <span>Audits</span>
                 <strong id="fpUsageAudits">0</strong>
               </div>
-              <div class="fpBar"><div class="fpBarFill" id="fpBarAudits"></div></div>
+              <div class="fpBar">
+                <div class="fpBarFill" id="fpBarAudits"></div>
+              </div>
             </div>
 
             <div class="fpUsageItem">
@@ -87,7 +116,9 @@
                 <span>PDF</span>
                 <strong id="fpUsagePdf">0</strong>
               </div>
-              <div class="fpBar"><div class="fpBarFill" id="fpBarPdf"></div></div>
+              <div class="fpBar">
+                <div class="fpBarFill" id="fpBarPdf"></div>
+              </div>
             </div>
 
             <div class="fpUsageItem">
@@ -95,7 +126,9 @@
                 <span>Exports</span>
                 <strong id="fpUsageExports">0</strong>
               </div>
-              <div class="fpBar"><div class="fpBarFill" id="fpBarExports"></div></div>
+              <div class="fpBar">
+                <div class="fpBarFill" id="fpBarExports"></div>
+              </div>
             </div>
 
             <div class="fpUsageItem">
@@ -103,14 +136,28 @@
                 <span>Monitors</span>
                 <strong id="fpUsageMonitors">0</strong>
               </div>
-              <div class="fpBar"><div class="fpBarFill" id="fpBarMonitors"></div></div>
+              <div class="fpBar">
+                <div class="fpBarFill" id="fpBarMonitors"></div>
+              </div>
             </div>
           </div>
 
           <div class="fpSidebarActions">
-            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenBillingSide" type="button">Facturation</button>
-            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenSettingsSide" type="button">Paramètres</button>
-            <button class="fpBtn fpBtnDanger fpBtnFull" id="fpLogoutBtn" type="button">Log out</button>
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenBillingSide" type="button">
+              Facturation
+            </button>
+
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenSettingsSide" type="button">
+              Paramètres
+            </button>
+
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenInviteSide" type="button">
+              Inviter un membre
+            </button>
+
+            <button class="fpBtn fpBtnDanger fpBtnFull" id="fpLogoutBtn" type="button">
+              Log out
+            </button>
           </div>
         </div>
       </div>
@@ -143,10 +190,14 @@
             <option value="3">3 derniers jours</option>
           </select>
 
-          <button id="fpRefreshBtn" class="fpBtn fpBtnPrimary" type="button">Actualiser</button>
+          <button id="fpRefreshBtn" class="fpBtn fpBtnPrimary" type="button">
+            Actualiser
+          </button>
 
           <div class="fpExportWrap">
-            <button id="fpExportToggle" class="fpBtn fpBtnGhost" type="button">Exports</button>
+            <button id="fpExportToggle" class="fpBtn fpBtnGhost" type="button">
+              Exports
+            </button>
 
             <div id="fpExportMenu" class="fpExportMenu">
               <button id="fpExportAudits" type="button">Exporter audits CSV</button>
