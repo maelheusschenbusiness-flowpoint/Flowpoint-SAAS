@@ -1567,3 +1567,97 @@ body::before{
   .fpNavItem{min-height:54px;font-size:16px}
   .fpBrandLogo{width:50px;height:50px}
 }
+.fpPageContainer{
+  gap:20px;
+}
+
+.fpCard,
+.fpCardInner{
+  padding:20px;
+}
+
+/* espace entre les cartes */
+.fpCol > * + *{
+  margin-top:18px;
+}
+.fpBtn{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+}
+
+.fpBtnPrimary{
+  height:54px;
+  border-radius:18px;
+}
+
+.fpBtnGhost{
+  height:52px;
+  border-radius:18px;
+}
+.fpToggleRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.fpToggleText{
+  flex:1;
+}
+
+.fpSwitch{
+  flex-shrink:0;
+}
+.fpCard{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.fpCardInner{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.fpInlineLinks a,
+.fpRowCard{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:52px;
+  border-radius:16px;
+}
+@media (max-width:760px){
+
+  .fpMain{
+    padding:16px;
+  }
+
+  .fpCard,
+  .fpCardInner{
+    padding:16px;
+  }
+
+  .fpBtn{
+    height:52px;
+  }
+
+  .fpHelloTitle{
+    font-size:28px;
+  }
+
+}
+body{
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.fpCard{
+  backdrop-filter: blur(12px);
+}
+
+.fpBtnPrimary{
+  box-shadow:0 10px 30px rgba(47,91,255,.35);
+}
