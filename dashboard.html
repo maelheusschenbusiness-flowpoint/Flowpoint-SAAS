@@ -37,13 +37,40 @@
         </div>
 
         <nav class="fpNav">
-          <a href="#overview" class="fpNavItem" data-route="overview"><span class="fpNavDot"></span>Overview</a>
-          <a href="#missions" class="fpNavItem" data-route="missions"><span class="fpNavDot"></span>Missions</a>
-          <a href="#audits" class="fpNavItem" data-route="audits"><span class="fpNavDot"></span>Audits</a>
-          <a href="#monitors" class="fpNavItem" data-route="monitors"><span class="fpNavDot"></span>Monitors</a>
-          <a href="#reports" class="fpNavItem" data-route="reports"><span class="fpNavDot"></span>Rapports</a>
-          <a href="#billing" class="fpNavItem" data-route="billing"><span class="fpNavDot"></span>Facturation</a>
-          <a href="#settings" class="fpNavItem" data-route="settings"><span class="fpNavDot"></span>Paramètres</a>
+          <a href="#overview" class="fpNavItem active" data-route="overview">
+            <span class="fpNavDot"></span>
+            <span>Overview</span>
+          </a>
+
+          <a href="#missions" class="fpNavItem" data-route="missions">
+            <span class="fpNavDot"></span>
+            <span>Missions</span>
+          </a>
+
+          <a href="#audits" class="fpNavItem" data-route="audits">
+            <span class="fpNavDot"></span>
+            <span>Audits</span>
+          </a>
+
+          <a href="#monitors" class="fpNavItem" data-route="monitors">
+            <span class="fpNavDot"></span>
+            <span>Monitors</span>
+          </a>
+
+          <a href="#reports" class="fpNavItem" data-route="reports">
+            <span class="fpNavDot"></span>
+            <span>Rapports</span>
+          </a>
+
+          <a href="#billing" class="fpNavItem" data-route="billing">
+            <span class="fpNavDot"></span>
+            <span>Facturation</span>
+          </a>
+
+          <a href="#settings" class="fpNavItem" data-route="settings">
+            <span class="fpNavDot"></span>
+            <span>Paramètres</span>
+          </a>
         </nav>
       </div>
 
@@ -110,6 +137,7 @@
           <div class="fpSidebarActions">
             <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenBillingSide" type="button">Facturation</button>
             <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenSettingsSide" type="button">Paramètres</button>
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenInviteSide" type="button">Inviter un membre</button>
             <button class="fpBtn fpBtnDanger fpBtnFull" id="fpLogoutBtn" type="button">Log out</button>
           </div>
         </div>
@@ -161,10 +189,42 @@
         </div>
       </header>
 
-      <div id="fpPageContainer" class="fpPageContainer"></div>
+      <div class="fpPageContainer">
+        <section class="fpHero fpHeroWide">
+          <div class="fpHeroContent">
+            <div class="fpCardKicker">Dashboard</div>
+            <h2 class="fpHeroTitle" id="fpRouteTitle">Overview</h2>
+            <p class="fpHeroText" id="fpRouteText">
+              Vue générale de ton compte, de tes performances et des actions prioritaires.
+            </p>
+
+            <div class="fpHeroStats" id="fpHeroStats">
+              <div class="fpMiniStat">
+                <div class="fpMiniStatLabel">Plan actuel</div>
+                <div class="fpMiniStatValue" id="fpHeroPlan">Plan</div>
+                <div class="fpMiniStatMeta">Abonnement FlowPoint</div>
+              </div>
+
+              <div class="fpMiniStat">
+                <div class="fpMiniStatLabel">Organisation</div>
+                <div class="fpMiniStatValue" id="fpHeroOrg">Workspace</div>
+                <div class="fpMiniStatMeta">Espace actuellement connecté</div>
+              </div>
+
+              <div class="fpMiniStat">
+                <div class="fpMiniStatLabel">Statut</div>
+                <div class="fpMiniStatValue" id="fpHeroStatus">Actif</div>
+                <div class="fpMiniStatMeta">État de l’abonnement</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div id="fpPageContainer" class="fpPageContainerInner"></div>
+      </div>
     </main>
   </div>
 
-  <script src="/dashboard.js"></script>
+  <script src="/dashboard-shell.js"></script>
 </body>
 </html>
