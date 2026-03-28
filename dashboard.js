@@ -41,8 +41,9 @@
     btnExportMonitors: $("#fpExportMonitors"),
 
     btnOpenBillingSide: $("#fpOpenBillingSide"),
-    btnOpenSettingsSide: $("#fpOpenSettingsSide"),
-    btnLogout: $("#fpLogoutBtn"),
+btnOpenSettingsSide: $("#fpOpenSettingsSide"),
+btnOpenInviteSide: $("#fpOpenInviteSide"),
+btnLogout: $("#fpLogoutBtn"),
 
     rangeSelect: $("#fpRangeSelect"),
 
@@ -106,17 +107,18 @@
   };
 
   function getDefaultMissions() {
-    return [
-      { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor" },
-      { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit" },
-      { id: "m3", title: "Exporter les audits CSV", meta: "Rapports", done: false, action: "export_audits" },
-      { id: "m4", title: "Exporter les monitors CSV", meta: "Rapports", done: false, action: "export_monitors" },
-      { id: "m5", title: "Ouvrir la facturation", meta: "Facturation", done: false, action: "open_billing" },
-      { id: "m6", title: "Configurer les alertes email", meta: "Paramètres", done: false, action: "goto_settings" },
-      { id: "m7", title: "Tester un monitor existant", meta: "Monitoring", done: false, action: "test_monitor" },
-      { id: "m8", title: "Consulter les quotas du plan", meta: "Facturation", done: false, action: "view_billing" },
-    ];
-  }
+  return [
+    { id: "m0", title: "Ouvrir l’espace invitation", meta: "Équipe", done: false, action: "open_invite" },
+    { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor" },
+    { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit" },
+    { id: "m3", title: "Exporter les audits CSV", meta: "Rapports", done: false, action: "export_audits" },
+    { id: "m4", title: "Exporter les monitors CSV", meta: "Rapports", done: false, action: "export_monitors" },
+    { id: "m5", title: "Ouvrir Billing", meta: "Billing", done: false, action: "open_billing" },
+    { id: "m6", title: "Configurer les alertes email", meta: "Paramètres", done: false, action: "goto_settings" },
+    { id: "m7", title: "Tester un monitor existant", meta: "Monitoring", done: false, action: "test_monitor" },
+    { id: "m8", title: "Consulter les quotas du plan", meta: "Billing", done: false, action: "view_billing" },
+  ];
+}
 
   function esc(value) {
     return String(value ?? "")
@@ -659,7 +661,33 @@
       };
     });
   }
+function buildPlanBenefitsCard() {
+  const current = lower(state.me?.plan);
+  const rows = [
+    { plan: "standard", audits: "30", monitors: "3", pdf: "30", exports: "30", extras: "Base" },
+    { plan: "pro", audits: "300", monitors: "50", pdf: "300", exports: "300", extras: "Plus de volume" },
+    { plan: "ultra", audits: "2000", monitors: "300", pdf: "2000", exports: "2000", extras: "Équipe + scale" },
+  ];
 
+  return `
+    <div class="fpRows">
+      ${rows.map((r) => {
+        const isCurrent = current === r.plan;
+        return `
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">${esc(planLabel(r.plan))}${isCurrent ? " · actuel" : ""}</div>
+              <div class="fpRowMeta">
+                Audits ${esc(r.audits)} · Monitors ${esc(r.monitors)} · PDF ${esc(r.pdf)} · Exports ${esc(r.exports)} · ${esc(r.extras)}
+              </div>
+            </div>
+            <div class="fpRowRight">${createBadge(isCurrent ? "active" : "inactive")}</div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
   function openHtmlModal({ title, body, wide = false }) {
     const old = document.getElementById("fpModalOverlay");
     if (old) old.remove();
