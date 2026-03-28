@@ -1414,3 +1414,291 @@ html,body{
     width:min(92vw,320px);
   }
 }
+/* ===== FIX IMMÉDIAT LAYOUT DASHBOARD ===== */
+
+/* 1) sidebar un peu plus large et plus respirante */
+:root{
+  --fpSidebarW: 290px;
+}
+
+.fpSidebar{
+  padding:18px 16px 20px;
+}
+
+.fpAccountCard{
+  padding:14px;
+}
+
+.fpAccountRows{
+  gap:8px;
+}
+
+.fpAccountRow{
+  font-size:13px;
+  line-height:1.3;
+}
+
+.fpAccountRow strong{
+  font-size:13px;
+  max-width:145px;
+}
+
+/* 2) boutons sidebar propres */
+.fpSidebarActions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+.fpSidebarActions .fpBtn{
+  width:100%;
+  min-height:40px;
+  height:40px;
+  padding:0 10px;
+  border-radius:12px;
+  font-size:12px;
+  font-weight:800;
+}
+
+.fpSidebarActions .fpBtnDanger{
+  grid-column:1 / -1;
+  min-height:44px;
+  height:44px;
+}
+
+/* 3) topbar moins tassée */
+.fpTopbar{
+  align-items:flex-start;
+  gap:14px;
+}
+
+.fpTopbarRight{
+  gap:10px;
+}
+
+#fpRefreshBtn{
+  min-width:120px !important;
+  height:42px !important;
+  min-height:42px !important;
+  border-radius:12px !important;
+  padding:0 16px !important;
+  font-size:13px !important;
+}
+
+#fpExportToggle,
+.fpStatusPill,
+.fpSelect{
+  min-height:42px !important;
+  height:42px !important;
+  border-radius:12px !important;
+  font-size:13px !important;
+}
+
+/* 4) zone principale plus propre */
+.fpMain{
+  padding:18px;
+  gap:18px;
+}
+
+.fpPageContainer{
+  width:100%;
+  max-width:none;
+  gap:16px;
+}
+
+/* 5) overview / hero : on enlève le grand vide bleu */
+.fpHero,
+.fpHeroBanner{
+  padding:18px !important;
+  border-radius:18px !important;
+  min-height:auto !important;
+}
+
+.fpHeroWide{
+  padding:18px !important;
+}
+
+.fpHero,
+.fpHeroBanner,
+.fpHeroShell .fpHeroBanner{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) 170px !important;
+  gap:14px !important;
+  align-items:stretch !important;
+}
+
+.fpHeroContent{
+  max-width:none !important;
+}
+
+.fpHeroTitle,
+.fpHeroBannerTitle{
+  font-size:34px !important;
+  line-height:1.02 !important;
+  margin:2px 0 8px !important;
+}
+
+.fpHeroText,
+.fpHeroBannerText{
+  font-size:13px !important;
+  line-height:1.45 !important;
+  max-width:none !important;
+  margin:0 !important;
+}
+
+/* 6) mini stats du hero plus compactes */
+.fpHeroStats,
+.fpHeroBannerRight{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:10px !important;
+}
+
+.fpHeroStats .fpMiniStat,
+.fpHeroBannerRight .fpHeroMetric,
+.fpHeroStats .fpStatCard{
+  min-height:84px !important;
+  padding:12px !important;
+  border-radius:14px !important;
+}
+
+.fpMiniStatValue,
+.fpStatValue{
+  font-size:24px !important;
+}
+
+/* 7) toutes les cartes prennent bien la largeur */
+.fpGridMain,
+.fpMissionPageGrid,
+.fpReportsGrid,
+.fpStatsGrid,
+.fpHeroStats{
+  grid-template-columns:1fr !important;
+}
+
+.fpCol,
+.fpColMain,
+.fpColSide,
+.fpMissionPageMain,
+.fpMissionPageSide{
+  width:100% !important;
+  max-width:none !important;
+}
+
+/* 8) cartes plus nettes */
+.fpCard,
+.fpCardInner,
+.fpStatCard,
+.fpMiniStat,
+.fpReportCard,
+.fpRowCard,
+.fpInfoRow,
+.fpSettingsRow,
+.fpToggleRow,
+.fpAddonRow,
+.fpMissionCard,
+.fpTextPanel{
+  border-radius:16px !important;
+}
+
+.fpCard{
+  padding:16px !important;
+}
+
+.fpCardInner{
+  padding:14px !important;
+}
+
+.fpSectionTitle{
+  font-size:20px !important;
+  line-height:1.08 !important;
+}
+
+.fpCardInnerTitle{
+  font-size:16px !important;
+}
+
+/* 9) tables et rows */
+.fpRows,
+.fpInfoList,
+.fpSettingsList,
+.fpMissionStack,
+.fpTable{
+  gap:10px !important;
+}
+
+.fpRowCard,
+.fpInfoRow,
+.fpSettingsRow,
+.fpToggleRow,
+.fpAddonRow,
+.fpTableRow{
+  padding:12px !important;
+}
+
+/* 10) missions plus propres */
+.fpMissionCard{
+  padding:14px !important;
+  gap:12px !important;
+}
+
+.fpMissionTitle{
+  font-size:18px !important;
+  line-height:1.12 !important;
+}
+
+.fpMissionMeta{
+  font-size:12px !important;
+}
+
+/* 11) écran moyen */
+@media (max-width: 1280px){
+  .fpHero,
+  .fpHeroBanner{
+    grid-template-columns:minmax(0,1fr) 150px !important;
+  }
+
+  .fpHeroTitle,
+  .fpHeroBannerTitle{
+    font-size:30px !important;
+  }
+}
+
+/* 12) tablette/mobile */
+@media (max-width: 980px){
+  :root{
+    --fpSidebarW: 320px;
+  }
+
+  .fpHero,
+  .fpHeroBanner{
+    grid-template-columns:1fr !important;
+  }
+
+  .fpHeroStats,
+  .fpHeroBannerRight{
+    display:grid !important;
+    grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+    gap:10px !important;
+  }
+
+  .fpSidebarActions{
+    grid-template-columns:1fr !important;
+  }
+}
+
+@media (max-width: 760px){
+  .fpHeroStats,
+  .fpHeroBannerRight{
+    grid-template-columns:1fr !important;
+  }
+
+  .fpTopbarRight{
+    flex-direction:column !important;
+    align-items:stretch !important;
+  }
+
+  .fpTopbarRight > *{
+    width:100% !important;
+  }
+}
