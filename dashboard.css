@@ -1,1704 +1,1108 @@
 :root{
-  --bg:#0b1020;
-  --bg2:#0f1630;
+  --fpBg:#070b19;
+  --fpBg2:#0b1230;
+  --fpBg3:#0f173a;
+  --fpCard:rgba(17,24,52,.78);
+  --fpCardSolid:#121933;
+  --fpCardSoft:rgba(255,255,255,.04);
 
-  --card:#121a3a;
-  --cardSoft:#0f1734;
+  --fpBorder:rgba(255,255,255,.08);
+  --fpBorderStrong:rgba(255,255,255,.14);
 
-  --text:#f1f5ff;
-  --muted:#8ea2ff;
+  --fpText:#f7f9ff;
+  --fpTextSoft:#d5dcf8;
+  --fpMuted:#91a0cf;
 
-  --line:rgba(255,255,255,0.06);
+  --fpBrand:#2f5bff;
+  --fpBrand2:#2148ff;
+  --fpBrand3:#6d8cff;
+  --fpGood:#19c37d;
+  --fpWarn:#ffb020;
+  --fpDanger:#ff5d73;
 
-  --primary:#2f6bff;
-  --primary2:#1d4ed8;
+  --fpShadow:0 18px 50px rgba(3,8,25,.40);
+  --fpShadowSoft:0 12px 32px rgba(3,8,25,.24);
+  --fpGlow:0 0 0 1px rgba(255,255,255,.05), 0 16px 40px rgba(47,91,255,.22);
 
-  --green:#22c55e;
-  --red:#ef4444;
-  --orange:#f59e0b;
+  --fpRadiusXL:28px;
+  --fpRadiusLG:22px;
+  --fpRadiusMD:18px;
+  --fpRadiusSM:14px;
+  --fpRadiusXS:12px;
 
-  --radius:18px;
-  --radiusSm:12px;
+  --fpSidebarW:290px;
+  --fpTopbarH:84px;
 
-  --shadow:0 20px 60px rgba(0,0,0,0.4);
-
-  --font:"Inter",system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  --fpFont:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
-/* RESET */
+body.fpLight{
+  --fpBg:#eef3ff;
+  --fpBg2:#f7f9ff;
+  --fpBg3:#ffffff;
+  --fpCard:rgba(255,255,255,.86);
+  --fpCardSolid:#ffffff;
+  --fpCardSoft:rgba(18,25,51,.035);
 
-*{box-sizing:border-box;margin:0;padding:0}
+  --fpBorder:rgba(18,25,51,.08);
+  --fpBorderStrong:rgba(18,25,51,.15);
+
+  --fpText:#0d1736;
+  --fpTextSoft:#22325f;
+  --fpMuted:#64739d;
+
+  --fpShadow:0 18px 50px rgba(18,25,51,.10);
+  --fpShadowSoft:0 12px 32px rgba(18,25,51,.08);
+  --fpGlow:0 0 0 1px rgba(18,25,51,.05), 0 16px 40px rgba(47,91,255,.14);
+}
+
+*{
+  box-sizing:border-box;
+}
 
 html,body{
-  height:100%;
-  font-family:var(--font);
-  background:linear-gradient(180deg,var(--bg),var(--bg2));
-  color:var(--text);
+  margin:0;
+  min-height:100%;
+  font-family:var(--fpFont);
+  background:
+    radial-gradient(circle at top left, rgba(47,91,255,.22), transparent 32%),
+    radial-gradient(circle at top right, rgba(109,140,255,.16), transparent 28%),
+    linear-gradient(180deg, var(--fpBg2), var(--fpBg));
+  color:var(--fpText);
 }
 
-/* APP */
+body{
+  overflow-x:hidden;
+}
+
+button,input,select,textarea{
+  font:inherit;
+}
+
+a{
+  color:inherit;
+  text-decoration:none;
+}
+
+img{
+  display:block;
+  max-width:100%;
+}
+
+.fpOverlay{
+  position:fixed;
+  inset:0;
+  background:rgba(2,7,20,.5);
+  opacity:0;
+  visibility:hidden;
+  transition:.25s ease;
+  z-index:40;
+}
+
+.fpOverlay.show{
+  opacity:1;
+  visibility:visible;
+}
 
 .fpAppShell{
   display:flex;
-  height:100%;
-  overflow:hidden;
+  min-height:100vh;
 }
 
-/* SIDEBAR */
-
 .fpSidebar{
-  width:270px;
-  background:rgba(10,14,35,0.95);
-  border-right:1px solid var(--line);
+  width:var(--fpSidebarW);
+  min-width:var(--fpSidebarW);
+  border-right:1px solid var(--fpBorder);
+  background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  backdrop-filter:blur(16px);
+  padding:20px 18px;
+  position:sticky;
+  top:0;
+  height:100vh;
   display:flex;
   flex-direction:column;
-  padding:18px;
+  gap:18px;
+  z-index:50;
 }
 
 .fpSidebarTop{
-  flex:1;
-  overflow:auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
 }
 
 .fpBrand{
   display:flex;
-  gap:12px;
   align-items:center;
-  margin-bottom:22px;
+  gap:12px;
+}
+
+.fpBrandLogo{
+  width:50px;
+  height:50px;
+  border-radius:16px;
+  background:linear-gradient(135deg, rgba(47,91,255,.25), rgba(255,255,255,.08));
+  border:1px solid var(--fpBorderStrong);
+  box-shadow:var(--fpGlow);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px;
 }
 
 .fpBrandLogoImg{
-  width:42px;
+  width:100%;
+  height:100%;
+  object-fit:contain;
 }
 
 .fpBrandName{
-  font-weight:700;
-  font-size:18px;
+  font-size:1.05rem;
+  font-weight:800;
+  letter-spacing:.01em;
 }
 
 .fpBrandSub{
-  font-size:12px;
-  color:var(--muted);
+  font-size:.88rem;
+  color:var(--fpMuted);
+  margin-top:2px;
 }
 
-/* NAV */
-
-.fpSidebarSection{
-  margin-bottom:22px;
+.fpSidebarClose{
+  display:none;
+  border:1px solid var(--fpBorder);
+  background:transparent;
+  color:var(--fpText);
+  border-radius:12px;
+  width:40px;
+  height:40px;
+  cursor:pointer;
 }
 
-.fpSidebarSectionLabel{
-  font-size:11px;
-  color:var(--muted);
-  margin-bottom:8px;
-  text-transform:uppercase;
-  letter-spacing:1px;
+.fpWorkspaceCard,
+.fpSupportCard,
+.fpPanel,
+.fpBanner,
+.fpStatCard,
+.fpActionCard,
+.fpInsightCard,
+.fpToolCard,
+.fpInfoBox,
+.fpMonitorItem,
+.fpReportItem,
+.fpMissionItem,
+.fpTeamItem,
+.fpCompareCard,
+.fpLocalSeoItem{
+  border:1px solid var(--fpBorder);
+  background:var(--fpCard);
+  backdrop-filter:blur(14px);
+  box-shadow:var(--fpShadowSoft);
+}
+
+.fpWorkspaceCard{
+  border-radius:20px;
+  padding:16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.fpWorkspaceLabel{
+  display:block;
+  font-size:.8rem;
+  color:var(--fpMuted);
+  margin-bottom:4px;
+}
+
+.fpWorkspacePlan{
+  padding:8px 12px;
+  border-radius:999px;
+  background:linear-gradient(135deg, var(--fpBrand), var(--fpBrand2));
+  color:#fff;
+  font-weight:700;
+  font-size:.83rem;
+  white-space:nowrap;
 }
 
 .fpNav{
   display:flex;
   flex-direction:column;
-  gap:6px;
+  gap:8px;
 }
 
 .fpNavItem{
   display:flex;
   align-items:center;
-  gap:10px;
-  padding:10px 12px;
-  border-radius:10px;
-  text-decoration:none;
-  color:var(--text);
-  font-size:14px;
-  transition:.2s;
-}
-
-.fpNavItem:hover{
-  background:rgba(255,255,255,0.05);
-}
-
-.fpNavItem.active{
-  background:linear-gradient(90deg,var(--primary),transparent);
-}
-
-.fpNavDot{
-  width:6px;
-  height:6px;
-  border-radius:50%;
-  background:var(--primary);
-}
-
-/* MAIN */
-
-.fpMain{
-  flex:1;
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-}
-
-/* TOPBAR */
-
-.fpTopbar{
-  height:72px;
-  border-bottom:1px solid var(--line);
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:0 24px;
-  background:rgba(10,14,35,0.85);
-  backdrop-filter:blur(10px);
-}
-
-.fpHelloTitle{
-  font-size:20px;
+  gap:12px;
+  padding:13px 14px;
+  border-radius:16px;
+  color:var(--fpTextSoft);
+  border:1px solid transparent;
+  transition:.2s ease;
   font-weight:600;
 }
 
-.fpHelloSub{
-  font-size:12px;
-  color:var(--muted);
+.fpNavItem:hover{
+  background:rgba(255,255,255,.045);
+  border-color:var(--fpBorder);
+  color:var(--fpText);
 }
 
-/* CONTENT */
-
-.fpContentShell{
-  flex:1;
-  overflow:auto;
-  padding:24px;
-}
-
-/* IMPORTANT — LARGEUR MAX PROPRE */
-
-.fpPageContainer{
-  max-width:1200px;
-  margin:0 auto;
-  width:100%;
-}
-
-/* HERO */
-
-.fpHeroShell{
-  padding:20px 24px 0;
-}
-
-.fpHeroBanner{
-  max-width:1200px;
-  margin:0 auto;
-  background:linear-gradient(135deg,#1b2aff,#3a6cff);
-  border-radius:20px;
-  padding:24px;
-  display:flex;
-  justify-content:space-between;
-  gap:20px;
-}
-
-.fpHeroBannerTitle{
-  font-size:22px;
-  font-weight:700;
-}
-
-.fpHeroBannerText{
-  font-size:13px;
-  opacity:.8;
-}
-
-.fpHeroMetric strong{
-  font-size:20px;
-}
-
-/* BUTTONS */
-
-.fpBtn{
-  border:none;
-  border-radius:10px;
-  padding:10px 14px;
-  font-size:13px;
-  cursor:pointer;
-  transition:.2s;
-}
-
-.fpBtnPrimary{
-  background:linear-gradient(135deg,var(--primary),var(--primary2));
+.fpNavItem.active{
+  background:linear-gradient(135deg, rgba(47,91,255,.18), rgba(255,255,255,.04));
+  border-color:rgba(47,91,255,.30);
   color:#fff;
+  box-shadow:var(--fpGlow);
 }
 
-.fpBtnGhost{
-  background:transparent;
-  color:var(--text);
-  border:1px solid var(--line);
+.fpNavIcon{
+  width:22px;
+  text-align:center;
+  opacity:.95;
 }
 
-.fpBtnSoft{
-  background:rgba(255,255,255,0.05);
+.fpSidebarBottom{
+  margin-top:auto;
 }
 
-.fpBtnDanger{
-  background:rgba(239,68,68,0.2);
-  color:#ffb4b4;
+.fpSupportCard{
+  border-radius:20px;
+  padding:16px;
 }
 
-/* STATUS */
+.fpSupportTitle{
+  font-weight:800;
+  margin-bottom:8px;
+}
 
-.fpStatusPill{
+.fpSupportCard p{
+  margin:0 0 14px;
+  color:var(--fpMuted);
+  line-height:1.55;
+  font-size:.94rem;
+}
+
+.fpMainWrap{
+  flex:1;
+  min-width:0;
+}
+
+.fpTopbar{
+  height:var(--fpTopbarH);
   display:flex;
   align-items:center;
-  gap:6px;
-  font-size:12px;
+  justify-content:space-between;
+  gap:16px;
+  padding:18px 24px;
+  border-bottom:1px solid var(--fpBorder);
+  position:sticky;
+  top:0;
+  z-index:25;
+  backdrop-filter:blur(16px);
+  background:rgba(7,11,25,.58);
 }
 
-.fpStatusDot{
-  width:6px;
-  height:6px;
-  border-radius:50%;
-  background:var(--green);
-}
-/* =========================
-   CARDS / BLOCKS / TABLES
-   ========================= */
-
-.fpCard,
-.fpCardInner,
-.fpStatCard,
-.fpMiniStat,
-.fpReportCard,
-.fpTextPanel,
-.fpRowCard,
-.fpInfoRow,
-.fpSettingsRow,
-.fpToggleRow,
-.fpAddonRow,
-.fpMissionCard,
-.fpQuickMini,
-.fpHeroMetric{
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.02));
-  border:1px solid var(--line);
-  border-radius:var(--radius);
-  box-shadow:var(--shadow);
-  position:relative;
-  overflow:hidden;
+body.fpLight .fpTopbar{
+  background:rgba(247,249,255,.78);
 }
 
-.fpCard::before,
-.fpCardInner::before,
-.fpStatCard::before,
-.fpMiniStat::before,
-.fpReportCard::before,
-.fpTextPanel::before,
-.fpRowCard::before,
-.fpInfoRow::before,
-.fpSettingsRow::before,
-.fpToggleRow::before,
-.fpAddonRow::before,
-.fpMissionCard::before{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background:
-    radial-gradient(circle at top left, rgba(255,255,255,0.08), transparent 35%);
-  opacity:.6;
+.fpTopbarLeft,
+.fpTopbarRight{
+  display:flex;
+  align-items:center;
+  gap:14px;
 }
 
-.fpCard{
-  padding:22px;
+.fpTopbarTitleWrap h1{
+  margin:0;
+  font-size:1.35rem;
+  line-height:1.1;
+}
+
+.fpTopbarTitleWrap p{
+  margin:6px 0 0;
+  color:var(--fpMuted);
+  font-size:.95rem;
+}
+
+.fpMainContent{
+  padding:24px;
+  display:flex;
+  flex-direction:column;
+  gap:22px;
+}
+
+.fpBanner{
+  border-radius:24px;
+  padding:16px 18px;
+  display:flex;
+  align-items:center;
+  gap:16px;
+}
+
+.fpBannerIcon{
+  width:46px;
+  height:46px;
+  border-radius:16px;
+  background:linear-gradient(135deg, var(--fpBrand), var(--fpBrand2));
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:1.2rem;
+  flex:0 0 auto;
+  box-shadow:var(--fpGlow);
+}
+
+.fpBannerText{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.fpBannerText span{
+  color:var(--fpMuted);
+  line-height:1.5;
+}
+
+.fpPage{
+  display:none;
+  gap:22px;
+  flex-direction:column;
+}
+
+.fpPage.active{
+  display:flex;
+}
+
+.fpPageHead{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+}
+
+.fpPageHead h2{
+  margin:0;
+  font-size:1.5rem;
+}
+
+.fpPageHead p{
+  margin:8px 0 0;
+  color:var(--fpMuted);
+  max-width:820px;
+  line-height:1.6;
+}
+
+.fpStatsGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  gap:18px;
+}
+
+.fpStatCard{
+  border-radius:24px;
+  padding:18px;
+}
+
+.fpStatTop{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.fpStatLabel{
+  color:var(--fpMuted);
+  font-size:.95rem;
+}
+
+.fpStatValue{
+  margin-top:10px;
+  font-size:2.2rem;
+  font-weight:800;
+  line-height:1;
+}
+
+.fpStatHint{
+  margin:12px 0 0;
+  color:var(--fpMuted);
+  line-height:1.55;
+  font-size:.93rem;
+}
+
+.fpTrend{
+  font-size:.78rem;
+  font-weight:800;
+  padding:7px 10px;
+  border-radius:999px;
+  border:1px solid var(--fpBorder);
+}
+
+.fpTrend.up{
+  color:var(--fpGood);
+  background:rgba(25,195,125,.12);
+}
+
+.fpTrend.warn{
+  color:var(--fpWarn);
+  background:rgba(255,176,32,.12);
+}
+
+.fpTrend.stable{
+  color:var(--fpBrand3);
+  background:rgba(47,91,255,.12);
+}
+
+.fpGrid,
+.fpGridMain{
+  display:grid;
+  grid-template-columns:repeat(12, minmax(0,1fr));
+  gap:18px;
+}
+
+.fpSpan4{grid-column:span 4;}
+.fpSpan5{grid-column:span 5;}
+.fpSpan6{grid-column:span 6;}
+.fpSpan7{grid-column:span 7;}
+.fpSpan8{grid-column:span 8;}
+.fpSpan12{grid-column:span 12;}
+
+.fpPanel{
+  border-radius:24px;
+  padding:20px;
+  min-width:0;
+}
+
+.fpPanelHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
   margin-bottom:18px;
 }
 
-.fpCardInner{
-  padding:18px;
+.fpPanelHead h3{
+  margin:0;
+  font-size:1.08rem;
 }
 
-.fpCardHead{
+.fpPanelHead p{
+  margin:7px 0 0;
+  color:var(--fpMuted);
+  line-height:1.55;
+  max-width:760px;
+}
+
+.fpFeatureRows,
+.fpStackInfo,
+.fpQuickActions,
+.fpMiniList,
+.fpMissionList,
+.fpReportList,
+.fpTeamList,
+.fpToolHub,
+.fpLocalSeoList{
   display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:18px;
-  margin-bottom:16px;
+  flex-direction:column;
+  gap:14px;
 }
 
-.fpCardActions,
-.fpDetailActions,
-.fpTableActions,
-.fpTopActionsRow,
-.fpMissionActions,
-.fpInlineLinks{
+.fpFeatureRow{
   display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  align-items:center;
+  gap:14px;
+  padding:14px;
+  border-radius:18px;
+  background:var(--fpCardSoft);
+  border:1px solid var(--fpBorder);
 }
 
-.fpSectionTitle{
-  font-size:28px;
-  font-weight:750;
-  line-height:1.08;
-  margin-bottom:6px;
-}
-
-.fpCardInnerTitle{
-  font-size:20px;
-  font-weight:700;
-  margin-bottom:6px;
-}
-
-.fpCardText,
-.fpSmall,
-.fpMuted,
-.fpHeroBannerText,
-.fpMiniStatMeta,
-.fpStatMeta,
-.fpRowMeta,
-.fpMissionMeta,
-.fpToggleHint,
-.fpReportMeta,
-.fpChartInsight{
-  color:#b8c4ff;
+.fpFeatureRow p,
+.fpToolCard p,
+.fpInsightCard p,
+.fpInfoBox p,
+.fpLocalSeoItem p{
+  margin:6px 0 0;
+  color:var(--fpMuted);
   line-height:1.55;
 }
 
-.fpCardKicker,
-.fpMiniStatLabel,
-.fpStatLabel,
-.fpHeroMetricLabel,
-.fpQuickMiniLabel{
-  font-size:11px;
-  letter-spacing:1px;
-  text-transform:uppercase;
-  color:var(--muted);
-  font-weight:700;
-  margin-bottom:8px;
-}
-
-/* =========================
-   FULL WIDTH CARDS
-   ========================= */
-
-.fpGrid,
-.fpGridMain,
-.fpReportsGrid,
-.fpHeroStats,
-.fpStatsGrid{
-  display:grid;
-  gap:18px;
-}
-
-.fpGridMain{
-  grid-template-columns:1fr;
-}
-
-.fpCol{
-  width:100%;
-  display:flex;
-  flex-direction:column;
-  gap:18px;
-}
-
-.fpColMain,
-.fpColSide,
-.fpMissionPageMain,
-.fpMissionPageSide{
-  width:100%;
-}
-
-.fpStatsGrid{
-  grid-template-columns:repeat(3,minmax(0,1fr));
-}
-
-.fpHeroStats{
-  grid-template-columns:repeat(3,minmax(0,1fr));
-}
-
-.fpReportsGrid{
-  grid-template-columns:repeat(3,minmax(0,1fr));
-}
-
-/* =========================
-   STATS
-   ========================= */
-
-.fpMiniStat,
-.fpStatCard,
-.fpQuickMini,
-.fpHeroMetric{
-  padding:18px;
-  min-height:110px;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-}
-
-.fpMiniStatValue,
-.fpStatValue{
-  font-size:28px;
-  font-weight:800;
-  line-height:1;
-  margin-bottom:8px;
-}
-
-.fpScore{
-  font-size:22px;
-  font-weight:800;
-  color:#fff;
-}
-
-/* =========================
-   TEXT PANELS
-   ========================= */
-
-.fpTextPanel{
-  padding:18px;
-  font-size:14px;
-}
-
-/* =========================
-   INFO LIST / ROWS
-   ========================= */
-
-.fpInfoList,
-.fpRows,
-.fpSettingsList,
-.fpMissionStack{
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-  margin-top:14px;
-}
-
-.fpInfoRow,
-.fpRowCard,
-.fpSettingsRow,
-.fpToggleRow,
-.fpAddonRow{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:16px;
-  padding:16px 18px;
-}
-
-.fpInfoRow span,
-.fpSettingsRow span{
-  color:#c9d3ff;
-  font-size:14px;
-}
-
-.fpInfoRow strong,
-.fpSettingsRow strong{
-  font-size:14px;
-  font-weight:700;
-  text-align:right;
-  max-width:55%;
-  word-break:break-word;
-}
-
-.fpRowMain{
-  flex:1;
-  min-width:0;
-}
-
-.fpRowRight{
-  flex-shrink:0;
-}
-
-.fpRowTitle{
-  font-size:16px;
-  font-weight:700;
-  line-height:1.3;
-  margin-bottom:6px;
-}
-
-.fpAddonLabel{
-  font-size:15px;
-  font-weight:700;
-}
-
-/* =========================
-   MISSIONS
-   ========================= */
-
-.fpMissionCard{
-  padding:18px 20px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:18px;
-}
-
-.fpMissionTop{
-  display:flex;
-  align-items:flex-start;
-  gap:14px;
-  flex:1;
-  min-width:0;
-}
-
-.fpMissionInfo{
-  min-width:0;
-  flex:1;
-}
-
-.fpMissionTitle{
-  font-size:26px;
-  line-height:1.08;
-  font-weight:800;
-  margin-bottom:6px;
-}
-
-.fpMissionCheck{
-  width:28px;
-  height:28px;
-  min-width:28px;
+.fpFeatureBullet{
+  width:12px;
+  height:12px;
   border-radius:999px;
-  border:1px solid rgba(255,255,255,0.15);
-  background:rgba(255,255,255,0.04);
+  margin-top:5px;
+  flex:0 0 auto;
+}
+
+.fpFeatureBullet.good{background:var(--fpGood);}
+.fpFeatureBullet.info{background:var(--fpBrand3);}
+.fpFeatureBullet.warn{background:var(--fpWarn);}
+.fpFeatureBullet.premium{background:#b28cff;}
+
+.fpActionCard{
+  text-align:left;
+  padding:16px;
+  border-radius:18px;
+  cursor:pointer;
+  transition:.2s ease;
+  color:var(--fpText);
+}
+
+.fpActionCard:hover{
+  transform:translateY(-2px);
+  border-color:rgba(47,91,255,.35);
+  box-shadow:var(--fpGlow);
+}
+
+.fpActionCard strong{
+  display:block;
+  margin-bottom:5px;
+}
+
+.fpActionCard span{
+  color:var(--fpMuted);
+  font-size:.95rem;
+}
+
+.fpInsights{
+  display:grid;
+  grid-template-columns:repeat(1, minmax(0,1fr));
+  gap:14px;
+}
+
+.fpInsightCard,
+.fpToolCard,
+.fpInfoBox,
+.fpLocalSeoItem{
+  border-radius:18px;
+  padding:16px;
+}
+
+.fpMiniItem,
+.fpMissionItem,
+.fpMonitorItem,
+.fpReportItem,
+.fpTeamItem,
+.fpCompareCard{
+  border-radius:18px;
+  padding:16px;
+}
+
+.fpMiniItem{
   display:flex;
   align-items:center;
-  justify-content:center;
-  cursor:pointer;
+  justify-content:space-between;
+  gap:12px;
+  background:var(--fpCardSoft);
+  border:1px solid var(--fpBorder);
 }
 
-.fpMissionCheck.done{
-  background:linear-gradient(135deg,var(--primary),var(--primary2));
-  border-color:transparent;
+.fpMiniItem p{
+  margin:6px 0 0;
+  color:var(--fpMuted);
+  font-size:.94rem;
 }
-
-.fpMissionCheck svg{
-  width:14px;
-  height:14px;
-  opacity:0;
-}
-
-.fpMissionCheck.done svg{
-  opacity:1;
-}
-
-/* =========================
-   BADGES
-   ========================= */
 
 .fpBadge{
   display:inline-flex;
   align-items:center;
-  gap:8px;
-  min-height:34px;
-  padding:0 12px;
+  justify-content:center;
   border-radius:999px;
-  background:rgba(255,255,255,0.05);
-  border:1px solid var(--line);
-  font-size:12px;
-  font-weight:700;
+  padding:8px 12px;
+  border:1px solid var(--fpBorder);
+  font-size:.78rem;
+  font-weight:800;
+  white-space:nowrap;
 }
 
-.fpBadgeDot{
-  width:8px;
-  height:8px;
-  border-radius:50%;
-  background:#94a3b8;
+.fpBadge.good{
+  color:var(--fpGood);
+  background:rgba(25,195,125,.12);
 }
 
-.fpBadge.up .fpBadgeDot{background:var(--green)}
-.fpBadge.down .fpBadgeDot{background:var(--red)}
-.fpBadge.warn .fpBadgeDot{background:var(--orange)}
+.fpBadge.warn{
+  color:var(--fpWarn);
+  background:rgba(255,176,32,.12);
+}
 
-/* =========================
-   ADDON PILL
-   ========================= */
+.fpBadge.info{
+  color:var(--fpBrand3);
+  background:rgba(47,91,255,.12);
+}
 
-.fpAddonPill{
-  min-height:32px;
-  border-radius:999px;
-  padding:0 12px;
-  display:inline-flex;
+.fpMissionItem{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.fpMissionMain{
+  display:flex;
+  gap:14px;
+  min-width:0;
+}
+
+.fpMissionCheck{
+  width:22px;
+  height:22px;
+  border-radius:8px;
+  border:1px solid var(--fpBorderStrong);
+  background:transparent;
+  display:flex;
   align-items:center;
   justify-content:center;
-  font-size:11px;
-  font-weight:800;
-  letter-spacing:.5px;
-  text-transform:uppercase;
+  color:transparent;
+  cursor:pointer;
+  transition:.2s ease;
+  flex:0 0 auto;
+  margin-top:2px;
 }
 
-.fpAddonPill.on{
+.fpMissionCheck.done{
+  background:linear-gradient(135deg, var(--fpGood), #10a766);
   color:#fff;
-  background:linear-gradient(135deg,var(--green),#16a34a);
+  border-color:transparent;
 }
 
-.fpAddonPill.off{
-  color:#d7ddff;
-  background:rgba(255,255,255,0.06);
-  border:1px solid var(--line);
+.fpMissionItem h4{
+  margin:0;
+  font-size:1rem;
 }
 
-/* =========================
-   TABLE
-   ========================= */
+.fpMissionItem p{
+  margin:6px 0 0;
+  color:var(--fpMuted);
+  line-height:1.5;
+}
+
+.fpMissionMeta{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:8px;
+}
+
+.fpTableWrap{
+  overflow:auto;
+  border-radius:18px;
+  border:1px solid var(--fpBorder);
+}
 
 .fpTable{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  margin-top:14px;
+  width:100%;
+  border-collapse:collapse;
+  min-width:720px;
 }
 
-.fpTableHead{
-  display:grid;
-  grid-template-columns:1.6fr .7fr .9fr .9fr 1.1fr;
-  gap:12px;
-  padding:0 12px;
-  color:var(--muted);
-  font-size:11px;
-  text-transform:uppercase;
-  letter-spacing:1px;
+.fpTable th,
+.fpTable td{
+  padding:14px 16px;
+  text-align:left;
+  border-bottom:1px solid var(--fpBorder);
+}
+
+.fpTable thead th{
+  color:var(--fpMuted);
+  font-size:.84rem;
   font-weight:700;
+  letter-spacing:.02em;
+  background:rgba(255,255,255,.03);
 }
 
-.fpTableRow{
-  display:grid;
-  grid-template-columns:1.6fr .7fr .9fr .9fr 1.1fr;
-  gap:12px;
-  align-items:center;
-  padding:16px 18px;
-  border-radius:16px;
-  border:1px solid var(--line);
-  background:rgba(255,255,255,0.03);
+.fpTable tbody tr:hover{
+  background:rgba(255,255,255,.03);
 }
 
-.fpTableUrl{
-  font-size:14px;
-  font-weight:700;
-  word-break:break-word;
-}
-
-/* =========================
-   REPORT CARDS
-   ========================= */
-
-.fpReportCard{
-  padding:18px;
-  min-height:180px;
-  display:flex;
-  flex-direction:column;
-  justify-content:space-between;
-}
-
-.fpReportTitle{
-  font-size:24px;
+.fpScore{
   font-weight:800;
-  margin-bottom:8px;
 }
 
-/* =========================
-   CHART
-   ========================= */
+.fpScore.good{color:var(--fpGood);}
+.fpScore.mid{color:var(--fpWarn);}
+.fpScore.low{color:var(--fpDanger);}
 
-.fpChartCard{
-  margin-top:6px;
+.fpMonitorGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:14px;
 }
 
-.fpChartBox{
-  width:100%;
-  min-height:340px;
-  border-radius:18px;
-  border:1px solid var(--line);
-  background:rgba(255,255,255,0.025);
-  padding:14px;
-}
-
-.fpChartBox canvas{
-  width:100%;
-  height:100%;
-  display:block;
-}
-
-.fpChartLegend{
+.fpMonitorItem{
   display:flex;
+  flex-direction:column;
   gap:10px;
-  flex-wrap:wrap;
-  margin-top:12px;
 }
 
-.fpLegendItem{
-  display:inline-flex;
+.fpMonitorTop{
+  display:flex;
   align-items:center;
-  gap:8px;
-  padding:8px 12px;
-  border-radius:999px;
-  font-size:12px;
-  border:1px solid var(--line);
-  background:rgba(255,255,255,0.03);
+  justify-content:space-between;
+  gap:10px;
 }
 
-.fpLegendDot{
-  width:8px;
-  height:8px;
-  border-radius:50%;
-  background:var(--primary);
+.fpMonitorItem p{
+  margin:0;
+  color:var(--fpMuted);
+  line-height:1.5;
 }
 
-/* =========================
-   FORMS
-   ========================= */
+.fpLatency{
+  font-weight:800;
+}
+
+.fpReportItem,
+.fpTeamItem{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.fpReportItem p,
+.fpTeamItem p{
+  margin:6px 0 0;
+  color:var(--fpMuted);
+}
+
+.fpCompareGrid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:14px;
+}
+
+.fpCompareCard h4{
+  margin:0 0 10px;
+}
+
+.fpCompareCard ul{
+  margin:0;
+  padding-left:18px;
+  color:var(--fpMuted);
+  line-height:1.7;
+}
+
+.fpToolHub{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:14px;
+}
+
+.fpBillingHero{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:18px;
+  border-radius:20px;
+  background:linear-gradient(135deg, rgba(47,91,255,.16), rgba(255,255,255,.04));
+  border:1px solid rgba(47,91,255,.24);
+  margin-bottom:16px;
+}
+
+.fpMiniLabel{
+  display:inline-block;
+  margin-bottom:8px;
+  color:var(--fpMuted);
+  font-size:.84rem;
+}
+
+.fpBillingPlan h3{
+  margin:0;
+  font-size:1.5rem;
+}
+
+.fpBillingPlan p{
+  margin:8px 0 0;
+  color:var(--fpMuted);
+}
+
+.fpPriceMain{
+  font-size:2rem;
+  font-weight:900;
+}
+
+.fpPriceSub{
+  color:var(--fpMuted);
+}
+
+.fpUsageGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:14px;
+}
+
+.fpUsageCard{
+  border-radius:18px;
+  padding:16px;
+  background:var(--fpCardSoft);
+  border:1px solid var(--fpBorder);
+}
+
+.fpUsageCard strong{
+  display:block;
+  margin-bottom:6px;
+}
+
+.fpUsageCard p{
+  margin:0;
+  color:var(--fpMuted);
+}
+
+.fpFormGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:14px;
+}
 
 .fpField{
-  margin-top:14px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
 }
 
-.fpLabel{
-  display:block;
-  margin-bottom:8px;
-  font-size:13px;
-  color:#d9e1ff;
+.fpField span{
+  font-weight:700;
 }
 
-.fpInput,
-.fpTextarea,
-.fpSelect{
+.fpField input,
+.fpField select{
   width:100%;
   border-radius:14px;
-  border:1px solid var(--line);
-  background:rgba(255,255,255,0.04);
-  color:#fff;
-  padding:0 14px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.04);
+  color:var(--fpText);
+  padding:13px 14px;
   outline:none;
 }
 
-.fpInput{
-  min-height:48px;
-}
-
-.fpTextarea{
-  min-height:130px;
-  padding:14px;
-  resize:vertical;
-}
-
-.fpInput::placeholder,
-.fpTextarea::placeholder{
-  color:#99a8dd;
-}
-
-/* =========================
-   TOGGLES
-   ========================= */
-
-.fpToggleText{
-  flex:1;
-  min-width:0;
-}
-
-.fpToggleTitle{
-  font-size:15px;
-  font-weight:700;
-  margin-bottom:4px;
-}
-
-.fpSwitch{
-  width:56px;
-  height:32px;
-  border-radius:999px;
-  background:rgba(255,255,255,0.08);
-  border:1px solid var(--line);
-  position:relative;
-  flex-shrink:0;
-  cursor:pointer;
-}
-
-.fpSwitch::after{
-  content:"";
-  position:absolute;
-  top:3px;
-  left:3px;
-  width:24px;
-  height:24px;
-  border-radius:50%;
+body.fpLight .fpField input,
+body.fpLight .fpField select{
   background:#fff;
-  transition:.2s;
 }
 
-.fpSwitch.on{
-  background:linear-gradient(135deg,var(--primary),var(--primary2));
+.fpToggleList{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
 }
 
-.fpSwitch.on::after{
-  left:28px;
-}
-
-/* =========================
-   INLINE LINKS
-   ========================= */
-
-.fpInlineLinks{
-  margin-top:12px;
-}
-
-.fpInlineLinks a{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-height:42px;
-  padding:0 14px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:rgba(255,255,255,0.04);
-  font-size:13px;
-}
-
-/* =========================
-   EMPTY
-   ========================= */
-
-.fpEmpty{
-  min-height:72px;
+.fpToggleItem{
   display:flex;
   align-items:center;
-  padding:0 16px;
-  border-radius:16px;
-  border:1px dashed rgba(255,255,255,0.10);
-  color:#b7c4ff;
-  font-size:13px;
+  justify-content:space-between;
+  gap:16px;
+  padding:14px 16px;
+  border-radius:18px;
+  background:var(--fpCardSoft);
+  border:1px solid var(--fpBorder);
 }
 
-/* =========================
-   LIGHT MODE
-   ========================= */
-
-@media (prefers-color-scheme: light){
-  :root{
-    --bg:#edf2ff;
-    --bg2:#e3ebff;
-    --card:#ffffff;
-    --cardSoft:#f6f8ff;
-    --text:#10182f;
-    --muted:#6c7ba8;
-    --line:rgba(16,24,47,0.08);
-    --shadow:0 16px 34px rgba(41,64,122,0.10);
-  }
-
-  html,body{
-    color:var(--text);
-    background:linear-gradient(180deg,var(--bg),var(--bg2));
-  }
-
-  .fpSidebar{
-    background:rgba(248,250,255,0.95);
-  }
-
-  .fpCard,
-  .fpCardInner,
-  .fpStatCard,
-  .fpMiniStat,
-  .fpReportCard,
-  .fpTextPanel,
-  .fpRowCard,
-  .fpInfoRow,
-  .fpSettingsRow,
-  .fpToggleRow,
-  .fpAddonRow,
-  .fpMissionCard,
-  .fpQuickMini,
-  .fpHeroMetric{
-    background:linear-gradient(180deg,#ffffff,#f5f8ff);
-  }
-
-  .fpInput,
-  .fpTextarea,
-  .fpSelect{
-    background:#fff;
-    color:#111827;
-  }
-
-  .fpBtnGhost{
-    color:#111827;
-    background:#fff;
-  }
-
-  .fpBadge,
-  .fpLegendItem,
-  .fpInlineLinks a{
-    background:#fff;
-  }
-
-  .fpChartBox{
-    background:#fff;
-  }
-}
-/* =========================
-   RESPONSIVE / FINAL FIXES
-   ========================= */
-
-.fpPageContainer > * + *{
-  margin-top:18px;
+.fpToggleItem p{
+  margin:6px 0 0;
+  color:var(--fpMuted);
 }
 
-.fpCard + .fpCard,
-.fpCardInner + .fpCardInner{
-  margin-top:0;
+.fpToggleItem input{
+  width:20px;
+  height:20px;
+  accent-color:var(--fpBrand);
+  flex:0 0 auto;
 }
 
-/* gros blocs toujours propres */
-.fpCard,
-.fpCardInner,
-.fpReportCard,
-.fpMissionCard,
-.fpStatCard,
-.fpMiniStat,
-.fpTextPanel{
-  width:100%;
-}
-
-/* topbar buttons size */
-.fpBtnTopbar{
-  min-width:140px;
-}
-
-/* export menu */
-.fpExportWrap{
-  position:relative;
-}
-
-.fpExportMenu{
-  position:absolute;
-  top:calc(100% + 8px);
-  right:0;
-  min-width:220px;
-  display:none;
-  padding:8px;
-  border-radius:14px;
-  border:1px solid var(--line);
-  background:rgba(10,14,35,0.98);
-  box-shadow:var(--shadow);
-  z-index:40;
-}
-
-.fpExportMenu.show{
-  display:block;
-}
-
-.fpExportMenu button{
-  width:100%;
-  min-height:42px;
+.fpBtn{
   border:none;
+  outline:none;
+  cursor:pointer;
+  border-radius:14px;
+  padding:12px 16px;
+  font-weight:700;
+  transition:.2s ease;
+}
+
+.fpBtn:hover{
+  transform:translateY(-1px);
+}
+
+.fpBtnPrimary{
+  color:#fff;
+  background:linear-gradient(135deg, var(--fpBrand), var(--fpBrand2));
+  box-shadow:var(--fpGlow);
+}
+
+.fpBtnGhost{
+  color:var(--fpText);
   background:transparent;
-  color:var(--text);
-  text-align:left;
-  padding:0 12px;
-  border-radius:10px;
+  border:1px solid var(--fpBorder);
+}
+
+.fpBtnSoft{
+  color:var(--fpText);
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--fpBorder);
+}
+
+.fpBtnBlock{
+  width:100%;
+}
+
+.fpMenuBtn{
+  display:none;
+  width:42px;
+  height:42px;
+  border-radius:12px;
+  border:1px solid var(--fpBorder);
+  background:transparent;
+  color:var(--fpText);
   cursor:pointer;
 }
 
-.fpExportMenu button:hover{
-  background:rgba(255,255,255,0.05);
+.fpToastWrap{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  z-index:80;
 }
 
-/* overlay safe */
-.fpOverlay{
-  z-index:90;
+.fpToast{
+  min-width:260px;
+  max-width:340px;
+  border-radius:16px;
+  padding:14px 16px;
+  background:var(--fpCardSolid);
+  border:1px solid var(--fpBorderStrong);
+  box-shadow:var(--fpShadow);
+  color:var(--fpText);
 }
 
-.fpSidebar{
-  z-index:100;
+.fpToast strong{
+  display:block;
+  margin-bottom:5px;
 }
 
-.fpTopbar{
-  z-index:20;
-  position:relative;
+.fpToast p{
+  margin:0;
+  color:var(--fpMuted);
+  line-height:1.5;
 }
 
-/* cleaner content widths */
-.fpContentShell,
-.fpHeroShell{
-  width:100%;
-}
-
-.fpPageContainer,
-.fpHeroBanner{
-  width:100%;
-}
-
-/* specific spacing corrections */
-.fpCardHead + .fpStatsGrid,
-.fpCardHead + .fpRows,
-.fpCardHead + .fpInfoList,
-.fpCardHead + .fpTable,
-.fpCardHead + .fpMissionStack,
-.fpCardHead + .fpChartCard,
-.fpCardHead + .fpReportsGrid,
-.fpCardHead + .fpGrid{
-  margin-top:8px;
-}
-
-.fpCard .fpTextPanel + .fpTextPanel,
-.fpCard .fpTextPanel + .fpInfoList,
-.fpCard .fpTextPanel + .fpRows,
-.fpCard .fpInfoList + .fpTextPanel,
-.fpCard .fpRows + .fpTextPanel{
-  margin-top:12px;
-}
-
-/* make side stats prettier */
-.fpSidebarActions .fpBtn{
-  justify-content:center;
-}
-
-.fpSidebarActions .fpBtnPrimary{
-  min-height:48px;
-}
-
-.fpSidebarActions .fpBtnGhost,
-.fpSidebarActions .fpBtnDanger{
-  min-height:46px;
-}
-
-/* command / quick spacing */
-.fpTopbarRight > .fpBtn,
-.fpTopbarRight > .fpExportWrap,
-.fpTopbarRight > .fpSelect,
-.fpTopbarRight > .fpStatusPill{
-  flex-shrink:0;
-}
-
-/* cards in single column stay wide and aligned */
-.fpGridMain > .fpCol{
-  min-width:0;
-}
-
-/* tables dont overflow */
-.fpTable,
-.fpTableRow,
-.fpTableHead{
-  width:100%;
-}
-
-.fpTableRow > *,
-.fpTableHead > *{
-  min-width:0;
-}
-
-/* nicer inputs */
-.fpInput:focus,
-.fpTextarea:focus,
-.fpSelect:focus{
-  border-color:rgba(47,107,255,.6);
-  box-shadow:0 0 0 3px rgba(47,107,255,.18);
-}
-
-/* smaller big titles on medium screens */
-@media (max-width:1280px){
-  .fpPageContainer{
-    max-width:1100px;
-  }
-
-  .fpHeroBanner{
-    max-width:1100px;
-  }
-
+@media (max-width: 1250px){
   .fpStatsGrid{
-    grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-template-columns:repeat(2, minmax(0,1fr));
   }
 
-  .fpReportsGrid{
-    grid-template-columns:repeat(2,minmax(0,1fr));
+  .fpSpan8,
+  .fpSpan7,
+  .fpSpan6,
+  .fpSpan5,
+  .fpSpan4{
+    grid-column:span 12;
   }
 
-  .fpHeroStats{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
-
-  .fpSectionTitle{
-    font-size:26px;
-  }
-
-  .fpMissionTitle{
-    font-size:22px;
+  .fpToolHub,
+  .fpCompareGrid{
+    grid-template-columns:repeat(2, minmax(0,1fr));
   }
 }
 
-/* tablet */
-@media (max-width:1080px){
-  .fpAppShell{
-    display:block;
-  }
-
+@media (max-width: 980px){
   .fpSidebar{
     position:fixed;
-    top:0;
     left:0;
-    width:min(88vw,340px);
-    height:100dvh;
-    transform:translateX(-105%);
-    transition:.24s ease;
-    box-shadow:var(--shadow);
-    overflow:auto;
+    top:0;
+    bottom:0;
+    transform:translateX(-100%);
+    transition:.28s ease;
+    box-shadow:var(--fpShadow);
   }
 
-  .fpSidebar.open{
+  .fpSidebar.show{
     transform:translateX(0);
   }
 
+  .fpSidebarClose,
   .fpMenuBtn{
     display:flex;
-  }
-
-  .fpMain{
-    width:100%;
-    min-height:100dvh;
+    align-items:center;
+    justify-content:center;
   }
 
   .fpTopbar{
     padding:16px 18px;
-    height:auto;
-    flex-direction:column;
-    align-items:stretch;
-    gap:14px;
   }
 
-  .fpTopbarLeft,
-  .fpTopbarRight{
-    width:100%;
+  .fpMainContent{
+    padding:18px;
   }
 
-  .fpTopbarRight{
-    justify-content:flex-start;
+  .fpBanner{
     flex-wrap:wrap;
   }
 
-  .fpHeroShell{
-    padding:0 18px;
-  }
-
-  .fpContentShell{
-    padding:18px;
-  }
-
-  .fpHeroBanner{
-    flex-direction:column;
-    gap:16px;
-  }
-
-  .fpHeroBannerRight{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:12px;
-  }
-
-  .fpHelloTitle{
-    font-size:34px;
-  }
-
-  .fpSectionTitle{
-    font-size:24px;
-  }
-
-  .fpCardInnerTitle{
-    font-size:18px;
+  .fpMonitorGrid,
+  .fpUsageGrid,
+  .fpFormGrid,
+  .fpToolHub,
+  .fpCompareGrid{
+    grid-template-columns:repeat(1, minmax(0,1fr));
   }
 }
 
-/* mobile */
-@media (max-width:760px){
-  .fpHeroShell{
-    padding:0 14px;
-  }
-
-  .fpContentShell{
-    padding:14px;
-  }
-
+@media (max-width: 720px){
   .fpTopbar{
-    padding:14px;
+    height:auto;
+    align-items:flex-start;
+    flex-direction:column;
   }
 
   .fpTopbarRight{
-    display:flex;
-    flex-direction:column;
-    align-items:stretch;
-    gap:12px;
-  }
-
-  .fpTopbarRight > *{
     width:100%;
+    flex-wrap:wrap;
   }
 
-  .fpBtnTopbar,
-  .fpStatusPill,
-  .fpSelect,
-  .fpExportWrap{
-    width:100%;
+  .fpTopbarRight .fpBtn{
+    flex:1 1 auto;
   }
 
-  .fpExportMenu{
-    left:0;
-    right:auto;
-    width:100%;
-    min-width:100%;
+  .fpStatsGrid{
+    grid-template-columns:repeat(1, minmax(0,1fr));
   }
 
-  .fpHeroBanner{
-    padding:18px;
-    border-radius:16px;
+  .fpBanner{
+    border-radius:20px;
   }
 
-  .fpHeroBannerTitle{
-    font-size:20px;
-    line-height:1.12;
-  }
-
-  .fpHeroBannerText{
-    font-size:13px;
-    line-height:1.55;
-  }
-
-  .fpHeroBannerRight{
-    grid-template-columns:1fr;
-  }
-
-  .fpHelloTitle{
-    font-size:28px;
-    line-height:1.05;
-  }
-
-  .fpHelloSub{
-    font-size:12px;
-  }
-
-  .fpCard{
-    padding:16px;
-    border-radius:16px;
-  }
-
-  .fpCardInner{
-    padding:14px;
-    border-radius:14px;
-  }
-
-  .fpSectionTitle{
-    font-size:22px;
-    line-height:1.1;
-  }
-
-  .fpCardInnerTitle{
-    font-size:17px;
-  }
-
-  .fpStatsGrid,
-  .fpReportsGrid,
-  .fpHeroStats{
-    grid-template-columns:1fr;
-  }
-
-  .fpMissionCard{
-    flex-direction:column;
-    align-items:stretch;
+  .fpPanel,
+  .fpStatCard{
+    border-radius:20px;
     padding:16px;
   }
 
-  .fpMissionTop{
-    width:100%;
+  .fpMissionItem,
+  .fpReportItem,
+  .fpTeamItem,
+  .fpMiniItem,
+  .fpBillingHero{
+    flex-direction:column;
     align-items:flex-start;
-  }
-
-  .fpMissionTitle{
-    font-size:18px;
-    line-height:1.12;
   }
 
   .fpMissionMeta{
-    font-size:12px;
-    line-height:1.4;
-  }
-
-  .fpMissionActions,
-  .fpTopActionsRow,
-  .fpDetailActions,
-  .fpCardActions,
-  .fpTableActions,
-  .fpInlineLinks{
-    width:100%;
-    flex-direction:column;
-    align-items:stretch;
-    gap:10px;
-  }
-
-  .fpMissionActions > .fpBtn,
-  .fpTopActionsRow > .fpBtn,
-  .fpTopActionsRow > a.fpBtn,
-  .fpDetailActions > .fpBtn,
-  .fpDetailActions > a.fpBtn,
-  .fpCardActions > .fpBtn,
-  .fpCardActions > a.fpBtn,
-  .fpTableActions > .fpBtn,
-  .fpTableActions > a.fpBtn,
-  .fpInlineLinks a{
-    width:100%;
-    justify-content:center;
-    min-height:46px;
-  }
-
-  .fpInfoRow,
-  .fpRowCard,
-  .fpSettingsRow,
-  .fpToggleRow,
-  .fpAddonRow{
-    flex-direction:column;
     align-items:flex-start;
-    gap:10px;
-    padding:14px;
   }
 
-  .fpInfoRow strong,
-  .fpSettingsRow strong{
-    max-width:100%;
-    text-align:left;
+  .fpPageHead{
+    align-items:flex-start;
   }
 
-  .fpTableHead{
-    display:none;
-  }
-
-  .fpTableRow{
-    grid-template-columns:1fr;
-    gap:10px;
-    padding:14px;
-  }
-
-  .fpChartBox{
-    min-height:230px;
-    padding:10px;
-  }
-
-  .fpChartLegend{
-    flex-direction:column;
-    align-items:stretch;
-  }
-
-  .fpLegendItem{
-    width:100%;
-    justify-content:flex-start;
-  }
-
-  .fpSidebarQuickStats{
-    grid-template-columns:1fr;
-  }
-}
-
-/* very small mobile */
-@media (max-width:520px){
-  .fpHelloTitle{
-    font-size:24px;
-  }
-
-  .fpSectionTitle{
-    font-size:20px;
-  }
-
-  .fpCardInnerTitle{
-    font-size:16px;
-  }
-
-  .fpMiniStatValue,
-  .fpStatValue,
-  .fpScore{
-    font-size:22px;
-  }
-
-  .fpBrandName{
-    font-size:17px;
-  }
-
-  .fpBrandSub{
-    font-size:11px;
-  }
-
-  .fpSidebar{
-    width:min(92vw,320px);
-  }
-}
-/* ===== FIX IMMÉDIAT LAYOUT DASHBOARD ===== */
-
-/* 1) sidebar un peu plus large et plus respirante */
-:root{
-  --fpSidebarW: 290px;
-}
-
-.fpSidebar{
-  padding:18px 16px 20px;
-}
-
-.fpAccountCard{
-  padding:14px;
-}
-
-.fpAccountRows{
-  gap:8px;
-}
-
-.fpAccountRow{
-  font-size:13px;
-  line-height:1.3;
-}
-
-.fpAccountRow strong{
-  font-size:13px;
-  max-width:145px;
-}
-
-/* 2) boutons sidebar propres */
-.fpSidebarActions{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:8px;
-}
-
-.fpSidebarActions .fpBtn{
-  width:100%;
-  min-height:40px;
-  height:40px;
-  padding:0 10px;
-  border-radius:12px;
-  font-size:12px;
-  font-weight:800;
-}
-
-.fpSidebarActions .fpBtnDanger{
-  grid-column:1 / -1;
-  min-height:44px;
-  height:44px;
-}
-
-/* 3) topbar moins tassée */
-.fpTopbar{
-  align-items:flex-start;
-  gap:14px;
-}
-
-.fpTopbarRight{
-  gap:10px;
-}
-
-#fpRefreshBtn{
-  min-width:120px !important;
-  height:42px !important;
-  min-height:42px !important;
-  border-radius:12px !important;
-  padding:0 16px !important;
-  font-size:13px !important;
-}
-
-#fpExportToggle,
-.fpStatusPill,
-.fpSelect{
-  min-height:42px !important;
-  height:42px !important;
-  border-radius:12px !important;
-  font-size:13px !important;
-}
-
-/* 4) zone principale plus propre */
-.fpMain{
-  padding:18px;
-  gap:18px;
-}
-
-.fpPageContainer{
-  width:100%;
-  max-width:none;
-  gap:16px;
-}
-
-/* 5) overview / hero : on enlève le grand vide bleu */
-.fpHero,
-.fpHeroBanner{
-  padding:18px !important;
-  border-radius:18px !important;
-  min-height:auto !important;
-}
-
-.fpHeroWide{
-  padding:18px !important;
-}
-
-.fpHero,
-.fpHeroBanner,
-.fpHeroShell .fpHeroBanner{
-  display:grid !important;
-  grid-template-columns:minmax(0,1fr) 170px !important;
-  gap:14px !important;
-  align-items:stretch !important;
-}
-
-.fpHeroContent{
-  max-width:none !important;
-}
-
-.fpHeroTitle,
-.fpHeroBannerTitle{
-  font-size:34px !important;
-  line-height:1.02 !important;
-  margin:2px 0 8px !important;
-}
-
-.fpHeroText,
-.fpHeroBannerText{
-  font-size:13px !important;
-  line-height:1.45 !important;
-  max-width:none !important;
-  margin:0 !important;
-}
-
-/* 6) mini stats du hero plus compactes */
-.fpHeroStats,
-.fpHeroBannerRight{
-  display:flex !important;
-  flex-direction:column !important;
-  gap:10px !important;
-}
-
-.fpHeroStats .fpMiniStat,
-.fpHeroBannerRight .fpHeroMetric,
-.fpHeroStats .fpStatCard{
-  min-height:84px !important;
-  padding:12px !important;
-  border-radius:14px !important;
-}
-
-.fpMiniStatValue,
-.fpStatValue{
-  font-size:24px !important;
-}
-
-/* 7) toutes les cartes prennent bien la largeur */
-.fpGridMain,
-.fpMissionPageGrid,
-.fpReportsGrid,
-.fpStatsGrid,
-.fpHeroStats{
-  grid-template-columns:1fr !important;
-}
-
-.fpCol,
-.fpColMain,
-.fpColSide,
-.fpMissionPageMain,
-.fpMissionPageSide{
-  width:100% !important;
-  max-width:none !important;
-}
-
-/* 8) cartes plus nettes */
-.fpCard,
-.fpCardInner,
-.fpStatCard,
-.fpMiniStat,
-.fpReportCard,
-.fpRowCard,
-.fpInfoRow,
-.fpSettingsRow,
-.fpToggleRow,
-.fpAddonRow,
-.fpMissionCard,
-.fpTextPanel{
-  border-radius:16px !important;
-}
-
-.fpCard{
-  padding:16px !important;
-}
-
-.fpCardInner{
-  padding:14px !important;
-}
-
-.fpSectionTitle{
-  font-size:20px !important;
-  line-height:1.08 !important;
-}
-
-.fpCardInnerTitle{
-  font-size:16px !important;
-}
-
-/* 9) tables et rows */
-.fpRows,
-.fpInfoList,
-.fpSettingsList,
-.fpMissionStack,
-.fpTable{
-  gap:10px !important;
-}
-
-.fpRowCard,
-.fpInfoRow,
-.fpSettingsRow,
-.fpToggleRow,
-.fpAddonRow,
-.fpTableRow{
-  padding:12px !important;
-}
-
-/* 10) missions plus propres */
-.fpMissionCard{
-  padding:14px !important;
-  gap:12px !important;
-}
-
-.fpMissionTitle{
-  font-size:18px !important;
-  line-height:1.12 !important;
-}
-
-.fpMissionMeta{
-  font-size:12px !important;
-}
-
-/* 11) écran moyen */
-@media (max-width: 1280px){
-  .fpHero,
-  .fpHeroBanner{
-    grid-template-columns:minmax(0,1fr) 150px !important;
-  }
-
-  .fpHeroTitle,
-  .fpHeroBannerTitle{
-    font-size:30px !important;
-  }
-}
-
-/* 12) tablette/mobile */
-@media (max-width: 980px){
-  :root{
-    --fpSidebarW: 320px;
-  }
-
-  .fpHero,
-  .fpHeroBanner{
-    grid-template-columns:1fr !important;
-  }
-
-  .fpHeroStats,
-  .fpHeroBannerRight{
-    display:grid !important;
-    grid-template-columns:repeat(3,minmax(0,1fr)) !important;
-    gap:10px !important;
-  }
-
-  .fpSidebarActions{
-    grid-template-columns:1fr !important;
-  }
-}
-
-@media (max-width: 760px){
-  .fpHeroStats,
-  .fpHeroBannerRight{
-    grid-template-columns:1fr !important;
-  }
-
-  .fpTopbarRight{
-    flex-direction:column !important;
-    align-items:stretch !important;
-  }
-
-  .fpTopbarRight > *{
-    width:100% !important;
+  .fpStatValue{
+    font-size:1.95rem;
   }
 }
