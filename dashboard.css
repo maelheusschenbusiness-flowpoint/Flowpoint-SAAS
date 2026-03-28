@@ -1662,3 +1662,57 @@ body{
 .fpBtnPrimary{
   box-shadow:0 10px 30px rgba(47,91,255,.35);
 }
+.fpAddonRow{
+  align-items:center;
+  padding:16px 18px;
+  border-radius:18px;
+}
+
+.fpAddonLabel{
+  flex:1;
+  min-width:0;
+  padding-right:12px;
+}
+
+.fpAddonPill{
+  min-width:78px;
+  min-height:40px;
+  padding:0 16px;
+  border-radius:999px;
+  font-size:13px;
+  letter-spacing:.08em;
+}
+
+@media (max-width:760px){
+  .fpAddonRow{
+    padding:16px;
+    gap:12px;
+  }
+
+  .fpAddonPill{
+    min-width:72px;
+    min-height:38px;
+    padding:0 14px;
+  }
+}
+@media (prefers-color-scheme: light){
+  .fpBtnPrimary{
+    box-shadow:
+      0 14px 30px rgba(47,91,255,.22),
+      inset 0 1px 0 rgba(255,255,255,.18);
+  }
+
+  .fpBtnSoft{
+    color:#2340b8 !important;
+    background:linear-gradient(180deg, rgba(71,106,255,.20), rgba(71,106,255,.10)) !important;
+    border:1px solid rgba(71,106,255,.22) !important;
+  }
+
+  .fpMissionActions .fpBtnPrimary,
+  .fpDetailActions .fpBtnPrimary,
+  .fpTopActionsRow .fpBtnPrimary{
+    box-shadow:
+      0 12px 28px rgba(47,91,255,.20),
+      inset 0 1px 0 rgba(255,255,255,.14);
+  }
+}
