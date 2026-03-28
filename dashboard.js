@@ -2752,7 +2752,21 @@ function buildPlanBenefitsCard() {
 
     bindGlobalActions();
   }
+let fpSessionInterval = null;
 
+function startSessionKeepAlive() {
+  if (fpSessionInterval) clearInterval(fpSessionInterval);
+
+  fpSessionInterval = setInterval(async () => {
+    try {
+      const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+      if (!refreshToken) return;
+      await refreshTokenIfPossible();
+    } catch (e) {
+      console.warn("Refresh token silent failed:", e);
+    }
+  }, 4 * 60 * 1000);
+}
   function init() {
     hydrateLogos();
     loadUiPrefs();
@@ -2772,6 +2786,7 @@ function buildPlanBenefitsCard() {
     }
 
     initEvents();
+    startSessionKeepAlive();
     loadData();
 
     if (shouldAutoScrollTop()) {
