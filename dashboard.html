@@ -32,81 +32,97 @@
 
           <div class="fpBrandText">
             <div class="fpBrandName">FlowPoint</div>
-            <div class="fpBrandSub">Centre de contrôle</div>
+            <div class="fpBrandSub">Control center</div>
           </div>
         </div>
 
-        <nav class="fpNav">
-          <a href="#overview" class="fpNavItem" data-route="overview">
-            <span class="fpNavDot"></span>
-            <span>Overview</span>
-          </a>
+        <div class="fpSidebarSection">
+          <div class="fpSidebarSectionLabel">Core</div>
 
-          <a href="#missions" class="fpNavItem" data-route="missions">
-            <span class="fpNavDot"></span>
-            <span>Missions</span>
-          </a>
+          <nav class="fpNav">
+            <a href="#overview" class="fpNavItem" data-route="overview">
+              <span class="fpNavDot"></span>
+              <span>Overview</span>
+            </a>
 
-          <a href="#audits" class="fpNavItem" data-route="audits">
-            <span class="fpNavDot"></span>
-            <span>Audits</span>
-          </a>
+            <a href="#missions" class="fpNavItem" data-route="missions">
+              <span class="fpNavDot"></span>
+              <span>Missions</span>
+            </a>
 
-          <a href="#monitors" class="fpNavItem" data-route="monitors">
-            <span class="fpNavDot"></span>
-            <span>Monitors</span>
-          </a>
+            <a href="#audits" class="fpNavItem" data-route="audits">
+              <span class="fpNavDot"></span>
+              <span>Audits</span>
+            </a>
 
-          <a href="#reports" class="fpNavItem" data-route="reports">
-            <span class="fpNavDot"></span>
-            <span>Reports</span>
-          </a>
+            <a href="#monitors" class="fpNavItem" data-route="monitors">
+              <span class="fpNavDot"></span>
+              <span>Monitors</span>
+            </a>
 
-          <a href="#billing" class="fpNavItem" data-route="billing">
-            <span class="fpNavDot"></span>
-            <span>Billing</span>
-          </a>
+            <a href="#reports" class="fpNavItem" data-route="reports">
+              <span class="fpNavDot"></span>
+              <span>Reports</span>
+            </a>
 
-          <a href="#settings" class="fpNavItem" data-route="settings">
-            <span class="fpNavDot"></span>
-            <span>Settings</span>
-          </a>
+            <a href="#subscription" class="fpNavItem" data-route="subscription">
+              <span class="fpNavDot"></span>
+              <span>Facturation</span>
+            </a>
 
-          <a href="#team" class="fpNavItem" data-route="team">
-            <span class="fpNavDot"></span>
-            <span>Team</span>
-          </a>
+            <a href="#settings" class="fpNavItem" data-route="settings">
+              <span class="fpNavDot"></span>
+              <span>Settings</span>
+            </a>
+          </nav>
+        </div>
 
-          <a href="#action-plan" class="fpNavItem" data-route="action-plan">
-            <span class="fpNavDot"></span>
-            <span>Action plan</span>
-          </a>
+        <div class="fpSidebarSection">
+          <div class="fpSidebarSectionLabel">Growth</div>
 
-          <a href="#competitors" class="fpNavItem" data-route="competitors">
-            <span class="fpNavDot"></span>
-            <span>Competitors</span>
-          </a>
+          <nav class="fpNav">
+            <a href="#action-plan" class="fpNavItem" data-route="action-plan">
+              <span class="fpNavDot"></span>
+              <span>Plan d’action</span>
+            </a>
 
-          <a href="#local-seo" class="fpNavItem" data-route="local-seo">
-            <span class="fpNavDot"></span>
-            <span>Local SEO</span>
-          </a>
+            <a href="#competitors" class="fpNavItem" data-route="competitors">
+              <span class="fpNavDot"></span>
+              <span>Concurrents</span>
+            </a>
 
-          <a href="#alerts-center" class="fpNavItem" data-route="alerts-center">
-            <span class="fpNavDot"></span>
-            <span>Alerts center</span>
-          </a>
+            <a href="#local-seo" class="fpNavItem" data-route="local-seo">
+              <span class="fpNavDot"></span>
+              <span>Local SEO</span>
+            </a>
 
-          <a href="#admin" class="fpNavItem" data-route="admin">
-            <span class="fpNavDot"></span>
-            <span>Admin</span>
-          </a>
-        </nav>
+            <a href="#alerts-center" class="fpNavItem" data-route="alerts-center">
+              <span class="fpNavDot"></span>
+              <span>Centre d’alertes</span>
+            </a>
+          </nav>
+        </div>
+
+        <div class="fpSidebarSection">
+          <div class="fpSidebarSectionLabel">Workspace</div>
+
+          <nav class="fpNav">
+            <a href="#team" class="fpNavItem" data-route="team">
+              <span class="fpNavDot"></span>
+              <span>Équipe</span>
+            </a>
+
+            <a href="#admin" class="fpNavItem" data-route="admin">
+              <span class="fpNavDot"></span>
+              <span>Admin</span>
+            </a>
+          </nav>
+        </div>
       </div>
 
       <div class="fpSidebarBottom">
         <div class="fpAccountCard" id="fpAccountCard">
-          <div class="fpCardKicker">Compte</div>
+          <div class="fpCardKicker">Workspace</div>
 
           <div class="fpAccountRows">
             <div class="fpAccountRow">
@@ -172,17 +188,32 @@
             </div>
           </div>
 
+          <div class="fpSidebarQuickStats">
+            <div class="fpQuickMini">
+              <span class="fpQuickMiniLabel">Incidents</span>
+              <strong id="fpQuickIncidents">0</strong>
+            </div>
+            <div class="fpQuickMini">
+              <span class="fpQuickMiniLabel">Actions</span>
+              <strong id="fpQuickActions">0</strong>
+            </div>
+          </div>
+
           <div class="fpSidebarActions">
             <button class="fpBtn fpBtnPrimary fpBtnFull" id="fpOpenInviteSide" type="button">
               Inviter un membre
             </button>
 
-            <button class="fpBtn fpBtnSoft fpBtnFull" id="fpOpenBillingSide" type="button">
-              Billing
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenSubscriptionSide" type="button">
+              Facturation
             </button>
 
             <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenSettingsSide" type="button">
-              Settings
+              Paramètres
+            </button>
+
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenTeamSide" type="button">
+              Équipe
             </button>
 
             <button class="fpBtn fpBtnDanger fpBtnFull" id="fpLogoutBtn" type="button">
@@ -205,9 +236,11 @@
           <div class="fpHelloWrap">
             <div class="fpHelloHead">
               <div class="fpHelloBlock">
-                <div class="fpHelloKicker">FLOWPOINT</div>
+                <div class="fpHelloKicker">FLOWPOINT AI</div>
                 <h1 id="fpHelloTitle" class="fpHelloTitle">Bonjour</h1>
-                <div class="fpHelloSub">SEO · Monitoring · Reports · Billing</div>
+                <div class="fpHelloSub">
+                  SEO · Monitoring · Reports · Facturation · Team · Growth
+                </div>
               </div>
             </div>
           </div>
@@ -224,6 +257,10 @@
             Actualiser
           </button>
 
+          <button id="fpOpenCommandBtn" class="fpBtn fpBtnSoft fpBtnTopbar" type="button">
+            Command center
+          </button>
+
           <div class="fpExportWrap">
             <button id="fpExportToggle" class="fpBtn fpBtnGhost fpBtnTopbar" type="button">
               Exports
@@ -232,6 +269,7 @@
             <div id="fpExportMenu" class="fpExportMenu">
               <button id="fpExportAudits" type="button">Exporter audits CSV</button>
               <button id="fpExportMonitors" type="button">Exporter monitors CSV</button>
+              <button id="fpExportReports" type="button">Exporter reports CSV</button>
             </div>
           </div>
 
@@ -242,7 +280,38 @@
         </div>
       </header>
 
-      <div id="fpPageContainer" class="fpPageContainer"></div>
+      <section class="fpHeroShell">
+        <div class="fpHeroBanner">
+          <div class="fpHeroBannerLeft">
+            <div class="fpHeroBannerKicker">Pilotage central</div>
+            <div class="fpHeroBannerTitle">Workspace FlowPoint</div>
+            <div class="fpHeroBannerText">
+              Une vue unique pour piloter le SEO, le monitoring, la facturation, les alertes, l’équipe et les modules avancés.
+            </div>
+          </div>
+
+          <div class="fpHeroBannerRight">
+            <div class="fpHeroMetric">
+              <span class="fpHeroMetricLabel">Score global</span>
+              <strong id="fpTopGlobalScore">0</strong>
+            </div>
+
+            <div class="fpHeroMetric">
+              <span class="fpHeroMetricLabel">Monitors actifs</span>
+              <strong id="fpTopActiveMonitors">0</strong>
+            </div>
+
+            <div class="fpHeroMetric">
+              <span class="fpHeroMetricLabel">Actions ouvertes</span>
+              <strong id="fpTopOpenActions">0</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="fpContentShell">
+        <div id="fpPageContainer" class="fpPageContainer"></div>
+      </section>
     </main>
   </div>
 
