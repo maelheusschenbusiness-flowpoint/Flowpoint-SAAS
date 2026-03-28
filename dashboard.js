@@ -1601,7 +1601,7 @@ function buildPlanBenefitsCard() {
             <div class="fpMissionPageMain">
               <div class="fpMissionStack">
                 ${state.missions.map((m) => `
-                  <div class="fpMissionCard fpMissionCardLarge">
+                  <div class="fpMissionCard">
                     <div class="fpMissionTop">
                       <button
                         class="fpMissionCheck ${m.done ? "done" : ""}"
