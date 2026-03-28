@@ -22,9 +22,9 @@
     "#admin",
   ]);
 
-  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v40";
-  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v40";
-  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v40";
+  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v50";
+  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v50";
+  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v50";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
   const SESSION_REFRESH_INTERVAL_MS = 4 * 60 * 1000;
   const LOGO_SRC = "/assets/flowpoint-logo.svg";
@@ -118,8 +118,8 @@
     return [
       { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor" },
       { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit" },
-      { id: "m3", title: "Exporter les audits CSV", meta: "Rapports", done: false, action: "export_audits" },
-      { id: "m4", title: "Exporter les monitors CSV", meta: "Rapports", done: false, action: "export_monitors" },
+      { id: "m3", title: "Exporter les audits CSV", meta: "Reports", done: false, action: "export_audits" },
+      { id: "m4", title: "Exporter les monitors CSV", meta: "Reports", done: false, action: "export_monitors" },
       { id: "m5", title: "Ouvrir le billing", meta: "Billing", done: false, action: "open_billing" },
       { id: "m6", title: "Configurer les alertes email", meta: "Settings", done: false, action: "goto_settings" },
       { id: "m7", title: "Tester un monitor existant", meta: "Monitoring", done: false, action: "test_monitor" },
@@ -130,6 +130,7 @@
       { id: "m12", title: "Voir les concurrents", meta: "Competitors", done: false, action: "open_competitors" },
       { id: "m13", title: "Ouvrir le local SEO", meta: "Local SEO", done: false, action: "open_local_seo" },
       { id: "m14", title: "Consulter les alertes", meta: "Alerts", done: false, action: "open_alerts_center" },
+      { id: "m15", title: "Ouvrir l’espace admin", meta: "Admin", done: false, action: "open_admin" },
     ];
   }
 
@@ -399,9 +400,7 @@
   }
 
   function startSessionRefreshLoop() {
-    if (state.sessionRefreshTimer) {
-      clearInterval(state.sessionRefreshTimer);
-    }
+    if (state.sessionRefreshTimer) clearInterval(state.sessionRefreshTimer);
     state.sessionRefreshTimer = setInterval(() => {
       keepSessionAlive();
     }, SESSION_REFRESH_INTERVAL_MS);
@@ -561,8 +560,7 @@
   function countDoneMissions() {
     return state.missions.filter((m) => m.done).length;
   }
-
-  function hydrateSidebarAccount() {
+    function hydrateSidebarAccount() {
     const me = state.me || {};
     const usage = me.usage || {};
 
@@ -751,7 +749,8 @@
       </div>
     `;
   }
-    function openHtmlModal({ title, body, wide = false }) {
+
+  function openHtmlModal({ title, body, wide = false }) {
     const old = document.getElementById("fpModalOverlay");
     if (old) old.remove();
 
@@ -1056,8 +1055,7 @@
 
     return filtered;
   }
-
-  async function openAuditDetail(id) {
+    async function openAuditDetail(id) {
     if (!id) return;
     setStatus("Chargement du détail audit…", "warn");
 
@@ -1389,7 +1387,8 @@
     if (diff <= -8) return "Le score est en baisse. Vérifie les derniers audits.";
     return "La performance reste relativement stable sur la période.";
   }
-    function renderOverviewHero() {
+
+  function renderOverviewHero() {
     const me = state.me || {};
     const ov = state.overview || {};
     const lastAuditText = ov.lastAuditAt ? `Dernier audit le ${formatShortDate(ov.lastAuditAt)}` : "Aucun audit récent";
@@ -1429,8 +1428,7 @@
       </section>
     `;
   }
-
-  function renderOverviewPage() {
+    function renderOverviewPage() {
     const me = state.me || {};
     const ov = state.overview || {};
     const recentAudits = Array.isArray(state.audits) ? state.audits.slice(0, 5) : [];
@@ -1724,8 +1722,7 @@
       )}
     `);
   }
-
-  function renderAuditsPage() {
+    function renderAuditsPage() {
     const audits = getFilteredAudits();
     const allAudits = Array.isArray(state.audits) ? state.audits : [];
     const avgScore = allAudits.length
@@ -1989,8 +1986,7 @@
               : createEmpty("Aucun monitor actif pour le moment.")
           )}
         </div>
-
-        <div class="fpCol fpColSide">
+                <div class="fpCol fpColSide">
           ${createSectionCard(
             "Résumé",
             "État du monitoring",
@@ -2113,33 +2109,6 @@
       });
     });
   }
-    function buildPlanBenefitsCard() {
-    const current = lower(state.me?.plan);
-    const rows = [
-      { plan: "standard", audits: "30", monitors: "3", pdf: "30", exports: "30", extras: "Base" },
-      { plan: "pro", audits: "300", monitors: "50", pdf: "300", exports: "300", extras: "Plus de volume" },
-      { plan: "ultra", audits: "2000", monitors: "300", pdf: "2000", exports: "2000", extras: "Équipe + scale" },
-    ];
-
-    return `
-      <div class="fpRows">
-        ${rows.map((r) => {
-          const isCurrent = current === r.plan;
-          return `
-            <div class="fpRowCard">
-              <div class="fpRowMain">
-                <div class="fpRowTitle">${esc(planLabel(r.plan))}${isCurrent ? " · actuel" : ""}</div>
-                <div class="fpRowMeta">
-                  Audits ${esc(r.audits)} · Monitors ${esc(r.monitors)} · PDF ${esc(r.pdf)} · Exports ${esc(r.exports)} · ${esc(r.extras)}
-                </div>
-              </div>
-              <div class="fpRowRight">${createBadge(isCurrent ? "active" : "inactive")}</div>
-            </div>
-          `;
-        }).join("")}
-      </div>
-    `;
-  }
 
   function renderReportsPage() {
     const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
@@ -2235,8 +2204,7 @@
               </div>
             `
           )}
-
-          ${createSectionCard(
+                    ${createSectionCard(
             "Fonctions premium",
             "Rapports avancés",
             "Modules à plus forte valeur pour un SaaS scalable",
@@ -2488,7 +2456,111 @@
     $("#fpCompactListsToggle")?.addEventListener("click", () => toggleUiPref("compactLists"));
     $("#fpAdvancedCardsToggle")?.addEventListener("click", () => toggleUiPref("showAdvancedCards"));
   }
-    function openMissionPage(id) {
+
+  function renderSimpleComingSoonPage(kicker, title, text, bullets = []) {
+    setPage(`
+      ${createSectionCard(
+        kicker,
+        title,
+        text,
+        `
+          <div class="fpStatsGrid fpStatsGridSingle">
+            ${bullets.map((item) => `
+              <div class="fpStatCard">
+                <div class="fpStatLabel">${esc(item.label)}</div>
+                <div class="fpStatValue">${esc(item.value)}</div>
+                <div class="fpStatMeta">${esc(item.meta)}</div>
+              </div>
+            `).join("")}
+          </div>
+
+          <div class="fpTextPanel">
+            Cette section est déjà intégrée au dashboard et pourra être branchée ensuite à tes routes backend sans changer le design.
+          </div>
+        `
+      )}
+    `);
+  }
+
+  function renderTeamPage() {
+    renderSimpleComingSoonPage(
+      "Team",
+      "Espace équipe",
+      "Centralise les membres, invitations, rôles et accès.",
+      [
+        { label: "Membres", value: "Bientôt", meta: "Liste des membres de l’organisation" },
+        { label: "Invitations", value: "Bientôt", meta: "Invitations en attente" },
+        { label: "Rôles", value: "Owner / Member", meta: "Gestion des permissions" },
+      ]
+    );
+  }
+
+  function renderActionPlanPage() {
+    renderSimpleComingSoonPage(
+      "Action plan",
+      "Plan d’action SEO",
+      "Structure les priorités, les quick wins et le suivi d’exécution.",
+      [
+        { label: "Quick wins", value: "Priorisés", meta: "Actions à impact rapide" },
+        { label: "Priorité", value: "3 niveaux", meta: "Faible, moyenne, haute" },
+        { label: "Suivi", value: "Continu", meta: "Pilotage des recommandations" },
+      ]
+    );
+  }
+
+  function renderCompetitorsPage() {
+    renderSimpleComingSoonPage(
+      "Competitors",
+      "Analyse concurrents",
+      "Compare visibilité, signaux clés et positionnement concurrentiel.",
+      [
+        { label: "Concurrents", value: "Multi-domaines", meta: "Comparaison élargie" },
+        { label: "Vue", value: "SEO / Local", meta: "Lecture croisée des performances" },
+        { label: "Usage", value: "Commercial", meta: "Très utile en avant-vente" },
+      ]
+    );
+  }
+
+  function renderLocalSeoPage() {
+    renderSimpleComingSoonPage(
+      "Local SEO",
+      "Pilotage local",
+      "Regroupe signaux Google Maps, visibilité locale et suivi d’optimisation.",
+      [
+        { label: "Maps", value: "Connectable", meta: "Base de lecture locale" },
+        { label: "Fiches", value: "Suivies", meta: "Suivi des signaux clés" },
+        { label: "Objectif", value: "Visibilité locale", meta: "Améliorer le local pack" },
+      ]
+    );
+  }
+
+  function renderAlertsCenterPage() {
+    renderSimpleComingSoonPage(
+      "Alerts",
+      "Centre d’alertes",
+      "Rassemble incidents, historiques et logique d’escalade.",
+      [
+        { label: "Incidents", value: "Centralisés", meta: "Monitoring simplifié" },
+        { label: "Emails", value: "Configurables", meta: "Destinataires personnalisables" },
+        { label: "Historique", value: "Continu", meta: "Lecture des événements passés" },
+      ]
+    );
+  }
+
+  function renderAdminPage() {
+    renderSimpleComingSoonPage(
+      "Admin",
+      "Administration",
+      "Vue interne pour pilotage plus large, sécurité et supervision.",
+      [
+        { label: "Accès", value: "Restreint", meta: "Réservé aux rôles autorisés" },
+        { label: "Logs", value: "Centralisables", meta: "Audit et supervision" },
+        { label: "Usage", value: "Global", meta: "Vision transverse du SaaS" },
+      ]
+    );
+  }
+
+  function openMissionPage(id) {
     const mission = state.missions.find((m) => m.id === id);
     if (!mission) return;
 
@@ -2514,6 +2586,31 @@
 
     if (mission.action === "open_invite") {
       window.location.href = "/invite-accept.html";
+      return;
+    }
+
+    if (mission.action === "open_team") {
+      location.hash = "#team";
+      return;
+    }
+
+    if (mission.action === "open_action_plan") {
+      location.hash = "#action-plan";
+      return;
+    }
+
+    if (mission.action === "open_competitors") {
+      location.hash = "#competitors";
+      return;
+    }
+
+    if (mission.action === "open_local_seo") {
+      location.hash = "#local-seo";
+      return;
+    }
+
+    if (mission.action === "open_alerts_center") {
+      location.hash = "#alerts-center";
       return;
     }
 
@@ -2557,6 +2654,41 @@
       return true;
     }
 
+    if (mission.action === "open_team") {
+      location.hash = "#team";
+      setMissionDoneByAction("open_team", true);
+      saveMissions();
+      return true;
+    }
+
+    if (mission.action === "open_action_plan") {
+      location.hash = "#action-plan";
+      setMissionDoneByAction("open_action_plan", true);
+      saveMissions();
+      return true;
+    }
+
+    if (mission.action === "open_competitors") {
+      location.hash = "#competitors";
+      setMissionDoneByAction("open_competitors", true);
+      saveMissions();
+      return true;
+    }
+
+    if (mission.action === "open_local_seo") {
+      location.hash = "#local-seo";
+      setMissionDoneByAction("open_local_seo", true);
+      saveMissions();
+      return true;
+    }
+
+    if (mission.action === "open_alerts_center") {
+      location.hash = "#alerts-center";
+      setMissionDoneByAction("open_alerts_center", true);
+      saveMissions();
+      return true;
+    }
+
     if (mission.action === "goto_settings") {
       location.hash = "#settings";
       setMissionDoneByAction("goto_settings", true);
@@ -2586,8 +2718,7 @@
 
     return false;
   }
-
-  function renderRoute(options = {}) {
+    function renderRoute(options = {}) {
     const {
       scrollTop = false,
       preserveScroll = false,
@@ -2621,6 +2752,24 @@
         return;
       case "#settings":
         renderSettingsPage();
+        break;
+      case "#team":
+        renderTeamPage();
+        break;
+      case "#action-plan":
+        renderActionPlanPage();
+        break;
+      case "#competitors":
+        renderCompetitorsPage();
+        break;
+      case "#local-seo":
+        renderLocalSeoPage();
+        break;
+      case "#alerts-center":
+        renderAlertsCenterPage();
+        break;
+      case "#admin":
+        renderAdminPage();
         break;
       default:
         renderOverviewPage();
@@ -2769,6 +2918,10 @@
   }
 
   function logout() {
+    if (state.sessionRefreshTimer) {
+      clearInterval(state.sessionRefreshTimer);
+      state.sessionRefreshTimer = null;
+    }
     clearAuth();
     window.location.href = "/login.html";
   }
@@ -2862,6 +3015,7 @@
       if (!els.rangeSelect.value) els.rangeSelect.value = "30";
     }
 
+    startSessionRefreshLoop();
     initEvents();
     loadData();
 
