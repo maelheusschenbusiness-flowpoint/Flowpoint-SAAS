@@ -14,12 +14,19 @@
     "#reports",
     "#billing",
     "#settings",
+    "#team",
+    "#action-plan",
+    "#competitors",
+    "#local-seo",
+    "#alerts-center",
+    "#admin",
   ]);
 
-  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v30";
-  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v30";
-  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v30";
+  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v40";
+  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v40";
+  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v40";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+  const SESSION_REFRESH_INTERVAL_MS = 4 * 60 * 1000;
   const LOGO_SRC = "/assets/flowpoint-logo.svg";
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -41,9 +48,9 @@
     btnExportMonitors: $("#fpExportMonitors"),
 
     btnOpenBillingSide: $("#fpOpenBillingSide"),
-btnOpenSettingsSide: $("#fpOpenSettingsSide"),
-btnOpenInviteSide: $("#fpOpenInviteSide"),
-btnLogout: $("#fpLogoutBtn"),
+    btnOpenSettingsSide: $("#fpOpenSettingsSide"),
+    btnOpenInviteSide: $("#fpOpenInviteSide"),
+    btnLogout: $("#fpLogoutBtn"),
 
     rangeSelect: $("#fpRangeSelect"),
 
@@ -86,6 +93,7 @@ btnLogout: $("#fpLogoutBtn"),
     controller: null,
     loading: false,
     lastLoadedAt: null,
+    sessionRefreshTimer: null,
     uiPrefs: {
       themeAuto: true,
       liveStatus: true,
@@ -107,18 +115,23 @@ btnLogout: $("#fpLogoutBtn"),
   };
 
   function getDefaultMissions() {
-  return [
-    { id: "m0", title: "Ouvrir l’espace invitation", meta: "Équipe", done: false, action: "open_invite" },
-    { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor" },
-    { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit" },
-    { id: "m3", title: "Exporter les audits CSV", meta: "Rapports", done: false, action: "export_audits" },
-    { id: "m4", title: "Exporter les monitors CSV", meta: "Rapports", done: false, action: "export_monitors" },
-    { id: "m5", title: "Ouvrir Billing", meta: "Billing", done: false, action: "open_billing" },
-    { id: "m6", title: "Configurer les alertes email", meta: "Paramètres", done: false, action: "goto_settings" },
-    { id: "m7", title: "Tester un monitor existant", meta: "Monitoring", done: false, action: "test_monitor" },
-    { id: "m8", title: "Consulter les quotas du plan", meta: "Billing", done: false, action: "view_billing" },
-  ];
-}
+    return [
+      { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor" },
+      { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit" },
+      { id: "m3", title: "Exporter les audits CSV", meta: "Rapports", done: false, action: "export_audits" },
+      { id: "m4", title: "Exporter les monitors CSV", meta: "Rapports", done: false, action: "export_monitors" },
+      { id: "m5", title: "Ouvrir le billing", meta: "Billing", done: false, action: "open_billing" },
+      { id: "m6", title: "Configurer les alertes email", meta: "Settings", done: false, action: "goto_settings" },
+      { id: "m7", title: "Tester un monitor existant", meta: "Monitoring", done: false, action: "test_monitor" },
+      { id: "m8", title: "Consulter les quotas du plan", meta: "Billing", done: false, action: "view_billing" },
+      { id: "m9", title: "Ouvrir l’espace équipe", meta: "Team", done: false, action: "open_team" },
+      { id: "m10", title: "Inviter un membre", meta: "Team", done: false, action: "open_invite" },
+      { id: "m11", title: "Consulter le plan d’action", meta: "Action plan", done: false, action: "open_action_plan" },
+      { id: "m12", title: "Voir les concurrents", meta: "Competitors", done: false, action: "open_competitors" },
+      { id: "m13", title: "Ouvrir le local SEO", meta: "Local SEO", done: false, action: "open_local_seo" },
+      { id: "m14", title: "Consulter les alertes", meta: "Alerts", done: false, action: "open_alerts_center" },
+    ];
+  }
 
   function esc(value) {
     return String(value ?? "")
@@ -168,7 +181,12 @@ btnLogout: $("#fpLogoutBtn"),
     return planRank(state.me?.plan) >= planRank(minPlan);
   }
 
-  function featureGate(minPlan, okHtml, lockedTitle = "Fonction Premium", lockedText = "Disponible sur un plan supérieur.") {
+  function featureGate(
+    minPlan,
+    okHtml,
+    lockedTitle = "Fonction Premium",
+    lockedText = "Disponible sur un plan supérieur."
+  ) {
     if (hasPlan(minPlan)) return okHtml;
     return `
       <div class="fpTextPanel">
@@ -255,13 +273,26 @@ btnLogout: $("#fpLogoutBtn"),
     return localStorage.getItem(TOKEN_KEY) || "";
   }
 
+  function getRefreshToken() {
+    return localStorage.getItem(REFRESH_TOKEN_KEY) || "";
+  }
+
   function setToken(token) {
     if (token) localStorage.setItem(TOKEN_KEY, token);
+  }
+
+  function setRefreshToken(token) {
+    if (token) localStorage.setItem(REFRESH_TOKEN_KEY, token);
   }
 
   function clearAuth() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
+
+  function redirectToLogin() {
+    const next = encodeURIComponent(location.pathname + location.hash);
+    window.location.replace(`/login.html?next=${next}`);
   }
 
   function loadUiPrefs() {
@@ -340,7 +371,7 @@ btnLogout: $("#fpLogoutBtn"),
   }
 
   async function refreshTokenIfPossible() {
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    const refreshToken = getRefreshToken();
     if (!refreshToken) throw new Error("No refresh token");
 
     const r = await fetch(`${API_BASE}${REFRESH_ENDPOINT}`, {
@@ -354,7 +385,26 @@ btnLogout: $("#fpLogoutBtn"),
 
     const data = await r.json().catch(() => ({}));
     if (data?.token) setToken(data.token);
-    if (data?.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+    if (data?.refreshToken) setRefreshToken(data.refreshToken);
+
+    return !!data?.token;
+  }
+
+  async function keepSessionAlive() {
+    try {
+      await refreshTokenIfPossible();
+    } catch (e) {
+      console.warn("Session refresh silencieux échoué :", e);
+    }
+  }
+
+  function startSessionRefreshLoop() {
+    if (state.sessionRefreshTimer) {
+      clearInterval(state.sessionRefreshTimer);
+    }
+    state.sessionRefreshTimer = setInterval(() => {
+      keepSessionAlive();
+    }, SESSION_REFRESH_INTERVAL_MS);
   }
 
   async function fetchWithAuth(path, options = {}) {
@@ -385,7 +435,7 @@ btnLogout: $("#fpLogoutBtn"),
         res = await doFetch();
       } catch (e) {
         clearAuth();
-        window.location.replace("/login.html");
+        redirectToLogin();
         throw e;
       }
     }
@@ -511,7 +561,8 @@ btnLogout: $("#fpLogoutBtn"),
   function countDoneMissions() {
     return state.missions.filter((m) => m.done).length;
   }
-    function hydrateSidebarAccount() {
+
+  function hydrateSidebarAccount() {
     const me = state.me || {};
     const usage = me.usage || {};
 
@@ -542,7 +593,7 @@ btnLogout: $("#fpLogoutBtn"),
     }
 
     if (els.helloSub) {
-      els.helloSub.textContent = "SEO · Monitoring · Rapports · Facturation";
+      els.helloSub.textContent = "SEO · Monitoring · Reports · Billing";
     }
 
     if (els.rangeSelect) {
@@ -610,7 +661,17 @@ btnLogout: $("#fpLogoutBtn"),
     `;
   }
 
-  function createToolbar({ searchId, searchPlaceholder, searchValue, statusId, statusValue, sortId, sortValue, statuses = [], sorts = [] }) {
+  function createToolbar({
+    searchId,
+    searchPlaceholder,
+    searchValue,
+    statusId,
+    statusValue,
+    sortId,
+    sortValue,
+    statuses = [],
+    sorts = [],
+  }) {
     return `
       <div class="fpTopActionsRow" style="margin-top:14px">
         <input
@@ -657,38 +718,40 @@ btnLogout: $("#fpLogoutBtn"),
         key,
         label,
         enabled,
+        value,
         text: typeof value === "number" && value > 1 ? `ON ×${value}` : enabled ? "ON" : "OFF",
       };
     });
   }
-function buildPlanBenefitsCard() {
-  const current = lower(state.me?.plan);
-  const rows = [
-    { plan: "standard", audits: "30", monitors: "3", pdf: "30", exports: "30", extras: "Base" },
-    { plan: "pro", audits: "300", monitors: "50", pdf: "300", exports: "300", extras: "Plus de volume" },
-    { plan: "ultra", audits: "2000", monitors: "300", pdf: "2000", exports: "2000", extras: "Équipe + scale" },
-  ];
 
-  return `
-    <div class="fpRows">
-      ${rows.map((r) => {
-        const isCurrent = current === r.plan;
-        return `
-          <div class="fpRowCard">
-            <div class="fpRowMain">
-              <div class="fpRowTitle">${esc(planLabel(r.plan))}${isCurrent ? " · actuel" : ""}</div>
-              <div class="fpRowMeta">
-                Audits ${esc(r.audits)} · Monitors ${esc(r.monitors)} · PDF ${esc(r.pdf)} · Exports ${esc(r.exports)} · ${esc(r.extras)}
+  function buildPlanBenefitsCard() {
+    const current = lower(state.me?.plan);
+    const rows = [
+      { plan: "standard", audits: "30", monitors: "3", pdf: "30", exports: "30", extras: "Base" },
+      { plan: "pro", audits: "300", monitors: "50", pdf: "300", exports: "300", extras: "Volume + PDF + Uptime" },
+      { plan: "ultra", audits: "2000", monitors: "300", pdf: "2000", exports: "2000", extras: "Équipe + scale + modules avancés" },
+    ];
+
+    return `
+      <div class="fpRows">
+        ${rows.map((r) => {
+          const isCurrent = current === r.plan;
+          return `
+            <div class="fpRowCard">
+              <div class="fpRowMain">
+                <div class="fpRowTitle">${esc(planLabel(r.plan))}${isCurrent ? " · actuel" : ""}</div>
+                <div class="fpRowMeta">
+                  Audits ${esc(r.audits)} · Monitors ${esc(r.monitors)} · PDF ${esc(r.pdf)} · Exports ${esc(r.exports)} · ${esc(r.extras)}
+                </div>
               </div>
+              <div class="fpRowRight">${createBadge(isCurrent ? "active" : "inactive")}</div>
             </div>
-            <div class="fpRowRight">${createBadge(isCurrent ? "active" : "inactive")}</div>
-          </div>
-        `;
-      }).join("")}
-    </div>
-  `;
-}
-  function openHtmlModal({ title, body, wide = false }) {
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+    function openHtmlModal({ title, body, wide = false }) {
     const old = document.getElementById("fpModalOverlay");
     if (old) old.remove();
 
@@ -768,7 +831,7 @@ function buildPlanBenefitsCard() {
   }
 
   function openBillingCenter() {
-    setStatus("Ouverture de la facturation…", "warn");
+    setStatus("Ouverture du billing…", "warn");
     setMissionDoneByAction("open_billing", true);
     saveMissions();
     window.location.href = "/billing.html";
@@ -993,7 +1056,8 @@ function buildPlanBenefitsCard() {
 
     return filtered;
   }
-    async function openAuditDetail(id) {
+
+  async function openAuditDetail(id) {
     if (!id) return;
     setStatus("Chargement du détail audit…", "warn");
 
@@ -1210,9 +1274,7 @@ function buildPlanBenefitsCard() {
     const brand = styles.getPropertyValue("--fpBrand").trim() || "#2f5bff";
     const brand2 = styles.getPropertyValue("--fpBrand2").trim() || "#1b45ff";
     const text = styles.getPropertyValue("--fpMuted").trim() || "#94a3b8";
-    const grid = lightMode
-      ? "rgba(15,24,48,.12)"
-      : "rgba(255,255,255,.14)";
+    const grid = lightMode ? "rgba(15,24,48,.12)" : "rgba(255,255,255,.14)";
     const dashedGrid = lightMode ? "rgba(15,24,48,.22)" : "rgba(255,255,255,.25)";
     const labelColor = lightMode ? "rgba(15,24,48,.72)" : text;
 
@@ -1327,8 +1389,7 @@ function buildPlanBenefitsCard() {
     if (diff <= -8) return "Le score est en baisse. Vérifie les derniers audits.";
     return "La performance reste relativement stable sur la période.";
   }
-
-  function renderOverviewHero() {
+    function renderOverviewHero() {
     const me = state.me || {};
     const ov = state.overview || {};
     const lastAuditText = ov.lastAuditAt ? `Dernier audit le ${formatShortDate(ov.lastAuditAt)}` : "Aucun audit récent";
@@ -1663,7 +1724,8 @@ function buildPlanBenefitsCard() {
       )}
     `);
   }
-    function renderAuditsPage() {
+
+  function renderAuditsPage() {
     const audits = getFilteredAudits();
     const allAudits = Array.isArray(state.audits) ? state.audits : [];
     const avgScore = allAudits.length
@@ -2051,7 +2113,35 @@ function buildPlanBenefitsCard() {
       });
     });
   }
-    function renderReportsPage() {
+    function buildPlanBenefitsCard() {
+    const current = lower(state.me?.plan);
+    const rows = [
+      { plan: "standard", audits: "30", monitors: "3", pdf: "30", exports: "30", extras: "Base" },
+      { plan: "pro", audits: "300", monitors: "50", pdf: "300", exports: "300", extras: "Plus de volume" },
+      { plan: "ultra", audits: "2000", monitors: "300", pdf: "2000", exports: "2000", extras: "Équipe + scale" },
+    ];
+
+    return `
+      <div class="fpRows">
+        ${rows.map((r) => {
+          const isCurrent = current === r.plan;
+          return `
+            <div class="fpRowCard">
+              <div class="fpRowMain">
+                <div class="fpRowTitle">${esc(planLabel(r.plan))}${isCurrent ? " · actuel" : ""}</div>
+                <div class="fpRowMeta">
+                  Audits ${esc(r.audits)} · Monitors ${esc(r.monitors)} · PDF ${esc(r.pdf)} · Exports ${esc(r.exports)} · ${esc(r.extras)}
+                </div>
+              </div>
+              <div class="fpRowRight">${createBadge(isCurrent ? "active" : "inactive")}</div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  function renderReportsPage() {
     const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
     const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
     const usage = state.me?.usage || {};
@@ -2677,7 +2767,8 @@ function buildPlanBenefitsCard() {
       }
     });
   }
-    function logout() {
+
+  function logout() {
     clearAuth();
     window.location.href = "/login.html";
   }
@@ -2752,21 +2843,7 @@ function buildPlanBenefitsCard() {
 
     bindGlobalActions();
   }
-let fpSessionInterval = null;
 
-function startSessionKeepAlive() {
-  if (fpSessionInterval) clearInterval(fpSessionInterval);
-
-  fpSessionInterval = setInterval(async () => {
-    try {
-      const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-      if (!refreshToken) return;
-      await refreshTokenIfPossible();
-    } catch (e) {
-      console.warn("Refresh token silent failed:", e);
-    }
-  }, 4 * 60 * 1000);
-}
   function init() {
     hydrateLogos();
     loadUiPrefs();
@@ -2786,7 +2863,6 @@ function startSessionKeepAlive() {
     }
 
     initEvents();
-    startSessionKeepAlive();
     loadData();
 
     if (shouldAutoScrollTop()) {
