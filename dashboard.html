@@ -6,19 +6,19 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, viewport-fit=cover"
   />
-  <meta name="theme-color" content="#0b1230" />
+  <meta name="theme-color" content="#0a1230" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#dfe8ff" media="(prefers-color-scheme: light)" />
   <title>FlowPoint — Dashboard</title>
 
   <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
   <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
   <link rel="stylesheet" href="/dashboard.css" />
 </head>
-<body>
-  <div class="fpOverlay" id="fpOverlay" aria-hidden="true"></div>
+<body data-page="overview">
+  <div class="fpOverlay" id="fpOverlay"></div>
 
   <div class="fpAppShell">
-    <!-- SIDEBAR -->
-    <aside id="sidebar" class="fpSidebar" aria-label="Navigation principale">
+    <aside id="sidebar" class="fpSidebar">
       <div class="fpSidebarTop">
         <div class="fpBrand">
           <div class="fpBrandLogo">
@@ -26,1078 +26,215 @@
               src="/assets/flowpoint-logo.svg"
               alt="FlowPoint"
               class="fpBrandLogoImg"
+              id="fpSidebarLogo"
             />
           </div>
 
           <div class="fpBrandText">
             <div class="fpBrandName">FlowPoint</div>
-            <div class="fpBrandSub">Client Dashboard</div>
+            <div class="fpBrandSub">Centre de contrôle</div>
           </div>
         </div>
 
-        <button
-          id="mobileCloseSidebar"
-          class="fpSidebarClose"
-          type="button"
-          aria-label="Fermer le menu"
-        >
-          ✕
-        </button>
+        <nav class="fpNav">
+          <a href="#overview" class="fpNavItem" data-route="overview">
+            <span class="fpNavDot"></span>
+            <span>Overview</span>
+          </a>
+
+          <a href="#missions" class="fpNavItem" data-route="missions">
+            <span class="fpNavDot"></span>
+            <span>Missions</span>
+          </a>
+
+          <a href="#audits" class="fpNavItem" data-route="audits">
+            <span class="fpNavDot"></span>
+            <span>Audits</span>
+          </a>
+
+          <a href="#monitors" class="fpNavItem" data-route="monitors">
+            <span class="fpNavDot"></span>
+            <span>Monitors</span>
+          </a>
+
+          <a href="#reports" class="fpNavItem" data-route="reports">
+            <span class="fpNavDot"></span>
+            <span>Rapports</span>
+          </a>
+
+          <a href="#competitors" class="fpNavItem" data-route="competitors">
+            <span class="fpNavDot"></span>
+            <span>Concurrents</span>
+          </a>
+
+          <a href="#local-seo" class="fpNavItem" data-route="local-seo">
+            <span class="fpNavDot"></span>
+            <span>Local SEO</span>
+          </a>
+
+          <a href="#tools" class="fpNavItem" data-route="tools">
+            <span class="fpNavDot"></span>
+            <span>Outils</span>
+          </a>
+
+          <a href="#team" class="fpNavItem" data-route="team">
+            <span class="fpNavDot"></span>
+            <span>Équipe</span>
+          </a>
+
+          <a href="#billing" class="fpNavItem" data-route="billing">
+            <span class="fpNavDot"></span>
+            <span>Facturation</span>
+          </a>
+
+          <a href="#settings" class="fpNavItem" data-route="settings">
+            <span class="fpNavDot"></span>
+            <span>Paramètres</span>
+          </a>
+        </nav>
       </div>
-
-      <div class="fpWorkspaceCard">
-        <div class="fpWorkspaceMeta">
-          <span class="fpWorkspaceLabel">Workspace</span>
-          <strong id="workspaceName">FlowPoint AI</strong>
-        </div>
-
-        <div class="fpWorkspacePlan" id="workspacePlanBadge">Ultra</div>
-      </div>
-
-      <nav class="fpNav" id="fpNav" aria-label="Sections du dashboard">
-        <a href="#overview" class="fpNavItem active" data-route="overview">
-          <span class="fpNavIcon">◈</span>
-          <span>Overview</span>
-        </a>
-
-        <a href="#missions" class="fpNavItem" data-route="missions">
-          <span class="fpNavIcon">✓</span>
-          <span>Missions</span>
-        </a>
-
-        <a href="#audits" class="fpNavItem" data-route="audits">
-          <span class="fpNavIcon">⌕</span>
-          <span>Audits</span>
-        </a>
-
-        <a href="#monitors" class="fpNavItem" data-route="monitors">
-          <span class="fpNavIcon">◉</span>
-          <span>Monitors</span>
-        </a>
-
-        <a href="#reports" class="fpNavItem" data-route="reports">
-          <span class="fpNavIcon">▣</span>
-          <span>Reports</span>
-        </a>
-
-        <a href="#competitors" class="fpNavItem" data-route="competitors">
-          <span class="fpNavIcon">⇄</span>
-          <span>Competitors</span>
-        </a>
-
-        <a href="#local-seo" class="fpNavItem" data-route="local-seo">
-          <span class="fpNavIcon">⌖</span>
-          <span>Local SEO</span>
-        </a>
-
-        <a href="#tools" class="fpNavItem" data-route="tools">
-          <span class="fpNavIcon">⚙</span>
-          <span>Tools</span>
-        </a>
-
-        <a href="#team" class="fpNavItem" data-route="team">
-          <span class="fpNavIcon">👥</span>
-          <span>Team</span>
-        </a>
-
-        <a href="#billing" class="fpNavItem" data-route="billing">
-          <span class="fpNavIcon">€</span>
-          <span>Billing</span>
-        </a>
-
-        <a href="#settings" class="fpNavItem" data-route="settings">
-          <span class="fpNavIcon">☰</span>
-          <span>Settings</span>
-        </a>
-      </nav>
 
       <div class="fpSidebarBottom">
-        <div class="fpSupportCard">
-          <div class="fpSupportTitle">Support prioritaire</div>
-          <p>
-            Accède rapidement à l’aide, aux guides et au centre de contrôle pour
-            garder une expérience premium et rassurante.
-          </p>
-          <button
-            class="fpBtn fpBtnPrimary fpBtnBlock"
-            data-action="contact-support"
-            type="button"
-          >
-            Contacter le support
-          </button>
+        <div class="fpAccountCard" id="fpAccountCard">
+          <div class="fpCardKicker">Compte</div>
+
+          <div class="fpAccountRows">
+            <div class="fpAccountRow">
+              <span>Plan</span>
+              <strong id="fpAccPlan">Plan non synchronisé</strong>
+            </div>
+
+            <div class="fpAccountRow">
+              <span>Organisation</span>
+              <strong id="fpAccOrg">Workspace principal</strong>
+            </div>
+
+            <div class="fpAccountRow">
+              <span>Rôle</span>
+              <strong id="fpAccRole">Owner</strong>
+            </div>
+
+            <div class="fpAccountRow">
+              <span>Essai</span>
+              <strong id="fpAccTrial">En vérification</strong>
+            </div>
+          </div>
+
+          <div class="fpUsageStack">
+            <div class="fpUsageItem">
+              <div class="fpUsageTop">
+                <span>Audits</span>
+                <strong id="fpUsageAudits">0</strong>
+              </div>
+              <div class="fpBar">
+                <div class="fpBarFill" id="fpBarAudits"></div>
+              </div>
+            </div>
+
+            <div class="fpUsageItem">
+              <div class="fpUsageTop">
+                <span>PDF</span>
+                <strong id="fpUsagePdf">0</strong>
+              </div>
+              <div class="fpBar">
+                <div class="fpBarFill" id="fpBarPdf"></div>
+              </div>
+            </div>
+
+            <div class="fpUsageItem">
+              <div class="fpUsageTop">
+                <span>Exports</span>
+                <strong id="fpUsageExports">0</strong>
+              </div>
+              <div class="fpBar">
+                <div class="fpBarFill" id="fpBarExports"></div>
+              </div>
+            </div>
+
+            <div class="fpUsageItem">
+              <div class="fpUsageTop">
+                <span>Monitors</span>
+                <strong id="fpUsageMonitors">0</strong>
+              </div>
+              <div class="fpBar">
+                <div class="fpBarFill" id="fpBarMonitors"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="fpSidebarActions">
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenBillingSide" type="button">
+              Facturation
+            </button>
+
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenSettingsSide" type="button">
+              Paramètres
+            </button>
+
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenInviteSide" type="button">
+              Inviter un membre
+            </button>
+
+            <button class="fpBtn fpBtnDanger fpBtnFull" id="fpLogoutBtn" type="button">
+              Log out
+            </button>
+          </div>
         </div>
       </div>
     </aside>
 
-    <!-- MAIN -->
-    <div class="fpMainWrap">
+    <main class="fpMain">
       <header class="fpTopbar">
         <div class="fpTopbarLeft">
-          <button
-            id="mobileMenuBtn"
-            class="fpMenuBtn"
-            type="button"
-            aria-label="Ouvrir le menu"
-          >
-            ☰
+          <button id="fpMenuBtn" class="fpMenuBtn" type="button" aria-label="Ouvrir le menu">
+            <span></span>
+            <span></span>
+            <span></span>
           </button>
 
-          <div class="fpTopbarTitleWrap">
-            <h1 id="pageTitle">Overview</h1>
-            <p id="pageSubtitle">
-              Votre centre de contrôle SEO, monitoring, reporting et croissance.
-            </p>
+          <div class="fpHelloWrap">
+            <div class="fpHelloHead">
+              <div class="fpHelloBlock">
+                <div class="fpHelloKicker">FLOWPOINT</div>
+                <h1 id="fpHelloTitle" class="fpHelloTitle">Bonjour</h1>
+                <div class="fpHelloSub">SEO · Monitoring · Rapports · Facturation</div>
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="fpTopbarRight">
-          <div class="fpTopbarStat" aria-label="Plan actuel">
-            <div>
-              <strong>Plan Ultra</strong>
-              <span>Scalable & premium</span>
+          <select id="fpRangeSelect" class="fpSelect">
+            <option value="30">30 derniers jours</option>
+            <option value="7">7 derniers jours</option>
+            <option value="3">3 derniers jours</option>
+          </select>
+
+          <button id="fpRefreshBtn" class="fpBtn fpBtnPrimary" type="button">
+            Actualiser
+          </button>
+
+          <div class="fpExportWrap">
+            <button id="fpExportToggle" class="fpBtn fpBtnGhost" type="button">
+              Exports
+            </button>
+
+            <div id="fpExportMenu" class="fpExportMenu">
+              <button id="fpExportAudits" type="button">Exporter audits CSV</button>
+              <button id="fpExportMonitors" type="button">Exporter monitors CSV</button>
             </div>
           </div>
 
-          <button class="fpBtn fpBtnGhost" id="themeToggleBtn" type="button">
-            Mode clair / sombre
-          </button>
-
-          <button class="fpBtn fpBtnPrimary" id="runQuickAuditBtn" type="button">
-            Lancer un audit
-          </button>
+          <div class="fpStatusPill">
+            <span id="fpStatusDot" class="fpStatusDot"></span>
+            <span id="fpStatusText">Dashboard prêt</span>
+          </div>
         </div>
       </header>
 
-      <main class="fpMainContent">
-        <!-- BANNER -->
-        <section class="fpBanner" id="globalBanner">
-          <div class="fpBannerIcon">⚡</div>
-
-          <div class="fpBannerText">
-            <strong>FlowPoint transforme les données en décisions rentables.</strong>
-            <span>
-              Priorisez les actions, stabilisez vos sites, améliorez votre visibilité
-              locale et présentez des livrables premium faciles à comprendre.
-            </span>
-          </div>
-
-          <button class="fpBtn fpBtnSoft" data-route-go="tools" type="button">
-            Voir les outils
-          </button>
-        </section>
-
-        <!-- OVERVIEW -->
-        <section class="fpPage active" data-page="overview">
-          <div class="fpStatsGrid">
-            <article class="fpStatCard">
-              <div class="fpStatTop">
-                <span class="fpStatLabel">Audits ce mois</span>
-                <span class="fpTrend up">+18%</span>
-              </div>
-              <div class="fpStatValue" id="kpiAudits">248</div>
-              <p class="fpStatHint">
-                Analyse technique, contenu, structure, SEO local et opportunités.
-              </p>
-            </article>
-
-            <article class="fpStatCard">
-              <div class="fpStatTop">
-                <span class="fpStatLabel">Monitors actifs</span>
-                <span class="fpTrend stable">99.98%</span>
-              </div>
-              <div class="fpStatValue" id="kpiMonitors">34</div>
-              <p class="fpStatHint">
-                Surveillance uptime, temps de réponse, stabilité et incidents.
-              </p>
-            </article>
-
-            <article class="fpStatCard">
-              <div class="fpStatTop">
-                <span class="fpStatLabel">Rapports générés</span>
-                <span class="fpTrend up">+31%</span>
-              </div>
-              <div class="fpStatValue" id="kpiReports">126</div>
-              <p class="fpStatHint">
-                PDF, CSV, synthèses direction et exports prêts à partager.
-              </p>
-            </article>
-
-            <article class="fpStatCard">
-              <div class="fpStatTop">
-                <span class="fpStatLabel">Opportunités détectées</span>
-                <span class="fpTrend warn">Priorité haute</span>
-              </div>
-              <div class="fpStatValue" id="kpiOpportunities">19</div>
-              <p class="fpStatHint">
-                Mots-clés, contenus, performance, CTR, maillage et SEO local.
-              </p>
-            </article>
-          </div>
-
-          <div class="fpGrid fpGridMain">
-            <article class="fpPanel fpSpan8">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Vue d’ensemble premium</h3>
-                  <p>
-                    Une vue synthétique pour piloter la croissance, démontrer la valeur
-                    du produit et rassurer le client sur ce qu’il obtient.
-                  </p>
-                </div>
-
-                <button
-                  class="fpBtn fpBtnSoft"
-                  data-action="refresh-dashboard"
-                  type="button"
-                >
-                  Actualiser
-                </button>
-              </div>
-
-              <div class="fpFeatureRows">
-                <div class="fpFeatureRow">
-                  <div class="fpFeatureBullet good"></div>
-                  <div>
-                    <strong>SEO technique</strong>
-                    <p>
-                      Détection rapide des blocages : structure, indexation, balises,
-                      maillage interne, performance et cohérence globale.
-                    </p>
-                  </div>
-                </div>
-
-                <div class="fpFeatureRow">
-                  <div class="fpFeatureBullet info"></div>
-                  <div>
-                    <strong>Monitoring intelligent</strong>
-                    <p>
-                      Contrôle automatique des temps de réponse et de la disponibilité
-                      pour éviter les pertes de trafic et d’opportunités.
-                    </p>
-                  </div>
-                </div>
-
-                <div class="fpFeatureRow">
-                  <div class="fpFeatureBullet warn"></div>
-                  <div>
-                    <strong>Livrables premium</strong>
-                    <p>
-                      Rapports plus clairs, plus vendables et plus rassurants pour des
-                      clients techniques ou non techniques.
-                    </p>
-                  </div>
-                </div>
-
-                <div class="fpFeatureRow">
-                  <div class="fpFeatureBullet premium"></div>
-                  <div>
-                    <strong>Scalabilité native</strong>
-                    <p>
-                      Pensé pour accueillir plus de clients, plus de sites, plus
-                      d’équipes et plus d’automatisations sans dégrader l’expérience.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </article>
-
-            <article class="fpPanel fpSpan4">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Actions rapides</h3>
-                  <p>
-                    Les actions que le client premium veut trouver immédiatement.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpQuickActions">
-                <button class="fpActionCard" type="button" data-route-go="audits">
-                  <strong>Nouveau scan SEO</strong>
-                  <span>Analyse complète d’un site ou d’une page cible.</span>
-                </button>
-
-                <button class="fpActionCard" type="button" data-route-go="monitors">
-                  <strong>Ajouter un monitor</strong>
-                  <span>Surveiller uptime, stabilité et latence.</span>
-                </button>
-
-                <button class="fpActionCard" type="button" data-route-go="reports">
-                  <strong>Générer un rapport</strong>
-                  <span>Créer un export PDF ou CSV prêt à partager.</span>
-                </button>
-
-                <button class="fpActionCard" type="button" data-route-go="competitors">
-                  <strong>Comparer un concurrent</strong>
-                  <span>Visualiser les écarts de visibilité et de structure.</span>
-                </button>
-              </div>
-            </article>
-
-            <article class="fpPanel fpSpan6">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Pipeline de missions</h3>
-                  <p>
-                    Le client comprend ce qui est fait, ce qui est en cours et ce qui
-                    produit le plus de valeur.
-                  </p>
-                </div>
-
-                <button class="fpBtn fpBtnSoft" data-route-go="missions" type="button">
-                  Ouvrir
-                </button>
-              </div>
-
-              <div id="overviewMissionList" class="fpMiniList"></div>
-            </article>
-
-            <article class="fpPanel fpSpan6">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Opportunités business</h3>
-                  <p>
-                    Recommandations claires et monétisables pour renforcer la perception
-                    d’un excellent rapport qualité / prix.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpInsights">
-                <div class="fpInsightCard">
-                  <strong>Pages à fort potentiel</strong>
-                  <p>
-                    Certaines pages peuvent gagner des positions rapidement avec une
-                    optimisation légère de structure et contenu.
-                  </p>
-                </div>
-
-                <div class="fpInsightCard">
-                  <strong>SEO local sous-exploité</strong>
-                  <p>
-                    Google Business Profile, citations locales et pages géolocalisées
-                    peuvent augmenter les leads.
-                  </p>
-                </div>
-
-                <div class="fpInsightCard">
-                  <strong>Performance & conversion</strong>
-                  <p>
-                    Réduire la lenteur mobile améliore à la fois l’expérience
-                    utilisateur, le SEO et le taux de conversion.
-                  </p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- MISSIONS -->
-        <section class="fpPage" data-page="missions">
-          <div class="fpPageHead">
-            <div>
-              <h2>Missions</h2>
-              <p>
-                Suivi clair des actions réalisées, en cours et prioritaires pour
-                montrer une vraie exécution derrière l’abonnement.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" id="addMissionBtn" type="button">
-              Ajouter une mission
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan8">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Suivi opérationnel</h3>
-                  <p>
-                    Idéal pour rassurer le client et démontrer la valeur produite
-                    semaine après semaine.
-                  </p>
-                </div>
-              </div>
-
-              <div id="missionsList" class="fpMissionList"></div>
-            </article>
-
-            <article class="fpPanel fpSpan4">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Pourquoi c’est utile</h3>
-                  <p>
-                    Le client voit immédiatement le travail réel derrière l’espace
-                    FlowPoint.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpStackInfo">
-                <div class="fpInfoBox">
-                  <strong>Transparence</strong>
-                  <p>
-                    Chaque action visible renforce le sentiment de sérieux et de suivi.
-                  </p>
-                </div>
-
-                <div class="fpInfoBox">
-                  <strong>Confiance</strong>
-                  <p>
-                    Les missions terminées rendent la valeur tangible et compréhensible.
-                  </p>
-                </div>
-
-                <div class="fpInfoBox">
-                  <strong>Rétention</strong>
-                  <p>
-                    Plus la progression est visible, moins le client a envie de partir.
-                  </p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- AUDITS -->
-        <section class="fpPage" data-page="audits">
-          <div class="fpPageHead">
-            <div>
-              <h2>Audits SEO</h2>
-              <p>
-                Analysez les sites en profondeur et transformez les résultats en
-                opportunités concrètes.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" type="button" id="createAuditBtn">
-              Lancer un nouvel audit
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan7">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Derniers audits</h3>
-                  <p>
-                    Classement par score, priorité, état et potentiel d’amélioration.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpTableWrap">
-                <table class="fpTable">
-                  <thead>
-                    <tr>
-                      <th>Site</th>
-                      <th>Score</th>
-                      <th>Priorité</th>
-                      <th>Dernière analyse</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody id="auditsTableBody"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="fpPanel fpSpan5">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Ce que l’audit détecte</h3>
-                  <p>
-                    Une expérience premium passe par des explications simples et utiles.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpToolCards">
-                <div class="fpToolCard">
-                  <strong>SEO technique</strong>
-                  <p>
-                    Structure, indexation, maillage, balises, erreurs et cohérence.
-                  </p>
-                </div>
-
-                <div class="fpToolCard">
-                  <strong>Contenu</strong>
-                  <p>
-                    Pages faibles, intentions de recherche, duplication, opportunités
-                    éditoriales et richesse sémantique.
-                  </p>
-                </div>
-
-                <div class="fpToolCard">
-                  <strong>UX & performance</strong>
-                  <p>
-                    Temps de chargement, expérience mobile, confort de lecture et
-                    signaux de qualité.
-                  </p>
-                </div>
-
-                <div class="fpToolCard">
-                  <strong>SEO local</strong>
-                  <p>
-                    Présence locale, cohérence NAP, pages géolocalisées et potentiel maps.
-                  </p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- MONITORS -->
-        <section class="fpPage" data-page="monitors">
-          <div class="fpPageHead">
-            <div>
-              <h2>Monitors</h2>
-              <p>
-                Surveillez disponibilité, rapidité et incidents pour protéger trafic,
-                leads et réputation.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" type="button" id="addMonitorBtn">
-              Ajouter un monitor
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan8">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Sites surveillés</h3>
-                  <p>
-                    Une surveillance continue rassure énormément les clients
-                    professionnels.
-                  </p>
-                </div>
-              </div>
-
-              <div id="monitorGrid" class="fpMonitorGrid"></div>
-            </article>
-
-            <article class="fpPanel fpSpan4">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Valeur perçue</h3>
-                  <p>
-                    Pourquoi ce module donne une vraie sensation de SaaS haut de gamme.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpStackInfo">
-                <div class="fpInfoBox">
-                  <strong>Prévention</strong>
-                  <p>
-                    Détecter un problème avant le client final réduit la casse business.
-                  </p>
-                </div>
-
-                <div class="fpInfoBox">
-                  <strong>Réactivité</strong>
-                  <p>
-                    Les alertes donnent l’impression d’un service vivant et sérieux.
-                  </p>
-                </div>
-
-                <div class="fpInfoBox">
-                  <strong>Justification</strong>
-                  <p>
-                    Plus simple de justifier le prix quand une surveillance réelle est visible.
-                  </p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- REPORTS -->
-        <section class="fpPage" data-page="reports">
-          <div class="fpPageHead">
-            <div>
-              <h2>Reports</h2>
-              <p>
-                Générez des rapports clairs, élégants, convaincants et prêts à être
-                envoyés.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" type="button" id="generateReportBtn">
-              Générer un rapport
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan7">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Rapports récents</h3>
-                  <p>
-                    Exports PDF / CSV / synthèses direction avec structure claire.
-                  </p>
-                </div>
-              </div>
-
-              <div id="reportsList" class="fpReportList"></div>
-            </article>
-
-            <article class="fpPanel fpSpan5">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Formats disponibles</h3>
-                  <p>
-                    Chaque format a un rôle précis dans la vente et le suivi client.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpToolCards">
-                <div class="fpToolCard">
-                  <strong>PDF client-ready</strong>
-                  <p>
-                    Idéal pour les livrables premium et les présentations propres.
-                  </p>
-                </div>
-
-                <div class="fpToolCard">
-                  <strong>CSV opérationnel</strong>
-                  <p>
-                    Utile pour les traitements internes, exports massifs et analyses.
-                  </p>
-                </div>
-
-                <div class="fpToolCard">
-                  <strong>Résumé direction</strong>
-                  <p>
-                    Version simple et vendeuse pour dirigeants non techniques.
-                  </p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- COMPETITORS -->
-        <section class="fpPage" data-page="competitors">
-          <div class="fpPageHead">
-            <div>
-              <h2>Competitors</h2>
-              <p>
-                Comparez la visibilité, la structure et les opportunités face à la
-                concurrence.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" type="button">
-              Ajouter un concurrent
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan12">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Comparatif concurrentiel</h3>
-                  <p>
-                    Montre au client pourquoi il doit continuer à investir et où se
-                    situe l’écart avec le marché.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpCompareGrid" id="competitorList"></div>
-            </article>
-          </div>
-        </section>
-
-        <!-- LOCAL SEO -->
-        <section class="fpPage" data-page="local-seo">
-          <div class="fpPageHead">
-            <div>
-              <h2>Local SEO</h2>
-              <p>
-                Optimisez la présence locale et les signaux business pour générer plus
-                de leads qualifiés.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" type="button">
-              Analyser la présence locale
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan6">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Axes d’amélioration</h3>
-                  <p>
-                    Le module local est très vendeur pour PME, commerces et indépendants.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpLocalSeoList">
-                <div class="fpLocalSeoItem">
-                  <strong>Google Business Profile</strong>
-                  <p>
-                    Optimiser les catégories, services, description et publications.
-                  </p>
-                </div>
-
-                <div class="fpLocalSeoItem">
-                  <strong>Cohérence NAP</strong>
-                  <p>
-                    Uniformiser nom, adresse et téléphone pour renforcer la confiance locale.
-                  </p>
-                </div>
-
-                <div class="fpLocalSeoItem">
-                  <strong>Avis & réputation</strong>
-                  <p>
-                    Augmenter la preuve sociale et améliorer le taux de conversion local.
-                  </p>
-                </div>
-
-                <div class="fpLocalSeoItem">
-                  <strong>Pages géolocalisées</strong>
-                  <p>
-                    Capter des recherches à forte intention commerciale avec des pages
-                    locales ciblées.
-                  </p>
-                </div>
-              </div>
-            </article>
-
-            <article class="fpPanel fpSpan6">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Impact business</h3>
-                  <p>
-                    Une section qui explique clairement pourquoi le client y gagne.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpInsights">
-                <div class="fpInsightCard">
-                  <strong>Plus de visibilité locale</strong>
-                  <p>
-                    Mieux apparaître sur les recherches proches de l’intention d’achat.
-                  </p>
-                </div>
-
-                <div class="fpInsightCard">
-                  <strong>Leads plus qualifiés</strong>
-                  <p>
-                    Toucher des visiteurs déjà prêts à appeler, réserver ou acheter.
-                  </p>
-                </div>
-
-                <div class="fpInsightCard">
-                  <strong>Meilleure conversion</strong>
-                  <p>
-                    Les signaux locaux renforcent la confiance et l’action.
-                  </p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- TOOLS -->
-        <section class="fpPage" data-page="tools">
-          <div class="fpPageHead">
-            <div>
-              <h2>Tools</h2>
-              <p>
-                Un hub premium qui regroupe les outils les plus utiles pour rendre
-                FlowPoint plus puissant et plus vendable.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" type="button">
-              Activer un outil
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan12">
-              <div id="toolsHub" class="fpToolHub"></div>
-            </article>
-          </div>
-        </section>
-
-        <!-- TEAM -->
-        <section class="fpPage" data-page="team">
-          <div class="fpPageHead">
-            <div>
-              <h2>Team</h2>
-              <p>
-                Gérez les accès, les rôles et la collaboration sans alourdir l’expérience.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" type="button">
-              Inviter un membre
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan7">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Membres</h3>
-                  <p>
-                    Un module très utile pour vendre les plans élevés et rassurer les équipes.
-                  </p>
-                </div>
-              </div>
-
-              <div id="teamList" class="fpTeamList"></div>
-            </article>
-
-            <article class="fpPanel fpSpan5">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Pourquoi c’est premium</h3>
-                  <p>
-                    Le multi-utilisateur augmente la valeur perçue et la rétention.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpStackInfo">
-                <div class="fpInfoBox">
-                  <strong>Collaboration</strong>
-                  <p>
-                    Plusieurs profils peuvent travailler sur le même espace client.
-                  </p>
-                </div>
-
-                <div class="fpInfoBox">
-                  <strong>Rôles</strong>
-                  <p>
-                    Contrôlez qui peut voir, modifier, surveiller ou exporter.
-                  </p>
-                </div>
-
-                <div class="fpInfoBox">
-                  <strong>Upsell naturel</strong>
-                  <p>
-                    Idéal pour pousser vers Pro ou Ultra sans forcer la vente.
-                  </p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- BILLING -->
-        <section class="fpPage" data-page="billing">
-          <div class="fpPageHead">
-            <div>
-              <h2>Billing</h2>
-              <p>
-                Présentez clairement la valeur, les usages et les possibilités d’évolution
-                du plan actuel.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" id="openPortalBtn" type="button">
-              Gérer mon abonnement
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan7">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Votre abonnement</h3>
-                  <p>
-                    Une présentation propre et premium renforce la crédibilité du produit.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpBillingHero">
-                <div class="fpBillingPlan">
-                  <span class="fpMiniLabel">Plan actif</span>
-                  <h3 id="billingPlanName">Ultra</h3>
-                  <p id="billingPlanDesc">
-                    Pour les équipes, la croissance et les besoins avancés.
-                  </p>
-                </div>
-
-                <div class="fpBillingPrice">
-                  <span class="fpPriceMain" id="billingPlanPrice">149€</span>
-                  <span class="fpPriceSub">/ mois</span>
-                </div>
-              </div>
-
-              <div id="usageGrid" class="fpUsageGrid"></div>
-            </article>
-
-            <article class="fpPanel fpSpan5">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Pourquoi rester sur FlowPoint</h3>
-                  <p>
-                    Le client doit sentir que l’offre est logique, rentable et difficile
-                    à remplacer.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpToolCards">
-                <div class="fpToolCard">
-                  <strong>Gains de temps</strong>
-                  <p>
-                    Automatisation des tâches répétitives et centralisation des analyses.
-                  </p>
-                </div>
-
-                <div class="fpToolCard">
-                  <strong>Livrables premium</strong>
-                  <p>
-                    Plus simple de vendre ou justifier une prestation avec des rapports propres.
-                  </p>
-                </div>
-
-                <div class="fpToolCard">
-                  <strong>Vue globale</strong>
-                  <p>
-                    SEO, uptime, local, reporting et suivi réunis au même endroit.
-                  </p>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- SETTINGS -->
-        <section class="fpPage" data-page="settings">
-          <div class="fpPageHead">
-            <div>
-              <h2>Settings</h2>
-              <p>
-                Configurez votre espace pour une expérience plus fluide, plus claire
-                et plus rentable.
-              </p>
-            </div>
-
-            <button class="fpBtn fpBtnPrimary" id="saveSettingsBtn" type="button">
-              Sauvegarder
-            </button>
-          </div>
-
-          <div class="fpGrid">
-            <article class="fpPanel fpSpan6">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Préférences générales</h3>
-                  <p>
-                    Tout ce qu’il faut pour personnaliser le workspace proprement.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpFormGrid">
-                <label class="fpField">
-                  <span>Nom du workspace</span>
-                  <input
-                    id="workspaceNameInput"
-                    type="text"
-                    value="FlowPoint AI"
-                    autocomplete="organization"
-                  />
-                </label>
-
-                <label class="fpField">
-                  <span>Email d’alerte</span>
-                  <input
-                    id="alertEmailInput"
-                    type="email"
-                    value="alerts@flowpoint.pro"
-                    autocomplete="email"
-                  />
-                </label>
-
-                <label class="fpField">
-                  <span>Fuseau horaire</span>
-                  <select id="timezoneSelect">
-                    <option value="Europe/Brussels" selected>Europe/Brussels</option>
-                    <option value="Europe/Paris">Europe/Paris</option>
-                    <option value="UTC">UTC</option>
-                  </select>
-                </label>
-
-                <label class="fpField">
-                  <span>Fréquence des rapports</span>
-                  <select id="reportFrequencySelect">
-                    <option value="weekly">Hebdomadaire</option>
-                    <option value="monthly" selected>Mensuel</option>
-                    <option value="manual">Manuel</option>
-                  </select>
-                </label>
-              </div>
-            </article>
-
-            <article class="fpPanel fpSpan6">
-              <div class="fpPanelHead">
-                <div>
-                  <h3>Modules activés</h3>
-                  <p>
-                    Permet de faire évoluer l’offre facilement et proprement.
-                  </p>
-                </div>
-              </div>
-
-              <div class="fpToggleList">
-                <label class="fpToggleItem">
-                  <div>
-                    <strong>Monitoring</strong>
-                    <p>Surveillance uptime et alertes automatiques.</p>
-                  </div>
-                  <input type="checkbox" checked />
-                </label>
-
-                <label class="fpToggleItem">
-                  <div>
-                    <strong>SEO local</strong>
-                    <p>Optimisation présence locale et visibilité maps.</p>
-                  </div>
-                  <input type="checkbox" checked />
-                </label>
-
-                <label class="fpToggleItem">
-                  <div>
-                    <strong>Exports PDF</strong>
-                    <p>Rapports premium clairs, lisibles et vendables.</p>
-                  </div>
-                  <input type="checkbox" checked />
-                </label>
-
-                <label class="fpToggleItem">
-                  <div>
-                    <strong>Team access</strong>
-                    <p>Gestion multi-utilisateurs et rôles avancés.</p>
-                  </div>
-                  <input type="checkbox" checked />
-                </label>
-              </div>
-            </article>
-          </div>
-        </section>
-      </main>
-    </div>
+      <div id="fpPageContainer" class="fpPageContainer"></div>
+    </main>
   </div>
-
-  <div class="fpToastWrap" id="fpToastWrap" aria-live="polite" aria-atomic="true"></div>
 
   <script src="/dashboard.js" defer></script>
 </body>
