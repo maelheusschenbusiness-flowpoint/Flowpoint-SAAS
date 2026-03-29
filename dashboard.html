@@ -6,6 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, viewport-fit=cover"
   />
+  <meta name="theme-color" content="#0b1230" />
   <title>FlowPoint — Dashboard</title>
 
   <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
@@ -13,11 +14,11 @@
   <link rel="stylesheet" href="/dashboard.css" />
 </head>
 <body>
-  <div class="fpOverlay" id="fpOverlay"></div>
+  <div class="fpOverlay" id="fpOverlay" aria-hidden="true"></div>
 
   <div class="fpAppShell">
     <!-- SIDEBAR -->
-    <aside id="sidebar" class="fpSidebar">
+    <aside id="sidebar" class="fpSidebar" aria-label="Navigation principale">
       <div class="fpSidebarTop">
         <div class="fpBrand">
           <div class="fpBrandLogo">
@@ -53,7 +54,7 @@
         <div class="fpWorkspacePlan" id="workspacePlanBadge">Ultra</div>
       </div>
 
-      <nav class="fpNav" id="fpNav">
+      <nav class="fpNav" id="fpNav" aria-label="Sections du dashboard">
         <a href="#overview" class="fpNavItem active" data-route="overview">
           <span class="fpNavIcon">◈</span>
           <span>Overview</span>
@@ -150,7 +151,7 @@
         </div>
 
         <div class="fpTopbarRight">
-          <div class="fpTopbarStat">
+          <div class="fpTopbarStat" aria-label="Plan actuel">
             <div>
               <strong>Plan Ultra</strong>
               <span>Scalable & premium</span>
@@ -1012,6 +1013,7 @@
                     id="workspaceNameInput"
                     type="text"
                     value="FlowPoint AI"
+                    autocomplete="organization"
                   />
                 </label>
 
@@ -1021,6 +1023,7 @@
                     id="alertEmailInput"
                     type="email"
                     value="alerts@flowpoint.pro"
+                    autocomplete="email"
                   />
                 </label>
 
@@ -1094,8 +1097,8 @@
     </div>
   </div>
 
-  <div class="fpToastWrap" id="fpToastWrap"></div>
+  <div class="fpToastWrap" id="fpToastWrap" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="/dashboard.js"></script>
+  <script src="/dashboard.js" defer></script>
 </body>
 </html>
