@@ -1711,3 +1711,492 @@ body.fpLight .fpSearchInput{
     max-height:88vh;
   }
 }
+/* =========================
+   FLOWPOINT EXTRA BLOCKS
+   À coller tout en bas
+========================= */
+
+.fpSectionStack{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+
+.fpDenseGrid{
+  display:grid;
+  grid-template-columns:repeat(12,minmax(0,1fr));
+  gap:18px;
+}
+
+.fpCardHeaderRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:14px;
+}
+
+.fpCardHeaderRow h4{
+  margin:0;
+  font-size:1rem;
+  letter-spacing:-.01em;
+}
+
+.fpCardHeaderRow p{
+  margin:4px 0 0;
+  color:var(--fpMuted);
+  font-size:.92rem;
+  line-height:1.5;
+}
+
+.fpTinyMuted{
+  color:var(--fpMuted);
+  font-size:.84rem;
+}
+
+.fpTagRow{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.fpInlineStatRow{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+}
+
+.fpInlineStat{
+  border:1px solid var(--fpBorder);
+  background:var(--fpCardSoft);
+  border-radius:16px;
+  padding:14px;
+}
+
+.fpInlineStat strong{
+  display:block;
+  font-size:1.05rem;
+  margin-bottom:4px;
+}
+
+.fpInlineStat span{
+  color:var(--fpMuted);
+  font-size:.88rem;
+}
+
+.fpSplitList{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+
+.fpMetricCard{
+  border:1px solid var(--fpBorder);
+  background:var(--fpCardSoft);
+  border-radius:18px;
+  padding:16px;
+  min-width:0;
+}
+
+.fpMetricTop{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.fpMetricTitle{
+  font-size:.93rem;
+  color:var(--fpMuted);
+  font-weight:700;
+}
+
+.fpMetricValue{
+  font-size:1.5rem;
+  font-weight:900;
+  line-height:1;
+}
+
+.fpMetricHint{
+  margin-top:8px;
+  color:var(--fpMuted);
+  font-size:.9rem;
+  line-height:1.5;
+}
+
+.fpPriorityList{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.fpPriorityItem{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  border:1px solid var(--fpBorder);
+  background:var(--fpCardSoft);
+  border-radius:18px;
+  padding:14px 16px;
+}
+
+.fpPriorityMain{
+  min-width:0;
+}
+
+.fpPriorityMain strong{
+  display:block;
+  margin-bottom:4px;
+}
+
+.fpPriorityMain p{
+  margin:0;
+  color:var(--fpMuted);
+  line-height:1.5;
+  font-size:.93rem;
+}
+
+.fpPriorityScore{
+  flex:0 0 auto;
+  font-weight:900;
+  font-size:1rem;
+}
+
+.fpMiniProgress{
+  width:100%;
+  height:8px;
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  overflow:hidden;
+  margin-top:10px;
+}
+
+body.fpLight .fpMiniProgress{
+  background:rgba(18,25,51,.08);
+}
+
+.fpMiniProgressFill{
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,var(--fpBrand),var(--fpBrand3));
+}
+
+.fpTimeline{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.fpTimelineItem{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+  border:1px solid var(--fpBorder);
+  background:var(--fpCardSoft);
+  border-radius:18px;
+  padding:14px 16px;
+}
+
+.fpTimelineDot{
+  width:12px;
+  height:12px;
+  border-radius:999px;
+  margin-top:5px;
+  flex:0 0 auto;
+  background:var(--fpBrand3);
+  box-shadow:0 0 0 6px rgba(47,91,255,.10);
+}
+
+.fpTimelineItem strong{
+  display:block;
+  margin-bottom:4px;
+}
+
+.fpTimelineItem p{
+  margin:0;
+  color:var(--fpMuted);
+  line-height:1.5;
+  font-size:.93rem;
+}
+
+.fpTimelineTime{
+  color:var(--fpMuted2);
+  font-size:.82rem;
+  margin-top:6px;
+}
+
+.fpComparisonTable{
+  width:100%;
+  border-collapse:collapse;
+  min-width:780px;
+}
+
+.fpComparisonTable th,
+.fpComparisonTable td{
+  padding:14px 16px;
+  border-bottom:1px solid var(--fpBorder);
+  text-align:left;
+  vertical-align:middle;
+}
+
+.fpComparisonTable th{
+  color:var(--fpMuted);
+  font-size:.84rem;
+  font-weight:800;
+  background:rgba(255,255,255,.03);
+}
+
+.fpComparisonGood{
+  color:var(--fpGood);
+  font-weight:800;
+}
+
+.fpComparisonWarn{
+  color:var(--fpWarn);
+  font-weight:800;
+}
+
+.fpComparisonDanger{
+  color:var(--fpDanger);
+  font-weight:800;
+}
+
+.fpToolFeatureList{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-top:12px;
+}
+
+.fpToolFeature{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  color:var(--fpMuted);
+  font-size:.92rem;
+  line-height:1.5;
+}
+
+.fpToolFeatureDot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:var(--fpBrand3);
+  margin-top:7px;
+  flex:0 0 auto;
+}
+
+.fpActionToolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.fpButtonGroup{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.fpPillInput{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid var(--fpBorder);
+  background:var(--fpCardSoft);
+  border-radius:999px;
+  padding:8px 12px;
+  min-width:240px;
+}
+
+.fpPillInput input{
+  background:transparent;
+  border:none;
+  outline:none;
+  color:var(--fpText);
+  width:100%;
+}
+
+.fpNoticeCard{
+  border:1px solid var(--fpBorderBlue);
+  background:linear-gradient(135deg, rgba(47,91,255,.12), rgba(255,255,255,.03));
+  border-radius:20px;
+  padding:16px;
+}
+
+.fpNoticeCard strong{
+  display:block;
+  margin-bottom:6px;
+}
+
+.fpNoticeCard p{
+  margin:0;
+  color:var(--fpMuted);
+  line-height:1.55;
+}
+
+.fpDualPanel{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:18px;
+}
+
+.fpDataList{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.fpDataRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid var(--fpBorder);
+  background:var(--fpCardSoft);
+}
+
+.fpDataRowLabel{
+  color:var(--fpMuted);
+  font-size:.92rem;
+}
+
+.fpDataRowValue{
+  font-weight:800;
+}
+
+.fpChecklistCompact{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+
+.fpChecklistCompact .fpChecklistItem{
+  margin:0;
+}
+
+.fpRevenueBox{
+  border-radius:20px;
+  padding:18px;
+  border:1px solid rgba(47,91,255,.26);
+  background:linear-gradient(135deg, rgba(47,91,255,.15), rgba(255,255,255,.03));
+}
+
+.fpRevenueBox h4{
+  margin:0 0 8px;
+  font-size:1rem;
+}
+
+.fpRevenueBox p{
+  margin:0;
+  color:var(--fpMuted);
+  line-height:1.55;
+}
+
+.fpRevenueValue{
+  margin-top:14px;
+  font-size:2rem;
+  font-weight:900;
+  letter-spacing:-.03em;
+}
+
+.fpEmptyBlock{
+  padding:18px;
+  border-radius:18px;
+  border:1px dashed var(--fpBorderStrong);
+  color:var(--fpMuted);
+  text-align:center;
+}
+
+.fpStatusDot{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  display:inline-block;
+  margin-right:8px;
+  vertical-align:middle;
+}
+
+.fpStatusDot.good{background:var(--fpGood);}
+.fpStatusDot.warn{background:var(--fpWarn);}
+.fpStatusDot.danger{background:var(--fpDanger);}
+.fpStatusDot.info{background:var(--fpInfo);}
+
+.fpAvatarRow{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.fpAvatar{
+  width:38px;
+  height:38px;
+  border-radius:12px;
+  background:linear-gradient(135deg,var(--fpBrand),var(--fpBrand3));
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:900;
+  color:#fff;
+  flex:0 0 auto;
+}
+
+.fpAvatarMeta strong{
+  display:block;
+  font-size:.94rem;
+}
+
+.fpAvatarMeta span{
+  color:var(--fpMuted);
+  font-size:.84rem;
+}
+
+.fpStickyActions{
+  position:sticky;
+  bottom:0;
+  padding-top:12px;
+  background:linear-gradient(180deg, rgba(7,11,25,0), rgba(7,11,25,.86) 45%);
+}
+
+body.fpLight .fpStickyActions{
+  background:linear-gradient(180deg, rgba(247,249,255,0), rgba(247,249,255,.96) 45%);
+}
+
+@media (max-width: 1024px){
+  .fpInlineStatRow,
+  .fpSplitList,
+  .fpDualPanel,
+  .fpChecklistCompact{
+    grid-template-columns:repeat(1,minmax(0,1fr));
+  }
+}
+
+@media (max-width: 760px){
+  .fpPriorityItem,
+  .fpDataRow{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .fpActionToolbar{
+    align-items:stretch;
+  }
+
+  .fpButtonGroup{
+    width:100%;
+  }
+
+  .fpButtonGroup .fpBtn{
+    flex:1 1 auto;
+  }
+
+  .fpPillInput{
+    min-width:100%;
+  }
+}
