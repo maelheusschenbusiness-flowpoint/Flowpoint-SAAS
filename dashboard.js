@@ -1,6 +1,17 @@
 (() => {
   "use strict";
 
+  const AUTH_CONFIG = {
+    meEndpoint: "/api/auth/me",
+    refreshEndpoint: "/api/auth/refresh",
+    loginUrl: "/login.html",
+    accessTokenKeys: ["token", "accessToken", "access_token"],
+    refreshTokenKeys: ["refreshToken", "refresh_token"],
+    proactiveRefreshMs: 4 * 60 * 1000,
+    sessionCheckDebounceMs: 15000,
+    redirectDelayMs: 1200
+  };
+
   const storage = {
     get(key, fallback) {
       try {
@@ -28,6 +39,14 @@
     drawerOpen: false,
     modalOpen: false,
     selectedAudit: null,
+    auth: {
+      isChecking: false,
+      refreshInFlight: false,
+      lastSessionCheckAt: 0,
+      consecutiveFailures: 0,
+      sessionKnownInvalid: false,
+      redirectTimer: null
+    },
     workspace: storage.get("fp_workspace", {
       name: "FlowPoint AI",
       plan: "Ultra",
@@ -45,7 +64,8 @@
         done: true,
         priority: "Haute",
         owner: "SEO Manager",
-        eta: "Terminé"
+        eta: "Terminé",
+        impact: "Élevé"
       },
       {
         id: 2,
@@ -54,7 +74,8 @@
         done: false,
         priority: "Haute",
         owner: "Tech",
-        eta: "2 jours"
+        eta: "2 jours",
+        impact: "Très élevé"
       },
       {
         id: 3,
@@ -63,7 +84,8 @@
         done: false,
         priority: "Moyenne",
         owner: "Content",
-        eta: "5 jours"
+        eta: "5 jours",
+        impact: "Élevé"
       },
       {
         id: 4,
@@ -72,7 +94,8 @@
         done: true,
         priority: "Moyenne",
         owner: "SEO Manager",
-        eta: "Terminé"
+        eta: "Terminé",
+        impact: "Moyen"
       },
       {
         id: 5,
@@ -81,7 +104,18 @@
         done: false,
         priority: "Faible",
         owner: "Account",
-        eta: "1 jour"
+        eta: "1 jour",
+        impact: "Moyen"
+      },
+      {
+        id: 6,
+        title: "Optimiser la fiche Google Business Profile",
+        description: "Améliore la visibilité locale, la confiance et la probabilité de générer des appels ou visites.",
+        done: false,
+        priority: "Haute",
+        owner: "Local SEO",
+        eta: "3 jours",
+        impact: "Très élevé"
       }
     ]),
     audits: [
@@ -97,7 +131,9 @@
         opportunities: 6,
         issueCount: 8,
         localPotential: "Élevé",
-        category: "saas"
+        category: "saas",
+        conversions: "+12%",
+        leads: "Stable"
       },
       {
         id: 102,
@@ -111,7 +147,9 @@
         opportunities: 12,
         issueCount: 19,
         localPotential: "Très élevé",
-        category: "local"
+        category: "local",
+        conversions: "+4%",
+        leads: "Progression"
       },
       {
         id: 103,
@@ -125,7 +163,9 @@
         opportunities: 18,
         issueCount: 27,
         localPotential: "Très élevé",
-        category: "local"
+        category: "local",
+        conversions: "-2%",
+        leads: "À relancer"
       },
       {
         id: 104,
@@ -139,7 +179,9 @@
         opportunities: 7,
         issueCount: 10,
         localPotential: "Élevé",
-        category: "premium"
+        category: "premium",
+        conversions: "+9%",
+        leads: "Bon"
       },
       {
         id: 105,
@@ -153,7 +195,9 @@
         opportunities: 14,
         issueCount: 22,
         localPotential: "Moyen",
-        category: "ecom"
+        category: "ecom",
+        conversions: "+1%",
+        leads: "Variable"
       }
     ],
     monitors: [
@@ -164,7 +208,8 @@
         latency: 182,
         uptime: "99.99%",
         checks: 12890,
-        note: "Disponibilité excellente, aucun incident majeur détecté."
+        note: "Disponibilité excellente, aucun incident majeur détecté.",
+        alerts: 0
       },
       {
         id: 202,
@@ -173,7 +218,8 @@
         latency: 341,
         uptime: "99.95%",
         checks: 9440,
-        note: "Le site est stable mais peut être accéléré sur mobile."
+        note: "Le site est stable mais peut être accéléré sur mobile.",
+        alerts: 1
       },
       {
         id: 203,
@@ -182,7 +228,8 @@
         latency: 892,
         uptime: "98.72%",
         checks: 7530,
-        note: "Temps de réponse trop élevé, impact possible sur SEO et conversion."
+        note: "Temps de réponse trop élevé, impact possible sur SEO et conversion.",
+        alerts: 4
       },
       {
         id: 204,
@@ -191,7 +238,8 @@
         latency: 225,
         uptime: "99.97%",
         checks: 10120,
-        note: "Bonne stabilité globale, très peu d’alertes observées."
+        note: "Bonne stabilité globale, très peu d’alertes observées.",
+        alerts: 0
       }
     ],
     reports: [
@@ -222,6 +270,13 @@
         type: "PDF",
         date: "Mars 2026",
         description: "Mise en perspective du site face aux concurrents directs."
+      },
+      {
+        id: 305,
+        title: "Rapport local SEO",
+        type: "PDF",
+        date: "Mars 2026",
+        description: "Analyse visibilité locale, réputation, maps et axes prioritaires."
       }
     ],
     competitors: [
@@ -360,8 +415,30 @@
         title: "Opportunité locale identifiée",
         text: "3 nouvelles pages géolocalisées peuvent être créées pour augmenter les leads.",
         time: "Aujourd’hui"
+      },
+      {
+        title: "Nouvelle mission priorisée",
+        text: "L’optimisation des pages lentes est passée en priorité haute.",
+        time: "Aujourd’hui"
       }
-    ]
+    ],
+    automationHints: [
+      "Rapport mensuel automatique envoyé aux parties prenantes.",
+      "Détection proactive des pages à fort potentiel de progression.",
+      "Alerte temps réel en cas de dégradation uptime ou latence.",
+      "Priorisation automatique des quick wins les plus rentables."
+    ],
+    competitorBenchmarks: [
+      { metric: "Pages locales", ours: "6", best: "14", gap: "À développer" },
+      { metric: "Vitesse mobile", ours: "72/100", best: "91/100", gap: "Élevé" },
+      { metric: "Pages services", ours: "8", best: "12", gap: "Modéré" },
+      { metric: "Signaux de confiance", ours: "Bon", best: "Très fort", gap: "À renforcer" }
+    ],
+    revenueProjection: {
+      estimatedGain: "+14 à +28 leads / mois",
+      timeValue: "8h à 18h économisées / mois",
+      rationale: "En combinant SEO local, reporting premium, monitoring et correction des quick wins."
+    }
   };
 
   const els = {
@@ -461,17 +538,26 @@
     bindEvents();
     ensureHashRoute();
     renderAll();
-    keepFakeSessionAlive();
     bootWelcomeToast();
+    setupAuthLifecycle();
   }
 
   function injectAdvancedBlocks() {
     injectOverviewPremiumBlocks();
+    injectOverviewRevenueBlocks();
     injectAuditsToolbar();
+    injectAuditsExtras();
     injectMissionToolbar();
+    injectMissionExtras();
     injectMonitorsHealth();
+    injectMonitorsExtras();
     injectReportsFeed();
+    injectReportsExtras();
+    injectCompetitorExtras();
+    injectToolsExtras();
+    injectTeamExtras();
     injectBillingExtras();
+    injectSettingsExtras();
     createGlobalModal();
     createGlobalDrawer();
   }
@@ -479,9 +565,6 @@
   function injectOverviewPremiumBlocks() {
     const overviewPage = document.querySelector('.fpPage[data-page="overview"]');
     if (!overviewPage) return;
-
-    const grid = overviewPage.querySelector(".fpGridMain");
-    if (!grid) return;
 
     const block = document.createElement("div");
     block.className = "fpGrid";
@@ -523,6 +606,57 @@
     overviewPage.appendChild(block);
   }
 
+  function injectOverviewRevenueBlocks() {
+    const overviewPage = document.querySelector('.fpPage[data-page="overview"]');
+    if (!overviewPage) return;
+
+    const block = document.createElement("div");
+    block.className = "fpGrid";
+    block.innerHTML = `
+      <article class="fpPanel fpSpan7">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Actions prioritaires à fort ROI</h4>
+            <p>Les quick wins les plus rentables à exécuter pour renforcer la valeur perçue du produit.</p>
+          </div>
+          <span class="fpBadge warn">Priorité business</span>
+        </div>
+        <div class="fpPriorityList" id="overviewPriorityList"></div>
+      </article>
+
+      <article class="fpPanel fpSpan5">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Projection de valeur</h4>
+            <p>Une manière simple de montrer pourquoi FlowPoint est un investissement utile.</p>
+          </div>
+        </div>
+        <div class="fpRevenueBox" id="overviewRevenueBox"></div>
+      </article>
+
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Automations & logique premium</h4>
+            <p>Les mécanismes qui donnent une impression de SaaS plus complet et mieux pensé.</p>
+          </div>
+        </div>
+        <div class="fpTimeline" id="overviewAutomationTimeline"></div>
+      </article>
+
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Résumé exécution client</h4>
+            <p>Donne au client un sentiment de suivi concret, sérieux et régulier.</p>
+          </div>
+        </div>
+        <div class="fpInlineStatRow" id="overviewInlineStats"></div>
+      </article>
+    `;
+    overviewPage.appendChild(block);
+  }
+
   function injectAuditsToolbar() {
     const page = document.querySelector('.fpPage[data-page="audits"]');
     if (!page) return;
@@ -546,6 +680,36 @@
     `;
 
     page.insertBefore(toolbar, page.children[1]);
+  }
+
+  function injectAuditsExtras() {
+    const page = document.querySelector('.fpPage[data-page="audits"]');
+    if (!page) return;
+
+    const extra = document.createElement("div");
+    extra.className = "fpGrid";
+    extra.innerHTML = `
+      <article class="fpPanel fpSpan7">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Résumé portefeuille audits</h4>
+            <p>Une lecture plus business des analyses en cours.</p>
+          </div>
+        </div>
+        <div class="fpInlineStatRow" id="auditPortfolioStats"></div>
+      </article>
+
+      <article class="fpPanel fpSpan5">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Focus recommandations</h4>
+            <p>Ce qu’il faut faire en premier pour produire le plus de résultats visibles.</p>
+          </div>
+        </div>
+        <div class="fpPriorityList" id="auditRecommendationsList"></div>
+      </article>
+    `;
+    page.appendChild(extra);
   }
 
   function injectMissionToolbar() {
@@ -572,6 +736,36 @@
     page.insertBefore(toolbar, page.children[1]);
   }
 
+  function injectMissionExtras() {
+    const page = document.querySelector('.fpPage[data-page="missions"]');
+    if (!page) return;
+
+    const extra = document.createElement("div");
+    extra.className = "fpGrid";
+    extra.innerHTML = `
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Cadence d’exécution</h4>
+            <p>Une lecture simple des responsabilités et de la pression opérationnelle.</p>
+          </div>
+        </div>
+        <div class="fpTimeline" id="missionExecutionTimeline"></div>
+      </article>
+
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Résumé missions</h4>
+            <p>Les chiffres qui rassurent le client sur l’avancement réel.</p>
+          </div>
+        </div>
+        <div class="fpInlineStatRow" id="missionSummaryStats"></div>
+      </article>
+    `;
+    page.appendChild(extra);
+  }
+
   function injectMonitorsHealth() {
     const page = document.querySelector('.fpPage[data-page="monitors"]');
     if (!page) return;
@@ -591,6 +785,36 @@
       <div class="fpKpiStrip" id="monitorKpiStrip"></div>
     `;
     grid.appendChild(extra);
+  }
+
+  function injectMonitorsExtras() {
+    const page = document.querySelector('.fpPage[data-page="monitors"]');
+    if (!page) return;
+
+    const extra = document.createElement("div");
+    extra.className = "fpGrid";
+    extra.innerHTML = `
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Alertes récentes</h4>
+            <p>Montre que le produit surveille réellement l’infrastructure.</p>
+          </div>
+        </div>
+        <div class="fpTimeline" id="monitorAlertTimeline"></div>
+      </article>
+
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Répartition de risque</h4>
+            <p>Ce bloc rend le monitoring plus crédible et plus tangible.</p>
+          </div>
+        </div>
+        <div class="fpDataList" id="monitorRiskList"></div>
+      </article>
+    `;
+    page.appendChild(extra);
   }
 
   function injectReportsFeed() {
@@ -614,6 +838,128 @@
     grid.appendChild(extra);
   }
 
+  function injectReportsExtras() {
+    const page = document.querySelector('.fpPage[data-page="reports"]');
+    if (!page) return;
+
+    const extra = document.createElement("div");
+    extra.className = "fpGrid";
+    extra.innerHTML = `
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Usages recommandés</h4>
+            <p>Quel rapport envoyer, à qui, et dans quel contexte commercial.</p>
+          </div>
+        </div>
+        <div class="fpDataList" id="reportUsageList"></div>
+      </article>
+
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Structure premium attendue</h4>
+            <p>Les éléments qui font paraître un livrable plus haut de gamme.</p>
+          </div>
+        </div>
+        <div class="fpChecklistCompact" id="reportCompactChecklist"></div>
+      </article>
+    `;
+    page.appendChild(extra);
+  }
+
+  function injectCompetitorExtras() {
+    const page = document.querySelector('.fpPage[data-page="competitors"]');
+    if (!page) return;
+
+    const extra = document.createElement("div");
+    extra.className = "fpGrid";
+    extra.innerHTML = `
+      <article class="fpPanel fpSpan12">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Tableau d’écart concurrentiel</h4>
+            <p>Visualise immédiatement où se situent les écarts et donc où agir.</p>
+          </div>
+        </div>
+        <div class="fpTableWrap">
+          <table class="fpComparisonTable">
+            <thead>
+              <tr>
+                <th>Indicateur</th>
+                <th>Nous</th>
+                <th>Meilleur concurrent</th>
+                <th>Écart</th>
+              </tr>
+            </thead>
+            <tbody id="competitorBenchmarkBody"></tbody>
+          </table>
+        </div>
+      </article>
+    `;
+    page.appendChild(extra);
+  }
+
+  function injectToolsExtras() {
+    const page = document.querySelector('.fpPage[data-page="tools"]');
+    if (!page) return;
+
+    const extra = document.createElement("div");
+    extra.className = "fpGrid";
+    extra.innerHTML = `
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Modules les plus vendeurs</h4>
+            <p>Les briques qui augmentent le plus la perception de valeur.</p>
+          </div>
+        </div>
+        <div class="fpPriorityList" id="toolSalesPriorityList"></div>
+      </article>
+
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Pourquoi ils comptent</h4>
+            <p>Une lecture simple du bénéfice business derrière chaque outil.</p>
+          </div>
+        </div>
+        <div class="fpTimeline" id="toolTimeline"></div>
+      </article>
+    `;
+    page.appendChild(extra);
+  }
+
+  function injectTeamExtras() {
+    const page = document.querySelector('.fpPage[data-page="team"]');
+    if (!page) return;
+
+    const extra = document.createElement("div");
+    extra.className = "fpGrid";
+    extra.innerHTML = `
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Activité équipe</h4>
+            <p>Rend le workspace plus vivant et plus crédible pour un plan élevé.</p>
+          </div>
+        </div>
+        <div class="fpTimeline" id="teamActivityTimeline"></div>
+      </article>
+
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Répartition des accès</h4>
+            <p>Montre que la gestion des rôles est utile et structurée.</p>
+          </div>
+        </div>
+        <div class="fpDataList" id="teamAccessList"></div>
+      </article>
+    `;
+    page.appendChild(extra);
+  }
+
   function injectBillingExtras() {
     const page = document.querySelector('.fpPage[data-page="billing"]');
     if (!page) return;
@@ -633,6 +979,85 @@
       <div class="fpHealthGrid" id="billingWhyGrid"></div>
     `;
     grid.appendChild(extra);
+
+    const extra2 = document.createElement("div");
+    extra2.className = "fpGrid";
+    extra2.innerHTML = `
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Temps & valeur économisés</h4>
+            <p>Une manière très concrète de montrer la rentabilité de l’abonnement.</p>
+          </div>
+        </div>
+        <div class="fpRevenueBox" id="billingProjectionBox"></div>
+      </article>
+
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Add-ons & montée en gamme</h4>
+            <p>Prépare le terrain pour des upsells propres et cohérents.</p>
+          </div>
+        </div>
+        <div class="fpDataList" id="billingAddonList"></div>
+      </article>
+    `;
+    page.appendChild(extra2);
+  }
+
+  function injectSettingsExtras() {
+    const page = document.querySelector('.fpPage[data-page="settings"]');
+    if (!page) return;
+
+    const extra = document.createElement("div");
+    extra.className = "fpGrid";
+    extra.innerHTML = `
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Alertes & sécurité session</h4>
+            <p>Préférences liées à la stabilité, à la connexion et à l’accès mobile.</p>
+          </div>
+        </div>
+        <div class="fpToggleList">
+          <label class="fpToggleItem">
+            <div>
+              <strong>Refresh session automatique</strong>
+              <p>Évite les retours rapides vers la page de login sur téléphone.</p>
+            </div>
+            <input id="sessionRefreshToggle" type="checkbox" checked />
+          </label>
+
+          <label class="fpToggleItem">
+            <div>
+              <strong>Vérification à l’ouverture</strong>
+              <p>Revalide la session au retour sur l’onglet.</p>
+            </div>
+            <input id="sessionResumeToggle" type="checkbox" checked />
+          </label>
+
+          <label class="fpToggleItem">
+            <div>
+              <strong>Notifications d’alerte</strong>
+              <p>Affiche un retour visuel immédiat si la session ou l’API ont un souci.</p>
+            </div>
+            <input id="sessionNoticeToggle" type="checkbox" checked />
+          </label>
+        </div>
+      </article>
+
+      <article class="fpPanel fpSpan6">
+        <div class="fpCardHeaderRow">
+          <div>
+            <h4>Conseils de configuration</h4>
+            <p>Rend les settings plus utiles et moins “vides”.</p>
+          </div>
+        </div>
+        <div class="fpChecklist" id="settingsChecklist"></div>
+      </article>
+    `;
+    page.appendChild(extra);
   }
 
   function createGlobalModal() {
@@ -751,6 +1176,14 @@
       toast("Billing portal", "Branche ici ton endpoint /api/stripe/portal.");
     });
 
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        maybeResumeSessionCheck();
+      }
+    });
+
+    window.addEventListener("focus", maybeResumeSessionCheck);
+
     document.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -796,6 +1229,9 @@
     const closeModalBtn = e.target.closest("[data-close-modal]");
     const closeDrawerBtn = e.target.closest("[data-close-drawer]");
     const fakeCreateMonitorBtn = e.target.closest("#fakeCreateMonitorBtn");
+    const fakeActivateToolBtn = e.target.closest("[data-tool-activate]");
+    const fakeReportUseBtn = e.target.closest("[data-report-use]");
+    const fakeOpenRiskBtn = e.target.closest("[data-monitor-risk]");
 
     if (routeBtn) openRoute(routeBtn.dataset.routeGo);
     if (missionToggle) toggleMission(Number(missionToggle.dataset.missionToggle));
@@ -805,12 +1241,14 @@
       appState.auditFilter = auditFilterBtn.dataset.auditFilter;
       updateSegmentedState("#auditSegmented", "[data-audit-filter]", appState.auditFilter, "audit-filter");
       renderAudits();
+      renderAuditExtras();
     }
 
     if (missionFilterBtn) {
       appState.missionFilter = missionFilterBtn.dataset.missionFilter;
       updateSegmentedState("#missionSegmented", "[data-mission-filter]", appState.missionFilter, "mission-filter");
       renderMissions();
+      renderMissionExtras();
     }
 
     if (auditViewBtn) {
@@ -833,16 +1271,50 @@
       toast("Monitor créé", "Le monitor a été ajouté visuellement. Branche-le ensuite à ton backend.");
       closeDrawer();
     }
+
+    if (fakeActivateToolBtn) {
+      toast("Module activé", "Le module a été activé visuellement dans l’interface.");
+    }
+
+    if (fakeReportUseBtn) {
+      toast("Modèle préparé", "Le type de rapport a été sélectionné pour un usage premium.");
+    }
+
+    if (fakeOpenRiskBtn) {
+      const site = fakeOpenRiskBtn.dataset.monitorRisk || "Site";
+      openDrawer(
+        `Risque — ${site}`,
+        "Lecture rapide du niveau de risque perçu.",
+        `
+          <div class="fpChecklist">
+            <div class="fpChecklistItem">
+              <div class="fpChecklistDot warn"></div>
+              <div><strong>Latence</strong><p>Temps de réponse à surveiller de près sur mobile.</p></div>
+            </div>
+            <div class="fpChecklistItem">
+              <div class="fpChecklistDot info"></div>
+              <div><strong>Impact business</strong><p>Peut dégrader expérience, SEO et conversion si la tendance persiste.</p></div>
+            </div>
+            <div class="fpChecklistItem">
+              <div class="fpChecklistDot good"></div>
+              <div><strong>Action recommandée</strong><p>Vérifier hébergement, cache, images et scripts tiers.</p></div>
+            </div>
+          </div>
+        `
+      );
+    }
   }
 
   function handleGlobalInput(e) {
     if (e.target.id === "auditSearchInput") {
       appState.auditSearch = e.target.value.trim().toLowerCase();
       renderAudits();
+      renderAuditExtras();
     }
 
     if (e.target.id === "missionSearchInput") {
       renderMissions();
+      renderMissionExtras();
     }
   }
 
@@ -888,7 +1360,9 @@
   function closeSidebar() {
     els.sidebar?.classList.remove("show");
     els.overlay?.classList.remove("show");
-    els.body.classList.remove("fpNoScroll");
+    if (!appState.modalOpen && !appState.drawerOpen) {
+      els.body.classList.remove("fpNoScroll");
+    }
   }
 
   function hydrateWorkspace() {
@@ -929,6 +1403,16 @@
     renderMonitorKpis();
     renderReportChecklist();
     renderBillingWhy();
+    renderOverviewRevenue();
+    renderAuditExtras();
+    renderMissionExtras();
+    renderMonitorExtras();
+    renderReportExtras();
+    renderCompetitorBenchmarks();
+    renderToolExtras();
+    renderTeamExtras();
+    renderBillingProjection();
+    renderSettingsExtras();
   }
 
   function renderOverviewMissions() {
@@ -957,15 +1441,12 @@
 
     let data = [...appState.missions];
 
-    if (appState.missionFilter === "todo") {
-      data = data.filter(m => !m.done);
-    }
-    if (appState.missionFilter === "done") {
-      data = data.filter(m => m.done);
-    }
+    if (appState.missionFilter === "todo") data = data.filter(m => !m.done);
+    if (appState.missionFilter === "done") data = data.filter(m => m.done);
+
     if (missionSearch) {
       data = data.filter(m =>
-        `${m.title} ${m.description} ${m.owner} ${m.priority}`.toLowerCase().includes(missionSearch)
+        `${m.title} ${m.description} ${m.owner} ${m.priority} ${m.impact}`.toLowerCase().includes(missionSearch)
       );
     }
 
@@ -998,6 +1479,7 @@
               <span class="fpBadge info">${escapeHtml(m.owner)}</span>
               <span class="fpBadge ${m.priority === "Haute" ? "warn" : m.priority === "Moyenne" ? "info" : "good"}">${escapeHtml(m.priority)}</span>
               <span class="fpBadge purple">${escapeHtml(m.eta)}</span>
+              <span class="fpBadge ${m.impact === "Très élevé" ? "warn" : "info"}">${escapeHtml(m.impact)}</span>
             </div>
           </div>
 
@@ -1018,22 +1500,7 @@
   function renderAudits() {
     if (!els.auditsTableBody) return;
 
-    let data = [...appState.audits];
-
-    if (appState.auditFilter === "high") {
-      data = data.filter(a => a.priority === "Haute");
-    }
-    if (appState.auditFilter === "healthy") {
-      data = data.filter(a => a.status === "Healthy");
-    }
-    if (appState.auditFilter === "local") {
-      data = data.filter(a => a.category === "local");
-    }
-    if (appState.auditSearch) {
-      data = data.filter(a =>
-        `${a.site} ${a.category} ${a.status} ${a.priority} ${a.localPotential}`.toLowerCase().includes(appState.auditSearch)
-      );
-    }
+    let data = getFilteredAudits();
 
     if (!data.length) {
       els.auditsTableBody.innerHTML = `
@@ -1089,8 +1556,9 @@
             </div>
             <div class="fpLatency">${m.latency} ms • ${escapeHtml(m.uptime)}</div>
             <p>${escapeHtml(m.note)}</p>
-            <div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <span class="fpBadge info">${escapeHtml(String(m.checks))} checks</span>
+              <span class="fpBadge ${m.alerts ? "warn" : "good"}">${m.alerts} alerte${m.alerts > 1 ? "s" : ""}</span>
             </div>
           </div>
         `;
@@ -1142,8 +1610,13 @@
           <div style="height:10px"></div>
           <strong>${escapeHtml(t.name)}</strong>
           <p>${escapeHtml(t.description)}</p>
+          <div class="fpToolFeatureList">
+            <div class="fpToolFeature"><span class="fpToolFeatureDot"></span><span>Lisible, vendable et simple à prendre en main.</span></div>
+            <div class="fpToolFeature"><span class="fpToolFeatureDot"></span><span>Scalable pour plusieurs clients, sites ou équipes.</span></div>
+            <div class="fpToolFeature"><span class="fpToolFeatureDot"></span><span>Apporte une perception premium immédiate.</span></div>
+          </div>
           <div style="height:12px"></div>
-          <button class="fpBtn fpBtnSoft fpBtnSm" type="button">Activer</button>
+          <button class="fpBtn fpBtnSoft fpBtnSm" type="button" data-tool-activate="${escapeHtml(t.name)}">Activer</button>
         </div>
       `)
       .join("");
@@ -1358,6 +1831,402 @@
     `;
   }
 
+  function renderOverviewRevenue() {
+    const priorityList = document.getElementById("overviewPriorityList");
+    const revenueBox = document.getElementById("overviewRevenueBox");
+    const timeline = document.getElementById("overviewAutomationTimeline");
+    const inlineStats = document.getElementById("overviewInlineStats");
+
+    if (priorityList) {
+      const topActions = [
+        { title: "Optimiser vitesse mobile", desc: "Impact direct SEO + conversion + expérience utilisateur.", score: "ROI élevé", progress: 78 },
+        { title: "Renforcer pages locales", desc: "Permet d’augmenter les recherches à intention commerciale.", score: "Leads", progress: 66 },
+        { title: "Produire rapport direction", desc: "Améliore la rétention et la compréhension côté client.", score: "Rétention", progress: 58 }
+      ];
+
+      priorityList.innerHTML = topActions.map(item => `
+        <div class="fpPriorityItem">
+          <div class="fpPriorityMain">
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.desc)}</p>
+            <div class="fpMiniProgress">
+              <div class="fpMiniProgressFill" style="width:${item.progress}%"></div>
+            </div>
+          </div>
+          <div class="fpPriorityScore">${escapeHtml(item.score)}</div>
+        </div>
+      `).join("");
+    }
+
+    if (revenueBox) {
+      revenueBox.innerHTML = `
+        <h4>Impact potentiel estimé</h4>
+        <p>${escapeHtml(appState.revenueProjection.rationale)}</p>
+        <div class="fpRevenueValue">${escapeHtml(appState.revenueProjection.estimatedGain)}</div>
+        <div class="fpTinyMuted" style="margin-top:10px;">${escapeHtml(appState.revenueProjection.timeValue)}</div>
+      `;
+    }
+
+    if (timeline) {
+      timeline.innerHTML = appState.automationHints.map((item, index) => `
+        <div class="fpTimelineItem">
+          <div class="fpTimelineDot"></div>
+          <div>
+            <strong>Automation ${index + 1}</strong>
+            <p>${escapeHtml(item)}</p>
+            <div class="fpTimelineTime">Actif dans l’expérience premium</div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    if (inlineStats) {
+      const doneCount = appState.missions.filter(m => m.done).length;
+      const avgScore = Math.round(appState.audits.reduce((sum, a) => sum + a.score, 0) / appState.audits.length);
+
+      inlineStats.innerHTML = `
+        <div class="fpInlineStat">
+          <strong>${doneCount}/${appState.missions.length}</strong>
+          <span>Missions finalisées ou suivies</span>
+        </div>
+        <div class="fpInlineStat">
+          <strong>${avgScore}/100</strong>
+          <span>Qualité moyenne observée</span>
+        </div>
+        <div class="fpInlineStat">
+          <strong>${appState.reports.length}</strong>
+          <span>Rapports prêts à livrer</span>
+        </div>
+      `;
+    }
+  }
+
+  function renderAuditExtras() {
+    const portfolio = document.getElementById("auditPortfolioStats");
+    const recos = document.getElementById("auditRecommendationsList");
+    if (!portfolio || !recos) return;
+
+    const data = getFilteredAudits();
+    const high = data.filter(a => a.priority === "Haute").length;
+    const local = data.filter(a => a.category === "local").length;
+    const avg = data.length ? Math.round(data.reduce((sum, a) => sum + a.score, 0) / data.length) : 0;
+
+    portfolio.innerHTML = `
+      <div class="fpInlineStat">
+        <strong>${data.length}</strong>
+        <span>Audits visibles</span>
+      </div>
+      <div class="fpInlineStat">
+        <strong>${high}</strong>
+        <span>Priorités hautes</span>
+      </div>
+      <div class="fpInlineStat">
+        <strong>${avg}/100</strong>
+        <span>Score moyen filtré</span>
+      </div>
+    `;
+
+    const recommendations = [
+      {
+        title: "Pages lentes à corriger",
+        desc: "Le gain est souvent visible rapidement sur le ressenti utilisateur.",
+        score: "Rapide"
+      },
+      {
+        title: "Renforcer le contenu local",
+        desc: `Le portefeuille contient ${local} audit(s) à fort potentiel local.`,
+        score: "Leads"
+      },
+      {
+        title: "Réduire les issues critiques",
+        desc: "Moins de friction technique, meilleure confiance globale.",
+        score: "Qualité"
+      }
+    ];
+
+    recos.innerHTML = recommendations.map(item => `
+      <div class="fpPriorityItem">
+        <div class="fpPriorityMain">
+          <strong>${escapeHtml(item.title)}</strong>
+          <p>${escapeHtml(item.desc)}</p>
+        </div>
+        <div class="fpPriorityScore">${escapeHtml(item.score)}</div>
+      </div>
+    `).join("");
+  }
+
+  function renderMissionExtras() {
+    const timeline = document.getElementById("missionExecutionTimeline");
+    const stats = document.getElementById("missionSummaryStats");
+    if (!timeline || !stats) return;
+
+    const sorted = [...appState.missions].slice(0, 4);
+
+    timeline.innerHTML = sorted.map(item => `
+      <div class="fpTimelineItem">
+        <div class="fpTimelineDot"></div>
+        <div>
+          <strong>${escapeHtml(item.title)}</strong>
+          <p>${escapeHtml(item.owner)} • ${escapeHtml(item.priority)} • ${escapeHtml(item.impact)}</p>
+          <div class="fpTimelineTime">${escapeHtml(item.eta)}</div>
+        </div>
+      </div>
+    `).join("");
+
+    const todo = appState.missions.filter(m => !m.done).length;
+    const done = appState.missions.filter(m => m.done).length;
+    const high = appState.missions.filter(m => m.priority === "Haute").length;
+
+    stats.innerHTML = `
+      <div class="fpInlineStat">
+        <strong>${done}</strong>
+        <span>Terminées</span>
+      </div>
+      <div class="fpInlineStat">
+        <strong>${todo}</strong>
+        <span>En cours</span>
+      </div>
+      <div class="fpInlineStat">
+        <strong>${high}</strong>
+        <span>Priorité haute</span>
+      </div>
+    `;
+  }
+
+  function renderMonitorExtras() {
+    const alertTimeline = document.getElementById("monitorAlertTimeline");
+    const riskList = document.getElementById("monitorRiskList");
+    if (!alertTimeline || !riskList) return;
+
+    const alerts = [
+      { title: "Latence haute détectée", text: "artisan-local.be dépasse le seuil cible sur mobile.", time: "Il y a 44 min" },
+      { title: "Retour à la normale", text: "flowpoint.pro reste stable après vérification automatique.", time: "Aujourd’hui" },
+      { title: "Signal modéré", text: "client-garage.be garde une marge d’optimisation performance.", time: "Aujourd’hui" }
+    ];
+
+    alertTimeline.innerHTML = alerts.map(item => `
+      <div class="fpTimelineItem">
+        <div class="fpTimelineDot"></div>
+        <div>
+          <strong>${escapeHtml(item.title)}</strong>
+          <p>${escapeHtml(item.text)}</p>
+          <div class="fpTimelineTime">${escapeHtml(item.time)}</div>
+        </div>
+      </div>
+    `).join("");
+
+    riskList.innerHTML = appState.monitors.map(item => `
+      <div class="fpDataRow">
+        <div>
+          <div class="fpDataRowLabel">${escapeHtml(item.site)}</div>
+          <div class="fpTinyMuted">${item.latency} ms • ${escapeHtml(item.uptime)}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="fpBadge ${item.status === "UP" ? "good" : item.status === "DEGRADED" ? "warn" : "danger"}">${escapeHtml(item.status)}</span>
+          <button class="fpBtn fpBtnSoft fpBtnSm" type="button" data-monitor-risk="${escapeHtml(item.site)}">Voir</button>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function renderReportExtras() {
+    const usageList = document.getElementById("reportUsageList");
+    const compact = document.getElementById("reportCompactChecklist");
+    if (!usageList || !compact) return;
+
+    const usages = [
+      { label: "PDF mensuel", value: "Direction / client", note: "Parfait pour justifier la prestation." },
+      { label: "CSV opérationnel", value: "Interne / équipe", note: "Idéal pour traiter les actions par lot." },
+      { label: "Résumé exécutif", value: "Décideur", note: "Version plus vendeuse et plus rapide à lire." },
+      { label: "Comparatif concurrentiel", value: "Vente / upsell", note: "Très utile pour pousser de nouvelles actions." }
+    ];
+
+    usageList.innerHTML = usages.map(item => `
+      <div class="fpDataRow">
+        <div>
+          <div class="fpDataRowLabel">${escapeHtml(item.label)}</div>
+          <div class="fpTinyMuted">${escapeHtml(item.note)}</div>
+        </div>
+        <button class="fpBtn fpBtnSoft fpBtnSm" type="button" data-report-use="${escapeHtml(item.value)}">${escapeHtml(item.value)}</button>
+      </div>
+    `).join("");
+
+    const compactItems = [
+      "Résumé clair",
+      "Actions prioritaires",
+      "Valeur business",
+      "Preuve d’évolution"
+    ];
+
+    compact.innerHTML = compactItems.map(item => `
+      <div class="fpChecklistItem">
+        <div class="fpChecklistDot good"></div>
+        <div><strong>${escapeHtml(item)}</strong></div>
+      </div>
+    `).join("");
+  }
+
+  function renderCompetitorBenchmarks() {
+    const body = document.getElementById("competitorBenchmarkBody");
+    if (!body) return;
+
+    body.innerHTML = appState.competitorBenchmarks.map(row => {
+      const gapClass =
+        row.gap === "Élevé" ? "fpComparisonDanger" :
+        row.gap === "À développer" ? "fpComparisonWarn" :
+        row.gap === "À renforcer" ? "fpComparisonWarn" :
+        "fpComparisonGood";
+
+      return `
+        <tr>
+          <td>${escapeHtml(row.metric)}</td>
+          <td>${escapeHtml(row.ours)}</td>
+          <td>${escapeHtml(row.best)}</td>
+          <td class="${gapClass}">${escapeHtml(row.gap)}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  function renderToolExtras() {
+    const priorityList = document.getElementById("toolSalesPriorityList");
+    const timeline = document.getElementById("toolTimeline");
+    if (!priorityList || !timeline) return;
+
+    const priorities = [
+      { title: "Monitoring + alertes", desc: "Très visible pour le client et simple à valoriser.", score: "Fort" },
+      { title: "Report Builder", desc: "Excellent pour la perception premium et la fidélisation.", score: "Fort" },
+      { title: "Local Visibility", desc: "Très convaincant pour PME, commerces et indépendants.", score: "Leads" }
+    ];
+
+    priorityList.innerHTML = priorities.map(item => `
+      <div class="fpPriorityItem">
+        <div class="fpPriorityMain">
+          <strong>${escapeHtml(item.title)}</strong>
+          <p>${escapeHtml(item.desc)}</p>
+        </div>
+        <div class="fpPriorityScore">${escapeHtml(item.score)}</div>
+      </div>
+    `).join("");
+
+    const steps = [
+      "Un bon outil doit être visible immédiatement et facile à comprendre.",
+      "Il doit expliquer sa valeur business sans jargon inutile.",
+      "Il doit être relié à un livrable ou une décision concrète.",
+      "Il doit pouvoir scaler sans compliquer l’interface."
+    ];
+
+    timeline.innerHTML = steps.map((item, i) => `
+      <div class="fpTimelineItem">
+        <div class="fpTimelineDot"></div>
+        <div>
+          <strong>Principe ${i + 1}</strong>
+          <p>${escapeHtml(item)}</p>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function renderTeamExtras() {
+    const timeline = document.getElementById("teamActivityTimeline");
+    const accessList = document.getElementById("teamAccessList");
+    if (!timeline || !accessList) return;
+
+    const activities = [
+      { title: "SEO Manager a finalisé une mission", text: "La mise à jour du maillage interne a été marquée comme terminée.", time: "Aujourd’hui" },
+      { title: "Tech Ops a vérifié un monitor", text: "Le site premiumdetailing.be reste dans une zone stable.", time: "Il y a 2h" },
+      { title: "Owner a préparé un rapport", text: "Le rapport mensuel a été enrichi pour la direction.", time: "Aujourd’hui" }
+    ];
+
+    timeline.innerHTML = activities.map(item => `
+      <div class="fpTimelineItem">
+        <div class="fpTimelineDot"></div>
+        <div>
+          <strong>${escapeHtml(item.title)}</strong>
+          <p>${escapeHtml(item.text)}</p>
+          <div class="fpTimelineTime">${escapeHtml(item.time)}</div>
+        </div>
+      </div>
+    `).join("");
+
+    const access = [
+      { label: "Owner", value: "Accès total" },
+      { label: "Manager", value: "Pilotage & reporting" },
+      { label: "Editor", value: "Action & exécution" },
+      { label: "Viewer", value: "Lecture seule" }
+    ];
+
+    accessList.innerHTML = access.map(item => `
+      <div class="fpDataRow">
+        <span class="fpDataRowLabel">${escapeHtml(item.label)}</span>
+        <span class="fpDataRowValue">${escapeHtml(item.value)}</span>
+      </div>
+    `).join("");
+  }
+
+  function renderBillingProjection() {
+    const projection = document.getElementById("billingProjectionBox");
+    const addons = document.getElementById("billingAddonList");
+    if (!projection || !addons) return;
+
+    projection.innerHTML = `
+      <h4>Gain potentiel perçu</h4>
+      <p>${escapeHtml(appState.revenueProjection.rationale)}</p>
+      <div class="fpRevenueValue">${escapeHtml(appState.revenueProjection.timeValue)}</div>
+      <div class="fpTinyMuted" style="margin-top:10px;">${escapeHtml(appState.revenueProjection.estimatedGain)}</div>
+    `;
+
+    const addonList = [
+      { label: "Monitors supplémentaires", value: "+50 monitors" },
+      { label: "Sièges additionnels", value: "1 à 10 users en plus" },
+      { label: "Exports avancés", value: "PDF / CSV supplémentaires" },
+      { label: "Support prioritaire", value: "Traitement plus rapide" }
+    ];
+
+    addons.innerHTML = addonList.map(item => `
+      <div class="fpDataRow">
+        <span class="fpDataRowLabel">${escapeHtml(item.label)}</span>
+        <span class="fpDataRowValue">${escapeHtml(item.value)}</span>
+      </div>
+    `).join("");
+  }
+
+  function renderSettingsExtras() {
+    const checklist = document.getElementById("settingsChecklist");
+    if (!checklist) return;
+
+    checklist.innerHTML = `
+      <div class="fpChecklistItem">
+        <div class="fpChecklistDot good"></div>
+        <div>
+          <strong>Conserver le refresh session activé</strong>
+          <p>Réduit fortement le risque de retour rapide vers login sur mobile.</p>
+        </div>
+      </div>
+      <div class="fpChecklistItem">
+        <div class="fpChecklistDot info"></div>
+        <div>
+          <strong>Garder un email d’alerte valide</strong>
+          <p>Permet de centraliser les incidents et rappels importants.</p>
+        </div>
+      </div>
+      <div class="fpChecklistItem">
+        <div class="fpChecklistDot warn"></div>
+        <div>
+          <strong>Activer les rapports réguliers</strong>
+          <p>Améliore la perception de suivi et la valeur du service.</p>
+        </div>
+      </div>
+      <div class="fpChecklistItem">
+        <div class="fpChecklistDot good"></div>
+        <div>
+          <strong>Garder les modules premium visibles</strong>
+          <p>Renforce la crédibilité et l’impression de bonne affaire.</p>
+        </div>
+      </div>
+    `;
+  }
+
   function addMission() {
     const newMission = {
       id: Date.now(),
@@ -1366,12 +2235,15 @@
       done: false,
       priority: "Haute",
       owner: "Owner",
-      eta: "3 jours"
+      eta: "3 jours",
+      impact: "Élevé"
     };
     appState.missions.unshift(newMission);
     persistMissions();
     renderOverviewMissions();
     renderMissions();
+    renderMissionExtras();
+    renderOverviewRevenue();
     toast("Mission ajoutée", "Une nouvelle mission a été créée.");
   }
 
@@ -1384,6 +2256,8 @@
     persistMissions();
     renderOverviewMissions();
     renderMissions();
+    renderMissionExtras();
+    renderOverviewRevenue();
     toast(
       mission.done ? "Mission terminée" : "Mission réouverte",
       mission.done ? "La mission est désormais marquée comme terminée." : "La mission est repassée en cours."
@@ -1395,6 +2269,8 @@
     persistMissions();
     renderOverviewMissions();
     renderMissions();
+    renderMissionExtras();
+    renderOverviewRevenue();
     toast("Mission supprimée", "La mission a été retirée de la liste.");
   }
 
@@ -1464,6 +2340,13 @@
               <p>${escapeHtml(audit.traffic)}</p>
             </div>
           </div>
+          <div class="fpChecklistItem">
+            <div class="fpChecklistDot good"></div>
+            <div>
+              <strong>Conversion estimée</strong>
+              <p>${escapeHtml(audit.conversions)} • Leads: ${escapeHtml(audit.leads)}</p>
+            </div>
+          </div>
         </div>
       `
     );
@@ -1518,7 +2401,9 @@
 
     modal.classList.remove("show");
     appState.modalOpen = false;
-    if (!appState.drawerOpen) els.body.classList.remove("fpNoScroll");
+    if (!appState.drawerOpen && !els.sidebar?.classList.contains("show")) {
+      els.body.classList.remove("fpNoScroll");
+    }
   }
 
   function openDrawer(title, subtitle, content) {
@@ -1544,32 +2429,240 @@
 
     drawer.classList.remove("show");
     appState.drawerOpen = false;
-    if (!appState.modalOpen) els.body.classList.remove("fpNoScroll");
+    if (!appState.modalOpen && !els.sidebar?.classList.contains("show")) {
+      els.body.classList.remove("fpNoScroll");
+    }
   }
 
   function simulateRefresh() {
+    renderAll();
+    maybeResumeSessionCheck(true);
     toast("Dashboard actualisé", "Les données visibles ont été rafraîchies.");
   }
 
   function bootWelcomeToast() {
     setTimeout(() => {
-      toast("FlowPoint prêt", "Le dashboard premium est chargé et prêt à être branché à ton backend.");
+      toast("FlowPoint prêt", "Le dashboard premium est chargé avec protections de session mobile.");
     }, 450);
   }
 
-  function keepFakeSessionAlive() {
-    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+  function getFilteredAudits() {
+    let data = [...appState.audits];
+
+    if (appState.auditFilter === "high") data = data.filter(a => a.priority === "Haute");
+    if (appState.auditFilter === "healthy") data = data.filter(a => a.status === "Healthy");
+    if (appState.auditFilter === "local") data = data.filter(a => a.category === "local");
+
+    if (appState.auditSearch) {
+      data = data.filter(a =>
+        `${a.site} ${a.category} ${a.status} ${a.priority} ${a.localPotential} ${a.leads}`.toLowerCase().includes(appState.auditSearch)
+      );
+    }
+
+    return data;
+  }
+
+  function getAccessToken() {
+    for (const key of AUTH_CONFIG.accessTokenKeys) {
+      const value = localStorage.getItem(key) || sessionStorage.getItem(key);
+      if (value) return value;
+    }
+    return "";
+  }
+
+  function getRefreshToken() {
+    for (const key of AUTH_CONFIG.refreshTokenKeys) {
+      const value = localStorage.getItem(key) || sessionStorage.getItem(key);
+      if (value) return value;
+    }
+    return "";
+  }
+
+  function setAccessToken(token) {
+    if (!token) return;
+    AUTH_CONFIG.accessTokenKeys.forEach((key, index) => {
+      try {
+        if (index === 0) localStorage.setItem(key, token);
+      } catch {}
+    });
+    try { sessionStorage.setItem(AUTH_CONFIG.accessTokenKeys[0], token); } catch {}
+  }
+
+  function setRefreshToken(token) {
+    if (!token) return;
+    AUTH_CONFIG.refreshTokenKeys.forEach((key, index) => {
+      try {
+        if (index === 0) localStorage.setItem(key, token);
+      } catch {}
+    });
+    try { sessionStorage.setItem(AUTH_CONFIG.refreshTokenKeys[0], token); } catch {}
+  }
+
+  function clearKnownTokens() {
+    [...AUTH_CONFIG.accessTokenKeys, ...AUTH_CONFIG.refreshTokenKeys].forEach(key => {
+      try { localStorage.removeItem(key); } catch {}
+      try { sessionStorage.removeItem(key); } catch {}
+    });
+  }
+
+  async function apiFetch(url, options = {}, allowRetry = true) {
+    const token = getAccessToken();
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      credentials: "include"
+    });
+
+    if (response.status === 401 && allowRetry) {
+      const refreshed = await refreshSessionToken();
+      if (refreshed) {
+        return apiFetch(url, options, false);
+      }
+    }
+
+    return response;
+  }
+
+  async function checkSessionWithServer(force = false) {
+    if (appState.auth.isChecking) return false;
+
+    const now = Date.now();
+    if (!force && now - appState.auth.lastSessionCheckAt < AUTH_CONFIG.sessionCheckDebounceMs) {
+      return !appState.auth.sessionKnownInvalid;
+    }
+
+    const token = getAccessToken();
+    if (!token) {
+      appState.auth.sessionKnownInvalid = false;
+      return false;
+    }
+
+    appState.auth.isChecking = true;
+    appState.auth.lastSessionCheckAt = now;
+
+    try {
+      const res = await apiFetch(AUTH_CONFIG.meEndpoint, { method: "GET" }, true);
+
+      if (res.ok) {
+        appState.auth.consecutiveFailures = 0;
+        appState.auth.sessionKnownInvalid = false;
+        return true;
+      }
+
+      if (res.status === 401) {
+        appState.auth.consecutiveFailures += 1;
+        appState.auth.sessionKnownInvalid = true;
+        handlePotentialLogout();
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.warn("Session check failed:", err);
+      return true;
+    } finally {
+      appState.auth.isChecking = false;
+    }
+  }
+
+  async function refreshSessionToken() {
+    if (appState.auth.refreshInFlight) return false;
+    const refreshToken = getRefreshToken();
+
+    appState.auth.refreshInFlight = true;
+
+    try {
+      const res = await fetch(AUTH_CONFIG.refreshEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify(refreshToken ? { refreshToken } : {})
+      });
+
+      if (!res.ok) {
+        appState.auth.consecutiveFailures += 1;
+        handlePotentialLogout();
+        return false;
+      }
+
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {}
+
+      const newAccess = data.accessToken || data.token || data.access_token;
+      const newRefresh = data.refreshToken || data.refresh_token;
+
+      if (newAccess) setAccessToken(newAccess);
+      if (newRefresh) setRefreshToken(newRefresh);
+
+      appState.auth.consecutiveFailures = 0;
+      appState.auth.sessionKnownInvalid = false;
+      return true;
+    } catch (err) {
+      console.warn("Refresh token failed:", err);
+      return false;
+    } finally {
+      appState.auth.refreshInFlight = false;
+    }
+  }
+
+  function handlePotentialLogout() {
+    if (appState.auth.consecutiveFailures < 2) return;
+    if (appState.auth.redirectTimer) return;
+
+    toast("Session à vérifier", "Tentative de reconnexion automatique. Pas de déconnexion brutale immédiate.");
+
+    appState.auth.redirectTimer = setTimeout(() => {
+      clearKnownTokens();
+      window.location.href = AUTH_CONFIG.loginUrl;
+    }, AUTH_CONFIG.redirectDelayMs);
+  }
+
+  async function maybeResumeSessionCheck(force = false) {
+    const sessionRefreshToggle = document.getElementById("sessionRefreshToggle");
+    const sessionResumeToggle = document.getElementById("sessionResumeToggle");
+
+    if (sessionResumeToggle && !sessionResumeToggle.checked && !force) return;
+    if (sessionRefreshToggle && !sessionRefreshToggle.checked && !force) return;
+
+    const token = getAccessToken();
+    if (!token) return;
+
+    await checkSessionWithServer(force);
+  }
+
+  function setupAuthLifecycle() {
+    const token = getAccessToken();
 
     if (!token) {
       console.info("Aucun token local détecté. Pas de redirection forcée.");
       return;
     }
 
-    try {
-      localStorage.setItem("token", token);
-    } catch (err) {
-      console.warn("Impossible de persister le token localement.", err);
-    }
+    setAccessToken(token);
+
+    const refreshToken = getRefreshToken();
+    if (refreshToken) setRefreshToken(refreshToken);
+
+    checkSessionWithServer(true);
+
+    setInterval(() => {
+      const toggle = document.getElementById("sessionRefreshToggle");
+      if (toggle && !toggle.checked) return;
+      if (!getAccessToken()) return;
+      refreshSessionToken();
+    }, AUTH_CONFIG.proactiveRefreshMs);
   }
 
   function toast(title, message) {
