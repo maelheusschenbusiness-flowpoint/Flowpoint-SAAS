@@ -1289,6 +1289,7 @@ const stripeModule = buildStripeModule({
   priceIdForPlan,
   safeBaseUrl,
   signToken,
+  issueAuthPayload, // ✅ AJOUT IMPORTANT
   auth,
   requireActive,
   ensureOrgForUser,
@@ -1297,7 +1298,6 @@ const stripeModule = buildStripeModule({
   Org,
   sendEmail,
 });
-
 // 1) WEBHOOK RAW AVANT JSON
 app.post(
   "/api/stripe/webhook",
