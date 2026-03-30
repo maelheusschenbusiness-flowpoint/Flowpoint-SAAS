@@ -24,9 +24,10 @@
     "#settings",
   ]);
 
-  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v41";
-  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v41";
-  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v41";
+  const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v50";
+  const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v50";
+  const UI_PREFS_STORAGE_KEY = "fp_dashboard_ui_prefs_v50";
+  const TOOLS_STORAGE_KEY = "fp_dashboard_tools_v50";
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
   const LOGO_SRC = "/assets/flowpoint-logo.svg";
 
@@ -123,193 +124,53 @@
       },
     },
     dailySeed: "",
+    toolStates: {},
   };
 
   const libraries = {
     feed: [
-      {
-        title: "Nouveau rapport généré",
-        text: "Le rapport mensuel a été préparé avec la synthèse SEO, uptime et local.",
-        time: "Il y a 12 min",
-      },
-      {
-        title: "Alerte performance détectée",
-        text: "Un site surveillé présente une latence inhabituelle sur mobile.",
-        time: "Il y a 44 min",
-      },
-      {
-        title: "Opportunité locale identifiée",
-        text: "3 nouvelles pages géolocalisées peuvent être créées pour augmenter les leads.",
-        time: "Aujourd’hui",
-      },
-      {
-        title: "Nouvel export disponible",
-        text: "Un export CSV a été préparé pour faciliter le suivi de performance.",
-        time: "Aujourd’hui",
-      },
-      {
-        title: "Signal concurrent détecté",
-        text: "Un concurrent renforce ses pages services sur une zone à potentiel.",
-        time: "Ce matin",
-      },
-      {
-        title: "Monitor testé avec succès",
-        text: "La couche monitoring a bien répondu et l’historique reste cohérent.",
-        time: "Il y a 1 h",
-      },
-      {
-        title: "Bloc local enrichi",
-        text: "De nouvelles suggestions orientées Local SEO ont été calculées.",
-        time: "Il y a 2 h",
-      },
-      {
-        title: "Priorités revues",
-        text: "La hiérarchie des actions a été recalculée sur la période choisie.",
-        time: "Il y a 3 h",
-      },
+      { title: "Nouveau rapport généré", text: "Le rapport mensuel a été préparé avec la synthèse SEO, uptime et local.", time: "Il y a 12 min" },
+      { title: "Alerte performance détectée", text: "Un site surveillé présente une latence inhabituelle sur mobile.", time: "Il y a 44 min" },
+      { title: "Opportunité locale identifiée", text: "3 nouvelles pages géolocalisées peuvent être créées pour augmenter les leads.", time: "Aujourd’hui" },
+      { title: "Nouvel export disponible", text: "Un export CSV a été préparé pour faciliter le suivi de performance.", time: "Aujourd’hui" },
+      { title: "Signal concurrent détecté", text: "Un concurrent renforce ses pages services sur une zone à potentiel.", time: "Ce matin" },
+      { title: "Monitor testé avec succès", text: "La couche monitoring a bien répondu et l’historique reste cohérent.", time: "Il y a 1 h" },
+      { title: "Bloc local enrichi", text: "De nouvelles suggestions orientées Local SEO ont été calculées.", time: "Il y a 2 h" },
+      { title: "Priorités revues", text: "La hiérarchie des actions a été recalculée sur la période choisie.", time: "Il y a 3 h" },
     ],
 
     overviewQuickWins: [
-      {
-        title: "Pages locales sous-exploitées",
-        text: "Créer ou enrichir des pages géolocalisées peut rapidement améliorer la génération de leads.",
-        tag: "Élevé",
-        progress: 82,
-      },
-      {
-        title: "Performance mobile",
-        text: "Réduire la lenteur mobile peut améliorer SEO, confort utilisateur et conversion.",
-        tag: "Priorité",
-        progress: 71,
-      },
-      {
-        title: "Rapports dirigeants",
-        text: "Une version simplifiée des résultats augmente la valeur perçue côté client final.",
-        tag: "Moyen",
-        progress: 64,
-      },
-      {
-        title: "Pages services trop courtes",
-        text: "Allonger les pages commerciales principales augmente souvent la lisibilité et la conversion.",
-        tag: "Élevé",
-        progress: 76,
-      },
-      {
-        title: "Signaux de confiance",
-        text: "Ajouter des preuves, avis et éléments rassurants aide la vente et le SEO.",
-        tag: "Impact",
-        progress: 68,
-      },
-      {
-        title: "Offres mal hiérarchisées",
-        text: "Une structure plus nette des services rend l’offre plus simple à comprendre.",
-        tag: "Clair",
-        progress: 66,
-      },
-      {
-        title: "Pages FAQ manquantes",
-        text: "Une FAQ ciblée peut améliorer la compréhension, le maillage et la confiance.",
-        tag: "Rapide",
-        progress: 61,
-      },
-      {
-        title: "Maillage interne local",
-        text: "Lier les pages ville/service peut débloquer des signaux utiles rapidement.",
-        tag: "SEO",
-        progress: 74,
-      },
-      {
-        title: "Résumé exécutif absent",
-        text: "Un bloc synthèse plus haut de gamme rend le dashboard plus vendable.",
-        tag: "Premium",
-        progress: 69,
-      },
+      { title: "Pages locales sous-exploitées", text: "Créer ou enrichir des pages géolocalisées peut rapidement améliorer la génération de leads.", tag: "Élevé", progress: 82 },
+      { title: "Performance mobile", text: "Réduire la lenteur mobile peut améliorer SEO, confort utilisateur et conversion.", tag: "Priorité", progress: 71 },
+      { title: "Rapports dirigeants", text: "Une version simplifiée des résultats augmente la valeur perçue côté client final.", tag: "Moyen", progress: 64 },
+      { title: "Pages services trop courtes", text: "Allonger les pages commerciales principales augmente souvent la lisibilité et la conversion.", tag: "Élevé", progress: 76 },
+      { title: "Signaux de confiance", text: "Ajouter des preuves, avis et éléments rassurants aide la vente et le SEO.", tag: "Impact", progress: 68 },
+      { title: "Offres mal hiérarchisées", text: "Une structure plus nette des services rend l’offre plus simple à comprendre.", tag: "Clair", progress: 66 },
+      { title: "Pages FAQ manquantes", text: "Une FAQ ciblée peut améliorer la compréhension, le maillage et la confiance.", tag: "Rapide", progress: 61 },
+      { title: "Maillage interne local", text: "Lier les pages ville/service peut débloquer des signaux utiles rapidement.", tag: "SEO", progress: 74 },
+      { title: "Résumé exécutif absent", text: "Un bloc synthèse plus haut de gamme rend le dashboard plus vendable.", tag: "Premium", progress: 69 },
     ],
 
     auditAxes: [
-      {
-        title: "Optimisation de structure",
-        text: "Améliorer la hiérarchie des pages et le maillage peut débloquer de meilleurs signaux SEO.",
-        tag: "SEO",
-      },
-      {
-        title: "Contenu local",
-        text: "Les pages locales ciblées donnent souvent un bon levier rapide sur des requêtes commerciales.",
-        tag: "Local",
-      },
-      {
-        title: "Expérience mobile",
-        text: "La vitesse et la lisibilité mobile renforcent SEO, confiance et conversion.",
-        tag: "UX",
-      },
-      {
-        title: "Pages services premium",
-        text: "Renforcer les pages d’offre améliore le potentiel business du trafic acquis.",
-        tag: "Business",
-      },
-      {
-        title: "Preuves de confiance",
-        text: "Avis, garanties et éléments rassurants soutiennent la conversion et la crédibilité.",
-        tag: "Trust",
-      },
-      {
-        title: "Architecture de liens",
-        text: "Un maillage mieux pensé peut redistribuer la valeur SEO vers les pages clés.",
-        tag: "Links",
-      },
-      {
-        title: "Intentions commerciales",
-        text: "Mieux cibler les mots-clés de décision aide à faire monter la valeur perçue du service.",
-        tag: "Intent",
-      },
-      {
-        title: "Snippets mieux travaillés",
-        text: "Titre et description mieux rédigés peuvent améliorer CTR et impact business.",
-        tag: "CTR",
-      },
+      { title: "Optimisation de structure", text: "Améliorer la hiérarchie des pages et le maillage peut débloquer de meilleurs signaux SEO.", tag: "SEO" },
+      { title: "Contenu local", text: "Les pages locales ciblées donnent souvent un bon levier rapide sur des requêtes commerciales.", tag: "Local" },
+      { title: "Expérience mobile", text: "La vitesse et la lisibilité mobile renforcent SEO, confiance et conversion.", tag: "UX" },
+      { title: "Pages services premium", text: "Renforcer les pages d’offre améliore le potentiel business du trafic acquis.", tag: "Business" },
+      { title: "Preuves de confiance", text: "Avis, garanties et éléments rassurants soutiennent la conversion et la crédibilité.", tag: "Trust" },
+      { title: "Architecture de liens", text: "Un maillage mieux pensé peut redistribuer la valeur SEO vers les pages clés.", tag: "Links" },
+      { title: "Intentions commerciales", text: "Mieux cibler les mots-clés de décision aide à faire monter la valeur perçue du service.", tag: "Intent" },
+      { title: "Snippets mieux travaillés", text: "Titre et description mieux rédigés peuvent améliorer CTR et impact business.", tag: "CTR" },
     ],
 
     reportFormatTips: [
-      {
-        title: "PDF client-ready",
-        text: "Idéal pour les livrables premium, les bilans mensuels et la présentation.",
-        tag: "PDF",
-      },
-      {
-        title: "CSV opérationnel",
-        text: "Utile pour les traitements internes, le pilotage et les exports massifs.",
-        tag: "CSV",
-      },
-      {
-        title: "Résumé direction",
-        text: "Version simple et vendeuse pour dirigeants non techniques.",
-        tag: "Exec",
-      },
-      {
-        title: "Version comparative",
-        text: "Très utile pour montrer le avant / après et renforcer la rétention.",
-        tag: "Delta",
-      },
-      {
-        title: "Rapport d’incidents",
-        text: "Le monitoring devient plus crédible quand les incidents sont relus proprement.",
-        tag: "Uptime",
-      },
-      {
-        title: "Bloc valeur business",
-        text: "Un encart business rend le rapport moins technique et plus vendeur.",
-        tag: "Value",
-      },
-      {
-        title: "Plan d’action priorisé",
-        text: "Le client comprend quoi faire en premier sans effort de lecture excessif.",
-        tag: "Action",
-      },
-      {
-        title: "Vue portefeuille",
-        text: "Pratique quand plusieurs sites sont gérés dans une même structure.",
-        tag: "Scale",
-      },
+      { title: "PDF client-ready", text: "Idéal pour les livrables premium, les bilans mensuels et la présentation.", tag: "PDF" },
+      { title: "CSV opérationnel", text: "Utile pour les traitements internes, le pilotage et les exports massifs.", tag: "CSV" },
+      { title: "Résumé direction", text: "Version simple et vendeuse pour dirigeants non techniques.", tag: "Exec" },
+      { title: "Version comparative", text: "Très utile pour montrer le avant / après et renforcer la rétention.", tag: "Delta" },
+      { title: "Rapport d’incidents", text: "Le monitoring devient plus crédible quand les incidents sont relus proprement.", tag: "Uptime" },
+      { title: "Bloc valeur business", text: "Un encart business rend le rapport moins technique et plus vendeur.", tag: "Value" },
+      { title: "Plan d’action priorisé", text: "Le client comprend quoi faire en premier sans effort de lecture excessif.", tag: "Action" },
+      { title: "Vue portefeuille", text: "Pratique quand plusieurs sites sont gérés dans une même structure.", tag: "Scale" },
     ],
 
     reportChecklist: [
@@ -324,247 +185,109 @@
     ],
 
     competitorWhy: [
-      {
-        title: "Écart visible",
-        text: "Le benchmark rend les axes de rattrapage concrets et plus faciles à prioriser.",
-        tag: "Clair",
-      },
-      {
-        title: "Argumentaire commercial",
-        text: "Comparer les concurrents aide à justifier les recommandations et le prix du service.",
-        tag: "Vente",
-      },
-      {
-        title: "Projection de valeur",
-        text: "Le client comprend où il peut gagner en visibilité et en crédibilité.",
-        tag: "Impact",
-      },
-      {
-        title: "Retard lisible",
-        text: "Le manque devient visible sans devoir expliquer trop longtemps.",
-        tag: "Lisible",
-      },
-      {
-        title: "Preuve d’investissement",
-        text: "Le benchmark montre pourquoi continuer à investir reste logique.",
-        tag: "Rétention",
-      },
-      {
-        title: "Vision premium",
-        text: "Un comparatif clair donne l’impression d’un accompagnement plus haut de gamme.",
-        tag: "Premium",
-      },
+      { title: "Écart visible", text: "Le benchmark rend les axes de rattrapage concrets et plus faciles à prioriser.", tag: "Clair" },
+      { title: "Argumentaire commercial", text: "Comparer les concurrents aide à justifier les recommandations et le prix du service.", tag: "Vente" },
+      { title: "Projection de valeur", text: "Le client comprend où il peut gagner en visibilité et en crédibilité.", tag: "Impact" },
+      { title: "Retard lisible", text: "Le manque devient visible sans devoir expliquer trop longtemps.", tag: "Lisible" },
+      { title: "Preuve d’investissement", text: "Le benchmark montre pourquoi continuer à investir reste logique.", tag: "Rétention" },
+      { title: "Vision premium", text: "Un comparatif clair donne l’impression d’un accompagnement plus haut de gamme.", tag: "Premium" },
     ],
 
     competitorActions: [
-      {
-        title: "Contenu local",
-        text: "Créer plus de pages à intention commerciale géolocalisée.",
-      },
-      {
-        title: "Performance mobile",
-        text: "Réduire la lenteur sur les pages stratégiques.",
-      },
-      {
-        title: "Pages services",
-        text: "Renforcer la structure et la lisibilité des offres.",
-      },
-      {
-        title: "Confiance",
-        text: "Ajouter davantage de preuves, avis et signaux rassurants.",
-      },
-      {
-        title: "Maillage d’autorité",
-        text: "Reconnecter les pages fortes vers les pages de service sous-traitées.",
-      },
-      {
-        title: "Couverture locale",
-        text: "Élargir la couverture sur les villes ou zones rentables voisines.",
-      },
+      { title: "Contenu local", text: "Créer plus de pages à intention commerciale géolocalisée." },
+      { title: "Performance mobile", text: "Réduire la lenteur sur les pages stratégiques." },
+      { title: "Pages services", text: "Renforcer la structure et la lisibilité des offres." },
+      { title: "Confiance", text: "Ajouter davantage de preuves, avis et signaux rassurants." },
+      { title: "Maillage d’autorité", text: "Reconnecter les pages fortes vers les pages de service sous-traitées." },
+      { title: "Couverture locale", text: "Élargir la couverture sur les villes ou zones rentables voisines." },
     ],
 
     localSeoAxes: [
-      {
-        title: "Optimiser Google Business Profile",
-        text: "Amélioration concrète pour renforcer la visibilité locale et la confiance utilisateur.",
-      },
-      {
-        title: "Uniformiser nom / adresse / téléphone",
-        text: "Réduit les signaux contradictoires et renforce la cohérence locale.",
-      },
-      {
-        title: "Développer les pages géolocalisées",
-        text: "Permet de mieux couvrir les recherches locales à intention commerciale.",
-      },
-      {
-        title: "Renforcer les avis et signaux de confiance",
-        text: "Aide autant la conversion que la crédibilité perçue.",
-      },
-      {
-        title: "Créer une FAQ locale",
-        text: "Très utile pour répondre aux recherches de proximité plus précises.",
-      },
-      {
-        title: "Mailler fiche et pages locales",
-        text: "Donne une continuité plus forte entre la présence locale et le site principal.",
-      },
-      {
-        title: "Structurer les pages villes",
-        text: "Une même base cohérente permet de scaler plus proprement les implantations.",
-      },
-      {
-        title: "Enrichir les pages zones de service",
-        text: "Très bon levier pour les activités sans boutique unique.",
-      },
+      { title: "Optimiser Google Business Profile", text: "Amélioration concrète pour renforcer la visibilité locale et la confiance utilisateur." },
+      { title: "Uniformiser nom / adresse / téléphone", text: "Réduit les signaux contradictoires et renforce la cohérence locale." },
+      { title: "Développer les pages géolocalisées", text: "Permet de mieux couvrir les recherches locales à intention commerciale." },
+      { title: "Renforcer les avis et signaux de confiance", text: "Aide autant la conversion que la crédibilité perçue." },
+      { title: "Créer une FAQ locale", text: "Très utile pour répondre aux recherches de proximité plus précises." },
+      { title: "Mailler fiche et pages locales", text: "Donne une continuité plus forte entre la présence locale et le site principal." },
+      { title: "Structurer les pages villes", text: "Une même base cohérente permet de scaler plus proprement les implantations." },
+      { title: "Enrichir les pages zones de service", text: "Très bon levier pour les activités sans boutique unique." },
     ],
 
     localBusiness: [
-      {
-        title: "Plus de visibilité locale",
-        text: "Mieux apparaître sur les recherches proches de l’intention d’achat.",
-        tag: "Leads",
-      },
-      {
-        title: "Leads plus qualifiés",
-        text: "Toucher des visiteurs déjà prêts à appeler, réserver ou acheter.",
-        tag: "Qualité",
-      },
-      {
-        title: "Meilleure conversion",
-        text: "Les signaux locaux renforcent la confiance et l’action.",
-        tag: "Conversion",
-      },
-      {
-        title: "Différenciation immédiate",
-        text: "Un meilleur ancrage local aide à se détacher visiblement de concurrents moins travaillés.",
-        tag: "Diff",
-      },
-      {
-        title: "Couverture géographique",
-        text: "Le client voit plus clairement les zones fortes et les zones à gagner.",
-        tag: "Zone",
-      },
-      {
-        title: "Offre plus tangible",
-        text: "Le local SEO se comprend très vite, donc se vend mieux.",
-        tag: "Value",
-      },
+      { title: "Plus de visibilité locale", text: "Mieux apparaître sur les recherches proches de l’intention d’achat.", tag: "Leads" },
+      { title: "Leads plus qualifiés", text: "Toucher des visiteurs déjà prêts à appeler, réserver ou acheter.", tag: "Qualité" },
+      { title: "Meilleure conversion", text: "Les signaux locaux renforcent la confiance et l’action.", tag: "Conversion" },
+      { title: "Différenciation immédiate", text: "Un meilleur ancrage local aide à se détacher visiblement de concurrents moins travaillés.", tag: "Diff" },
+      { title: "Couverture géographique", text: "Le client voit plus clairement les zones fortes et les zones à gagner.", tag: "Zone" },
+      { title: "Offre plus tangible", text: "Le local SEO se comprend très vite, donc se vend mieux.", tag: "Value" },
     ],
 
     tools: [
       {
+        id: "smart_seo_audit",
         name: "Smart SEO Audit",
         tag: "Core",
         description: "Analyse technique, contenu, structure et opportunités immédiates.",
-        features: [
-          "Balises, maillage, structure",
-          "Priorisation SEO actionnable",
-          "Vision claire pour le client",
-        ],
+        features: ["Balises, maillage, structure", "Priorisation SEO actionnable", "Vision claire pour le client"],
       },
       {
+        id: "uptime_monitoring",
         name: "Uptime Monitoring",
         tag: "Premium",
         description: "Surveillance continue du site avec logique d’alerte et historique.",
-        features: [
-          "Disponibilité et latence",
-          "Historique des incidents",
-          "Justification forte de la valeur",
-        ],
+        features: ["Disponibilité et latence", "Historique des incidents", "Justification forte de la valeur"],
       },
       {
+        id: "local_visibility",
         name: "Local Visibility",
         tag: "Growth",
         description: "Module dédié au SEO local, réputation et présence Maps.",
-        features: [
-          "Google Business Profile",
-          "Pages locales ciblées",
-          "Signaux commerciaux locaux",
-        ],
+        features: ["Google Business Profile", "Pages locales ciblées", "Signaux commerciaux locaux"],
       },
       {
+        id: "competitor_watch",
         name: "Competitor Watch",
         tag: "Premium",
         description: "Comparaison de visibilité et de structure face aux concurrents.",
-        features: [
-          "Écart concurrentiel lisible",
-          "Axes d’amélioration clairs",
-          "Meilleur argumentaire commercial",
-        ],
+        features: ["Écart concurrentiel lisible", "Axes d’amélioration clairs", "Meilleur argumentaire commercial"],
       },
       {
+        id: "report_builder",
         name: "Report Builder",
         tag: "Client-ready",
         description: "Création de rapports clairs, vendables et faciles à partager.",
-        features: [
-          "PDF et CSV",
-          "Résumé dirigeant",
-          "Livrables premium",
-        ],
+        features: ["PDF et CSV", "Résumé dirigeant", "Livrables premium"],
       },
       {
+        id: "team_workspace",
         name: "Team Workspace",
         tag: "Ultra",
         description: "Gestion des membres, rôles et accès pour scaler plus facilement.",
-        features: [
-          "Accès par rôle",
-          "Collaboration simple",
-          "Upsell naturel",
-        ],
+        features: ["Accès par rôle", "Collaboration simple", "Upsell naturel"],
       },
       {
+        id: "benchmark_local",
         name: "Benchmark Local",
         tag: "Growth",
         description: "Lecture rapide des écarts locaux les plus rentables.",
-        features: [
-          "Pages zones / villes",
-          "Différenciation visible",
-          "Support commercial plus fort",
-        ],
+        features: ["Pages zones / villes", "Différenciation visible", "Support commercial plus fort"],
       },
       {
+        id: "client_narrative",
         name: "Client Narrative",
         tag: "Premium",
         description: "Mise en avant de la valeur business dans chaque page du dashboard.",
-        features: [
-          "Conseils tournants",
-          "Lecture simple",
-          "Perception produit renforcée",
-        ],
+        features: ["Conseils tournants", "Lecture simple", "Perception produit renforcée"],
       },
     ],
 
     team: [
-      {
-        name: "Maël",
-        role: "Owner",
-        detail: "Accès complet au workspace, au billing et à la configuration globale.",
-      },
-      {
-        name: "SEO Manager",
-        role: "Manager",
-        detail: "Peut lancer des audits, exporter des rapports et gérer les missions.",
-      },
-      {
-        name: "Client Viewer",
-        role: "Viewer",
-        detail: "Peut consulter les rapports et la progression sans modifier les données.",
-      },
-      {
-        name: "Tech Ops",
-        role: "Editor",
-        detail: "Peut gérer les monitors, vérifier la stabilité et corriger les alertes.",
-      },
-      {
-        name: "Growth Lead",
-        role: "Manager",
-        detail: "Pilote les quick wins, le local SEO et la lecture business des recommandations.",
-      },
-      {
-        name: "Ops Viewer",
-        role: "Viewer",
-        detail: "Observe les incidents et les rapports pour le suivi client ou interne.",
-      },
+      { name: "Maël", role: "Owner", detail: "Accès complet au workspace, au billing et à la configuration globale." },
+      { name: "SEO Manager", role: "Manager", detail: "Peut lancer des audits, exporter des rapports et gérer les missions." },
+      { name: "Client Viewer", role: "Viewer", detail: "Peut consulter les rapports et la progression sans modifier les données." },
+      { name: "Tech Ops", role: "Editor", detail: "Peut gérer les monitors, vérifier la stabilité et corriger les alertes." },
+      { name: "Growth Lead", role: "Manager", detail: "Pilote les quick wins, le local SEO et la lecture business des recommandations." },
+      { name: "Ops Viewer", role: "Viewer", detail: "Observe les incidents et les rapports pour le suivi client ou interne." },
     ],
 
     competitorBenchmarks: [
@@ -579,22 +302,10 @@
     ],
 
     settingsInfoTips: [
-      {
-        title: "Thème automatique",
-        text: "Utilise l’apparence système du navigateur. Effet surtout visuel.",
-      },
-      {
-        title: "Statut temps réel",
-        text: "Affiche et met à jour la barre d’état du dashboard.",
-      },
-      {
-        title: "Listes compactes",
-        text: "Réduit les espaces verticaux dans les lignes et cartes de listes.",
-      },
-      {
-        title: "Cartes avancées",
-        text: "Affiche davantage de blocs de lecture business et analytique.",
-      },
+      { title: "Thème automatique", text: "Utilise l’apparence système du navigateur. Effet surtout visuel." },
+      { title: "Statut temps réel", text: "Affiche et met à jour la barre d’état du dashboard." },
+      { title: "Listes compactes", text: "Réduit les espaces verticaux dans les lignes et cartes de listes." },
+      { title: "Cartes avancées", text: "Affiche davantage de blocs de lecture business et analytique." },
     ],
   };
 
@@ -925,6 +636,33 @@
     return state.missions.filter((m) => m.done).length;
   }
 
+  function loadToolStates() {
+    try {
+      const raw = localStorage.getItem(TOOLS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      state.toolStates = parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      state.toolStates = {};
+    }
+  }
+
+  function saveToolStates() {
+    localStorage.setItem(TOOLS_STORAGE_KEY, JSON.stringify(state.toolStates));
+  }
+
+  function isToolActive(toolId) {
+    return !!state.toolStates[toolId];
+  }
+
+  function setToolActive(toolId, value) {
+    state.toolStates[toolId] = !!value;
+    saveToolStates();
+  }
+
+  function getActiveToolCards() {
+    return libraries.tools.filter((tool) => isToolActive(tool.id));
+  }
+
   function hydrateSidebarAccount() {
     const me = state.me || {};
     const usage = me.usage || {};
@@ -1024,7 +762,7 @@
     const valid = items.filter((x) => x?.href && x?.label);
     if (!valid.length) return "";
     return `
-      <div class="fpInlineLinks">
+      <div class="fpInlineLinks fpInlineLinksFramed">
         ${valid.map((item) => `<a href="${esc(item.href)}">${esc(item.label)}</a>`).join("")}
       </div>
     `;
@@ -1032,7 +770,7 @@
 
   function createToolbar({ searchId, searchPlaceholder, searchValue, statusId, statusValue, sortId, sortValue, statuses = [], sorts = [] }) {
     return `
-      <div class="fpTopActionsRow" style="margin-top:14px">
+      <div class="fpTopActionsRow fpToolbarRow" style="margin-top:14px">
         <input
           id="${esc(searchId)}"
           class="fpInput fpToolbarInput"
@@ -1086,25 +824,63 @@
 
   function injectDashboardEnhancements() {
     if ($("#fpDashboardEnhancements")) return;
+
     const style = document.createElement("style");
     style.id = "fpDashboardEnhancements";
     style.textContent = `
-      .fpMissionActions .fpBtnSmall{
-        min-width:118px;
+      .fpNavDot{
+        background:rgba(255,255,255,.86)!important;
+        box-shadow:0 0 0 3px rgba(255,255,255,.06)!important;
+      }
+
+      .fpBtn,
+      .fpBtn:hover,
+      .fpBtn:active,
+      .fpBtn:focus-visible{
+        transform:none!important;
+      }
+
+      .fpBtn::before,
+      .fpBtn::after{
+        content:none!important;
+      }
+
+      .fpBtn{
+        transition:
+          background .18s ease,
+          border-color .18s ease,
+          box-shadow .18s ease,
+          color .18s ease !important;
+      }
+
+      .fpTopActionsRow > .fpBtn,
+      .fpTopActionsRow > a.fpBtn,
+      .fpMissionActions > .fpBtn,
+      .fpMissionActions > a.fpBtn,
+      .fpTableActions > .fpBtn,
+      .fpTableActions > a.fpBtn{
+        min-height:44px;
+        align-items:center;
         justify-content:center;
       }
 
-      .fpFeedTime{
-        color:var(--fpTextSoft);
-        font-size:13px;
-        font-weight:800;
-        white-space:nowrap;
+      .fpToolbarInput,
+      .fpToolbarSelect{
+        box-shadow:var(--fpShadow);
       }
 
-      .fpPriorityMain,
-      .fpFeedMain{
-        min-width:0;
-        flex:1;
+      .fpToolbarInput:focus,
+      .fpToolbarSelect:focus,
+      .fpInput:focus,
+      .fpTextarea:focus{
+        border-color:rgba(91,124,255,.34)!important;
+        box-shadow:var(--fpShadow)!important;
+      }
+
+      .fpField .fpInput,
+      .fpField .fpTextarea,
+      .fpField select.fpInput{
+        background:rgba(255,255,255,.04)!important;
       }
 
       .fpBenchmarkCellPill{
@@ -1124,6 +900,19 @@
         min-width:0;
       }
 
+      .fpFeedTime{
+        color:var(--fpTextSoft);
+        font-size:13px;
+        font-weight:800;
+        white-space:nowrap;
+      }
+
+      .fpPriorityMain,
+      .fpFeedMain{
+        min-width:0;
+        flex:1;
+      }
+
       .fpPriorityItem,
       .fpFeedItem{
         align-items:center;
@@ -1133,57 +922,52 @@
         align-self:center;
       }
 
-      .fpToolbarInput,
-      .fpToolbarSelect{
-        box-shadow:var(--fpShadow);
+      .fpSettingsList{
+        gap:18px!important;
       }
 
-      .fpToolbarInput:focus,
-      .fpToolbarSelect:focus,
-      .fpInput:focus,
-      .fpTextarea:focus{
-        border-color:rgba(91,124,255,.42)!important;
-        box-shadow:
-          0 0 0 4px rgba(47,91,255,.12),
-          var(--fpShadow);
+      .fpSettingsList .fpSettingsRow{
+        margin:0!important;
       }
 
-      .fpBtnGhost,
-      .fpBtnSoft,
-      .fpBtnPrimary,
-      .fpBtnDanger{
-        position:relative;
-        overflow:hidden;
+      .fpCardInner + .fpCardInner{
+        margin-top:18px;
       }
 
-      .fpBtnGhost::after,
-      .fpBtnSoft::after,
-      .fpBtnPrimary::after,
-      .fpBtnDanger::after{
-        content:"";
-        position:absolute;
-        inset:0;
-        border-radius:inherit;
-        pointer-events:none;
-        box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
+      .fpTimeline{
+        gap:16px!important;
       }
 
-      .fpRowCard,
-      .fpInfoRow,
-      .fpSettingsRow,
-      .fpToggleRow,
-      .fpQuotaRow,
-      .fpAddonRow,
-      .fpPriorityItem,
-      .fpFeedItem,
-      .fpBenchmarkRow{
-        margin-top:0 !important;
+      .fpTimelineItem + .fpTimelineItem{
+        margin-top:0!important;
       }
 
-      .fpInfoList + .fpInfoList,
-      .fpRows + .fpRows,
-      .fpTimeline + .fpTimeline{
+      .fpMissionStack{
+        gap:16px!important;
+      }
+
+      .fpMissionCard + .fpMissionCard{
+        margin-top:0!important;
+      }
+
+      .fpInlineLinksFramed{
         margin-top:16px;
+        display:flex;
+        flex-wrap:wrap;
+        gap:12px;
+      }
+
+      .fpInlineLinksFramed a{
+        min-height:44px;
+        padding:0 16px;
+        border-radius:14px;
+        border:1px solid var(--fpBorderStrong);
+        background:rgba(255,255,255,.04);
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        font-size:13px;
+        font-weight:800;
       }
 
       .fpAccountHero{
@@ -1243,6 +1027,39 @@
         font-size:14px;
         line-height:1.5;
         font-weight:700;
+      }
+
+      .fpToolStateRow{
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+        margin-top:14px;
+      }
+
+      .fpToolStateItem{
+        padding:14px 16px;
+        border-radius:18px;
+        border:1px solid var(--fpBorder);
+        background:rgba(255,255,255,.03);
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        align-items:flex-start;
+      }
+
+      .fpToolStateMeta{
+        color:var(--fpTextSoft);
+        font-size:14px;
+        line-height:1.5;
+        font-weight:700;
+        margin-top:6px;
+      }
+
+      @media (max-width:760px){
+        .fpAccountHero{
+          grid-template-columns:1fr;
+          align-items:flex-start;
+        }
       }
 
       @media (prefers-color-scheme: light){
@@ -1968,6 +1785,23 @@
     `;
   }
 
+  function renderToolStateList(items) {
+    if (!items.length) return createEmpty("Aucun module activé pour le moment.");
+    return `
+      <div class="fpToolStateRow">
+        ${items.map((tool) => `
+          <div class="fpToolStateItem">
+            <div>
+              <div class="fpRowTitle">${esc(tool.name)}</div>
+              <div class="fpToolStateMeta">${esc(tool.description)}</div>
+            </div>
+            <div class="fpAddonPill on">ACTIVÉ</div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
   function renderOverviewPage() {
     const me = state.me || {};
     const ov = state.overview || {};
@@ -1979,6 +1813,7 @@
     const activeAddons = getAddonEntries().filter((a) => a.enabled).slice(0, 6);
     const feedItems = getOverviewFeed();
     const quickWins = getOverviewQuickWins();
+    const activeTools = getActiveToolCards().slice(0, 4);
 
     setPage(`
       ${createSectionCard(
@@ -2124,8 +1959,8 @@
 
           ${createSectionCard(
             "Add-ons actifs",
-            "Modules détectés",
-            "Vérification visuelle des options réellement actives",
+            "Options détectées",
+            "Vérification visuelle des add-ons réellement actifs",
             activeAddons.length
               ? `
                 <div class="fpRows">
@@ -2141,6 +1976,13 @@
                 </div>
               `
               : createEmpty("Aucun add-on actif détecté pour le moment.")
+          )}
+
+          ${createSectionCard(
+            "Modules actifs",
+            "Bibliothèque activée",
+            "Les modules activés restent visibles et persistent dans le dashboard.",
+            renderToolStateList(activeTools)
           )}
 
           ${createSectionCard(
@@ -2739,7 +2581,7 @@
               <div class="fpReportTitle">Facturation</div>
               <div class="fpReportMeta">Ouvre la gestion du compte.</div>
               <div class="fpDetailActions">
-                <a class="fpBtn fpBtnGhost" href="/billing.html">Billing</a>
+                <a class="fpBtn fpBtnGhost" href="/billing.html?return=%2Fdashboard.html%23overview">Billing</a>
               </div>
             </div>
 
@@ -2905,6 +2747,18 @@
             "Particulièrement utile pour PME, commerces et indépendants.",
             renderPriorityList(businessCards)
           )}
+
+          ${createSectionCard(
+            "Lecture terrain",
+            "Autres angles utiles",
+            "Un peu plus de matière pour rendre la page plus riche.",
+            renderCheckGrid(pickLibrary([
+              { title: "Couverture des zones rentables", text: "Permet de montrer clairement où l’offre doit être poussée." },
+              { title: "Fiche locale + site", text: "Le lien entre les deux renforce la cohérence perçue." },
+              { title: "Intentions de proximité", text: "Très utile pour capter des recherches prêtes à convertir." },
+              { title: "Réassurance locale", text: "Les preuves locales inspirent plus vite confiance." }
+            ], 3, getDaySeed("local_extra")))
+          )}
         </div>
 
         <div class="fpCol fpColSide">
@@ -2932,6 +2786,7 @@
       3,
       getDaySeed("tools_benefits")
     );
+    const activeTools = getActiveToolCards();
 
     setPage(`
       ${createSectionCard(
@@ -2940,19 +2795,28 @@
         "Les modules les plus utiles pour rendre FlowPoint plus puissant, plus vendable et plus rassurant.",
         `
           <div class="fpReportsGrid">
-            ${tools.map((tool, idx) => `
-              <div class="fpReportCard">
-                <div class="fpAddonPill on">${esc(tool.tag)}</div>
-                <div class="fpReportTitle" style="margin-top:14px">${esc(tool.name)}</div>
-                <div class="fpReportMeta">${esc(tool.description)}</div>
-                <div class="fpToolFeatureList">
-                  ${tool.features.map((f) => `<div class="fpToolFeature">• ${esc(f)}</div>`).join("")}
+            ${tools.map((tool) => {
+              const active = isToolActive(tool.id);
+              return `
+                <div class="fpReportCard">
+                  <div class="fpAddonPill on">${esc(tool.tag)}</div>
+                  <div class="fpReportTitle" style="margin-top:14px">${esc(tool.name)}</div>
+                  <div class="fpReportMeta">${esc(tool.description)}</div>
+                  <div class="fpToolFeatureList">
+                    ${tool.features.map((f) => `<div class="fpToolFeature">• ${esc(f)}</div>`).join("")}
+                  </div>
+                  <div class="fpDetailActions">
+                    <button
+                      class="fpBtn ${active ? "fpBtnPrimary" : "fpBtnGhost"}"
+                      type="button"
+                      data-tool-toggle="${esc(tool.id)}"
+                    >
+                      ${active ? "Activé" : "Activer"}
+                    </button>
+                  </div>
                 </div>
-                <div class="fpDetailActions">
-                  <button class="fpBtn fpBtnGhost" type="button" data-tool-activate="${idx}">Activer</button>
-                </div>
-              </div>
-            `).join("")}
+              `;
+            }).join("")}
           </div>
         `
       )}
@@ -2978,25 +2842,33 @@
 
         <div class="fpCol fpColSide">
           ${createSectionCard(
+            "Modules actifs",
+            "État conservé",
+            "Quand tu actives un module, il reste activé en revenant sur la page.",
+            renderToolStateList(activeTools)
+          )}
+
+          ${createSectionCard(
             "Projection",
             "Ce que ressent le client",
             "Une plateforme plus riche inspire plus de confiance.",
-            `
-              <div class="fpTextPanel">
-                Plus le client voit des briques utiles, plus il ressent qu’il fait une bonne affaire et qu’il serait difficile de remplacer l’outil.
-              </div>
-            `
+            renderCheckGrid(pickLibrary([
+              { title: "Offre plus solide", text: "Plus de briques visibles rendent l’offre plus crédible." },
+              { title: "Produit moins remplaçable", text: "Un ensemble cohérent est plus difficile à substituer." },
+              { title: "Montée en gamme", text: "L’activation de modules soutient naturellement les plans plus élevés." }
+            ], 3, getDaySeed("tools_projection")))
           )}
         </div>
       </div>
     `);
 
-    $$("[data-tool-activate]").forEach((btn) => {
+    $$("[data-tool-toggle]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        setStatus("Module simulé comme activé côté interface", "ok");
-        btn.textContent = "Activé";
-        btn.classList.remove("fpBtnGhost");
-        btn.classList.add("fpBtnPrimary");
+        const toolId = btn.getAttribute("data-tool-toggle");
+        const next = !isToolActive(toolId);
+        setToolActive(toolId, next);
+        setStatus(next ? "Module activé — OK" : "Module désactivé — OK", "ok");
+        renderRoute({ preserveScroll: true });
       });
     });
   }
@@ -3049,12 +2921,17 @@
         <div class="fpCol fpColSide">
           ${createSectionCard(
             "Accès",
-            "Logique d’organisation",
+            "Équipe / invitation",
             "Une structure simple mais crédible.",
             `
               <div class="fpTextPanel">
                 Owner, manager, editor et viewer suffisent déjà à donner une impression SaaS sérieuse et scalable.
               </div>
+              ${createInlineLinks([
+                { href: "/invite-accept.html", label: "Invite accept" },
+                { href: "/billing.html?return=%2Fdashboard.html%23overview", label: "Billing" },
+                { href: "/addons.html", label: "Add-ons" },
+              ])}
             `
           )}
         </div>
@@ -3072,6 +2949,7 @@
     const extraEmails = Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "";
     const addons = getAddonEntries();
     const settingTips = libraries.settingsInfoTips;
+    const activeTools = getActiveToolCards();
 
     setPage(`
       ${createSectionCard(
@@ -3167,7 +3045,7 @@
                 <div class="fpSmall">Accès direct aux pages utiles.</div>
                 ${createInlineLinks([
                   { href: "/invite-accept.html", label: "Invite accept" },
-                  { href: "/billing.html", label: "Billing" },
+                  { href: "/billing.html?return=%2Fdashboard.html%23overview", label: "Billing" },
                   { href: "/addons.html", label: "Add-ons" },
                 ])}
               </div>
@@ -3216,6 +3094,11 @@
                       </div>`
                     : `<div class="fpEmpty">Aucun add-on détecté.</div>`
                 }
+              </div>
+
+              <div class="fpCardInner">
+                <div class="fpCardInnerTitle">Modules activés</div>
+                ${renderToolStateList(activeTools)}
               </div>
 
               <div class="fpCardInner">
@@ -3405,7 +3288,6 @@
       value: active.value,
       start: active.selectionStart ?? null,
       end: active.selectionEnd ?? null,
-      type: active.tagName.toLowerCase(),
     };
   }
 
@@ -3424,6 +3306,7 @@
   function bindInputPreserve(selector, eventName, handler) {
     const node = $(selector);
     if (!node) return;
+
     node.addEventListener(eventName, (e) => {
       const snap = captureFocusState();
       handler(e);
@@ -3868,6 +3751,7 @@
     hydrateLogos();
     injectDashboardEnhancements();
     loadUiPrefs();
+    loadToolStates();
     refreshDailySeed();
     resetMissionsIfNeeded();
     state.missions = loadMissions();
