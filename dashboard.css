@@ -209,9 +209,9 @@ body::before{
   width:14px;
   height:14px;
   border-radius:999px;
-  background:rgba(255,255,255,.86);
+  background:linear-gradient(180deg, #84a3ff, #2f5bff);
   flex:0 0 auto;
-  box-shadow:0 0 0 3px rgba(255,255,255,.06);
+  box-shadow:0 0 0 3px rgba(47,91,255,.10);
 }
 
 .fpAccountCard{
@@ -279,7 +279,8 @@ body::before{
   font-weight:800;
 }
 
-.fpBar{
+.fpBar,
+.fpMiniProgress{
   width:100%;
   height:10px;
   border-radius:999px;
@@ -288,7 +289,13 @@ body::before{
   overflow:hidden;
 }
 
-.fpBarFill{
+.fpMiniProgress{
+  margin-top:10px;
+  height:8px;
+}
+
+.fpBarFill,
+.fpMiniProgressFill{
   width:0%;
   height:100%;
   border-radius:999px;
@@ -356,7 +363,6 @@ body::before{
 
 .fpHelloWrap{min-width:0}
 .fpHelloHead{display:block}
-.fpHelloLogo{display:none!important}
 .fpHelloBlock{min-width:0}
 
 .fpHelloKicker{
@@ -424,12 +430,38 @@ body::before{
   gap:8px;
   font-weight:800;
   letter-spacing:-.01em;
-  transition:.18s ease;
+  transition:
+    transform .18s ease,
+    box-shadow .18s ease,
+    background .18s ease,
+    border-color .18s ease;
   margin:0;
+  position:relative;
+  overflow:hidden;
 }
 
+.fpBtn::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(120deg, transparent 0%, rgba(255,255,255,.10) 50%, transparent 100%);
+  transform:translateX(-120%);
+  transition:transform .35s ease;
+  pointer-events:none;
+}
+
+.fpBtn:hover::before{transform:translateX(120%)}
 .fpBtn:hover{transform:translateY(-1px)}
-.fpBtn:active{transform:scale(.97)}
+.fpBtn:active{transform:scale(.985)}
+.fpBtn:focus-visible,
+.fpInput:focus-visible,
+.fpTextarea:focus-visible,
+.fpSelect:focus-visible{
+  outline:none;
+  box-shadow:
+    0 0 0 3px rgba(91,124,255,.18),
+    0 0 0 1px rgba(91,124,255,.38);
+}
 .fpBtnFull{width:100%}
 
 .fpBtnPrimary{
@@ -440,10 +472,21 @@ body::before{
   box-shadow:var(--fpBrandGlow);
 }
 
+.fpBtnPrimary:hover{
+  box-shadow:
+    0 20px 42px rgba(47,91,255,.34),
+    inset 0 1px 0 rgba(255,255,255,.08);
+}
+
 .fpBtnGhost{
   color:#fff;
   border:1px solid var(--fpBorderStrong);
   background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+}
+
+.fpBtnGhost:hover{
+  border-color:rgba(91,124,255,.30);
+  background:linear-gradient(180deg, rgba(47,91,255,.16), rgba(255,255,255,.04));
 }
 
 .fpBtnSoft{
@@ -454,10 +497,21 @@ body::before{
   border:1px solid rgba(91,124,255,.24);
 }
 
+.fpBtnSoft:hover{
+  border-color:rgba(91,124,255,.36);
+  background:
+    radial-gradient(120% 140% at 20% 20%, rgba(91,124,255,.24), transparent 55%),
+    linear-gradient(180deg, rgba(47,91,255,.34), rgba(47,91,255,.18));
+}
+
 .fpBtnDanger{
   color:#fff;
   background:linear-gradient(180deg, #f05b65, #d93d4a);
   box-shadow:0 16px 30px rgba(217,61,74,.24);
+}
+
+.fpBtnDanger:hover{
+  box-shadow:0 20px 34px rgba(217,61,74,.30);
 }
 
 .fpBtnSmall{
@@ -552,7 +606,12 @@ body::before{
 .fpPageTwoCols,
 .fpHeroStats,
 .fpPlanGrid,
-.fpProjectStats{
+.fpProjectStats,
+.fpKpiGrid4,
+.fpKpiGrid3,
+.fpHealthGrid,
+.fpInlineStats,
+.fpCheckGrid{
   display:grid;
   gap:18px;
 }
@@ -577,6 +636,11 @@ body::before{
 .fpHeroStats{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fpPlanGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fpProjectStats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.fpKpiGrid4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.fpKpiGrid3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.fpHealthGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.fpInlineStats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.fpCheckGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
 
 .fpCol{
   min-width:0;
@@ -659,12 +723,6 @@ body::before{
 
 .fpCard:hover{transform:translateY(-2px)}
 
-.fpCardAccent{
-  background:
-    radial-gradient(120% 140% at 20% 0%, rgba(47,91,255,.34), transparent 52%),
-    linear-gradient(180deg, rgba(21,34,82,.98), rgba(12,18,44,.98));
-}
-
 .fpCardInner{
   border-radius:24px;
   border:1px solid var(--fpBorder);
@@ -693,6 +751,14 @@ body::before{
   flex-wrap:wrap;
   align-items:center;
   gap:14px;
+}
+
+.fpTopActionsRow > .fpBtn,
+.fpTopActionsRow > a.fpBtn,
+.fpMissionActions > .fpBtn,
+.fpMissionActions > a.fpBtn{
+  flex:1 1 0;
+  min-width:150px;
 }
 
 .fpReportCard .fpDetailActions,
@@ -756,79 +822,6 @@ body::before{
   font-weight:700;
 }
 
-.fpPillRow{display:flex;flex-wrap:wrap;gap:10px}
-
-.fpPill{
-  min-height:42px;
-  padding:0 14px;
-  border-radius:999px;
-  border:1px solid var(--fpBorderStrong);
-  background:rgba(255,255,255,.04);
-  color:#fff;
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  font-size:14px;
-  font-weight:800;
-}
-
-/* HERO */
-.fpHero{
-  overflow:hidden;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:20px;
-  padding:30px;
-  border-radius:30px;
-  border:1px solid var(--fpBorderStrong);
-  background:
-    radial-gradient(900px 300px at 15% 0%, rgba(47,91,255,.34), transparent 58%),
-    radial-gradient(700px 300px at 95% 5%, rgba(91,124,255,.18), transparent 62%),
-    linear-gradient(180deg, rgba(17,25,59,.98), rgba(12,18,44,.98));
-  box-shadow:var(--fpShadowLg);
-}
-
-.fpHeroWide{padding:30px}
-.fpHeroLeft,.fpHeroContent{max-width:760px;min-width:0}
-
-.fpHeroRight{
-  display:flex;
-  flex-wrap:wrap;
-  justify-content:flex-end;
-  gap:10px;
-  align-items:center;
-}
-
-.fpHeroKicker{
-  font-size:13px;
-  font-weight:900;
-  letter-spacing:.26em;
-  text-transform:uppercase;
-  color:#eef3ff;
-  opacity:.92;
-}
-
-.fpHeroTitle{
-  margin:8px 0 0;
-  font-size:64px;
-  line-height:.95;
-  letter-spacing:-.055em;
-  font-weight:900;
-  overflow-wrap:anywhere;
-  word-break:break-word;
-}
-
-.fpHeroText{
-  margin:14px 0 0;
-  max-width:760px;
-  font-size:18px;
-  line-height:1.55;
-  color:var(--fpTextSoft);
-  font-weight:700;
-}
-
-/* MINI STATS */
 .fpMiniStat,
 .fpReportCard,
 .fpBillingCard,
@@ -882,7 +875,8 @@ body::before{
 
 .fpMiniStatValue,
 .fpStatValue,
-.fpHealthValue{
+.fpHealthValue,
+.fpInlineStatValue{
   margin-top:8px;
   font-size:28px;
   font-weight:900;
@@ -910,7 +904,6 @@ body::before{
 .fpKpiSub,
 .fpHealthMeta,
 .fpFeedText,
-.fpPriorityText,
 .fpInlineStatText,
 .fpCheckText,
 .fpRevenueText,
@@ -933,7 +926,8 @@ body::before{
 .fpProjectBox,
 .fpTableRows,
 .fpFeedList,
-.fpPriorityList{
+.fpPriorityList,
+.fpToolFeatureList{
   display:flex;
   flex-direction:column;
   gap:14px;
@@ -956,8 +950,6 @@ body::before{
 .fpRowCard,
 .fpQuotaRow,
 .fpAddonRow,
-.fpTimelineItemTop,
-.fpActionItemTop,
 .fpFeedTop,
 .fpPriorityItem,
 .fpHealthTop{
@@ -968,7 +960,12 @@ body::before{
 }
 
 .fpRowCard:hover,
-.fpMissionCard:hover{
+.fpMissionCard:hover,
+.fpFeedItem:hover,
+.fpPriorityItem:hover,
+.fpCheckItem:hover,
+.fpBenchmarkRow:hover,
+.fpHealthCard:hover{
   background:rgba(255,255,255,.05);
 }
 
@@ -987,9 +984,9 @@ body::before{
 .fpAddonLabel,
 .fpToggleTitle,
 .fpFeedTitle,
-.fpPriorityTitle,
 .fpCheckTitle,
-.fpRevenueTitle{
+.fpRevenueTitle,
+.fpPriorityMain .fpPriorityTitle{
   font-size:15px;
   font-weight:800;
   line-height:1.4;
@@ -1039,20 +1036,25 @@ body::before{
   font-weight:800;
 }
 
-.fpTr.row{
-  display:grid;
-  gap:10px;
+.fpPriorityTag{
+  min-height:36px;
+  min-width:92px;
+  padding:0 14px;
+  border-radius:999px;
+  background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
+  color:#fff;
+  display:inline-flex;
   align-items:center;
-  border-radius:18px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-  padding:14px 16px;
-  overflow:hidden;
+  justify-content:center;
+  text-align:center;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.10em;
+  text-transform:uppercase;
+  flex:0 0 auto;
+  align-self:center;
 }
 
-.fpRowBtns{display:flex;justify-content:flex-start}
-
-/* BADGES */
 .fpBadge{
   min-height:38px;
   padding:0 12px;
@@ -1070,39 +1072,12 @@ body::before{
   width:9px;
   height:9px;
   border-radius:999px;
-  background:#97a2ca;
+  background:linear-gradient(180deg, #84a3ff, #2f5bff);
 }
-
 .fpBadge.up .fpBadgeDot{background:var(--fpSuccess)}
 .fpBadge.down .fpBadgeDot{background:var(--fpDanger)}
 
-.fpPriorityTag{
-  min-height:36px;
-  padding:0 12px;
-  border-radius:999px;
-  background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
-  color:#fff;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  font-size:12px;
-  font-weight:900;
-  letter-spacing:.10em;
-  text-transform:uppercase;
-  flex:0 0 auto;
-}
-
 /* CHART */
-.fpChartWrap{
-  margin-top:14px;
-  border-radius:24px;
-  border:1px solid var(--fpBorderStrong);
-  background:
-    radial-gradient(120% 120% at 20% 0%, rgba(47,91,255,.10), transparent 58%),
-    rgba(255,255,255,.03);
-  padding:18px 18px 12px;
-}
-
 .fpChartCard{margin-top:14px}
 
 .fpChartBox{
@@ -1147,22 +1122,6 @@ body::before{
   height:10px;
   border-radius:999px;
   background:var(--fpBrand);
-}
-
-.fpMiniProgress{
-  width:100%;
-  height:8px;
-  border-radius:999px;
-  overflow:hidden;
-  background:rgba(255,255,255,.07);
-  border:1px solid rgba(255,255,255,.05);
-  margin-top:10px;
-}
-
-.fpMiniProgressFill{
-  height:100%;
-  border-radius:999px;
-  background:linear-gradient(90deg,var(--fpBrand3),var(--fpBrand),var(--fpBrand2));
 }
 
 /* MISSIONS */
@@ -1251,12 +1210,6 @@ body::before{
   margin-left:38px;
 }
 
-.fpMissionAside{
-  display:flex;
-  flex-direction:column;
-  gap:16px;
-}
-
 /* SETTINGS */
 .fpSettingsGrid{
   display:grid;
@@ -1293,6 +1246,13 @@ body::before{
   padding:0 16px;
   outline:none;
   box-shadow:none;
+  transition:border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.fpInput:hover,
+.fpTextarea:hover,
+.fpSelect:hover{
+  border-color:rgba(91,124,255,.34);
 }
 
 .fpInput{min-height:52px}
@@ -1313,20 +1273,11 @@ body::before{
   padding:28px;
 }
 
-.fpSettingsGrid .fpSmall,
-.fpSettingsGrid .fpCardText{
-  margin-bottom:20px;
-}
-
 .fpSettingsList{
   display:flex;
   flex-direction:column;
   gap:18px;
   margin-top:0;
-}
-
-.fpSettingsList > *{
-  margin:0!important;
 }
 
 .fpSettingsRow,
@@ -1348,6 +1299,7 @@ body::before{
   justify-content:space-between;
   align-items:center;
   gap:16px;
+  margin-top:16px;
 }
 
 .fpSwitch{
@@ -1392,53 +1344,6 @@ body::before{
 .fpBillingCard,
 .fpReportCard{
   min-height:100%;
-}
-
-.fpBillingPlan{
-  margin-top:8px;
-  font-size:34px;
-  font-weight:900;
-  letter-spacing:-.04em;
-  line-height:1.04;
-  overflow-wrap:anywhere;
-  word-break:break-word;
-}
-
-.fpBillingStatus{line-height:1.5}
-
-.fpPlanBadge{
-  display:inline-flex;
-  align-items:center;
-  min-height:32px;
-  padding:0 12px;
-  border-radius:999px;
-  background:rgba(255,255,255,.08);
-  color:#fff;
-  font-size:12px;
-  font-weight:900;
-  letter-spacing:.10em;
-  text-transform:uppercase;
-}
-
-.fpPlanName{
-  margin-top:14px;
-  font-size:30px;
-  font-weight:900;
-  letter-spacing:-.04em;
-}
-
-.fpPlanPrice{
-  margin-top:8px;
-  font-size:46px;
-  line-height:1;
-  font-weight:900;
-  letter-spacing:-.06em;
-}
-
-.fpPlanPrice small{
-  font-size:18px;
-  color:var(--fpTextSoft);
-  font-weight:800;
 }
 
 .fpPlanList{
@@ -1506,86 +1411,7 @@ body::before{
   letter-spacing:-.06em;
 }
 
-/* PROJECT / KPI */
-.fpProjectName{
-  font-size:24px;
-  font-weight:900;
-  letter-spacing:-.03em;
-  overflow-wrap:anywhere;
-  word-break:break-word;
-}
-
-.fpProjectStat{
-  border-radius:18px;
-  border:1px solid var(--fpBorder);
-  background:rgba(255,255,255,.03);
-  padding:14px;
-}
-
-.fpProjectStat span{
-  display:block;
-  color:var(--fpMuted);
-  font-size:12px;
-  font-weight:800;
-  text-transform:uppercase;
-  letter-spacing:.18em;
-}
-
-.fpProjectStat strong{
-  display:block;
-  margin-top:8px;
-  font-size:26px;
-  font-weight:900;
-  letter-spacing:-.04em;
-}
-
-.fpKpiLine{
-  display:flex;
-  align-items:flex-end;
-  gap:8px;
-  margin-top:10px;
-}
-
-.fpKpiMain{
-  font-size:52px;
-  line-height:.95;
-  letter-spacing:-.06em;
-  font-weight:900;
-}
-
-.fpKpiGrid4{
-  display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:18px;
-}
-
-.fpKpiGrid3{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:18px;
-}
-
-.fpHealthGrid{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:18px;
-  margin-top:14px;
-}
-
-.fpInlineStats{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:14px;
-  margin-top:14px;
-}
-
-.fpCheckGrid{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:14px;
-  margin-top:14px;
-}
-
+/* BENCHMARK */
 .fpBenchmarkTable{
   margin-top:14px;
   display:flex;
@@ -1610,99 +1436,15 @@ body::before{
   letter-spacing:.14em;
 }
 
+.fpBenchmarkRow{
+  padding:14px 16px;
+}
+
 .fpBenchmarkStrong{
   font-weight:900;
 }
 
-.fpRiskGood{color:var(--fpSuccess)}
-.fpRiskWarn{color:var(--fpWarning)}
-.fpRiskDanger{color:var(--fpDanger)}
-
-.fpToolFeatureList{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-  margin-top:12px;
-}
-
-.fpToolFeature{
-  color:var(--fpTextSoft);
-  font-size:14px;
-  line-height:1.5;
-  font-weight:700;
-}
-
-/* PAGE HERO */
-.fpPageHero{
-  overflow:hidden;
-  border-radius:28px;
-  border:1px solid var(--fpBorderStrong);
-  background:
-    radial-gradient(110% 130% at 20% 0%, rgba(47,91,255,.34), transparent 56%),
-    linear-gradient(180deg, rgba(18,28,69,.98), rgba(12,18,44,.98));
-  box-shadow:var(--fpShadowLg);
-  padding:24px;
-}
-
-.fpPageHeroHead{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:16px;
-}
-
-.fpPageKicker{
-  font-size:13px;
-  font-weight:900;
-  text-transform:uppercase;
-  letter-spacing:.24em;
-  color:#eef3ff;
-}
-
-.fpPageTitle{
-  margin:10px 0 0;
-  font-size:48px;
-  line-height:.98;
-  letter-spacing:-.05em;
-  font-weight:900;
-  overflow-wrap:anywhere;
-  word-break:break-word;
-}
-
-.fpPageDesc{
-  margin:12px 0 0;
-  max-width:820px;
-  color:var(--fpTextSoft);
-  font-size:17px;
-  line-height:1.55;
-  font-weight:700;
-}
-
-/* LINKS */
-.fpInlineLinks{
-  margin-top:20px;
-}
-
-.fpInlineLinks a{
-  min-height:46px;
-  padding:0 18px;
-  border-radius:999px;
-  border:1px solid var(--fpBorderStrong);
-  background:rgba(255,255,255,.04);
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  font-size:13px;
-  font-weight:800;
-  transition:.18s ease;
-}
-
-.fpInlineLinks a:hover{
-  background:rgba(255,255,255,.08);
-  transform:translateY(-1px);
-}
-
-/* EXTRA COMPONENTS */
+/* EXTRA */
 .fpFeatureLock{
   border:1px dashed var(--fpBorderStrong);
   border-radius:16px;
@@ -1748,6 +1490,13 @@ body::before{
   line-height:1.5;
 }
 
+.fpToolFeature{
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.5;
+  font-weight:700;
+}
+
 /* modal injectée */
 #fpModalOverlay{
   position:fixed;
@@ -1761,7 +1510,7 @@ body::before{
   box-shadow:var(--fpShadowLg);
 }
 
-/* mode compact */
+/* compact */
 .fpCompactMode .fpRowCard,
 .fpCompactMode .fpInfoRow,
 .fpCompactMode .fpSettingsRow,
@@ -1786,7 +1535,6 @@ body::before{
 @media (max-width:1320px){
   .fpBottomGrid,
   .fpPageGrid,
-  .fpMissionGrid,
   .fpSettingsGrid,
   .fpBillingGrid,
   .fpGridMain,
@@ -1838,15 +1586,7 @@ body::before{
     justify-content:flex-start;
   }
 
-  .fpHero{
-    flex-direction:column;
-    align-items:flex-start;
-  }
-
-  .fpHeroRight{justify-content:flex-start}
   .fpHelloTitle{font-size:42px}
-  .fpHeroTitle{font-size:52px}
-  .fpPageTitle{font-size:42px}
 }
 
 @media (max-width:760px){
@@ -1872,12 +1612,8 @@ body::before{
   .fpTopbarRight > *{width:100%}
 
   .fpHelloTitle{font-size:34px}
-  .fpHeroTitle{font-size:42px}
-  .fpPageTitle{font-size:36px}
   .fpSectionTitle,.fpCardInnerTitle{font-size:28px}
-  .fpBigValue{font-size:26px}
-  .fpKpiMain{font-size:42px}
-  .fpPlanPrice{font-size:38px}
+  .fpRevenueValue{font-size:32px}
 
   .fpStatusPill,
   .fpSelect,
@@ -1892,11 +1628,6 @@ body::before{
     width:100%;
   }
 
-  .fpPageHeroHead{
-    flex-direction:column;
-    align-items:flex-start;
-  }
-
   .fpPageActions,
   .fpDetailActions,
   .fpTopActionsRow,
@@ -1907,6 +1638,13 @@ body::before{
     flex-direction:column;
     align-items:stretch;
     gap:12px;
+  }
+
+  .fpTopActionsRow > .fpBtn,
+  .fpTopActionsRow > a.fpBtn,
+  .fpMissionActions > .fpBtn,
+  .fpMissionActions > a.fpBtn{
+    min-width:0;
   }
 
   .fpInlineLinks{
@@ -1938,22 +1676,9 @@ body::before{
     justify-content:center;
   }
 
-  .fpBtnGhost,
-  .fpInlineLinks a{
-    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025))!important;
-    border:1px solid var(--fpBorderStrong)!important;
-  }
-
-  .fpBtnPrimary{
-    box-shadow:
-      0 10px 24px rgba(47,91,255,.22),
-      inset 0 1px 0 rgba(255,255,255,.08);
-  }
-
   .fpTableHead{display:none}
 
   .fpTableRow,
-  .fpTr.row,
   .fpBenchmarkRow{
     grid-template-columns:1fr!important;
   }
@@ -1977,8 +1702,6 @@ body::before{
   .fpSettingsRow strong{
     text-align:left;
   }
-
-  .fpChartCard{overflow:hidden}
 
   .fpChartBox{
     width:100%;
@@ -2052,15 +1775,6 @@ body::before{
     text-align:left!important;
   }
 
-  .fpBillingGrid{grid-template-columns:1fr!important}
-
-  .fpBillingCard{
-    padding:18px;
-    border-radius:22px;
-  }
-
-  .fpBillingPlan{font-size:30px}
-
   #fpRangeSelect{
     color:var(--fpText)!important;
     -webkit-text-fill-color:var(--fpText)!important;
@@ -2075,11 +1789,6 @@ body::before{
 
 @media (max-width:520px){
   .fpHelloTitle{font-size:30px;line-height:1}
-  .fpHero{padding:20px;border-radius:24px}
-  .fpHeroTitle{font-size:38px}
-  .fpPageTitle{font-size:32px}
-
-  .fpHeroText{font-size:16px}
 
   .fpCard,
   .fpCardInner,
@@ -2096,7 +1805,6 @@ body::before{
     line-height:1.04;
   }
 
-  .fpBillingPlan{font-size:26px}
   .fpReportTitle,.fpBillingTitle{font-size:17px}
   .fpNavItem{min-height:54px;font-size:16px}
   .fpBrandLogo{width:50px;height:50px}
@@ -2142,7 +1850,6 @@ body::before{
   .fpPageHero,
   .fpAccountCard,
   .fpPlanCard,
-  .fpHero,
   .fpRevenueBox{
     background:
       radial-gradient(120% 120% at 14% 0%, rgba(47,91,255,.12), transparent 50%),
@@ -2166,7 +1873,6 @@ body::before{
   .fpTimelineItem,
   .fpActionItem,
   .fpBadge,
-  .fpPill,
   .fpInput,
   .fpTextarea,
   .fpStatusPill,
@@ -2191,25 +1897,6 @@ body::before{
       inset 0 1px 0 rgba(255,255,255,.45)!important;
   }
 
-  .fpHero{
-    background:
-      radial-gradient(900px 300px at 15% 0%, rgba(47,91,255,.18), transparent 58%),
-      radial-gradient(700px 300px at 95% 5%, rgba(91,124,255,.14), transparent 62%),
-      linear-gradient(180deg, rgba(247,250,255,.90), rgba(232,240,255,.96))!important;
-  }
-
-  .fpBillingCard,
-  .fpReportCard,
-  .fpAddonRow{
-    background:
-      radial-gradient(130% 120% at 10% 0%, rgba(47,91,255,.12), transparent 44%),
-      linear-gradient(180deg, rgba(255,255,255,.84), rgba(239,245,255,.95))!important;
-    border-color:rgba(59,78,130,.12)!important;
-    box-shadow:
-      0 12px 30px rgba(41,64,122,.08),
-      inset 0 1px 0 rgba(255,255,255,.42)!important;
-  }
-
   .fpNavItem{color:#4f628b}
   .fpNavItem:hover{
     color:var(--fpText);
@@ -2220,7 +1907,6 @@ body::before{
 
   .fpCardKicker,
   .fpHelloKicker,
-  .fpPageKicker,
   .fpMiniStatLabel,
   .fpStatLabel,
   .fpInfoLabel,
@@ -2230,63 +1916,48 @@ body::before{
     color:var(--fpMuted)!important;
   }
 
-  .fpHeroTitle,
   .fpHelloTitle,
   .fpSectionTitle,
   .fpCardInnerTitle,
   .fpReportTitle,
-  .fpBillingTitle,
   .fpMiniStatValue,
   .fpStatValue,
   .fpBrandName,
   .fpAccountRow strong,
   .fpUsageTop strong,
   .fpMissionTitle,
-  .fpProjectName,
   .fpInfoRow span,
   .fpSettingsRow span,
-  .fpQuotaRow span,
   .fpAddonLabel,
   .fpRowTitle,
-  .fpTimelineTitle,
-  .fpActionTitle,
   .fpToggleTitle,
-  .fpBillingPlan,
   .fpScore,
   .fpFeedTitle,
-  .fpPriorityTitle,
+  .fpCheckTitle,
   .fpRevenueTitle,
-  .fpHealthValue{
+  .fpHealthValue,
+  .fpInlineStatValue{
     color:var(--fpText)!important;
   }
 
-  .fpLegendItem,
   .fpCardText,
   .fpSmall,
-  .fpPageDesc,
   .fpHelloSub,
   .fpMissionMeta,
   .fpMissionDesc,
-  .fpInfoHint,
-  .fpTimelineMeta,
-  .fpActionMeta,
   .fpToggleHint,
-  .fpPlanList,
-  .fpKpiSub,
-  .fpHeroText,
   .fpReportMeta,
-  .fpBillingStatus,
   .fpMiniStatMeta,
   .fpStatMeta,
   .fpRowMeta,
-  .fpChartLegendText,
   .fpChartInsight,
   .fpTextPanel,
   .fpFeedText,
-  .fpPriorityText,
   .fpRevenueText,
   .fpRevenueSub,
-  .fpHealthMeta{
+  .fpHealthMeta,
+  .fpInlineStatText,
+  .fpCheckText{
     color:var(--fpTextSoft)!important;
   }
 
@@ -2317,15 +1988,6 @@ body::before{
   }
 
   .fpBtnPrimary{color:#fff!important}
-
-  .fpBtn:disabled,
-  .fpBtn[disabled]{
-    color:#a8b3cc!important;
-    background:linear-gradient(180deg, rgba(255,255,255,.70), rgba(242,245,252,.88))!important;
-    border:1px solid rgba(59,78,130,.10)!important;
-    box-shadow:none!important;
-    opacity:1!important;
-  }
 
   .fpSelect{
     background:
@@ -2371,12 +2033,6 @@ body::before{
     border-color:rgba(59,78,130,.12)!important;
   }
 
-  .fpFeatureLock,
-  .fpPlanBenefit{
-    background:linear-gradient(180deg, rgba(255,255,255,.78), rgba(244,248,255,.92)) !important;
-    border-color:rgba(59,78,130,.12) !important;
-  }
-
   .fpMissionCheck{
     border-color:rgba(47,91,255,.30) !important;
     background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(240,245,255,.98)) !important;
@@ -2391,11 +2047,6 @@ body::before{
     box-shadow:
       0 0 0 4px rgba(47,91,255,.10),
       0 10px 22px rgba(47,91,255,.18) !important;
-  }
-
-  .fpMissionCard:hover,
-  .fpMissionCardLarge:hover{
-    background:rgba(47,91,255,.04) !important;
   }
 
   @media (max-width:760px){
