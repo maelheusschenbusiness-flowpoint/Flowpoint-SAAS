@@ -2,8 +2,11 @@
 // Checkout redirect + Embedded checkout + Portal + Webhook
 // Sync plan/add-ons -> user/org
 // FIX: extraSeat -> extraSeats
+// FIX: verifyCheckout renvoie token + refreshToken
 // FIX: verifyCheckout trial sync depuis Stripe
 // FIX: subscription.deleted reset plus propre
+// FIX: update abonnement existant + prorata
+// FIX: sync quotas/addons/credits/retention
 
 const Stripe = require("stripe");
 
@@ -32,11 +35,19 @@ function buildStripeModule(ctx) {
     priceIdForPlan,
     safeBaseUrl,
     signToken,
+    issueAuthPayload,
+    auth,
+    requireActive,
     ensureOrgForUser,
     ensureOrgDefaults,
     User,
-    Org
+    Org,
+    sendEmail
   } = ctx;
+
+  if (!STRIPE_SECRET_KEY) {
+    throw new Error("STRIPE_SECRET_KEY manquante dans buildStripeModule");
+  }
 
   const stripe = Stripe(STRIPE_SECRET_KEY);
 
@@ -50,40 +61,15 @@ function buildStripeModule(ctx) {
     return s === "active" || s === "trialing" || s === "past_due";
   }
 
-  async function getOrCreateCustomer(user) {
-    if (user.stripeCustomerId) return user.stripeCustomerId;
-
-    const customer = await stripe.customers.create({
-      email: user.email,
-      name: user.companyName || user.name || undefined,
-      metadata: { uid: user._id.toString() }
-    });
-
-    user.stripeCustomerId = customer.id;
-    await user.save();
-    return customer.id;
+  function isBlockingStatus(status) {
+    const s = String(status || "").toLowerCase();
+    return ["unpaid", "canceled", "incomplete_expired"].includes(s);
   }
 
-  async function getActiveSubscriptionForUser(user) {
-    if (user.stripeSubscriptionId) {
-      try {
-        const sub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
-          expand: ["items.data.price", "latest_invoice.payment_intent"]
-        });
-        if (sub && isActiveStatus(sub.status)) return sub;
-      } catch (_) {}
-    }
-
-    if (!user.stripeCustomerId) return null;
-
-    const list = await stripe.subscriptions.list({
-      customer: user.stripeCustomerId,
-      status: "all",
-      limit: 10,
-      expand: ["data.items.data.price", "data.latest_invoice.payment_intent"]
-    });
-
-    return (list.data || []).find((s) => isActiveStatus(s.status)) || null;
+  function clampInt(n, min, max) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return min;
+    return Math.max(min, Math.min(max, Math.floor(x)));
   }
 
   function normalizeAddonSelection(addonsRaw) {
@@ -148,6 +134,75 @@ function buildStripeModule(ctx) {
     ].filter(Boolean);
   }
 
+  async function getOrCreateCustomer(user) {
+    if (user.stripeCustomerId) return user.stripeCustomerId;
+
+    const customer = await stripe.customers.create({
+      email: user.email,
+      name: user.companyName || user.name || undefined,
+      metadata: {
+        uid: user._id.toString(),
+        email: String(user.email || "").toLowerCase()
+      }
+    });
+
+    user.stripeCustomerId = customer.id;
+    await user.save();
+    return customer.id;
+  }
+
+  async function getActiveSubscriptionForUser(user) {
+    if (user.stripeSubscriptionId) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
+          expand: [
+            "items.data.price",
+            "latest_invoice.payment_intent",
+            "pending_setup_intent"
+          ]
+        });
+        if (sub && isActiveStatus(sub.status)) return sub;
+      } catch (_) {}
+    }
+
+    if (!user.stripeCustomerId) return null;
+
+    const list = await stripe.subscriptions.list({
+      customer: user.stripeCustomerId,
+      status: "all",
+      limit: 20,
+      expand: [
+        "data.items.data.price",
+        "data.latest_invoice.payment_intent",
+        "data.pending_setup_intent"
+      ]
+    });
+
+    return (list.data || []).find((s) => isActiveStatus(s.status)) || null;
+  }
+
+  async function cancelOtherSubscriptions(user, keepSubId) {
+    if (!user?.stripeCustomerId) return;
+
+    try {
+      const list = await stripe.subscriptions.list({
+        customer: user.stripeCustomerId,
+        status: "all",
+        limit: 20
+      });
+
+      for (const sub of list.data || []) {
+        if (sub.id === keepSubId) continue;
+        const st = String(sub.status || "").toLowerCase();
+        if (["active", "trialing", "past_due", "unpaid"].includes(st)) {
+          try {
+            await stripe.subscriptions.cancel(sub.id);
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
   async function updateExistingSubscription({ sub, chosenPlan, addonsRaw }) {
     const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw });
     const planPriceIds = new Set(getPlanPriceIds());
@@ -184,14 +239,19 @@ function buildStripeModule(ctx) {
     for (const it of items) {
       const pid = it?.price?.id;
       if (!pid || !addonPriceIds.has(pid)) continue;
-      if (!desired.has(pid)) updates.push({ id: it.id, deleted: true });
+      if (!desired.has(pid)) {
+        updates.push({ id: it.id, deleted: true });
+      }
     }
 
     for (const [pid, qty] of desired.entries()) {
       if (!addonPriceIds.has(pid)) continue;
       const ex = existingByPrice.get(pid);
-      if (ex) updates.push({ id: ex.id, quantity: qty });
-      else updates.push({ price: pid, quantity: qty });
+      if (ex) {
+        updates.push({ id: ex.id, quantity: qty });
+      } else {
+        updates.push({ price: pid, quantity: qty });
+      }
     }
 
     if (!updates.length) {
@@ -202,7 +262,11 @@ function buildStripeModule(ctx) {
       items: updates,
       proration_behavior: "create_prorations",
       payment_behavior: "default_incomplete",
-      expand: ["latest_invoice.payment_intent", "items.data.price"]
+      expand: [
+        "latest_invoice.payment_intent",
+        "items.data.price",
+        "pending_setup_intent"
+      ]
     });
 
     return { updated: true, subscription: updated };
@@ -234,9 +298,15 @@ function buildStripeModule(ctx) {
       const priceId = it?.price?.id;
       const qty = Number(it?.quantity || 1);
 
-      if (priceId === process.env.STRIPE_PRICE_ID_STANDARD && planRank(plan) < 1) plan = "standard";
-      if (priceId === process.env.STRIPE_PRICE_ID_PRO && planRank(plan) < 2) plan = "pro";
-      if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) plan = "ultra";
+      if (priceId === process.env.STRIPE_PRICE_ID_STANDARD && planRank(plan) < 1) {
+        plan = "standard";
+      }
+      if (priceId === process.env.STRIPE_PRICE_ID_PRO && planRank(plan) < 2) {
+        plan = "pro";
+      }
+      if (priceId === process.env.STRIPE_PRICE_ID_ULTRA) {
+        plan = "ultra";
+      }
 
       const addonKey = ADDON_PRICE_ID_TO_KEY[priceId];
       if (!addonKey) continue;
@@ -294,10 +364,33 @@ function buildStripeModule(ctx) {
     };
   }
 
+  async function syncOrgFromEntitlements(org, ent) {
+    await ensureOrgDefaults(org);
+
+    org.billingAddons.monitorsPack50 = Number(ent.addons.monitorsPack50 || 0);
+    org.billingAddons.extraSeats = Number(ent.addons.extraSeats || 0);
+    org.billingAddons.retention90d = !!ent.addons.retention90d;
+    org.billingAddons.retention365d = !!ent.addons.retention365d;
+    org.billingAddons.auditsPack200 = Number(ent.addons.auditsPack200 || 0);
+    org.billingAddons.auditsPack1000 = Number(ent.addons.auditsPack1000 || 0);
+    org.billingAddons.pdfPack200 = Number(ent.addons.pdfPack200 || 0);
+    org.billingAddons.exportsPack1000 = Number(ent.addons.exportsPack1000 || 0);
+    org.billingAddons.prioritySupport = !!ent.addons.prioritySupport;
+    org.billingAddons.customDomain = !!ent.addons.customDomain;
+    org.billingAddons.whiteLabel = true;
+
+    org.retentionDays = clampInt(ent.retentionDays || 30, 7, 3650);
+    org.credits.audits = Number(ent.credits.audits || 0);
+    org.credits.pdf = Number(ent.credits.pdf || 0);
+    org.credits.exports = Number(ent.credits.exports || 0);
+
+    await org.save();
+  }
+
   async function applySubscriptionToUserAndOrg(sub) {
     const customerId = sub.customer;
     const user = await User.findOne({ stripeCustomerId: customerId });
-    if (!user) return;
+    if (!user) return null;
 
     const ent = extractEntitlementsFromSubscription(sub);
 
@@ -306,12 +399,16 @@ function buildStripeModule(ctx) {
     user.lastPaymentStatus = sub.status;
 
     const st = String(sub.status || "").toLowerCase();
-    if (st === "active" || st === "trialing") user.accessBlocked = false;
-    if (["past_due", "unpaid", "canceled", "incomplete_expired"].includes(st)) {
+    if (isActiveStatus(st)) {
+      user.accessBlocked = false;
+    }
+    if (isBlockingStatus(st)) {
       user.accessBlocked = true;
     }
 
-    if (ent.plan) user.plan = ent.plan;
+    if (ent.plan) {
+      user.plan = ent.plan;
+    }
 
     if (sub.trial_end) {
       user.hasTrial = true;
@@ -325,30 +422,61 @@ function buildStripeModule(ctx) {
     await user.save();
 
     const org = user.orgId ? await Org.findById(user.orgId) : null;
+    if (!org) return user;
+
+    await syncOrgFromEntitlements(org, ent);
+    return user;
+  }
+
+  async function resetOrgAfterSubscriptionDelete(user) {
+    if (!user?.orgId) return;
+
+    const org = await Org.findById(user.orgId);
     if (!org) return;
 
     await ensureOrgDefaults(org);
 
-    org.billingAddons.monitorsPack50 = ent.addons.monitorsPack50 || 0;
-    org.billingAddons.extraSeats = ent.addons.extraSeats || 0;
-    org.billingAddons.retention90d = !!ent.addons.retention90d;
-    org.billingAddons.retention365d = !!ent.addons.retention365d;
-    org.billingAddons.auditsPack200 = ent.addons.auditsPack200 || 0;
-    org.billingAddons.auditsPack1000 = ent.addons.auditsPack1000 || 0;
-    org.billingAddons.pdfPack200 = ent.addons.pdfPack200 || 0;
-    org.billingAddons.exportsPack1000 = ent.addons.exportsPack1000 || 0;
-    org.billingAddons.prioritySupport = !!ent.addons.prioritySupport;
-    org.billingAddons.customDomain = !!ent.addons.customDomain;
+    org.billingAddons.monitorsPack50 = 0;
+    org.billingAddons.extraSeats = 0;
+    org.billingAddons.retention90d = false;
+    org.billingAddons.retention365d = false;
+    org.billingAddons.auditsPack200 = 0;
+    org.billingAddons.auditsPack1000 = 0;
+    org.billingAddons.pdfPack200 = 0;
+    org.billingAddons.exportsPack1000 = 0;
+    org.billingAddons.prioritySupport = false;
+    org.billingAddons.customDomain = false;
     org.billingAddons.whiteLabel = true;
 
-    org.retentionDays = ent.retentionDays;
-    org.credits.audits = Number(ent.credits.audits || 0);
-    org.credits.pdf = Number(ent.credits.pdf || 0);
-    org.credits.exports = Number(ent.credits.exports || 0);
+    org.retentionDays = 30;
+    org.credits = { audits: 0, pdf: 0, exports: 0 };
 
     await org.save();
   }
-    async function checkoutPlan(req, res) {
+
+  function buildCheckoutLineItems({ chosenPlan, addonsRaw }) {
+    const desired = buildDesiredPriceQty({ chosenPlan, addonsRaw });
+    const lineItems = [];
+
+    for (const [pid, qty] of desired.entries()) {
+      lineItems.push({ price: pid, quantity: qty });
+    }
+
+    return lineItems;
+  }
+
+  function getPaymentIntentInfo(subscription) {
+    const pi = subscription?.latest_invoice?.payment_intent;
+    if (pi && pi.client_secret && pi.status && pi.status !== "succeeded") {
+      return {
+        paymentIntentClientSecret: pi.client_secret,
+        paymentIntentStatus: pi.status
+      };
+    }
+    return null;
+  }
+
+  async function checkoutPlan(req, res) {
     try {
       const chosenPlanRaw = req.body?.plan;
       const chosenPlan = chosenPlanRaw ? String(chosenPlanRaw).toLowerCase() : null;
@@ -359,6 +487,7 @@ function buildStripeModule(ctx) {
 
       const user = req.dbUser;
       await getOrCreateCustomer(user);
+
       const activeSub = await getActiveSubscriptionForUser(user);
 
       if (activeSub) {
@@ -370,14 +499,13 @@ function buildStripeModule(ctx) {
 
         await applySubscriptionToUserAndOrg(subscription);
 
-        const pi = subscription?.latest_invoice?.payment_intent;
-        if (pi && pi.client_secret && pi.status && pi.status !== "succeeded") {
+        const piInfo = getPaymentIntentInfo(subscription);
+        if (piInfo) {
           return res.json({
             ok: true,
             updated,
             subscriptionId: subscription.id,
-            paymentIntentClientSecret: pi.client_secret,
-            paymentIntentStatus: pi.status
+            ...piInfo
           });
         }
 
@@ -388,15 +516,10 @@ function buildStripeModule(ctx) {
         });
       }
 
-      const desired = buildDesiredPriceQty({
+      const lineItems = buildCheckoutLineItems({
         chosenPlan,
         addonsRaw: req.body?.addons
       });
-
-      const lineItems = [];
-      for (const [pid, qty] of desired.entries()) {
-        lineItems.push({ price: pid, quantity: qty });
-      }
 
       if (!lineItems.length) {
         return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
@@ -443,6 +566,7 @@ function buildStripeModule(ctx) {
 
       const user = req.dbUser;
       await getOrCreateCustomer(user);
+
       const activeSub = await getActiveSubscriptionForUser(user);
 
       if (activeSub) {
@@ -454,14 +578,13 @@ function buildStripeModule(ctx) {
 
         await applySubscriptionToUserAndOrg(subscription);
 
-        const pi = subscription?.latest_invoice?.payment_intent;
-        if (pi && pi.client_secret && pi.status && pi.status !== "succeeded") {
+        const piInfo = getPaymentIntentInfo(subscription);
+        if (piInfo) {
           return res.json({
             ok: true,
             updated,
             subscriptionId: subscription.id,
-            paymentIntentClientSecret: pi.client_secret,
-            paymentIntentStatus: pi.status
+            ...piInfo
           });
         }
 
@@ -472,15 +595,10 @@ function buildStripeModule(ctx) {
         });
       }
 
-      const desired = buildDesiredPriceQty({
+      const lineItems = buildCheckoutLineItems({
         chosenPlan,
         addonsRaw: req.body?.addons
       });
-
-      const lineItems = [];
-      for (const [pid, qty] of desired.entries()) {
-        lineItems.push({ price: pid, quantity: qty });
-      }
 
       if (!lineItems.length) {
         return res.status(400).json({ error: "Aucun plan ni add-on sélectionné" });
@@ -518,17 +636,23 @@ function buildStripeModule(ctx) {
   async function verifyCheckout(req, res) {
     try {
       const sessionId = req.query.session_id;
-      if (!sessionId) return res.status(400).json({ error: "session_id manquant" });
+      if (!sessionId) {
+        return res.status(400).json({ error: "session_id manquant" });
+      }
 
       const session = await stripe.checkout.sessions.retrieve(sessionId, {
         expand: ["subscription", "customer"]
       });
 
       const uid = session.metadata?.uid || session.subscription?.metadata?.uid;
-      if (!uid) return res.status(400).json({ error: "uid manquant" });
+      if (!uid) {
+        return res.status(400).json({ error: "uid manquant" });
+      }
 
       const user = await User.findById(uid);
-      if (!user) return res.status(404).json({ error: "User introuvable" });
+      if (!user) {
+        return res.status(404).json({ error: "User introuvable" });
+      }
 
       if (session.customer?.id) user.stripeCustomerId = session.customer.id;
       if (session.subscription?.id) user.stripeSubscriptionId = session.subscription.id;
@@ -552,11 +676,21 @@ function buildStripeModule(ctx) {
       }
 
       await ensureOrgForUser(user);
+
+      if (user.orgId) {
+        const org = await Org.findById(user.orgId);
+        if (org) await ensureOrgDefaults(org);
+      }
+
       await user.save();
+      await cancelOtherSubscriptions(user, user.stripeSubscriptionId);
+
+      const authPayload = issueAuthPayload(user);
 
       return res.json({
         ok: true,
-        token: signToken(user)
+        token: authPayload.token,
+        refreshToken: authPayload.refreshToken
       });
     } catch (e) {
       console.log("verifyCheckout error:", e.message);
@@ -585,34 +719,23 @@ function buildStripeModule(ctx) {
     }
   }
 
-  async function resetOrgAfterSubscriptionDelete(user) {
-    if (!user?.orgId) return;
-
-    const org = await Org.findById(user.orgId);
-    if (!org) return;
-
-    await ensureOrgDefaults(org);
-
-    org.billingAddons.monitorsPack50 = 0;
-    org.billingAddons.extraSeats = 0;
-    org.billingAddons.retention90d = false;
-    org.billingAddons.retention365d = false;
-    org.billingAddons.auditsPack200 = 0;
-    org.billingAddons.auditsPack1000 = 0;
-    org.billingAddons.pdfPack200 = 0;
-    org.billingAddons.exportsPack1000 = 0;
-    org.billingAddons.prioritySupport = false;
-    org.billingAddons.customDomain = false;
-    org.billingAddons.whiteLabel = true;
-    org.retentionDays = 30;
-    org.credits = { audits: 0, pdf: 0, exports: 0 };
-
-    await org.save();
+  async function sendOptionalBillingEmail({ user, subject, text, html }) {
+    if (!sendEmail || !user?.email) return;
+    try {
+      await sendEmail({
+        to: user.email,
+        subject,
+        text,
+        html
+      });
+    } catch (_) {}
   }
 
   async function webhookHandler(req, res) {
     try {
-      if (!STRIPE_WEBHOOK_SECRET) return res.status(200).send("no webhook secret");
+      if (!STRIPE_WEBHOOK_SECRET) {
+        return res.status(200).send("no webhook secret");
+      }
 
       const sig = req.headers["stripe-signature"];
       const event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
@@ -626,12 +749,38 @@ function buildStripeModule(ctx) {
 
       if (event.type === "invoice.payment_failed") {
         const inv = event.data.object;
+
         await setBlockedByCustomer(inv.customer, true, "payment_failed");
+
+        const user = await User.findOne({ stripeCustomerId: inv.customer });
+        if (user) {
+          await sendOptionalBillingEmail({
+            user,
+            subject: "FlowPoint — Paiement échoué",
+            text: "Un paiement Stripe a échoué. Merci de mettre à jour votre moyen de paiement.",
+            html: `
+              <h2>FlowPoint — Paiement échoué</h2>
+              <p>Un paiement Stripe a échoué.</p>
+              <p>Merci de mettre à jour votre moyen de paiement depuis votre portail client.</p>
+            `
+          });
+        }
       }
 
       if (event.type === "invoice.payment_succeeded") {
         const inv = event.data.object;
+
         await setBlockedByCustomer(inv.customer, false, "payment_succeeded");
+
+        const user = await User.findOne({ stripeCustomerId: inv.customer });
+        if (user?.stripeSubscriptionId) {
+          try {
+            const sub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
+              expand: ["items.data.price", "latest_invoice.payment_intent"]
+            });
+            await applySubscriptionToUserAndOrg(sub);
+          } catch (_) {}
+        }
       }
 
       if (
@@ -640,6 +789,19 @@ function buildStripeModule(ctx) {
       ) {
         const sub = event.data.object;
         await applySubscriptionToUserAndOrg(sub);
+      }
+
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const subscriptionId = session.subscription;
+        if (subscriptionId) {
+          try {
+            const sub = await stripe.subscriptions.retrieve(subscriptionId, {
+              expand: ["items.data.price", "latest_invoice.payment_intent"]
+            });
+            await applySubscriptionToUserAndOrg(sub);
+          } catch (_) {}
+        }
       }
 
       if (event.type === "customer.subscription.deleted") {
@@ -660,6 +822,17 @@ function buildStripeModule(ctx) {
         const user = await User.findOne({ stripeCustomerId: sub.customer });
         if (user) {
           await resetOrgAfterSubscriptionDelete(user);
+
+          await sendOptionalBillingEmail({
+            user,
+            subject: "FlowPoint — Abonnement supprimé",
+            text: "Votre abonnement a été supprimé et l’accès premium a été désactivé.",
+            html: `
+              <h2>FlowPoint — Abonnement supprimé</h2>
+              <p>Votre abonnement a été supprimé.</p>
+              <p>L’accès premium et les add-ons liés à l’abonnement ont été réinitialisés.</p>
+            `
+          });
         }
       }
 
