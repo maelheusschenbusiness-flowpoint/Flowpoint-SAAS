@@ -2209,8 +2209,7 @@
 
     requestAnimationFrame(drawOverviewChart);
   }
-
-  function renderMissionsPage() {
+    function renderMissionsPage() {
     const done = countDoneMissions();
     const missions = getFilteredMissions();
 
