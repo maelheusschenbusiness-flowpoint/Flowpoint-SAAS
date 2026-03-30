@@ -13,7 +13,7 @@
   --fpBrand:#2f5bff;
   --fpBrand2:#1b45ff;
   --fpBrand3:#5b7cff;
-  --fpBrandGlow:0 16px 40px rgba(47,91,255,.30);
+  --fpBrandGlow:0 16px 40px rgba(47,91,255,.24);
 
   --fpSuccess:#22c55e;
   --fpWarning:#f59e0b;
@@ -32,10 +32,7 @@ img,svg{display:block;max-width:100%}
 button,input,select,textarea{font:inherit}
 a{color:inherit;text-decoration:none}
 
-html,
-body{
-  background:transparent;
-}
+html,body{background:transparent}
 
 body{
   font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
@@ -187,7 +184,7 @@ body::before{
   font-weight:800;
   letter-spacing:-.02em;
   border:1px solid transparent;
-  transition:.18s ease;
+  transition:background .18s ease,border-color .18s ease,color .18s ease;
 }
 
 .fpNavItem:hover{
@@ -209,9 +206,9 @@ body::before{
   width:14px;
   height:14px;
   border-radius:999px;
-  background:linear-gradient(180deg, #84a3ff, #2f5bff);
+  background:rgba(255,255,255,.86);
   flex:0 0 auto;
-  box-shadow:0 0 0 3px rgba(47,91,255,.10);
+  box-shadow:0 0 0 3px rgba(255,255,255,.06);
 }
 
 .fpAccountCard{
@@ -300,7 +297,7 @@ body::before{
   height:100%;
   border-radius:999px;
   background:linear-gradient(90deg, var(--fpBrand3), var(--fpBrand), var(--fpBrand2));
-  box-shadow:0 0 20px rgba(47,91,255,.4);
+  box-shadow:0 0 20px rgba(47,91,255,.30);
 }
 
 /* MAIN */
@@ -430,52 +427,41 @@ body::before{
   gap:8px;
   font-weight:800;
   letter-spacing:-.01em;
-  transition:
-    transform .18s ease,
-    box-shadow .18s ease,
-    background .18s ease,
-    border-color .18s ease;
+  transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,color .18s ease;
   margin:0;
-  position:relative;
-  overflow:hidden;
+  transform:none!important;
 }
 
-.fpBtn::before{
-  content:"";
-  position:absolute;
-  inset:0;
-  background:linear-gradient(120deg, transparent 0%, rgba(255,255,255,.10) 50%, transparent 100%);
-  transform:translateX(-120%);
-  transition:transform .35s ease;
-  pointer-events:none;
+.fpBtn::before,
+.fpBtn::after{display:none!important}
+
+.fpBtn:hover,
+.fpBtn:active{
+  transform:none!important;
 }
 
-.fpBtn:hover::before{transform:translateX(120%)}
-.fpBtn:hover{transform:translateY(-1px)}
-.fpBtn:active{transform:scale(.985)}
 .fpBtn:focus-visible,
 .fpInput:focus-visible,
 .fpTextarea:focus-visible,
 .fpSelect:focus-visible{
   outline:none;
   box-shadow:
-    0 0 0 3px rgba(91,124,255,.18),
-    0 0 0 1px rgba(91,124,255,.38);
+    0 0 0 3px rgba(91,124,255,.16),
+    0 0 0 1px rgba(91,124,255,.32);
 }
+
 .fpBtnFull{width:100%}
 
 .fpBtnPrimary{
   color:#fff;
   background:
-    radial-gradient(120% 140% at 20% 20%, rgba(91,124,255,.24), transparent 55%),
+    radial-gradient(120% 140% at 20% 20%, rgba(91,124,255,.22), transparent 55%),
     linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
-  box-shadow:var(--fpBrandGlow);
+  box-shadow:0 12px 28px rgba(47,91,255,.22);
 }
 
 .fpBtnPrimary:hover{
-  box-shadow:
-    0 20px 42px rgba(47,91,255,.34),
-    inset 0 1px 0 rgba(255,255,255,.08);
+  box-shadow:0 12px 28px rgba(47,91,255,.22);
 }
 
 .fpBtnGhost{
@@ -485,33 +471,34 @@ body::before{
 }
 
 .fpBtnGhost:hover{
-  border-color:rgba(91,124,255,.30);
-  background:linear-gradient(180deg, rgba(47,91,255,.16), rgba(255,255,255,.04));
+  border-color:var(--fpBorderStrong);
+  background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
 }
 
 .fpBtnSoft{
   color:#fff;
   background:
-    radial-gradient(120% 140% at 20% 20%, rgba(91,124,255,.16), transparent 55%),
-    linear-gradient(180deg, rgba(47,91,255,.26), rgba(47,91,255,.14));
-  border:1px solid rgba(91,124,255,.24);
+    radial-gradient(120% 140% at 20% 20%, rgba(91,124,255,.14), transparent 55%),
+    linear-gradient(180deg, rgba(47,91,255,.22), rgba(47,91,255,.12));
+  border:1px solid rgba(91,124,255,.22);
+  box-shadow:none;
 }
 
 .fpBtnSoft:hover{
-  border-color:rgba(91,124,255,.36);
+  border-color:rgba(91,124,255,.22);
   background:
-    radial-gradient(120% 140% at 20% 20%, rgba(91,124,255,.24), transparent 55%),
-    linear-gradient(180deg, rgba(47,91,255,.34), rgba(47,91,255,.18));
+    radial-gradient(120% 140% at 20% 20%, rgba(91,124,255,.14), transparent 55%),
+    linear-gradient(180deg, rgba(47,91,255,.22), rgba(47,91,255,.12));
 }
 
 .fpBtnDanger{
   color:#fff;
   background:linear-gradient(180deg, #f05b65, #d93d4a);
-  box-shadow:0 16px 30px rgba(217,61,74,.24);
+  box-shadow:0 12px 24px rgba(217,61,74,.18);
 }
 
 .fpBtnDanger:hover{
-  box-shadow:0 20px 34px rgba(217,61,74,.30);
+  box-shadow:0 12px 24px rgba(217,61,74,.18);
 }
 
 .fpBtnSmall{
@@ -718,10 +705,10 @@ body::before{
     radial-gradient(100% 120% at 20% 0%, rgba(47,91,255,.12), transparent 55%),
     linear-gradient(180deg, rgba(17,25,59,.96), rgba(12,18,44,.96));
   padding:24px;
-  transition:transform .2s ease, background .2s ease;
+  transition:background .2s ease,border-color .2s ease;
 }
 
-.fpCard:hover{transform:translateY(-2px)}
+.fpCard:hover{transform:none}
 
 .fpCardInner{
   border-radius:24px;
@@ -1072,7 +1059,7 @@ body::before{
   width:9px;
   height:9px;
   border-radius:999px;
-  background:linear-gradient(180deg, #84a3ff, #2f5bff);
+  background:#97a2ca;
 }
 .fpBadge.up .fpBadgeDot{background:var(--fpSuccess)}
 .fpBadge.down .fpBadgeDot{background:var(--fpDanger)}
@@ -1166,7 +1153,7 @@ body::before{
   align-items:center;
   justify-content:center;
   padding:0;
-  transition:all .2s ease;
+  transition:background .2s ease,border-color .2s ease,box-shadow .2s ease;
   color:transparent;
 }
 
@@ -1181,16 +1168,11 @@ body::before{
 .fpMissionCheck.done{
   background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
   border:none;
-  box-shadow:0 0 12px rgba(47,107,255,.6);
+  box-shadow:0 0 12px rgba(47,107,255,.45);
 }
 
-.fpMissionCheck.done svg{
-  opacity:1;
-}
-
-.fpMissionCheck.done svg path{
-  stroke:#ffffff;
-}
+.fpMissionCheck.done svg{opacity:1}
+.fpMissionCheck.done svg path{stroke:#ffffff}
 
 .fpMissionTitle{
   font-size:26px;
@@ -1204,6 +1186,7 @@ body::before{
 .fpMissionActions{
   margin-top:14px;
   gap:12px;
+  width:100%;
 }
 
 .fpMissionCardLarge .fpMissionActions{
@@ -1252,7 +1235,7 @@ body::before{
 .fpInput:hover,
 .fpTextarea:hover,
 .fpSelect:hover{
-  border-color:rgba(91,124,255,.34);
+  border-color:rgba(91,124,255,.30);
 }
 
 .fpInput{min-height:52px}
@@ -1383,7 +1366,7 @@ body::before{
 .fpAddonPill.on{
   color:#fff;
   background:linear-gradient(180deg, var(--fpBrand), var(--fpBrand2));
-  box-shadow:var(--fpBrandGlow);
+  box-shadow:0 10px 20px rgba(47,91,255,.20);
 }
 
 .fpAddonPill.off{
@@ -1444,6 +1427,19 @@ body::before{
   font-weight:900;
 }
 
+.fpBenchmarkCellPill{
+  min-height:38px;
+  padding:0 14px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.035);
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-start;
+  font-weight:800;
+  width:100%;
+}
+
 /* EXTRA */
 .fpFeatureLock{
   border:1px dashed var(--fpBorderStrong);
@@ -1491,6 +1487,77 @@ body::before{
 }
 
 .fpToolFeature{
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.5;
+  font-weight:700;
+}
+
+.fpFeedTime{
+  color:var(--fpTextSoft);
+  font-size:13px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+.fpPriorityMain,
+.fpFeedMain{
+  min-width:0;
+  flex:1;
+}
+
+.fpAccountHero{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:16px;
+  align-items:center;
+  padding:18px;
+  border-radius:22px;
+  border:1px solid var(--fpBorderStrong);
+  background:
+    radial-gradient(120% 160% at 12% 0%, rgba(47,91,255,.22), transparent 54%),
+    linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+}
+
+.fpAccountHeroRight{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.fpAccountPlanChip{
+  min-height:46px;
+  padding:0 18px;
+  border-radius:999px;
+  background:linear-gradient(180deg,var(--fpBrand),var(--fpBrand2));
+  color:#fff;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:14px;
+  font-weight:900;
+  letter-spacing:.10em;
+  text-transform:uppercase;
+}
+
+.fpSettingImpact{
+  margin-top:12px;
+  padding:14px 16px;
+  border-radius:16px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+}
+
+.fpSettingImpactTitle{
+  font-size:13px;
+  font-weight:900;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--fpTextSoft);
+}
+
+.fpSettingImpactText{
+  margin-top:8px;
   color:var(--fpTextSoft);
   font-size:14px;
   line-height:1.5;
@@ -1775,6 +1842,10 @@ body::before{
     text-align:left!important;
   }
 
+  .fpAccountHero{
+    grid-template-columns:1fr;
+  }
+
   #fpRangeSelect{
     color:var(--fpText)!important;
     -webkit-text-fill-color:var(--fpText)!important;
@@ -1897,6 +1968,18 @@ body::before{
       inset 0 1px 0 rgba(255,255,255,.45)!important;
   }
 
+  .fpBenchmarkCellPill{
+    background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(244,248,255,.96))!important;
+    border-color:rgba(59,78,130,.12)!important;
+  }
+
+  .fpAccountHero{
+    background:
+      radial-gradient(120% 160% at 12% 0%, rgba(47,91,255,.16), transparent 54%),
+      linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.95))!important;
+    border-color:rgba(59,78,130,.12)!important;
+  }
+
   .fpNavItem{color:#4f628b}
   .fpNavItem:hover{
     color:var(--fpText);
@@ -1979,7 +2062,7 @@ body::before{
   }
 
   .fpBtnGhost:hover{
-    background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(234,242,255,.98))!important;
+    background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.94))!important;
   }
 
   .fpBtnSoft{
