@@ -8,6 +8,7 @@
 // - invite accept ajouté
 // - pages actives uniquement
 // - cron monitors conservé
+// - refresh/session renforcés pour dashboard mobile
 // =======================
 
 require("dotenv").config();
@@ -534,6 +535,7 @@ async function assertSafePublicUrl(rawUrl) {
   u.hash = "";
   return u.toString();
 }
+
 // ---------- MODELS ----------
 const OrgSchema = new mongoose.Schema(
   {
@@ -731,22 +733,32 @@ function signToken(user) {
 }
 
 function issueAuthPayload(user) {
+  const token = signAccessToken(user);
+  const refreshToken = signRefreshToken(user);
+
   return {
-    token: signAccessToken(user),
-    refreshToken: signRefreshToken(user),
+    token,
+    refreshToken,
   };
 }
 
 function auth(req, res, next) {
-  const h = req.headers.authorization || "";
-  const tok = h.startsWith("Bearer ") ? h.slice(7) : null;
+  const h = String(req.headers.authorization || "");
+  const tok = h.startsWith("Bearer ") ? h.slice(7).trim() : "";
 
-  if (!tok) return res.status(401).json({ error: "Non autorisé" });
+  if (!tok) {
+    return res.status(401).json({ error: "Non autorisé" });
+  }
 
   try {
-    req.user = jwt.verify(tok, process.env.JWT_SECRET);
+    const decoded = jwt.verify(tok, process.env.JWT_SECRET);
+    if (!decoded?.uid) {
+      return res.status(401).json({ error: "Token invalide" });
+    }
+
+    req.user = decoded;
     next();
-  } catch {
+  } catch (e) {
     return res.status(401).json({ error: "Token invalide" });
   }
 }
@@ -1077,6 +1089,7 @@ async function runWithConcurrency(items, limit, worker) {
   await Promise.all(runners);
   return results;
 }
+
 // ---------- MONITOR CHECK ----------
 async function checkUrlOnce(url) {
   const safeUrl = await assertSafePublicUrl(url);
@@ -1297,6 +1310,21 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
 app.use("/api", rateLimit({ windowMs: 60 * 1000, max: 200 }));
 
+// 2.5) NO CACHE FOR AUTH / SESSION-SENSITIVE ROUTES
+app.use((req, res, next) => {
+  if (
+    req.path.startsWith("/api/auth/") ||
+    req.path === "/api/me" ||
+    req.path === "/api/overview"
+  ) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+  }
+  next();
+});
+
 // 3) BODY PARSERS APRES WEBHOOK
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -1455,12 +1483,22 @@ app.post("/api/auth/lead", leadLimiter, async (req, res) => {
 // ---------- AUTH: REFRESH ----------
 app.post("/api/auth/refresh", async (req, res) => {
   try {
-    const refreshToken = String(req.body?.refreshToken || "").trim();
+    const refreshToken =
+      String(req.body?.refreshToken || "").trim() ||
+      String(req.headers["x-refresh-token"] || "").trim() ||
+      String(req.headers["x-refresh"] || "").trim();
+
     if (!refreshToken) {
       return res.status(400).json({ error: "Refresh token manquant" });
     }
 
-    const decoded = jwt.verify(refreshToken, REFRESH_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, REFRESH_SECRET);
+    } catch {
+      return res.status(401).json({ error: "Refresh token invalide" });
+    }
+
     if (!decoded?.uid) {
       return res.status(401).json({ error: "Refresh token invalide" });
     }
@@ -1471,13 +1509,34 @@ app.post("/api/auth/refresh", async (req, res) => {
     }
 
     await ensureOrgForUser(user);
+    await resetUsageIfNewMonth(user);
+
+    const payload = issueAuthPayload(user);
 
     return res.json({
       ok: true,
-      ...issueAuthPayload(user),
+      token: payload.token,
+      refreshToken: payload.refreshToken,
     });
   } catch (e) {
+    console.log("refresh error:", e.message);
     return res.status(401).json({ error: "Refresh token invalide" });
+  }
+});
+
+app.get("/api/auth/session", auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.uid);
+    if (!user) return res.status(404).json({ error: "User introuvable" });
+
+    return res.json({
+      ok: true,
+      authenticated: true,
+      userId: user._id,
+      email: user.email,
+    });
+  } catch (e) {
+    return res.status(401).json({ error: "Session invalide" });
   }
 });
 
@@ -1667,6 +1726,7 @@ app.post("/api/org/invite/accept", async (req, res) => {
     return res.status(500).json({ error: "Erreur acceptation invitation" });
   }
 });
+
 // ---------- ME ----------
 app.get("/api/me", auth, requireActive, async (req, res) => {
   const u = req.dbUser;
@@ -2150,6 +2210,7 @@ app.post("/api/cron/monitors-run", requireCron, async (req, res) => {
     return res.status(500).json({ error: "Erreur cron monitors-run" });
   }
 });
+
 // ---------- EXPORTS ----------
 function csvEscape(v) {
   const s = String(v ?? "");
