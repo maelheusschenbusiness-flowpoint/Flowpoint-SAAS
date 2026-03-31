@@ -823,262 +823,395 @@
   }
 
   function injectDashboardEnhancements() {
-    if ($("#fpDashboardEnhancements")) return;
+  const old = document.getElementById("fpDashboardEnhancements");
+  if (old) old.remove();
 
-    const style = document.createElement("style");
-    style.id = "fpDashboardEnhancements";
-    style.textContent = `
-      .fpNavDot{
-        background:rgba(255,255,255,.86)!important;
-        box-shadow:0 0 0 3px rgba(255,255,255,.06)!important;
+  const style = document.createElement("style");
+  style.id = "fpDashboardEnhancements";
+  style.textContent = `
+    /* -------------------------------------------------
+       BOUTONS : garder le design, supprimer l’animation
+    ------------------------------------------------- */
+    .fpBtn{
+      transition:
+        background .18s ease,
+        border-color .18s ease,
+        box-shadow .18s ease,
+        color .18s ease !important;
+    }
+
+    .fpBtn:hover{
+      transform:none !important;
+    }
+
+    .fpBtn:active{
+      transform:none !important;
+    }
+
+    .fpBtn::before{
+      display:none !important;
+    }
+
+    /* -------------------------------------------------
+       MISSIONS : remettre les cartes comme avant
+    ------------------------------------------------- */
+    .fpMissionCard{
+      display:flex !important;
+      align-items:flex-start !important;
+      gap:14px !important;
+      padding:18px !important;
+      border-radius:24px !important;
+    }
+
+    .fpMissionCardLarge{
+      flex-direction:column !important;
+      border-radius:24px !important;
+    }
+
+    .fpMissionTop{
+      display:flex !important;
+      align-items:flex-start !important;
+      gap:14px !important;
+      width:100% !important;
+    }
+
+    .fpMissionInfo,
+    .fpMissionBody{
+      min-width:0 !important;
+      flex:1 !important;
+    }
+
+    .fpMissionActions{
+      display:flex !important;
+      flex-wrap:wrap !important;
+      align-items:center !important;
+      gap:12px !important;
+      margin-top:14px !important;
+    }
+
+    .fpMissionCardLarge .fpMissionActions{
+      margin-left:38px !important;
+    }
+
+    .fpMissionActions .fpBtnSmall{
+      min-width:118px !important;
+      justify-content:center !important;
+      flex:1 1 0 !important;
+    }
+
+    .fpMissionPageSide{
+      display:flex !important;
+      flex-direction:column !important;
+      gap:16px !important;
+    }
+
+    .fpMissionPageSide > *{
+      margin-top:0 !important;
+    }
+
+    .fpMissionHelperPanel,
+    .fpMissionSideTimeline{
+      margin-top:0 !important;
+    }
+
+    /* -------------------------------------------------
+       INPUTS / SELECTS : enlever le blanc moche
+    ------------------------------------------------- */
+    .fpToolbarInput,
+    .fpToolbarSelect{
+      box-shadow:var(--fpShadow);
+    }
+
+    .fpToolbarInput:focus,
+    .fpToolbarSelect:focus,
+    .fpInput:focus,
+    .fpTextarea:focus{
+      border-color:rgba(91,124,255,.42) !important;
+      box-shadow:
+        0 0 0 4px rgba(47,91,255,.12),
+        var(--fpShadow) !important;
+    }
+
+    .fpToolbarSelect,
+    #fpMissionsStatus,
+    #fpAuditsStatus,
+    #fpAuditsSort,
+    #fpMonitorsStatus,
+    #fpMonitorsSort{
+      appearance:none !important;
+      -webkit-appearance:none !important;
+      -moz-appearance:none !important;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.03)),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='white'><path d='M7 10l5 5 5-5z'/></svg>") !important;
+      background-repeat:no-repeat,no-repeat !important;
+      background-position:0 0,right 14px center !important;
+      background-size:100% 100%,18px !important;
+      color:#fff !important;
+      -webkit-text-fill-color:#fff !important;
+      border:1px solid var(--fpBorderStrong) !important;
+    }
+
+    .fpToolbarSelect option,
+    #fpMissionsStatus option,
+    #fpAuditsStatus option,
+    #fpAuditsSort option,
+    #fpMonitorsStatus option,
+    #fpMonitorsSort option{
+      background:#182452 !important;
+      color:#fff !important;
+    }
+
+    /* -------------------------------------------------
+       LISTES / BLOCS : espacement plus propre
+    ------------------------------------------------- */
+    .fpRowCard,
+    .fpInfoRow,
+    .fpSettingsRow,
+    .fpToggleRow,
+    .fpQuotaRow,
+    .fpAddonRow,
+    .fpPriorityItem,
+    .fpFeedItem,
+    .fpBenchmarkRow{
+      margin-top:0 !important;
+    }
+
+    .fpInfoList + .fpInfoList,
+    .fpRows + .fpRows,
+    .fpTimeline + .fpTimeline{
+      margin-top:16px;
+    }
+
+    .fpFeedTime{
+      color:var(--fpTextSoft);
+      font-size:13px;
+      font-weight:800;
+      white-space:nowrap;
+    }
+
+    .fpPriorityMain,
+    .fpFeedMain{
+      min-width:0;
+      flex:1;
+    }
+
+    /* -------------------------------------------------
+       NAV DOTS : remettre comme avant, pas bleus flashy
+    ------------------------------------------------- */
+    .fpNavDot{
+      background:rgba(255,255,255,.86) !important;
+      box-shadow:0 0 0 3px rgba(255,255,255,.06) !important;
+    }
+
+    /* -------------------------------------------------
+       TABLES AUDITS / MONITORS : rendu plus beau
+    ------------------------------------------------- */
+    .fpTable{
+      gap:14px !important;
+    }
+
+    .fpTableHead{
+      padding:0 14px !important;
+      opacity:.95;
+    }
+
+    .fpTableRow{
+      grid-template-columns:1.55fr .7fr .9fr .8fr 1fr !important;
+      gap:14px !important;
+      padding:18px 18px !important;
+      border-radius:22px !important;
+      background:
+        radial-gradient(120% 140% at 20% 0%, rgba(47,91,255,.10), transparent 55%),
+        linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.025)) !important;
+      border:1px solid rgba(255,255,255,.09) !important;
+      box-shadow:var(--fpShadow) !important;
+    }
+
+    .fpTableRow:hover{
+      background:
+        radial-gradient(120% 140% at 20% 0%, rgba(47,91,255,.14), transparent 55%),
+        linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.03)) !important;
+    }
+
+    .fpTableUrl{
+      font-size:16px !important;
+      font-weight:900 !important;
+      line-height:1.45 !important;
+    }
+
+    .fpTableActions{
+      gap:10px !important;
+      justify-content:flex-start !important;
+    }
+
+    .fpTableActions .fpBtnSmall{
+      min-width:92px !important;
+    }
+
+    .fpBadge{
+      min-height:40px !important;
+      padding:0 14px !important;
+    }
+
+    /* -------------------------------------------------
+       BENCHMARK : petites bulles autour du texte
+    ------------------------------------------------- */
+    .fpBenchmarkCellPill{
+      min-height:38px;
+      padding:0 14px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.035);
+      display:inline-flex;
+      align-items:center;
+      justify-content:flex-start;
+      font-weight:800;
+      width:100%;
+    }
+
+    .fpBenchmarkRow > div{
+      min-width:0;
+    }
+
+    /* -------------------------------------------------
+       SETTINGS : meilleure hiérarchie
+    ------------------------------------------------- */
+    .fpAccountHero{
+      display:grid;
+      grid-template-columns:1fr auto;
+      gap:16px;
+      align-items:center;
+      padding:18px;
+      border-radius:22px;
+      border:1px solid var(--fpBorderStrong);
+      background:
+        radial-gradient(120% 160% at 12% 0%, rgba(47,91,255,.22), transparent 54%),
+        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+    }
+
+    .fpAccountHeroRight{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .fpAccountPlanChip{
+      min-height:46px;
+      padding:0 18px;
+      border-radius:999px;
+      background:linear-gradient(180deg,var(--fpBrand),var(--fpBrand2));
+      box-shadow:var(--fpBrandGlow);
+      color:#fff;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:14px;
+      font-weight:900;
+      letter-spacing:.10em;
+      text-transform:uppercase;
+    }
+
+    .fpSettingImpact{
+      margin-top:12px;
+      padding:14px 16px;
+      border-radius:16px;
+      border:1px solid var(--fpBorder);
+      background:rgba(255,255,255,.03);
+    }
+
+    .fpSettingImpactTitle{
+      font-size:13px;
+      font-weight:900;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      color:var(--fpTextSoft);
+    }
+
+    .fpSettingImpactText{
+      margin-top:8px;
+      color:var(--fpTextSoft);
+      font-size:14px;
+      line-height:1.5;
+      font-weight:700;
+    }
+
+    /* -------------------------------------------------
+       MOBILE
+    ------------------------------------------------- */
+    @media (max-width:760px){
+      .fpMissionCardLarge .fpMissionActions{
+        margin-left:0 !important;
       }
 
-      .fpBtn,
-      .fpBtn:hover,
-      .fpBtn:active,
-      .fpBtn:focus-visible{
-        transform:none!important;
+      .fpTableRow{
+        grid-template-columns:1fr !important;
+        gap:14px !important;
       }
 
-      .fpBtn::before,
-      .fpBtn::after{
-        content:none!important;
+      .fpTableActions{
+        width:100% !important;
+        flex-direction:column !important;
+        align-items:stretch !important;
       }
 
-      .fpBtn{
-        transition:
-          background .18s ease,
-          border-color .18s ease,
-          box-shadow .18s ease,
-          color .18s ease !important;
+      .fpTableActions .fpBtnSmall{
+        width:100% !important;
+        min-width:0 !important;
       }
+    }
 
-      .fpTopActionsRow > .fpBtn,
-      .fpTopActionsRow > a.fpBtn,
-      .fpMissionActions > .fpBtn,
-      .fpMissionActions > a.fpBtn,
-      .fpTableActions > .fpBtn,
-      .fpTableActions > a.fpBtn{
-        min-height:44px;
-        align-items:center;
-        justify-content:center;
-      }
-
-      .fpToolbarInput,
-      .fpToolbarSelect{
-        box-shadow:var(--fpShadow);
-      }
-
-      .fpToolbarInput:focus,
-      .fpToolbarSelect:focus,
-      .fpInput:focus,
-      .fpTextarea:focus{
-        border-color:rgba(91,124,255,.34)!important;
-        box-shadow:var(--fpShadow)!important;
-      }
-
-      .fpField .fpInput,
-      .fpField .fpTextarea,
-      .fpField select.fpInput{
-        background:rgba(255,255,255,.04)!important;
-      }
-
+    /* -------------------------------------------------
+       LIGHT MODE
+    ------------------------------------------------- */
+    @media (prefers-color-scheme: light){
       .fpBenchmarkCellPill{
-        min-height:38px;
-        padding:0 14px;
-        border-radius:999px;
-        border:1px solid rgba(255,255,255,.08);
-        background:rgba(255,255,255,.035);
-        display:inline-flex;
-        align-items:center;
-        justify-content:flex-start;
-        font-weight:800;
-        width:100%;
-      }
-
-      .fpBenchmarkRow > div{
-        min-width:0;
-      }
-
-      .fpFeedTime{
-        color:var(--fpTextSoft);
-        font-size:13px;
-        font-weight:800;
-        white-space:nowrap;
-      }
-
-      .fpPriorityMain,
-      .fpFeedMain{
-        min-width:0;
-        flex:1;
-      }
-
-      .fpPriorityItem,
-      .fpFeedItem{
-        align-items:center;
-      }
-
-      .fpPriorityTag{
-        align-self:center;
-      }
-
-      .fpSettingsList{
-        gap:18px!important;
-      }
-
-      .fpSettingsList .fpSettingsRow{
-        margin:0!important;
-      }
-
-      .fpCardInner + .fpCardInner{
-        margin-top:18px;
-      }
-
-      .fpTimeline{
-        gap:16px!important;
-      }
-
-      .fpTimelineItem + .fpTimelineItem{
-        margin-top:0!important;
-      }
-
-      .fpMissionStack{
-        gap:16px!important;
-      }
-
-      .fpMissionCard + .fpMissionCard{
-        margin-top:0!important;
-      }
-
-      .fpInlineLinksFramed{
-        margin-top:16px;
-        display:flex;
-        flex-wrap:wrap;
-        gap:12px;
-      }
-
-      .fpInlineLinksFramed a{
-        min-height:44px;
-        padding:0 16px;
-        border-radius:14px;
-        border:1px solid var(--fpBorderStrong);
-        background:rgba(255,255,255,.04);
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        font-size:13px;
-        font-weight:800;
+        background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(244,248,255,.96)) !important;
+        border-color:rgba(59,78,130,.12) !important;
       }
 
       .fpAccountHero{
-        display:grid;
-        grid-template-columns:1fr auto;
-        gap:16px;
-        align-items:center;
-        padding:18px;
-        border-radius:22px;
-        border:1px solid var(--fpBorderStrong);
         background:
-          radial-gradient(120% 160% at 12% 0%, rgba(47,91,255,.22), transparent 54%),
-          linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+          radial-gradient(120% 160% at 12% 0%, rgba(47,91,255,.16), transparent 54%),
+          linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.95)) !important;
+        border-color:rgba(59,78,130,.12) !important;
       }
 
-      .fpAccountHeroRight{
-        display:flex;
-        align-items:center;
-        justify-content:center;
+      .fpToolbarSelect,
+      #fpMissionsStatus,
+      #fpAuditsStatus,
+      #fpAuditsSort,
+      #fpMonitorsStatus,
+      #fpMonitorsSort{
+        background:
+          linear-gradient(180deg, rgba(255,255,255,.86), rgba(241,246,255,.96)),
+          url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='%230f1830'><path d='M7 10l5 5 5-5z'/></svg>") !important;
+        background-repeat:no-repeat,no-repeat !important;
+        background-position:0 0,right 14px center !important;
+        background-size:100% 100%,18px !important;
+        color:#0f1830 !important;
+        -webkit-text-fill-color:#0f1830 !important;
       }
 
-      .fpAccountPlanChip{
-        min-height:46px;
-        padding:0 18px;
-        border-radius:999px;
-        background:linear-gradient(180deg,var(--fpBrand),var(--fpBrand2));
-        box-shadow:var(--fpBrandGlow);
-        color:#fff;
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        font-size:14px;
-        font-weight:900;
-        letter-spacing:.10em;
-        text-transform:uppercase;
+      .fpToolbarSelect option,
+      #fpMissionsStatus option,
+      #fpAuditsStatus option,
+      #fpAuditsSort option,
+      #fpMonitorsStatus option,
+      #fpMonitorsSort option{
+        background:#ffffff !important;
+        color:#0f1830 !important;
       }
 
-      .fpSettingImpact{
-        margin-top:12px;
-        padding:14px 16px;
-        border-radius:16px;
-        border:1px solid var(--fpBorder);
-        background:rgba(255,255,255,.03);
+      .fpNavDot{
+        background:#7b8db7 !important;
+        box-shadow:0 0 0 3px rgba(59,78,130,.08) !important;
       }
+    }
+  `;
 
-      .fpSettingImpactTitle{
-        font-size:13px;
-        font-weight:900;
-        letter-spacing:.14em;
-        text-transform:uppercase;
-        color:var(--fpTextSoft);
-      }
-
-      .fpSettingImpactText{
-        margin-top:8px;
-        color:var(--fpTextSoft);
-        font-size:14px;
-        line-height:1.5;
-        font-weight:700;
-      }
-
-      .fpToolStateRow{
-        display:flex;
-        flex-direction:column;
-        gap:14px;
-        margin-top:14px;
-      }
-
-      .fpToolStateItem{
-        padding:14px 16px;
-        border-radius:18px;
-        border:1px solid var(--fpBorder);
-        background:rgba(255,255,255,.03);
-        display:flex;
-        justify-content:space-between;
-        gap:12px;
-        align-items:flex-start;
-      }
-
-      .fpToolStateMeta{
-        color:var(--fpTextSoft);
-        font-size:14px;
-        line-height:1.5;
-        font-weight:700;
-        margin-top:6px;
-      }
-
-      @media (max-width:760px){
-        .fpAccountHero{
-          grid-template-columns:1fr;
-          align-items:flex-start;
-        }
-      }
-
-      @media (prefers-color-scheme: light){
-        .fpBenchmarkCellPill{
-          background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(244,248,255,.96))!important;
-          border-color:rgba(59,78,130,.12)!important;
-        }
-
-        .fpAccountHero{
-          background:
-            radial-gradient(120% 160% at 12% 0%, rgba(47,91,255,.16), transparent 54%),
-            linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.95))!important;
-          border-color:rgba(59,78,130,.12)!important;
-        }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
+  document.head.appendChild(style);
+}
   function openHtmlModal({ title, body, wide = false }) {
     const old = document.getElementById("fpModalOverlay");
     if (old) old.remove();
@@ -2132,11 +2265,11 @@
                 </div>
               </div>
 
-              <div class="fpTextPanel">
-                Commence par monitor + audit + paramètres. C’est le trio le plus utile pour activer le dashboard.
-              </div>
+              <div class="fpTextPanel fpMissionHelperPanel">
+  Commence par monitor + audit + paramètres. C’est le trio le plus utile pour activer le dashboard.
+</div>
 
-              <div class="fpTimeline">
+<div class="fpTimeline fpMissionSideTimeline">
                 <div class="fpTimelineItem">
                   <div class="fpTimelineTitle">Étape 1 — Monitoring</div>
                   <div class="fpTimelineMeta">Créer puis tester un monitor pour valider la couche uptime.</div>
@@ -2551,7 +2684,21 @@
     const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
     const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
     const usage = state.me?.usage || {};
-    const checklist = getReportChecklistCards().map((t) => ({ title: t, text: "Ce point rend le livrable plus compréhensible, plus premium et plus vendable." }));
+    const checklistTexts = [
+  "Ce bloc aide un dirigeant à comprendre rapidement l’essentiel sans entrer dans la technique.",
+  "Cette partie met mieux en avant les risques, les opportunités et les priorités concrètes.",
+  "Cette lecture rend le rapport plus commercial, plus clair et plus facile à présenter au client.",
+  "Ce format aide à projeter les prochains gains de manière plus crédible et plus vendeuse.",
+  "Cette section améliore la lisibilité générale et donne une impression plus premium du livrable.",
+  "Ce point permet de transformer les données en décisions plus simples à comprendre.",
+  "Cette présentation rend le rapport plus utile dans un contexte client ou interne.",
+  "Ce contenu donne plus de relief au rapport et renforce sa valeur perçue."
+];
+
+const checklist = getReportChecklistCards().map((t, i) => ({
+  title: t,
+  text: checklistTexts[i % checklistTexts.length]
+}));
     const formatCards = getReportFormatCards();
 
     setPage(`
