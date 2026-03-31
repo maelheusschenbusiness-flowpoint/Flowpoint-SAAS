@@ -1113,15 +1113,27 @@
       justify-content:center !important;
     }
 
-    .fpAddonPill,
-    .fpPlanBadge,
-    .fpAccountPlanChip{
-      display:inline-flex !important;
-      align-items:center !important;
-      justify-content:center !important;
-      line-height:1 !important;
-    }
+   .fpAddonPill,
+.fpPlanBadge,
+.fpAccountPlanChip{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  line-height:1 !important;
+}
 
+.fpAddonPill.on{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  line-height:1 !important;
+
+  height:44px !important;          /* clé du centrage */
+  padding:0 18px !important;       /* reset propre */
+  vertical-align:middle !important;
+
+  transform:translateY(1px);       /* micro-fix visuel */
+}
     /* capsule ACTIVER / ACTIVÉ dans les modules actifs */
     .fpCard .fpAddonPill.on,
     .fpCardInner .fpAddonPill.on{
