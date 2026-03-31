@@ -1098,22 +1098,22 @@
     }
 
         /* -------------------------------------------------
-       MODULES ACTIVÉS : centrage propre
-    ------------------------------------------------- */
-    .fpRows .fpRowCard{
-      display:flex !important;
-      align-items:flex-start !important;
-      justify-content:space-between !important;
-      gap:16px !important;
-    }
+   MODULES ACTIVÉS : centrage propre
+------------------------------------------------- */
+.fpRows .fpRowCard{
+  display:flex !important;
+  align-items:flex-start !important;
+  justify-content:space-between !important;
+  gap:16px !important;
+}
 
-    .fpRows .fpRowRight{
-      display:flex !important;
-      align-items:flex-start !important;
-      justify-content:center !important;
-    }
+.fpRows .fpRowRight{
+  display:flex !important;
+  align-items:flex-start !important;
+  justify-content:center !important;
+}
 
-   .fpAddonPill,
+.fpAddonPill,
 .fpPlanBadge,
 .fpAccountPlanChip{
   display:inline-flex !important;
@@ -1126,25 +1126,27 @@
   display:inline-flex !important;
   align-items:center !important;
   justify-content:center !important;
-  line-height:1 !important;
-
-  height:44px !important;          /* clé du centrage */
-  padding:0 18px !important;       /* reset propre */
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 18px !important;
+  line-height:44px !important;
   vertical-align:middle !important;
-
-  transform:translateY(1px);       /* micro-fix visuel */
+  transform:none !important;
 }
-    /* capsule ACTIVER / ACTIVÉ dans les modules actifs */
-    .fpCard .fpAddonPill.on,
-    .fpCardInner .fpAddonPill.on{
-      min-height:44px !important;
-      padding:2px 18px 0 !important;
-      display:inline-flex !important;
-      align-items:center !important;
-      justify-content:center !important;
-      line-height:1 !important;
-      vertical-align:middle !important;
-    }
+
+/* capsule ACTIVÉ dans Modules activés */
+.fpCard .fpAddonPill.on,
+.fpCardInner .fpAddonPill.on{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 18px !important;
+  line-height:44px !important;
+  vertical-align:middle !important;
+  transform:none !important;
+}
     /* -------------------------------------------------
        MISSIONS PAGE UNIQUEMENT :
        remettre les boutons comme avant
@@ -3673,6 +3675,7 @@ const checklist = getReportChecklistCards().map((t, i) => ({
     }
 
     setToken(nextAccessToken);
+
     if (nextRefreshToken) {
       setRefreshToken(nextRefreshToken);
     }
@@ -3831,48 +3834,6 @@ function startProactiveRefreshLoop() {
     els.statusDot.classList.remove("warn", "danger");
     if (mode === "warn") els.statusDot.classList.add("warn");
     if (mode === "danger") els.statusDot.classList.add("danger");
-  }
-
-  function scheduleLoginRedirect() {
-    if (state.auth.redirectScheduled) return;
-    state.auth.redirectScheduled = true;
-    setStatus("Session expirée, reconnexion…", "warn");
-
-    setTimeout(() => {
-      clearAuth();
-      window.location.replace(LOGIN_URL);
-    }, 1200);
-  }
-
-  async function verifySessionOnResume(force = false) {
-    if (!hasAnyToken()) return;
-    if (state.auth.checkingSession) return;
-
-    const now = Date.now();
-    if (!force && now - state.auth.lastSessionCheckAt < SESSION_RECHECK_MS) return;
-
-    state.auth.checkingSession = true;
-    state.auth.lastSessionCheckAt = now;
-
-    try {
-      const r = await fetchWithAuth(ME_ENDPOINT, { method: "GET" });
-      if (r.status === 401) scheduleLoginRedirect();
-    } catch (e) {
-      console.warn("Session check skipped:", e);
-    } finally {
-      state.auth.checkingSession = false;
-    }
-  }
-
-  function startProactiveRefreshLoop() {
-    setInterval(async () => {
-      if (!hasAnyToken()) return;
-      try {
-        await refreshTokenIfPossible();
-      } catch (e) {
-        console.warn("Proactive refresh failed:", e);
-      }
-    }, PROACTIVE_REFRESH_MS);
   }
 
   function openSidebar() {
