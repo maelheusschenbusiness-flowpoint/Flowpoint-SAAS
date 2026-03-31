@@ -1097,8 +1097,8 @@
       font-weight:700 !important;
     }
 
-    /* -------------------------------------------------
-       MODULES ACTIVÉS : centrage corrigé
+        /* -------------------------------------------------
+       MODULES ACTIVÉS : centrage propre
     ------------------------------------------------- */
     .fpRows .fpRowCard{
       display:flex !important;
@@ -1109,11 +1109,8 @@
 
     .fpRows .fpRowRight{
       display:flex !important;
-      align-items:flex-end !important;
+      align-items:flex-start !important;
       justify-content:center !important;
-      align-self:stretch !important;
-      padding-top:2px !important;
-      padding-bottom:2px !important;
     }
 
     .fpAddonPill,
@@ -1123,9 +1120,19 @@
       align-items:center !important;
       justify-content:center !important;
       line-height:1 !important;
-      align-self:flex-end !important;
     }
 
+    /* capsule ACTIVER / ACTIVÉ dans les modules actifs */
+    .fpCard .fpAddonPill.on,
+    .fpCardInner .fpAddonPill.on{
+      min-height:44px !important;
+      padding:2px 18px 0 !important;
+      display:inline-flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      line-height:1 !important;
+      vertical-align:middle !important;
+    }
     /* -------------------------------------------------
        MISSIONS PAGE UNIQUEMENT :
        remettre les boutons comme avant
@@ -3621,76 +3628,180 @@ const checklist = getReportChecklistCards().map((t, i) => ({
   }
 
   async function refreshTokenIfPossible() {
-    if (state.auth.refreshInFlight) return true;
+  if (state.auth.refreshInFlight) {
+    return true;
+  }
 
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) throw new Error("No refresh token");
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    throw new Error("No refresh token");
+  }
 
-    state.auth.refreshInFlight = true;
+  state.auth.refreshInFlight = true;
 
+  try {
+    const r = await fetch(`${API_BASE}${REFRESH_ENDPOINT}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!r.ok) {
+      throw new Error("Refresh failed");
+    }
+
+    const data = await r.json().catch(() => ({}));
+
+    const nextAccessToken = data?.token || data?.accessToken || "";
+    const nextRefreshToken = data?.refreshToken || "";
+
+    if (!nextAccessToken) {
+      throw new Error("Missing access token after refresh");
+    }
+
+    setToken(nextAccessToken);
+    if (nextRefreshToken) {
+      setRefreshToken(nextRefreshToken);
+    }
+
+    state.auth.redirectScheduled = false;
+    return true;
+  } finally {
+    state.auth.refreshInFlight = false;
+  }
+}
+
+async function fetchWithAuth(path, options = {}) {
+  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const headers = new Headers(options.headers || {});
+  const initialToken = getToken();
+
+  if (initialToken) {
+    headers.set("Authorization", `Bearer ${initialToken}`);
+  }
+
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const doFetch = () =>
+    fetch(url, {
+      ...options,
+      headers,
+      credentials: "include",
+      signal: options.signal,
+    });
+
+  let res = await doFetch();
+
+  if (res.status === 401) {
     try {
-      const r = await fetch(`${API_BASE}${REFRESH_ENDPOINT}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ refreshToken }),
-      });
+      const refreshed = await refreshTokenIfPossible();
 
-      if (!r.ok) throw new Error("Refresh failed");
+      if (refreshed) {
+        const newToken = getToken();
+        if (newToken) {
+          headers.set("Authorization", `Bearer ${newToken}`);
+        } else {
+          headers.delete("Authorization");
+        }
 
-      const data = await r.json().catch(() => ({}));
-      if (data?.token) setToken(data.token);
-      if (data?.accessToken) setToken(data.accessToken);
-      if (data?.refreshToken) setRefreshToken(data.refreshToken);
-
-      return true;
-    } finally {
-      state.auth.refreshInFlight = false;
+        res = await doFetch();
+      }
+    } catch (err) {
+      console.warn("Refresh failed:", err);
     }
   }
 
-  async function fetchWithAuth(path, options = {}) {
-    const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
-    const headers = new Headers(options.headers || {});
-    const token = getToken();
+  if (res.status === 401) {
+    const isAuthRoute =
+      url.includes("/api/auth/refresh") ||
+      url.includes("/api/auth/login") ||
+      url.includes("/api/auth/register");
 
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    if (options.body && !headers.has("Content-Type")) {
-      headers.set("Content-Type", "application/json");
+    if (!isAuthRoute) {
+      scheduleLoginRedirect();
+    }
+  }
+
+  if (res.status === 429) {
+    await sleep(400);
+    res = await doFetch();
+  }
+
+  return res;
+}
+
+function scheduleLoginRedirect(delay = 2200) {
+  if (state.auth.redirectScheduled) return;
+
+  state.auth.redirectScheduled = true;
+  setStatus("Session expirée, tentative de reconnexion…", "warn");
+
+  setTimeout(async () => {
+    try {
+      const ok = await refreshTokenIfPossible();
+
+      if (ok) {
+        state.auth.redirectScheduled = false;
+        setStatus("Session rétablie", "ok");
+        return;
+      }
+    } catch (e) {
+      console.warn("Final refresh before redirect failed:", e);
     }
 
-    const doFetch = () =>
-      fetch(url, {
-        ...options,
-        headers,
-        credentials: "include",
-        signal: options.signal,
-      });
+    clearAuth();
+    window.location.replace(LOGIN_URL);
+  }, delay);
+}
 
-    let res = await doFetch();
+async function verifySessionOnResume(force = false) {
+  if (!hasAnyToken()) return;
+  if (state.auth.checkingSession) return;
 
-    if (res.status === 401) {
+  const now = Date.now();
+  if (!force && now - state.auth.lastSessionCheckAt < SESSION_RECHECK_MS) {
+    return;
+  }
+
+  state.auth.checkingSession = true;
+  state.auth.lastSessionCheckAt = now;
+
+  try {
+    const r = await fetchWithAuth(ME_ENDPOINT, { method: "GET" });
+
+    if (r.status === 401) {
       try {
-        const refreshed = await refreshTokenIfPossible();
-        if (refreshed) {
-          const newToken = getToken();
-          if (newToken) headers.set("Authorization", `Bearer ${newToken}`);
-          res = await doFetch();
-        }
+        await refreshTokenIfPossible();
+        state.auth.redirectScheduled = false;
+        setStatus("Session rétablie", "ok");
       } catch (e) {
-        scheduleLoginRedirect();
-        throw e;
+        console.warn("Session resume refresh failed:", e);
+        scheduleLoginRedirect(2200);
       }
     }
-
-    if (res.status === 429) {
-      await sleep(400);
-      res = await doFetch();
-    }
-
-    return res;
+  } catch (e) {
+    console.warn("Session check skipped:", e);
+  } finally {
+    state.auth.checkingSession = false;
   }
+}
 
+function startProactiveRefreshLoop() {
+  setInterval(async () => {
+    if (!hasAnyToken()) return;
+    if (document.visibilityState !== "visible") return;
+
+    try {
+      await refreshTokenIfPossible();
+      state.auth.redirectScheduled = false;
+    } catch (e) {
+      console.warn("Proactive refresh failed:", e);
+    }
+  }, PROACTIVE_REFRESH_MS);
+}
   async function parseJsonSafe(res) {
     if (!res) return {};
     return res.json().catch(() => ({}));
