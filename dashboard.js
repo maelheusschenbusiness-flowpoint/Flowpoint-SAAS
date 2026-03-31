@@ -825,8 +825,7 @@
   function injectDashboardEnhancements() {
   const old = document.getElementById("fpDashboardEnhancements");
   if (old) old.remove();
-const oldFix2 = document.getElementById("fpDashboardEnhancementsFix2");
-if (oldFix2) oldFix2.remove();
+
   const style = document.createElement("style");
   style.id = "fpDashboardEnhancements";
   style.textContent = `
@@ -854,65 +853,11 @@ if (oldFix2) oldFix2.remove();
     }
 
     /* -------------------------------------------------
-       MISSIONS : remettre les cartes comme avant
+       NAV DOTS : remettre comme avant
     ------------------------------------------------- */
-    .fpMissionCard{
-      display:flex !important;
-      align-items:flex-start !important;
-      gap:14px !important;
-      padding:18px !important;
-      border-radius:24px !important;
-    }
-
-    .fpMissionCardLarge{
-      flex-direction:column !important;
-      border-radius:24px !important;
-    }
-
-    .fpMissionTop{
-      display:flex !important;
-      align-items:flex-start !important;
-      gap:14px !important;
-      width:100% !important;
-    }
-
-    .fpMissionInfo,
-    .fpMissionBody{
-      min-width:0 !important;
-      flex:1 !important;
-    }
-
-    .fpMissionActions{
-      display:flex !important;
-      flex-wrap:wrap !important;
-      align-items:center !important;
-      gap:12px !important;
-      margin-top:14px !important;
-    }
-
-    .fpMissionCardLarge .fpMissionActions{
-      margin-left:38px !important;
-    }
-
-    .fpMissionActions .fpBtnSmall{
-      min-width:118px !important;
-      justify-content:center !important;
-      flex:1 1 0 !important;
-    }
-
-    .fpMissionPageSide{
-      display:flex !important;
-      flex-direction:column !important;
-      gap:16px !important;
-    }
-
-    .fpMissionPageSide > *{
-      margin-top:0 !important;
-    }
-
-    .fpMissionHelperPanel,
-    .fpMissionSideTimeline{
-      margin-top:0 !important;
+    .fpNavDot{
+      background:rgba(255,255,255,.86) !important;
+      box-shadow:0 0 0 3px rgba(255,255,255,.06) !important;
     }
 
     /* -------------------------------------------------
@@ -920,7 +865,7 @@ if (oldFix2) oldFix2.remove();
     ------------------------------------------------- */
     .fpToolbarInput,
     .fpToolbarSelect{
-      box-shadow:var(--fpShadow);
+      box-shadow:var(--fpShadow) !important;
     }
 
     .fpToolbarInput:focus,
@@ -961,48 +906,6 @@ if (oldFix2) oldFix2.remove();
     #fpMonitorsSort option{
       background:#182452 !important;
       color:#fff !important;
-    }
-
-    /* -------------------------------------------------
-       LISTES / BLOCS : espacement plus propre
-    ------------------------------------------------- */
-    .fpRowCard,
-    .fpInfoRow,
-    .fpSettingsRow,
-    .fpToggleRow,
-    .fpQuotaRow,
-    .fpAddonRow,
-    .fpPriorityItem,
-    .fpFeedItem,
-    .fpBenchmarkRow{
-      margin-top:0 !important;
-    }
-
-    .fpInfoList + .fpInfoList,
-    .fpRows + .fpRows,
-    .fpTimeline + .fpTimeline{
-      margin-top:16px;
-    }
-
-    .fpFeedTime{
-      color:var(--fpTextSoft);
-      font-size:13px;
-      font-weight:800;
-      white-space:nowrap;
-    }
-
-    .fpPriorityMain,
-    .fpFeedMain{
-      min-width:0;
-      flex:1;
-    }
-
-    /* -------------------------------------------------
-       NAV DOTS : remettre comme avant, pas bleus flashy
-    ------------------------------------------------- */
-    .fpNavDot{
-      background:rgba(255,255,255,.86) !important;
-      box-shadow:0 0 0 3px rgba(255,255,255,.06) !important;
     }
 
     /* -------------------------------------------------
@@ -1056,110 +959,238 @@ if (oldFix2) oldFix2.remove();
     }
 
     /* -------------------------------------------------
-       BENCHMARK : petites bulles autour du texte
+       BENCHMARK : bulles
     ------------------------------------------------- */
     .fpBenchmarkCellPill{
-      min-height:38px;
-      padding:0 14px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.08);
-      background:rgba(255,255,255,.035);
-      display:inline-flex;
-      align-items:center;
-      justify-content:flex-start;
-      font-weight:800;
-      width:100%;
+      min-height:38px !important;
+      padding:0 14px !important;
+      border-radius:999px !important;
+      border:1px solid rgba(255,255,255,.08) !important;
+      background:rgba(255,255,255,.035) !important;
+      display:inline-flex !important;
+      align-items:center !important;
+      justify-content:flex-start !important;
+      font-weight:800 !important;
+      width:100% !important;
     }
 
     .fpBenchmarkRow > div{
-      min-width:0;
+      min-width:0 !important;
+    }
+
+    /* -------------------------------------------------
+       ÉQUIPE / INVITATION : remettre boutons encadrés
+    ------------------------------------------------- */
+    .fpInlineLinks{
+      display:flex !important;
+      flex-wrap:wrap !important;
+      align-items:center !important;
+      gap:12px !important;
+      margin-top:18px !important;
+    }
+
+    .fpInlineLinks a{
+      min-height:46px !important;
+      padding:0 18px !important;
+      border-radius:999px !important;
+      border:1px solid var(--fpBorderStrong) !important;
+      background:rgba(255,255,255,.04) !important;
+      display:inline-flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      font-size:14px !important;
+      font-weight:800 !important;
+      line-height:1 !important;
+      white-space:nowrap !important;
+      text-decoration:none !important;
+      box-shadow:none !important;
+      transform:none !important;
+    }
+
+    /* -------------------------------------------------
+       PARAMÈTRES : décoller les cartes et lignes
+    ------------------------------------------------- */
+    .fpCardInner + .fpCardInner{
+      margin-top:18px !important;
+    }
+
+    .fpToggleRow{
+      margin-top:18px !important;
+    }
+
+    .fpToggleRow:first-of-type{
+      margin-top:16px !important;
+    }
+
+    .fpToggleRow + .fpToggleRow{
+      margin-top:18px !important;
+    }
+
+    .fpSettingsList{
+      gap:18px !important;
+    }
+
+    .fpSettingsRow + .fpSettingsRow{
+      margin-top:0 !important;
     }
 
     /* -------------------------------------------------
        SETTINGS : meilleure hiérarchie
     ------------------------------------------------- */
     .fpAccountHero{
-      display:grid;
-      grid-template-columns:1fr auto;
-      gap:16px;
-      align-items:center;
-      padding:18px;
-      border-radius:22px;
-      border:1px solid var(--fpBorderStrong);
+      display:grid !important;
+      grid-template-columns:1fr auto !important;
+      gap:16px !important;
+      align-items:center !important;
+      padding:18px !important;
+      border-radius:22px !important;
+      border:1px solid var(--fpBorderStrong) !important;
       background:
         radial-gradient(120% 160% at 12% 0%, rgba(47,91,255,.22), transparent 54%),
-        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02)) !important;
     }
 
     .fpAccountHeroRight{
-      display:flex;
-      align-items:center;
-      justify-content:center;
+      display:flex !important;
+      align-items:center !important;
+      justify-content:center !important;
     }
 
     .fpAccountPlanChip{
-      min-height:46px;
-      padding:0 18px;
-      border-radius:999px;
-      background:linear-gradient(180deg,var(--fpBrand),var(--fpBrand2));
-      box-shadow:var(--fpBrandGlow);
-      color:#fff;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      font-size:14px;
-      font-weight:900;
-      letter-spacing:.10em;
-      text-transform:uppercase;
+      min-height:46px !important;
+      padding:0 18px !important;
+      border-radius:999px !important;
+      background:linear-gradient(180deg,var(--fpBrand),var(--fpBrand2)) !important;
+      box-shadow:var(--fpBrandGlow) !important;
+      color:#fff !important;
+      display:inline-flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      font-size:14px !important;
+      font-weight:900 !important;
+      letter-spacing:.10em !important;
+      text-transform:uppercase !important;
+      line-height:1 !important;
     }
 
     .fpSettingImpact{
-      margin-top:12px;
-      padding:14px 16px;
-      border-radius:16px;
-      border:1px solid var(--fpBorder);
-      background:rgba(255,255,255,.03);
+      margin-top:12px !important;
+      padding:14px 16px !important;
+      border-radius:16px !important;
+      border:1px solid var(--fpBorder) !important;
+      background:rgba(255,255,255,.03) !important;
     }
 
     .fpSettingImpactTitle{
-      font-size:13px;
-      font-weight:900;
-      letter-spacing:.14em;
-      text-transform:uppercase;
-      color:var(--fpTextSoft);
+      font-size:13px !important;
+      font-weight:900 !important;
+      letter-spacing:.14em !important;
+      text-transform:uppercase !important;
+      color:var(--fpTextSoft) !important;
     }
 
     .fpSettingImpactText{
-      margin-top:8px;
-      color:var(--fpTextSoft);
-      font-size:14px;
-      line-height:1.5;
-      font-weight:700;
+      margin-top:8px !important;
+      color:var(--fpTextSoft) !important;
+      font-size:14px !important;
+      line-height:1.5 !important;
+      font-weight:700 !important;
     }
 
     /* -------------------------------------------------
-       MOBILE
+       MODULES ACTIVÉS : centrage propre
     ------------------------------------------------- */
-    @media (max-width:760px){
-      .fpMissionCardLarge .fpMissionActions{
-        margin-left:0 !important;
-      }
+    .fpRows .fpRowCard{
+      display:flex !important;
+      align-items:center !important;
+      justify-content:space-between !important;
+      gap:16px !important;
+    }
 
-      .fpTableRow{
-        grid-template-columns:1fr !important;
-        gap:14px !important;
-      }
+    .fpRows .fpRowRight{
+      display:flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+    }
 
-      .fpTableActions{
-        width:100% !important;
-        flex-direction:column !important;
-        align-items:stretch !important;
-      }
+    .fpAddonPill,
+    .fpPlanBadge,
+    .fpAccountPlanChip{
+      display:inline-flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      line-height:1 !important;
+    }
 
-      .fpTableActions .fpBtnSmall{
-        width:100% !important;
-        min-width:0 !important;
-      }
+    /* -------------------------------------------------
+       MISSIONS PAGE UNIQUEMENT :
+       remettre les boutons comme avant
+    ------------------------------------------------- */
+    .fpMissionCard{
+      display:flex !important;
+      align-items:flex-start !important;
+      gap:14px !important;
+      padding:18px !important;
+      border-radius:24px !important;
+    }
+
+    .fpMissionCardLarge{
+      flex-direction:column !important;
+      border-radius:24px !important;
+      padding-bottom:20px !important;
+    }
+
+    .fpMissionTop{
+      display:flex !important;
+      align-items:flex-start !important;
+      gap:14px !important;
+      width:100% !important;
+    }
+
+    .fpMissionInfo,
+    .fpMissionBody{
+      min-width:0 !important;
+      flex:1 !important;
+    }
+
+    .fpMissionPageSide{
+      display:flex !important;
+      flex-direction:column !important;
+      gap:18px !important;
+    }
+
+    .fpMissionPageSide > *{
+      margin-top:0 !important;
+    }
+
+    .fpMissionCardLarge .fpMissionActions{
+      display:flex !important;
+      flex-wrap:nowrap !important;
+      align-items:center !important;
+      justify-content:flex-start !important;
+      gap:14px !important;
+      width:100% !important;
+      margin-top:16px !important;
+      margin-left:38px !important;
+    }
+
+    .fpMissionCardLarge .fpMissionActions .fpBtn{
+      flex:1 1 0 !important;
+      min-width:0 !important;
+      width:auto !important;
+      min-height:50px !important;
+      border-radius:18px !important;
+      justify-content:center !important;
+      align-items:center !important;
+      line-height:1 !important;
+      padding:0 18px !important;
+      margin:0 !important;
+    }
+
+    .fpMissionCardLarge .fpMissionActions .fpBtnSmall{
+      min-height:50px !important;
+      font-size:15px !important;
+      min-width:0 !important;
     }
 
     /* -------------------------------------------------
@@ -1204,174 +1235,63 @@ if (oldFix2) oldFix2.remove();
         color:#0f1830 !important;
       }
 
+      .fpInlineLinks a{
+        background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.94)) !important;
+        border-color:rgba(59,78,130,.14) !important;
+        color:var(--fpText) !important;
+        -webkit-text-fill-color:var(--fpText) !important;
+      }
+
       .fpNavDot{
         background:#7b8db7 !important;
         box-shadow:0 0 0 3px rgba(59,78,130,.08) !important;
+      }
+    }
+
+    /* -------------------------------------------------
+       MOBILE
+    ------------------------------------------------- */
+    @media (max-width:760px){
+      .fpInlineLinks{
+        flex-direction:column !important;
+        align-items:stretch !important;
+      }
+
+      .fpInlineLinks a{
+        width:100% !important;
+        border-radius:16px !important;
+      }
+
+      .fpMissionCardLarge .fpMissionActions{
+        margin-left:0 !important;
+        flex-direction:column !important;
+        align-items:stretch !important;
+      }
+
+      .fpMissionCardLarge .fpMissionActions .fpBtn{
+        width:100% !important;
+      }
+
+      .fpTableRow{
+        grid-template-columns:1fr !important;
+        gap:14px !important;
+      }
+
+      .fpTableActions{
+        width:100% !important;
+        flex-direction:column !important;
+        align-items:stretch !important;
+      }
+
+      .fpTableActions .fpBtnSmall{
+        width:100% !important;
+        min-width:0 !important;
       }
     }
   `;
 
   document.head.appendChild(style);
 }
-  const extraFix = document.createElement("style");
-extraFix.id = "fpDashboardEnhancementsFix2";
-extraFix.textContent = `
-  /* ---------------------------------------
-     1) ÉQUIPE / INVITATION : remettre boutons
-  --------------------------------------- */
-  .fpInlineLinks{
-    display:flex !important;
-    flex-wrap:wrap !important;
-    align-items:center !important;
-    gap:12px !important;
-    margin-top:18px !important;
-  }
-
-  .fpInlineLinks a{
-    min-height:46px !important;
-    padding:0 18px !important;
-    border-radius:999px !important;
-    border:1px solid var(--fpBorderStrong) !important;
-    background:rgba(255,255,255,.04) !important;
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    font-size:14px !important;
-    font-weight:800 !important;
-    line-height:1 !important;
-    white-space:nowrap !important;
-    text-decoration:none !important;
-    box-shadow:none !important;
-    transform:none !important;
-  }
-
-  /* ---------------------------------------
-     2) PARAMÈTRES : décoller les blocs
-  --------------------------------------- */
-  .fpCardInner + .fpCardInner{
-    margin-top:18px !important;
-  }
-
-  .fpToggleRow{
-    margin-top:18px !important;
-  }
-
-  .fpToggleRow:first-of-type{
-    margin-top:16px !important;
-  }
-
-  .fpToggleRow + .fpToggleRow{
-    margin-top:18px !important;
-  }
-
-  .fpSettingsList{
-    gap:18px !important;
-  }
-
-  .fpSettingsRow + .fpSettingsRow{
-    margin-top:0 !important;
-  }
-
-  /* ---------------------------------------
-     3) MODULES ACTIVÉS : meilleur centrage
-  --------------------------------------- */
-  .fpRows .fpRowCard{
-    display:flex !important;
-    align-items:center !important;
-    justify-content:space-between !important;
-    gap:16px !important;
-  }
-
-  .fpRows .fpRowRight{
-    display:flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-  }
-
-  .fpAddonPill,
-  .fpPlanBadge,
-  .fpAccountPlanChip{
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    line-height:1 !important;
-  }
-
-  /* ---------------------------------------
-     4) MISSIONS PAGE UNIQUEMENT :
-        remettre les boutons comme avant
-  --------------------------------------- */
-  .fpMissionCardLarge .fpMissionActions{
-    display:flex !important;
-    flex-wrap:nowrap !important;
-    align-items:center !important;
-    justify-content:flex-start !important;
-    gap:14px !important;
-    width:100% !important;
-    margin-top:16px !important;
-    margin-left:38px !important;
-  }
-
-  .fpMissionCardLarge .fpMissionActions .fpBtn{
-    flex:1 1 0 !important;
-    min-width:0 !important;
-    width:auto !important;
-    min-height:50px !important;
-    border-radius:18px !important;
-    justify-content:center !important;
-    align-items:center !important;
-    line-height:1 !important;
-    padding:0 18px !important;
-  }
-
-  .fpMissionCardLarge .fpMissionActions .fpBtnSmall{
-    min-height:50px !important;
-    font-size:15px !important;
-  }
-
-  /* éviter que les cartes missions s'écrasent visuellement */
-  .fpMissionCardLarge{
-    padding-bottom:20px !important;
-  }
-
-  /* ---------------------------------------
-     MOBILE
-  --------------------------------------- */
-  @media (max-width:760px){
-    .fpInlineLinks{
-      flex-direction:column !important;
-      align-items:stretch !important;
-    }
-
-    .fpInlineLinks a{
-      width:100% !important;
-      border-radius:16px !important;
-    }
-
-    .fpMissionCardLarge .fpMissionActions{
-      margin-left:0 !important;
-      flex-direction:column !important;
-      align-items:stretch !important;
-    }
-
-    .fpMissionCardLarge .fpMissionActions .fpBtn{
-      width:100% !important;
-    }
-  }
-
-  /* ---------------------------------------
-     LIGHT MODE
-  --------------------------------------- */
-  @media (prefers-color-scheme: light){
-    .fpInlineLinks a{
-      background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.94)) !important;
-      border-color:rgba(59,78,130,.14) !important;
-      color:var(--fpText) !important;
-      -webkit-text-fill-color:var(--fpText) !important;
-    }
-  }
-`;
-document.head.appendChild(extraFix);
   function openHtmlModal({ title, body, wide = false }) {
     const old = document.getElementById("fpModalOverlay");
     if (old) old.remove();
