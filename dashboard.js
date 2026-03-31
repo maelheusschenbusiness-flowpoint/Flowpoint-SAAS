@@ -825,7 +825,8 @@
   function injectDashboardEnhancements() {
   const old = document.getElementById("fpDashboardEnhancements");
   if (old) old.remove();
-
+const oldFix2 = document.getElementById("fpDashboardEnhancementsFix2");
+if (oldFix2) oldFix2.remove();
   const style = document.createElement("style");
   style.id = "fpDashboardEnhancements";
   style.textContent = `
@@ -1212,6 +1213,165 @@
 
   document.head.appendChild(style);
 }
+  const extraFix = document.createElement("style");
+extraFix.id = "fpDashboardEnhancementsFix2";
+extraFix.textContent = `
+  /* ---------------------------------------
+     1) ÉQUIPE / INVITATION : remettre boutons
+  --------------------------------------- */
+  .fpInlineLinks{
+    display:flex !important;
+    flex-wrap:wrap !important;
+    align-items:center !important;
+    gap:12px !important;
+    margin-top:18px !important;
+  }
+
+  .fpInlineLinks a{
+    min-height:46px !important;
+    padding:0 18px !important;
+    border-radius:999px !important;
+    border:1px solid var(--fpBorderStrong) !important;
+    background:rgba(255,255,255,.04) !important;
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    font-size:14px !important;
+    font-weight:800 !important;
+    line-height:1 !important;
+    white-space:nowrap !important;
+    text-decoration:none !important;
+    box-shadow:none !important;
+    transform:none !important;
+  }
+
+  /* ---------------------------------------
+     2) PARAMÈTRES : décoller les blocs
+  --------------------------------------- */
+  .fpCardInner + .fpCardInner{
+    margin-top:18px !important;
+  }
+
+  .fpToggleRow{
+    margin-top:18px !important;
+  }
+
+  .fpToggleRow:first-of-type{
+    margin-top:16px !important;
+  }
+
+  .fpToggleRow + .fpToggleRow{
+    margin-top:18px !important;
+  }
+
+  .fpSettingsList{
+    gap:18px !important;
+  }
+
+  .fpSettingsRow + .fpSettingsRow{
+    margin-top:0 !important;
+  }
+
+  /* ---------------------------------------
+     3) MODULES ACTIVÉS : meilleur centrage
+  --------------------------------------- */
+  .fpRows .fpRowCard{
+    display:flex !important;
+    align-items:center !important;
+    justify-content:space-between !important;
+    gap:16px !important;
+  }
+
+  .fpRows .fpRowRight{
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+  }
+
+  .fpAddonPill,
+  .fpPlanBadge,
+  .fpAccountPlanChip{
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    line-height:1 !important;
+  }
+
+  /* ---------------------------------------
+     4) MISSIONS PAGE UNIQUEMENT :
+        remettre les boutons comme avant
+  --------------------------------------- */
+  .fpMissionCardLarge .fpMissionActions{
+    display:flex !important;
+    flex-wrap:nowrap !important;
+    align-items:center !important;
+    justify-content:flex-start !important;
+    gap:14px !important;
+    width:100% !important;
+    margin-top:16px !important;
+    margin-left:38px !important;
+  }
+
+  .fpMissionCardLarge .fpMissionActions .fpBtn{
+    flex:1 1 0 !important;
+    min-width:0 !important;
+    width:auto !important;
+    min-height:50px !important;
+    border-radius:18px !important;
+    justify-content:center !important;
+    align-items:center !important;
+    line-height:1 !important;
+    padding:0 18px !important;
+  }
+
+  .fpMissionCardLarge .fpMissionActions .fpBtnSmall{
+    min-height:50px !important;
+    font-size:15px !important;
+  }
+
+  /* éviter que les cartes missions s'écrasent visuellement */
+  .fpMissionCardLarge{
+    padding-bottom:20px !important;
+  }
+
+  /* ---------------------------------------
+     MOBILE
+  --------------------------------------- */
+  @media (max-width:760px){
+    .fpInlineLinks{
+      flex-direction:column !important;
+      align-items:stretch !important;
+    }
+
+    .fpInlineLinks a{
+      width:100% !important;
+      border-radius:16px !important;
+    }
+
+    .fpMissionCardLarge .fpMissionActions{
+      margin-left:0 !important;
+      flex-direction:column !important;
+      align-items:stretch !important;
+    }
+
+    .fpMissionCardLarge .fpMissionActions .fpBtn{
+      width:100% !important;
+    }
+  }
+
+  /* ---------------------------------------
+     LIGHT MODE
+  --------------------------------------- */
+  @media (prefers-color-scheme: light){
+    .fpInlineLinks a{
+      background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(241,246,255,.94)) !important;
+      border-color:rgba(59,78,130,.14) !important;
+      color:var(--fpText) !important;
+      -webkit-text-fill-color:var(--fpText) !important;
+    }
+  }
+`;
+document.head.appendChild(extraFix);
   function openHtmlModal({ title, body, wide = false }) {
     const old = document.getElementById("fpModalOverlay");
     if (old) old.remove();
