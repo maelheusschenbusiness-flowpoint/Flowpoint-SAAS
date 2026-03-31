@@ -1096,57 +1096,48 @@
       line-height:1.5 !important;
       font-weight:700 !important;
     }
-
-        /* -------------------------------------------------
+/* -------------------------------------------------
    MODULES ACTIVÉS : centrage propre
 ------------------------------------------------- */
 .fpRows .fpRowCard{
   display:flex !important;
+  flex-direction:column !important;
   align-items:flex-start !important;
-  justify-content:space-between !important;
-  gap:16px !important;
+  justify-content:flex-start !important;
+  gap:14px !important;
+}
+
+.fpRows .fpRowMain{
+  width:100% !important;
+  min-width:0 !important;
 }
 
 .fpRows .fpRowRight{
+  width:100% !important;
   display:flex !important;
-  align-items:flex-start !important;
-  justify-content:center !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  margin-top:2px !important;
 }
 
 .fpAddonPill,
+.fpAddonPill.on,
 .fpPlanBadge,
 .fpAccountPlanChip{
   display:inline-flex !important;
   align-items:center !important;
   justify-content:center !important;
+  vertical-align:middle !important;
   line-height:1 !important;
 }
 
 .fpAddonPill.on{
-  display:inline-flex !important;
-  align-items:center !important;
-  justify-content:center !important;
-  height:44px !important;
   min-height:44px !important;
+  height:44px !important;
   padding:0 18px !important;
-  line-height:44px !important;
-  vertical-align:middle !important;
   transform:none !important;
 }
-
-/* capsule ACTIVÉ dans Modules activés */
-.fpCard .fpAddonPill.on,
-.fpCardInner .fpAddonPill.on{
-  display:inline-flex !important;
-  align-items:center !important;
-  justify-content:center !important;
-  height:44px !important;
-  min-height:44px !important;
-  padding:0 18px !important;
-  line-height:44px !important;
-  vertical-align:middle !important;
-  transform:none !important;
-}
+        
     /* -------------------------------------------------
        MISSIONS PAGE UNIQUEMENT :
        remettre les boutons comme avant
