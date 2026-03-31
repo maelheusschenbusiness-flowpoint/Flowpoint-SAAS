@@ -1098,19 +1098,22 @@
     }
 
     /* -------------------------------------------------
-       MODULES ACTIVÉS : centrage propre
+       MODULES ACTIVÉS : centrage corrigé
     ------------------------------------------------- */
     .fpRows .fpRowCard{
       display:flex !important;
-      align-items:center !important;
+      align-items:flex-start !important;
       justify-content:space-between !important;
       gap:16px !important;
     }
 
     .fpRows .fpRowRight{
       display:flex !important;
-      align-items:center !important;
+      align-items:flex-end !important;
       justify-content:center !important;
+      align-self:stretch !important;
+      padding-top:2px !important;
+      padding-bottom:2px !important;
     }
 
     .fpAddonPill,
@@ -1120,6 +1123,7 @@
       align-items:center !important;
       justify-content:center !important;
       line-height:1 !important;
+      align-self:flex-end !important;
     }
 
     /* -------------------------------------------------
@@ -1169,26 +1173,29 @@
       align-items:center !important;
       justify-content:flex-start !important;
       gap:14px !important;
-      width:100% !important;
-      margin-top:16px !important;
+      width:calc(100% - 38px) !important;
+      margin-top:14px !important;
       margin-left:38px !important;
     }
 
     .fpMissionCardLarge .fpMissionActions .fpBtn{
       flex:1 1 0 !important;
       min-width:0 !important;
-      width:auto !important;
+      width:100% !important;
       min-height:50px !important;
+      height:50px !important;
       border-radius:18px !important;
       justify-content:center !important;
       align-items:center !important;
       line-height:1 !important;
       padding:0 18px !important;
       margin:0 !important;
+      display:inline-flex !important;
     }
 
     .fpMissionCardLarge .fpMissionActions .fpBtnSmall{
       min-height:50px !important;
+      height:50px !important;
       font-size:15px !important;
       min-width:0 !important;
     }
@@ -1264,12 +1271,14 @@
 
       .fpMissionCardLarge .fpMissionActions{
         margin-left:0 !important;
+        width:100% !important;
         flex-direction:column !important;
         align-items:stretch !important;
       }
 
       .fpMissionCardLarge .fpMissionActions .fpBtn{
         width:100% !important;
+        height:50px !important;
       }
 
       .fpTableRow{
