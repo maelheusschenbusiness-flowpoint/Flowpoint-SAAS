@@ -11,18 +11,22 @@
   const SESSION_RECHECK_MS = 15000;
 
   const ROUTES = new Set([
-    "#overview",
-    "#missions",
-    "#audits",
-    "#monitors",
-    "#reports",
-    "#competitors",
-    "#local-seo",
-    "#tools",
-    "#team",
-    "#billing",
-    "#settings",
-  ]);
+  "#overview",
+  "#missions",
+  "#audits",
+  "#monitors",
+  "#reports",
+  "#competitors",
+  "#local-seo",
+  "#tools",
+  "#team",
+  "#calendar",
+  "#notes",
+  "#chat",
+  "#map",
+  "#billing",
+  "#settings",
+]);
 
   const MISSIONS_STORAGE_KEY = "fp_dashboard_missions_v50";
   const MISSIONS_RESET_KEY = "fp_dashboard_missions_reset_v50";
