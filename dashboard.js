@@ -1654,8 +1654,34 @@
   }
 
   function getOverviewFeed() {
-    return pickLibrary(libraries.feed, 4, getDaySeed(`feed_${state.rangeDays}`));
+  const dynamic = [];
+  const audits = Array.isArray(state.audits) ? state.audits : [];
+  const monitors = Array.isArray(state.monitors) ? state.monitors : [];
+
+  if (audits[0]) {
+    dynamic.push({
+      title: "Dernier audit chargé",
+      text: `${audits[0].url || "Audit SEO"} · score ${audits[0].score ?? 0}`,
+      time: audits[0].createdAt ? formatShortDate(audits[0].createdAt) : "Récent"
+    });
   }
+
+  if (monitors[0]) {
+    dynamic.push({
+      title: "Dernier monitor observé",
+      text: `${monitors[0].url || "Monitor"} · ${normalizeMonitorStatus(monitors[0]).toUpperCase()}`,
+      time: monitors[0].lastCheckedAt ? formatShortDate(monitors[0].lastCheckedAt) : "Récent"
+    });
+  }
+
+  const rotated = pickLibrary(
+    libraries.feed,
+    6,
+    getDaySeed(`feed_${state.rangeDays}_${state.lastLoadedAt || ""}`)
+  );
+
+  return [...dynamic, ...rotated].slice(0, 6);
+}
 
   function getOverviewQuickWins() {
     return pickLibrary(libraries.overviewQuickWins, 3, getDaySeed(`qw_${state.rangeDays}`));
@@ -2599,6 +2625,79 @@ function buildSupportCards() {
   const moduleCards = getModuleImpactCards();
   const supportCards = buildSupportCards();
 
+  const overviewActionCards = [
+    {
+      title: "Lancer un audit ciblé mobile",
+      text: "Relance rapidement un audit SEO pour alimenter la page Audits.",
+      cta: "Lancer audit",
+      action: "run_audit",
+      tag: "SEO"
+    },
+    {
+      title: "Créer une nouvelle surveillance",
+      text: "Ajoute une URL dans la couche monitoring sans quitter l’overview.",
+      cta: "Créer monitor",
+      action: "add_monitor",
+      tag: "UPTIME"
+    },
+    {
+      title: "Voir les quick wins",
+      text: "Descend directement jusqu’aux priorités business du jour.",
+      cta: "Voir quick wins",
+      action: "scroll_quick_wins",
+      tag: "FOCUS",
+      btnClass: "fpBtnGhost"
+    },
+    {
+      title: "Exporter un rapport dirigeant",
+      text: "Accès direct vers la page rapports pour sortir un livrable.",
+      cta: "Ouvrir rapports",
+      action: "goto_reports",
+      tag: "REPORT",
+      btnClass: "fpBtnGhost"
+    }
+  ];
+
+  if (hasPlan("pro")) {
+    overviewActionCards.push({
+      title: "Ouvrir les PDF premium",
+      text: "Les plans Pro et Ultra débloquent une lecture plus vendable des audits.",
+      cta: "Voir audits",
+      action: "goto_audits",
+      tag: "PRO"
+    });
+  }
+
+  if (hasPlan("ultra")) {
+    overviewActionCards.push({
+      title: "Piloter un workflow multi-sites",
+      text: "Un bloc plus scalant pour les environnements à volume élevé.",
+      cta: "Voir audits",
+      action: "goto_audits",
+      tag: "ULTRA"
+    });
+  }
+
+  if (isToolActive("local_visibility")) {
+    overviewActionCards.push({
+      title: "Créer une page locale",
+      text: "Basculer vers Local SEO pour préparer les villes et zones prioritaires.",
+      cta: "Ouvrir Local SEO",
+      action: "goto_local",
+      tag: "LOCAL"
+    });
+  }
+
+  if (isToolActive("competitor_watch")) {
+    overviewActionCards.push({
+      title: "Préparer une contre-attaque concurrente",
+      text: "Lire rapidement les écarts les plus rentables à exploiter.",
+      cta: "Voir concurrents",
+      action: "goto_competitors",
+      tag: "COMP"
+    });
+  }
+
   setPage(`
     ${createSectionCard(
       "FlowPoint",
@@ -2650,7 +2749,7 @@ function buildSupportCards() {
           "Actions rapides",
           "Passer à l’action",
           "Des blocs réellement utiles pour agir sans quitter l’overview.",
-          createActionGrid(getOverviewActionCards())
+          createActionGrid(overviewActionCards)
         )}
 
         ${createSectionCard(
@@ -2722,6 +2821,7 @@ function buildSupportCards() {
           `
         )}
 
+        <div id="fpQuickWinsSection"></div>
         ${createSectionCard(
           "Opportunités business",
           "Quick wins rentables",
@@ -2736,14 +2836,14 @@ function buildSupportCards() {
           createMiniRows(planCards)
         )}
 
-        ${moduleCards.length ? createSectionCard(
+        ${state.uiPrefs.showAdvancedCards && moduleCards.length ? createSectionCard(
           "Modules / add-ons",
           "Effets réellement visibles",
           "Ce qui change concrètement dans le dashboard quand une option est active.",
           createMiniRows(moduleCards)
         ) : ""}
 
-        ${supportCards.length ? createSectionCard(
+        ${state.uiPrefs.showAdvancedCards && supportCards.length ? createSectionCard(
           "Support",
           "Accès prioritaire",
           "Section dédiée visible seulement si l’option support est active.",
@@ -5016,7 +5116,19 @@ function startProactiveRefreshLoop() {
         setStatus("Tests monitors terminés — OK", "ok");
         return;
       }
-
+      if (action === "scroll_quick_wins") {
+        if (state.route !== "#overview") {
+          location.hash = "#overview";
+          setTimeout(() => {
+            const target = document.getElementById("fpQuickWinsSection");
+            if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 80);
+        } else {
+          const target = document.getElementById("fpQuickWinsSection");
+          if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        return;
+      }
       if (action === "show_custom_domain_info") {
         openHtmlModal({
           title: "Domaine custom",
