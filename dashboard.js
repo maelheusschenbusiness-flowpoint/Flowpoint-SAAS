@@ -2040,1344 +2040,2242 @@
       </div>
     `;
   }
+function createActionGrid(items = []) {
+  if (!items.length) return "";
+  return `
+    <div class="fpReportsGrid">
+      ${items.map((item) => `
+        <div class="fpReportCard">
+          ${item.tag ? `<div class="fpAddonPill on">${esc(item.tag)}</div>` : ""}
+          <div class="fpReportTitle" style="margin-top:${item.tag ? "14px" : "0"}">${esc(item.title)}</div>
+          <div class="fpReportMeta">${esc(item.text || "")}</div>
+          <div class="fpDetailActions">
+            ${
+              item.href
+                ? `<a class="fpBtn ${esc(item.btnClass || "fpBtnPrimary")}" href="${esc(item.href)}">${esc(item.cta || "Ouvrir")}</a>`
+                : `<button class="fpBtn ${esc(item.btnClass || "fpBtnPrimary")}" type="button" data-quick-action="${esc(item.action || "")}" ${item.payload ? `data-quick-payload="${esc(item.payload)}"` : ""}>${esc(item.cta || "Lancer")}</button>`
+            }
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
 
+function createMiniRows(items = []) {
+  if (!items.length) return createEmpty("Aucune donnée disponible.");
+  return `
+    <div class="fpRows">
+      ${items.map((item) => `
+        <div class="fpRowCard">
+          <div class="fpRowMain">
+            <div class="fpRowTitle">${esc(item.title || "Bloc")}</div>
+            <div class="fpRowMeta">${esc(item.text || "")}</div>
+          </div>
+          ${
+            item.badge
+              ? `<div class="fpRowRight"><div class="fpAddonPill on">${esc(item.badge)}</div></div>`
+              : ""
+          }
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function getActiveAddonKeys() {
+  return getAddonEntries().filter((a) => a.enabled).map((a) => a.key);
+}
+
+function hasAddon(key) {
+  return !!getAddonEntries().find((a) => a.key === key && a.enabled);
+}
+
+function getPlanSummaryCards() {
+  const plan = lower(state.me?.plan);
+  const usage = state.me?.usage || {};
+  const cards = [];
+
+  cards.push({
+    title: `Plan ${planLabel(state.me?.plan)}`,
+    text:
+      plan === "ultra"
+        ? "Mode complet : plus d’équipe, plus de volume, plus de blocs premium."
+        : plan === "pro"
+          ? "Mode avancé : PDF, uptime détaillé, lecture plus premium."
+          : "Mode essentiel : base actionnable pour SEO, monitoring et rapports.",
+    badge: "PLAN"
+  });
+
+  if (usage.audits?.limit != null) {
+    cards.push({
+      title: "Quota audits",
+      text: `${usage.audits.used ?? 0}/${usage.audits.limit} utilisés`,
+      badge: "AUDITS"
+    });
+  }
+
+  if (usage.monitors?.limit != null) {
+    cards.push({
+      title: "Quota monitors",
+      text: `${usage.monitors.used ?? 0}/${usage.monitors.limit} utilisés`,
+      badge: "MONITORS"
+    });
+  }
+
+  if (usage.pdf?.limit != null) {
+    cards.push({
+      title: "Quota PDF",
+      text: `${usage.pdf.used ?? 0}/${usage.pdf.limit} utilisés`,
+      badge: "PDF"
+    });
+  }
+
+  if (usage.exports?.limit != null) {
+    cards.push({
+      title: "Quota exports",
+      text: `${usage.exports.used ?? 0}/${usage.exports.limit} utilisés`,
+      badge: "EXPORT"
+    });
+  }
+
+  return cards;
+}
+
+function getModuleImpactCards() {
+  const cards = [];
+  const activeTools = getActiveToolCards();
+
+  activeTools.forEach((tool) => {
+    if (tool.id === "uptime_monitoring") {
+      cards.push({
+        title: "Monitoring enrichi",
+        text: "Les pages monitors et overview gagnent en lecture uptime et incidents.",
+        badge: "UPTIME"
+      });
+    }
+
+    if (tool.id === "report_builder") {
+      cards.push({
+        title: "Rapports enrichis",
+        text: "Des cartes de génération et de lecture de livrables sont ajoutées.",
+        badge: "REPORT"
+      });
+    }
+
+    if (tool.id === "competitor_watch") {
+      cards.push({
+        title: "Benchmark enrichi",
+        text: "La page concurrents devient plus exploitable avec plus d’actions.",
+        badge: "COMP"
+      });
+    }
+
+    if (tool.id === "local_visibility") {
+      cards.push({
+        title: "Local SEO enrichi",
+        text: "Le dashboard met davantage en avant villes, zones et présence locale.",
+        badge: "LOCAL"
+      });
+    }
+
+    if (tool.id === "team_workspace") {
+      cards.push({
+        title: "Équipe enrichie",
+        text: "Plus de logique de collaboration et plus de blocs orientés organisation.",
+        badge: "TEAM"
+      });
+    }
+
+    if (tool.id === "client_narrative") {
+      cards.push({
+        title: "Narrative active",
+        text: "Le dashboard insiste davantage sur la lecture business et la valeur perçue.",
+        badge: "VALUE"
+      });
+    }
+  });
+
+  const activeAddons = getActiveAddonKeys();
+
+  if (activeAddons.includes("monitorsPack50")) {
+    cards.push({
+      title: "Capacité monitoring augmentée",
+      text: "Plus de monitors possibles et plus de sens côté pilotage.",
+      badge: "ADD-ON"
+    });
+  }
+
+  if (activeAddons.includes("pdfPack200")) {
+    cards.push({
+      title: "Capacité PDF augmentée",
+      text: "Plus d’usage des exports PDF sur les pages orientées audit et reporting.",
+      badge: "PDF+"
+    });
+  }
+
+  if (activeAddons.includes("exportsPack1000")) {
+    cards.push({
+      title: "Exports avancés",
+      text: "Plus de valeur sur les pages rapports et plus de logique de livrables.",
+      badge: "EXP+"
+    });
+  }
+
+  if (activeAddons.includes("prioritySupport")) {
+    cards.push({
+      title: "Support prioritaire",
+      text: "Une section support dédiée peut être affichée dans paramètres et overview.",
+      badge: "VIP"
+    });
+  }
+
+  if (activeAddons.includes("customDomain")) {
+    cards.push({
+      title: "Domaine custom",
+      text: "Le dashboard peut faire remonter un bloc de configuration de domaine dédié.",
+      badge: "DOMAIN"
+    });
+  }
+
+  return cards;
+}
+
+function addMissionFromTemplate(title, meta, impact, action = "goto_overview") {
+  const id = `m_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  state.missions.unshift({
+    id,
+    title,
+    meta,
+    done: false,
+    action,
+    impact
+  });
+  saveMissions();
+  setStatus("Mission ajoutée — OK", "ok");
+}
+
+function getOverviewActionCards() {
+  const cards = [
+    {
+      title: "Lancer un audit ciblé mobile",
+      text: "Relance rapidement un audit SEO pour alimenter la page Audits.",
+      cta: "Lancer audit",
+      action: "run_audit",
+      tag: "SEO"
+    },
+    {
+      title: "Créer une nouvelle surveillance",
+      text: "Ajoute une URL dans la couche monitoring sans quitter l’overview.",
+      cta: "Créer monitor",
+      action: "add_monitor",
+      tag: "UPTIME"
+    },
+    {
+      title: "Relire les quick wins du jour",
+      text: "Retour rapide vers les priorités business les plus utiles.",
+      cta: "Voir overview",
+      action: "goto_overview",
+      tag: "FOCUS",
+      btnClass: "fpBtnGhost"
+    },
+    {
+      title: "Exporter un rapport dirigeant",
+      text: "Accès direct vers la page rapports pour sortir un livrable.",
+      cta: "Ouvrir rapports",
+      action: "goto_reports",
+      tag: "REPORT",
+      btnClass: "fpBtnGhost"
+    }
+  ];
+
+  if (hasPlan("pro")) {
+    cards.push({
+      title: "Ouvrir les PDF premium",
+      text: "Les plans Pro et Ultra débloquent une lecture plus vendable des audits.",
+      cta: "Voir audits",
+      action: "goto_audits",
+      tag: "PRO"
+    });
+  }
+
+  if (isToolActive("local_visibility")) {
+    cards.push({
+      title: "Créer une page locale",
+      text: "Basculer vers Local SEO pour préparer les villes et zones prioritaires.",
+      cta: "Ouvrir Local SEO",
+      action: "goto_local",
+      tag: "LOCAL"
+    });
+  }
+
+  if (isToolActive("competitor_watch")) {
+    cards.push({
+      title: "Préparer une contre-attaque concurrente",
+      text: "Lire rapidement les écarts les plus rentables à exploiter.",
+      cta: "Voir concurrents",
+      action: "goto_competitors",
+      tag: "COMP"
+    });
+  }
+
+  return cards;
+}
+
+function getAuditExecutionCards() {
+  const cards = [
+    {
+      title: "Créer une mission depuis cette page",
+      text: "Ajoute une mission d’exécution dans la checklist.",
+      cta: "Ajouter mission",
+      action: "create_audit_mission",
+      tag: "MISSION"
+    },
+    {
+      title: "Relancer un audit",
+      text: "Refais partir un audit depuis la page Audit sans repasser ailleurs.",
+      cta: "Relancer",
+      action: "run_audit",
+      tag: "SEO"
+    },
+    {
+      title: "Transformer l’audit en rapport",
+      text: "Basculer vers la page rapports pour valoriser les résultats.",
+      cta: "Vers rapports",
+      action: "goto_reports",
+      tag: "REPORT",
+      btnClass: "fpBtnGhost"
+    }
+  ];
+
+  if (hasPlan("pro")) {
+    cards.push({
+      title: "Exploiter le PDF premium",
+      text: "Le plan Pro permet une restitution plus premium.",
+      cta: "Voir audits",
+      action: "goto_audits",
+      tag: "PRO"
+    });
+  }
+
+  return cards;
+}
+
+function getMonitorExecutionCards() {
+  const cards = [
+    {
+      title: "Tester tous les monitors visibles",
+      text: "Lance un test en série sur les éléments actuellement listés.",
+      cta: "Tester tous",
+      action: "bulk_test_monitors",
+      tag: "BULK"
+    },
+    {
+      title: "Créer un nouveau monitor",
+      text: "Ajoute rapidement une nouvelle URL à surveiller.",
+      cta: "Créer monitor",
+      action: "add_monitor",
+      tag: "UPTIME"
+    },
+    {
+      title: "Configurer les alertes strictes",
+      text: "Va directement en paramètres pour renforcer la réception des alertes.",
+      cta: "Configurer",
+      action: "goto_settings",
+      tag: "ALERT",
+      btnClass: "fpBtnGhost"
+    }
+  ];
+
+  if (hasPlan("pro") || isToolActive("uptime_monitoring")) {
+    cards.push({
+      title: "Analyser l’uptime détaillé",
+      text: "Les plans plus élevés rendent ce module plus utile commercialement.",
+      cta: "Voir monitors",
+      action: "goto_monitors",
+      tag: "PRO"
+    });
+  }
+
+  return cards;
+}
+
+function getReportExecutionCards() {
+  const cards = [
+    {
+      title: "Générer un rapport mensuel",
+      text: "Utilise les données audits et monitoring pour produire un livrable.",
+      cta: "Exporter audits",
+      action: "export_audits",
+      tag: "MONTH"
+    },
+    {
+      title: "Générer un rapport client",
+      text: "Prépare les données monitoring pour un suivi client simple.",
+      cta: "Exporter monitors",
+      action: "export_monitors",
+      tag: "CLIENT"
+    },
+    {
+      title: "Comparer 7 jours / 30 jours",
+      text: "Change la période puis recharge les données pour enrichir la lecture.",
+      cta: "Voir overview",
+      action: "goto_overview",
+      tag: "DELTA",
+      btnClass: "fpBtnGhost"
+    }
+  ];
+
+  if (hasPlan("pro") || isToolActive("report_builder")) {
+    cards.push({
+      title: "Rapport dirigeant premium",
+      text: "Les plans plus élevés donnent plus de sens à un reporting premium.",
+      cta: "Voir rapports",
+      action: "goto_reports",
+      tag: "PRO"
+    });
+  }
+
+  return cards;
+}
+
+function getCompetitorExecutionCards() {
+  return [
+    {
+      title: "Générer un plan d’attaque",
+      text: "Transforme les écarts concurrents en logique d’action.",
+      cta: "Ajouter mission",
+      action: "create_competitor_mission",
+      tag: "PLAN"
+    },
+    {
+      title: "Créer des missions depuis les écarts",
+      text: "Injecte les prochains mouvements directement dans la checklist.",
+      cta: "Créer mission",
+      action: "create_competitor_mission",
+      tag: "MISSION"
+    },
+    {
+      title: "Basculer vers Local SEO",
+      text: "Très utile si les écarts sont surtout géographiques.",
+      cta: "Ouvrir Local SEO",
+      action: "goto_local",
+      tag: "LOCAL",
+      btnClass: "fpBtnGhost"
+    },
+    {
+      title: "Exporter la lecture benchmark",
+      text: "Passe ensuite par Rapports pour transformer ça en livrable.",
+      cta: "Vers rapports",
+      action: "goto_reports",
+      tag: "REPORT",
+      btnClass: "fpBtnGhost"
+    }
+  ];
+}
+
+function getLocalExecutionCards() {
+  return [
+    {
+      title: "Générer une liste de villes à cibler",
+      text: "Transforme la logique locale en prochaine étape concrète.",
+      cta: "Créer mission",
+      action: "create_local_mission",
+      tag: "CITY"
+    },
+    {
+      title: "Préparer un plan de pages locales",
+      text: "Passe de la lecture locale à une vraie logique d’exécution.",
+      cta: "Ajouter mission",
+      action: "create_local_mission",
+      tag: "PAGES"
+    },
+    {
+      title: "Relier Local SEO et concurrents",
+      text: "Très utile quand les écarts se jouent par ville ou zone.",
+      cta: "Voir concurrents",
+      action: "goto_competitors",
+      tag: "COMP",
+      btnClass: "fpBtnGhost"
+    }
+  ];
+}
+
+function getTeamExecutionCards() {
+  return [
+    {
+      title: "Ouvrir l’invitation",
+      text: "Ajoute quelqu’un au workspace sans quitter cette page.",
+      cta: "Inviter",
+      action: "open_invite",
+      tag: "TEAM"
+    },
+    {
+      title: "Ouvrir la facturation",
+      text: "Revoir plan, add-ons et logique d’équipe.",
+      cta: "Billing",
+      action: "open_billing",
+      tag: "BILLING",
+      btnClass: "fpBtnGhost"
+    },
+    {
+      title: "Configurer le workspace",
+      text: "Passe en paramètres pour structurer l’organisation et les alertes.",
+      cta: "Paramètres",
+      action: "goto_settings",
+      tag: "SETUP",
+      btnClass: "fpBtnGhost"
+    }
+  ];
+}
+
+function getSettingsExecutionCards() {
+  const cards = [
+    {
+      title: "Sauvegarder la configuration alertes",
+      text: "Valide les réglages sans quitter la page.",
+      cta: "Sauvegarder",
+      action: "save_settings_ui",
+      tag: "SAVE"
+    },
+    {
+      title: "Créer un monitor après config",
+      text: "Enchaîne directement après le réglage des alertes.",
+      cta: "Créer monitor",
+      action: "add_monitor",
+      tag: "UPTIME"
+    },
+    {
+      title: "Lancer un audit après config",
+      text: "Complète la mise en place du workspace avec un audit.",
+      cta: "Lancer audit",
+      action: "run_audit",
+      tag: "SEO"
+    }
+  ];
+
+  if (hasAddon("customDomain")) {
+    cards.push({
+      title: "Configurer le domaine custom",
+      text: "Le custom domain doit devenir visible aussi dans les paramètres.",
+      cta: "Voir champ",
+      action: "show_custom_domain_info",
+      tag: "DOMAIN",
+      btnClass: "fpBtnGhost"
+    });
+  }
+
+  return cards;
+}
+
+function buildSupportCards() {
+  if (!hasAddon("prioritySupport")) return [];
+  return [
+    {
+      title: "Support prioritaire actif",
+      text: "Ce compte bénéficie d’une lecture support plus premium.",
+      badge: "VIP"
+    },
+    {
+      title: "Canal prioritaire",
+      text: "À brancher ensuite vers un vrai contact ou workflow support.",
+      badge: "SUPPORT"
+    }
+  ];
+}
   function renderOverviewPage() {
-    const me = state.me || {};
-    const ov = state.overview || {};
-    const recentAudits = Array.isArray(state.audits) ? state.audits.slice(0, 5) : [];
-    const recentMonitors = Array.isArray(state.monitors) ? state.monitors.slice(0, 5) : [];
-    const done = countDoneMissions();
-    const auditBuckets = getAuditHealthBuckets();
-    const monitorBuckets = getMonitorHealthBuckets();
-    const activeAddons = getAddonEntries().filter((a) => a.enabled).slice(0, 6);
-    const feedItems = getOverviewFeed();
-    const quickWins = getOverviewQuickWins();
-    const activeTools = getActiveToolCards().slice(0, 4);
+  const me = state.me || {};
+  const ov = state.overview || {};
+  const recentAudits = Array.isArray(state.audits) ? state.audits.slice(0, 5) : [];
+  const recentMonitors = Array.isArray(state.monitors) ? state.monitors.slice(0, 5) : [];
+  const done = countDoneMissions();
+  const auditBuckets = getAuditHealthBuckets();
+  const monitorBuckets = getMonitorHealthBuckets();
+  const activeAddons = getAddonEntries().filter((a) => a.enabled).slice(0, 6);
+  const feedItems = getOverviewFeed();
+  const quickWins = getOverviewQuickWins();
+  const activeTools = getActiveToolCards().slice(0, 4);
+  const planCards = getPlanSummaryCards();
+  const moduleCards = getModuleImpactCards();
+  const supportCards = buildSupportCards();
 
-    setPage(`
-      ${createSectionCard(
-        "FlowPoint",
-        "Overview",
-        "Suis tes performances, ton activité et les prochaines actions utiles depuis un seul dashboard.",
-        `
-          <div class="fpStatsGrid">
-            <div class="fpStatCard">
-              <div class="fpStatLabel">Organisation</div>
-              <div class="fpStatValue">${esc(normalizeOrgName())}</div>
-              <div class="fpStatMeta">Workspace actuellement chargé</div>
-            </div>
-
-            <div class="fpStatCard">
-              <div class="fpStatLabel">Score SEO</div>
-              <div class="fpStatValue">${esc(ov.seoScore ?? 0)}</div>
-              <div class="fpStatMeta">${esc(ov.lastAuditAt ? `Dernier audit le ${formatShortDate(ov.lastAuditAt)}` : "Aucun audit récent")}</div>
-            </div>
-
-            <div class="fpStatCard">
-              <div class="fpStatLabel">Abonnement</div>
-              <div class="fpStatValue">${esc(planLabel(me.plan))}</div>
-              <div class="fpStatMeta">${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</div>
-            </div>
+  setPage(`
+    ${createSectionCard(
+      "FlowPoint",
+      "Overview",
+      "Suis tes performances, ton activité et les prochaines actions utiles depuis un seul dashboard.",
+      `
+        <div class="fpStatsGrid">
+          <div class="fpStatCard">
+            <div class="fpStatLabel">Organisation</div>
+            <div class="fpStatValue">${esc(normalizeOrgName())}</div>
+            <div class="fpStatMeta">Workspace actuellement chargé</div>
           </div>
-        `
-      )}
 
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Performance",
-            "Évolution SEO",
-            "Lecture multi-indicateurs sur la période sélectionnée",
-            `
-              <div class="fpChartCard">
-                <div class="fpChartBox">
-                  <canvas id="fpOverviewChart"></canvas>
-                </div>
-                <div class="fpChartLegend">
-                  <div class="fpLegendItem"><span class="fpLegendDot"></span> Score SEO</div>
-                </div>
-                <div class="fpChartInsight">${esc(getOverviewInsight())}</div>
+          <div class="fpStatCard">
+            <div class="fpStatLabel">Score SEO</div>
+            <div class="fpStatValue">${esc(ov.seoScore ?? 0)}</div>
+            <div class="fpStatMeta">${esc(ov.lastAuditAt ? `Dernier audit le ${formatShortDate(ov.lastAuditAt)}` : "Aucun audit récent")}</div>
+          </div>
+
+          <div class="fpStatCard">
+            <div class="fpStatLabel">Abonnement</div>
+            <div class="fpStatValue">${esc(planLabel(me.plan))}</div>
+            <div class="fpStatMeta">${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</div>
+          </div>
+        </div>
+      `
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Performance",
+          "Évolution SEO",
+          "Lecture multi-indicateurs sur la période sélectionnée",
+          `
+            <div class="fpChartCard">
+              <div class="fpChartBox">
+                <canvas id="fpOverviewChart"></canvas>
               </div>
-            `
-          )}
+              <div class="fpChartLegend">
+                <div class="fpLegendItem"><span class="fpLegendDot"></span> Score SEO</div>
+              </div>
+              <div class="fpChartInsight">${esc(getOverviewInsight())}</div>
+            </div>
+          `
+        )}
 
-          ${createSectionCard(
-            "Quick setup",
-            "Missions prioritaires",
-            "Checklist utile et réellement changeante sur la rotation du dashboard.",
-            `
-              <div class="fpMissionStack">
-                ${state.missions.slice(0, 4).map((m) => `
-                  <div class="fpMissionCard">
-                    <div class="fpMissionTop">
-                      <button
-                        class="fpMissionCheck ${m.done ? "done" : ""}"
-                        data-mission-toggle="${esc(m.id)}"
-                        type="button"
-                        aria-checked="${m.done ? "true" : "false"}"
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          <path d="M6.5 12.5L10.2 16.2L17.5 8.8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                      </button>
+        ${createSectionCard(
+          "Actions rapides",
+          "Passer à l’action",
+          "Des blocs réellement utiles pour agir sans quitter l’overview.",
+          createActionGrid(getOverviewActionCards())
+        )}
 
-                      <div class="fpMissionInfo">
-                        <div class="fpMissionTitle">${esc(m.title)}</div>
-                        <div class="fpMissionMeta">${esc(m.meta)} · Impact ${esc(m.impact || "Moyen")}</div>
-                      </div>
-                    </div>
+        ${createSectionCard(
+          "Quick setup",
+          "Missions prioritaires",
+          "Checklist utile et réellement changeante sur la rotation du dashboard.",
+          `
+            <div class="fpMissionStack">
+              ${state.missions.slice(0, 4).map((m) => `
+                <div class="fpMissionCard">
+                  <div class="fpMissionTop">
+                    <button
+                      class="fpMissionCheck ${m.done ? "done" : ""}"
+                      data-mission-toggle="${esc(m.id)}"
+                      type="button"
+                      aria-checked="${m.done ? "true" : "false"}"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M6.5 12.5L10.2 16.2L17.5 8.8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </button>
 
-                    <div class="fpMissionActions">
-                      <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Voir</button>
+                    <div class="fpMissionInfo">
+                      <div class="fpMissionTitle">${esc(m.title)}</div>
+                      <div class="fpMissionMeta">${esc(m.meta)} · Impact ${esc(m.impact || "Moyen")}</div>
                     </div>
                   </div>
-                `).join("")}
-              </div>
-            `
-          )}
 
-          ${createSectionCard(
-            "Santé globale",
-            "Répartition des scores et états",
-            "Vue plus scalable pour piloter plusieurs sites plus clairement",
-            `
-              <div class="fpHealthGrid">
-                <div class="fpHealthCard">
-                  <div class="fpHealthTitle">Audits forts</div>
-                  <div class="fpHealthValue">${auditBuckets.strong}</div>
-                  <div class="fpHealthMeta">Score ≥ 75</div>
-                </div>
-
-                <div class="fpHealthCard">
-                  <div class="fpHealthTitle">Audits moyens</div>
-                  <div class="fpHealthValue">${auditBuckets.mid}</div>
-                  <div class="fpHealthMeta">45 à 74</div>
-                </div>
-
-                <div class="fpHealthCard">
-                  <div class="fpHealthTitle">Monitors UP</div>
-                  <div class="fpHealthValue">${monitorBuckets.up}</div>
-                  <div class="fpHealthMeta">Disponibles</div>
-                </div>
-
-                <div class="fpHealthCard">
-                  <div class="fpHealthTitle">Monitors DOWN</div>
-                  <div class="fpHealthValue">${monitorBuckets.down}</div>
-                  <div class="fpHealthMeta">Incidents détectés</div>
-                </div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Opportunités business",
-            "Quick wins rentables",
-            "Des recommandations faciles à comprendre et faciles à vendre.",
-            renderPriorityList(quickWins)
-          )}
-        </div>
-
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Organisation",
-            "Résumé chargé",
-            "Vue synthétique du compte actif",
-            `
-              <div class="fpInfoList">
-                <div class="fpInfoRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
-                <div class="fpInfoRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
-                <div class="fpInfoRow"><span>Statut</span><strong>${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</strong></div>
-                <div class="fpInfoRow"><span>Essai</span><strong>${esc(trialLabel(me.trialEndsAt))}</strong></div>
-                <div class="fpInfoRow"><span>Monitors actifs</span><strong>${esc(ov.monitors?.active ?? 0)}/${esc(me.usage?.monitors?.limit ?? 0)}</strong></div>
-                <div class="fpInfoRow"><span>Incidents</span><strong>${esc(ov.monitors?.down ?? 0)}</strong></div>
-                <div class="fpInfoRow"><span>Missions faites</span><strong>${done}/${state.missions.length}</strong></div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Add-ons actifs",
-            "Options détectées",
-            "Vérification visuelle des add-ons réellement actifs",
-            activeAddons.length
-              ? `
-                <div class="fpRows">
-                  ${activeAddons.map((a) => `
-                    <div class="fpRowCard">
-                      <div class="fpRowMain">
-                        <div class="fpRowTitle">${esc(a.label)}</div>
-                        <div class="fpRowMeta">État détecté depuis /api/me</div>
-                      </div>
-                      <div class="fpRowRight"><div class="fpAddonPill on">${esc(a.text)}</div></div>
-                    </div>
-                  `).join("")}
-                </div>
-              `
-              : createEmpty("Aucun add-on actif détecté pour le moment.")
-          )}
-
-          ${createSectionCard(
-            "Modules actifs",
-            "Bibliothèque activée",
-            "Les modules activés restent visibles et persistent dans le dashboard.",
-            renderToolStateList(activeTools)
-          )}
-
-          ${createSectionCard(
-            "Activité récente",
-            "Feed dashboard",
-            "Ce qui s’est passé récemment sur l’espace client.",
-            `
-              <div class="fpFeedList">
-                ${feedItems.map((item) => `
-                  <div class="fpFeedItem">
-                    <div class="fpFeedTop">
-                      <div class="fpFeedTitle">${esc(item.title)}</div>
-                      <div class="fpFeedTime">${esc(item.time)}</div>
-                    </div>
-                    <div class="fpFeedText">${esc(item.text)}</div>
+                  <div class="fpMissionActions">
+                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Voir</button>
                   </div>
-                `).join("")}
+                </div>
+              `).join("")}
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Santé globale",
+          "Répartition des scores et états",
+          "Vue plus scalable pour piloter plusieurs sites plus clairement",
+          `
+            <div class="fpHealthGrid">
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">Audits forts</div>
+                <div class="fpHealthValue">${auditBuckets.strong}</div>
+                <div class="fpHealthMeta">Score ≥ 75</div>
               </div>
-            `
-          )}
 
-          ${createSectionCard(
-            "Audits récents",
-            "Historique rapide",
-            "Derniers audits chargés depuis l’API.",
-            recentAudits.length
-              ? `
-                <div class="fpRows">
-                  ${recentAudits.map((a) => `
-                    <div class="fpRowCard">
-                      <div class="fpRowMain">
-                        <div class="fpRowTitle">${esc(a.url || "Audit SEO")}</div>
-                        <div class="fpRowMeta">${esc(formatDate(a.createdAt))}</div>
-                      </div>
-                      <div class="fpRowRight"><div class="fpScore">${esc(a.score ?? 0)}</div></div>
-                    </div>
-                  `).join("")}
-                </div>
-              `
-              : createEmpty("Aucun audit disponible pour le moment.")
-          )}
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">Audits moyens</div>
+                <div class="fpHealthValue">${auditBuckets.mid}</div>
+                <div class="fpHealthMeta">45 à 74</div>
+              </div>
 
-          ${createSectionCard(
-            "Monitors live",
-            "État rapide",
-            "Surveillance en direct des URLs.",
-            recentMonitors.length
-              ? `
-                <div class="fpRows">
-                  ${recentMonitors.map((m) => `
-                    <div class="fpRowCard">
-                      <div class="fpRowMain">
-                        <div class="fpRowTitle">${esc(m.url || "Monitor")}</div>
-                        <div class="fpRowMeta">${esc(m.intervalMinutes ?? 60)} min · ${esc(formatDate(m.lastCheckedAt))}</div>
-                      </div>
-                      <div class="fpRowRight">${createBadge(normalizeMonitorStatus(m))}</div>
-                    </div>
-                  `).join("")}
-                </div>
-              `
-              : createEmpty("Aucun monitor disponible pour le moment.")
-          )}
-        </div>
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">Monitors UP</div>
+                <div class="fpHealthValue">${monitorBuckets.up}</div>
+                <div class="fpHealthMeta">Disponibles</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">Monitors DOWN</div>
+                <div class="fpHealthValue">${monitorBuckets.down}</div>
+                <div class="fpHealthMeta">Incidents détectés</div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Opportunités business",
+          "Quick wins rentables",
+          "Des recommandations faciles à comprendre et faciles à vendre.",
+          renderPriorityList(quickWins)
+        )}
+
+        ${createSectionCard(
+          "Plan / capacités",
+          "Ce que ton niveau débloque",
+          "Le dashboard devient plus utile selon le plan, les quotas et les modules.",
+          createMiniRows(planCards)
+        )}
+
+        ${moduleCards.length ? createSectionCard(
+          "Modules / add-ons",
+          "Effets réellement visibles",
+          "Ce qui change concrètement dans le dashboard quand une option est active.",
+          createMiniRows(moduleCards)
+        ) : ""}
+
+        ${supportCards.length ? createSectionCard(
+          "Support",
+          "Accès prioritaire",
+          "Section dédiée visible seulement si l’option support est active.",
+          createMiniRows(supportCards)
+        ) : ""}
       </div>
-    `);
 
-    requestAnimationFrame(drawOverviewChart);
-  }
-    function renderMissionsPage() {
-    const done = countDoneMissions();
-    const missions = getFilteredMissions();
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Organisation",
+          "Résumé chargé",
+          "Vue synthétique du compte actif",
+          `
+            <div class="fpInfoList">
+              <div class="fpInfoRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
+              <div class="fpInfoRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
+              <div class="fpInfoRow"><span>Statut</span><strong>${esc(statusLabel(me.subscriptionStatus || me.lastPaymentStatus))}</strong></div>
+              <div class="fpInfoRow"><span>Essai</span><strong>${esc(trialLabel(me.trialEndsAt))}</strong></div>
+              <div class="fpInfoRow"><span>Monitors actifs</span><strong>${esc(ov.monitors?.active ?? 0)}/${esc(me.usage?.monitors?.limit ?? 0)}</strong></div>
+              <div class="fpInfoRow"><span>Incidents</span><strong>${esc(ov.monitors?.down ?? 0)}</strong></div>
+              <div class="fpInfoRow"><span>Missions faites</span><strong>${done}/${state.missions.length}</strong></div>
+            </div>
+          `
+        )}
 
-    setPage(`
-      ${createSectionCard(
-        "Missions",
-        "Checklist d’activation",
-        "Les missions se réinitialisent automatiquement tous les 3 jours et la bibliothèque tourne pour ne pas rester décorative.",
-        `
-          ${createToolbar({
-            searchId: "fpMissionsSearch",
-            searchPlaceholder: "Rechercher une mission…",
-            searchValue: state.filters.missions.q,
-            statusId: "fpMissionsStatus",
-            statusValue: state.filters.missions.status,
-            sortId: "fpMissionsDummySort",
-            sortValue: "default",
-            statuses: [
-              { value: "all", label: "Toutes" },
-              { value: "todo", label: "À faire" },
-              { value: "done", label: "Terminées" },
-            ],
-            sorts: [
-              { value: "default", label: "Ordre actuel" }
-            ],
-          })}
-
-          <div class="fpMissionPageGrid">
-            <div class="fpMissionPageMain">
-              <div class="fpMissionStack">
-                ${missions.map((m) => `
-                  <div class="fpMissionCard fpMissionCardLarge">
-                    <div class="fpMissionTop">
-                      <button
-                        class="fpMissionCheck ${m.done ? "done" : ""}"
-                        data-mission-toggle="${esc(m.id)}"
-                        type="button"
-                        aria-checked="${m.done ? "true" : "false"}"
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          <path d="M6.5 12.5L10.2 16.2L17.5 8.8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                      </button>
-
-                      <div class="fpMissionInfo">
-                        <div class="fpMissionTitle">${esc(m.title)}</div>
-                        <div class="fpMissionMeta">${esc(m.meta)} · Impact ${esc(m.impact || "Moyen")}</div>
-                      </div>
+        ${createSectionCard(
+          "Add-ons actifs",
+          "Options détectées",
+          "Vérification visuelle des add-ons réellement actifs",
+          activeAddons.length
+            ? `
+              <div class="fpRows">
+                ${activeAddons.map((a) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(a.label)}</div>
+                      <div class="fpRowMeta">État détecté depuis /api/me</div>
                     </div>
-
-                    <div class="fpMissionActions">
-                      <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Ouvrir</button>
-                    </div>
+                    <div class="fpRowRight"><div class="fpAddonPill on">${esc(a.text)}</div></div>
                   </div>
                 `).join("")}
               </div>
+            `
+            : createEmpty("Aucun add-on actif détecté pour le moment.")
+        )}
+
+        ${createSectionCard(
+          "Modules actifs",
+          "Bibliothèque activée",
+          "Les modules activés restent visibles et persistent dans le dashboard.",
+          renderToolStateList(activeTools)
+        )}
+
+        ${createSectionCard(
+          "Activité récente",
+          "Feed dashboard",
+          "Ce qui s’est passé récemment sur l’espace client.",
+          `
+            <div class="fpFeedList">
+              ${feedItems.map((item) => `
+                <div class="fpFeedItem">
+                  <div class="fpFeedTop">
+                    <div class="fpFeedTitle">${esc(item.title)}</div>
+                    <div class="fpFeedTime">${esc(item.time)}</div>
+                  </div>
+                  <div class="fpFeedText">${esc(item.text)}</div>
+                </div>
+              `).join("")}
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Audits récents",
+          "Historique rapide",
+          "Derniers audits chargés depuis l’API.",
+          recentAudits.length
+            ? `
+              <div class="fpRows">
+                ${recentAudits.map((a) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(a.url || "Audit SEO")}</div>
+                      <div class="fpRowMeta">${esc(formatDate(a.createdAt))}</div>
+                    </div>
+                    <div class="fpRowRight"><div class="fpScore">${esc(a.score ?? 0)}</div></div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucun audit disponible pour le moment.")
+        )}
+
+        ${createSectionCard(
+          "Monitors live",
+          "État rapide",
+          "Surveillance en direct des URLs.",
+          recentMonitors.length
+            ? `
+              <div class="fpRows">
+                ${recentMonitors.map((m) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(m.url || "Monitor")}</div>
+                      <div class="fpRowMeta">${esc(m.intervalMinutes ?? 60)} min · ${esc(formatDate(m.lastCheckedAt))}</div>
+                    </div>
+                    <div class="fpRowRight">${createBadge(normalizeMonitorStatus(m))}</div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucun monitor disponible pour le moment.")
+        )}
+      </div>
+    </div>
+  `);
+
+  requestAnimationFrame(drawOverviewChart);
+}
+    function renderMissionsPage() {
+  const done = countDoneMissions();
+  const missions = getFilteredMissions();
+  const todoCount = state.missions.filter((m) => !m.done).length;
+  const donePct = state.missions.length
+    ? Math.round((done / state.missions.length) * 100)
+    : 0;
+
+  const missionActionCards = pickLibrary(
+    [
+      {
+        title: "Créer un monitor maintenant",
+        text: "Ajoute une URL à surveiller pour activer la couche uptime du dashboard.",
+        action: "add_monitor",
+        cta: "Créer un monitor"
+      },
+      {
+        title: "Lancer un audit prioritaire",
+        text: "Démarre un audit SEO immédiatement pour alimenter les autres onglets.",
+        action: "run_audit",
+        cta: "Lancer un audit"
+      },
+      {
+        title: "Configurer les alertes email",
+        text: "Finalise les destinataires pour recevoir les incidents en direct.",
+        action: "goto_settings",
+        cta: "Configurer"
+      },
+      {
+        title: "Exporter les audits",
+        text: "Prépare un premier livrable CSV pour rendre le dashboard plus concret.",
+        action: "export_audits",
+        cta: "Exporter"
+      },
+      {
+        title: "Tester un monitor",
+        text: "Valide rapidement que la surveillance fonctionne vraiment côté client.",
+        action: "test_monitor",
+        cta: "Tester"
+      },
+      {
+        title: "Ouvrir la facturation",
+        text: "Vérifie le plan actif et les modules débloqués sur le workspace.",
+        action: "open_billing",
+        cta: "Ouvrir billing"
+      }
+    ],
+    4,
+    getDaySeed("missions_actions")
+  );
+
+  const missionGuides = pickLibrary(
+    [
+      {
+        title: "Parcours recommandé",
+        text: "Monitor → Audit → Paramètres → Rapports. C’est le chemin le plus utile pour rendre le dashboard vraiment opérationnel."
+      },
+      {
+        title: "Objectif prioritaire",
+        text: "Le but n’est pas juste de cocher des cases, mais de déclencher de vraies données, de vrais exports et de vraies actions."
+      },
+      {
+        title: "Conseil d’usage",
+        text: "Commence toujours par les actions qui alimentent les autres pages : monitor, audit, alertes, puis exports."
+      },
+      {
+        title: "Logique SaaS",
+        text: "Plus tu termines les missions de base, plus les autres pages deviennent utiles et crédibles pour un client final."
+      }
+    ],
+    3,
+    getDaySeed("missions_guides")
+  );
+
+  setPage(`
+    ${createSectionCard(
+      "Missions",
+      "Checklist d’activation",
+      "Les missions se réinitialisent automatiquement tous les 3 jours et servent à déclencher les vraies fonctions utiles du dashboard.",
+      `
+        ${createToolbar({
+          searchId: "fpMissionsSearch",
+          searchPlaceholder: "Rechercher une mission…",
+          searchValue: state.filters.missions.q,
+          statusId: "fpMissionsStatus",
+          statusValue: state.filters.missions.status,
+          sortId: "fpMissionsDummySort",
+          sortValue: "default",
+          statuses: [
+            { value: "all", label: "Toutes" },
+            { value: "todo", label: "À faire" },
+            { value: "done", label: "Terminées" },
+          ],
+          sorts: [
+            { value: "default", label: "Ordre actuel" }
+          ],
+        })}
+
+        <div class="fpMissionPageGrid">
+          <div class="fpMissionPageMain">
+            <div class="fpMissionStack">
+              ${missions.map((m) => `
+                <div class="fpMissionCard fpMissionCardLarge">
+                  <div class="fpMissionTop">
+                    <button
+                      class="fpMissionCheck ${m.done ? "done" : ""}"
+                      data-mission-toggle="${esc(m.id)}"
+                      type="button"
+                      aria-checked="${m.done ? "true" : "false"}"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M6.5 12.5L10.2 16.2L17.5 8.8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </button>
+
+                    <div class="fpMissionInfo">
+                      <div class="fpMissionTitle">${esc(m.title)}</div>
+                      <div class="fpMissionMeta">${esc(m.meta)} · Impact ${esc(m.impact || "Moyen")}</div>
+                    </div>
+                  </div>
+
+                  <div class="fpMissionActions">
+                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Ouvrir</button>
+                  </div>
+                </div>
+              `).join("")}
             </div>
 
-            <div class="fpMissionPageSide">
-              <div class="fpStatsGrid">
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Terminées</div>
-                  <div class="fpStatValue">${done}/${state.missions.length}</div>
-                  <div class="fpStatMeta">Missions complétées</div>
+            ${createSectionCard(
+              "Actions rapides",
+              "Accélérer l’activation",
+              "Ces blocs lancent directement les actions les plus utiles sans devoir chercher dans les autres onglets.",
+              `
+                <div class="fpReportsGrid">
+                  ${missionActionCards.map((card) => `
+                    <div class="fpReportCard">
+                      <div class="fpReportTitle">${esc(card.title)}</div>
+                      <div class="fpReportMeta">${esc(card.text)}</div>
+                      <div class="fpDetailActions">
+                        <button
+                          class="fpBtn fpBtnPrimary"
+                          type="button"
+                          data-mission-direct-action="${esc(card.action)}"
+                        >
+                          ${esc(card.cta)}
+                        </button>
+                      </div>
+                    </div>
+                  `).join("")}
                 </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Reset auto</div>
-                  <div class="fpStatValue">3 jours</div>
-                  <div class="fpStatMeta">Remise à zéro automatique</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Résultats</div>
-                  <div class="fpStatValue">${missions.length}</div>
-                  <div class="fpStatMeta">Après filtre</div>
-                </div>
-              </div>
-
-              <div class="fpTextPanel fpMissionHelperPanel">
-  Commence par monitor + audit + paramètres. C’est le trio le plus utile pour activer le dashboard.
-</div>
-
-<div class="fpTimeline fpMissionSideTimeline">
-                <div class="fpTimelineItem">
-                  <div class="fpTimelineTitle">Étape 1 — Monitoring</div>
-                  <div class="fpTimelineMeta">Créer puis tester un monitor pour valider la couche uptime.</div>
-                </div>
-                <div class="fpTimelineItem">
-                  <div class="fpTimelineTitle">Étape 2 — Audit</div>
-                  <div class="fpTimelineMeta">Lancer un audit pour alimenter le reporting et les opportunités.</div>
-                </div>
-                <div class="fpTimelineItem">
-                  <div class="fpTimelineTitle">Étape 3 — Paramètres</div>
-                  <div class="fpTimelineMeta">Configurer les alertes email et l’organisation du workspace.</div>
-                </div>
-              </div>
-            </div>
+              `
+            )}
           </div>
-        `
-      )}
-    `);
 
-    bindInputPreserve("#fpMissionsSearch", "input", (e) => {
-      state.filters.missions.q = e.target.value || "";
-      renderRoute({ preserveScroll: true });
-    });
+          <div class="fpMissionPageSide">
+            <div class="fpStatsGrid">
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Terminées</div>
+                <div class="fpStatValue">${done}/${state.missions.length}</div>
+                <div class="fpStatMeta">Missions complétées</div>
+              </div>
 
-    bindInputPreserve("#fpMissionsStatus", "change", (e) => {
-      state.filters.missions.status = e.target.value || "all";
-      renderRoute({ preserveScroll: true });
+              <div class="fpStatCard">
+                <div class="fpStatLabel">À faire</div>
+                <div class="fpStatValue">${todoCount}</div>
+                <div class="fpStatMeta">Encore ouvertes</div>
+              </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Progression</div>
+                <div class="fpStatValue">${donePct}%</div>
+                <div class="fpStatMeta">Avancement global</div>
+              </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Reset auto</div>
+                <div class="fpStatValue">3 jours</div>
+                <div class="fpStatMeta">Remise à zéro automatique</div>
+              </div>
+            </div>
+
+            <div class="fpTextPanel fpMissionHelperPanel">
+              Commence par <strong>monitor + audit + paramètres</strong>. C’est le trio le plus utile pour transformer le dashboard en outil réellement exploitable.
+            </div>
+
+            <div class="fpTimeline fpMissionSideTimeline">
+              <div class="fpTimelineItem">
+                <div class="fpTimelineTitle">Étape 1 — Monitoring</div>
+                <div class="fpTimelineMeta">Créer puis tester un monitor pour valider la couche uptime.</div>
+              </div>
+              <div class="fpTimelineItem">
+                <div class="fpTimelineTitle">Étape 2 — Audit</div>
+                <div class="fpTimelineMeta">Lancer un audit pour alimenter le reporting et les opportunités.</div>
+              </div>
+              <div class="fpTimelineItem">
+                <div class="fpTimelineTitle">Étape 3 — Paramètres</div>
+                <div class="fpTimelineMeta">Configurer les alertes email et l’organisation du workspace.</div>
+              </div>
+              <div class="fpTimelineItem">
+                <div class="fpTimelineTitle">Étape 4 — Rapports</div>
+                <div class="fpTimelineMeta">Exporter un premier livrable pour rendre la valeur perçue plus concrète.</div>
+              </div>
+            </div>
+
+            ${createSectionCard(
+              "Guides utiles",
+              "Comment bien utiliser ces missions",
+              "La checklist doit servir à déclencher des actions, pas juste à remplir visuellement la page.",
+              renderCheckGrid(missionGuides)
+            )}
+          </div>
+        </div>
+      `
+    )}
+  `);
+
+  bindInputPreserve("#fpMissionsSearch", "input", (e) => {
+    state.filters.missions.q = e.target.value || "";
+    renderRoute({ preserveScroll: true });
+  });
+
+  bindInputPreserve("#fpMissionsStatus", "change", (e) => {
+    state.filters.missions.status = e.target.value || "all";
+    renderRoute({ preserveScroll: true });
+  });
+
+  $$("[data-mission-direct-action]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const action = btn.getAttribute("data-mission-direct-action");
+      const fakeMission = state.missions.find((m) => m.action === action);
+
+      if (fakeMission) {
+        await runMission(fakeMission.id);
+        renderRoute({ preserveScroll: true });
+        return;
+      }
+
+      if (action === "add_monitor") {
+        const ok = await safeAddMonitor();
+        if (ok) {
+          await loadData({ silent: true });
+          renderRoute({ preserveScroll: true });
+        }
+        return;
+      }
+
+      if (action === "run_audit") {
+        const ok = await safeRunAudit();
+        if (ok) {
+          await loadData({ silent: true });
+          renderRoute({ preserveScroll: true });
+        }
+        return;
+      }
+
+      if (action === "export_audits") {
+        await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+        return;
+      }
+
+      if (action === "test_monitor") {
+        const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
+        if (!firstMonitor) {
+          setStatus("Aucun monitor à tester", "danger");
+          return;
+        }
+        const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
+        if (ok) {
+          await loadData({ silent: true });
+          renderRoute({ preserveScroll: true });
+        }
+        return;
+      }
+
+      if (action === "goto_settings") {
+        location.hash = "#settings";
+        return;
+      }
+
+      if (action === "open_billing") {
+        goBillingPage();
+      }
     });
-  }
+  });
+}
 
   function renderAuditsPage() {
-    const audits = getFilteredAudits();
-    const allAudits = Array.isArray(state.audits) ? state.audits : [];
-    const avgScore = allAudits.length
-      ? Math.round(allAudits.reduce((sum, a) => sum + Number(a.score || 0), 0) / allAudits.length)
-      : 0;
-    const axes = getAuditPriorityCards();
-    const sellingChecks = pickLibrary(
-      [
-        { title: "Diagnostic clair", text: "Le client comprend où il perd de la visibilité." },
-        { title: "Priorités simples", text: "Les actions sont hiérarchisées, donc plus faciles à vendre." },
-        { title: "Preuve de suivi", text: "L’historique renforce la crédibilité du produit." },
-        { title: "Livrables exploitables", text: "Les exports servent autant en interne qu’en client final." },
-        { title: "Lecture business", text: "Le discours devient moins technique et plus convaincant." },
-        { title: "Projection de gains", text: "Le client voit ce qu’il peut gagner, pas seulement ce qui manque." },
-      ],
-      4,
-      getDaySeed("audit_selling")
-    );
+  const audits = getFilteredAudits();
+  const allAudits = Array.isArray(state.audits) ? state.audits : [];
+  const avgScore = allAudits.length
+    ? Math.round(allAudits.reduce((sum, a) => sum + Number(a.score || 0), 0) / allAudits.length)
+    : 0;
+  const axes = getAuditPriorityCards();
+  const sellingChecks = pickLibrary(
+    [
+      { title: "Diagnostic clair", text: "Le client comprend où il perd de la visibilité." },
+      { title: "Priorités simples", text: "Les actions sont hiérarchisées, donc plus faciles à vendre." },
+      { title: "Preuve de suivi", text: "L’historique renforce la crédibilité du produit." },
+      { title: "Livrables exploitables", text: "Les exports servent autant en interne qu’en client final." },
+      { title: "Lecture business", text: "Le discours devient moins technique et plus convaincant." },
+      { title: "Projection de gains", text: "Le client voit ce qu’il peut gagner, pas seulement ce qui manque." },
+    ],
+    4,
+    getDaySeed("audit_selling")
+  );
 
-    setPage(`
-      ${createSectionCard(
-        "Audits",
-        "Centre SEO",
-        "Lance des audits, consulte l’historique et identifie rapidement les priorités.",
-        `
-          <div class="fpTopActionsRow">
-            <button class="fpBtn fpBtnPrimary" id="fpAuditsRunBtn" type="button">Lancer un audit SEO</button>
-            <button class="fpBtn fpBtnGhost" id="fpAuditsExportBtn" type="button">Exporter en CSV</button>
-            <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Billing</button>
-            <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
-          </div>
+  setPage(`
+    ${createSectionCard(
+      "Audits",
+      "Centre SEO",
+      "Lance des audits, consulte l’historique et identifie rapidement les priorités.",
+      `
+        <div class="fpTopActionsRow">
+          <button class="fpBtn fpBtnPrimary" id="fpAuditsRunBtn" type="button">Lancer un audit SEO</button>
+          <button class="fpBtn fpBtnGhost" id="fpAuditsExportBtn" type="button">Exporter en CSV</button>
+          <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Billing</button>
+          <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
+        </div>
 
-          ${createToolbar({
-            searchId: "fpAuditsSearch",
-            searchPlaceholder: "Rechercher une URL ou un résumé…",
-            searchValue: state.filters.audits.q,
-            statusId: "fpAuditsStatus",
-            statusValue: state.filters.audits.status,
-            sortId: "fpAuditsSort",
-            sortValue: state.filters.audits.sort,
-            statuses: [
-              { value: "all", label: "Tous les statuts" },
-              { value: "ok", label: "OK" },
-              { value: "error", label: "À corriger" },
-            ],
-            sorts: [
-              { value: "date_desc", label: "Date décroissante" },
-              { value: "date_asc", label: "Date croissante" },
-              { value: "score_desc", label: "Score décroissant" },
-              { value: "score_asc", label: "Score croissant" },
-            ],
-          })}
-        `
-      )}
+        ${createToolbar({
+          searchId: "fpAuditsSearch",
+          searchPlaceholder: "Rechercher une URL ou un résumé…",
+          searchValue: state.filters.audits.q,
+          statusId: "fpAuditsStatus",
+          statusValue: state.filters.audits.status,
+          sortId: "fpAuditsSort",
+          sortValue: state.filters.audits.sort,
+          statuses: [
+            { value: "all", label: "Tous les statuts" },
+            { value: "ok", label: "OK" },
+            { value: "error", label: "À corriger" },
+          ],
+          sorts: [
+            { value: "date_desc", label: "Date décroissante" },
+            { value: "date_asc", label: "Date croissante" },
+            { value: "score_desc", label: "Score décroissant" },
+            { value: "score_asc", label: "Score croissant" },
+          ],
+        })}
+      `
+    )}
 
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Historique",
-            "Liste des audits",
-            "Derniers audits disponibles sur ton organisation.",
-            audits.length
-              ? `
-                <div class="fpTable">
-                  <div class="fpTableHead">
-                    <div>URL</div>
-                    <div>Score</div>
-                    <div>Date</div>
-                    <div>Statut</div>
-                    <div>Action</div>
-                  </div>
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Actions immédiates",
+          "Audit exécutable",
+          "Plus d’actions utiles directement depuis la page audits.",
+          createActionGrid(getAuditExecutionCards())
+        )}
 
-                  ${audits.map((a) => `
-                    <div class="fpTableRow">
-                      <div class="fpTableUrl">${esc(a.url || "Audit SEO")}</div>
-                      <div>${esc(a.score ?? 0)}</div>
-                      <div>${esc(formatDate(a.createdAt))}</div>
-                      <div>${createBadge(a.status === "ok" ? "up" : "down")}</div>
-                      <div class="fpTableActions">
-                        <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-audit-detail="${esc(normalizeAuditId(a))}">Détail</button>
-                        ${
-                          hasPlan("pro")
-                            ? `<a class="fpBtn fpBtnSoft fpBtnSmall" href="/api/audits/${esc(normalizeAuditId(a))}/pdf" target="_blank" rel="noopener">PDF</a>`
-                            : `<button class="fpBtn fpBtnGhost fpBtnSmall" type="button" disabled>PDF Pro</button>`
-                        }
-                      </div>
+        ${createSectionCard(
+          "Historique",
+          "Liste des audits",
+          "Derniers audits disponibles sur ton organisation.",
+          audits.length
+            ? `
+              <div class="fpTable">
+                <div class="fpTableHead">
+                  <div>URL</div>
+                  <div>Score</div>
+                  <div>Date</div>
+                  <div>Statut</div>
+                  <div>Action</div>
+                </div>
+
+                ${audits.map((a) => `
+                  <div class="fpTableRow">
+                    <div class="fpTableUrl">${esc(a.url || "Audit SEO")}</div>
+                    <div>${esc(a.score ?? 0)}</div>
+                    <div>${esc(formatDate(a.createdAt))}</div>
+                    <div>${createBadge(a.status === "ok" ? "up" : "down")}</div>
+                    <div class="fpTableActions">
+                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-audit-detail="${esc(normalizeAuditId(a))}">Détail</button>
+                      <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-quick-action="create_audit_mission" data-quick-payload="${esc(a.url || "Audit")}" >Mission</button>
+                      ${
+                        hasPlan("pro")
+                          ? `<a class="fpBtn fpBtnSoft fpBtnSmall" href="/api/audits/${esc(normalizeAuditId(a))}/pdf" target="_blank" rel="noopener">PDF</a>`
+                          : `<button class="fpBtn fpBtnGhost fpBtnSmall" type="button" disabled>PDF Pro</button>`
+                      }
                     </div>
-                  `).join("")}
-                </div>
-              `
-              : createEmpty("Aucun audit pour le moment.")
-          )}
-
-          ${createSectionCard(
-            "Opportunités",
-            "Axes de progression prioritaires",
-            "Recommandations qui renforcent la valeur du produit.",
-            renderPriorityList(axes)
-          )}
-        </div>
-
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Résumé",
-            "Vue synthétique",
-            "Indicateurs rapides de la partie audit.",
-            `
-              <div class="fpStatsGrid fpStatsGridSingle">
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Total</div>
-                  <div class="fpStatValue">${allAudits.length}</div>
-                  <div class="fpStatMeta">Audits chargés</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Score moyen</div>
-                  <div class="fpStatValue">${avgScore}</div>
-                  <div class="fpStatMeta">Moyenne actuelle</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Résultats filtrés</div>
-                  <div class="fpStatValue">${audits.length}</div>
-                  <div class="fpStatMeta">Après recherche / tri</div>
-                </div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Lecture premium",
-            "Pourquoi l’audit est vendeur",
-            "Une bonne restitution augmente la confiance client.",
-            renderCheckGrid(sellingChecks)
-          )}
-        </div>
-      </div>
-    `);
-
-    $("#fpAuditsRunBtn")?.addEventListener("click", async () => {
-      const ok = await safeRunAudit();
-      if (ok) loadData({ silent: true });
-    });
-
-    $("#fpAuditsExportBtn")?.addEventListener("click", async () => {
-      await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
-    });
-
-    bindInputPreserve("#fpAuditsSearch", "input", (e) => {
-      state.filters.audits.q = e.target.value || "";
-      renderRoute({ preserveScroll: true });
-    });
-
-    bindInputPreserve("#fpAuditsStatus", "change", (e) => {
-      state.filters.audits.status = e.target.value || "all";
-      renderRoute({ preserveScroll: true });
-    });
-
-    bindInputPreserve("#fpAuditsSort", "change", (e) => {
-      state.filters.audits.sort = e.target.value || "date_desc";
-      renderRoute({ preserveScroll: true });
-    });
-
-    $$("[data-audit-detail]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        openAuditDetail(btn.getAttribute("data-audit-detail"));
-      });
-    });
-  }
-
-  function renderMonitorsPage() {
-    const allMonitors = Array.isArray(state.monitors) ? state.monitors : [];
-    const monitors = getFilteredMonitors();
-    const health = getMonitorHealthBuckets();
-    const monitoringWhyCards = pickLibrary(
-      [
-        { title: "Prévention", text: "Détecter un problème avant qu’il ne coûte du trafic ou des leads." },
-        { title: "Réactivité", text: "Les alertes donnent une impression de service vivant et sérieux." },
-        { title: "Justification du prix", text: "Une surveillance visible aide à défendre la valeur du SaaS." },
-        { title: "Scalabilité", text: "La même logique peut ensuite s’appliquer à plus de clients et plus de sites." },
-        { title: "Tranquillité client", text: "Le client se sent suivi même hors des audits ponctuels." },
-        { title: "Service premium", text: "Le monitoring donne une vraie épaisseur opérationnelle au produit." },
-      ],
-      4,
-      getDaySeed("monitoring_why")
-    );
-
-    setPage(`
-      ${createSectionCard(
-        "Monitoring",
-        "Surveillance des sites",
-        "Ajoute des URLs, contrôle leur disponibilité et pilote les incidents plus rapidement.",
-        `
-          <div class="fpTopActionsRow">
-            <button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn" type="button">Ajouter un monitor</button>
-            <button class="fpBtn fpBtnGhost" id="fpExportMonitorsBtn" type="button">Exporter en CSV</button>
-            <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Billing</button>
-            <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
-          </div>
-
-          ${createToolbar({
-            searchId: "fpMonitorsSearch",
-            searchPlaceholder: "Rechercher une URL…",
-            searchValue: state.filters.monitors.q,
-            statusId: "fpMonitorsStatus",
-            statusValue: state.filters.monitors.status,
-            sortId: "fpMonitorsSort",
-            sortValue: state.filters.monitors.sort,
-            statuses: [
-              { value: "all", label: "Tous les statuts" },
-              { value: "up", label: "UP" },
-              { value: "down", label: "DOWN" },
-              { value: "unknown", label: "Inactif" },
-            ],
-            sorts: [
-              { value: "date_desc", label: "Date décroissante" },
-              { value: "date_asc", label: "Date croissante" },
-              { value: "interval_asc", label: "Intervalle croissant" },
-              { value: "interval_desc", label: "Intervalle décroissant" },
-              { value: "url_asc", label: "URL A → Z" },
-            ],
-          })}
-        `
-      )}
-
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Monitors",
-            "Liste active",
-            "Tous les monitors actuellement chargés depuis ton backend.",
-            monitors.length
-              ? `
-                <div class="fpTable">
-                  <div class="fpTableHead">
-                    <div>URL</div>
-                    <div>Statut</div>
-                    <div>Intervalle</div>
-                    <div>Dernier check</div>
-                    <div>Actions</div>
-                  </div>
-
-                  ${monitors.map((m) => `
-                    <div class="fpTableRow">
-                      <div class="fpTableUrl">${esc(m.url || "Monitor")}</div>
-                      <div>${createBadge(normalizeMonitorStatus(m))}</div>
-                      <div>${esc(m.intervalMinutes ?? 60)} min</div>
-                      <div>${esc(formatDate(m.lastCheckedAt))}</div>
-                      <div class="fpTableActions">
-                        <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-monitor-test="${esc(normalizeMonitorId(m))}">Tester</button>
-                        <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-logs="${esc(normalizeMonitorId(m))}">Logs</button>
-                        ${
-                          hasPlan("pro")
-                            ? `<button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-uptime="${esc(normalizeMonitorId(m))}">Uptime</button>`
-                            : `<button class="fpBtn fpBtnGhost fpBtnSmall" type="button" disabled>Uptime Pro</button>`
-                        }
-                        <button class="fpBtn fpBtnDanger fpBtnSmall" type="button" data-monitor-delete="${esc(normalizeMonitorId(m))}">Supprimer</button>
-                      </div>
-                    </div>
-                  `).join("")}
-                </div>
-              `
-              : createEmpty("Aucun monitor actif pour le moment.")
-          )}
-
-          ${createSectionCard(
-            "Valeur perçue",
-            "Pourquoi le monitoring rassure",
-            "Le module uptime améliore fortement la crédibilité du produit.",
-            `
-              <div class="fpInlineStats">
-                <div class="fpInlineStat">
-                  <div class="fpBigValue">${health.up}</div>
-                  <div class="fpInlineStatText">Monitors actuellement stables</div>
-                </div>
-                <div class="fpInlineStat">
-                  <div class="fpBigValue">${health.down}</div>
-                  <div class="fpInlineStatText">Incidents nécessitant attention</div>
-                </div>
-                <div class="fpInlineStat">
-                  <div class="fpBigValue">${health.unknown}</div>
-                  <div class="fpInlineStatText">Monitors sans statut exploitable</div>
-                </div>
-              </div>
-            `
-          )}
-        </div>
-
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Résumé",
-            "État du monitoring",
-            "Vue rapide de la surveillance active.",
-            `
-              <div class="fpStatsGrid fpStatsGridSingle">
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Total</div>
-                  <div class="fpStatValue">${allMonitors.length}</div>
-                  <div class="fpStatMeta">Monitors chargés</div>
-                </div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Alertes",
-            "Réception email",
-            "Résumé de la configuration courante.",
-            `
-              <div class="fpInfoList">
-                <div class="fpInfoRow"><span>Mode</span><strong>${esc(recipientsLabel(state.orgSettings?.alertRecipients))}</strong></div>
-                <div class="fpInfoRow"><span>Emails extra</span><strong>${esc((state.orgSettings?.alertExtraEmails || []).join(", ") || "Aucun")}</strong></div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Justification",
-            "Pourquoi ce module compte",
-            "Le client voit une vraie couche opérationnelle.",
-            renderCheckGrid(monitoringWhyCards)
-          )}
-        </div>
-      </div>
-    `);
-
-    $("#fpAddMonitorBtn")?.addEventListener("click", async () => {
-      const ok = await safeAddMonitor();
-      if (ok) loadData({ silent: true });
-    });
-
-    $("#fpExportMonitorsBtn")?.addEventListener("click", async () => {
-      await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
-    });
-
-    bindInputPreserve("#fpMonitorsSearch", "input", (e) => {
-      state.filters.monitors.q = e.target.value || "";
-      renderRoute({ preserveScroll: true });
-    });
-
-    bindInputPreserve("#fpMonitorsStatus", "change", (e) => {
-      state.filters.monitors.status = e.target.value || "all";
-      renderRoute({ preserveScroll: true });
-    });
-
-    bindInputPreserve("#fpMonitorsSort", "change", (e) => {
-      state.filters.monitors.sort = e.target.value || "date_desc";
-      renderRoute({ preserveScroll: true });
-    });
-
-    $$("[data-monitor-test]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const id = btn.getAttribute("data-monitor-test");
-        const ok = await safeTestMonitor(id);
-        if (ok) loadData({ silent: true });
-      });
-    });
-
-    $$("[data-monitor-delete]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const id = btn.getAttribute("data-monitor-delete");
-        const ok = await safeDeleteMonitor(id);
-        if (ok) loadData({ silent: true });
-      });
-    });
-
-    $$("[data-monitor-logs]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        openMonitorLogs(btn.getAttribute("data-monitor-logs"));
-      });
-    });
-
-    $$("[data-monitor-uptime]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        openMonitorUptime(btn.getAttribute("data-monitor-uptime"));
-      });
-    });
-  }
-
-  function renderReportsPage() {
-    const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
-    const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
-    const usage = state.me?.usage || {};
-    const checklistTexts = [
-  "Ce bloc aide un dirigeant à comprendre rapidement l’essentiel sans entrer dans la technique.",
-  "Cette partie met mieux en avant les risques, les opportunités et les priorités concrètes.",
-  "Cette lecture rend le rapport plus commercial, plus clair et plus facile à présenter au client.",
-  "Ce format aide à projeter les prochains gains de manière plus crédible et plus vendeuse.",
-  "Cette section améliore la lisibilité générale et donne une impression plus premium du livrable.",
-  "Ce point permet de transformer les données en décisions plus simples à comprendre.",
-  "Cette présentation rend le rapport plus utile dans un contexte client ou interne.",
-  "Ce contenu donne plus de relief au rapport et renforce sa valeur perçue."
-];
-
-const checklist = getReportChecklistCards().map((t, i) => ({
-  title: t,
-  text: checklistTexts[i % checklistTexts.length]
-}));
-    const formatCards = getReportFormatCards();
-
-    setPage(`
-      ${createSectionCard(
-        "Rapports",
-        "Exports et historiques",
-        "Télécharge les données importantes du dashboard.",
-        `
-          <div class="fpReportsGrid">
-            <div class="fpReportCard">
-              <div class="fpReportTitle">Export audits</div>
-              <div class="fpReportMeta">Télécharge tous les audits SEO en CSV.</div>
-              <div class="fpDetailActions">
-                <button class="fpBtn fpBtnPrimary" id="fpExportAuditsBtnPage" type="button">Exporter audits</button>
-              </div>
-            </div>
-
-            <div class="fpReportCard">
-              <div class="fpReportTitle">Export monitors</div>
-              <div class="fpReportMeta">Télécharge les données de monitoring en CSV.</div>
-              <div class="fpDetailActions">
-                <button class="fpBtn fpBtnPrimary" id="fpExportMonitorsBtnPage" type="button">Exporter monitors</button>
-              </div>
-            </div>
-
-            <div class="fpReportCard">
-              <div class="fpReportTitle">Facturation</div>
-              <div class="fpReportMeta">Ouvre la gestion du compte.</div>
-              <div class="fpDetailActions">
-                <a class="fpBtn fpBtnGhost" href="/billing.html?return=%2Fdashboard.html%23overview">Billing</a>
-              </div>
-            </div>
-
-            <div class="fpReportCard">
-              <div class="fpReportTitle">Add-ons</div>
-              <div class="fpReportMeta">Ajuste les options de l’abonnement.</div>
-              <div class="fpDetailActions">
-                <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
-              </div>
-            </div>
-          </div>
-        `
-      )}
-
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Historique",
-            "Données exportables",
-            "Résumé rapide des volumes actuellement disponibles.",
-            `
-              <div class="fpStatsGrid">
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Audits</div>
-                  <div class="fpStatValue">${auditsCount}</div>
-                  <div class="fpStatMeta">Lignes exportables</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Monitors</div>
-                  <div class="fpStatValue">${monitorsCount}</div>
-                  <div class="fpStatMeta">Lignes exportables</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Exports restants</div>
-                  <div class="fpStatValue">${esc(formatUsage(usage.exports))}</div>
-                  <div class="fpStatMeta">Quota actuel</div>
-                </div>
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Checklist premium",
-            "Ce qu’un bon rapport doit contenir",
-            "Une structure plus claire augmente la perception de valeur.",
-            renderCheckGrid(checklist)
-          )}
-        </div>
-
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Conseil",
-            "Usage commercial",
-            "Transforme les données en livrables.",
-            `
-              <div class="fpTextPanel">
-                Utilise les exports pour les comptes-rendus, suivis mensuels, comparatifs avant/après et reporting interne.
-              </div>
-            `
-          )}
-
-          ${createSectionCard(
-            "Formats",
-            "Pourquoi ils servent",
-            "Chaque format a un rôle précis dans la vente et le suivi client.",
-            renderPriorityList(formatCards)
-          )}
-        </div>
-      </div>
-    `);
-
-    $("#fpExportAuditsBtnPage")?.addEventListener("click", async () => {
-      await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
-    });
-
-    $("#fpExportMonitorsBtnPage")?.addEventListener("click", async () => {
-      await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
-    });
-  }
-
-  function renderCompetitorsPage() {
-    const benchmarkRows = pickLibrary(libraries.competitorBenchmarks, 4, getDaySeed(`benchmark_${state.rangeDays}`));
-    const whyCards = getCompetitorWhyCards();
-    const actionCards = getCompetitorActionCards();
-
-    setPage(`
-      ${createSectionCard(
-        "Concurrents",
-        "Benchmark concurrentiel",
-        "Visualise rapidement les écarts les plus importants face au marché.",
-        `
-          <div class="fpBenchmarkTable">
-            <div class="fpBenchmarkHead">
-              <div>Critère</div>
-              <div>Votre site</div>
-              <div>Meilleur</div>
-              <div>Écart</div>
-            </div>
-
-            ${benchmarkRows.map((row) => `
-              <div class="fpBenchmarkRow">
-                <div class="fpBenchmarkStrong">${esc(row.metric)}</div>
-                <div><div class="fpBenchmarkCellPill">${esc(row.ours)}</div></div>
-                <div><div class="fpBenchmarkCellPill">${esc(row.best)}</div></div>
-                <div><div class="fpBenchmarkCellPill">${esc(row.gap)}</div></div>
-              </div>
-            `).join("")}
-          </div>
-        `
-      )}
-
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Lecture business",
-            "Pourquoi ce benchmark est utile",
-            "Le client voit pourquoi il doit continuer à investir.",
-            renderPriorityList(whyCards)
-          )}
-        </div>
-
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Actions",
-            "Pistes immédiates",
-            "Des écarts exploitables rapidement.",
-            renderCheckGrid(actionCards)
-          )}
-        </div>
-      </div>
-    `);
-  }
-
-  function renderLocalSeoPage() {
-    const axes = getLocalAxisCards();
-    const businessCards = getLocalBusinessCards();
-    const simpleCards = pickLibrary(
-      [
-        { title: "Visibilité concrète", text: "Le client comprend tout de suite ce que le local SEO change." },
-        { title: "Signal premium", text: "La présence locale donne un effet très tangible au service." },
-        { title: "Levier rétention", text: "Un client qui voit ses zones progresser a moins envie d’arrêter." },
-        { title: "Facile à vendre", text: "Le local se comprend plus vite que beaucoup d’optimisations abstraites." },
-      ],
-      3,
-      getDaySeed("local_simple")
-    );
-
-    setPage(`
-      ${createSectionCard(
-        "Local SEO",
-        "Visibilité locale",
-        "Optimise la présence locale et les signaux business pour générer plus de leads qualifiés.",
-        renderCheckGrid(axes)
-      )}
-
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Impact business",
-            "Pourquoi le local est très vendeur",
-            "Particulièrement utile pour PME, commerces et indépendants.",
-            renderPriorityList(businessCards)
-          )}
-
-          ${createSectionCard(
-            "Lecture terrain",
-            "Autres angles utiles",
-            "Un peu plus de matière pour rendre la page plus riche.",
-            renderCheckGrid(pickLibrary([
-              { title: "Couverture des zones rentables", text: "Permet de montrer clairement où l’offre doit être poussée." },
-              { title: "Fiche locale + site", text: "Le lien entre les deux renforce la cohérence perçue." },
-              { title: "Intentions de proximité", text: "Très utile pour capter des recherches prêtes à convertir." },
-              { title: "Réassurance locale", text: "Les preuves locales inspirent plus vite confiance." }
-            ], 3, getDaySeed("local_extra")))
-          )}
-        </div>
-
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Lecture simple",
-            "Ce que le client comprend vite",
-            "Le local SEO est une brique très facile à valoriser.",
-            renderCheckGrid(simpleCards)
-          )}
-        </div>
-      </div>
-    `);
-  }
-
-  function renderToolsPage() {
-    const tools = getToolCards();
-    const benefits = pickLibrary(
-      [
-        { title: "Centralisation", text: "SEO, monitoring, local, reporting et équipe au même endroit." },
-        { title: "Scalabilité", text: "La structure est prête à accueillir plus de sites, plus de clients et plus de données." },
-        { title: "Vente facilitée", text: "Des modules clairs et premium rendent l’offre plus simple à défendre." },
-        { title: "Perception produit", text: "Plus de briques utiles donnent un effet SaaS plus fort." },
-        { title: "Upsell naturel", text: "Les modules aident à pousser plan et add-ons sans forcer." },
-      ],
-      3,
-      getDaySeed("tools_benefits")
-    );
-    const activeTools = getActiveToolCards();
-
-    setPage(`
-      ${createSectionCard(
-        "Outils",
-        "Hub premium",
-        "Les modules les plus utiles pour rendre FlowPoint plus puissant, plus vendable et plus rassurant.",
-        `
-          <div class="fpReportsGrid">
-            ${tools.map((tool) => {
-              const active = isToolActive(tool.id);
-              return `
-                <div class="fpReportCard">
-                  <div class="fpAddonPill on">${esc(tool.tag)}</div>
-                  <div class="fpReportTitle" style="margin-top:14px">${esc(tool.name)}</div>
-                  <div class="fpReportMeta">${esc(tool.description)}</div>
-                  <div class="fpToolFeatureList">
-                    ${tool.features.map((f) => `<div class="fpToolFeature">• ${esc(f)}</div>`).join("")}
-                  </div>
-                  <div class="fpDetailActions">
-                    <button
-                      class="fpBtn ${active ? "fpBtnPrimary" : "fpBtnGhost"}"
-                      type="button"
-                      data-tool-toggle="${esc(tool.id)}"
-                    >
-                      ${active ? "Activé" : "Activer"}
-                    </button>
-                  </div>
-                </div>
-              `;
-            }).join("")}
-          </div>
-        `
-      )}
-
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Pourquoi ces outils comptent",
-            "Valeur perçue plus forte",
-            "Ils donnent l’impression d’un SaaS plus complet et plus premium.",
-            `
-              <div class="fpPlanBenefits">
-                ${benefits.map((item) => `
-                  <div class="fpPlanBenefit">
-                    <div class="fpPlanBenefitTitle">${esc(item.title)}</div>
-                    <div class="fpPlanBenefitText">${esc(item.text)}</div>
                   </div>
                 `).join("")}
               </div>
             `
-          )}
-        </div>
+            : createEmpty("Aucun audit pour le moment.")
+        )}
 
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Modules actifs",
-            "État conservé",
-            "Quand tu actives un module, il reste activé en revenant sur la page.",
-            renderToolStateList(activeTools)
-          )}
-
-          ${createSectionCard(
-            "Projection",
-            "Ce que ressent le client",
-            "Une plateforme plus riche inspire plus de confiance.",
-            renderCheckGrid(pickLibrary([
-              { title: "Offre plus solide", text: "Plus de briques visibles rendent l’offre plus crédible." },
-              { title: "Produit moins remplaçable", text: "Un ensemble cohérent est plus difficile à substituer." },
-              { title: "Montée en gamme", text: "L’activation de modules soutient naturellement les plans plus élevés." }
-            ], 3, getDaySeed("tools_projection")))
-          )}
-        </div>
+        ${createSectionCard(
+          "Opportunités",
+          "Axes de progression prioritaires",
+          "Recommandations qui renforcent la valeur du produit.",
+          renderPriorityList(axes)
+        )}
       </div>
-    `);
 
-    $$("[data-tool-toggle]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const toolId = btn.getAttribute("data-tool-toggle");
-        const next = !isToolActive(toolId);
-        setToolActive(toolId, next);
-        setStatus(next ? "Module activé — OK" : "Module désactivé — OK", "ok");
-        renderRoute({ preserveScroll: true });
-      });
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Résumé",
+          "Vue synthétique",
+          "Indicateurs rapides de la partie audit.",
+          `
+            <div class="fpStatsGrid fpStatsGridSingle">
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Total</div>
+                <div class="fpStatValue">${allAudits.length}</div>
+                <div class="fpStatMeta">Audits chargés</div>
+              </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Score moyen</div>
+                <div class="fpStatValue">${avgScore}</div>
+                <div class="fpStatMeta">Moyenne actuelle</div>
+              </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Résultats filtrés</div>
+                <div class="fpStatValue">${audits.length}</div>
+                <div class="fpStatMeta">Après recherche / tri</div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Plan / lecture",
+          "Niveau de restitution",
+          "Le plan courant change la valeur perçue de cette page.",
+          createMiniRows([
+            {
+              title: "Audit standard",
+              text: hasPlan("pro")
+                ? "Tu as déjà accès à une lecture plus premium avec PDF et restitution plus forte."
+                : "La base est opérationnelle, mais la lecture premium reste limitée.",
+              badge: hasPlan("pro") ? "PRO+" : "BASE"
+            },
+            {
+              title: "Quoi faire ensuite",
+              text: "Audit → mission → rapport : c’est le meilleur enchaînement commercial.",
+              badge: "FLOW"
+            }
+          ])
+        )}
+
+        ${createSectionCard(
+          "Lecture premium",
+          "Pourquoi l’audit est vendeur",
+          "Une bonne restitution augmente la confiance client.",
+          renderCheckGrid(sellingChecks)
+        )}
+      </div>
+    </div>
+  `);
+
+  $("#fpAuditsRunBtn")?.addEventListener("click", async () => {
+    const ok = await safeRunAudit();
+    if (ok) loadData({ silent: true });
+  });
+
+  $("#fpAuditsExportBtn")?.addEventListener("click", async () => {
+    await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+  });
+
+  bindInputPreserve("#fpAuditsSearch", "input", (e) => {
+    state.filters.audits.q = e.target.value || "";
+    renderRoute({ preserveScroll: true });
+  });
+
+  bindInputPreserve("#fpAuditsStatus", "change", (e) => {
+    state.filters.audits.status = e.target.value || "all";
+    renderRoute({ preserveScroll: true });
+  });
+
+  bindInputPreserve("#fpAuditsSort", "change", (e) => {
+    state.filters.audits.sort = e.target.value || "date_desc";
+    renderRoute({ preserveScroll: true });
+  });
+
+  $$("[data-audit-detail]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openAuditDetail(btn.getAttribute("data-audit-detail"));
     });
-  }
+  });
+}
+
+  function renderMonitorsPage() {
+  const allMonitors = Array.isArray(state.monitors) ? state.monitors : [];
+  const monitors = getFilteredMonitors();
+  const health = getMonitorHealthBuckets();
+  const monitoringWhyCards = pickLibrary(
+    [
+      { title: "Prévention", text: "Détecter un problème avant qu’il ne coûte du trafic ou des leads." },
+      { title: "Réactivité", text: "Les alertes donnent une impression de service vivant et sérieux." },
+      { title: "Justification du prix", text: "Une surveillance visible aide à défendre la valeur du SaaS." },
+      { title: "Scalabilité", text: "La même logique peut ensuite s’appliquer à plus de clients et plus de sites." },
+      { title: "Tranquillité client", text: "Le client se sent suivi même hors des audits ponctuels." },
+      { title: "Service premium", text: "Le monitoring donne une vraie épaisseur opérationnelle au produit." },
+    ],
+    4,
+    getDaySeed("monitoring_why")
+  );
+
+  const recentIncidents = monitors
+    .filter((m) => normalizeMonitorStatus(m) === "down")
+    .slice(0, 4)
+    .map((m) => ({
+      title: m.url || "Monitor",
+      text: `Incident détecté · ${formatDate(m.lastCheckedAt)}`,
+      badge: "DOWN"
+    }));
+
+  setPage(`
+    ${createSectionCard(
+      "Monitoring",
+      "Surveillance des sites",
+      "Ajoute des URLs, contrôle leur disponibilité et pilote les incidents plus rapidement.",
+      `
+        <div class="fpTopActionsRow">
+          <button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn" type="button">Ajouter un monitor</button>
+          <button class="fpBtn fpBtnGhost" id="fpExportMonitorsBtn" type="button">Exporter en CSV</button>
+          <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Billing</button>
+          <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
+        </div>
+
+        ${createToolbar({
+          searchId: "fpMonitorsSearch",
+          searchPlaceholder: "Rechercher une URL…",
+          searchValue: state.filters.monitors.q,
+          statusId: "fpMonitorsStatus",
+          statusValue: state.filters.monitors.status,
+          sortId: "fpMonitorsSort",
+          sortValue: state.filters.monitors.sort,
+          statuses: [
+            { value: "all", label: "Tous les statuts" },
+            { value: "up", label: "UP" },
+            { value: "down", label: "DOWN" },
+            { value: "unknown", label: "Inactif" },
+          ],
+          sorts: [
+            { value: "date_desc", label: "Date décroissante" },
+            { value: "date_asc", label: "Date croissante" },
+            { value: "interval_asc", label: "Intervalle croissant" },
+            { value: "interval_desc", label: "Intervalle décroissant" },
+            { value: "url_asc", label: "URL A → Z" },
+          ],
+        })}
+      `
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Actions immédiates",
+          "Pilotage opérationnel",
+          "Des actions réelles au lieu d’une simple lecture de statut.",
+          createActionGrid(getMonitorExecutionCards())
+        )}
+
+        ${createSectionCard(
+          "Monitors",
+          "Liste active",
+          "Tous les monitors actuellement chargés depuis ton backend.",
+          monitors.length
+            ? `
+              <div class="fpTable">
+                <div class="fpTableHead">
+                  <div>URL</div>
+                  <div>Statut</div>
+                  <div>Intervalle</div>
+                  <div>Dernier check</div>
+                  <div>Actions</div>
+                </div>
+
+                ${monitors.map((m) => `
+                  <div class="fpTableRow">
+                    <div class="fpTableUrl">${esc(m.url || "Monitor")}</div>
+                    <div>${createBadge(normalizeMonitorStatus(m))}</div>
+                    <div>${esc(m.intervalMinutes ?? 60)} min</div>
+                    <div>${esc(formatDate(m.lastCheckedAt))}</div>
+                    <div class="fpTableActions">
+                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-monitor-test="${esc(normalizeMonitorId(m))}">Tester</button>
+                      <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-logs="${esc(normalizeMonitorId(m))}">Logs</button>
+                      ${
+                        hasPlan("pro")
+                          ? `<button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-uptime="${esc(normalizeMonitorId(m))}">Uptime</button>`
+                          : `<button class="fpBtn fpBtnGhost fpBtnSmall" type="button" disabled>Uptime Pro</button>`
+                      }
+                      <button class="fpBtn fpBtnDanger fpBtnSmall" type="button" data-monitor-delete="${esc(normalizeMonitorId(m))}">Supprimer</button>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucun monitor actif pour le moment.")
+        )}
+
+        ${createSectionCard(
+          "Valeur perçue",
+          "Pourquoi le monitoring rassure",
+          "Le module uptime améliore fortement la crédibilité du produit.",
+          `
+            <div class="fpInlineStats">
+              <div class="fpInlineStat">
+                <div class="fpBigValue">${health.up}</div>
+                <div class="fpInlineStatText">Monitors actuellement stables</div>
+              </div>
+              <div class="fpInlineStat">
+                <div class="fpBigValue">${health.down}</div>
+                <div class="fpInlineStatText">Incidents nécessitant attention</div>
+              </div>
+              <div class="fpInlineStat">
+                <div class="fpBigValue">${health.unknown}</div>
+                <div class="fpInlineStatText">Monitors sans statut exploitable</div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Incidents récents",
+          "Lecture exploitable",
+          "Une vraie carte d’incidents rend cette page plus utile et plus premium.",
+          recentIncidents.length
+            ? createMiniRows(recentIncidents)
+            : createEmpty("Aucun incident récent détecté.")
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Résumé",
+          "État du monitoring",
+          "Vue rapide de la surveillance active.",
+          `
+            <div class="fpStatsGrid fpStatsGridSingle">
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Total</div>
+                <div class="fpStatValue">${allMonitors.length}</div>
+                <div class="fpStatMeta">Monitors chargés</div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Alertes",
+          "Réception email",
+          "Résumé de la configuration courante.",
+          `
+            <div class="fpInfoList">
+              <div class="fpInfoRow"><span>Mode</span><strong>${esc(recipientsLabel(state.orgSettings?.alertRecipients))}</strong></div>
+              <div class="fpInfoRow"><span>Emails extra</span><strong>${esc((state.orgSettings?.alertExtraEmails || []).join(", ") || "Aucun")}</strong></div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Plan / addons",
+          "Capacité monitoring",
+          "Les quotas et add-ons changent la vraie utilité de cette page.",
+          createMiniRows([
+            {
+              title: "Quota monitors",
+              text: `${state.me?.usage?.monitors?.used ?? 0}/${state.me?.usage?.monitors?.limit ?? 0} utilisés`,
+              badge: "QUOTA"
+            },
+            {
+              title: "Extension monitors",
+              text: hasAddon("monitorsPack50")
+                ? "L’add-on monitors +50 est actif sur ce compte."
+                : "Aucun add-on monitors supplémentaire détecté.",
+              badge: hasAddon("monitorsPack50") ? "ON" : "OFF"
+            },
+            {
+              title: "Uptime détaillé",
+              text: hasPlan("pro")
+                ? "Le plan permet une lecture plus vendable des statuts uptime."
+                : "La version détaillée uptime reste limitée hors Pro.",
+              badge: hasPlan("pro") ? "PRO" : "BASE"
+            }
+          ])
+        )}
+
+        ${createSectionCard(
+          "Justification",
+          "Pourquoi ce module compte",
+          "Le client voit une vraie couche opérationnelle.",
+          renderCheckGrid(monitoringWhyCards)
+        )}
+      </div>
+    </div>
+  `);
+
+  $("#fpAddMonitorBtn")?.addEventListener("click", async () => {
+    const ok = await safeAddMonitor();
+    if (ok) loadData({ silent: true });
+  });
+
+  $("#fpExportMonitorsBtn")?.addEventListener("click", async () => {
+    await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+  });
+
+  bindInputPreserve("#fpMonitorsSearch", "input", (e) => {
+    state.filters.monitors.q = e.target.value || "";
+    renderRoute({ preserveScroll: true });
+  });
+
+  bindInputPreserve("#fpMonitorsStatus", "change", (e) => {
+    state.filters.monitors.status = e.target.value || "all";
+    renderRoute({ preserveScroll: true });
+  });
+
+  bindInputPreserve("#fpMonitorsSort", "change", (e) => {
+    state.filters.monitors.sort = e.target.value || "date_desc";
+    renderRoute({ preserveScroll: true });
+  });
+
+  $$("[data-monitor-test]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-monitor-test");
+      const ok = await safeTestMonitor(id);
+      if (ok) loadData({ silent: true });
+    });
+  });
+
+  $$("[data-monitor-delete]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-monitor-delete");
+      const ok = await safeDeleteMonitor(id);
+      if (ok) loadData({ silent: true });
+    });
+  });
+
+  $$("[data-monitor-logs]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openMonitorLogs(btn.getAttribute("data-monitor-logs"));
+    });
+  });
+
+  $$("[data-monitor-uptime]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openMonitorUptime(btn.getAttribute("data-monitor-uptime"));
+    });
+  });
+}
+  function renderReportsPage() {
+  const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
+  const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
+  const usage = state.me?.usage || {};
+
+  const checklistTexts = [
+    "Ce bloc aide un dirigeant à comprendre rapidement l’essentiel sans entrer dans la technique.",
+    "Cette partie met mieux en avant les risques, les opportunités et les priorités concrètes.",
+    "Cette lecture rend le rapport plus commercial, plus clair et plus facile à présenter au client.",
+    "Ce format aide à projeter les prochains gains de manière plus crédible et plus vendeuse.",
+    "Cette section améliore la lisibilité générale et donne une impression plus premium du livrable.",
+    "Ce point permet de transformer les données en décisions plus simples à comprendre.",
+    "Cette présentation rend le rapport plus utile dans un contexte client ou interne.",
+    "Ce contenu donne plus de relief au rapport et renforce sa valeur perçue."
+  ];
+
+  const checklist = getReportChecklistCards().map((t, i) => ({
+    title: t,
+    text: checklistTexts[i % checklistTexts.length]
+  }));
+
+  const formatCards = getReportFormatCards();
+
+  setPage(`
+    ${createSectionCard(
+      "Rapports",
+      "Exports et historiques",
+      "Télécharge les données importantes du dashboard.",
+      `
+        <div class="fpReportsGrid">
+          <div class="fpReportCard">
+            <div class="fpReportTitle">Export audits</div>
+            <div class="fpReportMeta">Télécharge tous les audits SEO en CSV.</div>
+            <div class="fpDetailActions">
+              <button class="fpBtn fpBtnPrimary" id="fpExportAuditsBtnPage" type="button">Exporter audits</button>
+            </div>
+          </div>
+
+          <div class="fpReportCard">
+            <div class="fpReportTitle">Export monitors</div>
+            <div class="fpReportMeta">Télécharge les données de monitoring en CSV.</div>
+            <div class="fpDetailActions">
+              <button class="fpBtn fpBtnPrimary" id="fpExportMonitorsBtnPage" type="button">Exporter monitors</button>
+            </div>
+          </div>
+
+          <div class="fpReportCard">
+            <div class="fpReportTitle">Facturation</div>
+            <div class="fpReportMeta">Ouvre la gestion du compte.</div>
+            <div class="fpDetailActions">
+              <a class="fpBtn fpBtnGhost" href="/billing.html?return=%2Fdashboard.html%23overview">Billing</a>
+            </div>
+          </div>
+
+          <div class="fpReportCard">
+            <div class="fpReportTitle">Add-ons</div>
+            <div class="fpReportMeta">Ajuste les options de l’abonnement.</div>
+            <div class="fpDetailActions">
+              <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
+            </div>
+          </div>
+        </div>
+      `
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Actions immédiates",
+          "Génération orientée client",
+          "Des blocs qui rendent la page rapports plus réellement utile.",
+          createActionGrid(getReportExecutionCards())
+        )}
+
+        ${createSectionCard(
+          "Historique",
+          "Données exportables",
+          "Résumé rapide des volumes actuellement disponibles.",
+          `
+            <div class="fpStatsGrid">
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Audits</div>
+                <div class="fpStatValue">${auditsCount}</div>
+                <div class="fpStatMeta">Lignes exportables</div>
+              </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Monitors</div>
+                <div class="fpStatValue">${monitorsCount}</div>
+                <div class="fpStatMeta">Lignes exportables</div>
+              </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">Exports restants</div>
+                <div class="fpStatValue">${esc(formatUsage(usage.exports))}</div>
+                <div class="fpStatMeta">Quota actuel</div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Checklist premium",
+          "Ce qu’un bon rapport doit contenir",
+          "Une structure plus claire augmente la perception de valeur.",
+          renderCheckGrid(checklist)
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Conseil",
+          "Usage commercial",
+          "Transforme les données en livrables.",
+          `
+            <div class="fpTextPanel">
+              Utilise les exports pour les comptes-rendus, suivis mensuels, comparatifs avant/après et reporting interne.
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Plan / format",
+          "Niveau de reporting",
+          "Plus le plan et les add-ons montent, plus cette page a du sens.",
+          createMiniRows([
+            {
+              title: "Capacité exports",
+              text: `${usage.exports?.used ?? 0}/${usage.exports?.limit ?? 0} utilisés`,
+              badge: "EXPORT"
+            },
+            {
+              title: "Capacité PDF",
+              text: hasAddon("pdfPack200")
+                ? "L’add-on PDF supplémentaire est actif."
+                : "Aucun add-on PDF supplémentaire détecté.",
+              badge: hasAddon("pdfPack200") ? "PDF+" : "BASE"
+            },
+            {
+              title: "Formats avancés",
+              text: hasAddon("exportsPack1000")
+                ? "Le compte a vocation à utiliser des exports plus intensifs."
+                : "Les exports avancés restent limités au périmètre actuel.",
+              badge: hasAddon("exportsPack1000") ? "EXP+" : "STD"
+            }
+          ])
+        )}
+
+        ${createSectionCard(
+          "Formats",
+          "Pourquoi ils servent",
+          "Chaque format a un rôle précis dans la vente et le suivi client.",
+          renderPriorityList(formatCards)
+        )}
+      </div>
+    </div>
+  `);
+
+  $("#fpExportAuditsBtnPage")?.addEventListener("click", async () => {
+    await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+  });
+
+  $("#fpExportMonitorsBtnPage")?.addEventListener("click", async () => {
+    await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+  });
+}
+  function renderCompetitorsPage() {
+  const benchmarkRows = pickLibrary(libraries.competitorBenchmarks, 4, getDaySeed(`benchmark_${state.rangeDays}`));
+  const whyCards = getCompetitorWhyCards();
+  const actionCards = getCompetitorActionCards();
+
+  setPage(`
+    ${createSectionCard(
+      "Concurrents",
+      "Benchmark concurrentiel",
+      "Visualise rapidement les écarts les plus importants face au marché.",
+      `
+        <div class="fpBenchmarkTable">
+          <div class="fpBenchmarkHead">
+            <div>Critère</div>
+            <div>Votre site</div>
+            <div>Meilleur</div>
+            <div>Écart</div>
+          </div>
+
+          ${benchmarkRows.map((row) => `
+            <div class="fpBenchmarkRow">
+              <div class="fpBenchmarkStrong">${esc(row.metric)}</div>
+              <div><div class="fpBenchmarkCellPill">${esc(row.ours)}</div></div>
+              <div><div class="fpBenchmarkCellPill">${esc(row.best)}</div></div>
+              <div><div class="fpBenchmarkCellPill">${esc(row.gap)}</div></div>
+            </div>
+          `).join("")}
+        </div>
+      `
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Actions concrètes",
+          "Transformer les écarts en plan",
+          "Le benchmark doit aussi servir à agir.",
+          createActionGrid(getCompetitorExecutionCards())
+        )}
+
+        ${createSectionCard(
+          "Lecture business",
+          "Pourquoi ce benchmark est utile",
+          "Le client voit pourquoi il doit continuer à investir.",
+          renderPriorityList(whyCards)
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Actions",
+          "Pistes immédiates",
+          "Des écarts exploitables rapidement.",
+          renderCheckGrid(actionCards)
+        )}
+      </div>
+    </div>
+  `);
+}
+  function renderLocalSeoPage() {
+  const axes = getLocalAxisCards();
+  const businessCards = getLocalBusinessCards();
+  const simpleCards = pickLibrary(
+    [
+      { title: "Visibilité concrète", text: "Le client comprend tout de suite ce que le local SEO change." },
+      { title: "Signal premium", text: "La présence locale donne un effet très tangible au service." },
+      { title: "Levier rétention", text: "Un client qui voit ses zones progresser a moins envie d’arrêter." },
+      { title: "Facile à vendre", text: "Le local se comprend plus vite que beaucoup d’optimisations abstraites." },
+    ],
+    3,
+    getDaySeed("local_simple")
+  );
+
+  setPage(`
+    ${createSectionCard(
+      "Local SEO",
+      "Visibilité locale",
+      "Optimise la présence locale et les signaux business pour générer plus de leads qualifiés.",
+      renderCheckGrid(axes)
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Actions concrètes",
+          "Local SEO exécutable",
+          "Des blocs plus utiles que de simples conseils passifs.",
+          createActionGrid(getLocalExecutionCards())
+        )}
+
+        ${createSectionCard(
+          "Impact business",
+          "Pourquoi le local est très vendeur",
+          "Particulièrement utile pour PME, commerces et indépendants.",
+          renderPriorityList(businessCards)
+        )}
+
+        ${createSectionCard(
+          "Lecture terrain",
+          "Autres angles utiles",
+          "Un peu plus de matière pour rendre la page plus riche.",
+          renderCheckGrid(pickLibrary([
+            { title: "Couverture des zones rentables", text: "Permet de montrer clairement où l’offre doit être poussée." },
+            { title: "Fiche locale + site", text: "Le lien entre les deux renforce la cohérence perçue." },
+            { title: "Intentions de proximité", text: "Très utile pour capter des recherches prêtes à convertir." },
+            { title: "Réassurance locale", text: "Les preuves locales inspirent plus vite confiance." }
+          ], 3, getDaySeed("local_extra")))
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Lecture simple",
+          "Ce que le client comprend vite",
+          "Le local SEO est une brique très facile à valoriser.",
+          renderCheckGrid(simpleCards)
+        )}
+      </div>
+    </div>
+  `);
+}
+  function renderToolsPage() {
+  const tools = getToolCards();
+  const benefits = pickLibrary(
+    [
+      { title: "Centralisation", text: "SEO, monitoring, local, reporting et équipe au même endroit." },
+      { title: "Scalabilité", text: "La structure est prête à accueillir plus de sites, plus de clients et plus de données." },
+      { title: "Vente facilitée", text: "Des modules clairs et premium rendent l’offre plus simple à défendre." },
+      { title: "Perception produit", text: "Plus de briques utiles donnent un effet SaaS plus fort." },
+      { title: "Upsell naturel", text: "Les modules aident à pousser plan et add-ons sans forcer." },
+    ],
+    3,
+    getDaySeed("tools_benefits")
+  );
+  const activeTools = getActiveToolCards();
+
+  setPage(`
+    ${createSectionCard(
+      "Outils",
+      "Hub premium",
+      "Les modules les plus utiles pour rendre FlowPoint plus puissant, plus vendable et plus rassurant.",
+      `
+        <div class="fpReportsGrid">
+          ${tools.map((tool) => {
+            const active = isToolActive(tool.id);
+            return `
+              <div class="fpReportCard">
+                <div class="fpAddonPill on">${esc(tool.tag)}</div>
+                <div class="fpReportTitle" style="margin-top:14px">${esc(tool.name)}</div>
+                <div class="fpReportMeta">${esc(tool.description)}</div>
+                <div class="fpToolFeatureList">
+                  ${tool.features.map((f) => `<div class="fpToolFeature">• ${esc(f)}</div>`).join("")}
+                </div>
+                <div class="fpDetailActions">
+                  <button
+                    class="fpBtn ${active ? "fpBtnPrimary" : "fpBtnGhost"}"
+                    type="button"
+                    data-tool-toggle="${esc(tool.id)}"
+                  >
+                    ${active ? "Activé" : "Activer"}
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Pourquoi ces outils comptent",
+          "Valeur perçue plus forte",
+          "Ils donnent l’impression d’un SaaS plus complet et plus premium.",
+          `
+            <div class="fpPlanBenefits">
+              ${benefits.map((item) => `
+                <div class="fpPlanBenefit">
+                  <div class="fpPlanBenefitTitle">${esc(item.title)}</div>
+                  <div class="fpPlanBenefitText">${esc(item.text)}</div>
+                </div>
+              `).join("")}
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Impact réel",
+          "Ce que l’activation change",
+          "Un module actif injecte des blocs utiles dans les pages concernées.",
+          createMiniRows(getModuleImpactCards().length ? getModuleImpactCards() : [
+            {
+              title: "Aucun module enrichissant actif",
+              text: "Active un module pour faire apparaître plus de blocs dans les pages concernées.",
+              badge: "OFF"
+            }
+          ])
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Modules actifs",
+          "État conservé",
+          "Quand tu actives un module, il reste activé en revenant sur la page.",
+          renderToolStateList(activeTools)
+        )}
+
+        ${createSectionCard(
+          "Projection",
+          "Ce que ressent le client",
+          "Une plateforme plus riche inspire plus de confiance.",
+          renderCheckGrid(pickLibrary([
+            { title: "Offre plus solide", text: "Plus de briques visibles rendent l’offre plus crédible." },
+            { title: "Produit moins remplaçable", text: "Un ensemble cohérent est plus difficile à substituer." },
+            { title: "Montée en gamme", text: "L’activation de modules soutient naturellement les plans plus élevés." }
+          ], 3, getDaySeed("tools_projection")))
+        )}
+      </div>
+    </div>
+  `);
+
+  $$("[data-tool-toggle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const toolId = btn.getAttribute("data-tool-toggle");
+      const next = !isToolActive(toolId);
+      setToolActive(toolId, next);
+      setStatus(next ? "Module activé — OK" : "Module désactivé — OK", "ok");
+      renderRoute({ preserveScroll: true });
+    });
+  });
+}
 
   function renderTeamPage() {
-    const team = getTeamCards();
-    const reasons = pickLibrary(
-      [
-        { title: "Collaboration", text: "Plusieurs profils peuvent travailler sur le même espace client." },
-        { title: "Rôles", text: "Contrôle propre des accès, vues et actions." },
-        { title: "Upsell naturel", text: "Le multi-user pousse naturellement vers les plans plus élevés." },
-        { title: "Rétention", text: "Une équipe intégrée a moins envie de quitter l’outil." },
-        { title: "Organisation propre", text: "Le dashboard paraît plus structuré et plus crédible." },
-        { title: "Scalabilité", text: "Très utile quand le nombre de sites ou d’intervenants monte." },
-      ],
-      4,
-      getDaySeed("team_reasons")
-    );
+  const team = getTeamCards();
+  const reasons = pickLibrary(
+    [
+      { title: "Collaboration", text: "Plusieurs profils peuvent travailler sur le même espace client." },
+      { title: "Rôles", text: "Contrôle propre des accès, vues et actions." },
+      { title: "Upsell naturel", text: "Le multi-user pousse naturellement vers les plans plus élevés." },
+      { title: "Rétention", text: "Une équipe intégrée a moins envie de quitter l’outil." },
+      { title: "Organisation propre", text: "Le dashboard paraît plus structuré et plus crédible." },
+      { title: "Scalabilité", text: "Très utile quand le nombre de sites ou d’intervenants monte." },
+    ],
+    4,
+    getDaySeed("team_reasons")
+  );
 
-    setPage(`
-      ${createSectionCard(
-        "Équipe",
-        "Collaboration",
-        "Gère les accès, les rôles et la collaboration sans alourdir l’expérience.",
-        `
-          <div class="fpRows">
-            ${team.map((member) => `
-              <div class="fpRowCard">
-                <div class="fpRowMain">
-                  <div class="fpRowTitle">${esc(member.name)}</div>
-                  <div class="fpRowMeta">${esc(member.detail)}</div>
-                </div>
-                <div class="fpRowRight">${createBadge(member.role)}</div>
+  setPage(`
+    ${createSectionCard(
+      "Équipe",
+      "Collaboration",
+      "Gère les accès, les rôles et la collaboration sans alourdir l’expérience.",
+      `
+        <div class="fpRows">
+          ${team.map((member) => `
+            <div class="fpRowCard">
+              <div class="fpRowMain">
+                <div class="fpRowTitle">${esc(member.name)}</div>
+                <div class="fpRowMeta">${esc(member.detail)}</div>
               </div>
-            `).join("")}
-          </div>
-        `
-      )}
-
-      <div class="fpGrid fpGridMain">
-        <div class="fpCol fpColMain">
-          ${createSectionCard(
-            "Pourquoi c’est premium",
-            "Valeur multi-utilisateur",
-            "Très utile pour pousser vers les plans élevés.",
-            renderCheckGrid(reasons)
-          )}
+              <div class="fpRowRight">${createBadge(member.role)}</div>
+            </div>
+          `).join("")}
         </div>
+      `
+    )}
 
-        <div class="fpCol fpColSide">
-          ${createSectionCard(
-            "Accès",
-            "Équipe / invitation",
-            "Une structure simple mais crédible.",
-            `
-              <div class="fpTextPanel">
-                Owner, manager, editor et viewer suffisent déjà à donner une impression SaaS sérieuse et scalable.
-              </div>
-              ${createInlineLinks([
-                { href: "/invite-accept.html", label: "Invite accept" },
-                { href: "/billing.html?return=%2Fdashboard.html%23overview", label: "Billing" },
-                { href: "/addons.html", label: "Add-ons" },
-              ])}
-            `
-          )}
-        </div>
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Actions équipe",
+          "Accès utiles",
+          "Plus de concret pour transformer la page en vrai espace d’action.",
+          createActionGrid(getTeamExecutionCards())
+        )}
+
+        ${createSectionCard(
+          "Pourquoi c’est premium",
+          "Valeur multi-utilisateur",
+          "Très utile pour pousser vers les plans élevés.",
+          renderCheckGrid(reasons)
+        )}
       </div>
-    `);
-  }
 
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Accès",
+          "Équipe / invitation",
+          "Une structure simple mais crédible.",
+          `
+            <div class="fpTextPanel">
+              Owner, manager, editor et viewer suffisent déjà à donner une impression SaaS sérieuse et scalable.
+            </div>
+            ${createInlineLinks([
+              { href: "/invite-accept.html", label: "Invite accept" },
+              { href: "/billing.html?return=%2Fdashboard.html%23overview", label: "Billing" },
+              { href: "/addons.html", label: "Add-ons" },
+            ])}
+          `
+        )}
+      </div>
+    </div>
+  `);
+}
   function renderBillingPage() {
     window.location.href = "/billing.html?return=%2Fdashboard.html%23overview";
   }
 
   function renderSettingsPage() {
-    const s = state.orgSettings || {};
-    const me = state.me || {};
-    const extraEmails = Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "";
-    const addons = getAddonEntries();
-    const settingTips = libraries.settingsInfoTips;
-    const activeTools = getActiveToolCards();
+  const s = state.orgSettings || {};
+  const me = state.me || {};
+  const extraEmails = Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "";
+  const addons = getAddonEntries();
+  const settingTips = libraries.settingsInfoTips;
+  const activeTools = getActiveToolCards();
 
-    setPage(`
-      ${createSectionCard(
-        "Paramètres",
-        "Préférences du workspace",
-        "Configure les alertes, l’interface et les accès rapides.",
-        `
-          <div class="fpGrid fpGridMain">
-            <div class="fpCol fpColMain">
-              <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Alertes email</div>
-                <div class="fpSmall">Définis qui reçoit les alertes monitoring.</div>
+  setPage(`
+    ${createSectionCard(
+      "Paramètres",
+      "Préférences du workspace",
+      "Configure les alertes, l’interface et les accès rapides.",
+      `
+        <div class="fpGrid fpGridMain">
+          <div class="fpCol fpColMain">
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Alertes email</div>
+              <div class="fpSmall">Définis qui reçoit les alertes monitoring.</div>
 
-                <div class="fpField">
-                  <label class="fpLabel" for="fpSettingsRecipientsMode">Mode destinataires</label>
-                  <select id="fpSettingsRecipientsMode" class="fpInput">
-                    <option value="all" ${String(s.alertRecipients || "all") === "all" ? "selected" : ""}>Toute l'équipe</option>
-                    <option value="owner" ${String(s.alertRecipients || "all") === "owner" ? "selected" : ""}>Owner uniquement</option>
-                  </select>
-                </div>
-
-                <div class="fpField">
-                  <label class="fpLabel" for="fpSettingsExtraEmails">Emails supplémentaires</label>
-                  <input
-                    id="fpSettingsExtraEmails"
-                    class="fpInput"
-                    placeholder="mail@site.com, mail2@site.com"
-                    value="${esc(extraEmails)}"
-                    autocomplete="off"
-                    spellcheck="false"
-                  />
-                </div>
-
-                <div class="fpDetailActions">
-                  <button class="fpBtn fpBtnPrimary" id="fpSaveSettingsBtn" type="button">Sauvegarder</button>
-                </div>
+              <div class="fpField">
+                <label class="fpLabel" for="fpSettingsRecipientsMode">Mode destinataires</label>
+                <select id="fpSettingsRecipientsMode" class="fpInput">
+                  <option value="all" ${String(s.alertRecipients || "all") === "all" ? "selected" : ""}>Toute l'équipe</option>
+                  <option value="owner" ${String(s.alertRecipients || "all") === "owner" ? "selected" : ""}>Owner uniquement</option>
+                </select>
               </div>
 
-              <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Préférences interface</div>
-
-                <div class="fpToggleRow">
-                  <div class="fpToggleText">
-                    <div class="fpToggleTitle">Thème automatique</div>
-                    <div class="fpToggleHint">Basé sur les préférences système du navigateur</div>
-                    <div class="fpSettingImpact">
-                      <div class="fpSettingImpactTitle">Effet</div>
-                      <div class="fpSettingImpactText">${esc(settingTips[0].text)}</div>
-                    </div>
-                  </div>
-                  <button type="button" class="fpSwitch ${state.uiPrefs.themeAuto ? "on" : ""}" id="fpThemeAutoToggle"></button>
-                </div>
-
-                <div class="fpToggleRow">
-                  <div class="fpToggleText">
-                    <div class="fpToggleTitle">Statut temps réel</div>
-                    <div class="fpToggleHint">Affichage de l’état courant du dashboard</div>
-                    <div class="fpSettingImpact">
-                      <div class="fpSettingImpactTitle">Effet</div>
-                      <div class="fpSettingImpactText">${esc(settingTips[1].text)}</div>
-                    </div>
-                  </div>
-                  <button type="button" class="fpSwitch ${state.uiPrefs.liveStatus ? "on" : ""}" id="fpLiveStatusToggle"></button>
-                </div>
-
-                <div class="fpToggleRow">
-                  <div class="fpToggleText">
-                    <div class="fpToggleTitle">Listes compactes</div>
-                    <div class="fpToggleHint">Réduit un peu la densité visuelle</div>
-                    <div class="fpSettingImpact">
-                      <div class="fpSettingImpactTitle">Effet</div>
-                      <div class="fpSettingImpactText">${esc(settingTips[2].text)}</div>
-                    </div>
-                  </div>
-                  <button type="button" class="fpSwitch ${state.uiPrefs.compactLists ? "on" : ""}" id="fpCompactListsToggle"></button>
-                </div>
-
-                <div class="fpToggleRow">
-                  <div class="fpToggleText">
-                    <div class="fpToggleTitle">Cartes avancées</div>
-                    <div class="fpToggleHint">Affiche plus de blocs analytiques</div>
-                    <div class="fpSettingImpact">
-                      <div class="fpSettingImpactTitle">Effet</div>
-                      <div class="fpSettingImpactText">${esc(settingTips[3].text)}</div>
-                    </div>
-                  </div>
-                  <button type="button" class="fpSwitch ${state.uiPrefs.showAdvancedCards ? "on" : ""}" id="fpAdvancedCardsToggle"></button>
-                </div>
+              <div class="fpField">
+                <label class="fpLabel" for="fpSettingsExtraEmails">Emails supplémentaires</label>
+                <input
+                  id="fpSettingsExtraEmails"
+                  class="fpInput"
+                  placeholder="mail@site.com, mail2@site.com"
+                  value="${esc(extraEmails)}"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
               </div>
 
-              <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Équipe / invitation</div>
-                <div class="fpSmall">Accès direct aux pages utiles.</div>
-                ${createInlineLinks([
-                  { href: "/invite-accept.html", label: "Invite accept" },
-                  { href: "/billing.html?return=%2Fdashboard.html%23overview", label: "Billing" },
-                  { href: "/addons.html", label: "Add-ons" },
-                ])}
+              <div class="fpDetailActions">
+                <button class="fpBtn fpBtnPrimary" id="fpSaveSettingsBtn" type="button">Sauvegarder</button>
               </div>
             </div>
 
-            <div class="fpCol fpColSide">
-              <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Informations du compte</div>
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Préférences interface</div>
 
-                <div class="fpAccountHero" style="margin-top:16px">
-                  <div class="fpAccountHeroLeft">
-                    <div class="fpCardKicker" style="margin-bottom:8px">Compte actif</div>
-                    <div class="fpBigValue">${esc(normalizeOrgName())}</div>
-                    <div class="fpSmall">Synchronisation live du workspace, du rôle et du plan courant.</div>
-                  </div>
-                  <div class="fpAccountHeroRight">
-                    <div class="fpAccountPlanChip">${esc(planLabel(me.plan))}</div>
+              <div class="fpToggleRow">
+                <div class="fpToggleText">
+                  <div class="fpToggleTitle">Thème automatique</div>
+                  <div class="fpToggleHint">Basé sur les préférences système du navigateur</div>
+                  <div class="fpSettingImpact">
+                    <div class="fpSettingImpactTitle">Effet</div>
+                    <div class="fpSettingImpactText">${esc(settingTips[0].text)}</div>
                   </div>
                 </div>
+                <button type="button" class="fpSwitch ${state.uiPrefs.themeAuto ? "on" : ""}" id="fpThemeAutoToggle"></button>
+              </div>
 
-                <div class="fpSettingsList" style="margin-top:18px">
-                  <div class="fpSettingsRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
-                  <div class="fpSettingsRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
-                  <div class="fpSettingsRow"><span>Rôle</span><strong>${esc(cap(me.role || "owner"))}</strong></div>
-                  <div class="fpSettingsRow"><span>Destinataires</span><strong>${esc(recipientsLabel(s.alertRecipients))}</strong></div>
-                  <div class="fpSettingsRow"><span>Essai</span><strong>${esc(trialLabel(me.trialEndsAt))}</strong></div>
-                  <div class="fpSettingsRow"><span>Dernière synchro</span><strong>${esc(state.lastLoadedAt ? formatDate(state.lastLoadedAt) : "Récente")}</strong></div>
+              <div class="fpToggleRow">
+                <div class="fpToggleText">
+                  <div class="fpToggleTitle">Statut temps réel</div>
+                  <div class="fpToggleHint">Affichage de l’état courant du dashboard</div>
+                  <div class="fpSettingImpact">
+                    <div class="fpSettingImpactTitle">Effet</div>
+                    <div class="fpSettingImpactText">${esc(settingTips[1].text)}</div>
+                  </div>
+                </div>
+                <button type="button" class="fpSwitch ${state.uiPrefs.liveStatus ? "on" : ""}" id="fpLiveStatusToggle"></button>
+              </div>
+
+              <div class="fpToggleRow">
+                <div class="fpToggleText">
+                  <div class="fpToggleTitle">Listes compactes</div>
+                  <div class="fpToggleHint">Réduit un peu la densité visuelle</div>
+                  <div class="fpSettingImpact">
+                    <div class="fpSettingImpactTitle">Effet</div>
+                    <div class="fpSettingImpactText">${esc(settingTips[2].text)}</div>
+                  </div>
+                </div>
+                <button type="button" class="fpSwitch ${state.uiPrefs.compactLists ? "on" : ""}" id="fpCompactListsToggle"></button>
+              </div>
+
+              <div class="fpToggleRow">
+                <div class="fpToggleText">
+                  <div class="fpToggleTitle">Cartes avancées</div>
+                  <div class="fpToggleHint">Affiche plus de blocs analytiques</div>
+                  <div class="fpSettingImpact">
+                    <div class="fpSettingImpactTitle">Effet</div>
+                    <div class="fpSettingImpactText">${esc(settingTips[3].text)}</div>
+                  </div>
+                </div>
+                <button type="button" class="fpSwitch ${state.uiPrefs.showAdvancedCards ? "on" : ""}" id="fpAdvancedCardsToggle"></button>
+              </div>
+            </div>
+
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Actions utiles</div>
+              ${createActionGrid(getSettingsExecutionCards())}
+            </div>
+
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Équipe / invitation</div>
+              <div class="fpSmall">Accès direct aux pages utiles.</div>
+              ${createInlineLinks([
+                { href: "/invite-accept.html", label: "Invite accept" },
+                { href: "/billing.html?return=%2Fdashboard.html%23overview", label: "Billing" },
+                { href: "/addons.html", label: "Add-ons" },
+              ])}
+            </div>
+          </div>
+
+          <div class="fpCol fpColSide">
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Informations du compte</div>
+
+              <div class="fpAccountHero" style="margin-top:16px">
+                <div class="fpAccountHeroLeft">
+                  <div class="fpCardKicker" style="margin-bottom:8px">Compte actif</div>
+                  <div class="fpBigValue">${esc(normalizeOrgName())}</div>
+                  <div class="fpSmall">Synchronisation live du workspace, du rôle et du plan courant.</div>
+                </div>
+                <div class="fpAccountHeroRight">
+                  <div class="fpAccountPlanChip">${esc(planLabel(me.plan))}</div>
                 </div>
               </div>
 
-              <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Add-ons détectés</div>
-                ${
-                  addons.length
-                    ? `<div class="fpRows">
-                        ${addons.map((a) => `
-                          <div class="fpRowCard">
-                            <div class="fpRowMain">
-                              <div class="fpRowTitle">${esc(a.label)}</div>
-                            </div>
-                            <div class="fpRowRight">
-                              <div class="fpAddonPill ${a.enabled ? "on" : "off"}">${esc(a.text)}</div>
-                            </div>
+              <div class="fpSettingsList" style="margin-top:18px">
+                <div class="fpSettingsRow"><span>Organisation</span><strong>${esc(normalizeOrgName())}</strong></div>
+                <div class="fpSettingsRow"><span>Plan</span><strong>${esc(planLabel(me.plan))}</strong></div>
+                <div class="fpSettingsRow"><span>Rôle</span><strong>${esc(cap(me.role || "owner"))}</strong></div>
+                <div class="fpSettingsRow"><span>Destinataires</span><strong>${esc(recipientsLabel(s.alertRecipients))}</strong></div>
+                <div class="fpSettingsRow"><span>Essai</span><strong>${esc(trialLabel(me.trialEndsAt))}</strong></div>
+                <div class="fpSettingsRow"><span>Dernière synchro</span><strong>${esc(state.lastLoadedAt ? formatDate(state.lastLoadedAt) : "Récente")}</strong></div>
+              </div>
+            </div>
+
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Add-ons détectés</div>
+              ${
+                addons.length
+                  ? `<div class="fpRows">
+                      ${addons.map((a) => `
+                        <div class="fpRowCard">
+                          <div class="fpRowMain">
+                            <div class="fpRowTitle">${esc(a.label)}</div>
                           </div>
-                        `).join("")}
-                      </div>`
-                    : `<div class="fpEmpty">Aucun add-on détecté.</div>`
-                }
-              </div>
+                          <div class="fpRowRight">
+                            <div class="fpAddonPill ${a.enabled ? "on" : "off"}">${esc(a.text)}</div>
+                          </div>
+                        </div>
+                      `).join("")}
+                    </div>`
+                  : `<div class="fpEmpty">Aucun add-on détecté.</div>`
+              }
+            </div>
 
-              <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Modules activés</div>
-                ${renderToolStateList(activeTools)}
-              </div>
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Modules activés</div>
+              ${renderToolStateList(activeTools)}
+            </div>
 
-              <div class="fpCardInner">
-                <div class="fpCardInnerTitle">Session / stabilité</div>
-                <div class="fpSmall">
-                  Le dashboard tente un refresh token proactif, vérifie la session au retour au premier plan
-                  et évite une redirection brutale trop rapide vers login.
-                </div>
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Ce que le plan débloque</div>
+              ${createMiniRows(getPlanSummaryCards())}
+            </div>
+
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle">Session / stabilité</div>
+              <div class="fpSmall">
+                Le dashboard tente un refresh token proactif, vérifie la session au retour au premier plan
+                et évite une redirection brutale trop rapide vers login.
               </div>
             </div>
           </div>
-        `
-      )}
-    `);
+        </div>
+      `
+    )}
+  `);
 
-    $("#fpSaveSettingsBtn")?.addEventListener("click", async () => {
-      const ok = await saveOrgSettings();
-      if (ok) loadData({ silent: true });
-    });
+  $("#fpSaveSettingsBtn")?.addEventListener("click", async () => {
+    const ok = await saveOrgSettings();
+    if (ok) loadData({ silent: true });
+  });
 
-    $("#fpThemeAutoToggle")?.addEventListener("click", () => toggleUiPref("themeAuto"));
-    $("#fpLiveStatusToggle")?.addEventListener("click", () => toggleUiPref("liveStatus"));
-    $("#fpCompactListsToggle")?.addEventListener("click", () => toggleUiPref("compactLists"));
-    $("#fpAdvancedCardsToggle")?.addEventListener("click", () => toggleUiPref("showAdvancedCards"));
-  }
-
+  $("#fpThemeAutoToggle")?.addEventListener("click", () => toggleUiPref("themeAuto"));
+  $("#fpLiveStatusToggle")?.addEventListener("click", () => toggleUiPref("liveStatus"));
+  $("#fpCompactListsToggle")?.addEventListener("click", () => toggleUiPref("compactLists"));
+  $("#fpAdvancedCardsToggle")?.addEventListener("click", () => toggleUiPref("showAdvancedCards"));
+}
   function openMissionPage(id) {
     const mission = state.missions.find((m) => m.id === id);
     if (!mission) return;
@@ -3943,43 +4841,197 @@ function startProactiveRefreshLoop() {
   }
 
   function bindGlobalActions() {
-    document.addEventListener("click", async (e) => {
-      const toggleBtn = e.target.closest("[data-mission-toggle]");
-      if (toggleBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleMission(toggleBtn.getAttribute("data-mission-toggle"));
-        renderRoute({ preserveScroll: true });
+  document.addEventListener("click", async (e) => {
+    const toggleBtn = e.target.closest("[data-mission-toggle]");
+    if (toggleBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleMission(toggleBtn.getAttribute("data-mission-toggle"));
+      renderRoute({ preserveScroll: true });
+      return;
+    }
+
+    const runBtn = e.target.closest("[data-mission-do]");
+    if (runBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      await runMission(runBtn.getAttribute("data-mission-do"));
+      renderRoute({ preserveScroll: true });
+      return;
+    }
+
+    const openBtn = e.target.closest("[data-mission-open]");
+    if (openBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      openMissionPage(openBtn.getAttribute("data-mission-open"));
+      return;
+    }
+
+    const billingBtn = e.target.closest("[data-go-billing]");
+    if (billingBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      goBillingPage();
+      return;
+    }
+
+    const quickBtn = e.target.closest("[data-quick-action]");
+    if (quickBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const action = quickBtn.getAttribute("data-quick-action");
+      const payload = quickBtn.getAttribute("data-quick-payload") || "";
+
+      if (action === "run_audit") {
+        const ok = await safeRunAudit();
+        if (ok) loadData({ silent: true });
         return;
       }
 
-      const runBtn = e.target.closest("[data-mission-do]");
-      if (runBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        await runMission(runBtn.getAttribute("data-mission-do"));
-        renderRoute({ preserveScroll: true });
+      if (action === "add_monitor") {
+        const ok = await safeAddMonitor();
+        if (ok) loadData({ silent: true });
         return;
       }
 
-      const openBtn = e.target.closest("[data-mission-open]");
-      if (openBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        openMissionPage(openBtn.getAttribute("data-mission-open"));
+      if (action === "export_audits") {
+        await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
         return;
       }
 
-      const billingBtn = e.target.closest("[data-go-billing]");
-      if (billingBtn) {
-        e.preventDefault();
-        e.stopPropagation();
+      if (action === "export_monitors") {
+        await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+        return;
+      }
+
+      if (action === "goto_reports") {
+        location.hash = "#reports";
+        return;
+      }
+
+      if (action === "goto_overview") {
+        location.hash = "#overview";
+        return;
+      }
+
+      if (action === "goto_audits") {
+        location.hash = "#audits";
+        return;
+      }
+
+      if (action === "goto_monitors") {
+        location.hash = "#monitors";
+        return;
+      }
+
+      if (action === "goto_local") {
+        location.hash = "#local-seo";
+        return;
+      }
+
+      if (action === "goto_competitors") {
+        location.hash = "#competitors";
+        return;
+      }
+
+      if (action === "goto_settings") {
+        location.hash = "#settings";
+        return;
+      }
+
+      if (action === "goto_team") {
+        location.hash = "#team";
+        return;
+      }
+
+      if (action === "open_invite") {
+        goInvitePage();
+        return;
+      }
+
+      if (action === "open_billing") {
         goBillingPage();
         return;
       }
-    });
-  }
 
+      if (action === "save_settings_ui") {
+        const ok = await saveOrgSettings();
+        if (ok) loadData({ silent: true });
+        return;
+      }
+
+      if (action === "create_audit_mission") {
+        addMissionFromTemplate(
+          payload ? `Traiter l’audit : ${payload}` : "Traiter un audit prioritaire",
+          "Audits",
+          "Élevé",
+          "goto_audits"
+        );
+        renderRoute({ preserveScroll: true });
+        return;
+      }
+
+      if (action === "create_competitor_mission") {
+        addMissionFromTemplate(
+          "Créer un plan d’attaque concurrent",
+          "Concurrents",
+          "Élevé",
+          "goto_competitors"
+        );
+        renderRoute({ preserveScroll: true });
+        return;
+      }
+
+      if (action === "create_local_mission") {
+        addMissionFromTemplate(
+          "Préparer un plan Local SEO",
+          "Local SEO",
+          "Élevé",
+          "goto_local"
+        );
+        renderRoute({ preserveScroll: true });
+        return;
+      }
+
+      if (action === "bulk_test_monitors") {
+        const visible = getFilteredMonitors().slice(0, 5);
+        if (!visible.length) {
+          setStatus("Aucun monitor visible à tester", "danger");
+          return;
+        }
+
+        setStatus("Test des monitors visibles…", "warn");
+
+        for (const monitor of visible) {
+          const id = normalizeMonitorId(monitor);
+          if (!id) continue;
+          try {
+            await safeTestMonitor(id);
+          } catch {}
+        }
+
+        await loadData({ silent: true });
+        setStatus("Tests monitors terminés — OK", "ok");
+        return;
+      }
+
+      if (action === "show_custom_domain_info") {
+        openHtmlModal({
+          title: "Domaine custom",
+          body: `
+            <div class="fpTextPanel">
+              L’add-on domaine custom est actif. La prochaine étape consiste à relier ce bloc
+              à un vrai champ backend / settings si tu veux une logique complète côté produit.
+            </div>
+          `
+        });
+        return;
+      }
+    }
+  });
+}
   function logout() {
     clearAuth();
     window.location.replace(LOGIN_URL);
