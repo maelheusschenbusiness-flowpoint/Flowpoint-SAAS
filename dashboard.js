@@ -1100,41 +1100,46 @@
    MODULES ACTIVÉS : centrage propre
 ------------------------------------------------- */
 .fpRows .fpRowCard{
-  display:flex !important;
-  flex-direction:column !important;
-  align-items:flex-start !important;
-  justify-content:flex-start !important;
-  gap:14px !important;
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) auto !important;
+  align-items:center !important;
+  column-gap:16px !important;
 }
 
 .fpRows .fpRowMain{
-  width:100% !important;
   min-width:0 !important;
+  align-self:center !important;
 }
 
 .fpRows .fpRowRight{
-  width:100% !important;
   display:flex !important;
   align-items:center !important;
-  justify-content:flex-start !important;
-  margin-top:2px !important;
+  justify-content:center !important;
+  align-self:center !important;
+  height:100% !important;
+  margin:0 !important;
+  padding:0 !important;
 }
 
 .fpAddonPill,
 .fpAddonPill.on,
+.fpAddonPill.off,
 .fpPlanBadge,
 .fpAccountPlanChip{
   display:inline-flex !important;
   align-items:center !important;
   justify-content:center !important;
+  align-self:center !important;
   vertical-align:middle !important;
   line-height:1 !important;
+  margin:0 !important;
 }
 
-.fpAddonPill.on{
-  min-height:44px !important;
-  height:44px !important;
-  padding:0 18px !important;
+.fpAddonPill.on,
+.fpAddonPill.off{
+  min-height:36px !important;
+  height:36px !important;
+  padding:0 12px !important;
   transform:none !important;
 }
         
