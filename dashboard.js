@@ -5824,72 +5824,84 @@ async function runMission(id) {
   }
 
   function renderRoute(options = {}) {
-    const {
-      scrollTop = false,
-      preserveScroll = false,
-    } = options;
+  const {
+    scrollTop = false,
+    preserveScroll = false,
+  } = options;
 
-    const previousWindowY = window.scrollY || 0;
-    const previousMainY = els.main?.scrollTop || 0;
-    const previousPageY = els.pageContainer?.scrollTop || 0;
+  const previousWindowY = window.scrollY || 0;
+  const previousMainY = els.main?.scrollTop || 0;
+  const previousPageY = els.pageContainer?.scrollTop || 0;
 
-    setActiveNav();
-    document.body.classList.toggle("fpCompactMode", !!state.uiPrefs.compactLists);
+  setActiveNav();
+  document.body.classList.toggle("fpCompactMode", !!state.uiPrefs.compactLists);
 
-    switch (state.route) {
-      case "#overview":
-        renderOverviewPage();
-        break;
-      case "#missions":
-        renderMissionsPage();
-        break;
-      case "#audits":
-        renderAuditsPage();
-        break;
-      case "#monitors":
-        renderMonitorsPage();
-        break;
-      case "#reports":
-        renderReportsPage();
-        break;
-      case "#competitors":
-        renderCompetitorsPage();
-        break;
-      case "#local-seo":
-        renderLocalSeoPage();
-        break;
-      case "#tools":
-        renderToolsPage();
-        break;
-      case "#team":
-        renderTeamPage();
-        break;
-      case "#billing":
-        renderBillingPage();
-        return;
-      case "#settings":
-        renderSettingsPage();
-        break;
-      default:
-        renderOverviewPage();
-        break;
-    }
-
-    if (preserveScroll) {
-      requestAnimationFrame(() => {
-        window.scrollTo(0, previousWindowY);
-        if (els.main) els.main.scrollTop = previousMainY;
-        if (els.pageContainer) els.pageContainer.scrollTop = previousPageY;
-      });
+  switch (state.route) {
+    case "#overview":
+      renderOverviewPage();
+      break;
+    case "#missions":
+      renderMissionsPage();
+      break;
+    case "#audits":
+      renderAuditsPage();
+      break;
+    case "#monitors":
+      renderMonitorsPage();
+      break;
+    case "#reports":
+      renderReportsPage();
+      break;
+    case "#competitors":
+      renderCompetitorsPage();
+      break;
+    case "#local-seo":
+      renderLocalSeoPage();
+      break;
+    case "#tools":
+      renderToolsPage();
+      break;
+    case "#team":
+      renderTeamPage();
+      break;
+    case "#calendar":
+      renderCalendarPage();
+      break;
+    case "#notes":
+      renderNotesPage();
+      break;
+    case "#chat":
+      renderChatPage();
+      break;
+    case "#map":
+      renderMapPage();
+      break;
+    case "#billing":
+      renderBillingPage();
       return;
-    }
-
-    if (scrollTop) {
-      requestAnimationFrame(() => {
-        scrollPageTop();
-      });
-    }
+    case "#settings":
+      renderSettingsPage();
+      break;
+    default:
+      renderOverviewPage();
+      break;
   }
+
+  if (preserveScroll) {
+    requestAnimationFrame(() => {
+      window.scrollTo(0, previousWindowY);
+      if (els.main) els.main.scrollTop = previousMainY;
+      if (els.pageContainer) els.pageContainer.scrollTop = previousPageY;
+    });
+    return;
+  }
+
+  if (scrollTop) {
+    requestAnimationFrame(() => {
+      scrollPageTop();
+    });
+  }
+}
 
   async function refreshTokenIfPossible() {
   if (state.auth.refreshInFlight) {
@@ -6237,18 +6249,18 @@ function startProactiveRefreshLoop() {
       e.preventDefault();
       e.stopPropagation();
 
-      const action = quickBtn.getAttribute("data-quick-action");
+      const action = quickBtn.getAttribute("data-quick-action") || "";
       const payload = quickBtn.getAttribute("data-quick-payload") || "";
 
       if (action === "run_audit") {
         const ok = await safeRunAudit();
-        if (ok) loadData({ silent: true });
+        if (ok) await loadData({ silent: true });
         return;
       }
 
       if (action === "add_monitor") {
         const ok = await safeAddMonitor();
-        if (ok) loadData({ silent: true });
+        if (ok) await loadData({ silent: true });
         return;
       }
 
@@ -6292,13 +6304,23 @@ function startProactiveRefreshLoop() {
         return;
       }
 
-      if (action === "goto_settings") {
-        location.hash = "#settings";
+      if (action === "goto_tools") {
+        location.hash = "#tools";
         return;
       }
 
       if (action === "goto_team") {
         location.hash = "#team";
+        return;
+      }
+
+      if (action === "goto_settings") {
+        location.hash = "#settings";
+        return;
+      }
+
+      if (action === "goto_missions") {
+        location.hash = "#missions";
         return;
       }
 
@@ -6314,7 +6336,7 @@ function startProactiveRefreshLoop() {
 
       if (action === "save_settings_ui") {
         const ok = await saveOrgSettings();
-        if (ok) loadData({ silent: true });
+        if (ok) await loadData({ silent: true });
         return;
       }
 
@@ -6351,6 +6373,39 @@ function startProactiveRefreshLoop() {
         return;
       }
 
+      if (action === "create_report_mission") {
+        addMissionFromTemplate(
+          "Préparer un rapport client",
+          "Rapports",
+          "Moyen",
+          "goto_reports"
+        );
+        renderRoute({ preserveScroll: true });
+        return;
+      }
+
+      if (action === "create_monitor_mission") {
+        addMissionFromTemplate(
+          "Stabiliser la surveillance d’un monitor",
+          "Monitoring",
+          "Élevé",
+          "goto_monitors"
+        );
+        renderRoute({ preserveScroll: true });
+        return;
+      }
+
+      if (action === "create_overview_mission") {
+        addMissionFromTemplate(
+          "Traiter un quick win du dashboard",
+          "Overview",
+          "Moyen",
+          "goto_overview"
+        );
+        renderRoute({ preserveScroll: true });
+        return;
+      }
+
       if (action === "bulk_test_monitors") {
         const visible = getFilteredMonitors().slice(0, 5);
         if (!visible.length) {
@@ -6372,6 +6427,7 @@ function startProactiveRefreshLoop() {
         setStatus("Tests monitors terminés — OK", "ok");
         return;
       }
+
       if (action === "scroll_quick_wins") {
         if (state.route !== "#overview") {
           location.hash = "#overview";
@@ -6385,6 +6441,7 @@ function startProactiveRefreshLoop() {
         }
         return;
       }
+
       if (action === "show_custom_domain_info") {
         openHtmlModal({
           title: "Domaine custom",
@@ -6397,64 +6454,75 @@ function startProactiveRefreshLoop() {
         });
         return;
       }
+
+      if (action === "calendar_add") {
+        const title = await openTextModal({
+          title: "Titre de l’événement",
+          placeholder: "Ex: Audit mensuel client",
+          confirmText: "Continuer"
+        });
+        if (!title) return;
+
+        const date = await openTextModal({
+          title: "Date de l’événement",
+          placeholder: "2026-04-15",
+          confirmText: "Ajouter"
+        });
+        if (!date) return;
+
+        const ok = addSimpleCalendarItem(title, date, "Tâche");
+        if (ok) renderRoute({ preserveScroll: true });
+        return;
+      }
+
+      if (action === "notes_add") {
+        const title = await openTextModal({
+          title: "Titre de la note",
+          placeholder: "Ex: Idée client",
+          confirmText: "Continuer"
+        });
+        if (!title) return;
+
+        const text = await openTextModal({
+          title: "Contenu de la note",
+          placeholder: "Écris le contenu...",
+          confirmText: "Ajouter"
+        });
+
+        addSimpleNote(title, text || "");
+        renderRoute({ preserveScroll: true });
+        return;
+      }
+
+      if (action === "chat_add") {
+        const text = await openTextModal({
+          title: "Nouveau message",
+          placeholder: "Écris un message...",
+          confirmText: "Envoyer"
+        });
+        if (!text) return;
+
+        const ok = addSimpleChatMessage(text);
+        if (ok) renderRoute({ preserveScroll: true });
+        return;
+      }
+    }
+
+    const toolToggleBtn = e.target.closest("[data-tool-toggle]");
+    if (toolToggleBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const toolId = toolToggleBtn.getAttribute("data-tool-toggle");
+      if (!toolId) return;
+
+      const next = !isToolActive(toolId);
+      setToolActive(toolId, next);
+      setStatus(next ? "Module activé — OK" : "Module désactivé — OK", "ok");
+      renderRoute({ preserveScroll: true });
+      return;
     }
   });
-}
-  if (action === "goto_missions") {
-  location.hash = "#missions";
-  return;
-}
-
-if (action === "calendar_add") {
-  const title = await openTextModal({
-    title: "Titre de l’événement",
-    placeholder: "Ex: Audit mensuel client",
-    confirmText: "Continuer"
-  });
-  if (!title) return;
-
-  const date = await openTextModal({
-    title: "Date de l’événement",
-    placeholder: "2026-04-15",
-    confirmText: "Ajouter"
-  });
-  if (!date) return;
-
-  const ok = addSimpleCalendarItem(title, date, "Tâche");
-  if (ok) renderRoute({ preserveScroll: true });
-  return;
-}
-
-if (action === "notes_add") {
-  const title = await openTextModal({
-    title: "Titre de la note",
-    placeholder: "Ex: Idée client",
-    confirmText: "Continuer"
-  });
-  if (!title) return;
-
-  const text = await openTextModal({
-    title: "Contenu de la note",
-    placeholder: "Écris le contenu...",
-    confirmText: "Ajouter"
-  });
-
-  addSimpleNote(title, text || "");
-  renderRoute({ preserveScroll: true });
-  return;
-}
-
-if (action === "chat_add") {
-  const text = await openTextModal({
-    title: "Nouveau message",
-    placeholder: "Écris un message...",
-    confirmText: "Envoyer"
-  });
-  if (!text) return;
-
-  const ok = addSimpleChatMessage(text);
-  if (ok) renderRoute({ preserveScroll: true });
-  return;
 }
   function logout() {
     clearAuth();
