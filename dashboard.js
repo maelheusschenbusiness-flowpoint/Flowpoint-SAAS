@@ -2609,6 +2609,172 @@ function buildSupportCards() {
     }
   ];
 }
+  function getStorageJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function setStorageJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
+function getNotesItems() {
+  return getStorageJson("fp_notes_items_v1", [
+    {
+      id: "n1",
+      title: "Idées quick wins",
+      text: "Créer plus de pages locales sur les zones rentables.",
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: "n2",
+      title: "Suivi client",
+      text: "Préparer un rapport avant / après pour mieux vendre la rétention.",
+      updatedAt: new Date().toISOString()
+    }
+  ]);
+}
+
+function saveNotesItems(items) {
+  setStorageJson("fp_notes_items_v1", items);
+}
+
+function getChatMessages() {
+  return getStorageJson("fp_chat_messages_v1", [
+    {
+      id: "c1",
+      author: "System",
+      text: "Canal interne simple prêt. Utilise-le pour laisser des messages rapides.",
+      createdAt: new Date().toISOString()
+    }
+  ]);
+}
+
+function saveChatMessages(items) {
+  setStorageJson("fp_chat_messages_v1", items);
+}
+
+function getCalendarItems() {
+  return getStorageJson("fp_calendar_items_v1", [
+    {
+      id: "cal1",
+      title: "Audit mensuel client",
+      date: new Date().toISOString().slice(0, 10),
+      type: "Audit"
+    },
+    {
+      id: "cal2",
+      title: "Revue monitors",
+      date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+      type: "Monitoring"
+    }
+  ]);
+}
+
+function saveCalendarItems(items) {
+  setStorageJson("fp_calendar_items_v1", items);
+}
+
+function addSimpleNote(title, text) {
+  const items = getNotesItems();
+  items.unshift({
+    id: `note_${Date.now()}`,
+    title: title || "Nouvelle note",
+    text: text || "",
+    updatedAt: new Date().toISOString()
+  });
+  saveNotesItems(items);
+  setStatus("Note ajoutée — OK", "ok");
+}
+
+function deleteSimpleNote(id) {
+  const items = getNotesItems().filter((x) => x.id !== id);
+  saveNotesItems(items);
+  setStatus("Note supprimée — OK", "ok");
+}
+
+function addSimpleChatMessage(text) {
+  if (!text) return false;
+  const items = getChatMessages();
+  items.push({
+    id: `chat_${Date.now()}`,
+    author: "Vous",
+    text,
+    createdAt: new Date().toISOString()
+  });
+  saveChatMessages(items);
+  setStatus("Message envoyé — OK", "ok");
+  return true;
+}
+
+function addSimpleCalendarItem(title, date, type = "Tâche") {
+  if (!title || !date) return false;
+  const items = getCalendarItems();
+  items.unshift({
+    id: `cal_${Date.now()}`,
+    title,
+    date,
+    type
+  });
+  saveCalendarItems(items);
+  setStatus("Événement ajouté — OK", "ok");
+  return true;
+}
+
+function deleteSimpleCalendarItem(id) {
+  const items = getCalendarItems().filter((x) => x.id !== id);
+  saveCalendarItems(items);
+  setStatus("Événement supprimé — OK", "ok");
+}
+
+function getMapTargets() {
+  return pickLibrary(
+    [
+      {
+        name: "Concurrent Alpha",
+        city: "Liège",
+        rating: "4.6",
+        reviews: "124 avis",
+        site: "alpha-example.be",
+        tag: "Fort"
+      },
+      {
+        name: "Concurrent Beta",
+        city: "Verviers",
+        rating: "4.2",
+        reviews: "67 avis",
+        site: "beta-example.be",
+        tag: "Moyen"
+      },
+      {
+        name: "Concurrent Gamma",
+        city: "Spa",
+        rating: "4.8",
+        reviews: "211 avis",
+        site: "gamma-example.be",
+        tag: "Très fort"
+      },
+      {
+        name: "Concurrent Delta",
+        city: "Bruxelles",
+        rating: "4.1",
+        reviews: "52 avis",
+        site: "delta-example.be",
+        tag: "À surveiller"
+      }
+    ],
+    4,
+    getDaySeed("map_targets")
+  );
+}
   function renderOverviewPage() {
   const me = state.me || {};
   const ov = state.overview || {};
@@ -3256,7 +3422,9 @@ function buildSupportCards() {
   const avgScore = allAudits.length
     ? Math.round(allAudits.reduce((sum, a) => sum + Number(a.score || 0), 0) / allAudits.length)
     : 0;
+
   const axes = getAuditPriorityCards();
+
   const sellingChecks = pickLibrary(
     [
       { title: "Diagnostic clair", text: "Le client comprend où il perd de la visibilité." },
@@ -3265,9 +3433,49 @@ function buildSupportCards() {
       { title: "Livrables exploitables", text: "Les exports servent autant en interne qu’en client final." },
       { title: "Lecture business", text: "Le discours devient moins technique et plus convaincant." },
       { title: "Projection de gains", text: "Le client voit ce qu’il peut gagner, pas seulement ce qui manque." },
+      { title: "Vision premium", text: "Une restitution propre augmente fortement la valeur perçue." },
+      { title: "Suivi crédible", text: "Le client voit une vraie progression et pas seulement une analyse ponctuelle." }
     ],
     4,
     getDaySeed("audit_selling")
+  );
+
+  const executionCards = typeof getAuditExecutionCards === "function"
+    ? getAuditExecutionCards()
+    : [
+        {
+          title: "Créer une mission d’audit",
+          text: "Ajoute une tâche exploitable dans la checklist.",
+          cta: "Créer mission",
+          action: "create_audit_mission",
+          tag: "MISSION"
+        },
+        {
+          title: "Relancer un audit",
+          text: "Repars directement sur une nouvelle analyse SEO.",
+          cta: "Lancer audit",
+          action: "run_audit",
+          tag: "SEO"
+        },
+        {
+          title: "Transformer en rapport",
+          text: "Passe ensuite sur Rapports pour valoriser le résultat.",
+          cta: "Voir rapports",
+          action: "goto_reports",
+          tag: "REPORT",
+          btnClass: "fpBtnGhost"
+        }
+      ];
+
+  const scaleCards = pickLibrary(
+    [
+      { title: "Priorisation multi-sites", text: "Comparer plus facilement plusieurs audits pour savoir quoi traiter en premier.", badge: "SCALE" },
+      { title: "Lecture client-ready", text: "Transformer les audits en support clair pour un client ou une équipe.", badge: "CLIENT" },
+      { title: "Pipeline d’actions", text: "Passer plus vite de l’audit à la mission puis au rapport.", badge: "FLOW" },
+      { title: "Rétention", text: "Une bonne restitution audit aide à garder le client plus longtemps.", badge: "VALUE" }
+    ],
+    hasPlan("pro") ? 4 : 2,
+    getDaySeed("audit_scale_cards")
   );
 
   setPage(`
@@ -3312,7 +3520,7 @@ function buildSupportCards() {
           "Actions immédiates",
           "Audit exécutable",
           "Plus d’actions utiles directement depuis la page audits.",
-          createActionGrid(getAuditExecutionCards())
+          createActionGrid(executionCards)
         )}
 
         ${createSectionCard(
@@ -3338,7 +3546,14 @@ function buildSupportCards() {
                     <div>${createBadge(a.status === "ok" ? "up" : "down")}</div>
                     <div class="fpTableActions">
                       <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-audit-detail="${esc(normalizeAuditId(a))}">Détail</button>
-                      <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-quick-action="create_audit_mission" data-quick-payload="${esc(a.url || "Audit")}" >Mission</button>
+                      <button
+                        class="fpBtn fpBtnSoft fpBtnSmall"
+                        type="button"
+                        data-quick-action="create_audit_mission"
+                        data-quick-payload="${esc(a.url || "Audit")}"
+                      >
+                        Mission
+                      </button>
                       ${
                         hasPlan("pro")
                           ? `<a class="fpBtn fpBtnSoft fpBtnSmall" href="/api/audits/${esc(normalizeAuditId(a))}/pdf" target="_blank" rel="noopener">PDF</a>`
@@ -3357,6 +3572,13 @@ function buildSupportCards() {
           "Axes de progression prioritaires",
           "Recommandations qui renforcent la valeur du produit.",
           renderPriorityList(axes)
+        )}
+
+        ${createSectionCard(
+          "Scalabilité",
+          "Pourquoi cette page devient puissante",
+          "Plus le SaaS monte en gamme, plus cette page peut servir de moteur d’exécution.",
+          createMiniRows(scaleCards)
         )}
       </div>
 
@@ -3404,6 +3626,11 @@ function buildSupportCards() {
               title: "Quoi faire ensuite",
               text: "Audit → mission → rapport : c’est le meilleur enchaînement commercial.",
               badge: "FLOW"
+            },
+            {
+              title: "Capacité audits",
+              text: `${state.me?.usage?.audits?.used ?? 0}/${state.me?.usage?.audits?.limit ?? 0} utilisés`,
+              badge: "QUOTA"
             }
           ])
         )}
@@ -3420,7 +3647,7 @@ function buildSupportCards() {
 
   $("#fpAuditsRunBtn")?.addEventListener("click", async () => {
     const ok = await safeRunAudit();
-    if (ok) loadData({ silent: true });
+    if (ok) await loadData({ silent: true });
   });
 
   $("#fpAuditsExportBtn")?.addEventListener("click", async () => {
@@ -3449,10 +3676,11 @@ function buildSupportCards() {
   });
 }
 
-  function renderMonitorsPage() {
+function renderMonitorsPage() {
   const allMonitors = Array.isArray(state.monitors) ? state.monitors : [];
   const monitors = getFilteredMonitors();
   const health = getMonitorHealthBuckets();
+
   const monitoringWhyCards = pickLibrary(
     [
       { title: "Prévention", text: "Détecter un problème avant qu’il ne coûte du trafic ou des leads." },
@@ -3461,6 +3689,8 @@ function buildSupportCards() {
       { title: "Scalabilité", text: "La même logique peut ensuite s’appliquer à plus de clients et plus de sites." },
       { title: "Tranquillité client", text: "Le client se sent suivi même hors des audits ponctuels." },
       { title: "Service premium", text: "Le monitoring donne une vraie épaisseur opérationnelle au produit." },
+      { title: "Lecture d’incidents", text: "Les incidents récents rendent la plateforme plus crédible." },
+      { title: "Couche ops", text: "Ce module donne un vrai aspect opérationnel au SaaS." }
     ],
     4,
     getDaySeed("monitoring_why")
@@ -3474,6 +3704,33 @@ function buildSupportCards() {
       text: `Incident détecté · ${formatDate(m.lastCheckedAt)}`,
       badge: "DOWN"
     }));
+
+  const executionCards = typeof getMonitorExecutionCards === "function"
+    ? getMonitorExecutionCards()
+    : [
+        {
+          title: "Tester les monitors visibles",
+          text: "Lance un test rapide sur les éléments affichés.",
+          cta: "Tester tous",
+          action: "bulk_test_monitors",
+          tag: "BULK"
+        },
+        {
+          title: "Créer un monitor",
+          text: "Ajoute une nouvelle URL à surveiller.",
+          cta: "Créer monitor",
+          action: "add_monitor",
+          tag: "UPTIME"
+        },
+        {
+          title: "Configurer les alertes",
+          text: "Passe ensuite par Paramètres pour finaliser la réception email.",
+          cta: "Paramètres",
+          action: "goto_settings",
+          tag: "ALERT",
+          btnClass: "fpBtnGhost"
+        }
+      ];
 
   setPage(`
     ${createSectionCard(
@@ -3519,7 +3776,7 @@ function buildSupportCards() {
           "Actions immédiates",
           "Pilotage opérationnel",
           "Des actions réelles au lieu d’une simple lecture de statut.",
-          createActionGrid(getMonitorExecutionCards())
+          createActionGrid(executionCards)
         )}
 
         ${createSectionCard(
@@ -3659,7 +3916,7 @@ function buildSupportCards() {
 
   $("#fpAddMonitorBtn")?.addEventListener("click", async () => {
     const ok = await safeAddMonitor();
-    if (ok) loadData({ silent: true });
+    if (ok) await loadData({ silent: true });
   });
 
   $("#fpExportMonitorsBtn")?.addEventListener("click", async () => {
@@ -3685,7 +3942,7 @@ function buildSupportCards() {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-monitor-test");
       const ok = await safeTestMonitor(id);
-      if (ok) loadData({ silent: true });
+      if (ok) await loadData({ silent: true });
     });
   });
 
@@ -3693,7 +3950,7 @@ function buildSupportCards() {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-monitor-delete");
       const ok = await safeDeleteMonitor(id);
-      if (ok) loadData({ silent: true });
+      if (ok) await loadData({ silent: true });
     });
   });
 
@@ -3709,7 +3966,8 @@ function buildSupportCards() {
     });
   });
 }
-  function renderReportsPage() {
+
+function renderReportsPage() {
   const auditsCount = Array.isArray(state.audits) ? state.audits.length : 0;
   const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
   const usage = state.me?.usage || {};
@@ -3731,6 +3989,32 @@ function buildSupportCards() {
   }));
 
   const formatCards = getReportFormatCards();
+
+  const executionCards = typeof getReportExecutionCards === "function"
+    ? getReportExecutionCards()
+    : [
+        {
+          title: "Préparer un rapport audits",
+          text: "Commence par sortir les données SEO pour ton livrable.",
+          cta: "Exporter audits",
+          action: "export_audits",
+          tag: "SEO"
+        },
+        {
+          title: "Préparer un rapport monitors",
+          text: "Ajoute la partie disponibilité et incidents.",
+          cta: "Exporter monitors",
+          action: "export_monitors",
+          tag: "UPTIME"
+        },
+        {
+          title: "Créer une mission rapport",
+          text: "Ajoute une tâche de restitution dans la checklist.",
+          cta: "Créer mission",
+          action: "create_report_mission",
+          tag: "MISSION"
+        }
+      ];
 
   setPage(`
     ${createSectionCard(
@@ -3780,7 +4064,7 @@ function buildSupportCards() {
           "Actions immédiates",
           "Génération orientée client",
           "Des blocs qui rendent la page rapports plus réellement utile.",
-          createActionGrid(getReportExecutionCards())
+          createActionGrid(executionCards)
         )}
 
         ${createSectionCard(
@@ -3876,9 +4160,88 @@ function buildSupportCards() {
   });
 }
   function renderCompetitorsPage() {
-  const benchmarkRows = pickLibrary(libraries.competitorBenchmarks, 4, getDaySeed(`benchmark_${state.rangeDays}`));
+  const benchmarkRows = pickLibrary(
+    libraries.competitorBenchmarks,
+    4,
+    getDaySeed(`benchmark_${state.rangeDays}`)
+  );
+
   const whyCards = getCompetitorWhyCards();
   const actionCards = getCompetitorActionCards();
+
+  const executionCards = typeof getCompetitorExecutionCards === "function"
+    ? getCompetitorExecutionCards()
+    : [
+        {
+          title: "Créer une mission concurrent",
+          text: "Ajoute une tâche exploitable depuis le benchmark.",
+          cta: "Créer mission",
+          action: "create_competitor_mission",
+          tag: "MISSION"
+        },
+        {
+          title: "Basculer vers Local SEO",
+          text: "Très utile si l’écart se joue sur les villes et zones.",
+          cta: "Ouvrir Local SEO",
+          action: "goto_local",
+          tag: "LOCAL",
+          btnClass: "fpBtnGhost"
+        },
+        {
+          title: "Préparer un rapport benchmark",
+          text: "Passe ensuite sur Rapports pour transformer ça en livrable.",
+          cta: "Voir rapports",
+          action: "goto_reports",
+          tag: "REPORT",
+          btnClass: "fpBtnGhost"
+        }
+      ];
+
+  const compareBlocks = pickLibrary(
+    [
+      {
+        title: "Écart de couverture locale",
+        text: "Comparer rapidement les zones ou villes que tes concurrents couvrent mieux.",
+        badge: "LOCAL"
+      },
+      {
+        title: "Écart d’offre",
+        text: "Voir si la structure d’offres concurrentes est plus claire ou plus complète.",
+        badge: "OFFER"
+      },
+      {
+        title: "Écart de confiance",
+        text: "Mesurer les preuves, signaux rassurants et éléments différenciants visibles.",
+        badge: "TRUST"
+      },
+      {
+        title: "Écart de lisibilité",
+        text: "Comparer la clarté des pages services et la hiérarchie de contenu.",
+        badge: "UX"
+      }
+    ],
+    hasPlan("pro") ? 4 : 3,
+    getDaySeed("competitor_compare_blocks")
+  );
+
+  const advancedBlocks = hasPlan("pro")
+    ? pickLibrary(
+        [
+          {
+            title: "Plan d’attaque priorisé",
+            text: "Transformer les écarts détectés en plan d’actions hiérarchisé.",
+            badge: "PRO"
+          },
+          {
+            title: "Lecture client-ready",
+            text: "Présenter les différences concurrentes de manière plus claire et plus vendable.",
+            badge: "PREMIUM"
+          }
+        ],
+        2,
+        getDaySeed("competitor_advanced_blocks")
+      )
+    : [];
 
   setPage(`
     ${createSectionCard(
@@ -3912,7 +4275,7 @@ function buildSupportCards() {
           "Actions concrètes",
           "Transformer les écarts en plan",
           "Le benchmark doit aussi servir à agir.",
-          createActionGrid(getCompetitorExecutionCards())
+          createActionGrid(executionCards)
         )}
 
         ${createSectionCard(
@@ -3921,6 +4284,24 @@ function buildSupportCards() {
           "Le client voit pourquoi il doit continuer à investir.",
           renderPriorityList(whyCards)
         )}
+
+        ${createSectionCard(
+          "Comparaisons utiles",
+          "Axes à analyser en priorité",
+          "Des blocs concrets qui rendent la page plus exploitable.",
+          createMiniRows(compareBlocks)
+        )}
+
+        ${
+          advancedBlocks.length
+            ? createSectionCard(
+                "Mode avancé",
+                "Lecture premium concurrentielle",
+                "Blocs supplémentaires visibles sur les plans supérieurs.",
+                createMiniRows(advancedBlocks)
+              )
+            : ""
+        }
       </div>
 
       <div class="fpCol fpColSide">
@@ -3930,13 +4311,33 @@ function buildSupportCards() {
           "Des écarts exploitables rapidement.",
           renderCheckGrid(actionCards)
         )}
+
+        ${createSectionCard(
+          "Usage",
+          "Comment utiliser cette page",
+          "Benchmark → mission → local SEO → rapport.",
+          createMiniRows([
+            {
+              title: "Créer une mission",
+              text: "Utilise cette page pour injecter des actions concrètes dans la checklist.",
+              badge: "FLOW"
+            },
+            {
+              title: "Comparer puis cibler",
+              text: "Les écarts doivent ensuite nourrir Local SEO, Audits ou Rapports.",
+              badge: "ACTION"
+            }
+          ])
+        )}
       </div>
     </div>
   `);
 }
-  function renderLocalSeoPage() {
+
+function renderLocalSeoPage() {
   const axes = getLocalAxisCards();
   const businessCards = getLocalBusinessCards();
+
   const simpleCards = pickLibrary(
     [
       { title: "Visibilité concrète", text: "Le client comprend tout de suite ce que le local SEO change." },
@@ -3947,6 +4348,72 @@ function buildSupportCards() {
     3,
     getDaySeed("local_simple")
   );
+
+  const executionCards = typeof getLocalExecutionCards === "function"
+    ? getLocalExecutionCards()
+    : [
+        {
+          title: "Créer une mission locale",
+          text: "Ajoute une vraie tâche liée aux villes, zones ou pages locales.",
+          cta: "Créer mission",
+          action: "create_local_mission",
+          tag: "MISSION"
+        },
+        {
+          title: "Voir les concurrents",
+          text: "Très utile pour relier l’analyse locale à la comparaison marché.",
+          cta: "Voir concurrents",
+          action: "goto_competitors",
+          tag: "COMP",
+          btnClass: "fpBtnGhost"
+        }
+      ];
+
+  const localOpsCards = pickLibrary(
+    [
+      {
+        title: "Zones rentables à pousser",
+        text: "Repérer les villes et zones les plus intéressantes pour la conversion.",
+        badge: "ZONE"
+      },
+      {
+        title: "Pages locales à créer",
+        text: "Identifier rapidement les prochaines pages ville/service à lancer.",
+        badge: "PAGES"
+      },
+      {
+        title: "Fiche locale à renforcer",
+        text: "Améliorer Google Business Profile, cohérence locale et preuves visibles.",
+        badge: "GBP"
+      },
+      {
+        title: "Intentions proches de l’achat",
+        text: "Cibler les recherches locales les plus proches d’une prise de contact.",
+        badge: "LEADS"
+      }
+    ],
+    hasPlan("pro") ? 4 : 3,
+    getDaySeed("local_ops_cards")
+  );
+
+  const premiumLocalCards = hasPlan("pro")
+    ? pickLibrary(
+        [
+          {
+            title: "Lecture multi-zone",
+            text: "Comparer plusieurs zones prioritaires pour mieux scaler la stratégie locale.",
+            badge: "PRO"
+          },
+          {
+            title: "Projection business",
+            text: "Mieux relier le local SEO à la génération de leads et au reporting client.",
+            badge: "VALUE"
+          }
+        ],
+        2,
+        getDaySeed("local_premium_cards")
+      )
+    : [];
 
   setPage(`
     ${createSectionCard(
@@ -3962,7 +4429,7 @@ function buildSupportCards() {
           "Actions concrètes",
           "Local SEO exécutable",
           "Des blocs plus utiles que de simples conseils passifs.",
-          createActionGrid(getLocalExecutionCards())
+          createActionGrid(executionCards)
         )}
 
         ${createSectionCard(
@@ -3976,13 +4443,37 @@ function buildSupportCards() {
           "Lecture terrain",
           "Autres angles utiles",
           "Un peu plus de matière pour rendre la page plus riche.",
-          renderCheckGrid(pickLibrary([
-            { title: "Couverture des zones rentables", text: "Permet de montrer clairement où l’offre doit être poussée." },
-            { title: "Fiche locale + site", text: "Le lien entre les deux renforce la cohérence perçue." },
-            { title: "Intentions de proximité", text: "Très utile pour capter des recherches prêtes à convertir." },
-            { title: "Réassurance locale", text: "Les preuves locales inspirent plus vite confiance." }
-          ], 3, getDaySeed("local_extra")))
+          renderCheckGrid(
+            pickLibrary(
+              [
+                { title: "Couverture des zones rentables", text: "Permet de montrer clairement où l’offre doit être poussée." },
+                { title: "Fiche locale + site", text: "Le lien entre les deux renforce la cohérence perçue." },
+                { title: "Intentions de proximité", text: "Très utile pour capter des recherches prêtes à convertir." },
+                { title: "Réassurance locale", text: "Les preuves locales inspirent plus vite confiance." }
+              ],
+              3,
+              getDaySeed("local_extra")
+            )
+          )
         )}
+
+        ${createSectionCard(
+          "Pilotage local",
+          "Blocs opérationnels",
+          "Ces éléments rendent la page plus exploitable au quotidien.",
+          createMiniRows(localOpsCards)
+        )}
+
+        ${
+          premiumLocalCards.length
+            ? createSectionCard(
+                "Mode avancé",
+                "Blocs premium locaux",
+                "Visible sur les plans supérieurs.",
+                createMiniRows(premiumLocalCards)
+              )
+            : ""
+        }
       </div>
 
       <div class="fpCol fpColSide">
@@ -3992,12 +4483,32 @@ function buildSupportCards() {
           "Le local SEO est une brique très facile à valoriser.",
           renderCheckGrid(simpleCards)
         )}
+
+        ${createSectionCard(
+          "Usage",
+          "Comment exploiter cette page",
+          "Local SEO → mission → concurrents → rapports.",
+          createMiniRows([
+            {
+              title: "Créer des missions locales",
+              text: "Injecte les prochaines villes ou zones à traiter dans la checklist.",
+              badge: "FLOW"
+            },
+            {
+              title: "Préparer un plan scalable",
+              text: "Une bonne logique locale aide fortement à scaler l’offre sur plusieurs zones.",
+              badge: "SCALE"
+            }
+          ])
+        )}
       </div>
     </div>
   `);
 }
-  function renderToolsPage() {
+
+function renderToolsPage() {
   const tools = getToolCards();
+
   const benefits = pickLibrary(
     [
       { title: "Centralisation", text: "SEO, monitoring, local, reporting et équipe au même endroit." },
@@ -4009,7 +4520,37 @@ function buildSupportCards() {
     3,
     getDaySeed("tools_benefits")
   );
+
   const activeTools = getActiveToolCards();
+  const moduleImpactCards = typeof getModuleImpactCards === "function" ? getModuleImpactCards() : [];
+
+  const addonImpactCards = pickLibrary(
+    [
+      {
+        title: hasAddon("customDomain") ? "Custom domain visible" : "Custom domain inactif",
+        text: hasAddon("customDomain")
+          ? "Le compte est prêt à afficher une logique de domaine personnalisé."
+          : "Aucune logique domaine custom active sur ce compte.",
+        badge: hasAddon("customDomain") ? "DOMAIN" : "OFF"
+      },
+      {
+        title: hasAddon("prioritySupport") ? "Priority support actif" : "Priority support inactif",
+        text: hasAddon("prioritySupport")
+          ? "Une couche support premium peut être mise en avant."
+          : "Le support prioritaire n’est pas activé.",
+        badge: hasAddon("prioritySupport") ? "VIP" : "OFF"
+      },
+      {
+        title: hasAddon("monitorsPack50") ? "Monitors +50 actif" : "Monitors +50 inactif",
+        text: hasAddon("monitorsPack50")
+          ? "Le compte peut scaler plus fortement sur le monitoring."
+          : "Aucune extension monitors supplémentaire détectée.",
+        badge: hasAddon("monitorsPack50") ? "ON" : "OFF"
+      }
+    ],
+    3,
+    getDaySeed("tools_addon_impact_cards")
+  );
 
   setPage(`
     ${createSectionCard(
@@ -4066,13 +4607,24 @@ function buildSupportCards() {
           "Impact réel",
           "Ce que l’activation change",
           "Un module actif injecte des blocs utiles dans les pages concernées.",
-          createMiniRows(getModuleImpactCards().length ? getModuleImpactCards() : [
-            {
-              title: "Aucun module enrichissant actif",
-              text: "Active un module pour faire apparaître plus de blocs dans les pages concernées.",
-              badge: "OFF"
-            }
-          ])
+          createMiniRows(
+            moduleImpactCards.length
+              ? moduleImpactCards
+              : [
+                  {
+                    title: "Aucun module enrichissant actif",
+                    text: "Active un module pour faire apparaître plus de blocs dans les pages concernées.",
+                    badge: "OFF"
+                  }
+                ]
+          )
+        )}
+
+        ${createSectionCard(
+          "Impact add-ons",
+          "Ce que les options changent",
+          "Les add-ons doivent aussi être lisibles ici.",
+          createMiniRows(addonImpactCards)
         )}
       </div>
 
@@ -4088,11 +4640,35 @@ function buildSupportCards() {
           "Projection",
           "Ce que ressent le client",
           "Une plateforme plus riche inspire plus de confiance.",
-          renderCheckGrid(pickLibrary([
-            { title: "Offre plus solide", text: "Plus de briques visibles rendent l’offre plus crédible." },
-            { title: "Produit moins remplaçable", text: "Un ensemble cohérent est plus difficile à substituer." },
-            { title: "Montée en gamme", text: "L’activation de modules soutient naturellement les plans plus élevés." }
-          ], 3, getDaySeed("tools_projection")))
+          renderCheckGrid(
+            pickLibrary(
+              [
+                { title: "Offre plus solide", text: "Plus de briques visibles rendent l’offre plus crédible." },
+                { title: "Produit moins remplaçable", text: "Un ensemble cohérent est plus difficile à substituer." },
+                { title: "Montée en gamme", text: "L’activation de modules soutient naturellement les plans plus élevés." }
+              ],
+              3,
+              getDaySeed("tools_projection")
+            )
+          )
+        )}
+
+        ${createSectionCard(
+          "Usage",
+          "Comment exploiter cette page",
+          "Active ici, puis vérifie les effets dans les autres pages du dashboard.",
+          createMiniRows([
+            {
+              title: "Modules",
+              text: "Un module actif doit enrichir Overview, Audits, Monitors, Rapports ou Équipe.",
+              badge: "FLOW"
+            },
+            {
+              title: "Add-ons",
+              text: "Les add-ons doivent aussi modifier la lecture, les quotas ou les blocs disponibles.",
+              badge: "ADDON"
+            }
+          ])
         )}
       </div>
     </div>
@@ -4108,9 +4684,377 @@ function buildSupportCards() {
     });
   });
 }
+  function renderCalendarPage() {
+  const items = getCalendarItems()
+    .slice()
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
+  const calendarCards = pickLibrary(
+    [
+      {
+        title: "Planifier les audits",
+        text: "Un calendrier rend le SaaS plus structuré et plus crédible.",
+        badge: "AUDIT"
+      },
+      {
+        title: "Suivre les revues client",
+        text: "Très utile pour garder un rythme mensuel de reporting.",
+        badge: "CLIENT"
+      },
+      {
+        title: "Coordonner l’équipe",
+        text: "Les tâches deviennent plus visibles quand elles sont datées.",
+        badge: "TEAM"
+      },
+      {
+        title: "Scalabilité",
+        text: "Plus tu as de clients, plus ce bloc devient utile.",
+        badge: "SCALE"
+      }
+    ],
+    hasPlan("pro") ? 4 : 3,
+    getDaySeed("calendar_cards")
+  );
+
+  setPage(`
+    ${createSectionCard(
+      "Calendrier",
+      "Planning simple",
+      "Planifie audits, suivis client, revues monitoring et actions internes.",
+      createActionGrid([
+        {
+          title: "Ajouter un événement",
+          text: "Crée une nouvelle ligne dans le planning.",
+          cta: "Ajouter",
+          action: "calendar_add",
+          tag: "NEW"
+        },
+        {
+          title: "Créer un audit planifié",
+          text: "Passe ensuite sur audits pour l’exécution.",
+          cta: "Voir audits",
+          action: "goto_audits",
+          tag: "AUDIT",
+          btnClass: "fpBtnGhost"
+        }
+      ])
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Événements",
+          "Planning enregistré",
+          "Version simple mais vraiment utile.",
+          items.length
+            ? `
+              <div class="fpRows">
+                ${items.map((item) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(item.title)}</div>
+                      <div class="fpRowMeta">${esc(item.date)} · ${esc(item.type || "Tâche")}</div>
+                    </div>
+                    <div class="fpRowRight">
+                      <button class="fpBtn fpBtnDanger fpBtnSmall" type="button" data-calendar-delete="${esc(item.id)}">Supprimer</button>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucun événement pour le moment.")
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Pourquoi c’est utile",
+          "Valeur du calendrier",
+          "Ce bloc ajoute une vraie logique d’organisation au SaaS.",
+          createMiniRows(calendarCards)
+        )}
+      </div>
+    </div>
+  `);
+
+  $$("[data-calendar-delete]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      deleteSimpleCalendarItem(btn.getAttribute("data-calendar-delete"));
+      renderRoute({ preserveScroll: true });
+    });
+  });
+}
+
+function renderNotesPage() {
+  const notes = getNotesItems();
+
+  const notesCards = pickLibrary(
+    [
+      {
+        title: "Centraliser les idées",
+        text: "Permet de garder les quick wins, suivis et idées clients au même endroit.",
+        badge: "NOTES"
+      },
+      {
+        title: "Mieux vendre",
+        text: "Les notes servent aussi à préparer les arguments de vente et de rétention.",
+        badge: "VALUE"
+      },
+      {
+        title: "Suivi plus propre",
+        text: "Très utile pour ne pas perdre les prochaines actions.",
+        badge: "FLOW"
+      },
+      {
+        title: "Scalable",
+        text: "Plus il y a de clients, plus une page notes devient utile.",
+        badge: "SCALE"
+      }
+    ],
+    hasPlan("pro") ? 4 : 3,
+    getDaySeed("notes_cards")
+  );
+
+  setPage(`
+    ${createSectionCard(
+      "Notes",
+      "Bloc mémo workspace",
+      "Garde ici les idées, suivis, points clients et prochaines actions.",
+      createActionGrid([
+        {
+          title: "Ajouter une note",
+          text: "Crée rapidement une nouvelle note interne.",
+          cta: "Ajouter",
+          action: "notes_add",
+          tag: "NEW"
+        },
+        {
+          title: "Transformer en mission",
+          text: "Passe ensuite par missions pour exécuter.",
+          cta: "Voir missions",
+          action: "goto_missions",
+          tag: "MISSION",
+          btnClass: "fpBtnGhost"
+        }
+      ])
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Notes enregistrées",
+          "Contenu du workspace",
+          "Version simple, directe et exploitable.",
+          notes.length
+            ? `
+              <div class="fpRows">
+                ${notes.map((note) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(note.title)}</div>
+                      <div class="fpRowMeta">${esc(note.text || "")}</div>
+                      <div class="fpRowMeta" style="margin-top:8px">${esc(formatDate(note.updatedAt))}</div>
+                    </div>
+                    <div class="fpRowRight">
+                      <button class="fpBtn fpBtnDanger fpBtnSmall" type="button" data-note-delete="${esc(note.id)}">Supprimer</button>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucune note enregistrée.")
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Pourquoi c’est utile",
+          "Utilité des notes",
+          "Une petite brique simple qui augmente vite la scalabilité.",
+          createMiniRows(notesCards)
+        )}
+      </div>
+    </div>
+  `);
+
+  $$("[data-note-delete]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      deleteSimpleNote(btn.getAttribute("data-note-delete"));
+      renderRoute({ preserveScroll: true });
+    });
+  });
+}
+
+function renderChatPage() {
+  const messages = getChatMessages().slice(-20);
+
+  const chatCards = pickLibrary(
+    [
+      {
+        title: "Canal interne simple",
+        text: "Utile pour un MVP avant une vraie messagerie temps réel.",
+        badge: "CHAT"
+      },
+      {
+        title: "Coordination plus rapide",
+        text: "Même une version simple ajoute de la valeur produit.",
+        badge: "TEAM"
+      },
+      {
+        title: "Signal SaaS",
+        text: "Le client perçoit un outil plus complet.",
+        badge: "VALUE"
+      }
+    ],
+    3,
+    getDaySeed("chat_cards")
+  );
+
+  setPage(`
+    ${createSectionCard(
+      "Discussion",
+      "Canal simple",
+      "Version 1 légère pour échanger rapidement dans le workspace.",
+      createActionGrid([
+        {
+          title: "Ajouter un message",
+          text: "Envoie un message simple dans le canal.",
+          cta: "Envoyer",
+          action: "chat_add",
+          tag: "CHAT"
+        }
+      ])
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Messages",
+          "Canal du workspace",
+          "Version simple locale, pratique pour un premier niveau.",
+          messages.length
+            ? `
+              <div class="fpRows">
+                ${messages.map((msg) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(msg.author || "Utilisateur")}</div>
+                      <div class="fpRowMeta">${esc(msg.text || "")}</div>
+                      <div class="fpRowMeta" style="margin-top:8px">${esc(formatDate(msg.createdAt))}</div>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucun message pour le moment.")
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Pourquoi c’est utile",
+          "Valeur du canal",
+          "Simple, mais déjà utile pour enrichir l’expérience.",
+          createMiniRows(chatCards)
+        )}
+      </div>
+    </div>
+  `);
+}
+
+function renderMapPage() {
+  const targets = getMapTargets();
+
+  const mapInfoCards = pickLibrary(
+    [
+      {
+        title: "Vue concurrentielle locale",
+        text: "Permet de visualiser les concurrents cibles dans une logique simple.",
+        badge: "MAP"
+      },
+      {
+        title: "Version 1 utile",
+        text: "Même sans vraie Google Map intégrée, la lecture business existe déjà.",
+        badge: "V1"
+      },
+      {
+        title: "Levier commercial",
+        text: "Très utile pour montrer la pression concurrentielle par zone.",
+        badge: "LOCAL"
+      },
+      {
+        title: "Montée en gamme",
+        text: "Une vraie intégration map renforcera encore la valeur perçue.",
+        badge: "PRO"
+      }
+    ],
+    hasPlan("pro") ? 4 : 3,
+    getDaySeed("map_info_cards")
+  );
+
+  setPage(`
+    ${createSectionCard(
+      "Carte concurrentielle",
+      "Map concurrents",
+      "Version 1 simple pour suivre les concurrents cibles, leurs avis et leur site.",
+      createActionGrid([
+        {
+          title: "Voir concurrents",
+          text: "Retour direct vers l’onglet benchmark.",
+          cta: "Ouvrir",
+          action: "goto_competitors",
+          tag: "COMP"
+        },
+        {
+          title: "Voir Local SEO",
+          text: "Complète bien la logique carte + zones.",
+          cta: "Ouvrir",
+          action: "goto_local",
+          tag: "LOCAL",
+          btnClass: "fpBtnGhost"
+        }
+      ])
+    )}
+
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "Concurrents cibles",
+          "Liste carte version 1",
+          "En attendant l’intégration complète Google Maps.",
+          `
+            <div class="fpRows">
+              ${targets.map((item) => `
+                <div class="fpRowCard">
+                  <div class="fpRowMain">
+                    <div class="fpRowTitle">${esc(item.name)}</div>
+                    <div class="fpRowMeta">${esc(item.city)} · ${esc(item.rating)}★ · ${esc(item.reviews)}</div>
+                    <div class="fpRowMeta" style="margin-top:8px">${esc(item.site)}</div>
+                  </div>
+                  <div class="fpRowRight">
+                    <div class="fpAddonPill on">${esc(item.tag)}</div>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          `
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Pourquoi c’est utile",
+          "Lecture de la map",
+          "Cette page prépare bien une vraie intégration future.",
+          createMiniRows(mapInfoCards)
+        )}
+      </div>
+    </div>
+  `);
+}
   function renderTeamPage() {
   const team = getTeamCards();
+
   const reasons = pickLibrary(
     [
       { title: "Collaboration", text: "Plusieurs profils peuvent travailler sur le même espace client." },
@@ -4123,6 +5067,80 @@ function buildSupportCards() {
     4,
     getDaySeed("team_reasons")
   );
+
+  const collaborationBlocks = pickLibrary(
+    [
+      {
+        title: "Répartition des rôles",
+        text: "Clarifier qui pilote SEO, monitoring, reporting et relation client.",
+        badge: "ROLES"
+      },
+      {
+        title: "Organisation interne",
+        text: "Une équipe bien structurée rend le SaaS plus crédible côté client.",
+        badge: "OPS"
+      },
+      {
+        title: "Transmission plus simple",
+        text: "Le travail est moins dépendant d’une seule personne.",
+        badge: "FLOW"
+      },
+      {
+        title: "Vision scalable",
+        text: "Plus il y a de sites ou de clients, plus cette logique devient utile.",
+        badge: "SCALE"
+      }
+    ],
+    hasPlan("pro") ? 4 : 3,
+    getDaySeed("team_collab_blocks")
+  );
+
+  const premiumTeamBlocks = hasPlan("pro")
+    ? pickLibrary(
+        [
+          {
+            title: "Lecture manager",
+            text: "Donner une vue simple à un responsable sans l’exposer à toute la complexité.",
+            badge: "PRO"
+          },
+          {
+            title: "Organisation multi-profils",
+            text: "Faire monter la valeur perçue du produit avec une vraie logique d’équipe.",
+            badge: "TEAM"
+          }
+        ],
+        2,
+        getDaySeed("team_premium_blocks")
+      )
+    : [];
+
+  const teamActions = typeof getTeamExecutionCards === "function"
+    ? getTeamExecutionCards()
+    : [
+        {
+          title: "Ouvrir l’invitation",
+          text: "Ajoute rapidement quelqu’un au workspace.",
+          cta: "Inviter",
+          action: "open_invite",
+          tag: "TEAM"
+        },
+        {
+          title: "Ouvrir la facturation",
+          text: "Revoir le plan et les add-ons liés à la logique d’équipe.",
+          cta: "Billing",
+          action: "open_billing",
+          tag: "BILLING",
+          btnClass: "fpBtnGhost"
+        },
+        {
+          title: "Configurer le workspace",
+          text: "Passe par les paramètres pour structurer l’organisation.",
+          cta: "Paramètres",
+          action: "goto_settings",
+          tag: "SETUP",
+          btnClass: "fpBtnGhost"
+        }
+      ];
 
   setPage(`
     ${createSectionCard(
@@ -4150,7 +5168,7 @@ function buildSupportCards() {
           "Actions équipe",
           "Accès utiles",
           "Plus de concret pour transformer la page en vrai espace d’action.",
-          createActionGrid(getTeamExecutionCards())
+          createActionGrid(teamActions)
         )}
 
         ${createSectionCard(
@@ -4159,6 +5177,24 @@ function buildSupportCards() {
           "Très utile pour pousser vers les plans élevés.",
           renderCheckGrid(reasons)
         )}
+
+        ${createSectionCard(
+          "Organisation",
+          "Blocs utiles d’équipe",
+          "Ces cartes rendent la page plus complète et plus crédible.",
+          createMiniRows(collaborationBlocks)
+        )}
+
+        ${
+          premiumTeamBlocks.length
+            ? createSectionCard(
+                "Mode avancé",
+                "Blocs premium équipe",
+                "Visible sur les plans supérieurs.",
+                createMiniRows(premiumTeamBlocks)
+              )
+            : ""
+        }
       </div>
 
       <div class="fpCol fpColSide">
@@ -4177,21 +5213,96 @@ function buildSupportCards() {
             ])}
           `
         )}
+
+        ${createSectionCard(
+          "Usage",
+          "Comment exploiter cette page",
+          "Invitation → rôles → organisation → paramètres.",
+          createMiniRows([
+            {
+              title: "Inviter puis structurer",
+              text: "L’intérêt de cette page est d’accompagner une vraie logique de collaboration.",
+              badge: "FLOW"
+            },
+            {
+              title: "Monter en gamme",
+              text: "Une vraie logique équipe rend le SaaS moins remplaçable.",
+              badge: "VALUE"
+            }
+          ])
+        )}
       </div>
     </div>
   `);
 }
-  function renderBillingPage() {
-    window.location.href = "/billing.html?return=%2Fdashboard.html%23overview";
-  }
 
-  function renderSettingsPage() {
+function renderSettingsPage() {
   const s = state.orgSettings || {};
   const me = state.me || {};
   const extraEmails = Array.isArray(s.alertExtraEmails) ? s.alertExtraEmails.join(", ") : "";
   const addons = getAddonEntries();
   const settingTips = libraries.settingsInfoTips;
   const activeTools = getActiveToolCards();
+
+  const settingsActionCards = typeof getSettingsExecutionCards === "function"
+    ? getSettingsExecutionCards()
+    : [
+        {
+          title: "Sauvegarder la configuration alertes",
+          text: "Valide les réglages sans quitter la page.",
+          cta: "Sauvegarder",
+          action: "save_settings_ui",
+          tag: "SAVE"
+        },
+        {
+          title: "Créer un monitor après config",
+          text: "Enchaîne directement après le réglage des alertes.",
+          cta: "Créer monitor",
+          action: "add_monitor",
+          tag: "UPTIME"
+        },
+        {
+          title: "Lancer un audit après config",
+          text: "Complète la mise en place du workspace avec un audit.",
+          cta: "Lancer audit",
+          action: "run_audit",
+          tag: "SEO"
+        }
+      ];
+
+  const workingLogicCards = [
+    {
+      title: "Statut temps réel",
+      text: state.uiPrefs.liveStatus
+        ? "Actif : la barre d’état du dashboard reste visible."
+        : "Désactivé : la barre d’état est masquée.",
+      badge: state.uiPrefs.liveStatus ? "ON" : "OFF"
+    },
+    {
+      title: "Listes compactes",
+      text: state.uiPrefs.compactLists
+        ? "Actif : la densité visuelle est réduite dans les listes."
+        : "Désactivé : les listes gardent leur espacement normal.",
+      badge: state.uiPrefs.compactLists ? "ON" : "OFF"
+    },
+    {
+      title: "Cartes avancées",
+      text: state.uiPrefs.showAdvancedCards
+        ? "Actif : plus de blocs analytiques et business peuvent être affichés."
+        : "Désactivé : la lecture reste plus simple et plus courte.",
+      badge: state.uiPrefs.showAdvancedCards ? "ON" : "OFF"
+    }
+  ];
+
+  const customDomainCard = hasAddon("customDomain")
+    ? [
+        {
+          title: "Custom domain détecté",
+          text: "L’add-on est actif. Il faut maintenant le relier à un vrai champ backend si tu veux une logique complète.",
+          badge: "DOMAIN"
+        }
+      ]
+    : [];
 
   setPage(`
     ${createSectionCard(
@@ -4202,7 +5313,7 @@ function buildSupportCards() {
         <div class="fpGrid fpGridMain">
           <div class="fpCol fpColMain">
             <div class="fpCardInner">
-              <div class="fpCardInnerTitle">Alertes email</div>
+              <div class="fpCardInnerTitle" style="font-size:26px">Alertes email</div>
               <div class="fpSmall">Définis qui reçoit les alertes monitoring.</div>
 
               <div class="fpField">
@@ -4231,7 +5342,7 @@ function buildSupportCards() {
             </div>
 
             <div class="fpCardInner">
-              <div class="fpCardInnerTitle">Préférences interface</div>
+              <div class="fpCardInnerTitle" style="font-size:26px">Préférences interface</div>
 
               <div class="fpToggleRow">
                 <div class="fpToggleText">
@@ -4283,12 +5394,28 @@ function buildSupportCards() {
             </div>
 
             <div class="fpCardInner">
-              <div class="fpCardInnerTitle">Actions utiles</div>
-              ${createActionGrid(getSettingsExecutionCards())}
+              <div class="fpCardInnerTitle" style="font-size:26px">Actions utiles</div>
+              ${createActionGrid(settingsActionCards)}
             </div>
 
             <div class="fpCardInner">
-              <div class="fpCardInnerTitle">Équipe / invitation</div>
+              <div class="fpCardInnerTitle" style="font-size:26px">Logique active</div>
+              ${createMiniRows(workingLogicCards)}
+            </div>
+
+            ${
+              customDomainCard.length
+                ? `
+                  <div class="fpCardInner">
+                    <div class="fpCardInnerTitle" style="font-size:26px">Custom domain</div>
+                    ${createMiniRows(customDomainCard)}
+                  </div>
+                `
+                : ""
+            }
+
+            <div class="fpCardInner">
+              <div class="fpCardInnerTitle" style="font-size:26px">Équipe / invitation</div>
               <div class="fpSmall">Accès direct aux pages utiles.</div>
               ${createInlineLinks([
                 { href: "/invite-accept.html", label: "Invite accept" },
@@ -4300,7 +5427,7 @@ function buildSupportCards() {
 
           <div class="fpCol fpColSide">
             <div class="fpCardInner">
-              <div class="fpCardInnerTitle">Informations du compte</div>
+              <div class="fpCardInnerTitle" style="font-size:26px">Informations du compte</div>
 
               <div class="fpAccountHero" style="margin-top:16px">
                 <div class="fpAccountHeroLeft">
@@ -4324,7 +5451,7 @@ function buildSupportCards() {
             </div>
 
             <div class="fpCardInner">
-              <div class="fpCardInnerTitle">Add-ons détectés</div>
+              <div class="fpCardInnerTitle" style="font-size:26px">Add-ons détectés</div>
               ${
                 addons.length
                   ? `<div class="fpRows">
@@ -4344,17 +5471,17 @@ function buildSupportCards() {
             </div>
 
             <div class="fpCardInner">
-              <div class="fpCardInnerTitle">Modules activés</div>
+              <div class="fpCardInnerTitle" style="font-size:26px">Modules activés</div>
               ${renderToolStateList(activeTools)}
             </div>
 
             <div class="fpCardInner">
-              <div class="fpCardInnerTitle">Ce que le plan débloque</div>
+              <div class="fpCardInnerTitle" style="font-size:26px">Ce que le plan débloque</div>
               ${createMiniRows(getPlanSummaryCards())}
             </div>
 
             <div class="fpCardInner">
-              <div class="fpCardInnerTitle">Session / stabilité</div>
+              <div class="fpCardInnerTitle" style="font-size:26px">Session / stabilité</div>
               <div class="fpSmall">
                 Le dashboard tente un refresh token proactif, vérifie la session au retour au premier plan
                 et évite une redirection brutale trop rapide vers login.
@@ -4376,157 +5503,286 @@ function buildSupportCards() {
   $("#fpCompactListsToggle")?.addEventListener("click", () => toggleUiPref("compactLists"));
   $("#fpAdvancedCardsToggle")?.addEventListener("click", () => toggleUiPref("showAdvancedCards"));
 }
-  function openMissionPage(id) {
-    const mission = state.missions.find((m) => m.id === id);
-    if (!mission) return;
 
-    if (mission.action === "run_audit" || mission.action === "goto_audits") {
-      location.hash = "#audits";
-      return;
-    }
+function openMissionPage(id) {
+  const mission = state.missions.find((m) => m.id === id);
+  if (!mission) return;
 
-    if (mission.action === "add_monitor" || mission.action === "test_monitor") {
-      location.hash = "#monitors";
-      return;
-    }
-
-    if (mission.action === "export_audits" || mission.action === "export_monitors" || mission.action === "goto_reports") {
-      location.hash = "#reports";
-      return;
-    }
-
-    if (mission.action === "open_billing") {
-      goBillingPage();
-      return;
-    }
-
-    if (mission.action === "open_invite") {
-      goInvitePage();
-      return;
-    }
-
-    if (mission.action === "goto_settings") {
-      location.hash = "#settings";
-      return;
-    }
-
-    if (mission.action === "goto_overview") {
-      location.hash = "#overview";
-      return;
-    }
-
-    if (mission.action === "goto_competitors") {
-      location.hash = "#competitors";
-      return;
-    }
-
-    if (mission.action === "goto_local") {
-      location.hash = "#local-seo";
-      return;
-    }
-
-    if (mission.action === "goto_tools") {
-      location.hash = "#tools";
-    }
+  if (mission.action === "run_audit" || mission.action === "goto_audits") {
+    location.hash = "#audits";
+    return;
   }
 
-  async function runMission(id) {
-    const mission = state.missions.find((m) => m.id === id);
-    if (!mission) return false;
-
-    if (mission.action === "run_audit") {
-      const ok = await safeRunAudit();
-      if (ok) await loadData({ silent: true });
-      return ok;
-    }
-
-    if (mission.action === "add_monitor") {
-      const ok = await safeAddMonitor();
-      if (ok) await loadData({ silent: true });
-      return ok;
-    }
-
-    if (mission.action === "export_audits") {
-      return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
-    }
-
-    if (mission.action === "export_monitors") {
-      return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
-    }
-
-    if (mission.action === "open_billing") {
-      return goBillingPage();
-    }
-
-    if (mission.action === "open_invite") {
-      return goInvitePage();
-    }
-
-    if (mission.action === "goto_settings") {
-      location.hash = "#settings";
-      setMissionDoneByAction("goto_settings", true);
-      saveMissions();
-      renderRoute({ scrollTop: true });
-      return true;
-    }
-
-    if (mission.action === "goto_overview") {
-      location.hash = "#overview";
-      setMissionDoneByAction("goto_overview", true);
-      saveMissions();
-      return true;
-    }
-
-    if (mission.action === "goto_audits") {
-      location.hash = "#audits";
-      setMissionDoneByAction("goto_audits", true);
-      saveMissions();
-      return true;
-    }
-
-    if (mission.action === "goto_reports") {
-      location.hash = "#reports";
-      setMissionDoneByAction("goto_reports", true);
-      saveMissions();
-      return true;
-    }
-
-    if (mission.action === "goto_competitors") {
-      location.hash = "#competitors";
-      setMissionDoneByAction("goto_competitors", true);
-      saveMissions();
-      return true;
-    }
-
-    if (mission.action === "goto_local") {
-      location.hash = "#local-seo";
-      setMissionDoneByAction("goto_local", true);
-      saveMissions();
-      return true;
-    }
-
-    if (mission.action === "goto_tools") {
-      location.hash = "#tools";
-      setMissionDoneByAction("goto_tools", true);
-      saveMissions();
-      return true;
-    }
-
-    if (mission.action === "test_monitor") {
-      const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
-      if (!firstMonitor) {
-        setStatus("Aucun monitor à tester", "danger");
-        return false;
-      }
-
-      const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
-      if (ok) await loadData({ silent: true });
-      return ok;
-    }
-
-    return false;
+  if (
+    mission.action === "add_monitor" ||
+    mission.action === "test_monitor" ||
+    mission.action === "goto_monitors" ||
+    mission.action === "create_monitor_mission"
+  ) {
+    location.hash = "#monitors";
+    return;
   }
 
+  if (
+    mission.action === "export_audits" ||
+    mission.action === "export_monitors" ||
+    mission.action === "goto_reports" ||
+    mission.action === "create_report_mission"
+  ) {
+    location.hash = "#reports";
+    return;
+  }
+
+  if (mission.action === "open_billing") {
+    goBillingPage();
+    return;
+  }
+
+  if (mission.action === "open_invite") {
+    goInvitePage();
+    return;
+  }
+
+  if (mission.action === "goto_settings" || mission.action === "save_settings_ui") {
+    location.hash = "#settings";
+    return;
+  }
+
+  if (
+    mission.action === "goto_overview" ||
+    mission.action === "create_overview_mission" ||
+    mission.action === "scroll_quick_wins"
+  ) {
+    location.hash = "#overview";
+    return;
+  }
+
+  if (
+    mission.action === "goto_competitors" ||
+    mission.action === "create_competitor_mission"
+  ) {
+    location.hash = "#competitors";
+    return;
+  }
+
+  if (
+    mission.action === "goto_local" ||
+    mission.action === "create_local_mission"
+  ) {
+    location.hash = "#local-seo";
+    return;
+  }
+
+  if (mission.action === "goto_tools") {
+    location.hash = "#tools";
+    return;
+  }
+
+  if (mission.action === "goto_team") {
+    location.hash = "#team";
+  }
+}
+
+async function runMission(id) {
+  const mission = state.missions.find((m) => m.id === id);
+  if (!mission) return false;
+
+  if (mission.action === "run_audit") {
+    const ok = await safeRunAudit();
+    if (ok) await loadData({ silent: true });
+    return ok;
+  }
+
+  if (mission.action === "add_monitor") {
+    const ok = await safeAddMonitor();
+    if (ok) await loadData({ silent: true });
+    return ok;
+  }
+
+  if (mission.action === "export_audits") {
+    return safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+  }
+
+  if (mission.action === "export_monitors") {
+    return safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+  }
+
+  if (mission.action === "open_billing") {
+    return goBillingPage();
+  }
+
+  if (mission.action === "open_invite") {
+    return goInvitePage();
+  }
+
+  if (mission.action === "goto_settings") {
+    location.hash = "#settings";
+    setMissionDoneByAction("goto_settings", true);
+    saveMissions();
+    renderRoute({ scrollTop: true });
+    return true;
+  }
+
+  if (mission.action === "goto_overview") {
+    location.hash = "#overview";
+    setMissionDoneByAction("goto_overview", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "goto_audits") {
+    location.hash = "#audits";
+    setMissionDoneByAction("goto_audits", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "goto_monitors") {
+    location.hash = "#monitors";
+    setMissionDoneByAction("goto_monitors", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "goto_reports") {
+    location.hash = "#reports";
+    setMissionDoneByAction("goto_reports", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "goto_competitors") {
+    location.hash = "#competitors";
+    setMissionDoneByAction("goto_competitors", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "goto_local") {
+    location.hash = "#local-seo";
+    setMissionDoneByAction("goto_local", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "goto_tools") {
+    location.hash = "#tools";
+    setMissionDoneByAction("goto_tools", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "goto_team") {
+    location.hash = "#team";
+    setMissionDoneByAction("goto_team", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "test_monitor") {
+    const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
+    if (!firstMonitor) {
+      setStatus("Aucun monitor à tester", "danger");
+      return false;
+    }
+
+    const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
+    if (ok) await loadData({ silent: true });
+    return ok;
+  }
+
+  if (mission.action === "save_settings_ui") {
+    const ok = await saveOrgSettings();
+    if (ok) {
+      await loadData({ silent: true });
+      setMissionDoneByAction("save_settings_ui", true);
+      saveMissions();
+    }
+    return ok;
+  }
+
+  if (mission.action === "scroll_quick_wins") {
+    location.hash = "#overview";
+    requestAnimationFrame(() => {
+      const target =
+        document.querySelector('[data-section="quick-wins"]') ||
+        document.getElementById("fpQuickWinsSection") ||
+        document.querySelector(".fpPriorityList");
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    setMissionDoneByAction("scroll_quick_wins", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "create_audit_mission") {
+    if (typeof addMissionFromCategory === "function") {
+      addMissionFromCategory("audit");
+    } else {
+      addMissionFromTemplate("Traiter un audit prioritaire", "Audits", "Élevé", "goto_audits");
+    }
+    setMissionDoneByAction("create_audit_mission", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "create_competitor_mission") {
+    if (typeof addMissionFromCategory === "function") {
+      addMissionFromCategory("competitor");
+    } else {
+      addMissionFromTemplate("Créer un plan d’attaque concurrent", "Concurrents", "Élevé", "goto_competitors");
+    }
+    setMissionDoneByAction("create_competitor_mission", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "create_local_mission") {
+    if (typeof addMissionFromCategory === "function") {
+      addMissionFromCategory("local");
+    } else {
+      addMissionFromTemplate("Préparer un plan Local SEO", "Local SEO", "Élevé", "goto_local");
+    }
+    setMissionDoneByAction("create_local_mission", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "create_report_mission") {
+    if (typeof addMissionFromCategory === "function") {
+      addMissionFromCategory("report");
+    } else {
+      addMissionFromTemplate("Préparer un rapport client", "Rapports", "Moyen", "goto_reports");
+    }
+    setMissionDoneByAction("create_report_mission", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "create_monitor_mission") {
+    if (typeof addMissionFromCategory === "function") {
+      addMissionFromCategory("monitor");
+    } else {
+      addMissionFromTemplate("Stabiliser la surveillance d’un monitor", "Monitoring", "Élevé", "goto_monitors");
+    }
+    setMissionDoneByAction("create_monitor_mission", true);
+    saveMissions();
+    return true;
+  }
+
+  if (mission.action === "create_overview_mission") {
+    if (typeof addMissionFromCategory === "function") {
+      addMissionFromCategory("overview");
+    } else {
+      addMissionFromTemplate("Traiter un quick win du dashboard", "Overview", "Moyen", "goto_overview");
+    }
+    setMissionDoneByAction("create_overview_mission", true);
+    saveMissions();
+    return true;
+  }
+
+  return false;
+}
   function captureFocusState() {
     const active = document.activeElement;
     if (!active || !(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement)) {
@@ -5143,6 +6399,62 @@ function startProactiveRefreshLoop() {
       }
     }
   });
+}
+  if (action === "goto_missions") {
+  location.hash = "#missions";
+  return;
+}
+
+if (action === "calendar_add") {
+  const title = await openTextModal({
+    title: "Titre de l’événement",
+    placeholder: "Ex: Audit mensuel client",
+    confirmText: "Continuer"
+  });
+  if (!title) return;
+
+  const date = await openTextModal({
+    title: "Date de l’événement",
+    placeholder: "2026-04-15",
+    confirmText: "Ajouter"
+  });
+  if (!date) return;
+
+  const ok = addSimpleCalendarItem(title, date, "Tâche");
+  if (ok) renderRoute({ preserveScroll: true });
+  return;
+}
+
+if (action === "notes_add") {
+  const title = await openTextModal({
+    title: "Titre de la note",
+    placeholder: "Ex: Idée client",
+    confirmText: "Continuer"
+  });
+  if (!title) return;
+
+  const text = await openTextModal({
+    title: "Contenu de la note",
+    placeholder: "Écris le contenu...",
+    confirmText: "Ajouter"
+  });
+
+  addSimpleNote(title, text || "");
+  renderRoute({ preserveScroll: true });
+  return;
+}
+
+if (action === "chat_add") {
+  const text = await openTextModal({
+    title: "Nouveau message",
+    placeholder: "Écris un message...",
+    confirmText: "Envoyer"
+  });
+  if (!text) return;
+
+  const ok = addSimpleChatMessage(text);
+  if (ok) renderRoute({ preserveScroll: true });
+  return;
 }
   function logout() {
     clearAuth();
