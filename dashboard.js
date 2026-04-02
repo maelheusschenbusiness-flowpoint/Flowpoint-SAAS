@@ -576,26 +576,36 @@
     return Math.abs(h);
   }
 
-  function getDaySeed(extra = "") {
-    const d = new Date();
-    const dayKey = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-    return `${dayKey}__${normalizeOrgName()}__${extra}__${state.rangeDays}`;
-  }
+  function getDayNumber() {
+  return Math.floor(Date.now() / 86400000);
+}
 
-  function rotateLibrary(list, seedText) {
-    const arr = Array.isArray(list) ? [...list] : [];
-    if (!arr.length) return [];
-    const offset = hashString(seedText) % arr.length;
-    return arr.slice(offset).concat(arr.slice(0, offset));
-  }
+function getDaySeed(extra = "") {
+  const dayNumber = getDayNumber();
+  return `${dayNumber}__${normalizeOrgName()}__${extra}__${state.rangeDays}`;
+}
 
-  function pickLibrary(list, count, seedText) {
-    return rotateLibrary(list, seedText).slice(0, count);
-  }
+function getStableRotationOffset(seedText, length) {
+  if (!length) return 0;
+  const dayNumber = getDayNumber();
+  const base = hashString(`${seedText}__${normalizeOrgName()}__${state.rangeDays}`);
+  return Math.abs(base + dayNumber) % length;
+}
 
-  function refreshDailySeed() {
-    state.dailySeed = getDaySeed("global");
-  }
+function rotateLibrary(list, seedText) {
+  const arr = Array.isArray(list) ? [...list] : [];
+  if (!arr.length) return [];
+  const offset = getStableRotationOffset(seedText, arr.length);
+  return arr.slice(offset).concat(arr.slice(0, offset));
+}
+
+function pickLibrary(list, count, seedText) {
+  return rotateLibrary(list, seedText).slice(0, count);
+}
+
+function refreshDailySeed() {
+  state.dailySeed = getDaySeed("global");
+}
 
   function loadMissions() {
     try {
@@ -1319,7 +1329,34 @@
       }
     }
   `;
+.fpMissionStack{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:18px !important;
+}
 
+.fpMissionCard + .fpMissionCard{
+  margin-top:0 !important;
+}
+
+@media (max-width:760px){
+  .fpMissionStack{
+    gap:22px !important;
+  }
+
+  .fpMissionCard,
+  .fpMissionCardLarge{
+    margin:0 !important;
+  }
+
+  .fpMissionCardLarge{
+    padding:18px !important;
+  }
+
+  .fpMissionTop{
+    margin-bottom:10px !important;
+  }
+}
   document.head.appendChild(style);
 }
   function openHtmlModal({ title, body, wide = false }) {
@@ -2612,6 +2649,70 @@ function buildSupportCards() {
       badge: "SUPPORT"
     }
   ];
+}
+  const MISSION_LIBRARY_CURSOR_KEY = "fp_dashboard_mission_cursor_v1";
+
+const missionLibraries = {
+  audit: [
+    { title: "Traiter un audit prioritaire", meta: "Audits", impact: "Élevé", action: "goto_audits" },
+    { title: "Relire les recommandations SEO", meta: "Audits", impact: "Moyen", action: "goto_audits" },
+    { title: "Préparer un audit client-ready", meta: "Audits", impact: "Élevé", action: "goto_audits" },
+    { title: "Comparer les audits récents", meta: "Audits", impact: "Moyen", action: "goto_audits" }
+  ],
+  competitor: [
+    { title: "Créer un plan d’attaque concurrent", meta: "Concurrents", impact: "Élevé", action: "goto_competitors" },
+    { title: "Comparer les écarts de couverture", meta: "Concurrents", impact: "Moyen", action: "goto_competitors" },
+    { title: "Repérer un angle concurrent rentable", meta: "Concurrents", impact: "Élevé", action: "goto_competitors" },
+    { title: "Préparer un benchmark client", meta: "Concurrents", impact: "Moyen", action: "goto_competitors" }
+  ],
+  local: [
+    { title: "Préparer un plan Local SEO", meta: "Local SEO", impact: "Élevé", action: "goto_local" },
+    { title: "Lister les villes prioritaires", meta: "Local SEO", impact: "Élevé", action: "goto_local" },
+    { title: "Créer une mission pages locales", meta: "Local SEO", impact: "Moyen", action: "goto_local" },
+    { title: "Renforcer la présence locale", meta: "Local SEO", impact: "Moyen", action: "goto_local" }
+  ],
+  report: [
+    { title: "Préparer un rapport client", meta: "Rapports", impact: "Moyen", action: "goto_reports" },
+    { title: "Sortir un livrable dirigeant", meta: "Rapports", impact: "Élevé", action: "goto_reports" },
+    { title: "Comparer les exports du mois", meta: "Rapports", impact: "Moyen", action: "goto_reports" },
+    { title: "Préparer une restitution premium", meta: "Rapports", impact: "Élevé", action: "goto_reports" }
+  ],
+  monitor: [
+    { title: "Stabiliser la surveillance d’un monitor", meta: "Monitoring", impact: "Élevé", action: "goto_monitors" },
+    { title: "Analyser un incident récent", meta: "Monitoring", impact: "Élevé", action: "goto_monitors" },
+    { title: "Tester les monitors critiques", meta: "Monitoring", impact: "Moyen", action: "goto_monitors" },
+    { title: "Renforcer les alertes monitoring", meta: "Monitoring", impact: "Moyen", action: "goto_monitors" }
+  ],
+  overview: [
+    { title: "Traiter un quick win du dashboard", meta: "Overview", impact: "Moyen", action: "goto_overview" },
+    { title: "Relire les priorités business", meta: "Overview", impact: "Moyen", action: "goto_overview" },
+    { title: "Transformer une opportunité en action", meta: "Overview", impact: "Élevé", action: "goto_overview" },
+    { title: "Valider la santé globale du workspace", meta: "Overview", impact: "Faible", action: "goto_overview" }
+  ]
+};
+
+function getMissionLibraryCursors() {
+  return getStorageJson(MISSION_LIBRARY_CURSOR_KEY, {});
+}
+
+function saveMissionLibraryCursors(cursors) {
+  setStorageJson(MISSION_LIBRARY_CURSOR_KEY, cursors);
+}
+
+function addMissionFromCategory(category) {
+  const library = missionLibraries[category] || [];
+  if (!library.length) return false;
+
+  const cursors = getMissionLibraryCursors();
+  const currentIndex = Number(cursors[category] || 0);
+  const item = library[currentIndex % library.length];
+
+  addMissionFromTemplate(item.title, item.meta, item.impact, item.action);
+
+  cursors[category] = (currentIndex + 1) % library.length;
+  saveMissionLibraryCursors(cursors);
+
+  return true;
 }
   function getStorageJson(key, fallback) {
   try {
@@ -5906,7 +6007,28 @@ async function runMission(id) {
     });
   }
 }
+function parseJwt(token) {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
+}
 
+function getTokenExpMs(token) {
+  const parsed = parseJwt(token);
+  if (!parsed?.exp) return 0;
+  return Number(parsed.exp) * 1000;
+}
+
+function shouldRefreshSoon(token, bufferMs = 90 * 1000) {
+  if (!token) return false;
+  const expMs = getTokenExpMs(token);
+  if (!expMs) return true;
+  return (expMs - Date.now()) <= bufferMs;
+}
   async function refreshTokenIfPossible() {
   if (state.auth.refreshInFlight) {
     return true;
@@ -6014,7 +6136,7 @@ async function fetchWithAuth(path, options = {}) {
   return res;
 }
 
-function scheduleLoginRedirect(delay = 2200) {
+function scheduleLoginRedirect(delay = 4000) {
   if (state.auth.redirectScheduled) return;
 
   state.auth.redirectScheduled = true;
@@ -6022,8 +6144,13 @@ function scheduleLoginRedirect(delay = 2200) {
 
   setTimeout(async () => {
     try {
-      const ok = await refreshTokenIfPossible();
+      if (!hasAnyToken()) {
+        clearAuth();
+        window.location.replace(LOGIN_URL);
+        return;
+      }
 
+      const ok = await refreshTokenIfPossible();
       if (ok) {
         state.auth.redirectScheduled = false;
         setStatus("Session rétablie", "ok");
@@ -6033,11 +6160,24 @@ function scheduleLoginRedirect(delay = 2200) {
       console.warn("Final refresh before redirect failed:", e);
     }
 
+    try {
+      const r = await fetch(`${API_BASE}${ME_ENDPOINT}`, {
+        method: "GET",
+        credentials: "include",
+        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}
+      });
+
+      if (r.ok) {
+        state.auth.redirectScheduled = false;
+        setStatus("Session rétablie", "ok");
+        return;
+      }
+    } catch {}
+
     clearAuth();
     window.location.replace(LOGIN_URL);
   }, delay);
 }
-
 async function verifySessionOnResume(force = false) {
   if (!hasAnyToken()) return;
   if (state.auth.checkingSession) return;
@@ -6075,13 +6215,16 @@ function startProactiveRefreshLoop() {
     if (!hasAnyToken()) return;
     if (document.visibilityState !== "visible") return;
 
+    const token = getToken();
+    if (!shouldRefreshSoon(token)) return;
+
     try {
       await refreshTokenIfPossible();
       state.auth.redirectScheduled = false;
     } catch (e) {
       console.warn("Proactive refresh failed:", e);
     }
-  }, PROACTIVE_REFRESH_MS);
+  }, 45000);
 }
   async function parseJsonSafe(res) {
     if (!res) return {};
@@ -6345,70 +6488,44 @@ function startProactiveRefreshLoop() {
       }
 
       if (action === "create_audit_mission") {
-        addMissionFromTemplate(
-          payload ? `Traiter l’audit : ${payload}` : "Traiter un audit prioritaire",
-          "Audits",
-          "Élevé",
-          "goto_audits"
-        );
-        renderRoute({ preserveScroll: true });
-        return;
-      }
+  if (payload) {
+    addMissionFromTemplate(`Traiter l’audit : ${payload}`, "Audits", "Élevé", "goto_audits");
+  } else {
+    addMissionFromCategory("audit");
+  }
+  renderRoute({ preserveScroll: true });
+  return;
+}
 
       if (action === "create_competitor_mission") {
-        addMissionFromTemplate(
-          "Créer un plan d’attaque concurrent",
-          "Concurrents",
-          "Élevé",
-          "goto_competitors"
-        );
-        renderRoute({ preserveScroll: true });
-        return;
-      }
+  addMissionFromCategory("competitor");
+  renderRoute({ preserveScroll: true });
+  return;
+}
 
-      if (action === "create_local_mission") {
-        addMissionFromTemplate(
-          "Préparer un plan Local SEO",
-          "Local SEO",
-          "Élevé",
-          "goto_local"
-        );
-        renderRoute({ preserveScroll: true });
-        return;
-      }
+if (action === "create_local_mission") {
+  addMissionFromCategory("local");
+  renderRoute({ preserveScroll: true });
+  return;
+}
 
-      if (action === "create_report_mission") {
-        addMissionFromTemplate(
-          "Préparer un rapport client",
-          "Rapports",
-          "Moyen",
-          "goto_reports"
-        );
-        renderRoute({ preserveScroll: true });
-        return;
-      }
+if (action === "create_report_mission") {
+  addMissionFromCategory("report");
+  renderRoute({ preserveScroll: true });
+  return;
+}
 
-      if (action === "create_monitor_mission") {
-        addMissionFromTemplate(
-          "Stabiliser la surveillance d’un monitor",
-          "Monitoring",
-          "Élevé",
-          "goto_monitors"
-        );
-        renderRoute({ preserveScroll: true });
-        return;
-      }
+if (action === "create_monitor_mission") {
+  addMissionFromCategory("monitor");
+  renderRoute({ preserveScroll: true });
+  return;
+}
 
-      if (action === "create_overview_mission") {
-        addMissionFromTemplate(
-          "Traiter un quick win du dashboard",
-          "Overview",
-          "Moyen",
-          "goto_overview"
-        );
-        renderRoute({ preserveScroll: true });
-        return;
-      }
+if (action === "create_overview_mission") {
+  addMissionFromCategory("overview");
+  renderRoute({ preserveScroll: true });
+  return;
+}
 
       if (action === "bulk_test_monitors") {
         const visible = getFilteredMonitors().slice(0, 5);
