@@ -854,10 +854,7 @@ function refreshDailySeed() {
         color .18s ease !important;
     }
 
-    .fpBtn:hover{
-      transform:none !important;
-    }
-
+    .fpBtn:hover,
     .fpBtn:active{
       transform:none !important;
     }
@@ -867,7 +864,7 @@ function refreshDailySeed() {
     }
 
     /* -------------------------------------------------
-       NAV DOTS : remettre comme avant
+       NAV DOTS
     ------------------------------------------------- */
     .fpNavDot{
       background:rgba(255,255,255,.86) !important;
@@ -875,7 +872,7 @@ function refreshDailySeed() {
     }
 
     /* -------------------------------------------------
-       INPUTS / SELECTS : enlever le blanc moche
+       INPUTS / SELECTS
     ------------------------------------------------- */
     .fpToolbarInput,
     .fpToolbarSelect{
@@ -923,7 +920,7 @@ function refreshDailySeed() {
     }
 
     /* -------------------------------------------------
-       TABLES AUDITS / MONITORS : rendu plus beau
+       TABLES
     ------------------------------------------------- */
     .fpTable{
       gap:14px !important;
@@ -973,7 +970,7 @@ function refreshDailySeed() {
     }
 
     /* -------------------------------------------------
-       BENCHMARK : bulles
+       BENCHMARK
     ------------------------------------------------- */
     .fpBenchmarkCellPill{
       min-height:38px !important;
@@ -993,7 +990,7 @@ function refreshDailySeed() {
     }
 
     /* -------------------------------------------------
-       ÉQUIPE / INVITATION : remettre boutons encadrés
+       INLINE LINKS
     ------------------------------------------------- */
     .fpInlineLinks{
       display:flex !important;
@@ -1022,7 +1019,7 @@ function refreshDailySeed() {
     }
 
     /* -------------------------------------------------
-       PARAMÈTRES : décoller les cartes et lignes
+       SETTINGS
     ------------------------------------------------- */
     .fpCardInner + .fpCardInner{
       margin-top:18px !important;
@@ -1048,9 +1045,6 @@ function refreshDailySeed() {
       margin-top:0 !important;
     }
 
-    /* -------------------------------------------------
-       SETTINGS : meilleure hiérarchie
-    ------------------------------------------------- */
     .fpAccountHero{
       display:grid !important;
       grid-template-columns:1fr auto !important;
@@ -1110,57 +1104,67 @@ function refreshDailySeed() {
       line-height:1.5 !important;
       font-weight:700 !important;
     }
-/* -------------------------------------------------
-   MODULES ACTIVÉS : centrage propre
-------------------------------------------------- */
-.fpRows .fpRowCard{
-  display:grid !important;
-  grid-template-columns:minmax(0,1fr) auto !important;
-  align-items:center !important;
-  column-gap:16px !important;
-}
 
-.fpRows .fpRowMain{
-  min-width:0 !important;
-  align-self:center !important;
-}
-
-.fpRows .fpRowRight{
-  display:flex !important;
-  align-items:center !important;
-  justify-content:center !important;
-  align-self:center !important;
-  height:100% !important;
-  margin:0 !important;
-  padding:0 !important;
-}
-
-.fpAddonPill,
-.fpAddonPill.on,
-.fpAddonPill.off,
-.fpPlanBadge,
-.fpAccountPlanChip{
-  display:inline-flex !important;
-  align-items:center !important;
-  justify-content:center !important;
-  align-self:center !important;
-  vertical-align:middle !important;
-  line-height:1 !important;
-  margin:0 !important;
-}
-
-.fpAddonPill.on,
-.fpAddonPill.off{
-  min-height:36px !important;
-  height:36px !important;
-  padding:0 12px !important;
-  transform:none !important;
-}
-        
     /* -------------------------------------------------
-       MISSIONS PAGE UNIQUEMENT :
-       remettre les boutons comme avant
+       ROWS / PILLS
     ------------------------------------------------- */
+    .fpRows .fpRowCard{
+      display:grid !important;
+      grid-template-columns:minmax(0,1fr) auto !important;
+      align-items:center !important;
+      column-gap:16px !important;
+    }
+
+    .fpRows .fpRowMain{
+      min-width:0 !important;
+      align-self:center !important;
+    }
+
+    .fpRows .fpRowRight{
+      display:flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      align-self:center !important;
+      height:100% !important;
+      margin:0 !important;
+      padding:0 !important;
+    }
+
+    .fpAddonPill,
+    .fpAddonPill.on,
+    .fpAddonPill.off,
+    .fpPlanBadge,
+    .fpAccountPlanChip{
+      display:inline-flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      align-self:center !important;
+      vertical-align:middle !important;
+      line-height:1 !important;
+      margin:0 !important;
+    }
+
+    .fpAddonPill.on,
+    .fpAddonPill.off{
+      min-height:36px !important;
+      height:36px !important;
+      padding:0 12px !important;
+      transform:none !important;
+    }
+
+    /* -------------------------------------------------
+       MISSIONS
+    ------------------------------------------------- */
+    .fpMissionStack{
+      display:flex !important;
+      flex-direction:column !important;
+      gap:18px !important;
+    }
+
+    .fpMissionCard + .fpMissionCard{
+      margin-top:0 !important;
+    }
+
     .fpMissionCard{
       display:flex !important;
       align-items:flex-start !important;
@@ -1300,6 +1304,23 @@ function refreshDailySeed() {
         border-radius:16px !important;
       }
 
+      .fpMissionStack{
+        gap:22px !important;
+      }
+
+      .fpMissionCard,
+      .fpMissionCardLarge{
+        margin:0 !important;
+      }
+
+      .fpMissionCardLarge{
+        padding:18px !important;
+      }
+
+      .fpMissionTop{
+        margin-bottom:10px !important;
+      }
+
       .fpMissionCardLarge .fpMissionActions{
         margin-left:0 !important;
         width:100% !important;
@@ -1329,34 +1350,7 @@ function refreshDailySeed() {
       }
     }
   `;
-.fpMissionStack{
-  display:flex !important;
-  flex-direction:column !important;
-  gap:18px !important;
-}
 
-.fpMissionCard + .fpMissionCard{
-  margin-top:0 !important;
-}
-
-@media (max-width:760px){
-  .fpMissionStack{
-    gap:22px !important;
-  }
-
-  .fpMissionCard,
-  .fpMissionCardLarge{
-    margin:0 !important;
-  }
-
-  .fpMissionCardLarge{
-    padding:18px !important;
-  }
-
-  .fpMissionTop{
-    margin-bottom:10px !important;
-  }
-}
   document.head.appendChild(style);
 }
   function openHtmlModal({ title, body, wide = false }) {
@@ -5927,7 +5921,34 @@ async function runMission(id) {
       });
     });
   }
+function renderBillingPage() {
+  setPage(`
+    ${createSectionCard(
+      "Billing",
+      "Facturation",
+      "Accès rapide à la facturation et aux add-ons.",
+      `
+        <div class="fpReportsGrid">
+          <div class="fpReportCard">
+            <div class="fpReportTitle">Ouvrir la facturation</div>
+            <div class="fpReportMeta">Accède à la gestion de l’abonnement.</div>
+            <div class="fpDetailActions">
+              <a class="fpBtn fpBtnPrimary" href="/billing.html?return=%2Fdashboard.html%23overview">Billing</a>
+            </div>
+          </div>
 
+          <div class="fpReportCard">
+            <div class="fpReportTitle">Gérer les add-ons</div>
+            <div class="fpReportMeta">Active ou ajuste les options disponibles.</div>
+            <div class="fpDetailActions">
+              <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
+            </div>
+          </div>
+        </div>
+      `
+    )}
+  `);
+}
   function renderRoute(options = {}) {
   const {
     scrollTop = false,
@@ -5937,6 +5958,8 @@ async function runMission(id) {
   const previousWindowY = window.scrollY || 0;
   const previousMainY = els.main?.scrollTop || 0;
   const previousPageY = els.pageContainer?.scrollTop || 0;
+
+  state.route = ROUTES.has(location.hash) ? location.hash : "#overview";
 
   setActiveNav();
   document.body.classList.toggle("fpCompactMode", !!state.uiPrefs.compactLists);
@@ -5982,8 +6005,12 @@ async function runMission(id) {
       renderMapPage();
       break;
     case "#billing":
-      renderBillingPage();
-      return;
+      if (typeof renderBillingPage === "function") {
+        renderBillingPage();
+      } else {
+        setPage(createEmpty("Page billing indisponible."));
+      }
+      break;
     case "#settings":
       renderSettingsPage();
       break;
