@@ -3859,6 +3859,7 @@
   function renderAuditsPage() {
   const audits = getFilteredAudits();
   const allAudits = Array.isArray(state.audits) ? state.audits : [];
+
   const avgScore = allAudits.length
     ? Math.round(allAudits.reduce((sum, a) => sum + Number(a.score || 0), 0) / allAudits.length)
     : 0;
@@ -3912,11 +3913,175 @@
       { title: "Priorisation multi-sites", text: "Comparer plus facilement plusieurs audits pour savoir quoi traiter en premier.", badge: "SCALE" },
       { title: "Lecture client-ready", text: "Transformer les audits en support clair pour un client ou une équipe.", badge: "CLIENT" },
       { title: "Pipeline d’actions", text: "Passer plus vite de l’audit à la mission puis au rapport.", badge: "FLOW" },
-      { title: "Rétention", text: "Une bonne restitution audit aide à garder le client plus longtemps.", badge: "VALUE" }
+      { title: "Rétention", text: "Une bonne restitution audit aide à garder le client plus longtemps.", badge: "VALUE" },
+      { title: "Pilotage portefeuille", text: "Les audits deviennent une vraie couche de pilotage quand plusieurs contextes sont suivis.", badge: "OPS" },
+      { title: "Exécution premium", text: "Plus l’environnement monte en gamme, plus la page devient un centre d’exécution SEO.", badge: "PREMIUM" }
     ],
-    hasPlan("pro") ? 4 : 2,
+    hasPlan("ultra") ? 6 : hasPlan("pro") ? 4 : 2,
     getDaySeed("audit_scale_cards")
   );
+
+  const scoreStrong = allAudits.filter((a) => Number(a.score || 0) >= 75).length;
+  const scoreMid = allAudits.filter((a) => Number(a.score || 0) >= 45 && Number(a.score || 0) < 75).length;
+  const scoreWeak = allAudits.filter((a) => Number(a.score || 0) < 45).length;
+
+  const worstAudits = [...allAudits]
+    .sort((a, b) => Number(a.score || 0) - Number(b.score || 0))
+    .slice(0, 3);
+
+  const potentialAudits = [...allAudits]
+    .sort((a, b) => {
+      const aScore = Number(a.score || 0);
+      const bScore = Number(b.score || 0);
+
+      const aPotential = aScore >= 45 && aScore <= 74 ? 1 : 0;
+      const bPotential = bScore >= 45 && bScore <= 74 ? 1 : 0;
+
+      if (aPotential !== bPotential) return bPotential - aPotential;
+      return bScore - aScore;
+    })
+    .slice(0, 4);
+
+  const featuredAudit = [...allAudits]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+
+  const businessSignals = pickLibrary(
+    [
+      { title: "Lisibilité de l’offre", text: "Des pages services plus claires rendent l’offre plus simple à comprendre et à choisir.", badge: "UX" },
+      { title: "Réassurance", text: "Avis, preuves et garanties renforcent autant la conversion que la crédibilité perçue.", badge: "TRUST" },
+      { title: "CTA commerciaux", text: "Des appels à l’action plus visibles augmentent la probabilité de contact ou de conversion.", badge: "CRO" },
+      { title: "Pages locales", text: "Une meilleure couverture locale capte plus facilement les intentions proches de l’achat.", badge: "LOCAL" },
+      { title: "Pages services premium", text: "Une structure plus haut de gamme améliore la perception de valeur du site.", badge: "VALUE" },
+      { title: "Proposition de valeur", text: "Le site doit mieux montrer pourquoi l’offre est crédible, utile et différente.", badge: "BRAND" },
+      { title: "Hiérarchie des contenus", text: "Une structure plus nette aide à la lecture, au SEO et à la conversion.", badge: "STRUCT" },
+      { title: "Intention business", text: "Les pages doivent mieux capter les recherches proches de la prise de contact.", badge: "INTENT" }
+    ],
+    4,
+    getDaySeed("audit_business_signals")
+  );
+
+  const flowCards = [
+    {
+      title: "1. Lancer ou relire l’audit",
+      text: "Partir d’un diagnostic clair pour identifier rapidement les écarts les plus rentables.",
+      badge: "STEP 1"
+    },
+    {
+      title: "2. Transformer en mission",
+      text: "Injecter les priorités dans la checklist pour éviter qu’un bon audit reste sans exécution.",
+      badge: "STEP 2"
+    },
+    {
+      title: "3. Valoriser en rapport",
+      text: "Présenter la progression, les priorités et la valeur perçue dans un format plus vendable.",
+      badge: "STEP 3"
+    },
+    {
+      title: "4. Revenir sur l’historique",
+      text: "Comparer les audits dans le temps pour renforcer la crédibilité du suivi et de la rétention.",
+      badge: "STEP 4"
+    }
+  ];
+
+  const auditMissionBridgeCards = pickLibrary(
+    [
+      { title: "Éviter la perte d’info", text: "Créer une mission depuis un audit empêche les recommandations de rester passives.", badge: "FLOW" },
+      { title: "Accélérer l’exécution", text: "Le passage audit → mission réduit le temps entre analyse et action réelle.", badge: "ACTION" },
+      { title: "Mieux vendre le suivi", text: "Une recommandation transformée en mission donne une impression de service plus concret.", badge: "VALUE" },
+      { title: "Structurer les priorités", text: "Toutes les corrections n’ont pas la même importance : la mission aide à hiérarchiser.", badge: "PRIORITY" }
+    ],
+    4,
+    getDaySeed("audit_mission_bridge")
+  );
+
+  const proAuditCards = hasPlan("pro")
+    ? pickLibrary(
+        [
+          { title: "Restitution premium", text: "Le plan Pro permet une lecture audit plus propre, plus convaincante et plus partageable.", badge: "PRO" },
+          { title: "PDF vendable", text: "Le PDF rend l’audit plus crédible en présentation interne ou client.", badge: "PDF" },
+          { title: "Vision avant / après", text: "Le suivi audit prend plus de sens quand il peut être restitué proprement dans le temps.", badge: "DELTA" },
+          { title: "Support commercial", text: "Cette page devient aussi un support de vente, pas juste une couche de diagnostic.", badge: "CLIENT" }
+        ],
+        4,
+        getDaySeed("audit_pro_cards")
+      )
+    : [];
+
+  const ultraAuditCards = hasPlan("ultra")
+    ? pickLibrary(
+        [
+          { title: "Pilotage portefeuille", text: "Le mode Ultra rend la lecture audit plus pertinente quand plusieurs contextes doivent être suivis.", badge: "ULTRA" },
+          { title: "Priorisation avancée", text: "Identifier quoi traiter en premier devient plus important à mesure que le volume augmente.", badge: "OPS" },
+          { title: "Exécution multi-flux", text: "Audit, mission, rapport et coordination prennent plus de cohérence dans un cadre plus dense.", badge: "FLOW+" },
+          { title: "Lecture premium multi-sites", text: "La page peut servir de couche de supervision plus sérieuse dans une logique scalable.", badge: "SCALE" },
+          { title: "Hiérarchie opérationnelle", text: "Le niveau Ultra donne plus de sens à la hiérarchie des audits et à la logique de portefeuille.", badge: "PORTFOLIO" },
+          { title: "Valeur perçue maximum", text: "L’audit devient une vraie brique de contrôle et pas seulement un diagnostic ponctuel.", badge: "VALUE+" }
+        ],
+        6,
+        getDaySeed("audit_ultra_cards")
+      )
+    : [];
+
+  const capacityCards = [
+    {
+      title: "Audit standard",
+      text: hasPlan("pro")
+        ? "Tu as déjà accès à une lecture plus premium avec PDF et restitution plus forte."
+        : "La base est opérationnelle, mais la lecture premium reste limitée.",
+      badge: hasPlan("pro") ? "PRO+" : "BASE"
+    },
+    {
+      title: "Quoi faire ensuite",
+      text: "Audit → mission → rapport : c’est le meilleur enchaînement commercial.",
+      badge: "FLOW"
+    },
+    {
+      title: "Capacité audits",
+      text: `${getUsageBucket(state.me?.usage || {}, "audit")?.used ?? 0}/${getUsageBucket(state.me?.usage || {}, "audit")?.limit ?? 0} utilisés`,
+      badge: "QUOTA"
+    },
+    {
+      title: "Capacité restante",
+      text: `${
+        Math.max(
+          0,
+          Number(getUsageBucket(state.me?.usage || {}, "audit")?.limit ?? 0) -
+          Number(getUsageBucket(state.me?.usage || {}, "audit")?.used ?? 0)
+        )
+      } audits encore disponibles sur cette période.`,
+      badge: "RESTANT"
+    }
+  ];
+
+  if (hasPlan("pro")) {
+    capacityCards.push(
+      {
+        title: "Lecture Pro",
+        text: "Le plan Pro donne plus de poids à la restitution, au partage et à la perception produit.",
+        badge: "PRO"
+      },
+      {
+        title: "PDF premium",
+        text: "Les audits peuvent devenir de vrais supports de présentation, plus propres et plus vendables.",
+        badge: "PDF"
+      }
+    );
+  }
+
+  if (hasPlan("ultra")) {
+    capacityCards.push(
+      {
+        title: "Lecture Ultra",
+        text: "Le mode Ultra rend la page plus crédible pour une logique portefeuille, équipe ou multi-sites.",
+        badge: "ULTRA"
+      },
+      {
+        title: "Priorisation avancée",
+        text: "Quand le volume augmente, cette page sert davantage de couche de pilotage opérationnel.",
+        badge: "OPS"
+      }
+    );
+  }
 
   setPage(`
     ${createSectionCard(
@@ -3964,6 +4129,33 @@
         )}
 
         ${createSectionCard(
+          "Priorité immédiate",
+          "À traiter maintenant",
+          "Les audits les plus faibles ou les plus urgents à retransformer en action.",
+          worstAudits.length
+            ? `
+              <div class="fpRows">
+                ${worstAudits.map((a) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(a.url || "Audit SEO")}</div>
+                      <div class="fpRowMeta">
+                        Score ${esc(a.score ?? 0)} · ${esc(formatDate(a.createdAt))}
+                      </div>
+                    </div>
+                    <div class="fpRowRight" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-audit-detail="${esc(normalizeAuditId(a))}">Détail</button>
+                      <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-quick-action="create_audit_mission" data-quick-payload="${esc(a.url || "Audit")}">Mission</button>
+                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-quick-action="goto_reports">Rapport</button>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucun audit à traiter pour le moment.")
+        )}
+
+        ${createSectionCard(
           "Historique",
           "Liste des audits",
           "Derniers audits disponibles sur ton organisation.",
@@ -4008,10 +4200,82 @@
         )}
 
         ${createSectionCard(
+          "Répartition",
+          "Répartition des scores",
+          "Vue portefeuille instantanée des audits forts, moyens et critiques.",
+          `
+            <div class="fpHealthGrid">
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">Audits forts</div>
+                <div class="fpHealthValue">${scoreStrong}</div>
+                <div class="fpHealthMeta">Score ≥ 75</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">Audits moyens</div>
+                <div class="fpHealthValue">${scoreMid}</div>
+                <div class="fpHealthMeta">45 à 74</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">Audits critiques</div>
+                <div class="fpHealthValue">${scoreWeak}</div>
+                <div class="fpHealthMeta">Moins de 45</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">Score moyen</div>
+                <div class="fpHealthValue">${avgScore}</div>
+                <div class="fpHealthMeta">Moyenne actuelle</div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Potentiel",
+          "Top URLs à potentiel",
+          "Pages pas forcément les pires, mais souvent les plus intéressantes à pousser ensuite.",
+          potentialAudits.length
+            ? `
+              <div class="fpRows">
+                ${potentialAudits.map((a) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(a.url || "Audit SEO")}</div>
+                      <div class="fpRowMeta">
+                        Score ${esc(a.score ?? 0)} · ${esc(formatDate(a.createdAt))}
+                      </div>
+                    </div>
+                    <div class="fpRowRight">
+                      <div class="fpAddonPill on">POTENTIEL</div>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucune URL à potentiel détectée pour le moment.")
+        )}
+
+        ${createSectionCard(
           "Opportunités",
           "Axes de progression prioritaires",
           "Recommandations qui renforcent la valeur du produit.",
           renderPriorityList(axes)
+        )}
+
+        ${createSectionCard(
+          "Exécution",
+          "Enchaînement recommandé",
+          "Le meilleur flux pour transformer un audit en action utile puis en support client-ready.",
+          createMiniRows(flowCards)
+        )}
+
+        ${createSectionCard(
+          "Business",
+          "Signaux business à renforcer",
+          "La page audits peut aussi servir à lire l’impact commercial au-delà du simple score.",
+          createMiniRows(businessSignals)
         )}
 
         ${createSectionCard(
@@ -4020,6 +4284,27 @@
           "Plus le SaaS monte en gamme, plus cette page peut servir de moteur d’exécution.",
           createMiniRows(scaleCards)
         )}
+
+        ${createSectionCard(
+          "Exécution",
+          "Audit vers mission",
+          "Créer une mission depuis un audit rend l’analyse beaucoup plus exploitable dans le temps.",
+          createMiniRows(auditMissionBridgeCards)
+        )}
+
+        ${hasPlan("pro") ? createSectionCard(
+          "Mode Pro",
+          "Restitution plus premium",
+          "Le plan Pro rend cette page plus forte pour la présentation, le suivi et la valeur perçue.",
+          createMiniRows(proAuditCards)
+        ) : ""}
+
+        ${hasPlan("ultra") ? createSectionCard(
+          "Mode Ultra",
+          "Pilotage avancé des audits",
+          "Le niveau Ultra renforce encore la logique portefeuille, exécution et scalabilité.",
+          createMiniRows(ultraAuditCards)
+        ) : ""}
       </div>
 
       <div class="fpCol fpColSide">
@@ -4051,28 +4336,40 @@
         )}
 
         ${createSectionCard(
+          "Mise en avant",
+          "Dernier audit mis en avant",
+          "Le dernier audit chargé mérite une lecture plus premium qu’une simple ligne de tableau.",
+          featuredAudit
+            ? `
+              <div class="fpAccountHero">
+                <div>
+                  <div class="fpCardKicker">Dernière analyse</div>
+                  <div class="fpSectionTitle" style="font-size:22px">${esc(featuredAudit.url || "Audit SEO")}</div>
+                  <div class="fpCardText">
+                    Score ${esc(featuredAudit.score ?? 0)} · ${esc(formatDate(featuredAudit.createdAt))}
+                  </div>
+                  <div class="fpDetailActions" style="margin-top:14px">
+                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-audit-detail="${esc(normalizeAuditId(featuredAudit))}">Voir détail</button>
+                    ${
+                      hasPlan("pro")
+                        ? `<a class="fpBtn fpBtnGhost fpBtnSmall" href="/api/audits/${esc(normalizeAuditId(featuredAudit))}/pdf" target="_blank" rel="noopener">PDF</a>`
+                        : `<button class="fpBtn fpBtnGhost fpBtnSmall" type="button" disabled>PDF Pro</button>`
+                    }
+                  </div>
+                </div>
+                <div class="fpAccountHeroRight">
+                  <div class="fpAccountPlanChip">${esc(featuredAudit.score ?? 0)}</div>
+                </div>
+              </div>
+            `
+            : createEmpty("Aucun audit récent à mettre en avant.")
+        )}
+
+        ${createSectionCard(
           "Plan / lecture",
-          "Niveau de restitution",
-          "Le plan courant change la valeur perçue de cette page.",
-          createMiniRows([
-            {
-              title: "Audit standard",
-              text: hasPlan("pro")
-                ? "Tu as déjà accès à une lecture plus premium avec PDF et restitution plus forte."
-                : "La base est opérationnelle, mais la lecture premium reste limitée.",
-              badge: hasPlan("pro") ? "PRO+" : "BASE"
-            },
-            {
-              title: "Quoi faire ensuite",
-              text: "Audit → mission → rapport : c’est le meilleur enchaînement commercial.",
-              badge: "FLOW"
-            },
-            {
-              title: "Capacité audits",
-              text: `${state.me?.usage?.audits?.used ?? 0}/${state.me?.usage?.audits?.limit ?? 0} utilisés`,
-              badge: "QUOTA"
-            }
-          ])
+          "Capacité du plan",
+          "Le plan courant change la valeur perçue et la profondeur d’usage de cette page.",
+          createMiniRows(capacityCards)
         )}
 
         ${createSectionCard(
