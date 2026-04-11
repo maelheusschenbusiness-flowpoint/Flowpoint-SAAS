@@ -31,7 +31,6 @@ html{scroll-behavior:smooth}
 img,svg{display:block;max-width:100%}
 button,input,select,textarea{font:inherit}
 a{color:inherit;text-decoration:none}
-
 html,body{background:transparent}
 
 body{
@@ -311,6 +310,12 @@ body::before{
   background:transparent;
 }
 
+.fpPageWrap{
+  min-width:0;
+  width:100%;
+  display:block;
+}
+
 .fpTopbar{
   display:flex;
   align-items:flex-start;
@@ -370,6 +375,7 @@ body::before{
   opacity:.92;
   text-transform:uppercase;
 }
+
 .fpHelloTitle{
   margin:4px 0 0;
   font-size:54px;
@@ -379,6 +385,7 @@ body::before{
   overflow-wrap:anywhere;
   word-break:break-word;
 }
+
 .fpHelloSub{
   margin:10px 0 0;
   font-size:17px;
@@ -460,10 +467,6 @@ body::before{
   box-shadow:0 12px 28px rgba(47,91,255,.22);
 }
 
-.fpBtnPrimary:hover{
-  box-shadow:0 12px 28px rgba(47,91,255,.22);
-}
-
 .fpBtnGhost{
   color:#fff;
   border:1px solid var(--fpBorderStrong);
@@ -494,10 +497,6 @@ body::before{
 .fpBtnDanger{
   color:#fff;
   background:linear-gradient(180deg, #f05b65, #d93d4a);
-  box-shadow:0 12px 24px rgba(217,61,74,.18);
-}
-
-.fpBtnDanger:hover{
   box-shadow:0 12px 24px rgba(217,61,74,.18);
 }
 
@@ -613,6 +612,11 @@ body::before{
   align-items:start;
 }
 
+.fpMissionPageMain,
+.fpMissionPageSide{
+  min-width:0;
+}
+
 .fpBillingGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .fpReportsGrid,.fpStatsGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fpStatsGridSingle{grid-template-columns:1fr}
@@ -708,8 +712,6 @@ body::before{
   transition:background .2s ease,border-color .2s ease;
 }
 
-.fpCard:hover{transform:none}
-
 .fpCardInner{
   border-radius:24px;
   border:1px solid var(--fpBorder);
@@ -746,6 +748,16 @@ body::before{
 .fpMissionActions > a.fpBtn{
   flex:1 1 0;
   min-width:150px;
+}
+
+.fpToolbarRow{
+  margin-top:14px;
+}
+
+.fpToolbarInput,
+.fpToolbarSelect{
+  flex:1 1 220px;
+  min-width:0;
 }
 
 .fpReportCard .fpDetailActions,
@@ -894,7 +906,9 @@ body::before{
 .fpInlineStatText,
 .fpCheckText,
 .fpRevenueText,
-.fpRevenueSub{
+.fpRevenueSub,
+.fpToolStateMeta,
+.fpTableMeta{
   margin-top:8px;
   color:var(--fpTextSoft);
   font-size:14px;
@@ -914,7 +928,8 @@ body::before{
 .fpTableRows,
 .fpFeedList,
 .fpPriorityList,
-.fpToolFeatureList{
+.fpToolFeatureList,
+.fpToolStateRow{
   display:flex;
   flex-direction:column;
   gap:14px;
@@ -929,7 +944,8 @@ body::before{
 .fpAddonRow,
 .fpTimelineItem,
 .fpActionItem,
-.fpPriorityItem{
+.fpPriorityItem,
+.fpToolStateItem{
   padding:14px 16px;
 }
 
@@ -939,7 +955,8 @@ body::before{
 .fpAddonRow,
 .fpFeedTop,
 .fpPriorityItem,
-.fpHealthTop{
+.fpHealthTop,
+.fpToolStateItem{
   display:flex;
   justify-content:space-between;
   gap:14px;
@@ -952,7 +969,8 @@ body::before{
 .fpPriorityItem:hover,
 .fpCheckItem:hover,
 .fpBenchmarkRow:hover,
-.fpHealthCard:hover{
+.fpHealthCard:hover,
+.fpToolStateItem:hover{
   background:rgba(255,255,255,.05);
 }
 
@@ -964,6 +982,8 @@ body::before{
 
 .fpRowMain{min-width:0;flex:1}
 .fpRowRight{flex:0 0 auto}
+
+.fpToggleText{min-width:0;flex:1}
 
 .fpRowTitle,
 .fpTimelineTitle,
@@ -1519,6 +1539,8 @@ body::before{
     linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
 }
 
+.fpAccountHeroLeft{min-width:0}
+
 .fpAccountHeroRight{
   display:flex;
   align-items:center;
@@ -1562,6 +1584,12 @@ body::before{
   font-size:14px;
   line-height:1.5;
   font-weight:700;
+}
+
+.fpToolStateItem{
+  border-radius:18px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
 }
 
 /* modal injectée */
@@ -1743,6 +1771,12 @@ body::before{
     justify-content:center;
   }
 
+  .fpToolbarInput,
+  .fpToolbarSelect{
+    width:100%;
+    flex:1 1 100%;
+  }
+
   .fpTableHead{display:none}
 
   .fpTableRow,
@@ -1759,7 +1793,8 @@ body::before{
   .fpActionItem,
   .fpPriorityItem,
   .fpFeedTop,
-  .fpHealthTop{
+  .fpHealthTop,
+  .fpToolStateItem{
     flex-direction:column;
     align-items:flex-start;
     gap:10px;
@@ -1880,7 +1915,8 @@ body::before{
   .fpNavItem{min-height:54px;font-size:16px}
   .fpBrandLogo{width:50px;height:50px}
 }
-/* ===== ALIGNEMENT DES PASTILLES À DROITE ===== */
+
+/* ALIGNEMENT DES PASTILLES */
 .fpRows .fpRowCard{
   display:grid !important;
   grid-template-columns:minmax(0,1fr) auto !important;
@@ -1941,6 +1977,7 @@ body::before{
     min-width:92px !important;
   }
 }
+
 @media (prefers-color-scheme: light){
   :root{
     --fpBg:#eaf1ff;
@@ -2018,7 +2055,8 @@ body::before{
   .fpPriorityItem,
   .fpInlineStat,
   .fpCheckItem,
-  .fpBenchmarkRow{
+  .fpBenchmarkRow,
+  .fpToolStateItem{
     background:linear-gradient(180deg, rgba(255,255,255,.78), rgba(244,248,255,.92))!important;
     border-color:rgba(59,78,130,.12)!important;
     color:var(--fpText)!important;
@@ -2100,7 +2138,9 @@ body::before{
   .fpRevenueSub,
   .fpHealthMeta,
   .fpInlineStatText,
-  .fpCheckText{
+  .fpCheckText,
+  .fpToolStateMeta,
+  .fpTableMeta{
     color:var(--fpTextSoft)!important;
   }
 
