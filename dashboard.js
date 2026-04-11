@@ -5416,7 +5416,7 @@ function renderReportsPage() {
   function renderCompetitorsPage() {
   const benchmarkRows = pickLibrary(
     libraries.competitorBenchmarks,
-    6,
+    4,
     getDaySeed(`benchmark_${state.rangeDays}`)
   );
 
@@ -5472,19 +5472,9 @@ function renderReportsPage() {
         title: "Écart de lisibilité",
         text: "Comparer la clarté des pages services et la hiérarchie de contenu.",
         badge: "UX"
-      },
-      {
-        title: "Écart de différenciation",
-        text: "Identifier ce que le concurrent montre mieux ou vend mieux que toi.",
-        badge: "BRAND"
-      },
-      {
-        title: "Écart de structure commerciale",
-        text: "Comparer la logique pages services / catégories / zones / FAQ.",
-        badge: "FLOW"
       }
     ],
-    hasPlan("pro") ? 6 : 4,
+    hasPlan("pro") ? 4 : 3,
     getDaySeed("competitor_compare_blocks")
   );
 
@@ -5500,195 +5490,11 @@ function renderReportsPage() {
             title: "Lecture client-ready",
             text: "Présenter les différences concurrentes de manière plus claire et plus vendable.",
             badge: "PREMIUM"
-          },
-          {
-            title: "Restitution plus forte",
-            text: "Le benchmark devient plus utile quand il nourrit la vente et le suivi.",
-            badge: "VALUE"
-          },
-          {
-            title: "Décisions plus rapides",
-            text: "Une lecture premium aide à passer plus vite de l’écart à l’action.",
-            badge: "OPS"
           }
         ],
-        hasPlan("ultra") ? 4 : 3,
+        2,
         getDaySeed("competitor_advanced_blocks")
       )
-    : [];
-
-  const urgentGapCards = benchmarkRows.map((row) => ({
-    title: row.metric,
-    text: `Vous : ${row.ours} · Meilleur : ${row.best} · Écart : ${row.gap}`,
-    badge: row.gap
-  })).slice(0, 4);
-
-  const attackPlanCards = [
-    {
-      title: "Renforcer les pages services",
-      text: "Créer une mission orientée structure d’offre et clarté commerciale.",
-      cta: "Mission offre",
-      action: "create_competitor_mission",
-      tag: "OFFER"
-    },
-    {
-      title: "Renforcer les pages locales",
-      text: "Basculer vers Local SEO pour couvrir villes et zones sous-exploitées.",
-      cta: "Local SEO",
-      action: "goto_local",
-      tag: "LOCAL"
-    },
-    {
-      title: "Préparer une contre-offensive SEO",
-      text: "Transformer le benchmark en axe d’audit ou de contenu prioritaire.",
-      cta: "Voir audits",
-      action: "goto_audits",
-      tag: "SEO"
-    },
-    {
-      title: "Préparer une restitution client",
-      text: "Passer par Rapports pour rendre les écarts plus concrets et plus vendables.",
-      cta: "Voir rapports",
-      action: "goto_reports",
-      tag: "REPORT",
-      btnClass: "fpBtnGhost"
-    }
-  ];
-
-  const localAttackCards = [
-    {
-      title: "Créer une mission locale",
-      text: "Injecter une action géographique dans la checklist active.",
-      cta: "Créer mission",
-      action: "create_local_mission",
-      tag: "CITY"
-    },
-    {
-      title: "Ouvrir Local SEO",
-      text: "Passer directement à la couche pages villes, zones et présence locale.",
-      cta: "Ouvrir Local SEO",
-      action: "goto_local",
-      tag: "LOCAL",
-      btnClass: "fpBtnGhost"
-    },
-    {
-      title: "Créer une note zones à attaquer",
-      text: "Préparer une note interne sur les villes ou zones à renforcer.",
-      cta: "Créer note",
-      action: "create_competitor_note_zones",
-      tag: "NOTE"
-    }
-  ];
-
-  const clientRestitutionCards = [
-    {
-      title: "Créer une mission rapport",
-      text: "Ajouter une tâche de restitution benchmark dans la checklist.",
-      cta: "Créer mission",
-      action: "create_report_mission",
-      tag: "MISSION"
-    },
-    {
-      title: "Ouvrir Rapports",
-      text: "Basculer vers la page reporting pour transformer le benchmark en livrable.",
-      cta: "Voir rapports",
-      action: "goto_reports",
-      tag: "REPORT"
-    },
-    {
-      title: "Créer une note benchmark",
-      text: "Préparer une synthèse concurrentielle pour usage interne ou client.",
-      cta: "Créer note",
-      action: "create_competitor_note_summary",
-      tag: "NOTE",
-      btnClass: "fpBtnGhost"
-    }
-  ];
-
-  const planningCards = [
-    {
-      title: "Planifier une revue concurrentielle",
-      text: "Créer un événement simple dans le calendrier local du dashboard.",
-      cta: "Planifier",
-      action: "schedule_competitor_review",
-      tag: "CAL"
-    },
-    {
-      title: "Planifier une action locale",
-      text: "Préparer une action dédiée à une ville, une zone ou une page locale.",
-      cta: "Planifier",
-      action: "schedule_local_attack",
-      tag: "LOCAL"
-    },
-    {
-      title: "Planifier une restitution client",
-      text: "Prévoir un moment de restitution benchmark ou avant / après.",
-      cta: "Planifier",
-      action: "schedule_client_restitution",
-      tag: "REPORT",
-      btnClass: "fpBtnGhost"
-    }
-  ];
-
-  const usageCards = [
-    {
-      title: "Créer une mission",
-      text: "Utilise cette page pour injecter des actions concrètes dans la checklist.",
-      badge: "FLOW"
-    },
-    {
-      title: "Comparer puis cibler",
-      text: "Les écarts doivent ensuite nourrir Local SEO, Audits ou Rapports.",
-      badge: "ACTION"
-    },
-    {
-      title: "Créer une note",
-      text: "Formalise les écarts les plus utiles dans une note exploitable ensuite.",
-      badge: "NOTE"
-    },
-    {
-      title: "Planifier une suite",
-      text: "Le benchmark doit déboucher sur une action planifiée et non rester statique.",
-      badge: "CAL"
-    }
-  ];
-
-  const proActionCards = hasPlan("pro")
-    ? [
-        {
-          title: "Créer une note différenciation premium",
-          text: "Préparer un angle de différenciation plus vendeur à partir du benchmark.",
-          cta: "Créer note",
-          action: "create_competitor_note_differentiation",
-          tag: "PRO"
-        },
-        {
-          title: "Préparer un plan d’attaque premium",
-          text: "Créer une mission concurrentielle à plus forte valeur perçue.",
-          cta: "Créer mission",
-          action: "create_competitor_mission",
-          tag: "VALUE"
-        }
-      ]
-    : [];
-
-  const ultraActionCards = hasPlan("ultra")
-    ? [
-        {
-          title: "Planifier une revue portefeuille",
-          text: "Créer une revue benchmark dans une logique plus scalable et multi-contextes.",
-          cta: "Planifier",
-          action: "schedule_portfolio_benchmark_review",
-          tag: "ULTRA"
-        },
-        {
-          title: "Créer une note portefeuille concurrent",
-          text: "Préparer une note plus large orientée portefeuille, structure et priorités.",
-          cta: "Créer note",
-          action: "create_competitor_note_portfolio",
-          tag: "SCALE"
-        }
-      ]
     : [];
 
   setPage(`
@@ -5705,48 +5511,12 @@ function renderReportsPage() {
             <div>Écart</div>
           </div>
 
-          ${benchmarkRows.map((row, index) => `
+          ${benchmarkRows.map((row) => `
             <div class="fpBenchmarkRow">
               <div class="fpBenchmarkStrong">${esc(row.metric)}</div>
               <div><div class="fpBenchmarkCellPill">${esc(row.ours)}</div></div>
               <div><div class="fpBenchmarkCellPill">${esc(row.best)}</div></div>
-              <div>
-                <div class="fpBenchmarkCellPill">${esc(row.gap)}</div>
-                <div class="fpDetailActions" style="margin-top:10px">
-                  <button
-                    class="fpBtn fpBtnSoft fpBtnSmall"
-                    type="button"
-                    data-competitor-benchmark-action="mission"
-                    data-competitor-benchmark-title="${esc(row.metric)}"
-                  >
-                    Mission
-                  </button>
-                  <button
-                    class="fpBtn fpBtnGhost fpBtnSmall"
-                    type="button"
-                    data-competitor-benchmark-action="note"
-                    data-competitor-benchmark-title="${esc(row.metric)}"
-                  >
-                    Note
-                  </button>
-                  <button
-                    class="fpBtn fpBtnGhost fpBtnSmall"
-                    type="button"
-                    data-competitor-benchmark-action="audit"
-                    data-competitor-benchmark-title="${esc(row.metric)}"
-                  >
-                    Audit
-                  </button>
-                  <button
-                    class="fpBtn fpBtnGhost fpBtnSmall"
-                    type="button"
-                    data-competitor-benchmark-action="local"
-                    data-competitor-benchmark-title="${esc(row.metric)}"
-                  >
-                    Local SEO
-                  </button>
-                </div>
-              </div>
+              <div><div class="fpBenchmarkCellPill">${esc(row.gap)}</div></div>
             </div>
           `).join("")}
         </div>
@@ -5763,20 +5533,6 @@ function renderReportsPage() {
         )}
 
         ${createSectionCard(
-          "Priorité immédiate",
-          "Écarts prioritaires à traiter",
-          "Les écarts les plus utiles à transformer immédiatement en action.",
-          createMiniRows(urgentGapCards)
-        )}
-
-        ${createSectionCard(
-          "Plan d’attaque",
-          "Construire une contre-offensive",
-          "Des actions concrètes pour passer du benchmark à une exécution réelle.",
-          createActionGrid(attackPlanCards)
-        )}
-
-        ${createSectionCard(
           "Lecture business",
           "Pourquoi ce benchmark est utile",
           "Le client voit pourquoi il doit continuer à investir.",
@@ -5790,27 +5546,6 @@ function renderReportsPage() {
           createMiniRows(compareBlocks)
         )}
 
-        ${createSectionCard(
-          "Local",
-          "Plan local concurrent",
-          "Transformer les écarts géographiques en actions exploitables.",
-          createActionGrid(localAttackCards)
-        )}
-
-        ${createSectionCard(
-          "Restitution",
-          "Préparer une restitution client",
-          "Le benchmark doit aussi servir à produire une lecture claire et vendable.",
-          createActionGrid(clientRestitutionCards)
-        )}
-
-        ${createSectionCard(
-          "Planning",
-          "Planifier une suite logique",
-          "Le benchmark doit déboucher sur une action datée, pas juste une observation.",
-          createActionGrid(planningCards)
-        )}
-
         ${
           advancedBlocks.length
             ? createSectionCard(
@@ -5821,20 +5556,6 @@ function renderReportsPage() {
               )
             : ""
         }
-
-        ${hasPlan("pro") ? createSectionCard(
-          "Mode Pro",
-          "Actions premium",
-          "Le plan Pro ajoute des possibilités plus vendeuses et plus structurées.",
-          createActionGrid(proActionCards)
-        ) : ""}
-
-        ${hasPlan("ultra") ? createSectionCard(
-          "Mode Ultra",
-          "Actions portefeuille",
-          "Le niveau Ultra pousse la logique benchmark vers une vraie lecture scalable.",
-          createActionGrid(ultraActionCards)
-        ) : ""}
       </div>
 
       <div class="fpCol fpColSide">
@@ -5849,121 +5570,22 @@ function renderReportsPage() {
           "Usage",
           "Comment utiliser cette page",
           "Benchmark → mission → local SEO → rapport.",
-          createMiniRows(usageCards)
+          createMiniRows([
+            {
+              title: "Créer une mission",
+              text: "Utilise cette page pour injecter des actions concrètes dans la checklist.",
+              badge: "FLOW"
+            },
+            {
+              title: "Comparer puis cibler",
+              text: "Les écarts doivent ensuite nourrir Local SEO, Audits ou Rapports.",
+              badge: "ACTION"
+            }
+          ])
         )}
       </div>
     </div>
   `);
-
-  $$("[data-competitor-benchmark-action]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const mode = btn.getAttribute("data-competitor-benchmark-action") || "";
-      const title = btn.getAttribute("data-competitor-benchmark-title") || "Benchmark";
-
-      if (mode === "mission") {
-        addMissionFromTemplate(
-          `Traiter l’écart : ${title}`,
-          "Concurrents",
-          "Élevé",
-          "goto_competitors"
-        );
-        renderRoute({ preserveScroll: true });
-        return;
-      }
-
-      if (mode === "note") {
-        addSimpleNote(
-          `Benchmark — ${title}`,
-          `Écart concurrent à travailler : ${title}. Transformer ce point en action concrète ou en restitution client.`
-        );
-        return;
-      }
-
-      if (mode === "audit") {
-        location.hash = "#audits";
-        return;
-      }
-
-      if (mode === "local") {
-        location.hash = "#local-seo";
-      }
-    });
-  });
-
-  $$("[data-quick-action]").forEach((btn) => {
-    const action = btn.getAttribute("data-quick-action");
-    if (!action) return;
-
-    btn.addEventListener("click", async () => {
-      if (action === "create_competitor_note_zones") {
-        addSimpleNote(
-          "Zones concurrentes à attaquer",
-          "Lister ici les villes, zones ou pages locales où le concurrent semble mieux positionné."
-        );
-        return;
-      }
-
-      if (action === "create_competitor_note_summary") {
-        addSimpleNote(
-          "Synthèse benchmark concurrent",
-          "Résumé rapide des écarts détectés, des priorités et des actions recommandées."
-        );
-        return;
-      }
-
-      if (action === "create_competitor_note_differentiation") {
-        addSimpleNote(
-          "Angle de différenciation",
-          "Préparer ici les points qui rendent l’offre plus crédible, plus lisible ou plus premium que la concurrence."
-        );
-        return;
-      }
-
-      if (action === "create_competitor_note_portfolio") {
-        addSimpleNote(
-          "Portefeuille concurrent",
-          "Préparer ici une lecture plus large des concurrents, des zones prioritaires et des axes d’attaque."
-        );
-        return;
-      }
-
-      if (action === "schedule_competitor_review") {
-        addSimpleCalendarItem(
-          "Revue concurrentielle",
-          new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-          "Benchmark"
-        );
-        return;
-      }
-
-      if (action === "schedule_local_attack") {
-        addSimpleCalendarItem(
-          "Action locale concurrente",
-          new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10),
-          "Local SEO"
-        );
-        return;
-      }
-
-      if (action === "schedule_client_restitution") {
-        addSimpleCalendarItem(
-          "Restitution benchmark client",
-          new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
-          "Rapport"
-        );
-        return;
-      }
-
-      if (action === "schedule_portfolio_benchmark_review") {
-        addSimpleCalendarItem(
-          "Revue portefeuille benchmark",
-          new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10),
-          "Benchmark"
-        );
-        return;
-      }
-    });
-  });
 }
 function renderLocalSeoPage() {
   const axes = getLocalAxisCards();
