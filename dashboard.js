@@ -4998,6 +4998,9 @@ function renderReportsPage() {
   const monitorsCount = Array.isArray(state.monitors) ? state.monitors.length : 0;
   const usage = state.me?.usage || {};
 
+  const exportsUsage = getUsageBucket(usage, "export");
+  const pdfUsage = getUsageBucket(usage, "pdf");
+
   const checklistTexts = [
     "Ce bloc aide un dirigeant à comprendre rapidement l’essentiel sans entrer dans la technique.",
     "Cette partie met mieux en avant les risques, les opportunités et les priorités concrètes.",
@@ -5041,6 +5044,146 @@ function renderReportsPage() {
           tag: "MISSION"
         }
       ];
+
+  const readyNowCards = [
+    {
+      title: "Rapport SEO mensuel",
+      text: `Basé sur ${auditsCount} audit(s) actuellement disponibles.`,
+      badge: "SEO"
+    },
+    {
+      title: "Rapport monitoring",
+      text: `Basé sur ${monitorsCount} monitor(s) actuellement disponibles.`,
+      badge: "UPTIME"
+    },
+    {
+      title: "Lecture dirigeant",
+      text: "Version plus simple pour un profil non technique ou un client final.",
+      badge: "EXEC"
+    },
+    {
+      title: "Support commercial",
+      text: "Un bon rapport rend le service plus concret, plus lisible et plus premium.",
+      badge: "VALUE"
+    }
+  ];
+
+  const reportFlowCards = [
+    {
+      title: "1. Rassembler les données",
+      text: "Partir des audits et du monitoring disponibles pour construire un livrable cohérent.",
+      badge: "STEP 1"
+    },
+    {
+      title: "2. Filtrer l’essentiel",
+      text: "Ne garder que les signaux qui aident vraiment à la décision ou à la vente.",
+      badge: "STEP 2"
+    },
+    {
+      title: "3. Présenter clairement",
+      text: "Rendre le rapport lisible pour un client, un dirigeant ou une équipe.",
+      badge: "STEP 3"
+    },
+    {
+      title: "4. Transformer en suite logique",
+      text: "Faire du rapport un point de départ vers missions, suivi et rétention.",
+      badge: "STEP 4"
+    }
+  ];
+
+  const reportingBusinessCards = pickLibrary(
+    [
+      { title: "Perception premium", text: "Un bon reporting augmente fortement la valeur perçue du SaaS.", badge: "PREMIUM" },
+      { title: "Rétention", text: "Les rapports rendent les efforts visibles et donc plus faciles à justifier dans le temps.", badge: "MRR" },
+      { title: "Lisibilité dirigeant", text: "Le rapport aide les profils non techniques à comprendre vite l’essentiel.", badge: "EXEC" },
+      { title: "Support commercial", text: "Un rapport bien structuré devient aussi un outil de vente et de crédibilité.", badge: "VALUE" },
+      { title: "Projection", text: "Le client voit plus facilement où il peut gagner ensuite.", badge: "DELTA" },
+      { title: "Sérieux produit", text: "Le reporting donne une vraie impression de produit structuré et suivi.", badge: "TRUST" },
+      { title: "Hiérarchie claire", text: "Les priorités apparaissent mieux quand elles sont restituées proprement.", badge: "FLOW" },
+      { title: "Utilité interne", text: "Les rapports servent aussi au pilotage interne et pas seulement au client final.", badge: "OPS" }
+    ],
+    4,
+    getDaySeed("reports_business")
+  );
+
+  const potentialFormats = pickLibrary(
+    [
+      { title: "Résumé exécutif", text: "Le plus utile pour dirigeants ou clients pressés.", badge: "EXEC" },
+      { title: "Version comparative", text: "Très forte pour montrer l’avant / après.", badge: "DELTA" },
+      { title: "Rapport incidents", text: "Très crédible pour valoriser la surveillance et la réactivité.", badge: "UPTIME" },
+      { title: "Bloc valeur business", text: "Transforme un rapport technique en support plus vendeur.", badge: "VALUE" },
+      { title: "Rapport SEO client-ready", text: "Parfait pour rendre les audits plus lisibles et plus premium.", badge: "SEO" },
+      { title: "Vue portefeuille", text: "Pratique quand plusieurs sites ou contextes doivent être suivis.", badge: "SCALE" }
+    ],
+    4,
+    getDaySeed("reports_potential")
+  );
+
+  const reportFeatured = {
+    title: "Rapport mensuel type",
+    text: `${auditsCount} audits · ${monitorsCount} monitors · ${formatUsage(exportsUsage)} quota exports`,
+    badge: hasPlan("ultra") ? "ULTRA" : hasPlan("pro") ? "PRO" : "BASE"
+  };
+
+  const planCards = [
+    {
+      title: "Capacité exports",
+      text: `${exportsUsage?.used ?? 0}/${exportsUsage?.limit ?? 0} utilisés`,
+      badge: "EXPORT"
+    },
+    {
+      title: "Capacité restante",
+      text: `${
+        Math.max(
+          0,
+          Number(exportsUsage?.limit ?? 0) - Number(exportsUsage?.used ?? 0)
+        )
+      } exports encore disponibles sur cette période.`,
+      badge: "RESTANT"
+    },
+    {
+      title: "Capacité PDF",
+      text: hasAddon("pdfPack200")
+        ? "L’add-on PDF supplémentaire est actif."
+        : "Aucun add-on PDF supplémentaire détecté.",
+      badge: hasAddon("pdfPack200") ? "PDF+" : "BASE"
+    },
+    {
+      title: "Formats avancés",
+      text: hasAddon("exportsPack1000")
+        ? "Le compte a vocation à utiliser des exports plus intensifs."
+        : "Les exports avancés restent limités au périmètre actuel.",
+      badge: hasAddon("exportsPack1000") ? "EXP+" : "STD"
+    }
+  ];
+
+  const proReportCards = hasPlan("pro")
+    ? pickLibrary(
+        [
+          { title: "Restitution premium", text: "Le plan Pro donne plus de sens à la logique de livrable client-ready.", badge: "PRO" },
+          { title: "PDF plus vendable", text: "Le rapport devient plus propre, plus partageable et plus crédible.", badge: "PDF" },
+          { title: "Lecture comparative", text: "Le suivi dans le temps prend plus de valeur quand il est mieux présenté.", badge: "DELTA" },
+          { title: "Support client", text: "Le reporting devient plus utile pour fidéliser et rassurer.", badge: "CLIENT" }
+        ],
+        4,
+        getDaySeed("reports_pro")
+      )
+    : [];
+
+  const ultraReportCards = hasPlan("ultra")
+    ? pickLibrary(
+        [
+          { title: "Pilotage portefeuille", text: "Le niveau Ultra rend la page plus pertinente pour plusieurs contextes ou plusieurs sites.", badge: "ULTRA" },
+          { title: "Vision scalable", text: "La couche reporting devient plus crédible dans une logique de volume.", badge: "SCALE" },
+          { title: "Restitution haut niveau", text: "La page sert davantage de centre de production de livrables premium.", badge: "VALUE+" },
+          { title: "Coordination d’équipe", text: "Le reporting prend plus de sens quand plusieurs profils doivent relire ou exploiter les données.", badge: "TEAM" },
+          { title: "Lecture multi-flux", text: "Audits, monitors, exports et historique forment un ensemble plus cohérent.", badge: "FLOW+" },
+          { title: "Positionnement premium maximal", text: "Le rapport devient une vraie brique de valeur du produit.", badge: "PREMIUM+" }
+        ],
+        6,
+        getDaySeed("reports_ultra")
+      )
+    : [];
 
   setPage(`
     ${createSectionCard(
@@ -5094,6 +5237,13 @@ function renderReportsPage() {
         )}
 
         ${createSectionCard(
+          "Production",
+          "À produire maintenant",
+          "Les livrables les plus naturels à sortir à partir des données actuellement chargées.",
+          createMiniRows(readyNowCards)
+        )}
+
+        ${createSectionCard(
           "Historique",
           "Données exportables",
           "Résumé rapide des volumes actuellement disponibles.",
@@ -5113,8 +5263,41 @@ function renderReportsPage() {
 
               <div class="fpStatCard">
                 <div class="fpStatLabel">Exports restants</div>
-                <div class="fpStatValue">${esc(formatUsage(usage.exports))}</div>
+                <div class="fpStatValue">${esc(formatUsage(exportsUsage))}</div>
                 <div class="fpStatMeta">Quota actuel</div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Répartition",
+          "Répartition des exports",
+          "Lecture rapide de ce que cette page peut réellement produire.",
+          `
+            <div class="fpHealthGrid">
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">SEO</div>
+                <div class="fpHealthValue">${auditsCount}</div>
+                <div class="fpHealthMeta">Audits exportables</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">UPTIME</div>
+                <div class="fpHealthValue">${monitorsCount}</div>
+                <div class="fpHealthMeta">Monitors exportables</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">EXPORTS</div>
+                <div class="fpHealthValue">${exportsUsage?.used ?? 0}</div>
+                <div class="fpHealthMeta">Déjà utilisés</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">PDF</div>
+                <div class="fpHealthValue">${pdfUsage?.used ?? 0}</div>
+                <div class="fpHealthMeta">Usage PDF actuel</div>
               </div>
             </div>
           `
@@ -5126,6 +5309,41 @@ function renderReportsPage() {
           "Une structure plus claire augmente la perception de valeur.",
           renderCheckGrid(checklist)
         )}
+
+        ${createSectionCard(
+          "Flux",
+          "Enchaînement recommandé",
+          "Le meilleur enchaînement pour transformer les données en livrable réellement utile.",
+          createMiniRows(reportFlowCards)
+        )}
+
+        ${createSectionCard(
+          "Formats",
+          "Formats à potentiel",
+          "Les formats qui donnent le plus de valeur selon le contexte de lecture.",
+          createMiniRows(potentialFormats)
+        )}
+
+        ${createSectionCard(
+          "Business",
+          "Lecture business du reporting",
+          "Le reporting n’est pas qu’un export : c’est une brique de rétention et de valeur perçue.",
+          createMiniRows(reportingBusinessCards)
+        )}
+
+        ${hasPlan("pro") ? createSectionCard(
+          "Mode Pro",
+          "Restitution plus premium",
+          "Le plan Pro donne plus de sens au reporting côté client et présentation.",
+          createMiniRows(proReportCards)
+        ) : ""}
+
+        ${hasPlan("ultra") ? createSectionCard(
+          "Mode Ultra",
+          "Pilotage avancé du reporting",
+          "Le niveau Ultra pousse encore plus loin la logique portefeuille, volume et premium.",
+          createMiniRows(ultraReportCards)
+        ) : ""}
       </div>
 
       <div class="fpCol fpColSide">
@@ -5141,30 +5359,32 @@ function renderReportsPage() {
         )}
 
         ${createSectionCard(
+          "Mise en avant",
+          "Rapport mis en avant",
+          "Une mise en avant premium rend la page plus crédible et plus utile.",
+          `
+            <div class="fpAccountHero">
+              <div>
+                <div class="fpCardKicker">Exemple de livrable</div>
+                <div class="fpSectionTitle" style="font-size:22px">${esc(reportFeatured.title)}</div>
+                <div class="fpCardText">${esc(reportFeatured.text)}</div>
+                <div class="fpDetailActions" style="margin-top:14px">
+                  <button class="fpBtn fpBtnPrimary fpBtnSmall" id="fpExportAuditsBtnPageHero" type="button">Exporter audits</button>
+                  <button class="fpBtn fpBtnGhost fpBtnSmall" id="fpExportMonitorsBtnPageHero" type="button">Exporter monitors</button>
+                </div>
+              </div>
+              <div class="fpAccountHeroRight">
+                <div class="fpAccountPlanChip">${esc(reportFeatured.badge)}</div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
           "Plan / format",
-          "Niveau de reporting",
+          "Capacité du plan",
           "Plus le plan et les add-ons montent, plus cette page a du sens.",
-          createMiniRows([
-            {
-              title: "Capacité exports",
-              text: `${usage.exports?.used ?? 0}/${usage.exports?.limit ?? 0} utilisés`,
-              badge: "EXPORT"
-            },
-            {
-              title: "Capacité PDF",
-              text: hasAddon("pdfPack200")
-                ? "L’add-on PDF supplémentaire est actif."
-                : "Aucun add-on PDF supplémentaire détecté.",
-              badge: hasAddon("pdfPack200") ? "PDF+" : "BASE"
-            },
-            {
-              title: "Formats avancés",
-              text: hasAddon("exportsPack1000")
-                ? "Le compte a vocation à utiliser des exports plus intensifs."
-                : "Les exports avancés restent limités au périmètre actuel.",
-              badge: hasAddon("exportsPack1000") ? "EXP+" : "STD"
-            }
-          ])
+          createMiniRows(planCards)
         )}
 
         ${createSectionCard(
@@ -5182,6 +5402,14 @@ function renderReportsPage() {
   });
 
   $("#fpExportMonitorsBtnPage")?.addEventListener("click", async () => {
+    await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
+  });
+
+  $("#fpExportAuditsBtnPageHero")?.addEventListener("click", async () => {
+    await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+  });
+
+  $("#fpExportMonitorsBtnPageHero")?.addEventListener("click", async () => {
     await safeExport("/api/exports/monitors.csv", "flowpoint-monitors.csv");
   });
 }
