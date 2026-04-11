@@ -4438,7 +4438,7 @@ function renderMonitorsPage() {
     .slice(0, 4)
     .map((m) => ({
       title: m.url || "Monitor",
-      text: `Incident détecté · ${formatDate(m.lastCheckedAt)}`,
+      text: `Incident détecté · ${formatDate(m.lastCheckedAt)}${m.lastResponseTimeMs ? ` · ${m.lastResponseTimeMs} ms` : ""}`,
       badge: "DOWN"
     }));
 
@@ -4468,6 +4468,156 @@ function renderMonitorsPage() {
           btnClass: "fpBtnGhost"
         }
       ];
+
+  const urgentMonitors = [...allMonitors]
+    .sort((a, b) => {
+      const aStatus = normalizeMonitorStatus(a);
+      const bStatus = normalizeMonitorStatus(b);
+
+      const rank = (s) => (s === "down" ? 0 : s === "unknown" ? 1 : 2);
+      const byStatus = rank(aStatus) - rank(bStatus);
+      if (byStatus !== 0) return byStatus;
+
+      return new Date(a.lastCheckedAt || 0) - new Date(b.lastCheckedAt || 0);
+    })
+    .slice(0, 4);
+
+  const featuredMonitor =
+    [...allMonitors].sort((a, b) => new Date(b.lastCheckedAt || 0) - new Date(a.lastCheckedAt || 0))[0] || null;
+
+  const potentialMonitors = pickLibrary(
+    allMonitors.length
+      ? allMonitors.map((m) => ({
+          title: m.url || "Monitor",
+          text: `Intervalle ${m.intervalMinutes ?? 60} min · ${normalizeMonitorStatus(m).toUpperCase()}${m.lastResponseTimeMs ? ` · ${m.lastResponseTimeMs} ms` : ""}`,
+          badge:
+            normalizeMonitorStatus(m) === "down"
+              ? "PRIORITÉ"
+              : normalizeMonitorStatus(m) === "up"
+                ? "STABLE"
+                : "À CADRER"
+        }))
+      : [
+          { title: "Site principal", text: "Toujours prioritaire pour renforcer la valeur perçue du monitoring.", badge: "CORE" },
+          { title: "Landing stratégique", text: "Une page de conversion mérite souvent une surveillance dédiée.", badge: "CRO" },
+          { title: "Page locale rentable", text: "Surveiller une page locale importante renforce le pilotage business.", badge: "LOCAL" },
+          { title: "Page de service clé", text: "Certaines pages commerciales méritent une attention plus forte.", badge: "VALUE" }
+        ],
+    4,
+    getDaySeed("monitor_potential")
+  );
+
+  const flowCards = [
+    {
+      title: "1. Créer le monitor",
+      text: "Choisir l’URL la plus utile à surveiller en priorité.",
+      badge: "STEP 1"
+    },
+    {
+      title: "2. Tester rapidement",
+      text: "Valider tout de suite que la couche monitoring fonctionne réellement.",
+      badge: "STEP 2"
+    },
+    {
+      title: "3. Configurer les alertes",
+      text: "Faire en sorte que les incidents remontent à la bonne personne.",
+      badge: "STEP 3"
+    },
+    {
+      title: "4. Relire les logs",
+      text: "Transformer un incident en lecture crédible et exploitable.",
+      badge: "STEP 4"
+    }
+  ];
+
+  const businessSignals = pickLibrary(
+    [
+      { title: "Tranquillité client", text: "Le client sent que le site reste suivi en continu.", badge: "TRUST" },
+      { title: "Service vivant", text: "Le monitoring rend le SaaS plus concret qu’un simple dashboard passif.", badge: "LIVE" },
+      { title: "Valeur récurrente", text: "Une surveillance continue aide à justifier la logique d’abonnement.", badge: "MRR" },
+      { title: "Réactivité premium", text: "Le produit paraît plus sérieux quand il est capable de faire remonter les incidents.", badge: "PREMIUM" },
+      { title: "Couche opérationnelle", text: "Le monitoring ajoute une vraie dimension ops au produit.", badge: "OPS" },
+      { title: "Réduction du risque", text: "Détecter plus vite une panne protège trafic, leads et image.", badge: "RISK" },
+      { title: "Support commercial", text: "Le monitoring aide à montrer que le service ne se limite pas au SEO.", badge: "VALUE" },
+      { title: "Suivi crédible", text: "Les statuts et les logs rendent le suivi plus tangible dans le temps.", badge: "FOLLOW" }
+    ],
+    4,
+    getDaySeed("monitor_business_signals")
+  );
+
+  const enrichedIncidentCards = recentIncidents.length
+    ? recentIncidents
+    : pickLibrary(
+        [
+          { title: "Aucun incident majeur", text: "La surveillance actuelle ne remonte pas d’alerte critique récente.", badge: "UP" },
+          { title: "Lecture stable", text: "La plateforme montre un comportement cohérent sur la période actuelle.", badge: "STABLE" },
+          { title: "Signal rassurant", text: "Une bonne stabilité renforce la perception de sérieux côté client.", badge: "TRUST" },
+          { title: "Potentiel d’upsell", text: "Une surveillance propre peut être mieux valorisée dans les rapports ou le plan supérieur.", badge: "VALUE" }
+        ],
+        4,
+        getDaySeed("monitor_incidents_fallback")
+      );
+
+  const capacityCards = [
+    {
+      title: "Quota monitors",
+      text: `${getUsageBucket(state.me?.usage || {}, "monitor")?.used ?? 0}/${getUsageBucket(state.me?.usage || {}, "monitor")?.limit ?? 0} utilisés`,
+      badge: "QUOTA"
+    },
+    {
+      title: "Capacité restante",
+      text: `${
+        Math.max(
+          0,
+          Number(getUsageBucket(state.me?.usage || {}, "monitor")?.limit ?? 0) -
+          Number(getUsageBucket(state.me?.usage || {}, "monitor")?.used ?? 0)
+        )
+      } monitors encore disponibles sur cette période.`,
+      badge: "RESTANT"
+    },
+    {
+      title: "Extension monitors",
+      text: hasAddon("monitorsPack50")
+        ? "L’add-on monitors +50 est actif sur ce compte."
+        : "Aucun add-on monitors supplémentaire détecté.",
+      badge: hasAddon("monitorsPack50") ? "ON" : "OFF"
+    },
+    {
+      title: "Niveau uptime",
+      text: hasPlan("pro")
+        ? "Le plan permet une lecture plus vendable et plus détaillée des statuts uptime."
+        : "La lecture uptime avancée reste réservée à un plan supérieur.",
+      badge: hasPlan("pro") ? "PRO" : "BASE"
+    }
+  ];
+
+  const proMonitorCards = hasPlan("pro")
+    ? pickLibrary(
+        [
+          { title: "Lecture uptime premium", text: "Le plan Pro rend le module plus crédible dans une logique client-ready.", badge: "PRO" },
+          { title: "Analyse incidents", text: "Les incidents prennent plus de valeur quand ils peuvent être relus et expliqués proprement.", badge: "OPS" },
+          { title: "Support de rétention", text: "Le monitoring aide à défendre l’abonnement par une valeur continue.", badge: "MRR" },
+          { title: "Restitution premium", text: "Le statut uptime devient plus utile commercialement qu’un simple indicateur brut.", badge: "VALUE" }
+        ],
+        4,
+        getDaySeed("monitor_pro_cards")
+      )
+    : [];
+
+  const ultraMonitorCards = hasPlan("ultra")
+    ? pickLibrary(
+        [
+          { title: "Pilotage portefeuille", text: "Le niveau Ultra donne plus de sens à la surveillance quand plusieurs contextes sont suivis.", badge: "ULTRA" },
+          { title: "Lecture ops center", text: "La page devient plus proche d’un vrai centre de contrôle opérationnel.", badge: "OPS" },
+          { title: "Priorisation multi-monitors", text: "Identifier quoi tester ou surveiller en premier devient plus stratégique.", badge: "PRIORITY" },
+          { title: "Surveillance scalable", text: "Le mode Ultra donne plus de cohérence à une logique de volume, d’équipe ou de multi-sites.", badge: "SCALE" },
+          { title: "Couche premium maximale", text: "Le monitoring devient une vraie brique haut de gamme du produit.", badge: "VALUE+" },
+          { title: "Exécution avancée", text: "Logs, incidents, quotas et alertes s’intègrent dans une logique plus complète.", badge: "FLOW+" }
+        ],
+        6,
+        getDaySeed("monitor_ultra_cards")
+      )
+    : [];
 
   setPage(`
     ${createSectionCard(
@@ -4517,6 +4667,33 @@ function renderMonitorsPage() {
         )}
 
         ${createSectionCard(
+          "Priorité immédiate",
+          "À surveiller maintenant",
+          "Les monitors à traiter en premier selon leur statut ou leur fraîcheur de vérification.",
+          urgentMonitors.length
+            ? `
+              <div class="fpRows">
+                ${urgentMonitors.map((m) => `
+                  <div class="fpRowCard">
+                    <div class="fpRowMain">
+                      <div class="fpRowTitle">${esc(m.url || "Monitor")}</div>
+                      <div class="fpRowMeta">
+                        ${esc(normalizeMonitorStatus(m).toUpperCase())} · ${esc(m.intervalMinutes ?? 60)} min · ${esc(formatDate(m.lastCheckedAt))}
+                      </div>
+                    </div>
+                    <div class="fpRowRight" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-monitor-test="${esc(normalizeMonitorId(m))}">Tester</button>
+                      <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-logs="${esc(normalizeMonitorId(m))}">Logs</button>
+                      <button class="fpBtn fpBtnDanger fpBtnSmall" type="button" data-monitor-delete="${esc(normalizeMonitorId(m))}">Supprimer</button>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : createEmpty("Aucun monitor prioritaire pour le moment.")
+        )}
+
+        ${createSectionCard(
           "Monitors",
           "Liste active",
           "Tous les monitors actuellement chargés depuis ton backend.",
@@ -4533,17 +4710,44 @@ function renderMonitorsPage() {
 
                 ${monitors.map((m) => `
                   <div class="fpTableRow">
-                    <div class="fpTableUrl">${esc(m.url || "Monitor")}</div>
+                    <div>
+                      <div class="fpTableUrl">${esc(m.url || "Monitor")}</div>
+                      <div class="fpTableMeta" style="margin-top:8px;color:var(--fpMuted);font-size:13px;font-weight:700;line-height:1.45">
+                        ${
+                          normalizeMonitorStatus(m) === "down"
+                            ? "Incident actif ou récent détecté."
+                            : normalizeMonitorStatus(m) === "up"
+                              ? "Statut stable actuellement."
+                              : "Statut encore peu exploitable."
+                        }
+                        ${m.lastResponseTimeMs ? ` · ${esc(m.lastResponseTimeMs)} ms` : ""}
+                        ${m.lastStatusCode ? ` · HTTP ${esc(m.lastStatusCode)}` : ""}
+                      </div>
+                    </div>
+
                     <div>${createBadge(normalizeMonitorStatus(m))}</div>
-                    <div>${esc(m.intervalMinutes ?? 60)} min</div>
-                    <div>${esc(formatDate(m.lastCheckedAt))}</div>
+
+                    <div>
+                      <div style="font-weight:900">${esc(m.intervalMinutes ?? 60)} min</div>
+                      <div style="margin-top:6px;color:var(--fpMuted);font-size:13px;font-weight:700">
+                        ${Number(m.intervalMinutes ?? 60) <= 15 ? "Surveillance plus serrée" : "Surveillance standard"}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style="font-weight:900">${esc(formatDate(m.lastCheckedAt))}</div>
+                      <div style="margin-top:6px;color:var(--fpMuted);font-size:13px;font-weight:700">
+                        ${m.lastCheckedAt ? "Dernière vérification connue" : "Jamais vérifié"}
+                      </div>
+                    </div>
+
                     <div class="fpTableActions">
                       <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-monitor-test="${esc(normalizeMonitorId(m))}">Tester</button>
                       <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-logs="${esc(normalizeMonitorId(m))}">Logs</button>
                       ${
                         hasPlan("pro")
                           ? `<button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-uptime="${esc(normalizeMonitorId(m))}">Uptime</button>`
-                          : `<button class="fpBtn fpBtnGhost fpBtnSmall" type="button" disabled>Uptime Pro</button>`
+                          : ``
                       }
                       <button class="fpBtn fpBtnDanger fpBtnSmall" type="button" data-monitor-delete="${esc(normalizeMonitorId(m))}">Supprimer</button>
                     </div>
@@ -4552,6 +4756,67 @@ function renderMonitorsPage() {
               </div>
             `
             : createEmpty("Aucun monitor actif pour le moment.")
+        )}
+
+        ${createSectionCard(
+          "Répartition",
+          "Répartition des statuts",
+          "Vue instantanée de la santé du monitoring actif.",
+          `
+            <div class="fpHealthGrid">
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">UP</div>
+                <div class="fpHealthValue">${health.up}</div>
+                <div class="fpHealthMeta">Monitors stables</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">DOWN</div>
+                <div class="fpHealthValue">${health.down}</div>
+                <div class="fpHealthMeta">Incidents à traiter</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">UNKNOWN</div>
+                <div class="fpHealthValue">${health.unknown}</div>
+                <div class="fpHealthMeta">Statuts peu exploitables</div>
+              </div>
+
+              <div class="fpHealthCard">
+                <div class="fpHealthTitle">Total</div>
+                <div class="fpHealthValue">${allMonitors.length}</div>
+                <div class="fpHealthMeta">Monitors chargés</div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Potentiel",
+          "Monitors à potentiel",
+          "Les URLs de surveillance qui renforcent le plus la valeur perçue du produit.",
+          createMiniRows(potentialMonitors)
+        )}
+
+        ${createSectionCard(
+          "Incidents",
+          "Incidents récents enrichis",
+          "Une vraie lecture d’incidents rend cette page plus utile et plus premium.",
+          createMiniRows(enrichedIncidentCards)
+        )}
+
+        ${createSectionCard(
+          "Business",
+          "Lecture business du monitoring",
+          "Le module uptime renforce la confiance, la rétention et la crédibilité opérationnelle.",
+          createMiniRows(businessSignals)
+        )}
+
+        ${createSectionCard(
+          "Exécution",
+          "Enchaînement recommandé",
+          "Le meilleur flux pour transformer un monitor en couche de valeur continue.",
+          createMiniRows(flowCards)
         )}
 
         ${createSectionCard(
@@ -4576,14 +4841,19 @@ function renderMonitorsPage() {
           `
         )}
 
-        ${createSectionCard(
-          "Incidents récents",
-          "Lecture exploitable",
-          "Une vraie carte d’incidents rend cette page plus utile et plus premium.",
-          recentIncidents.length
-            ? createMiniRows(recentIncidents)
-            : createEmpty("Aucun incident récent détecté.")
-        )}
+        ${hasPlan("pro") ? createSectionCard(
+          "Mode Pro",
+          "Lecture uptime premium",
+          "Le plan Pro rend cette page plus utile pour la restitution et la valeur perçue.",
+          createMiniRows(proMonitorCards)
+        ) : ""}
+
+        ${hasPlan("ultra") ? createSectionCard(
+          "Mode Ultra",
+          "Pilotage avancé du monitoring",
+          "Le niveau Ultra pousse davantage la logique ops center, portefeuille et scalabilité.",
+          createMiniRows(ultraMonitorCards)
+        ) : ""}
       </div>
 
       <div class="fpCol fpColSide">
@@ -4598,8 +4868,47 @@ function renderMonitorsPage() {
                 <div class="fpStatValue">${allMonitors.length}</div>
                 <div class="fpStatMeta">Monitors chargés</div>
               </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">UP</div>
+                <div class="fpStatValue">${health.up}</div>
+                <div class="fpStatMeta">Stables actuellement</div>
+              </div>
+
+              <div class="fpStatCard">
+                <div class="fpStatLabel">DOWN</div>
+                <div class="fpStatValue">${health.down}</div>
+                <div class="fpStatMeta">Sous attention</div>
+              </div>
             </div>
           `
+        )}
+
+        ${createSectionCard(
+          "Mise en avant",
+          "Monitor mis en avant",
+          "Le monitor le plus récemment vérifié mérite une lecture plus premium.",
+          featuredMonitor
+            ? `
+              <div class="fpAccountHero">
+                <div>
+                  <div class="fpCardKicker">Dernier check important</div>
+                  <div class="fpSectionTitle" style="font-size:22px">${esc(featuredMonitor.url || "Monitor")}</div>
+                  <div class="fpCardText">
+                    ${esc(normalizeMonitorStatus(featuredMonitor).toUpperCase())} · ${esc(featuredMonitor.intervalMinutes ?? 60)} min · ${esc(formatDate(featuredMonitor.lastCheckedAt))}
+                    ${featuredMonitor.lastResponseTimeMs ? ` · ${esc(featuredMonitor.lastResponseTimeMs)} ms` : ""}
+                  </div>
+                  <div class="fpDetailActions" style="margin-top:14px">
+                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-monitor-test="${esc(normalizeMonitorId(featuredMonitor))}">Tester</button>
+                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-monitor-logs="${esc(normalizeMonitorId(featuredMonitor))}">Logs</button>
+                  </div>
+                </div>
+                <div class="fpAccountHeroRight">
+                  <div class="fpAccountPlanChip">${esc(normalizeMonitorStatus(featuredMonitor).toUpperCase())}</div>
+                </div>
+              </div>
+            `
+            : createEmpty("Aucun monitor récent à mettre en avant.")
         )}
 
         ${createSectionCard(
@@ -4616,29 +4925,9 @@ function renderMonitorsPage() {
 
         ${createSectionCard(
           "Plan / addons",
-          "Capacité monitoring",
-          "Les quotas et add-ons changent la vraie utilité de cette page.",
-          createMiniRows([
-            {
-              title: "Quota monitors",
-              text: `${state.me?.usage?.monitors?.used ?? 0}/${state.me?.usage?.monitors?.limit ?? 0} utilisés`,
-              badge: "QUOTA"
-            },
-            {
-              title: "Extension monitors",
-              text: hasAddon("monitorsPack50")
-                ? "L’add-on monitors +50 est actif sur ce compte."
-                : "Aucun add-on monitors supplémentaire détecté.",
-              badge: hasAddon("monitorsPack50") ? "ON" : "OFF"
-            },
-            {
-              title: "Uptime détaillé",
-              text: hasPlan("pro")
-                ? "Le plan permet une lecture plus vendable des statuts uptime."
-                : "La version détaillée uptime reste limitée hors Pro.",
-              badge: hasPlan("pro") ? "PRO" : "BASE"
-            }
-          ])
+          "Capacité du plan",
+          "Les quotas et niveaux changent la vraie utilité de cette page.",
+          createMiniRows(capacityCards)
         )}
 
         ${createSectionCard(
