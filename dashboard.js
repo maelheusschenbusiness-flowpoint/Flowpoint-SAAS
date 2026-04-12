@@ -3811,306 +3811,333 @@ function getCurrentMissionPoolLabel() {
   }
 
   function renderMissionsPage() {
-    const done = countDoneMissions();
-    const missions = getFilteredMissions();
-    const todoCount = state.missions.filter((m) => !m.done).length;
-    const donePct = state.missions.length
-      ? Math.round((done / state.missions.length) * 100)
-      : 0;
+  const missions = getFilteredMissions();
+  const allMissions = Array.isArray(state.missions) ? state.missions : [];
+  const total = allMissions.length;
+  const done = allMissions.filter((m) => m.done).length;
+  const todo = allMissions.filter((m) => !m.done).length;
+  const progress = total ? Math.round((done / total) * 100) : 0;
 
-    const missionActionCards = pickLibrary(
-      [
-        {
-          title: "Créer un monitor maintenant",
-          text: "Ajoute une URL à surveiller pour activer la couche uptime du dashboard.",
-          action: "add_monitor",
-          cta: "Créer un monitor"
-        },
-        {
-          title: "Lancer un audit prioritaire",
-          text: "Démarre un audit SEO immédiatement pour alimenter les autres onglets.",
-          action: "run_audit",
-          cta: "Lancer un audit"
-        },
-        {
-          title: "Configurer les alertes email",
-          text: "Finalise les destinataires pour recevoir les incidents en direct.",
-          action: "goto_settings",
-          cta: "Configurer"
-        },
-        {
-          title: "Exporter les audits",
-          text: "Prépare un premier livrable CSV pour rendre le dashboard plus concret.",
-          action: "export_audits",
-          cta: "Exporter"
-        },
-        {
-          title: "Tester un monitor",
-          text: "Valide rapidement que la surveillance fonctionne vraiment côté client.",
-          action: "test_monitor",
-          cta: "Tester"
-        },
-        {
-          title: "Ouvrir la facturation",
-          text: "Vérifie le plan actif et les modules débloqués sur le workspace.",
-          action: "open_billing",
-          cta: "Ouvrir billing"
-        }
-      ],
-      4,
-      getDaySeed("missions_actions")
-    );
+  const criticalMissions = allMissions.filter((m) => !m.done && lower(m.impact).includes("crit"));
+  const highMissions = allMissions.filter((m) => !m.done && (lower(m.impact).includes("élev") || lower(m.priority) === "high"));
+  const personalizedCount = allMissions.filter((m) => m.personalized).length;
 
-    const missionGuides = pickLibrary(
-      [
-        {
-          title: "Parcours recommandé",
-          text: "Monitor → Audit → Paramètres → Rapports. C’est le chemin le plus utile pour rendre le dashboard vraiment opérationnel."
-        },
-        {
-          title: "Objectif prioritaire",
-          text: "Le but n’est pas juste de cocher des cases, mais de déclencher de vraies données, de vrais exports et de vraies actions."
-        },
-        {
-          title: "Conseil d’usage",
-          text: "Commence toujours par les actions qui alimentent les autres pages : monitor, audit, alertes, puis exports."
-        },
-        {
-          title: "Logique SaaS",
-          text: "Plus tu termines les missions de base, plus les autres pages deviennent utiles et crédibles pour un client final."
-        }
-      ],
-      3,
-      getDaySeed("missions_guides")
-    );
+  const siteProfile = typeof getCurrentSiteProfile === "function" ? getCurrentSiteProfile() : null;
+  const siteLabel = siteProfile?.host || siteProfile?.siteUrl || "Bibliothèque standard";
 
-    setPage(`
-      ${createSectionCard(
-        "Missions",
-        "Checklist d’activation",
-        "Les missions se réinitialisent automatiquement tous les 3 jours et servent à déclencher les vraies fonctions utiles du dashboard.",
-        `
-          ${createToolbar({
-            searchId: "fpMissionsSearch",
-            searchPlaceholder: "Rechercher une mission…",
-            searchValue: state.filters.missions.q,
-            statusId: "fpMissionsStatus",
-            statusValue: state.filters.missions.status,
-            sortId: "fpMissionsDummySort",
-            sortValue: "default",
-            statuses: [
-              { value: "all", label: "Toutes" },
-              { value: "todo", label: "À faire" },
-              { value: "done", label: "Terminées" },
-            ],
-            sorts: [
-              { value: "default", label: "Ordre actuel" }
-            ],
-          })}
+  const topNow = [...allMissions]
+    .filter((m) => !m.done)
+    .sort((a, b) => {
+      const pa = lower(a.priority || "");
+      const pb = lower(b.priority || "");
+      const rank = { critical: 4, high: 3, medium: 2, low: 1 };
+      return (rank[pb] || 0) - (rank[pa] || 0);
+    })
+    .slice(0, 6);
 
-          <div class="fpMissionPageGrid">
-            <div class="fpMissionPageMain">
-              <div class="fpMissionStack">
-                ${missions.map((m) => `
-                  <div class="fpMissionCard fpMissionCardLarge">
-                    <div class="fpMissionTop">
-                      <button
-                        class="fpMissionCheck ${m.done ? "done" : ""}"
-                        data-mission-toggle="${esc(m.id)}"
-                        type="button"
-                        aria-checked="${m.done ? "true" : "false"}"
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          <path d="M6.5 12.5L10.2 16.2L17.5 8.8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                      </button>
+  const recentDone = [...allMissions].filter((m) => m.done).slice(0, 6);
 
-                      <div class="fpMissionInfo">
-                        <div class="fpMissionTitle">${esc(m.title)}</div>
-                        <div class="fpMissionMeta">${esc(m.meta)} · Impact ${esc(m.impact || "Moyen")}</div>
-                      </div>
-                    </div>
+  const packs = [
+    {
+      title: "Pack SEO technique",
+      text: "Génère un lot d’actions SEO à partir des pages faibles détectées.",
+      cta: "Créer mission",
+      action: "create_audit_mission",
+      tag: "SEO"
+    },
+    {
+      title: "Pack monitoring",
+      text: "Transforme la surveillance et les incidents en actions suivies.",
+      cta: "Créer mission",
+      action: "create_monitor_mission",
+      tag: "UPTIME"
+    },
+    {
+      title: "Pack Local SEO",
+      text: "Prépare des actions ville, zone et présence locale.",
+      cta: "Créer mission",
+      action: "create_local_mission",
+      tag: "LOCAL"
+    },
+    {
+      title: "Pack reporting",
+      text: "Prépare une restitution claire pour le client final.",
+      cta: "Créer mission",
+      action: "create_report_mission",
+      tag: "REPORT"
+    }
+  ];
 
-                    <div class="fpMissionActions">
-                      <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Ouvrir</button>
-                    </div>
-                  </div>
-                `).join("")}
-              </div>
+  const proUltraCards = [
+    {
+      title: "Pro",
+      text: "Bibliothèque enrichie, missions plus ciblées, logique quick wins et suggestions plus utiles."
+    },
+    {
+      title: "Ultra",
+      text: "Missions plus profondes, packs d’actions, base prête pour assignation, automatisation et workflows."
+    },
+    {
+      title: "Bibliothèque active",
+      text: `Source actuelle : ${siteLabel}. Les missions peuvent être personnalisées selon les URLs connues, audits et monitors.`
+    },
+    {
+      title: "Étape backend",
+      text: "La suite logique sera de sortir les missions du localStorage pour les mettre en base avec statuts avancés."
+    }
+  ];
 
-              ${createSectionCard(
-                "Actions rapides",
-                "Accélérer l’activation",
-                "Ces blocs lancent directement les actions les plus utiles sans devoir chercher dans les autres onglets.",
-                `
-                  <div class="fpReportsGrid">
-                    ${missionActionCards.map((card) => `
-                      <div class="fpReportCard">
-                        <div class="fpReportTitle">${esc(card.title)}</div>
-                        <div class="fpReportMeta">${esc(card.text)}</div>
-                        <div class="fpDetailActions">
-                          <button
-                            class="fpBtn fpBtnPrimary"
-                            type="button"
-                            data-mission-direct-action="${esc(card.action)}"
-                          >
-                            ${esc(card.cta)}
-                          </button>
-                        </div>
-                      </div>
-                    `).join("")}
-                  </div>
-                `
-              )}
-            </div>
-
-            <div class="fpMissionPageSide">
-              <div class="fpStatsGrid">
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Terminées</div>
-                  <div class="fpStatValue">${done}/${state.missions.length}</div>
-                  <div class="fpStatMeta">Missions complétées</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">À faire</div>
-                  <div class="fpStatValue">${todoCount}</div>
-                  <div class="fpStatMeta">Encore ouvertes</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Progression</div>
-                  <div class="fpStatValue">${donePct}%</div>
-                  <div class="fpStatMeta">Avancement global</div>
-                </div>
-
-                <div class="fpStatCard">
-                  <div class="fpStatLabel">Reset auto</div>
-                  <div class="fpStatValue">3 jours</div>
-                  <div class="fpStatMeta">Remise à zéro automatique</div>
-                </div>
-              </div>
-
-              <div class="fpTextPanel fpMissionHelperPanel">
-                Commence par <strong>monitor + audit + paramètres</strong>. C’est le trio le plus utile pour transformer le dashboard en outil réellement exploitable.
-              </div>
-
-              <div class="fpTimeline fpMissionSideTimeline">
-                <div class="fpTimelineItem">
-                  <div class="fpTimelineTitle">Étape 1 — Monitoring</div>
-                  <div class="fpTimelineMeta">Créer puis tester un monitor pour valider la couche uptime.</div>
-                </div>
-                <div class="fpTimelineItem">
-                  <div class="fpTimelineTitle">Étape 2 — Audit</div>
-                  <div class="fpTimelineMeta">Lancer un audit pour alimenter le reporting et les opportunités.</div>
-                </div>
-                <div class="fpTimelineItem">
-                  <div class="fpTimelineTitle">Étape 3 — Paramètres</div>
-                  <div class="fpTimelineMeta">Configurer les alertes email et l’organisation du workspace.</div>
-                </div>
-                <div class="fpTimelineItem">
-                  <div class="fpTimelineTitle">Étape 4 — Rapports</div>
-                  <div class="fpTimelineMeta">Exporter un premier livrable pour rendre la valeur perçue plus concrète.</div>
-                </div>
-              </div>
-
-              ${createSectionCard(
-                "Guides utiles",
-                "Comment bien utiliser ces missions",
-                "La checklist doit servir à déclencher des actions, pas juste à remplir visuellement la page.",
-                renderCheckGrid(missionGuides)
-              )}
-            </div>
+  setPage(`
+    ${createSectionCard(
+      "Missions",
+      "Centre d’exécution",
+      "Transforme les audits, monitors et opportunités détectées en vraies actions exploitables.",
+      `
+        <div class="fpStatsGrid">
+          <div class="fpStatCard">
+            <div class="fpStatLabel">Missions</div>
+            <div class="fpStatValue">${total}</div>
+            <div class="fpStatMeta">Bibliothèque chargée</div>
           </div>
-        `
-      )}
-    `);
 
-    requestAnimationFrame(() => {
-      const search = $("#fpMissionsSearch");
-      const status = $("#fpMissionsStatus");
+          <div class="fpStatCard">
+            <div class="fpStatLabel">À faire</div>
+            <div class="fpStatValue">${todo}</div>
+            <div class="fpStatMeta">Actions ouvertes</div>
+          </div>
 
-      if (search) {
-        search.addEventListener("input", (e) => {
-          state.filters.missions.q = e.target.value || "";
-          renderRoute({ preserveScroll: true });
-        });
-      }
+          <div class="fpStatCard">
+            <div class="fpStatLabel">Terminées</div>
+            <div class="fpStatValue">${done}</div>
+            <div class="fpStatMeta">Actions validées</div>
+          </div>
 
-      if (status) {
-        status.addEventListener("change", (e) => {
-          state.filters.missions.status = e.target.value || "all";
-          renderRoute({ preserveScroll: true });
-        });
-      }
+          <div class="fpStatCard">
+            <div class="fpStatLabel">Progression</div>
+            <div class="fpStatValue">${progress}%</div>
+            <div class="fpStatMeta">Avancement global</div>
+          </div>
 
-      $$("[data-mission-direct-action]").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          const action = btn.getAttribute("data-mission-direct-action");
-          const fakeMission = state.missions.find((m) => m.action === action);
+          <div class="fpStatCard">
+            <div class="fpStatLabel">Critiques</div>
+            <div class="fpStatValue">${criticalMissions.length}</div>
+            <div class="fpStatMeta">Urgences détectées</div>
+          </div>
 
-          if (fakeMission) {
-            await runMission(fakeMission.id);
-            renderRoute({ preserveScroll: true });
-            return;
-          }
+          <div class="fpStatCard">
+            <div class="fpStatLabel">Personnalisées</div>
+            <div class="fpStatValue">${personalizedCount}</div>
+            <div class="fpStatMeta">Basées sur le site</div>
+          </div>
+        </div>
 
-          const createdMission = handleMissionCategoryAction(action);
-          if (createdMission) {
-            renderRoute({ preserveScroll: true });
-            return;
-          }
+        ${createToolbar({
+          searchId: "fpMissionsSearch",
+          searchPlaceholder: "Rechercher une mission, une page ou une catégorie…",
+          searchValue: state.filters.missions.q,
+          statusId: "fpMissionsStatus",
+          statusValue: state.filters.missions.status,
+          sortId: "fpMissionsDummySort",
+          sortValue: "default",
+          statuses: [
+            { value: "all", label: "Toutes" },
+            { value: "todo", label: "À faire" },
+            { value: "done", label: "Terminées" }
+          ],
+          sorts: [
+            { value: "default", label: "Ordre actuel" }
+          ]
+        })}
+      `
+    )}
 
-          if (action === "add_monitor") {
-            const ok = await safeAddMonitor();
-            if (ok) {
-              await loadData({ silent: true });
-              renderRoute({ preserveScroll: true });
-            }
-            return;
-          }
+    <div class="fpGrid fpGridMain">
+      <div class="fpCol fpColMain">
+        ${createSectionCard(
+          "À faire maintenant",
+          "Priorités du moment",
+          "Les missions les plus utiles à traiter en premier.",
+          topNow.length ? `
+            <div class="fpMissionBoardList">
+              ${topNow.map((m) => `
+                <div class="fpMissionBoardCard">
+                  <div class="fpMissionBoardHead">
+                    <div class="fpMissionBoardMain">
+                      <div class="fpMissionBoardTitle">${esc(m.title)}</div>
+                      <div class="fpMissionBoardMeta">
+                        ${esc(m.meta || "Général")}
+                        ${m.siteUrl ? ` · ${esc(m.siteUrl)}` : ""}
+                      </div>
+                    </div>
+                    <div class="fpMissionBoardBadges">
+                      <div class="fpAddonPill ${m.done ? "on" : "off"}">${esc(m.impact || "Moyen")}</div>
+                    </div>
+                  </div>
 
-          if (action === "run_audit") {
-            const ok = await safeRunAudit();
-            if (ok) {
-              await loadData({ silent: true });
-              renderRoute({ preserveScroll: true });
-            }
-            return;
-          }
+                  ${m.description ? `<div class="fpMissionBoardText">${esc(m.description)}</div>` : ""}
 
-          if (action === "export_audits") {
-            await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
-            return;
-          }
+                  <div class="fpMissionBoardActions">
+                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Exécuter</button>
+                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-toggle="${esc(m.id)}">
+                      ${m.done ? "Réouvrir" : "Terminer"}
+                    </button>
+                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Ouvrir</button>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          ` : createEmpty("Aucune priorité à afficher pour le moment.")}
+        )}
 
-          if (action === "test_monitor") {
-            const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
-            if (!firstMonitor) {
-              setStatus("Aucun monitor à tester", "danger");
-              return;
-            }
-            const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
-            if (ok) {
-              await loadData({ silent: true });
-              renderRoute({ preserveScroll: true });
-            }
-            return;
-          }
+        ${createSectionCard(
+          "Vue de travail",
+          "Toutes les missions",
+          "Lecture complète avec statut, source et action rapide.",
+          missions.length ? `
+            <div class="fpTable">
+              <div class="fpTableHead" style="grid-template-columns:1.55fr .8fr .85fr .8fr 1fr">
+                <div>Mission</div>
+                <div>Source</div>
+                <div>Impact</div>
+                <div>Statut</div>
+                <div>Actions</div>
+              </div>
 
-          if (action === "goto_settings") {
-            location.hash = "#settings";
-            return;
-          }
+              ${missions.map((m) => `
+                <div class="fpTableRow fpMissionTableRow" style="grid-template-columns:1.55fr .8fr .85fr .8fr 1fr">
+                  <div>
+                    <div class="fpTableUrl">${esc(m.title)}</div>
+                    <div class="fpTableMeta">
+                      ${esc(m.meta || "Général")}
+                      ${m.personalized ? " · personnalisée" : ""}
+                    </div>
+                  </div>
 
-          if (action === "open_billing") {
-            goBillingPage();
-          }
-        });
+                  <div>
+                    <div class="fpBenchmarkCellPill">${esc(cap(m.source || "system"))}</div>
+                  </div>
+
+                  <div>
+                    <div class="fpBenchmarkCellPill">${esc(m.impact || "Moyen")}</div>
+                  </div>
+
+                  <div>
+                    <div class="fpAddonPill ${m.done ? "on" : "off"}">
+                      ${m.done ? "Terminée" : "À faire"}
+                    </div>
+                  </div>
+
+                  <div class="fpTableActions">
+                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-toggle="${esc(m.id)}">Toggle</button>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          ` : createEmpty("Aucune mission trouvée avec ce filtre.")}
+        )}
+      </div>
+
+      <div class="fpCol fpColSide">
+        ${createSectionCard(
+          "Bibliothèque active",
+          "Missions personnalisées",
+          "Le moteur peut produire des missions différentes selon les URLs connues, audits et monitors.",
+          `
+            <div class="fpRows">
+              <div class="fpRowCard">
+                <div class="fpRowMain">
+                  <div class="fpRowTitle">Source actuelle</div>
+                  <div class="fpRowMeta">${esc(siteLabel)}</div>
+                </div>
+                <div class="fpRowRight">
+                  <div class="fpAddonPill on">ACTIF</div>
+                </div>
+              </div>
+
+              <div class="fpRowCard">
+                <div class="fpRowMain">
+                  <div class="fpRowTitle">Missions haut impact</div>
+                  <div class="fpRowMeta">${highMissions.length} priorités élevées ou critiques ouvertes</div>
+                </div>
+                <div class="fpRowRight">
+                  <div class="fpAddonPill off">FOCUS</div>
+                </div>
+              </div>
+
+              <div class="fpRowCard">
+                <div class="fpRowMain">
+                  <div class="fpRowTitle">Plan actif</div>
+                  <div class="fpRowMeta">${esc(planLabel(state.me?.plan))}</div>
+                </div>
+                <div class="fpRowRight">
+                  <div class="fpAddonPill on">${esc(planLabel(state.me?.plan)).toUpperCase()}</div>
+                </div>
+              </div>
+            </div>
+          `
+        )}
+
+        ${createSectionCard(
+          "Packs d’actions",
+          "Créer plus vite",
+          "Déclenche des groupes d’actions utiles sans remplir la page de cartes vides.",
+          createActionGrid(packs)
+        )}
+
+        ${createSectionCard(
+          "Historique",
+          "Dernières missions terminées",
+          "Lecture rapide des actions déjà validées.",
+          recentDone.length ? `
+            <div class="fpRows">
+              ${recentDone.map((m) => `
+                <div class="fpRowCard">
+                  <div class="fpRowMain">
+                    <div class="fpRowTitle">${esc(m.title)}</div>
+                    <div class="fpRowMeta">${esc(m.meta || "Général")}</div>
+                  </div>
+                  <div class="fpRowRight">
+                    <div class="fpAddonPill on">OK</div>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          ` : createEmpty("Aucune mission terminée pour le moment.")}
+        )}
+
+        ${createSectionCard(
+          "Pro / Ultra",
+          "Missions plus poussées",
+          "La page est prête à devenir beaucoup plus forte quand on branchera la logique avancée.",
+          renderCheckGrid(proUltraCards)
+        )}
+      </div>
+    </div>
+  `);
+
+  requestAnimationFrame(() => {
+    const search = $("#fpMissionsSearch");
+    const status = $("#fpMissionsStatus");
+
+    if (search) {
+      search.addEventListener("input", (e) => {
+        state.filters.missions.q = e.target.value || "";
+        renderRoute({ preserveScroll: true });
       });
-    });
-  }
+    }
+
+    if (status) {
+      status.addEventListener("change", (e) => {
+        state.filters.missions.status = e.target.value || "all";
+        renderRoute({ preserveScroll: true });
+      });
+    }
+
+    bindMissionCardEvents();
+    bindQuickActionButtons();
+  });
+}
   function renderAuditsPage() {
     const audits = getFilteredAudits();
     const allAudits = Array.isArray(state.audits) ? state.audits : [];
