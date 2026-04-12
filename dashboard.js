@@ -3813,13 +3813,16 @@ function getCurrentMissionPoolLabel() {
   function renderMissionsPage() {
   const missions = getFilteredMissions();
   const allMissions = Array.isArray(state.missions) ? state.missions : [];
+
   const total = allMissions.length;
   const done = allMissions.filter((m) => m.done).length;
   const todo = allMissions.filter((m) => !m.done).length;
   const progress = total ? Math.round((done / total) * 100) : 0;
 
   const criticalMissions = allMissions.filter((m) => !m.done && lower(m.impact).includes("crit"));
-  const highMissions = allMissions.filter((m) => !m.done && (lower(m.impact).includes("élev") || lower(m.priority) === "high"));
+  const highMissions = allMissions.filter(
+    (m) => !m.done && (lower(m.impact).includes("élev") || lower(m.priority) === "high")
+  );
   const personalizedCount = allMissions.filter((m) => m.personalized).length;
 
   const siteProfile = typeof getCurrentSiteProfile === "function" ? getCurrentSiteProfile() : null;
@@ -3828,10 +3831,10 @@ function getCurrentMissionPoolLabel() {
   const topNow = [...allMissions]
     .filter((m) => !m.done)
     .sort((a, b) => {
-      const pa = lower(a.priority || "");
-      const pb = lower(b.priority || "");
       const rank = { critical: 4, high: 3, medium: 2, low: 1 };
-      return (rank[pb] || 0) - (rank[pa] || 0);
+      const pa = rank[lower(a.priority || "")] || 0;
+      const pb = rank[lower(b.priority || "")] || 0;
+      return pb - pa;
     })
     .slice(0, 6);
 
@@ -3871,11 +3874,11 @@ function getCurrentMissionPoolLabel() {
   const proUltraCards = [
     {
       title: "Pro",
-      text: "Bibliothèque enrichie, missions plus ciblées, logique quick wins et suggestions plus utiles."
+      text: "Bibliothèque enrichie, missions plus ciblées, quick wins et suggestions plus utiles."
     },
     {
       title: "Ultra",
-      text: "Missions plus profondes, packs d’actions, base prête pour assignation, automatisation et workflows."
+      text: "Missions plus profondes, packs d’actions, base prête pour automatisation, assignation et workflows."
     },
     {
       title: "Bibliothèque active",
@@ -3886,6 +3889,65 @@ function getCurrentMissionPoolLabel() {
       text: "La suite logique sera de sortir les missions du localStorage pour les mettre en base avec statuts avancés."
     }
   ];
+
+  const statsHtml = `
+    <div class="fpStatsGrid">
+      <div class="fpStatCard">
+        <div class="fpStatLabel">Missions</div>
+        <div class="fpStatValue">${total}</div>
+        <div class="fpStatMeta">Bibliothèque chargée</div>
+      </div>
+
+      <div class="fpStatCard">
+        <div class="fpStatLabel">À faire</div>
+        <div class="fpStatValue">${todo}</div>
+        <div class="fpStatMeta">Actions ouvertes</div>
+      </div>
+
+      <div class="fpStatCard">
+        <div class="fpStatLabel">Terminées</div>
+        <div class="fpStatValue">${done}</div>
+        <div class="fpStatMeta">Actions validées</div>
+      </div>
+
+      <div class="fpStatCard">
+        <div class="fpStatLabel">Progression</div>
+        <div class="fpStatValue">${progress}%</div>
+        <div class="fpStatMeta">Avancement global</div>
+      </div>
+
+      <div class="fpStatCard">
+        <div class="fpStatLabel">Critiques</div>
+        <div class="fpStatValue">${criticalMissions.length}</div>
+        <div class="fpStatMeta">Urgences détectées</div>
+      </div>
+
+      <div class="fpStatCard">
+        <div class="fpStatLabel">Personnalisées</div>
+        <div class="fpStatValue">${personalizedCount}</div>
+        <div class="fpStatMeta">Basées sur le site</div>
+      </div>
+    </div>
+  `;
+
+  const toolbarHtml = createToolbar({
+    searchId: "fpMissionsSearch",
+    searchPlaceholder: "Rechercher une mission, une page ou une catégorie…",
+    searchValue: state.filters.missions.q,
+    statusId: "fpMissionsStatus",
+    statusValue: state.filters.missions.status,
+    sortId: "fpMissionsDummySort",
+    sortValue: "default",
+    statuses: [
+      { value: "all", label: "Toutes" },
+      { value: "todo", label: "À faire" },
+      { value: "done", label: "Terminées" }
+    ],
+    sorts: [
+      { value: "default", label: "Ordre actuel" }
+    ]
+  });
+
   const topNowHtml = topNow.length
     ? `
       <div class="fpMissionBoardList">
@@ -3899,6 +3961,7 @@ function getCurrentMissionPoolLabel() {
                   ${m.siteUrl ? ` · ${esc(m.siteUrl)}` : ""}
                 </div>
               </div>
+
               <div class="fpMissionBoardBadges">
                 <div class="fpAddonPill ${m.done ? "on" : "off"}">${esc(m.impact || "Moyen")}</div>
               </div>
@@ -3908,9 +3971,7 @@ function getCurrentMissionPoolLabel() {
 
             <div class="fpMissionBoardActions">
               <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Exécuter</button>
-              <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-toggle="${esc(m.id)}">
-                ${m.done ? "Réouvrir" : "Terminer"}
-              </button>
+              <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-toggle="${esc(m.id)}">${m.done ? "Réouvrir" : "Terminer"}</button>
               <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Ouvrir</button>
             </div>
           </div>
@@ -3918,125 +3979,126 @@ function getCurrentMissionPoolLabel() {
       </div>
     `
     : createEmpty("Aucune priorité à afficher pour le moment.");
-  setPage(`
+
+  const missionsTableHtml = missions.length
+    ? `
+      <div class="fpTable">
+        <div class="fpTableHead" style="grid-template-columns:1.55fr .8fr .85fr .8fr 1fr">
+          <div>Mission</div>
+          <div>Source</div>
+          <div>Impact</div>
+          <div>Statut</div>
+          <div>Actions</div>
+        </div>
+
+        ${missions.map((m) => `
+          <div class="fpTableRow fpMissionTableRow" style="grid-template-columns:1.55fr .8fr .85fr .8fr 1fr">
+            <div>
+              <div class="fpTableUrl">${esc(m.title)}</div>
+              <div class="fpTableMeta">
+                ${esc(m.meta || "Général")}
+                ${m.personalized ? " · personnalisée" : ""}
+              </div>
+            </div>
+
+            <div>
+              <div class="fpBenchmarkCellPill">${esc(cap(m.source || "system"))}</div>
+            </div>
+
+            <div>
+              <div class="fpBenchmarkCellPill">${esc(m.impact || "Moyen")}</div>
+            </div>
+
+            <div>
+              <div class="fpAddonPill ${m.done ? "on" : "off"}">${m.done ? "Terminée" : "À faire"}</div>
+            </div>
+
+            <div class="fpTableActions">
+              <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
+              <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-toggle="${esc(m.id)}">Toggle</button>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `
+    : createEmpty("Aucune mission trouvée avec ce filtre.");
+
+  const libraryHtml = `
+    <div class="fpRows">
+      <div class="fpRowCard">
+        <div class="fpRowMain">
+          <div class="fpRowTitle">Source actuelle</div>
+          <div class="fpRowMeta">${esc(siteLabel)}</div>
+        </div>
+        <div class="fpRowRight">
+          <div class="fpAddonPill on">ACTIF</div>
+        </div>
+      </div>
+
+      <div class="fpRowCard">
+        <div class="fpRowMain">
+          <div class="fpRowTitle">Missions haut impact</div>
+          <div class="fpRowMeta">${highMissions.length} priorités élevées ou critiques ouvertes</div>
+        </div>
+        <div class="fpRowRight">
+          <div class="fpAddonPill off">FOCUS</div>
+        </div>
+      </div>
+
+      <div class="fpRowCard">
+        <div class="fpRowMain">
+          <div class="fpRowTitle">Plan actif</div>
+          <div class="fpRowMeta">${esc(planLabel(state.me?.plan))}</div>
+        </div>
+        <div class="fpRowRight">
+          <div class="fpAddonPill on">${esc(planLabel(state.me?.plan)).toUpperCase()}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const recentDoneHtml = recentDone.length
+    ? `
+      <div class="fpRows">
+        ${recentDone.map((m) => `
+          <div class="fpRowCard">
+            <div class="fpRowMain">
+              <div class="fpRowTitle">${esc(m.title)}</div>
+              <div class="fpRowMeta">${esc(m.meta || "Général")}</div>
+            </div>
+            <div class="fpRowRight">
+              <div class="fpAddonPill on">OK</div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `
+    : createEmpty("Aucune mission terminée pour le moment.");
+
+  const heroHtml = `${statsHtml}${toolbarHtml}`;
+
+  const pageHtml = `
     ${createSectionCard(
       "Missions",
       "Centre d’exécution",
       "Transforme les audits, monitors et opportunités détectées en vraies actions exploitables.",
-      `
-        <div class="fpStatsGrid">
-          <div class="fpStatCard">
-            <div class="fpStatLabel">Missions</div>
-            <div class="fpStatValue">${total}</div>
-            <div class="fpStatMeta">Bibliothèque chargée</div>
-          </div>
-
-          <div class="fpStatCard">
-            <div class="fpStatLabel">À faire</div>
-            <div class="fpStatValue">${todo}</div>
-            <div class="fpStatMeta">Actions ouvertes</div>
-          </div>
-
-          <div class="fpStatCard">
-            <div class="fpStatLabel">Terminées</div>
-            <div class="fpStatValue">${done}</div>
-            <div class="fpStatMeta">Actions validées</div>
-          </div>
-
-          <div class="fpStatCard">
-            <div class="fpStatLabel">Progression</div>
-            <div class="fpStatValue">${progress}%</div>
-            <div class="fpStatMeta">Avancement global</div>
-          </div>
-
-          <div class="fpStatCard">
-            <div class="fpStatLabel">Critiques</div>
-            <div class="fpStatValue">${criticalMissions.length}</div>
-            <div class="fpStatMeta">Urgences détectées</div>
-          </div>
-
-          <div class="fpStatCard">
-            <div class="fpStatLabel">Personnalisées</div>
-            <div class="fpStatValue">${personalizedCount}</div>
-            <div class="fpStatMeta">Basées sur le site</div>
-          </div>
-        </div>
-
-        ${createToolbar({
-          searchId: "fpMissionsSearch",
-          searchPlaceholder: "Rechercher une mission, une page ou une catégorie…",
-          searchValue: state.filters.missions.q,
-          statusId: "fpMissionsStatus",
-          statusValue: state.filters.missions.status,
-          sortId: "fpMissionsDummySort",
-          sortValue: "default",
-          statuses: [
-            { value: "all", label: "Toutes" },
-            { value: "todo", label: "À faire" },
-            { value: "done", label: "Terminées" }
-          ],
-          sorts: [
-            { value: "default", label: "Ordre actuel" }
-          ]
-        })}
-      `
+      heroHtml
     )}
 
     <div class="fpGrid fpGridMain">
       <div class="fpCol fpColMain">
         ${createSectionCard(
-  "À faire maintenant",
-  "Priorités du moment",
-  "Les missions les plus utiles à traiter en premier.",
-  topNowHtml
-)}
+          "À faire maintenant",
+          "Priorités du moment",
+          "Les missions les plus utiles à traiter en premier.",
+          topNowHtml
+        )}
 
         ${createSectionCard(
           "Vue de travail",
           "Toutes les missions",
           "Lecture complète avec statut, source et action rapide.",
-          missions.length ? `
-            <div class="fpTable">
-              <div class="fpTableHead" style="grid-template-columns:1.55fr .8fr .85fr .8fr 1fr">
-                <div>Mission</div>
-                <div>Source</div>
-                <div>Impact</div>
-                <div>Statut</div>
-                <div>Actions</div>
-              </div>
-
-              ${missions.map((m) => `
-                <div class="fpTableRow fpMissionTableRow" style="grid-template-columns:1.55fr .8fr .85fr .8fr 1fr">
-                  <div>
-                    <div class="fpTableUrl">${esc(m.title)}</div>
-                    <div class="fpTableMeta">
-                      ${esc(m.meta || "Général")}
-                      ${m.personalized ? " · personnalisée" : ""}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div class="fpBenchmarkCellPill">${esc(cap(m.source || "system"))}</div>
-                  </div>
-
-                  <div>
-                    <div class="fpBenchmarkCellPill">${esc(m.impact || "Moyen")}</div>
-                  </div>
-
-                  <div>
-                    <div class="fpAddonPill ${m.done ? "on" : "off"}">
-                      ${m.done ? "Terminée" : "À faire"}
-                    </div>
-                  </div>
-
-                  <div class="fpTableActions">
-                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Faire</button>
-                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-toggle="${esc(m.id)}">Toggle</button>
-                  </div>
-                </div>
-              `).join("")}
-            </div>
-          ` : createEmpty("Aucune mission trouvée avec ce filtre.")}
+          missionsTableHtml
         )}
       </div>
 
@@ -4045,39 +4107,7 @@ function getCurrentMissionPoolLabel() {
           "Bibliothèque active",
           "Missions personnalisées",
           "Le moteur peut produire des missions différentes selon les URLs connues, audits et monitors.",
-          `
-            <div class="fpRows">
-              <div class="fpRowCard">
-                <div class="fpRowMain">
-                  <div class="fpRowTitle">Source actuelle</div>
-                  <div class="fpRowMeta">${esc(siteLabel)}</div>
-                </div>
-                <div class="fpRowRight">
-                  <div class="fpAddonPill on">ACTIF</div>
-                </div>
-              </div>
-
-              <div class="fpRowCard">
-                <div class="fpRowMain">
-                  <div class="fpRowTitle">Missions haut impact</div>
-                  <div class="fpRowMeta">${highMissions.length} priorités élevées ou critiques ouvertes</div>
-                </div>
-                <div class="fpRowRight">
-                  <div class="fpAddonPill off">FOCUS</div>
-                </div>
-              </div>
-
-              <div class="fpRowCard">
-                <div class="fpRowMain">
-                  <div class="fpRowTitle">Plan actif</div>
-                  <div class="fpRowMeta">${esc(planLabel(state.me?.plan))}</div>
-                </div>
-                <div class="fpRowRight">
-                  <div class="fpAddonPill on">${esc(planLabel(state.me?.plan)).toUpperCase()}</div>
-                </div>
-              </div>
-            </div>
-          `
+          libraryHtml
         )}
 
         ${createSectionCard(
@@ -4091,21 +4121,7 @@ function getCurrentMissionPoolLabel() {
           "Historique",
           "Dernières missions terminées",
           "Lecture rapide des actions déjà validées.",
-          recentDone.length ? `
-            <div class="fpRows">
-              ${recentDone.map((m) => `
-                <div class="fpRowCard">
-                  <div class="fpRowMain">
-                    <div class="fpRowTitle">${esc(m.title)}</div>
-                    <div class="fpRowMeta">${esc(m.meta || "Général")}</div>
-                  </div>
-                  <div class="fpRowRight">
-                    <div class="fpAddonPill on">OK</div>
-                  </div>
-                </div>
-              `).join("")}
-            </div>
-          ` : createEmpty("Aucune mission terminée pour le moment.")}
+          recentDoneHtml
         )}
 
         ${createSectionCard(
@@ -4116,7 +4132,9 @@ function getCurrentMissionPoolLabel() {
         )}
       </div>
     </div>
-  `);
+  `;
+
+  setPage(pageHtml);
 
   requestAnimationFrame(() => {
     const search = $("#fpMissionsSearch");
