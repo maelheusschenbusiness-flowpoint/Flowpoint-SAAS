@@ -2795,7 +2795,55 @@ function getCurrentMissionPoolLabel() {
       return false;
     }
   }
+// =========================================================
+// MISSIONS API
+// =========================================================
 
+async function fetchMissionsApi(signal) {
+  const r = await fetchWithAuth("/api/missions", { method: "GET", signal });
+  const data = await parseJsonSafe(r);
+  if (!r.ok) throw new Error(data?.error || "Missions fetch failed");
+  return Array.isArray(data?.missions) ? data.missions : [];
+}
+
+async function createMissionApi(payload) {
+  const r = await fetchWithAuth("/api/missions", {
+    method: "POST",
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await parseJsonSafe(r);
+  if (!r.ok) throw new Error(data?.error || "Mission create failed");
+  return data?.mission || null;
+}
+
+async function updateMissionApi(id, payload) {
+  const r = await fetchWithAuth(`/api/missions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await parseJsonSafe(r);
+  if (!r.ok) throw new Error(data?.error || "Mission update failed");
+  return data?.mission || null;
+}
+
+async function deleteMissionApi(id) {
+  const r = await fetchWithAuth(`/api/missions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  const data = await parseJsonSafe(r);
+  if (!r.ok) throw new Error(data?.error || "Mission delete failed");
+  return !!data?.ok;
+}
+
+async function generateMissionsFromAuditApi(auditId) {
+  const r = await fetchWithAuth("/api/missions/generate-from-audit", {
+    method: "POST",
+    body: JSON.stringify({ auditId }),
+  });
+  const data = await parseJsonSafe(r);
+  if (!r.ok) throw new Error(data?.error || "Mission generation failed");
+  return Array.isArray(data?.created) ? data.created : [];
+}
   async function safeTestMonitor(id) {
     if (!id) return false;
     setStatus("Test du monitor…", "warn");
