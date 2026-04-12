@@ -2527,3 +2527,105 @@ body::before{
     justify-content:flex-start;
   }
 }
+/* ===== MISSIONS CLEAN PATCH ===== */
+
+.fpMissionBoardList{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  margin-top:16px;
+}
+
+.fpMissionBoardCard{
+  border-radius:22px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+  box-shadow:var(--fpShadow);
+  padding:18px;
+}
+
+.fpMissionBoardHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+}
+
+.fpMissionBoardMain{
+  min-width:0;
+  flex:1;
+}
+
+.fpMissionBoardBadges{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.fpMissionBoardTitle{
+  font-size:22px;
+  line-height:1.12;
+  letter-spacing:-.03em;
+  font-weight:900;
+  overflow-wrap:anywhere;
+}
+
+.fpMissionBoardMeta{
+  margin-top:8px;
+  color:var(--fpTextSoft);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:700;
+}
+
+.fpMissionBoardText{
+  margin-top:12px;
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.55;
+  font-weight:700;
+}
+
+.fpMissionBoardActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  margin-top:16px;
+}
+
+.fpMissionBoardActions .fpBtn{
+  flex:0 0 auto !important;
+  min-width:124px !important;
+}
+
+.fpMissionTableRow .fpTableActions{
+  justify-content:flex-start;
+}
+
+.fpMissionTableRow .fpTableActions .fpBtn{
+  flex:0 0 auto !important;
+  min-width:90px !important;
+}
+
+@media (max-width:760px){
+  .fpMissionBoardHead{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .fpMissionBoardBadges{
+    width:100%;
+  }
+
+  .fpMissionBoardActions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .fpMissionBoardActions .fpBtn,
+  .fpMissionTableRow .fpTableActions .fpBtn{
+    width:100%;
+    min-width:0 !important;
+  }
+}
