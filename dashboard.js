@@ -855,27 +855,690 @@
       getDaySeed("map_targets")
     );
   }
+// =========================================================
+// FLOWPOINT — PERSONALIZED MISSION ENGINE
+// =========================================================
 
-  function getDefaultMissions() {
-    const pool = Array.isArray(libraries.overviewMissionLibrary) ? libraries.overviewMissionLibrary : [];
-    if (!pool.length) {
-      return [
-        { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor", impact: "Élevé" },
-        { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit", impact: "Très élevé" },
-        { id: "m3", title: "Exporter les audits CSV", meta: "Rapports", done: false, action: "export_audits", impact: "Moyen" }
-      ];
+const MISSION_ENGINE_VERSION = "v1";
+const SITE_PROFILE_CACHE_KEY = "fp_site_profile_cache_v1";
+
+const MISSION_PRIORITY = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4
+};
+
+function normalizeUrlInput(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `https://${raw}`;
+}
+
+function getPrimarySiteUrl() {
+  const auditUrl = state.audits?.[0]?.url || "";
+  const monitorUrl = state.monitors?.[0]?.url || "";
+  return normalizeUrlInput(auditUrl || monitorUrl || "");
+}
+
+function getSiteProfileCache() {
+  return getStorageJson(SITE_PROFILE_CACHE_KEY, {});
+}
+
+function saveSiteProfileCache(cache) {
+  setStorageJson(SITE_PROFILE_CACHE_KEY, cache);
+}
+
+function getCachedSiteProfile(url) {
+  if (!url) return null;
+  const cache = getSiteProfileCache();
+  return cache[url] || null;
+}
+
+function setCachedSiteProfile(url, profile) {
+  if (!url || !profile) return;
+  const cache = getSiteProfileCache();
+  cache[url] = {
+    ...profile,
+    cachedAt: new Date().toISOString(),
+    version: MISSION_ENGINE_VERSION
+  };
+  saveSiteProfileCache(cache);
+}
+
+function slugToText(slug = "") {
+  return String(slug || "")
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/[-_]/g, " ")
+    .trim();
+}
+
+function extractDomainParts(url) {
+  try {
+    const u = new URL(url);
+    return {
+      host: u.hostname,
+      pathname: u.pathname || "/",
+      origin: u.origin
+    };
+  } catch {
+    return {
+      host: "",
+      pathname: "/",
+      origin: ""
+    };
+  }
+}
+
+function inferBusinessType(url = "") {
+  const host = lower(extractDomainParts(url).host);
+  if (!host) return "generic";
+  if (host.includes("plomb") || host.includes("chauff")) return "local_services";
+  if (host.includes("garage") || host.includes("auto")) return "automotive";
+  if (host.includes("resto") || host.includes("pizza") || host.includes("snack")) return "restaurant";
+  if (host.includes("shop") || host.includes("store") || host.includes("boutique")) return "ecommerce";
+  if (host.includes("app") || host.includes("saas") || host.includes("crm")) return "saas";
+  return "generic";
+}
+
+function inferPagesFromData() {
+  const pages = new Set();
+
+  state.audits.forEach((audit) => {
+    if (audit?.url) {
+      try {
+        const u = new URL(normalizeUrlInput(audit.url));
+        pages.add(u.pathname || "/");
+      } catch {}
     }
+  });
 
-    return pool.map((item, index) => ({
-      id: `m${index + 1}`,
-      title: item.title,
-      meta: item.meta,
-      done: false,
-      action: item.action,
-      impact: item.impact || "Moyen"
-    }));
+  state.monitors.forEach((monitor) => {
+    if (monitor?.url) {
+      try {
+        const u = new URL(normalizeUrlInput(monitor.url));
+        pages.add(u.pathname || "/");
+      } catch {}
+    }
+  });
+
+  if (!pages.size) pages.add("/");
+
+  return Array.from(pages);
+}
+
+function buildSiteProfileFromCurrentData(url) {
+  const normalized = normalizeUrlInput(url || getPrimarySiteUrl());
+  const parts = extractDomainParts(normalized);
+  const pages = inferPagesFromData();
+
+  const hasContactPage = pages.some((p) => /^\/contact/.test(lower(p)));
+  const hasLocalPages = pages.some((p) => {
+    const txt = lower(p);
+    return txt.includes("ville") || txt.includes("liege") || txt.includes("verviers") || txt.includes("bruxelles") || txt.includes("local");
+  });
+
+  const lowScoreAudits = state.audits.filter((a) => Number(a.score || 0) < 50);
+  const mediumScoreAudits = state.audits.filter((a) => {
+    const s = Number(a.score || 0);
+    return s >= 50 && s < 75;
+  });
+
+  const missingMetaSignals = state.audits.filter((a) => {
+    const txt = lower(`${a.summary || ""} ${(a.recommendations || []).join(" ")}`);
+    return txt.includes("meta") || txt.includes("description") || txt.includes("title");
+  });
+
+  const speedSignals = state.audits.filter((a) => {
+    const txt = lower(`${a.summary || ""} ${(a.recommendations || []).join(" ")}`);
+    return txt.includes("mobile") || txt.includes("vitesse") || txt.includes("speed") || txt.includes("performance");
+  });
+
+  const headingSignals = state.audits.filter((a) => {
+    const txt = lower(`${a.summary || ""} ${(a.recommendations || []).join(" ")}`);
+    return txt.includes("h1") || txt.includes("heading") || txt.includes("balise");
+  });
+
+  const hasDownMonitors = state.monitors.some((m) => normalizeMonitorStatus(m) === "down");
+  const hasNoMonitors = !state.monitors.length;
+  const criticalMonitorUrls = state.monitors
+    .filter((m) => normalizeMonitorStatus(m) === "down")
+    .map((m) => m.url)
+    .filter(Boolean)
+    .slice(0, 6);
+
+  return {
+    siteUrl: normalized,
+    origin: parts.origin,
+    host: parts.host,
+    businessType: inferBusinessType(normalized),
+    pages,
+    hasContactPage,
+    hasLocalPages,
+    hasNoMonitors,
+    hasDownMonitors,
+    criticalMonitorUrls,
+    lowScorePages: lowScoreAudits.map((a) => a.url).filter(Boolean).slice(0, 12),
+    mediumScorePages: mediumScoreAudits.map((a) => a.url).filter(Boolean).slice(0, 12),
+    missingMetaPages: missingMetaSignals.map((a) => a.url).filter(Boolean).slice(0, 12),
+    speedPages: speedSignals.map((a) => a.url).filter(Boolean).slice(0, 12),
+    headingPages: headingSignals.map((a) => a.url).filter(Boolean).slice(0, 12),
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function getCurrentSiteProfile() {
+  const url = getPrimarySiteUrl();
+  const cached = getCachedSiteProfile(url);
+  if (cached?.version === MISSION_ENGINE_VERSION) return cached;
+
+  const profile = buildSiteProfileFromCurrentData(url);
+  if (url) setCachedSiteProfile(url, profile);
+  return profile;
+}
+
+function createMissionTemplate({
+  key,
+  title,
+  description,
+  category,
+  priority = "medium",
+  difficulty = "medium",
+  plans = ["standard", "pro", "ultra"],
+  source = "system",
+  tags = [],
+  action = "goto_missions",
+  conditions = [],
+  build = null
+}) {
+  return {
+    key,
+    title,
+    description,
+    category,
+    priority,
+    difficulty,
+    plans,
+    source,
+    tags,
+    action,
+    conditions,
+    build
+  };
+}
+
+function allowPlanForMission(template) {
+  const plan = lower(state.me?.plan || "standard");
+  return (template.plans || []).includes(plan);
+}
+
+function buildMissionId(prefix = "pm") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function missionImpactFromPriority(priority) {
+  if (priority === "critical") return "Critique";
+  if (priority === "high") return "Élevé";
+  if (priority === "medium") return "Moyen";
+  return "Faible";
+}
+
+function missionMetaFromCategory(category, source) {
+  const map = {
+    seo: "SEO technique",
+    content: "Contenu",
+    local: "Local SEO",
+    monitor: "Monitoring",
+    conversion: "Conversion",
+    reporting: "Rapports",
+    trust: "Confiance",
+    ops: "FlowPoint"
+  };
+  return `${map[category] || "Général"} · ${cap(source || "system")}`;
+}
+
+function makePersonalizedMission(template, overrides = {}) {
+  const priority = overrides.priority || template.priority || "medium";
+
+  return {
+    id: buildMissionId(template.key || "mission"),
+    title: overrides.title || template.title,
+    description: overrides.description || template.description || "",
+    meta: overrides.meta || missionMetaFromCategory(overrides.category || template.category, overrides.source || template.source),
+    done: false,
+    action: overrides.action || template.action || "goto_missions",
+    impact: missionImpactFromPriority(priority),
+    category: overrides.category || template.category || "ops",
+    priority,
+    difficulty: overrides.difficulty || template.difficulty || "medium",
+    source: overrides.source || template.source || "system",
+    dueLabel: overrides.dueLabel || null,
+    tags: overrides.tags || template.tags || [],
+    personalized: true,
+    siteUrl: overrides.siteUrl || getPrimarySiteUrl() || ""
+  };
+}
+
+// =========================================================
+// MASSIVE LIBRARY — CORE TEMPLATES
+// =========================================================
+
+const MASSIVE_MISSION_LIBRARY = [
+  createMissionTemplate({
+    key: "monitor_homepage",
+    title: "Créer un monitor pour la page d’accueil",
+    description: "La homepage doit être surveillée car elle porte l’essentiel de la visibilité et de la conversion.",
+    category: "monitor",
+    priority: "high",
+    difficulty: "low",
+    source: "monitor",
+    action: "add_monitor",
+    tags: ["homepage", "uptime", "critical"],
+    conditions: ["no_monitors"]
+  }),
+
+  createMissionTemplate({
+    key: "fix_down_monitor",
+    title: "Traiter un monitor DOWN",
+    description: "Une page critique surveillée est en échec et doit être vérifiée rapidement.",
+    category: "monitor",
+    priority: "critical",
+    difficulty: "medium",
+    source: "monitor",
+    action: "goto_monitors",
+    tags: ["down", "incident", "urgent"],
+    conditions: ["has_down_monitors"]
+  }),
+
+  createMissionTemplate({
+    key: "add_meta_description",
+    title: "Ajouter une meta description manquante",
+    description: "Une page importante manque de meta description exploitable.",
+    category: "seo",
+    priority: "high",
+    difficulty: "low",
+    source: "audit",
+    action: "goto_audits",
+    tags: ["meta", "quick-win", "seo"],
+    conditions: ["missing_meta_pages"]
+  }),
+
+  createMissionTemplate({
+    key: "improve_mobile_speed",
+    title: "Améliorer la vitesse mobile d’une page clé",
+    description: "Une page montre des signaux de performance insuffisants côté mobile.",
+    category: "seo",
+    priority: "high",
+    difficulty: "medium",
+    source: "audit",
+    action: "goto_audits",
+    tags: ["speed", "mobile", "performance"],
+    conditions: ["speed_pages"]
+  }),
+
+  createMissionTemplate({
+    key: "fix_heading_structure",
+    title: "Corriger la structure H1 / headings",
+    description: "La hiérarchie de titres d’une page semble faible ou incohérente.",
+    category: "content",
+    priority: "medium",
+    difficulty: "low",
+    source: "audit",
+    action: "goto_audits",
+    tags: ["h1", "content", "seo"],
+    conditions: ["heading_pages"]
+  }),
+
+  createMissionTemplate({
+    key: "create_contact_page",
+    title: "Créer ou renforcer la page contact",
+    description: "Le site manque d’une page contact claire ou suffisamment visible.",
+    category: "conversion",
+    priority: "high",
+    difficulty: "medium",
+    source: "system",
+    action: "goto_missions",
+    tags: ["contact", "conversion", "trust"],
+    conditions: ["missing_contact_page"]
+  }),
+
+  createMissionTemplate({
+    key: "create_local_pages",
+    title: "Créer des pages locales ciblées",
+    description: "Le site semble manquer de couverture locale claire sur les zones importantes.",
+    category: "local",
+    priority: "high",
+    difficulty: "medium",
+    plans: ["pro", "ultra"],
+    source: "local",
+    action: "goto_local",
+    tags: ["local", "city-pages", "seo"],
+    conditions: ["missing_local_pages"]
+  }),
+
+  createMissionTemplate({
+    key: "add_trust_signals",
+    title: "Ajouter plus de preuves de confiance",
+    description: "Le site gagnerait à afficher davantage d’avis, garanties ou preuves visibles.",
+    category: "trust",
+    priority: "medium",
+    difficulty: "low",
+    plans: ["pro", "ultra"],
+    source: "system",
+    action: "goto_missions",
+    tags: ["trust", "conversion", "reviews"],
+    conditions: ["generic"]
+  }),
+
+  createMissionTemplate({
+    key: "generate_report_client",
+    title: "Préparer un rapport client",
+    description: "Un livrable clair permet de mieux vendre la valeur du travail effectué.",
+    category: "reporting",
+    priority: "medium",
+    difficulty: "low",
+    source: "report",
+    action: "goto_reports",
+    tags: ["report", "client", "value"],
+    conditions: ["generic"]
+  }),
+
+  createMissionTemplate({
+    key: "create_audit_pack",
+    title: "Transformer les audits faibles en plan d’action",
+    description: "Les audits faibles doivent être regroupés en actions concrètes prioritaires.",
+    category: "ops",
+    priority: "high",
+    difficulty: "medium",
+    plans: ["ultra"],
+    source: "audit",
+    action: "create_audit_mission",
+    tags: ["pack", "audit", "strategy"],
+    conditions: ["low_score_pages"]
+  })
+];
+
+// =========================================================
+// TEMPLATE EXPANDERS — POUR ARRIVER À 100+ MISSIONS
+// =========================================================
+
+const LOCAL_CITY_CANDIDATES = [
+  "Liège", "Verviers", "Bruxelles", "Namur", "Charleroi",
+  "Spa", "Herve", "Seraing", "Waremme", "Huy"
+];
+
+const SERVICE_KEYWORDS = [
+  "contact", "services", "prix", "devis", "about", "faq",
+  "booking", "reservation", "rendez-vous", "home", "accueil"
+];
+
+function expandPageBasedTemplates(profile) {
+  const missions = [];
+  const uniquePages = Array.from(new Set([
+    ...profile.lowScorePages,
+    ...profile.missingMetaPages,
+    ...profile.speedPages,
+    ...profile.headingPages,
+    ...profile.pages
+  ])).slice(0, 20);
+
+  uniquePages.forEach((pageUrl, index) => {
+    const path = (() => {
+      try {
+        return new URL(normalizeUrlInput(pageUrl), profile.origin || undefined).pathname || "/";
+      } catch {
+        return pageUrl || "/";
+      }
+    })();
+
+    const label = path === "/" ? "la homepage" : `la page ${path}`;
+
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[2], {
+        title: `Ajouter une meta description sur ${label}`,
+        description: `${label} semble manquer d’une meta description claire et exploitable.`,
+        siteUrl: profile.siteUrl,
+        dueLabel: index < 3 ? "Priorité semaine" : null
+      })
+    );
+
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[3], {
+        title: `Améliorer la vitesse de ${label}`,
+        description: `${label} montre des signaux de performance à retravailler, surtout côté mobile.`,
+        siteUrl: profile.siteUrl
+      })
+    );
+
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[4], {
+        title: `Revoir la structure H1 / headings de ${label}`,
+        description: `${label} gagnerait à avoir une hiérarchie de titres plus claire et plus forte pour le SEO.`,
+        siteUrl: profile.siteUrl
+      })
+    );
+  });
+
+  return missions;
+}
+
+function expandLocalTemplates(profile) {
+  if (profile.hasLocalPages) return [];
+
+  return LOCAL_CITY_CANDIDATES.map((city, index) =>
+    makePersonalizedMission(MASSIVE_MISSION_LIBRARY[6], {
+      title: `Créer une page locale ciblée sur ${city}`,
+      description: `Le site ${profile.host || ""} gagnerait à couvrir ${city} avec une page locale claire et orientée conversion.`,
+      category: "local",
+      source: "local",
+      priority: index < 3 ? "high" : "medium",
+      action: "goto_local",
+      siteUrl: profile.siteUrl,
+      dueLabel: index < 3 ? "Ville prioritaire" : null
+    })
+  );
+}
+
+function expandMonitorTemplates(profile) {
+  const missions = [];
+
+  if (profile.hasNoMonitors) {
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[0], {
+        siteUrl: profile.siteUrl,
+        dueLabel: "À mettre en place"
+      })
+    );
+
+    SERVICE_KEYWORDS.slice(0, 5).forEach((keyword) => {
+      missions.push(makePersonalizedMission(MASSIVE_MISSION_LIBRARY[0], {
+        title: `Créer un monitor pour la page ${keyword}`,
+        description: `La page ${keyword} doit être surveillée car elle peut être critique pour les leads ou la conversion.`,
+        siteUrl: profile.siteUrl,
+        action: "add_monitor",
+        priority: keyword === "contact" ? "critical" : "high"
+      }));
+    });
   }
 
+  profile.criticalMonitorUrls.forEach((url) => {
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[1], {
+        title: `Traiter l’incident monitor sur ${url}`,
+        description: `Le monitor associé à ${url} est actuellement DOWN ou instable.`,
+        siteUrl: profile.siteUrl,
+        action: "goto_monitors",
+        priority: "critical",
+        dueLabel: "Urgent"
+      })
+    );
+  });
+
+  return missions;
+}
+
+function expandTrustAndConversionTemplates(profile) {
+  const businessType = profile.businessType;
+  const missions = [];
+
+  missions.push(
+    makePersonalizedMission(MASSIVE_MISSION_LIBRARY[7], {
+      title: `Ajouter des preuves de confiance sur ${profile.host || "le site"}`,
+      description: `Le site gagnerait à afficher plus d’avis, garanties ou éléments rassurants visibles rapidement.`,
+      category: "trust",
+      source: "system",
+      siteUrl: profile.siteUrl
+    })
+  );
+
+  if (!profile.hasContactPage) {
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[5], {
+        title: "Créer une vraie page contact orientée conversion",
+        description: "Le site ne semble pas assez clair sur la prise de contact ou la demande de devis.",
+        siteUrl: profile.siteUrl,
+        dueLabel: "Important"
+      })
+    );
+  }
+
+  if (businessType === "restaurant") {
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[7], {
+        title: "Ajouter un bouton Réserver visible sur mobile",
+        description: "Le site d’un restaurant doit pousser la réservation ou l’appel dès le haut de page.",
+        category: "conversion",
+        source: "system",
+        siteUrl: profile.siteUrl,
+        priority: "high"
+      })
+    );
+  }
+
+  if (businessType === "saas") {
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[7], {
+        title: "Renforcer les CTA produit sur la homepage",
+        description: "Un SaaS doit afficher plus clairement son action principale : essai, démo ou inscription.",
+        category: "conversion",
+        source: "system",
+        siteUrl: profile.siteUrl,
+        priority: "high"
+      })
+    );
+  }
+
+  if (businessType === "automotive" || businessType === "local_services") {
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[7], {
+        title: "Ajouter un numéro cliquable et visible sur mobile",
+        description: "Pour une activité locale ou automotive, l’appel doit être immédiat sur mobile.",
+        category: "conversion",
+        source: "system",
+        siteUrl: profile.siteUrl,
+        priority: "high"
+      })
+    );
+  }
+
+  return missions;
+}
+
+function expandReportingAndOpsTemplates(profile) {
+  const missions = [
+    makePersonalizedMission(MASSIVE_MISSION_LIBRARY[8], {
+      title: `Préparer un rapport client pour ${profile.host || "ce site"}`,
+      description: "Un livrable lisible aide à mieux vendre la valeur produite et les prochaines actions.",
+      siteUrl: profile.siteUrl
+    })
+  ];
+
+  if (hasPlan("ultra")) {
+    missions.push(
+      makePersonalizedMission(MASSIVE_MISSION_LIBRARY[9], {
+        title: "Créer un pack de missions SEO prioritaire",
+        description: "Regrouper les pages faibles en vrai plan d’action lisible pour l’équipe ou le client.",
+        siteUrl: profile.siteUrl,
+        dueLabel: "Mode Ultra"
+      })
+    );
+  }
+
+  return missions;
+}
+
+function dedupePersonalizedMissions(list) {
+  const map = new Map();
+  list.forEach((item) => {
+    const key = lower(`${item.title}__${item.siteUrl || ""}`);
+    if (!map.has(key)) map.set(key, item);
+  });
+  return Array.from(map.values());
+}
+
+function sortPersonalizedMissions(list) {
+  return [...list].sort((a, b) => {
+    const prioDiff = (MISSION_PRIORITY[b.priority] || 0) - (MISSION_PRIORITY[a.priority] || 0);
+    if (prioDiff !== 0) return prioDiff;
+    return String(a.title || "").localeCompare(String(b.title || ""));
+  });
+}
+
+function generatePersonalizedMissionLibrary() {
+  const profile = getCurrentSiteProfile();
+
+  let missions = [];
+  missions = missions.concat(expandPageBasedTemplates(profile));
+  missions = missions.concat(expandLocalTemplates(profile));
+  missions = missions.concat(expandMonitorTemplates(profile));
+  missions = missions.concat(expandTrustAndConversionTemplates(profile));
+  missions = missions.concat(expandReportingAndOpsTemplates(profile));
+
+  const deduped = dedupePersonalizedMissions(missions);
+  const filteredByPlan = deduped.filter((m) => {
+    if (!m) return false;
+    if (hasPlan("ultra")) return true;
+    if (hasPlan("pro")) return m.priority !== "critical" || m.category !== "ops" || true;
+    return !["reporting"].includes(m.category) || true;
+  });
+
+  return sortPersonalizedMissions(filteredByPlan);
+}
+  function getDefaultMissions() {
+  const personalized = generatePersonalizedMissionLibrary();
+
+  if (personalized.length) {
+    return personalized.slice(0, hasPlan("ultra") ? 120 : hasPlan("pro") ? 80 : 40);
+  }
+
+  const pool = Array.isArray(libraries.overviewMissionLibrary)
+    ? libraries.overviewMissionLibrary
+    : [];
+
+  if (!pool.length) {
+    return [
+      { id: "m1", title: "Créer ton premier monitor", meta: "Monitoring", done: false, action: "add_monitor", impact: "Élevé" },
+      { id: "m2", title: "Lancer un audit SEO", meta: "Audits", done: false, action: "run_audit", impact: "Très élevé" },
+      { id: "m3", title: "Exporter les audits CSV", meta: "Rapports", done: false, action: "export_audits", impact: "Moyen" },
+      { id: "m4", title: "Exporter les monitors CSV", meta: "Rapports", done: false, action: "export_monitors", impact: "Moyen" }
+    ];
+  }
+
+  return pool.map((item, index) => ({
+    id: `m${index + 1}`,
+    title: item.title,
+    meta: item.meta,
+    done: false,
+    action: item.action,
+    impact: item.impact || "Moyen"
+  }));
+}
+function getCurrentMissionPoolLabel() {
+  const profile = getCurrentSiteProfile();
+  if (!profile?.siteUrl) return "Bibliothèque standard";
+  return `Bibliothèque personnalisée · ${profile.host || profile.siteUrl}`;
+}
   function loadMissions() {
     try {
       const raw = localStorage.getItem(MISSIONS_STORAGE_KEY);
