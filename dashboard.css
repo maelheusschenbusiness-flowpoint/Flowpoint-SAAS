@@ -2471,3 +2471,59 @@ body::before{
     font-size:13px;
   }
 }
+/* ===== PATCH MISSIONS / AUDITS / MONITORS ===== */
+
+.fpMissionDesc{
+  margin-top:10px;
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.55;
+  font-weight:700;
+}
+
+.fpTableMeta{
+  margin-top:6px;
+  color:var(--fpTextSoft);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:700;
+}
+
+.fpCard .fpStatsGrid{
+  margin-top:16px;
+}
+
+.fpCard .fpTable{
+  margin-top:16px;
+}
+
+.fpCard .fpRows{
+  margin-top:16px;
+}
+
+.fpCard .fpReportsGrid{
+  margin-top:16px;
+}
+
+.fpCard .fpInfoList{
+  margin-top:4px;
+}
+
+.fpTableRow .fpBenchmarkCellPill{
+  justify-content:center;
+}
+
+.fpMissionCard .fpRowRight{
+  min-width:120px;
+}
+
+@media (max-width:760px){
+  .fpMissionCard .fpRowRight{
+    min-width:0;
+    width:100%;
+  }
+
+  .fpTableRow .fpBenchmarkCellPill{
+    justify-content:flex-start;
+  }
+}
