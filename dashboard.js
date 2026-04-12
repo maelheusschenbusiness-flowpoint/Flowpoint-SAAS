@@ -3151,7 +3151,9 @@
     const done = countDoneMissions();
     const missions = getFilteredMissions();
     const todoCount = state.missions.filter((m) => !m.done).length;
-    const donePct = state.missions.length ? Math.round((done / state.missions.length) * 100) : 0;
+    const donePct = state.missions.length
+      ? Math.round((done / state.missions.length) * 100)
+      : 0;
 
     const missionActionCards = pickLibrary(
       [
@@ -3178,6 +3180,18 @@
           text: "Prépare un premier livrable CSV pour rendre le dashboard plus concret.",
           action: "export_audits",
           cta: "Exporter"
+        },
+        {
+          title: "Tester un monitor",
+          text: "Valide rapidement que la surveillance fonctionne vraiment côté client.",
+          action: "test_monitor",
+          cta: "Tester"
+        },
+        {
+          title: "Ouvrir la facturation",
+          text: "Vérifie le plan actif et les modules débloqués sur le workspace.",
+          action: "open_billing",
+          cta: "Ouvrir billing"
         }
       ],
       4,
@@ -3197,6 +3211,10 @@
         {
           title: "Conseil d’usage",
           text: "Commence toujours par les actions qui alimentent les autres pages : monitor, audit, alertes, puis exports."
+        },
+        {
+          title: "Logique SaaS",
+          text: "Plus tu termines les missions de base, plus les autres pages deviennent utiles et crédibles pour un client final."
         }
       ],
       3,
@@ -3311,8 +3329,27 @@
                 </div>
               </div>
 
-              <div class="fpTextPanel">
+              <div class="fpTextPanel fpMissionHelperPanel">
                 Commence par <strong>monitor + audit + paramètres</strong>. C’est le trio le plus utile pour transformer le dashboard en outil réellement exploitable.
+              </div>
+
+              <div class="fpTimeline fpMissionSideTimeline">
+                <div class="fpTimelineItem">
+                  <div class="fpTimelineTitle">Étape 1 — Monitoring</div>
+                  <div class="fpTimelineMeta">Créer puis tester un monitor pour valider la couche uptime.</div>
+                </div>
+                <div class="fpTimelineItem">
+                  <div class="fpTimelineTitle">Étape 2 — Audit</div>
+                  <div class="fpTimelineMeta">Lancer un audit pour alimenter le reporting et les opportunités.</div>
+                </div>
+                <div class="fpTimelineItem">
+                  <div class="fpTimelineTitle">Étape 3 — Paramètres</div>
+                  <div class="fpTimelineMeta">Configurer les alertes email et l’organisation du workspace.</div>
+                </div>
+                <div class="fpTimelineItem">
+                  <div class="fpTimelineTitle">Étape 4 — Rapports</div>
+                  <div class="fpTimelineMeta">Exporter un premier livrable pour rendre la valeur perçue plus concrète.</div>
+                </div>
               </div>
 
               ${createSectionCard(
@@ -3347,22 +3384,271 @@
 
       $$("[data-mission-direct-action]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          const action = btn.getAttribute("data-mission-direct-action") || "";
-          await runQuickAction(action);
+          const action = btn.getAttribute("data-mission-direct-action");
+          const fakeMission = state.missions.find((m) => m.action === action);
+
+          if (fakeMission) {
+            await runMission(fakeMission.id);
+            renderRoute({ preserveScroll: true });
+            return;
+          }
+
+          const createdMission = handleMissionCategoryAction(action);
+          if (createdMission) {
+            renderRoute({ preserveScroll: true });
+            return;
+          }
+
+          if (action === "add_monitor") {
+            const ok = await safeAddMonitor();
+            if (ok) {
+              await loadData({ silent: true });
+              renderRoute({ preserveScroll: true });
+            }
+            return;
+          }
+
+          if (action === "run_audit") {
+            const ok = await safeRunAudit();
+            if (ok) {
+              await loadData({ silent: true });
+              renderRoute({ preserveScroll: true });
+            }
+            return;
+          }
+
+          if (action === "export_audits") {
+            await safeExport("/api/exports/audits.csv", "flowpoint-audits.csv");
+            return;
+          }
+
+          if (action === "test_monitor") {
+            const firstMonitor = Array.isArray(state.monitors) ? state.monitors[0] : null;
+            if (!firstMonitor) {
+              setStatus("Aucun monitor à tester", "danger");
+              return;
+            }
+            const ok = await safeTestMonitor(normalizeMonitorId(firstMonitor));
+            if (ok) {
+              await loadData({ silent: true });
+              renderRoute({ preserveScroll: true });
+            }
+            return;
+          }
+
+          if (action === "goto_settings") {
+            location.hash = "#settings";
+            return;
+          }
+
+          if (action === "open_billing") {
+            goBillingPage();
+          }
         });
       });
     });
   }
-
   function renderAuditsPage() {
     const audits = getFilteredAudits();
     const allAudits = Array.isArray(state.audits) ? state.audits : [];
+
     const avgScore = allAudits.length
       ? Math.round(allAudits.reduce((sum, a) => sum + Number(a.score || 0), 0) / allAudits.length)
       : 0;
 
     const axes = getAuditPriorityCards();
+
+    const sellingChecks = pickLibrary(
+      [
+        { title: "Diagnostic clair", text: "Le client comprend où il perd de la visibilité." },
+        { title: "Priorités simples", text: "Les actions sont hiérarchisées, donc plus faciles à vendre." },
+        { title: "Preuve de suivi", text: "L’historique renforce la crédibilité du produit." },
+        { title: "Livrables exploitables", text: "Les exports servent autant en interne qu’en client final." },
+        { title: "Lecture business", text: "Le discours devient moins technique et plus convaincant." },
+        { title: "Projection de gains", text: "Le client voit ce qu’il peut gagner, pas seulement ce qui manque." },
+        { title: "Vision premium", text: "Une restitution propre augmente fortement la valeur perçue." },
+        { title: "Suivi crédible", text: "Le client voit une vraie progression et pas seulement une analyse ponctuelle." }
+      ],
+      4,
+      getDaySeed("audit_selling")
+    );
+
     const executionCards = getAuditExecutionCards();
+
+    const scaleCards = pickLibrary(
+      [
+        { title: "Priorisation multi-sites", text: "Comparer plus facilement plusieurs audits pour savoir quoi traiter en premier.", badge: "SCALE" },
+        { title: "Lecture client-ready", text: "Transformer les audits en support clair pour un client ou une équipe.", badge: "CLIENT" },
+        { title: "Pipeline d’actions", text: "Passer plus vite de l’audit à la mission puis au rapport.", badge: "FLOW" },
+        { title: "Rétention", text: "Une bonne restitution audit aide à garder le client plus longtemps.", badge: "VALUE" },
+        { title: "Pilotage portefeuille", text: "Les audits deviennent une vraie couche de pilotage quand plusieurs contextes sont suivis.", badge: "OPS" },
+        { title: "Exécution premium", text: "Plus l’environnement monte en gamme, plus la page devient un centre d’exécution SEO.", badge: "PREMIUM" }
+      ],
+      hasPlan("ultra") ? 6 : hasPlan("pro") ? 4 : 2,
+      getDaySeed("audit_scale_cards")
+    );
+
+    const scoreStrong = allAudits.filter((a) => Number(a.score || 0) >= 75).length;
+    const scoreMid = allAudits.filter((a) => Number(a.score || 0) >= 45 && Number(a.score || 0) < 75).length;
+    const scoreWeak = allAudits.filter((a) => Number(a.score || 0) < 45).length;
+
+    const worstAudits = [...allAudits]
+      .sort((a, b) => Number(a.score || 0) - Number(b.score || 0))
+      .slice(0, 3);
+
+    const potentialAudits = [...allAudits]
+      .sort((a, b) => {
+        const aScore = Number(a.score || 0);
+        const bScore = Number(b.score || 0);
+
+        const aPotential = aScore >= 45 && aScore <= 74 ? 1 : 0;
+        const bPotential = bScore >= 45 && bScore <= 74 ? 1 : 0;
+
+        if (aPotential !== bPotential) return bPotential - aPotential;
+        return bScore - aScore;
+      })
+      .slice(0, 4);
+
+    const featuredAudit = [...allAudits]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+
+    const businessSignals = pickLibrary(
+      [
+        { title: "Lisibilité de l’offre", text: "Des pages services plus claires rendent l’offre plus simple à comprendre et à choisir.", badge: "UX" },
+        { title: "Réassurance", text: "Avis, preuves et garanties renforcent autant la conversion que la crédibilité perçue.", badge: "TRUST" },
+        { title: "CTA commerciaux", text: "Des appels à l’action plus visibles augmentent la probabilité de contact ou de conversion.", badge: "CRO" },
+        { title: "Pages locales", text: "Une meilleure couverture locale capte plus facilement les intentions proches de l’achat.", badge: "LOCAL" },
+        { title: "Pages services premium", text: "Une structure plus haut de gamme améliore la perception de valeur du site.", badge: "VALUE" },
+        { title: "Proposition de valeur", text: "Le site doit mieux montrer pourquoi l’offre est crédible, utile et différente.", badge: "BRAND" },
+        { title: "Hiérarchie des contenus", text: "Une structure plus nette aide à la lecture, au SEO et à la conversion.", badge: "STRUCT" },
+        { title: "Intention business", text: "Les pages doivent mieux capter les recherches proches de la prise de contact.", badge: "INTENT" }
+      ],
+      4,
+      getDaySeed("audit_business_signals")
+    );
+
+    const flowCards = [
+      {
+        title: "1. Lancer ou relire l’audit",
+        text: "Partir d’un diagnostic clair pour identifier rapidement les écarts les plus rentables.",
+        badge: "STEP 1"
+      },
+      {
+        title: "2. Transformer en mission",
+        text: "Injecter les priorités dans la checklist pour éviter qu’un bon audit reste sans exécution.",
+        badge: "STEP 2"
+      },
+      {
+        title: "3. Valoriser en rapport",
+        text: "Présenter la progression, les priorités et la valeur perçue dans un format plus vendable.",
+        badge: "STEP 3"
+      },
+      {
+        title: "4. Revenir sur l’historique",
+        text: "Comparer les audits dans le temps pour renforcer la crédibilité du suivi et de la rétention.",
+        badge: "STEP 4"
+      }
+    ];
+
+    const auditMissionBridgeCards = pickLibrary(
+      [
+        { title: "Éviter la perte d’info", text: "Créer une mission depuis un audit empêche les recommandations de rester passives.", badge: "FLOW" },
+        { title: "Accélérer l’exécution", text: "Le passage audit → mission réduit le temps entre analyse et action réelle.", badge: "ACTION" },
+        { title: "Mieux vendre le suivi", text: "Une recommandation transformée en mission donne une impression de service plus concret.", badge: "VALUE" },
+        { title: "Structurer les priorités", text: "Toutes les corrections n’ont pas la même importance : la mission aide à hiérarchiser.", badge: "PRIORITY" }
+      ],
+      4,
+      getDaySeed("audit_mission_bridge")
+    );
+
+    const proAuditCards = hasPlan("pro")
+      ? pickLibrary(
+          [
+            { title: "Restitution premium", text: "Le plan Pro permet une lecture audit plus propre, plus convaincante et plus partageable.", badge: "PRO" },
+            { title: "PDF vendable", text: "Le PDF rend l’audit plus crédible en présentation interne ou client.", badge: "PDF" },
+            { title: "Vision avant / après", text: "Le suivi audit prend plus de sens quand il peut être restitué proprement dans le temps.", badge: "DELTA" },
+            { title: "Support commercial", text: "Cette page devient aussi un support de vente, pas juste une couche de diagnostic.", badge: "CLIENT" }
+          ],
+          4,
+          getDaySeed("audit_pro_cards")
+        )
+      : [];
+
+    const ultraAuditCards = hasPlan("ultra")
+      ? pickLibrary(
+          [
+            { title: "Pilotage portefeuille", text: "Le mode Ultra rend la lecture audit plus pertinente quand plusieurs contextes doivent être suivis.", badge: "ULTRA" },
+            { title: "Priorisation avancée", text: "Identifier quoi traiter en premier devient plus important à mesure que le volume augmente.", badge: "OPS" },
+            { title: "Exécution multi-flux", text: "Audit, mission, rapport et coordination prennent plus de cohérence dans un cadre plus dense.", badge: "FLOW+" },
+            { title: "Lecture premium multi-sites", text: "La page peut servir de couche de supervision plus sérieuse dans une logique scalable.", badge: "SCALE" },
+            { title: "Hiérarchie opérationnelle", text: "Le niveau Ultra donne plus de sens à la hiérarchie des audits et à la logique de portefeuille.", badge: "PORTFOLIO" },
+            { title: "Valeur perçue maximum", text: "L’audit devient une vraie brique de contrôle et pas seulement un diagnostic ponctuel.", badge: "VALUE+" }
+          ],
+          6,
+          getDaySeed("audit_ultra_cards")
+        )
+      : [];
+
+    const capacityCards = [
+      {
+        title: "Audit standard",
+        text: hasPlan("pro")
+          ? "Tu as déjà accès à une lecture plus premium avec PDF et restitution plus forte."
+          : "La base est opérationnelle, mais la lecture premium reste limitée.",
+        badge: hasPlan("pro") ? "PRO+" : "BASE"
+      },
+      {
+        title: "Quoi faire ensuite",
+        text: "Audit → mission → rapport : c’est le meilleur enchaînement commercial.",
+        badge: "FLOW"
+      },
+      {
+        title: "Capacité audits",
+        text: `${getUsageBucket(state.me?.usage || {}, "audit")?.used ?? 0}/${getUsageBucket(state.me?.usage || {}, "audit")?.limit ?? 0} utilisés`,
+        badge: "QUOTA"
+      },
+      {
+        title: "Capacité restante",
+        text: `${
+          Math.max(
+            0,
+            Number(getUsageBucket(state.me?.usage || {}, "audit")?.limit ?? 0) -
+            Number(getUsageBucket(state.me?.usage || {}, "audit")?.used ?? 0)
+          )
+        } audits encore disponibles sur cette période.`,
+        badge: "RESTANT"
+      }
+    ];
+
+    if (hasPlan("pro")) {
+      capacityCards.push(
+        {
+          title: "Lecture Pro",
+          text: "Le plan Pro donne plus de poids à la restitution, au partage et à la perception produit.",
+          badge: "PRO"
+        },
+        {
+          title: "PDF premium",
+          text: "Les audits peuvent devenir de vrais supports de présentation, plus propres et plus vendables.",
+          badge: "PDF"
+        }
+      );
+    }
+
+    if (hasPlan("ultra")) {
+      capacityCards.push(
+        {
+          title: "Lecture Ultra",
+          text: "Le mode Ultra rend la page plus crédible pour une logique portefeuille, équipe ou multi-sites.",
+          badge: "ULTRA"
+        },
+        {
+          title: "Priorisation avancée",
+          text: "Quand le volume augmente, cette page sert davantage de couche de pilotage opérationnel.",
+          badge: "OPS"
+        }
+      );
+    }
 
     setPage(`
       ${createSectionCard(
@@ -3373,7 +3659,8 @@
           <div class="fpTopActionsRow">
             <button class="fpBtn fpBtnPrimary" id="fpAuditsRunBtn" type="button">Lancer un audit SEO</button>
             <button class="fpBtn fpBtnGhost" id="fpAuditsExportBtn" type="button">Exporter en CSV</button>
-            <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Facturation</button>
+            <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Billing</button>
+            <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
           </div>
 
           ${createToolbar({
@@ -3409,6 +3696,33 @@
           )}
 
           ${createSectionCard(
+            "Priorité immédiate",
+            "À traiter maintenant",
+            "Les audits les plus faibles ou les plus urgents à retransformer en action.",
+            worstAudits.length
+              ? `
+                <div class="fpRows">
+                  ${worstAudits.map((a) => `
+                    <div class="fpRowCard">
+                      <div class="fpRowMain">
+                        <div class="fpRowTitle">${esc(a.url || "Audit SEO")}</div>
+                        <div class="fpRowMeta">
+                          Score ${esc(a.score ?? 0)} · ${esc(formatDate(a.createdAt))}
+                        </div>
+                      </div>
+                      <div class="fpRowRight" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+                        <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-audit-detail="${esc(normalizeAuditId(a))}">Détail</button>
+                        <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-quick-action="create_audit_mission" data-quick-payload="${esc(a.url || "Audit")}">Mission</button>
+                        <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-quick-action="goto_reports">Rapport</button>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              `
+              : createEmpty("Aucun audit à traiter pour le moment.")
+          )}
+
+          ${createSectionCard(
             "Historique",
             "Liste des audits",
             "Derniers audits disponibles sur ton organisation.",
@@ -3439,9 +3753,10 @@
                         >
                           Mission
                         </button>
-                        ${hasPlan("pro")
-                          ? `<a class="fpBtn fpBtnSoft fpBtnSmall" href="/api/audits/${esc(normalizeAuditId(a))}/pdf" target="_blank" rel="noopener">PDF</a>`
-                          : `<button class="fpBtn fpBtnGhost fpBtnSmall" type="button" disabled>PDF Pro</button>`
+                        ${
+                          hasPlan("pro")
+                            ? `<a class="fpBtn fpBtnSoft fpBtnSmall" href="/api/audits/${esc(normalizeAuditId(a))}/pdf" target="_blank" rel="noopener">PDF</a>`
+                            : `<button class="fpBtn fpBtnGhost fpBtnSmall" type="button" disabled>PDF Pro</button>`
                         }
                       </div>
                     </div>
@@ -3452,11 +3767,111 @@
           )}
 
           ${createSectionCard(
+            "Répartition",
+            "Répartition des scores",
+            "Vue portefeuille instantanée des audits forts, moyens et critiques.",
+            `
+              <div class="fpHealthGrid">
+                <div class="fpHealthCard">
+                  <div class="fpHealthTitle">Audits forts</div>
+                  <div class="fpHealthValue">${scoreStrong}</div>
+                  <div class="fpHealthMeta">Score ≥ 75</div>
+                </div>
+
+                <div class="fpHealthCard">
+                  <div class="fpHealthTitle">Audits moyens</div>
+                  <div class="fpHealthValue">${scoreMid}</div>
+                  <div class="fpHealthMeta">45 à 74</div>
+                </div>
+
+                <div class="fpHealthCard">
+                  <div class="fpHealthTitle">Audits critiques</div>
+                  <div class="fpHealthValue">${scoreWeak}</div>
+                  <div class="fpHealthMeta">Moins de 45</div>
+                </div>
+
+                <div class="fpHealthCard">
+                  <div class="fpHealthTitle">Score moyen</div>
+                  <div class="fpHealthValue">${avgScore}</div>
+                  <div class="fpHealthMeta">Moyenne actuelle</div>
+                </div>
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Potentiel",
+            "Top URLs à potentiel",
+            "Pages pas forcément les pires, mais souvent les plus intéressantes à pousser ensuite.",
+            potentialAudits.length
+              ? `
+                <div class="fpRows">
+                  ${potentialAudits.map((a) => `
+                    <div class="fpRowCard">
+                      <div class="fpRowMain">
+                        <div class="fpRowTitle">${esc(a.url || "Audit SEO")}</div>
+                        <div class="fpRowMeta">
+                          Score ${esc(a.score ?? 0)} · ${esc(formatDate(a.createdAt))}
+                        </div>
+                      </div>
+                      <div class="fpRowRight">
+                        <div class="fpAddonPill on">POTENTIEL</div>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              `
+              : createEmpty("Aucune URL à potentiel détectée pour le moment.")
+          )}
+
+          ${createSectionCard(
             "Opportunités",
             "Axes de progression prioritaires",
             "Recommandations qui renforcent la valeur du produit.",
             renderPriorityList(axes)
           )}
+
+          ${createSectionCard(
+            "Exécution",
+            "Enchaînement recommandé",
+            "Le meilleur flux pour transformer un audit en action utile puis en support client-ready.",
+            createMiniRows(flowCards)
+          )}
+
+          ${createSectionCard(
+            "Business",
+            "Signaux business à renforcer",
+            "La page audits peut aussi servir à lire l’impact commercial au-delà du simple score.",
+            createMiniRows(businessSignals)
+          )}
+
+          ${createSectionCard(
+            "Scalabilité",
+            "Pourquoi cette page devient puissante",
+            "Plus le SaaS monte en gamme, plus cette page peut servir de moteur d’exécution.",
+            createMiniRows(scaleCards)
+          )}
+
+          ${createSectionCard(
+            "Exécution",
+            "Audit vers mission",
+            "Créer une mission depuis un audit rend l’analyse beaucoup plus exploitable dans le temps.",
+            createMiniRows(auditMissionBridgeCards)
+          )}
+
+          ${hasPlan("pro") ? createSectionCard(
+            "Mode Pro",
+            "Restitution plus premium",
+            "Le plan Pro rend cette page plus forte pour la présentation, le suivi et la valeur perçue.",
+            createMiniRows(proAuditCards)
+          ) : ""}
+
+          ${hasPlan("ultra") ? createSectionCard(
+            "Mode Ultra",
+            "Pilotage avancé des audits",
+            "Le niveau Ultra renforce encore la logique portefeuille, exécution et scalabilité.",
+            createMiniRows(ultraAuditCards)
+          ) : ""}
         </div>
 
         <div class="fpCol fpColSide">
@@ -3485,6 +3900,50 @@
                 </div>
               </div>
             `
+          )}
+
+          ${createSectionCard(
+            "Mise en avant",
+            "Dernier audit mis en avant",
+            "Le dernier audit chargé mérite une lecture plus premium qu’une simple ligne de tableau.",
+            featuredAudit
+              ? `
+                <div class="fpAccountHero">
+                  <div>
+                    <div class="fpCardKicker">Dernière analyse</div>
+                    <div class="fpSectionTitle" style="font-size:22px">${esc(featuredAudit.url || "Audit SEO")}</div>
+                    <div class="fpCardText">
+                      Score ${esc(featuredAudit.score ?? 0)} · ${esc(formatDate(featuredAudit.createdAt))}
+                    </div>
+                    <div class="fpDetailActions" style="margin-top:14px">
+                      <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-audit-detail="${esc(normalizeAuditId(featuredAudit))}">Voir détail</button>
+                      ${
+                        hasPlan("pro")
+                          ? `<a class="fpBtn fpBtnGhost fpBtnSmall" href="/api/audits/${esc(normalizeAuditId(featuredAudit))}/pdf" target="_blank" rel="noopener">PDF</a>`
+                          : `<button class="fpBtn fpBtnGhost fpBtnSmall" type="button" disabled>PDF Pro</button>`
+                      }
+                    </div>
+                  </div>
+                  <div class="fpAccountHeroRight">
+                    <div class="fpAccountPlanChip">${esc(featuredAudit.score ?? 0)}</div>
+                  </div>
+                </div>
+              `
+              : createEmpty("Aucun audit récent à mettre en avant.")
+          )}
+
+          ${createSectionCard(
+            "Plan / lecture",
+            "Capacité du plan",
+            "Le plan courant change la valeur perçue et la profondeur d’usage de cette page.",
+            createMiniRows(capacityCards)
+          )}
+
+          ${createSectionCard(
+            "Lecture premium",
+            "Pourquoi l’audit est vendeur",
+            "Une bonne restitution augmente la confiance client.",
+            renderCheckGrid(sellingChecks)
           )}
         </div>
       </div>
@@ -3525,7 +3984,182 @@
     const allMonitors = Array.isArray(state.monitors) ? state.monitors : [];
     const monitors = getFilteredMonitors();
     const health = getMonitorHealthBuckets();
+
+    const monitoringWhyCards = pickLibrary(
+      [
+        { title: "Prévention", text: "Détecter un problème avant qu’il ne coûte du trafic ou des leads." },
+        { title: "Réactivité", text: "Les alertes donnent une impression de service vivant et sérieux." },
+        { title: "Justification du prix", text: "Une surveillance visible aide à défendre la valeur du SaaS." },
+        { title: "Scalabilité", text: "La même logique peut ensuite s’appliquer à plus de clients et plus de sites." },
+        { title: "Tranquillité client", text: "Le client se sent suivi même hors des audits ponctuels." },
+        { title: "Service premium", text: "Le monitoring donne une vraie épaisseur opérationnelle au produit." },
+        { title: "Lecture d’incidents", text: "Les incidents récents rendent la plateforme plus crédible." },
+        { title: "Couche ops", text: "Ce module donne un vrai aspect opérationnel au SaaS." }
+      ],
+      4,
+      getDaySeed("monitoring_why")
+    );
+
+    const recentIncidents = monitors
+      .filter((m) => normalizeMonitorStatus(m) === "down")
+      .slice(0, 4)
+      .map((m) => ({
+        title: m.url || "Monitor",
+        text: `Incident détecté · ${formatDate(m.lastCheckedAt)}${m.lastResponseTimeMs ? ` · ${m.lastResponseTimeMs} ms` : ""}`,
+        badge: "DOWN"
+      }));
+
     const executionCards = getMonitorExecutionCards();
+
+    const urgentMonitors = [...allMonitors]
+      .sort((a, b) => {
+        const aStatus = normalizeMonitorStatus(a);
+        const bStatus = normalizeMonitorStatus(b);
+
+        const rank = (s) => (s === "down" ? 0 : s === "unknown" ? 1 : 2);
+        const byStatus = rank(aStatus) - rank(bStatus);
+        if (byStatus !== 0) return byStatus;
+
+        return new Date(a.lastCheckedAt || 0) - new Date(b.lastCheckedAt || 0);
+      })
+      .slice(0, 4);
+
+    const featuredMonitor =
+      [...allMonitors].sort((a, b) => new Date(b.lastCheckedAt || 0) - new Date(a.lastCheckedAt || 0))[0] || null;
+
+    const potentialMonitors = pickLibrary(
+      allMonitors.length
+        ? allMonitors.map((m) => ({
+            title: m.url || "Monitor",
+            text: `Intervalle ${m.intervalMinutes ?? 60} min · ${normalizeMonitorStatus(m).toUpperCase()}${m.lastResponseTimeMs ? ` · ${m.lastResponseTimeMs} ms` : ""}`,
+            badge:
+              normalizeMonitorStatus(m) === "down"
+                ? "PRIORITÉ"
+                : normalizeMonitorStatus(m) === "up"
+                  ? "STABLE"
+                  : "À CADRER"
+          }))
+        : [
+            { title: "Site principal", text: "Toujours prioritaire pour renforcer la valeur perçue du monitoring.", badge: "CORE" },
+            { title: "Landing stratégique", text: "Une page de conversion mérite souvent une surveillance dédiée.", badge: "CRO" },
+            { title: "Page locale rentable", text: "Surveiller une page locale importante renforce le pilotage business.", badge: "LOCAL" },
+            { title: "Page de service clé", text: "Certaines pages commerciales méritent une attention plus forte.", badge: "VALUE" }
+          ],
+      4,
+      getDaySeed("monitor_potential")
+    );
+
+    const flowCards = [
+      {
+        title: "1. Créer le monitor",
+        text: "Choisir l’URL la plus utile à surveiller en priorité.",
+        badge: "STEP 1"
+      },
+      {
+        title: "2. Tester rapidement",
+        text: "Valider tout de suite que la couche monitoring fonctionne réellement.",
+        badge: "STEP 2"
+      },
+      {
+        title: "3. Configurer les alertes",
+        text: "Faire en sorte que les incidents remontent à la bonne personne.",
+        badge: "STEP 3"
+      },
+      {
+        title: "4. Relire les logs",
+        text: "Transformer un incident en lecture crédible et exploitable.",
+        badge: "STEP 4"
+      }
+    ];
+
+    const businessSignals = pickLibrary(
+      [
+        { title: "Tranquillité client", text: "Le client sent que le site reste suivi en continu.", badge: "TRUST" },
+        { title: "Service vivant", text: "Le monitoring rend le SaaS plus concret qu’un simple dashboard passif.", badge: "LIVE" },
+        { title: "Valeur récurrente", text: "Une surveillance continue aide à justifier la logique d’abonnement.", badge: "MRR" },
+        { title: "Réactivité premium", text: "Le produit paraît plus sérieux quand il est capable de faire remonter les incidents.", badge: "PREMIUM" },
+        { title: "Couche opérationnelle", text: "Le monitoring ajoute une vraie dimension ops au produit.", badge: "OPS" },
+        { title: "Réduction du risque", text: "Détecter plus vite une panne protège trafic, leads et image.", badge: "RISK" },
+        { title: "Support commercial", text: "Le monitoring aide à montrer que le service ne se limite pas au SEO.", badge: "VALUE" },
+        { title: "Suivi crédible", text: "Les statuts et les logs rendent le suivi plus tangible dans le temps.", badge: "FOLLOW" }
+      ],
+      4,
+      getDaySeed("monitor_business_signals")
+    );
+
+    const enrichedIncidentCards = recentIncidents.length
+      ? recentIncidents
+      : pickLibrary(
+          [
+            { title: "Aucun incident majeur", text: "La surveillance actuelle ne remonte pas d’alerte critique récente.", badge: "UP" },
+            { title: "Lecture stable", text: "La plateforme montre un comportement cohérent sur la période actuelle.", badge: "STABLE" },
+            { title: "Signal rassurant", text: "Une bonne stabilité renforce la perception de sérieux côté client.", badge: "TRUST" },
+            { title: "Potentiel d’upsell", text: "Une surveillance propre peut être mieux valorisée dans les rapports ou le plan supérieur.", badge: "VALUE" }
+          ],
+          4,
+          getDaySeed("monitor_incidents_fallback")
+        );
+
+    const capacityCards = [
+      {
+        title: "Quota monitors",
+        text: `${getUsageBucket(state.me?.usage || {}, "monitor")?.used ?? 0}/${getUsageBucket(state.me?.usage || {}, "monitor")?.limit ?? 0} utilisés`,
+        badge: "QUOTA"
+      },
+      {
+        title: "Capacité restante",
+        text: `${
+          Math.max(
+            0,
+            Number(getUsageBucket(state.me?.usage || {}, "monitor")?.limit ?? 0) -
+            Number(getUsageBucket(state.me?.usage || {}, "monitor")?.used ?? 0)
+          )
+        } monitors encore disponibles sur cette période.`,
+        badge: "RESTANT"
+      },
+      {
+        title: "Extension monitors",
+        text: hasAddon("monitorsPack50")
+          ? "L’add-on monitors +50 est actif sur ce compte."
+          : "Aucun add-on monitors supplémentaire détecté.",
+        badge: hasAddon("monitorsPack50") ? "ON" : "OFF"
+      },
+      {
+        title: "Niveau uptime",
+        text: hasPlan("pro")
+          ? "Le plan permet une lecture plus vendable et plus détaillée des statuts uptime."
+          : "La lecture uptime avancée reste réservée à un plan supérieur.",
+        badge: hasPlan("pro") ? "PRO" : "BASE"
+      }
+    ];
+
+    const proMonitorCards = hasPlan("pro")
+      ? pickLibrary(
+          [
+            { title: "Lecture uptime premium", text: "Le plan Pro rend le module plus crédible dans une logique client-ready.", badge: "PRO" },
+            { title: "Analyse incidents", text: "Les incidents prennent plus de valeur quand ils peuvent être relus et expliqués proprement.", badge: "OPS" },
+            { title: "Support de rétention", text: "Le monitoring aide à défendre l’abonnement par une valeur continue.", badge: "MRR" },
+            { title: "Restitution premium", text: "Le statut uptime devient plus utile commercialement qu’un simple indicateur brut.", badge: "VALUE" }
+          ],
+          4,
+          getDaySeed("monitor_pro_cards")
+        )
+      : [];
+
+    const ultraMonitorCards = hasPlan("ultra")
+      ? pickLibrary(
+          [
+            { title: "Pilotage portefeuille", text: "Le niveau Ultra donne plus de sens à la surveillance quand plusieurs contextes sont suivis.", badge: "ULTRA" },
+            { title: "Lecture ops center", text: "La page devient plus proche d’un vrai centre de contrôle opérationnel.", badge: "OPS" },
+            { title: "Priorisation multi-monitors", text: "Identifier quoi tester ou surveiller en premier devient plus stratégique.", badge: "PRIORITY" },
+            { title: "Surveillance scalable", text: "Le mode Ultra donne plus de cohérence à une logique de volume, d’équipe ou de multi-sites.", badge: "SCALE" },
+            { title: "Couche premium maximale", text: "Le monitoring devient une vraie brique haut de gamme du produit.", badge: "VALUE+" },
+            { title: "Exécution avancée", text: "Logs, incidents, quotas et alertes s’intègrent dans une logique plus complète.", badge: "FLOW+" }
+          ],
+          6,
+          getDaySeed("monitor_ultra_cards")
+        )
+      : [];
 
     setPage(`
       ${createSectionCard(
@@ -3536,7 +4170,8 @@
           <div class="fpTopActionsRow">
             <button class="fpBtn fpBtnPrimary" id="fpAddMonitorBtn" type="button">Ajouter un monitor</button>
             <button class="fpBtn fpBtnGhost" id="fpExportMonitorsBtn" type="button">Exporter en CSV</button>
-            <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Facturation</button>
+            <button class="fpBtn fpBtnGhost" type="button" data-go-billing>Billing</button>
+            <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
           </div>
 
           ${createToolbar({
@@ -3574,6 +4209,33 @@
           )}
 
           ${createSectionCard(
+            "Priorité immédiate",
+            "À surveiller maintenant",
+            "Les monitors à traiter en premier selon leur statut ou leur fraîcheur de vérification.",
+            urgentMonitors.length
+              ? `
+                <div class="fpRows">
+                  ${urgentMonitors.map((m) => `
+                    <div class="fpRowCard">
+                      <div class="fpRowMain">
+                        <div class="fpRowTitle">${esc(m.url || "Monitor")}</div>
+                        <div class="fpRowMeta">
+                          ${esc(normalizeMonitorStatus(m).toUpperCase())} · ${esc(m.intervalMinutes ?? 60)} min · ${esc(formatDate(m.lastCheckedAt))}
+                        </div>
+                      </div>
+                      <div class="fpRowRight" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+                        <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-monitor-test="${esc(normalizeMonitorId(m))}">Tester</button>
+                        <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-logs="${esc(normalizeMonitorId(m))}">Logs</button>
+                        <button class="fpBtn fpBtnDanger fpBtnSmall" type="button" data-monitor-delete="${esc(normalizeMonitorId(m))}">Supprimer</button>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              `
+              : createEmpty("Aucun monitor prioritaire pour le moment.")
+          )}
+
+          ${createSectionCard(
             "Monitors",
             "Liste active",
             "Tous les monitors actuellement chargés depuis ton backend.",
@@ -3592,20 +4254,42 @@
                     <div class="fpTableRow">
                       <div>
                         <div class="fpTableUrl">${esc(m.url || "Monitor")}</div>
-                        <div class="fpTableMeta">
-                          ${m.lastResponseTimeMs ? `${esc(m.lastResponseTimeMs)} ms` : "Temps non disponible"}
+                        <div class="fpTableMeta" style="margin-top:8px;color:var(--fpMuted);font-size:13px;font-weight:700;line-height:1.45">
+                          ${
+                            normalizeMonitorStatus(m) === "down"
+                              ? "Incident actif ou récent détecté."
+                              : normalizeMonitorStatus(m) === "up"
+                                ? "Statut stable actuellement."
+                                : "Statut encore peu exploitable."
+                          }
+                          ${m.lastResponseTimeMs ? ` · ${esc(m.lastResponseTimeMs)} ms` : ""}
                           ${m.lastStatusCode ? ` · HTTP ${esc(m.lastStatusCode)}` : ""}
                         </div>
                       </div>
+
                       <div>${createBadge(normalizeMonitorStatus(m))}</div>
-                      <div>${esc(m.intervalMinutes ?? 60)} min</div>
-                      <div>${esc(formatDate(m.lastCheckedAt))}</div>
+
+                      <div>
+                        <div style="font-weight:900">${esc(m.intervalMinutes ?? 60)} min</div>
+                        <div style="margin-top:6px;color:var(--fpMuted);font-size:13px;font-weight:700">
+                          ${Number(m.intervalMinutes ?? 60) <= 15 ? "Surveillance plus serrée" : "Surveillance standard"}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style="font-weight:900">${esc(formatDate(m.lastCheckedAt))}</div>
+                        <div style="margin-top:6px;color:var(--fpMuted);font-size:13px;font-weight:700">
+                          ${m.lastCheckedAt ? "Dernière vérification connue" : "Jamais vérifié"}
+                        </div>
+                      </div>
+
                       <div class="fpTableActions">
                         <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-monitor-test="${esc(normalizeMonitorId(m))}">Tester</button>
                         <button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-logs="${esc(normalizeMonitorId(m))}">Logs</button>
-                        ${hasPlan("pro")
-                          ? `<button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-uptime="${esc(normalizeMonitorId(m))}">Uptime</button>`
-                          : ``
+                        ${
+                          hasPlan("pro")
+                            ? `<button class="fpBtn fpBtnSoft fpBtnSmall" type="button" data-monitor-uptime="${esc(normalizeMonitorId(m))}">Uptime</button>`
+                            : ``
                         }
                         <button class="fpBtn fpBtnDanger fpBtnSmall" type="button" data-monitor-delete="${esc(normalizeMonitorId(m))}">Supprimer</button>
                       </div>
@@ -3615,6 +4299,103 @@
               `
               : createEmpty("Aucun monitor actif pour le moment.")
           )}
+
+          ${createSectionCard(
+            "Répartition",
+            "Répartition des statuts",
+            "Vue instantanée de la santé du monitoring actif.",
+            `
+              <div class="fpHealthGrid">
+                <div class="fpHealthCard">
+                  <div class="fpHealthTitle">UP</div>
+                  <div class="fpHealthValue">${health.up}</div>
+                  <div class="fpHealthMeta">Monitors stables</div>
+                </div>
+
+                <div class="fpHealthCard">
+                  <div class="fpHealthTitle">DOWN</div>
+                  <div class="fpHealthValue">${health.down}</div>
+                  <div class="fpHealthMeta">Incidents à traiter</div>
+                </div>
+
+                <div class="fpHealthCard">
+                  <div class="fpHealthTitle">UNKNOWN</div>
+                  <div class="fpHealthValue">${health.unknown}</div>
+                  <div class="fpHealthMeta">Statuts peu exploitables</div>
+                </div>
+
+                <div class="fpHealthCard">
+                  <div class="fpHealthTitle">Total</div>
+                  <div class="fpHealthValue">${allMonitors.length}</div>
+                  <div class="fpHealthMeta">Monitors chargés</div>
+                </div>
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Potentiel",
+            "Monitors à potentiel",
+            "Les URLs de surveillance qui renforcent le plus la valeur perçue du produit.",
+            createMiniRows(potentialMonitors)
+          )}
+
+          ${createSectionCard(
+            "Incidents",
+            "Incidents récents enrichis",
+            "Une vraie lecture d’incidents rend cette page plus utile et plus premium.",
+            createMiniRows(enrichedIncidentCards)
+          )}
+
+          ${createSectionCard(
+            "Business",
+            "Lecture business du monitoring",
+            "Le module uptime renforce la confiance, la rétention et la crédibilité opérationnelle.",
+            createMiniRows(businessSignals)
+          )}
+
+          ${createSectionCard(
+            "Exécution",
+            "Enchaînement recommandé",
+            "Le meilleur flux pour transformer un monitor en couche de valeur continue.",
+            createMiniRows(flowCards)
+          )}
+
+          ${createSectionCard(
+            "Valeur perçue",
+            "Pourquoi le monitoring rassure",
+            "Le module uptime améliore fortement la crédibilité du produit.",
+            `
+              <div class="fpInlineStats">
+                <div class="fpInlineStat">
+                  <div class="fpBigValue">${health.up}</div>
+                  <div class="fpInlineStatText">Monitors actuellement stables</div>
+                </div>
+                <div class="fpInlineStat">
+                  <div class="fpBigValue">${health.down}</div>
+                  <div class="fpInlineStatText">Incidents nécessitant attention</div>
+                </div>
+                <div class="fpInlineStat">
+                  <div class="fpBigValue">${health.unknown}</div>
+                  <div class="fpInlineStatText">Monitors sans statut exploitable</div>
+                </div>
+              </div>
+            `
+          )}
+
+          ${hasPlan("pro") ? createSectionCard(
+            "Mode Pro",
+            "Lecture uptime premium",
+            "Le plan Pro rend cette page plus utile pour la restitution et la valeur perçue.",
+            createMiniRows(proMonitorCards)
+          ) : ""}
+
+          ${hasPlan("ultra") ? createSectionCard(
+            "Mode Ultra",
+            "Pilotage avancé du monitoring",
+            "Le niveau Ultra pousse davantage la logique ops center, portefeuille et scalabilité.",
+            createMiniRows(ultraMonitorCards)
+          ) : ""}
         </div>
 
         <div class="fpCol fpColSide">
@@ -3643,6 +4424,59 @@
                 </div>
               </div>
             `
+          )}
+
+          ${createSectionCard(
+            "Mise en avant",
+            "Monitor mis en avant",
+            "Le monitor le plus récemment vérifié mérite une lecture plus premium.",
+            featuredMonitor
+              ? `
+                <div class="fpAccountHero">
+                  <div>
+                    <div class="fpCardKicker">Dernier check important</div>
+                    <div class="fpSectionTitle" style="font-size:22px">${esc(featuredMonitor.url || "Monitor")}</div>
+                    <div class="fpCardText">
+                      ${esc(normalizeMonitorStatus(featuredMonitor).toUpperCase())} · ${esc(featuredMonitor.intervalMinutes ?? 60)} min · ${esc(formatDate(featuredMonitor.lastCheckedAt))}
+                      ${featuredMonitor.lastResponseTimeMs ? ` · ${esc(featuredMonitor.lastResponseTimeMs)} ms` : ""}
+                    </div>
+                    <div class="fpDetailActions" style="margin-top:14px">
+                      <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-monitor-test="${esc(normalizeMonitorId(featuredMonitor))}">Tester</button>
+                      <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-monitor-logs="${esc(normalizeMonitorId(featuredMonitor))}">Logs</button>
+                    </div>
+                  </div>
+                  <div class="fpAccountHeroRight">
+                    <div class="fpAccountPlanChip">${esc(normalizeMonitorStatus(featuredMonitor).toUpperCase())}</div>
+                  </div>
+                </div>
+              `
+              : createEmpty("Aucun monitor récent à mettre en avant.")
+          )}
+
+          ${createSectionCard(
+            "Alertes",
+            "Réception email",
+            "Résumé de la configuration courante.",
+            `
+              <div class="fpInfoList">
+                <div class="fpInfoRow"><span>Mode</span><strong>${esc(recipientsLabel(state.orgSettings?.alertRecipients))}</strong></div>
+                <div class="fpInfoRow"><span>Emails extra</span><strong>${esc((state.orgSettings?.alertExtraEmails || []).join(", ") || "Aucun")}</strong></div>
+              </div>
+            `
+          )}
+
+          ${createSectionCard(
+            "Plan / addons",
+            "Capacité du plan",
+            "Les quotas et niveaux changent la vraie utilité de cette page.",
+            createMiniRows(capacityCards)
+          )}
+
+          ${createSectionCard(
+            "Justification",
+            "Pourquoi ce module compte",
+            "Le client voit une vraie couche opérationnelle.",
+            renderCheckGrid(monitoringWhyCards)
           )}
         </div>
       </div>
