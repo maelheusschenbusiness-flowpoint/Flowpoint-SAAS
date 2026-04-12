@@ -2629,3 +2629,188 @@ body::before{
     min-width:0 !important;
   }
 }
+/* ===== AUDITS ANALYTICS FULL ===== */
+
+.fpAuditHero{
+  display:grid;
+  grid-template-columns:minmax(0,1.2fr) 170px;
+  gap:18px;
+  align-items:stretch;
+}
+
+.fpAuditHeroLeft{
+  min-width:0;
+}
+
+.fpAuditHeroRight{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  border-radius:22px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+  padding:18px;
+  box-shadow:var(--fpShadow);
+}
+
+.fpAuditHeroTitle{
+  margin-top:6px;
+  font-size:28px;
+  line-height:1.04;
+  letter-spacing:-.04em;
+  font-weight:900;
+  overflow-wrap:anywhere;
+}
+
+.fpAuditHeroMeta{
+  margin-top:10px;
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.5;
+  font-weight:700;
+}
+
+.fpAuditHeroText{
+  margin-top:14px;
+  color:var(--fpTextSoft);
+  font-size:15px;
+  line-height:1.6;
+  font-weight:700;
+}
+
+.fpAuditHeroActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  margin-top:16px;
+}
+
+.fpAuditHeroScore{
+  font-size:44px;
+  line-height:1;
+  letter-spacing:-.06em;
+  font-weight:900;
+}
+
+.fpAuditHeroScoreLabel{
+  margin-top:10px;
+  text-align:center;
+  color:var(--fpTextSoft);
+  font-size:13px;
+  line-height:1.4;
+  font-weight:700;
+}
+
+.fpAuditAnalyticsGrid{
+  display:grid;
+  grid-template-columns:1.2fr .8fr;
+  gap:18px;
+}
+
+.fpAuditBars{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-top:16px;
+}
+
+.fpAuditBarCard{
+  border-radius:18px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+  padding:14px 16px;
+}
+
+.fpAuditBarHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+  color:var(--fpTextSoft);
+  font-size:14px;
+  font-weight:800;
+}
+
+.fpAuditBarHead strong{
+  color:#fff;
+  font-size:16px;
+  font-weight:900;
+}
+
+.fpAuditIssueGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+  margin-top:4px;
+}
+
+.fpAuditIssueCard{
+  border-radius:22px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+  box-shadow:var(--fpShadow);
+  padding:18px;
+}
+
+.fpAuditIssueTop{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.fpAuditIssueTitle{
+  font-size:18px;
+  line-height:1.2;
+  font-weight:900;
+  letter-spacing:-.02em;
+  overflow-wrap:anywhere;
+}
+
+.fpAuditIssueText{
+  margin-top:12px;
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.55;
+  font-weight:700;
+}
+
+.fpAuditIssueActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  margin-top:16px;
+}
+
+.fpAuditIssueActions .fpBtn{
+  flex:0 0 auto !important;
+}
+
+@media (max-width:1320px){
+  .fpAuditAnalyticsGrid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width:760px){
+  .fpAuditHero{
+    grid-template-columns:1fr;
+  }
+
+  .fpAuditIssueGrid{
+    grid-template-columns:1fr;
+  }
+
+  .fpAuditHeroActions,
+  .fpAuditIssueActions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .fpAuditHeroActions .fpBtn,
+  .fpAuditIssueActions .fpBtn{
+    width:100%;
+  }
+}
