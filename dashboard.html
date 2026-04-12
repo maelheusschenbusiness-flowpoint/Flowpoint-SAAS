@@ -12,7 +12,7 @@
 
   <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
   <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
-  <link rel="stylesheet" href="/dashboard.css" />
+  <link rel="stylesheet" href="/dashboard.css?v=20260412" />
 </head>
 <body data-page="overview">
   <div class="fpOverlay" id="fpOverlay"></div>
@@ -37,50 +37,21 @@
         </div>
 
         <nav class="fpNav">
-          <a href="#overview" class="fpNavItem" data-route="overview">
-            <span class="fpNavDot"></span>
-            <span>Overview</span>
-          </a>
-
-          <a href="#missions" class="fpNavItem" data-route="missions">
-            <span class="fpNavDot"></span>
-            <span>Missions</span>
-          </a>
-
-          <a href="#audits" class="fpNavItem" data-route="audits">
-            <span class="fpNavDot"></span>
-            <span>Audits</span>
-          </a>
-
-          <a href="#monitors" class="fpNavItem" data-route="monitors">
-            <span class="fpNavDot"></span>
-            <span>Monitors</span>
-          </a>
-
-          <a href="#reports" class="fpNavItem" data-route="reports">
-            <span class="fpNavDot"></span>
-            <span>Rapports</span>
-          </a>
-
-          <a href="#local-seo" class="fpNavItem" data-route="local-seo">
-            <span class="fpNavDot"></span>
-            <span>Local SEO</span>
-          </a>
-
-          <a href="#team" class="fpNavItem" data-route="team">
-            <span class="fpNavDot"></span>
-            <span>Équipe</span>
-          </a>
-
-          <a href="#billing" class="fpNavItem" data-route="billing">
-            <span class="fpNavDot"></span>
-            <span>Facturation</span>
-          </a>
-
-          <a href="#settings" class="fpNavItem" data-route="settings">
-            <span class="fpNavDot"></span>
-            <span>Paramètres</span>
-          </a>
+          <a href="#overview" class="fpNavItem" data-route="overview"><span class="fpNavDot"></span><span>Overview</span></a>
+          <a href="#missions" class="fpNavItem" data-route="missions"><span class="fpNavDot"></span><span>Missions</span></a>
+          <a href="#audits" class="fpNavItem" data-route="audits"><span class="fpNavDot"></span><span>Audits</span></a>
+          <a href="#monitors" class="fpNavItem" data-route="monitors"><span class="fpNavDot"></span><span>Monitors</span></a>
+          <a href="#reports" class="fpNavItem" data-route="reports"><span class="fpNavDot"></span><span>Rapports</span></a>
+          <a href="#competitors" class="fpNavItem" data-route="competitors"><span class="fpNavDot"></span><span>Concurrents</span></a>
+          <a href="#local-seo" class="fpNavItem" data-route="local-seo"><span class="fpNavDot"></span><span>Local SEO</span></a>
+          <a href="#tools" class="fpNavItem" data-route="tools"><span class="fpNavDot"></span><span>Outils</span></a>
+          <a href="#team" class="fpNavItem" data-route="team"><span class="fpNavDot"></span><span>Équipe</span></a>
+          <a href="#calendar" class="fpNavItem" data-route="calendar"><span class="fpNavDot"></span><span>Calendrier</span></a>
+          <a href="#notes" class="fpNavItem" data-route="notes"><span class="fpNavDot"></span><span>Notes</span></a>
+          <a href="#chat" class="fpNavItem" data-route="chat"><span class="fpNavDot"></span><span>Discussion</span></a>
+          <a href="#map" class="fpNavItem" data-route="map"><span class="fpNavDot"></span><span>Map</span></a>
+          <a href="#billing" class="fpNavItem" data-route="billing"><span class="fpNavDot"></span><span>Facturation</span></a>
+          <a href="#settings" class="fpNavItem" data-route="settings"><span class="fpNavDot"></span><span>Paramètres</span></a>
         </nav>
       </div>
 
@@ -89,85 +60,39 @@
           <div class="fpCardKicker">Compte</div>
 
           <div class="fpAccountRows">
-            <div class="fpAccountRow">
-              <span>Plan</span>
-              <strong id="fpAccPlan">Plan non synchronisé</strong>
-            </div>
-
-            <div class="fpAccountRow">
-              <span>Organisation</span>
-              <strong id="fpAccOrg">Workspace principal</strong>
-            </div>
-
-            <div class="fpAccountRow">
-              <span>Rôle</span>
-              <strong id="fpAccRole">Owner</strong>
-            </div>
-
-            <div class="fpAccountRow">
-              <span>Essai</span>
-              <strong id="fpAccTrial">En vérification</strong>
-            </div>
+            <div class="fpAccountRow"><span>Plan</span><strong id="fpAccPlan">Plan non synchronisé</strong></div>
+            <div class="fpAccountRow"><span>Organisation</span><strong id="fpAccOrg">Workspace principal</strong></div>
+            <div class="fpAccountRow"><span>Rôle</span><strong id="fpAccRole">Owner</strong></div>
+            <div class="fpAccountRow"><span>Essai</span><strong id="fpAccTrial">En vérification</strong></div>
           </div>
 
           <div class="fpUsageStack">
             <div class="fpUsageItem">
-              <div class="fpUsageTop">
-                <span>Audits</span>
-                <strong id="fpUsageAudits">0</strong>
-              </div>
-              <div class="fpBar">
-                <div class="fpBarFill" id="fpBarAudits"></div>
-              </div>
+              <div class="fpUsageTop"><span>Audits</span><strong id="fpUsageAudits">0</strong></div>
+              <div class="fpBar"><div class="fpBarFill" id="fpBarAudits"></div></div>
             </div>
 
             <div class="fpUsageItem">
-              <div class="fpUsageTop">
-                <span>PDF</span>
-                <strong id="fpUsagePdf">0</strong>
-              </div>
-              <div class="fpBar">
-                <div class="fpBarFill" id="fpBarPdf"></div>
-              </div>
+              <div class="fpUsageTop"><span>PDF</span><strong id="fpUsagePdf">0</strong></div>
+              <div class="fpBar"><div class="fpBarFill" id="fpBarPdf"></div></div>
             </div>
 
             <div class="fpUsageItem">
-              <div class="fpUsageTop">
-                <span>Exports</span>
-                <strong id="fpUsageExports">0</strong>
-              </div>
-              <div class="fpBar">
-                <div class="fpBarFill" id="fpBarExports"></div>
-              </div>
+              <div class="fpUsageTop"><span>Exports</span><strong id="fpUsageExports">0</strong></div>
+              <div class="fpBar"><div class="fpBarFill" id="fpBarExports"></div></div>
             </div>
 
             <div class="fpUsageItem">
-              <div class="fpUsageTop">
-                <span>Monitors</span>
-                <strong id="fpUsageMonitors">0</strong>
-              </div>
-              <div class="fpBar">
-                <div class="fpBarFill" id="fpBarMonitors"></div>
-              </div>
+              <div class="fpUsageTop"><span>Monitors</span><strong id="fpUsageMonitors">0</strong></div>
+              <div class="fpBar"><div class="fpBarFill" id="fpBarMonitors"></div></div>
             </div>
           </div>
 
           <div class="fpSidebarActions">
-            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenBillingSide" type="button">
-              Facturation
-            </button>
-
-            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenSettingsSide" type="button">
-              Paramètres
-            </button>
-
-            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenInviteSide" type="button">
-              Inviter un membre
-            </button>
-
-            <button class="fpBtn fpBtnDanger fpBtnFull" id="fpLogoutBtn" type="button">
-              Déconnexion
-            </button>
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenBillingSide" type="button">Facturation</button>
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenSettingsSide" type="button">Paramètres</button>
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenInviteSide" type="button">Inviter un membre</button>
+            <button class="fpBtn fpBtnDanger fpBtnFull" id="fpLogoutBtn" type="button">Déconnexion</button>
           </div>
         </div>
       </div>
@@ -200,15 +125,10 @@
             <option value="3">3 derniers jours</option>
           </select>
 
-          <button id="fpRefreshBtn" class="fpBtn fpBtnPrimary" type="button">
-            Actualiser
-          </button>
+          <button id="fpRefreshBtn" class="fpBtn fpBtnPrimary" type="button">Actualiser</button>
 
           <div class="fpExportWrap">
-            <button id="fpExportToggle" class="fpBtn fpBtnGhost" type="button">
-              Exports
-            </button>
-
+            <button id="fpExportToggle" class="fpBtn fpBtnGhost" type="button">Exports</button>
             <div id="fpExportMenu" class="fpExportMenu">
               <button id="fpExportAudits" type="button">Exporter audits CSV</button>
               <button id="fpExportMonitors" type="button">Exporter monitors CSV</button>
@@ -228,6 +148,6 @@
     </main>
   </div>
 
-  <script src="/dashboard.js" defer></script>
+ <script src="/dashboard.js?v=20260412" defer></script>
 </body>
 </html>
