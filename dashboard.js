@@ -14,6 +14,7 @@
   const LOGIN_URL = "/login.html";
 
   const PROACTIVE_REFRESH_INTERVAL_MS = 45000;
+  const DATA_REFRESH_INTERVAL_MS = 30000;
   const SESSION_RECHECK_MS = 15000;
   const REFRESH_SOON_BUFFER_MS = 90 * 1000;
   const REDIRECT_DELAY_MS = 4000;
@@ -136,6 +137,7 @@
       lastSessionCheckAt: 0,
       redirectScheduled: false,
       proactiveIntervalId: null,
+      dataRefreshIntervalId: null,
       redirectTimeoutId: null,
     },
   };
@@ -1401,6 +1403,18 @@
         console.warn("Proactive refresh failed:", e);
       }
     }, PROACTIVE_REFRESH_INTERVAL_MS);
+  }
+
+  function startDataRefreshLoop() {
+    if (state.auth.dataRefreshIntervalId) {
+      clearInterval(state.auth.dataRefreshIntervalId);
+    }
+
+    state.auth.dataRefreshIntervalId = setInterval(() => {
+      if (!hasAnyToken()) return;
+      if (document.visibilityState !== "visible") return;
+      loadData({ silent: true });
+    }, DATA_REFRESH_INTERVAL_MS);
   }
 
   // =========================================================
@@ -7309,6 +7323,7 @@
 
     initEvents();
     startProactiveRefreshLoop();
+    startDataRefreshLoop();
     verifySessionOnResume(true);
     loadData();
 
