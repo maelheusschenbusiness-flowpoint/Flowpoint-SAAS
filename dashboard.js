@@ -3886,7 +3886,38 @@ function getCurrentMissionPoolLabel() {
       text: "La suite logique sera de sortir les missions du localStorage pour les mettre en base avec statuts avancés."
     }
   ];
+  const topNowHtml = topNow.length
+    ? `
+      <div class="fpMissionBoardList">
+        ${topNow.map((m) => `
+          <div class="fpMissionBoardCard">
+            <div class="fpMissionBoardHead">
+              <div class="fpMissionBoardMain">
+                <div class="fpMissionBoardTitle">${esc(m.title)}</div>
+                <div class="fpMissionBoardMeta">
+                  ${esc(m.meta || "Général")}
+                  ${m.siteUrl ? ` · ${esc(m.siteUrl)}` : ""}
+                </div>
+              </div>
+              <div class="fpMissionBoardBadges">
+                <div class="fpAddonPill ${m.done ? "on" : "off"}">${esc(m.impact || "Moyen")}</div>
+              </div>
+            </div>
 
+            ${m.description ? `<div class="fpMissionBoardText">${esc(m.description)}</div>` : ""}
+
+            <div class="fpMissionBoardActions">
+              <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Exécuter</button>
+              <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-toggle="${esc(m.id)}">
+                ${m.done ? "Réouvrir" : "Terminer"}
+              </button>
+              <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Ouvrir</button>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `
+    : createEmpty("Aucune priorité à afficher pour le moment.");
   setPage(`
     ${createSectionCard(
       "Missions",
@@ -3954,40 +3985,11 @@ function getCurrentMissionPoolLabel() {
     <div class="fpGrid fpGridMain">
       <div class="fpCol fpColMain">
         ${createSectionCard(
-          "À faire maintenant",
-          "Priorités du moment",
-          "Les missions les plus utiles à traiter en premier.",
-          topNow.length ? `
-            <div class="fpMissionBoardList">
-              ${topNow.map((m) => `
-                <div class="fpMissionBoardCard">
-                  <div class="fpMissionBoardHead">
-                    <div class="fpMissionBoardMain">
-                      <div class="fpMissionBoardTitle">${esc(m.title)}</div>
-                      <div class="fpMissionBoardMeta">
-                        ${esc(m.meta || "Général")}
-                        ${m.siteUrl ? ` · ${esc(m.siteUrl)}` : ""}
-                      </div>
-                    </div>
-                    <div class="fpMissionBoardBadges">
-                      <div class="fpAddonPill ${m.done ? "on" : "off"}">${esc(m.impact || "Moyen")}</div>
-                    </div>
-                  </div>
-
-                  ${m.description ? `<div class="fpMissionBoardText">${esc(m.description)}</div>` : ""}
-
-                  <div class="fpMissionBoardActions">
-                    <button class="fpBtn fpBtnPrimary fpBtnSmall" type="button" data-mission-do="${esc(m.id)}">Exécuter</button>
-                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-toggle="${esc(m.id)}">
-                      ${m.done ? "Réouvrir" : "Terminer"}
-                    </button>
-                    <button class="fpBtn fpBtnGhost fpBtnSmall" type="button" data-mission-open="${esc(m.id)}">Ouvrir</button>
-                  </div>
-                </div>
-              `).join("")}
-            </div>
-          ` : createEmpty("Aucune priorité à afficher pour le moment.")}
-        )}
+  "À faire maintenant",
+  "Priorités du moment",
+  "Les missions les plus utiles à traiter en premier.",
+  topNowHtml
+)}
 
         ${createSectionCard(
           "Vue de travail",
