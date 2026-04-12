@@ -1,3 +1,5 @@
+console.log("FLOWPOINT DASHBOARD JS CHARGÉ");
+alert("dashboard js chargé");
 (() => {
   "use strict";
 
