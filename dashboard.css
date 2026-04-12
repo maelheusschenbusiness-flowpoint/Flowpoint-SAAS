@@ -2244,3 +2244,230 @@ body::before{
     }
   }
 }
+/* =========================================================
+   FLOWPOINT — PATCH FINAL SIDEBAR / NAV APRÈS FUSION
+   À COLLER TOUT EN BAS DE dashboard.css
+   ========================================================= */
+
+.fpPageWrap{
+  min-width:0;
+  width:100%;
+}
+
+.fpSidebar{
+  gap:14px;
+}
+
+.fpSidebarTop{
+  gap:18px;
+}
+
+.fpSidebarBottom{
+  margin-top:auto;
+  padding-top:10px;
+}
+
+.fpNav{
+  gap:10px;
+}
+
+.fpNavItem{
+  min-height:54px;
+  padding:0 16px;
+  font-size:16px;
+  border-radius:16px;
+}
+
+.fpNavDot{
+  width:12px;
+  height:12px;
+}
+
+.fpAccountCard{
+  padding:16px 14px;
+  border-radius:22px;
+}
+
+.fpAccountRows{
+  gap:8px;
+}
+
+.fpAccountRow{
+  font-size:13px;
+}
+
+.fpAccountRow strong{
+  font-size:14px;
+  max-width:150px;
+}
+
+.fpUsageStack{
+  gap:12px;
+  margin-top:14px;
+}
+
+.fpUsageTop{
+  font-size:12px;
+}
+
+.fpSidebarActions{
+  gap:10px;
+  margin-top:16px;
+}
+
+.fpSidebarActions .fpBtn{
+  min-height:46px;
+  border-radius:14px;
+  font-size:14px;
+  padding:0 14px;
+}
+
+.fpMain{
+  min-width:0;
+}
+
+.fpTopbar{
+  margin-bottom:2px;
+}
+
+.fpPageContainer{
+  width:100%;
+  min-width:0;
+}
+
+/* réduit encore un peu la densité si peu d’items dans la sidebar */
+@media (min-width:1081px){
+  .fpSidebar{
+    padding:20px 16px 22px;
+  }
+
+  .fpBrand{
+    padding:6px 8px 2px;
+  }
+
+  .fpBrandLogo{
+    width:50px;
+    height:50px;
+    border-radius:16px;
+  }
+
+  .fpBrandName{
+    font-size:18px;
+  }
+
+  .fpBrandSub{
+    font-size:12px;
+  }
+}
+
+/* tablette / petit laptop */
+@media (max-width:1200px){
+  .fpNavItem{
+    min-height:52px;
+    font-size:15px;
+  }
+
+  .fpSidebarActions .fpBtn{
+    min-height:44px;
+    font-size:13px;
+  }
+}
+
+/* mobile */
+@media (max-width:1080px){
+  .fpSidebar{
+    width:min(90vw, 340px);
+    padding:18px 14px 20px;
+    gap:12px;
+  }
+
+  .fpSidebarTop{
+    gap:16px;
+  }
+
+  .fpBrand{
+    padding:4px 6px 2px;
+    gap:12px;
+  }
+
+  .fpBrandLogo{
+    width:46px;
+    height:46px;
+    border-radius:15px;
+  }
+
+  .fpBrandName{
+    font-size:18px;
+  }
+
+  .fpBrandSub{
+    font-size:12px;
+  }
+
+  .fpNav{
+    gap:8px;
+  }
+
+  .fpNavItem{
+    min-height:50px;
+    padding:0 14px;
+    font-size:15px;
+    border-radius:15px;
+  }
+
+  .fpNavDot{
+    width:11px;
+    height:11px;
+  }
+
+  .fpAccountCard{
+    padding:14px 12px;
+    border-radius:20px;
+  }
+
+  .fpCardKicker{
+    margin-bottom:12px;
+    font-size:12px;
+  }
+
+  .fpUsageStack{
+    margin-top:12px;
+  }
+
+  .fpSidebarActions{
+    margin-top:14px;
+    gap:9px;
+  }
+
+  .fpSidebarActions .fpBtn{
+    min-height:44px;
+    border-radius:13px;
+  }
+}
+
+/* très petit mobile */
+@media (max-width:560px){
+  .fpSidebar{
+    width:min(92vw, 320px);
+    padding:16px 12px 18px;
+  }
+
+  .fpNavItem{
+    min-height:48px;
+    font-size:14px;
+    gap:12px;
+  }
+
+  .fpAccountRow{
+    font-size:12px;
+  }
+
+  .fpAccountRow strong{
+    font-size:13px;
+  }
+
+  .fpSidebarActions .fpBtn{
+    min-height:42px;
+    font-size:13px;
+  }
+}
