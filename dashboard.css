@@ -2814,3 +2814,338 @@ body::before{
     width:100%;
   }
 }
+/* =========================================================
+   FLOWPOINT FULL ENGINE FRONTEND PATCH
+   À coller TOUT EN BAS de dashboard.css
+   ========================================================= */
+
+.fpLoadingBlock{
+  padding:28px 18px;
+  border-radius:18px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+  color:var(--fpTextSoft);
+  font-size:14px;
+  font-weight:700;
+}
+
+.fpWarRoomHero{
+  display:grid;
+  grid-template-columns:minmax(0,1.3fr) 220px;
+  gap:18px;
+  align-items:stretch;
+}
+
+.fpWarRoomHeroMain{
+  min-width:0;
+}
+
+.fpWarRoomHeroTitle{
+  margin-top:6px;
+  font-size:30px;
+  line-height:1.02;
+  font-weight:900;
+  letter-spacing:-.05em;
+}
+
+.fpWarRoomHeroText{
+  margin-top:14px;
+  color:var(--fpTextSoft);
+  font-size:15px;
+  line-height:1.65;
+  font-weight:700;
+}
+
+.fpWarRoomHeroSide{
+  border-radius:22px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+  box-shadow:var(--fpShadow);
+  padding:18px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+}
+
+.fpWarRoomBigScore{
+  font-size:52px;
+  line-height:1;
+  letter-spacing:-.07em;
+  font-weight:900;
+}
+
+.fpWarRoomBigScoreLabel{
+  margin-top:10px;
+  font-size:13px;
+  color:var(--fpTextSoft);
+  font-weight:700;
+}
+
+.fpWarRoomHeroMeta{
+  margin-top:8px;
+  font-size:13px;
+  color:var(--fpTextSoft);
+  line-height:1.45;
+  font-weight:700;
+}
+
+.fpPackGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+}
+
+.fpPackCard{
+  border-radius:22px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+  box-shadow:var(--fpShadow);
+  padding:18px;
+}
+
+.fpPackHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.fpPackTitle{
+  font-size:18px;
+  line-height:1.15;
+  font-weight:900;
+  letter-spacing:-.02em;
+  overflow-wrap:anywhere;
+}
+
+.fpPackMeta{
+  margin-top:6px;
+  color:var(--fpTextSoft);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:700;
+}
+
+.fpPackText{
+  margin-top:12px;
+  color:var(--fpTextSoft);
+  font-size:14px;
+  line-height:1.6;
+  font-weight:700;
+}
+
+.fpPackStats{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  margin-top:14px;
+}
+
+.fpPackStat{
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.02);
+}
+
+.fpPackStat span{
+  display:block;
+  color:var(--fpTextSoft);
+  font-size:11px;
+  line-height:1.2;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+  font-weight:800;
+}
+
+.fpPackStat strong{
+  display:block;
+  margin-top:6px;
+  font-size:14px;
+  line-height:1.25;
+  font-weight:900;
+}
+
+.fpPackPreview{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:14px;
+}
+
+.fpPackPreviewColumn{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.fpPackActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  margin-top:16px;
+}
+
+.fpPortfolioLine{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.02);
+  color:var(--fpTextSoft);
+  font-size:13px;
+  line-height:1.5;
+  font-weight:700;
+}
+
+.fpPortfolioLine strong{
+  color:var(--fpText);
+  font-size:13px;
+  font-weight:900;
+}
+
+.fpEmptyMini{
+  padding:12px 0;
+  color:var(--fpTextSoft);
+  font-size:13px;
+  line-height:1.5;
+  font-weight:700;
+}
+
+.fpCalendarGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px;
+}
+
+.fpCalendarColumn{
+  border-radius:20px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+  padding:16px;
+}
+
+.fpCalendarColumnTitle{
+  font-size:16px;
+  line-height:1.2;
+  font-weight:900;
+  margin-bottom:12px;
+}
+
+.fpCalendarItem{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 0;
+  border-top:1px solid rgba(255,255,255,.06);
+}
+
+.fpCalendarItem:first-of-type{
+  border-top:0;
+  padding-top:0;
+}
+
+.fpCalendarItemTitle{
+  font-size:14px;
+  line-height:1.35;
+  font-weight:800;
+}
+
+.fpCalendarItemMeta{
+  margin-top:4px;
+  color:var(--fpTextSoft);
+  font-size:12px;
+  line-height:1.5;
+  font-weight:700;
+}
+
+.fpCalendarItemMain{
+  min-width:0;
+}
+
+.fpZoneGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+}
+
+.fpZoneCard{
+  border-radius:18px;
+  padding:16px;
+  border:1px solid var(--fpBorder);
+  background:rgba(255,255,255,.03);
+  box-shadow:var(--fpShadow);
+}
+
+.fpZoneCard.covered{
+  border-color:rgba(34,197,94,.28);
+}
+
+.fpZoneCard.uncovered{
+  border-color:rgba(245,158,11,.28);
+}
+
+.fpZoneTitle{
+  font-size:16px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+.fpZoneMeta{
+  margin-top:8px;
+  color:var(--fpTextSoft);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:700;
+}
+
+.fpNotePreview{
+  margin-top:8px;
+  color:var(--fpTextSoft);
+  font-size:13px;
+  line-height:1.55;
+  font-weight:700;
+}
+
+@media (max-width:1320px){
+  .fpWarRoomHero{
+    grid-template-columns:1fr;
+  }
+
+  .fpPackGrid{
+    grid-template-columns:1fr;
+  }
+
+  .fpCalendarGrid{
+    grid-template-columns:1fr;
+  }
+
+  .fpZoneGrid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+@media (max-width:760px){
+  .fpPackStats{
+    grid-template-columns:1fr;
+  }
+
+  .fpZoneGrid{
+    grid-template-columns:1fr;
+  }
+
+  .fpPackActions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .fpPackActions .fpBtn{
+    width:100%;
+  }
+}
