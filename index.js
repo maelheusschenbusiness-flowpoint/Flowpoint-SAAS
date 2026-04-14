@@ -1277,7 +1277,2276 @@ async function canCreateActiveMonitor(user, org) {
 
   return countActive < q.monitors;
 }
+// =======================
+// FLOWPOINT FULL ENGINE v1
+// Overview war room + Libraries + Personalization + Local/Maps
+// Team discussions + Calendar + Notes + Packs + Risk/Opportunity
+// =======================
 
+// ---------- MODELS ----------
+
+const MissionSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    title: String,
+    description: String,
+
+    category: {
+      type: String,
+      enum: ["seo", "content", "local", "conversion", "monitor", "reporting", "ops", "team"],
+      default: "seo",
+      index: true,
+    },
+
+    sourceType: {
+      type: String,
+      enum: ["manual", "audit", "monitor", "system", "calendar", "note", "local", "team"],
+      default: "system",
+      index: true,
+    },
+
+    sourceId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    priority: {
+      type: String,
+      enum: ["low", "medium", "high", "critical"],
+      default: "medium",
+      index: true,
+    },
+
+    impact: {
+      type: String,
+      enum: ["low", "medium", "high", "critical"],
+      default: "medium",
+      index: true,
+    },
+
+    status: {
+      type: String,
+      enum: ["todo", "in_progress", "blocked", "done", "ignored", "postponed"],
+      default: "todo",
+      index: true,
+    },
+
+    sector: { type: String, default: "" },
+    pageType: { type: String, default: "" },
+    pageUrl: { type: String, default: "" },
+    siteUrl: { type: String, default: "" },
+
+    dueDate: Date,
+    completedAt: Date,
+
+    assignedToUserId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    isAutomated: { type: Boolean, default: false, index: true },
+    isQuickWin: { type: Boolean, default: false, index: true },
+
+    tags: { type: [String], default: [] },
+  },
+  { timestamps: true, collection: "missions" }
+);
+
+const IssueSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    sourceType: {
+      type: String,
+      enum: ["audit", "monitor", "local", "system"],
+      default: "audit",
+      index: true,
+    },
+
+    sourceId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    type: { type: String, index: true },
+    title: String,
+    description: String,
+
+    category: {
+      type: String,
+      enum: ["seo", "content", "local", "conversion", "monitor", "reporting", "ops", "team"],
+      default: "seo",
+      index: true,
+    },
+
+    severity: {
+      type: String,
+      enum: ["low", "medium", "high", "critical"],
+      default: "medium",
+      index: true,
+    },
+
+    impactBusiness: {
+      type: String,
+      enum: ["low", "medium", "high", "critical"],
+      default: "medium",
+      index: true,
+    },
+
+    priorityScore: { type: Number, default: 50, index: true },
+
+    pageUrl: { type: String, default: "" },
+    siteUrl: { type: String, default: "" },
+
+    sector: { type: String, default: "" },
+    pageType: { type: String, default: "" },
+
+    recommendationKey: { type: String, default: "" },
+    missionTemplateKey: { type: String, default: "" },
+    packKey: { type: String, default: "" },
+
+    status: {
+      type: String,
+      enum: ["open", "accepted", "ignored", "resolved"],
+      default: "open",
+      index: true,
+    },
+
+    metadata: { type: Object, default: {} },
+  },
+  { timestamps: true, collection: "issues" }
+);
+
+const PackRunSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    packKey: { type: String, index: true },
+    name: String,
+    category: String,
+    summary: String,
+
+    sourceType: String,
+    sourceId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    impactExpected: { type: String, default: "medium" },
+    difficulty: { type: String, default: "medium" },
+    estimatedTime: { type: String, default: "" },
+
+    previewItems: { type: [String], default: [] },
+
+    createdMissionIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
+  },
+  { timestamps: true, collection: "packruns" }
+);
+
+const TimelineEventSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    type: { type: String, index: true },
+    entityType: { type: String, index: true },
+    entityId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    title: String,
+    message: String,
+
+    metadata: { type: Object, default: {} },
+  },
+  { timestamps: true, collection: "timelineevents" }
+);
+
+const TeamThreadSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    contextType: {
+      type: String,
+      enum: ["mission", "audit", "monitor", "report", "note", "general"],
+      default: "general",
+      index: true,
+    },
+
+    contextId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    title: String,
+    isResolved: { type: Boolean, default: false, index: true },
+    lastActivityAt: { type: Date, default: Date.now, index: true },
+  },
+  { timestamps: true, collection: "teamthreads" }
+);
+
+const TeamMessageSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    threadId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    authorName: String,
+
+    content: String,
+    mentions: { type: [String], default: [] },
+
+    isSystemSummary: { type: Boolean, default: false },
+  },
+  { timestamps: true, collection: "teammessages" }
+);
+
+const CalendarEventSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    title: String,
+    description: String,
+
+    type: {
+      type: String,
+      enum: ["mission_due", "audit_review", "monitor_review", "report_deadline", "team_meeting", "client_reminder", "recurring_task", "custom"],
+      default: "custom",
+      index: true,
+    },
+
+    linkedEntityType: { type: String, default: "" },
+    linkedEntityId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    startAt: { type: Date, index: true },
+    endAt: { type: Date, index: true },
+
+    priority: {
+      type: String,
+      enum: ["low", "medium", "high", "critical"],
+      default: "medium",
+      index: true,
+    },
+
+    alertMode: {
+      type: String,
+      enum: ["none", "standard", "smart"],
+      default: "none",
+      index: true,
+    },
+
+    recurrence: {
+      type: String,
+      enum: ["none", "daily", "weekly", "monthly"],
+      default: "none",
+    },
+
+    isDone: { type: Boolean, default: false, index: true },
+  },
+  { timestamps: true, collection: "calendarevents" }
+);
+
+const NoteSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    title: String,
+    content: String,
+
+    type: {
+      type: String,
+      enum: ["free", "mission", "audit", "incident", "client", "strategy"],
+      default: "free",
+      index: true,
+    },
+
+    linkedEntityType: { type: String, default: "" },
+    linkedEntityId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    tags: { type: [String], default: [] },
+    isPinned: { type: Boolean, default: false, index: true },
+  },
+  { timestamps: true, collection: "notes" }
+);
+
+const Mission = mongoose.models.Mission || mongoose.model("Mission", MissionSchema);
+const Issue = mongoose.models.Issue || mongoose.model("Issue", IssueSchema);
+const PackRun = mongoose.models.PackRun || mongoose.model("PackRun", PackRunSchema);
+const TimelineEvent = mongoose.models.TimelineEvent || mongoose.model("TimelineEvent", TimelineEventSchema);
+const TeamThread = mongoose.models.TeamThread || mongoose.model("TeamThread", TeamThreadSchema);
+const TeamMessage = mongoose.models.TeamMessage || mongoose.model("TeamMessage", TeamMessageSchema);
+const CalendarEvent = mongoose.models.CalendarEvent || mongoose.model("CalendarEvent", CalendarEventSchema);
+const Note = mongoose.models.Note || mongoose.model("Note", NoteSchema);
+
+// ---------- LIBRARIES / TAXONOMY ----------
+
+const FP_SECTORS = [
+  "garage",
+  "restaurant",
+  "ecommerce",
+  "saas",
+  "independant",
+  "artisan",
+  "immobilier",
+  "beaute",
+  "juridique",
+  "agence",
+];
+
+const FP_PAGE_TYPES = [
+  "homepage",
+  "service",
+  "contact",
+  "city",
+  "pricing",
+  "about",
+  "booking",
+  "faq",
+  "product",
+  "landing",
+];
+
+const FP_CITIES = [
+  "Liège",
+  "Verviers",
+  "Bruxelles",
+  "Namur",
+  "Charleroi",
+  "Mons",
+  "Anvers",
+  "Gand",
+  "Louvain",
+  "Waterloo",
+];
+
+const ISSUE_LIBRARY = {
+  missing_title: {
+    title: "Title manquant",
+    category: "seo",
+    severity: "high",
+    impactBusiness: "high",
+    recommendationKey: "title_rewrite",
+    missionTemplateKey: "fix_title",
+    packKey: "seo_technical_recovery",
+    baseScore: 82,
+  },
+  weak_title: {
+    title: "Title trop faible",
+    category: "seo",
+    severity: "medium",
+    impactBusiness: "medium",
+    recommendationKey: "title_strengthen",
+    missionTemplateKey: "strengthen_title",
+    packKey: "fast_seo_wins",
+    baseScore: 68,
+  },
+  missing_meta_description: {
+    title: "Meta description manquante",
+    category: "seo",
+    severity: "high",
+    impactBusiness: "high",
+    recommendationKey: "meta_add",
+    missionTemplateKey: "add_meta",
+    packKey: "fast_seo_wins",
+    baseScore: 78,
+  },
+  slow_mobile: {
+    title: "Performance mobile faible",
+    category: "conversion",
+    severity: "high",
+    impactBusiness: "critical",
+    recommendationKey: "mobile_speed",
+    missionTemplateKey: "fix_mobile_speed",
+    packKey: "mobile_emergency_cleanup",
+    baseScore: 92,
+  },
+  missing_h1: {
+    title: "H1 manquant",
+    category: "content",
+    severity: "high",
+    impactBusiness: "high",
+    recommendationKey: "h1_add",
+    missionTemplateKey: "add_h1",
+    packKey: "seo_technical_recovery",
+    baseScore: 76,
+  },
+  duplicate_structure: {
+    title: "Structure trop dupliquée",
+    category: "content",
+    severity: "medium",
+    impactBusiness: "medium",
+    recommendationKey: "content_differentiate",
+    missionTemplateKey: "differentiate_page",
+    packKey: "service_pages_authority",
+    baseScore: 66,
+  },
+  weak_contact_visibility: {
+    title: "Contact peu visible",
+    category: "conversion",
+    severity: "high",
+    impactBusiness: "critical",
+    recommendationKey: "contact_visibility",
+    missionTemplateKey: "improve_contact_visibility",
+    packKey: "trust_and_conversion",
+    baseScore: 88,
+  },
+  no_local_pages: {
+    title: "Pages locales absentes",
+    category: "local",
+    severity: "high",
+    impactBusiness: "high",
+    recommendationKey: "create_city_pages",
+    missionTemplateKey: "create_city_page",
+    packKey: "local_city_expansion",
+    baseScore: 86,
+  },
+  weak_cta: {
+    title: "CTA faibles",
+    category: "conversion",
+    severity: "medium",
+    impactBusiness: "high",
+    recommendationKey: "cta_strengthen",
+    missionTemplateKey: "improve_cta",
+    packKey: "homepage_conversion_lift",
+    baseScore: 73,
+  },
+  weak_trust_signals: {
+    title: "Trust signals insuffisants",
+    category: "conversion",
+    severity: "medium",
+    impactBusiness: "high",
+    recommendationKey: "trust_signals",
+    missionTemplateKey: "add_trust_signals",
+    packKey: "trust_and_conversion",
+    baseScore: 74,
+  },
+  missing_schema: {
+    title: "Schema manquant",
+    category: "seo",
+    severity: "medium",
+    impactBusiness: "medium",
+    recommendationKey: "schema_add",
+    missionTemplateKey: "add_schema",
+    packKey: "seo_technical_recovery",
+    baseScore: 63,
+  },
+  low_content_depth: {
+    title: "Contenu trop léger",
+    category: "content",
+    severity: "medium",
+    impactBusiness: "high",
+    recommendationKey: "content_expand",
+    missionTemplateKey: "expand_content",
+    packKey: "service_pages_authority",
+    baseScore: 71,
+  },
+  missing_google_map_block: {
+    title: "Bloc Google Maps absent",
+    category: "local",
+    severity: "medium",
+    impactBusiness: "high",
+    recommendationKey: "map_embed",
+    missionTemplateKey: "add_map_block",
+    packKey: "map_trust_signals",
+    baseScore: 69,
+  },
+  page_not_monitored: {
+    title: "Page business non monitorée",
+    category: "monitor",
+    severity: "medium",
+    impactBusiness: "high",
+    recommendationKey: "monitor_add",
+    missionTemplateKey: "add_monitor_to_page",
+    packKey: "critical_pages_monitoring",
+    baseScore: 72,
+  },
+};
+
+function generateMissionLibrary() {
+  const out = [];
+  const categories = [
+    { key: "seo", base: ["Corriger title", "Corriger meta description", "Ajouter canonical", "Ajouter schema", "Améliorer headings"] },
+    { key: "content", base: ["Renforcer homepage", "Développer page service", "Créer FAQ", "Différencier contenu", "Ajouter preuves"] },
+    { key: "local", base: ["Créer page ville", "Ajouter NAP", "Ajouter map", "Renforcer signaux locaux", "Étendre couverture géographique"] },
+    { key: "conversion", base: ["Renforcer CTA", "Améliorer contact", "Ajouter trust signals", "Structurer hero", "Réduire friction mobile"] },
+    { key: "monitor", base: ["Créer monitor homepage", "Créer monitor contact", "Surveiller parcours business", "Réagir aux incidents", "Prioriser pages critiques"] },
+    { key: "reporting", base: ["Préparer rapport client", "Ajouter quick wins au rapport", "Résumer progrès mensuel", "Mettre en avant incidents", "Préparer lecture dirigeant"] },
+    { key: "ops", base: ["Revoir backlog", "Nettoyer priorités", "Préparer sprint mensuel", "Planifier revue", "Vérifier cohérence quotas"] },
+    { key: "team", base: ["Assigner mission", "Créer discussion contexte", "Rédiger note d’équipe", "Préparer réunion", "Suivre charge membre"] },
+  ];
+
+  for (const sector of FP_SECTORS) {
+    for (const pageType of FP_PAGE_TYPES) {
+      for (const cat of categories) {
+        for (const base of cat.base) {
+          out.push({
+            key: `${cat.key}_${sector}_${pageType}_${out.length + 1}`,
+            category: cat.key,
+            sector,
+            pageType,
+            title: `${base} · ${sector} · ${pageType}`,
+            description: `Template ${cat.key} pour ${sector} sur page ${pageType}.`,
+          });
+        }
+      }
+    }
+  }
+
+  return out.slice(0, 220);
+}
+
+function generatePackLibrary() {
+  return [
+    {
+      key: "seo_technical_recovery",
+      name: "Pack SEO technical recovery",
+      category: "seo",
+      summary: "Corriger les points techniques qui freinent le score et la lisibilité SEO.",
+      difficulty: "medium",
+      impactExpected: "high",
+      estimatedTime: "2 à 4 jours",
+      previewItems: ["Titles", "Meta descriptions", "H1", "Schema", "Canonical"],
+    },
+    {
+      key: "homepage_conversion_lift",
+      name: "Pack homepage conversion lift",
+      category: "conversion",
+      summary: "Améliorer la clarté commerciale et la conversion de la homepage.",
+      difficulty: "medium",
+      impactExpected: "high",
+      estimatedTime: "1 à 3 jours",
+      previewItems: ["Hero", "CTA", "Trust", "Contact", "Mobile"],
+    },
+    {
+      key: "local_city_expansion",
+      name: "Pack local city expansion",
+      category: "local",
+      summary: "Déployer la couverture locale sur plusieurs villes à potentiel.",
+      difficulty: "high",
+      impactExpected: "high",
+      estimatedTime: "3 à 6 jours",
+      previewItems: ["Pages villes", "NAP", "Map", "Zones", "Preuves locales"],
+    },
+    {
+      key: "trust_and_conversion",
+      name: "Pack trust & conversion",
+      category: "conversion",
+      summary: "Renforcer confiance, preuve et contact pour augmenter les leads.",
+      difficulty: "medium",
+      impactExpected: "high",
+      estimatedTime: "1 à 2 jours",
+      previewItems: ["Avis", "Preuves", "Contact", "CTA", "FAQ"],
+    },
+    {
+      key: "critical_pages_monitoring",
+      name: "Pack critical pages monitoring",
+      category: "monitor",
+      summary: "Surveiller les pages business à enjeu élevé et créer les alertes nécessaires.",
+      difficulty: "low",
+      impactExpected: "high",
+      estimatedTime: "1 jour",
+      previewItems: ["Homepage", "Contact", "Booking", "Service pages", "Checks"],
+    },
+    {
+      key: "service_pages_authority",
+      name: "Pack service pages authority",
+      category: "content",
+      summary: "Renforcer profondeur, autorité et différenciation des pages service.",
+      difficulty: "high",
+      impactExpected: "high",
+      estimatedTime: "3 à 5 jours",
+      previewItems: ["Contenu", "Structure", "Preuves", "FAQ", "Intent"],
+    },
+    {
+      key: "mobile_emergency_cleanup",
+      name: "Pack mobile emergency cleanup",
+      category: "conversion",
+      summary: "Réduire les frictions mobiles les plus urgentes sur les pages clés.",
+      difficulty: "medium",
+      impactExpected: "critical",
+      estimatedTime: "1 à 3 jours",
+      previewItems: ["Speed", "CTA", "Header", "Contact", "UX"],
+    },
+    {
+      key: "end_of_trial_wins",
+      name: "Pack end-of-trial wins",
+      category: "ops",
+      summary: "Sortir les meilleurs gains visibles avant la fin de l’essai.",
+      difficulty: "low",
+      impactExpected: "high",
+      estimatedTime: "1 à 2 jours",
+      previewItems: ["Quick wins", "Report", "Proof", "Cleanup", "Next steps"],
+    },
+    {
+      key: "monthly_growth_sprint",
+      name: "Pack monthly growth sprint",
+      category: "ops",
+      summary: "Structurer un sprint mensuel SEO / local / conversion / monitoring.",
+      difficulty: "medium",
+      impactExpected: "high",
+      estimatedTime: "1 mois",
+      previewItems: ["Backlog", "Priorités", "KPIs", "Calendar", "Review"],
+    },
+    {
+      key: "map_trust_signals",
+      name: "Pack map trust signals",
+      category: "local",
+      summary: "Améliorer la crédibilité locale autour de la page contact et des pages géographiques.",
+      difficulty: "low",
+      impactExpected: "medium",
+      estimatedTime: "1 jour",
+      previewItems: ["Map block", "NAP", "Horaires", "Directions", "Zone coverage"],
+    },
+  ];
+}
+
+const MISSION_LIBRARY = generateMissionLibrary();
+const PACK_LIBRARY = generatePackLibrary();
+
+// ---------- HELPERS ----------
+
+function lowerText(v) {
+  return String(v || "").toLowerCase();
+}
+
+function uniqueStrings(arr) {
+  return [...new Set((arr || []).map((x) => String(x || "").trim()).filter(Boolean))];
+}
+
+function capText(str) {
+  const s = String(str || "").trim();
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function pushTimeline(orgId, userId, type, entityType, entityId, title, message, metadata = {}) {
+  return TimelineEvent.create({
+    orgId,
+    userId,
+    type,
+    entityType,
+    entityId,
+    title,
+    message,
+    metadata,
+  }).catch(() => null);
+}
+
+function inferSectorFromUser(user) {
+  const source = lowerText(user?.companyName || "");
+  if (source.includes("garage") || source.includes("auto") || source.includes("car")) return "garage";
+  if (source.includes("restaurant") || source.includes("snack") || source.includes("pizza")) return "restaurant";
+  if (source.includes("immo")) return "immobilier";
+  if (source.includes("beaut") || source.includes("salon")) return "beaute";
+  if (source.includes("law") || source.includes("avocat") || source.includes("legal")) return "juridique";
+  if (source.includes("agency") || source.includes("agence")) return "agence";
+  if (source.includes("shop") || source.includes("store") || source.includes("boutique")) return "ecommerce";
+  if (source.includes("saas") || source.includes("software")) return "saas";
+  if (source.includes("artisan") || source.includes("plomb") || source.includes("chauff")) return "artisan";
+  return "independant";
+}
+
+function inferPlanFeatures(plan) {
+  const p = lowerText(plan);
+  return {
+    standard: p === "standard",
+    pro: p === "pro" || p === "ultra",
+    ultra: p === "ultra",
+  };
+}
+
+function inferSiteProfileFromAudits(audits, fallbackUrl = "") {
+  const urls = uniqueStrings((audits || []).map((a) => a.url).filter(Boolean));
+  const host = (() => {
+    try {
+      return urls[0] ? new URL(urls[0]).host : (fallbackUrl ? new URL(fallbackUrl).host : "");
+    } catch {
+      return "";
+    }
+  })();
+
+  const pageUrls = urls.map((u) => {
+    try {
+      return new URL(u).pathname || "/";
+    } catch {
+      return "/";
+    }
+  });
+
+  const hasContact = pageUrls.some((p) => /contact|devis|quote|book|booking/i.test(p));
+  const hasServicePages = pageUrls.some((p) => /service|services|prestations|solutions/i.test(p));
+  const hasCityPages = pageUrls.some((p) => FP_CITIES.some((city) => lowerText(p).includes(lowerText(city))));
+  const hasPricing = pageUrls.some((p) => /pricing|tarif|tarifs|price/i.test(p));
+
+  return {
+    host,
+    urls,
+    pageUrls,
+    hasContact,
+    hasServicePages,
+    hasCityPages,
+    hasPricing,
+  };
+}
+
+function inferMaturity(audits) {
+  const scores = (audits || []).map((a) => Number(a.score || 0)).filter(Number.isFinite);
+  const avg = scores.length ? Math.round(scores.reduce((s, x) => s + x, 0) / scores.length) : 0;
+
+  if (avg < 40) return "site_tres_faible";
+  if (avg < 60) return "site_moyen";
+  if (avg < 75) return "site_deja_solide";
+  return "site_techniquement_solide";
+}
+
+function calcConversionReadiness(siteProfile, audits, monitors) {
+  const latest = [...(audits || [])].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0];
+  const findings = latest?.findings || {};
+
+  let score = 50;
+
+  if (siteProfile.hasContact) score += 10;
+  if (siteProfile.hasServicePages) score += 8;
+  if (siteProfile.hasPricing) score += 5;
+  if (findings.viewport?.ok) score += 8;
+  if (findings.responseTime?.ok) score += 8;
+  if (findings.og?.ok) score += 4;
+  if (findings.metaDescription?.ok) score += 4;
+  if ((monitors || []).some((m) => lowerText(m.url).includes("contact"))) score += 3;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function calcUptimeHealth(monitors, monitorLogs) {
+  if (!monitors.length) return 60;
+
+  const down = monitors.filter((m) => m.lastStatus === "down").length;
+  const total = monitors.length;
+  let score = Math.round(((total - down) / Math.max(1, total)) * 100);
+
+  const latestLogs = (monitorLogs || []).slice(-30);
+  const upChecks = latestLogs.filter((l) => l.status === "up").length;
+  if (latestLogs.length) {
+    score = Math.round((score + Math.round((upChecks / latestLogs.length) * 100)) / 2);
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function calcExecutionMomentum(missions) {
+  const total = missions.length;
+  if (!total) return 40;
+
+  const done = missions.filter((m) => m.status === "done").length;
+  const recentDone = missions.filter((m) => m.completedAt && new Date(m.completedAt).getTime() >= Date.now() - 7 * 24 * 60 * 60 * 1000).length;
+  const automated = missions.filter((m) => m.isAutomated).length;
+
+  let score = Math.round((done / total) * 70);
+  score += Math.min(20, recentDone * 4);
+  score += Math.min(10, automated >= 3 ? 10 : automated * 2);
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function calcLocalDominance(siteProfile, localIssuesCount, localMissionCount) {
+  let score = 35;
+  if (siteProfile.hasCityPages) score += 20;
+  if (siteProfile.hasContact) score += 10;
+  score += Math.min(20, localMissionCount * 2);
+  score -= Math.min(20, localIssuesCount * 3);
+  return Math.max(0, Math.min(100, score));
+}
+
+function calcClientReadiness(missions, notes, reportsLikeCount) {
+  const done = missions.filter((m) => m.status === "done").length;
+  const clientNotes = notes.filter((n) => n.type === "client").length;
+  let score = 35 + Math.min(25, done * 2) + Math.min(20, clientNotes * 3) + Math.min(20, reportsLikeCount * 5);
+  return Math.max(0, Math.min(100, score));
+}
+
+function calcLeadRiskScore(conversionReadiness, uptimeHealth, criticalIssues) {
+  let score = 100 - Math.round((conversionReadiness + uptimeHealth) / 2);
+  score += Math.min(20, criticalIssues * 4);
+  return Math.max(0, Math.min(100, score));
+}
+
+function calcRevenueProxyImpact(opportunities, executionMomentum) {
+  const opp = opportunities.reduce((sum, o) => sum + Number(o.score || 0), 0);
+  let score = Math.round(Math.min(100, opp / Math.max(1, opportunities.length || 1)));
+  score = Math.round((score + executionMomentum) / 2);
+  return Math.max(0, Math.min(100, score));
+}
+
+function classifyPageType(url) {
+  const p = lowerText(url);
+  if (/contact|devis|quote|booking|book/.test(p)) return "contact";
+  if (/service|services|prestations|solutions/.test(p)) return "service";
+  if (/pricing|tarif|price/.test(p)) return "pricing";
+  if (/faq/.test(p)) return "faq";
+  if (/about|a-propos|apropos/.test(p)) return "about";
+  if (/product|produit/.test(p)) return "product";
+  if (/landing/.test(p)) return "landing";
+  if (p === "/" || p === "") return "homepage";
+  return "generic";
+}
+
+function buildIssuePayload({ orgId, userId, sourceType, sourceId, type, pageUrl, siteUrl, sector, pageType, metadata = {} }) {
+  const def = ISSUE_LIBRARY[type];
+  if (!def) return null;
+
+  return {
+    orgId,
+    userId,
+    sourceType,
+    sourceId,
+    type,
+    title: def.title,
+    description: `${def.title} détecté sur ${pageUrl || siteUrl || "le site"}.`,
+    category: def.category,
+    severity: def.severity,
+    impactBusiness: def.impactBusiness,
+    priorityScore: def.baseScore,
+    pageUrl: pageUrl || "",
+    siteUrl: siteUrl || "",
+    sector: sector || "",
+    pageType: pageType || "",
+    recommendationKey: def.recommendationKey,
+    missionTemplateKey: def.missionTemplateKey,
+    packKey: def.packKey,
+    status: "open",
+    metadata,
+  };
+}
+
+function buildIssuesFromAudit(audit, siteProfile, sector) {
+  const findings = audit?.findings || {};
+  const pageType = classifyPageType(audit?.url || "");
+  const items = [];
+
+  if (!findings.title?.ok) items.push("missing_title");
+  else if (String(findings.title?.value || "").length < 20) items.push("weak_title");
+
+  if (!findings.metaDescription?.ok) items.push("missing_meta_description");
+  if (!findings.h1?.ok) items.push("missing_h1");
+  if (!findings.responseTime?.ok) items.push("slow_mobile");
+  if (!findings.canonical?.ok || !findings.robots?.ok) items.push("duplicate_structure");
+  if (!findings.og?.ok) items.push("weak_trust_signals");
+  if (!findings.viewport?.ok) items.push("weak_cta");
+  if (audit?.score != null && Number(audit.score) < 55) items.push("low_content_depth");
+
+  if (!siteProfile.hasContact) items.push("weak_contact_visibility");
+  if (!siteProfile.hasCityPages) items.push("no_local_pages");
+  if (!siteProfile.hasContact) items.push("missing_google_map_block");
+
+  return uniqueStrings(items)
+    .map((type) =>
+      buildIssuePayload({
+        orgId: audit.orgId,
+        userId: audit.userId,
+        sourceType: "audit",
+        sourceId: audit._id,
+        type,
+        pageUrl: audit.url,
+        siteUrl: audit.url,
+        sector,
+        pageType,
+        metadata: {
+          score: audit.score,
+          summary: audit.summary,
+        },
+      })
+    )
+    .filter(Boolean);
+}
+
+function buildIssuesFromMonitor(monitor, sector) {
+  if (!monitor || monitor.lastStatus !== "down") return [];
+
+  const pageType = classifyPageType(monitor.url);
+
+  return [
+    buildIssuePayload({
+      orgId: monitor.orgId,
+      userId: monitor.userId,
+      sourceType: "monitor",
+      sourceId: monitor._id,
+      type: "page_not_monitored",
+      pageUrl: monitor.url,
+      siteUrl: monitor.url,
+      sector,
+      pageType,
+      metadata: {
+        lastStatus: monitor.lastStatus,
+        lastCheckedAt: monitor.lastCheckedAt,
+      },
+    }),
+  ].filter(Boolean);
+}
+
+function buildRecommendations({ issues, sector, siteProfile, maturity, planFeatures, history }) {
+  const out = [];
+
+  const hasType = (type) => issues.some((i) => i.type === type);
+  const countCategory = (cat) => issues.filter((i) => i.category === cat).length;
+
+  if (hasType("slow_mobile")) {
+    out.push({
+      type: "quick_win",
+      title: "Le site semble trop faible sur mobile",
+      text: "La performance mobile freine à la fois visibilité et conversion. Un pack mobile prioritaire est recommandé.",
+      category: "conversion",
+      score: 92,
+    });
+  }
+
+  if (hasType("no_local_pages")) {
+    out.push({
+      type: "local_opportunity",
+      title: "Le site est sous-exploité localement",
+      text: "Les pages service sont présentes ou implicites, mais la couverture ville / zone reste insuffisante.",
+      category: "local",
+      score: 88,
+    });
+  }
+
+  if (hasType("weak_contact_visibility")) {
+    out.push({
+      type: "business_opportunity",
+      title: "Le contact business est trop peu visible",
+      text: "Le site semble risquer de perdre des leads sur les pages à enjeu commercial.",
+      category: "conversion",
+      score: 84,
+    });
+  }
+
+  if (countCategory("seo") >= 3) {
+    out.push({
+      type: "strategic",
+      title: "Le socle SEO a besoin d’un cleanup structuré",
+      text: "Plusieurs signaux techniques ou sémantiques méritent une exécution groupée au lieu de corrections isolées.",
+      category: "seo",
+      score: 79,
+    });
+  }
+
+  if (maturity === "site_tres_faible") {
+    out.push({
+      type: "urgency",
+      title: "Le site demande une remise à niveau prioritaire",
+      text: "Les fondations SEO / conversion ne sont pas encore assez solides pour une croissance stable.",
+      category: "ops",
+      score: 90,
+    });
+  }
+
+  if (sector === "garage" || sector === "artisan" || sector === "independant") {
+    out.push({
+      type: "local_opportunity",
+      title: "Le secteur se prête fortement au Local SEO",
+      text: "Un déploiement villes + contact + map + preuves locales peut créer un effet visible rapidement.",
+      category: "local",
+      score: 85,
+    });
+  }
+
+  if (planFeatures.ultra) {
+    out.push({
+      type: "strategic",
+      title: "Le plan Ultra permet une logique portefeuille",
+      text: "Les recommandations peuvent être transformées en workflows, calendrier, team threads et plan mensuel.",
+      category: "ops",
+      score: 75,
+    });
+  } else if (planFeatures.pro) {
+    out.push({
+      type: "strategic",
+      title: "Le plan Pro peut accélérer l’exécution",
+      text: "Des packs plus riches et des recommandations regroupées peuvent rendre la progression plus visible.",
+      category: "ops",
+      score: 68,
+    });
+  }
+
+  if ((history?.ignoredIssueTypes || []).includes("no_local_pages")) {
+    out.push({
+      type: "history_signal",
+      title: "Le local revient comme sujet récurrent",
+      text: "Les signaux locaux ont déjà été laissés de côté, ce qui peut ralentir la progression visible.",
+      category: "local",
+      score: 72,
+    });
+  }
+
+  return out.sort((a, b) => b.score - a.score);
+}
+
+function createMissionFromIssue(issue, user) {
+  const priority =
+    issue.severity === "critical" ? "critical"
+      : issue.severity === "high" ? "high"
+      : issue.severity === "medium" ? "medium"
+      : "low";
+
+  const impact =
+    issue.impactBusiness === "critical" ? "critical"
+      : issue.impactBusiness === "high" ? "high"
+      : issue.impactBusiness === "medium" ? "medium"
+      : "low";
+
+  const isQuickWin = ["missing_meta_description", "missing_h1", "weak_title", "missing_google_map_block"].includes(issue.type);
+
+  return {
+    orgId: user.orgId,
+    userId: user._id,
+    title: issue.title,
+    description: issue.description,
+    category: issue.category,
+    sourceType: issue.sourceType,
+    sourceId: issue.sourceId,
+    priority,
+    impact,
+    status: "todo",
+    pageUrl: issue.pageUrl,
+    siteUrl: issue.siteUrl,
+    sector: issue.sector,
+    pageType: issue.pageType,
+    isAutomated: true,
+    isQuickWin,
+    tags: uniqueStrings([issue.type, issue.category, issue.packKey, issue.recommendationKey]),
+  };
+}
+
+function createPackMissions(pack, context, user) {
+  const siteUrl = context?.siteUrl || "";
+  const sector = context?.sector || "";
+  const targetCities = context?.targetCities || [];
+
+  const items = [];
+
+  const add = (title, description, category, priority = "medium", impact = "medium", pageType = "") => {
+    items.push({
+      orgId: user.orgId,
+      userId: user._id,
+      title,
+      description,
+      category,
+      sourceType: "system",
+      priority,
+      impact,
+      status: "todo",
+      pageUrl: "",
+      siteUrl,
+      sector,
+      pageType,
+      isAutomated: true,
+      isQuickWin: false,
+      tags: uniqueStrings([pack.key, category, sector, pageType]),
+    });
+  };
+
+  if (pack.key === "seo_technical_recovery") {
+    add("Corriger les titles clés", "Renforcer les balises title sur les pages principales.", "seo", "high", "high", "homepage");
+    add("Ajouter les meta descriptions manquantes", "Rendre les snippets plus forts et plus cliquables.", "seo", "high", "high", "service");
+    add("Revoir la hiérarchie H1 / headings", "Assainir la structure des pages critiques.", "content", "high", "high", "service");
+    add("Ajouter les données structurées pertinentes", "Améliorer le contexte sémantique.", "seo", "medium", "medium", "homepage");
+  }
+
+  if (pack.key === "homepage_conversion_lift") {
+    add("Renforcer le hero principal", "Clarifier la proposition de valeur et le bénéfice immédiat.", "conversion", "high", "high", "homepage");
+    add("Renforcer les CTA homepage", "Rendre l’action principale plus visible.", "conversion", "high", "high", "homepage");
+    add("Ajouter preuves / trust signals", "Améliorer la confiance sur les premières secondes.", "conversion", "medium", "high", "homepage");
+  }
+
+  if (pack.key === "local_city_expansion") {
+    const cities = targetCities.length ? targetCities : ["Liège", "Verviers", "Bruxelles"];
+    for (const city of cities.slice(0, 5)) {
+      add(`Créer une page locale ${city}`, `Déployer une page ciblée pour ${city}.`, "local", "high", "high", "city");
+    }
+    add("Ajouter signaux locaux sur la page contact", "Renforcer la cohérence locale et la conversion.", "local", "medium", "high", "contact");
+  }
+
+  if (pack.key === "trust_and_conversion") {
+    add("Ajouter bloc avis / preuves", "Renforcer la confiance perçue.", "conversion", "medium", "high", "homepage");
+    add("Rendre le contact plus visible", "Réduire la friction sur les pages business.", "conversion", "high", "critical", "contact");
+    add("Ajouter FAQ de réassurance", "Lever les doutes avant prise de contact.", "content", "medium", "medium", "faq");
+  }
+
+  if (pack.key === "critical_pages_monitoring") {
+    add("Créer monitor sur homepage", "Surveiller la page la plus exposée.", "monitor", "high", "high", "homepage");
+    add("Créer monitor sur contact", "Protéger la page de conversion la plus sensible.", "monitor", "high", "critical", "contact");
+    add("Créer monitor sur service principal", "Sécuriser la page business principale.", "monitor", "medium", "high", "service");
+  }
+
+  if (pack.key === "service_pages_authority") {
+    add("Étendre la profondeur de contenu des pages service", "Améliorer utilité, clarté et autorité.", "content", "high", "high", "service");
+    add("Ajouter FAQ et preuves par service", "Renforcer la différenciation et la conversion.", "content", "medium", "high", "service");
+    add("Structurer intent / bénéfices / CTA", "Rendre chaque page service plus convaincante.", "conversion", "medium", "high", "service");
+  }
+
+  if (pack.key === "mobile_emergency_cleanup") {
+    add("Réduire la friction mobile critique", "Cibler les blocages les plus visibles sur mobile.", "conversion", "critical", "critical", "homepage");
+    add("Alléger les points lourds des pages clés", "Améliorer vitesse et expérience mobile.", "seo", "high", "high", "service");
+  }
+
+  if (pack.key === "end_of_trial_wins") {
+    add("Sortir les 3 quick wins les plus visibles", "Mettre en avant de la progression avant fin d’essai.", "ops", "high", "high");
+    add("Préparer un mini rapport de valeur", "Montrer ce qui a été débloqué et ce qui reste.", "reporting", "medium", "high");
+    add("Créer le prochain sprint prioritaire", "Rendre la continuité naturelle après le trial.", "ops", "high", "high");
+  }
+
+  if (pack.key === "monthly_growth_sprint") {
+    add("Fixer les priorités du mois", "Structurer les missions du prochain cycle.", "ops", "high", "high");
+    add("Planifier revue audits / monitors", "Créer les événements calendrier pertinents.", "ops", "medium", "medium");
+    add("Préparer restitution mensuelle", "Faciliter la lecture client et la valeur perçue.", "reporting", "medium", "high");
+  }
+
+  if (pack.key === "map_trust_signals") {
+    add("Ajouter carte Google sur contact", "Améliorer confiance et repères locaux.", "local", "medium", "medium", "contact");
+    add("Afficher horaires / téléphone / itinéraire", "Rendre la page contact plus complète.", "local", "medium", "high", "contact");
+    add("Renforcer les preuves locales", "Ancrer la crédibilité territoriale.", "local", "medium", "medium", "contact");
+  }
+
+  return items;
+}
+
+function buildLocalOpportunities(siteProfile, sector) {
+  const uncoveredCities = FP_CITIES.filter((city) => {
+    return !siteProfile.pageUrls.some((p) => lowerText(p).includes(lowerText(city)));
+  }).slice(0, 6);
+
+  return uncoveredCities.map((city, idx) => ({
+    city,
+    type: "city_expansion",
+    label: `${city} n’est pas encore couverte`,
+    score: 90 - idx * 5,
+    sector,
+  }));
+}
+
+function buildRiskEngine({ issues, monitors, siteProfile, missions }) {
+  const openIssues = issues.filter((i) => i.status === "open");
+  const criticalIssues = openIssues.filter((i) => i.severity === "critical" || i.impactBusiness === "critical");
+  const downMonitors = monitors.filter((m) => m.lastStatus === "down");
+  const pagesBusinessWithoutMonitor = siteProfile.hasContact && !monitors.some((m) => lowerText(m.url).includes("contact")) ? 1 : 0;
+  const localDeficit = siteProfile.hasCityPages ? 0 : 1;
+  const weakExecution = missions.length ? missions.filter((m) => m.status !== "done").length > missions.filter((m) => m.status === "done").length * 2 : true;
+
+  return {
+    criticalPagesUnhandled: criticalIssues.length,
+    monitorsDownUnhandled: downMonitors.length,
+    pagesBusinessWithoutMonitor,
+    localCoverageDeficit: localDeficit,
+    weakExecution: weakExecution ? 1 : 0,
+    currentRiskLevel:
+      downMonitors.length > 0 || criticalIssues.length >= 3 ? "high"
+        : criticalIssues.length > 0 ? "medium"
+        : "low",
+  };
+}
+
+function buildOpportunityEngine({ recommendations, localOpportunities, issues }) {
+  const out = [];
+
+  for (const r of recommendations.slice(0, 6)) {
+    out.push({
+      type: r.category,
+      label: r.title,
+      score: r.score,
+    });
+  }
+
+  for (const loc of localOpportunities.slice(0, 4)) {
+    out.push({
+      type: "local",
+      label: loc.label,
+      score: loc.score,
+    });
+  }
+
+  if (issues.some((i) => i.type === "weak_cta")) {
+    out.push({
+      type: "conversion",
+      label: "Les CTA peuvent être renforcés sur les pages business",
+      score: 82,
+    });
+  }
+
+  return out.sort((a, b) => b.score - a.score).slice(0, 10);
+}
+
+function buildOverviewNarrative({ seoScore, localDominanceScore, uptimeHealth, conversionReadiness, riskEngine, opportunityEngine }) {
+  const parts = [];
+
+  if (seoScore >= 70 && localDominanceScore < 55) {
+    parts.push("Le site est relativement stable techniquement mais reste sous-exploité localement.");
+  } else if (seoScore < 60) {
+    parts.push("Le site demande encore un renforcement SEO clair avant de viser une progression plus visible.");
+  } else {
+    parts.push("Le site a une base correcte mais plusieurs leviers visibles restent sous-exploités.");
+  }
+
+  if (conversionReadiness < 60) {
+    parts.push("La couche conversion semble trop faible pour capter tout le potentiel du trafic.");
+  }
+
+  if (riskEngine.monitorsDownUnhandled > 0) {
+    parts.push(`${riskEngine.monitorsDownUnhandled} incident(s) monitor peuvent menacer des pages à enjeu business.`);
+  }
+
+  if (opportunityEngine.length) {
+    parts.push(`${Math.min(3, opportunityEngine.length)} opportunité(s) peuvent améliorer visibilité et exécution rapidement.`);
+  }
+
+  return parts.join(" ");
+}
+
+function buildTrialRetentionBlock({ missions, opportunities, plan }) {
+  const pending = missions.filter((m) => m.status !== "done").length;
+  const quickWins = missions.filter((m) => m.isQuickWin && m.status !== "done").length;
+
+  return {
+    progressionUnlocked: missions.filter((m) => m.status === "done").length,
+    missionsReady: pending,
+    packsAvailable: PACK_LIBRARY.length,
+    potentialStillOpen: opportunities.length,
+    whatYouLoseIfYouStop:
+      plan === "ultra"
+        ? "La génération proactive, la logique portefeuille et les workflows reliés."
+        : plan === "pro"
+          ? "Les packs riches, les recommandations regroupées et les analytics avancés."
+          : "La continuité d’exécution, les quick wins et la progression structurée.",
+    quickWinsRemaining: quickWins,
+  };
+}
+
+function buildMonthlyOperatingSystem({ missions, calendarEvents }) {
+  const todo = missions.filter((m) => m.status !== "done").length;
+  const done = missions.filter((m) => m.status === "done").length;
+  const nextEvents = [...calendarEvents]
+    .filter((e) => e.startAt && new Date(e.startAt).getTime() >= Date.now())
+    .sort((a, b) => new Date(a.startAt) - new Date(b.startAt))
+    .slice(0, 5);
+
+  return {
+    todo,
+    done,
+    remaining: todo,
+    nextPriorities: missions
+      .filter((m) => m.status !== "done")
+      .sort((a, b) => {
+        const rank = { critical: 4, high: 3, medium: 2, low: 1 };
+        return (rank[b.priority] || 0) - (rank[a.priority] || 0);
+      })
+      .slice(0, 5)
+      .map((m) => m.title),
+    nextEvents: nextEvents.map((e) => ({
+      title: e.title,
+      startAt: e.startAt,
+      type: e.type,
+      priority: e.priority,
+    })),
+  };
+}
+
+async function getUserEngineContext(user, org, days = 30) {
+  const since = new Date(Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000);
+
+  const [audits, monitors, monitorLogs, missions, notes, calendarEvents] = await Promise.all([
+    Audit.find({ orgId: user.orgId }).sort({ createdAt: -1 }).limit(250),
+    Monitor.find({ orgId: user.orgId }).sort({ createdAt: -1 }).limit(200),
+    MonitorLog.find({ orgId: user.orgId, checkedAt: { $gte: since } }).sort({ checkedAt: 1 }).limit(800),
+    Mission.find({ orgId: user.orgId }).sort({ createdAt: -1 }).limit(500),
+    Note.find({ orgId: user.orgId }).sort({ createdAt: -1 }).limit(200),
+    CalendarEvent.find({ orgId: user.orgId }).sort({ startAt: 1 }).limit(300),
+  ]);
+
+  const sector = inferSectorFromUser(user);
+  const siteProfile = inferSiteProfileFromAudits(audits);
+  const maturity = inferMaturity(audits);
+  const planFeatures = inferPlanFeatures(user.plan);
+
+  const existingIssues = await Issue.find({ orgId: user.orgId }).sort({ createdAt: -1 }).limit(500);
+  const ignoredIssueTypes = existingIssues.filter((i) => i.status === "ignored").map((i) => i.type);
+
+  return {
+    org,
+    user,
+    sector,
+    siteProfile,
+    maturity,
+    planFeatures,
+    audits,
+    monitors,
+    monitorLogs,
+    missions,
+    notes,
+    calendarEvents,
+    existingIssues,
+    history: { ignoredIssueTypes },
+  };
+}
+
+// ---------- SEED / SYNC ENGINE ----------
+
+async function syncIssuesForOrg(user, org) {
+  const ctx = await getUserEngineContext(user, org, 30);
+
+  const generated = [];
+
+  for (const audit of ctx.audits.slice(0, 80)) {
+    const issues = buildIssuesFromAudit(audit, ctx.siteProfile, ctx.sector);
+    generated.push(...issues);
+  }
+
+  for (const monitor of ctx.monitors.slice(0, 60)) {
+    const issues = buildIssuesFromMonitor(monitor, ctx.sector);
+    generated.push(...issues);
+  }
+
+  const dedupeKey = (i) => [
+    String(i.orgId || ""),
+    i.sourceType,
+    String(i.sourceId || ""),
+    i.type,
+    i.pageUrl || "",
+  ].join("::");
+
+  const existing = await Issue.find({ orgId: user.orgId }).select("sourceType sourceId type pageUrl orgId");
+  const existingKeys = new Set(existing.map(dedupeKey));
+
+  const toInsert = generated.filter((i) => !existingKeys.has(dedupeKey(i)));
+
+  if (toInsert.length) {
+    await Issue.insertMany(toInsert, { ordered: false }).catch(() => {});
+    await pushTimeline(
+      user.orgId,
+      user._id,
+      "issues_synced",
+      "issue",
+      null,
+      "Issues synchronisées",
+      `${toInsert.length} nouvelle(s) issue(s) ajoutée(s).`,
+      { count: toInsert.length }
+    );
+  }
+
+  return {
+    inserted: toInsert.length,
+    totalGenerated: generated.length,
+  };
+}
+
+async function generateMissionsFromOpenIssues(user) {
+  const openIssues = await Issue.find({
+    orgId: user.orgId,
+    status: "open",
+  }).sort({ priorityScore: -1, createdAt: -1 }).limit(120);
+
+  const existingMissions = await Mission.find({ orgId: user.orgId }).select("sourceType sourceId title");
+  const existingKeys = new Set(
+    existingMissions.map((m) => [m.sourceType, String(m.sourceId || ""), m.title].join("::"))
+  );
+
+  const toCreate = [];
+
+  for (const issue of openIssues) {
+    const mission = createMissionFromIssue(issue, user);
+    const k = [mission.sourceType, String(mission.sourceId || ""), mission.title].join("::");
+    if (!existingKeys.has(k)) {
+      toCreate.push(mission);
+      existingKeys.add(k);
+    }
+  }
+
+  if (toCreate.length) {
+    const created = await Mission.insertMany(toCreate, { ordered: false }).catch(() => []);
+    await pushTimeline(
+      user.orgId,
+      user._id,
+      "missions_generated_from_issues",
+      "mission",
+      null,
+      "Missions générées",
+      `${created.length} mission(s) générée(s) depuis les issues ouvertes.`,
+      { count: created.length }
+    );
+    return created;
+  }
+
+  return [];
+}
+
+// ---------- ROUTES: LIBRARIES ----------
+
+app.get("/api/engine/libraries", auth, requireActive, async (req, res) => {
+  const sector = inferSectorFromUser(req.dbUser);
+  const planFeatures = inferPlanFeatures(req.dbUser.plan);
+
+  return res.json({
+    ok: true,
+    libraries: {
+      missions: MISSION_LIBRARY,
+      issues: ISSUE_LIBRARY,
+      packs: PACK_LIBRARY,
+      sectors: FP_SECTORS,
+      pageTypes: FP_PAGE_TYPES,
+      cities: FP_CITIES,
+    },
+    personalization: {
+      sector,
+      plan: req.dbUser.plan,
+      features: planFeatures,
+    },
+  });
+});
+
+// ---------- ROUTES: ISSUES ----------
+
+app.post("/api/issues/sync", auth, requireActive, async (req, res) => {
+  const out = await syncIssuesForOrg(req.dbUser, req.dbOrg);
+  return res.json({ ok: true, ...out });
+});
+
+app.get("/api/issues", auth, requireActive, async (req, res) => {
+  const status = String(req.query.status || "").trim();
+  const category = String(req.query.category || "").trim();
+
+  const q = { orgId: req.dbUser.orgId };
+  if (status) q.status = status;
+  if (category) q.category = category;
+
+  const issues = await Issue.find(q).sort({ priorityScore: -1, createdAt: -1 }).limit(300);
+  return res.json({ ok: true, issues });
+});
+
+app.patch("/api/issues/:id", auth, requireActive, async (req, res) => {
+  const issue = await Issue.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!issue) return res.status(404).json({ error: "Issue introuvable" });
+
+  if (req.body?.status) issue.status = req.body.status;
+  await issue.save();
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "issue_updated",
+    "issue",
+    issue._id,
+    issue.title,
+    `Issue mise à jour (${issue.status}).`,
+    { status: issue.status }
+  );
+
+  return res.json({ ok: true, issue });
+});
+
+// ---------- ROUTES: MISSIONS ----------
+
+app.get("/api/missions", auth, requireActive, async (req, res) => {
+  const status = String(req.query.status || "").trim();
+  const category = String(req.query.category || "").trim();
+  const sourceType = String(req.query.sourceType || "").trim();
+
+  const q = { orgId: req.dbUser.orgId };
+  if (status) q.status = status;
+  if (category) q.category = category;
+  if (sourceType) q.sourceType = sourceType;
+
+  const missions = await Mission.find(q).sort({ createdAt: -1 }).limit(500);
+  return res.json({ ok: true, missions });
+});
+
+app.post("/api/missions", auth, requireActive, async (req, res) => {
+  const body = req.body || {};
+  if (!String(body.title || "").trim()) {
+    return res.status(400).json({ error: "Titre requis" });
+  }
+
+  const mission = await Mission.create({
+    orgId: req.dbUser.orgId,
+    userId: req.dbUser._id,
+    title: String(body.title || "").trim(),
+    description: String(body.description || "").trim(),
+    category: body.category || "ops",
+    sourceType: body.sourceType || "manual",
+    sourceId: body.sourceId || undefined,
+    priority: body.priority || "medium",
+    impact: body.impact || "medium",
+    status: body.status || "todo",
+    pageUrl: body.pageUrl || "",
+    siteUrl: body.siteUrl || "",
+    dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
+    assignedToUserId: body.assignedToUserId || undefined,
+    isAutomated: !!body.isAutomated,
+    isQuickWin: !!body.isQuickWin,
+    tags: Array.isArray(body.tags) ? body.tags : [],
+  });
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "mission_created",
+    "mission",
+    mission._id,
+    mission.title,
+    "Mission créée.",
+    { category: mission.category, priority: mission.priority }
+  );
+
+  return res.json({ ok: true, mission });
+});
+
+app.patch("/api/missions/:id", auth, requireActive, async (req, res) => {
+  const mission = await Mission.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+
+  const prevStatus = mission.status;
+
+  const allowed = [
+    "title",
+    "description",
+    "category",
+    "priority",
+    "impact",
+    "status",
+    "pageUrl",
+    "siteUrl",
+    "dueDate",
+    "assignedToUserId",
+    "isQuickWin",
+    "tags",
+  ];
+
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
+      mission[key] = req.body[key];
+    }
+  }
+
+  if (req.body?.status === "done" && prevStatus !== "done") {
+    mission.completedAt = new Date();
+  }
+
+  await mission.save();
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "mission_updated",
+    "mission",
+    mission._id,
+    mission.title,
+    `Mission mise à jour (${mission.status}).`,
+    { prevStatus, nextStatus: mission.status }
+  );
+
+  return res.json({ ok: true, mission });
+});
+
+app.delete("/api/missions/:id", auth, requireActive, async (req, res) => {
+  const mission = await Mission.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!mission) return res.status(404).json({ error: "Mission introuvable" });
+
+  await Mission.deleteOne({ _id: mission._id });
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "mission_deleted",
+    "mission",
+    mission._id,
+    mission.title,
+    "Mission supprimée."
+  );
+
+  return res.json({ ok: true });
+});
+
+app.post("/api/missions/generate-from-issues", auth, requireActive, async (req, res) => {
+  const created = await generateMissionsFromOpenIssues(req.dbUser);
+  return res.json({ ok: true, createdCount: created.length, missions: created });
+});
+
+app.post("/api/missions/generate-pack", auth, requireActive, async (req, res) => {
+  const packKey = String(req.body?.packKey || "").trim();
+  const pack = PACK_LIBRARY.find((p) => p.key === packKey);
+  if (!pack) return res.status(404).json({ error: "Pack introuvable" });
+
+  const ctx = await getUserEngineContext(req.dbUser, req.dbOrg, 30);
+  const localOpportunities = buildLocalOpportunities(ctx.siteProfile, ctx.sector);
+  const targetCities = localOpportunities.map((x) => x.city).slice(0, 5);
+
+  const missionsPayload = createPackMissions(pack, {
+    sector: ctx.sector,
+    siteUrl: ctx.siteProfile.urls[0] || "",
+    targetCities,
+  }, req.dbUser);
+
+  const created = missionsPayload.length
+    ? await Mission.insertMany(missionsPayload, { ordered: false }).catch(() => [])
+    : [];
+
+  const packRun = await PackRun.create({
+    orgId: req.dbUser.orgId,
+    userId: req.dbUser._id,
+    packKey: pack.key,
+    name: pack.name,
+    category: pack.category,
+    summary: pack.summary,
+    sourceType: "system",
+    impactExpected: pack.impactExpected,
+    difficulty: pack.difficulty,
+    estimatedTime: pack.estimatedTime,
+    previewItems: pack.previewItems,
+    createdMissionIds: created.map((m) => m._id),
+  });
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "pack_generated",
+    "pack",
+    packRun._id,
+    pack.name,
+    `${created.length} mission(s) créées depuis le pack.`,
+    { packKey: pack.key, createdCount: created.length }
+  );
+
+  return res.json({ ok: true, packRun, createdCount: created.length, missions: created });
+});
+
+app.get("/api/missions/stats", auth, requireActive, async (req, res) => {
+  const missions = await Mission.find({ orgId: req.dbUser.orgId }).limit(1000);
+
+  const stats = {
+    total: missions.length,
+    todo: missions.filter((m) => m.status === "todo").length,
+    inProgress: missions.filter((m) => m.status === "in_progress").length,
+    blocked: missions.filter((m) => m.status === "blocked").length,
+    done: missions.filter((m) => m.status === "done").length,
+    critical: missions.filter((m) => m.priority === "critical" || m.impact === "critical").length,
+    automated: missions.filter((m) => m.isAutomated).length,
+    quickWins: missions.filter((m) => m.isQuickWin).length,
+    byCategory: {
+      seo: missions.filter((m) => m.category === "seo").length,
+      content: missions.filter((m) => m.category === "content").length,
+      local: missions.filter((m) => m.category === "local").length,
+      conversion: missions.filter((m) => m.category === "conversion").length,
+      monitor: missions.filter((m) => m.category === "monitor").length,
+      reporting: missions.filter((m) => m.category === "reporting").length,
+      ops: missions.filter((m) => m.category === "ops").length,
+      team: missions.filter((m) => m.category === "team").length,
+    },
+    bySource: {
+      manual: missions.filter((m) => m.sourceType === "manual").length,
+      audit: missions.filter((m) => m.sourceType === "audit").length,
+      monitor: missions.filter((m) => m.sourceType === "monitor").length,
+      system: missions.filter((m) => m.sourceType === "system").length,
+      local: missions.filter((m) => m.sourceType === "local").length,
+      team: missions.filter((m) => m.sourceType === "team").length,
+    },
+  };
+
+  return res.json({ ok: true, stats });
+});
+
+// ---------- ROUTES: LOCAL / MAPS ----------
+
+app.get("/api/local/summary", auth, requireActive, async (req, res) => {
+  const ctx = await getUserEngineContext(req.dbUser, req.dbOrg, 30);
+
+  const localIssues = ctx.existingIssues.filter((i) => i.category === "local" && i.status === "open");
+  const localMissions = ctx.missions.filter((m) => m.category === "local");
+  const opportunities = buildLocalOpportunities(ctx.siteProfile, ctx.sector);
+
+  return res.json({
+    ok: true,
+    local: {
+      sector: ctx.sector,
+      host: ctx.siteProfile.host,
+      hasCityPages: ctx.siteProfile.hasCityPages,
+      hasContact: ctx.siteProfile.hasContact,
+      coveredCities: FP_CITIES.filter((city) =>
+        ctx.siteProfile.pageUrls.some((p) => lowerText(p).includes(lowerText(city)))
+      ),
+      uncoveredCities: opportunities.map((o) => o.city),
+      localIssuesCount: localIssues.length,
+      localMissionCount: localMissions.length,
+      opportunities,
+      zones: FP_CITIES.map((city) => ({
+        city,
+        covered: ctx.siteProfile.pageUrls.some((p) => lowerText(p).includes(lowerText(city))),
+      })),
+      mapReadiness: {
+        hasGoogleMapBlockIssue: localIssues.some((i) => i.type === "missing_google_map_block"),
+        hasNearbyCoverageGap: opportunities.length > 0,
+      },
+    },
+  });
+});
+
+// ---------- ROUTES: TEAM DISCUSSION ----------
+
+app.get("/api/team/threads", auth, requireActive, async (req, res) => {
+  const threads = await TeamThread.find({ orgId: req.dbUser.orgId })
+    .sort({ lastActivityAt: -1 })
+    .limit(200);
+
+  return res.json({ ok: true, threads });
+});
+
+app.post("/api/team/threads", auth, requireActive, async (req, res) => {
+  const title = String(req.body?.title || "").trim();
+  if (!title) return res.status(400).json({ error: "Titre requis" });
+
+  const thread = await TeamThread.create({
+    orgId: req.dbUser.orgId,
+    contextType: req.body?.contextType || "general",
+    contextId: req.body?.contextId || undefined,
+    title,
+    lastActivityAt: new Date(),
+  });
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "thread_created",
+    "thread",
+    thread._id,
+    thread.title,
+    "Discussion créée."
+  );
+
+  return res.json({ ok: true, thread });
+});
+
+app.get("/api/team/threads/:id/messages", auth, requireActive, async (req, res) => {
+  const thread = await TeamThread.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!thread) return res.status(404).json({ error: "Thread introuvable" });
+
+  const messages = await TeamMessage.find({
+    orgId: req.dbUser.orgId,
+    threadId: thread._id,
+  }).sort({ createdAt: 1 }).limit(500);
+
+  return res.json({ ok: true, thread, messages });
+});
+
+app.post("/api/team/threads/:id/messages", auth, requireActive, async (req, res) => {
+  const thread = await TeamThread.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!thread) return res.status(404).json({ error: "Thread introuvable" });
+
+  const content = String(req.body?.content || "").trim();
+  if (!content) return res.status(400).json({ error: "Message requis" });
+
+  const mentions = uniqueStrings((content.match(/@\w+/g) || []).map((m) => m.slice(1)));
+
+  const msg = await TeamMessage.create({
+    orgId: req.dbUser.orgId,
+    threadId: thread._id,
+    userId: req.dbUser._id,
+    authorName: req.dbUser.name || req.dbUser.email,
+    content,
+    mentions,
+  });
+
+  thread.lastActivityAt = new Date();
+  await thread.save();
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "thread_message",
+    "thread",
+    thread._id,
+    thread.title,
+    "Nouveau message de discussion."
+  );
+
+  return res.json({ ok: true, message: msg });
+});
+
+app.post("/api/team/threads/:id/resolve", auth, requireActive, async (req, res) => {
+  const thread = await TeamThread.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!thread) return res.status(404).json({ error: "Thread introuvable" });
+
+  thread.isResolved = true;
+  thread.lastActivityAt = new Date();
+  await thread.save();
+
+  return res.json({ ok: true, thread });
+});
+
+// ---------- ROUTES: CALENDAR ----------
+
+app.get("/api/calendar", auth, requireActive, async (req, res) => {
+  const view = String(req.query.view || "month");
+  const start = req.query.start ? new Date(req.query.start) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const end = req.query.end ? new Date(req.query.end) : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+
+  const events = await CalendarEvent.find({
+    orgId: req.dbUser.orgId,
+    startAt: { $gte: start, $lte: end },
+  }).sort({ startAt: 1 }).limit(500);
+
+  const alerts = [];
+  const missions = await Mission.find({ orgId: req.dbUser.orgId }).limit(300);
+
+  for (const m of missions) {
+    if (m.status !== "done" && m.dueDate && new Date(m.dueDate).getTime() < Date.now()) {
+      alerts.push({
+        type: "mission_overdue",
+        priority: m.priority || "medium",
+        title: m.title,
+        dueDate: m.dueDate,
+      });
+    }
+  }
+
+  return res.json({
+    ok: true,
+    view,
+    events,
+    alerts,
+    todayFocus: missions
+      .filter((m) => m.status !== "done")
+      .sort((a, b) => {
+        const rank = { critical: 4, high: 3, medium: 2, low: 1 };
+        return (rank[b.priority] || 0) - (rank[a.priority] || 0);
+      })
+      .slice(0, 5),
+  });
+});
+
+app.post("/api/calendar", auth, requireActive, async (req, res) => {
+  const body = req.body || {};
+  if (!body.title || !body.startAt) {
+    return res.status(400).json({ error: "title + startAt requis" });
+  }
+
+  const event = await CalendarEvent.create({
+    orgId: req.dbUser.orgId,
+    userId: req.dbUser._id,
+    title: String(body.title || "").trim(),
+    description: String(body.description || "").trim(),
+    type: body.type || "custom",
+    linkedEntityType: body.linkedEntityType || "",
+    linkedEntityId: body.linkedEntityId || undefined,
+    startAt: new Date(body.startAt),
+    endAt: body.endAt ? new Date(body.endAt) : undefined,
+    priority: body.priority || "medium",
+    alertMode: body.alertMode || "none",
+    recurrence: body.recurrence || "none",
+    isDone: !!body.isDone,
+  });
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "calendar_event_created",
+    "calendar",
+    event._id,
+    event.title,
+    "Événement calendrier créé."
+  );
+
+  return res.json({ ok: true, event });
+});
+
+app.patch("/api/calendar/:id", auth, requireActive, async (req, res) => {
+  const event = await CalendarEvent.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!event) return res.status(404).json({ error: "Événement introuvable" });
+
+  const allowed = ["title", "description", "type", "startAt", "endAt", "priority", "alertMode", "recurrence", "isDone"];
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
+      event[key] = key.includes("At") && req.body[key] ? new Date(req.body[key]) : req.body[key];
+    }
+  }
+
+  await event.save();
+  return res.json({ ok: true, event });
+});
+
+// ---------- ROUTES: NOTES ----------
+
+app.get("/api/notes", auth, requireActive, async (req, res) => {
+  const type = String(req.query.type || "").trim();
+  const q = { orgId: req.dbUser.orgId };
+  if (type) q.type = type;
+
+  const notes = await Note.find(q).sort({ isPinned: -1, createdAt: -1 }).limit(500);
+  return res.json({ ok: true, notes });
+});
+
+app.post("/api/notes", auth, requireActive, async (req, res) => {
+  const body = req.body || {};
+  if (!String(body.title || "").trim()) {
+    return res.status(400).json({ error: "Titre requis" });
+  }
+
+  const note = await Note.create({
+    orgId: req.dbUser.orgId,
+    userId: req.dbUser._id,
+    title: String(body.title || "").trim(),
+    content: String(body.content || "").trim(),
+    type: body.type || "free",
+    linkedEntityType: body.linkedEntityType || "",
+    linkedEntityId: body.linkedEntityId || undefined,
+    tags: Array.isArray(body.tags) ? body.tags : [],
+    isPinned: !!body.isPinned,
+  });
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "note_created",
+    "note",
+    note._id,
+    note.title,
+    "Note créée."
+  );
+
+  return res.json({ ok: true, note });
+});
+
+app.patch("/api/notes/:id", auth, requireActive, async (req, res) => {
+  const note = await Note.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!note) return res.status(404).json({ error: "Note introuvable" });
+
+  const allowed = ["title", "content", "type", "tags", "isPinned"];
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
+      note[key] = req.body[key];
+    }
+  }
+
+  await note.save();
+  return res.json({ ok: true, note });
+});
+
+app.post("/api/notes/:id/to-mission", auth, requireActive, async (req, res) => {
+  const note = await Note.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!note) return res.status(404).json({ error: "Note introuvable" });
+
+  const mission = await Mission.create({
+    orgId: req.dbUser.orgId,
+    userId: req.dbUser._id,
+    title: note.title,
+    description: note.content,
+    category: "ops",
+    sourceType: "note",
+    sourceId: note._id,
+    priority: "medium",
+    impact: "medium",
+    status: "todo",
+    isAutomated: false,
+    isQuickWin: false,
+    tags: uniqueStrings(["from_note", ...(note.tags || [])]),
+  });
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "note_to_mission",
+    "mission",
+    mission._id,
+    mission.title,
+    "Mission créée depuis une note."
+  );
+
+  return res.json({ ok: true, mission });
+});
+
+app.post("/api/notes/:id/to-calendar", auth, requireActive, async (req, res) => {
+  const note = await Note.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+  });
+
+  if (!note) return res.status(404).json({ error: "Note introuvable" });
+
+  const startAt = req.body?.startAt ? new Date(req.body.startAt) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  const event = await CalendarEvent.create({
+    orgId: req.dbUser.orgId,
+    userId: req.dbUser._id,
+    title: note.title,
+    description: note.content,
+    type: "custom",
+    linkedEntityType: "note",
+    linkedEntityId: note._id,
+    startAt,
+    priority: "medium",
+    alertMode: "standard",
+    recurrence: "none",
+    isDone: false,
+  });
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "note_to_calendar",
+    "calendar",
+    event._id,
+    event.title,
+    "Événement calendrier créé depuis une note."
+  );
+
+  return res.json({ ok: true, event });
+});
+
+// ---------- ROUTES: TIMELINE ----------
+
+app.get("/api/timeline", auth, requireActive, async (req, res) => {
+  const events = await TimelineEvent.find({ orgId: req.dbUser.orgId })
+    .sort({ createdAt: -1 })
+    .limit(300);
+
+  return res.json({ ok: true, events });
+});
+
+// ---------- ROUTES: OVERVIEW WAR ROOM ----------
+
+app.get("/api/overview/war-room", auth, requireActive, async (req, res) => {
+  const days = Math.min(90, Math.max(7, Number(req.query.days || 30)));
+  const ctx = await getUserEngineContext(req.dbUser, req.dbOrg, days);
+
+  const seoScores = [...ctx.audits]
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .slice(-90)
+    .map((a) => ({
+      x: a.createdAt,
+      y: Number(a.score || 0),
+      url: a.url,
+    }));
+
+  const openIssues = ctx.existingIssues.filter((i) => i.status === "open");
+  const issueTrend = [...ctx.existingIssues]
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .slice(-90)
+    .map((i, idx) => ({
+      x: i.createdAt,
+      y: idx + 1,
+      type: i.type,
+      status: i.status,
+    }));
+
+  const missionCompletionTrend = [...ctx.missions]
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .slice(-120)
+    .map((m, idx) => ({
+      x: m.createdAt,
+      createdCount: idx + 1,
+      done: m.status === "done" ? 1 : 0,
+    }));
+
+  const monitorHealthTrend = [...ctx.monitorLogs]
+    .sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt))
+    .slice(-180)
+    .map((l) => ({
+      x: l.checkedAt,
+      status: l.status,
+      responseTimeMs: l.responseTimeMs || 0,
+      httpStatus: l.httpStatus || 0,
+    }));
+
+  const localOpportunities = buildLocalOpportunities(ctx.siteProfile, ctx.sector);
+  const localOpportunityTrend = localOpportunities.map((o, idx) => ({
+    x: idx + 1,
+    city: o.city,
+    score: o.score,
+  }));
+
+  const conversionReadiness = calcConversionReadiness(ctx.siteProfile, ctx.audits, ctx.monitors);
+  const uptimeHealth = calcUptimeHealth(ctx.monitors, ctx.monitorLogs);
+  const executionMomentum = calcExecutionMomentum(ctx.missions);
+  const localDominanceScore = calcLocalDominance(
+    ctx.siteProfile,
+    openIssues.filter((i) => i.category === "local").length,
+    ctx.missions.filter((m) => m.category === "local").length
+  );
+
+  const riskEngine = buildRiskEngine({
+    issues: openIssues,
+    monitors: ctx.monitors,
+    siteProfile: ctx.siteProfile,
+    missions: ctx.missions,
+  });
+
+  const recommendations = buildRecommendations({
+    issues: openIssues,
+    sector: ctx.sector,
+    siteProfile: ctx.siteProfile,
+    maturity: ctx.maturity,
+    planFeatures: ctx.planFeatures,
+    history: ctx.history,
+  });
+
+  const opportunityEngine = buildOpportunityEngine({
+    recommendations,
+    localOpportunities,
+    issues: openIssues,
+  });
+
+  const revenueProxyImpact = calcRevenueProxyImpact(opportunityEngine, executionMomentum);
+  const leadRiskScore = calcLeadRiskScore(conversionReadiness, uptimeHealth, riskEngine.criticalPagesUnhandled);
+  const clientReadinessScore = calcClientReadiness(ctx.missions, ctx.notes, 1);
+
+  const seoScore = seoScores.length ? seoScores[seoScores.length - 1].y : 0;
+  const healthScore = Math.round((seoScore + uptimeHealth + executionMomentum + conversionReadiness) / 4);
+
+  const overviewNarrative = buildOverviewNarrative({
+    seoScore,
+    localDominanceScore,
+    uptimeHealth,
+    conversionReadiness,
+    riskEngine,
+    opportunityEngine,
+  });
+
+  const topUrgencies = openIssues
+    .filter((i) => i.severity === "critical" || i.impactBusiness === "critical")
+    .sort((a, b) => b.priorityScore - a.priorityScore)
+    .slice(0, 3);
+
+  const topQuickWins = ctx.missions
+    .filter((m) => m.isQuickWin && m.status !== "done")
+    .slice(0, 3);
+
+  const topBusinessOpportunities = opportunityEngine.slice(0, 3);
+
+  const teamWaiting = await TeamThread.find({
+    orgId: req.dbUser.orgId,
+    isResolved: false,
+  }).sort({ lastActivityAt: -1 }).limit(3);
+
+  const portfolio = {
+    mostRiskyPages: openIssues
+      .filter((i) => i.pageUrl)
+      .sort((a, b) => b.priorityScore - a.priorityScore)
+      .slice(0, 5)
+      .map((i) => ({ pageUrl: i.pageUrl, title: i.title, score: i.priorityScore })),
+    mostPromisingPages: localOpportunities.slice(0, 5).map((o) => ({ pageUrl: "", title: o.label, score: o.score })),
+    mostCriticalPages: topUrgencies.map((i) => ({ pageUrl: i.pageUrl, title: i.title, score: i.priorityScore })),
+    mostProfitableCandidates: topBusinessOpportunities.map((o) => ({ pageUrl: "", title: o.label, score: o.score })),
+  };
+
+  const trialRetention = buildTrialRetentionBlock({
+    missions: ctx.missions,
+    opportunities: opportunityEngine,
+    plan: req.dbUser.plan,
+  });
+
+  const monthlyOS = buildMonthlyOperatingSystem({
+    missions: ctx.missions,
+    calendarEvents: ctx.calendarEvents,
+  });
+
+  return res.json({
+    ok: true,
+    warRoom: {
+      hero: {
+        healthScore,
+        seoScore,
+        localDominanceScore,
+        uptimeHealth,
+        conversionReadiness,
+        criticalMissions: ctx.missions.filter((m) => m.priority === "critical" && m.status !== "done").length,
+        progress7d: ctx.missions.filter((m) => m.completedAt && new Date(m.completedAt).getTime() >= Date.now() - 7 * 24 * 60 * 60 * 1000).length,
+        progress30d: ctx.missions.filter((m) => m.completedAt && new Date(m.completedAt).getTime() >= Date.now() - 30 * 24 * 60 * 60 * 1000).length,
+        currentRisk: riskEngine.currentRiskLevel,
+        bestOpportunity: opportunityEngine[0] || null,
+        narrative: overviewNarrative,
+      },
+      analytics: {
+        scoreTrend: seoScores,
+        issueTrend,
+        missionCompletionTrend,
+        monitorHealthTrend,
+        localOpportunityTrend,
+        conversionReadinessSignals: {
+          score: conversionReadiness,
+          hasContact: ctx.siteProfile.hasContact,
+          hasServicePages: ctx.siteProfile.hasServicePages,
+          hasPricing: ctx.siteProfile.hasPricing,
+          latestAuditUrl: ctx.audits[0]?.url || "",
+        },
+      },
+      widgets: {
+        topUrgencies,
+        topQuickWins,
+        topBusinessOpportunities,
+        teamWaiting,
+      },
+      portfolio,
+      premiumScores: {
+        revenueProxyImpact,
+        leadRiskScore,
+        localDominanceScore,
+        executionMomentum,
+        clientReadinessScore,
+      },
+      retention: trialRetention,
+      monthlyOperatingSystem: monthlyOS,
+      recommendations,
+      sector: ctx.sector,
+      maturity: ctx.maturity,
+      planFeatures: ctx.planFeatures,
+    },
+  });
+});
+
+// ---------- ROUTES: RECOMMENDATIONS ----------
+
+app.get("/api/recommendations", auth, requireActive, async (req, res) => {
+  const ctx = await getUserEngineContext(req.dbUser, req.dbOrg, 30);
+
+  const recommendations = buildRecommendations({
+    issues: ctx.existingIssues.filter((i) => i.status === "open"),
+    sector: ctx.sector,
+    siteProfile: ctx.siteProfile,
+    maturity: ctx.maturity,
+    planFeatures: ctx.planFeatures,
+    history: ctx.history,
+  });
+
+  return res.json({
+    ok: true,
+    recommendations,
+    context: {
+      sector: ctx.sector,
+      maturity: ctx.maturity,
+      plan: req.dbUser.plan,
+      host: ctx.siteProfile.host,
+    },
+  });
+});
 // =======================
 // STRIPE (via stripe.js)
 // IMPORTANT: webhook RAW avant express.json()
