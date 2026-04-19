@@ -1,0 +1,401 @@
+/* Final polish for Notes + Members + team modals */
+
+[data-team-enhanced='true'] .fpTeamHeroActions [data-team-visio='hero'] {
+  min-height: 52px;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamWorkspaceChat {
+  align-items: start;
+}
+
+[data-team-enhanced='true'] .fpTeamHeader {
+  align-items: center !important;
+}
+
+[data-team-enhanced='true'] .fpTeamHeader .fpBadge {
+  align-self: center;
+}
+
+/* Generic team modals */
+#fpTeamModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 10, 24, .62);
+  backdrop-filter: blur(12px);
+  padding: 18px;
+}
+
+#fpTeamModalOverlay.show {
+  display: flex;
+}
+
+#fpTeamModalOverlay .fpTeamModalWrap {
+  width: min(100%, 640px);
+}
+
+#fpTeamModalOverlay .fpTeamModalCard {
+  width: 100%;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: radial-gradient(120% 120% at 18% 0%, rgba(72,112,255,.18), transparent 52%), linear-gradient(180deg, rgba(14,25,62,.98), rgba(10,18,46,.99));
+  box-shadow: 0 30px 90px rgba(0,0,0,.35);
+  padding: 22px;
+}
+
+#fpTeamModalOverlay .fpTeamModalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+#fpTeamModalOverlay .fpTeamModalTitle {
+  margin-top: 6px;
+  font-size: 30px;
+  line-height: 1.03;
+  letter-spacing: -.04em;
+  color: #fff;
+  font-weight: 900;
+}
+
+#fpTeamModalOverlay .fpTeamModalText {
+  margin-top: 8px;
+  color: #dce4ff;
+  font-size: 14px;
+  line-height: 1.55;
+  font-weight: 700;
+}
+
+#fpTeamModalOverlay .fpTeamModalClose {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+#fpTeamModalOverlay .fpTeamModalForm {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#fpTeamModalOverlay .fpTeamModalTextarea {
+  min-height: 140px;
+}
+
+#fpTeamModalOverlay .fpTeamModalCheck {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #eef3ff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+#fpTeamModalOverlay .fpTeamModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Notes */
+[data-team-enhanced='true'] .fpTeamNotesLayout {
+  display: grid !important;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+[data-team-enhanced='true'] .fpTeamNotesList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteItem {
+  text-align: left;
+  border-radius: 18px !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.025)) !important;
+  padding: 16px !important;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteItem.active {
+  border-color: rgba(123,159,255,.44) !important;
+  box-shadow: 0 0 0 4px rgba(47,91,255,.08);
+}
+
+[data-team-enhanced='true'] .fpTeamActionBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0 8px;
+}
+
+[data-team-enhanced='true'] .fpTeamActionBar .fpBtn {
+  min-height: 44px;
+}
+
+[data-team-enhanced='true'] .fpTeamNotePanelMain {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteHeaderRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteActionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteActionRow .fpBtn {
+  min-height: 42px;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteStatCard,
+[data-team-enhanced='true'] .fpTeamInfoCard,
+[data-team-enhanced='true'] .fpTeamMemberInsightCard,
+[data-team-enhanced='true'] .fpTeamWorkspaceStat {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+  padding: 14px;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteStatCard span,
+[data-team-enhanced='true'] .fpTeamNoteStatCard strong,
+[data-team-enhanced='true'] .fpTeamInfoCard strong,
+[data-team-enhanced='true'] .fpTeamInfoCard span,
+[data-team-enhanced='true'] .fpTeamWorkspaceStat strong,
+[data-team-enhanced='true'] .fpTeamWorkspaceStat span {
+  display: block;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteStatCard span,
+[data-team-enhanced='true'] .fpTeamWorkspaceStat strong {
+  color: #c8d5ff;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteStatCard strong,
+[data-team-enhanced='true'] .fpTeamWorkspaceStat span {
+  margin-top: 8px;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteMetaBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 0;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteContent {
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.035);
+  padding: 18px;
+  color: #eef3ff;
+  font-size: 15px;
+  line-height: 1.72;
+  white-space: pre-wrap;
+}
+
+[data-team-enhanced='true'] .fpTeamInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamInfoCard strong {
+  color: #fff;
+  font-size: 15px;
+}
+
+[data-team-enhanced='true'] .fpTeamInfoCard span {
+  color: #dbe4ff;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Members */
+[data-team-enhanced='true'] .fpTeamMembersLayout {
+  align-items: start;
+}
+
+[data-team-enhanced='true'] .fpTeamMembersTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+[data-team-enhanced='true'] .fpTeamMembersTopActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+[data-team-enhanced='true'] .fpTeamMembersGridRich {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+  padding: 16px;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberTop {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberMain {
+  min-width: 0;
+  flex: 1;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberNameRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberNameRow strong {
+  color: #fff;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberBio {
+  color: #e5edff;
+  font-size: 14px;
+  line-height: 1.65;
+  font-weight: 700;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberFooter {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberFooter > span {
+  color: #bdd0ff;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberFooter .fpDetailActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+[data-team-enhanced='true'] .fpTeamWorkspaceSummary {
+  display: grid;
+  gap: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamWorkspaceStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamWorkspaceStat {
+  min-width: 0;
+}
+
+[data-team-enhanced='true'] .fpTeamWorkspaceStat span {
+  color: #fff;
+  font-size: 22px;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberInsights {
+  display: grid;
+  gap: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberInsightCard strong {
+  display: block;
+  color: #fff;
+  font-size: 15px;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberInsightCard span {
+  display: block;
+  color: #dbe4ff;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  [data-team-enhanced='true'] .fpTeamNotesLayout,
+  [data-team-enhanced='true'] .fpTeamMembersLayout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 900px) {
+  [data-team-enhanced='true'] .fpTeamNoteHeaderRow,
+  [data-team-enhanced='true'] .fpTeamMembersTop,
+  [data-team-enhanced='true'] .fpTeamMemberFooter {
+    grid-template-columns: 1fr !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  [data-team-enhanced='true'] .fpTeamNoteStats,
+  [data-team-enhanced='true'] .fpTeamInfoGrid,
+  [data-team-enhanced='true'] .fpTeamMembersGridRich,
+  [data-team-enhanced='true'] .fpTeamWorkspaceStatsGrid {
+    grid-template-columns: 1fr !important;
+  }
+}
