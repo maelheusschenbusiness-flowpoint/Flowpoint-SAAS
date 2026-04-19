@@ -1,214 +1,123 @@
-/* GLOBAL IMPROVEMENTS */
+/* FIX MAJOR SPACING + READABILITY */
 
-.fpTeamWorkspaceChat {
-  grid-template-columns: 260px 1fr 300px;
-  gap: 16px;
+.fpTeamKpiCard span,
+.fpTeamKpiCard strong,
+.fpTeamKpiCard small {
+  display:block;
 }
 
-.fpTeamChatPanelEnhanced {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+.fpTeamKpiCard strong{
+  font-size:26px;
+  margin-top:6px;
 }
 
-.fpTeamMessagesEnhanced {
-  flex: 1;
-  overflow-y: auto;
-  max-height: 520px;
+.fpTeamKpiCard small{
+  margin-top:6px;
+  line-height:1.5;
 }
 
-.fpTeamComposerEnhanced {
-  position: sticky;
-  bottom: 0;
-  background: linear-gradient(180deg, rgba(12,18,44,.85), rgba(12,18,44,.98));
-  padding-top: 12px;
+/* FIX TEXT COLLAPSE EVERYWHERE */
+.fpTeamFileCard strong,
+.fpTeamActivityRow strong,
+.fpTeamMiniCard strong,
+.fpTeamNoteItem strong{
+  display:block;
 }
 
-.fpTeamComposerGridWide {
-  grid-template-columns: 1fr 180px;
+.fpTeamFileCard span,
+.fpTeamActivityRow span,
+.fpTeamMiniCard span,
+.fpTeamNoteItem span{
+  display:block;
+  margin-top:4px;
 }
 
-.fpTeamActionColumn {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* GLOBAL SPACING */
+.fpTeamPanel{
+  padding:20px !important;
+  border-radius:20px !important;
 }
 
-/* MEMBERS */
-
-.fpTeamMembersGridRich {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px,1fr));
-  gap: 16px;
+.fpTeamHeader{
+  margin-bottom:12px;
 }
 
-.fpTeamMemberCard {
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-  border: 1px solid rgba(255,255,255,.08);
-  border-radius: 16px;
-  padding: 16px;
+/* CHAT FIX */
+.fpTeamMessagesEnhanced{
+  gap:12px;
+  margin-top:12px;
 }
 
-.fpTeamMemberAvatarWrap {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  background: linear-gradient(135deg,#2f5bff,#5b7cff);
-  color: #fff;
+.fpTeamMessageText{
+  margin-top:8px;
+  line-height:1.6;
 }
 
-.fpTeamMemberAvatarWrap.online::after {
-  content: "";
-  width: 8px;
-  height: 8px;
-  background: #00ff9c;
-  border-radius: 50%;
-  position: absolute;
+/* REMOVE WEIRD EMPTY SPACE */
+.fpTeamComposerGridWide{
+  align-items:stretch;
 }
 
-.fpTeamMemberTop {
-  display: flex;
-  gap: 12px;
+.fpTeamActionColumn{
+  justify-content:flex-start;
 }
 
-.fpTeamMemberNameRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* NOTES IMPROVEMENT */
+.fpTeamNotesLayout{
+  gap:16px;
 }
 
-.fpTeamStatusBadge {
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 999px;
+.fpTeamNoteItem{
+  padding:14px !important;
+  border-radius:14px !important;
 }
 
-.fpTeamStatusBadge.online {
-  background: rgba(0,255,156,.15);
+.fpTeamNoteContent{
+  background:rgba(255,255,255,.04);
+  padding:14px;
+  border-radius:14px;
 }
 
-.fpTeamStatusBadge.offline {
-  background: rgba(255,255,255,.1);
+/* MEMBERS FIX TEXT */
+.fpTeamMemberCard{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
 }
 
-.fpTeamMemberFooter {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 10px;
+.fpTeamMemberBio{
+  line-height:1.6;
 }
 
-/* NOTES */
-
-.fpTeamNotesLayout {
-  grid-template-columns: 320px 1fr;
+.fpTeamMemberTags span{
+  display:inline-block;
+  margin-right:6px;
+  margin-top:6px;
 }
 
-.fpTeamNotesList {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* CALENDAR BLUE BOOST */
+.fpTeamCalendarGridLuxury{
+  background:linear-gradient(180deg, rgba(47,91,255,.2), rgba(47,91,255,.08));
 }
 
-.fpTeamNoteContent {
-  margin-top: 16px;
-  line-height: 1.6;
+.fpTeamCalendarCell{
+  padding:10px !important;
 }
 
-.fpTeamNoteMetaBar {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
+.fpTeamPhoneEvent{
+  background:rgba(47,91,255,.35);
 }
 
-/* CALENDAR */
-
-.fpTeamCalendarGridLuxury {
-  background: linear-gradient(180deg, rgba(47,91,255,.12), rgba(47,91,255,.04));
-  padding: 12px;
-  border-radius: 16px;
+/* BUTTON ALIGN FIX */
+.fpDetailActions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
 }
 
-.fpTeamCalendarCell {
-  background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.08);
-}
-
-.fpTeamCalendarCell.selected {
-  outline: 2px solid #2f5bff;
-}
-
-.fpTeamDayView {
-  margin-top: 20px;
-}
-
-.fpTeamPhoneAgenda {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.fpTeamPhoneSlot {
-  display: flex;
-  gap: 10px;
-}
-
-.fpTeamPhoneTime {
-  width: 60px;
-  color: #9bb0ff;
-}
-
-.fpTeamPhoneEvent {
-  background: rgba(47,91,255,.2);
-  padding: 10px;
-  border-radius: 10px;
-}
-
-/* MODAL */
-
-.fpTeamModalOverlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.5);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-}
-
-.fpTeamModalOverlay.show {
-  display: flex;
-}
-
-.fpTeamModalCard {
-  width: 420px;
-  background: #0b1230;
-  border-radius: 16px;
-  padding: 20px;
-}
-
-.fpTeamModalActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-/* MOBILE */
-
-@media (max-width: 900px) {
-  .fpTeamWorkspaceChat {
-    grid-template-columns: 1fr;
-  }
-
-  .fpTeamComposerGridWide {
-    grid-template-columns: 1fr;
-  }
-
-  .fpTeamMembersGridRich {
-    grid-template-columns: 1fr;
+/* RESPONSIVE CLEAN */
+@media(max-width:1000px){
+  .fpTeamWorkspaceChat{
+    grid-template-columns:1fr;
   }
 }
