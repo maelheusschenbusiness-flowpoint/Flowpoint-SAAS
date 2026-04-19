@@ -1,0 +1,220 @@
+/* Chat tab targeted polish */
+
+[data-team-enhanced='true'] .fpTeamKpiGrid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0 0 18px !important;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+  padding: 16px;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard span,
+[data-team-enhanced='true'] .fpTeamKpiCard strong,
+[data-team-enhanced='true'] .fpTeamKpiCard small {
+  display: block !important;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: #c8d5ff;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard strong {
+  margin-top: 8px;
+  font-size: 28px;
+  line-height: 1;
+  color: #fff;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard small {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #dbe4ff;
+  font-weight: 700;
+}
+
+[data-team-enhanced='true'] .fpTeamWorkspaceChat {
+  display: grid !important;
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+}
+
+[data-team-enhanced='true'] .fpTeamSidePanel,
+[data-team-enhanced='true'] .fpTeamContextPanel,
+[data-team-enhanced='true'] .fpTeamChatPanelEnhanced {
+  min-width: 0;
+}
+
+[data-team-enhanced='true'] .fpTeamSidePanel .fpTeamSidebarBlock {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+[data-team-enhanced='true'] .fpTeamTipList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamTipItem {
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  color: #dce4ff;
+  line-height: 1.55;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+[data-team-enhanced='true'] .fpTeamHeader {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamHeader .fpBadge {
+  justify-self: center;
+  min-width: 120px;
+  justify-content: center;
+}
+
+[data-team-enhanced='true'] [data-team-visio='header'] {
+  min-width: 150px;
+  min-height: 46px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] [data-team-visio='hero'] {
+  min-height: 52px;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamMessagesEnhanced {
+  max-height: 520px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding-right: 6px;
+}
+
+[data-team-enhanced='true'] .fpTeamMessage {
+  border-radius: 18px !important;
+  padding: 16px !important;
+}
+
+[data-team-enhanced='true'] .fpTeamMessageText {
+  margin-top: 10px;
+  line-height: 1.65;
+}
+
+[data-team-enhanced='true'] .fpTeamComposerEnhanced {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+[data-team-enhanced='true'] .fpTeamComposerGridWide {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  gap: 12px;
+  align-items: stretch;
+}
+
+[data-team-enhanced='true'] .fpTeamActionColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: flex-start;
+}
+
+[data-team-enhanced='true'] .fpTeamActionColumn .fpBtn {
+  width: 100%;
+  min-height: 46px;
+}
+
+[data-team-enhanced='true'] .fpTeamContextPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+[data-team-enhanced='true'] .fpTeamMiniList,
+[data-team-enhanced='true'] .fpTeamActivityList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamFileCard,
+[data-team-enhanced='true'] .fpTeamActivityRow {
+  border-radius: 16px !important;
+  padding: 14px !important;
+  background: rgba(255,255,255,.04) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+}
+
+[data-team-enhanced='true'] .fpTeamFileCard strong,
+[data-team-enhanced='true'] .fpTeamActivityRow strong {
+  display: block;
+  color: #fff;
+  font-size: 14px;
+}
+
+[data-team-enhanced='true'] .fpTeamFileCard span,
+[data-team-enhanced='true'] .fpTeamActivityRow span {
+  display: block;
+  margin-top: 6px;
+  color: #dce4ff;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1200px) {
+  [data-team-enhanced='true'] .fpTeamWorkspaceChat {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 900px) {
+  [data-team-enhanced='true'] .fpTeamKpiGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [data-team-enhanced='true'] .fpTeamHeader,
+  [data-team-enhanced='true'] .fpTeamComposerGridWide {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-team-enhanced='true'] .fpTeamHeader .fpBadge,
+  [data-team-enhanced='true'] [data-team-visio='header'] {
+    justify-self: stretch;
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  [data-team-enhanced='true'] .fpTeamKpiGrid {
+    grid-template-columns: 1fr !important;
+  }
+}
