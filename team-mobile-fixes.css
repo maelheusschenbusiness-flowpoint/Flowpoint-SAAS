@@ -1,0 +1,159 @@
+/* Team workspace mobile and polish fixes */
+
+.fpTeamChatPanelEnhanced {
+  min-height: 760px;
+}
+
+.fpTeamMessagesEnhanced {
+  max-height: 540px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+}
+
+.fpTeamMessagesEnhanced::-webkit-scrollbar {
+  width: 8px;
+}
+
+.fpTeamMessagesEnhanced::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.16);
+  border-radius: 999px;
+}
+
+.fpTeamComposerEnhanced {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: linear-gradient(180deg, rgba(12,18,44,.82), rgba(12,18,44,.98));
+  backdrop-filter: blur(8px);
+  padding-top: 14px;
+}
+
+.fpTeamCalendarCellEnhanced {
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+}
+
+.fpTeamHeader .fpBtnSmall {
+  margin-left: 10px;
+}
+
+@media (max-width: 900px) {
+  .fpTeamWorkspace > .fpTeamPanel,
+  .fpTeamSplit > .fpTeamPanel,
+  .fpGridMain .fpTeamPanel,
+  [data-team-enhanced='true'] .fpCard {
+    background:
+      radial-gradient(120% 120% at 18% 0%, rgba(73,109,255,.14), transparent 50%),
+      linear-gradient(180deg, rgba(18,27,67,.98), rgba(11,18,48,.99)) !important;
+  }
+
+  .fpTeamMessage,
+  .fpTeamAttachment,
+  .fpTeamFileCard,
+  .fpTeamMiniCard,
+  .fpTeamNoteItem,
+  .fpTeamCalendarRow,
+  .fpTeamActivityRow,
+  .fpTeamCalendarCell {
+    background: rgba(255,255,255,.045) !important;
+    border-color: rgba(255,255,255,.10) !important;
+  }
+
+  .fpTeamChannelTitle,
+  .fpTeamMessageText,
+  .fpTeamAttachment strong,
+  .fpTeamFileCard strong,
+  .fpTeamMiniCard strong,
+  .fpTeamNoteItem strong,
+  .fpTeamCalendarRow strong,
+  .fpTeamActivityRow strong,
+  .fpSectionTitle {
+    color: #f7f9ff !important;
+  }
+
+  .fpTeamChannelMeta,
+  .fpCardText,
+  .fpRowMeta,
+  .fpTeamAttachment span,
+  .fpTeamFileCard span,
+  .fpTeamMiniCard span,
+  .fpTeamNoteItem span,
+  .fpTeamCalendarRow span,
+  .fpTeamActivityRow span,
+  .fpMiniStatLabel {
+    color: #d8e1ff !important;
+  }
+
+  .fpTeamCalendarGrid {
+    grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+    gap: 12px !important;
+  }
+
+  .fpTeamCalendarCell {
+    min-height: 118px !important;
+  }
+
+  .fpTeamCalendarTop strong {
+    font-size: 16px !important;
+    color: #ffffff !important;
+  }
+
+  .fpTeamCalendarPill {
+    background: rgba(109,137,255,.16) !important;
+    border-color: rgba(109,137,255,.18) !important;
+    color: #eef3ff !important;
+  }
+
+  .fpTeamTextarea {
+    min-height: 130px !important;
+    background: rgba(255,255,255,.06) !important;
+    color: #ffffff !important;
+  }
+
+  .fpTeamTextarea::placeholder {
+    color: rgba(255,255,255,.72) !important;
+  }
+
+  .fpTeamComposerGrid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+  }
+
+  .fpTeamComposerGrid .fpBtn,
+  .fpTeamHeroBar .fpBtn,
+  .fpTeamTabs .fpTeamTab {
+    width: 100% !important;
+  }
+
+  .fpTeamHeroBar,
+  .fpTeamHeader {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .fpTeamMessagesEnhanced {
+    max-height: 420px;
+  }
+
+  .fpTeamWorkspace,
+  .fpTeamSplit,
+  .fpTeamMembersGrid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .fpTeamTabs {
+    gap: 12px !important;
+  }
+
+  .fpTeamPanel {
+    padding: 16px !important;
+    border-radius: 22px !important;
+  }
+
+  .fpTeamChannelTitle {
+    font-size: 20px !important;
+  }
+}
