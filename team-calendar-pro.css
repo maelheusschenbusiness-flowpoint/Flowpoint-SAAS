@@ -1,0 +1,480 @@
+/* Premium calendar tab */
+
+.fpTeamCalendarPro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) 330px;
+  gap: 18px;
+  align-items: start;
+}
+
+.fpTeamCalendarMain,
+.fpTeamCalendarSide,
+.fpTeamCalendarSelectedCard,
+.fpTeamCalendarMonthCard,
+.fpTeamCalendarStatCard,
+.fpTeamCalendarUpcomingCard,
+.fpTeamCalendarTimelineCard {
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+}
+
+.fpTeamCalendarTopRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.fpTeamCalendarMonthCard,
+.fpTeamCalendarSelectedCard,
+.fpTeamCalendarSide {
+  padding: 18px;
+}
+
+.fpTeamCalendarHeaderLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fpTeamCalendarHeaderLine .fpSectionTitle {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.02;
+}
+
+.fpTeamCalendarNav {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fpTeamCalendarNav .fpBtn {
+  min-height: 42px;
+}
+
+.fpTeamCalendarSelects {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fpTeamCalendarSelects .fpSelect {
+  min-width: 130px;
+}
+
+.fpTeamCalendarSurface {
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: radial-gradient(140% 120% at 18% 0%, rgba(73,109,255,.24), transparent 55%), linear-gradient(180deg, rgba(18,29,76,.98), rgba(10,18,48,.99));
+}
+
+.fpTeamCalendarWeekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fpTeamCalendarWeekdays > div {
+  color: #cad8ff;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.fpTeamCalendarGridLuxury {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.fpTeamCalendarCell {
+  min-height: 134px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fpTeamCalendarCell:hover {
+  background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.05));
+}
+
+.fpTeamCalendarCell.is-muted {
+  opacity: .56;
+}
+
+.fpTeamCalendarCell.is-today {
+  border-color: rgba(123,159,255,.62);
+}
+
+.fpTeamCalendarCell.is-selected {
+  outline: 2px solid rgba(123,159,255,.96);
+  box-shadow: 0 0 0 6px rgba(47,91,255,.10);
+}
+
+.fpTeamCalendarTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.fpTeamCalendarTop strong {
+  color: #fff;
+  font-size: 18px;
+}
+
+.fpTeamCalendarCount {
+  min-width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(123,159,255,.20);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.fpTeamCalendarPills {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fpTeamCalendarPill {
+  min-height: 28px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.08);
+  color: #eef3ff;
+  font-size: 11px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fpTeamCalendarPill.audit { background: rgba(52,119,255,.20); }
+.fpTeamCalendarPill.monitoring { background: rgba(24,209,125,.16); }
+.fpTeamCalendarPill.task { background: rgba(255,255,255,.10); }
+.fpTeamCalendarPill.custom { background: rgba(137,108,255,.16); }
+
+.fpTeamCalendarSelectedTitle {
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.08;
+  color: #fff;
+  font-weight: 900;
+}
+
+.fpTeamCalendarSelectedMeta {
+  margin-top: 8px;
+  color: #dbe4ff;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fpTeamCalendarSelectedActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.fpTeamCalendarSelectedActions .fpBtn {
+  min-height: 44px;
+}
+
+.fpTeamCalendarStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.fpTeamCalendarStatCard {
+  padding: 14px;
+}
+
+.fpTeamCalendarStatCard span,
+.fpTeamCalendarStatCard strong,
+.fpTeamCalendarStatCard small {
+  display: block;
+}
+
+.fpTeamCalendarStatCard span {
+  color: #c8d5ff;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  font-weight: 900;
+}
+
+.fpTeamCalendarStatCard strong {
+  color: #fff;
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.fpTeamCalendarStatCard small {
+  color: #dbe4ff;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+.fpTeamCalendarTimelineCard {
+  margin-top: 18px;
+  padding: 18px;
+}
+
+.fpTeamCalendarTimeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.fpTeamCalendarSlot {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.fpTeamCalendarSlotTime {
+  color: #9fb2ea;
+  font-size: 14px;
+  font-weight: 800;
+  padding-top: 10px;
+}
+
+.fpTeamCalendarSlotBody {
+  min-height: 42px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 8px;
+}
+
+.fpTeamCalendarEventCard {
+  border-radius: 14px;
+  border: 1px solid rgba(123,159,255,.18);
+  background: linear-gradient(180deg, rgba(66,126,255,.24), rgba(66,126,255,.14));
+  padding: 12px;
+}
+
+.fpTeamCalendarEventCard strong {
+  display: block;
+  color: #fff;
+  font-size: 14px;
+}
+
+.fpTeamCalendarEventCard span {
+  display: block;
+  color: #dbe5ff;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.fpTeamCalendarEventEmpty {
+  min-height: 30px;
+}
+
+.fpTeamCalendarSide {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.fpTeamCalendarUpcomingCard,
+.fpTeamCalendarInfoCard {
+  padding: 16px;
+}
+
+.fpTeamCalendarInfoStrip {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fpTeamCalendarUpcomingList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.fpTeamCalendarUpcomingItem {
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.035);
+  padding: 14px;
+}
+
+.fpTeamCalendarUpcomingItem strong,
+.fpTeamCalendarUpcomingItem span {
+  display: block;
+}
+
+.fpTeamCalendarUpcomingItem strong {
+  color: #fff;
+  font-size: 14px;
+}
+
+.fpTeamCalendarUpcomingItem span {
+  color: #dbe4ff;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.fpTeamCalendarGate {
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.035);
+  padding: 14px;
+}
+
+.fpTeamCalendarGate strong,
+.fpTeamCalendarGate span {
+  display: block;
+}
+
+.fpTeamCalendarGate strong {
+  color: #fff;
+  font-size: 14px;
+}
+
+.fpTeamCalendarGate span {
+  color: #dbe4ff;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#fpTeamCalendarModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3,8,24,.62);
+  backdrop-filter: blur(12px);
+  padding: 18px;
+}
+
+#fpTeamCalendarModalOverlay.show {
+  display: flex;
+}
+
+#fpTeamCalendarModalOverlay .fpTeamCalendarModalWrap {
+  width: min(100%, 560px);
+}
+
+#fpTeamCalendarModalOverlay .fpTeamCalendarModalCard {
+  width: 100%;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: radial-gradient(120% 120% at 18% 0%, rgba(72,112,255,.18), transparent 52%), linear-gradient(180deg, rgba(14,25,62,.98), rgba(10,18,46,.99));
+  box-shadow: 0 30px 90px rgba(0,0,0,.35);
+  padding: 22px;
+}
+
+#fpTeamCalendarModalOverlay .fpTeamCalendarModalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+#fpTeamCalendarModalOverlay .fpTeamCalendarModalTitle {
+  margin-top: 6px;
+  font-size: 28px;
+  line-height: 1.04;
+  color: #fff;
+  font-weight: 900;
+}
+
+#fpTeamCalendarModalOverlay .fpTeamCalendarModalText {
+  margin-top: 8px;
+  color: #dce4ff;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+#fpTeamCalendarModalOverlay .fpTeamCalendarModalClose {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+#fpTeamCalendarModalOverlay .fpTeamCalendarModalForm {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#fpTeamCalendarModalOverlay .fpTeamCalendarModalTextarea {
+  min-height: 120px;
+}
+
+#fpTeamCalendarModalOverlay .fpTeamCalendarModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 1280px) {
+  .fpTeamCalendarPro,
+  .fpTeamCalendarTopRow {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .fpTeamCalendarStats {
+    grid-template-columns: 1fr !important;
+  }
+
+  .fpTeamCalendarGridLuxury {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .fpTeamCalendarHeaderLine,
+  .fpTeamCalendarSelectedActions,
+  #fpTeamCalendarModalOverlay .fpTeamCalendarModalActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .fpTeamCalendarGridLuxury {
+    grid-template-columns: 1fr !important;
+  }
+
+  .fpTeamCalendarSlot {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+}
