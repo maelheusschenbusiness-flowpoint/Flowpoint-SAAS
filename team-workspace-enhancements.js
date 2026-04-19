@@ -34,22 +34,22 @@
     if (heroActions && !heroActions.querySelector("[data-team-visio='hero']")) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "fpBtn fpBtnGhost";
-      btn.textContent = "Lancer visio";
+      btn.className = "fpBtn fpBtnPrimary";
+      btn.textContent = "Lancer une visio";
       btn.setAttribute("data-team-visio", "hero");
       btn.addEventListener("click", openVisio);
       heroActions.prepend(btn);
     }
 
-    const channelHeader = document.querySelector(".fpTeamHeader .fpBadge");
-    if (channelHeader && !document.querySelector("[data-team-visio='header']")) {
+    const header = document.querySelector(".fpTeamHeader");
+    if (header && !document.querySelector("[data-team-visio='header']")) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "fpBtn fpBtnSoft fpBtnSmall";
+      btn.className = "fpBtn fpBtnPrimary";
       btn.textContent = "Visio";
       btn.setAttribute("data-team-visio", "header");
       btn.addEventListener("click", openVisio);
-      channelHeader.parentElement?.appendChild(btn);
+      header.appendChild(btn);
     }
   }
 
