@@ -1,0 +1,603 @@
+/* =========================================================
+   FLOWPOINT TEAM — FINAL POLISH OVERRIDES
+   Matches the visual discipline of the Chat tab
+   ========================================================= */
+
+[data-team-enhanced='true'] {
+  display: block;
+}
+
+[data-team-enhanced='true'] .fpTeamHeroBarRich {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+[data-team-enhanced='true'] .fpTeamHeroActions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0 !important;
+}
+
+[data-team-enhanced='true'] .fpTeamHeroActions .fpBtn {
+  width: 100%;
+  min-height: 50px;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiGrid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0 0 18px !important;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+  padding: 16px;
+  min-width: 0;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard span,
+[data-team-enhanced='true'] .fpTeamKpiCard strong,
+[data-team-enhanced='true'] .fpTeamKpiCard small {
+  display: block !important;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard span {
+  color: #c8d5ff;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard strong {
+  margin-top: 8px;
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamKpiCard small {
+  margin-top: 8px;
+  color: #dce4ff;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+[data-team-enhanced='true'] .fpTeamTabs {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 18px !important;
+}
+
+[data-team-enhanced='true'] .fpTeamTab {
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 14px;
+}
+
+/* NOTES */
+[data-team-enhanced='true'] .fpTeamNotesLayout {
+  display: grid !important;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+[data-team-enhanced='true'] .fpTeamActionBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0 14px;
+}
+
+[data-team-enhanced='true'] .fpTeamActionBar .fpBtn {
+  min-height: 44px;
+}
+
+[data-team-enhanced='true'] .fpTeamNotesList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteItem {
+  border-radius: 16px !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  background: rgba(255,255,255,.035) !important;
+  padding: 14px !important;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteTopRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteTopRow strong,
+[data-team-enhanced='true'] .fpTeamNoteItem strong {
+  display: block;
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteItem span {
+  display: block;
+  margin-top: 6px;
+  color: #dbe4ff;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteMetaBar,
+[data-team-enhanced='true'] .fpTeamMemberTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteContent {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.035);
+  color: #eef3ff;
+  font-size: 15px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+[data-team-enhanced='true'] .fpTeamNoteIdeas {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+/* CALENDAR */
+[data-team-enhanced='true'] .fpTeamCalendarSurface {
+  margin-top: 14px;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: radial-gradient(140% 120% at 18% 0%, rgba(73,109,255,.22), transparent 55%), linear-gradient(180deg, rgba(18,29,76,.98), rgba(10,18,48,.99));
+  padding: 18px;
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarWeekdays {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarWeekdays > div {
+  color: #cbd7ff;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarGridLuxury {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarCell {
+  min-height: 128px !important;
+  border-radius: 18px !important;
+  background: linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.03)) !important;
+  border: 1px solid rgba(255,255,255,.09) !important;
+  padding: 12px !important;
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarCell.selected {
+  outline: 2px solid rgba(115,150,255,.95);
+  box-shadow: 0 0 0 6px rgba(47,91,255,.10);
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarCell.today {
+  border-color: rgba(115,150,255,.58) !important;
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarTop strong {
+  color: #fff !important;
+  font-size: 18px !important;
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarCount {
+  min-width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(115,150,255,.18);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarPill {
+  min-height: 28px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: #eef3ff !important;
+  border: 1px solid rgba(255,255,255,.08);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamCalendarPill.audit { background: rgba(52,119,255,.22) !important; }
+[data-team-enhanced='true'] .fpTeamCalendarPill.monitoring { background: rgba(24,209,125,.16) !important; }
+[data-team-enhanced='true'] .fpTeamCalendarPill.task { background: rgba(255,255,255,.10) !important; }
+[data-team-enhanced='true'] .fpTeamCalendarPill.custom { background: rgba(137,108,255,.16) !important; }
+
+[data-team-enhanced='true'] .fpTeamDayView {
+  margin-top: 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  padding: 18px;
+}
+
+[data-team-enhanced='true'] .fpTeamDayViewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+[data-team-enhanced='true'] .fpTeamDayViewTitle {
+  margin-top: 4px;
+  color: #fff;
+  font-size: 28px;
+  line-height: 1.08;
+  letter-spacing: -.03em;
+  font-weight: 900;
+}
+
+[data-team-enhanced='true'] .fpTeamPhoneAgenda {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+[data-team-enhanced='true'] .fpTeamPhoneSlot {
+  display: grid !important;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamPhoneTime {
+  padding-top: 12px;
+  color: #9eb2ea;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+[data-team-enhanced='true'] .fpTeamPhoneContent {
+  min-height: 52px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 8px;
+}
+
+[data-team-enhanced='true'] .fpTeamPhoneEvent {
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(66,126,255,.24), rgba(66,126,255,.14));
+  border: 1px solid rgba(115,150,255,.18);
+  padding: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamPhoneEvent strong {
+  display: block;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+[data-team-enhanced='true'] .fpTeamPhoneEvent span {
+  display: block;
+  margin-top: 6px;
+  color: #dbe5ff;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* MEMBERS */
+[data-team-enhanced='true'] .fpTeamMembersGridRich {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberCard {
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberAvatarWrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(180deg, #5b7cff, #2f5bff);
+  box-shadow: 0 10px 24px rgba(47,91,255,.24);
+  flex: 0 0 auto;
+  overflow: hidden;
+  position: relative;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberAvatarImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberAvatarWrap.online::after,
+[data-team-enhanced='true'] .fpTeamMemberAvatarWrap.offline::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid #0b1230;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberAvatarWrap.online::after { background: #18d17d; }
+[data-team-enhanced='true'] .fpTeamMemberAvatarWrap.offline::after { background: #7b86aa; }
+
+[data-team-enhanced='true'] .fpTeamMemberMain {
+  min-width: 0;
+  flex: 1;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberNameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberNameRow strong {
+  color: #fff;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberTitle {
+  margin-top: 6px;
+  color: #eef3ff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberRole {
+  margin-top: 4px;
+  color: #aebfff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+[data-team-enhanced='true'] .fpTeamStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+[data-team-enhanced='true'] .fpTeamStatusBadge.online {
+  background: rgba(24,209,125,.14);
+  color: #c9ffe3;
+}
+
+[data-team-enhanced='true'] .fpTeamStatusBadge.offline {
+  background: rgba(255,255,255,.08);
+  color: #d8e0ff;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberBio {
+  color: #e5edff;
+  font-size: 14px;
+  line-height: 1.65;
+  font-weight: 700;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberFooter {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+}
+
+[data-team-enhanced='true'] .fpTeamMemberFooter > span {
+  color: #bdd0ff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* MODAL */
+#fpTeamModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3,8,24,.62);
+  backdrop-filter: blur(12px);
+  padding: 18px;
+}
+
+#fpTeamModalOverlay.show {
+  display: flex;
+}
+
+#fpTeamModalOverlay .fpTeamModalWrap {
+  width: min(100%, 560px);
+}
+
+#fpTeamModalOverlay .fpTeamModalCard {
+  width: 100%;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: radial-gradient(120% 120% at 18% 0%, rgba(72,112,255,.18), transparent 52%), linear-gradient(180deg, rgba(14,25,62,.98), rgba(10,18,46,.99));
+  box-shadow: 0 30px 90px rgba(0,0,0,.35);
+  padding: 22px;
+}
+
+#fpTeamModalOverlay .fpTeamModalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+#fpTeamModalOverlay .fpTeamModalTitle {
+  margin-top: 6px;
+  font-size: 30px;
+  line-height: 1.02;
+  letter-spacing: -.04em;
+  color: #fff;
+  font-weight: 900;
+}
+
+#fpTeamModalOverlay .fpTeamModalText {
+  margin-top: 8px;
+  color: #dce4ff;
+  font-size: 14px;
+  line-height: 1.55;
+  font-weight: 700;
+}
+
+#fpTeamModalOverlay .fpTeamModalClose {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+#fpTeamModalOverlay .fpTeamModalForm {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#fpTeamModalOverlay .fpTeamModalTextarea {
+  min-height: 140px;
+}
+
+#fpTeamModalOverlay .fpTeamModalCheck {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #eef3ff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+#fpTeamModalOverlay .fpTeamModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* RESPONSIVE */
+@media (max-width: 1320px) {
+  [data-team-enhanced='true'] .fpTeamHeroBarRich,
+  [data-team-enhanced='true'] .fpTeamNotesLayout,
+  [data-team-enhanced='true'] .fpTeamWorkspaceChat,
+  [data-team-enhanced='true'] .fpTeamMembersLayout {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-team-enhanced='true'] .fpTeamCalendarGridLuxury {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  [data-team-enhanced='true'] .fpTeamHeroActions,
+  [data-team-enhanced='true'] .fpTeamKpiGrid,
+  [data-team-enhanced='true'] .fpTeamMembersGridRich {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-team-enhanced='true'] .fpTeamComposerGridWide,
+  [data-team-enhanced='true'] .fpTeamDayViewHeader,
+  [data-team-enhanced='true'] .fpTeamHeader,
+  [data-team-enhanced='true'] .fpTeamMemberFooter {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  [data-team-enhanced='true'] .fpTeamCalendarGridLuxury {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  [data-team-enhanced='true'] .fpTeamActionBar,
+  #fpTeamModalOverlay .fpTeamModalActions {
+    flex-direction: column;
+  }
+
+  [data-team-enhanced='true'] .fpTeamActionBar .fpBtn,
+  #fpTeamModalOverlay .fpBtn {
+    width: 100%;
+  }
+
+  [data-team-enhanced='true'] .fpTeamCalendarGridLuxury {
+    grid-template-columns: 1fr !important;
+  }
+}
