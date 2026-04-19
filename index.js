@@ -17,7 +17,9 @@ const path = require("path");
 const crypto = require("crypto");
 const dns = require("dns").promises;
 const net = require("net");
-
+const fs = require("fs");
+const fsp = require("fs/promises");
+const multer = require("multer");
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
@@ -31,6 +33,41 @@ const nodemailer = require("nodemailer");
 const { buildStripeModule } = require("./stripe");
 
 const app = express();
+const UPLOAD_DIR = path.join(__dirname, "uploads");
+const TEAM_UPLOAD_DIR = path.join(UPLOAD_DIR, "team-files");
+
+for (const dir of [UPLOAD_DIR, TEAM_UPLOAD_DIR]) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+app.use("/uploads", express.static(UPLOAD_DIR, {
+  maxAge: "7d",
+  index: false,
+  redirect: false,
+}));
+
+function safeFileName(name = "") {
+  return String(name || "")
+    .replace(/[^\w.\-() ]+/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
+const teamUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, TEAM_UPLOAD_DIR),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || "");
+      const base = path.basename(file.originalname || "file", ext);
+      cb(null, `${Date.now()}_${crypto.randomBytes(6).toString("hex")}_${safeFileName(base)}${ext}`);
+    },
+  }),
+  limits: {
+    fileSize: 20 * 1024 * 1024,
+    files: 5,
+  },
+});
 app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 5000;
@@ -1456,9 +1493,15 @@ const TeamThreadSchema = new mongoose.Schema(
   {
     orgId: { type: mongoose.Schema.Types.ObjectId, index: true },
 
+    channelKey: {
+      type: String,
+      default: "general",
+      index: true,
+    },
+
     contextType: {
       type: String,
-      enum: ["mission", "audit", "monitor", "report", "note", "general"],
+      enum: ["mission", "audit", "monitor", "report", "note", "general", "system"],
       default: "general",
       index: true,
     },
@@ -1466,6 +1509,12 @@ const TeamThreadSchema = new mongoose.Schema(
     contextId: { type: mongoose.Schema.Types.ObjectId, index: true },
 
     title: String,
+    description: { type: String, default: "" },
+
+    isPrivate: { type: Boolean, default: false, index: true },
+    allowedRoles: { type: [String], default: [] },
+
+    isPinned: { type: Boolean, default: false, index: true },
     isResolved: { type: Boolean, default: false, index: true },
     lastActivityAt: { type: Date, default: Date.now, index: true },
   },
@@ -1480,8 +1529,44 @@ const TeamMessageSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, index: true },
     authorName: String,
 
-    content: String,
+    content: { type: String, default: "" },
     mentions: { type: [String], default: [] },
+
+    messageType: {
+      type: String,
+      enum: ["text", "system", "file", "linked_card"],
+      default: "text",
+      index: true,
+    },
+
+    replyToMessageId: { type: mongoose.Schema.Types.ObjectId, index: true },
+    linkedEntityType: { type: String, default: "" },
+    linkedEntityId: { type: mongoose.Schema.Types.ObjectId, index: true },
+
+    attachments: {
+      type: [
+        {
+          originalName: String,
+          fileName: String,
+          mimeType: String,
+          size: Number,
+          url: String,
+          ext: String,
+          kind: {
+            type: String,
+            enum: ["image", "pdf", "doc", "sheet", "archive", "other"],
+            default: "other",
+          },
+        }
+      ],
+      default: [],
+    },
+
+    isPinned: { type: Boolean, default: false, index: true },
+    isImportant: { type: Boolean, default: false, index: true },
+    isEdited: { type: Boolean, default: false },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: Date,
 
     isSystemSummary: { type: Boolean, default: false },
   },
@@ -1750,7 +1835,106 @@ const ISSUE_LIBRARY = {
     baseScore: 72,
   },
 };
+function getDefaultChannelsForPlan(plan) {
+  const base = [
+    { key: "general", label: "general", icon: "💬", system: false, minPlan: "standard" },
+    { key: "seo", label: "seo", icon: "📈", system: false, minPlan: "standard" },
+    { key: "audits", label: "audits", icon: "🧪", system: false, minPlan: "standard" },
+    { key: "monitors", label: "monitors", icon: "🛰️", system: false, minPlan: "standard" },
+    { key: "local-seo", label: "local-seo", icon: "📍", system: false, minPlan: "standard" },
+    { key: "reports", label: "reports", icon: "📄", system: false, minPlan: "standard" },
+    { key: "ops", label: "ops", icon: "⚙️", system: false, minPlan: "standard" },
+    { key: "clients", label: "clients", icon: "🤝", system: false, minPlan: "standard" },
+    { key: "flowpoint-system", label: "flowpoint-system", icon: "✨", system: true, minPlan: "pro" },
+    { key: "direction", label: "direction", icon: "🔒", system: false, minPlan: "pro", isPrivate: true, allowedRoles: ["owner"] },
+    { key: "private-team", label: "private-team", icon: "🛡️", system: false, minPlan: "ultra", isPrivate: true, allowedRoles: ["owner", "member"] },
+  ];
 
+  return base.filter((c) => planRank(plan) >= planRank(c.minPlan || "standard"));
+}
+
+function fileKindFromMime(mime = "", name = "") {
+  const v = `${mime} ${name}`.toLowerCase();
+  if (v.includes("image/")) return "image";
+  if (v.includes("pdf")) return "pdf";
+  if (v.includes("word") || v.includes(".doc")) return "doc";
+  if (v.includes("excel") || v.includes("csv") || v.includes(".xls")) return "sheet";
+  if (v.includes("zip") || v.includes("rar") || v.includes("7z")) return "archive";
+  return "other";
+}
+
+async function ensureChannelThreadForOrg(orgId, channelDef) {
+  let thread = await TeamThread.findOne({
+    orgId,
+    channelKey: channelDef.key,
+    contextType: channelDef.system ? "system" : "general",
+  });
+
+  if (!thread) {
+    thread = await TeamThread.create({
+      orgId,
+      channelKey: channelDef.key,
+      contextType: channelDef.system ? "system" : "general",
+      title: `#${channelDef.label}`,
+      description: channelDef.system
+        ? "Canal système FlowPoint."
+        : `Canal ${channelDef.label}.`,
+      isPrivate: !!channelDef.isPrivate,
+      allowedRoles: Array.isArray(channelDef.allowedRoles) ? channelDef.allowedRoles : [],
+      lastActivityAt: new Date(),
+    });
+  }
+
+  return thread;
+}
+
+async function ensureTeamWorkspace(orgId, plan) {
+  const defs = getDefaultChannelsForPlan(plan);
+  const out = [];
+
+  for (const def of defs) {
+    const thread = await ensureChannelThreadForOrg(orgId, def);
+    out.push({
+      key: def.key,
+      label: def.label,
+      icon: def.icon,
+      system: !!def.system,
+      isPrivate: !!def.isPrivate,
+      allowedRoles: def.allowedRoles || [],
+      threadId: thread._id,
+      title: thread.title,
+      description: thread.description || "",
+      isPinned: !!thread.isPinned,
+      lastActivityAt: thread.lastActivityAt,
+    });
+  }
+
+  return out.sort((a, b) => {
+    if (a.system !== b.system) return a.system ? 1 : -1;
+    return String(a.label).localeCompare(String(b.label));
+  });
+}
+
+async function pushSystemMessage(orgId, channelKey, content, linkedEntityType = "", linkedEntityId = undefined) {
+  const thread = await TeamThread.findOne({ orgId, channelKey });
+  if (!thread) return null;
+
+  const msg = await TeamMessage.create({
+    orgId,
+    threadId: thread._id,
+    authorName: "FlowPoint",
+    content,
+    messageType: linkedEntityType ? "linked_card" : "system",
+    linkedEntityType,
+    linkedEntityId,
+    isSystemSummary: true,
+    isImportant: true,
+  });
+
+  thread.lastActivityAt = new Date();
+  await thread.save();
+  return msg;
+}
 function generateMissionLibrary() {
   const out = [];
   const categories = [
@@ -2986,39 +3170,71 @@ app.get("/api/local/summary", auth, requireActive, async (req, res) => {
   });
 });
 
-// ---------- ROUTES: TEAM DISCUSSION ----------
+// ---------- ROUTES: TEAM WORKSPACE ----------
 
-app.get("/api/team/threads", auth, requireActive, async (req, res) => {
-  const threads = await TeamThread.find({ orgId: req.dbUser.orgId })
-    .sort({ lastActivityAt: -1 })
-    .limit(200);
+app.get("/api/team/workspace", auth, requireActive, async (req, res) => {
+  const channels = await ensureTeamWorkspace(req.dbUser.orgId, req.dbUser.plan);
 
-  return res.json({ ok: true, threads });
-});
-
-app.post("/api/team/threads", auth, requireActive, async (req, res) => {
-  const title = String(req.body?.title || "").trim();
-  if (!title) return res.status(400).json({ error: "Titre requis" });
-
-  const thread = await TeamThread.create({
-    orgId: req.dbUser.orgId,
-    contextType: req.body?.contextType || "general",
-    contextId: req.body?.contextId || undefined,
-    title,
-    lastActivityAt: new Date(),
+  const visibleChannels = channels.filter((c) => {
+    if (!c.isPrivate) return true;
+    if (!c.allowedRoles?.length) return true;
+    return c.allowedRoles.includes(req.dbUser.role);
   });
 
-  await pushTimeline(
-    req.dbUser.orgId,
-    req.dbUser._id,
-    "thread_created",
-    "thread",
-    thread._id,
-    thread.title,
-    "Discussion créée."
-  );
+  const threadIds = visibleChannels.map((c) => c.threadId);
+  const threads = await TeamThread.find({ _id: { $in: threadIds } }).sort({ lastActivityAt: -1 }).limit(200);
+  const pendingInvites = await Invite.find({ orgId: req.dbUser.orgId, acceptedAt: null }).sort({ createdAt: -1 }).limit(50);
+  const members = await User.find({ orgId: req.dbUser.orgId }).select("name email role createdAt").sort({ createdAt: 1 });
 
-  return res.json({ ok: true, thread });
+  const notes = await Note.find({ orgId: req.dbUser.orgId }).sort({ isPinned: -1, updatedAt: -1 }).limit(200);
+
+  const start = new Date();
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + 1);
+  end.setDate(0);
+  end.setHours(23, 59, 59, 999);
+
+  const calendarEvents = await CalendarEvent.find({
+    orgId: req.dbUser.orgId,
+    startAt: { $gte: start, $lte: end },
+  }).sort({ startAt: 1 }).limit(500);
+
+  const activities = await TimelineEvent.find({ orgId: req.dbUser.orgId })
+    .sort({ createdAt: -1 })
+    .limit(120);
+
+  return res.json({
+    ok: true,
+    channels: visibleChannels,
+    threads,
+    members,
+    pendingInvites,
+    notes,
+    calendarEvents,
+    activities,
+    featureAccess: {
+      standard: true,
+      pro: planRank(req.dbUser.plan) >= 2,
+      ultra: planRank(req.dbUser.plan) >= 3,
+    },
+  });
+});
+
+app.get("/api/team/threads", auth, requireActive, async (req, res) => {
+  const channels = await ensureTeamWorkspace(req.dbUser.orgId, req.dbUser.plan);
+  const channelKey = String(req.query.channelKey || "general");
+  const channel = channels.find((c) => c.key === channelKey);
+
+  if (!channel) return res.status(404).json({ error: "Canal introuvable" });
+  if (channel.isPrivate && channel.allowedRoles?.length && !channel.allowedRoles.includes(req.dbUser.role)) {
+    return res.status(403).json({ error: "Canal privé" });
+  }
+
+  const thread = await TeamThread.findById(channel.threadId);
+  return res.json({ ok: true, channel, thread });
 });
 
 app.get("/api/team/threads/:id/messages", auth, requireActive, async (req, res) => {
@@ -3029,26 +3245,96 @@ app.get("/api/team/threads/:id/messages", auth, requireActive, async (req, res) 
 
   if (!thread) return res.status(404).json({ error: "Thread introuvable" });
 
+  if (thread.isPrivate && thread.allowedRoles?.length && !thread.allowedRoles.includes(req.dbUser.role)) {
+    return res.status(403).json({ error: "Canal privé" });
+  }
+
   const messages = await TeamMessage.find({
     orgId: req.dbUser.orgId,
     threadId: thread._id,
+    isDeleted: { $ne: true },
   }).sort({ createdAt: 1 }).limit(500);
 
   return res.json({ ok: true, thread, messages });
 });
 
-app.post("/api/team/threads/:id/messages", auth, requireActive, async (req, res) => {
+app.post("/api/team/channels", auth, requireActive, async (req, res) => {
+  if (planRank(req.dbUser.plan) < 2) {
+    return res.status(403).json({ error: "Création de canaux réservée au plan Pro et Ultra" });
+  }
+
+  const rawLabel = String(req.body?.label || "").trim().toLowerCase();
+  if (!rawLabel) return res.status(400).json({ error: "Nom du canal requis" });
+
+  const key = rawLabel.replace(/[^\w\-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  if (!key) return res.status(400).json({ error: "Nom de canal invalide" });
+
+  const exists = await TeamThread.findOne({ orgId: req.dbUser.orgId, channelKey: key });
+  if (exists) return res.status(409).json({ error: "Canal déjà existant" });
+
+  const isPrivate = !!req.body?.isPrivate && planRank(req.dbUser.plan) >= 2;
+  const allowedRoles = isPrivate ? (Array.isArray(req.body?.allowedRoles) ? req.body.allowedRoles : ["owner"]) : [];
+
+  const thread = await TeamThread.create({
+    orgId: req.dbUser.orgId,
+    channelKey: key,
+    contextType: "general",
+    title: `#${key}`,
+    description: String(req.body?.description || "").trim(),
+    isPrivate,
+    allowedRoles,
+    lastActivityAt: new Date(),
+  });
+
+  await pushTimeline(
+    req.dbUser.orgId,
+    req.dbUser._id,
+    "thread_created",
+    "thread",
+    thread._id,
+    thread.title,
+    "Canal créé."
+  );
+
+  return res.json({ ok: true, thread });
+});
+
+app.post("/api/team/threads/:id/messages", auth, requireActive, teamUpload.array("files", 5), async (req, res) => {
   const thread = await TeamThread.findOne({
     _id: req.params.id,
     orgId: req.dbUser.orgId,
   });
 
   if (!thread) return res.status(404).json({ error: "Thread introuvable" });
+  if (thread.isPrivate && thread.allowedRoles?.length && !thread.allowedRoles.includes(req.dbUser.role)) {
+    return res.status(403).json({ error: "Canal privé" });
+  }
 
   const content = String(req.body?.content || "").trim();
-  if (!content) return res.status(400).json({ error: "Message requis" });
+  const files = Array.isArray(req.files) ? req.files : [];
+
+  if (!content && !files.length) {
+    return res.status(400).json({ error: "Message ou fichier requis" });
+  }
+
+  if (files.length && planRank(req.dbUser.plan) < 1) {
+    return res.status(403).json({ error: "Upload indisponible" });
+  }
 
   const mentions = uniqueStrings((content.match(/@\w+/g) || []).map((m) => m.slice(1)));
+  const attachments = files.map((file) => ({
+    originalName: file.originalname,
+    fileName: file.filename,
+    mimeType: file.mimetype,
+    size: file.size,
+    url: `/uploads/team-files/${file.filename}`,
+    ext: path.extname(file.originalname || "").replace(".", "").toLowerCase(),
+    kind: fileKindFromMime(file.mimetype, file.originalname),
+  }));
+
+  const linkedEntityType = String(req.body?.linkedEntityType || "").trim();
+  const linkedEntityId = req.body?.linkedEntityId || undefined;
+  const replyToMessageId = req.body?.replyToMessageId || undefined;
 
   const msg = await TeamMessage.create({
     orgId: req.dbUser.orgId,
@@ -3057,6 +3343,12 @@ app.post("/api/team/threads/:id/messages", auth, requireActive, async (req, res)
     authorName: req.dbUser.name || req.dbUser.email,
     content,
     mentions,
+    messageType: attachments.length ? (content ? "text" : "file") : (linkedEntityType ? "linked_card" : "text"),
+    replyToMessageId,
+    linkedEntityType,
+    linkedEntityId,
+    attachments,
+    isImportant: !!req.body?.isImportant && planRank(req.dbUser.plan) >= 2,
   });
 
   thread.lastActivityAt = new Date();
@@ -3075,6 +3367,78 @@ app.post("/api/team/threads/:id/messages", auth, requireActive, async (req, res)
   return res.json({ ok: true, message: msg });
 });
 
+app.patch("/api/team/messages/:id", auth, requireActive, async (req, res) => {
+  const msg = await TeamMessage.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+    isDeleted: { $ne: true },
+  });
+
+  if (!msg) return res.status(404).json({ error: "Message introuvable" });
+  if (String(msg.userId) !== String(req.dbUser._id) && req.dbUser.role !== "owner") {
+    return res.status(403).json({ error: "Modification non autorisée" });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, "content")) {
+    msg.content = String(req.body.content || "").trim();
+    msg.isEdited = true;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, "isPinned") && planRank(req.dbUser.plan) >= 2) {
+    msg.isPinned = !!req.body.isPinned;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, "isImportant") && planRank(req.dbUser.plan) >= 2) {
+    msg.isImportant = !!req.body.isImportant;
+  }
+
+  await msg.save();
+  return res.json({ ok: true, message: msg });
+});
+
+app.delete("/api/team/messages/:id", auth, requireActive, async (req, res) => {
+  const msg = await TeamMessage.findOne({
+    _id: req.params.id,
+    orgId: req.dbUser.orgId,
+    isDeleted: { $ne: true },
+  });
+
+  if (!msg) return res.status(404).json({ error: "Message introuvable" });
+  if (String(msg.userId) !== String(req.dbUser._id) && req.dbUser.role !== "owner") {
+    return res.status(403).json({ error: "Suppression non autorisée" });
+  }
+
+  msg.isDeleted = true;
+  msg.deletedAt = new Date();
+  msg.content = "";
+  await msg.save();
+
+  return res.json({ ok: true });
+});
+
+app.get("/api/team/files", auth, requireActive, async (req, res) => {
+  if (planRank(req.dbUser.plan) < 2) {
+    return res.status(403).json({ error: "Vue fichiers réservée au plan Pro et Ultra" });
+  }
+
+  const channelKey = String(req.query.channelKey || "").trim();
+
+  const threadQuery = { orgId: req.dbUser.orgId };
+  if (channelKey) threadQuery.channelKey = channelKey;
+
+  const threads = await TeamThread.find(threadQuery).select("_id");
+  const threadIds = threads.map((t) => t._id);
+
+  const messages = await TeamMessage.find({
+    orgId: req.dbUser.orgId,
+    threadId: { $in: threadIds },
+    "attachments.0": { $exists: true },
+    isDeleted: { $ne: true },
+  }).sort({ createdAt: -1 }).limit(200);
+
+  return res.json({ ok: true, messages });
+});
+
 app.post("/api/team/threads/:id/resolve", auth, requireActive, async (req, res) => {
   const thread = await TeamThread.findOne({
     _id: req.params.id,
@@ -3089,7 +3453,6 @@ app.post("/api/team/threads/:id/resolve", auth, requireActive, async (req, res) 
 
   return res.json({ ok: true, thread });
 });
-
 // ---------- ROUTES: CALENDAR ----------
 
 app.get("/api/calendar", auth, requireActive, async (req, res) => {
@@ -3162,7 +3525,13 @@ app.post("/api/calendar", auth, requireActive, async (req, res) => {
     event.title,
     "Événement calendrier créé."
   );
-
+await pushSystemMessage(
+  req.dbUser.orgId,
+  "flowpoint-system",
+  `📅 Nouvel événement : ${event.title}`,
+  "calendar",
+  event._id
+);
   return res.json({ ok: true, event });
 });
 
@@ -3223,7 +3592,13 @@ app.post("/api/notes", auth, requireActive, async (req, res) => {
     note.title,
     "Note créée."
   );
-
+await pushSystemMessage(
+  req.dbUser.orgId,
+  "flowpoint-system",
+  `📝 Nouvelle note créée : ${note.title}`,
+  "note",
+  note._id
+);
   return res.json({ ok: true, note });
 });
 
