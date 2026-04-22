@@ -6,13 +6,13 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  color: #f5f8ff;
-  background:
-    radial-gradient(1100px 700px at 0% 0%, rgba(66,108,255,.18), transparent 55%),
-    radial-gradient(900px 640px at 100% 0%, rgba(31,72,255,.16), transparent 45%),
-    linear-gradient(180deg, #09112b 0%, #081126 100%);
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  color: var(--fpText, #f5f8ff);
+  background: transparent;
   border-radius: 28px;
-  padding: 8px;
+  padding: 0;
   isolation: isolate;
 }
 
@@ -46,15 +46,14 @@
 .fpTeamV2ActionCard,
 .fpTeamV2DayCard,
 .fpTeamV2SelectedCard {
-  border: 1px solid rgba(134,162,255,.16);
+  border: 1px solid var(--fpBorder, rgba(134,162,255,.16));
   background:
-    linear-gradient(180deg, rgba(255,255,255,.065), rgba(255,255,255,.03)),
-    linear-gradient(180deg, rgba(10,18,48,.95), rgba(10,18,48,.90));
+    radial-gradient(120% 140% at 18% 0%, rgba(91,124,255,.12), transparent 52%),
+    linear-gradient(180deg, rgba(17,25,59,.96), rgba(12,18,44,.96));
   border-radius: 24px;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.04),
-    0 16px 46px rgba(3,10,28,.28),
-    0 0 0 1px rgba(41,77,181,.08);
+    var(--fpShadow, 0 16px 46px rgba(3,10,28,.28));
   backdrop-filter: blur(8px);
 }
 
@@ -64,8 +63,8 @@
   gap: 18px;
   padding: 22px;
   background:
-    radial-gradient(95% 120% at 0% 0%, rgba(80, 117, 255, .34), transparent 52%),
-    radial-gradient(85% 100% at 100% 0%, rgba(44, 91, 255, .20), transparent 48%),
+    radial-gradient(95% 120% at 0% 0%, rgba(80, 117, 255, .28), transparent 52%),
+    radial-gradient(85% 100% at 100% 0%, rgba(44, 91, 255, .16), transparent 48%),
     linear-gradient(180deg, rgba(17,28,77,.98), rgba(10,18,48,.99));
 }
 
@@ -75,12 +74,13 @@
   line-height: .98;
   letter-spacing: -.05em;
   font-weight: 900;
+  color: #fff;
 }
 
 .fpTeamV2HeroText {
   margin: 12px 0 0;
   max-width: 760px;
-  color: #dbe5ff;
+  color: var(--fpTextSoft, #dbe5ff);
   font-size: 15px;
   line-height: 1.65;
   font-weight: 700;
@@ -106,7 +106,7 @@
   min-height: 36px;
   padding: 0 13px;
   border-radius: 999px;
-  border: 1px solid rgba(160,184,255,.16);
+  border: 1px solid var(--fpBorderStrong, rgba(160,184,255,.16));
   background: rgba(255,255,255,.06);
   color: #eef3ff;
   font-size: 12px;
@@ -137,7 +137,7 @@
 .fpTeamV2Btn {
   min-height: 52px;
   border-radius: 17px;
-  border: 1px solid rgba(166,187,255,.16);
+  border: 1px solid var(--fpBorderStrong, rgba(166,187,255,.16));
   font-size: 15px;
   font-weight: 900;
   cursor: pointer;
@@ -149,7 +149,7 @@
 
 .fpTeamV2BtnPrimary {
   color: #fff;
-  background: linear-gradient(180deg, #5b8aff, #2f5bff);
+  background: linear-gradient(180deg, var(--fpBrand3, #5b8aff), var(--fpBrand, #2f5bff));
   box-shadow: 0 14px 34px rgba(47,91,255,.34);
 }
 
@@ -213,8 +213,26 @@
 .fpTeamV2DocItem strong,
 .fpTeamV2NoteItem strong,
 .fpTeamV2MemberCard strong,
-.fpTeamV2SelectedCard strong {
+.fpTeamV2SelectedCard strong,
+.fpTeamV2SectionTitle,
+.fpTeamV2SelectedTitle,
+.fpTeamV2ChannelName,
+.fpTeamV2MemberName,
+.fpTeamV2MessageTop strong,
+.fpTeamV2DayTop strong {
   color: #fff;
+}
+
+.fpTeamV2Insight strong,
+.fpTeamV2SidebarCard strong,
+.fpTeamV2ActionCard strong,
+.fpTeamV2UpcomingItem strong,
+.fpTeamV2FeedItem strong,
+.fpTeamV2TimelineEvent strong,
+.fpTeamV2DocItem strong,
+.fpTeamV2NoteItem strong,
+.fpTeamV2MemberCard strong,
+.fpTeamV2SelectedCard strong {
   font-size: 15px;
   line-height: 1.35;
 }
@@ -228,9 +246,31 @@
 .fpTeamV2DocItem span,
 .fpTeamV2NoteItem span,
 .fpTeamV2MemberCard span,
+.fpTeamV2SelectedCard span,
+.fpTeamV2SectionText,
+.fpTeamV2MessageText,
+.fpTeamV2MemberBio,
+.fpTeamV2NoteContent,
+.fpTeamV2ChannelMeta,
+.fpTeamV2MemberTitle,
+.fpTeamV2MemberRole,
+.fpTeamV2Kpi small,
+.fpTeamV2Subtle,
+.fpTeamV2MessageMeta {
+  color: var(--fpTextSoft, #dbe4ff);
+}
+
+.fpTeamV2Insight span,
+.fpTeamV2SidebarCard span,
+.fpTeamV2ActionCard span,
+.fpTeamV2UpcomingItem span,
+.fpTeamV2FeedItem span,
+.fpTeamV2TimelineEvent span,
+.fpTeamV2DocItem span,
+.fpTeamV2NoteItem span,
+.fpTeamV2MemberCard span,
 .fpTeamV2SelectedCard span {
   margin-top: 8px;
-  color: #dbe4ff;
   font-size: 13px;
   line-height: 1.58;
 }
@@ -253,8 +293,12 @@
   font-weight: 900;
 }
 
-.fpTeamV2Kpi span {
-  color: #c8d5ff;
+.fpTeamV2Kpi span,
+.fpTeamV2Stat span,
+.fpTeamV2SectionKicker,
+.fpTeamV2Label,
+.fpTeamV2Weekdays div {
+  color: var(--fpMuted, #c8d5ff);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: .12em;
@@ -262,7 +306,6 @@
 }
 
 .fpTeamV2Kpi small {
-  color: #dce4ff;
   margin-top: 8px;
   font-size: 13px;
   line-height: 1.5;
@@ -279,7 +322,7 @@
   min-height: 46px;
   padding: 0 18px;
   border-radius: 16px;
-  border: 1px solid rgba(255,255,255,.09);
+  border: 1px solid var(--fpBorder, rgba(255,255,255,.09));
   background: rgba(255,255,255,.04);
   color: #f2f6ff;
   font-size: 15px;
@@ -288,11 +331,11 @@
 }
 
 .fpTeamV2Tab.active {
-  background: linear-gradient(180deg, #4f80ff, #2f5bff);
+  background: linear-gradient(180deg, var(--fpBrand3, #4f80ff), var(--fpBrand, #2f5bff));
   box-shadow: 0 12px 28px rgba(47,91,255,.26);
 }
 
-.fpTeamV2Body { display: block; }
+.fpTeamV2Body { display: block; width: 100%; max-width: 100%; }
 
 .fpTeamV2GridChat {
   display: grid;
@@ -304,19 +347,17 @@
 .fpTeamV2Panel,
 .fpTeamV2SidebarCard {
   padding: 18px;
+  min-width: 0;
 }
 
 .fpTeamV2SectionKicker {
-  color: #c8d5ff;
   font-size: 12px;
-  font-weight: 900;
   text-transform: uppercase;
   letter-spacing: .14em;
 }
 
 .fpTeamV2SectionTitle {
   margin: 8px 0 0;
-  color: #fff;
   font-size: 34px;
   line-height: 1.04;
   letter-spacing: -.04em;
@@ -325,7 +366,6 @@
 
 .fpTeamV2SectionText {
   margin-top: 10px;
-  color: #dce4ff;
   font-size: 14px;
   line-height: 1.62;
   font-weight: 700;
@@ -382,13 +422,11 @@
 }
 
 .fpTeamV2ChannelName {
-  color: #fff;
   font-size: 16px;
   font-weight: 900;
 }
 
 .fpTeamV2ChannelMeta {
-  color: #dbe4ff;
   font-size: 12px;
   line-height: 1.45;
   margin-top: 6px;
@@ -473,7 +511,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, #5b7cff, #2f5bff);
+  background: linear-gradient(180deg, var(--fpBrand3, #5b7cff), var(--fpBrand, #2f5bff));
   color: #fff;
   font-size: 18px;
   font-weight: 900;
@@ -495,13 +533,11 @@
 }
 
 .fpTeamV2MessageTop strong {
-  color: #fff;
   font-size: 15px;
 }
 
 .fpTeamV2MessageMeta,
 .fpTeamV2Subtle {
-  color: #b9c9f6;
   font-size: 12px;
   line-height: 1.4;
   font-weight: 700;
@@ -509,7 +545,6 @@
 
 .fpTeamV2MessageText {
   margin-top: 8px;
-  color: #edf2ff;
   font-size: 14px;
   line-height: 1.68;
   white-space: pre-wrap;
@@ -632,38 +667,40 @@
 }
 
 .fpTeamV2CalendarSurface {
+  width: 100%;
+  max-width: 100%;
   padding: 18px;
   border-radius: 24px;
   border: 1px solid rgba(255,255,255,.08);
   background: linear-gradient(180deg, rgba(20,31,80,.98), rgba(11,18,48,.98));
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .fpTeamV2Weekdays {
   display: grid;
-  grid-template-columns: repeat(7, minmax(110px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
-  min-width: 840px;
+  min-width: 0;
 }
 
 .fpTeamV2Weekdays div {
-  color: #cad8ff;
   font-size: 12px;
-  font-weight: 900;
   letter-spacing: .13em;
-  text-transform: uppercase;
 }
 
 .fpTeamV2CalendarGrid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(110px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
-  min-width: 840px;
+  min-width: 0;
+  width: 100%;
 }
 
 .fpTeamV2DayCard {
   min-height: 132px;
+  min-width: 0;
+  width: 100%;
   padding: 12px;
   cursor: pointer;
   text-align: left;
@@ -683,7 +720,6 @@
 }
 
 .fpTeamV2DayTop strong {
-  color: #fff;
   font-size: 18px;
 }
 
@@ -732,7 +768,6 @@
 
 .fpTeamV2SelectedTitle {
   margin-top: 8px;
-  color: #fff;
   font-size: 26px;
   line-height: 1.08;
   font-weight: 900;
@@ -798,7 +833,6 @@
   border: 1px solid rgba(255,255,255,.08);
   background: rgba(255,255,255,.035);
   padding: 18px;
-  color: #eef3ff;
   font-size: 15px;
   line-height: 1.72;
   white-space: pre-wrap;
@@ -819,17 +853,8 @@
 }
 
 .fpTeamV2Stat strong {
-  color: #fff;
   font-size: 24px;
   margin-top: 8px;
-  font-weight: 900;
-}
-
-.fpTeamV2Stat span {
-  color: #c8d5ff;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .12em;
   font-weight: 900;
 }
 
@@ -874,7 +899,6 @@
 }
 
 .fpTeamV2MemberName {
-  color: #fff;
   font-size: 18px;
   line-height: 1.15;
   font-weight: 900;
@@ -884,14 +908,12 @@
 .fpTeamV2Status.offline { background: rgba(255,255,255,.08); color: #d8e0ff; }
 
 .fpTeamV2MemberTitle {
-  color: #eef3ff;
   font-size: 15px;
   margin-top: 6px;
   font-weight: 800;
 }
 
 .fpTeamV2MemberRole {
-  color: #aebfff;
   font-size: 13px;
   margin-top: 4px;
   font-weight: 700;
@@ -899,7 +921,6 @@
 
 .fpTeamV2MemberBio {
   margin-top: 12px;
-  color: #e5edff;
   font-size: 14px;
   line-height: 1.65;
   font-weight: 700;
@@ -953,7 +974,7 @@
 }
 
 .fpTeamV2Filter.active {
-  background: linear-gradient(180deg, #4f80ff, #2f5bff);
+  background: linear-gradient(180deg, var(--fpBrand3, #4f80ff), var(--fpBrand, #2f5bff));
 }
 
 .fpTeamV2FeedItem {
@@ -1045,7 +1066,7 @@
 
 .fpTeamV2ModalText {
   margin-top: 8px;
-  color: #dce4ff;
+  color: var(--fpTextSoft, #dce4ff);
   font-size: 14px;
   line-height: 1.55;
   font-weight: 700;
@@ -1076,7 +1097,6 @@
 }
 
 .fpTeamV2Label {
-  color: #dce4ff;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .12em;
@@ -1103,7 +1123,7 @@
   border: 1px dashed rgba(255,255,255,.14);
   background: rgba(255,255,255,.025);
   padding: 16px;
-  color: #dbe4ff;
+  color: var(--fpTextSoft, #dbe4ff);
   font-size: 14px;
   line-height: 1.6;
   font-weight: 700;
@@ -1198,18 +1218,29 @@
 
   .fpTeamV2CalendarSurface {
     padding: 14px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow: hidden;
   }
 
   .fpTeamV2Weekdays,
   .fpTeamV2CalendarGrid {
-    grid-template-columns: repeat(7, minmax(92px, 1fr)) !important;
-    min-width: 700px;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    min-width: 0 !important;
+    width: 100% !important;
   }
 
   .fpTeamV2DayCard {
-    min-height: 110px;
+    min-height: 96px;
+    padding: 10px;
+  }
+
+  .fpTeamV2DayTop strong {
+    font-size: 15px;
+  }
+
+  .fpTeamV2DayPill {
+    min-height: 22px;
+    padding: 4px 7px;
+    font-size: 9px;
   }
 
   .fpTeamV2SelectedTitle {
@@ -1254,8 +1285,8 @@
 
   .fpTeamV2Weekdays,
   .fpTeamV2CalendarGrid {
-    grid-template-columns: repeat(7, minmax(84px, 1fr)) !important;
-    min-width: 630px;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    min-width: 0 !important;
   }
 
   .fpTeamV2AnalyticsHeat {
@@ -1265,12 +1296,42 @@
 
 @media (prefers-color-scheme: light) {
   .fpTeamV2,
-  .fpTeamV2 * {
-    color: inherit;
+  .fpTeamV2 button,
+  .fpTeamV2 input,
+  .fpTeamV2 textarea,
+  .fpTeamV2 select {
+    color-scheme: light;
   }
 
-  .fpTeamV2 {
-    color: #f5f8ff;
+  .fpTeamV2Card,
+  .fpTeamV2Hero,
+  .fpTeamV2Panel,
+  .fpTeamV2SidebarCard,
+  .fpTeamV2Stat,
+  .fpTeamV2ChannelBtn,
+  .fpTeamV2Message,
+  .fpTeamV2MiniCard,
+  .fpTeamV2TimelineEvent,
+  .fpTeamV2MemberCard,
+  .fpTeamV2FeedItem,
+  .fpTeamV2UpcomingItem,
+  .fpTeamV2NoteItem,
+  .fpTeamV2Insight,
+  .fpTeamV2Kpi,
+  .fpTeamV2HeatCell,
+  .fpTeamV2DocItem,
+  .fpTeamV2ActionCard,
+  .fpTeamV2DayCard,
+  .fpTeamV2SelectedCard,
+  .fpTeamV2CalendarSurface,
+  .fpTeamV2ModalCard {
+    border-color: rgba(59,78,130,.12) !important;
+    background:
+      radial-gradient(120% 140% at 18% 0%, rgba(47,91,255,.12), transparent 52%),
+      linear-gradient(180deg, rgba(255,255,255,.88), rgba(239,245,255,.96)) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.42),
+      0 12px 30px rgba(41,64,122,.08) !important;
   }
 
   .fpTeamV2HeroTitle,
@@ -1290,7 +1351,7 @@
   .fpTeamV2NoteItem strong,
   .fpTeamV2SelectedCard strong,
   .fpTeamV2DayTop strong {
-    color: #ffffff !important;
+    color: #0f1830 !important;
   }
 
   .fpTeamV2HeroText,
@@ -1311,8 +1372,9 @@
   .fpTeamV2MemberRole,
   .fpTeamV2Kpi small,
   .fpTeamV2Subtle,
-  .fpTeamV2MessageMeta {
-    color: #dbe4ff !important;
+  .fpTeamV2MessageMeta,
+  .fpTeamV2ModalText {
+    color: #4a5d86 !important;
   }
 
   .fpTeamV2SectionKicker,
@@ -1320,10 +1382,10 @@
   .fpTeamV2Stat span,
   .fpTeamV2Label,
   .fpTeamV2Weekdays div {
-    color: #c8d5ff !important;
+    color: #7281a6 !important;
   }
 
-  .fpTeamV2Btn,
+  .fpTeamV2BtnGhost,
   .fpTeamV2Tab,
   .fpTeamV2MetaPill,
   .fpTeamV2Badge,
@@ -1336,6 +1398,20 @@
   .fpTeamV2Textarea,
   .fpTeamV2Input,
   .fpTeamV2Select {
-    color: #eef3ff !important;
+    color: #0f1830 !important;
+    border-color: rgba(59,78,130,.14) !important;
+    background: linear-gradient(180deg, rgba(255,255,255,.86), rgba(241,246,255,.96)) !important;
+  }
+
+  .fpTeamV2BtnPrimary,
+  .fpTeamV2Tab.active,
+  .fpTeamV2Filter.active {
+    color: #fff !important;
+    background: linear-gradient(180deg, var(--fpBrand3, #5b8aff), var(--fpBrand, #2f5bff)) !important;
+  }
+
+  .fpTeamV2Textarea::placeholder,
+  .fpTeamV2Input::placeholder {
+    color: #7281a6 !important;
   }
 }
