@@ -1,20 +1,120 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>FlowPoint — Dashboard</title>
-<link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
-<link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
-<link rel="stylesheet" href="/dashboard.css" />
-<link rel="stylesheet" href="/team-workspace-rebuild.css?v=5" />
-<link rel="stylesheet" href="/team-workspace-polish.css?v=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a1230" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#dfe8ff" media="(prefers-color-scheme: light)" />
+  <title>FlowPoint — Dashboard</title>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
+  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
+  <link rel="stylesheet" href="/dashboard.css" />
+  <link rel="stylesheet" href="/team-workspace-rebuild.css?v=5" />
 </head>
 <body data-page="overview">
-<div class="fpOverlay" id="fpOverlay"></div>
-<div class="fpAppShell"><aside id="sidebar" class="fpSidebar"></aside><main class="fpMain"><header class="fpTopbar"><div class="fpTopbarLeft"><button id="fpMenuBtn" class="fpMenuBtn" type="button"><span></span><span></span><span></span></button><div class="fpHelloWrap"><div class="fpHelloHead"><div class="fpHelloBlock"><div class="fpHelloKicker">FLOWPOINT</div><h1 id="fpHelloTitle" class="fpHelloTitle">Bonjour, Maël</h1><div class="fpHelloSub">Dashboard</div></div></div></div></div><div class="fpTopbarRight"><select id="fpRangeSelect" class="fpSelect"><option value="30">30 derniers jours</option><option value="7">7 derniers jours</option><option value="3">3 derniers jours</option></select><button id="fpRefreshBtn" class="fpBtn fpBtnPrimary">Actualiser</button></div></header><div id="fpAccPlan" hidden></div><div id="fpAccTrial" hidden></div><div id="fpAccOrg" hidden></div><div id="fpAccRole" hidden></div><div class="fpPageWrap"><div id="fpPageContainer" class="fpPageContainer"></div></div></main></div>
-<script src="/dashboard-mobile-auth-guard.js"></script>
-<script src="/dashboard.js" defer></script>
-<script src="/team-workspace-rebuild.js?v=5" defer></script>
-<script src="/team-workspace-polish.js?v=1" defer></script>
-</body></html>
+  <div class="fpOverlay" id="fpOverlay"></div>
+
+  <div class="fpAppShell">
+    <aside id="sidebar" class="fpSidebar">
+      <div class="fpSidebarTop">
+        <div class="fpBrand">
+          <div class="fpBrandLogo">
+            <img src="/assets/flowpoint-logo.svg" alt="FlowPoint" class="fpBrandLogoImg" id="fpSidebarLogo" />
+          </div>
+          <div class="fpBrandText">
+            <div class="fpBrandName">FlowPoint</div>
+            <div class="fpBrandSub">Centre de contrôle</div>
+          </div>
+        </div>
+
+        <nav class="fpNav">
+          <a href="#overview" class="fpNavItem" data-route="overview"><span class="fpNavDot"></span><span>Overview</span></a>
+          <a href="#missions" class="fpNavItem" data-route="missions"><span class="fpNavDot"></span><span>Missions</span></a>
+          <a href="#audits" class="fpNavItem" data-route="audits"><span class="fpNavDot"></span><span>Audits</span></a>
+          <a href="#monitors" class="fpNavItem" data-route="monitors"><span class="fpNavDot"></span><span>Monitors</span></a>
+          <a href="#reports" class="fpNavItem" data-route="reports"><span class="fpNavDot"></span><span>Rapports</span></a>
+          <a href="#competitors" class="fpNavItem" data-route="competitors"><span class="fpNavDot"></span><span>Concurrents</span></a>
+          <a href="#local-seo" class="fpNavItem" data-route="local-seo"><span class="fpNavDot"></span><span>Local SEO</span></a>
+          <a href="#team" class="fpNavItem" data-route="team"><span class="fpNavDot"></span><span>Équipe</span></a>
+          <a href="#billing" class="fpNavItem" data-route="billing"><span class="fpNavDot"></span><span>Facturation</span></a>
+          <a href="#settings" class="fpNavItem" data-route="settings"><span class="fpNavDot"></span><span>Paramètres</span></a>
+        </nav>
+      </div>
+
+      <div class="fpSidebarBottom">
+        <div class="fpAccountCard" id="fpAccountCard">
+          <div class="fpCardKicker">Compte</div>
+
+          <div class="fpAccountRows">
+            <div class="fpAccountRow"><span>Plan</span><strong id="fpAccPlan">Plan non synchronisé</strong></div>
+            <div class="fpAccountRow"><span>Organisation</span><strong id="fpAccOrg">Workspace principal</strong></div>
+            <div class="fpAccountRow"><span>Rôle</span><strong id="fpAccRole">Owner</strong></div>
+            <div class="fpAccountRow"><span>Essai</span><strong id="fpAccTrial">En vérification</strong></div>
+          </div>
+
+          <div class="fpUsageStack">
+            <div class="fpUsageItem"><div class="fpUsageTop"><span>Audits</span><strong id="fpUsageAudits">0</strong></div><div class="fpBar"><div class="fpBarFill" id="fpBarAudits"></div></div></div>
+            <div class="fpUsageItem"><div class="fpUsageTop"><span>PDF</span><strong id="fpUsagePdf">0</strong></div><div class="fpBar"><div class="fpBarFill" id="fpBarPdf"></div></div></div>
+            <div class="fpUsageItem"><div class="fpUsageTop"><span>Exports</span><strong id="fpUsageExports">0</strong></div><div class="fpBar"><div class="fpBarFill" id="fpBarExports"></div></div></div>
+            <div class="fpUsageItem"><div class="fpUsageTop"><span>Monitors</span><strong id="fpUsageMonitors">0</strong></div><div class="fpBar"><div class="fpBarFill" id="fpBarMonitors"></div></div></div>
+          </div>
+
+          <div class="fpSidebarActions">
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenBillingSide" type="button">Facturation</button>
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenSettingsSide" type="button">Paramètres</button>
+            <button class="fpBtn fpBtnGhost fpBtnFull" id="fpOpenInviteSide" type="button">Inviter un membre</button>
+            <button class="fpBtn fpBtnDanger fpBtnFull" id="fpLogoutBtn" type="button">Déconnexion</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="fpMain">
+      <header class="fpTopbar">
+        <div class="fpTopbarLeft">
+          <button id="fpMenuBtn" class="fpMenuBtn" type="button" aria-label="Ouvrir le menu"><span></span><span></span><span></span></button>
+          <div class="fpHelloWrap">
+            <div class="fpHelloHead">
+              <div class="fpHelloBlock">
+                <div class="fpHelloKicker">FLOWPOINT</div>
+                <h1 id="fpHelloTitle" class="fpHelloTitle">Bonjour, Maël</h1>
+                <div class="fpHelloSub">Dashboard</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fpTopbarRight">
+          <select id="fpRangeSelect" class="fpSelect">
+            <option value="30">30 derniers jours</option>
+            <option value="7">7 derniers jours</option>
+            <option value="3">3 derniers jours</option>
+          </select>
+          <button id="fpRefreshBtn" class="fpBtn fpBtnPrimary" type="button">Actualiser</button>
+          <button id="fpTeamMessagesTop" class="fpBtn fpBtnGhost" type="button" data-open="messages">Messages</button>
+          <div class="fpExportWrap">
+            <button id="fpExportToggle" class="fpBtn fpBtnGhost" type="button">Exports</button>
+            <div id="fpExportMenu" class="fpExportMenu">
+              <button id="fpExportAudits" type="button">Exporter audits CSV</button>
+              <button id="fpExportMonitors" type="button">Exporter monitors CSV</button>
+            </div>
+          </div>
+          <div class="fpStatusPill">
+            <span id="fpStatusDot" class="fpStatusDot"></span>
+            <span id="fpStatusText">Dashboard prêt</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="fpPageWrap">
+        <div id="fpPageContainer" class="fpPageContainer"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/dashboard-mobile-auth-guard.js"></script>
+  <script src="/dashboard.js" defer></script>
+  <script src="/team-workspace-rebuild.js?v=5" defer></script>
+</body>
+</html>
