@@ -1,0 +1,427 @@
+/* =========================================================
+   FLOWPOINT TEAM — POLISH FINAL
+   ========================================================= */
+
+:root{
+  --fpTeamBlue:#2f5bff;
+  --fpTeamBlue2:#2449ff;
+  --fpTeamBlue3:#5b7cff;
+  --fpTeamInk:#f7f9ff;
+  --fpTeamSoft:#cfd9ff;
+  --fpTeamPanel:rgba(12,18,44,.94);
+  --fpTeamLine:rgba(155,181,255,.16);
+}
+
+.fpTeamV2 .fpTeamV2BtnPrimary,
+.fpTeamV2BtnPrimary{
+  background:linear-gradient(180deg,var(--fpBrand,#2f5bff),var(--fpBrand2,#2449ff))!important;
+  box-shadow:0 14px 34px rgba(47,91,255,.32)!important;
+  border-color:rgba(117,150,255,.42)!important;
+}
+
+.fpTeamV2 .fpTeamV2BtnGhost,
+.fpTeamV2BtnGhost{
+  background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.032))!important;
+  border-color:rgba(170,194,255,.18)!important;
+}
+
+.fpTeamV2SidebarCard,
+.fpTeamV2MiniCard,
+.fpTeamV2Insight,
+.fpTeamV2DocItem,
+.fpTeamV2FeedItem,
+.fpTeamV2TimelineEvent,
+.fpTeamV2NoteContent,
+.fpTeamV2MemberCard,
+.fpTeamV2SelectedCard,
+.fpTeamV2Stat,
+.fpTeamV2ActionCard,
+.fpTeamV2UpcomingItem{
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(157,183,255,.18)!important;
+  background:
+    linear-gradient(135deg,rgba(47,91,255,.13),transparent 34%),
+    linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.026))!important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 18px 42px rgba(2,8,26,.16)!important;
+}
+
+.fpTeamV2SidebarCard::before,
+.fpTeamV2MiniCard::before,
+.fpTeamV2FeedItem::before,
+.fpTeamV2NoteContent::before,
+.fpTeamV2MemberCard::before,
+.fpTeamV2SelectedCard::before{
+  content:"";
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:3px;
+  background:linear-gradient(180deg,var(--fpTeamBlue3),transparent);
+  opacity:.9;
+}
+
+.fpTeamV2SidebarCard strong,
+.fpTeamV2MiniCard strong,
+.fpTeamV2FeedItem strong,
+.fpTeamV2DocItem strong,
+.fpTeamV2TimelineEvent strong{
+  font-size:16px!important;
+  letter-spacing:-.01em;
+}
+
+.fpTeamV2SidebarCard span,
+.fpTeamV2MiniCard span,
+.fpTeamV2FeedItem span,
+.fpTeamV2DocItem span,
+.fpTeamV2TimelineEvent span{
+  color:rgba(226,234,255,.88)!important;
+}
+
+.fpTeamV2Composer{
+  margin-top:22px!important;
+  padding-top:20px!important;
+  border-top:1px solid rgba(160,184,255,.15)!important;
+}
+
+.fpTeamV2ComposerGrid{
+  grid-template-columns:minmax(0,1fr) 190px!important;
+  align-items:stretch!important;
+}
+
+.fpTeamV2Textarea{
+  min-height:190px!important;
+  background:linear-gradient(180deg,rgba(11,18,48,.72),rgba(9,14,35,.58))!important;
+  border-color:rgba(160,184,255,.22)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.045)!important;
+}
+
+.fpTeamV2Messages{
+  max-height:430px!important;
+  overscroll-behavior:contain;
+}
+
+.fpTeamV2FeedList,
+.fpTeamV2ActivityCards{
+  max-height:560px;
+  overflow:auto;
+  padding-right:6px;
+}
+
+.fpTeamV2AnalyticsHeat{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+
+.fpTeamV2HeatCell{
+  cursor:pointer;
+  min-height:92px!important;
+  border-radius:22px!important;
+}
+
+.fpTeamV2HeatCell:hover{
+  transform:translateY(-1px);
+  border-color:rgba(117,150,255,.45)!important;
+}
+
+.fpTeamV2NotesLayout,
+.fpTeamV2MembersLayout,
+.fpTeamV2ActivityLayout{
+  gap:20px!important;
+}
+
+.fpTeamV2NoteHeader,
+.fpTeamV2MembersTop{
+  padding-bottom:14px;
+  border-bottom:1px solid rgba(160,184,255,.14);
+}
+
+.fpTeamV2NoteItem,
+.fpTeamV2ChannelBtn{
+  border-radius:22px!important;
+  min-height:74px;
+}
+
+.fpTeamV2NoteItem strong,
+.fpTeamV2ChannelName{
+  font-size:17px!important;
+}
+
+.fpTeamV2PolishBlock{
+  margin-top:18px;
+  padding:18px;
+  border-radius:24px;
+  border:1px solid rgba(157,183,255,.18);
+  background:
+    radial-gradient(70% 100% at 10% 0%,rgba(47,91,255,.18),transparent 62%),
+    linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.022));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 16px 38px rgba(2,8,26,.15);
+}
+
+.fpTeamV2PolishGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin-top:14px;
+}
+
+.fpTeamV2PolishMini{
+  padding:14px;
+  border-radius:18px;
+  border:1px solid rgba(157,183,255,.15);
+  background:rgba(255,255,255,.045);
+}
+
+.fpTeamV2PolishMini strong{display:block;color:#fff;font-size:14px;margin-bottom:6px;}
+.fpTeamV2PolishMini span{display:block;color:rgba(226,234,255,.85);font-size:13px;line-height:1.45;}
+
+.fpTeamV2HeatDetails{
+  margin-top:14px;
+  padding:16px;
+  border-radius:22px;
+  border:1px solid rgba(157,183,255,.18);
+  background:rgba(255,255,255,.045);
+}
+
+.fpTeamV2HeatDetails strong{display:block;color:#fff;font-size:16px;margin-bottom:10px;}
+.fpTeamV2HeatDetails ul{margin:0;padding-left:18px;color:rgba(226,234,255,.9);line-height:1.7;font-weight:700;}
+
+@media (max-width: 980px){
+  .fpTeamV2ComposerGrid{grid-template-columns:1fr!important;}
+  .fpTeamV2Textarea{min-height:170px!important;}
+  .fpTeamV2GridChat,
+  .fpTeamV2NotesLayout,
+  .fpTeamV2MembersLayout,
+  .fpTeamV2ActivityLayout,
+  .fpTeamV2CalendarLayout{grid-template-columns:1fr!important;}
+}
+
+@media (max-width: 760px){
+  .fpTeamV2{
+    gap:18px!important;
+    overflow-x:hidden!important;
+  }
+
+  .fpTeamV2Hero,
+  .fpTeamV2Panel,
+  .fpTeamV2SidebarCard,
+  .fpTeamV2SelectedCard{
+    border-radius:28px!important;
+  }
+
+  .fpTeamV2HeroTitle{font-size:40px!important;}
+
+  .fpTeamV2Kpis{
+    grid-template-columns:1fr!important;
+  }
+
+  .fpTeamV2Tabs{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .fpTeamV2Tab{min-height:58px!important;border-radius:22px!important;}
+
+  .fpTeamV2CalendarLayout{
+    display:block!important;
+    width:100%!important;
+    max-width:100%!important;
+    overflow:hidden!important;
+  }
+
+  .fpTeamV2CalendarHeader{
+    display:flex!important;
+    flex-direction:column!important;
+    gap:16px!important;
+  }
+
+  .fpTeamV2CalendarNav{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+  }
+
+  .fpTeamV2CalendarSurface{
+    width:100%!important;
+    max-width:100%!important;
+    overflow:hidden!important;
+    border-radius:28px!important;
+    padding:16px 12px 18px!important;
+    background:linear-gradient(180deg,rgba(255,255,255,.94),rgba(238,244,255,.91))!important;
+    border-color:rgba(120,140,190,.20)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 18px 48px rgba(38,58,112,.12)!important;
+  }
+
+  .fpTeamV2Weekdays{
+    gap:4px!important;
+    margin-bottom:10px!important;
+  }
+
+  .fpTeamV2Weekdays div{
+    color:#76819e!important;
+    text-align:center!important;
+    font-size:11px!important;
+    letter-spacing:.18em!important;
+  }
+
+  .fpTeamV2CalendarGrid{
+    grid-template-columns:repeat(7,minmax(0,1fr))!important;
+    gap:7px!important;
+    width:100%!important;
+    max-width:100%!important;
+  }
+
+  .fpTeamV2DayCard{
+    min-width:0!important;
+    width:100%!important;
+    min-height:78px!important;
+    height:78px!important;
+    padding:8px 3px!important;
+    border-radius:999px!important;
+    text-align:center!important;
+    background:linear-gradient(180deg,#fff,rgba(245,248,255,.9))!important;
+    border-color:rgba(130,147,190,.18)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 7px 18px rgba(30,48,92,.06)!important;
+  }
+
+  .fpTeamV2DayTop{
+    justify-content:center!important;
+    margin-bottom:4px!important;
+  }
+
+  .fpTeamV2DayTop strong{
+    color:#0f172a!important;
+    font-size:18px!important;
+    font-weight:900!important;
+  }
+
+  .fpTeamV2DayCard.isMuted .fpTeamV2DayTop strong{color:#8e96aa!important;}
+  .fpTeamV2DayCard.isSelected{outline:3px solid rgba(47,91,255,.72)!important;box-shadow:0 0 0 4px rgba(47,91,255,.10)!important;}
+  .fpTeamV2DayCard.isToday{background:linear-gradient(180deg,#ff5454,#f04444)!important;}
+  .fpTeamV2DayCard.isToday .fpTeamV2DayTop strong{color:#fff!important;}
+
+  .fpTeamV2DayCount{
+    position:absolute!important;
+    right:8px!important;
+    bottom:8px!important;
+    min-width:18px!important;
+    height:18px!important;
+    font-size:9px!important;
+    background:rgba(47,91,255,.14)!important;
+    color:#1e3a8a!important;
+  }
+
+  .fpTeamV2DayPills{
+    align-items:center!important;
+    gap:3px!important;
+  }
+
+  .fpTeamV2DayPill{
+    width:7px!important;
+    height:7px!important;
+    min-height:7px!important;
+    padding:0!important;
+    border-radius:999px!important;
+    font-size:0!important;
+    border:0!important;
+    background:#bf7cff!important;
+  }
+
+  .fpTeamV2SelectedCard{
+    margin-top:16px!important;
+  }
+
+  .fpTeamV2MessagesWrap{grid-template-columns:1fr!important;}
+  .fpTeamV2Messages{max-height:420px!important;}
+  .fpTeamV2ComposerGrid{grid-template-columns:1fr!important;}
+  .fpTeamV2Textarea{min-height:210px!important;}
+  .fpTeamV2PolishGrid{grid-template-columns:1fr!important;}
+  .fpTeamV2AnalyticsHeat{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+}
+
+@media (prefers-color-scheme: light){
+  .fpTeamV2{
+    color:#0f172a!important;
+  }
+
+  .fpTeamV2Hero,
+  .fpTeamV2Panel,
+  .fpTeamV2SidebarCard,
+  .fpTeamV2SelectedCard,
+  .fpTeamV2Kpi,
+  .fpTeamV2Stat,
+  .fpTeamV2MiniCard,
+  .fpTeamV2MemberCard,
+  .fpTeamV2NoteItem,
+  .fpTeamV2FeedItem,
+  .fpTeamV2DocItem,
+  .fpTeamV2TimelineEvent,
+  .fpTeamV2PolishBlock{
+    background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(238,244,255,.86))!important;
+    border-color:rgba(120,140,190,.20)!important;
+    color:#0f172a!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.92),0 16px 42px rgba(38,58,112,.10)!important;
+  }
+
+  .fpTeamV2HeroTitle,
+  .fpTeamV2SectionTitle,
+  .fpTeamV2SelectedTitle,
+  .fpTeamV2ChannelName,
+  .fpTeamV2MemberName,
+  .fpTeamV2MessageTop strong,
+  .fpTeamV2Kpi strong,
+  .fpTeamV2Stat strong,
+  .fpTeamV2MiniCard strong,
+  .fpTeamV2SidebarCard strong,
+  .fpTeamV2FeedItem strong,
+  .fpTeamV2DocItem strong,
+  .fpTeamV2TimelineEvent strong,
+  .fpTeamV2NoteItem strong,
+  .fpTeamV2MemberCard strong,
+  .fpTeamV2PolishMini strong{
+    color:#0f172a!important;
+  }
+
+  .fpTeamV2HeroText,
+  .fpTeamV2SectionText,
+  .fpTeamV2MessageText,
+  .fpTeamV2MemberBio,
+  .fpTeamV2NoteContent,
+  .fpTeamV2ChannelMeta,
+  .fpTeamV2MemberTitle,
+  .fpTeamV2MemberRole,
+  .fpTeamV2Kpi small,
+  .fpTeamV2Subtle,
+  .fpTeamV2MessageMeta,
+  .fpTeamV2MiniCard span,
+  .fpTeamV2SidebarCard span,
+  .fpTeamV2FeedItem span,
+  .fpTeamV2DocItem span,
+  .fpTeamV2TimelineEvent span,
+  .fpTeamV2PolishMini span{
+    color:#50607f!important;
+  }
+
+  .fpTeamV2BtnGhost,
+  .fpTeamV2Tab,
+  .fpTeamV2MetaPill,
+  .fpTeamV2Badge,
+  .fpTeamV2Tag,
+  .fpTeamV2Status{
+    color:#0f172a!important;
+    background:linear-gradient(180deg,rgba(255,255,255,.86),rgba(242,246,255,.72))!important;
+    border-color:rgba(120,140,190,.22)!important;
+  }
+
+  .fpTeamV2Tab.active,
+  .fpTeamV2BtnPrimary{
+    color:#fff!important;
+  }
+
+  .fpTeamV2Input,
+  .fpTeamV2Textarea,
+  .fpTeamV2Select{
+    color:#0f172a!important;
+    background:rgba(255,255,255,.82)!important;
+    border-color:rgba(120,140,190,.22)!important;
+  }
+}
