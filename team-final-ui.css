@@ -1,0 +1,217 @@
+/* FLOWPOINT TEAM — FINAL UI CLEAN PATCH */
+:root{
+  --fpTeamBlue:#2f5bff;
+  --fpTeamBlue2:#2449ff;
+  --fpTeamText:#f8fbff;
+  --fpTeamSoft:#d8e3ff;
+  --fpTeamPanel:#101a42;
+  --fpTeamPanel2:#0c1435;
+  --fpTeamLine:rgba(156,181,255,.14);
+}
+
+.fpTeamV2 .fpTeamV2BtnPrimary,
+.fpTeamV2BtnPrimary{
+  background:linear-gradient(180deg,var(--fpBrand,#2f5bff),var(--fpBrand2,#2449ff))!important;
+  border-color:rgba(130,160,255,.36)!important;
+  box-shadow:0 14px 34px rgba(47,91,255,.30)!important;
+}
+
+.fpTeamV2 .fpTeamV2BtnGhost,
+.fpTeamV2BtnGhost{
+  background:rgba(255,255,255,.045)!important;
+  border-color:rgba(170,194,255,.14)!important;
+  box-shadow:none!important;
+}
+
+/* Nettoyage des encadrements moches : cards plus sobres, moins de lignes inutiles */
+.fpTeamV2SidebarCard,
+.fpTeamV2MiniCard,
+.fpTeamV2DocItem,
+.fpTeamV2FeedItem,
+.fpTeamV2TimelineEvent,
+.fpTeamV2NoteContent,
+.fpTeamV2NoteItem,
+.fpTeamV2MemberCard,
+.fpTeamV2Stat,
+.fpTeamV2Kpi,
+.fpTeamV2SelectedCard,
+.fpTeamV2ActionCard,
+.fpTeamV2UpcomingItem,
+.fpTeamV2Insight{
+  border:1px solid rgba(160,184,255,.13)!important;
+  background:
+    linear-gradient(135deg,rgba(47,91,255,.09),transparent 34%),
+    linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.024))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 14px 34px rgba(3,10,28,.14)!important;
+}
+
+.fpTeamV2MiniCard,
+.fpTeamV2DocItem,
+.fpTeamV2FeedItem,
+.fpTeamV2TimelineEvent{
+  border-radius:18px!important;
+  padding:14px 15px!important;
+}
+
+.fpTeamV2SidebarCard{
+  border-radius:24px!important;
+}
+
+.fpTeamV2MiniCard strong,
+.fpTeamV2SidebarCard strong,
+.fpTeamV2DocItem strong,
+.fpTeamV2FeedItem strong,
+.fpTeamV2TimelineEvent strong{
+  display:block!important;
+  color:#fff!important;
+  font-size:15px!important;
+  margin:0 0 5px!important;
+}
+
+.fpTeamV2MiniCard span,
+.fpTeamV2SidebarCard span,
+.fpTeamV2DocItem span,
+.fpTeamV2FeedItem span,
+.fpTeamV2TimelineEvent span{
+  display:block!important;
+  color:rgba(220,230,255,.82)!important;
+  font-size:13px!important;
+  line-height:1.5!important;
+  margin:0!important;
+}
+
+/* Zones notes plus vivantes */
+.fpTeamV2NoteContent{
+  font-size:15px!important;
+  line-height:1.72!important;
+  padding:20px!important;
+  white-space:pre-wrap!important;
+}
+
+.fpTeamV2NoteContent + .fpTeamV2MiniList .fpTeamV2MiniCard,
+.fpTeamV2SidebarCard .fpTeamV2MiniCard{
+  background:rgba(255,255,255,.035)!important;
+}
+
+/* Chat : plus de trou, zone message plus grande et stable */
+.fpTeamV2Composer{
+  margin-top:20px!important;
+  padding-top:18px!important;
+}
+.fpTeamV2ComposerGrid{
+  grid-template-columns:minmax(0,1fr) 180px!important;
+  align-items:stretch!important;
+}
+.fpTeamV2Textarea{
+  min-height:190px!important;
+  background:rgba(7,12,31,.42)!important;
+}
+.fpTeamV2Messages,
+.fpTeamV2FeedList{
+  max-height:480px!important;
+  overflow-y:auto!important;
+  padding-right:8px!important;
+  overscroll-behavior:contain;
+}
+.fpTeamV2ActivityCards{
+  max-height:330px!important;
+  overflow-y:auto!important;
+  padding-right:6px!important;
+}
+
+/* Blocs supplémentaires utiles */
+.fpTeamExtraGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin-top:16px;
+}
+.fpTeamExtraBlock{
+  padding:16px;
+  border-radius:20px;
+  border:1px solid rgba(160,184,255,.13);
+  background:linear-gradient(180deg,rgba(255,255,255,.052),rgba(255,255,255,.024));
+}
+.fpTeamExtraBlock strong{display:block;color:#fff;font-size:15px;margin-bottom:6px;}
+.fpTeamExtraBlock span{display:block;color:rgba(220,230,255,.82);font-size:13px;line-height:1.5;}
+.fpTeamExtraBlock b{color:#fff;}
+
+.fpTeamHeatDetails{
+  margin-top:14px;
+  padding:16px;
+  border-radius:20px;
+  border:1px solid rgba(160,184,255,.13);
+  background:linear-gradient(180deg,rgba(47,91,255,.11),rgba(255,255,255,.03));
+}
+.fpTeamHeatDetails strong{display:block;color:#fff;margin-bottom:10px;}
+.fpTeamHeatDetails ul{margin:0;padding-left:18px;color:rgba(220,230,255,.86);line-height:1.7;font-weight:700;}
+
+.fpTeamV2HeatCell{cursor:pointer;transition:transform .16s ease,border-color .16s ease;}
+.fpTeamV2HeatCell:hover{transform:translateY(-1px);border-color:rgba(130,160,255,.42)!important;}
+
+/* Bouton Messages topbar */
+#fpTeamMessagesTop{
+  position:relative;
+}
+#fpTeamMessagesTop[data-count]:not([data-count="0"])::after{
+  content:attr(data-count);
+  position:absolute;
+  top:-8px;right:-8px;
+  min-width:20px;height:20px;padding:0 6px;
+  border-radius:999px;
+  background:#ef4444;color:#fff;
+  font-size:11px;font-weight:900;
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* Calendrier mobile style Apple : seulement mobile, desktop inchangé */
+@media (max-width:760px){
+  .fpTeamV2CalendarLayout{display:block!important;width:100%!important;overflow:hidden!important;}
+  .fpTeamV2CalendarHeader{display:flex!important;flex-direction:column!important;gap:14px!important;}
+  .fpTeamV2CalendarNav{display:grid!important;grid-template-columns:1fr!important;gap:10px!important;}
+  .fpTeamV2CalendarSurface{
+    padding:14px 10px 16px!important;
+    border-radius:30px!important;
+    background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(238,244,255,.90))!important;
+    border:1px solid rgba(140,156,195,.20)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 18px 45px rgba(39,58,110,.12)!important;
+  }
+  .fpTeamV2Weekdays{grid-template-columns:repeat(7,minmax(0,1fr))!important;gap:4px!important;margin-bottom:10px!important;}
+  .fpTeamV2Weekdays div{font-size:11px!important;letter-spacing:.16em!important;text-align:center!important;color:#77829c!important;}
+  .fpTeamV2CalendarGrid{grid-template-columns:repeat(7,minmax(0,1fr))!important;gap:7px!important;width:100%!important;}
+  .fpTeamV2DayCard{
+    width:100%!important;min-width:0!important;
+    min-height:82px!important;height:82px!important;
+    border-radius:999px!important;
+    padding:8px 3px!important;
+    text-align:center!important;
+    background:linear-gradient(180deg,#ffffff,#f4f7ff)!important;
+    border:1px solid rgba(130,147,190,.16)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 7px 18px rgba(30,48,92,.055)!important;
+  }
+  .fpTeamV2DayTop{justify-content:center!important;margin-bottom:4px!important;}
+  .fpTeamV2DayTop strong{font-size:18px!important;color:#111827!important;font-weight:900!important;}
+  .fpTeamV2DayCard.isMuted .fpTeamV2DayTop strong{color:#8b94a8!important;}
+  .fpTeamV2DayCard.isSelected{outline:3px solid rgba(47,91,255,.72)!important;box-shadow:0 0 0 4px rgba(47,91,255,.10)!important;}
+  .fpTeamV2DayCard.isToday{background:linear-gradient(180deg,#ff5858,#ef4444)!important;border-color:rgba(239,68,68,.65)!important;}
+  .fpTeamV2DayCard.isToday .fpTeamV2DayTop strong{color:#fff!important;}
+  .fpTeamV2DayCount{position:absolute!important;right:8px!important;bottom:8px!important;min-width:18px!important;height:18px!important;font-size:9px!important;color:#1e3a8a!important;background:rgba(47,91,255,.12)!important;}
+  .fpTeamV2DayPills{align-items:center!important;gap:3px!important;}
+  .fpTeamV2DayPill{width:7px!important;height:7px!important;min-height:7px!important;padding:0!important;border-radius:999px!important;font-size:0!important;background:#bf7cff!important;border:0!important;}
+  .fpTeamV2SelectedCard{margin-top:14px!important;}
+  .fpTeamV2GridChat,.fpTeamV2NotesLayout,.fpTeamV2MembersLayout,.fpTeamV2ActivityLayout{grid-template-columns:1fr!important;}
+  .fpTeamV2MessagesWrap{grid-template-columns:1fr!important;}
+  .fpTeamV2ComposerGrid{grid-template-columns:1fr!important;}
+  .fpTeamV2Textarea{min-height:210px!important;}
+  .fpTeamExtraGrid{grid-template-columns:1fr!important;}
+}
+
+@media (prefers-color-scheme: light){
+  .fpTeamV2SidebarCard,.fpTeamV2MiniCard,.fpTeamV2DocItem,.fpTeamV2FeedItem,.fpTeamV2TimelineEvent,.fpTeamV2NoteContent,.fpTeamV2NoteItem,.fpTeamV2MemberCard,.fpTeamV2Stat,.fpTeamV2Kpi,.fpTeamV2SelectedCard,.fpTeamV2ActionCard,.fpTeamV2UpcomingItem,.fpTeamV2Insight,.fpTeamExtraBlock,.fpTeamHeatDetails{
+    background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(242,246,255,.84))!important;
+    border-color:rgba(130,150,190,.20)!important;
+    color:#111827!important;
+  }
+  .fpTeamV2MiniCard strong,.fpTeamV2SidebarCard strong,.fpTeamV2DocItem strong,.fpTeamV2FeedItem strong,.fpTeamV2TimelineEvent strong,.fpTeamExtraBlock strong,.fpTeamHeatDetails strong{color:#111827!important;}
+  .fpTeamV2MiniCard span,.fpTeamV2SidebarCard span,.fpTeamV2DocItem span,.fpTeamV2FeedItem span,.fpTeamV2TimelineEvent span,.fpTeamExtraBlock span{color:#52617c!important;}
+}
