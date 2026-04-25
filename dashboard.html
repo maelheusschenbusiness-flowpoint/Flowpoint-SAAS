@@ -1,1 +1,20 @@
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>FlowPoint — Dashboard</title><link rel="stylesheet" href="/dashboard.css"><link rel="stylesheet" href="/team-workspace-rebuild.css?v=5"><link rel="stylesheet" href="/team-workspace-polish.css?v=1"></head><body data-page="overview"><div class="fpOverlay" id="fpOverlay"></div><div class="fpAppShell"><aside id="sidebar" class="fpSidebar"><nav class="fpNav"><a href="#overview" class="fpNavItem">Overview</a><a href="#team" class="fpNavItem">Équipe</a></nav></aside><main class="fpMain"><header class="fpTopbar"><div class="fpTopbarLeft"><button id="fpMenuBtn" class="fpMenuBtn" type="button"><span></span><span></span><span></span></button><div class="fpHelloWrap"><h1 id="fpHelloTitle" class="fpHelloTitle">Bonjour, Maël</h1></div></div><div class="fpTopbarRight"><button id="fpRefreshBtn" class="fpBtn fpBtnPrimary">Actualiser</button></div></header><div id="fpAccPlan" hidden>Standard</div><div id="fpAccTrial" hidden></div><div id="fpAccOrg" hidden>Workspace principal</div><div id="fpAccRole" hidden>Owner</div><div class="fpPageWrap"><div id="fpPageContainer" class="fpPageContainer"></div></div></main></div><script src="/dashboard-mobile-auth-guard.js"></script><script src="/dashboard.js" defer></script><script src="/team-workspace-rebuild.js?v=5" defer></script><script src="/team-workspace-polish.js?v=1" defer></script></body></html>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>FlowPoint — Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
+<link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
+<link rel="stylesheet" href="/dashboard.css" />
+<link rel="stylesheet" href="/team-workspace-rebuild.css?v=5" />
+<link rel="stylesheet" href="/team-workspace-polish.css?v=1" />
+</head>
+<body data-page="overview">
+<div class="fpOverlay" id="fpOverlay"></div>
+<div class="fpAppShell"><aside id="sidebar" class="fpSidebar"></aside><main class="fpMain"><header class="fpTopbar"><div class="fpTopbarLeft"><button id="fpMenuBtn" class="fpMenuBtn" type="button"><span></span><span></span><span></span></button><div class="fpHelloWrap"><div class="fpHelloHead"><div class="fpHelloBlock"><div class="fpHelloKicker">FLOWPOINT</div><h1 id="fpHelloTitle" class="fpHelloTitle">Bonjour, Maël</h1><div class="fpHelloSub">Dashboard</div></div></div></div></div><div class="fpTopbarRight"><select id="fpRangeSelect" class="fpSelect"><option value="30">30 derniers jours</option><option value="7">7 derniers jours</option><option value="3">3 derniers jours</option></select><button id="fpRefreshBtn" class="fpBtn fpBtnPrimary">Actualiser</button></div></header><div id="fpAccPlan" hidden></div><div id="fpAccTrial" hidden></div><div id="fpAccOrg" hidden></div><div id="fpAccRole" hidden></div><div class="fpPageWrap"><div id="fpPageContainer" class="fpPageContainer"></div></div></main></div>
+<script src="/dashboard-mobile-auth-guard.js"></script>
+<script src="/dashboard.js" defer></script>
+<script src="/team-workspace-rebuild.js?v=5" defer></script>
+<script src="/team-workspace-polish.js?v=1" defer></script>
+</body></html>
