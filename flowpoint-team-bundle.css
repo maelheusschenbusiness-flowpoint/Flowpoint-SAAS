@@ -1,0 +1,21 @@
+/* FlowPoint Team Bundle — consolidated legacy team styles
+   This file centralizes the useful team CSS modules so dashboard.html stays clean.
+   Missing files are harmless during deploy; existing files keep their original content. */
+
+@import url('/team-calendar-pro.css');
+@import url('/team-chat-polish.css');
+@import url('/team-final-ui.css');
+@import url('/team-final-polish.css');
+@import url('/team-mobile-fixes.css');
+@import url('/notes d\'équipe - membres - polonais.css');
+@import url('/team-workspace-polish.css');
+@import url('/team-workspace-rebuild.css');
+
+/* Final normalization layer */
+body[data-page="team"] .fpPageContainer{gap:18px}
+body[data-page="team"] .teamCard,
+body[data-page="team"] .teamPanel,
+body[data-page="team"] .teamWorkspace,
+body[data-page="team"] .teamSection{border-radius:22px}
+body[data-page="team"] button{cursor:pointer}
+@media(max-width:760px){body[data-page="team"] .fpPageWrap{padding-bottom:110px}}
