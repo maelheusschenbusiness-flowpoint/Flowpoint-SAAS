@@ -2,34 +2,81 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  
+  <meta name="theme-color" content="#0a1230" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#dfe8ff" media="(prefers-color-scheme: light)" />
 
   <title>FlowPoint — Dashboard</title>
 
+  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
   <link rel="stylesheet" href="/dashboard.css" />
 </head>
 
 <body data-page="overview">
 
-  <div class="fpAppShell">
+<div class="fpAppShell">
 
-    <aside class="fpSidebar">
-      <div class="fpBrand">FlowPoint</div>
+  <!-- SIDEBAR -->
+  <aside class="fpSidebar">
 
-      <nav class="fpNav">
-        <a href="#overview">Overview</a>
-        <a href="#missions">Missions</a>
-        <a href="#team">Équipe</a>
-      </nav>
-    </aside>
+    <div class="fpBrand">
+      <img src="/assets/flowpoint-logo.svg" class="fpLogo"/>
+      <div>
+        <div class="fpBrandName">FlowPoint</div>
+        <div class="fpBrandSub">Centre de contrôle</div>
+      </div>
+    </div>
 
-    <main class="fpMain">
-      <div id="fpPageContainer"></div>
-    </main>
+    <nav class="fpNav">
+      <a href="#overview">Overview</a>
+      <a href="#missions">Missions</a>
+      <a href="#audits">Audits</a>
+      <a href="#monitors">Monitors</a>
+      <a href="#reports">Rapports</a>
+      <a href="#local-seo">Local SEO</a>
+      <a href="#team">Équipe</a>
+      <a href="#billing">Facturation</a>
+      <a href="#settings">Paramètres</a>
+    </nav>
 
-  </div>
+  </aside>
 
-  <script src="/dashboard.js"></script>
+  <!-- MAIN -->
+  <main class="fpMain">
+
+    <!-- TOPBAR -->
+    <header class="fpTopbar">
+
+      <div class="fpTopbarLeft">
+        <h1>Bonjour</h1>
+        <span>SEO · Monitoring · Rapports · Facturation</span>
+      </div>
+
+      <div class="fpTopbarRight">
+        <select>
+          <option>30 derniers jours</option>
+          <option>7 jours</option>
+        </select>
+
+        <button>Actualiser</button>
+        <button>Exports</button>
+
+        <div class="fpStatus">
+          ● Dashboard prêt
+        </div>
+      </div>
+
+    </header>
+
+    <!-- CONTENT -->
+    <div id="fpPageContainer"></div>
+
+  </main>
+
+</div>
+
+<script src="/dashboard.js"></script>
 
 </body>
 </html>
