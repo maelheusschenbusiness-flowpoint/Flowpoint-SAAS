@@ -5003,7 +5003,104 @@ app.get("/api/export/audits.csv", auth, requireActive, sendAuditsCsv);
 app.get("/api/export/monitors.csv", auth, requireActive, sendMonitorsCsv);
 app.get("/api/exports/audits.csv", auth, requireActive, sendAuditsCsv);
 app.get("/api/exports/monitors.csv", auth, requireActive, sendMonitorsCsv);
+// ========================================
+// DASHBOARD OVERVIEW
+// ========================================
 
+app.get("/api/dashboard/overview", async (req, res) => {
+  try {
+
+    // ========================================
+    // TEMP MOCK REAL STRUCTURE
+    // ========================================
+
+    // IMPORTANT:
+    // Ceci est une structure backend réelle.
+    // On remplacera ensuite progressivement
+    // les mocks par vraies données MongoDB.
+
+    const overview = {
+      healthScore: 86,
+
+      uptime: 99.97,
+
+      seoScore: 81,
+
+      conversionScore: 74,
+
+      localSeoScore: 79,
+
+      growthMomentum: 18,
+
+      criticalAlerts: 2,
+
+      activeMissions: 17,
+
+      activeMonitors: 6,
+
+      reportsGenerated: 42,
+
+      aiSummary: [
+        "Mobile conversion friction detected.",
+        "2 competitors increased local visibility.",
+        "Monitoring stability remains excellent.",
+        "3 high-impact SEO opportunities available."
+      ],
+
+      opportunities: [
+        {
+          title: "Improve mobile CLS",
+          impact: "High",
+          roi: "+12% conversion potential"
+        },
+
+        {
+          title: "Create local landing pages",
+          impact: "High",
+          roi: "+18% local visibility"
+        },
+
+        {
+          title: "Optimize CTA hierarchy",
+          impact: "Medium",
+          roi: "+7% engagement"
+        }
+      ],
+
+      activity: [
+        {
+          type: "monitor",
+          label: "Checkout monitor recovered",
+          time: "2 min ago"
+        },
+
+        {
+          type: "seo",
+          label: "SEO score improved",
+          time: "18 min ago"
+        },
+
+        {
+          type: "report",
+          label: "Executive report generated",
+          time: "1h ago"
+        }
+      ]
+    };
+
+    res.json({
+      success: true,
+      overview
+    });
+
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      error: "Overview failed"
+    });
+  }
+});
 // ---------- ADMIN ----------
 app.get("/api/admin/users", requireAdmin, async (req, res) => {
   const list = await User.find({}).sort({ createdAt: -1 }).limit(200);
