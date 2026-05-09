@@ -45,52 +45,7 @@ app.use("/uploads", express.static(UPLOAD_DIR, {
   index: false,
   redirect: false,
 }));
-app.use(express.json());
-// ========================================
-// AUTH ME
-// ========================================
 
-app.get("/api/auth/me", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-
-    if (!user) {
-      return res.status(404).json({
-        error: "User not found"
-      });
-    }
-
-    const org = await Org.findById(user.orgId);
-
-    res.json({
-      success: true,
-
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name || "",
-        role: user.role || "owner"
-      },
-
-      org: org ? {
-        id: org._id,
-        name: org.name || "Workspace",
-        plan: org.plan || "standard"
-      } : {
-        id: null,
-        name: "Workspace",
-        plan: "standard"
-      }
-    });
-
-  } catch (err) {
-    console.error("AUTH /ME ERROR", err);
-
-    res.status(500).json({
-      error: "Server error"
-    });
-  }
-});
 function safeFileName(name = "") {
   return String(name || "")
     .replace(/[^\w.\-() ]+/g, "_")
@@ -4226,6 +4181,84 @@ app.get("/api/auth/session", auth, async (req, res) => {
     });
   } catch (e) {
     return res.status(401).json({ error: "Session invalide" });
+  }
+});
+
+
+// ---------- AUTH: ME (Dashboard Core) ----------
+// Route compatible avec /dashboard/js/app.js : charge la session, l'utilisateur, l'organisation et les quotas réels.
+app.get("/api/auth/me", auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.uid);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User introuvable",
+      });
+    }
+
+    await resetUsageIfNewMonth(user);
+    const org = await ensureOrgForUser(user);
+    await ensureOrgDefaults(org);
+
+    const quotas = effectiveQuotas(user, org);
+
+    const activeMonitors = await Monitor.countDocuments({
+      orgId: user.orgId,
+      active: true,
+    });
+
+    const teamSeats = await User.countDocuments({
+      orgId: user.orgId,
+    });
+
+    return res.json({
+      success: true,
+      authenticated: true,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name || "",
+        role: user.role || "owner",
+        plan: user.plan || "standard",
+        companyName: user.companyName || "",
+        hasTrial: !!user.hasTrial,
+        trialEndsAt: user.trialEndsAt || null,
+        accessBlocked: !!user.accessBlocked,
+        subscriptionStatus: user.subscriptionStatus || "",
+        lastPaymentStatus: user.lastPaymentStatus || "",
+      },
+      org: org ? {
+        id: org._id,
+        name: org.name || user.companyName || "Workspace",
+        plan: user.plan || "standard",
+        role: user.role || "owner",
+        retentionDays: org.retentionDays ?? 30,
+        addons: org.billingAddons || {},
+        branding: org.branding || {},
+        integrations: org.integrations || {},
+      } : {
+        id: null,
+        name: user.companyName || "Workspace",
+        plan: user.plan || "standard",
+        role: user.role || "owner",
+      },
+      quotas: {
+        audits: { used: user.usedAudits || 0, limit: quotas.audits },
+        monitors: { used: activeMonitors, limit: quotas.monitors },
+        reports: { used: user.usedPdf || 0, limit: quotas.pdf },
+        exports: { used: user.usedExports || 0, limit: quotas.exports },
+        aiCredits: { used: 0, limit: user.plan === "ultra" ? 5000 : user.plan === "pro" ? 1000 : 100 },
+        seats: { used: teamSeats, limit: quotas.teamSeats },
+      },
+    });
+  } catch (e) {
+    console.log("auth/me error:", e.message);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur chargement session",
+    });
   }
 });
 
