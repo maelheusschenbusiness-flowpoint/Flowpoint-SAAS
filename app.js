@@ -4,9 +4,10 @@
 
 import { fpState } from "./state.js";
 import { api } from "./api.js";
+import { initRouter } from "./router.js";
 
 // ========================================
-// Initialize App
+// Bootstrap
 // ========================================
 
 async function bootstrap() {
@@ -16,6 +17,8 @@ async function bootstrap() {
 
   bindGlobalEvents();
 
+  initRouter();
+
   fpState.app.initialized = true;
   fpState.app.loading = false;
 
@@ -23,7 +26,7 @@ async function bootstrap() {
 }
 
 // ========================================
-// Session Loader
+// Load Session
 // ========================================
 
 async function loadSession() {
@@ -38,11 +41,16 @@ async function loadSession() {
 
   if (!result.success) {
     localStorage.removeItem("fp_token");
+
     window.location.href = "/login.html";
+
     return;
   }
 
+  fpState.auth.authenticated = true;
+
   fpState.user = result.data.user;
+
   fpState.org = result.data.org;
 
   console.log("👤 Session Loaded");
