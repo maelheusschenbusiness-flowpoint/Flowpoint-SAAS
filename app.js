@@ -1,7 +1,7 @@
 // ========================================
 // FlowPoint App Bootstrap
 // ========================================
-
+import "./overview.js";
 import { fpState } from "./state.js";
 import { api } from "./api.js";
 import { initRouter } from "./router.js";
