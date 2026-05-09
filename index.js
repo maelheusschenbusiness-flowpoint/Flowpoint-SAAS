@@ -45,7 +45,52 @@ app.use("/uploads", express.static(UPLOAD_DIR, {
   index: false,
   redirect: false,
 }));
+app.use(express.json());
+// ========================================
+// AUTH ME
+// ========================================
 
+app.get("/api/auth/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found"
+      });
+    }
+
+    const org = await Org.findById(user.orgId);
+
+    res.json({
+      success: true,
+
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name || "",
+        role: user.role || "owner"
+      },
+
+      org: org ? {
+        id: org._id,
+        name: org.name || "Workspace",
+        plan: org.plan || "standard"
+      } : {
+        id: null,
+        name: "Workspace",
+        plan: "standard"
+      }
+    });
+
+  } catch (err) {
+    console.error("AUTH /ME ERROR", err);
+
+    res.status(500).json({
+      error: "Server error"
+    });
+  }
+});
 function safeFileName(name = "") {
   return String(name || "")
     .replace(/[^\w.\-() ]+/g, "_")
