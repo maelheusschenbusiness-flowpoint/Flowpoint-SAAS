@@ -5236,7 +5236,82 @@ app.get("/api/org/quotas", async (req, res) => {
     });
 
   }
+// ========================================
+// ACTIVITY FEED
+// ========================================
 
+app.get("/api/activity", async (req, res) => {
+
+  try {
+
+    // ========================================
+    // TEMP STRUCTURE
+    // ========================================
+
+    // Ensuite :
+    // remplacer progressivement
+    // par vraie activité MongoDB
+
+    const activity = [
+
+      {
+        type: "monitor",
+        title: "Checkout monitor recovered",
+        description: "Latency stabilized after incident.",
+        level: "good",
+        time: "2 min ago"
+      },
+
+      {
+        type: "seo",
+        title: "SEO score improved",
+        description: "Mobile optimization increased performance.",
+        level: "good",
+        time: "18 min ago"
+      },
+
+      {
+        type: "alert",
+        title: "Critical uptime alert",
+        description: "API latency exceeded threshold.",
+        level: "critical",
+        time: "44 min ago"
+      },
+
+      {
+        type: "report",
+        title: "Executive report generated",
+        description: "Monthly business report exported.",
+        level: "info",
+        time: "1h ago"
+      },
+
+      {
+        type: "ai",
+        title: "AI optimization generated",
+        description: "FlowPoint AI created 4 optimization missions.",
+        level: "ai",
+        time: "2h ago"
+      }
+
+    ];
+
+    res.json({
+      success: true,
+      activity
+    });
+
+  } catch (err) {
+
+    console.error(err);
+
+    res.status(500).json({
+      error: "Activity loading failed"
+    });
+
+  }
+
+});
 });
 // ---------- START ----------
 app.listen(PORT, () => {
