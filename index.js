@@ -5160,7 +5160,84 @@ if (process.env.RENDER) {
 app.use("/api", (req, res) => {
   return res.status(404).json({ error: "Route API introuvable" });
 });
+// ========================================
+// ORG QUOTAS
+// ========================================
 
+app.get("/api/org/quotas", async (req, res) => {
+
+  try {
+
+    // ========================================
+    // TEMP STRUCTURE
+    // ========================================
+
+    // Ensuite :
+    // remplacer par vraie logique Mongo/Stripe
+
+    const quotas = {
+
+      plan: "pro",
+
+      audits: {
+        used: 42,
+        limit: 300
+      },
+
+      monitors: {
+        used: 18,
+        limit: 50
+      },
+
+      reports: {
+        used: 27,
+        limit: 300
+      },
+
+      exports: {
+        used: 16,
+        limit: 300
+      },
+
+      aiCredits: {
+        used: 380,
+        limit: 1500
+      },
+
+      seats: {
+        used: 4,
+        limit: 10
+      },
+
+      storage: {
+        used: 8.2,
+        limit: 50
+      },
+
+      addons: [
+        "+50 monitors",
+        "AI Strategist",
+        "White Label Reports"
+      ]
+
+    };
+
+    res.json({
+      success: true,
+      quotas
+    });
+
+  } catch (err) {
+
+    console.error(err);
+
+    res.status(500).json({
+      error: "Quota loading failed"
+    });
+
+  }
+
+});
 // ---------- START ----------
 app.listen(PORT, () => {
   console.log(`✅ ${BRAND_NAME} lancé sur port ${PORT}`);
