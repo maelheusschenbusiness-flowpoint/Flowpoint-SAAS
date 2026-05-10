@@ -1,82 +1,729 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
+
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-  
-  <meta name="theme-color" content="#0a1230" media="(prefers-color-scheme: dark)" />
-  <meta name="theme-color" content="#dfe8ff" media="(prefers-color-scheme: light)" />
 
-  <title>FlowPoint — Dashboard</title>
+  <meta
+    name="viewport"
+    content="
+      width=device-width,
+      initial-scale=1.0
+    "
+  />
 
-  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
-  <link rel="stylesheet" href="/dashboard.css" />
+  <title>
+    FlowPoint Dashboard
+  </title>
+
+  <link
+    rel="preconnect"
+    href="https://fonts.googleapis.com"
+  />
+
+  <link
+    rel="preconnect"
+    href="https://fonts.gstatic.com"
+    crossorigin
+  />
+
+  <link
+    href="
+      https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap
+    "
+    rel="stylesheet"
+  />
+
+  <link
+    rel="stylesheet"
+    href="/dashboard.css"
+  />
+
 </head>
 
-<body data-page="overview">
+<body data-theme="dark">
 
-<div class="fpAppShell">
+  <div class="fpApp">
 
-  <!-- SIDEBAR -->
-  <aside class="fpSidebar">
+    <!-- =====================================================
+         SIDEBAR
+    ====================================================== -->
 
-    <div class="fpBrand">
-      <img src="/assets/flowpoint-logo.svg" class="fpLogo"/>
-      <div>
-        <div class="fpBrandName">FlowPoint</div>
-        <div class="fpBrandSub">Centre de contrôle</div>
-      </div>
-    </div>
+    <aside
+      class="fpSidebar"
+      id="fpSidebar"
+    >
 
-    <nav class="fpNav">
-      <a href="#overview">Overview</a>
-      <a href="#missions">Missions</a>
-      <a href="#audits">Audits</a>
-      <a href="#monitors">Monitors</a>
-      <a href="#reports">Rapports</a>
-      <a href="#local-seo">Local SEO</a>
-      <a href="#team">Équipe</a>
-      <a href="#billing">Facturation</a>
-      <a href="#settings">Paramètres</a>
-    </nav>
+      <div class="fpBrand">
 
-  </aside>
-
-  <!-- MAIN -->
-  <main class="fpMain">
-
-    <!-- TOPBAR -->
-    <header class="fpTopbar">
-
-      <div class="fpTopbarLeft">
-        <h1>Bonjour</h1>
-        <span>SEO · Monitoring · Rapports · Facturation</span>
-      </div>
-
-      <div class="fpTopbarRight">
-        <select>
-          <option>30 derniers jours</option>
-          <option>7 jours</option>
-        </select>
-
-        <button>Actualiser</button>
-        <button>Exports</button>
-
-        <div class="fpStatus">
-          ● Dashboard prêt
+        <div class="fpBrandLogo">
+          ⚡
         </div>
+
+        <div class="fpBrandText">
+
+          <div class="fpBrandTitle">
+            FlowPoint
+          </div>
+
+          <div class="fpBrandSubtitle">
+            Executive Platform
+          </div>
+
+        </div>
+
       </div>
 
-    </header>
+      <nav class="fpSidebarNav">
 
-    <!-- CONTENT -->
-    <div id="fpPageContainer"></div>
+        <button
+          class="
+            fpSidebarLink
+            active
+          "
+          data-route="#overview"
+          onclick="
+            navigateTo(
+              '#overview'
+            )
+          "
+        >
 
-  </main>
+          <span>
+            📊
+          </span>
 
-</div>
+          <span>
+            Overview
+          </span>
 
-<script src="/dashboard.js"></script>
-<script type="module" src="/dashboard/js/app.js"></script>
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#missions"
+          onclick="
+            navigateTo(
+              '#missions'
+            )
+          "
+        >
+
+          <span>
+            🎯
+          </span>
+
+          <span>
+            Missions
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#monitors"
+          onclick="
+            navigateTo(
+              '#monitors'
+            )
+          "
+        >
+
+          <span>
+            🌐
+          </span>
+
+          <span>
+            Monitors
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#audits"
+          onclick="
+            navigateTo(
+              '#audits'
+            )
+          "
+        >
+
+          <span>
+            📈
+          </span>
+
+          <span>
+            Audits
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#reports"
+          onclick="
+            navigateTo(
+              '#reports'
+            )
+          "
+        >
+
+          <span>
+            📄
+          </span>
+
+          <span>
+            Reports
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#local-seo"
+          onclick="
+            navigateTo(
+              '#local-seo'
+            )
+          "
+        >
+
+          <span>
+            📍
+          </span>
+
+          <span>
+            Local SEO
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#competitors"
+          onclick="
+            navigateTo(
+              '#competitors'
+            )
+          "
+        >
+
+          <span>
+            🧠
+          </span>
+
+          <span>
+            Competitors
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#alerts"
+          onclick="
+            navigateTo(
+              '#alerts'
+            )
+          "
+        >
+
+          <span>
+            🚨
+          </span>
+
+          <span>
+            Alerts
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#team"
+          onclick="
+            navigateTo(
+              '#team'
+            )
+          "
+        >
+
+          <span>
+            👥
+          </span>
+
+          <span>
+            Team
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#agency"
+          onclick="
+            navigateTo(
+              '#agency'
+            )
+          "
+        >
+
+          <span>
+            🏢
+          </span>
+
+          <span>
+            Agency
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#automations"
+          onclick="
+            navigateTo(
+              '#automations'
+            )
+          "
+        >
+
+          <span>
+            ⚙️
+          </span>
+
+          <span>
+            Automations
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#ai-workspace"
+          onclick="
+            navigateTo(
+              '#ai-workspace'
+            )
+          "
+        >
+
+          <span>
+            🤖
+          </span>
+
+          <span>
+            AI Workspace
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#billing"
+          onclick="
+            navigateTo(
+              '#billing'
+            )
+          "
+        >
+
+          <span>
+            💳
+          </span>
+
+          <span>
+            Billing
+          </span>
+
+        </button>
+
+        <button
+          class="fpSidebarLink"
+          data-route="#settings"
+          onclick="
+            navigateTo(
+              '#settings'
+            )
+          "
+        >
+
+          <span>
+            ⚙️
+          </span>
+
+          <span>
+            Settings
+          </span>
+
+        </button>
+
+      </nav>
+
+    </aside>
+
+    <!-- =====================================================
+         MAIN
+    ====================================================== -->
+
+    <main class="fpMain">
+
+      <!-- ===================================================
+           TOPBAR
+      ==================================================== -->
+
+      <header class="fpTopbar">
+
+        <div class="fpTopbarLeft">
+
+          <button
+            class="fpMobileMenu"
+            onclick="toggleSidebar()"
+          >
+            ☰
+          </button>
+
+          <div class="fpSearchBar">
+
+            <input
+              type="text"
+              placeholder="
+                Search workspace...
+              "
+            />
+
+          </div>
+
+        </div>
+
+        <div class="fpTopbarRight">
+
+          <button
+            class="fpThemeButton"
+            onclick="
+              toggleTheme()
+            "
+          >
+            🌙
+          </button>
+
+          <button
+            class="fpThemeButton"
+            onclick="
+              openCommandPalette()
+            "
+          >
+            ⌘K
+          </button>
+
+          <div class="fpUserBox">
+
+            <div class="fpUserAvatar">
+              F
+            </div>
+
+            <div class="fpUserMeta">
+
+              <div class="fpUserName">
+                FlowPoint User
+              </div>
+
+              <div class="fpUserPlan">
+                Ultra Plan
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </header>
+
+      <!-- ===================================================
+           PAGE CONTENT
+      ==================================================== -->
+
+      <div
+        class="fpPage"
+        id="fpPage"
+      >
+
+        <div class="fpPageLoading">
+
+          <div class="fpSpinner"></div>
+
+          <div class="fpLoadingText">
+            Initializing FlowPoint...
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- =====================================================
+       GLOBAL VARIABLES
+  ====================================================== -->
+
+  <script>
+
+    window.FLOWPOINT_STRIPE_STANDARD =
+      "price_standard";
+
+    window.FLOWPOINT_STRIPE_PRO =
+      "price_pro";
+
+    window.FLOWPOINT_STRIPE_ULTRA =
+      "price_ultra";
+
+  </script>
+
+  <!-- =====================================================
+       DASHBOARD ENGINE
+  ====================================================== -->
+
+  <script src="/dashboard.js"></script>
+
 </body>
 </html>
+<!-- =====================================================
+     ADD THIS INSIDE <head>
+===================================================== -->
+
+<meta
+  name="theme-color"
+  content="#070b19"
+/>
+
+<link
+  rel="icon"
+  type="image/svg+xml"
+  href="/assets/flowpoint-logo.svg"
+/>
+
+<!-- =====================================================
+     ADD THIS BEFORE </body>
+===================================================== -->
+
+<!-- MOBILE OVERLAY -->
+
+<div
+  class="fpMobileOverlay"
+  id="fpMobileOverlay"
+  onclick="toggleSidebar()"
+></div>
+
+<!-- GLOBAL TOASTS -->
+
+<div
+  class="fpToastContainer"
+  id="fpToastContainer"
+></div>
+
+<!-- =====================================================
+     OPTIONAL PREMIUM WIDGETS
+===================================================== -->
+
+<template id="fpPremiumWidgets">
+
+  <!-- KPI WIDGET -->
+
+  <div class="fpKpiWidget">
+
+    <div class="fpKpiWidgetTop">
+
+      <div class="fpKpiWidgetLabel">
+        Revenue Opportunity
+      </div>
+
+      <div class="fpKpiWidgetTrend positive">
+        +14%
+      </div>
+
+    </div>
+
+    <div class="fpKpiWidgetValue">
+      €12.4k
+    </div>
+
+    <div class="fpKpiWidgetBottom">
+      Estimated additional revenue
+    </div>
+
+  </div>
+
+  <!-- HEALTH WIDGET -->
+
+  <div class="fpHealthWidget">
+
+    <div class="fpHealthWidgetHeader">
+
+      <div class="fpHealthWidgetTitle">
+        Infrastructure Health
+      </div>
+
+    </div>
+
+    <div class="fpHealthBars">
+
+      <div class="fpHealthBar">
+
+        <div class="fpHealthBarLabel">
+          Uptime
+        </div>
+
+        <div class="fpHealthBarTrack">
+
+          <div
+            class="fpHealthBarFill"
+            style="width:99%"
+          ></div>
+
+        </div>
+
+      </div>
+
+      <div class="fpHealthBar">
+
+        <div class="fpHealthBarLabel">
+          Performance
+        </div>
+
+        <div class="fpHealthBarTrack">
+
+          <div
+            class="fpHealthBarFill"
+            style="width:82%"
+          ></div>
+
+        </div>
+
+      </div>
+
+      <div class="fpHealthBar">
+
+        <div class="fpHealthBarLabel">
+          SEO
+        </div>
+
+        <div class="fpHealthBarTrack">
+
+          <div
+            class="fpHealthBarFill"
+            style="width:76%"
+          ></div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</template>
+
+<!-- =====================================================
+     OPTIONAL SCRIPT PATCHES
+===================================================== -->
+
+<script>
+
+  // Sidebar overlay sync
+
+  const originalToggleSidebar =
+    window.toggleSidebar;
+
+  window.toggleSidebar =
+    function() {
+
+      const sidebar =
+        document.getElementById(
+          "fpSidebar"
+        );
+
+      const overlay =
+        document.getElementById(
+          "fpMobileOverlay"
+        );
+
+      sidebar.classList.toggle(
+        "mobile-open"
+      );
+
+      overlay.classList.toggle(
+        "visible"
+      );
+
+    };
+
+  // Auto close sidebar on route
+
+  const originalNavigateTo =
+    window.navigateTo;
+
+  window.navigateTo =
+    function(route) {
+
+      const sidebar =
+        document.getElementById(
+          "fpSidebar"
+        );
+
+      const overlay =
+        document.getElementById(
+          "fpMobileOverlay"
+        );
+
+      sidebar.classList.remove(
+        "mobile-open"
+      );
+
+      overlay.classList.remove(
+        "visible"
+      );
+
+      window.location.hash =
+        route;
+
+    };
+
+  // ESC close modals
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+
+      if (
+        event.key === "Escape"
+      ) {
+
+        document
+        .querySelectorAll(
+          ".fpModalOverlay"
+        )
+        .forEach(
+          (item) =>
+            item.remove()
+        );
+
+        document
+        .querySelectorAll(
+          ".fpCommandPaletteOverlay"
+        )
+        .forEach(
+          (item) =>
+            item.remove()
+        );
+
+      }
+
+    }
+  );
+
+</script>
