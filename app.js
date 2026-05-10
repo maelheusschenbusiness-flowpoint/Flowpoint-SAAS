@@ -5,7 +5,7 @@ import "./overview.js";
 import { fpState } from "./state.js";
 import { api } from "./api.js";
 import { initRouter } from "./router.js";
-
+import "./billing.js";
 // ========================================
 // Bootstrap
 // ========================================
