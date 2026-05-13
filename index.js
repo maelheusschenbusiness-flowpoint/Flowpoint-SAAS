@@ -5313,6 +5313,38 @@ app.get("/api/activity", async (req, res) => {
 
 });
 });
+// ---------- AI CHAT (/api/ai/chat) ----------
+app.post('/api/ai/chat', auth, requireActive, async (req, res) => {
+  try {
+    const { message, context } = req.body;
+    if (!message) return res.status(400).json({ error: 'message requis' });
+
+    const OPENAI_KEY = process.env.OPENAI_API_KEY;
+    if (!OPENAI_KEY) return res.json({ reply: "Assistant IA non configuré (OPENAI_API_KEY manquant)." });
+
+    const openai = new (require('openai'))({ apiKey: OPENAI_KEY });
+
+    const user = req.user;
+    const chat = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `Tu es l'assistant IA de Flowpoint, expert SEO local. Plan ${context?.plan || user?.plan || 'Standard'}, score ${context?.avgScore || '—'}/100. Réponds en français, concis et actionnable, avec ** pour le gras. Maximum 400 mots.`
+        },
+        { role: 'user', content: message }
+      ],
+      max_tokens: 500
+    });
+
+    const reply = chat.choices?.[0]?.message?.content || 'Pas de réponse.';
+    res.json({ reply });
+  } catch (e) {
+    console.error('[AI chat]', e?.message || e);
+    res.status(500).json({ error: e?.message || 'Erreur IA' });
+  }
+});
+
 // ---------- START ----------
 app.listen(PORT, () => {
   console.log(`✅ ${BRAND_NAME} lancé sur port ${PORT}`);
