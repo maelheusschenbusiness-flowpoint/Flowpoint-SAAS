@@ -1,13 +1,13 @@
-/* ═══════════════════════════════════════════════════════════
-   FLOWPOINT DASHBOARD — Premium CSS v2.0
-   Design System: #050810 bg · #2563EB accent · Outfit+Inter
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   FLOWPOINT DASHBOARD â€” Premium CSS v2.0
+   Design System: #050810 bg Â· #2563EB accent Â· Outfit+Inter
    Compatible: Chrome 90+, Firefox 88+, Safari 14+, Edge 90+
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* ── GOOGLE FONTS fallback (if HTML link fails) ── */
+/* â”€â”€ GOOGLE FONTS fallback (if HTML link fails) â”€â”€ */
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-/* ── DESIGN TOKENS ── */
+/* â”€â”€ DESIGN TOKENS â”€â”€ */
 :root {
   /* Colors */
   --fp-bg:            #050810;
@@ -91,7 +91,7 @@
   --fp-bg-overlay:    rgba(0,0,0,0.5);
 }
 
-/* ── RESET & BASE ── */
+/* â”€â”€ RESET & BASE â”€â”€ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
@@ -125,7 +125,7 @@ button { font-family: var(--fp-font-body); cursor: pointer; }
 input, textarea, select { font-family: var(--fp-font-body); }
 a { color: var(--fp-accent); text-decoration: none; }
 
-/* ── BACKGROUND GRADIENT ── */
+/* â”€â”€ BACKGROUND GRADIENT â”€â”€ */
 body::before {
   content: '';
   position: fixed;
@@ -144,14 +144,14 @@ body::before {
     linear-gradient(180deg, #f8faff 0%, #eef2ff 100%);
 }
 
-/* ── LAYOUT ── */
+/* â”€â”€ LAYOUT â”€â”€ */
 .fp-layout {
   display: grid;
   grid-template-columns: var(--fp-sidebar-w) 1fr;
   min-height: 100vh;
 }
 
-/* ── SIDEBAR ── */
+/* â”€â”€ SIDEBAR â”€â”€ */
 .fp-sidebar {
   position: sticky;
   top: 0;
@@ -369,7 +369,7 @@ body::before {
 .fp-user-name { font-size: 11px; font-weight: 600; color: var(--fp-text); }
 .fp-user-plan { font-size: 10px; color: var(--fp-text-muted); }
 
-/* ── MAIN WRAPPER ── */
+/* â”€â”€ MAIN WRAPPER â”€â”€ */
 .fp-main-wrap {
   display: flex;
   flex-direction: column;
@@ -378,7 +378,7 @@ body::before {
   overflow: hidden;
 }
 
-/* ── TOPBAR ── */
+/* â”€â”€ TOPBAR â”€â”€ */
 .fp-topbar {
   position: sticky;
   top: 0;
@@ -451,7 +451,7 @@ body::before {
 .fp-icon-btn--ai { border-color: rgba(139,92,246,0.25); background: rgba(139,92,246,0.1); color: var(--fp-purple); }
 .fp-icon-btn--ai:hover { background: rgba(139,92,246,0.18); }
 
-/* ── PAGE CONTENT ── */
+/* â”€â”€ PAGE CONTENT â”€â”€ */
 .fp-page {
   flex: 1;
   min-height: 0;
@@ -461,7 +461,7 @@ body::before {
   -webkit-overflow-scrolling: touch;
 }
 
-/* ── SECTION HEADER ── */
+/* â”€â”€ SECTION HEADER â”€â”€ */
 .fp-section-header {
   display: flex;
   align-items: flex-start;
@@ -489,7 +489,7 @@ body::before {
   align-items: center;
 }
 
-/* ── CARDS ── */
+/* â”€â”€ CARDS â”€â”€ */
 .fp-card {
   background: var(--fp-bg-card);
   border: 1px solid var(--fp-border);
@@ -516,7 +516,7 @@ body::before {
   gap: 8px;
 }
 
-/* ── KPI CARDS ── */
+/* â”€â”€ KPI CARDS â”€â”€ */
 .fp-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -665,7 +665,7 @@ body::before {
   letter-spacing: 0.08em;
 }
 
-/* ── BUTTONS ── */
+/* â”€â”€ BUTTONS â”€â”€ */
 .fp-btn {
   display: inline-flex;
   align-items: center;
@@ -707,7 +707,7 @@ body::before {
 .fp-btn-sm { padding: 6px 12px; font-size: 12px; }
 .fp-btn-sm svg { width: 13px; height: 13px; }
 
-/* ── BADGES ── */
+/* â”€â”€ BADGES â”€â”€ */
 .fp-badge {
   display: inline-flex;
   align-items: center;
@@ -719,7 +719,7 @@ body::before {
   border: 1px solid transparent;
 }
 
-/* ── TOGGLE ── */
+/* â”€â”€ TOGGLE â”€â”€ */
 .fp-toggle {
   width: 44px;
   height: 24px;
@@ -746,7 +746,7 @@ body::before {
 }
 .fp-toggle.on::after { transform: translateX(20px); }
 
-/* ── TABLES ── */
+/* â”€â”€ TABLES â”€â”€ */
 .fp-table-wrap {
   background: var(--fp-bg-card);
   border: 1px solid var(--fp-border);
@@ -816,7 +816,7 @@ body::before {
   transition: width 0.8s var(--fp-ease);
 }
 
-/* ── COMMAND PALETTE ── */
+/* â”€â”€ COMMAND PALETTE â”€â”€ */
 .fp-cmd-overlay {
   position: fixed;
   inset: 0;
@@ -920,7 +920,7 @@ body::before {
 }
 .fp-cmd-empty { padding: 32px 16px; text-align: center; color: var(--fp-text-faint); font-size: 14px; }
 
-/* ── CONTEXT MENU ── */
+/* â”€â”€ CONTEXT MENU â”€â”€ */
 .fp-ctx-menu {
   position: fixed;
   z-index: 9998;
@@ -954,7 +954,7 @@ body::before {
 .fp-ctx-item.danger svg { color: var(--fp-danger); }
 .fp-ctx-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 4px 0; }
 
-/* ── FLOATING PANEL ── */
+/* â”€â”€ FLOATING PANEL â”€â”€ */
 .fp-float-panel-wrapper {
   position: fixed;
   inset: 0;
@@ -1002,7 +1002,7 @@ body::before {
   padding: 24px;
 }
 
-/* ── TOAST SYSTEM ── */
+/* â”€â”€ TOAST SYSTEM â”€â”€ */
 #fp-toast-container {
   position: fixed;
   bottom: 24px;
@@ -1035,7 +1035,7 @@ body::before {
 .fp-toast.warning { background: #78350f; border-color: rgba(245,158,11,0.4); }
 .fp-toast.info    { background: #1e3a5f; border-color: rgba(37,99,235,0.4); }
 
-/* ── NOTIFICATION CENTER ── */
+/* â”€â”€ NOTIFICATION CENTER â”€â”€ */
 .fp-notif-wrap { position: relative; }
 .fp-notif-badge {
   position: absolute;
@@ -1086,7 +1086,7 @@ body::before {
 .fp-notif-item-desc { font-size: 12px; color: var(--fp-text-muted); margin-top: 2px; }
 .fp-notif-item-time { font-size: 11px; color: var(--fp-text-faint); margin-top: 4px; }
 
-/* ── SHORTCUTS MODAL ── */
+/* â”€â”€ SHORTCUTS MODAL â”€â”€ */
 .fp-modal-overlay {
   position: fixed;
   inset: 0;
@@ -1142,7 +1142,7 @@ body::before {
   font-family: var(--fp-font-body);
 }
 
-/* ── FAB MENU (legacy block — overridden below) ── */
+/* â”€â”€ FAB MENU (legacy block â€” overridden below) â”€â”€ */
 .fp-fab-backdrop {
   display: none;
   position: fixed;
@@ -1150,7 +1150,7 @@ body::before {
   z-index: 190;
 }
 
-/* ── FILTER BAR ── */
+/* â”€â”€ FILTER BAR â”€â”€ */
 .fp-filter-bar {
   display: flex;
   gap: 10px;
@@ -1214,7 +1214,7 @@ body::before {
 }
 .fp-select option { background: #0d1525; color: var(--fp-text); }
 
-/* ── GRID HELPERS ── */
+/* â”€â”€ GRID HELPERS â”€â”€ */
 .fp-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .fp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .fp-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
@@ -1223,7 +1223,7 @@ body::before {
 .fp-mb-20 { margin-bottom: 20px; }
 .fp-mb-24 { margin-bottom: 24px; }
 
-/* ── ACTIVITY FEED ── */
+/* â”€â”€ ACTIVITY FEED â”€â”€ */
 .fp-activity-item {
   display: flex;
   gap: 10px;
@@ -1243,7 +1243,7 @@ body::before {
 .fp-activity-desc { font-size: 11px; color: var(--fp-text-muted); margin-top: 1px; }
 .fp-activity-time { font-size: 10px; color: var(--fp-text-faint); margin-top: 2px; }
 
-/* ── MONITOR CARDS ── */
+/* â”€â”€ MONITOR CARDS â”€â”€ */
 .fp-monitor-card {
   background: var(--fp-bg-card);
   border: 1px solid var(--fp-border);
@@ -1279,7 +1279,7 @@ body::before {
   border-radius: 3px;
 }
 
-/* ── MISSION KANBAN ── */
+/* â”€â”€ MISSION KANBAN â”€â”€ */
 .fp-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 
 .fp-kanban-col-header {
@@ -1311,7 +1311,7 @@ body::before {
 .fp-kanban-card:active { cursor: grabbing; }
 .fp-kanban-card-title { font-size: 12px; color: var(--fp-text-soft); line-height: 1.4; margin-bottom: 8px; }
 
-/* ── AI CHAT ── */
+/* â”€â”€ AI CHAT â”€â”€ */
 .fp-ai-wrap { display: flex; flex-direction: column; gap: 12px; }
 .fp-ai-message {
   display: flex;
@@ -1408,7 +1408,7 @@ body::before {
 }
 .fp-ai-quick:hover { background: rgba(37,99,235,0.18); }
 
-/* ── LOCAL SEO CIRCLE ── */
+/* â”€â”€ LOCAL SEO CIRCLE â”€â”€ */
 .fp-circle-chart { position: relative; display: inline-flex; flex-direction: column; align-items: center; }
 .fp-circle-chart svg circle { transition: stroke-dasharray 1s var(--fp-ease); }
 .fp-circle-value {
@@ -1422,7 +1422,7 @@ body::before {
 .fp-circle-num { font-family: var(--fp-font-head); font-size: 28px; font-weight: 800; color: var(--fp-text); }
 .fp-circle-den { font-size: 10px; color: var(--fp-text-muted); }
 
-/* ── CHECKLIST ── */
+/* â”€â”€ CHECKLIST â”€â”€ */
 .fp-checklist { display: flex; flex-direction: column; gap: 8px; }
 .fp-check-item {
   display: flex;
@@ -1447,7 +1447,7 @@ body::before {
 .fp-check-label { font-size: 12px; color: var(--fp-text-soft); }
 .fp-check-label.done { text-decoration: line-through; color: var(--fp-text-muted); }
 
-/* ── FORM ELEMENTS ── */
+/* â”€â”€ FORM ELEMENTS â”€â”€ */
 .fp-form-group { margin-bottom: 14px; }
 .fp-form-label {
   display: block;
@@ -1473,7 +1473,7 @@ body::before {
 .fp-input:focus { border-color: var(--fp-accent-border); }
 .fp-input::placeholder { color: var(--fp-text-muted); }
 
-/* ── EMPTY STATE ── */
+/* â”€â”€ EMPTY STATE â”€â”€ */
 .fp-empty {
   padding: 48px 16px;
   text-align: center;
@@ -1481,7 +1481,7 @@ body::before {
   font-size: 14px;
 }
 
-/* ── VIEW TOGGLE ── */
+/* â”€â”€ VIEW TOGGLE â”€â”€ */
 .fp-view-toggle {
   display: flex;
   background: var(--fp-bg-input);
@@ -1502,7 +1502,7 @@ body::before {
 }
 .fp-view-toggle-btn.active { background: rgba(37,99,235,0.3); color: var(--fp-text); }
 
-/* ── INLINE QUICK-ADD ── */
+/* â”€â”€ INLINE QUICK-ADD â”€â”€ */
 .fp-quick-add {
   background: var(--fp-bg-card);
   border: 1px solid var(--fp-border);
@@ -1520,10 +1520,10 @@ body::before {
 }
 .fp-quick-add-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
-/* ── SCORE DONUT (local seo) ── */
+/* â”€â”€ SCORE DONUT (local seo) â”€â”€ */
 .fp-score-ring { transform: rotate(-90deg); transform-origin: center; }
 
-/* ── ONBOARDING ── */
+/* â”€â”€ ONBOARDING â”€â”€ */
 .fp-onboarding {
   position: fixed;
   inset: 0;
@@ -1553,7 +1553,7 @@ body::before {
 .fp-onboarding-dot.active { background: var(--fp-accent); }
 .fp-onboarding-actions { display: flex; gap: 10px; justify-content: center; }
 
-/* ── HOVER TOOLBAR ── */
+/* â”€â”€ HOVER TOOLBAR â”€â”€ */
 .fp-hover-toolbar-wrap { position: relative; }
 .fp-hover-toolbar {
   position: absolute;
@@ -1592,7 +1592,7 @@ body::before {
 }
 .fp-hover-toolbar-btn:hover { background: rgba(37,99,235,0.15); color: var(--fp-accent); }
 
-/* ── ANIMATIONS ── */
+/* â”€â”€ ANIMATIONS â”€â”€ */
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.6; transform: scale(0.92); }
@@ -1635,7 +1635,7 @@ body::before {
 }
 .fp-page-animated { animation: fp-page-in 0.22s var(--fp-ease) both; }
 
-/* ── RESPONSIVE MOBILE ── */
+/* â”€â”€ RESPONSIVE MOBILE â”€â”€ */
 @media (max-width: 768px) {
   .fp-layout { grid-template-columns: 1fr; }
   .fp-sidebar {
@@ -1664,7 +1664,7 @@ body::before {
   .fp-kanban { grid-template-columns: 1fr; }
 }
 
-/* ── FAB BACKDROP ── */
+/* â”€â”€ FAB BACKDROP â”€â”€ */
 .fp-fab-backdrop {
   display: none;
   position: fixed;
@@ -1676,7 +1676,7 @@ body::before {
 }
 .fp-fab-backdrop.show { display: block; }
 
-/* ── MOBILE HAMBURGER ── */
+/* â”€â”€ MOBILE HAMBURGER â”€â”€ */
 .fp-hamburger {
   display: none;
   flex-direction: column;
@@ -1700,7 +1700,7 @@ body::before {
 .fp-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 @media (max-width: 768px) { .fp-hamburger { display: flex; } }
 
-/* ── TABLE HOVER ACTIONS (hide by default, show on row hover) ── */
+/* â”€â”€ TABLE HOVER ACTIONS (hide by default, show on row hover) â”€â”€ */
 .fp-table tbody tr .fp-row-actions {
   display: flex;
   gap: 6px;
@@ -1710,7 +1710,7 @@ body::before {
 .fp-table tbody tr:hover .fp-row-actions { opacity: 1; }
 
 
-/* ── UTILITY ── */
+/* â”€â”€ UTILITY â”€â”€ */
 .fp-text-accent { color: var(--fp-accent); }
 .fp-text-success { color: var(--fp-success); }
 .fp-text-danger { color: var(--fp-danger); }
@@ -1725,19 +1725,19 @@ body::before {
 .fp-flex-between { display: flex; align-items: center; justify-content: space-between; }
 .fp-link-btn { background: none; border: none; color: var(--fp-accent); font-size: 12px; cursor: pointer; font-family: var(--fp-font-body); }
 
-/* ── KANBAN DRAG/DROP ── */
+/* â”€â”€ KANBAN DRAG/DROP â”€â”€ */
 .fp-kanban-card.dragging { opacity: 0.4; transform: scale(0.97); }
 .fp-kanban-col.drag-over { background: rgba(37,99,235,0.07); border: 1px dashed rgba(37,99,235,0.4); }
 
-/* ── J/K ROW SELECTION ── */
+/* â”€â”€ J/K ROW SELECTION â”€â”€ */
 .fp-row-selected { background: rgba(37,99,235,0.08) !important; outline: 1px solid rgba(37,99,235,0.3); }
 
-/* ═══════════════════════════════════════════════════════════
-   FLOWPOINT v3 — Sidebar Collapse · SubNav · AI Blocks
-   New Pages · Command Palette · FAB Fix · Retention
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   FLOWPOINT v3 â€” Sidebar Collapse Â· SubNav Â· AI Blocks
+   New Pages Â· Command Palette Â· FAB Fix Â· Retention
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* ── SIDEBAR COLLAPSE ── */
+/* â”€â”€ SIDEBAR COLLAPSE â”€â”€ */
 :root { --fp-sidebar-collapsed-w: 64px; }
 
 .fp-sidebar {
@@ -1791,7 +1791,7 @@ body::before {
 .fp-sidebar.collapsed .fp-status-dot-wrap { justify-content: center; }
 .fp-sidebar.collapsed .fp-sidebar-footer { padding: 10px 4px; text-align: center; }
 
-/* ── SIDEBAR COLLAPSE BUTTON ── */
+/* â”€â”€ SIDEBAR COLLAPSE BUTTON â”€â”€ */
 .fp-sidebar-collapse-btn {
   margin-left: auto;
   width: 26px;
@@ -1818,7 +1818,7 @@ body::before {
   opacity: 1;
 }
 
-/* ── NAV SECTION LABELS ── */
+/* â”€â”€ NAV SECTION LABELS â”€â”€ */
 .fp-nav-section-label {
   font-size: 10px;
   font-weight: 700;
@@ -1828,7 +1828,7 @@ body::before {
   padding: 10px 14px 4px;
 }
 
-/* ── NAV NEW BADGE ── */
+/* â”€â”€ NAV NEW BADGE â”€â”€ */
 .fp-nav-new {
   margin-left: auto;
   background: linear-gradient(135deg, #2563EB, #8b5cf6);
@@ -1845,7 +1845,7 @@ body::before {
   color: #000 !important;
 }
 
-/* ── TOPBAR BREADCRUMB ── */
+/* â”€â”€ TOPBAR BREADCRUMB â”€â”€ */
 .fp-topbar-breadcrumb {
   display: flex;
   align-items: center;
@@ -1869,7 +1869,7 @@ body::before {
   font-weight: 600;
 }
 
-/* ── TOPBAR SCORE ── */
+/* â”€â”€ TOPBAR SCORE â”€â”€ */
 .fp-topbar-score {
   display: flex;
   align-items: center;
@@ -1885,7 +1885,7 @@ body::before {
   cursor: default;
 }
 
-/* ── STREAK ROW ── */
+/* â”€â”€ STREAK ROW â”€â”€ */
 .fp-streak-row {
   display: flex;
   align-items: center;
@@ -1907,7 +1907,7 @@ body::before {
   font-family: var(--fp-font-mono);
 }
 
-/* ── SUB-NAVIGATION TABS ── */
+/* â”€â”€ SUB-NAVIGATION TABS â”€â”€ */
 .fp-sub-nav {
   display: flex;
   align-items: center;
@@ -1944,7 +1944,7 @@ body::before {
   font-weight: 600;
 }
 
-/* ── AI BLOCK ── */
+/* â”€â”€ AI BLOCK â”€â”€ */
 .fp-ai-block {
   background: rgba(37,99,235,0.04);
   border: 1px solid rgba(37,99,235,0.12);
@@ -2009,7 +2009,7 @@ body::before {
   border-color: rgba(37,99,235,0.4);
 }
 
-/* ── STAT ROW ── */
+/* â”€â”€ STAT ROW â”€â”€ */
 .fp-stat-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -2062,7 +2062,7 @@ body::before {
 .fp-stat-card-delta.down { color: var(--fp-danger); }
 .fp-stat-card-delta.neutral { color: var(--fp-text-muted); }
 
-/* ── COMMAND PALETTE (redesigned — click-only) ── */
+/* â”€â”€ COMMAND PALETTE (redesigned â€” click-only) â”€â”€ */
 .fp-cmd-overlay {
   position: fixed;
   inset: 0;
@@ -2209,7 +2209,7 @@ body::before {
   font-family: var(--fp-font-body);
 }
 
-/* ── FAB REDESIGN (vertical list, round) ── */
+/* â”€â”€ FAB REDESIGN (vertical list, round) â”€â”€ */
 .fp-fab-wrap {
   position: fixed;
   bottom: 32px;
@@ -2303,7 +2303,7 @@ body::before {
 .fp-fab-icon { transition: transform 0.2s var(--fp-ease-spring); }
 .fp-fab.open .fp-fab-icon { transform: rotate(45deg); }
 
-/* ── UPSELL BANNER ── */
+/* â”€â”€ UPSELL BANNER â”€â”€ */
 .fp-upsell-banner {
   background: linear-gradient(135deg, rgba(245,158,11,0.07), rgba(239,68,68,0.05));
   border: 1px solid rgba(245,158,11,0.22);
@@ -2319,7 +2319,7 @@ body::before {
 .fp-upsell-text { font-size: 13px; color: var(--fp-text-soft); }
 .fp-upsell-text strong { color: #f59e0b; }
 
-/* ── TIMELINE ── */
+/* â”€â”€ TIMELINE â”€â”€ */
 .fp-timeline { display: flex; flex-direction: column; position: relative; }
 
 .fp-timeline::before {
@@ -2358,7 +2358,7 @@ body::before {
 .fp-timeline-desc  { font-size: 12px; color: var(--fp-text-muted); margin-top: 2px; }
 .fp-timeline-time  { font-size: 10px; color: var(--fp-text-faint); font-family: var(--fp-font-mono); margin-top: 4px; }
 
-/* ── PROGRESS BAR ── */
+/* â”€â”€ PROGRESS BAR â”€â”€ */
 .fp-progress-bar {
   height: 6px;
   background: rgba(255,255,255,0.06);
@@ -2373,7 +2373,7 @@ body::before {
   transition: width 0.8s var(--fp-ease);
 }
 
-/* ── DATA TABLE ── */
+/* â”€â”€ DATA TABLE â”€â”€ */
 .fp-data-table {
   width: 100%;
   border-collapse: collapse;
@@ -2404,7 +2404,7 @@ body::before {
 .fp-data-table tbody tr { cursor: pointer; }
 .fp-data-table tbody tr:hover { background: var(--fp-bg-card-hover); }
 
-/* ── ALERT ITEM ── */
+/* â”€â”€ ALERT ITEM â”€â”€ */
 .fp-alert-item {
   display: flex;
   align-items: flex-start;
@@ -2438,7 +2438,7 @@ body::before {
 .fp-alert-desc  { font-size: 12px; color: var(--fp-text-muted); margin-top: 2px; }
 .fp-alert-time  { font-size: 10px; color: var(--fp-text-faint); margin-top: 4px; font-family: var(--fp-font-mono); }
 
-/* ── ALERT RULE ROW ── */
+/* â”€â”€ ALERT RULE ROW â”€â”€ */
 .fp-alert-rule-row {
   display: flex;
   align-items: center;
@@ -2452,7 +2452,7 @@ body::before {
 }
 .fp-alert-rule-row:hover { background: var(--fp-bg-card-hover); border-color: var(--fp-border-hover); }
 
-/* ── DELTA CHIP ── */
+/* â”€â”€ DELTA CHIP â”€â”€ */
 .fp-delta-chip {
   display: inline-flex;
   align-items: center;
@@ -2467,7 +2467,7 @@ body::before {
 .fp-delta-chip.down    { background: rgba(239,68,68,0.12);  color: var(--fp-danger); }
 .fp-delta-chip.neutral { background: rgba(148,163,184,0.1); color: var(--fp-text-muted); }
 
-/* ── FUNNEL ── */
+/* â”€â”€ FUNNEL â”€â”€ */
 .fp-funnel { display: flex; flex-direction: column; gap: 8px; }
 
 .fp-funnel-step { display: flex; align-items: center; gap: 14px; }
@@ -2511,7 +2511,7 @@ body::before {
   flex-shrink: 0;
 }
 
-/* ── OPPORTUNITY CARD ── */
+/* â”€â”€ OPPORTUNITY CARD â”€â”€ */
 .fp-opp-card {
   background: var(--fp-bg-card);
   border: 1px solid var(--fp-border);
@@ -2545,7 +2545,7 @@ body::before {
 .fp-opp-desc   { font-size: 12px; color: var(--fp-text-muted); margin-top: 2px; }
 .fp-opp-impact { font-size: 11px; font-weight: 700; color: var(--fp-success); margin-top: 4px; }
 
-/* ── BAR CHART ── */
+/* â”€â”€ BAR CHART â”€â”€ */
 .fp-bar-chart {
   display: flex;
   align-items: flex-end;
@@ -2579,7 +2579,7 @@ body::before {
   font-family: var(--fp-font-mono);
 }
 
-/* ── CLIENT MODE ── */
+/* â”€â”€ CLIENT MODE â”€â”€ */
 .fp-client-header {
   text-align: center;
   padding: 32px;
@@ -2589,7 +2589,7 @@ body::before {
   margin-bottom: 28px;
 }
 
-/* ── INSIGHT CARD ── */
+/* â”€â”€ INSIGHT CARD â”€â”€ */
 .fp-insight-card {
   background: var(--fp-bg-card);
   border: 1px solid var(--fp-border);
@@ -2619,7 +2619,7 @@ body::before {
   letter-spacing: 0.08em;
 }
 
-/* ── SECTION BLOCK ── */
+/* â”€â”€ SECTION BLOCK â”€â”€ */
 .fp-section-block { margin-bottom: 28px; }
 
 .fp-section-block-title {
@@ -2632,7 +2632,7 @@ body::before {
   gap: 8px;
 }
 
-/* ── COMPETITOR ROW ── */
+/* â”€â”€ COMPETITOR ROW â”€â”€ */
 .fp-competitor-row {
   display: grid;
   grid-template-columns: 1fr 80px 100px auto;
@@ -2654,7 +2654,7 @@ body::before {
 .fp-competitor-name { font-size: 13px; font-weight: 600; color: var(--fp-text); }
 .fp-competitor-url  { font-size: 11px; color: var(--fp-text-faint); font-family: var(--fp-font-mono); }
 
-/* ── TAG ── */
+/* â”€â”€ TAG â”€â”€ */
 .fp-tag {
   display: inline-flex;
   align-items: center;
@@ -2667,7 +2667,7 @@ body::before {
   color: var(--fp-text-muted);
 }
 
-/* ── MESSAGES DROPDOWN ── */
+/* â”€â”€ MESSAGES DROPDOWN â”€â”€ */
 .fp-msg-wrap { position: relative; }
 
 .fp-msg-dropdown {
@@ -2736,7 +2736,7 @@ body::before {
   border-top: 1px solid var(--fp-border);
 }
 
-/* ── RESPONSIVE FOR NEW ELEMENTS ── */
+/* â”€â”€ RESPONSIVE FOR NEW ELEMENTS â”€â”€ */
 @media (max-width: 1100px) {
   .fp-stat-row { grid-template-columns: repeat(2, 1fr); }
   .fp-competitor-row { grid-template-columns: 1fr 80px; }
@@ -2752,9 +2752,9 @@ body::before {
   .fp-fab-wrap { bottom: 16px; right: 16px; }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   LIGHT MODE — FULL PARITY v3.0 (Resend-level premium)
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   LIGHT MODE â€” FULL PARITY v3.0 (Resend-level premium)
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 /* -- Sidebar -- */
 [data-theme="light"] .fp-sidebar {
@@ -2920,9 +2920,9 @@ body::before {
 /* -- Onboarding -- */
 [data-theme="light"] .fp-onboarding { background: #ffffff; border: 1px solid rgba(0,0,0,0.09); box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
 
-/* ═══════════════════════════════════════════════════════════
-   NAV ICON ANIMATIONS — Resend-style
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   NAV ICON ANIMATIONS â€” Resend-style
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-nav-icon {
   transition: transform 0.18s var(--fp-ease-spring), color 0.15s var(--fp-ease) !important;
 }
@@ -2931,9 +2931,9 @@ body::before {
 .fp-nav-ai .fp-nav-icon { transition: transform 0.18s var(--fp-ease-spring) !important; }
 .fp-nav-ai:hover .fp-nav-icon { transform: scale(1.18) rotate(-8deg); }
 
-/* ═══════════════════════════════════════════════════════════
-   NOTIFICATION & MSG BADGE — Blue + proper position
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   NOTIFICATION & MSG BADGE â€” Blue + proper position
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-notif-badge {
   background: var(--fp-accent) !important;
   top: -3px !important;
@@ -2963,9 +2963,9 @@ body::before {
 #fp-msg-badge[hidden] { display: none !important; }
 #fp-msg-wrap { position: relative; }
 
-/* ═══════════════════════════════════════════════════════════
-   MESSAGES PANEL — Channels + File Upload
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   MESSAGES PANEL â€” Channels + File Upload
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-msg-dropdown[hidden] { display: none !important; }
 .fp-msg-dropdown:not([hidden]) {
   min-height: 380px;
@@ -3038,9 +3038,9 @@ body::before {
 }
 .fp-msg-attachment-remove { background: none; border: none; cursor: pointer; color: var(--fp-text-faint); padding: 0; display: flex; margin-left: auto; }
 
-/* ═══════════════════════════════════════════════════════════
-   GOOGLE MAPS — Local SEO
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   GOOGLE MAPS â€” Local SEO
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 #fp-gmap {
   width: 100%;
   height: 400px;
@@ -3080,9 +3080,9 @@ body::before {
 [data-theme="light"] #fp-gmap { border-color: rgba(0,0,0,0.08); box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
 [data-theme="light"] .fp-map-dot { border-color: rgba(0,0,0,0.2); }
 
-/* ═══════════════════════════════════════════════════════════
-   ADD-ONS — Premium Cards
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   ADD-ONS â€” Premium Cards
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-addon-card {
   background: var(--fp-bg-card);
   border: 1px solid var(--fp-border);
@@ -3106,9 +3106,9 @@ body::before {
 [data-theme="light"] .fp-addon-card:hover { box-shadow: 0 4px 16px rgba(37,99,235,0.08); }
 [data-theme="light"] .fp-addon-footer { border-top-color: rgba(0,0,0,0.06); }
 
-/* ═══════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    PLAN COMPARISON TABLE
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-plan-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
 .fp-plan-card {
   background: var(--fp-bg-card);
@@ -3156,9 +3156,9 @@ body::before {
 .fp-locked-banner strong { color: var(--fp-text); }
 [data-theme="light"] .fp-locked-banner { background: linear-gradient(90deg, rgba(139,92,246,0.04), rgba(37,99,235,0.04)); border-color: rgba(139,92,246,0.13); }
 
-/* ═══════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    MISSION STEPS & LIBRARY
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-mission-step {
   display: flex;
   align-items: flex-start;
@@ -3331,9 +3331,9 @@ select.fp-select { cursor: pointer; }
 [data-theme="light"] .fp-lib-card { background: #fff; }
 [data-theme="light"] .fp-mission-step:hover { background: rgba(0,0,0,0.02); }
 
-/* ═══════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    APPLE CALENDAR STYLE
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-apple-cal {
   max-width: 900px;
   width: 100%;
@@ -3442,7 +3442,7 @@ select.fp-select { cursor: pointer; }
 .fp-apple-cal-event.done { background: rgba(34,197,94,0.14); color: #4ade80; }
 .fp-apple-cal-event-more { font-size: 10px; color: var(--fp-text-faint); padding: 1px 4px; }
 
-/* ── INTERACTIVE CALENDAR — RDV events ── */
+/* â”€â”€ INTERACTIVE CALENDAR â€” RDV events â”€â”€ */
 .fp-cal-rdv {
   background: rgba(139,92,246,0.18) !important;
   color: #c4b5fd !important;
@@ -3510,13 +3510,13 @@ select.fp-select { cursor: pointer; }
 .fp-apple-cal-legend { display: flex; align-items: center; gap: 5px; }
 .fp-apple-cal-dot { width: 8px; height: 8px; border-radius: 50%; }
 
-/* ── LIBRARY GRID RESPONSIVE ── */
+/* â”€â”€ LIBRARY GRID RESPONSIVE â”€â”€ */
 @media (max-width: 1100px) { .fp-lib-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 700px) { .fp-lib-grid { grid-template-columns: 1fr; } }
 
-/* ═══════════════════════════════════════════════════════════
-   LIGHT MODE — DEPTH & BORDERS
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   LIGHT MODE â€” DEPTH & BORDERS
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 [data-theme="light"] .fp-card {
   box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.05);
 }
@@ -3571,17 +3571,17 @@ select.fp-select { cursor: pointer; }
 [data-theme="light"] .fp-monitor-item { border-color: rgba(0,0,0,0.07); background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 [data-theme="light"] .fp-alert-item { border-color: rgba(0,0,0,0.07); background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 
-/* ═══════════════════════════════════════════════════════════
-   AI PAGE — CONSTRAINED WIDTH
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   AI PAGE â€” CONSTRAINED WIDTH
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-ai-page-wrap {
   max-width: 700px;
   margin: 0 auto;
 }
 
-/* ═══════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    UPGRADE BUTTON & BANNER
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-upgrade-btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 4px 12px; border-radius: 6px;
@@ -3614,9 +3614,9 @@ select.fp-select { cursor: pointer; }
 }
 .fp-upgrade-banner.ultra .fp-upgrade-banner-text strong { color: var(--fp-accent-light); }
 
-/* ═══════════════════════════════════════════════════════════
-   LOCAL SEO OPP CARD — fix overflow
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   LOCAL SEO OPP CARD â€” fix overflow
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .fp-opp-card {
   display: flex;
   align-items: center;
@@ -3627,7 +3627,7 @@ select.fp-select { cursor: pointer; }
 .fp-opp-body { flex: 1; min-width: 0; }
 .fp-opp-card > .fp-btn { flex-shrink: 0; }
 
-/* ── CHART TOOLTIPS ── */
+/* â”€â”€ CHART TOOLTIPS â”€â”€ */
 .fp-chart-tooltip {
   position: fixed;
   z-index: 9500;
@@ -3717,7 +3717,7 @@ select.fp-select { cursor: pointer; }
   flex: 1;
 }
 
-/* Calendar RDV pill — pointer cursor + subtle click effect */
+/* Calendar RDV pill â€” pointer cursor + subtle click effect */
 .fp-cal-rdv {
   cursor: pointer;
 }
@@ -3726,7 +3726,7 @@ select.fp-select { cursor: pointer; }
   transform: scale(0.97);
 }
 
-/* ── AUDIT SCHEDULE TOGGLE ── */
+/* â”€â”€ AUDIT SCHEDULE TOGGLE â”€â”€ */
 .fp-audit-sched-cell {
   display: flex;
   align-items: center;
@@ -3777,7 +3777,7 @@ select.fp-select { cursor: pointer; }
   border-color: rgba(0,0,0,0.15);
 }
 
-/* ── BULK ACTION BAR ── */
+/* â”€â”€ BULK ACTION BAR â”€â”€ */
 .fp-bulk-bar {
   position: fixed;
   bottom: 0;
@@ -3874,7 +3874,7 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
   background: rgba(37,99,235,0.06) !important;
 }
 
-/* ── ACTIVITY FEED PANEL ── */
+/* â”€â”€ ACTIVITY FEED PANEL â”€â”€ */
 .fp-activity-overlay {
   position: fixed;
   inset: 0;
@@ -4058,7 +4058,7 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
   100% { transform: scale(1); }
 }
 
-/* ── PUSH NOTIFICATION TOGGLE BUTTON ── */
+/* â”€â”€ PUSH NOTIFICATION TOGGLE BUTTON â”€â”€ */
 .fp-push-toggle {
   color: var(--fp-text-faint);
   border-color: var(--fp-border);
@@ -4077,20 +4077,20 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
   stroke: var(--fp-accent);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   MOBILE FIXES v2 — overflow + sidebar-collapsed layout bug
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   MOBILE FIXES v2 â€” overflow + sidebar-collapsed layout bug
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 @media (max-width: 768px) {
 
-  /* ── FIX 1: sidebar-collapsed must NOT shrink the content column on mobile.
+  /* â”€â”€ FIX 1: sidebar-collapsed must NOT shrink the content column on mobile.
      The sidebar is position:fixed on mobile so it doesn't occupy grid space,
-     but the 64px column declaration still eats into viewport width. ── */
+     but the 64px column declaration still eats into viewport width. â”€â”€ */
   .fp-layout.sidebar-collapsed {
     grid-template-columns: 1fr !important;
   }
 
-  /* ── FIX 2: collapsed sidebar on mobile = fully hidden, same as closed ── */
+  /* â”€â”€ FIX 2: collapsed sidebar on mobile = fully hidden, same as closed â”€â”€ */
   .fp-sidebar.collapsed {
     left: calc(-1 * var(--fp-sidebar-w)) !important;
     width: var(--fp-sidebar-w) !important;
@@ -4099,7 +4099,7 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     overflow-x: hidden !important;
   }
 
-  /* ── FIX 3: main wrap must never exceed viewport ── */
+  /* â”€â”€ FIX 3: main wrap must never exceed viewport â”€â”€ */
   .fp-main-wrap {
     width: 100%;
     max-width: 100vw;
@@ -4107,7 +4107,7 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     min-width: 0;
   }
 
-  /* ── FIX 4: page content box-sizing & padding ── */
+  /* â”€â”€ FIX 4: page content box-sizing & padding â”€â”€ */
   .fp-page {
     width: 100%;
     box-sizing: border-box;
@@ -4115,13 +4115,13 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     overflow-x: hidden;
   }
 
-  /* ── FIX 5: topbar tighter on small screens ── */
+  /* â”€â”€ FIX 5: topbar tighter on small screens â”€â”€ */
   .fp-topbar {
     padding: 0 12px;
     gap: 8px;
   }
 
-  /* ── FIX 6: search bar flexible, won't push other items off screen ── */
+  /* â”€â”€ FIX 6: search bar flexible, won't push other items off screen â”€â”€ */
   .fp-search-trigger {
     width: auto;
     flex: 1;
@@ -4130,7 +4130,7 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     padding: 6px 10px;
   }
 
-  /* ── FIX 7: status badge smaller ── */
+  /* â”€â”€ FIX 7: status badge smaller â”€â”€ */
   .fp-topbar-status {
     font-size: 10px;
     padding: 5px 8px;
@@ -4139,7 +4139,7 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     flex-shrink: 0;
   }
 
-  /* ── FIX 8: section header wraps on small screens ── */
+  /* â”€â”€ FIX 8: section header wraps on small screens â”€â”€ */
   .fp-section-header {
     flex-wrap: wrap;
   }
@@ -4148,7 +4148,7 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     width: 100%;
   }
 
-  /* ── FIX 9: cards must never overflow their container ── */
+  /* â”€â”€ FIX 9: cards must never overflow their container â”€â”€ */
   .fp-card,
   .fp-card-sm,
   .fp-opp-card,
@@ -4160,18 +4160,18 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     overflow-wrap: break-word;
   }
 
-  /* ── FIX 10: sub-nav items a bit smaller ── */
+  /* â”€â”€ FIX 10: sub-nav items a bit smaller â”€â”€ */
   .fp-sub-nav-item {
     padding: 9px 12px;
     font-size: 12px;
   }
 
-  /* ── FIX 11: stat row always 2 columns on phone ── */
+  /* â”€â”€ FIX 11: stat row always 2 columns on phone â”€â”€ */
   .fp-stat-row {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 
-  /* ── FIX 12: data tables scroll horizontally ── */
+  /* â”€â”€ FIX 12: data tables scroll horizontally â”€â”€ */
   .fp-data-table,
   .fp-data-table-wrap {
     display: block;
@@ -4184,19 +4184,19 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     white-space: nowrap;
   }
 
-  /* ── FIX 13: AI block full-width ── */
+  /* â”€â”€ FIX 13: AI block full-width â”€â”€ */
   .fp-ai-block {
     box-sizing: border-box;
     max-width: 100%;
   }
 
-  /* ── FIX 14: opportunity cards wrap ── */
+  /* â”€â”€ FIX 14: opportunity cards wrap â”€â”€ */
   .fp-opp-card {
     flex-wrap: wrap;
     gap: 8px;
   }
 
-  /* ── FIX 15: float panels / dropdowns don't overflow ── */
+  /* â”€â”€ FIX 15: float panels / dropdowns don't overflow â”€â”€ */
   .fp-float-panel {
     width: calc(100vw - 32px) !important;
     max-width: calc(100vw - 32px) !important;
@@ -4214,7 +4214,7 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     right: 12px !important;
   }
 
-  /* ── FIX 16: funnel bars readable on mobile ── */
+  /* â”€â”€ FIX 16: funnel bars readable on mobile â”€â”€ */
   .fp-funnel-label {
     font-size: 11px;
     min-width: 80px;
@@ -4224,34 +4224,34 @@ tr.fp-row-sel:hover { background: rgba(37,99,235,0.11) !important; }
     text-overflow: ellipsis;
   }
 
-  /* ── FIX 17: upgrade/CTA buttons don't overflow ── */
+  /* â”€â”€ FIX 17: upgrade/CTA buttons don't overflow â”€â”€ */
   .fp-upgrade-btn,
   .fp-btn {
     flex-shrink: 0;
   }
 
-  /* ── FIX 18: topbar breadcrumb hidden on mobile (already partially handled) ── */
+  /* â”€â”€ FIX 18: topbar breadcrumb hidden on mobile (already partially handled) â”€â”€ */
   .fp-topbar-breadcrumb,
   .fp-topbar-brand,
   .fp-topbar-score { display: none !important; }
 
-  /* ── FIX 19: sidebar-collapse button hidden on mobile (not needed) ── */
+  /* â”€â”€ FIX 19: sidebar-collapse button hidden on mobile (not needed) â”€â”€ */
   .fp-sidebar-collapse-btn { display: none !important; }
 }
 
 
-/* ═══════════════════════════════════════════════════════════
-   FIXES BATCH 3 — User feedback (checkboxes · badges · AI ·
-   mobile search · calendrier · logo · fond page)
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   FIXES BATCH 3 â€” User feedback (checkboxes Â· badges Â· AI Â·
+   mobile search Â· calendrier Â· logo Â· fond page)
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* 1. Checkboxes — couleur accent partout */
+/* 1. Checkboxes â€” couleur accent partout */
 input[type="checkbox"] {
   accent-color: var(--fp-accent);
   cursor: pointer;
 }
 
-/* 2. AI block — texte plus petit (demandé 3×) */
+/* 2. AI block â€” texte plus petit (demandÃ© 3Ã—) */
 .fp-ai-block {
   padding: 6px 10px !important;
   margin-bottom: 8px !important;
@@ -4280,7 +4280,7 @@ input[type="checkbox"] {
   font-size: 10px !important;
 }
 
-/* 3. Bouton IA topbar — bleu au lieu de mauve */
+/* 3. Bouton IA topbar â€” bleu au lieu de mauve */
 .fp-icon-btn--ai {
   border-color: rgba(37,99,235,0.28) !important;
   background: rgba(37,99,235,0.10) !important;
@@ -4292,7 +4292,7 @@ input[type="checkbox"] {
   color: var(--fp-accent) !important;
 }
 
-/* 4. Nav AI — bleu au lieu de mauve */
+/* 4. Nav AI â€” bleu au lieu de mauve */
 .fp-nav-ai {
   border-color: rgba(37,99,235,0.22) !important;
   background: rgba(37,99,235,0.07) !important;
@@ -4314,7 +4314,7 @@ input[type="checkbox"] {
   background: rgba(37,99,235,0.10) !important;
 }
 
-/* 5. TOUS les badges de notif — style numéroté identique au badge messages */
+/* 5. TOUS les badges de notif â€” style numÃ©rotÃ© identique au badge messages */
 .fp-notif-badge {
   position: absolute !important;
   top: -5px !important;
@@ -4340,12 +4340,12 @@ input[type="checkbox"] {
 /* On fixe aussi le positionnement du wrap activity (pas de fp-notif-wrap class) */
 #fp-activity-btn { position: relative; }
 
-/* 6. Fond bas de page — html hérite du thème (supprime barre noire en bas) */
+/* 6. Fond bas de page â€” html hÃ©rite du thÃ¨me (supprime barre noire en bas) */
 html {
   background: var(--fp-bg) !important;
 }
 
-/* 7. Mobile — barre de recherche topbar : icône uniquement */
+/* 7. Mobile â€” barre de recherche topbar : icÃ´ne uniquement */
 @media (max-width: 768px) {
   .fp-search-trigger {
     width: 36px !important;
@@ -4358,11 +4358,11 @@ html {
   }
   .fp-search-trigger span { display: none !important; }
 
-  /* Barre de recherche interne aux pages — masquée sur mobile */
+  /* Barre de recherche interne aux pages â€” masquÃ©e sur mobile */
   .fp-cal-search-bar { display: none !important; }
 }
 
-/* 8. Calendrier — panneau de journée SOUS le calendrier (centré) */
+/* 8. Calendrier â€” panneau de journÃ©e SOUS le calendrier (centrÃ©) */
 .fp-cal-outer-wrap {
   flex-direction: column !important;
 }
@@ -4374,7 +4374,7 @@ html {
   border-top: 1px solid var(--fp-border) !important;
 }
 
-/* 9. Sidebar — espace entre logo et bouton collapse en mode réduit */
+/* 9. Sidebar â€” espace entre logo et bouton collapse en mode rÃ©duit */
 .fp-sidebar.collapsed .fp-brand {
   flex-direction: column !important;
   align-items: center !important;
@@ -4388,7 +4388,7 @@ html {
 .fp-brand { gap: 10px; }
 .fp-sidebar-collapse-btn { margin-left: auto; }
 
-/* 10. Logo topbar — taille ajustée pour meilleur alignement */
+/* 10. Logo topbar â€” taille ajustÃ©e pour meilleur alignement */
 .fp-topbar-breadcrumb > svg:first-child {
   width: 18px !important;
   height: 18px !important;
@@ -4396,7 +4396,7 @@ html {
   flex-shrink: 0;
 }
 
-/* 11. Light mode — éléments encore en couleurs sombres */
+/* 11. Light mode â€” Ã©lÃ©ments encore en couleurs sombres */
 [data-theme="light"] .fp-ai-block {
   background: rgba(37,99,235,0.04) !important;
   border-color: rgba(37,99,235,0.12) !important;
@@ -4405,7 +4405,7 @@ html {
   border-color: #f8faff !important;
 }
 
-/* 12. Fix section-header groupes En cours / Terminé en light mode */
+/* 12. Fix section-header groupes En cours / TerminÃ© en light mode */
 [data-theme="light"] .fp-kanban-group-label {
   color: var(--fp-text) !important;
 }
@@ -4422,17 +4422,17 @@ html {
   }
 }
 
-/* 14. Mobile — cache barre de recherche dans les filtres de missions */
+/* 14. Mobile â€” cache barre de recherche dans les filtres de missions */
 @media (max-width: 768px) {
   .fp-filter-bar .fp-search-input-wrap { display: none !important; }
   .fp-filter-bar select { min-width: 110px !important; font-size: 11px !important; }
 }
 
-/* ══════════════════════════════════════════════════════
-   BATCH 4 FIXES — d'après retours utilisateur (photos)
-   ══════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   BATCH 4 FIXES â€” d'aprÃ¨s retours utilisateur (photos)
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* 1. SIDEBAR COLLAPSE BTN — aligned with nav items in collapsed mode */
+/* 1. SIDEBAR COLLAPSE BTN â€” aligned with nav items in collapsed mode */
 .fp-sidebar.collapsed .fp-sidebar-collapse-btn {
   width: 40px !important;
   height: 40px !important;
@@ -4441,7 +4441,7 @@ html {
   opacity: 1 !important;
 }
 
-/* 2. DOWN status button — RED in light mode */
+/* 2. DOWN status button â€” RED in light mode */
 [data-theme="light"] .fp-topbar-status.down {
   background: rgba(239,68,68,0.07) !important;
   border-color: rgba(239,68,68,0.30) !important;
@@ -4452,7 +4452,7 @@ html {
   box-shadow: 0 0 0 3px rgba(220,38,38,0.18) !important;
 }
 
-/* 3. CHECKBOXES — visible in both themes */
+/* 3. CHECKBOXES â€” visible in both themes */
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
@@ -4496,7 +4496,7 @@ input[type="checkbox"]:hover:not(:checked) {
   border-color: #2563EB;
 }
 
-/* 4. UPSELL BANNER — blue variant */
+/* 4. UPSELL BANNER â€” blue variant */
 .fp-upsell-banner--blue {
   background: linear-gradient(135deg, rgba(37,99,235,0.07), rgba(37,99,235,0.04)) !important;
   border-color: rgba(37,99,235,0.22) !important;
@@ -4505,7 +4505,7 @@ input[type="checkbox"]:hover:not(:checked) {
   color: #2563EB !important;
 }
 
-/* 5. OPP-CARD — no overlap, always flex-column gap */
+/* 5. OPP-CARD â€” no overlap, always flex-column gap */
 .fp-opp-card {
   display: flex !important;
   align-items: center !important;
@@ -4517,7 +4517,7 @@ input[type="checkbox"]:hover:not(:checked) {
   border: 1px solid rgba(37,99,235,0.20) !important;
 }
 
-/* 6. CALENDAR — restore row layout (calendar + agenda side-by-side) with constrained width */
+/* 6. CALENDAR â€” restore row layout (calendar + agenda side-by-side) with constrained width */
 .fp-cal-outer-wrap {
   display: flex !important;
   flex-direction: row !important;
@@ -4535,22 +4535,22 @@ input[type="checkbox"]:hover:not(:checked) {
   flex-shrink: 0 !important;
 }
 
-/* 7. Light mode — quick fix any remaining dark bg on checkboxes */
+/* 7. Light mode â€” quick fix any remaining dark bg on checkboxes */
 [data-theme="light"] .mission-check,
 [data-theme="light"] input[type="checkbox"].mission-check {
   border-color: #94a3b8 !important;
   background: #ffffff !important;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   BATCH 6 FIXES — Photos feedback : IA margin, sub-nav pills,
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   BATCH 6 FIXES â€” Photos feedback : IA margin, sub-nav pills,
    mobile overscroll noir, topbar logout, sidebar auto-close,
-   dégradé bas, alignement topbar/content, centrage mobile
-   ═══════════════════════════════════════════════════════════ */
+   dÃ©gradÃ© bas, alignement topbar/content, centrage mobile
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* 1. AI block — margin-top ciblé uniquement via wrappers inline dans le JS */
+/* 1. AI block â€” margin-top ciblÃ© uniquement via wrappers inline dans le JS */
 
-/* 2. Body + html background — fond cohérent avec le thème + overscroll invisible sur mobile */
+/* 2. Body + html background â€” fond cohÃ©rent avec le thÃ¨me + overscroll invisible sur mobile */
 html {
   background: var(--fp-bg) !important;
   color-scheme: dark;
@@ -4567,30 +4567,30 @@ body {
   color-scheme: light;
 }
 
-/* 2c. Scroll containers — pas de rubber-band iOS */
+/* 2c. Scroll containers â€” pas de rubber-band iOS */
 .fp-main-wrap,
 .fp-page,
 .fp-sidebar {
   overscroll-behavior: contain;
 }
 
-/* 2b. Bouton Rechercher — masqué sur mobile (≤480px) */
+/* 2b. Bouton Rechercher â€” masquÃ© sur mobile (â‰¤480px) */
 @media (max-width: 480px) {
   .fp-search-trigger {
     display: none !important;
   }
 }
 
-/* 3. Topbar — aligner left-padding avec fp-page (28px) */
+/* 3. Topbar â€” aligner left-padding avec fp-page (28px) */
 .fp-topbar {
   padding-left: 28px !important;
   padding-right: 28px !important;
 }
 
-/* ── MOBILE EXCLUSIF ─────────────────────────────────────── */
+/* â”€â”€ MOBILE EXCLUSIF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 768px) {
 
-  /* 4. Overscroll noir — empêcher le fond sombre d'apparaître */
+  /* 4. Overscroll noir â€” empÃªcher le fond sombre d'apparaÃ®tre */
   html, body {
     overscroll-behavior-y: contain !important;
     background: var(--fp-bg) !important;
@@ -4600,12 +4600,12 @@ body {
     background: #f8faff !important;
   }
 
-  /* 5. Réduire le padding-bottom pour moins d'espace vide bas de page */
+  /* 5. RÃ©duire le padding-bottom pour moins d'espace vide bas de page */
   .fp-page {
     padding-bottom: 72px !important;
   }
 
-  /* 6. Sub-nav — style pilules avec coins arrondis */
+  /* 6. Sub-nav â€” style pilules avec coins arrondis */
   .fp-sub-nav {
     background: var(--fp-bg-card) !important;
     border: 1px solid var(--fp-border) !important;
@@ -4639,7 +4639,7 @@ body {
     color: #fff !important;
   }
 
-  /* 7. Topbar mobile — cacher bouton activité (clock) pour libérer de la place
+  /* 7. Topbar mobile â€” cacher bouton activitÃ© (clock) pour libÃ©rer de la place
         et assurer que logout soit visible */
   #fp-activity-btn {
     display: none !important;
@@ -4653,7 +4653,7 @@ body {
     min-width: 2px !important;
     flex: 1 0 0 !important;
   }
-  /* Assurer que tous les icon-btn restent à leur taille minimum */
+  /* Assurer que tous les icon-btn restent Ã  leur taille minimum */
   .fp-topbar .fp-icon-btn {
     width: 32px !important;
     height: 32px !important;
@@ -4663,7 +4663,7 @@ body {
     padding: 4px 7px !important;
     font-size: 10px !important;
   }
-  /* Recherche — icône uniquement, visible */
+  /* Recherche â€” icÃ´ne uniquement, visible */
   .fp-topbar .fp-search-trigger {
     width: 32px !important;
     min-width: 32px !important;
@@ -4675,7 +4675,7 @@ body {
     flex-shrink: 0 !important;
   }
 
-  /* 8. Centrage mobile — max-width et margin auto pour contenu */
+  /* 8. Centrage mobile â€” max-width et margin auto pour contenu */
   .fp-page {
     padding-left: 14px !important;
     padding-right: 14px !important;
@@ -4689,7 +4689,7 @@ body {
     box-sizing: border-box !important;
   }
 
-  /* 9. Section-header centré sur mobile */
+  /* 9. Section-header centrÃ© sur mobile */
   .fp-section-header h1 {
     font-size: 16px !important;
   }
@@ -4697,7 +4697,7 @@ body {
     font-size: 11px !important;
   }
 
-  /* 10. Supprimer tout pseudo-élément dégradé éventuel */
+  /* 10. Supprimer tout pseudo-Ã©lÃ©ment dÃ©gradÃ© Ã©ventuel */
   .fp-page::after,
   .fp-page::before {
     display: none !important;
@@ -4705,10 +4705,10 @@ body {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   BATCH 5 — Mobile fixes (alertes, monitoring title, concurrent,
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   BATCH 5 â€” Mobile fixes (alertes, monitoring title, concurrent,
    focus/compact modules, sidebar user card)
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 /* Alert rules : stack sur mobile */
 @media (max-width: 768px) {
@@ -4725,7 +4725,7 @@ body {
     width: 100%;
   }
 
-  /* fp-flex-between : wraps sur mobile → évite le titre réduit à 0px */
+  /* fp-flex-between : wraps sur mobile â†’ Ã©vite le titre rÃ©duit Ã  0px */
   .fp-flex-between {
     flex-wrap: wrap;
     gap: 6px;
@@ -4740,7 +4740,7 @@ body {
     flex: 1;
   }
 
-  /* Concurrent stats : masqués sur très petit écran pour éviter l'overlap */
+  /* Concurrent stats : masquÃ©s sur trÃ¨s petit Ã©cran pour Ã©viter l'overlap */
   .fp-lseo-comp-stats {
     display: none !important;
   }
@@ -4762,12 +4762,12 @@ body.fp-focus-mode .fp-section-sub { display: none !important; }
 body.fp-focus-mode .fp-insight-card { opacity: 0.4; pointer-events: none; }
 body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-child(3)) { display: none !important; }
 
-/* ═══════════════════════════════════════════════════════════
-   BATCH 6 — Mobile fixes (data table headers, radar, funnel)
-   ═══════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   BATCH 6 â€” Mobile fixes (data table headers, radar, funnel)
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 /* Data table headers : word-break inherited from fp-card overrides white-space:nowrap in some
-   browsers → force word-break:normal to prevent vertical character stacking */
+   browsers â†’ force word-break:normal to prevent vertical character stacking */
 @media (max-width: 768px) {
   .fp-data-table th {
     word-break: normal !important;
@@ -4789,12 +4789,12 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   BATCH 7 — Photos IMG_0042–IMG_0048 : calendar, bar-chart,
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   BATCH 7 â€” Photos IMG_0042â€“IMG_0048 : calendar, bar-chart,
    audit-table, activity-grid, plans-scroll, 2FA, settings
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* 1. CALENDAR — cells shrink properly on narrow grids (mobile) */
+/* 1. CALENDAR â€” cells shrink properly on narrow grids (mobile) */
 @media (max-width: 768px) {
   .fp-apple-cal-cell { min-height: 56px !important; padding: 4px 3px !important; }
   .fp-apple-cal-num  { width: 22px !important; height: 22px !important; font-size: 11px !important; }
@@ -4802,12 +4802,12 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   .fp-apple-cal-event { font-size: 9px !important; padding: 1px 3px !important; }
 }
 
-/* 2. BAR CHART — label width should not force overflow */
+/* 2. BAR CHART â€” label width should not force overflow */
 @media (max-width: 768px) {
   .fp-bar-chart-label { width: auto !important; max-width: 100% !important; }
 }
 
-/* 3. AUDIT HISTORY TABLE — reduce padding so headers fit without wrapping */
+/* 3. AUDIT HISTORY TABLE â€” reduce padding so headers fit without wrapping */
 @media (max-width: 768px) {
   .fp-table th {
     padding: 8px 6px !important;
@@ -4825,14 +4825,14 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   .fp-score-bar-track { width: 44px !important; }
 }
 
-/* 4. TEAM ACTIVITY GRID — single column on mobile */
+/* 4. TEAM ACTIVITY GRID â€” single column on mobile */
 @media (max-width: 768px) {
   .fp-team-activity-grid {
     grid-template-columns: 1fr !important;
   }
 }
 
-/* 5. PLAN COMPARISON GRID — horizontal snap-scroll on mobile */
+/* 5. PLAN COMPARISON GRID â€” horizontal snap-scroll on mobile */
 @media (max-width: 768px) {
   .fp-plan-grid {
     grid-template-columns: repeat(3, 78vw) !important;
@@ -4850,14 +4850,14 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   }
 }
 
-/* 6. 2FA BUTTONS — stack vertically on mobile */
+/* 6. 2FA BUTTONS â€” stack vertically on mobile */
 @media (max-width: 768px) {
   .fp-2fa-btns {
     grid-template-columns: 1fr !important;
   }
 }
 
-/* 7. SETTINGS PAGE — sub-nav must not cause horizontal overflow */
+/* 7. SETTINGS PAGE â€” sub-nav must not cause horizontal overflow */
 @media (max-width: 768px) {
   .fp-sub-nav {
     width: 100% !important;
@@ -4872,9 +4872,9 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   }
 }
 
-/* ═══════════════════════════════════════════════════
-   GROWTH PAGE — Command Center v3.0
-   ═══════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   GROWTH PAGE â€” Command Center v3.0
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 /* HERO */
 .fp-growth-hero {
@@ -5070,7 +5070,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   font-size: 11px; color: var(--fp-text-muted);
   padding-left: 12px; position: relative;
 }
-.fp-growth-phase-items li::before { content: '›'; position: absolute; left: 0; color: var(--fp-text-faint); }
+.fp-growth-phase-items li::before { content: 'â€º'; position: absolute; left: 0; color: var(--fp-text-faint); }
 .fp-growth-phase.done .fp-growth-phase-items li { color: rgba(34,197,94,0.75); }
 .fp-growth-phase.planned .fp-growth-phase-items li { color: var(--fp-text-faint); }
 
@@ -5205,7 +5205,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
 }
 .fp-growth-strategy-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* ── MOBILE ── */
+/* â”€â”€ MOBILE â”€â”€ */
 @media (max-width: 768px) {
   .fp-growth-hero { padding: 16px; }
   .fp-growth-hero-score { font-size: 38px; }
@@ -5227,7 +5227,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   .fp-growth-leak .fp-btn { width: 100%; }
 }
 
-/* ── Objective summary strip ───────────────────────────────────────── */
+/* â”€â”€ Objective summary strip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-growth-obj-summary {
   display: flex;
   flex-wrap: wrap;
@@ -5243,7 +5243,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   min-width: 80px;
 }
 
-/* ── Plan Switcher Widget ───────────────────────────────────────────── */
+/* â”€â”€ Plan Switcher Widget â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-plan-switcher { position: relative; }
 .fp-plan-pill { display: flex; align-items: center; gap: 5px; background: rgba(37,99,235,0.12); border: 1px solid rgba(37,99,235,0.28); border-radius: 20px; padding: 4px 10px 4px 8px; cursor: pointer; font-size: 11.5px; font-weight: 700; color: var(--fp-accent); transition: all .15s; white-space: nowrap; }
 .fp-plan-pill:hover { background: rgba(37,99,235,0.22); border-color: rgba(37,99,235,0.5); }
@@ -5258,12 +5258,12 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
 .fp-plan-di-price { font-size: 11px; color: var(--fp-text-muted); }
 .fp-plan-di-check { color: var(--fp-accent); font-size: 13px; font-weight: 800; }
 
-/* ── Audit Detail Panel upgrades ────────────────────────────────────── */
+/* â”€â”€ Audit Detail Panel upgrades â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-audit-issue-card { border-radius: 10px; overflow: hidden; transition: opacity .25s; }
 .fp-audit-fix-box { background: rgba(37,99,235,0.07); border-left: 2px solid #2563EB; padding: 7px 9px; border-radius: 0 6px 6px 0; }
 .fp-audit-meta-chip { font-size: 10px; color: var(--fp-text-faint); background: rgba(255,255,255,0.05); border-radius: 4px; padding: 2px 6px; }
 
-/* ── Audit Compare upgrades ──────────────────────────────────────────── */
+/* â”€â”€ Audit Compare upgrades â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-cmp-score-block { flex: 1; text-align: center; padding: 20px 14px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--fp-border); transition: border-color .2s; }
 .fp-cmp-score-num { font-size: 52px; font-weight: 800; font-family: var(--fp-font-head); line-height: 1; }
 .fp-cmp-winner-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); border-radius: 12px; padding: 2px 8px; margin-top: 7px; }
@@ -5274,7 +5274,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
 .fp-cmp-cat-val { min-width: 28px; text-align: right; font-size: 11.5px; font-weight: 700; }
 .fp-cmp-drift-alert { display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; background: rgba(239,68,68,0.07); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; margin-bottom: 8px; font-size: 11.5px; color: var(--fp-text-soft); line-height: 1.5; }
 
-/* ── Audit Opportunities ─────────────────────────────────────────────── */
+/* â”€â”€ Audit Opportunities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-opp-card { display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--fp-border); border-radius: 10px; transition: border-color .15s; }
 .fp-opp-card:hover { border-color: rgba(37,99,235,0.35); }
 .fp-opp-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
@@ -5283,7 +5283,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
 .fp-opp-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
 .fp-opp-chip { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 5px; }
 
-/* ── Quota bar ────────────────────────────────────────────────────────── */
+/* â”€â”€ Quota bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-quota-bar { display: flex; align-items: center; gap: 16px; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--fp-border); border-radius: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .fp-quota-item { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 110px; }
 .fp-quota-label { font-size: 10px; color: var(--fp-text-faint); text-transform: uppercase; letter-spacing: 0.07em; }
@@ -5291,33 +5291,33 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
 .fp-quota-fill { height: 100%; border-radius: 2px; transition: width .5s ease; }
 .fp-quota-val { font-size: 11px; font-weight: 700; color: var(--fp-text-soft); }
 
-/* ── Objective card left-border accent ─────────────────────────────── */
+/* â”€â”€ Objective card left-border accent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-growth-obj-card {
   border-left-width: 3px !important;
   border-left-style: solid;
 }
 
-/* ── Competitive table: hide Part Marché on mobile ─────────────────── */
+/* â”€â”€ Competitive table: hide Part MarchÃ© on mobile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 768px) {
   .fp-g-pm { display: none !important; }
-  /* Revenue grid value — prevent wrap on small phones */
+  /* Revenue grid value â€” prevent wrap on small phones */
   .fp-growth-rev-value { font-size: 17px !important; white-space: nowrap; }
   /* Objective summary stacks */
   .fp-growth-obj-summary { gap: 8px; }
   .fp-growth-obj-sum-item { min-width: 60px; }
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   MONITORS — Premium Enterprise Platform CSS
-   ═════════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   MONITORS â€” Premium Enterprise Platform CSS
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* ── Live pulse animation ───────────────────────────────────────── */
+/* â”€â”€ Live pulse animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @keyframes fp-pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%       { opacity: .5; transform: scale(1.3); }
 }
 
-/* ── Monitor KPI cards (5-column row) ──────────────────────────── */
+/* â”€â”€ Monitor KPI cards (5-column row) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-monitor-kpi-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -5331,7 +5331,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   .fp-monitor-kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
-/* ── Activity timeline items ────────────────────────────────────── */
+/* â”€â”€ Activity timeline items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-timeline-item {
   display: flex;
   gap: 10px;
@@ -5352,7 +5352,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   margin-top: 1px;
 }
 
-/* ── Dependency card ────────────────────────────────────────────── */
+/* â”€â”€ Dependency card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-dep-card {
   display: flex;
   align-items: center;
@@ -5370,7 +5370,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   flex-shrink: 0;
 }
 
-/* ── CWV mini progress bars ─────────────────────────────────────── */
+/* â”€â”€ CWV mini progress bars â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-cwv-bar {
   height: 2px;
   background: rgba(255,255,255,0.07);
@@ -5385,7 +5385,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   transition: width .6s ease;
 }
 
-/* ── AI Performance Intelligence block ──────────────────────────── */
+/* â”€â”€ AI Performance Intelligence block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-perf-ai-card {
   background: linear-gradient(135deg, rgba(37,99,235,0.06) 0%, rgba(139,92,246,0.04) 100%);
   border-color: rgba(37,99,235,0.18) !important;
@@ -5397,14 +5397,14 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   border-left: 2px solid transparent;
 }
 
-/* ── Incident card accent border ────────────────────────────────── */
+/* â”€â”€ Incident card accent border â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-incident-card {
   border-left: 3px solid var(--fp-danger);
 }
 .fp-incident-card.warning { border-left-color: var(--fp-warning); }
 .fp-incident-card.info    { border-left-color: #94a3b8; }
 
-/* ── Incident mini-timeline ─────────────────────────────────────── */
+/* â”€â”€ Incident mini-timeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-inc-timeline {
   display: flex;
   align-items: flex-start;
@@ -5435,7 +5435,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   margin-top: -18px;
 }
 
-/* ── Monitor Config presets grid ────────────────────────────────── */
+/* â”€â”€ Monitor Config presets grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-preset-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -5456,7 +5456,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   background: rgba(255,255,255,0.05);
 }
 
-/* ── Alert channel grid (3-col) ─────────────────────────────────── */
+/* â”€â”€ Alert channel grid (3-col) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-channel-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -5483,7 +5483,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   transition: box-shadow .2s;
 }
 
-/* ── Maintenance window rows ────────────────────────────────────── */
+/* â”€â”€ Maintenance window rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-maint-row {
   display: flex;
   align-items: center;
@@ -5495,7 +5495,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   flex-wrap: wrap;
 }
 
-/* ── SLA bar chart ──────────────────────────────────────────────── */
+/* â”€â”€ SLA bar chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-sla-bar-chart {
   display: flex;
   align-items: flex-end;
@@ -5523,7 +5523,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   transition: height .5s ease;
 }
 
-/* ── SLA Risk bars ──────────────────────────────────────────────── */
+/* â”€â”€ SLA Risk bars â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-sla-risk-bar {
   height: 5px;
   background: rgba(255,255,255,0.07);
@@ -5537,7 +5537,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   transition: width .6s ease;
 }
 
-/* ── Business Impact KPI row ────────────────────────────────────── */
+/* â”€â”€ Business Impact KPI row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-biz-kpi-row {
   display: flex;
   align-items: center;
@@ -5547,7 +5547,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   border-radius: 8px;
 }
 
-/* ── Synthetic Journey cards ────────────────────────────────────── */
+/* â”€â”€ Synthetic Journey cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-journey-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -5566,7 +5566,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
 .fp-journey-card.ok   { border-color: rgba(34,197,94,0.2); }
 .fp-journey-card.fail { border-color: rgba(239,68,68,0.2); }
 
-/* ── Regional perf bars ─────────────────────────────────────────── */
+/* â”€â”€ Regional perf bars â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-region-bar {
   height: 5px;
   background: rgba(255,255,255,0.07);
@@ -5580,14 +5580,14 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   transition: width .6s ease;
 }
 
-/* ── Mobile vs Desktop mini bars ────────────────────────────────── */
+/* â”€â”€ Mobile vs Desktop mini bars â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-mob-desktop-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
 
-/* ── Geographic timeline dots ───────────────────────────────────── */
+/* â”€â”€ Geographic timeline dots â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .fp-geo-timeline {
   position: relative;
   padding: 0 10px;
@@ -5621,7 +5621,7 @@ body.fp-focus-mode .fp-opp-card:not(:first-child):not(:nth-child(2)):not(:nth-ch
   border: 2px solid var(--fp-bg);
 }
 
-/* ── Responsive: monitors page on mobile ────────────────────────── */
+/* â”€â”€ Responsive: monitors page on mobile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 640px) {
   .fp-monitor-kpi-grid { grid-template-columns: 1fr 1fr; }
   .fp-channel-grid     { grid-template-columns: 1fr 1fr; }
