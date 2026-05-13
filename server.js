@@ -1021,3 +1021,34 @@ mongoose
 
     process.exit(1);
   });
+// AJOUTER DANS UserSchema
+emailNormalized: {
+  type: String,
+  unique: true,
+  sparse: true,
+},
+
+// AJOUTER DANS LES HELPERS
+function normalizeEmail(email = '') {
+  return String(email).trim().toLowerCase();
+}
+
+// DANS /auth/register
+const normalizedEmail = normalizeEmail(email);
+
+if (await User.findOne({ emailNormalized: normalizedEmail })) {
+  return res.status(409).json({ error: 'Email déjà utilisé' });
+}
+
+const user = await User.create({
+  email: email.toLowerCase(),
+  emailNormalized: normalizedEmail,
+  passwordHash,
+  firstName,
+  companyName
+});
+
+// DANS /auth/login
+const user = await User.findOne({
+  emailNormalized: normalizeEmail(email)
+});
