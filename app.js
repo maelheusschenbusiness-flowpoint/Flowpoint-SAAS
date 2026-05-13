@@ -1,81 +1,100 @@
-// ========================================
-// FlowPoint App Bootstrap
-// ========================================
-import "./overview.js";
-import { fpState } from "./state.js";
-import { api } from "./api.js";
-import { initRouter } from "./router.js";
-import "./billing.js";
-// ========================================
-// Bootstrap
-// ========================================
+const form = document.getElementById("signupForm");
 
-async function bootstrap() {
-  console.log("⚡ FlowPoint Boot");
+if (form) {
+  const btn = document.getElementById("btn");
+  const msg = document.getElementById("msg");
 
-  await loadSession();
-
-  bindGlobalEvents();
-
-  initRouter();
-
-  fpState.app.initialized = true;
-  fpState.app.loading = false;
-
-  console.log("✅ FlowPoint Ready");
-}
-
-// ========================================
-// Load Session
-// ========================================
-
-async function loadSession() {
-  const token = localStorage.getItem("fp_token");
-
-  if (!token) {
-    window.location.href = "/login.html";
-    return;
+  function setMsg(text, ok = false) {
+    msg.innerHTML = `
+      <div style="
+        padding:12px;
+        border-radius:12px;
+        margin-top:12px;
+        font-weight:600;
+        background:${ok ? "rgba(34,197,94,.12)" : "rgba(239,68,68,.12)"};
+        color:${ok ? "#22c55e" : "#ef4444"};
+        border:1px solid ${ok ? "rgba(34,197,94,.25)" : "rgba(239,68,68,.25)"};
+      ">
+        ${text}
+      </div>
+    `;
   }
 
-  const result = await api.get("/auth/me");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  if (!result.success) {
-    localStorage.removeItem("fp_token");
+    const firstName = document.getElementById("firstName").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const companyName = document.getElementById("companyName").value.trim();
+    const plan = document.getElementById("plan").value;
 
-    window.location.href = "/login.html";
+    if (!firstName || !email || !companyName) {
+      return setMsg("Tous les champs sont requis.");
+    }
 
-    return;
-  }
+    const password = prompt("Choisis un mot de passe FlowPoint");
 
-  fpState.auth.authenticated = true;
+    if (!password || password.length < 6) {
+      return setMsg("Mot de passe invalide.");
+    }
 
-  fpState.user = result.data.user;
+    btn.disabled = true;
+    btn.textContent = "Création du compte...";
 
-  fpState.org = result.data.org;
+    try {
+      // REGISTER
+      const registerRes = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          firstName,
+          email,
+          password,
+          companyName
+        })
+      });
 
-  console.log("👤 Session Loaded");
+      const registerData = await registerRes.json();
+
+      if (!registerRes.ok) {
+        throw new Error(registerData.error || "Erreur création compte");
+      }
+
+      setMsg("Compte créé. Préparation du checkout Stripe...", true);
+
+      // CHECKOUT STRIPE
+      const checkoutRes = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          plan
+        })
+      });
+
+      const checkoutData = await checkoutRes.json();
+
+      if (!checkoutRes.ok) {
+        throw new Error(checkoutData.error || "Erreur Stripe");
+      }
+
+      if (!checkoutData.url) {
+        throw new Error("URL Stripe manquante");
+      }
+
+      window.location.href = checkoutData.url;
+
+    } catch (err) {
+      console.error(err);
+      setMsg(err.message || "Erreur inconnue");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Commencer l’essai";
+    }
+  });
 }
-
-// ========================================
-// Global Events
-// ========================================
-
-function bindGlobalEvents() {
-  window.addEventListener("resize", () => {
-    fpState.app.mobile = window.innerWidth <= 900;
-  });
-
-  window.addEventListener("online", () => {
-    fpState.app.online = true;
-  });
-
-  window.addEventListener("offline", () => {
-    fpState.app.online = false;
-  });
-}
-
-// ========================================
-// Start
-// ========================================
-
-bootstrap();
