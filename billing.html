@@ -2,17 +2,135 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a1230" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#dfe8ff" media="(prefers-color-scheme: light)" />
   <title>FlowPoint — Billing</title>
-
-  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
-  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <link rel="shortcut icon" href="/logo.png" />
   <link rel="stylesheet" href="/dashboard.css" />
+  <style>
+    /* ── App shell layout ── */
+    *,*::before,*::after{box-sizing:border-box}
+    .fpOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200}
+    .fpOverlay.show{display:block}
+    .fpAppShell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+
+    /* ── Sidebar ── */
+    .fpSidebar{background:var(--fp-sidebar-bg,#060e27);border-right:1px solid var(--fp-border,rgba(255,255,255,.07));display:flex;flex-direction:column;justify-content:space-between;padding:24px 16px;position:sticky;top:0;height:100vh;overflow-y:auto}
+    .fpSidebarTop{display:flex;flex-direction:column;gap:32px}
+    .fpBrand{display:flex;align-items:center;gap:10px;padding:0 8px}
+    .fpBrandLogo{width:36px;height:36px;flex-shrink:0}
+    .fpBrandLogoImg{width:100%;height:100%;object-fit:contain}
+    .fpBrandText{display:flex;flex-direction:column}
+    .fpBrandName{font-size:15px;font-weight:700;color:var(--fp-text,#f1f5f9)}
+    .fpBrandSub{font-size:11px;color:var(--fp-muted,#64748b)}
+    .fpNav{display:flex;flex-direction:column;gap:2px}
+    .fpNavItem{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13.5px;color:var(--fp-muted,#64748b);text-decoration:none;transition:all .15s}
+    .fpNavItem:hover,.fpNavItem.active{background:var(--fp-nav-active-bg,rgba(99,102,241,.12));color:var(--fp-accent,#6366f1)}
+    .fpNavDot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.4;flex-shrink:0}
+    .fpNavItem.active .fpNavDot{opacity:1}
+    .fpAccountCard{background:var(--fp-card-bg,rgba(255,255,255,.04));border:1px solid var(--fp-border,rgba(255,255,255,.07));border-radius:12px;padding:14px}
+    .fpCardKicker{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--fp-muted,#64748b);text-transform:uppercase;margin-bottom:8px}
+    .fpSidebarActions{display:flex;flex-direction:column;gap:6px}
+
+    /* ── Main content ── */
+    .fpMain{display:flex;flex-direction:column;min-width:0}
+    .fpTopbar{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--fp-border,rgba(255,255,255,.07));background:var(--fp-topbar-bg,rgba(6,14,39,.8));backdrop-filter:blur(12px);position:sticky;top:0;z-index:100;gap:16px}
+    .fpTopbarLeft,.fpTopbarRight{display:flex;align-items:center;gap:12px}
+    .fpMenuBtn{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:6px}
+    .fpMenuBtn span{display:block;width:22px;height:2px;background:var(--fp-text,#f1f5f9);border-radius:2px}
+    .fpHelloKicker{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--fp-accent,#6366f1);text-transform:uppercase}
+    .fpHelloTitle{font-size:20px;font-weight:700;color:var(--fp-text,#f1f5f9);margin:2px 0}
+    .fpHelloSub{font-size:12px;color:var(--fp-muted,#64748b)}
+    .fpStatusPill{display:flex;align-items:center;gap:6px;background:var(--fp-card-bg,rgba(255,255,255,.04));border:1px solid var(--fp-border,rgba(255,255,255,.07));border-radius:20px;padding:5px 12px;font-size:12px;color:var(--fp-muted,#64748b)}
+    .fpStatusDot{width:7px;height:7px;border-radius:50%;background:#10b981;flex-shrink:0}
+    .fpStatusDot.warn{background:#f59e0b}
+    .fpStatusDot.danger{background:#ef4444}
+
+    /* ── Page container ── */
+    .fpPageContainer{padding:28px;display:flex;flex-direction:column;gap:24px}
+
+    /* ── Hero ── */
+    .fpHero{background:var(--fp-card-bg,rgba(255,255,255,.04));border:1px solid var(--fp-border,rgba(255,255,255,.07));border-radius:16px;padding:32px}
+    .fpHeroContent{display:flex;flex-direction:column;gap:16px}
+    .fpHeroTitle{font-size:24px;font-weight:700;color:var(--fp-text,#f1f5f9)}
+    .fpHeroText{font-size:14px;color:var(--fp-muted,#64748b);max-width:640px;line-height:1.6}
+    .fpHeroStats{display:flex;gap:24px;flex-wrap:wrap;margin-top:8px}
+    .fpMiniStat{display:flex;flex-direction:column;gap:2px}
+    .fpMiniStatLabel{font-size:11px;color:var(--fp-muted,#64748b);text-transform:uppercase;letter-spacing:.06em}
+    .fpMiniStatValue{font-size:18px;font-weight:700;color:var(--fp-text,#f1f5f9)}
+    .fpMiniStatMeta{font-size:11px;color:var(--fp-muted,#64748b)}
+
+    /* ── Grid layout ── */
+    .fpGridMain{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start}
+    .fpCol{display:flex;flex-direction:column;gap:20px}
+
+    /* ── Cards ── */
+    .fpCard{background:var(--fp-card-bg,rgba(255,255,255,.04));border:1px solid var(--fp-border,rgba(255,255,255,.07));border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:20px}
+    .fpSectionTitle{font-size:16px;font-weight:600;color:var(--fp-text,#f1f5f9);margin:4px 0}
+    .fpCardText{font-size:13px;color:var(--fp-muted,#64748b);line-height:1.5}
+
+    /* ── Billing grid ── */
+    .fpBillingGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+    .fpBillingCard{background:var(--fp-surface,rgba(255,255,255,.03));border:1px solid var(--fp-border,rgba(255,255,255,.07));border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px}
+    .fpBillingTitle{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--fp-muted,#64748b)}
+    .fpBillingPlan{font-size:15px;font-weight:600;color:var(--fp-text,#f1f5f9)}
+    .fpBillingStatus{font-size:12px;color:var(--fp-muted,#64748b)}
+
+    /* ── Rows / report cards ── */
+    .fpRows{display:flex;flex-direction:column;gap:12px}
+    .fpReportCard{background:var(--fp-surface,rgba(255,255,255,.03));border:1px solid var(--fp-border,rgba(255,255,255,.07));border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px}
+    .fpReportTitle{font-size:14px;font-weight:600;color:var(--fp-text,#f1f5f9)}
+    .fpReportMeta{font-size:13px;color:var(--fp-muted,#64748b);line-height:1.4}
+    .fpDetailActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+
+    /* ── Buttons ── */
+    .fpBtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 18px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;border:1px solid transparent;transition:all .15s;white-space:nowrap}
+    .fpBtnPrimary{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border-color:transparent}
+    .fpBtnPrimary:hover{opacity:.88;transform:translateY(-1px)}
+    .fpBtnGhost{background:transparent;border-color:var(--fp-border,rgba(255,255,255,.12));color:var(--fp-text,#f1f5f9)}
+    .fpBtnGhost:hover{background:rgba(255,255,255,.06)}
+    .fpBtnDanger{background:rgba(220,38,38,.12);border-color:#dc2626;color:#f87171}
+    .fpBtnDanger:hover{background:rgba(220,38,38,.2)}
+    .fpBtnFull{width:100%;justify-content:center}
+
+    /* ── Addons ── */
+    .fpAddonsList{display:flex;flex-direction:column;gap:8px}
+    .fpAddonRow{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--fp-surface,rgba(255,255,255,.03));border-radius:8px}
+    .fpAddonLabel{font-size:13px;color:var(--fp-text,#f1f5f9)}
+    .fpAddonPill{font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px}
+    .fpAddonPill.on{background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.3)}
+    .fpAddonPill.off{background:rgba(100,116,139,.1);color:#64748b;border:1px solid rgba(100,116,139,.2)}
+
+    /* ── Inline links ── */
+    .fpInlineLinks{display:flex;flex-wrap:wrap;gap:10px}
+    .fpInlineLinks a{font-size:13px;color:var(--fp-accent,#6366f1);text-decoration:none;padding:5px 0}
+    .fpInlineLinks a:hover{text-decoration:underline}
+
+    /* ── Mobile ── */
+    @media(max-width:900px){
+      .fpAppShell{grid-template-columns:1fr}
+      .fpSidebar{position:fixed;left:-280px;top:0;height:100vh;width:260px;z-index:300;transition:left .25s}
+      .fpSidebar.open{left:0}
+      .fpMenuBtn{display:flex}
+      .fpGridMain{grid-template-columns:1fr}
+      .fpTopbarRight .fpStatusPill{display:none}
+    }
+
+    /* ── Light mode overrides ── */
+    .light-mode .fpSidebar{background:#f0f4ff;border-color:#d0d9f0}
+    .light-mode .fpNavItem{color:#475569}
+    .light-mode .fpNavItem:hover,.light-mode .fpNavItem.active{background:rgba(99,102,241,.1);color:#4f46e5}
+    .light-mode .fpAccountCard,.light-mode .fpCard,.light-mode .fpBillingCard,.light-mode .fpReportCard,.light-mode .fpHero{background:#fff;border-color:#d0d9f0}
+    .light-mode .fpAddonRow{background:#f8faff}
+    .light-mode .fpTopbar{background:rgba(240,244,255,.9);border-color:#d0d9f0}
+    .light-mode .fpSectionTitle,.light-mode .fpBillingPlan,.light-mode .fpHelloTitle,.light-mode .fpHeroTitle,.light-mode .fpMiniStatValue,.light-mode .fpReportTitle,.light-mode .fpBrandName,.light-mode .fpAddonLabel{color:#1e293b}
+    .light-mode .fpCardKicker,.light-mode .fpBillingTitle,.light-mode .fpCardText,.light-mode .fpBillingStatus,.light-mode .fpHeroText,.light-mode .fpMiniStatLabel,.light-mode .fpMiniStatMeta,.light-mode .fpReportMeta,.light-mode .fpBrandSub,.light-mode .fpHelloSub,.light-mode .fpHelloKicker,.light-mode .fpStatusPill{color:#64748b}
+    .light-mode .fpStatusPill{background:#f0f4ff;border-color:#d0d9f0}
+    .light-mode .fpBtnGhost{border-color:#cbd5e1;color:#334155}
+    .light-mode .fpBtnGhost:hover{background:#f0f4ff}
+  </style>
 </head>
 <body>
   <div class="fpOverlay" id="fpOverlay"></div>
@@ -22,9 +140,8 @@
       <div class="fpSidebarTop">
         <div class="fpBrand">
           <div class="fpBrandLogo">
-            <img src="/assets/flowpoint-logo.svg" alt="FlowPoint" class="fpBrandLogoImg" />
+            <img src="/logo.png" alt="FlowPoint" class="fpBrandLogoImg" />
           </div>
-
           <div class="fpBrandText">
             <div class="fpBrandName">FlowPoint</div>
             <div class="fpBrandSub">Centre de contrôle</div>
@@ -45,7 +162,6 @@
       <div class="fpSidebarBottom">
         <div class="fpAccountCard">
           <div class="fpCardKicker">Navigation</div>
-
           <div class="fpSidebarActions">
             <a class="fpBtn fpBtnGhost fpBtnFull" href="/pricing.html">Retour pricing</a>
             <a class="fpBtn fpBtnGhost fpBtnFull" href="/addons.html">Voir les add-ons</a>
@@ -60,19 +176,12 @@
       <header class="fpTopbar">
         <div class="fpTopbarLeft">
           <button id="fpMenuBtn" class="fpMenuBtn" type="button" aria-label="Ouvrir le menu">
-            <span></span>
-            <span></span>
-            <span></span>
+            <span></span><span></span><span></span>
           </button>
-
           <div class="fpHelloWrap">
-            <div class="fpHelloHead">
-              <div class="fpHelloBlock">
-                <div class="fpHelloKicker">FLOWPOINT</div>
-                <h1 class="fpHelloTitle">Billing</h1>
-                <div class="fpHelloSub">Plan · Paiement · Add-ons · Gestion d’abonnement</div>
-              </div>
-            </div>
+            <div class="fpHelloKicker">FLOWPOINT</div>
+            <h1 class="fpHelloTitle">Billing</h1>
+            <div class="fpHelloSub">Plan · Paiement · Add-ons · Gestion d'abonnement</div>
           </div>
         </div>
 
@@ -80,7 +189,6 @@
           <a class="fpBtn fpBtnGhost" href="/pricing.html">Pricing</a>
           <a class="fpBtn fpBtnGhost" href="/addons.html">Add-ons</a>
           <a class="fpBtn fpBtnPrimary" href="/dashboard.html#billing">Dashboard</a>
-
           <div class="fpStatusPill">
             <span class="fpStatusDot" id="fpBillingStatusDot"></span>
             <span id="fpBillingStatusText">Billing prêt</span>
@@ -89,7 +197,7 @@
       </header>
 
       <div class="fpPageContainer">
-        <section class="fpHero fpHeroWide">
+        <section class="fpHero">
           <div class="fpHeroContent">
             <div class="fpCardKicker">Facturation</div>
             <h2 class="fpHeroTitle">Ton espace billing</h2>
@@ -97,20 +205,17 @@
               Gère ton plan, tes paiements, tes modules actifs et les options liées à ton abonnement
               depuis une interface cohérente avec le dashboard FlowPoint.
             </p>
-
             <div class="fpHeroStats">
               <div class="fpMiniStat">
                 <div class="fpMiniStatLabel">Plan actuel</div>
                 <div class="fpMiniStatValue" id="fpBillPlanHero">Plan</div>
                 <div class="fpMiniStatMeta">Accès FlowPoint</div>
               </div>
-
               <div class="fpMiniStat">
                 <div class="fpMiniStatLabel">Statut</div>
                 <div class="fpMiniStatValue" id="fpBillStatusHero">Actif</div>
                 <div class="fpMiniStatMeta">État courant</div>
               </div>
-
               <div class="fpMiniStat">
                 <div class="fpMiniStatLabel">Organisation</div>
                 <div class="fpMiniStatValue" id="fpBillOrgHero">Workspace</div>
@@ -120,38 +225,32 @@
           </div>
         </section>
 
-        <div class="fpGrid fpGridMain">
+        <div class="fpGridMain">
           <div class="fpCol fpColMain">
             <section class="fpCard">
               <div class="fpCardHead">
-                <div>
-                  <div class="fpCardKicker">Abonnement</div>
-                  <h2 class="fpSectionTitle">Plan actuel</h2>
-                  <p class="fpCardText">
-                    Vue claire du plan, du statut, de l’organisation et de l’essai éventuel.
-                  </p>
-                </div>
+                <div class="fpCardKicker">Abonnement</div>
+                <h2 class="fpSectionTitle">Plan actuel</h2>
+                <p class="fpCardText">
+                  Vue claire du plan, du statut, de l'organisation et de l'essai éventuel.
+                </p>
               </div>
-
               <div class="fpBillingGrid">
                 <div class="fpBillingCard">
                   <div class="fpBillingTitle">Plan</div>
                   <div class="fpBillingPlan" id="fpBillPlanMain">Plan non synchronisé</div>
                   <div class="fpBillingStatus" id="fpBillPlanMeta">Information en attente</div>
                 </div>
-
                 <div class="fpBillingCard">
                   <div class="fpBillingTitle">Statut</div>
                   <div class="fpBillingPlan" id="fpBillStatusMain">Statut</div>
-                  <div class="fpBillingStatus">État actuel de l’abonnement</div>
+                  <div class="fpBillingStatus">État actuel de l'abonnement</div>
                 </div>
-
                 <div class="fpBillingCard">
                   <div class="fpBillingTitle">Organisation</div>
                   <div class="fpBillingPlan" id="fpBillOrgMain">Workspace principal</div>
                   <div class="fpBillingStatus">Espace actuellement connecté</div>
                 </div>
-
                 <div class="fpBillingCard">
                   <div class="fpBillingTitle">Essai</div>
                   <div class="fpBillingPlan" id="fpBillTrialMain">Essai non défini</div>
@@ -162,31 +261,23 @@
 
             <section class="fpCard">
               <div class="fpCardHead">
-                <div>
-                  <div class="fpCardKicker">Paiement</div>
-                  <h2 class="fpSectionTitle">Gestion FlowPoint</h2>
-                  <p class="fpCardText">
-                    Accès direct aux pages de gestion de l’abonnement sans lien portail externe visible.
-                  </p>
-                </div>
+                <div class="fpCardKicker">Paiement</div>
+                <h2 class="fpSectionTitle">Gestion FlowPoint</h2>
+                <p class="fpCardText">
+                  Accès direct aux pages de gestion de l'abonnement sans lien portail externe visible.
+                </p>
               </div>
-
               <div class="fpRows">
                 <div class="fpReportCard">
                   <div class="fpReportTitle">Gérer le plan</div>
-                  <div class="fpReportMeta">
-                    Modifie ton plan directement depuis la page pricing FlowPoint.
-                  </div>
+                  <div class="fpReportMeta">Modifie ton plan directement depuis la page pricing FlowPoint.</div>
                   <div class="fpDetailActions">
                     <a class="fpBtn fpBtnPrimary" href="/pricing.html">Ouvrir pricing</a>
                   </div>
                 </div>
-
                 <div class="fpReportCard">
                   <div class="fpReportTitle">Gérer les add-ons</div>
-                  <div class="fpReportMeta">
-                    Active ou désactive les modules directement dans FlowPoint.
-                  </div>
+                  <div class="fpReportMeta">Active ou désactive les modules directement dans FlowPoint.</div>
                   <div class="fpDetailActions">
                     <a class="fpBtn fpBtnGhost" href="/addons.html">Ouvrir add-ons</a>
                   </div>
@@ -198,15 +289,10 @@
           <div class="fpCol fpColSide">
             <section class="fpCard">
               <div class="fpCardHead">
-                <div>
-                  <div class="fpCardKicker">Add-ons</div>
-                  <h2 class="fpSectionTitle">Modules actifs</h2>
-                  <p class="fpCardText">
-                    Résumé des extensions principales associées au compte.
-                  </p>
-                </div>
+                <div class="fpCardKicker">Add-ons</div>
+                <h2 class="fpSectionTitle">Modules actifs</h2>
+                <p class="fpCardText">Résumé des extensions principales associées au compte.</p>
               </div>
-
               <div class="fpAddonsList" id="fpBillingAddonsList">
                 <div class="fpAddonRow"><div class="fpAddonLabel">White label</div><div class="fpAddonPill off">OFF</div></div>
                 <div class="fpAddonRow"><div class="fpAddonLabel">Monitors +50</div><div class="fpAddonPill off">OFF</div></div>
@@ -215,7 +301,6 @@
                 <div class="fpAddonRow"><div class="fpAddonLabel">Custom domain</div><div class="fpAddonPill off">OFF</div></div>
                 <div class="fpAddonRow"><div class="fpAddonLabel">Advanced reports</div><div class="fpAddonPill off">OFF</div></div>
               </div>
-
               <div class="fpDetailActions">
                 <a class="fpBtn fpBtnPrimary" href="/addons.html">Voir tous les add-ons</a>
               </div>
@@ -223,15 +308,10 @@
 
             <section class="fpCard">
               <div class="fpCardHead">
-                <div>
-                  <div class="fpCardKicker">Liens utiles</div>
-                  <h2 class="fpSectionTitle">Navigation</h2>
-                  <p class="fpCardText">
-                    Retour rapide vers les autres espaces importants.
-                  </p>
-                </div>
+                <div class="fpCardKicker">Liens utiles</div>
+                <h2 class="fpSectionTitle">Navigation</h2>
+                <p class="fpCardText">Retour rapide vers les autres espaces importants.</p>
               </div>
-
               <div class="fpInlineLinks">
                 <a href="/dashboard.html#overview">Dashboard</a>
                 <a href="/pricing.html">Pricing</a>
@@ -270,10 +350,8 @@
 
       function setStatus(text, mode = "ok") {
         if (statusText) statusText.textContent = text || "";
-
         if (!statusDot) return;
         statusDot.classList.remove("warn", "danger");
-
         if (mode === "warn") statusDot.classList.add("warn");
         if (mode === "danger") statusDot.classList.add("danger");
       }
@@ -290,13 +368,8 @@
         document.body.style.overflow = "";
       }
 
-      function getToken() {
-        return localStorage.getItem(TOKEN_KEY) || "";
-      }
-
-      function setToken(token) {
-        if (token) localStorage.setItem(TOKEN_KEY, token);
-      }
+      function getToken() { return localStorage.getItem(TOKEN_KEY) || ""; }
+      function setToken(token) { if (token) localStorage.setItem(TOKEN_KEY, token); }
 
       function cap(str) {
         const s = String(str || "").trim();
@@ -314,52 +387,32 @@
       }
 
       function statusLabel(status) {
-  const s = String(status || "").toLowerCase();
-  if (!s) return "Statut en attente";
-  if (s === "trialing") return "À l’essai";
-  if (s === "active") return "Actif";
-  if (s === "past_due") return "Paiement en retard";
-  if (s === "canceled") return "Annulé";
-  if (s === "incomplete") return "Incomplet";
-  if (s === "payment_succeeded") return "Paiement validé";
-  return cap(s.replaceAll("_", " "));
-}
+        const s = String(status || "").toLowerCase();
+        if (!s) return "Statut en attente";
+        if (s === "trialing") return "À l'essai";
+        if (s === "active") return "Actif";
+        if (s === "past_due") return "Paiement en retard";
+        if (s === "canceled") return "Annulé";
+        if (s === "incomplete") return "Incomplet";
+        if (s === "payment_succeeded") return "Paiement validé";
+        return cap(s.replaceAll("_", " "));
+      }
 
       function trialLabel(value, me = {}) {
-  const status = String(me?.subscriptionStatus || me?.lastPaymentStatus || "").toLowerCase();
-
-  if (!value) {
-    if (status === "trialing") return "Essai actif";
-    return "Essai non défini";
-  }
-
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    if (status === "trialing") return "Essai actif";
-    return "Essai non défini";
-  }
-
-  const now = new Date();
-  return d.getTime() >= now.getTime() ? "Essai actif" : "Essai terminé";
-}
+        const status = String(me?.subscriptionStatus || me?.lastPaymentStatus || "").toLowerCase();
+        if (!value) return status === "trialing" ? "Essai actif" : "Essai non défini";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return status === "trialing" ? "Essai actif" : "Essai non défini";
+        return d.getTime() >= Date.now() ? "Essai actif" : "Essai terminé";
+      }
 
       function trialMetaLabel(value, me = {}) {
         const status = String(me?.subscriptionStatus || me?.lastPaymentStatus || "").toLowerCase();
-
-        if (!value) {
-          if (status === "trialing") return "Essai en cours";
-          return "Aucun essai actif";
-        }
-
+        if (!value) return status === "trialing" ? "Essai en cours" : "Aucun essai actif";
         const d = new Date(value);
-        if (Number.isNaN(d.getTime())) {
-          if (status === "trialing") return "Essai en cours";
-          return "Aucun essai actif";
-        }
-
-        const now = new Date();
-        return d.getTime() >= now.getTime()
-          ? `Jusqu’au ${d.toLocaleDateString("fr-FR")}`
+        if (Number.isNaN(d.getTime())) return status === "trialing" ? "Essai en cours" : "Aucun essai actif";
+        return d.getTime() >= Date.now()
+          ? `Jusqu'au ${d.toLocaleDateString("fr-FR")}`
           : `Terminé le ${d.toLocaleDateString("fr-FR")}`;
       }
 
@@ -379,17 +432,13 @@
           ["apiAccess", "API access"],
           ["localSeoPack", "Local SEO pack"],
         ];
-
         return rawEntries.map(([key, label]) => {
           const value = addons[key];
           const enabled =
             typeof value === "boolean" ? value :
-            typeof value === "number" ? value > 0 :
-            !!value;
-
+            typeof value === "number" ? value > 0 : !!value;
           return {
-            label,
-            enabled,
+            label, enabled,
             text: typeof value === "number" && value > 1 ? `ON ×${value}` : enabled ? "ON" : "OFF",
           };
         });
@@ -398,30 +447,23 @@
       function renderAddons(me) {
         const target = document.getElementById("fpBillingAddonsList");
         if (!target) return;
-
-        const addons = getAddonEntries(me);
-
-        target.innerHTML = addons.map((a) => `
+        target.innerHTML = getAddonEntries(me).map((a) => `
           <div class="fpAddonRow">
             <div class="fpAddonLabel">${esc(a.label)}</div>
             <div class="fpAddonPill ${a.enabled ? "on" : "off"}">${esc(a.text)}</div>
-          </div>
-        `).join("");
+          </div>`).join("");
       }
 
       async function refreshTokenIfPossible() {
         const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
         if (!refreshToken) throw new Error("No refresh token");
-
         const r = await fetch(REFRESH_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ refreshToken }),
         });
-
         if (!r.ok) throw new Error("Refresh failed");
-
         const data = await r.json().catch(() => ({}));
         if (data?.token) setToken(data.token);
         if (data?.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
@@ -430,64 +472,41 @@
       async function fetchWithAuth(path, options = {}) {
         const headers = new Headers(options.headers || {});
         const token = getToken();
-
         if (token) headers.set("Authorization", "Bearer " + token);
-        if (options.body && !headers.has("Content-Type")) {
-          headers.set("Content-Type", "application/json");
-        }
-
-        const doFetch = () => fetch(path, {
-          ...options,
-          headers,
-          credentials: "include"
-        });
-
+        if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+        const doFetch = () => fetch(path, { ...options, headers, credentials: "include" });
         let res = await doFetch();
-
         if (res.status === 401) {
           await refreshTokenIfPossible();
           const newToken = getToken();
           if (newToken) headers.set("Authorization", "Bearer " + newToken);
           res = await doFetch();
         }
-
         return res;
       }
 
       async function loadBillingInfo() {
         setStatus("Chargement billing…", "warn");
-
         try {
           const r = await fetchWithAuth("/api/me");
           const me = await r.json().catch(() => ({}));
 
-          const plan = planLabel(me?.plan);
+          const plan   = planLabel(me?.plan);
           const status = statusLabel(me?.subscriptionStatus || me?.lastPaymentStatus);
-          const org = me?.org?.name || me?.organization?.name || "Workspace principal";
-          const trial = trialLabel(me?.trialEndsAt, me);
-          const trialMeta = trialMetaLabel(me?.trialEndsAt, me);
+          const org    = me?.org?.name || me?.organization?.name || "Workspace principal";
+          const trial  = trialLabel(me?.trialEndsAt, me);
+          const tMeta  = trialMetaLabel(me?.trialEndsAt, me);
 
-          const planHero = document.getElementById("fpBillPlanHero");
-          const statusHero = document.getElementById("fpBillStatusHero");
-          const orgHero = document.getElementById("fpBillOrgHero");
-
-          const planMain = document.getElementById("fpBillPlanMain");
-          const planMeta = document.getElementById("fpBillPlanMeta");
-          const statusMain = document.getElementById("fpBillStatusMain");
-          const orgMain = document.getElementById("fpBillOrgMain");
-          const trialMain = document.getElementById("fpBillTrialMain");
-          const trialMetaEl = document.getElementById("fpBillTrialMeta");
-
-          if (planHero) planHero.textContent = plan;
-          if (statusHero) statusHero.textContent = status;
-          if (orgHero) orgHero.textContent = org;
-
-          if (planMain) planMain.textContent = plan;
-          if (planMeta) planMeta.textContent = status;
-          if (statusMain) statusMain.textContent = status;
-          if (orgMain) orgMain.textContent = org;
-          if (trialMain) trialMain.textContent = trial;
-          if (trialMetaEl) trialMetaEl.textContent = trialMeta;
+          const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+          set("fpBillPlanHero",   plan);
+          set("fpBillStatusHero", status);
+          set("fpBillOrgHero",    org);
+          set("fpBillPlanMain",   plan);
+          set("fpBillPlanMeta",   status);
+          set("fpBillStatusMain", status);
+          set("fpBillOrgMain",    org);
+          set("fpBillTrialMain",  trial);
+          set("fpBillTrialMeta",  tMeta);
 
           renderAddons(me);
           setStatus("Billing prêt", "ok");
