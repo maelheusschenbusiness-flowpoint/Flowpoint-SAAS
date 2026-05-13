@@ -1,729 +1,308 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr" data-theme="dark">
 <head>
-
-  <meta charset="UTF-8" />
-
-  <meta
-    name="viewport"
-    content="
-      width=device-width,
-      initial-scale=1.0
-    "
-  />
-
-  <title>
-    FlowPoint Dashboard
-  </title>
-
-  <link
-    rel="preconnect"
-    href="https://fonts.googleapis.com"
-  />
-
-  <link
-    rel="preconnect"
-    href="https://fonts.gstatic.com"
-    crossorigin
-  />
-
-  <link
-    href="
-      https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap
-    "
-    rel="stylesheet"
-  />
-
-  <link
-    rel="stylesheet"
-    href="/dashboard.css"
-  />
-
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <title>Dashboard — Flowpoint</title>
+  <meta name="robots" content="noindex,nofollow"/>
+  <meta name="theme-color" content="#050810"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="dashboard.css"/>
 </head>
-
-<body data-theme="dark">
-
-  <div class="fpApp">
-
-    <!-- =====================================================
-         SIDEBAR
-    ====================================================== -->
-
-    <aside
-      class="fpSidebar"
-      id="fpSidebar"
-    >
-
-      <div class="fpBrand">
-
-        <div class="fpBrandLogo">
-          ⚡
-        </div>
-
-        <div class="fpBrandText">
-
-          <div class="fpBrandTitle">
-            FlowPoint
-          </div>
-
-          <div class="fpBrandSubtitle">
-            Executive Platform
-          </div>
-
-        </div>
-
-      </div>
-
-      <nav class="fpSidebarNav">
-
-        <button
-          class="
-            fpSidebarLink
-            active
-          "
-          data-route="#overview"
-          onclick="
-            navigateTo(
-              '#overview'
-            )
-          "
-        >
-
-          <span>
-            📊
-          </span>
-
-          <span>
-            Overview
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#missions"
-          onclick="
-            navigateTo(
-              '#missions'
-            )
-          "
-        >
-
-          <span>
-            🎯
-          </span>
-
-          <span>
-            Missions
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#monitors"
-          onclick="
-            navigateTo(
-              '#monitors'
-            )
-          "
-        >
-
-          <span>
-            🌐
-          </span>
-
-          <span>
-            Monitors
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#audits"
-          onclick="
-            navigateTo(
-              '#audits'
-            )
-          "
-        >
-
-          <span>
-            📈
-          </span>
-
-          <span>
-            Audits
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#reports"
-          onclick="
-            navigateTo(
-              '#reports'
-            )
-          "
-        >
-
-          <span>
-            📄
-          </span>
-
-          <span>
-            Reports
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#local-seo"
-          onclick="
-            navigateTo(
-              '#local-seo'
-            )
-          "
-        >
-
-          <span>
-            📍
-          </span>
-
-          <span>
-            Local SEO
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#competitors"
-          onclick="
-            navigateTo(
-              '#competitors'
-            )
-          "
-        >
-
-          <span>
-            🧠
-          </span>
-
-          <span>
-            Competitors
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#alerts"
-          onclick="
-            navigateTo(
-              '#alerts'
-            )
-          "
-        >
-
-          <span>
-            🚨
-          </span>
-
-          <span>
-            Alerts
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#team"
-          onclick="
-            navigateTo(
-              '#team'
-            )
-          "
-        >
-
-          <span>
-            👥
-          </span>
-
-          <span>
-            Team
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#agency"
-          onclick="
-            navigateTo(
-              '#agency'
-            )
-          "
-        >
-
-          <span>
-            🏢
-          </span>
-
-          <span>
-            Agency
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#automations"
-          onclick="
-            navigateTo(
-              '#automations'
-            )
-          "
-        >
-
-          <span>
-            ⚙️
-          </span>
-
-          <span>
-            Automations
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#ai-workspace"
-          onclick="
-            navigateTo(
-              '#ai-workspace'
-            )
-          "
-        >
-
-          <span>
-            🤖
-          </span>
-
-          <span>
-            AI Workspace
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#billing"
-          onclick="
-            navigateTo(
-              '#billing'
-            )
-          "
-        >
-
-          <span>
-            💳
-          </span>
-
-          <span>
-            Billing
-          </span>
-
-        </button>
-
-        <button
-          class="fpSidebarLink"
-          data-route="#settings"
-          onclick="
-            navigateTo(
-              '#settings'
-            )
-          "
-        >
-
-          <span>
-            ⚙️
-          </span>
-
-          <span>
-            Settings
-          </span>
-
-        </button>
-
-      </nav>
-
-    </aside>
-
-    <!-- =====================================================
-         MAIN
-    ====================================================== -->
-
-    <main class="fpMain">
-
-      <!-- ===================================================
-           TOPBAR
-      ==================================================== -->
-
-      <header class="fpTopbar">
-
-        <div class="fpTopbarLeft">
-
-          <button
-            class="fpMobileMenu"
-            onclick="toggleSidebar()"
-          >
-            ☰
-          </button>
-
-          <div class="fpSearchBar">
-
-            <input
-              type="text"
-              placeholder="
-                Search workspace...
-              "
-            />
-
-          </div>
-
-        </div>
-
-        <div class="fpTopbarRight">
-
-          <button
-            class="fpThemeButton"
-            onclick="
-              toggleTheme()
-            "
-          >
-            🌙
-          </button>
-
-          <button
-            class="fpThemeButton"
-            onclick="
-              openCommandPalette()
-            "
-          >
-            ⌘K
-          </button>
-
-          <div class="fpUserBox">
-
-            <div class="fpUserAvatar">
-              F
-            </div>
-
-            <div class="fpUserMeta">
-
-              <div class="fpUserName">
-                FlowPoint User
-              </div>
-
-              <div class="fpUserPlan">
-                Ultra Plan
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      </header>
-
-      <!-- ===================================================
-           PAGE CONTENT
-      ==================================================== -->
-
-      <div
-        class="fpPage"
-        id="fpPage"
-      >
-
-        <div class="fpPageLoading">
-
-          <div class="fpSpinner"></div>
-
-          <div class="fpLoadingText">
-            Initializing FlowPoint...
-          </div>
-
-        </div>
-
-      </div>
-
-    </main>
-
+<body>
+
+<!-- GLOBAL OVERLAYS -->
+<div id="fp-toast-container" aria-live="polite" aria-label="Notifications"></div>
+<div id="fp-cmd-palette" class="fp-cmd-overlay" role="dialog" aria-modal="true" aria-label="Palette de commandes" hidden></div>
+<div id="fp-ctx-menu" class="fp-ctx-menu" hidden></div>
+<div id="fp-float-panel" class="fp-float-panel-wrapper" hidden>
+  <div class="fp-float-overlay" id="fp-float-overlay"></div>
+  <aside class="fp-float-panel" id="fp-float-panel-inner" role="complementary">
+    <div class="fp-float-panel-header">
+      <span id="fp-float-panel-title" class="fp-float-panel-title">Détails</span>
+      <button id="fp-float-panel-close" class="fp-icon-btn" aria-label="Fermer le panneau">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="fp-float-panel-body" class="fp-float-panel-body"></div>
+  </aside>
+</div>
+<div id="fp-shortcuts-modal" class="fp-modal-overlay" hidden>
+  <div class="fp-modal">
+    <div class="fp-modal-header">
+      <span class="fp-modal-title">Raccourcis clavier</span>
+      <button class="fp-icon-btn" id="fp-shortcuts-close" aria-label="Fermer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="fp-shortcuts-list" class="fp-shortcuts-list"></div>
   </div>
+</div>
+<div id="fp-onboarding" class="fp-onboarding" hidden></div>
 
-  <!-- =====================================================
-       GLOBAL VARIABLES
-  ====================================================== -->
+<!-- LAYOUT -->
+<div class="fp-layout" id="fp-layout">
 
-  <script>
+  <!-- SIDEBAR -->
+  <aside class="fp-sidebar" id="fp-sidebar" role="navigation" aria-label="Navigation principale">
+    <!-- Brand + collapse -->
+    <div class="fp-brand">
+      <!-- Flowpoint.pro logo exact -->
+      <div class="fp-brand-logo" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+          <rect width="32" height="32" rx="8" fill="#2563EB"/>
+          <path d="M18.5 4L8 17.5h8.5L14.5 28 24 14.5h-8.5L18.5 4z" fill="white" stroke="white" stroke-width="0.5" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="fp-brand-text">
+        <div class="fp-brand-name">Flowpoint</div>
+        <div class="fp-brand-sub">Centre de contrôle</div>
+      </div>
+      <button class="fp-sidebar-collapse-btn" id="fp-sidebar-collapse" aria-label="Réduire la sidebar" title="Réduire/Agrandir la sidebar">
+        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <rect x="1.5" y="1.5" width="15" height="15" rx="3"/>
+          <line x1="6" y1="1.5" x2="6" y2="16.5"/>
+          <line x1="3" y1="6" x2="5" y2="6"/>
+          <line x1="3" y1="9" x2="5" y2="9"/>
+          <line x1="3" y1="12" x2="5" y2="12"/>
+        </svg>
+      </button>
+    </div>
 
-    window.FLOWPOINT_STRIPE_STANDARD =
-      "price_standard";
+    <!-- Nav principal -->
+    <nav class="fp-nav" role="list">
+      <div class="fp-nav-section-label">Principal</div>
+      <button class="fp-nav-item" data-route="overview" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>Vue d'ensemble</span>
+      </button>
+      <button class="fp-nav-item" data-route="growth" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        <span>Croissance</span>
+      </button>
+      <button class="fp-nav-item" data-route="missions" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <span>Missions</span>
+      </button>
+      <button class="fp-nav-item" data-route="audits" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span>Audits SEO</span>
+      </button>
+      <button class="fp-nav-item" data-route="monitors" role="listitem" id="nav-monitors">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span>Monitors</span>
+        <span class="fp-nav-badge" id="monitors-badge" hidden>1</span>
+      </button>
+      <button class="fp-nav-item" data-route="local-seo" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <span>Local SEO</span>
+      </button>
 
-    window.FLOWPOINT_STRIPE_PRO =
-      "price_pro";
+      <div class="fp-nav-section-label">Intelligence</div>
+      <button class="fp-nav-item" data-route="competitor" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Concurrents</span>
+      </button>
+      <button class="fp-nav-item" data-route="conversion" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <span>Conversion</span>
+      </button>
+      <button class="fp-nav-item" data-route="data-explorer" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        <span>Data Explorer</span>
+      </button>
 
-    window.FLOWPOINT_STRIPE_ULTRA =
-      "price_ultra";
+      <div class="fp-nav-section-label">Opérations</div>
+      <button class="fp-nav-item" data-route="reports" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Rapports</span>
+      </button>
+      <button class="fp-nav-item" data-route="alerts-center" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span>Centre d'alertes</span>
+        <span class="fp-nav-badge fp-nav-badge--warn" id="alerts-badge">3</span>
+      </button>
+      <button class="fp-nav-item" data-route="activity-feed" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        <span>Activité</span>
+      </button>
 
-  </script>
+      <div class="fp-nav-section-label">Workspace</div>
+      <button class="fp-nav-item" data-route="team" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Équipe</span>
+      </button>
+      <button class="fp-nav-item" data-route="client-mode" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span>Mode Client</span>
+      </button>
+      <button class="fp-nav-item" data-route="billing" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span>Facturation</span>
+      </button>
+      <button class="fp-nav-item" data-route="settings" role="listitem">
+        <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Paramètres</span>
+      </button>
+    </nav>
 
-  <!-- =====================================================
-       DASHBOARD ENGINE
-  ====================================================== -->
+    <!-- AI Button -->
+    <button class="fp-nav-ai" data-route="ai" id="nav-ai">
+      <svg class="fp-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
+      <span>Assistant IA</span>
+      <span class="fp-badge-ai">GPT-4o</span>
+    </button>
 
-  <script src="/dashboard.js"></script>
+    <!-- Sidebar footer -->
+    <div class="fp-sidebar-footer">
+      <div class="fp-status-dot-wrap">
+        <div class="fp-status-dot" id="global-status-dot"></div>
+        <span class="fp-status-text" id="global-status-text">Tous les systèmes OK</span>
+      </div>
+      <div class="fp-usage-bars" id="sidebar-usage"></div>
+      <!-- Streak -->
+      <div class="fp-streak-row" id="fp-streak-row">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="1"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span class="fp-streak-label">Streak : <strong id="fp-streak-count">7j</strong></span>
+      </div>
+      <div class="fp-sidebar-user" id="sidebar-user"></div>
+    </div>
+  </aside>
 
-</body>
-</html>
-<!-- =====================================================
-     ADD THIS INSIDE <head>
-===================================================== -->
+  <!-- MAIN CONTENT -->
+  <div class="fp-main-wrap">
 
-<meta
-  name="theme-color"
-  content="#070b19"
-/>
+    <!-- TOPBAR (global, always visible) -->
+    <header class="fp-topbar" role="banner">
+      <button class="fp-hamburger" id="fp-hamburger" aria-label="Ouvrir le menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+      <!-- Breadcrumb -->
+      <div class="fp-topbar-breadcrumb" id="fp-topbar-breadcrumb">
+        <svg width="14" height="14" viewBox="0 0 32 32" fill="none" style="flex-shrink:0"><rect width="32" height="32" rx="7" fill="#2563EB"/><path d="M18.5 4L8 17.5h8.5L14.5 28 24 14.5h-8.5L18.5 4z" fill="white"/></svg>
+        <span class="fp-topbar-brand">Flowpoint</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--fp-text-faint)"><polyline points="9 18 15 12 9 6"/></svg>
+        <span class="fp-topbar-page-name" id="fp-topbar-page-name">Vue d'ensemble</span>
+      </div>
+      <button class="fp-search-trigger" id="fp-search-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="fp-cmd-palette">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span>Rechercher…</span>
+      </button>
+      <div class="fp-topbar-spacer"></div>
+      <!-- Plan Switcher -->
+      <div id="fp-plan-switcher" class="fp-plan-switcher"></div>
+      <!-- Status -->
+      <button class="fp-topbar-status" id="topbar-status" data-route="monitors">
+        <div class="fp-status-dot" id="topbar-status-dot"></div>
+        <span id="topbar-status-text">Tous UP</span>
+      </button>
+      <!-- Notifications -->
+      <div class="fp-notif-wrap" id="fp-notif-wrap">
+        <button class="fp-icon-btn" id="fp-notif-btn" aria-label="Notifications" aria-haspopup="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="fp-notif-badge" id="fp-notif-badge" hidden>2</span>
+        </button>
+        <div class="fp-notif-dropdown" id="fp-notif-dropdown" hidden role="menu"></div>
+      </div>
+      <!-- Messages -->
+      <div class="fp-msg-wrap" id="fp-msg-wrap">
+        <button class="fp-icon-btn" id="fp-msg-btn" aria-label="Messages" aria-haspopup="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="fp-notif-badge" id="fp-msg-badge" hidden>2</span>
+        </button>
+        <div class="fp-msg-dropdown" id="fp-msg-dropdown" hidden role="dialog"></div>
+      </div>
+      <!-- Activity feed -->
+      <button class="fp-icon-btn" id="fp-activity-btn" aria-label="Fil d'activité" title="Fil d'activité équipe">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span class="fp-notif-badge" id="fp-activity-badge" hidden>0</span>
+      </button>
+      <!-- AI quick access -->
+      <button class="fp-icon-btn fp-icon-btn--ai" id="topbar-ai" aria-label="Assistant IA" title="Assistant IA">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
+      </button>
+      <!-- Theme toggle -->
+      <button class="fp-icon-btn" id="fp-theme-toggle" aria-label="Basculer le thème">
+        <svg class="fp-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="fp-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <!-- Logout -->
+      <button class="fp-icon-btn" id="fp-logout-btn" aria-label="Se déconnecter">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </header>
 
-<link
-  rel="icon"
-  type="image/svg+xml"
-  href="/assets/flowpoint-logo.svg"
-/>
+    <!-- PAGE CONTENT -->
+    <main class="fp-page" id="fp-page" role="main" aria-label="Contenu principal"></main>
 
-<!-- =====================================================
-     ADD THIS BEFORE </body>
-===================================================== -->
+  </div><!-- /.fp-main-wrap -->
+
+</div><!-- /.fp-layout -->
+
+<!-- ACTIVITY FEED PANEL -->
+<div class="fp-activity-overlay" id="fp-activity-overlay" hidden aria-hidden="true"></div>
+<aside class="fp-activity-panel" id="fp-activity-panel" hidden aria-label="Fil d'activité équipe" role="complementary">
+  <div class="fp-activity-panel-header">
+    <div class="fp-activity-panel-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Activité équipe
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button class="fp-icon-btn fp-push-toggle" id="fp-push-toggle-btn"
+        aria-label="Activer les notifications push" aria-pressed="false"
+        title="Activer les notifications push">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </button>
+      <button class="fp-icon-btn" id="fp-activity-close" aria-label="Fermer le fil d'activité">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="fp-activity-filters" id="fp-activity-filters">
+    <button class="fp-activity-filter active" data-filter="all">Tous</button>
+    <button class="fp-activity-filter" data-filter="audit">Audits</button>
+    <button class="fp-activity-filter" data-filter="monitor">Monitors</button>
+    <button class="fp-activity-filter" data-filter="report">Rapports</button>
+    <button class="fp-activity-filter" data-filter="alert">Alertes</button>
+  </div>
+  <div class="fp-activity-list" id="fp-activity-list">
+    <div class="fp-activity-loading">Chargement…</div>
+  </div>
+</aside>
 
 <!-- MOBILE OVERLAY -->
+<div class="fp-mobile-overlay" id="fp-mobile-overlay" aria-hidden="true"></div>
 
-<div
-  class="fpMobileOverlay"
-  id="fpMobileOverlay"
-  onclick="toggleSidebar()"
-></div>
+<!-- FAB BACKDROP -->
+<div class="fp-fab-backdrop" id="fp-fab-backdrop" aria-hidden="true"></div>
 
-<!-- GLOBAL TOASTS -->
-
-<div
-  class="fpToastContainer"
-  id="fpToastContainer"
-></div>
-
-<!-- =====================================================
-     OPTIONAL PREMIUM WIDGETS
-===================================================== -->
-
-<template id="fpPremiumWidgets">
-
-  <!-- KPI WIDGET -->
-
-  <div class="fpKpiWidget">
-
-    <div class="fpKpiWidgetTop">
-
-      <div class="fpKpiWidgetLabel">
-        Revenue Opportunity
-      </div>
-
-      <div class="fpKpiWidgetTrend positive">
-        +14%
-      </div>
-
-    </div>
-
-    <div class="fpKpiWidgetValue">
-      €12.4k
-    </div>
-
-    <div class="fpKpiWidgetBottom">
-      Estimated additional revenue
-    </div>
-
-  </div>
-
-  <!-- HEALTH WIDGET -->
-
-  <div class="fpHealthWidget">
-
-    <div class="fpHealthWidgetHeader">
-
-      <div class="fpHealthWidgetTitle">
-        Infrastructure Health
-      </div>
-
-    </div>
-
-    <div class="fpHealthBars">
-
-      <div class="fpHealthBar">
-
-        <div class="fpHealthBarLabel">
-          Uptime
-        </div>
-
-        <div class="fpHealthBarTrack">
-
-          <div
-            class="fpHealthBarFill"
-            style="width:99%"
-          ></div>
-
-        </div>
-
-      </div>
-
-      <div class="fpHealthBar">
-
-        <div class="fpHealthBarLabel">
-          Performance
-        </div>
-
-        <div class="fpHealthBarTrack">
-
-          <div
-            class="fpHealthBarFill"
-            style="width:82%"
-          ></div>
-
-        </div>
-
-      </div>
-
-      <div class="fpHealthBar">
-
-        <div class="fpHealthBarLabel">
-          SEO
-        </div>
-
-        <div class="fpHealthBarTrack">
-
-          <div
-            class="fpHealthBarFill"
-            style="width:76%"
-          ></div>
-
-        </div>
-
-      </div>
-
-    </div>
-
-  </div>
-
-</template>
-
-<!-- =====================================================
-     OPTIONAL SCRIPT PATCHES
-===================================================== -->
+<!-- FAB MENU -->
+<div class="fp-fab-wrap" id="fp-fab-wrap">
+  <div class="fp-fab-actions" id="fp-fab-actions"></div>
+  <button class="fp-fab" id="fp-fab" aria-label="Actions rapides" aria-expanded="false">
+    <svg class="fp-fab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+</div>
 
 <script>
-
-  // Sidebar overlay sync
-
-  const originalToggleSidebar =
-    window.toggleSidebar;
-
-  window.toggleSidebar =
-    function() {
-
-      const sidebar =
-        document.getElementById(
-          "fpSidebar"
-        );
-
-      const overlay =
-        document.getElementById(
-          "fpMobileOverlay"
-        );
-
-      sidebar.classList.toggle(
-        "mobile-open"
-      );
-
-      overlay.classList.toggle(
-        "visible"
-      );
-
-    };
-
-  // Auto close sidebar on route
-
-  const originalNavigateTo =
-    window.navigateTo;
-
-  window.navigateTo =
-    function(route) {
-
-      const sidebar =
-        document.getElementById(
-          "fpSidebar"
-        );
-
-      const overlay =
-        document.getElementById(
-          "fpMobileOverlay"
-        );
-
-      sidebar.classList.remove(
-        "mobile-open"
-      );
-
-      overlay.classList.remove(
-        "visible"
-      );
-
-      window.location.hash =
-        route;
-
-    };
-
-  // ESC close modals
-
-  document.addEventListener(
-    "keydown",
-    (event) => {
-
-      if (
-        event.key === "Escape"
-      ) {
-
-        document
-        .querySelectorAll(
-          ".fpModalOverlay"
-        )
-        .forEach(
-          (item) =>
-            item.remove()
-        );
-
-        document
-        .querySelectorAll(
-          ".fpCommandPaletteOverlay"
-        )
-        .forEach(
-          (item) =>
-            item.remove()
-        );
-
-      }
-
-    }
-  );
-
+  // Si ouvert localement (file://) ou sans backend → mode démo automatique
+  if (window.location.protocol === 'file:' || window.location.hostname === '') {
+    window.__FP_PREVIEW__ = true;
+  }
+  // Pour pointer vers un backend spécifique, décommentez et ajustez :
+  // window.__FP_BACKEND_URL = 'https://flowpoint-api.onrender.com';
+  // window.__FP_SOCKET_URL  = 'https://flowpoint-api.onrender.com';
 </script>
+<script src="fp-config.js"></script>
+<script src="fp-backend.js"></script>
+<script src="dashboard.js"></script>
+</body>
+</html>
