@@ -167,10 +167,16 @@ const UserSchema = new Schema(
     stripeSubscriptionId: String,
 
     trialEndsAt: {
-      type: Date,
-      default: () =>
-        new Date(Date.now() + 14 * 86400000),
-    },
+  type: Date,
+  default: () =>
+    new Date(Date.now() + 14 * 86400000),
+},
+
+emailNormalized: {
+  type: String,
+  unique: true,
+  sparse: true,
+},
   },
   {
     timestamps: true,
@@ -280,7 +286,11 @@ const Mission = model('Mission', MissionSchema);
 /* ──────────────────────────────────────────────
    HELPERS
 ────────────────────────────────────────────── */
-
+function normalizeEmail(email = '') {
+  return String(email)
+    .trim()
+    .toLowerCase();
+}
 function createToken(userId) {
   return jwt.sign(
     { userId },
@@ -408,10 +418,14 @@ router.post(
         });
       }
 
-      const existing =
-        await User.findOne({
-          email: email.toLowerCase(),
-        });
+      const normalizedEmail =
+  normalizeEmail(email);
+
+const existing =
+  await User.findOne({
+    emailNormalized:
+      normalizedEmail,
+  });
 
       if (existing) {
         return res.status(409).json({
@@ -1021,34 +1035,3 @@ mongoose
 
     process.exit(1);
   });
-// AJOUTER DANS UserSchema
-emailNormalized: {
-  type: String,
-  unique: true,
-  sparse: true,
-},
-
-// AJOUTER DANS LES HELPERS
-function normalizeEmail(email = '') {
-  return String(email).trim().toLowerCase();
-}
-
-// DANS /auth/register
-const normalizedEmail = normalizeEmail(email);
-
-if (await User.findOne({ emailNormalized: normalizedEmail })) {
-  return res.status(409).json({ error: 'Email déjà utilisé' });
-}
-
-const user = await User.create({
-  email: email.toLowerCase(),
-  emailNormalized: normalizedEmail,
-  passwordHash,
-  firstName,
-  companyName
-});
-
-// DANS /auth/login
-const user = await User.findOne({
-  emailNormalized: normalizeEmail(email)
-});
