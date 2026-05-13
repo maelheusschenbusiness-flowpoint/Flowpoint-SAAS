@@ -1,4 +1,4 @@
-/* style.css â€” FlowPoint (base + dark) */
+/* style.css — FlowPoint (base + dark) */
 
 *, *::before, *::after{
   box-sizing:border-box;
@@ -318,7 +318,7 @@ ul,ol{ list-style:none; }
 }
 
 .features li::before{
-  content:"â€¢";
+  content:"•";
   color:rgba(47,91,255,.85);
   font-weight:950;
 }
@@ -599,7 +599,7 @@ ul,ol{ list-style:none; }
 }
 
 .miniList li::before{
-  content:"â€¢";
+  content:"•";
   color:rgba(47,91,255,.85);
   font-weight:950;
 }
