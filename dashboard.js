@@ -2278,7 +2278,7 @@ function renderOverview() {
       </div>
 
       <!-- 8 Health Gauge Grid -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;position:relative">
+      <div class="fp-health-gauge-grid" style="gap:12px;position:relative">
         ${healthMetrics.map(h => {
           const col = h.val >= 70 ? '#22c55e' : h.val >= 50 ? '#f59e0b' : '#ef4444';
           const isUp = h.trend.startsWith('+');
@@ -2365,7 +2365,7 @@ function renderOverview() {
       <!-- WORKSPACE MAP -->
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🗺️ Workspace Intelligence Map</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        <div class="fp-ws-map-grid" style="gap:8px">
           ${wsModules.map(m => {
             const sc = m.score >= 70 ? '#22c55e' : m.score >= 50 ? '#f59e0b' : '#ef4444';
             const bg = m.status === 'ok' ? 'rgba(34,197,94,0.04)' : m.status === 'down' ? 'rgba(239,68,68,0.07)' : 'rgba(245,158,11,0.05)';
@@ -2453,7 +2453,7 @@ function renderOverview() {
         </div>
         ${badge('IA Prédictif','#06b6d4')}
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+      <div class="fp-forecast-grid" style="gap:12px">
         ${forecasts.map(f => `
           <div style="padding:14px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:11px;font-weight:600;color:var(--fp-text-muted);margin-bottom:8px">${f.label}</div>
@@ -2569,7 +2569,7 @@ function renderOverview() {
         <div style="font-size:18px">⚡</div>
         <div class="fp-card-title" style="margin-bottom:0">Quick Actions Hub</div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+      <div class="fp-quick-actions-grid" style="gap:10px">
         ${quickActions.map(q => `
           <button style="padding:14px 10px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);cursor:pointer;transition:all 0.18s;display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;outline:none" onclick="${q.action}" onmouseover="this.style.background='${q.color}12';this.style.borderColor='${q.color}30'" onmouseout="this.style.background='rgba(255,255,255,0.02)';this.style.borderColor='rgba(255,255,255,0.07)'">
             <div style="font-size:22px">${q.icon}</div>
@@ -2594,7 +2594,7 @@ function renderOverview() {
             const c = colors[item.type] || '#2563EB';
             return `<div class="fp-activity-item">
               <div class="fp-activity-icon" style="background:${c}18">${svgIcon(item.icon).replace('stroke="currentColor"',`stroke="${c}"`)}</div>
-              <div>
+              <div style="flex:1;min-width:0">
                 <div class="fp-activity-title">${item.title}</div>
                 <div class="fp-activity-desc">${item.desc}</div>
                 <div class="fp-activity-time">Il y a ${item.time}</div>
@@ -2619,10 +2619,12 @@ function renderOverview() {
           ].map(s => `
             <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);cursor:pointer" onclick="navigate('audits')">
               <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${s.score>=70?'#22c55e':s.score>=50?'#f59e0b':'#ef4444'}"></div>
-              <div style="flex:1;font-size:11px;font-weight:600;color:var(--fp-text-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.url}</div>
-              <div style="font-size:12px;font-weight:800;color:${scoreColor(s.score)}">${s.score}/100</div>
-              <div style="font-size:11px;font-weight:700;color:${s.trend==='up'?'#22c55e':s.trend==='down'?'#ef4444':'var(--fp-text-faint)'}">${s.trend==='up'?'↑':s.trend==='down'?'↓':'—'} ${s.delta}</div>
-              ${sparklineSVG([s.score-8,s.score-5,s.score-3,s.score], scoreColor(s.score), 50, 20)}
+              <div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--fp-text-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.url}</div>
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                <div style="font-size:12px;font-weight:800;color:${scoreColor(s.score)};white-space:nowrap">${s.score}/100</div>
+                <div style="font-size:11px;font-weight:700;white-space:nowrap;color:${s.trend==='up'?'#22c55e':s.trend==='down'?'#ef4444':'var(--fp-text-faint)'}">${s.trend==='up'?'↑':s.trend==='down'?'↓':'—'} ${s.delta}</div>
+              </div>
+              <div style="flex-shrink:0">${sparklineSVG([s.score-8,s.score-5,s.score-3,s.score], scoreColor(s.score), 50, 20)}</div>
             </div>
           `).join('')}
         </div>
@@ -3152,7 +3154,7 @@ function renderMissions() {
       if (STATE.missionSort === 'priority') return (impactRank[b.impact] || 0) - (impactRank[a.impact] || 0);
       return new Date(a.date) - new Date(b.date);
     });
-  const statusLabels = { todo:'À faire', inprogress:'En cours', done:'Terminé' };
+  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées' };
   const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e' };
   const cats = ['Audits','Local SEO','Monitoring','Rapports','Équipe'];
 
@@ -3227,7 +3229,7 @@ function renderMissions() {
             </div>
           </div>`;
         }).join('')}
-        ${filtered.length===0?'<div class="fp-empty">Aucune mission trouvée</div>':''}
+        ${filtered.length===0?`<div class="fp-empty-state" style="padding:40px 20px;text-align:center"><div style="font-size:36px;margin-bottom:12px;opacity:.5">📋</div><h3 style="font-size:15px;font-weight:700;color:var(--fp-text);margin:0 0 6px">Aucune mission trouvée</h3><p style="font-size:12px;color:var(--fp-text-muted);margin:0">Ajoutez une mission via le champ ci-dessus ou le bouton + en bas à droite.</p></div>`:''}
       </div>
     ` : STATE.missionView === 'kanban' ? `
       <div class="fp-kanban">
@@ -3249,11 +3251,17 @@ function renderMissions() {
                   ${(m.steps||[]).length>0?`<div class="fp-mission-progress" style="margin-top:8px"><div class="fp-mission-progress-bar" style="width:${Math.round((m.steps||[]).filter(s=>s.done).length/(m.steps||[]).length*100)}%"></div></div>`:''}
                 </div>
               `).join('')}
+              ${STATE.missions.filter(m=>m.status===col).length===0?`
+                <div style="padding:24px 16px;text-align:center;border:1px dashed rgba(255,255,255,0.1);border-radius:10px">
+                  <div style="font-size:22px;margin-bottom:6px;opacity:.4">${col==='done'?'✅':col==='inprogress'?'⚡':'📋'}</div>
+                  <div style="font-size:11px;color:var(--fp-text-faint);line-height:1.4">Pas de missions<br>pour le moment</div>
+                </div>
+              `:''}
             </div>
           </div>
         `).join('')}
       </div>
-    ` : renderMissionCalendar(STATE.missions)}
+    ` : `<div class="fp-card" style="padding:0;overflow:hidden">${renderMissionCalendar(STATE.missions)}</div>`}
   `;
 }
 
@@ -3462,8 +3470,8 @@ function renderMissionCalendar(missions) {
   const monthCalEvents = (STATE.calendarEvents||[]).filter(e => e.date && e.date.startsWith(`${year}-${String(month+1).padStart(2,'0')}`));
   const agendaPanel = STATE.calendarSelectedDate ? renderDailyAgenda(STATE.calendarSelectedDate, missions) : '';
   return `
-    <div class="fp-cal-outer-wrap" style="display:flex;gap:0;align-items:stretch;overflow:hidden;border-radius:inherit">
-      <div class="fp-apple-cal" style="${STATE.calendarSelectedDate ? 'flex:1;min-width:0;' : ''}">
+    <div class="fp-cal-outer-wrap" style="display:flex;gap:0;align-items:stretch;overflow:hidden;border-radius:inherit;width:100%">
+      <div class="fp-apple-cal" style="flex:1;min-width:0;max-width:100%;border:none;border-radius:0">
         <div class="fp-apple-cal-header">
           <div style="display:flex;align-items:center;gap:14px">
             <div class="fp-apple-cal-title">${monthName} <span style="color:var(--fp-text-muted);font-weight:400;font-size:15px">${year}</span></div>
@@ -3553,10 +3561,10 @@ function renderDailyAgenda(dateStr, missions) {
     </div>`;
   }).join('');
   const hasItems = dayCes.length > 0 || dayMissions.length > 0;
-  const emptyState = !hasItems ? `<div style="padding:32px 20px;text-align:center;color:var(--fp-text-muted)">
-    <div style="font-size:28px;margin-bottom:8px;opacity:.4">📭</div>
-    <div style="font-size:13px;font-weight:500;margin-bottom:4px">Aucun événement</div>
-    <div style="font-size:12px;margin-bottom:16px">Aucun RDV ni mission planifiée pour cette journée.</div>
+  const emptyState = !hasItems ? `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;color:var(--fp-text-muted);min-height:180px">
+    <div style="font-size:32px;margin-bottom:10px;opacity:.4">📭</div>
+    <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:4px">Aucun événement</div>
+    <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px;line-height:1.5">Aucun RDV ni mission<br>planifiée pour cette journée.</div>
     <button class="fp-cal-agenda-add-rdv fp-btn fp-btn-primary fp-btn-sm" data-date="${escHtml(dateStr)}" style="font-size:12px">+ Nouveau RDV</button>
   </div>` : '';
   const sectionRdv = dayCes.length > 0 ? `<div>
@@ -3578,7 +3586,7 @@ function renderDailyAgenda(dateStr, missions) {
         <button id="cal-agenda-close" class="fp-apple-cal-nav-btn" title="Fermer l'agenda" style="font-size:16px;line-height:1;padding:2px 6px">×</button>
       </div>
     </div>
-    <div style="flex:1;overflow-y:auto">
+    <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
       ${emptyState}
       ${sectionRdv}
       ${sectionMissions}
@@ -5871,7 +5879,7 @@ function renderAlertRules() {
           ${availableSiteUrls.length > 0 ? `
           <div class="fp-form-group" style="grid-column:1/-1">
             <label class="fp-form-label">Sites ciblés <span style="font-weight:400;color:var(--fp-text-faint)">(laisser vide = tous)</span></label>
-            <div style="max-height:120px;overflow-y:auto;padding:6px 8px;background:rgba(0,0,0,0.2);border:1px solid var(--fp-border);border-radius:7px">
+            <div class="fp-sites-scroll" style="max-height:120px;overflow-y:auto;padding:6px 8px;background:var(--fp-bg-inset);border:1px solid var(--fp-border);border-radius:7px">
               ${siteCheckboxes}
             </div>
           </div>` : ''}
@@ -5951,7 +5959,7 @@ function renderAlertRules() {
           ${availableSiteUrls.length > 0 ? `
           <div class="fp-form-group" style="grid-column:1/-1">
             <label class="fp-form-label">Sites ciblés <span style="font-weight:400;color:var(--fp-text-faint)">(laisser vide = tous les sites)</span></label>
-            <div style="max-height:120px;overflow-y:auto;padding:6px 8px;background:rgba(0,0,0,0.2);border:1px solid var(--fp-border);border-radius:7px">
+            <div class="fp-sites-scroll" style="max-height:120px;overflow-y:auto;padding:6px 8px;background:var(--fp-bg-inset);border:1px solid var(--fp-border);border-radius:7px">
               ${availableSiteUrls.map(u => `
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;padding:3px 0">
                   <input type="checkbox" class="new-rule-site" data-url="${escHtml(u)}" style="accent-color:#2563EB"/>
@@ -10803,7 +10811,7 @@ function bindMissionDetailHandlers(missionId) {
 // ── MISSIONS SUB-PAGES ──
 function renderMissionsFiltered(status) {
   const filtered = STATE.missions.filter(m => m.status === status);
-  const labels = { todo:'À faire', inprogress:'En cours', done:'Terminées' };
+  const labels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées' };
   const missionViewToggle = `
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
       <div class="fp-view-toggle" id="mission-view-toggle">
@@ -10885,7 +10893,7 @@ function renderMissionsAI() {
       `).join('')}
     </div>
 
-    <div class="fp-card" style="margin-top:16px;background:rgba(139,92,246,0.04);border-color:rgba(139,92,246,0.18)">
+    <div class="fp-card" style="margin-top:16px;background:rgba(37,99,235,0.04);border-color:rgba(37,99,235,0.18)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
           <div style="font-size:13px;font-weight:700;color:var(--fp-text)">Impact total estimé</div>
@@ -10894,7 +10902,7 @@ function renderMissionsAI() {
         <div style="display:flex;gap:16px;flex-wrap:wrap">
           ${[{l:'Leads/mois',v:'+97'},{l:'Score moyen',v:'+18 pts'},{l:'Temps total',v:'~18h'},{l:'Retour ROI',v:'~3 200€'}].map(s=>`
             <div style="text-align:center">
-              <div style="font-size:18px;font-weight:800;color:#8b5cf6;font-family:var(--fp-font-head)">${s.v}</div>
+              <div style="font-size:18px;font-weight:800;color:#2563EB;font-family:var(--fp-font-head)">${s.v}</div>
               <div style="font-size:10px;color:var(--fp-text-faint)">${s.l}</div>
             </div>
           `).join('')}
@@ -11469,6 +11477,7 @@ function renderAuditsOpportunites() {
     { title:'Citations NAP manquantes',     site:'restaurant-lesoleil.com', places:['Pages Jaunes','Yelp','Tripadvisor'], impact:'Local +15 pts', color:'#ef4444' },
     { title:'Posts GBP non publiés',        site:'boulangerie-martin.fr',   places:['Google Business Profile'],          impact:'Local +8 pts',  color:'#f59e0b' },
     { title:'Zones de service non définies',site:'plombier-paris.fr',       places:['GMB','Bing Places'],                impact:'Local +20 pts', color:'#f59e0b' },
+    { title:'Avis GBP sans réponse',        site:'coiffeur-lyon.com',       places:['Google Business Profile'],          impact:'Local +11 pts', color:'#8b5cf6' },
   ];
   const weakPages = STATE.audits.filter(a=>a.score<60).map(a=>({
     url:a.url, score:a.score, speed:a.speed, issues:a.issues, id:a.id,
@@ -12075,29 +12084,41 @@ function renderMonitorsConfig() {
     </div>
 
     <!-- Per-monitor config -->
-    <div class="fp-card">
-      <div class="fp-card-title" style="margin-bottom:14px">📋 Configuration par monitor</div>
-      ${STATE.monitors.map(m => `
-        <div style="padding:12px 0;border-bottom:1px solid var(--fp-border)">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+    <div class="fp-card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 18px 10px;border-bottom:1px solid var(--fp-border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div class="fp-card-title" style="margin:0">📋 Configuration par monitor</div>
+        <div style="font-size:11px;color:var(--fp-text-muted)">${STATE.monitors.length} monitor${STATE.monitors.length!==1?'s':''} configuré${STATE.monitors.length!==1?'s':''}</div>
+      </div>
+      <!-- Header row -->
+      <div style="display:grid;grid-template-columns:2fr 2fr 2fr auto;gap:0;padding:7px 18px;background:var(--fp-bg-inset);border-bottom:1px solid var(--fp-border)">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">Monitor</div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">📧 Email alerte</div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">📱 SMS alerte ${!isUltra?'<span style="font-size:9px;background:rgba(139,92,246,0.12);color:#8b5cf6;padding:1px 5px;border-radius:4px;font-weight:700">Ultra</span>':''}</div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fp-text-faint)">Statut</div>
+      </div>
+      ${STATE.monitors.map((m,i) => `
+        <div style="display:grid;grid-template-columns:2fr 2fr 2fr auto;gap:0;align-items:center;padding:11px 18px;border-bottom:${i<STATE.monitors.length-1?'1px solid var(--fp-border)':'none'};transition:background 0.15s" onmouseover="this.style.background='var(--fp-bg-inset)'" onmouseout="this.style.background='transparent'">
+          <!-- Monitor name + status dot -->
+          <div style="display:flex;align-items:center;gap:9px;padding-right:12px">
             <div class="fp-monitor-pulse ${m.status}" style="flex-shrink:0"></div>
-            <div style="flex:1">
-              <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(m.name)}</div>
-              <div style="font-size:10px;color:var(--fp-text-faint);font-family:var(--fp-font-mono)">${escHtml(m.url)}</div>
+            <div style="min-width:0">
+              <div style="font-size:12px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(m.name)}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint);font-family:var(--fp-font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${escHtml(m.url)}</div>
             </div>
-            ${badge(statusLabel(m.status), statusBadgeColor(m.status))}
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-left:20px">
-            <div style="display:flex;gap:8px;align-items:center">
-              <span style="font-size:10px;color:var(--fp-text-muted);width:65px">📧 Email :</span>
-              <input class="fp-input monitor-cfg-email" data-monitor-id="${m.id}" placeholder="alerte@email.com" value="${escHtml(m.alertEmail || '')}" style="flex:1;height:30px;font-size:11px"/>
-              <button class="fp-btn fp-btn-primary fp-btn-sm monitor-cfg-save" data-monitor-id="${m.id}">✓</button>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;${isUltra ? '' : 'opacity:0.5'}">
-              <span style="font-size:10px;color:#8b5cf6;width:65px">📱 SMS :</span>
-              <input class="fp-input" placeholder="+33 6…" value="${escHtml(m.alertPhone || '')}" style="flex:1;height:30px;font-size:11px" ${isUltra ? '' : 'disabled'}/>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" ${isUltra ? '' : 'disabled'}>✓</button>
-            </div>
+          <!-- Email -->
+          <div style="display:flex;gap:6px;align-items:center;padding-right:12px">
+            <input class="fp-input monitor-cfg-email" data-monitor-id="${m.id}" placeholder="alerte@email.com" value="${escHtml(m.alertEmail || '')}" style="flex:1;height:28px;font-size:11px;min-width:0"/>
+            <button class="fp-btn fp-btn-primary fp-btn-sm monitor-cfg-save" data-monitor-id="${m.id}" style="flex-shrink:0;height:28px;padding:0 10px">✓</button>
+          </div>
+          <!-- SMS -->
+          <div style="display:flex;gap:6px;align-items:center;padding-right:12px;${isUltra?'':'opacity:0.45'}">
+            <input class="fp-input" placeholder="+33 6…" value="${escHtml(m.alertPhone || '')}" style="flex:1;height:28px;font-size:11px;min-width:0" ${isUltra?'':'disabled'}/>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" ${isUltra?'':'disabled'} style="flex-shrink:0;height:28px;padding:0 10px">✓</button>
+          </div>
+          <!-- Status badge -->
+          <div style="display:flex;justify-content:flex-end">
+            ${badge(statusLabel(m.status), statusBadgeColor(m.status))}
           </div>
         </div>
       `).join('')}
@@ -12167,7 +12188,7 @@ function renderLocalSEOZones() {
             </div>
 
             <!-- Stats grid -->
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center;margin-bottom:12px;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center;margin-bottom:12px;padding:10px;background:var(--fp-bg-inset);border-radius:8px">
               <div>
                 <div style="font-size:16px;font-weight:800;color:${z.pos<=3?'#22c55e':z.pos<=7?'#f59e0b':'#ef4444'}">#${z.pos}</div>
                 <div style="font-size:9px;color:var(--fp-text-faint)">Google</div>
@@ -13466,7 +13487,7 @@ function renderGrowthCommandCenter() {
             <span style="color:${g.s==='high'?'var(--fp-danger)':'var(--fp-warning)'}">●</span>${g.t}
           </div>
         `).join('')}
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto;padding-top:12px" onclick="navigate('local-seo')">Gérer le SEO local →</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:12px" onclick="navigate('local-seo')">Gérer le SEO local →</button>
       </div>
       <div class="fp-card" style="display:flex;flex-direction:column">
         <div class="fp-card-title">✍️ Opportunités de Contenu</div>
