@@ -1,5 +1,4 @@
-/* style.css — FlowPoint (base + dark) */
-/* Copie/colle tout le fichier */
+/* style.css â€” FlowPoint (base + dark) */
 
 *, *::before, *::after{
   box-sizing:border-box;
@@ -8,11 +7,9 @@
 }
 
 :root{
-  /* Brand */
   --primary:#2f5bff;
   --primary2:#2449ff;
 
-  /* Light */
   --bg:#f6f7fb;
   --panel:#ffffff;
   --panel2:#f7f8ff;
@@ -23,16 +20,16 @@
   --chip:#eef2ff;
   --chipText:#2b4cff;
 
-  /* Fields */
   --field:#ffffff;
   --fieldBorder:#d9deea;
 
-  /* Radius */
+  --inputBg:#ffffff;
+  --inputBorder:#d9deea;
+
   --r:18px;
   --r2:16px;
   --rPill:999px;
 
-  /* Typography */
   --font: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
@@ -50,6 +47,9 @@
 
     --field:rgba(255,255,255,.06);
     --fieldBorder:rgba(255,255,255,.12);
+
+    --inputBg:rgba(255,255,255,.06);
+    --inputBorder:rgba(255,255,255,.12);
   }
 }
 
@@ -69,7 +69,6 @@ a{ color:inherit; text-decoration:none; }
 button{ font-family:var(--font); cursor:pointer; }
 ul,ol{ list-style:none; }
 
-/* =============== Layout (CENTRAGE PROPRE) =============== */
 .page{
   width:min(1180px, 100%);
   margin-inline:auto;
@@ -80,7 +79,6 @@ ul,ol{ list-style:none; }
   .page{ padding-left:16px; padding-right:16px; }
 }
 
-/* Grid: droite + large sur PC */
 .grid{
   display:grid;
   grid-template-columns: 1.35fr .90fr;
@@ -92,7 +90,6 @@ ul,ol{ list-style:none; }
   .grid{ grid-template-columns:1fr; }
 }
 
-/* =============== Topbar =============== */
 .topbar{
   width:100%;
   display:flex;
@@ -117,7 +114,6 @@ ul,ol{ list-style:none; }
   justify-content:flex-end;
 }
 
-/* Mobile: vraiment centré et symétrique */
 @media (max-width: 980px){
   .topbar{
     justify-content:center;
@@ -130,7 +126,6 @@ ul,ol{ list-style:none; }
   }
 }
 
-/* Pills / header buttons */
 .pill{
   padding:10px 12px;
   border-radius:var(--rPill);
@@ -153,8 +148,6 @@ ul,ol{ list-style:none; }
   box-shadow:0 10px 40px rgba(0,0,0,.06);
 }
 
-/* ===== Logo Pricing (PC + Mobile) =====
-   IMPORTANT: pas de crop, on centre comme sur PC */
 .logoBox{
   width:64px;
   height:64px;
@@ -175,13 +168,11 @@ ul,ol{ list-style:none; }
   filter: drop-shadow(0 10px 25px rgba(47,91,255,.22));
 }
 
-/* Mobile: plus petit + plus arrondi */
 @media (max-width: 520px){
   .logoBox{
     width:54px;
     height:54px;
     border-radius:20px;
-    box-shadow:0 12px 36px rgba(47,91,255,.28);
   }
   .brandLogo{
     width:56%;
@@ -189,7 +180,6 @@ ul,ol{ list-style:none; }
   }
 }
 
-/* =============== Cards =============== */
 .hero{
   width:100%;
   background:linear-gradient(180deg, rgba(47,91,255,.18), transparent 55%);
@@ -247,16 +237,10 @@ ul,ol{ list-style:none; }
 }
 
 @media (max-width: 520px){
-  .sectionHead{
-    flex-wrap:wrap;
-    gap:6px;
-  }
-  .sectionHead .hint{
-    white-space:normal;
-  }
+  .sectionHead{ flex-wrap:wrap; gap:6px; }
+  .sectionHead .hint{ white-space:normal; }
 }
 
-/* =============== Plans (plus gros + plus vendeur) =============== */
 .plans{
   padding:14px;
   display:grid;
@@ -273,7 +257,7 @@ ul,ol{ list-style:none; }
   border-radius:20px;
   padding:18px;
   background:linear-gradient(180deg, rgba(47,91,255,.10), transparent 65%);
-  min-height:240px; /* + grand */
+  min-height:240px;
   position:relative;
 }
 
@@ -332,13 +316,13 @@ ul,ol{ list-style:none; }
   display:flex;
   gap:8px;
 }
+
 .features li::before{
-  content:"•";
+  content:"â€¢";
   color:rgba(47,91,255,.85);
   font-weight:950;
 }
 
-/* =============== Add-ons =============== */
 .addons{
   padding:14px;
   display:grid;
@@ -416,7 +400,6 @@ ul,ol{ list-style:none; }
   white-space:nowrap;
 }
 
-/* =============== Qty stepper (- / +) =============== */
 .qty{
   display:flex;
   align-items:center;
@@ -453,7 +436,6 @@ ul,ol{ list-style:none; }
   outline:none;
 }
 
-/* =============== Toggle =============== */
 .toggle{
   position:relative;
   width:52px;
@@ -473,29 +455,32 @@ ul,ol{ list-style:none; }
 .toggle .track{
   width:52px;
   height:32px;
-  border-radius:var(--rPill);
+  border-radius:999px;
   border:1px solid var(--border);
-  background:rgba(255,255,255,.06);
+  background:rgba(255,255,255,.12);
   position:relative;
-  transition:.15s ease;
+  transition:.18s ease;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.04), 0 6px 18px rgba(15,23,42,.10);
 }
 
 .toggle .track::after{
   content:"";
   width:26px;
   height:26px;
-  border-radius:var(--rPill);
+  border-radius:999px;
   position:absolute;
   left:3px;
   top:50%;
   transform:translateY(-50%);
-  background:rgba(255,255,255,.92);
-  transition:.15s ease;
+  background:#ffffff;
+  transition:.18s ease;
+  box-shadow:0 4px 12px rgba(0,0,0,.18);
 }
 
 .toggle input:checked + .track{
   background:linear-gradient(180deg,var(--primary),var(--primary2));
-  border-color:rgba(47,91,255,.45);
+  border-color:rgba(47,91,255,.55);
+  box-shadow:0 0 0 3px rgba(47,91,255,.12), 0 10px 24px rgba(47,91,255,.20);
 }
 
 .toggle input:checked + .track::after{
@@ -503,11 +488,28 @@ ul,ol{ list-style:none; }
 }
 
 .toggle input:disabled + .track{
-  opacity:.65;
+  opacity:.72;
   cursor:not-allowed;
 }
 
-/* =============== Sidebar cards (DROITE) =============== */
+@media (prefers-color-scheme: light){
+  .toggle .track{
+    background:#eef2f8;
+    border-color:#cfd7e6;
+  }
+  .toggle .track::after{
+    background:#ffffff;
+    box-shadow:0 6px 14px rgba(15,23,42,.14);
+  }
+}
+
+@media (max-width:600px){
+  .toggle{ width:56px; height:34px; }
+  .toggle .track{ width:56px; height:34px; }
+  .toggle .track::after{ width:28px; height:28px; left:3px; }
+  .toggle input:checked + .track::after{ left:25px; }
+}
+
 .side{
   position:sticky;
   top:14px;
@@ -582,7 +584,6 @@ ul,ol{ list-style:none; }
   line-height:1.5;
 }
 
-/* List pour les cards à droite */
 .miniList{
   display:grid;
   gap:8px;
@@ -591,17 +592,18 @@ ul,ol{ list-style:none; }
   font-size:13px;
   line-height:1.5;
 }
+
 .miniList li{
   display:flex;
   gap:8px;
 }
+
 .miniList li::before{
-  content:"•";
+  content:"â€¢";
   color:rgba(47,91,255,.85);
   font-weight:950;
 }
 
-/* =============== Forms (index/login) =============== */
 .cardForm{
   background:var(--panel);
   border:1px solid var(--border);
@@ -634,136 +636,4 @@ input, select, textarea{
 input:focus, select:focus, textarea:focus{
   border-color:rgba(47,91,255,.55);
   box-shadow:0 0 0 4px rgba(47,91,255,.12);
-}
-/* =============== Toggle =============== */
-.toggle{
-  position:relative;
-  width:52px;
-  height:32px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-}
-
-.toggle input{
-  position:absolute;
-  inset:0;
-  opacity:0;
-  cursor:pointer;
-}
-
-.toggle .track{
-  width:52px;
-  height:32px;
-  border-radius:999px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.12);
-  position:relative;
-  transition:.18s ease;
-  box-shadow:
-    inset 0 0 0 1px rgba(255,255,255,.04),
-    0 6px 18px rgba(15,23,42,.10);
-}
-
-.toggle .track::after{
-  content:"";
-  width:26px;
-  height:26px;
-  border-radius:999px;
-  position:absolute;
-  left:3px;
-  top:50%;
-  transform:translateY(-50%);
-  background:#ffffff;
-  transition:.18s ease;
-  box-shadow:0 4px 12px rgba(0,0,0,.18);
-}
-
-.toggle input:checked + .track{
-  background:linear-gradient(180deg,var(--primary),var(--primary2));
-  border-color:rgba(47,91,255,.55);
-  box-shadow:
-    0 0 0 3px rgba(47,91,255,.12),
-    0 10px 24px rgba(47,91,255,.20);
-}
-
-.toggle input:checked + .track::after{
-  left:23px;
-}
-
-.toggle input:disabled + .track{
-  opacity:.72;
-  cursor:not-allowed;
-}
-
-/* Light mode: OFF plus visible sans changer le design */
-@media (prefers-color-scheme: light){
-  .toggle .track{
-    background:#eef2f8;
-    border-color:#cfd7e6;
-  }
-
-  .toggle .track::after{
-    background:#ffffff;
-    box-shadow:0 6px 14px rgba(15,23,42,.14);
-  }
-}
-
-/* Mobile */
-@media (max-width:600px){
-  .toggle{
-    width:56px;
-    height:34px;
-  }
-
-  .toggle .track{
-    width:56px;
-    height:34px;
-  }
-
-  .toggle .track::after{
-    width:28px;
-    height:28px;
-    left:3px;
-  }
-
-  .toggle input:checked + .track::after{
-    left:25px;
-  }
-}
-/* ===== FIX VISIBILITÉ TOGGLE (A METTRE TOUT EN BAS) ===== */
-
-@media (prefers-color-scheme: light){
-  .toggle .track{
-    background:#eef2f8;
-    border-color:#cfd7e6;
-  }
-
-  .toggle .track::after{
-    background:#ffffff;
-    box-shadow:0 6px 14px rgba(15,23,42,.14);
-  }
-}
-
-/* Mobile */
-@media (max-width:600px){
-  .toggle{
-    width:56px;
-    height:34px;
-  }
-
-  .toggle .track{
-    width:56px;
-    height:34px;
-  }
-
-  .toggle .track::after{
-    width:28px;
-    height:28px;
-    left:3px;
-  }
-
-  .toggle input:checked + .track::after{
-    left:25px;
-  }
 }
