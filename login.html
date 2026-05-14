@@ -232,74 +232,103 @@
     </div>
   </div>
 
-  <script>
-    const btn = document.getElementById("btn");
-    const emailEl = document.getElementById("email");
-    const passwordEl = document.getElementById("password");
-    const msg = document.getElementById("msg");
+ <!-- login.html SCRIPT -->
 
-    function setMsg(text, type){
-      msg.textContent = text || "";
-      msg.classList.remove("ok","danger");
-      if(type) msg.classList.add(type);
-    }
+<script>
+const btn =
+  document.getElementById("btn");
 
-    btn.addEventListener("click", async () => {
-      const email = String(emailEl.value || "").trim();
-      const password = String(passwordEl.value || "");
+const emailEl =
+  document.getElementById("email");
 
-      if(!email) return setMsg("Email requis.", "danger");
-      if(!password) return setMsg("Mot de passe requis.", "danger");
+const passwordEl =
+  document.getElementById(
+    "password"
+  );
 
-      btn.disabled = true;
-      setMsg("Connexion…");
+const msg =
+  document.getElementById("msg");
 
-      try{
-        const res = await fetch("/api/auth/login", {
+function setMsg(text, type) {
+  msg.textContent = text;
+
+  msg.classList.remove(
+    "ok",
+    "danger"
+  );
+
+  if (type) {
+    msg.classList.add(type);
+  }
+}
+
+btn.addEventListener(
+  "click",
+  async () => {
+    try {
+      const email =
+        emailEl.value.trim();
+
+      const password =
+        passwordEl.value;
+
+      const r = await fetch(
+        "/api/auth/login",
+        {
           method: "POST",
+
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type":
+              "application/json",
           },
-          credentials: "include",
+
+          credentials:
+            "include",
+
           body: JSON.stringify({
             email,
-            password
-          })
-        });
-
-        const data = await res.json().catch(() => ({}));
-
-        if(!res.ok){
-          throw new Error(data.error || "Connexion impossible.");
+            password,
+          }),
         }
+      );
 
-        try{
-          localStorage.setItem("fp_user", JSON.stringify(data.user || {}));
-        }catch(_){}
+      const data =
+        await r.json();
 
-        setMsg("✅ Connexion réussie. Redirection…", "ok");
-
-        setTimeout(() => {
-          window.location.href = "/dashboard.html";
-        }, 500);
-      }catch(error){
-        setMsg(error.message || "Erreur de connexion.", "danger");
-      }finally{
-        btn.disabled = false;
+      if (!r.ok) {
+        throw new Error(
+          data.error ||
+            "Erreur"
+        );
       }
-    });
 
-    passwordEl.addEventListener("keydown", (event) => {
-      if(event.key === "Enter"){
-        btn.click();
-      }
-    });
+      if (data.token) {
+        localStorage.setItem(
+          "token",
+          data.token
+        );
 
-    emailEl.addEventListener("keydown", (event) => {
-      if(event.key === "Enter"){
-        passwordEl.focus();
+        localStorage.setItem(
+          "fp_token",
+          data.token
+        );
       }
-    });
-  </script>
+
+      setMsg(
+        "Connexion réussie",
+        "ok"
+      );
+
+      window.location.href =
+        "/dashboard.html";
+    } catch (err) {
+      setMsg(
+        err.message,
+        "danger"
+      );
+    }
+  }
+);
+</script>
 </body>
 </html>
