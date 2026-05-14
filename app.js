@@ -1,11 +1,14 @@
 // ========================================
 // FlowPoint App Bootstrap
 // ========================================
+
 import "./overview.js";
+import "./billing.js";
+
 import { fpState } from "./state.js";
 import { api } from "./api.js";
 import { initRouter } from "./router.js";
-import "./billing.js";
+
 // ========================================
 // Bootstrap
 // ========================================
@@ -13,16 +16,23 @@ import "./billing.js";
 async function bootstrap() {
   console.log("⚡ FlowPoint Boot");
 
-  await loadSession();
+  fpState.app.loading = true;
 
-  bindGlobalEvents();
+  try {
+    await loadSession();
 
-  initRouter();
+    bindGlobalEvents();
 
-  fpState.app.initialized = true;
-  fpState.app.loading = false;
+    initRouter();
 
-  console.log("✅ FlowPoint Ready");
+    fpState.app.initialized = true;
+
+    console.log("✅ FlowPoint Ready");
+  } catch (err) {
+    console.error("❌ Bootstrap Error:", err);
+  } finally {
+    fpState.app.loading = false;
+  }
 }
 
 // ========================================
@@ -30,30 +40,50 @@ async function bootstrap() {
 // ========================================
 
 async function loadSession() {
-  const token = localStorage.getItem("fp_token");
+  try {
+    const result = await api.get("/auth/me");
 
-  if (!token) {
-    window.location.href = "/login.html";
-    return;
+    if (!result || !result.success) {
+      redirectToLogin();
+      return;
+    }
+
+    const user =
+      result.data?.user || result.user;
+
+    const org =
+      result.data?.org || result.org;
+
+    if (!user) {
+      redirectToLogin();
+      return;
+    }
+
+    fpState.auth.authenticated = true;
+
+    fpState.user = user;
+
+    fpState.org = org || null;
+
+    console.log("👤 Session Loaded");
+  } catch (err) {
+    console.error(
+      "❌ Session Error:",
+      err
+    );
+
+    redirectToLogin();
   }
+}
 
-  const result = await api.get("/auth/me");
+// ========================================
+// Redirect Login
+// ========================================
 
-  if (!result.success) {
-    localStorage.removeItem("fp_token");
+function redirectToLogin() {
+  fpState.auth.authenticated = false;
 
-    window.location.href = "/login.html";
-
-    return;
-  }
-
-  fpState.auth.authenticated = true;
-
-  fpState.user = result.data.user;
-
-  fpState.org = result.data.org;
-
-  console.log("👤 Session Loaded");
+  window.location.href = "/login.html";
 }
 
 // ========================================
@@ -61,17 +91,41 @@ async function loadSession() {
 // ========================================
 
 function bindGlobalEvents() {
-  window.addEventListener("resize", () => {
-    fpState.app.mobile = window.innerWidth <= 900;
-  });
+  fpState.app.mobile =
+    window.innerWidth <= 900;
 
-  window.addEventListener("online", () => {
-    fpState.app.online = true;
-  });
+  fpState.app.online =
+    navigator.onLine;
 
-  window.addEventListener("offline", () => {
-    fpState.app.online = false;
-  });
+  window.addEventListener(
+    "resize",
+    () => {
+      fpState.app.mobile =
+        window.innerWidth <= 900;
+    }
+  );
+
+  window.addEventListener(
+    "online",
+    () => {
+      fpState.app.online = true;
+
+      console.log(
+        "🌐 Connection Restored"
+      );
+    }
+  );
+
+  window.addEventListener(
+    "offline",
+    () => {
+      fpState.app.online = false;
+
+      console.log(
+        "📡 Connection Lost"
+      );
+    }
+  );
 }
 
 // ========================================
