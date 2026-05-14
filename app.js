@@ -1,13 +1,15 @@
-// ========================================
-// FlowPoint App Bootstrap
-// ========================================
+// app.js
 
 import "./overview.js";
+import { fpState } from "./state.js";
+import { initRouter } from "./router.js";
 import "./billing.js";
 
-import { fpState } from "./state.js";
-import { api } from "./api.js";
-import { initRouter } from "./router.js";
+import {
+  authFetch,
+  getAuthToken,
+  clearAuth,
+} from "./auth.js";
 
 // ========================================
 // Bootstrap
@@ -16,23 +18,16 @@ import { initRouter } from "./router.js";
 async function bootstrap() {
   console.log("⚡ FlowPoint Boot");
 
-  fpState.app.loading = true;
+  await loadSession();
 
-  try {
-    await loadSession();
+  bindGlobalEvents();
 
-    bindGlobalEvents();
+  initRouter();
 
-    initRouter();
+  fpState.app.initialized = true;
+  fpState.app.loading = false;
 
-    fpState.app.initialized = true;
-
-    console.log("✅ FlowPoint Ready");
-  } catch (err) {
-    console.error("❌ Bootstrap Error:", err);
-  } finally {
-    fpState.app.loading = false;
-  }
+  console.log("✅ FlowPoint Ready");
 }
 
 // ========================================
@@ -40,50 +35,44 @@ async function bootstrap() {
 // ========================================
 
 async function loadSession() {
-  try {
-    const result = await api.get("/auth/me");
+  const token = getAuthToken();
 
-    if (!result || !result.success) {
-      redirectToLogin();
-      return;
-    }
+  if (!token) {
+    window.location.href =
+      "/login.html";
 
-    const user =
-      result.data?.user || result.user;
+    return;
+  }
 
-    const org =
-      result.data?.org || result.org;
-
-    if (!user) {
-      redirectToLogin();
-      return;
-    }
-
-    fpState.auth.authenticated = true;
-
-    fpState.user = user;
-
-    fpState.org = org || null;
-
-    console.log("👤 Session Loaded");
-  } catch (err) {
-    console.error(
-      "❌ Session Error:",
-      err
+  const response =
+    await authFetch(
+      "/api/auth/me"
     );
 
-    redirectToLogin();
+  if (!response) {
+    return;
   }
-}
 
-// ========================================
-// Redirect Login
-// ========================================
+  const result =
+    await response.json();
 
-function redirectToLogin() {
-  fpState.auth.authenticated = false;
+  if (!result.success) {
+    clearAuth();
 
-  window.location.href = "/login.html";
+    window.location.href =
+      "/login.html";
+
+    return;
+  }
+
+  fpState.auth.authenticated = true;
+
+  fpState.user =
+    result.data.user;
+
+  console.log(
+    "👤 Session Loaded"
+  );
 }
 
 // ========================================
@@ -91,12 +80,6 @@ function redirectToLogin() {
 // ========================================
 
 function bindGlobalEvents() {
-  fpState.app.mobile =
-    window.innerWidth <= 900;
-
-  fpState.app.online =
-    navigator.onLine;
-
   window.addEventListener(
     "resize",
     () => {
@@ -109,10 +92,6 @@ function bindGlobalEvents() {
     "online",
     () => {
       fpState.app.online = true;
-
-      console.log(
-        "🌐 Connection Restored"
-      );
     }
   );
 
@@ -120,10 +99,6 @@ function bindGlobalEvents() {
     "offline",
     () => {
       fpState.app.online = false;
-
-      console.log(
-        "📡 Connection Lost"
-      );
     }
   );
 }
