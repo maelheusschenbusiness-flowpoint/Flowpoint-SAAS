@@ -206,45 +206,103 @@
     </div>
   </div>
 
-  <script>
-    const btn = document.getElementById("btn");
-    const emailEl = document.getElementById("email");
-    const msg = document.getElementById("msg");
+  <!-- login.html SCRIPT -->
 
-    function setMsg(t, type){
-      msg.textContent = t || "";
-      msg.classList.remove("ok","danger");
-      if(type) msg.classList.add(type);
-    }
+<script>
+const btn =
+  document.getElementById("btn");
 
-    btn.addEventListener("click", async () => {
-      const email = String(emailEl.value || "").trim();
-      if(!email) return setMsg("Email requis.", "danger");
+const emailEl =
+  document.getElementById("email");
 
-      btn.disabled = true;
-      setMsg("Envoi…");
+const passwordEl =
+  document.getElementById(
+    "password"
+  );
 
-      try{
-        const r = await fetch("/api/auth/login-request", {
-          method:"POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ email })
-        });
-        const j = await r.json().catch(()=> ({}));
-        if(!r.ok) throw new Error(j.error || "Erreur");
+const msg =
+  document.getElementById("msg");
 
-        if(j.debugLink){
-          setMsg("✅ Lien généré (mode debug). Ouverture…", "ok");
-          window.location.href = j.debugLink;
-        } else {
-          setMsg("✅ Lien envoyé. Vérifie ton email.", "ok");
+function setMsg(text, type) {
+  msg.textContent = text;
+
+  msg.classList.remove(
+    "ok",
+    "danger"
+  );
+
+  if (type) {
+    msg.classList.add(type);
+  }
+}
+
+btn.addEventListener(
+  "click",
+  async () => {
+    try {
+      const email =
+        emailEl.value.trim();
+
+      const password =
+        passwordEl.value;
+
+      const r = await fetch(
+        "/api/auth/login",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          credentials:
+            "include",
+
+          body: JSON.stringify({
+            email,
+            password,
+          }),
         }
-      }catch(e){
-        setMsg(e.message || "Erreur", "danger");
-      }finally{
-        btn.disabled = false;
+      );
+
+      const data =
+        await r.json();
+
+      if (!r.ok) {
+        throw new Error(
+          data.error ||
+            "Erreur"
+        );
       }
-    });
-  </script>
+
+      if (data.token) {
+        localStorage.setItem(
+          "token",
+          data.token
+        );
+
+        localStorage.setItem(
+          "fp_token",
+          data.token
+        );
+      }
+
+      setMsg(
+        "Connexion réussie",
+        "ok"
+      );
+
+      window.location.href =
+        "/dashboard.html";
+    } catch (err) {
+      setMsg(
+        err.message,
+        "danger"
+      );
+    }
+  }
+);
+</script>
 </body>
 </html>
