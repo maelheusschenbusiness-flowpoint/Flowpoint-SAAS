@@ -1,11 +1,16 @@
-// ========================================
-// FlowPoint App Bootstrap
-// ========================================
+// app.js
+
 import "./overview.js";
 import { fpState } from "./state.js";
-import { api } from "./api.js";
 import { initRouter } from "./router.js";
 import "./billing.js";
+
+import {
+  authFetch,
+  getAuthToken,
+  clearAuth,
+} from "./auth.js";
+
 // ========================================
 // Bootstrap
 // ========================================
@@ -30,30 +35,44 @@ async function bootstrap() {
 // ========================================
 
 async function loadSession() {
-  const token = localStorage.getItem("fp_token");
+  const token = getAuthToken();
 
   if (!token) {
-    window.location.href = "/login.html";
+    window.location.href =
+      "/login.html";
+
     return;
   }
 
-  const result = await api.get("/auth/me");
+  const response =
+    await authFetch(
+      "/api/auth/me"
+    );
+
+  if (!response) {
+    return;
+  }
+
+  const result =
+    await response.json();
 
   if (!result.success) {
-    localStorage.removeItem("fp_token");
+    clearAuth();
 
-    window.location.href = "/login.html";
+    window.location.href =
+      "/login.html";
 
     return;
   }
 
   fpState.auth.authenticated = true;
 
-  fpState.user = result.data.user;
+  fpState.user =
+    result.data.user;
 
-  fpState.org = result.data.org;
-
-  console.log("👤 Session Loaded");
+  console.log(
+    "👤 Session Loaded"
+  );
 }
 
 // ========================================
@@ -61,17 +80,27 @@ async function loadSession() {
 // ========================================
 
 function bindGlobalEvents() {
-  window.addEventListener("resize", () => {
-    fpState.app.mobile = window.innerWidth <= 900;
-  });
+  window.addEventListener(
+    "resize",
+    () => {
+      fpState.app.mobile =
+        window.innerWidth <= 900;
+    }
+  );
 
-  window.addEventListener("online", () => {
-    fpState.app.online = true;
-  });
+  window.addEventListener(
+    "online",
+    () => {
+      fpState.app.online = true;
+    }
+  );
 
-  window.addEventListener("offline", () => {
-    fpState.app.online = false;
-  });
+  window.addEventListener(
+    "offline",
+    () => {
+      fpState.app.online = false;
+    }
+  );
 }
 
 // ========================================
