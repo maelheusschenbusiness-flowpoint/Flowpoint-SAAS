@@ -2,271 +2,678 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>FlowPoint — Essai 14 jours</title>
 
-  <meta name="color-scheme" content="light dark"/>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
 
-  <link rel="icon" type="image/png" href="/logo.png" />
-  <link rel="shortcut icon" href="/logo.png" />
+  <title>
+    FlowPoint — Essai 14 jours
+  </title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <meta
+    name="color-scheme"
+    content="light dark"
+  />
+
+  <link
+    rel="icon"
+    type="image/png"
+    href="/flowpoint-logo.png"
+  />
+
+  <link
+    rel="shortcut icon"
+    href="/flowpoint-logo.png"
+  />
+
+  <link
+    rel="preconnect"
+    href="https://fonts.googleapis.com"
+  />
+
+  <link
+    rel="preconnect"
+    href="https://fonts.gstatic.com"
+    crossorigin
+  />
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
 
   <style>
     :root{
-      --bg:#f6f7fb;
-      --card:rgba(255,255,255,.92);
-      --text:#0f172a;
-      --muted:#667085;
-      --border:#e6eaf2;
+      --bg:#070b18;
+      --card:rgba(12,18,40,.72);
+      --text:#e8eeff;
+      --muted:#aab7e1;
+      --border:rgba(255,255,255,.10);
+      --shadow:0 18px 70px rgba(0,0,0,.45);
+
+      --field:#0f172a;
+      --fieldBorder:#243045;
+
       --primary:#2f5bff;
-      --shadow:0 10px 30px rgba(16,24,40,.06);
-      --r:16px;
+      --primary2:#2449ff;
 
-      --field:#ffffff;
-      --fieldBorder:#d9deea;
+      --success:#4ade80;
+      --danger:#ff4d67;
+
+      --r:18px;
     }
 
-    @media (prefers-color-scheme: dark){
-      :root{
-        --bg:#070b18;
-        --card:rgba(12,18,40,.72);
-        --text:#e8eeff;
-        --muted:#aab7e1;
-        --border:rgba(255,255,255,.10);
-        --shadow:0 18px 70px rgba(0,0,0,.45);
-
-        --field:#0f172a;
-        --fieldBorder:#243045;
-      }
+    *{
+      box-sizing:border-box;
     }
-
-    *{box-sizing:border-box}
 
     body{
       margin:0;
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+
+      font-family:
+        Inter,
+        system-ui,
+        -apple-system,
+        Segoe UI,
+        Roboto,
+        Helvetica,
+        Arial;
+
       background:
-        radial-gradient(1000px 600px at 10% 0%, rgba(47,91,255,.16), transparent 55%),
-        radial-gradient(1000px 600px at 90% 0%, rgba(99,102,241,.16), transparent 55%),
+        radial-gradient(
+          1000px 600px
+          at 10% 0%,
+          rgba(47,91,255,.16),
+          transparent 55%
+        ),
+
+        radial-gradient(
+          1000px 600px
+          at 90% 0%,
+          rgba(99,102,241,.16),
+          transparent 55%
+        ),
+
         var(--bg);
+
       color:var(--text);
+
+      min-height:100vh;
     }
 
     .wrap{
-      max-width:860px;
-      margin:44px auto;
-      padding:0 16px;
+      max-width:920px;
+
+      margin:48px auto;
+
+      padding:0 18px;
     }
 
     .topbar{
       display:flex;
+
       justify-content:space-between;
+
       align-items:center;
-      gap:12px;
-      margin-bottom:14px;
+
+      gap:18px;
+
+      margin-bottom:18px;
     }
 
     .brand{
       display:flex;
-      align-items:flex-start;
+
+      align-items:center;
+
       gap:14px;
     }
 
     .brandLogo{
-      width:46px;
-      height:46px;
-      border-radius:12px;
-      object-fit:contain;
+      width:56px;
+      height:56px;
+
+      border-radius:16px;
+
+      object-fit:cover;
+
       flex:0 0 auto;
-      filter: drop-shadow(0 10px 20px rgba(0,0,0,.22));
+
+      box-shadow:
+        0 10px 30px
+        rgba(47,91,255,.35);
     }
 
     .brandText h1{
       margin:0;
-      font-size:26px;
-      letter-spacing:-.02em;
+
+      font-size:40px;
+
       font-weight:800;
+
+      letter-spacing:-0.04em;
     }
 
-    .brand .sub{
+    .sub{
       margin-top:6px;
+
       color:var(--muted);
-      font-size:14px;
+
+      font-size:15px;
+
       line-height:1.45;
     }
 
     .links{
       display:flex;
-      gap:12px;
+
       align-items:center;
-      flex-wrap:wrap;
+
+      gap:12px;
     }
 
     .link{
-      color:var(--primary);
-      font-weight:800;
-      text-decoration:none;
-      background:rgba(47,91,255,.10);
-      border:1px solid rgba(47,91,255,.18);
-      padding:9px 12px;
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      height:48px;
+
+      padding:0 18px;
+
       border-radius:999px;
-      white-space:nowrap;
+
+      text-decoration:none;
+
+      font-weight:700;
+
+      color:#8aa4ff;
+
+      background:
+        rgba(47,91,255,.10);
+
+      border:
+        1px solid
+        rgba(47,91,255,.22);
+
+      transition:.18s;
     }
 
-    @media (prefers-color-scheme: dark){
-      .link{color:#86a2ff;}
+    .link:hover{
+      transform:translateY(-1px);
+
+      background:
+        rgba(47,91,255,.16);
     }
 
     .card{
       background:var(--card);
-      border:1px solid var(--border);
+
+      border:
+        1px solid var(--border);
+
       border-radius:var(--r);
-      padding:20px;
+
+      padding:22px;
+
       box-shadow:var(--shadow);
-      backdrop-filter:saturate(180%) blur(12px);
+
+      backdrop-filter:
+        blur(14px)
+        saturate(180%);
     }
 
     .grid{
       display:grid;
+
       grid-template-columns:1fr 1fr;
-      gap:12px;
+
+      gap:14px;
     }
 
-    @media (max-width:720px){
-      .grid{grid-template-columns:1fr;}
+    @media (max-width:760px){
+      .grid{
+        grid-template-columns:1fr;
+      }
+
       .topbar{
         flex-direction:column;
+
         align-items:flex-start;
       }
+
       .links{
         width:100%;
+      }
+
+      .link{
+        flex:1;
       }
     }
 
     label{
       display:block;
-      margin-top:12px;
+
+      margin-top:14px;
+
+      margin-bottom:7px;
+
       font-size:13px;
+
       font-weight:800;
-      color:var(--text);
-      opacity:.9;
     }
 
-    input,select,button{
+    input,
+    select,
+    button{
       width:100%;
-      padding:12px;
-      border-radius:12px;
-      margin-top:6px;
+
+      border-radius:14px;
+
       font-size:14px;
-      outline:none;
     }
 
-    input,select{
-      border:1px solid var(--fieldBorder);
+    input,
+    select{
+      height:52px;
+
+      padding:0 14px;
+
+      border:
+        1px solid
+        var(--fieldBorder);
+
       background:var(--field);
+
       color:var(--text);
-      transition:all .15s;
+
+      transition:.15s;
     }
 
     input::placeholder{
       color:var(--muted);
-      opacity:.9;
     }
 
-    input:focus,select:focus{
-      border-color:rgba(47,91,255,.55);
-      box-shadow:0 0 0 4px rgba(47,91,255,.12);
+    input:focus,
+    select:focus{
+      outline:none;
+
+      border-color:
+        rgba(47,91,255,.65);
+
+      box-shadow:
+        0 0 0 4px
+        rgba(47,91,255,.14);
     }
 
     button{
+      height:54px;
+
       border:none;
-      background:linear-gradient(180deg, var(--primary), #2449ff);
-      color:#fff;
-      font-weight:600;
+
+      margin-top:18px;
+
+      background:
+        linear-gradient(
+          180deg,
+          var(--primary),
+          var(--primary2)
+        );
+
+      color:white;
+
+      font-weight:800;
+
       cursor:pointer;
-      margin-top:14px;
+
+      transition:.18s;
+    }
+
+    button:hover{
+      transform:translateY(-1px);
     }
 
     button:disabled{
-      opacity:.65;
+      opacity:.7;
       cursor:not-allowed;
     }
 
     #msg{
-      margin-top:12px;
+      margin-top:14px;
+
       font-size:14px;
+
+      font-weight:600;
+
+      min-height:24px;
     }
 
     .note{
-      margin-top:10px;
+      margin-top:14px;
+
       color:var(--muted);
-      font-size:12.5px;
-      line-height:1.45;
+
+      font-size:13px;
+
+      line-height:1.5;
     }
 
     .tiny{
-      font-size:12px;
+      margin-top:8px;
+
       color:var(--muted);
-      margin-top:10px;
+
+      font-size:12px;
     }
   </style>
 </head>
 
-<body data-page="public">
+<body>
+
   <div class="wrap">
+
     <div class="topbar">
+
       <div class="brand">
-        <img class="brandLogo" src="/logo.png" alt="FlowPoint">
+
+        <img
+          class="brandLogo"
+          src="/flowpoint-logo.png"
+          onerror="this.src='/assets/flowpoint-logo.svg'"
+          alt="FlowPoint"
+        />
+
         <div class="brandText">
-          <h1>FlowPoint</h1>
-          <div class="sub">Essai gratuit 14 jours — carte requise. Accès bloqué si paiement échoue.</div>
+
+          <h1>
+            FlowPoint
+          </h1>
+
+          <div class="sub">
+            Essai gratuit 14 jours —
+            carte requise.
+            Accès bloqué si paiement échoue.
+          </div>
+
         </div>
+
       </div>
 
       <div class="links">
-        <a class="link" href="/pricing.html">Voir les offres</a>
-        <a class="link" href="/login.html">Se connecter</a>
+
+        <a
+          class="link"
+          href="/pricing.html"
+        >
+          Voir les offres
+        </a>
+
+        <a
+          class="link"
+          href="/login.html"
+        >
+          Se connecter
+        </a>
+
       </div>
+
     </div>
 
     <div class="card">
+
       <form id="signupForm">
+
         <div class="grid">
+
           <div>
-            <label for="firstName">Prénom</label>
-            <input id="firstName" type="text" placeholder="Jean" />
+
+            <label for="firstName">
+              Prénom
+            </label>
+
+            <input
+              id="firstName"
+              type="text"
+              placeholder="Jean"
+              required
+            />
+
           </div>
 
           <div>
-            <label for="email">Email</label>
-            <input id="email" type="email" placeholder="jean@entreprise.com" required />
+
+            <label for="email">
+              Email
+            </label>
+
+            <input
+              id="email"
+              type="email"
+              placeholder="jean@entreprise.com"
+              required
+            />
+
           </div>
+
         </div>
 
-        <label for="companyName">Entreprise</label>
-        <input id="companyName" type="text" placeholder="Entreprise ABC" required />
+        <label for="companyName">
+          Entreprise
+        </label>
 
-        <label for="plan">Offre</label>
-        <select id="plan" required>
-          <option value="standard">Standard</option>
-          <option value="pro" selected>Pro</option>
-          <option value="ultra">Ultra</option>
+        <input
+          id="companyName"
+          type="text"
+          placeholder="Entreprise ABC"
+          required
+        />
+
+        <label for="plan">
+          Offre
+        </label>
+
+        <select
+          id="plan"
+        >
+          <option value="standard">
+            Standard
+          </option>
+
+          <option
+            value="pro"
+            selected
+          >
+            Pro
+          </option>
+
+          <option value="ultra">
+            Ultra
+          </option>
         </select>
 
-        <button id="btn" type="submit">Commencer l'essai</button>
+        <button
+          id="btn"
+          type="submit"
+        >
+          Commencer l’essai
+        </button>
+
         <div id="msg"></div>
 
         <div class="note">
-          En continuant, tu acceptes que les emails d'alertes et rapports soient envoyés à ton équipe (selon les réglages d'organisation).
+          En continuant,
+          tu acceptes que les emails
+          d’alertes et rapports
+          soient envoyés à ton équipe
+          selon les réglages
+          d’organisation.
         </div>
-        <div class="tiny">Tip : tu peux choisir un plan depuis la page "Offres".</div>
+
+        <div class="tiny">
+          Tip :
+          tu peux choisir un plan
+          depuis la page “Offres”.
+        </div>
+
       </form>
+
     </div>
+
   </div>
 
-  <script src="/app.js?v=2"></script>
+  <script>
+    const form =
+      document.getElementById(
+        "signupForm"
+      );
+
+    const btn =
+      document.getElementById(
+        "btn"
+      );
+
+    const msg =
+      document.getElementById(
+        "msg"
+      );
+
+    function setMsg(
+      text,
+      type = "success"
+    ) {
+      msg.innerHTML = text;
+
+      msg.style.color =
+        type === "error"
+          ? "#ff4d67"
+          : "#4ade80";
+    }
+
+    form.addEventListener(
+      "submit",
+      async (e) => {
+        e.preventDefault();
+
+        try {
+          btn.disabled = true;
+
+          setMsg(
+            "Création du compte..."
+          );
+
+          const firstName =
+            document
+              .getElementById(
+                "firstName"
+              )
+              .value
+              .trim();
+
+          const email =
+            document
+              .getElementById(
+                "email"
+              )
+              .value
+              .trim();
+
+          const companyName =
+            document
+              .getElementById(
+                "companyName"
+              )
+              .value
+              .trim();
+
+          const plan =
+            document
+              .getElementById(
+                "plan"
+              )
+              .value;
+
+          const password =
+            crypto.randomUUID();
+
+          const response =
+            await fetch(
+              "/api/auth/register",
+              {
+                method:"POST",
+
+                credentials:
+                  "include",
+
+                headers:{
+                  "Content-Type":
+                    "application/json"
+                },
+
+                body:
+                  JSON.stringify({
+                    firstName,
+                    email,
+                    companyName,
+                    password,
+                    plan
+                  })
+              }
+            );
+
+          const data =
+            await response.json();
+
+          console.log(data);
+
+          if (
+            !response.ok ||
+            !data.ok
+          ) {
+            throw new Error(
+              data.error ||
+              "Erreur création compte"
+            );
+          }
+
+          if (data.token) {
+
+            localStorage.setItem(
+              "fp_token",
+              data.token
+            );
+
+            localStorage.setItem(
+              "token",
+              data.token
+            );
+          }
+
+          setMsg(
+            "Compte créé. Redirection..."
+          );
+
+          setTimeout(() => {
+            window.location.href =
+              "/dashboard.html";
+          }, 1200);
+
+        } catch (err) {
+          console.error(err);
+
+          setMsg(
+            err.message,
+            "error"
+          );
+        } finally {
+          btn.disabled = false;
+        }
+      }
+    );
+  </script>
+
 </body>
 </html>
