@@ -27,30 +27,8 @@ const jwt =
 
 const cookieParser =
   require('cookie-parser');
+
 const cors = require('cors');
-
-app.use(
-
-  cors({
-
-    origin: [
-
-      'https://app.flowpoint.pro',
-
-      'https://flowpoint.pro',
-
-      'http://localhost:3000',
-
-      'http://localhost:5173',
-
-      'http://127.0.0.1:3000',
-
-    ],
-
-    credentials: true,
-
-  })
-);
 
 const path =
   require('path');
@@ -239,72 +217,35 @@ const STRIPE_PRICES = {
    SECURITY
 ======================================================== */
 
-app.set(
-  'trust proxy',
-  1
-);
+app.set('trust proxy', 1);
 
 app.use(
   helmet({
-    contentSecurityPolicy:
-      false,
+    contentSecurityPolicy: false,
   })
 );
 
 app.use(
   cors({
-
-    origin(origin, cb) {
-
-      if (
-        !origin ||
-        !IS_PROD
-      ) {
-
-        return cb(
-          null,
-          true
-        );
-      }
-
-      if (
-        origin ===
-        FRONTEND_URL
-      ) {
-
-        return cb(
-          null,
-          true
-        );
-      }
-
-      return cb(
-        new Error(
-          `Blocked CORS: ${origin}`
-        )
-      );
-    },
-
+    origin: [
+      'https://app.flowpoint.pro',
+      'https://flowpoint.pro',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://127.0.0.1:3000',
+    ],
     credentials: true,
-
   })
 );
 
 app.use(
   rateLimit({
-
-    windowMs:
-      60 * 1000,
-
+    windowMs: 60 * 1000,
     max: 300,
-
   })
 );
 
-app.use(
-  cookieParser()
-);
-
+app.use(cookieParser());
 /* ========================================================
    STRIPE RAW WEBHOOK
 ======================================================== */
