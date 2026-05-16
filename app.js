@@ -1,84 +1,137 @@
 // ========================================
-// FlowPoint Bootstrap
+// FlowPoint App Bootstrap
 // ========================================
 
-import "./overview.js";
-import "./billing.js";
+const fpState = {
+  initialized: false,
 
-import { fpState } from "./state.js";
-import { api } from "./api.js";
-import { initRouter } from "./router.js";
+  loading: true,
+
+  authenticated: false,
+
+  online: navigator.onLine,
+
+  mobile:
+    window.innerWidth <= 900,
+
+  user: null,
+
+  org: null,
+};
 
 // ========================================
-// Bootstrap
+// API
+// ========================================
+
+const api = {
+  async request(
+    method,
+    url,
+    body
+  ) {
+    try {
+      const token =
+        localStorage.getItem(
+          'fp_token'
+        );
+
+      const headers = {
+        'Content-Type':
+          'application/json',
+      };
+
+      if (token) {
+        headers.Authorization =
+          `Bearer ${token}`;
+      }
+
+      const response =
+        await fetch(
+          `/api${url}`,
+          {
+            method,
+            credentials:
+              'include',
+            headers,
+
+            body: body
+              ? JSON.stringify(
+                  body
+                )
+              : undefined,
+          }
+        );
+
+      const data =
+        await response.json();
+
+      return {
+        success:
+          response.ok,
+
+        status:
+          response.status,
+
+        data,
+      };
+    } catch (err) {
+      console.error(
+        '[FP] API Error:',
+        err
+      );
+
+      return {
+        success: false,
+
+        error:
+          err.message,
+      };
+    }
+  },
+
+  get(url) {
+    return this.request(
+      'GET',
+      url
+    );
+  },
+
+  post(url, body) {
+    return this.request(
+      'POST',
+      url,
+      body
+    );
+  },
+};
+
+// ========================================
+// BOOTSTRAP
 // ========================================
 
 async function bootstrap() {
-  console.log("⚡ FlowPoint Boot");
+  console.log(
+    '⚡ FlowPoint Boot'
+  );
 
-  fpState.app.loading = true;
-
-  await loadSession();
-
-  bindGlobalEvents();
-
-  initRouter();
-
-  fpState.app.initialized = true;
-  fpState.app.loading = false;
-
-  console.log("✅ FlowPoint Ready");
-}
-
-// ========================================
-// Session
-// ========================================
-
-async function loadSession() {
   try {
-    const token =
-      localStorage.getItem(
-        "fp_token"
-      );
+    await loadSession();
 
-    if (!token) {
-      redirectToLogin();
-      return;
-    }
+    bindGlobalEvents();
 
-    const result =
-      await api.get(
-        "/auth/me"
-      );
+    initDashboard();
 
-    if (
-      !result ||
-      !result.success ||
-      !result.user
-    ) {
-      localStorage.removeItem(
-        "fp_token"
-      );
+    fpState.initialized = true;
 
-      redirectToLogin();
-
-      return;
-    }
-
-    fpState.auth.authenticated = true;
-
-    fpState.user =
-      result.user;
+    fpState.loading = false;
 
     console.log(
-      "👤 Session loaded"
+      '✅ FlowPoint Ready'
     );
-
   } catch (err) {
-    console.error(err);
-
-    localStorage.removeItem(
-      "fp_token"
+    console.error(
+      '[FP] Bootstrap error:',
+      err
     );
 
     redirectToLogin();
@@ -86,55 +139,150 @@ async function loadSession() {
 }
 
 // ========================================
-// Redirect
+// SESSION
+// ========================================
+
+async function loadSession() {
+  const token =
+    localStorage.getItem(
+      'fp_token'
+    );
+
+  if (!token) {
+    redirectToLogin();
+    return;
+  }
+
+  const result =
+    await api.get(
+      '/auth/me'
+    );
+
+  if (
+    !result.success ||
+    !result.data?.ok
+  ) {
+    localStorage.removeItem(
+      'fp_token'
+    );
+
+    redirectToLogin();
+
+    return;
+  }
+
+  fpState.authenticated =
+    true;
+
+  fpState.user =
+    result.data.user;
+
+  fpState.org =
+    result.data.org;
+
+  console.log(
+    '👤 Session Loaded'
+  );
+}
+
+// ========================================
+// REDIRECT
 // ========================================
 
 function redirectToLogin() {
   if (
     window.location.pathname !==
-    "/login.html"
+    '/login.html'
   ) {
     window.location.href =
-      "/login.html";
+      '/login.html';
   }
 }
 
 // ========================================
-// Global Events
+// EVENTS
 // ========================================
 
 function bindGlobalEvents() {
-  fpState.app.mobile =
-    window.innerWidth <= 900;
-
-  fpState.app.online =
-    navigator.onLine;
-
   window.addEventListener(
-    "resize",
+    'resize',
     () => {
-      fpState.app.mobile =
-        window.innerWidth <= 900;
+      fpState.mobile =
+        window.innerWidth <=
+        900;
     }
   );
 
   window.addEventListener(
-    "online",
+    'online',
     () => {
-      fpState.app.online = true;
+      fpState.online = true;
     }
   );
 
   window.addEventListener(
-    "offline",
+    'offline',
     () => {
-      fpState.app.online = false;
+      fpState.online = false;
     }
   );
 }
 
 // ========================================
-// Start
+// DASHBOARD INIT
+// ========================================
+
+function initDashboard() {
+  console.log(
+    '📊 Dashboard Init'
+  );
+
+  document.body.classList.add(
+    'fpReady'
+  );
+
+  const userNameEl =
+    document.querySelector(
+      '[data-user-name]'
+    );
+
+  if (
+    userNameEl &&
+    fpState.user
+  ) {
+    userNameEl.textContent =
+      fpState.user.firstName ||
+      'User';
+  }
+}
+
+// ========================================
+// LOGOUT
+// ========================================
+
+async function logout() {
+  try {
+    await api.post(
+      '/auth/logout'
+    );
+  } catch (err) {
+    console.error(err);
+  }
+
+  localStorage.removeItem(
+    'fp_token'
+  );
+
+  window.location.href =
+    '/login.html';
+}
+
+window.fpState = fpState;
+window.api = api;
+window.logout = logout;
+
+// ========================================
+// START
 // ========================================
 
 bootstrap();
