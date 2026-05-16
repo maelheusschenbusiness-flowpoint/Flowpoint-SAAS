@@ -1,80 +1,424 @@
 <!doctype html>
 <html lang="fr">
+
 <head>
+
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Paiement réussi — FlowPoint</title>
 
-  <meta name="color-scheme" content="light dark"/>
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  />
 
-  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
-  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
+  <title>
+    Paiement réussi — FlowPoint
+  </title>
 
-  <link rel="stylesheet" href="/style.css" />
+  <meta
+    name="color-scheme"
+    content="light dark"
+  />
+
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="/assets/flowpoint-logo.svg"
+  />
+
+  <link
+    rel="shortcut icon"
+    href="/assets/flowpoint-logo.svg"
+  />
+
+  <link
+    rel="stylesheet"
+    href="/style.css"
+  />
 
   <style>
-    .centerBox{
-      max-width:760px;
-      margin:56px auto;
-    }
 
-    .actionsRow{
+    .successPage{
+
+      min-height:100vh;
+
       display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-top:14px;
+
+      align-items:center;
+
+      justify-content:center;
+
+      padding:40px 20px;
     }
 
-    .actionsRow .primaryBtn,
-    .actionsRow .ghostBtn{
-      text-decoration:none;
+    .successWrap{
+
+      width:100%;
+
+      max-width:760px;
+    }
+
+    .successHero{
+
+      position:relative;
+
+      overflow:hidden;
+    }
+
+    .successHero::before{
+
+      content:"";
+
+      position:absolute;
+
+      inset:0;
+
+      background:
+
+        radial-gradient(
+          circle at top left,
+          rgba(47,91,255,.22),
+          transparent 42%
+        ),
+
+        radial-gradient(
+          circle at bottom right,
+          rgba(99,102,241,.18),
+          transparent 42%
+        );
+
+      pointer-events:none;
+    }
+
+    .successHeroContent{
+
+      position:relative;
+
+      z-index:2;
+    }
+
+    .successBadge{
+
       display:inline-flex;
+
       align-items:center;
+
+      gap:8px;
+
+      padding:8px 14px;
+
+      border-radius:999px;
+
+      background:
+        rgba(16,185,129,.12);
+
+      border:
+        1px solid
+        rgba(16,185,129,.22);
+
+      color:#34d399;
+
+      font-size:13px;
+
+      font-weight:700;
+
+      margin-bottom:18px;
+    }
+
+    .successTitle{
+
+      margin:0;
+
+      font-size:42px;
+
+      line-height:1.02;
+
+      letter-spacing:-0.05em;
+
+      font-weight:800;
+    }
+
+    .successText{
+
+      margin-top:14px;
+
+      color:var(--muted);
+
+      font-size:15px;
+
+      line-height:1.7;
+
+      max-width:620px;
+    }
+
+    .successCard{
+
+      margin-top:18px;
+    }
+
+    .successFeatures{
+
+      display:grid;
+
+      grid-template-columns:
+        repeat(2,1fr);
+
+      gap:12px;
+
+      margin-top:10px;
+    }
+
+    .successFeature{
+
+      padding:14px;
+
+      border-radius:16px;
+
+      border:
+        1px solid var(--border);
+
+      background:
+        rgba(255,255,255,.03);
+    }
+
+    .successFeatureTitle{
+
+      font-size:13px;
+
+      font-weight:700;
+
+      margin-bottom:6px;
+    }
+
+    .successFeatureText{
+
+      color:var(--muted);
+
+      font-size:13px;
+
+      line-height:1.55;
+    }
+
+    .successActions{
+
+      display:flex;
+
+      gap:12px;
+
+      flex-wrap:wrap;
+
+      margin-top:20px;
+    }
+
+    .successActions .primaryBtn,
+    .successActions .ghostBtn{
+
+      min-width:180px;
+
+      text-decoration:none;
+
+      display:inline-flex;
+
+      align-items:center;
+
       justify-content:center;
     }
 
-    @media (max-width:640px){
-      .centerBox{
-        margin:28px auto;
+    .successBottom{
+
+      margin-top:18px;
+
+      color:var(--muted);
+
+      font-size:13px;
+    }
+
+    @media (max-width:760px){
+
+      .successTitle{
+
+        font-size:34px;
       }
 
-      .actionsRow{
+      .successFeatures{
+
+        grid-template-columns:1fr;
+      }
+
+      .successActions{
+
         flex-direction:column;
       }
+
+      .successActions .primaryBtn,
+      .successActions .ghostBtn{
+
+        width:100%;
+      }
     }
+
   </style>
+
 </head>
-<body>
-  <div class="page">
-    <div class="centerBox">
-      <div class="hero">
-        <h1>Paiement réussi ✅</h1>
-        <p id="msg">Redirection en cours vers ton espace FlowPoint…</p>
-      </div>
 
-      <div class="card" style="margin-top:12px">
-        <div class="cardBody">
-          <div class="small">
-            Ton paiement a bien été validé. Ton plan ou tes options sont en cours de synchronisation.
+<body class="fp-marketing">
+
+  <div class="successPage">
+
+    <div class="successWrap">
+
+      <!-- HERO -->
+
+      <div
+        class="hero successHero"
+      >
+
+        <div class="successHeroContent">
+
+          <div class="successBadge">
+            ✅ Paiement validé
           </div>
 
-          <div class="actionsRow">
-            <a class="primaryBtn" href="/dashboard.html">Dashboard</a>
-            <a class="ghostBtn" href="/pricing.html">Pricing</a>
+          <h1 class="successTitle">
+            Bienvenue sur FlowPoint
+          </h1>
+
+          <div
+            class="successText"
+            id="msg"
+          >
+            Ton abonnement et tes options sont en cours de synchronisation.
+            Redirection automatique vers ton dashboard sécurisé…
           </div>
 
-          <div class="small">
-            Tu vas être redirigé automatiquement dans quelques instants.
-          </div>
         </div>
+
       </div>
+
+      <!-- CARD -->
+
+      <div
+        class="card successCard"
+      >
+
+        <div class="cardHead">
+          Activation du workspace
+        </div>
+
+        <div class="cardBody">
+
+          <div class="small">
+
+            Le paiement Stripe a bien été confirmé.
+            Ton espace FlowPoint est maintenant en train d’activer :
+            quotas, monitoring, rapports et modules IA.
+
+          </div>
+
+          <!-- FEATURES -->
+
+          <div class="successFeatures">
+
+            <div class="successFeature">
+
+              <div class="successFeatureTitle">
+                Monitoring temps réel
+              </div>
+
+              <div class="successFeatureText">
+                Activation automatique des moniteurs uptime et alertes.
+              </div>
+
+            </div>
+
+            <div class="successFeature">
+
+              <div class="successFeatureTitle">
+                Rapports & exports
+              </div>
+
+              <div class="successFeatureText">
+                Déblocage des exports PDF, CSV et dashboards exécutifs.
+              </div>
+
+            </div>
+
+            <div class="successFeature">
+
+              <div class="successFeatureTitle">
+                Workspace équipe
+              </div>
+
+              <div class="successFeatureText">
+                Synchronisation des accès équipe et collaboration.
+              </div>
+
+            </div>
+
+            <div class="successFeature">
+
+              <div class="successFeatureTitle">
+                IA FlowPoint
+              </div>
+
+              <div class="successFeatureText">
+                Initialisation des crédits IA et recommandations premium.
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- ACTIONS -->
+
+          <div class="successActions">
+
+            <a
+              class="primaryBtn"
+              href="/dashboard.html"
+            >
+              Ouvrir le dashboard
+            </a>
+
+            <a
+              class="ghostBtn"
+              href="/pricing.html"
+            >
+              Retour pricing
+            </a>
+
+          </div>
+
+          <div class="successBottom">
+            Redirection automatique dans quelques secondes…
+          </div>
+
+        </div>
+
+      </div>
+
     </div>
+
   </div>
 
   <script>
-    const params = new URLSearchParams(location.search);
-    const next = params.get("next") || "/dashboard.html";
-    setTimeout(() => location.href = next, 900);
+
+    const params =
+      new URLSearchParams(
+        location.search
+      );
+
+    const next =
+      params.get('next') ||
+      '/dashboard.html';
+
+    setTimeout(() => {
+
+      window.location.href =
+        next;
+
+    }, 2200);
+
   </script>
+
 </body>
 </html>
