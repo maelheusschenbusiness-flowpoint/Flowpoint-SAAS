@@ -1,78 +1,23 @@
-<!DOCTYPE html>
-<html
-  lang="fr"
-  data-theme="dark"
->
+<!doctype html>
+<html lang="fr">
 
 <head>
 
-  <!-- =====================================================
-       META
-  ====================================================== -->
-
-  <meta charset="UTF-8" />
+  <meta charset="utf-8"/>
 
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  />
-
-  <meta
-    http-equiv="X-UA-Compatible"
-    content="IE=edge"
+    content="width=device-width,initial-scale=1"
   />
 
   <title>
-    FlowPoint — Enterprise Dashboard
+    FlowPoint Dashboard
   </title>
 
   <meta
-    name="robots"
-    content="noindex,nofollow"
+    name="color-scheme"
+    content="dark"
   />
-
-  <meta
-    name="theme-color"
-    content="#070b19"
-  />
-
-  <meta
-    name="description"
-    content="FlowPoint Enterprise Control Center"
-  />
-
-  <!-- =====================================================
-       FONTS
-  ====================================================== -->
-
-  <link
-    rel="preconnect"
-    href="https://fonts.googleapis.com"
-  />
-
-  <link
-    rel="preconnect"
-    href="https://fonts.gstatic.com"
-    crossorigin
-  />
-
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
-    rel="stylesheet"
-  />
-
-  <!-- =====================================================
-       CSS
-  ====================================================== -->
-
-  <link
-    rel="stylesheet"
-    href="dashboard.css"
-  />
-
-  <!-- =====================================================
-       FAVICON
-  ====================================================== -->
 
   <link
     rel="icon"
@@ -80,133 +25,122 @@
     href="/assets/flowpoint-logo.svg"
   />
 
+  <link
+    rel="shortcut icon"
+    href="/assets/flowpoint-logo.svg"
+  />
+
+  <!-- IMPORTANT -->
+  <!-- PAS style.css -->
+
+  <link
+    rel="stylesheet"
+    href="/dashboard.css"
+  />
+
 </head>
 
 <body>
 
-  <!-- =====================================================
-       TOAST WRAP
-  ====================================================== -->
-
-  <div
-    id="fpToastWrap"
-  ></div>
-
-  <!-- =====================================================
-       LOADING SCREEN
-  ====================================================== -->
+  <!-- LOADING -->
 
   <div
     id="fpLoadingScreen"
-  ></div>
-
-  <!-- =====================================================
-       FATAL ERROR
-  ====================================================== -->
-
-  <div
-    id="fpFatalError"
+    class="fpLoadingScreen"
   >
 
-    <div>
+    <div class="fpLoadingCard">
 
-      <h1>
-        FlowPoint Error
-      </h1>
+      <div class="fpLoadingLogoWrap">
 
-      <p>
-        Impossible de charger le dashboard.
-      </p>
+        <img
+          src="/assets/flowpoint-logo.svg"
+          alt="FlowPoint"
+          class="fpLoadingLogo"
+        />
+
+      </div>
+
+      <div class="fpLoadingTitle">
+        FlowPoint
+      </div>
+
+      <div class="fpLoadingText">
+        Chargement du workspace...
+      </div>
 
     </div>
 
   </div>
 
-  <!-- =====================================================
-       APP ROOT
-  ====================================================== -->
+  <!-- APP -->
+
+  <div id="app"></div>
+
+  <!-- TOASTS -->
 
   <div
-    id="app"
+    id="fpToastWrap"
+    class="fpToastWrap"
   ></div>
-  
-  <!-- =====================================================
-       MODAL ROOT
-  ====================================================== -->
+
+  <!-- ERROR -->
 
   <div
-    id="fpModalRoot"
-  ></div>
+    id="fpFatalError"
+    class="fpFatalError"
+    style="display:none"
+  >
 
-  <!-- =====================================================
-       FLOATING OVERLAYS
-  ====================================================== -->
+    <div class="fpFatalErrorCard">
 
-  <div
-    id="fpOverlay"
-    class="fp-overlay"
-  ></div>
+      <div class="fpFatalErrorTitle">
+        Erreur dashboard
+      </div>
 
-  <!-- =====================================================
-       GLOBAL HELPERS
-  ====================================================== -->
+      <div
+        id="fpFatalErrorText"
+        class="fpFatalErrorText"
+      >
+        Impossible de charger le workspace.
+      </div>
+
+      <button
+        class="fpFatalErrorBtn"
+        onclick="location.reload()"
+      >
+        Recharger
+      </button>
+
+    </div>
+
+  </div>
+
+  <!-- IMPORTANT -->
 
   <script>
 
-    window.FLOWPOINT_ENV = {
+    window.FLOWPOINT_CONFIG = {
 
-      production:
-        location.hostname !==
-        'localhost',
-
-      apiBase:
+      API_BASE:
         '',
 
-      version:
-        '4.0.0',
+      VERSION:
+        'v3',
+
+      APP_NAME:
+        'FlowPoint',
 
     };
 
-    window.addEventListener(
-
-      'error',
-
-      event => {
-
-        console.error(
-
-          '[FP Front Error]',
-
-          event.error ||
-          event.message
-        );
-      }
-    );
-
-    window.addEventListener(
-
-      'unhandledrejection',
-
-      event => {
-
-        console.error(
-
-          '[FP Promise Error]',
-
-          event.reason
-        );
-      }
-    );
-
   </script>
 
-  <!-- =====================================================
-       DASHBOARD ENGINE
-  ====================================================== -->
+  <!-- IMPORTANT -->
+  <!-- PAS app.js -->
+  <!-- PAS bootstrap.js -->
+  <!-- PAS style.css -->
 
-  <script
-    src="dashboard.js"
-  ></script>
+  <script src="/dashboard.js"></script>
 
 </body>
 </html>
