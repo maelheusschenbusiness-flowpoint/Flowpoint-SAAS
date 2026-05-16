@@ -1,7 +1,14 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="dark">
+<html
+  lang="fr"
+  data-theme="dark"
+>
 
 <head>
+
+  <!-- =====================================================
+       META
+  ====================================================== -->
 
   <meta charset="UTF-8" />
 
@@ -16,7 +23,7 @@
   />
 
   <title>
-    FlowPoint — Dashboard
+    FlowPoint — Enterprise Dashboard
   </title>
 
   <meta
@@ -26,8 +33,17 @@
 
   <meta
     name="theme-color"
-    content="#050810"
+    content="#070b19"
   />
+
+  <meta
+    name="description"
+    content="FlowPoint Enterprise Control Center"
+  />
+
+  <!-- =====================================================
+       FONTS
+  ====================================================== -->
 
   <link
     rel="preconnect"
@@ -41,628 +57,126 @@
   />
 
   <link
-    href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
     rel="stylesheet"
   />
+
+  <!-- =====================================================
+       CSS
+  ====================================================== -->
 
   <link
     rel="stylesheet"
     href="dashboard.css"
   />
 
+  <!-- =====================================================
+       FAVICON
+  ====================================================== -->
+
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="/assets/flowpoint-logo.svg"
+  />
+
 </head>
 
 <body>
 
-  <!-- MOBILE OVERLAY -->
+  <!-- =====================================================
+       TOAST WRAP
+  ====================================================== -->
 
   <div
-    id="fp-mobile-overlay"
-    class="fp-mobile-overlay"
+    id="fpToastWrap"
   ></div>
 
-  <!-- TOAST ROOT -->
+  <!-- =====================================================
+       LOADING SCREEN
+  ====================================================== -->
 
   <div
-    id="fp-toast-root"
-    class="fp-toast-root"
-    aria-live="polite"
+    id="fpLoadingScreen"
   ></div>
 
-  <!-- FLOAT PANEL -->
+  <!-- =====================================================
+       FATAL ERROR
+  ====================================================== -->
 
   <div
-    id="fp-float-panel"
-    class="fp-float-panel-root"
+    id="fpFatalError"
+  >
+
+    <div>
+
+      <h1>
+        FlowPoint Error
+      </h1>
+
+      <p>
+        Impossible de charger le dashboard.
+      </p>
+
+    </div>
+
+  </div>
+
+  <!-- =====================================================
+       APP ROOT
+  ====================================================== -->
+
+  <div
+    id="app"
+  ></div>
+  
+  <!-- =====================================================
+       MODAL ROOT
+  ====================================================== -->
+
+  <div
+    id="fpModalRoot"
   ></div>
 
-  <!-- COMMAND PALETTE -->
+  <!-- =====================================================
+       FLOATING OVERLAYS
+  ====================================================== -->
 
   <div
-    id="fp-command-palette"
-    class="fp-command-palette"
-  >
-
-    <div class="fp-command-box">
-
-      <div class="fp-command-top">
-
-        <input
-          id="fp-command-input"
-          class="fp-command-input"
-          placeholder="Rechercher..."
-        />
-
-      </div>
-
-      <div
-        id="fp-command-results"
-        class="fp-command-results"
-      ></div>
-
-    </div>
-
-  </div>
-
-  <!-- NOTIFICATIONS -->
-
-  <div
-    id="fp-notifications-panel"
-    class="fp-notifications-panel"
+    id="fpOverlay"
+    class="fp-overlay"
   ></div>
 
-  <!-- APP -->
-
-  <div
-    class="fp-layout"
-    id="fp-layout"
-  >
-
-    <!-- SIDEBAR -->
-
-    <aside
-      class="fp-sidebar"
-      id="fp-sidebar"
-    >
-
-      <!-- BRAND -->
-
-      <div class="fp-brand">
-
-        <div class="fp-brand-left">
-
-          <div class="fp-brand-logo">
-
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 32 32"
-              fill="none"
-            >
-
-              <rect
-                width="32"
-                height="32"
-                rx="8"
-                fill="#2563EB"
-              />
-
-              <path
-                d="M18.5 4L8 17.5h8.5L14.5 28 24 14.5h-8.5L18.5 4z"
-                fill="white"
-              />
-
-            </svg>
-
-          </div>
-
-          <div class="fp-brand-text">
-
-            <div class="fp-brand-name">
-              FlowPoint
-            </div>
-
-            <div class="fp-brand-sub">
-              Centre de contrôle
-            </div>
-
-          </div>
-
-        </div>
-
-        <button
-          id="fp-sidebar-toggle"
-          class="fp-sidebar-toggle"
-          aria-label="Sidebar"
-        >
-          ☰
-        </button>
-
-      </div>
-
-      <!-- NAVIGATION -->
-
-      <nav class="fp-nav">
-
-        <button
-          class="fp-nav-item"
-          data-route="overview"
-        >
-          Vue d'ensemble
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="growth"
-        >
-          Croissance
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="missions"
-        >
-          Missions
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="audits"
-        >
-          Audits SEO
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="monitors"
-        >
-          Monitors
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="local-seo"
-        >
-          Local SEO
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="competitor"
-        >
-          Concurrents
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="conversion"
-        >
-          Conversion
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="data-explorer"
-        >
-          Data Explorer
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="reports"
-        >
-          Rapports
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="alerts-center"
-        >
-          Alertes
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="activity-feed"
-        >
-          Activité
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="team"
-        >
-          Équipe
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="client-mode"
-        >
-          Mode Client
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="billing"
-        >
-          Facturation
-        </button>
-
-        <button
-          class="fp-nav-item"
-          data-route="settings"
-        >
-          Paramètres
-        </button>
-
-        <button
-          class="fp-nav-item fp-nav-ai"
-          data-route="ai"
-        >
-          Assistant IA
-        </button>
-
-      </nav>
-
-      <!-- SIDEBAR FOOTER -->
-
-      <div class="fp-sidebar-footer">
-
-        <div
-          id="fp-plan-badge"
-        ></div>
-
-        <div
-          id="fp-usage-sidebar"
-        ></div>
-
-        <div
-          id="sidebar-user"
-          class="fp-sidebar-user"
-        ></div>
-
-      </div>
-
-    </aside>
-
-    <!-- MAIN -->
-
-    <div class="fp-main-wrap">
-
-      <!-- TOPBAR -->
-
-      <header class="fp-topbar">
-
-        <div class="fp-topbar-left">
-
-          <div
-            id="fp-breadcrumb-current"
-            class="fp-topbar-title"
-          >
-            Vue d'ensemble
-          </div>
-
-        </div>
-
-        <div class="fp-topbar-right">
-
-          <button
-            id="fp-open-search"
-            class="fp-topbar-btn"
-          >
-            Recherche
-          </button>
-
-          <button
-            id="fp-open-activity"
-            class="fp-topbar-btn"
-          >
-            Activité
-          </button>
-
-          <button
-            id="fp-open-notifications"
-            class="fp-topbar-btn"
-          >
-            Notifications
-          </button>
-
-          <button
-            id="fp-toggle-theme"
-            class="fp-topbar-btn"
-          >
-            Thème
-          </button>
-
-          <button
-            class="fp-topbar-btn danger"
-            onclick="FP.logout()"
-          >
-            Déconnexion
-          </button>
-
-        </div>
-
-      </header>
-
-      <!-- PAGE -->
-
-      <main
-        id="fp-page"
-        class="fp-page"
-      ></main>
-
-      <!-- ACTIVITY PANEL -->
-
-      <aside
-        id="fp-activity-panel"
-        class="fp-activity-panel"
-        hidden
-      >
-
-        <div class="fp-activity-panel-header">
-
-          <div class="fp-activity-panel-title">
-            Activité équipe
-          </div>
-
-          <button
-            id="fp-close-activity"
-            class="fp-icon-btn"
-          >
-            ✕
-          </button>
-
-        </div>
-
-        <div
-          id="fp-activity-panel-content"
-          class="fp-activity-panel-content"
-        >
-
-          <div class="fp-empty">
-            Chargement...
-          </div>
-
-        </div>
-
-      </aside>
-
-      <!-- FAB -->
-
-      <div class="fp-fab-wrap">
-
-        <button
-          class="fp-fab"
-          id="fp-fab-main"
-          aria-label="Actions rapides"
-        >
-          +
-        </button>
-
-      </div>
-
-    </div>
-
-  </div>
-
-  <!-- QUICK PANEL -->
-
-  <div
-    id="fp-quick-panel"
-    class="fp-quick-panel"
-    hidden
-  >
-
-    <div class="fp-quick-panel-inner">
-
-      <div class="fp-quick-panel-top">
-
-        <div class="fp-quick-panel-title">
-          Quick Actions
-        </div>
-
-        <button
-          class="fp-icon-btn"
-          onclick="document.getElementById('fp-quick-panel').classList.remove('show')"
-        >
-          ✕
-        </button>
-
-      </div>
-
-      <div class="fp-quick-panel-grid">
-
-        <button
-          class="fp-quick-action"
-          onclick="FP.navigate('audits')"
-        >
-          Audit SEO
-        </button>
-
-        <button
-          class="fp-quick-action"
-          onclick="FP.navigate('monitors')"
-        >
-          Monitor
-        </button>
-
-        <button
-          class="fp-quick-action"
-          onclick="FP.navigate('reports')"
-        >
-          Rapport
-        </button>
-
-        <button
-          class="fp-quick-action"
-          onclick="FP.navigate('missions')"
-        >
-          Mission
-        </button>
-
-        <button
-          class="fp-quick-action"
-          onclick="FP.navigate('team')"
-        >
-          Team
-        </button>
-
-        <button
-          class="fp-quick-action"
-          onclick="FP.navigate('ai')"
-        >
-          IA
-        </button>
-
-      </div>
-
-    </div>
-
-  </div>
-
-  <!-- LOADING -->
-
-  <div
-    id="fp-loading-screen"
-    class="fp-loading-screen"
-  >
-
-    <div class="fp-loading-card">
-
-      <div class="fp-loading-logo">
-
-        <svg
-          width="36"
-          height="36"
-          viewBox="0 0 32 32"
-          fill="none"
-        >
-
-          <rect
-            width="32"
-            height="32"
-            rx="8"
-            fill="#2563EB"
-          />
-
-          <path
-            d="M18.5 4L8 17.5h8.5L14.5 28 24 14.5h-8.5L18.5 4z"
-            fill="white"
-          />
-
-        </svg>
-
-      </div>
-
-      <div class="fp-loading-title">
-        FlowPoint
-      </div>
-
-      <div class="fp-loading-sub">
-        Chargement du dashboard...
-      </div>
-
-    </div>
-
-  </div>
-
-  <!-- FATAL ERROR -->
-
-  <div
-    id="fp-fatal-error"
-    class="fp-fatal-error"
-    hidden
-  >
-
-    <div class="fp-fatal-card">
-
-      <div class="fp-fatal-title">
-        Impossible de charger le dashboard
-      </div>
-
-      <div
-        id="fp-fatal-error-text"
-        class="fp-fatal-text"
-      >
-        Une erreur est survenue.
-      </div>
-
-      <button
-        class="fp-btn fp-btn-primary"
-        onclick="window.location.reload()"
-      >
-        Recharger
-      </button>
-
-    </div>
-
-  </div>
-
-  <!-- INIT -->
+  <!-- =====================================================
+       GLOBAL HELPERS
+  ====================================================== -->
 
   <script>
 
-    window.__FLOWPOINT_HTML_READY__ = true;
+    window.FLOWPOINT_ENV = {
+
+      production:
+        location.hostname !==
+        'localhost',
+
+      apiBase:
+        '',
+
+      version:
+        '4.0.0',
+
+    };
 
     window.addEventListener(
-      'load',
-      () => {
 
-        setTimeout(() => {
-
-          const loading =
-            document.getElementById(
-              'fp-loading-screen'
-            );
-
-          if (loading) {
-            loading.classList.add(
-              'hide'
-            );
-          }
-
-        }, 500);
-      }
-    );
-
-    document.addEventListener(
-      'click',
-      event => {
-
-        const fab =
-          document.getElementById(
-            'fp-fab-main'
-          );
-
-        const panel =
-          document.getElementById(
-            'fp-quick-panel'
-          );
-
-        if (
-          fab &&
-          event.target === fab
-        ) {
-
-          panel?.removeAttribute(
-            'hidden'
-          );
-
-          panel?.classList.toggle(
-            'show'
-          );
-        }
-      }
-    );
-
-    window.addEventListener(
       'error',
+
       event => {
 
         console.error(
-          '[FlowPoint Front Error]',
+
+          '[FP Front Error]',
+
           event.error ||
           event.message
         );
@@ -670,11 +184,15 @@
     );
 
     window.addEventListener(
+
       'unhandledrejection',
+
       event => {
 
         console.error(
-          '[FlowPoint Promise Error]',
+
+          '[FP Promise Error]',
+
           event.reason
         );
       }
@@ -682,9 +200,13 @@
 
   </script>
 
-  <!-- DASHBOARD ENGINE -->
+  <!-- =====================================================
+       DASHBOARD ENGINE
+  ====================================================== -->
 
-  <script src="dashboard.js"></script>
+  <script
+    src="dashboard.js"
+  ></script>
 
 </body>
 </html>
