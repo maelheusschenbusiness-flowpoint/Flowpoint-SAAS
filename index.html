@@ -490,115 +490,193 @@
 
   </div>
 
-  <script>
-    const form =
-      document.getElementById(
-        'signupForm'
+ <script>
+  const form =
+    document.getElementById(
+      'signupForm'
+    );
+
+  const btn =
+    document.getElementById(
+      'btn'
+    );
+
+  const msg =
+    document.getElementById(
+      'msg'
+    );
+
+  function setMsg(
+    text,
+    ok = false
+  ) {
+    msg.innerHTML = `
+      <div style="
+        padding:12px;
+        border-radius:12px;
+        margin-top:12px;
+        font-size:14px;
+        font-weight:600;
+        background:${
+          ok
+            ? 'rgba(16,185,129,.12)'
+            : 'rgba(239,68,68,.12)'
+        };
+        color:${
+          ok
+            ? '#10b981'
+            : '#ef4444'
+        };
+        border:1px solid ${
+          ok
+            ? 'rgba(16,185,129,.25)'
+            : 'rgba(239,68,68,.25)'
+        };
+      ">
+        ${text}
+      </div>
+    `;
+  }
+
+  async function signup(
+    payload
+  ) {
+    const response =
+      await fetch(
+        '/api/auth/register',
+        {
+          method: 'POST',
+
+          credentials:
+            'include',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+
+          body:
+            JSON.stringify(
+              payload
+            ),
+        }
       );
 
-    const msg =
-      document.getElementById(
-        'msg'
-      );
+    const data =
+      await response.json();
 
-    function setMessage(
-      text,
-      type = ''
-    ){
-      msg.className = type;
-      msg.textContent = text;
-    }
+    return {
+      ok: response.ok,
+      data,
+    };
+  }
 
-    form.addEventListener(
-      'submit',
-      async (e) => {
-        e.preventDefault();
+  form.addEventListener(
+    'submit',
+    async (e) => {
+      e.preventDefault();
 
-        setMessage('');
+      btn.disabled = true;
 
-        try{
-          const payload = {
-            firstName:
-              document.getElementById(
-                'firstName'
-              ).value,
+      btn.textContent =
+        'Création...';
 
-            email:
-              document.getElementById(
-                'email'
-              ).value,
+      try {
+        const firstName =
+          document
+            .getElementById(
+              'firstName'
+            )
+            .value.trim();
 
-            companyName:
-              document.getElementById(
-                'companyName'
-              ).value,
+        const email =
+          document
+            .getElementById(
+              'email'
+            )
+            .value.trim();
 
-            plan:
-              document.getElementById(
-                'plan'
-              ).value,
+        const companyName =
+          document
+            .getElementById(
+              'companyName'
+            )
+            .value.trim();
 
-            password:
-              'flowpoint123',
-          };
+        const plan =
+          document
+            .getElementById(
+              'plan'
+            )
+            .value;
 
-          const response =
-            await fetch(
-              '/api/auth/register',
-              {
-                method:'POST',
-
-                headers:{
-                  'Content-Type':
-                    'application/json',
-                },
-
-                credentials:
-                  'include',
-
-                body:
-                  JSON.stringify(
-                    payload
-                  ),
-              }
-            );
-
-          const data =
-            await response.json();
-
-          if(!response.ok){
-            throw new Error(
-              data.error ||
-              'Erreur'
-            );
-          }
-
-          if(data.token){
-            localStorage.setItem(
-              'fp_token',
-              data.token
-            );
-          }
-
-          setMessage(
-            'Compte créé. Redirection...',
-            'success'
-          );
-
-          setTimeout(() => {
-            window.location.href =
-              '/dashboard.html';
-          }, 1200);
-
-        }catch(err){
-          setMessage(
-            err.message,
-            'error'
+        if (
+          !firstName ||
+          !email
+        ) {
+          throw new Error(
+            'Informations manquantes'
           );
         }
+
+        const password =
+          crypto.randomUUID();
+
+        const result =
+          await signup({
+            firstName,
+            email,
+            password,
+            companyName,
+            plan,
+          });
+
+        if (
+          !result.ok ||
+          !result.data?.ok
+        ) {
+          throw new Error(
+            result.data
+              ?.error ||
+              'Erreur inscription'
+          );
+        }
+
+        if (
+          result.data.token
+        ) {
+          localStorage.setItem(
+            'fp_token',
+            result.data.token
+          );
+        }
+
+        setMsg(
+          'Compte créé avec succès. Redirection...',
+          true
+        );
+
+        setTimeout(() => {
+          window.location.href =
+            '/dashboard.html';
+        }, 1200);
+      } catch (err) {
+        console.error(err);
+
+        setMsg(
+          err.message ||
+            'Erreur serveur'
+        );
+      } finally {
+        btn.disabled =
+          false;
+
+        btn.textContent =
+          'Commencer l’essai';
       }
-    );
-  </script>
+    }
+  );
+</script>
 
 </body>
 </html>
