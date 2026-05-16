@@ -1,11 +1,15 @@
 // api.js
 
+// ========================================
+// FlowPoint API
+// ========================================
+
 import { getAuthToken } from "./auth.js";
 
 async function request(
   method,
   url,
-  body
+  body = null
 ) {
   try {
     const token = getAuthToken();
@@ -15,15 +19,19 @@ async function request(
       {
         method,
 
+        credentials: "include",
+
         headers: {
           "Content-Type":
             "application/json",
 
-          Authorization:
-            `Bearer ${token}`,
+          ...(token
+            ? {
+                Authorization:
+                  `Bearer ${token}`,
+              }
+            : {}),
         },
-
-        credentials: "include",
 
         body: body
           ? JSON.stringify(body)
@@ -34,14 +42,18 @@ async function request(
     const data =
       await response.json();
 
-    return {
-      success: response.ok,
-      data,
-    };
+    return data;
   } catch (err) {
+    console.error(
+      "API ERROR:",
+      err
+    );
+
     return {
-      success: false,
-      error: err.message,
+      ok: false,
+      error:
+        err.message ||
+        "API Error",
     };
   }
 }
@@ -68,6 +80,9 @@ export const api = {
   },
 
   delete(url) {
-    return request("DELETE", url);
+    return request(
+      "DELETE",
+      url
+    );
   },
 };
