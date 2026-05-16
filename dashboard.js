@@ -106,7 +106,81 @@ const STATE = {
   cmpA: null,
   cmpB: null,
 };
+// ─────────────────────────────────────────────────────────────────
+// SESSION BOOTSTRAP
+// ─────────────────────────────────────────────────────────────────
 
+document.addEventListener(
+  'DOMContentLoaded',
+  async () => {
+    try {
+      await verifySession();
+
+      console.log(
+        '✅ Session valid'
+      );
+
+      initRouter();
+
+      renderCurrentPage();
+
+    } catch (err) {
+      console.error(
+        '[FP] Session error:',
+        err
+      );
+
+      localStorage.removeItem(
+        'fp_token'
+      );
+
+      window.location.href =
+        '/login.html';
+    }
+  }
+);
+
+async function verifySession() {
+  const token =
+    localStorage.getItem(
+      'fp_token'
+    );
+
+  if (!token) {
+    throw new Error(
+      'Missing token'
+    );
+  }
+
+  const response =
+    await fetch(
+      '/api/auth/me',
+      {
+        credentials:
+          'include',
+
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+        },
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if (
+    !response.ok ||
+    !data?.ok
+  ) {
+    throw new Error(
+      data?.error ||
+      'Invalid session'
+    );
+  }
+
+  STATE.me = data.user;
+}
 // Default checklist
 if (!STATE.checklist) {
   STATE.checklist = [
@@ -19262,5 +19336,20 @@ if (document.readyState === 'loading') {
 } else {
   init();
 }
+function renderCurrentPage() {
+  const route =
+    location.hash.replace(
+      '#',
+      ''
+    ) || 'overview';
 
+  STATE.route = route;
+
+  if (
+    typeof render ===
+    'function'
+  ) {
+    render();
+  }
+}
 })(); // end IIFE
