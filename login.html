@@ -387,137 +387,110 @@
 
   </div>
 
-  <script>
-    const btn =
-      document.getElementById(
-        "btn"
-      );
+ <script>
+  const btn =
+    document.getElementById(
+      "btn"
+    );
 
-    const emailEl =
-      document.getElementById(
-        "email"
-      );
+  const emailEl =
+    document.getElementById(
+      "email"
+    );
 
-    const passwordEl =
-      document.getElementById(
-        "password"
-      );
+  const msg =
+    document.getElementById(
+      "msg"
+    );
 
-    const msg =
-      document.getElementById(
-        "msg"
-      );
+  function setMsg(
+    text,
+    type = ""
+  ) {
+    msg.textContent = text;
 
-    function setMsg(
-      text,
-      type
-    ) {
-      msg.textContent = text;
+    msg.className =
+      "msg " + type;
+  }
 
-      msg.classList.remove(
-        "ok",
-        "danger"
-      );
+  btn.addEventListener(
+    "click",
+    async () => {
+      const email =
+        emailEl.value.trim();
 
-      if (type) {
-        msg.classList.add(type);
+      if (!email) {
+        setMsg(
+          "Email requis",
+          "danger"
+        );
+
+        return;
+      }
+
+      btn.disabled = true;
+
+      try {
+        const response =
+          await fetch(
+            "/api/auth/login",
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+
+              credentials:
+                "include",
+
+              body:
+                JSON.stringify({
+                  email,
+                  password:
+                    "flowpoint123",
+                }),
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+            "Erreur login"
+          );
+        }
+
+        if (data.token) {
+          localStorage.setItem(
+            "fp_token",
+            data.token
+          );
+        }
+
+        setMsg(
+          "Connexion réussie",
+          "ok"
+        );
+
+        setTimeout(() => {
+          window.location.href =
+            "/dashboard.html";
+        }, 800);
+
+      } catch (err) {
+        setMsg(
+          err.message,
+          "danger"
+        );
+      } finally {
+        btn.disabled = false;
       }
     }
-
-    btn.addEventListener(
-      "click",
-      async () => {
-        try {
-          btn.disabled = true;
-
-          setMsg(
-            "Connexion..."
-          );
-
-          const email =
-            String(
-              emailEl.value || ""
-            ).trim();
-
-          const password =
-            String(
-              passwordEl.value || ""
-            );
-
-          const response =
-            await fetch(
-              "/api/auth/login",
-              {
-                method: "POST",
-
-                credentials:
-                  "include",
-
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-
-                body:
-                  JSON.stringify({
-                    email,
-                    password,
-                  }),
-              }
-            );
-
-          const data =
-            await response.json();
-
-          console.log(
-            "LOGIN:",
-            data
-          );
-
-          if (
-            !response.ok ||
-            !data.ok
-          ) {
-            throw new Error(
-              data.error ||
-              "Connexion impossible"
-            );
-          }
-
-          if (data.token) {
-            localStorage.setItem(
-              "fp_token",
-              data.token
-            );
-
-            localStorage.setItem(
-              "token",
-              data.token
-            );
-          }
-
-          setMsg(
-            "Connexion réussie",
-            "ok"
-          );
-
-          setTimeout(() => {
-            window.location.href =
-              "/dashboard.html";
-          }, 700);
-
-        } catch (err) {
-          console.error(err);
-
-          setMsg(
-            err.message,
-            "danger"
-          );
-        } finally {
-          btn.disabled = false;
-        }
-      }
-    );
-  </script>
+  );
+</script>
 </body>
 </html>
