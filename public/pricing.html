@@ -1,1 +1,265 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Pricing — Plans + Add-ons</title>
 
+<meta name="color-scheme" content="light dark"/>
+
+<link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg"/>
+<link rel="shortcut icon" href="/assets/flowpoint-logo.svg"/>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="/style.css"/>
+
+<style>
+
+/* ===== PAGE ===== */
+.pricingPage{
+  max-width:1180px;
+}
+
+/* ===== HEADER ===== */
+.pricingTopHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:18px;
+}
+
+.pricingBrandMini{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.pricingBrandMiniLogo{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  object-fit:contain;
+  filter:drop-shadow(0 10px 18px rgba(0,0,0,.22));
+}
+
+/* ✅ AJOUT TEXTE FLOWPOINT */
+.pricingBrandText{
+  font-size:18px;
+  font-weight:600;
+  color:var(--text-primary, #fff);
+  letter-spacing:0.2px;
+}
+
+/* ===== ACTIONS ===== */
+.pricingHeaderActions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+/* ===== GRID FIX ===== */
+.pricingPage .grid{
+  align-items:start;
+}
+
+/* ===== PLANS GRID ===== */
+.pricingPage .plans{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:12px;
+  align-items:stretch;
+}
+
+/* ===== CARTES ===== */
+.pricingPage .planCard{
+  display:flex;
+  flex-direction:column;
+  height:100%;
+  padding:16px !important;
+  border-radius:18px;
+}
+
+.pricingPage .features{
+  flex:1;
+  margin-top:10px !important;
+  font-size:12.5px !important;
+  line-height:1.42 !important;
+}
+
+/* ===== TEXT ===== */
+.pricingPage .planName{
+  font-size:17px !important;
+}
+
+.pricingPage .price{
+  font-size:26px !important;
+}
+
+.pricingPage .per{
+  font-size:12px !important;
+}
+
+.pricingPage .badge{
+  margin-top:8px;
+  font-size:11px;
+  padding:5px 9px;
+}
+
+/* ===== HERO ===== */
+.pricingPage .hero h1{
+  font-size:30px;
+}
+
+.pricingPage .hero p{
+  font-size:13.5px;
+  line-height:1.55;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width:900px){
+  .pricingPage .plans{
+    grid-template-columns:1fr;
+  }
+
+  .pricingTopHeader{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="page pricingPage">
+
+  <!-- HEADER -->
+  <div class="pricingTopHeader">
+
+    <!-- ✅ BRAND FIX -->
+    <div class="pricingBrandMini">
+      <img class="pricingBrandMiniLogo"
+           src="/assets/flowpoint-logo.svg"
+           alt="FlowPoint"
+           onerror="this.src='/assets/flowpoint-logo.png'">
+      <span class="pricingBrandText">FlowPoint</span>
+    </div>
+
+    <div class="pricingHeaderActions">
+      <a class="linkBtn" href="/login.html">Retour à l’accueil</a>
+      <div class="pill" id="authPill">Statut : …</div>
+    </div>
+
+  </div>
+
+  <div class="grid">
+
+    <!-- LEFT -->
+    <div>
+
+      <div class="hero">
+        <h1>Choisis ton plan + tes options</h1>
+        <p>
+          1) Clique <b>Checkout</b> pour payer le plan + add-ons.<br>
+          2) Clique <b>Gérer mes add-ons</b> pour modifier tes options.
+        </p>
+        <div class="small" id="pricingMsg"></div>
+      </div>
+
+      <!-- PLANS -->
+      <div class="section">
+        <div class="sectionHead">
+          <div class="title">Plans</div>
+          <div class="hint">Essai via Stripe (Billing).</div>
+        </div>
+
+        <div class="plans" id="plans"></div>
+      </div>
+
+      <!-- ADDONS -->
+      <div class="section">
+        <div class="sectionHead">
+          <div class="title">Add-ons</div>
+          <div class="hint">Sélection UI (paiement ensuite).</div>
+        </div>
+
+        <div class="addons" id="addonsList"></div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT -->
+    <div class="side">
+
+      <div class="card">
+        <div class="cardHead">Inclus dans tous les plans</div>
+        <div class="cardBody">
+          <ul class="miniList">
+            <li>Rapports PDF + exports CSV</li>
+            <li>Alertes email + pages de rapports</li>
+            <li>White label inclus (gratuit)</li>
+            <li>Support email + onboarding</li>
+            <li>Historique d’incidents</li>
+            <li>Exports & partage équipe</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardHead">Résumé</div>
+        <div class="cardBody">
+
+          <div class="row2">
+            <span class="muted">Plan</span>
+            <span id="sumPlan">—</span>
+          </div>
+
+          <div class="row2">
+            <span class="muted">Prix du plan</span>
+            <span id="sumPlanPrice">—</span>
+          </div>
+
+          <div class="row2">
+            <span class="muted">White label</span>
+            <span>Inclus</span>
+          </div>
+
+          <div class="row2">
+            <span class="muted">Add-ons</span>
+            <span id="sumAddOns">—</span>
+          </div>
+
+          <button class="primaryBtn" id="btnCheckout">Continuer</button>
+          <button class="ghostBtn" id="btnPortal">Gérer mes add-ons</button>
+
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardHead">Pourquoi c’est rentable</div>
+        <div class="cardBody">
+          <ul class="miniList">
+            <li>Audits rapides</li>
+            <li>Monitoring temps réel</li>
+            <li>Rapports clients</li>
+            <li>Scaling avec add-ons</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<script src="/pricing.js"></script>
+
+</body>
+</html>
