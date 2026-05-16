@@ -1,28 +1,20 @@
-// app.js
-
 // ========================================
-// FlowPoint App Bootstrap
+// FlowPoint Bootstrap
 // ========================================
 
 import "./overview.js";
+import "./billing.js";
+
 import { fpState } from "./state.js";
 import { api } from "./api.js";
 import { initRouter } from "./router.js";
-import "./billing.js";
-
-import {
-  clearAuth,
-  getAuthToken,
-} from "./auth.js";
 
 // ========================================
 // Bootstrap
 // ========================================
 
 async function bootstrap() {
-  console.log(
-    "⚡ FlowPoint Boot"
-  );
+  console.log("⚡ FlowPoint Boot");
 
   fpState.app.loading = true;
 
@@ -35,27 +27,22 @@ async function bootstrap() {
   fpState.app.initialized = true;
   fpState.app.loading = false;
 
-  console.log(
-    "✅ FlowPoint Ready"
-  );
+  console.log("✅ FlowPoint Ready");
 }
 
 // ========================================
-// Load Session
+// Session
 // ========================================
 
 async function loadSession() {
   try {
     const token =
-      getAuthToken();
-
-    if (!token) {
-      console.log(
-        "❌ No token"
+      localStorage.getItem(
+        "fp_token"
       );
 
-      redirectLogin();
-
+    if (!token) {
+      redirectToLogin();
       return;
     }
 
@@ -64,19 +51,16 @@ async function loadSession() {
         "/auth/me"
       );
 
-    console.log(
-      "AUTH RESULT:",
-      result
-    );
-
     if (
       !result ||
-      !result.ok ||
+      !result.success ||
       !result.user
     ) {
-      clearAuth();
+      localStorage.removeItem(
+        "fp_token"
+      );
 
-      redirectLogin();
+      redirectToLogin();
 
       return;
     }
@@ -86,26 +70,26 @@ async function loadSession() {
     fpState.user =
       result.user;
 
-    fpState.org =
-      result.org || null;
-
     console.log(
-      "👤 Session Loaded"
+      "👤 Session loaded"
     );
+
   } catch (err) {
     console.error(err);
 
-    clearAuth();
+    localStorage.removeItem(
+      "fp_token"
+    );
 
-    redirectLogin();
+    redirectToLogin();
   }
 }
 
 // ========================================
-// Redirect Login
+// Redirect
 // ========================================
 
-function redirectLogin() {
+function redirectToLogin() {
   if (
     window.location.pathname !==
     "/login.html"
@@ -130,8 +114,7 @@ function bindGlobalEvents() {
     "resize",
     () => {
       fpState.app.mobile =
-        window.innerWidth <=
-        900;
+        window.innerWidth <= 900;
     }
   );
 
