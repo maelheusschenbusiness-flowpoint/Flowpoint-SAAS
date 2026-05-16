@@ -4632,6 +4632,87 @@ app.use(
 );
 
 /* ========================================================
+   ROUTES FRONT
+======================================================== */
+
+app.get('/', (req, res) => {
+
+  res.sendFile(
+    path.join(
+      PUBLIC_DIR,
+      'index.html'
+    )
+  );
+
+});
+
+app.get('/login', (req, res) => {
+
+  res.sendFile(
+    path.join(
+      PUBLIC_DIR,
+      'login.html'
+    )
+  );
+
+});
+
+app.get('/dashboard', (req, res) => {
+
+  res.sendFile(
+    path.join(
+      PUBLIC_DIR,
+      'dashboard.html'
+    )
+  );
+
+});
+
+app.get('/pricing', (req, res) => {
+
+  res.sendFile(
+    path.join(
+      PUBLIC_DIR,
+      'pricing.html'
+    )
+  );
+
+});
+
+app.get('/checkout', (req, res) => {
+
+  res.sendFile(
+    path.join(
+      PUBLIC_DIR,
+      'checkout.html'
+    )
+  );
+
+});
+
+app.get('/success', (req, res) => {
+
+  res.sendFile(
+    path.join(
+      PUBLIC_DIR,
+      'success.html'
+    )
+  );
+
+});
+
+app.get('/cancel', (req, res) => {
+
+  res.sendFile(
+    path.join(
+      PUBLIC_DIR,
+      'cancel.html'
+    )
+  );
+
+});
+
+/* ========================================================
    HEALTH
 ======================================================== */
 
@@ -4737,26 +4818,19 @@ app.get(
 );
 
 /* ========================================================
-   FRONTEND FALLBACK
+   404
 ======================================================== */
 
-app.get(
+app.use((req, res) => {
 
-  '*',
+  res.status(404).sendFile(
+    path.join(
+      PUBLIC_DIR,
+      'index.html'
+    )
+  );
 
-  (req, res) => {
-
-    res.sendFile(
-
-      path.join(
-
-        PUBLIC_DIR,
-
-        'index.html'
-      )
-    );
-  }
-);
+});
 
 /* ========================================================
    START SERVER
