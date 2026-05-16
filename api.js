@@ -1,88 +1,123 @@
-// api.js
-
 // ========================================
 // FlowPoint API
 // ========================================
 
-import { getAuthToken } from "./auth.js";
+const API_BASE = "/api";
+
+// ========================================
+// Request
+// ========================================
 
 async function request(
-  method,
-  url,
-  body = null
+  endpoint,
+  options = {}
 ) {
   try {
-    const token = getAuthToken();
+    const token =
+      localStorage.getItem(
+        "fp_token"
+      );
 
-    const response = await fetch(
-      `/api${url}`,
-      {
-        method,
+    const response =
+      await fetch(
+        API_BASE + endpoint,
+        {
+          credentials:
+            "include",
 
-        credentials: "include",
+          headers: {
+            "Content-Type":
+              "application/json",
 
-        headers: {
-          "Content-Type":
-            "application/json",
+            Authorization:
+              token
+                ? `Bearer ${token}`
+                : "",
+          },
 
-          ...(token
-            ? {
-                Authorization:
-                  `Bearer ${token}`,
-              }
-            : {}),
-        },
-
-        body: body
-          ? JSON.stringify(body)
-          : undefined,
-      }
-    );
+          ...options,
+        }
+      );
 
     const data =
-      await response.json();
+      await response
+        .json()
+        .catch(() => ({}));
 
-    return data;
-  } catch (err) {
-    console.error(
-      "API ERROR:",
-      err
-    );
+    if (!response.ok) {
+      return {
+        success: false,
+
+        error:
+          data.error ||
+          "Request failed",
+      };
+    }
 
     return {
-      ok: false,
+      success: true,
+      ...data,
+    };
+
+  } catch (err) {
+    console.error(err);
+
+    return {
+      success: false,
       error:
-        err.message ||
-        "API Error",
+        err.message,
     };
   }
 }
 
+// ========================================
+// API
+// ========================================
+
 export const api = {
-  get(url) {
-    return request("GET", url);
-  },
-
-  post(url, body) {
+  get(endpoint) {
     return request(
-      "POST",
-      url,
-      body
+      endpoint,
+      {
+        method: "GET",
+      }
     );
   },
 
-  put(url, body) {
+  post(endpoint, body) {
     return request(
-      "PUT",
-      url,
-      body
+      endpoint,
+      {
+        method: "POST",
+
+        body:
+          JSON.stringify(
+            body
+          ),
+      }
     );
   },
 
-  delete(url) {
+  put(endpoint, body) {
     return request(
-      "DELETE",
-      url
+      endpoint,
+      {
+        method: "PUT",
+
+        body:
+          JSON.stringify(
+            body
+          ),
+      }
+    );
+  },
+
+  delete(endpoint) {
+    return request(
+      endpoint,
+      {
+        method: "DELETE",
+      }
     );
   },
 };
