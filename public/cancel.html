@@ -14,9 +14,19 @@
     Paiement annulé — FlowPoint
   </title>
 
+  <meta
+    name="color-scheme"
+    content="light dark"
+  />
+
   <link
     rel="icon"
     type="image/svg+xml"
+    href="/assets/flowpoint-logo.svg"
+  />
+
+  <link
+    rel="shortcut icon"
     href="/assets/flowpoint-logo.svg"
   />
 
@@ -25,65 +35,342 @@
     href="/style.css"
   />
 
+  <style>
+
+    .cancelPage{
+
+      min-height:100vh;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      padding:40px 20px;
+    }
+
+    .cancelWrap{
+
+      width:100%;
+
+      max-width:760px;
+    }
+
+    .cancelHero{
+
+      position:relative;
+
+      overflow:hidden;
+    }
+
+    .cancelHero::before{
+
+      content:"";
+
+      position:absolute;
+
+      inset:0;
+
+      background:
+
+        radial-gradient(
+          circle at top left,
+          rgba(239,68,68,.16),
+          transparent 42%
+        ),
+
+        radial-gradient(
+          circle at bottom right,
+          rgba(245,158,11,.12),
+          transparent 42%
+        );
+
+      pointer-events:none;
+    }
+
+    .cancelHeroContent{
+
+      position:relative;
+
+      z-index:2;
+    }
+
+    .cancelBadge{
+
+      display:inline-flex;
+
+      align-items:center;
+
+      gap:8px;
+
+      padding:8px 14px;
+
+      border-radius:999px;
+
+      background:
+        rgba(239,68,68,.12);
+
+      border:
+        1px solid
+        rgba(239,68,68,.22);
+
+      color:#f87171;
+
+      font-size:13px;
+
+      font-weight:700;
+
+      margin-bottom:18px;
+    }
+
+    .cancelTitle{
+
+      margin:0;
+
+      font-size:42px;
+
+      line-height:1.02;
+
+      letter-spacing:-0.05em;
+
+      font-weight:800;
+    }
+
+    .cancelText{
+
+      margin-top:14px;
+
+      color:var(--muted);
+
+      font-size:15px;
+
+      line-height:1.7;
+
+      max-width:620px;
+    }
+
+    .cancelCard{
+
+      margin-top:18px;
+    }
+
+    .cancelFeatures{
+
+      display:grid;
+
+      grid-template-columns:
+        repeat(2,1fr);
+
+      gap:12px;
+
+      margin-top:10px;
+    }
+
+    .cancelFeature{
+
+      padding:14px;
+
+      border-radius:16px;
+
+      border:
+        1px solid var(--border);
+
+      background:
+        rgba(255,255,255,.03);
+    }
+
+    .cancelFeatureTitle{
+
+      font-size:13px;
+
+      font-weight:700;
+
+      margin-bottom:6px;
+    }
+
+    .cancelFeatureText{
+
+      color:var(--muted);
+
+      font-size:13px;
+
+      line-height:1.55;
+    }
+
+    .cancelActions{
+
+      display:flex;
+
+      gap:12px;
+
+      flex-wrap:wrap;
+
+      margin-top:20px;
+    }
+
+    .cancelActions .primaryBtn,
+    .cancelActions .ghostBtn{
+
+      min-width:180px;
+
+      text-decoration:none;
+
+      display:inline-flex;
+
+      align-items:center;
+
+      justify-content:center;
+    }
+
+    .cancelBottom{
+
+      margin-top:18px;
+
+      color:var(--muted);
+
+      font-size:13px;
+    }
+
+    @media (max-width:760px){
+
+      .cancelTitle{
+
+        font-size:34px;
+      }
+
+      .cancelFeatures{
+
+        grid-template-columns:1fr;
+      }
+
+      .cancelActions{
+
+        flex-direction:column;
+      }
+
+      .cancelActions .primaryBtn,
+      .cancelActions .ghostBtn{
+
+        width:100%;
+      }
+    }
+
+  </style>
+
 </head>
 
 <body class="fp-marketing">
 
-  <div class="page">
+  <div class="cancelPage">
 
-    <div
-      style="
-        max-width:760px;
-        margin:56px auto;
-      "
-    >
+    <div class="cancelWrap">
 
-      <div class="hero">
+      <!-- HERO -->
 
-        <h1>
-          Paiement annulé
-        </h1>
+      <div
+        class="hero cancelHero"
+      >
 
-        <p>
-          Aucun paiement n’a été validé.
-          Ton abonnement actuel n’a pas été modifié.
-        </p>
+        <div class="cancelHeroContent">
+
+          <div class="cancelBadge">
+            ⚠️ Paiement annulé
+          </div>
+
+          <h1 class="cancelTitle">
+            Le paiement n’a pas été finalisé
+          </h1>
+
+          <div class="cancelText">
+            Aucun débit n’a été effectué.
+            Ton abonnement actuel et ton workspace restent inchangés.
+          </div>
+
+        </div>
 
       </div>
 
+      <!-- CARD -->
+
       <div
-        class="card"
-        style="margin-top:16px"
+        class="card cancelCard"
       >
+
+        <div class="cardHead">
+          Continuer plus tard
+        </div>
 
         <div class="cardBody">
 
           <div class="small">
 
-            Tu peux relancer le checkout
-            quand tu veux depuis les offres
-            ou les add-ons.
+            Tu peux reprendre le checkout à tout moment
+            depuis le pricing ou directement depuis ton dashboard.
 
           </div>
 
-          <div
-            style="
-              display:flex;
-              gap:12px;
-              flex-wrap:wrap;
-              margin-top:16px;
-            "
-          >
+          <!-- FEATURES -->
+
+          <div class="cancelFeatures">
+
+            <div class="cancelFeature">
+
+              <div class="cancelFeatureTitle">
+                Aucun paiement effectué
+              </div>
+
+              <div class="cancelFeatureText">
+                Aucun montant n’a été débité sur ton moyen de paiement.
+              </div>
+
+            </div>
+
+            <div class="cancelFeature">
+
+              <div class="cancelFeatureTitle">
+                Workspace conservé
+              </div>
+
+              <div class="cancelFeatureText">
+                Ton espace FlowPoint reste disponible normalement.
+              </div>
+
+            </div>
+
+            <div class="cancelFeature">
+
+              <div class="cancelFeatureTitle">
+                Checkout relançable
+              </div>
+
+              <div class="cancelFeatureText">
+                Tu peux reprendre le paiement en quelques secondes.
+              </div>
+
+            </div>
+
+            <div class="cancelFeature">
+
+              <div class="cancelFeatureTitle">
+                Add-ons sauvegardés
+              </div>
+
+              <div class="cancelFeatureText">
+                Tes options et préférences restent mémorisées.
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- ACTIONS -->
+
+          <div class="cancelActions">
 
             <a
               class="primaryBtn"
               href="/pricing.html"
-              style="
-                text-decoration:none;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-              "
             >
               Retour au pricing
             </a>
@@ -91,16 +378,14 @@
             <a
               class="ghostBtn"
               href="/dashboard.html"
-              style="
-                text-decoration:none;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-              "
             >
-              Dashboard
+              Retour dashboard
             </a>
 
+          </div>
+
+          <div class="cancelBottom">
+            Tu peux reprendre l’abonnement quand tu veux.
           </div>
 
         </div>
