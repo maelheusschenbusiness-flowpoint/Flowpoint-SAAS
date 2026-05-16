@@ -387,42 +387,95 @@
 
   </div>
 
- <script>
+<script>
   const btn =
     document.getElementById(
-      "btn"
+      'btn'
     );
 
   const emailEl =
     document.getElementById(
-      "email"
+      'email'
     );
 
   const msg =
     document.getElementById(
-      "msg"
+      'msg'
     );
 
   function setMsg(
     text,
-    type = ""
+    ok = false
   ) {
-    msg.textContent = text;
+    msg.innerHTML = `
+      <div style="
+        padding:12px;
+        border-radius:12px;
+        font-size:14px;
+        font-weight:600;
+        background:${
+          ok
+            ? 'rgba(16,185,129,.12)'
+            : 'rgba(239,68,68,.12)'
+        };
+        color:${
+          ok
+            ? '#10b981'
+            : '#ef4444'
+        };
+        border:1px solid ${
+          ok
+            ? 'rgba(16,185,129,.25)'
+            : 'rgba(239,68,68,.25)'
+        };
+      ">
+        ${text}
+      </div>
+    `;
+  }
 
-    msg.className =
-      "msg " + type;
+  async function login(
+    payload
+  ) {
+    const response =
+      await fetch(
+        '/api/auth/login',
+        {
+          method: 'POST',
+
+          credentials:
+            'include',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+
+          body:
+            JSON.stringify(
+              payload
+            ),
+        }
+      );
+
+    const data =
+      await response.json();
+
+    return {
+      ok: response.ok,
+      data,
+    };
   }
 
   btn.addEventListener(
-    "click",
+    'click',
     async () => {
       const email =
         emailEl.value.trim();
 
       if (!email) {
         setMsg(
-          "Email requis",
-          "danger"
+          'Email requis'
         );
 
         return;
@@ -430,64 +483,69 @@
 
       btn.disabled = true;
 
+      btn.textContent =
+        'Connexion...';
+
       try {
-        const response =
-          await fetch(
-            "/api/auth/login",
-            {
-              method: "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              credentials:
-                "include",
-
-              body:
-                JSON.stringify({
-                  email,
-                  password:
-                    "flowpoint123",
-                }),
-            }
+        const password =
+          prompt(
+            'Entre ton mot de passe'
           );
 
-        const data =
-          await response.json();
-
-        if (!response.ok) {
+        if (!password) {
           throw new Error(
-            data.error ||
-            "Erreur login"
+            'Mot de passe requis'
           );
         }
 
-        if (data.token) {
+        const result =
+          await login({
+            email,
+            password,
+          });
+
+        if (
+          !result.ok ||
+          !result.data?.ok
+        ) {
+          throw new Error(
+            result.data
+              ?.error ||
+              'Connexion impossible'
+          );
+        }
+
+        if (
+          result.data.token
+        ) {
           localStorage.setItem(
-            "fp_token",
-            data.token
+            'fp_token',
+            result.data.token
           );
         }
 
         setMsg(
-          "Connexion réussie",
-          "ok"
+          'Connexion réussie',
+          true
         );
 
         setTimeout(() => {
           window.location.href =
-            "/dashboard.html";
-        }, 800);
-
+            '/dashboard.html';
+        }, 1000);
       } catch (err) {
+        console.error(err);
+
         setMsg(
-          err.message,
-          "danger"
+          err.message ||
+            'Erreur serveur'
         );
       } finally {
-        btn.disabled = false;
+        btn.disabled =
+          false;
+
+        btn.textContent =
+          'Recevoir le lien';
       }
     }
   );
