@@ -1,29 +1,67 @@
 'use strict';
 
 /**
- * ╔══════════════════════════════════════════════════════════════════════╗
- * ║                 FLOWPOINT — Backend API V3                          ║
- * ║   Enterprise SaaS Backend · MongoDB · Stripe · AI · SSE            ║
- * ╚══════════════════════════════════════════════════════════════════════╝
+ * ========================================================
+ * FLOWPOINT ENTERPRISE BACKEND V4
+ * MongoDB + Stripe + OpenAI + Realtime + SaaS Engine
+ * ========================================================
  */
 
 require('dotenv').config();
 
-/* =========================================================
+/* ========================================================
    IMPORTS
-========================================================= */
+======================================================== */
 
-const express = require('express');
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const cookieParser = require('cookie-parser');
-const cors = require('cors');
-const path = require('path');
-const crypto = require('crypto');
-const cron = require('node-cron');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
+const express =
+  require('express');
+
+const mongoose =
+  require('mongoose');
+
+const bcrypt =
+  require('bcryptjs');
+
+const jwt =
+  require('jsonwebtoken');
+
+const cookieParser =
+  require('cookie-parser');
+
+const cors =
+  require('cors');
+
+const path =
+  require('path');
+
+const crypto =
+  require('crypto');
+
+const cron =
+  require('node-cron');
+
+const helmet =
+  require('helmet');
+
+const rateLimit =
+  require('express-rate-limit');
+
+const Stripe =
+  require('stripe');
+
+const { Resend } =
+  require('resend');
+
+const PDFDocument =
+  require('pdfkit');
+
+const fs =
+  require('fs');
+
+/* ========================================================
+   ENGINES
+======================================================== */
+
 const {
   runMonitorCheck,
 } = require('./engines/monitor-engine');
@@ -35,31 +73,35 @@ const {
 const {
   generateAIResponse,
 } = require('./engines/ai-engine');
-const Stripe = require('stripe');
-const { Resend } = require('resend');
 
-const app = express();
+/* ========================================================
+   APP
+======================================================== */
 
-/* =========================================================
+const app =
+  express();
+
+/* ========================================================
    ENV
-========================================================= */
+======================================================== */
 
 const PORT =
   process.env.PORT || 10000;
 
 const NODE_ENV =
-  process.env.NODE_ENV || 'development';
+  process.env.NODE_ENV ||
+  'development';
 
 const IS_PROD =
   NODE_ENV === 'production';
 
 const MONGO_URI =
   process.env.MONGO_URI ||
-  'mongodb://127.0.0.1:27017/flowpoint';
+  '';
 
 const JWT_SECRET =
   process.env.JWT_SECRET ||
-  'change_this_secret_32_chars_minimum';
+  'change_me_secret';
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL ||
@@ -87,112 +129,24 @@ const FROM_EMAIL =
 const ADMIN_KEY =
   process.env.ADMIN_KEY || '';
 
-const CRON_KEY =
-  process.env.CRON_KEY || '';
-
-const LOGIN_LINK_TTL_MINUTES =
-  Number(
-    process.env.LOGIN_LINK_TTL_MINUTES || 30
-  );
-
-const AUDIT_CACHE_HOURS =
-  Number(
-    process.env.AUDIT_CACHE_HOURS || 24
-  );
-
-const MONITOR_HTTP_TIMEOUT_MS =
-  Number(
-    process.env.MONITOR_HTTP_TIMEOUT_MS || 8000
-  );
-
-/* =========================================================
+/* ========================================================
    STRIPE
-========================================================= */
-
-const STRIPE_PRICES = {
-  standard:
-    process.env.STRIPE_PRICE_STANDARD || '',
-
-  pro:
-    process.env.STRIPE_PRICE_PRO || '',
-
-  ultra:
-    process.env.STRIPE_PRICE_ULTRA || '',
-};
-
-const ADDON_PRICE_IDS = {
-
-  monitorsPack50:
-    process.env.STRIPE_ADDON_MONITORS || '',
-
-  extraSeats:
-    process.env.STRIPE_ADDON_SEATS || '',
-
-  auditsPack200:
-    process.env.STRIPE_ADDON_AUDITS || '',
-
-  pdfPack200:
-    process.env.STRIPE_ADDON_PDF || '',
-
-  exportsPack1000:
-    process.env.STRIPE_ADDON_EXPORTS || '',
-
-  prioritySupport:
-    process.env.STRIPE_ADDON_SUPPORT || '',
-
-  customDomain:
-    process.env.STRIPE_ADDON_DOMAIN || '',
-
-  retention90d:
-    process.env.STRIPE_ADDON_RET90 || '',
-
-  retention365d:
-    process.env.STRIPE_ADDON_RET365 || '',
-};
-
-const PLAN_LIMITS = {
-
-  standard: {
-    audit: 30,
-    monitor: 3,
-    pdf: 30,
-    exports: 30,
-    aiCredits: 20,
-    seats: 1,
-  },
-
-  pro: {
-    audit: 300,
-    monitor: 50,
-    pdf: 300,
-    exports: 300,
-    aiCredits: 100,
-    seats: 5,
-  },
-
-  ultra: {
-    audit: 2000,
-    monitor: 300,
-    pdf: 2000,
-    exports: 2000,
-    aiCredits: 500,
-    seats: 10,
-  },
-};
+======================================================== */
 
 const stripe =
   STRIPE_SECRET_KEY
     ? new Stripe(
         STRIPE_SECRET_KEY,
         {
-          apiVersion: '2024-04-10',
+          apiVersion:
+            '2024-04-10',
         }
       )
     : null;
 
-/* =========================================================
+/* ========================================================
    RESEND
-========================================================= */
+======================================================== */
 
 const resend =
   RESEND_API_KEY
@@ -201,64 +155,146 @@ const resend =
       )
     : null;
 
-/* =========================================================
-   APP CONFIG
-========================================================= */
+/* ========================================================
+   PLAN LIMITS
+======================================================== */
 
-app.set('trust proxy', 1);
+const PLAN_LIMITS = {
+
+  standard: {
+
+    audit: 30,
+    monitor: 3,
+    pdf: 30,
+    exports: 30,
+    aiCredits: 20,
+    seats: 1,
+
+  },
+
+  pro: {
+
+    audit: 300,
+    monitor: 50,
+    pdf: 300,
+    exports: 300,
+    aiCredits: 100,
+    seats: 5,
+
+  },
+
+  ultra: {
+
+    audit: 2000,
+    monitor: 300,
+    pdf: 2000,
+    exports: 2000,
+    aiCredits: 500,
+    seats: 10,
+
+  },
+};
+
+/* ========================================================
+   STRIPE PRICES
+======================================================== */
+
+const STRIPE_PRICES = {
+
+  standard:
+    process.env
+      .STRIPE_PRICE_STANDARD || '',
+
+  pro:
+    process.env
+      .STRIPE_PRICE_PRO || '',
+
+  ultra:
+    process.env
+      .STRIPE_PRICE_ULTRA || '',
+};
+
+/* ========================================================
+   SECURITY
+======================================================== */
+
+app.set(
+  'trust proxy',
+  1
+);
 
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy:
+      false,
   })
 );
 
 app.use(
   cors({
+
     origin(origin, cb) {
 
       if (
         !origin ||
         !IS_PROD
       ) {
-        return cb(null, true);
+
+        return cb(
+          null,
+          true
+        );
       }
 
       if (
-        origin === FRONTEND_URL
+        origin ===
+        FRONTEND_URL
       ) {
-        return cb(null, true);
+
+        return cb(
+          null,
+          true
+        );
       }
 
       return cb(
         new Error(
-          `CORS blocked: ${origin}`
+          `Blocked CORS: ${origin}`
         )
       );
     },
 
     credentials: true,
+
   })
 );
 
 app.use(
   rateLimit({
-    windowMs: 60 * 1000,
+
+    windowMs:
+      60 * 1000,
+
     max: 300,
+
   })
 );
 
-app.use(cookieParser());
+app.use(
+  cookieParser()
+);
 
-/* =========================================================
-   STRIPE WEBHOOK RAW
-========================================================= */
+/* ========================================================
+   STRIPE RAW WEBHOOK
+======================================================== */
 
 app.post(
+
   '/api/billing/webhook',
 
   express.raw({
-    type: 'application/json',
+    type:
+      'application/json',
   }),
 
   async (req, res) => {
@@ -266,27 +302,26 @@ app.post(
     try {
 
       if (!stripe) {
+
         return res.json({
           ok: true,
         });
       }
 
-      const sig =
+      const signature =
         req.headers[
           'stripe-signature'
         ];
 
       const event =
         stripe.webhooks.constructEvent(
+
           req.body,
-          sig,
+
+          signature,
+
           STRIPE_WEBHOOK_SECRET
         );
-
-      console.log(
-        '[FP] Stripe webhook:',
-        event.type
-      );
 
       global.__FP_STRIPE_QUEUE =
         global.__FP_STRIPE_QUEUE || [];
@@ -302,20 +337,21 @@ app.post(
     } catch (err) {
 
       console.error(
-        '[FP] Stripe webhook error:',
+        '[FP] webhook error',
         err.message
       );
 
       return res.status(400).json({
-        error: err.message,
+        error:
+          err.message,
       });
     }
   }
 );
 
-/* =========================================================
-   JSON
-========================================================= */
+/* ========================================================
+   BODY PARSERS
+======================================================== */
 
 app.use(
   express.json({
@@ -329,42 +365,106 @@ app.use(
   })
 );
 
-/* =========================================================
+/* ========================================================
    CACHE CONTROL
-========================================================= */
+======================================================== */
 
-app.use((req, res, next) => {
+app.use(
+  (req, res, next) => {
 
-  if (
-    req.path.startsWith('/api/auth/') ||
-    req.path === '/api/me' ||
-    req.path === '/api/overview'
-  ) {
+    if (
+      req.path.startsWith(
+        '/api/auth/'
+      )
+    ) {
 
-    res.setHeader(
-      'Cache-Control',
-      'no-store, no-cache, must-revalidate, proxy-revalidate'
-    );
+      res.setHeader(
+        'Cache-Control',
+        'no-store'
+      );
+    }
 
-    res.setHeader(
-      'Pragma',
-      'no-cache'
-    );
-
-    res.setHeader(
-      'Expires',
-      '0'
-    );
+    next();
   }
+);
 
-  next();
-});
+/* ========================================================
+   HELPERS
+======================================================== */
 
-/* =========================================================
+function normalizeEmail(
+  email=''
+) {
+
+  return String(email)
+    .trim()
+    .toLowerCase();
+}
+
+function slugify(
+  str=''
+) {
+
+  return String(str)
+    .toLowerCase()
+    .trim()
+    .replace(
+      /[^a-z0-9]+/g,
+      '-'
+    )
+    .replace(
+      /^-+|-+$/g,
+      ''
+    );
+}
+
+function randomToken(
+  length=48
+) {
+
+  return crypto
+    .randomBytes(length)
+    .toString('hex');
+}
+
+function signToken(
+  user
+) {
+
+  return jwt.sign(
+
+    {
+      id: user._id,
+      email: user.email,
+      plan: user.plan,
+      role: user.role,
+    },
+
+    JWT_SECRET,
+
+    {
+      expiresIn: '30d',
+    }
+  );
+}
+
+function getPlanLimits(
+  user
+) {
+
+  return (
+    PLAN_LIMITS[
+      user.plan
+    ] ||
+    PLAN_LIMITS.standard
+  );
+}
+/* ========================================================
    SSE REALTIME
-========================================================= */
+======================================================== */
 
-const sseClients = new Map();
+const sseClients =
+  new Map();
 
 function sseNotify(
   userId,
@@ -372,7 +472,9 @@ function sseNotify(
 ) {
 
   const clients =
-    sseClients.get(userId);
+    sseClients.get(
+      String(userId)
+    );
 
   if (!clients?.length) {
     return;
@@ -384,713 +486,792 @@ function sseNotify(
   for (const res of clients) {
 
     try {
+
       res.write(data);
+
     } catch {}
   }
 }
 
-/* =========================================================
-   HELPERS
-========================================================= */
+/* ========================================================
+   MONGOOSE
+======================================================== */
 
-function safeObjectId() {
-  return new mongoose.Types.ObjectId();
-}
+const {
+  Schema,
+  model,
+} = mongoose;
 
-function normalizeEmail(email='') {
+/* ========================================================
+   USER SCHEMA
+======================================================== */
 
-  return String(email)
-    .trim()
-    .toLowerCase();
-}
+const UserSchema =
+  new Schema(
 
-function slugify(str='') {
-
-  return String(str)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function randomToken(
-  length = 48
-) {
-
-  return crypto
-    .randomBytes(length)
-    .toString('hex');
-}
-
-function signToken(user) {
-
-  return jwt.sign(
     {
-      id: user._id,
-      email: user.email,
-      plan: user.plan,
-      role: user.role,
+
+      email: {
+
+        type: String,
+
+        required: true,
+
+        unique: true,
+
+        lowercase: true,
+
+        index: true,
+
+      },
+
+      passwordHash: {
+
+        type: String,
+
+        required: true,
+
+      },
+
+      firstName: {
+
+        type: String,
+
+        required: true,
+
+      },
+
+      companyName: {
+
+        type: String,
+
+        default: '',
+
+      },
+
+      website: {
+
+        type: String,
+
+        default: '',
+
+      },
+
+      role: {
+
+        type: String,
+
+        default: 'owner',
+
+      },
+
+      plan: {
+
+        type: String,
+
+        default: 'standard',
+
+      },
+
+      subscriptionStatus: {
+
+        type: String,
+
+        default: 'trial',
+
+      },
+
+      stripeCustomerId: {
+
+        type: String,
+
+        default: '',
+
+      },
+
+      stripeSubscriptionId: {
+
+        type: String,
+
+        default: '',
+
+      },
+
+      trialEndsAt: Date,
+
+      accessBlocked: {
+
+        type: Boolean,
+
+        default: false,
+
+      },
+
+      orgId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'Org',
+
+      },
+
+      usage: {
+
+        audit: {
+
+          used: {
+
+            type: Number,
+
+            default: 0,
+
+          },
+
+          limit: {
+
+            type: Number,
+
+            default:
+              PLAN_LIMITS
+                .standard
+                .audit,
+
+          },
+        },
+
+        monitor: {
+
+          used: {
+
+            type: Number,
+
+            default: 0,
+
+          },
+
+          limit: {
+
+            type: Number,
+
+            default:
+              PLAN_LIMITS
+                .standard
+                .monitor,
+
+          },
+        },
+
+        pdf: {
+
+          used: {
+
+            type: Number,
+
+            default: 0,
+
+          },
+
+          limit: {
+
+            type: Number,
+
+            default:
+              PLAN_LIMITS
+                .standard
+                .pdf,
+
+          },
+        },
+
+        exports: {
+
+          used: {
+
+            type: Number,
+
+            default: 0,
+
+          },
+
+          limit: {
+
+            type: Number,
+
+            default:
+              PLAN_LIMITS
+                .standard
+                .exports,
+
+          },
+        },
+      },
+
+      aiCredits: {
+
+        used: {
+
+          type: Number,
+
+          default: 0,
+
+        },
+
+        limit: {
+
+          type: Number,
+
+          default:
+            PLAN_LIMITS
+              .standard
+              .aiCredits,
+
+        },
+      },
+
+      addons: {
+
+        monitorsPack50: {
+
+          type: Number,
+
+          default: 0,
+
+        },
+
+        extraSeats: {
+
+          type: Number,
+
+          default: 0,
+
+        },
+
+      },
+
+      lastLoginAt: Date,
+
     },
-    JWT_SECRET,
+
     {
-      expiresIn: '30d',
+      timestamps: true,
     }
   );
-}
 
-function userPayload(user) {
+/* ========================================================
+   ORG SCHEMA
+======================================================== */
 
-  return {
+const OrgSchema =
+  new Schema(
 
-    id: user._id,
+    {
 
-    email: user.email,
+      name: String,
 
-    firstName:
-      user.firstName,
+      slug: {
 
-    role:
-      user.role,
-
-    plan:
-      user.plan,
-
-    subscriptionStatus:
-      user.subscriptionStatus,
-
-    orgId:
-      user.orgId,
-
-    usage:
-      user.usage,
-
-    addons:
-      user.addons,
-
-    aiCredits:
-      user.aiCredits,
-  };
-}
-/* =========================================================
-   MONGOOSE
-========================================================= */
-
-const { Schema, model } = mongoose;
-
-/* =========================================================
-   USER
-========================================================= */
-
-const UserSchema = new Schema(
-  {
-
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      index: true,
-    },
-
-    passwordHash: {
-      type: String,
-      required: true,
-    },
-
-    firstName: {
-      type: String,
-      required: true,
-    },
-
-    companyName: {
-      type: String,
-      default: '',
-    },
-
-    website: {
-      type: String,
-      default: '',
-    },
-
-    role: {
-      type: String,
-      enum: [
-        'owner',
-        'admin',
-        'manager',
-        'viewer',
-      ],
-      default: 'owner',
-    },
-
-    plan: {
-      type: String,
-      enum: [
-        'standard',
-        'pro',
-        'ultra',
-      ],
-      default: 'standard',
-    },
-
-    subscriptionStatus: {
-      type: String,
-      enum: [
-        'trial',
-        'active',
-        'past_due',
-        'canceled',
-      ],
-      default: 'trial',
-    },
-
-    stripeCustomerId: {
-      type: String,
-      default: '',
-    },
-
-    stripeSubscriptionId: {
-      type: String,
-      default: '',
-    },
-
-    trialEndsAt: Date,
-
-    accessBlocked: {
-      type: Boolean,
-      default: false,
-    },
-
-    orgId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Org',
-    },
-
-    usage: {
-
-      audit: {
-        used: {
-          type: Number,
-          default: 0,
-        },
-
-        limit: {
-          type: Number,
-          default:
-            PLAN_LIMITS.standard.audit,
-        },
-      },
-
-      monitor: {
-        used: {
-          type: Number,
-          default: 0,
-        },
-
-        limit: {
-          type: Number,
-          default:
-            PLAN_LIMITS.standard.monitor,
-        },
-      },
-
-      pdf: {
-        used: {
-          type: Number,
-          default: 0,
-        },
-
-        limit: {
-          type: Number,
-          default:
-            PLAN_LIMITS.standard.pdf,
-        },
-      },
-
-      exports: {
-        used: {
-          type: Number,
-          default: 0,
-        },
-
-        limit: {
-          type: Number,
-          default:
-            PLAN_LIMITS.standard.exports,
-        },
-      },
-    },
-
-    aiCredits: {
-
-      used: {
-        type: Number,
-        default: 0,
-      },
-
-      limit: {
-        type: Number,
-        default:
-          PLAN_LIMITS.standard.aiCredits,
-      },
-    },
-
-    addons: {
-
-      monitorsPack50: {
-        type: Number,
-        default: 0,
-      },
-
-      extraSeats: {
-        type: Number,
-        default: 0,
-      },
-
-      auditsPack200: {
-        type: Number,
-        default: 0,
-      },
-
-      pdfPack200: {
-        type: Number,
-        default: 0,
-      },
-
-      exportsPack1000: {
-        type: Number,
-        default: 0,
-      },
-
-      prioritySupport: {
-        type: Boolean,
-        default: false,
-      },
-
-      customDomain: {
-        type: Boolean,
-        default: false,
-      },
-
-      retention90d: {
-        type: Boolean,
-        default: false,
-      },
-
-      retention365d: {
-        type: Boolean,
-        default: false,
-      },
-    },
-
-    lastLoginAt: Date,
-
-  },
-
-  {
-    timestamps: true,
-  }
-);
-
-/* =========================================================
-   ORG
-========================================================= */
-
-const OrgSchema = new Schema(
-  {
-
-    name: {
-      type: String,
-      required: true,
-    },
-
-    slug: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-
-    ownerUserId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-    },
-
-    plan: {
-      type: String,
-      default: 'standard',
-    },
-
-    seats: {
-      type: Number,
-      default: 1,
-    },
-
-    branding: {
-
-      logoUrl: String,
-
-      primaryColor: {
         type: String,
-        default: '#2f5bff',
+
+        unique: true,
+
       },
 
-      customDomain: String,
-    },
+      ownerUserId: {
 
-    settings: {
+        type:
+          Schema.Types.ObjectId,
 
-      notifications: {
-        email: {
-          type: Boolean,
-          default: true,
-        },
+        ref: 'User',
 
-        monitors: {
-          type: Boolean,
-          default: true,
-        },
       },
+
+      plan: {
+
+        type: String,
+
+        default: 'standard',
+
+      },
+
+      branding: {
+
+        logoUrl: String,
+
+        primaryColor: {
+
+          type: String,
+
+          default:
+            '#2f5bff',
+
+        },
+
+      },
+
     },
 
-  },
+    {
+      timestamps: true,
+    }
+  );
 
-  {
-    timestamps: true,
-  }
-);
+/* ========================================================
+   AUDIT SCHEMA
+======================================================== */
 
-/* =========================================================
-   AUDIT
-========================================================= */
+const AuditSchema =
+  new Schema(
 
-const AuditSchema = new Schema(
-  {
+    {
 
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      index: true,
-    },
+      userId: {
 
-    orgId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Org',
-      index: true,
-    },
+        type:
+          Schema.Types.ObjectId,
 
-    url: String,
+        ref: 'User',
 
-    score: {
-      type: Number,
-      default: 0,
-    },
+      },
 
-    seoScore: Number,
+      orgId: {
 
-    performanceScore: Number,
+        type:
+          Schema.Types.ObjectId,
 
-    accessibilityScore: Number,
+        ref: 'Org',
 
-    issues: [
-      {
+      },
+
+      url: String,
+
+      score: Number,
+
+      seoScore: Number,
+
+      performanceScore: Number,
+
+      accessibilityScore: Number,
+
+      issues: [
+
+        {
+          type: Object,
+        }
+
+      ],
+
+      recommendations: [
+
+        {
+          type: Object,
+        }
+
+      ],
+
+      metadata: {
+
         type: Object,
-      }
-    ],
 
-    recommendations: [
-      {
+        default: {},
+
+      },
+
+    },
+
+    {
+      timestamps: true,
+    }
+  );
+
+/* ========================================================
+   MONITOR SCHEMA
+======================================================== */
+
+const MonitorSchema =
+  new Schema(
+
+    {
+
+      userId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'User',
+
+      },
+
+      orgId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'Org',
+
+      },
+
+      url: String,
+
+      label: String,
+
+      active: {
+
+        type: Boolean,
+
+        default: true,
+
+      },
+
+      lastStatus: {
+
+        type: String,
+
+        default:
+          'unknown',
+
+      },
+
+      lastStatusCode:
+        Number,
+
+      lastResponseTime:
+        Number,
+
+      lastCheckedAt:
+        Date,
+
+      incidents: [
+
+        {
+
+          startedAt:
+            Date,
+
+          endedAt:
+            Date,
+
+          reason:
+            String,
+
+        }
+
+      ],
+
+    },
+
+    {
+      timestamps: true,
+    }
+  );
+
+/* ========================================================
+   REPORT SCHEMA
+======================================================== */
+
+const ReportSchema =
+  new Schema(
+
+    {
+
+      userId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'User',
+
+      },
+
+      orgId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'Org',
+
+      },
+
+      title: String,
+
+      type: String,
+
+      status: {
+
+        type: String,
+
+        default:
+          'completed',
+
+      },
+
+      fileUrl: String,
+
+    },
+
+    {
+      timestamps: true,
+    }
+  );
+/* ========================================================
+   MISSION SCHEMA
+======================================================== */
+
+const MissionSchema =
+  new Schema(
+
+    {
+
+      userId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'User',
+
+      },
+
+      orgId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'Org',
+
+      },
+
+      title: String,
+
+      description: String,
+
+      category: String,
+
+      sourceType: {
+
+        type: String,
+
+        default:
+          'manual',
+
+      },
+
+      priority: {
+
+        type: String,
+
+        default:
+          'medium',
+
+      },
+
+      status: {
+
+        type: String,
+
+        default:
+          'todo',
+
+      },
+
+      completedAt:
+        Date,
+
+      metadata: {
+
         type: Object,
-      }
-    ],
 
-    metadata: {
-      type: Object,
-      default: {},
+        default: {},
+
+      },
+
     },
 
-  },
+    {
+      timestamps: true,
+    }
+  );
 
-  {
-    timestamps: true,
-  }
-);
+/* ========================================================
+   TEAM THREAD SCHEMA
+======================================================== */
 
-/* =========================================================
-   MONITOR
-========================================================= */
+const TeamThreadSchema =
+  new Schema(
 
-const MonitorSchema = new Schema(
-  {
+    {
 
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      index: true,
+      orgId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'Org',
+
+      },
+
+      title: String,
+
+      channel: {
+
+        type: String,
+
+        default:
+          'general',
+
+      },
+
+      lastActivityAt:
+        Date,
+
     },
 
-    orgId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Org',
-      index: true,
+    {
+      timestamps: true,
+    }
+  );
+
+/* ========================================================
+   TEAM MESSAGE SCHEMA
+======================================================== */
+
+const TeamMessageSchema =
+  new Schema(
+
+    {
+
+      orgId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'Org',
+
+      },
+
+      threadId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref:
+          'TeamThread',
+
+      },
+
+      userId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'User',
+
+      },
+
+      content: String,
+
+      attachments: [
+
+        {
+          type: Object,
+        }
+
+      ],
+
     },
 
-    url: String,
+    {
+      timestamps: true,
+    }
+  );
 
-    label: String,
+/* ========================================================
+   ACTIVITY SCHEMA
+======================================================== */
 
-    type: {
+const ActivitySchema =
+  new Schema(
+
+    {
+
+      orgId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'Org',
+
+      },
+
+      userId: {
+
+        type:
+          Schema.Types.ObjectId,
+
+        ref: 'User',
+
+      },
+
       type: String,
-      default: 'http',
-    },
 
-    active: {
-      type: Boolean,
-      default: true,
-    },
+      title: String,
 
-    lastStatus: {
-      type: String,
-      default: 'unknown',
-    },
+      description:
+        String,
 
-    lastStatusCode: Number,
+      metadata: {
 
-    lastResponseTime: Number,
-
-    lastCheckedAt: Date,
-
-    incidents: [
-      {
-        startedAt: Date,
-        endedAt: Date,
-        reason: String,
-      }
-    ],
-
-  },
-
-  {
-    timestamps: true,
-  }
-);
-
-/* =========================================================
-   REPORT
-========================================================= */
-
-const ReportSchema = new Schema(
-  {
-
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      index: true,
-    },
-
-    orgId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Org',
-      index: true,
-    },
-
-    type: String,
-
-    title: String,
-
-    status: {
-      type: String,
-      default: 'completed',
-    },
-
-    fileUrl: String,
-
-    metadata: {
-      type: Object,
-      default: {},
-    },
-
-  },
-
-  {
-    timestamps: true,
-  }
-);
-
-/* =========================================================
-   MISSIONS
-========================================================= */
-
-const MissionSchema = new Schema(
-  {
-
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-    },
-
-    orgId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Org',
-    },
-
-    title: String,
-
-    description: String,
-
-    category: String,
-
-    sourceType: {
-      type: String,
-      default: 'manual',
-    },
-
-    priority: {
-      type: String,
-      default: 'medium',
-    },
-
-    status: {
-      type: String,
-      default: 'todo',
-    },
-
-    completedAt: Date,
-
-    assignedTo: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-    },
-
-    metadata: {
-      type: Object,
-      default: {},
-    },
-
-  },
-
-  {
-    timestamps: true,
-  }
-);
-
-/* =========================================================
-   TEAM THREAD
-========================================================= */
-
-const TeamThreadSchema = new Schema(
-  {
-
-    orgId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Org',
-    },
-
-    channel: String,
-
-    title: String,
-
-    lastActivityAt: Date,
-
-  },
-
-  {
-    timestamps: true,
-  }
-);
-
-/* =========================================================
-   TEAM MESSAGE
-========================================================= */
-
-const TeamMessageSchema = new Schema(
-  {
-
-    orgId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Org',
-    },
-
-    threadId: {
-      type: Schema.Types.ObjectId,
-      ref: 'TeamThread',
-    },
-
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-    },
-
-    content: String,
-
-    attachments: [
-      {
         type: Object,
-      }
-    ],
 
-  },
+        default: {},
 
-  {
-    timestamps: true,
-  }
-);
+      },
 
-/* =========================================================
-   ACTIVITY
-========================================================= */
-
-const ActivitySchema = new Schema(
-  {
-
-    orgId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Org',
     },
 
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-    },
+    {
+      timestamps: true,
+    }
+  );
 
-    type: String,
-
-    title: String,
-
-    description: String,
-
-    metadata: {
-      type: Object,
-      default: {},
-    },
-
-  },
-
-  {
-    timestamps: true,
-  }
-);
-
-/* =========================================================
+/* ========================================================
    MODELS
-========================================================= */
+======================================================== */
 
 const User =
-  model('User', UserSchema);
+  model(
+    'User',
+    UserSchema
+  );
 
 const Org =
-  model('Org', OrgSchema);
+  model(
+    'Org',
+    OrgSchema
+  );
 
 const Audit =
-  model('Audit', AuditSchema);
+  model(
+    'Audit',
+    AuditSchema
+  );
 
 const Monitor =
-  model('Monitor', MonitorSchema);
+  model(
+    'Monitor',
+    MonitorSchema
+  );
 
 const Report =
-  model('Report', ReportSchema);
+  model(
+    'Report',
+    ReportSchema
+  );
 
 const Mission =
-  model('Mission', MissionSchema);
+  model(
+    'Mission',
+    MissionSchema
+  );
 
 const TeamThread =
   model(
@@ -1110,12 +1291,15 @@ const Activity =
     ActivitySchema
   );
 
-/* =========================================================
+/* ========================================================
    MONGO CONNECT
-========================================================= */
+======================================================== */
 
 mongoose
-  .connect(MONGO_URI)
+  .connect(
+    MONGO_URI
+  )
+
   .then(() => {
 
     console.log(
@@ -1123,18 +1307,20 @@ mongoose
     );
 
   })
-  .catch(err => {
+
+  .catch((err) => {
 
     console.error(
-      '❌ MongoDB error:',
+      '❌ MongoDB failed',
       err
     );
 
     process.exit(1);
   });
-/* =========================================================
+
+/* ========================================================
    AUTH MIDDLEWARE
-========================================================= */
+======================================================== */
 
 async function auth(
   req,
@@ -1144,7 +1330,8 @@ async function auth(
 
   try {
 
-    let token = null;
+    let token =
+      null;
 
     const authHeader =
       req.headers.authorization;
@@ -1156,7 +1343,9 @@ async function auth(
     ) {
 
       token =
-        authHeader.split(' ')[1];
+        authHeader.split(
+          ' '
+        )[1];
     }
 
     if (
@@ -1171,7 +1360,10 @@ async function auth(
     if (!token) {
 
       return res.status(401).json({
-        error: 'Unauthorized',
+
+        error:
+          'Unauthorized',
+
       });
     }
 
@@ -1189,108 +1381,44 @@ async function auth(
     if (!user) {
 
       return res.status(401).json({
-        error: 'User not found',
+
+        error:
+          'User not found',
+
       });
     }
 
-    if (user.accessBlocked) {
+    if (
+      user.accessBlocked
+    ) {
 
       return res.status(403).json({
+
         error:
           'Subscription blocked',
+
       });
     }
 
-    req.user = user;
+    req.user =
+      user;
 
     next();
 
-  } catch (err) {
+  } catch {
 
     return res.status(401).json({
-      error: 'Invalid token',
+
+      error:
+        'Invalid token',
+
     });
   }
 }
 
-/* =========================================================
-   ADMIN MIDDLEWARE
-========================================================= */
-
-function adminOnly(
-  req,
-  res,
-  next
-) {
-
-  if (
-    req.user?.role !== 'owner' &&
-    req.user?.role !== 'admin'
-  ) {
-
-    return res.status(403).json({
-      error: 'Forbidden',
-    });
-  }
-
-  next();
-}
-
-/* =========================================================
+/* ========================================================
    QUOTAS
-========================================================= */
-
-function getPlanLimits(
-  user
-) {
-
-  const base =
-    PLAN_LIMITS[
-      user.plan
-    ] ||
-    PLAN_LIMITS.standard;
-
-  return {
-
-    audit:
-      base.audit +
-      (
-        user.addons
-          ?.auditsPack200 || 0
-      ) * 200,
-
-    monitor:
-      base.monitor +
-      (
-        user.addons
-          ?.monitorsPack50 || 0
-      ) * 50,
-
-    pdf:
-      base.pdf +
-      (
-        user.addons
-          ?.pdfPack200 || 0
-      ) * 200,
-
-    exports:
-      base.exports +
-      (
-        user.addons
-          ?.exportsPack1000 || 0
-      ) * 1000,
-
-    aiCredits:
-      base.aiCredits,
-
-    seats:
-      base.seats +
-      (
-        user.addons
-          ?.extraSeats || 0
-      ),
-  };
-}
+======================================================== */
 
 function ensureQuota(
   key
@@ -1304,49 +1432,87 @@ function ensureQuota(
 
     try {
 
-      const user =
-        req.user;
-
       const limits =
-        getPlanLimits(user);
+        getPlanLimits(
+          req.user
+        );
 
       const usage =
-        user.usage?.[key];
+        req.user.usage?.[
+          key
+        ];
 
       if (
-        !usage
-      ) {
-
-        return next();
-      }
-
-      if (
+        usage &&
         usage.used >=
         limits[key]
       ) {
 
         return res.status(403).json({
+
           error:
             `Quota exceeded (${key})`,
+
         });
       }
 
       next();
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
-        error: 'Quota error',
+
+        error:
+          'Quota error',
+
       });
     }
   };
 }
 
-/* =========================================================
+/* ========================================================
+   USER PAYLOAD
+======================================================== */
+
+function userPayload(
+  user
+) {
+
+  return {
+
+    id:
+      user._id,
+
+    email:
+      user.email,
+
+    firstName:
+      user.firstName,
+
+    role:
+      user.role,
+
+    plan:
+      user.plan,
+
+    subscriptionStatus:
+      user.subscriptionStatus,
+
+    orgId:
+      user.orgId,
+
+    usage:
+      user.usage,
+
+    aiCredits:
+      user.aiCredits,
+
+  };
+}
+
+/* ========================================================
    ACTIVITY ENGINE
-========================================================= */
+======================================================== */
 
 async function pushActivity({
 
@@ -1376,9 +1542,13 @@ async function pushActivity({
     if (userId) {
 
       sseNotify(
+
         String(userId),
+
         {
-          type: 'activity',
+          type:
+            'activity',
+
           activity,
         }
       );
@@ -1394,10 +1564,9 @@ async function pushActivity({
     );
   }
 }
-
-/* =========================================================
+/* ========================================================
    EMAIL
-========================================================= */
+======================================================== */
 
 async function sendEmail({
 
@@ -1420,7 +1589,8 @@ async function sendEmail({
 
     await resend.emails.send({
 
-      from: FROM_EMAIL,
+      from:
+        FROM_EMAIL,
 
       to,
 
@@ -1433,17 +1603,18 @@ async function sendEmail({
   } catch (err) {
 
     console.error(
-      '[FP] email error:',
-      err.message
+      '[FP] email error',
+      err
     );
   }
 }
 
-/* =========================================================
+/* ========================================================
    AUTH ROUTES
-========================================================= */
+======================================================== */
 
 app.post(
+
   '/api/auth/register',
 
   async (req, res) => {
@@ -1461,7 +1632,9 @@ app.post(
       } = req.body || {};
 
       const cleanEmail =
-        normalizeEmail(email);
+        normalizeEmail(
+          email
+        );
 
       if (
         !cleanEmail ||
@@ -1470,27 +1643,36 @@ app.post(
       ) {
 
         return res.status(400).json({
+
           error:
             'Missing fields',
+
         });
       }
 
       const existing =
         await User.findOne({
-          email: cleanEmail,
+
+          email:
+            cleanEmail,
+
         });
 
       if (existing) {
 
         return res.status(409).json({
+
           error:
             'Email already used',
+
         });
       }
 
       const passwordHash =
         await bcrypt.hash(
+
           password,
+
           12
         );
 
@@ -1538,7 +1720,9 @@ app.post(
 
           trialEndsAt:
             new Date(
+
               Date.now() +
+
               1000 *
               60 *
               60 *
@@ -1557,11 +1741,16 @@ app.post(
       await org.save();
 
       const token =
-        signToken(user);
+        signToken(
+          user
+        );
 
       res.cookie(
+
         'fp_token',
+
         token,
+
         {
 
           httpOnly: true,
@@ -1595,7 +1784,7 @@ app.post(
           'account_created',
 
         title:
-          'Compte créé',
+          'Workspace créé',
 
         description:
           `${firstName} a créé un workspace FlowPoint`,
@@ -1611,10 +1800,15 @@ app.post(
 
         html:
           `
-          <div style="font-family:Inter,sans-serif;padding:30px">
+          <div style="font-family:Inter,sans-serif;padding:32px">
             <h1>Bienvenue ${firstName}</h1>
+
             <p>
               Votre workspace FlowPoint est prêt.
+            </p>
+
+            <p>
+              Trial 14 jours activé.
             </p>
           </div>
           `,
@@ -1627,7 +1821,9 @@ app.post(
         token,
 
         user:
-          userPayload(user),
+          userPayload(
+            user
+          ),
 
       });
 
@@ -1636,18 +1832,21 @@ app.post(
       console.error(err);
 
       return res.status(500).json({
+
         error:
           'Register failed',
+
       });
     }
   }
 );
 
-/* =========================================================
+/* ========================================================
    LOGIN
-========================================================= */
+======================================================== */
 
 app.post(
+
   '/api/auth/login',
 
   async (req, res) => {
@@ -1655,37 +1854,47 @@ app.post(
     try {
 
       const {
+
         email,
         password,
+
       } = req.body || {};
 
       const user =
         await User.findOne({
 
           email:
-            normalizeEmail(email),
+            normalizeEmail(
+              email
+            ),
 
         });
 
       if (!user) {
 
         return res.status(401).json({
+
           error:
             'Invalid credentials',
+
         });
       }
 
       const valid =
         await bcrypt.compare(
+
           password,
+
           user.passwordHash
         );
 
       if (!valid) {
 
         return res.status(401).json({
+
           error:
             'Invalid credentials',
+
         });
       }
 
@@ -1695,11 +1904,16 @@ app.post(
       await user.save();
 
       const token =
-        signToken(user);
+        signToken(
+          user
+        );
 
       res.cookie(
+
         'fp_token',
+
         token,
+
         {
 
           httpOnly: true,
@@ -1736,7 +1950,7 @@ app.post(
           'Connexion',
 
         description:
-          `${user.firstName} s’est connecté`,
+          `${user.firstName} connecté`,
       });
 
       return res.json({
@@ -1746,7 +1960,9 @@ app.post(
         token,
 
         user:
-          userPayload(user),
+          userPayload(
+            user
+          ),
 
       });
 
@@ -1755,18 +1971,21 @@ app.post(
       console.error(err);
 
       return res.status(500).json({
+
         error:
           'Login failed',
+
       });
     }
   }
 );
 
-/* =========================================================
+/* ========================================================
    LOGOUT
-========================================================= */
+======================================================== */
 
 app.post(
+
   '/api/auth/logout',
 
   async (req, res) => {
@@ -1781,11 +2000,12 @@ app.post(
   }
 );
 
-/* =========================================================
+/* ========================================================
    AUTH ME
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/auth/me',
 
   auth,
@@ -1810,11 +2030,12 @@ app.get(
   }
 );
 
-/* =========================================================
+/* ========================================================
    SSE EVENTS
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/events',
 
   auth,
@@ -1822,17 +2043,23 @@ app.get(
   (req, res) => {
 
     res.setHeader(
+
       'Content-Type',
+
       'text/event-stream'
     );
 
     res.setHeader(
+
       'Cache-Control',
+
       'no-cache'
     );
 
     res.setHeader(
+
       'Connection',
+
       'keep-alive'
     );
 
@@ -1856,8 +2083,10 @@ app.get(
     );
 
     res.write(
+
       `data: ${JSON.stringify({
-        type: 'connected',
+        type:
+          'connected',
       })}\n\n`
     );
 
@@ -1871,7 +2100,9 @@ app.get(
           ) || [];
 
         sseClients.set(
+
           userId,
+
           current.filter(
             x => x !== res
           )
@@ -1880,11 +2111,12 @@ app.get(
     );
   }
 );
-/* =========================================================
+/* ========================================================
    OVERVIEW / WAR ROOM
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/overview',
 
   auth,
@@ -1893,18 +2125,17 @@ app.get(
 
     try {
 
-      const user =
-        req.user;
-
       const orgId =
-        user.orgId;
+        req.user.orgId;
 
       const [
+
         audits,
         monitors,
         missions,
         reports,
         activities,
+
       ] = await Promise.all([
 
         Audit.find({
@@ -1913,7 +2144,7 @@ app.get(
         .sort({
           createdAt: -1,
         })
-        .limit(12),
+        .limit(10),
 
         Monitor.find({
           orgId,
@@ -1941,7 +2172,7 @@ app.get(
         .sort({
           createdAt: -1,
         })
-        .limit(15),
+        .limit(20),
 
       ]);
 
@@ -1950,30 +2181,29 @@ app.get(
 
       const onlineCount =
         monitors.filter(
+
           m =>
             m.lastStatus === 'up'
-        ).length;
 
-      const criticalMissions =
-        missions.filter(
-          m =>
-            m.priority === 'critical' &&
-            m.status !== 'done'
         ).length;
 
       const completedMissions =
         missions.filter(
+
           m =>
             m.status === 'done'
+
         ).length;
 
       const missionProgress =
         missions.length
           ? Math.round(
+
               (
                 completedMissions /
                 missions.length
               ) * 100
+
             )
           : 0;
 
@@ -1981,20 +2211,33 @@ app.get(
         latestAudit?.seoScore || 0;
 
       const performanceScore =
-        latestAudit?.performanceScore || 0;
+        latestAudit
+          ?.performanceScore || 0;
 
       const accessibilityScore =
-        latestAudit?.accessibilityScore || 0;
+        latestAudit
+          ?.accessibilityScore || 0;
+
+      const healthScore =
+        Math.round(
+
+          (
+            seoScore +
+            performanceScore +
+            accessibilityScore
+          ) / 3
+
+        );
 
       let executiveSummary =
-        'Le système est stable mais plusieurs opportunités de croissance restent sous-exploitées.';
+        'Le système est stable mais plusieurs opportunités restent sous-exploitées.';
 
       if (
         seoScore < 60
       ) {
 
         executiveSummary =
-          'Le SEO technique limite actuellement la visibilité du site.';
+          'Le SEO technique limite actuellement la visibilité organique.';
       }
 
       if (
@@ -2006,45 +2249,13 @@ app.get(
           'Des incidents uptime impactent certaines ressources critiques.';
       }
 
-      const quickWins = [
-
-        {
-          title:
-            'Optimiser les pages locales',
-          impact:
-            '+ visibilité Google Maps',
-        },
-
-        {
-          title:
-            'Améliorer les performances mobile',
-          impact:
-            '+ conversion',
-        },
-
-        {
-          title:
-            'Créer plus de landing pages',
-          impact:
-            '+ trafic organique',
-        },
-
-      ];
-
       return res.json({
 
         ok: true,
 
         overview: {
 
-          healthScore:
-            Math.round(
-              (
-                seoScore +
-                performanceScore +
-                accessibilityScore
-              ) / 3
-            ),
+          healthScore,
 
           seoScore,
 
@@ -2063,22 +2274,53 @@ app.get(
 
           missionProgress,
 
-          criticalMissions,
+          criticalMissions:
+            missions.filter(
+
+              m =>
+                m.priority ===
+                  'critical' &&
+                m.status !==
+                  'done'
+
+            ).length,
 
           executiveSummary,
 
-          quickWins,
+          quickWins: [
+
+            {
+              title:
+                'Optimiser les pages locales',
+
+              impact:
+                '+ visibilité Google',
+            },
+
+            {
+              title:
+                'Améliorer le mobile',
+
+              impact:
+                '+ conversion',
+            },
+
+            {
+              title:
+                'Créer plus de landing pages',
+
+              impact:
+                '+ trafic SEO',
+            },
+
+          ],
 
         },
 
         audits,
-
         monitors,
-
         missions,
-
         reports,
-
         activities,
 
       });
@@ -2088,18 +2330,21 @@ app.get(
       console.error(err);
 
       return res.status(500).json({
+
         error:
           'Overview failed',
+
       });
     }
   }
 );
 
-/* =========================================================
+/* ========================================================
    AUDITS
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/audits',
 
   auth,
@@ -2120,27 +2365,33 @@ app.get(
         });
 
       return res.json({
+
         ok: true,
+
         audits,
+
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
-          'Audits failed',
+          'Audit fetch failed',
+
       });
     }
   }
 );
 
 app.post(
+
   '/api/audits',
 
   auth,
-  ensureQuota('audit'),
+  ensureQuota(
+    'audit'
+  ),
 
   async (req, res) => {
 
@@ -2153,14 +2404,16 @@ app.post(
       if (!url) {
 
         return res.status(400).json({
+
           error:
             'URL required',
+
         });
       }
 
-      const score =
-        Math.floor(
-          70 + Math.random() * 25
+      const result =
+        await runAudit(
+          url
         );
 
       const audit =
@@ -2174,60 +2427,31 @@ app.post(
 
           url,
 
-          score,
+          score:
+            result.score,
 
           seoScore:
-            Math.floor(
-              60 + Math.random() * 30
-            ),
+            result.seoScore,
 
           performanceScore:
-            Math.floor(
-              55 + Math.random() * 40
-            ),
+            result.performanceScore,
 
           accessibilityScore:
-            Math.floor(
-              70 + Math.random() * 20
-            ),
+            result.accessibilityScore,
 
-          issues: [
+          issues:
+            result.issues,
 
-            {
-              type:
-                'seo',
+          recommendations:
+            result.recommendations,
 
-              title:
-                'Meta descriptions manquantes',
-            },
-
-            {
-              type:
-                'performance',
-
-              title:
-                'Images trop lourdes',
-            },
-
-          ],
-
-          recommendations: [
-
-            {
-              title:
-                'Optimiser les balises H1',
-            },
-
-            {
-              title:
-                'Améliorer le cache',
-            },
-
-          ],
+          metadata:
+            result.metadata,
 
         });
 
-      req.user.usage.audit.used += 1;
+      req.user.usage
+        .audit.used += 1;
 
       await req.user.save();
 
@@ -2243,10 +2467,10 @@ app.post(
           'audit_created',
 
         title:
-          'Nouvel audit',
+          'Audit généré',
 
         description:
-          `Audit généré pour ${url}`,
+          url,
       });
 
       return res.json({
@@ -2262,18 +2486,21 @@ app.post(
       console.error(err);
 
       return res.status(500).json({
+
         error:
           'Audit failed',
+
       });
     }
   }
 );
 
-/* =========================================================
+/* ========================================================
    MONITORS
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/monitors',
 
   auth,
@@ -2294,42 +2521,52 @@ app.get(
         });
 
       return res.json({
+
         ok: true,
+
         monitors,
+
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
-          'Monitors failed',
+          'Monitor fetch failed',
+
       });
     }
   }
 );
 
 app.post(
+
   '/api/monitors',
 
   auth,
-  ensureQuota('monitor'),
+  ensureQuota(
+    'monitor'
+  ),
 
   async (req, res) => {
 
     try {
 
       const {
+
         url,
         label='',
+
       } = req.body || {};
 
       if (!url) {
 
         return res.status(400).json({
+
           error:
             'URL required',
+
         });
       }
 
@@ -2347,24 +2584,18 @@ app.post(
           label,
 
           lastStatus:
-            'up',
-
-          lastStatusCode:
-            200,
-
-          lastResponseTime:
-            Math.floor(
-              100 + Math.random() * 500
-            ),
-
-          lastCheckedAt:
-            new Date(),
+            'unknown',
 
         });
 
-      req.user.usage.monitor.used += 1;
+      req.user.usage
+        .monitor.used += 1;
 
       await req.user.save();
+
+      await runMonitorCheck(
+        monitor
+      );
 
       await pushActivity({
 
@@ -2378,10 +2609,10 @@ app.post(
           'monitor_created',
 
         title:
-          'Nouveau monitor',
+          'Monitor créé',
 
         description:
-          `${url} est maintenant monitoré`,
+          url,
       });
 
       return res.json({
@@ -2397,18 +2628,545 @@ app.post(
       console.error(err);
 
       return res.status(500).json({
+
         error:
           'Monitor failed',
+
+      });
+    }
+  }
+);
+/* ========================================================
+   OVERVIEW / WAR ROOM
+======================================================== */
+
+app.get(
+
+  '/api/overview',
+
+  auth,
+
+  async (req, res) => {
+
+    try {
+
+      const orgId =
+        req.user.orgId;
+
+      const [
+
+        audits,
+        monitors,
+        missions,
+        reports,
+        activities,
+
+      ] = await Promise.all([
+
+        Audit.find({
+          orgId,
+        })
+        .sort({
+          createdAt: -1,
+        })
+        .limit(10),
+
+        Monitor.find({
+          orgId,
+        }),
+
+        Mission.find({
+          orgId,
+        })
+        .sort({
+          createdAt: -1,
+        })
+        .limit(20),
+
+        Report.find({
+          orgId,
+        })
+        .sort({
+          createdAt: -1,
+        })
+        .limit(10),
+
+        Activity.find({
+          orgId,
+        })
+        .sort({
+          createdAt: -1,
+        })
+        .limit(20),
+
+      ]);
+
+      const latestAudit =
+        audits[0];
+
+      const onlineCount =
+        monitors.filter(
+
+          m =>
+            m.lastStatus === 'up'
+
+        ).length;
+
+      const completedMissions =
+        missions.filter(
+
+          m =>
+            m.status === 'done'
+
+        ).length;
+
+      const missionProgress =
+        missions.length
+          ? Math.round(
+
+              (
+                completedMissions /
+                missions.length
+              ) * 100
+
+            )
+          : 0;
+
+      const seoScore =
+        latestAudit?.seoScore || 0;
+
+      const performanceScore =
+        latestAudit
+          ?.performanceScore || 0;
+
+      const accessibilityScore =
+        latestAudit
+          ?.accessibilityScore || 0;
+
+      const healthScore =
+        Math.round(
+
+          (
+            seoScore +
+            performanceScore +
+            accessibilityScore
+          ) / 3
+
+        );
+
+      let executiveSummary =
+        'Le système est stable mais plusieurs opportunités restent sous-exploitées.';
+
+      if (
+        seoScore < 60
+      ) {
+
+        executiveSummary =
+          'Le SEO technique limite actuellement la visibilité organique.';
+      }
+
+      if (
+        onlineCount <
+        monitors.length
+      ) {
+
+        executiveSummary =
+          'Des incidents uptime impactent certaines ressources critiques.';
+      }
+
+      return res.json({
+
+        ok: true,
+
+        overview: {
+
+          healthScore,
+
+          seoScore,
+
+          performanceScore,
+
+          accessibilityScore,
+
+          monitorsTotal:
+            monitors.length,
+
+          monitorsOnline:
+            onlineCount,
+
+          reportsCount:
+            reports.length,
+
+          missionProgress,
+
+          criticalMissions:
+            missions.filter(
+
+              m =>
+                m.priority ===
+                  'critical' &&
+                m.status !==
+                  'done'
+
+            ).length,
+
+          executiveSummary,
+
+          quickWins: [
+
+            {
+              title:
+                'Optimiser les pages locales',
+
+              impact:
+                '+ visibilité Google',
+            },
+
+            {
+              title:
+                'Améliorer le mobile',
+
+              impact:
+                '+ conversion',
+            },
+
+            {
+              title:
+                'Créer plus de landing pages',
+
+              impact:
+                '+ trafic SEO',
+            },
+
+          ],
+
+        },
+
+        audits,
+        monitors,
+        missions,
+        reports,
+        activities,
+
+      });
+
+    } catch (err) {
+
+      console.error(err);
+
+      return res.status(500).json({
+
+        error:
+          'Overview failed',
+
       });
     }
   }
 );
 
-/* =========================================================
-   MISSIONS
-========================================================= */
+/* ========================================================
+   AUDITS
+======================================================== */
 
 app.get(
+
+  '/api/audits',
+
+  auth,
+
+  async (req, res) => {
+
+    try {
+
+      const audits =
+        await Audit.find({
+
+          orgId:
+            req.user.orgId,
+
+        })
+        .sort({
+          createdAt: -1,
+        });
+
+      return res.json({
+
+        ok: true,
+
+        audits,
+
+      });
+
+    } catch {
+
+      return res.status(500).json({
+
+        error:
+          'Audit fetch failed',
+
+      });
+    }
+  }
+);
+
+app.post(
+
+  '/api/audits',
+
+  auth,
+  ensureQuota(
+    'audit'
+  ),
+
+  async (req, res) => {
+
+    try {
+
+      const {
+        url,
+      } = req.body || {};
+
+      if (!url) {
+
+        return res.status(400).json({
+
+          error:
+            'URL required',
+
+        });
+      }
+
+      const result =
+        await runAudit(
+          url
+        );
+
+      const audit =
+        await Audit.create({
+
+          userId:
+            req.user._id,
+
+          orgId:
+            req.user.orgId,
+
+          url,
+
+          score:
+            result.score,
+
+          seoScore:
+            result.seoScore,
+
+          performanceScore:
+            result.performanceScore,
+
+          accessibilityScore:
+            result.accessibilityScore,
+
+          issues:
+            result.issues,
+
+          recommendations:
+            result.recommendations,
+
+          metadata:
+            result.metadata,
+
+        });
+
+      req.user.usage
+        .audit.used += 1;
+
+      await req.user.save();
+
+      await pushActivity({
+
+        orgId:
+          req.user.orgId,
+
+        userId:
+          req.user._id,
+
+        type:
+          'audit_created',
+
+        title:
+          'Audit généré',
+
+        description:
+          url,
+      });
+
+      return res.json({
+
+        ok: true,
+
+        audit,
+
+      });
+
+    } catch (err) {
+
+      console.error(err);
+
+      return res.status(500).json({
+
+        error:
+          'Audit failed',
+
+      });
+    }
+  }
+);
+
+/* ========================================================
+   MONITORS
+======================================================== */
+
+app.get(
+
+  '/api/monitors',
+
+  auth,
+
+  async (req, res) => {
+
+    try {
+
+      const monitors =
+        await Monitor.find({
+
+          orgId:
+            req.user.orgId,
+
+        })
+        .sort({
+          createdAt: -1,
+        });
+
+      return res.json({
+
+        ok: true,
+
+        monitors,
+
+      });
+
+    } catch {
+
+      return res.status(500).json({
+
+        error:
+          'Monitor fetch failed',
+
+      });
+    }
+  }
+);
+
+app.post(
+
+  '/api/monitors',
+
+  auth,
+  ensureQuota(
+    'monitor'
+  ),
+
+  async (req, res) => {
+
+    try {
+
+      const {
+
+        url,
+        label='',
+
+      } = req.body || {};
+
+      if (!url) {
+
+        return res.status(400).json({
+
+          error:
+            'URL required',
+
+        });
+      }
+
+      const monitor =
+        await Monitor.create({
+
+          userId:
+            req.user._id,
+
+          orgId:
+            req.user.orgId,
+
+          url,
+
+          label,
+
+          lastStatus:
+            'unknown',
+
+        });
+
+      req.user.usage
+        .monitor.used += 1;
+
+      await req.user.save();
+
+      await runMonitorCheck(
+        monitor
+      );
+
+      await pushActivity({
+
+        orgId:
+          req.user.orgId,
+
+        userId:
+          req.user._id,
+
+        type:
+          'monitor_created',
+
+        title:
+          'Monitor créé',
+
+        description:
+          url,
+      });
+
+      return res.json({
+
+        ok: true,
+
+        monitor,
+
+      });
+
+    } catch (err) {
+
+      console.error(err);
+
+      return res.status(500).json({
+
+        error:
+          'Monitor failed',
+
+      });
+    }
+  }
+);
+/* ========================================================
+   MISSIONS
+======================================================== */
+
+app.get(
+
   '/api/missions',
 
   auth,
@@ -2436,19 +3194,20 @@ app.get(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Mission fetch failed',
+
       });
     }
   }
 );
 
 app.post(
+
   '/api/missions',
 
   auth,
@@ -2458,17 +3217,21 @@ app.post(
     try {
 
       const {
+
         title,
         description='',
         category='growth',
         priority='medium',
+
       } = req.body || {};
 
       if (!title) {
 
         return res.status(400).json({
+
           error:
             'Title required',
+
         });
       }
 
@@ -2503,7 +3266,7 @@ app.post(
           'mission_created',
 
         title:
-          'Nouvelle mission',
+          'Mission créée',
 
         description:
           title,
@@ -2517,19 +3280,20 @@ app.post(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Mission create failed',
+
       });
     }
   }
 );
 
 app.patch(
+
   '/api/missions/:id',
 
   auth,
@@ -2552,8 +3316,10 @@ app.patch(
       if (!mission) {
 
         return res.status(404).json({
+
           error:
             'Mission not found',
+
         });
       }
 
@@ -2563,7 +3329,8 @@ app.patch(
       );
 
       if (
-        mission.status === 'done' &&
+        mission.status ===
+          'done' &&
         !mission.completedAt
       ) {
 
@@ -2581,22 +3348,24 @@ app.patch(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Mission update failed',
+
       });
     }
   }
 );
-/* =========================================================
+
+/* ========================================================
    REPORTS
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/reports',
 
   auth,
@@ -2624,31 +3393,36 @@ app.get(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Reports failed',
+
       });
     }
   }
 );
 
 app.post(
+
   '/api/reports',
 
   auth,
-  ensureQuota('pdf'),
+  ensureQuota(
+    'pdf'
+  ),
 
   async (req, res) => {
 
     try {
 
       const {
+
         title='FlowPoint Report',
         type='executive',
+
       } = req.body || {};
 
       const report =
@@ -2667,12 +3441,10 @@ app.post(
           status:
             'completed',
 
-          fileUrl:
-            `/exports/report-${Date.now()}.pdf`,
-
         });
 
-      req.user.usage.pdf.used += 1;
+      req.user.usage
+        .pdf.used += 1;
 
       await req.user.save();
 
@@ -2685,7 +3457,7 @@ app.post(
           req.user._id,
 
         type:
-          'report_generated',
+          'report_created',
 
         title:
           'Rapport généré',
@@ -2702,23 +3474,200 @@ app.post(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Report failed',
+
       });
     }
   }
 );
 
-/* =========================================================
-   TEAM THREADS
-========================================================= */
+/* ========================================================
+   EXPORT PDF
+======================================================== */
+
+app.post(
+
+  '/api/reports/export',
+
+  auth,
+
+  async (req, res) => {
+
+    try {
+
+      const report =
+        await Report.findOne({
+
+          _id:
+            req.body.reportId,
+
+          orgId:
+            req.user.orgId,
+
+        });
+
+      if (!report) {
+
+        return res.status(404).json({
+
+          error:
+            'Report not found',
+
+        });
+      }
+
+      const exportDir =
+        path.join(
+
+          __dirname,
+
+          'exports'
+        );
+
+      if (
+        !fs.existsSync(
+          exportDir
+        )
+      ) {
+
+        fs.mkdirSync(
+          exportDir
+        );
+      }
+
+      const fileName =
+        `report-${Date.now()}.pdf`;
+
+      const filePath =
+        path.join(
+
+          exportDir,
+
+          fileName
+        );
+
+      const doc =
+        new PDFDocument();
+
+      doc.pipe(
+
+        fs.createWriteStream(
+          filePath
+        )
+      );
+
+      doc.fontSize(24)
+        .text(
+          'FlowPoint Report'
+        );
+
+      doc.moveDown();
+
+      doc.fontSize(14)
+        .text(
+          `Titre: ${report.title}`
+        );
+
+      doc.text(
+        `Type: ${report.type}`
+      );
+
+      doc.text(
+        `Date: ${new Date().toLocaleString()}`
+      );
+
+      doc.moveDown();
+
+      doc.text(
+        'Rapport généré automatiquement par FlowPoint.'
+      );
+
+      doc.end();
+
+      report.fileUrl =
+        `/exports/${fileName}`;
+
+      await report.save();
+
+      return res.json({
+
+        ok: true,
+
+        url:
+          report.fileUrl,
+
+      });
+
+    } catch (err) {
+
+      console.error(err);
+
+      return res.status(500).json({
+
+        error:
+          'Export failed',
+
+      });
+    }
+  }
+);
+
+/* ========================================================
+   ACTIVITY FEED
+======================================================== */
 
 app.get(
+
+  '/api/activity',
+
+  auth,
+
+  async (req, res) => {
+
+    try {
+
+      const activities =
+        await Activity.find({
+
+          orgId:
+            req.user.orgId,
+
+        })
+        .sort({
+          createdAt: -1,
+        })
+        .limit(100);
+
+      return res.json({
+
+        ok: true,
+
+        activities,
+
+      });
+
+    } catch {
+
+      return res.status(500).json({
+
+        error:
+          'Activity failed',
+
+      });
+    }
+  }
+);
+/* ========================================================
+   TEAM THREADS
+======================================================== */
+
+app.get(
+
   '/api/team/threads',
 
   auth,
@@ -2746,19 +3695,20 @@ app.get(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Threads failed',
+
       });
     }
   }
 );
 
 app.post(
+
   '/api/team/threads',
 
   auth,
@@ -2768,15 +3718,19 @@ app.post(
     try {
 
       const {
+
         title,
         channel='general',
+
       } = req.body || {};
 
       if (!title) {
 
         return res.status(400).json({
+
           error:
             'Title required',
+
         });
       }
 
@@ -2807,7 +3761,7 @@ app.post(
           'thread_created',
 
         title:
-          'Nouveau thread',
+          'Thread créé',
 
         description:
           title,
@@ -2821,23 +3775,24 @@ app.post(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Thread create failed',
+
       });
     }
   }
 );
 
-/* =========================================================
+/* ========================================================
    TEAM MESSAGES
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/team/messages/:threadId',
 
   auth,
@@ -2868,19 +3823,20 @@ app.get(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Messages failed',
+
       });
     }
   }
 );
 
 app.post(
+
   '/api/team/messages',
 
   auth,
@@ -2890,8 +3846,10 @@ app.post(
     try {
 
       const {
+
         threadId,
         content='',
+
       } = req.body || {};
 
       if (
@@ -2900,8 +3858,10 @@ app.post(
       ) {
 
         return res.status(400).json({
+
           error:
             'Invalid message',
+
         });
       }
 
@@ -2929,19 +3889,24 @@ app.post(
 
         {
           $set: {
+
             lastActivityAt:
               new Date(),
+
           },
         }
       );
 
       sseNotify(
+
         String(
           req.user._id
         ),
+
         {
           type:
             'team_message',
+
           message,
         }
       );
@@ -2954,68 +3919,24 @@ app.post(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Message failed',
+
       });
     }
   }
 );
 
-/* =========================================================
-   ACTIVITY FEED
-========================================================= */
-
-app.get(
-  '/api/activity',
-
-  auth,
-
-  async (req, res) => {
-
-    try {
-
-      const activities =
-        await Activity.find({
-
-          orgId:
-            req.user.orgId,
-
-        })
-        .sort({
-          createdAt: -1,
-        })
-        .limit(100);
-
-      return res.json({
-
-        ok: true,
-
-        activities,
-
-      });
-
-    } catch (err) {
-
-      console.error(err);
-
-      return res.status(500).json({
-        error:
-          'Activity failed',
-      });
-    }
-  }
-);
-
-/* =========================================================
-   AI
-========================================================= */
+/* ========================================================
+   AI ROUTE
+======================================================== */
 
 app.post(
+
   '/api/ai/chat',
 
   auth,
@@ -3031,43 +3952,82 @@ app.post(
       if (!message) {
 
         return res.status(400).json({
+
           error:
             'Message required',
+
         });
       }
 
       if (
+
         req.user.aiCredits.used >=
         req.user.aiCredits.limit
+
       ) {
 
         return res.status(403).json({
+
           error:
             'AI credits exhausted',
+
         });
       }
+
+      const [
+
+        audits,
+        monitors,
+        missions,
+
+      ] = await Promise.all([
+
+        Audit.find({
+
+          orgId:
+            req.user.orgId,
+
+        })
+        .sort({
+          createdAt: -1,
+        })
+        .limit(8),
+
+        Monitor.find({
+
+          orgId:
+            req.user.orgId,
+
+        })
+        .limit(10),
+
+        Mission.find({
+
+          orgId:
+            req.user.orgId,
+
+        })
+        .limit(15),
+
+      ]);
+
+      const response =
+        await generateAIResponse({
+
+          user:
+            req.user,
+
+          message,
+
+          audits,
+          monitors,
+          missions,
+
+        });
 
       req.user.aiCredits.used += 1;
 
       await req.user.save();
-
-      let response =
-        `
-        Voici une analyse stratégique FlowPoint concernant :
-        "${message}"
-
-        • Opportunité SEO détectée
-        • Optimisation conversion recommandée
-        • Monitoring conseillé
-        • Rapport exécutif suggéré
-        `;
-
-      if (
-        OPENAI_KEY
-      ) {
-
-        // Future OpenAI integration
-      }
 
       await pushActivity({
 
@@ -3081,7 +4041,7 @@ app.post(
           'ai_request',
 
         title:
-          'Assistant IA utilisé',
+          'IA utilisée',
 
         description:
           message.slice(0, 80),
@@ -3094,7 +4054,9 @@ app.post(
         response,
 
         remainingCredits:
+
           req.user.aiCredits.limit -
+
           req.user.aiCredits.used,
 
       });
@@ -3104,18 +4066,21 @@ app.post(
       console.error(err);
 
       return res.status(500).json({
+
         error:
           'AI failed',
+
       });
     }
   }
 );
 
-/* =========================================================
+/* ========================================================
    BILLING
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/billing',
 
   auth,
@@ -3139,9 +4104,6 @@ app.get(
           usage:
             req.user.usage,
 
-          addons:
-            req.user.addons,
-
           limits:
             getPlanLimits(
               req.user
@@ -3154,19 +4116,20 @@ app.get(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Billing failed',
+
       });
     }
   }
 );
 
 app.post(
+
   '/api/billing/create-checkout',
 
   auth,
@@ -3178,13 +4141,17 @@ app.post(
       if (!stripe) {
 
         return res.status(400).json({
+
           error:
             'Stripe disabled',
+
         });
       }
 
       const {
+
         plan='pro',
+
       } = req.body || {};
 
       const priceId =
@@ -3195,13 +4162,16 @@ app.post(
       if (!priceId) {
 
         return res.status(400).json({
+
           error:
             'Invalid plan',
+
         });
       }
 
       let customerId =
-        req.user.stripeCustomerId;
+        req.user
+          .stripeCustomerId;
 
       if (!customerId) {
 
@@ -3219,8 +4189,9 @@ app.post(
         customerId =
           customer.id;
 
-        req.user.stripeCustomerId =
-          customerId;
+        req.user
+          .stripeCustomerId =
+            customerId;
 
         await req.user.save();
       }
@@ -3240,10 +4211,12 @@ app.post(
           line_items: [
 
             {
+
               price:
                 priceId,
 
               quantity: 1,
+
             },
 
           ],
@@ -3291,15 +4264,17 @@ app.post(
       console.error(err);
 
       return res.status(500).json({
+
         error:
           'Checkout failed',
+
       });
     }
   }
 );
-/* =========================================================
-   STRIPE WEBHOOK PROCESSOR
-========================================================= */
+/* ========================================================
+   STRIPE EVENT PROCESSOR
+======================================================== */
 
 async function processStripeEvent(
   event
@@ -3307,9 +4282,11 @@ async function processStripeEvent(
 
   try {
 
-    switch (event.type) {
+    switch (
+      event.type
+    ) {
 
-      /* ========================================= */
+      /* ===================================== */
 
       case
       'checkout.session.completed': {
@@ -3354,7 +4331,9 @@ async function processStripeEvent(
         }
 
         const limits =
-          getPlanLimits(user);
+          getPlanLimits(
+            user
+          );
 
         user.usage.audit.limit =
           limits.audit;
@@ -3394,7 +4373,7 @@ async function processStripeEvent(
         break;
       }
 
-      /* ========================================= */
+      /* ===================================== */
 
       case
       'invoice.payment_failed': {
@@ -3423,7 +4402,11 @@ async function processStripeEvent(
         await user.save();
 
         sseNotify(
-          String(user._id),
+
+          String(
+            user._id
+          ),
+
           {
             type:
               'billing_issue',
@@ -3433,38 +4416,7 @@ async function processStripeEvent(
         break;
       }
 
-      /* ========================================= */
-
-      case
-      'customer.subscription.deleted': {
-
-        const subscription =
-          event.data.object;
-
-        const user =
-          await User.findOne({
-
-            stripeSubscriptionId:
-              subscription.id,
-
-          });
-
-        if (!user) {
-          break;
-        }
-
-        user.subscriptionStatus =
-          'canceled';
-
-        user.accessBlocked =
-          true;
-
-        await user.save();
-
-        break;
-      }
-
-      /* ========================================= */
+      /* ===================================== */
 
       case
       'invoice.payment_succeeded': {
@@ -3497,22 +4449,54 @@ async function processStripeEvent(
 
         break;
       }
+
+      /* ===================================== */
+
+      case
+      'customer.subscription.deleted': {
+
+        const subscription =
+          event.data.object;
+
+        const user =
+          await User.findOne({
+
+            stripeSubscriptionId:
+              subscription.id,
+
+          });
+
+        if (!user) {
+          break;
+        }
+
+        user.subscriptionStatus =
+          'canceled';
+
+        user.accessBlocked =
+          true;
+
+        await user.save();
+
+        break;
+      }
     }
 
   } catch (err) {
 
     console.error(
-      '[FP] stripe processor error:',
+      '[FP] stripe processor error',
       err
     );
   }
 }
 
-/* =========================================================
-   STRIPE EVENT LOOP
-========================================================= */
+/* ========================================================
+   STRIPE QUEUE LOOP
+======================================================== */
 
 setInterval(
+
   async () => {
 
     try {
@@ -3545,117 +4529,12 @@ setInterval(
   3000
 );
 
-/* =========================================================
-   MONITOR ENGINE
-========================================================= */
-
-async function runMonitorCheck(
-  monitor
-) {
-
-  try {
-
-    const isUp =
-      Math.random() > 0.08;
-
-    const responseTime =
-      Math.floor(
-        80 + Math.random() * 600
-      );
-
-    monitor.lastCheckedAt =
-      new Date();
-
-    monitor.lastResponseTime =
-      responseTime;
-
-    monitor.lastStatusCode =
-      isUp ? 200 : 500;
-
-    const previous =
-      monitor.lastStatus;
-
-    monitor.lastStatus =
-      isUp ? 'up' : 'down';
-
-    if (
-      previous === 'up' &&
-      !isUp
-    ) {
-
-      monitor.incidents.push({
-
-        startedAt:
-          new Date(),
-
-        reason:
-          'Server unreachable',
-      });
-
-      await pushActivity({
-
-        orgId:
-          monitor.orgId,
-
-        type:
-          'monitor_down',
-
-        title:
-          'Monitor DOWN',
-
-        description:
-          monitor.url,
-      });
-    }
-
-    if (
-      previous === 'down' &&
-      isUp
-    ) {
-
-      const incident =
-        monitor.incidents.find(
-          x => !x.endedAt
-        );
-
-      if (incident) {
-
-        incident.endedAt =
-          new Date();
-      }
-
-      await pushActivity({
-
-        orgId:
-          monitor.orgId,
-
-        type:
-          'monitor_up',
-
-        title:
-          'Monitor UP',
-
-        description:
-          monitor.url,
-      });
-    }
-
-    await monitor.save();
-
-  } catch (err) {
-
-    console.error(
-      '[FP] monitor check error',
-      err
-    );
-  }
-}
-
-/* =========================================================
+/* ========================================================
    MONITOR CRON
-========================================================= */
+======================================================== */
 
 cron.schedule(
+
   '*/5 * * * *',
 
   async () => {
@@ -3663,7 +4542,7 @@ cron.schedule(
     try {
 
       console.log(
-        '[FP] monitor cron running'
+        '[FP] monitor cron'
       );
 
       const monitors =
@@ -3671,30 +4550,41 @@ cron.schedule(
 
           active: true,
 
-        }).limit(300);
+        }).limit(500);
 
       for (const monitor of monitors) {
 
-        await runMonitorCheck(
-          monitor
-        );
+        try {
+
+          await runMonitorCheck(
+            monitor
+          );
+
+        } catch (err) {
+
+          console.error(
+            '[FP] monitor failed',
+            err
+          );
+        }
       }
 
     } catch (err) {
 
       console.error(
-        '[FP] monitor cron failed',
+        '[FP] cron failed',
         err
       );
     }
   }
 );
 
-/* =========================================================
-   USAGE RESET MONTHLY
-========================================================= */
+/* ========================================================
+   MONTHLY RESET
+======================================================== */
 
 cron.schedule(
+
   '0 0 1 * *',
 
   async () => {
@@ -3702,7 +4592,7 @@ cron.schedule(
     try {
 
       console.log(
-        '[FP] monthly usage reset'
+        '[FP] monthly reset'
       );
 
       const users =
@@ -3718,7 +4608,9 @@ cron.schedule(
         user.aiCredits.used = 0;
 
         const limits =
-          getPlanLimits(user);
+          getPlanLimits(
+            user
+          );
 
         user.usage.audit.limit =
           limits.audit;
@@ -3741,16 +4633,16 @@ cron.schedule(
     } catch (err) {
 
       console.error(
-        '[FP] usage reset failed',
+        '[FP] reset failed',
         err
       );
     }
   }
 );
 
-/* =========================================================
-   STATIC FRONTEND
-========================================================= */
+/* ========================================================
+   STATIC
+======================================================== */
 
 const PUBLIC_DIR =
   path.join(
@@ -3764,11 +4656,25 @@ app.use(
   )
 );
 
-/* =========================================================
+app.use(
+
+  '/exports',
+
+  express.static(
+
+    path.join(
+      __dirname,
+      'exports'
+    )
+  )
+);
+
+/* ========================================================
    HEALTH
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/health',
 
   async (req, res) => {
@@ -3781,7 +4687,8 @@ app.get(
         process.uptime(),
 
       mongo:
-        mongoose.connection.readyState === 1,
+        mongoose.connection
+          .readyState === 1,
 
       env:
         NODE_ENV,
@@ -3793,11 +4700,12 @@ app.get(
   }
 );
 
-/* =========================================================
+/* ========================================================
    ADMIN STATS
-========================================================= */
+======================================================== */
 
 app.get(
+
   '/api/admin/stats',
 
   async (req, res) => {
@@ -3805,22 +4713,28 @@ app.get(
     try {
 
       if (
+
         req.headers[
           'x-admin-key'
         ] !== ADMIN_KEY
+
       ) {
 
         return res.status(403).json({
+
           error:
             'Forbidden',
+
         });
       }
 
       const [
+
         users,
         audits,
         monitors,
         reports,
+
       ] = await Promise.all([
 
         User.countDocuments(),
@@ -3848,41 +4762,46 @@ app.get(
 
       });
 
-    } catch (err) {
-
-      console.error(err);
+    } catch {
 
       return res.status(500).json({
+
         error:
           'Admin stats failed',
+
       });
     }
   }
 );
 
-/* =========================================================
+/* ========================================================
    FRONTEND FALLBACK
-========================================================= */
+======================================================== */
 
 app.get(
+
   '*',
 
   (req, res) => {
 
     res.sendFile(
+
       path.join(
+
         PUBLIC_DIR,
+
         'index.html'
       )
     );
   }
 );
 
-/* =========================================================
+/* ========================================================
    START SERVER
-========================================================= */
+======================================================== */
 
 app.listen(
+
   PORT,
 
   () => {
