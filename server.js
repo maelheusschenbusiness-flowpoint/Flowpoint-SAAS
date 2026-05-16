@@ -27,9 +27,30 @@ const jwt =
 
 const cookieParser =
   require('cookie-parser');
+const cors = require('cors');
 
-const cors =
-  require('cors');
+app.use(
+
+  cors({
+
+    origin: [
+
+      'https://app.flowpoint.pro',
+
+      'https://flowpoint.pro',
+
+      'http://localhost:3000',
+
+      'http://localhost:5173',
+
+      'http://127.0.0.1:3000',
+
+    ],
+
+    credentials: true,
+
+  })
+);
 
 const path =
   require('path');
