@@ -1,96 +1,115 @@
 <!doctype html>
 <html lang="fr">
+
 <head>
+
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Paiement annulé — FlowPoint</title>
 
-  <meta name="color-scheme" content="light dark"/>
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  />
 
-  <link rel="icon" type="image/svg+xml" href="/assets/flowpoint-logo.svg" />
-  <link rel="shortcut icon" href="/assets/flowpoint-logo.svg" />
+  <title>
+    Paiement annulé — FlowPoint
+  </title>
 
-  <link rel="stylesheet" href="/style.css" />
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="/assets/flowpoint-logo.svg"
+  />
 
-  <style>
-    .centerBox{
-      max-width:760px;
-      margin:56px auto;
-    }
+  <link
+    rel="stylesheet"
+    href="/style.css"
+  />
 
-    .actionsRow{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-top:14px;
-    }
-
-    .actionsRow .primaryBtn,
-    .actionsRow .ghostBtn{
-      text-decoration:none;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-    }
-
-    @media (max-width:640px){
-      .centerBox{
-        margin:28px auto;
-      }
-
-      .actionsRow{
-        flex-direction:column;
-      }
-    }
-    html, body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Contenu principal */
-.main-container {
-  flex: 1;
-}
-
-/* Supprime toute barre parasite */
-footer, .footer, .bottom-bar {
-  display: none !important;
-}
-  </style>
 </head>
-<body>
+
+<body class="fp-marketing">
+
   <div class="page">
-    <div class="centerBox">
+
+    <div
+      style="
+        max-width:760px;
+        margin:56px auto;
+      "
+    >
+
       <div class="hero">
-        <h1>Paiement annulé</h1>
-        <p>Tu peux réessayer plus tard ou revenir sur la page pricing.</p>
+
+        <h1>
+          Paiement annulé
+        </h1>
+
+        <p>
+          Aucun paiement n’a été validé.
+          Ton abonnement actuel n’a pas été modifié.
+        </p>
+
       </div>
 
-      <div class="card" style="margin-top:12px">
+      <div
+        class="card"
+        style="margin-top:16px"
+      >
+
         <div class="cardBody">
-          <div class="small">
-            Aucun paiement n’a été validé. Ton abonnement actuel n’a pas été modifié.
-          </div>
-
-          <div class="actionsRow">
-            <a class="primaryBtn" href="/pricing.html">Retour au pricing</a>
-            <a class="ghostBtn" href="/dashboard.html">Dashboard</a>
-          </div>
 
           <div class="small">
-            Tu peux relancer le checkout quand tu veux depuis la page des offres ou des add-ons.
+
+            Tu peux relancer le checkout
+            quand tu veux depuis les offres
+            ou les add-ons.
+
           </div>
+
+          <div
+            style="
+              display:flex;
+              gap:12px;
+              flex-wrap:wrap;
+              margin-top:16px;
+            "
+          >
+
+            <a
+              class="primaryBtn"
+              href="/pricing.html"
+              style="
+                text-decoration:none;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+              "
+            >
+              Retour au pricing
+            </a>
+
+            <a
+              class="ghostBtn"
+              href="/dashboard.html"
+              style="
+                text-decoration:none;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+              "
+            >
+              Dashboard
+            </a>
+
+          </div>
+
         </div>
+
       </div>
+
     </div>
+
   </div>
+
 </body>
 </html>
