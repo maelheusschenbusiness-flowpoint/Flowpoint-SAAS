@@ -1,0 +1,94 @@
+import { Router } from "express";
+import { safeErrMsg } from "../lib/safe-error.js";
+import { getMarketDashboard, generateMarketReport, detectCompetitorMovements, seedMarketData } from "../services/market-intel-service.js";
+import { pool } from "@workspace/db";
+
+const router = Router();
+const org = (req: import("express").Request) => ((req as unknown as { orgId?: string }).orgId ?? "default");
+
+router.get("/market-intelligence", async (req, res) => {
+  try {
+    const orgId = org(req);
+    await seedMarketData(orgId);
+    const data = await getMarketDashboard(orgId);
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+});
+
+router.get("/market-intelligence/trends", async (req, res) => {
+  const { category, min_score, limit: lim = "20" } = req.query as Record<string, string>;
+  const client = await pool.connect();
+  try {
+    const orgId = org(req);
+    await seedMarketData(orgId);
+    let q = `SELECT * FROM market_trends WHERE org_id=$1`;
+    const params: unknown[] = [orgId];
+    if (category) { params.push(category); q += ` AND category=$${params.length}`; }
+    if (min_score) { params.push(parseInt(min_score, 10)); q += ` AND opportunity_score>=$${params.length}`; }
+    q += ` ORDER BY opportunity_score DESC LIMIT $${params.length + 1}`;
+    params.push(parseInt(lim, 10));
+    const r = await client.query(q, params);
+    res.json({ trends: r.rows, count: r.rows.length });
+  } finally { client.release(); }
+});
+
+router.get("/market-intelligence/opportunities", async (req, res) => {
+  const { type, limit: lim = "15" } = req.query as Record<string, string>;
+  const client = await pool.connect();
+  try {
+    const orgId = org(req);
+    await seedMarketData(orgId);
+    let q = `SELECT * FROM market_opportunities WHERE org_id=$1`;
+    const params: unknown[] = [orgId];
+    if (type) { params.push(type); q += ` AND type=$${params.length}`; }
+    q += ` ORDER BY score DESC LIMIT $${params.length + 1}`;
+    params.push(parseInt(lim, 10));
+    const r = await client.query(q, params);
+    res.json({ opportunities: r.rows, count: r.rows.length });
+  } finally { client.release(); }
+});
+
+router.get("/market-intelligence/competitor-movements", async (req, res) => {
+  const { limit: lim = "20" } = req.query as Record<string, string>;
+  const client = await pool.connect();
+  try {
+    const r = await client.query(`SELECT * FROM competitor_movements WHERE org_id=$1 ORDER BY detected_at DESC LIMIT $2`, [org(req), parseInt(lim, 10)]);
+    res.json({ movements: r.rows, count: r.rows.length });
+  } finally { client.release(); }
+});
+
+router.get("/market-intelligence/signals", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const orgId = org(req);
+    await seedMarketData(orgId);
+    const r = await client.query(`SELECT * FROM industry_signals WHERE org_id=$1 AND (expires_at IS NULL OR expires_at > now()) ORDER BY created_at DESC LIMIT 20`, [orgId]);
+    res.json({ signals: r.rows, count: r.rows.length });
+  } finally { client.release(); }
+});
+
+router.get("/market-intelligence/reports", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const r = await client.query(`SELECT * FROM ai_market_reports WHERE org_id=$1 ORDER BY generated_at DESC LIMIT 10`, [org(req)]);
+    res.json({ reports: r.rows, count: r.rows.length });
+  } finally { client.release(); }
+});
+
+router.post("/market-intelligence/report/generate", async (req, res) => {
+  try {
+    const report = await generateMarketReport(org(req));
+    res.json({ ok: true, report });
+  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+});
+
+router.post("/market-intelligence/competitor-movement", async (req, res) => {
+  const { domain } = req.body as { domain?: string };
+  if (!domain) { res.status(400).json({ error: "domain requis" }); return; }
+  try {
+    const movement = await detectCompetitorMovements(org(req), domain);
+    res.json({ ok: true, movement });
+  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+});
+
+export default router;

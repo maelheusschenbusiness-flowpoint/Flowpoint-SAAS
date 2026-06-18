@@ -1,0 +1,448 @@
+import { Router, type Request, type Response } from "express";
+import { store } from "../services/store.js";
+import { logger } from "../lib/logger.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { PLAN_CONFIG, ADDON_CATALOG, getUsageSummary, getMRRData, getSubscriptionAnalytics, startTrial, validateCoupon, getInvoices, trackBillingEvent } from "../services/billing-service.js";
+import { createRateLimit } from "../middlewares/rateLimiter.js";
+
+const billingCheckoutRateLimit = createRateLimit("reportsPerHour");
+
+const router = Router();
+
+type AddonsMap = Record<string, boolean | number>;
+
+function buildLineItems(plan: string, addons: AddonsMap): Array<{ price: string; quantity: number }> {
+  const items: Array<{ price: string; quantity: number }> = [];
+
+  const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()];
+  if (planPriceId) items.push({ price: planPriceId, quantity: 1 });
+
+  for (const key of FLAG_ADDONS) {
+    if (!addons[key]) continue;
+    if (key === "whiteLabel") continue;
+    const priceId = ADDON_PRICE_IDS[key];
+    if (priceId) items.push({ price: priceId, quantity: 1 });
+  }
+  for (const key of QTY_ADDONS) {
+    const qty = Number(addons[key] || 0);
+    if (qty <= 0) continue;
+    const priceId = ADDON_PRICE_IDS[key];
+    if (priceId) items.push({ price: priceId, quantity: qty });
+  }
+
+  return items;
+}
+
+router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+  const { plan = "pro", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
+
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
+
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      logger.error("[Billing] STRIPE_SECRET_KEY not set in production — checkout unavailable");
+      res.status(503).json({ error: "Payment service not configured. Contact support." });
+      return;
+    }
+    logger.warn("[Billing] STRIPE_SECRET_KEY not set — returning mock checkout URL (dev only)");
+    res.json({ url: `https://checkout.stripe.com/c/pay/test_mock_${plan}_${Date.now()}`, plan, mock: true });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    const lineItems = buildLineItems(plan, addons);
+
+    if (lineItems.length === 0) {
+      res.status(400).json({ error: `No Stripe price configured for plan: ${plan}. Set STRIPE_PRICE_${plan.toUpperCase()} env var.` });
+      return;
+    }
+
+    let customerId = store.me.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { plan } });
+      customerId = customer.id;
+      store.me.stripeCustomerId = customerId;
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      line_items: lineItems,
+      success_url: `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${publicUrl}/cancel.html?next=${encodeURIComponent("/pricing.html")}`,
+      metadata: { plan, addons: JSON.stringify(addons) },
+    });
+
+    res.json({ url: session.url, plan });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to create Stripe checkout session");
+    res.status(500).json({ error: "Failed to create checkout session" });
+  }
+});
+
+router.post("/billing/checkout-embedded", async (req: Request, res: Response) => {
+  const { plan = "pro", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
+
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
+
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      logger.error("[Billing] STRIPE_SECRET_KEY not set in production — embedded checkout unavailable");
+      res.status(503).json({ error: "Payment service not configured. Contact support." });
+      return;
+    }
+    logger.warn("[Billing] STRIPE_SECRET_KEY not set — returning mock embedded session (dev only)");
+    res.json({ clientSecret: `cs_test_mock_${Date.now()}`, mock: true });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    const lineItems = buildLineItems(plan, addons);
+    if (lineItems.length === 0) {
+      res.status(400).json({ error: `No price configured for plan: ${plan}` });
+      return;
+    }
+
+    let customerId = store.me.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { plan } });
+      customerId = customer.id;
+      store.me.stripeCustomerId = customerId;
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      ui_mode: "embedded",
+      line_items: lineItems,
+      return_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
+      metadata: { plan, addons: JSON.stringify(addons) },
+    });
+
+    res.json({ clientSecret: session.client_secret });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to create embedded checkout session");
+    res.status(500).json({ error: "Failed to create embedded checkout session" });
+  }
+});
+
+router.get("/billing/verify", async (req: Request, res: Response) => {
+  const sessionId = String(req.query["session_id"] || "");
+  if (!sessionId) { res.status(400).json({ error: "session_id required" }); return; }
+
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const apiSecretKey = process.env["API_SECRET_KEY"];
+
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      logger.error("[Billing] STRIPE_SECRET_KEY not set in production — verify unavailable");
+      res.status(503).json({ error: "Payment service not configured. Contact support." });
+      return;
+    }
+    logger.warn("[Billing] STRIPE_SECRET_KEY not set — mock verify (dev only)");
+    res.json({ ok: true, mock: true });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
+
+    if (session.payment_status !== "paid" && session.status !== "complete") {
+      res.status(402).json({ error: "Payment not completed", status: session.status });
+      return;
+    }
+
+    const planMeta = (session.metadata?.["plan"] || "pro").toLowerCase();
+    if (["standard","pro","ultra"].includes(planMeta)) {
+      store.broadcastPlanUpdate(planMeta);
+    }
+
+    if (session.customer) {
+      store.me.stripeCustomerId = String(session.customer);
+    }
+    store.me.subscriptionStatus = "active";
+
+    let addonsMeta: Record<string, boolean | number> = {};
+    try { addonsMeta = JSON.parse(session.metadata?.["addons"] || "{}"); } catch {}
+
+    if (addonsMeta["whiteLabel"] !== undefined) {
+      store.me.addons.whiteLabel = !!addonsMeta["whiteLabel"];
+    }
+    if (addonsMeta["customDomain"] !== undefined) {
+      store.me.addons.customDomain = !!addonsMeta["customDomain"];
+    }
+    if (addonsMeta["prioritySupport"] !== undefined) {
+      store.me.addons.prioritySupport = !!addonsMeta["prioritySupport"];
+    }
+    if (addonsMeta["extraSeats"] !== undefined) {
+      store.me.addons.extraSeats = Number(addonsMeta["extraSeats"] || 0);
+    }
+    if (addonsMeta["monitorsPack50"] !== undefined) {
+      store.me.addons.monitorsPack50 = Number(addonsMeta["monitorsPack50"] || 0);
+    }
+
+    logger.info({ plan: planMeta, sessionId }, "[Billing] Checkout verified — plan activated");
+
+    res.json({ ok: true, plan: planMeta });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to verify checkout session");
+    res.status(500).json({ error: "Failed to verify checkout session" });
+  }
+});
+
+router.post("/billing/portal", billingCheckoutRateLimit, async (_req: Request, res: Response) => {
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
+  const returnUrl = process.env["STRIPE_RETURN_URL"] || `${publicUrl}/dashboard`;
+
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      logger.error("[Billing] STRIPE_SECRET_KEY not set in production — portal unavailable");
+      res.status(503).json({ error: "Payment service not configured. Contact support." });
+      return;
+    }
+    logger.warn("[Billing] STRIPE_SECRET_KEY not set — returning mock portal URL (dev only)");
+    res.json({ url: `https://billing.stripe.com/p/session/test_mock_${Date.now()}` });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    let customerId = store.me.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { plan: store.me.plan } });
+      customerId = customer.id;
+      store.me.stripeCustomerId = customerId;
+    }
+
+    const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
+    res.json({ url: session.url });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to create Stripe portal session");
+    res.status(500).json({ error: "Failed to create billing portal session" });
+  }
+});
+
+// ── NEW: GET /billing/plans ──────────────────────────────────────────────────
+router.get("/billing/plans", (_req: Request, res: Response) => {
+  const plans = Object.values(PLAN_CONFIG);
+  res.json({
+    plans,
+    addons: ADDON_CATALOG,
+    current: (store.me.plan || "standard").toLowerCase(),
+    subscriptionStatus: store.me.subscriptionStatus,
+    trialEndsAt: store.me.trialEndsAt,
+  });
+});
+
+// ── NEW: GET /billing/usage ──────────────────────────────────────────────────
+router.get("/billing/usage", async (_req: Request, res: Response) => {
+  try {
+    const usage = await getUsageSummary();
+    res.json(usage);
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to get usage");
+    res.status(500).json({ error: "Failed to retrieve usage data" });
+  }
+});
+
+// ── NEW: GET /billing/analytics ──────────────────────────────────────────────
+router.get("/billing/analytics", async (_req: Request, res: Response) => {
+  try {
+    const analytics = await getSubscriptionAnalytics();
+    res.json(analytics);
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to get analytics");
+    res.status(500).json({ error: "Failed to retrieve subscription analytics" });
+  }
+});
+
+// ── NEW: GET /billing/mrr ────────────────────────────────────────────────────
+router.get("/billing/mrr", async (_req: Request, res: Response) => {
+  try {
+    const mrr = await getMRRData();
+    res.json(mrr);
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to get MRR data");
+    res.status(500).json({ error: "Failed to retrieve MRR data" });
+  }
+});
+
+// ── NEW: GET /billing/invoices ───────────────────────────────────────────────
+router.get("/billing/invoices", async (_req: Request, res: Response) => {
+  const limit = Math.min(Number((_req.query as Record<string, string>)["limit"] || 20), 100);
+  try {
+    const result = await getInvoices(limit);
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to get invoices");
+    res.status(500).json({ error: "Failed to retrieve invoices" });
+  }
+});
+
+// ── NEW: POST /billing/trial ─────────────────────────────────────────────────
+router.post("/billing/trial", async (req: Request, res: Response) => {
+  const { plan = "pro", days = 14 } = req.body as { plan?: string; days?: number };
+  if (store.me.subscriptionStatus === "active") {
+    res.status(409).json({ error: "Vous avez déjà un abonnement actif" });
+    return;
+  }
+  try {
+    const result = await startTrial(plan, days);
+    await trackBillingEvent("trial_started", { plan, days, ...result }).catch(() => {});
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to start trial");
+    res.status(500).json({ error: "Failed to start trial" });
+  }
+});
+
+// ── NEW: POST /billing/coupon/validate ───────────────────────────────────────
+router.post("/billing/coupon/validate", async (req: Request, res: Response) => {
+  const { code } = req.body as { code?: string };
+  if (!code) { res.status(400).json({ error: "Coupon code requis" }); return; }
+  try {
+    const result = await validateCoupon(String(code).trim().toUpperCase());
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to validate coupon");
+    res.status(500).json({ error: "Impossible de valider le coupon" });
+  }
+});
+
+// ── NEW: GET /billing/subscription ──────────────────────────────────────────
+router.get("/billing/subscription", async (_req: Request, res: Response) => {
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const me = store.me;
+
+  if (!stripeKey || !me.stripeCustomerId) {
+    res.json({
+      plan: me.plan,
+      status: me.subscriptionStatus,
+      trialEndsAt: me.trialEndsAt,
+      addons: me.addons,
+      mock: !stripeKey,
+    });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const subs = await stripe.subscriptions.list({ customer: me.stripeCustomerId, limit: 1 });
+    const sub = subs.data[0];
+
+    res.json({
+      plan: me.plan,
+      status: sub?.status || me.subscriptionStatus,
+      trialEndsAt: sub?.trial_end ? new Date(sub.trial_end * 1000).toISOString() : me.trialEndsAt,
+      currentPeriodEnd: sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+      cancelAtPeriodEnd: sub?.cancel_at_period_end || false,
+      addons: me.addons,
+      stripeCustomerId: me.stripeCustomerId,
+    });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to get subscription");
+    res.json({ plan: me.plan, status: me.subscriptionStatus, addons: me.addons });
+  }
+});
+
+// ── NEW: POST /billing/checkout with coupon + annual support ─────────────────
+// (Also supports ?annual=true and ?coupon=CODE query params in the enhanced version)
+// The existing /billing/checkout handler handles basic checkout.
+// We add /billing/checkout/annual as a convenience.
+router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
+  const { plan = "pro", addons = {}, coupon } = req.body as { plan?: string; addons?: AddonsMap; coupon?: string };
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
+
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      logger.error("[Billing] STRIPE_SECRET_KEY not set in production — annual checkout unavailable");
+      res.status(503).json({ error: "Payment service not configured. Contact support." });
+      return;
+    }
+    res.json({ url: `https://checkout.stripe.com/c/pay/test_annual_${plan}_${Date.now()}`, plan, annual: true, mock: true });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    const annualPriceEnvKey = `STRIPE_PRICE_${plan.toUpperCase()}_ANNUAL`;
+    const annualPriceId = process.env[annualPriceEnvKey] || PLAN_PRICE_IDS[plan.toLowerCase()];
+
+    if (!annualPriceId) {
+      res.status(400).json({ error: `No annual price configured for plan: ${plan}` });
+      return;
+    }
+
+    let customerId = store.me.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { plan } });
+      customerId = customer.id;
+      store.me.stripeCustomerId = customerId;
+    }
+
+    const sessionParams: Parameters<typeof stripe.checkout.sessions.create>[0] = {
+      mode: "subscription",
+      customer: customerId,
+      line_items: [{ price: annualPriceId, quantity: 1 }],
+      success_url: `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}&annual=1`,
+      cancel_url: `${publicUrl}/cancel.html`,
+      metadata: { plan, addons: JSON.stringify(addons), billing: "annual" },
+      subscription_data: { metadata: { plan, billing: "annual" } },
+    };
+
+    if (coupon) {
+      (sessionParams as Record<string, unknown>)["discounts"] = [{ coupon }];
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    res.json({ url: session.url, plan, annual: true });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to create annual checkout");
+    res.status(500).json({ error: "Failed to create annual checkout session" });
+  }
+});
+
+router.get("/billing/config", (_req: Request, res: Response) => {
+  const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
+  res.json({ publishableKey });
+});
+
+router.get("/billing/events", (req: Request, res: Response) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  res.write(`data: ${JSON.stringify({ type: "connected", plan: store.me.plan })}\n\n`);
+
+  const send = (data: string) => res.write(data);
+  store.sseClients.add(send);
+
+  const keepAlive = setInterval(() => { res.write(": ping\n\n"); }, 25_000);
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    store.sseClients.delete(send);
+  });
+});
+
+export default router;
