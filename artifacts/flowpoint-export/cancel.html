@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
+  <title>Paiement annulé — FlowPoint</title>
+  <script>
+    (function(){
+      try {
+        var t = localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', t);
+        document.getElementById('fp-meta-tc').content = t === 'dark' ? '#050810' : '#f8faff';
+      } catch(e){}
+    })();
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --fp-bg: #f8faff; --fp-surface: #ffffff; --fp-border: rgba(0,0,0,0.08);
+      --fp-text: #0f172a; --fp-text-muted: #64748b; --fp-accent: #2563eb;
+      --fp-shadow: 0 4px 24px rgba(37,99,235,0.08), 0 1px 3px rgba(0,0,0,0.06);
+    }
+    html[data-theme="dark"] {
+      --fp-bg: #050810; --fp-surface: #0d1117; --fp-border: rgba(255,255,255,0.08);
+      --fp-text: #f1f5f9; --fp-text-muted: #94a3b8;
+      --fp-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--fp-bg); color: var(--fp-text);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+    }
+    .fp-card {
+      background: var(--fp-surface); border: 1px solid var(--fp-border);
+      border-radius: 14px; box-shadow: var(--fp-shadow);
+      padding: 52px 40px; max-width: 440px; width: 100%; text-align: center;
+    }
+    .fp-icon-wrap {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: rgba(100,116,139,0.1); display: flex; align-items: center;
+      justify-content: center; margin: 0 auto 24px; font-size: 36px;
+    }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+    p { font-size: 14px; color: var(--fp-text-muted); line-height: 1.6; margin-bottom: 6px; }
+    .fp-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 28px; }
+    .fp-btn-primary {
+      display: block; padding: 12px; background: var(--fp-accent); color: #fff;
+      border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+      cursor: pointer; text-decoration: none; transition: background 0.15s;
+    }
+    .fp-btn-primary:hover { background: #1d4ed8; }
+    .fp-btn-secondary {
+      display: block; padding: 12px; background: transparent;
+      color: var(--fp-text-muted); border: 1px solid var(--fp-border);
+      border-radius: 8px; font-size: 14px; font-weight: 500;
+      cursor: pointer; text-decoration: none;
+    }
+    .fp-btn-secondary:hover { border-color: var(--fp-accent); color: var(--fp-accent); }
+  </style>
+</head>
+<body>
+  <div class="fp-card">
+    <div class="fp-icon-wrap">🛑</div>
+    <h1>Paiement annulé</h1>
+    <p>Votre paiement a été annulé. Aucun montant n'a été débité.</p>
+    <p>Vous pouvez réessayer à tout moment ou rester sur votre plan actuel.</p>
+    <div class="fp-actions">
+      <a href="/pricing" class="fp-btn-primary">Voir les tarifs</a>
+      <a href="/" class="fp-btn-secondary">Retour au tableau de bord</a>
+    </div>
+  </div>
+  <script src="fp-config.js"></script>
+</body>
+</html>

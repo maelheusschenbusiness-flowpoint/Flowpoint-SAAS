@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
+  <title>Tarifs — FlowPoint</title>
+  <script>
+    (function(){
+      try {
+        var t = localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', t);
+        document.getElementById('fp-meta-tc').content = t === 'dark' ? '#050810' : '#f8faff';
+      } catch(e){}
+    })();
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --fp-bg: #f8faff; --fp-surface: #ffffff; --fp-border: rgba(0,0,0,0.08);
+      --fp-text: #0f172a; --fp-text-muted: #64748b; --fp-accent: #2563eb;
+      --fp-accent-hover: #1d4ed8; --fp-radius: 14px;
+      --fp-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    html[data-theme="dark"] {
+      --fp-bg: #050810; --fp-surface: #0d1117; --fp-border: rgba(255,255,255,0.08);
+      --fp-text: #f1f5f9; --fp-text-muted: #94a3b8;
+      --fp-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--fp-bg); color: var(--fp-text);
+      min-height: 100vh; padding: 0;
+    }
+
+    .fp-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; height: 56px;
+      background: var(--fp-surface); border-bottom: 1px solid var(--fp-border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .fp-topbar-logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; text-decoration: none; color: inherit; }
+    .fp-topbar-logo-icon {
+      width: 30px; height: 30px; background: linear-gradient(135deg, #2563eb, #7c3aed);
+      border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px;
+    }
+    .fp-topbar-actions { display: flex; align-items: center; gap: 10px; }
+    .fp-topbar-link { font-size: 13px; color: var(--fp-text-muted); text-decoration: none; padding: 6px 10px; border-radius: 6px; }
+    .fp-topbar-link:hover { background: var(--fp-bg); color: var(--fp-text); }
+    .fp-topbar-btn {
+      font-size: 13px; font-weight: 600; color: #fff;
+      background: var(--fp-accent); border: none; border-radius: 7px;
+      padding: 7px 14px; cursor: pointer; text-decoration: none;
+    }
+    .fp-topbar-btn:hover { background: var(--fp-accent-hover); }
+
+    .fp-pricing-hero {
+      text-align: center; padding: 64px 24px 48px;
+    }
+    .fp-pricing-hero h1 { font-size: 36px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 12px; }
+    .fp-pricing-hero p { font-size: 16px; color: var(--fp-text-muted); max-width: 520px; margin: 0 auto; line-height: 1.6; }
+
+    .fp-toggle-wrap { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 28px; }
+    .fp-toggle-label { font-size: 13px; font-weight: 500; color: var(--fp-text-muted); }
+    .fp-toggle-label.active { color: var(--fp-text); }
+    .fp-badge-save { background: rgba(16,185,129,0.12); color: #059669; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 20px; }
+    html[data-theme="dark"] .fp-badge-save { color: #34d399; }
+    .fp-toggle {
+      position: relative; width: 44px; height: 24px;
+      background: var(--fp-border); border-radius: 12px; cursor: pointer; border: none;
+      transition: background 0.2s;
+    }
+    .fp-toggle.on { background: var(--fp-accent); }
+    .fp-toggle::after {
+      content: ''; position: absolute; top: 3px; left: 3px;
+      width: 18px; height: 18px; background: #fff; border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .fp-toggle.on::after { transform: translateX(20px); }
+
+    .fp-plans {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px; max-width: 1040px; margin: 0 auto; padding: 0 24px 64px;
+    }
+
+    .fp-plan-card {
+      background: var(--fp-surface); border: 1px solid var(--fp-border);
+      border-radius: var(--fp-radius); box-shadow: var(--fp-shadow);
+      padding: 28px 24px; position: relative; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .fp-plan-card:hover { border-color: var(--fp-accent); box-shadow: 0 4px 24px rgba(37,99,235,0.12); }
+    .fp-plan-card.featured {
+      border-color: var(--fp-accent);
+      box-shadow: 0 4px 32px rgba(37,99,235,0.18);
+    }
+    .fp-plan-badge {
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      background: var(--fp-accent); color: #fff; font-size: 11px; font-weight: 700;
+      padding: 3px 12px; border-radius: 20px; white-space: nowrap;
+    }
+
+    .fp-plan-name { font-size: 13px; font-weight: 600; color: var(--fp-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .fp-plan-price { font-size: 40px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+    .fp-plan-price span { font-size: 16px; font-weight: 400; color: var(--fp-text-muted); }
+    .fp-plan-desc { font-size: 13px; color: var(--fp-text-muted); margin-top: 10px; margin-bottom: 20px; line-height: 1.5; }
+
+    .fp-plan-features { list-style: none; margin-bottom: 24px; }
+    .fp-plan-features li {
+      font-size: 13px; padding: 6px 0;
+      display: flex; align-items: flex-start; gap: 8px;
+      border-bottom: 1px solid var(--fp-border);
+    }
+    .fp-plan-features li:last-child { border-bottom: none; }
+    .fp-plan-features li::before { content: '✓'; color: var(--fp-accent); font-weight: 700; margin-top: 1px; flex-shrink: 0; }
+
+    .fp-plan-btn {
+      width: 100%; padding: 11px; font-size: 14px; font-weight: 600;
+      border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s;
+    }
+    .fp-plan-btn-primary { background: var(--fp-accent); color: #fff; }
+    .fp-plan-btn-primary:hover { background: var(--fp-accent-hover); }
+    .fp-plan-btn-secondary {
+      background: transparent; color: var(--fp-text);
+      border-color: var(--fp-border);
+    }
+    .fp-plan-btn-secondary:hover { border-color: var(--fp-accent); color: var(--fp-accent); }
+
+    .fp-faq { max-width: 720px; margin: 0 auto; padding: 0 24px 64px; }
+    .fp-faq h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; text-align: center; }
+    .fp-faq-item { border-bottom: 1px solid var(--fp-border); }
+    .fp-faq-q {
+      width: 100%; text-align: left; background: none; border: none; color: var(--fp-text);
+      font-size: 15px; font-weight: 500; padding: 16px 0; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    }
+    .fp-faq-a { font-size: 13px; color: var(--fp-text-muted); padding: 0 0 16px; line-height: 1.6; display: none; }
+
+    .fp-spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <nav class="fp-topbar">
+    <a href="/" class="fp-topbar-logo">
+      <div class="fp-topbar-logo-icon">⚡</div>
+      FlowPoint
+    </a>
+    <div class="fp-topbar-actions">
+      <a href="/" class="fp-topbar-link">Tableau de bord</a>
+      <a href="/login" class="fp-topbar-btn">Se connecter</a>
+    </div>
+  </nav>
+
+  <div class="fp-pricing-hero">
+    <h1>Tarifs simples et transparents</h1>
+    <p>Choisissez le plan adapté à votre activité. Pas de frais cachés, annulation à tout moment.</p>
+    <div class="fp-toggle-wrap">
+      <span class="fp-toggle-label active" id="fp-label-monthly">Mensuel</span>
+      <button class="fp-toggle" id="fp-billing-toggle"></button>
+      <span class="fp-toggle-label" id="fp-label-annual">Annuel <span class="fp-badge-save">−20%</span></span>
+    </div>
+  </div>
+
+  <div class="fp-plans" id="fp-plans-container">
+
+    <div class="fp-plan-card">
+      <div class="fp-plan-name">Standard</div>
+      <div class="fp-plan-price" id="fp-price-standard">29€<span>/mois</span></div>
+      <div class="fp-plan-desc">Pour les indépendants et petites équipes qui démarrent.</div>
+      <ul class="fp-plan-features">
+        <li>3 sites web</li>
+        <li>5 monitors d'uptime</li>
+        <li>Analyses SEO de base</li>
+        <li>Rapports mensuels</li>
+        <li>Support par email</li>
+      </ul>
+      <button class="fp-plan-btn fp-plan-btn-secondary" data-plan="standard" data-price-monthly="29" data-price-annual="278">
+        Commencer
+      </button>
+    </div>
+
+    <div class="fp-plan-card featured">
+      <div class="fp-plan-badge">⭐ Le plus populaire</div>
+      <div class="fp-plan-name">Pro</div>
+      <div class="fp-plan-price" id="fp-price-pro">79€<span>/mois</span></div>
+      <div class="fp-plan-desc">Pour les équipes qui veulent croître avec des données actionables.</div>
+      <ul class="fp-plan-features">
+        <li>10 sites web</li>
+        <li>50 monitors d'uptime</li>
+        <li>Analyses SEO avancées</li>
+        <li>Rapports hebdomadaires</li>
+        <li>Suivi de mots-clés (500)</li>
+        <li>Intelligence concurrentielle</li>
+        <li>Alertes temps réel</li>
+        <li>Support prioritaire</li>
+      </ul>
+      <button class="fp-plan-btn fp-plan-btn-primary" data-plan="pro" data-price-monthly="79" data-price-annual="758">
+        Commencer — Pro
+      </button>
+    </div>
+
+    <div class="fp-plan-card">
+      <div class="fp-plan-name">Enterprise</div>
+      <div class="fp-plan-price" id="fp-price-enterprise">249€<span>/mois</span></div>
+      <div class="fp-plan-desc">Pour les agences et grandes équipes avec des besoins personnalisés.</div>
+      <ul class="fp-plan-features">
+        <li>Sites illimités</li>
+        <li>Monitors illimités</li>
+        <li>White label complet</li>
+        <li>API dédiée</li>
+        <li>SSO & gestion d'équipe</li>
+        <li>SLA garanti 99.9%</li>
+        <li>Onboarding dédié</li>
+        <li>Support 24/7</li>
+      </ul>
+      <button class="fp-plan-btn fp-plan-btn-secondary" data-plan="enterprise" data-price-monthly="249" data-price-annual="2390">
+        Nous contacter
+      </button>
+    </div>
+
+  </div>
+
+  <div class="fp-faq">
+    <h2>Questions fréquentes</h2>
+    <div class="fp-faq-item">
+      <button class="fp-faq-q">Puis-je changer de plan à tout moment ? <span>+</span></button>
+      <div class="fp-faq-a">Oui, vous pouvez upgrader ou downgrader votre plan à tout moment depuis votre tableau de bord. Les changements sont effectifs immédiatement au prorata.</div>
+    </div>
+    <div class="fp-faq-item">
+      <button class="fp-faq-q">Y a-t-il une période d'essai ? <span>+</span></button>
+      <div class="fp-faq-a">Oui, tous les plans bénéficient de 14 jours d'essai gratuit, sans carte de crédit requise.</div>
+    </div>
+    <div class="fp-faq-item">
+      <button class="fp-faq-q">Comment fonctionne l'annulation ? <span>+</span></button>
+      <div class="fp-faq-a">Vous pouvez annuler à tout moment depuis votre tableau de bord. Votre accès reste actif jusqu'à la fin de la période de facturation en cours.</div>
+    </div>
+    <div class="fp-faq-item">
+      <button class="fp-faq-q">Quels moyens de paiement acceptez-vous ? <span>+</span></button>
+      <div class="fp-faq-a">Nous acceptons toutes les cartes bancaires (Visa, Mastercard, Amex) ainsi que SEPA Direct Debit pour les entreprises européennes.</div>
+    </div>
+  </div>
+
+  <script src="fp-config.js"></script>
+  <script src="pricing.js"></script>
+</body>
+</html>

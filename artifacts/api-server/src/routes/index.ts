@@ -87,6 +87,10 @@ router.use(publicBehavioralRouter);
 // capabilities is a public disclosure endpoint.
 router.use(publicSsoRouter);
 
+// SSE real-time event stream — must be public so the dashboard can subscribe
+// before the user is authenticated (shows live monitor status on login page too).
+router.use(eventsRouter);
+
 // ── Protected routes (authentication required) ─────────────────────────────
 // All management endpoints require a valid API secret supplied via:
 //   Authorization: Bearer <secret>   or   X-Api-Key: <secret>
@@ -133,7 +137,6 @@ router.use(pagespeedRouter);
 router.use(githubRouter);
 router.use(gscRouter);
 router.use(betterstackRouter);
-router.use(eventsRouter);
 router.use(diagnosticsRouter);
 
 export default router;

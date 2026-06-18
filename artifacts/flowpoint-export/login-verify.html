@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
+  <title>Vérification — FlowPoint</title>
+  <script>
+    (function(){
+      try {
+        var t = localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', t);
+        document.getElementById('fp-meta-tc').content = t === 'dark' ? '#050810' : '#f8faff';
+      } catch(e){}
+    })();
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --fp-bg: #f8faff; --fp-surface: #ffffff; --fp-border: rgba(0,0,0,0.08);
+      --fp-text: #0f172a; --fp-text-muted: #64748b; --fp-accent: #2563eb;
+      --fp-shadow: 0 4px 24px rgba(37,99,235,0.08), 0 1px 3px rgba(0,0,0,0.06);
+    }
+    html[data-theme="dark"] {
+      --fp-bg: #050810; --fp-surface: #0d1117; --fp-border: rgba(255,255,255,0.08);
+      --fp-text: #f1f5f9; --fp-text-muted: #94a3b8;
+      --fp-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--fp-bg); color: var(--fp-text);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+    }
+    .fp-card {
+      background: var(--fp-surface); border: 1px solid var(--fp-border);
+      border-radius: 12px; box-shadow: var(--fp-shadow);
+      padding: 48px 36px; max-width: 400px; width: 100%; text-align: center;
+    }
+    .fp-icon { font-size: 48px; margin-bottom: 20px; }
+    h1 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    p { font-size: 14px; color: var(--fp-text-muted); line-height: 1.6; }
+    .fp-spinner-wrap { display: flex; justify-content: center; margin: 24px 0; }
+    .fp-spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--fp-border);
+      border-top-color: var(--fp-accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fp-btn {
+      display: inline-block; margin-top: 20px; padding: 10px 24px;
+      background: var(--fp-accent); color: #fff; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none;
+    }
+    .fp-btn:hover { opacity: 0.9; }
+    #fp-error { display: none; }
+    #fp-error .fp-icon { font-size: 40px; }
+    #fp-success { display: none; }
+    #fp-success .fp-icon { font-size: 40px; }
+    #fp-loading { display: block; }
+  </style>
+</head>
+<body>
+  <div class="fp-card">
+    <div id="fp-loading">
+      <div class="fp-icon">🔐</div>
+      <h1>Vérification en cours…</h1>
+      <p>Nous validons votre lien de connexion, veuillez patienter.</p>
+      <div class="fp-spinner-wrap"><div class="fp-spinner"></div></div>
+    </div>
+    <div id="fp-success">
+      <div class="fp-icon">✅</div>
+      <h1>Connexion réussie !</h1>
+      <p>Vous êtes connecté. Redirection vers votre tableau de bord…</p>
+      <div class="fp-spinner-wrap"><div class="fp-spinner"></div></div>
+    </div>
+    <div id="fp-error">
+      <div class="fp-icon">❌</div>
+      <h1>Lien invalide</h1>
+      <p id="fp-error-msg">Ce lien de connexion est invalide ou a expiré.</p>
+      <a href="/login" class="fp-btn">Retour à la connexion</a>
+    </div>
+  </div>
+  <script src="fp-config.js"></script>
+  <script src="login-verify.js"></script>
+</body>
+</html>

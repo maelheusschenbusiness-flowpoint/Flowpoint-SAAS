@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
+  <title>Rapport — FlowPoint</title>
+  <script>
+    (function(){
+      try {
+        var t = localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', t);
+        document.getElementById('fp-meta-tc').content = t === 'dark' ? '#050810' : '#f8faff';
+      } catch(e){}
+    })();
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --fp-bg: #f8faff; --fp-surface: #ffffff; --fp-border: rgba(0,0,0,0.08);
+      --fp-text: #0f172a; --fp-text-muted: #64748b; --fp-accent: #2563eb;
+      --fp-radius: 12px;
+      --fp-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    html[data-theme="dark"] {
+      --fp-bg: #050810; --fp-surface: #0d1117; --fp-border: rgba(255,255,255,0.08);
+      --fp-text: #f1f5f9; --fp-text-muted: #94a3b8;
+      --fp-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--fp-bg); color: var(--fp-text); min-height: 100vh;
+    }
+
+    .fp-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; height: 56px;
+      background: var(--fp-surface); border-bottom: 1px solid var(--fp-border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .fp-topbar-logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; text-decoration: none; color: inherit; }
+    .fp-topbar-logo-icon {
+      width: 30px; height: 30px; background: linear-gradient(135deg, #2563eb, #7c3aed);
+      border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px;
+    }
+    .fp-topbar-badge { font-size: 12px; color: var(--fp-text-muted); border: 1px solid var(--fp-border); border-radius: 20px; padding: 3px 10px; }
+
+    .fp-main { max-width: 860px; margin: 0 auto; padding: 32px 24px 64px; }
+
+    .fp-spinner-page {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 60vh; gap: 16px;
+    }
+    .fp-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--fp-border); border-top-color: var(--fp-accent);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fp-spinner-label { font-size: 14px; color: var(--fp-text-muted); }
+
+    .fp-error-page {
+      display: none; text-align: center; padding: 80px 24px;
+    }
+    .fp-error-page .fp-icon { font-size: 48px; margin-bottom: 16px; }
+    .fp-error-page h1 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .fp-error-page p { font-size: 14px; color: var(--fp-text-muted); }
+
+    #fp-report-content { display: none; }
+
+    .fp-report-header { margin-bottom: 32px; }
+    .fp-report-title { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 6px; }
+    .fp-report-meta { font-size: 13px; color: var(--fp-text-muted); display: flex; gap: 16px; flex-wrap: wrap; }
+    .fp-report-meta span::before { content: '• '; }
+    .fp-report-meta span:first-child::before { content: ''; }
+
+    .fp-card {
+      background: var(--fp-surface); border: 1px solid var(--fp-border);
+      border-radius: var(--fp-radius); box-shadow: var(--fp-shadow);
+      padding: 20px 24px; margin-bottom: 16px;
+    }
+    .fp-card h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+    .fp-kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .fp-kpi { background: var(--fp-bg); border-radius: 8px; padding: 14px 16px; }
+    .fp-kpi-val { font-size: 24px; font-weight: 800; }
+    .fp-kpi-label { font-size: 12px; color: var(--fp-text-muted); margin-top: 4px; }
+    pre { font-size: 12px; color: var(--fp-text-muted); background: var(--fp-bg); border-radius: 8px; padding: 14px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+
+    .fp-print-btn {
+      float: right; padding: 8px 16px; border: 1px solid var(--fp-border);
+      border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer;
+      background: var(--fp-surface); color: var(--fp-text);
+    }
+    .fp-print-btn:hover { border-color: var(--fp-accent); color: var(--fp-accent); }
+    @media print { .fp-topbar, .fp-print-btn { display: none!important; } }
+  </style>
+</head>
+<body>
+  <nav class="fp-topbar">
+    <a href="/" class="fp-topbar-logo">
+      <div class="fp-topbar-logo-icon">⚡</div>
+      FlowPoint
+    </a>
+    <span class="fp-topbar-badge">Rapport partagé</span>
+  </nav>
+
+  <main class="fp-main">
+    <div class="fp-spinner-page" id="fp-loading">
+      <div class="fp-spinner"></div>
+      <span class="fp-spinner-label">Chargement du rapport…</span>
+    </div>
+
+    <div class="fp-error-page" id="fp-error">
+      <div class="fp-icon">🔒</div>
+      <h1>Rapport introuvable</h1>
+      <p id="fp-error-msg">Ce rapport n'existe pas ou le lien de partage a expiré.</p>
+    </div>
+
+    <div id="fp-report-content">
+      <div class="fp-report-header">
+        <button class="fp-print-btn" onclick="window.print()">🖨️ Imprimer</button>
+        <div class="fp-report-title" id="fp-report-title">Rapport d'analyse</div>
+        <div class="fp-report-meta" id="fp-report-meta"></div>
+      </div>
+      <div id="fp-report-body"></div>
+    </div>
+  </main>
+
+  <script src="fp-config.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      function show(id) {
+        ['fp-loading', 'fp-error', 'fp-report-content'].forEach(function (s) {
+          document.getElementById(s).style.display = s === id ? (id === 'fp-loading' ? 'flex' : 'block') : 'none';
+        });
+      }
+
+      function renderReport(data) {
+        document.getElementById('fp-report-title').textContent = data.title || 'Rapport d\'analyse';
+        var meta = document.getElementById('fp-report-meta');
+        var parts = [];
+        if (data.url) parts.push(data.url);
+        if (data.createdAt) parts.push(new Date(data.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }));
+        if (data.orgName) parts.push(data.orgName);
+        meta.innerHTML = parts.map(function (p) { return '<span>' + p + '</span>'; }).join('');
+
+        var body = document.getElementById('fp-report-body');
+        body.innerHTML = '';
+
+        if (data.summary) {
+          var card = document.createElement('div');
+          card.className = 'fp-card';
+          card.innerHTML = '<h2>Résumé</h2><p style="font-size:14px;line-height:1.7;color:var(--fp-text-muted)">' + data.summary + '</p>';
+          body.appendChild(card);
+        }
+
+        if (data.kpis && Object.keys(data.kpis).length) {
+          var kpiCard = document.createElement('div');
+          kpiCard.className = 'fp-card';
+          var grid = '<h2>Indicateurs clés</h2><div class="fp-kpi-grid">';
+          Object.entries(data.kpis).forEach(function (e) {
+            grid += '<div class="fp-kpi"><div class="fp-kpi-val">' + e[1] + '</div><div class="fp-kpi-label">' + e[0] + '</div></div>';
+          });
+          grid += '</div>';
+          kpiCard.innerHTML = grid;
+          body.appendChild(kpiCard);
+        }
+
+        if (data.sections && data.sections.length) {
+          data.sections.forEach(function (sec) {
+            var c = document.createElement('div');
+            c.className = 'fp-card';
+            var html = '<h2>' + (sec.title || 'Section') + '</h2>';
+            if (sec.content) html += '<p style="font-size:14px;line-height:1.7;color:var(--fp-text-muted)">' + sec.content + '</p>';
+            if (sec.items && sec.items.length) {
+              html += '<ul style="list-style:none;margin-top:12px">';
+              sec.items.forEach(function (item) {
+                html += '<li style="font-size:13px;padding:5px 0;border-bottom:1px solid var(--fp-border);color:var(--fp-text-muted)">• ' + item + '</li>';
+              });
+              html += '</ul>';
+            }
+            c.innerHTML = html;
+            body.appendChild(c);
+          });
+        }
+
+        if (body.children.length === 0) {
+          var raw = document.createElement('div');
+          raw.className = 'fp-card';
+          raw.innerHTML = '<h2>Données</h2><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+          body.appendChild(raw);
+        }
+
+        show('fp-report-content');
+      }
+
+      var parts = window.location.pathname.split('/');
+      var token = parts[parts.length - 1] || new URLSearchParams(window.location.search).get('token');
+
+      if (!token || token === 'report-view.html') {
+        document.getElementById('fp-error-msg').textContent = 'Aucun identifiant de rapport trouvé dans l\'URL.';
+        show('fp-error');
+        return;
+      }
+
+      fetch('/api/reports/share/' + encodeURIComponent(token), { credentials: 'include' })
+        .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+        .then(function (r) {
+          if (r.ok && r.data) {
+            renderReport(r.data);
+          } else {
+            document.getElementById('fp-error-msg').textContent = (r.data && r.data.error) || 'Rapport introuvable ou expiré.';
+            show('fp-error');
+          }
+        })
+        .catch(function () {
+          document.getElementById('fp-error-msg').textContent = 'Impossible de charger le rapport.';
+          show('fp-error');
+        });
+    })();
+  </script>
+</body>
+</html>
