@@ -1,0 +1,9 @@
+- [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
+- [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
+- [FlowPoint isDemoMode pattern](flowpoint-demodmode.md) — all Math.random fake data must be isDemoMode()-gated; import from services/mock-data.js
+- [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 29k-line file; use sed -n for large offsets, always get exact context before editing
+- [FlowPoint dynamic dates](flowpoint-dynamic-dates.md) — CUR_MONTH/PREV_MONTH constants at IIFE top; all section titles use these, never hardcode month strings
+- [Public vs Protected Routes](public-routes-pattern.md) — behavioral snippet/event/session and SSO SAML endpoints must be on publicBehavioralRouter/publicSsoRouter before requireAuth in routes/index.ts
+- [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
+- [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing-service needs prod guard (throw/503) when Stripe key missing; SSRF runs after auth (401 before URL validation = correct); auth rate limit 10/15min per IP; ai-worker buildFallbackResult returns generic recs tagged mock:true on OpenAI failure
+- [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers

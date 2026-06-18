@@ -1,0 +1,412 @@
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import {
+  pgTable, text, integer, boolean, timestamp, real, bigint, jsonb,
+} from "drizzle-orm/pg-core";
+
+// ── Connection ────────────────────────────────────────────────────────────────
+
+export const pool = new Pool({
+  connectionString: process.env["DATABASE_URL"] ?? process.env["MONGO_URI"],
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+});
+
+// ── Schema ────────────────────────────────────────────────────────────────────
+
+export const auditsTable = pgTable("audits", {
+  id:         text("id").primaryKey(),
+  url:        text("url").notNull(),
+  score:      integer("score").notNull().default(0),
+  status:     text("status").notNull().default("processing"),
+  speed:      integer("speed").notNull().default(0),
+  date:       text("date").notNull(),
+  issues:     integer("issues").notNull().default(0),
+  origin:     text("origin").default("manual"),
+  createdAt:  timestamp("created_at").defaultNow(),
+});
+
+export const auditSchedulesTable = pgTable("audit_schedules", {
+  id:         text("id").primaryKey(),
+  url:        text("url").notNull(),
+  frequency:  text("frequency").notNull().default("weekly"),
+  nextRun:    timestamp("next_run"),
+  lastRun:    timestamp("last_run"),
+  enabled:    boolean("enabled").notNull().default(true),
+  orgId:      text("org_id").notNull().default("default"),
+  createdAt:  timestamp("created_at").defaultNow(),
+});
+
+export const monitorsTable = pgTable("monitors", {
+  id:           text("id").primaryKey(),
+  name:         text("name").notNull(),
+  url:          text("url").notNull(),
+  status:       text("status").notNull().default("up"),
+  uptime:       real("uptime").notNull().default(100),
+  latency:      integer("latency").notNull().default(0),
+  lastCheck:    text("last_check"),
+  alertEmail:   text("alert_email").default(""),
+  alertPhone:   text("alert_phone").default(""),
+  isCritical:   boolean("is_critical").notNull().default(false),
+  frequency:    text("frequency").notNull().default("5min"),
+  lastAlertSent: timestamp("last_alert_sent"),
+  createdAt:    timestamp("created_at").defaultNow(),
+});
+
+export const monitorChecksTable = pgTable("monitor_checks", {
+  id:        text("id").primaryKey(),
+  monitorId: text("monitor_id").notNull(),
+  checkedAt: bigint("checked_at", { mode: "number" }).notNull(),
+  ok:        boolean("ok").notNull(),
+  latency:   integer("latency").default(0),
+  statusCode: integer("status_code"),
+  error:     text("error"),
+});
+
+export const reportsTable = pgTable("reports", {
+  id:               text("id").primaryKey(),
+  name:             text("name").notNull(),
+  type:             text("type").notNull().default("PDF"),
+  date:             text("date").notNull(),
+  pages:            integer("pages").notNull().default(0),
+  shared:           boolean("shared").notNull().default(false),
+  auditId:          text("audit_id").default(""),
+  whiteLabel:       boolean("white_label").notNull().default(false),
+  pdfReady:         boolean("pdf_ready").notNull().default(false),
+  meetingNotesJson: text("meeting_notes_json").default("[]"),
+  dateStart:        text("date_start").default(""),
+  dateEnd:          text("date_end").default(""),
+  createdAt:        timestamp("created_at").defaultNow(),
+});
+
+export const shareTokensTable = pgTable("share_tokens", {
+  id:        text("id").primaryKey(),
+  token:     text("token").notNull(),
+  type:      text("type").notNull().default("report"),
+  targetId:  text("target_id").notNull(),
+  orgId:     text("org_id").default("default"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const competitorsTable = pgTable("competitors", {
+  id:          text("id").primaryKey(),
+  name:        text("name").notNull(),
+  url:         text("url").notNull(),
+  domainRating: integer("domain_rating").notNull().default(0),
+  keywords:    integer("keywords").notNull().default(0),
+  traffic:     integer("traffic").notNull().default(0),
+  threatLevel: text("threat_level").notNull().default("low"),
+  delta:       integer("delta").default(0),
+  createdAt:   timestamp("created_at").defaultNow(),
+});
+
+export const keywordsTable = pgTable("keywords", {
+  id:           text("id").primaryKey(),
+  keyword:      text("keyword").notNull(),
+  position:     integer("position"),
+  prevPosition: integer("prev_position"),
+  volume:       integer("volume").default(0),
+  difficulty:   integer("difficulty").default(0),
+  trend:        text("trend").default("stable"),
+  tag:          text("tag"),
+  intent:       text("intent"),
+  createdAt:    timestamp("created_at").defaultNow(),
+});
+
+export const alertRulesTable = pgTable("alert_rules", {
+  id:          text("id").primaryKey(),
+  name:        text("name").notNull(),
+  type:        text("type").notNull(),
+  operator:    text("operator").notNull().default("lt"),
+  threshold:   real("threshold").notNull().default(0),
+  durationMin: integer("duration_min").notNull().default(0),
+  channels:    text("channels").notNull().default('["email"]'),
+  siteUrls:    text("site_urls").notNull().default("[]"),
+  enabled:     boolean("enabled").notNull().default(true),
+  createdAt:   timestamp("created_at").defaultNow(),
+});
+
+export const teamMembersTable = pgTable("team_members", {
+  id:        text("id").primaryKey(),
+  name:      text("name").notNull(),
+  email:     text("email").notNull(),
+  role:      text("role").notNull().default("viewer"),
+  joined:    text("joined"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const teamMessagesTable = pgTable("team_messages", {
+  id:         text("id").primaryKey(),
+  content:    text("content").notNull(),
+  senderId:   text("sender_id").notNull(),
+  senderName: text("sender_name").notNull(),
+  type:       text("type").default("text"),
+  channel:    text("channel").default("general"),
+  createdAt:  timestamp("created_at").defaultNow(),
+});
+
+export const notificationsTable = pgTable("notifications", {
+  id:        text("id").primaryKey(),
+  type:      text("type").notNull().default("info"),
+  title:     text("title").notNull(),
+  message:   text("message").notNull(),
+  read:      boolean("read").notNull().default(false),
+  link:      text("link"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const connectorsTable = pgTable("connectors", {
+  id:           text("id").primaryKey(),
+  provider:     text("provider").notNull(),
+  status:       text("status").notNull().default("disconnected"),
+  connected:    boolean("connected").notNull().default(false),
+  accessToken:  text("access_token"),
+  refreshToken: text("refresh_token"),
+  webhookSecret: text("webhook_secret"),
+  config:       text("config").default("{}"),
+  lastSync:     text("last_sync"),
+  syncStatus:   text("sync_status"),
+  createdAt:    timestamp("created_at").defaultNow(),
+});
+
+export const automationWorkflowsTable = pgTable("automation_workflows", {
+  id:            text("id").primaryKey(),
+  orgId:         text("org_id").notNull().default("default"),
+  name:          text("name").notNull(),
+  icon:          text("icon").default("⚡"),
+  description:   text("description"),
+  triggerType:   text("trigger_type").notNull(),
+  triggerConfig: jsonb("trigger_config").default({}),
+  actions:       jsonb("actions").default([]),
+  enabled:       boolean("enabled").notNull().default(true),
+  runsCount:     integer("runs_count").notNull().default(0),
+  category:      text("category").default("general"),
+  updatedAt:     timestamp("updated_at").defaultNow(),
+  createdAt:     timestamp("created_at").defaultNow(),
+});
+
+export const workflowRunsTable = pgTable("workflow_runs", {
+  id:          text("id").primaryKey(),
+  workflowId:  text("workflow_id").notNull(),
+  status:      text("status").notNull().default("pending"),
+  startedAt:   timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  error:       text("error"),
+  output:      jsonb("output"),
+});
+
+export const orgAddonsTable = pgTable("org_addons", {
+  id:          text("id").primaryKey(),
+  orgId:       text("org_id").notNull().default("default"),
+  addonKey:    text("addon_key").notNull(),
+  active:      boolean("active").notNull().default(false),
+  activatedAt: timestamp("activated_at"),
+  metadata:    jsonb("metadata").default({}),
+  updatedAt:   timestamp("updated_at").defaultNow(),
+  createdAt:   timestamp("created_at").defaultNow(),
+});
+
+export const behaviorEventsTable = pgTable("behavior_events", {
+  id:          text("id").primaryKey(),
+  sessionId:   text("session_id").notNull(),
+  siteUrl:     text("site_url").notNull(),
+  page:        text("page").notNull(),
+  eventType:   text("event_type").notNull(),
+  element:     text("element"),
+  xPos:        integer("x_pos"),
+  yPos:        integer("y_pos"),
+  scrollDepth: integer("scroll_depth"),
+  timeOnPage:  integer("time_on_page"),
+  metadata:    jsonb("metadata"),
+  createdAt:   timestamp("created_at").defaultNow(),
+});
+
+export const behaviorSessionsTable = pgTable("behavior_sessions", {
+  id:              text("id").primaryKey(),
+  siteUrl:         text("site_url").notNull(),
+  userAgent:       text("user_agent"),
+  deviceType:      text("device_type").default("desktop"),
+  country:         text("country"),
+  pageViews:       integer("page_views").notNull().default(1),
+  bounce:          boolean("bounce").notNull().default(true),
+  engagementScore: integer("engagement_score").notNull().default(0),
+  rageClicks:      integer("rage_clicks").notNull().default(0),
+  createdAt:       timestamp("created_at").defaultNow(),
+});
+
+export const behaviorInsightsTable = pgTable("behavior_insights", {
+  id:             text("id").primaryKey(),
+  siteUrl:        text("site_url").notNull(),
+  insightType:    text("insight_type").notNull(),
+  severity:       text("severity").notNull().default("medium"),
+  title:          text("title").notNull(),
+  description:    text("description").notNull(),
+  affectedPages:  jsonb("affected_pages").default([]),
+  estimatedImpact: text("estimated_impact"),
+  aiSuggestion:   text("ai_suggestion"),
+  createdAt:      timestamp("created_at").defaultNow(),
+});
+
+export const behaviorSiteTokensTable = pgTable("behavior_site_tokens", {
+  id:         text("id").primaryKey(),
+  siteUrl:    text("site_url").notNull(),
+  tokenHash:  text("token_hash").notNull(),
+  siteSecret: text("site_secret").notNull(),
+  orgId:      text("org_id").default("default"),
+  active:     boolean("active").notNull().default(true),
+  createdAt:  timestamp("created_at").defaultNow(),
+});
+
+export const croRecommendationsTable = pgTable("cro_recommendations", {
+  id:              text("id").primaryKey(),
+  siteUrl:         text("site_url").notNull(),
+  page:            text("page").notNull(),
+  type:            text("type").notNull(),
+  priority:        text("priority").notNull().default("medium"),
+  title:           text("title").notNull(),
+  description:     text("description"),
+  implementation:  text("implementation"),
+  estimatedUplift: real("estimated_uplift").default(0),
+  status:          text("status").notNull().default("pending"),
+  aiGenerated:     text("ai_generated").default("false"),
+  metadata:        jsonb("metadata").default({}),
+  createdAt:       timestamp("created_at").defaultNow(),
+});
+
+export const croScoresTable = pgTable("cro_scores", {
+  id:           text("id").primaryKey(),
+  siteUrl:      text("site_url").notNull(),
+  page:         text("page").notNull(),
+  score:        integer("score").notNull().default(50),
+  frictionScore: integer("friction_score").default(50),
+  ctaScore:     integer("cta_score").default(50),
+  formScore:    integer("form_score").default(50),
+  mobileScore:  integer("mobile_score").default(50),
+  copyScore:    integer("copy_score").default(50),
+  updatedAt:    timestamp("updated_at").defaultNow(),
+});
+
+export const croExperimentsTable = pgTable("cro_experiments", {
+  id:             text("id").primaryKey(),
+  siteUrl:        text("site_url").notNull(),
+  page:           text("page").notNull(),
+  name:           text("name").notNull(),
+  type:           text("type").default("a_b"),
+  status:         text("status").notNull().default("draft"),
+  controlVariant: jsonb("control_variant").default({}),
+  testVariant:    jsonb("test_variant").default({}),
+  winner:         text("winner"),
+  startedAt:      timestamp("started_at"),
+  endedAt:        timestamp("ended_at"),
+  createdAt:      timestamp("created_at").defaultNow(),
+});
+
+export const revenueLeaksTable = pgTable("revenue_leaks", {
+  id:           text("id").primaryKey(),
+  siteUrl:      text("site_url"),
+  type:         text("type").notNull().default("conversion"),
+  title:        text("title").notNull(),
+  description:  text("description"),
+  severity:     text("severity").notNull().default("medium"),
+  estimatedLoss: real("estimated_loss").default(0),
+  status:       text("status").notNull().default("active"),
+  resolvedAt:   timestamp("resolved_at"),
+  createdAt:    timestamp("created_at").defaultNow(),
+});
+
+export const reportTemplatesTable = pgTable("report_templates", {
+  id:                    text("id").primaryKey(),
+  orgId:                 text("org_id").notNull().default("default"),
+  name:                  text("name").notNull(),
+  logoUrl:               text("logo_url"),
+  primaryColor:          text("primary_color").default("#2563EB"),
+  secondaryColor:        text("secondary_color").default("#22c55e"),
+  font:                  text("font").default("Inter"),
+  footerText:            text("footer_text"),
+  headerText:            text("header_text"),
+  hideFlowpointBranding: boolean("hide_flowpoint_branding").default(false),
+  isDefault:             boolean("is_default").default(false),
+  updatedAt:             timestamp("updated_at").defaultNow(),
+  createdAt:             timestamp("created_at").defaultNow(),
+});
+
+export const customDomainsTable = pgTable("custom_domains", {
+  id:                text("id").primaryKey(),
+  orgId:             text("org_id").notNull().default("default"),
+  domain:            text("domain").notNull(),
+  status:            text("status").notNull().default("pending"),
+  verificationToken: text("verification_token"),
+  sslStatus:         text("ssl_status").default("pending"),
+  verifiedAt:        timestamp("verified_at"),
+  createdAt:         timestamp("created_at").defaultNow(),
+});
+
+export const reportExportsTable = pgTable("report_exports", {
+  id:        text("id").primaryKey(),
+  reportId:  text("report_id").notNull(),
+  orgId:     text("org_id").default("default"),
+  format:    text("format").notNull().default("pdf"),
+  url:       text("url"),
+  size:      integer("size").default(0),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const aiUsageLogsTable = pgTable("ai_usage_logs", {
+  id:          text("id").primaryKey(),
+  orgId:       text("org_id").notNull().default("default"),
+  userId:      text("user_id"),
+  feature:     text("feature").notNull(),
+  model:       text("model").notNull().default("gpt-4o-mini"),
+  tokensUsed:  integer("tokens_used").notNull().default(0),
+  creditsUsed: integer("credits_used").notNull().default(0),
+  costEur:     real("cost_eur").notNull().default(0),
+  metadata:    jsonb("metadata").default({}),
+  createdAt:   timestamp("created_at").defaultNow(),
+});
+
+export const aiMonthlyUsageTable = pgTable("ai_monthly_usage", {
+  id:           text("id").primaryKey(),
+  orgId:        text("org_id").notNull().default("default"),
+  month:        text("month").notNull(),
+  creditsUsed:  integer("credits_used").notNull().default(0),
+  creditsLimit: integer("credits_limit").notNull().default(100000),
+  creditsExtra: integer("credits_extra").notNull().default(0),
+  costEur:      real("cost_eur").notNull().default(0),
+  requestCount: integer("request_count").notNull().default(0),
+  tokensUsed:   integer("tokens_used").notNull().default(0),
+});
+
+export const aiAlertsTable = pgTable("ai_alerts", {
+  id:        text("id").primaryKey(),
+  orgId:     text("org_id").notNull().default("default"),
+  type:      text("type").notNull().default("usage_warning"),
+  title:     text("title").notNull(),
+  message:   text("message").notNull(),
+  severity:  text("severity").notNull().default("warning"),
+  read:      boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ── Drizzle instance ──────────────────────────────────────────────────────────
+
+const schema = {
+  auditsTable, auditSchedulesTable,
+  monitorsTable, monitorChecksTable,
+  reportsTable, shareTokensTable,
+  competitorsTable, keywordsTable,
+  alertRulesTable,
+  teamMembersTable, teamMessagesTable,
+  notificationsTable, connectorsTable,
+  automationWorkflowsTable, workflowRunsTable,
+  orgAddonsTable,
+  behaviorEventsTable, behaviorSessionsTable, behaviorInsightsTable, behaviorSiteTokensTable,
+  croRecommendationsTable, croScoresTable, croExperimentsTable,
+  revenueLeaksTable,
+  reportTemplatesTable, customDomainsTable, reportExportsTable,
+  aiUsageLogsTable, aiMonthlyUsageTable, aiAlertsTable,
+};
+
+export const db = drizzle(pool, { schema });
