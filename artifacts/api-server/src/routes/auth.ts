@@ -4,6 +4,7 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { createSession, deleteSession, getSession, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
+import { Resend } from "resend";
 
 const router = Router();
 
@@ -62,15 +63,31 @@ function cleanExpired() {
   }
 }
 
+function getPublicUrl(): string {
+  return (
+    process.env["PUBLIC_BASE_URL"] ||
+    process.env["PUBLIC_URL"] ||
+    ""
+  ).replace(/\/$/, "");
+}
+
 async function sendMagicEmail(email: string, link: string): Promise<void> {
   const resendKey = process.env["RESEND_API_KEY"];
-  if (!resendKey) return;
+  if (!resendKey) {
+    logger.warn("[Auth] RESEND_API_KEY not set — skipping email send");
+    return;
+  }
+
+  const fromEmail =
+    process.env["FROM_EMAIL"] ||
+    process.env["ALERT_EMAIL_FROM"] ||
+    process.env["EMAIL_FROM"] ||
+    "noreply@flowpoint.pro";
 
   try {
-    const { Resend } = await import("resend");
     const resend = new Resend(resendKey);
-    await resend.emails.send({
-      from: process.env["FROM_EMAIL"] || "noreply@flowpoint.pro",
+    const result = await resend.emails.send({
+      from: fromEmail,
       to: email,
       subject: "Votre lien de connexion FlowPoint",
       html: `
@@ -82,21 +99,24 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
         </div>
       `,
     });
+    logger.info({ email, id: (result as { data?: { id?: string } }).data?.id }, "[Auth] Magic link email delivered");
   } catch (err) {
-    logger.warn({ err }, "[Auth] Failed to send magic link email");
+    logger.error({ err, email, from: fromEmail }, "[Auth] Resend email delivery failed");
+    throw err; // re-throw so the route handler can return a proper error
   }
 }
 
 router.post("/auth/login-request", authRateLimit, async (req: Request, res: Response) => {
-  const { email } = req.body as { email?: string };
-  if (!email || !String(email).includes("@")) {
+  const rawEmail = (req.body as { email?: string } | undefined)?.email;
+  if (!rawEmail || !String(rawEmail).includes("@")) {
     res.status(400).json({ error: "Email valide requis" });
     return;
   }
 
-  if (!isEmailAllowed(String(email))) {
+  const email = String(rawEmail).toLowerCase().trim();
+
+  if (!isEmailAllowed(email)) {
     logger.warn({ email }, "[Auth] Login rejected — email not on allowlist");
-    // Return a generic 200 so as not to enumerate valid addresses
     res.json({ ok: true, message: "Lien envoyé par email" });
     return;
   }
@@ -104,17 +124,23 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
   cleanExpired();
 
   const token = generateToken();
-  magicTokens.set(token, { email: String(email).toLowerCase().trim(), expiresAt: Date.now() + 15 * 60_000, used: false });
+  magicTokens.set(token, { email, expiresAt: Date.now() + 15 * 60_000, used: false });
 
-  const publicUrl = process.env["PUBLIC_URL"] || "";
+  const publicUrl = getPublicUrl();
   const verifyPath = `${publicUrl}/login-verify.html?token=${token}`;
   const resendKey = process.env["RESEND_API_KEY"];
   const isProduction = process.env["NODE_ENV"] === "production";
 
   if (resendKey) {
-    await sendMagicEmail(email, verifyPath);
-    logger.info({ email }, "[Auth] Magic link email sent");
-    res.json({ ok: true, message: "Lien envoyé par email" });
+    try {
+      await sendMagicEmail(email, verifyPath);
+      logger.info({ email }, "[Auth] Magic link email sent");
+      res.json({ ok: true, message: "Lien envoyé par email" });
+    } catch (err) {
+      logger.error({ err, email }, "[Auth] login-request: sendMagicEmail threw");
+      res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019email. Veuillez r\u00E9essayer ou utiliser Google." });
+    }
+    return;
   } else if (!isProduction) {
     logger.warn({ email }, "[Auth] No RESEND_API_KEY — returning debugLink (dev only)");
     res.json({ ok: true, debugLink: verifyPath, message: "Mode debug: lien retourné directement" });
@@ -404,13 +430,36 @@ router.post("/auth/logout", (req: Request, res: Response) => {
   res.json({ ok: true, message: "Session terminée" });
 });
 
+// ── Apple Sign In (stub — requires APPLE_CLIENT_ID + APPLE_TEAM_ID + private key) ─
+router.get("/auth/apple/login", (req: Request, res: Response) => {
+  const clientId = process.env["APPLE_CLIENT_ID"] || "";
+  if (!clientId) {
+    res.status(503).json({ error: "Apple Sign In not configured" });
+    return;
+  }
+  const redirectUri =
+    process.env["APPLE_AUTH_REDIRECT_URI"] ||
+    `${getPublicUrl()}/api/auth/apple/callback`;
+  const state = Buffer.from(JSON.stringify({ ts: Date.now() })).toString("base64url");
+  const url = new URL("https://appleid.apple.com/auth/authorize");
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("response_mode", "form_post");
+  url.searchParams.set("scope", "name email");
+  url.searchParams.set("state", state);
+  res.redirect(url.toString());
+});
+
 router.get("/auth/providers", (_req: Request, res: Response) => {
   const googleConfigured = !!(process.env["GOOGLE_CLIENT_ID"] && process.env["GOOGLE_CLIENT_SECRET"]);
+  const appleConfigured  = !!(process.env["APPLE_CLIENT_ID"]);
   const githubConfigured = !!(process.env["GITHUB_CLIENT_ID"] && process.env["GITHUB_CLIENT_SECRET"]);
 
   res.json({
     providers: [
       { id: "google", name: "Google", configured: googleConfigured, loginUrl: "/api/auth/google/login" },
+      { id: "apple",  name: "Apple",  configured: appleConfigured,  loginUrl: "/api/auth/apple/login"  },
       { id: "github", name: "GitHub", configured: githubConfigured, loginUrl: "/api/auth/github/login" },
       { id: "magic-link", name: "Email (Magic Link)", configured: true, loginUrl: "/api/auth/login-request" },
     ],

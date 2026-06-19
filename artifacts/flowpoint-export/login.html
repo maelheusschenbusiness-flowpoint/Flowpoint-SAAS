@@ -22,7 +22,6 @@
       --fp-input-bg: #f8faff;
       --fp-divider: rgba(0,0,0,0.08);
     }
-
     @media (prefers-color-scheme: dark) {
       :root {
         --fp-bg: #050810;
@@ -49,22 +48,15 @@
       padding: 16px;
     }
 
-    .fp-login-wrap {
-      width: 100%;
-      max-width: 420px;
-    }
+    .fp-login-wrap { width: 100%; max-width: 420px; }
 
     .fp-logo {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 11px;
       justify-content: center;
       margin-bottom: 32px;
       text-decoration: none;
-    }
-    .fp-logo-icon {
-      width: 40px; height: 40px;
-      flex-shrink: 0;
     }
     .fp-logo-name {
       font-size: 22px;
@@ -81,143 +73,70 @@
       padding: 36px 32px 32px;
     }
 
-    h1 {
-      font-size: 21px;
-      font-weight: 700;
-      margin-bottom: 6px;
-      text-align: center;
-    }
-    .fp-subtitle {
-      font-size: 14px;
-      color: var(--fp-text-muted);
-      text-align: center;
-      margin-bottom: 28px;
-    }
+    h1 { font-size: 21px; font-weight: 700; margin-bottom: 6px; text-align: center; }
+    .fp-subtitle { font-size: 14px; color: var(--fp-text-muted); text-align: center; margin-bottom: 28px; }
 
-    .fp-form-group {
-      margin-bottom: 14px;
-    }
-    label {
-      display: block;
-      font-size: 13px;
-      font-weight: 500;
-      margin-bottom: 6px;
-      color: var(--fp-text-muted);
-    }
+    .fp-form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--fp-text-muted); }
     input[type="email"] {
-      width: 100%;
-      padding: 11px 14px;
-      font-size: 14px;
-      border: 1px solid var(--fp-border);
-      border-radius: 8px;
-      background: var(--fp-input-bg);
-      color: var(--fp-text);
-      outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
+      width: 100%; padding: 11px 14px; font-size: 14px;
+      border: 1px solid var(--fp-border); border-radius: 8px;
+      background: var(--fp-input-bg); color: var(--fp-text);
+      outline: none; transition: border-color 0.15s, box-shadow 0.15s;
     }
-    input[type="email"]:focus {
-      border-color: var(--fp-accent);
-      box-shadow: 0 0 0 3px rgba(37,99,235,0.14);
-    }
+    input[type="email"]:focus { border-color: var(--fp-accent); box-shadow: 0 0 0 3px rgba(37,99,235,0.14); }
     input[type="email"]::placeholder { color: var(--fp-text-muted); opacity: 0.6; }
 
     .fp-btn {
-      width: 100%;
-      padding: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.15s, transform 0.1s, opacity 0.15s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 9px;
+      width: 100%; padding: 12px; font-size: 14px; font-weight: 600;
+      border: none; border-radius: 8px; cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      display: flex; align-items: center; justify-content: center; gap: 9px;
     }
     .fp-btn:active { transform: scale(0.98); }
     .fp-btn + .fp-btn { margin-top: 10px; }
 
-    .fp-btn-primary {
-      background: var(--fp-accent);
-      color: #fff;
-    }
+    .fp-btn-primary { background: var(--fp-accent); color: #fff; }
     .fp-btn-primary:hover { background: var(--fp-accent-hover); }
     .fp-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
-    .fp-btn-oauth {
-      background: var(--fp-btn-bg);
-      color: var(--fp-text);
-      border: 1px solid var(--fp-border);
-    }
+    .fp-btn-oauth { background: var(--fp-btn-bg); color: var(--fp-text); border: 1px solid var(--fp-border); }
     .fp-btn-oauth:hover { background: var(--fp-btn-hover); }
 
-    .fp-oauth-icon {
-      width: 18px; height: 18px;
-      flex-shrink: 0;
+    .fp-btn-apple { background: #000; color: #fff; border: 1px solid #000; }
+    .fp-btn-apple:hover { background: #1a1a1a; }
+    @media (prefers-color-scheme: dark) {
+      .fp-btn-apple { background: #fff; color: #000; border: 1px solid #fff; }
+      .fp-btn-apple:hover { background: #f0f0f0; }
     }
+
+    .fp-oauth-icon { width: 18px; height: 18px; flex-shrink: 0; }
 
     .fp-divider {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin: 22px 0;
-      color: var(--fp-text-muted);
-      font-size: 12px;
+      display: flex; align-items: center; gap: 12px;
+      margin: 22px 0; color: var(--fp-text-muted); font-size: 12px;
     }
-    .fp-divider::before, .fp-divider::after {
-      content: '';
-      flex: 1;
-      border-top: 1px solid var(--fp-divider);
-    }
+    .fp-divider::before, .fp-divider::after { content: ''; flex: 1; border-top: 1px solid var(--fp-divider); }
 
     .fp-alert {
-      display: none;
-      padding: 12px 14px;
-      border-radius: 8px;
-      font-size: 13px;
-      margin-bottom: 16px;
-      line-height: 1.55;
+      display: none; padding: 12px 14px; border-radius: 8px;
+      font-size: 13px; margin-bottom: 16px; line-height: 1.55;
     }
-    .fp-alert-success {
-      background: rgba(16,185,129,0.10);
-      border: 1px solid rgba(16,185,129,0.25);
-      color: #059669;
-    }
+    .fp-alert-success { background: rgba(16,185,129,0.10); border: 1px solid rgba(16,185,129,0.25); color: #059669; }
+    .fp-alert-error   { background: rgba(239,68,68,0.10);  border: 1px solid rgba(239,68,68,0.25);  color: #dc2626; }
     @media (prefers-color-scheme: dark) {
       .fp-alert-success { color: #34d399; }
-    }
-    .fp-alert-error {
-      background: rgba(239,68,68,0.10);
-      border: 1px solid rgba(239,68,68,0.25);
-      color: #dc2626;
-    }
-    @media (prefers-color-scheme: dark) {
-      .fp-alert-error { color: #f87171; }
+      .fp-alert-error   { color: #f87171; }
     }
 
-    .fp-footer {
-      margin-top: 22px;
-      text-align: center;
-      font-size: 12px;
-      color: var(--fp-text-muted);
-      line-height: 1.6;
-    }
-    .fp-footer a {
-      color: var(--fp-text-muted);
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
+    .fp-footer { margin-top: 22px; text-align: center; font-size: 12px; color: var(--fp-text-muted); line-height: 1.6; }
+    .fp-footer a { color: var(--fp-text-muted); text-decoration: underline; text-underline-offset: 2px; }
     .fp-footer a:hover { color: var(--fp-text); }
 
     .fp-spinner {
-      display: inline-block;
-      width: 15px; height: 15px;
-      border: 2px solid rgba(255,255,255,0.35);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      flex-shrink: 0;
+      display: inline-block; width: 15px; height: 15px;
+      border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+      border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -229,17 +148,7 @@
   <div class="fp-login-wrap">
 
     <a class="fp-logo" href="https://flowpoint.pro/" target="_blank" rel="noopener noreferrer" aria-label="FlowPoint">
-      <svg class="fp-logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect width="40" height="40" rx="10" fill="url(#fp-grad)"/>
-        <defs>
-          <linearGradient id="fp-grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#2563eb"/>
-            <stop offset="1" stop-color="#7c3aed"/>
-          </linearGradient>
-        </defs>
-        <path d="M11 20 Q14 13 20 13 Q26 13 29 20 Q26 27 20 27 Q14 27 11 20Z" stroke="white" stroke-width="2" fill="none" stroke-linejoin="round"/>
-        <circle cx="20" cy="20" r="3.5" fill="white"/>
-      </svg>
+      <img src="/assets/flowpoint-logo.svg" width="40" height="40" alt="FlowPoint" style="flex-shrink:0"/>
       <span class="fp-logo-name">FlowPoint</span>
     </a>
 
@@ -265,7 +174,7 @@
       <div class="fp-divider" id="fp-oauth-divider">ou</div>
 
       <div id="fp-oauth-btns">
-        <button class="fp-btn fp-btn-oauth fp-hidden" id="fp-google-btn" data-provider="google">
+        <button class="fp-btn fp-btn-oauth fp-hidden" id="fp-google-btn" data-loginurl="/api/auth/google/login">
           <svg class="fp-oauth-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -275,7 +184,14 @@
           Continuer avec Google
         </button>
 
-        <button class="fp-btn fp-btn-oauth fp-hidden" id="fp-github-btn" data-provider="github">
+        <button class="fp-btn fp-btn-apple fp-hidden" id="fp-apple-btn" data-loginurl="/api/auth/apple/login">
+          <svg class="fp-oauth-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98l-.09.06c-.22.15-2.19 1.28-2.17 3.82.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.36 2.75M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/>
+          </svg>
+          Continuer avec Apple
+        </button>
+
+        <button class="fp-btn fp-btn-oauth fp-hidden" id="fp-github-btn" data-loginurl="/api/auth/github/login">
           <svg class="fp-oauth-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.757-1.333-1.757-1.089-.744.084-.729.084-.729 1.205.084 1.84 1.236 1.84 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.467-1.332-5.467-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.605-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
           </svg>
@@ -287,8 +203,8 @@
 
     <div class="fp-footer">
       En vous connectant, vous acceptez nos
-      <a href="https://flowpoint.pro/legal/terms" target="_blank" rel="noopener noreferrer">Conditions d'utilisation</a>
-      et notre <a href="https://flowpoint.pro/legal/privacy" target="_blank" rel="noopener noreferrer">Politique de confidentialité</a>.
+      <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener noreferrer">Conditions d'utilisation</a>
+      et notre <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener noreferrer">Politique de confidentialité</a>.
     </div>
 
   </div>
@@ -298,15 +214,12 @@
   (function () {
     'use strict';
 
-    var form       = document.getElementById('fp-login-form');
-    var emailIn    = document.getElementById('fp-email');
-    var submitBtn  = document.getElementById('fp-submit-btn');
-    var successEl  = document.getElementById('fp-success');
-    var errorEl    = document.getElementById('fp-error');
-    var googleBtn  = document.getElementById('fp-google-btn');
-    var githubBtn  = document.getElementById('fp-github-btn');
-    var oauthDiv   = document.getElementById('fp-oauth-divider');
-    var oauthBtns  = document.getElementById('fp-oauth-btns');
+    var form      = document.getElementById('fp-login-form');
+    var emailIn   = document.getElementById('fp-email');
+    var submitBtn = document.getElementById('fp-submit-btn');
+    var successEl = document.getElementById('fp-success');
+    var errorEl   = document.getElementById('fp-error');
+    var oauthDiv  = document.getElementById('fp-oauth-divider');
 
     function showError(msg) {
       errorEl.textContent = msg;
@@ -322,28 +235,27 @@
       errorEl.style.display = 'none';
       successEl.style.display = 'none';
     }
-
     function setLoading(loading) {
       submitBtn.disabled = loading;
       submitBtn.innerHTML = loading
-        ? '<span class="fp-spinner"></span>Envoi en cours\u2026'
+        ? '<span class="fp-spinner"></span>Envoi\u2026'
         : 'Recevoir le lien de connexion';
     }
 
-    /* ── Handle ?error= param from OAuth callback redirects ── */
-    (function checkUrlError() {
-      var params = new URLSearchParams(window.location.search);
-      var err = params.get('error');
-      if (!err) return;
+    /* ── Show ?error= from OAuth callback ── */
+    (function () {
+      var p = new URLSearchParams(window.location.search);
+      var e = p.get('error');
+      if (!e) return;
       var msgs = {
-        google_auth_failed : 'Échec de la connexion Google. Réessayez.',
-        missing_code       : 'Connexion annulée ou code manquant.',
-        access_denied      : 'Accès refusé. Réessayez.',
+        google_auth_failed : '\u00C9chec Google. R\u00E9essayez.',
+        missing_code       : 'Connexion annul\u00E9e.',
+        access_denied      : 'Acc\u00E8s refus\u00E9.',
       };
-      showError(msgs[err] || 'Erreur de connexion : ' + err.replace(/_/g, ' ') + '.');
+      showError(msgs[e] || 'Erreur : ' + e.replace(/_/g, ' ') + '.');
     })();
 
-    /* ── Magic link form submit ── */
+    /* ── Magic link form ── */
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       clearAlerts();
@@ -366,7 +278,7 @@
           form.style.display = 'none';
           showSuccess('\u2709\uFE0F Lien envoy\u00E9 \u00E0 ' + email + '. V\u00E9rifiez votre bo\u00EEte mail (et les spams).');
         } else if (r.status === 503) {
-          showError('Service e-mail temporairement indisponible. Utilisez Google ou GitHub pour vous connecter.');
+          showError('Service e-mail indisponible. Connectez-vous avec Google.');
         } else {
           showError(r.data.error || 'Une erreur est survenue. Veuillez r\u00E9essayer.');
         }
@@ -377,36 +289,28 @@
       });
     });
 
-    /* ── OAuth buttons: redirect directly (route now issues 302) ── */
-    function oauthClick(loginUrl) {
-      window.location.href = loginUrl;
-    }
-    googleBtn.addEventListener('click', function () { oauthClick('/api/auth/google/login'); });
-    githubBtn.addEventListener('click', function () { oauthClick('/api/auth/github/login'); });
+    /* ── OAuth buttons ── */
+    document.getElementById('fp-oauth-btns').addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-loginurl]');
+      if (btn) window.location.href = btn.getAttribute('data-loginurl');
+    });
 
-    /* ── Load available providers and show/hide buttons ── */
+    /* ── Load providers → show configured buttons only ── */
     fetch('/api/auth/providers', { credentials: 'include' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
+        var order = ['google', 'apple', 'github'];
         var hasOAuth = false;
-        (data.providers || []).forEach(function (p) {
-          if (p.id === 'google' && p.configured) {
-            googleBtn.classList.remove('fp-hidden');
-            hasOAuth = true;
-          }
-          if (p.id === 'github' && p.configured) {
-            githubBtn.classList.remove('fp-hidden');
-            hasOAuth = true;
+        order.forEach(function (id) {
+          var p = (data.providers || []).find(function (x) { return x.id === id; });
+          if (p && p.configured) {
+            var btn = document.getElementById('fp-' + id + '-btn');
+            if (btn) { btn.classList.remove('fp-hidden'); hasOAuth = true; }
           }
         });
-        if (!hasOAuth) {
-          oauthDiv.style.display = 'none';
-        }
+        if (!hasOAuth) oauthDiv.style.display = 'none';
       })
-      .catch(function () {
-        /* If /api/auth/providers fails, hide OAuth section entirely */
-        oauthDiv.style.display = 'none';
-      });
+      .catch(function () { oauthDiv.style.display = 'none'; });
 
   })();
   </script>
