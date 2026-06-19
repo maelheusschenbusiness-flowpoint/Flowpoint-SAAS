@@ -1863,7 +1863,7 @@ function openNewChannelPanel() {
   openFloatPanel('Nouveau canal', html);
 }
 
-function handleChatAttach(input) {
+async function handleChatAttach(input) {
   const files = Array.from(input.files || []);
   if (!files.length) return;
   const names = files.map(f => f.name).join(', ');
@@ -22115,7 +22115,7 @@ function renderMonitorsSLA() {
                 </div>
                 <div style="font-size:10.5px;color:var(--fp-text-muted)">${r.msg}</div>
               </div>
-            `).join('')}
+            `}).join('')}
           </div>
           <div style="margin-top:14px;padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;font-size:11px;color:var(--fp-text-muted)">
             ✦ Prévision IA : uptime global stable à 99.1% les 30 prochains jours si aucun nouveau incident critique.
@@ -22247,7 +22247,7 @@ function renderMonitorsSLA() {
                 <span style="font-size:11px;font-weight:600;color:var(--fp-text-muted)">${j.time}</span>
               </div>
             </div>
-          `).join('')}
+          `}).join('')}
         </div>
       ` : `
         <div style="text-align:center;padding:20px">

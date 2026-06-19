@@ -7,3 +7,4 @@
 - [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
 - [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing-service needs prod guard (throw/503) when Stripe key missing; SSRF runs after auth (401 before URL validation = correct); auth rate limit 10/15min per IP; ai-worker buildFallbackResult returns generic recs tagged mock:true on OpenAI failure
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
+- [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
