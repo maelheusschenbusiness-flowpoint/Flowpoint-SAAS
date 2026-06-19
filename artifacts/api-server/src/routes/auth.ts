@@ -238,7 +238,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
     state: Buffer.from(JSON.stringify({ ts: Date.now() })).toString("base64"),
   });
 
-  res.json({ ok: true, url: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
 router.get("/auth/google/callback", async (req: Request, res: Response) => {
@@ -313,7 +313,7 @@ router.get("/auth/github/login", (req: Request, res: Response) => {
   }
 
   const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read:user,user:email`;
-  res.json({ ok: true, url });
+  res.redirect(url);
 });
 
 router.get("/auth/github/callback", async (req: Request, res: Response) => {
