@@ -51,19 +51,11 @@
     .fp-login-wrap { width: 100%; max-width: 420px; }
 
     .fp-logo {
-      display: flex;
-      align-items: center;
-      gap: 11px;
-      justify-content: center;
-      margin-bottom: 32px;
+      display: flex; align-items: center; gap: 11px;
+      justify-content: center; margin-bottom: 32px;
       text-decoration: none;
     }
-    .fp-logo-name {
-      font-size: 22px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      color: var(--fp-text);
-    }
+    .fp-logo-name { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: var(--fp-text); }
 
     .fp-card {
       background: var(--fp-surface);
@@ -103,10 +95,10 @@
     .fp-btn-oauth { background: var(--fp-btn-bg); color: var(--fp-text); border: 1px solid var(--fp-border); }
     .fp-btn-oauth:hover { background: var(--fp-btn-hover); }
 
-    .fp-btn-apple { background: #000; color: #fff; border: 1px solid #000; }
+    .fp-btn-apple { background: #000; color: #fff; border: none; }
     .fp-btn-apple:hover { background: #1a1a1a; }
     @media (prefers-color-scheme: dark) {
-      .fp-btn-apple { background: #fff; color: #000; border: 1px solid #fff; }
+      .fp-btn-apple { background: #fff; color: #000; }
       .fp-btn-apple:hover { background: #f0f0f0; }
     }
 
@@ -116,7 +108,7 @@
       display: flex; align-items: center; gap: 12px;
       margin: 22px 0; color: var(--fp-text-muted); font-size: 12px;
     }
-    .fp-divider::before, .fp-divider::after { content: ''; flex: 1; border-top: 1px solid var(--fp-divider); }
+    .fp-divider::before, .fp-divider::after { content:''; flex:1; border-top:1px solid var(--fp-divider); }
 
     .fp-alert {
       display: none; padding: 12px 14px; border-radius: 8px;
@@ -147,8 +139,8 @@
 
   <div class="fp-login-wrap">
 
-    <a class="fp-logo" href="https://flowpoint.pro/" target="_blank" rel="noopener noreferrer" aria-label="FlowPoint">
-      <img src="/assets/flowpoint-logo.svg" width="40" height="40" alt="FlowPoint" style="flex-shrink:0"/>
+    <a class="fp-logo" href="https://flowpoint.pro/" target="_blank" rel="noopener noreferrer">
+      <img src="/assets/flowpoint-logo.svg" width="40" height="40" alt="FlowPoint"/>
       <span class="fp-logo-name">FlowPoint</span>
     </a>
 
@@ -190,13 +182,6 @@
           </svg>
           Continuer avec Apple
         </button>
-
-        <button class="fp-btn fp-btn-oauth fp-hidden" id="fp-github-btn" data-loginurl="/api/auth/github/login">
-          <svg class="fp-oauth-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.757-1.333-1.757-1.089-.744.084-.729.084-.729 1.205.084 1.84 1.236 1.84 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.467-1.332-5.467-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.605-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
-          </svg>
-          Continuer avec GitHub
-        </button>
       </div>
 
     </div>
@@ -209,7 +194,6 @@
 
   </div>
 
-  <script src="fp-config.js"></script>
   <script>
   (function () {
     'use strict';
@@ -227,7 +211,7 @@
       successEl.style.display = 'none';
     }
     function showSuccess(msg) {
-      successEl.textContent = msg;
+      successEl.innerHTML = msg;
       successEl.style.display = 'block';
       errorEl.style.display = 'none';
     }
@@ -235,9 +219,9 @@
       errorEl.style.display = 'none';
       successEl.style.display = 'none';
     }
-    function setLoading(loading) {
-      submitBtn.disabled = loading;
-      submitBtn.innerHTML = loading
+    function setLoading(on) {
+      submitBtn.disabled = on;
+      submitBtn.innerHTML = on
         ? '<span class="fp-spinner"></span>Envoi\u2026'
         : 'Recevoir le lien de connexion';
     }
@@ -248,9 +232,9 @@
       var e = p.get('error');
       if (!e) return;
       var msgs = {
-        google_auth_failed : '\u00C9chec Google. R\u00E9essayez.',
-        missing_code       : 'Connexion annul\u00E9e.',
-        access_denied      : 'Acc\u00E8s refus\u00E9.',
+        google_auth_failed: '\u00C9chec de la connexion Google. R\u00E9essayez.',
+        missing_code      : 'Connexion annul\u00E9e.',
+        access_denied     : 'Acc\u00E8s refus\u00E9.',
       };
       showError(msgs[e] || 'Erreur : ' + e.replace(/_/g, ' ') + '.');
     })();
@@ -276,7 +260,7 @@
         setLoading(false);
         if (r.ok) {
           form.style.display = 'none';
-          showSuccess('\u2709\uFE0F Lien envoy\u00E9 \u00E0 ' + email + '. V\u00E9rifiez votre bo\u00EEte mail (et les spams).');
+          showSuccess('\u2709\uFE0F Lien envoy\u00E9 \u00E0 <strong>' + email + '</strong>.<br>V\u00E9rifiez votre bo\u00EEte mail (et les spams).');
         } else if (r.status === 503) {
           showError('Service e-mail indisponible. Connectez-vous avec Google.');
         } else {
@@ -289,19 +273,18 @@
       });
     });
 
-    /* ── OAuth buttons ── */
+    /* ── OAuth click handler ── */
     document.getElementById('fp-oauth-btns').addEventListener('click', function (e) {
       var btn = e.target.closest('button[data-loginurl]');
       if (btn) window.location.href = btn.getAttribute('data-loginurl');
     });
 
-    /* ── Load providers → show configured buttons only ── */
+    /* ── Load providers — show only configured OAuth buttons ── */
     fetch('/api/auth/providers', { credentials: 'include' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        var order = ['google', 'apple', 'github'];
         var hasOAuth = false;
-        order.forEach(function (id) {
+        ['google', 'apple'].forEach(function (id) {
           var p = (data.providers || []).find(function (x) { return x.id === id; });
           if (p && p.configured) {
             var btn = document.getElementById('fp-' + id + '-btn');

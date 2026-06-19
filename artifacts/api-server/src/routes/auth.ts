@@ -179,7 +179,7 @@ router.post("/auth/register", authRateLimit, async (req: Request, res: Response)
   const token = generateToken();
   magicTokens.set(token, { email: String(email).toLowerCase().trim(), expiresAt: Date.now() + 15 * 60_000, used: false });
 
-  const publicUrl = process.env["PUBLIC_URL"] || "";
+  const publicUrl = getPublicUrl();
   const verifyPath = `${publicUrl}/login-verify.html?token=${token}`;
   const resendKey = process.env["RESEND_API_KEY"];
   const isProduction = process.env["NODE_ENV"] === "production";
@@ -247,12 +247,14 @@ router.get("/auth/login-verify", (req: Request, res: Response) => {
 // ── Google OAuth Login (separate from GBP — for account authentication) ──────
 router.get("/auth/google/login", (req: Request, res: Response) => {
   const clientId = process.env["GOOGLE_CLIENT_ID"] || "";
-  const redirectUri = process.env["GOOGLE_AUTH_REDIRECT_URI"] || `${process.env["PUBLIC_URL"] || ""}/api/auth/google/callback`;
+  const redirectUri = process.env["GOOGLE_AUTH_REDIRECT_URI"] || `${getPublicUrl()}/api/auth/google/callback`;
 
   if (!clientId) {
     res.status(503).json({ error: "Google OAuth not configured" });
     return;
   }
+
+  logger.info({ redirectUri }, "[Auth] Google OAuth login — redirect URI");
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -269,7 +271,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
 
 router.get("/auth/google/callback", async (req: Request, res: Response) => {
   const { code, error: oauthError } = req.query as { code?: string; error?: string };
-  const publicUrl = process.env["PUBLIC_URL"] || "";
+  const publicUrl = getPublicUrl();
 
   if (oauthError) {
     res.redirect(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`);
@@ -344,7 +346,7 @@ router.get("/auth/github/login", (req: Request, res: Response) => {
 
 router.get("/auth/github/callback", async (req: Request, res: Response) => {
   const { code, error: oauthError } = req.query as { code?: string; error?: string };
-  const publicUrl = process.env["PUBLIC_URL"] || "";
+  const publicUrl = getPublicUrl();
 
   if (oauthError || !code) {
     res.redirect(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError || "missing_code")}`);
