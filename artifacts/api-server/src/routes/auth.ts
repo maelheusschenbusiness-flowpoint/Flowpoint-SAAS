@@ -137,7 +137,7 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
     @media (prefers-color-scheme: dark) {
       .email-body   { background-color: #0d0f1a !important; }
       .email-card   { background-color: #13162a !important; border-color: #252a45 !important; }
-      .email-header { background-color: #0a0c1c !important; border-bottom-color: #252a45 !important; }
+      .email-header { background-color: #0f172a !important; border-bottom-color: #1e293b !important; }
       .email-footer { background-color: #0a0c1c !important; border-top-color: #252a45 !important; }
       .text-main    { color: #e8eeff !important; }
       .text-muted   { color: #8891b8 !important; }
@@ -145,6 +145,8 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
       .link-footer  { color: #6c7aff !important; }
       .divider      { border-color: #252a45 !important; }
       .copy-block   { background-color: #0d0f1a !important; border-color: #252a45 !important; color: #8891b8 !important; }
+      .logo-text    { color: #f1f5f9 !important; }
+      .logo-sub     { color: #94a3b8 !important; }
     }
   </style>
 </head>
@@ -160,17 +162,23 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
 
           <!-- Header -->
           <tr>
-            <td class="email-header" style="background-color:#0f1229;border-bottom:1px solid #1e2340;padding:32px 40px 28px;">
+            <td class="email-header" style="background-color:#EEF4FF;border-bottom:1px solid #DCE7FF;padding:32px 40px 28px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
                 <tr>
                   <td>
                     <!-- Wordmark -->
-                    <div style="display:inline-flex;align-items:center;gap:10px;">
-                      <!-- Icon mark -->
-                      <div style="width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#3d6bff,#1a3de8);display:inline-block;vertical-align:middle;"></div>
-                      <span style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-.03em;vertical-align:middle;">FlowPoint</span>
+                    <div style="display:inline-flex;align-items:center;">
+                      <!-- SVG logo -->
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="36" height="36" style="display:inline-block;vertical-align:middle;flex-shrink:0;">
+                        <defs><linearGradient id="fpg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient></defs>
+                        <rect x="0" y="0" width="48" height="48" rx="10" ry="10" fill="url(#fpg)"/>
+                        <g transform="translate(12, 12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                        </g>
+                      </svg>
+                      <span class="logo-text" style="margin-left:16px;font-size:22px;font-weight:500;color:#0f172a;letter-spacing:-.02em;vertical-align:middle;">FlowPoint</span>
                     </div>
-                    <div style="margin-top:6px;font-size:12px;color:#6878b0;letter-spacing:.08em;text-transform:uppercase;font-weight:600;">SEO · Monitoring · IA locale</div>
+                    <div class="logo-sub" style="margin-top:8px;font-size:11px;color:#64748B;letter-spacing:.08em;text-transform:uppercase;font-weight:500;">SEO · MONITORING · IA LOCALE</div>
                   </td>
                 </tr>
               </table>
