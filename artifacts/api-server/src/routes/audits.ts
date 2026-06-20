@@ -10,8 +10,12 @@ import { reportRateLimit as auditRateLimit } from "../middlewares/rateLimiter.js
 const router = Router();
 
 router.get("/audits", async (_req, res) => {
-  const audits = await db.select().from(auditsTable).orderBy(desc(auditsTable.date)).limit(500);
-  res.json(audits);
+  try {
+    const audits = await db.select().from(auditsTable).orderBy(desc(auditsTable.date)).limit(500);
+    res.json(audits);
+  } catch {
+    res.json([]);
+  }
 });
 
 router.post("/audits", auditRateLimit, async (req, res) => {

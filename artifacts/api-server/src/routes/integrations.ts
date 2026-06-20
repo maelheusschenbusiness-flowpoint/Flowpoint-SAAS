@@ -31,6 +31,8 @@ router.get("/integrations", requireAdmin, async (req, res) => {
     query += ` ORDER BY created_at DESC`;
     const r = await client.query(query, params);
     res.json({ integrations: r.rows, count: r.rows.length });
+  } catch {
+    res.json({ integrations: [], count: 0 });
   } finally { client.release(); }
 });
 
@@ -50,6 +52,8 @@ router.get("/integrations/templates", async (_req, res) => {
   try {
     const r = await client.query(`SELECT * FROM automation_templates WHERE active=true ORDER BY popularity DESC`);
     res.json({ templates: r.rows, count: r.rows.length });
+  } catch {
+    res.json({ templates: [], count: 0 });
   } finally { client.release(); }
 });
 

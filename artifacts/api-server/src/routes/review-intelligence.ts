@@ -10,7 +10,9 @@ router.get("/review-intelligence", async (req, res) => {
   try {
     const data = await getReputationDashboard(org(req));
     res.json(data);
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch {
+    res.json({ reviews: [], totalCount: 0, averageRating: null, sentimentBreakdown: {}, locationBreakdown: [] });
+  }
 });
 
 router.get("/review-intelligence/reviews", async (req, res) => {

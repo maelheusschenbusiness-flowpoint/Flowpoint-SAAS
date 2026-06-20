@@ -11,7 +11,7 @@ router.get("/revenue-leak", async (req: Request, res: Response) => {
     const data = await getRevenueLeakData(siteUrl);
     res.json(data);
   } catch {
-    res.status(500).json({ error: "Failed to fetch revenue leak data" });
+    res.json({ leaks: [], totalLost: 0, currency: "EUR", detectedAt: null });
   }
 });
 

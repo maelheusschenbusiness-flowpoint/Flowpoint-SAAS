@@ -10582,6 +10582,7 @@ function _doRender() {
     default:               html = renderOverview();
   }
 
+  window.__fpAnimationsInitialized = false;
   page.innerHTML = `<div class="fp-page-animated">${html}</div>`;
   requestAnimationFrame(() => { _fpApplyLayout(); initPageAnimations(STATE.route, STATE.subRoute); });
 
@@ -26245,6 +26246,8 @@ async function fpGetPSIAIReco() {
 // ── Wire analyze button after render ─────────────────────────────────────────
 const _origInitPageAnimations = typeof initPageAnimations === 'function' ? initPageAnimations : function(){};
 function initPageAnimations(route, sub) {
+  if (window.__fpAnimationsInitialized) return;
+  window.__fpAnimationsInitialized = true;
   _origInitPageAnimations(route, sub);
   // Bind PSI analyze button
   const psiBtn = document.getElementById('fp-psi-analyze-btn');

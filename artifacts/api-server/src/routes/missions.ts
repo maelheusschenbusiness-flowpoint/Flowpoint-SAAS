@@ -86,7 +86,7 @@ router.get("/missions", async (req: Request, res: Response) => {
     res.json(result.rows.map(rowToMission));
   } catch (err) {
     logger.error({ err }, "[Missions] GET /missions error");
-    res.status(500).json({ error: "Database error" });
+    res.json([]);
   } finally {
     client.release();
   }
@@ -98,7 +98,7 @@ router.get("/missions/stats", async (req: Request, res: Response) => {
     res.json(await getMissionsStats(orgId(req)));
   } catch (err) {
     logger.error({ err }, "[Missions] stats error");
-    res.status(500).json({ error: "Stats error" });
+    res.json({ total: 0, todo: 0, inProgress: 0, done: 0, dismissed: 0 });
   }
 });
 
@@ -112,8 +112,8 @@ router.get("/missions/quick-wins", async (req: Request, res: Response) => {
       [orgId(req)]
     );
     res.json(result.rows.map(rowToMission));
-  } catch (err) {
-    res.status(500).json({ error: "Database error" });
+  } catch {
+    res.json([]);
   } finally {
     client.release();
   }
@@ -136,8 +136,8 @@ router.get("/missions/roadmap", async (req: Request, res: Response) => {
       thisMonth: missions.filter(m => m.dueDate && new Date(m.dueDate) > week && new Date(m.dueDate) <= month),
       later:     missions.filter(m => !m.dueDate || new Date(m.dueDate) > month),
     });
-  } catch (err) {
-    res.status(500).json({ error: "Database error" });
+  } catch {
+    res.json({ thisWeek: [], thisMonth: [], later: [] });
   } finally {
     client.release();
   }
@@ -152,8 +152,8 @@ router.get("/missions/logs", async (req: Request, res: Response) => {
       [orgId(req)]
     );
     res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: "Database error" });
+  } catch {
+    res.json([]);
   } finally {
     client.release();
   }

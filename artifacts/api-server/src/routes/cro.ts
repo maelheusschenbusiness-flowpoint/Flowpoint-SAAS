@@ -15,7 +15,7 @@ router.get("/cro", async (req: Request, res: Response) => {
     const data = await getCROData(siteUrl);
     res.json(data);
   } catch {
-    res.status(500).json({ error: "Failed to fetch CRO data" });
+    res.json({ score: null, recommendations: [], heatmapData: null, funnelData: [], abTests: [] });
   }
 });
 

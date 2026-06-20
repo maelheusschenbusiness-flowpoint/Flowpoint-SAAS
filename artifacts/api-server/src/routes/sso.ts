@@ -76,7 +76,9 @@ router.get("/sso", requireAdmin, async (req, res) => {
   try {
     const data = await getSSODashboard(org(req));
     res.json({ ...data, providers_catalog: SSO_PROVIDER_TYPES, plan: plan(req) });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch {
+    res.json({ providers: [], auth_config: null, login_audits: [], providers_catalog: SSO_PROVIDER_TYPES, plan: plan(req) });
+  }
 });
 
 router.get("/sso/providers-catalog", (_req, res) => {

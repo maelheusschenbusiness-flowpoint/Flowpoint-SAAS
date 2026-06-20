@@ -28,8 +28,12 @@ function sanitizeMeetingNotes(raw: unknown): Array<{ title: string; date: string
 }
 
 router.get("/reports", async (_req, res) => {
-  const reports = await db.select().from(reportsTable).orderBy(reportsTable.date).limit(500);
-  res.json(reports.reverse());
+  try {
+    const reports = await db.select().from(reportsTable).orderBy(reportsTable.date).limit(500);
+    res.json(reports.reverse());
+  } catch {
+    res.json([]);
+  }
 });
 
 router.post("/reports", reportRateLimit, async (req, res) => {

@@ -16,7 +16,7 @@ router.get("/white-label/templates", async (_req: Request, res: Response) => {
       .where(eq(reportTemplatesTable.orgId, "default")).limit(100);
     res.json({ templates });
   } catch {
-    res.status(500).json({ error: "Failed to fetch templates" });
+    res.json({ templates: [] });
   }
 });
 

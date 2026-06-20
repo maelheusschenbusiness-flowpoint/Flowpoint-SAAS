@@ -14,7 +14,9 @@ router.get("/crm/status", async (req, res) => {
   try {
     const data = await getCrmStatus(org(req));
     res.json({ ...data, limit: getCrmLimit(plan(req)), plan: plan(req) });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch {
+    res.json({ connections: [], connected: false, limit: getCrmLimit(plan(req)), plan: plan(req) });
+  }
 });
 
 router.post("/crm/connect/:provider", async (req, res) => {
@@ -54,7 +56,9 @@ router.get("/crm/logs", async (req, res) => {
   try {
     const logs = await getSyncLogs(org(req), limit);
     res.json({ logs, count: logs.length });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch {
+    res.json({ logs: [], count: 0 });
+  }
 });
 
 router.post("/crm/test", async (req, res) => {

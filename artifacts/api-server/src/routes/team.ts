@@ -5,8 +5,12 @@ import { eq } from "drizzle-orm";
 const router = Router();
 
 router.get("/team", async (_req, res) => {
-  const members = await db.select().from(teamMembersTable).limit(100);
-  res.json(members);
+  try {
+    const members = await db.select().from(teamMembersTable).limit(100);
+    res.json(members);
+  } catch {
+    res.json([]);
+  }
 });
 
 router.post("/team/invite", async (req, res) => {

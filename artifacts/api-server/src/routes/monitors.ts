@@ -38,8 +38,12 @@ function validateAlertPhone(phone: string | undefined): string | null {
 }
 
 router.get("/monitors", async (_req, res) => {
-  const monitors = await db.select().from(monitorsTable).limit(500);
-  res.json(monitors);
+  try {
+    const monitors = await db.select().from(monitorsTable).limit(500);
+    res.json(monitors);
+  } catch {
+    res.json([]);
+  }
 });
 
 router.get("/monitors/:id/checks-summary", async (req, res) => {
