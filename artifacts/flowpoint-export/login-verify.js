@@ -31,7 +31,7 @@
     if (r.ok && r.data.ok) {
       show('fp-success');
       setTimeout(function () {
-        window.location.href = '/';
+        window.location.href = '/dashboard';
       }, 1500);
     } else {
       var msg = (r.data && r.data.error) ? r.data.error : 'Lien invalide ou expiré.';
