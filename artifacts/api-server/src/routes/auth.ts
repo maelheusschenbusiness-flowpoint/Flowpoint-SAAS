@@ -6,6 +6,8 @@ import { createSession, deleteSession, getSession, SESSION_TTL_MS } from "../ser
 import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { Resend } from "resend";
 import { pool } from "@workspace/db";
+import { connectMongo } from "../lib/mongo.js";
+import { UserProfileModel } from "../models/UserProfile.js";
 
 const router = Router();
 
@@ -504,6 +506,30 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     targetType: "user",
     metadata: { country: country ?? null, companySize: companySize ?? null, objective: objective ?? null },
   }).catch(() => {});
+
+  // ── Sync profile to MongoDB (product-data layer) ─────────────────────────
+  let mongoOk = false;
+  try {
+    await connectMongo();
+    await UserProfileModel.findOneAndUpdate(
+      { _id: normalizedEmail },
+      {
+        email: normalizedEmail, firstName: fn, lastName: ln,
+        companyName: company, website: normalizedSite || "",
+        country: country || "", companySize: companySize || "",
+        objective: objective || "", plan: "standard",
+        trialEndsAt, orgId,
+      },
+      { upsert: true, new: true },
+    );
+    mongoOk = true;
+  } catch (mongoErr) {
+    logger.warn({ err: mongoErr }, "[Auth/Signup] MongoDB profile sync failed (non-fatal)");
+  }
+  logger.info(
+    { email: normalizedEmail, postgres: true, mongo: mongoOk },
+    `[Auth] user persisted postgres=true mongo=${mongoOk}`,
+  );
 
   // Generate and store magic link token
   const token = generateToken();

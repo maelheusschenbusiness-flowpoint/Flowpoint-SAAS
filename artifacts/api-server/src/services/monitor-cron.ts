@@ -1,10 +1,13 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { connectMongo } from "../lib/mongo.js";
+import { NotificationModel } from "../models/Notification.js";
 
 export async function evaluateAlertRulesForAudit(url: string, score: number): Promise<void> {
   try {
     const client = await pool.connect();
     try {
+      // alert_rules still lives in PostgreSQL (auth/config layer) — read from there
       const rules = await client.query(
         `SELECT * FROM alert_rules WHERE enabled = true AND type = 'seo_score'`
       );
@@ -15,15 +18,19 @@ export async function evaluateAlertRulesForAudit(url: string, score: number): Pr
         if (rule.operator === "eq" && score === rule.threshold) triggered = true;
         if (triggered) {
           logger.info({ url, score, rule: rule.name }, "[monitor-cron] Alert rule triggered");
-          await client.query(
-            `INSERT INTO notifications (id, type, title, message, read, created_at)
-             VALUES ($1,'warning',$2,$3,false,NOW()) ON CONFLICT DO NOTHING`,
-            [
-              `notif_alert_${Date.now()}`,
-              `Alerte SEO : ${rule.name}`,
-              `${url} — score ${score}/100 (seuil: ${rule.threshold})`,
-            ]
-          );
+          // Notifications live in MongoDB (product-data layer)
+          try {
+            await connectMongo();
+            await NotificationModel.create({
+              _id: `notif_alert_${Date.now()}`,
+              type: "warning",
+              title: `Alerte SEO : ${rule.name}`,
+              message: `${url} — score ${score}/100 (seuil: ${rule.threshold})`,
+              read: false,
+            });
+          } catch (mongoErr) {
+            logger.warn({ err: mongoErr }, "[monitor-cron] Notification write to MongoDB failed");
+          }
         }
       }
     } finally {
