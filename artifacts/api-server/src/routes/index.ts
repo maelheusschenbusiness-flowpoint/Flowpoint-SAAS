@@ -48,6 +48,7 @@ import gscRouter from "./gsc.js";
 import betterstackRouter from "./betterstack.js";
 import diagnosticsRouter from "./diagnostics.js";
 import adminRouter from "./admin.js";
+import locationRouter from "./location.js";
 
 const router: IRouter = Router();
 
@@ -138,5 +139,6 @@ router.use(githubRouter);
 router.use(gscRouter);
 router.use(betterstackRouter);
 router.use(diagnosticsRouter);
+router.use(locationRouter);
 
 export default router;

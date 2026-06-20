@@ -5658,7 +5658,7 @@ function renderLocalSEO() {
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||50} req aujourd\'hui</span>` : ''}
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="(function(){var kw=prompt('Mot-clé local ?','restaurant');var loc=prompt('Ville ?','Paris');if(kw&&loc&&typeof window.FP_DATAFORSEO_API!=='undefined')window.FP_DATAFORSEO_API.loadLocalRankWidget(kw,loc);})()">🔎 Charger rankings</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="(function(){var kw=prompt('Mot-clé local ?','restaurant');var defCity=STATE.me&&STATE.me.location&&STATE.me.location.city?STATE.me.location.city:'';var loc=prompt('Ville ?',defCity);if(kw&&loc&&typeof window.FP_DATAFORSEO_API!=='undefined')window.FP_DATAFORSEO_API.loadLocalRankWidget(kw,loc);})()">🔎 Charger rankings</button>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_DATAFORSEO_API!=='undefined'&&window.FP_DATAFORSEO_API.generateMissions(STATE.me?.domain||'exemple.fr')">⚡ Auto-missions</button>
         </div>
       </div>
@@ -5743,7 +5743,7 @@ function renderLocalSEO() {
           <circle cx="310" cy="270" r="11" fill="none" stroke="white" stroke-width="2"/>
           ${PREVIEW_MODE ? `
           <rect x="229" y="240" width="162" height="22" rx="4" fill="rgba(37,99,235,0.85)"/>
-          <text x="310" y="255" text-anchor="middle" font-size="10" fill="white" font-family="Inter,sans-serif" font-weight="700">&#128205; Vous — #2 Paris Centre · 74pts</text>
+          <text x="310" y="255" text-anchor="middle" font-size="10" fill="white" font-family="Inter,sans-serif" font-weight="700">&#128205; Vous — #2 ${escHtml(STATE.me&&STATE.me.location&&STATE.me.location.city?STATE.me.location.city:'Votre ville')} · 74pts</text>
           <circle cx="560" cy="360" r="8" fill="#ef4444" opacity="0.9"/>
           <circle cx="560" cy="360" r="8" fill="none" stroke="white" stroke-width="1.5"/>
           <rect x="473" y="338" width="148" height="18" rx="3" fill="rgba(239,68,68,0.85)"/>
@@ -5763,7 +5763,7 @@ function renderLocalSEO() {
           <rect x="374" y="418" width="140" height="18" rx="3" fill="rgba(245,158,11,0.8)"/>
           <text x="444" y="431" text-anchor="middle" font-size="9" fill="white" font-family="Inter,sans-serif">Concurrent D · 58pts</text>
           <rect x="0" y="0" width="800" height="30" fill="rgba(0,0,0,0.45)"/>
-          <text x="14" y="20" font-size="10" fill="rgba(255,255,255,0.45)" font-family="Inter,sans-serif">&#128205; Paris Centre · Carte de pr\u00e9sence locale · 5 concurrents · Rayon 2.5km</text>
+          <text x="14" y="20" font-size="10" fill="rgba(255,255,255,0.45)" font-family="Inter,sans-serif">&#128205; ${escHtml(STATE.me&&STATE.me.location&&STATE.me.location.city?STATE.me.location.city:'Votre ville')} · Carte de pr\u00e9sence locale · 5 concurrents · Rayon 2.5km</text>
           <circle cx="778" cy="15" r="5" fill="#22c55e" opacity="0.9"/>
           <text x="765" y="19" text-anchor="end" font-size="9" fill="#22c55e" font-family="Inter,sans-serif" font-weight="700">LIVE</text>
           ` : ''}
@@ -10354,7 +10354,7 @@ const SUB_NAVS = {
   'conversion': [{id:null,label:'Command Center'},{id:'funnel',label:'Funnel Analytics'},{id:'ux-lab',label:'UX & Friction'},{id:'cta',label:'CTA Intelligence'},{id:'revenue-leak',label:'Revenue Leak'},{id:'cro',label:'CRO IA'}],
   'alerts-center': [{id:null,label:'Command Center'},{id:'incidents',label:'Incidents'},{id:'seo',label:'SEO'},{id:'performance',label:'Performance'},{id:'conversion',label:'Conversion'},{id:'local',label:'Local SEO'},{id:'competitor',label:'Concurrents'},{id:'ai',label:'IA Threat Lab'}],
   'billing':       [{id:null,label:'Command Center'},{id:'plans',label:'Plans'},{id:'addons',label:'Add-ons'},{id:'usage',label:'Usage'},{id:'invoices',label:'Factures'},{id:'ai-strategist',label:'IA Stratégiste'},{id:'enterprise',label:'Enterprise'}],
-  'settings': [{id:null,label:'Command Center'},{id:'workspace',label:'Workspace'},{id:'team',label:'Équipe'},{id:'security',label:'Sécurité'},{id:'alerts',label:'Notifications'},{id:'automations',label:'Automatisations'},{id:'integrations',label:'Intégrations'},{id:'api',label:'API & Dev'},{id:'ai-config',label:'IA Config'},{id:'data',label:'Données'},{id:'sso',label:'🔐 SSO Enterprise'}],
+  'settings': [{id:null,label:'Command Center'},{id:'workspace',label:'Workspace'},{id:'team',label:'Équipe'},{id:'security',label:'Sécurité'},{id:'alerts',label:'Notifications'},{id:'automations',label:'Automatisations'},{id:'integrations',label:'Intégrations'},{id:'api',label:'API & Dev'},{id:'ai-config',label:'IA Config'},{id:'data',label:'Données'},{id:'localisation',label:'📍 Localisation'},{id:'sso',label:'🔐 SSO Enterprise'}],
   'ai':        [{id:null,label:'Chat'},{id:'usage',label:'AI Credits'},{id:'intelligence',label:'Intelligence'},{id:'insights',label:'Insights'},{id:'actions',label:'Actions Rapides'},{id:'strategist',label:'IA Stratégiste'}],
   'activity-feed': [{id:null,label:'Command Center'},{id:'team',label:'Équipe'},{id:'seo',label:'SEO & Growth'},{id:'monitoring',label:'Monitoring'},{id:'ai',label:'IA & Auto'},{id:'reports',label:'Rapports'},{id:'competitor',label:'Concurrents'},{id:'ops',label:'Ops Lab'}],
   'analytics':  [{id:null,label:'Aperçu'},{id:'realtime',label:'Temps réel'},{id:'pages',label:'Top Pages'},{id:'conversions',label:'Conversions'},{id:'connect',label:'⚙ Configurer'}],
@@ -12796,6 +12796,7 @@ function renderSubPageContent(route, sub) {
     if (sub === 'performance') return renderTeamPerformance();
   }
   if (route === 'settings') {
+    if (sub === 'localisation') return renderSettingsLocation();
     if (sub === 'alerts') return renderAlertRules();
     if (sub === 'api')    return renderSettingsAPI();
     if (sub === 'sso')    return renderSettingsSSO();
@@ -23746,6 +23747,172 @@ function renderTeamPerformance() {
         <button class="fp-btn fp-btn-primary fp-btn-sm" style="align-self:flex-start;margin-top:4px" onclick="showToast('success','Nouvelle tâche créée !')">+ Assigner une tâche</button>
       </div>
     </div>
+  `;
+}
+
+function renderSettingsLocation() {
+  const loc = (STATE.me && STATE.me.location) ? STATE.me.location : {};
+  const configured = !!loc.locationConfigured;
+  const srcLabel = loc.locationSource === 'gbp' ? '🏢 Sync GBP' : loc.locationSource === 'geolocation' ? '📡 GPS navigateur' : '✏️ Manuel';
+  const serviceAreas = Array.isArray(loc.serviceArea) ? loc.serviceArea : [];
+  const gbpConnected = !!(STATE.integrations && STATE.integrations.google && STATE.integrations.google.connected);
+
+  const configBanner = !configured ? `
+    <div style="background:linear-gradient(135deg,rgba(37,99,235,0.1),rgba(79,70,229,0.08));border:1px solid rgba(37,99,235,0.3);border-radius:12px;padding:20px 22px;margin-bottom:20px;display:flex;align-items:flex-start;gap:14px">
+      <div style="font-size:28px;flex-shrink:0">📍</div>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:6px">Localisation non configurée</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6">Configurez l'adresse de votre entreprise pour personnaliser toutes les fonctionnalités Local SEO : cartes, heatmaps, audits, classements et rapports. Sans localisation, aucune donnée géographique ne sera affichée.</div>
+      </div>
+    </div>` : '';
+
+  const saveBtn = `(async()=>{
+    const a=document.getElementById('fp-loc-address').value.trim();
+    const c=document.getElementById('fp-loc-city').value.trim();
+    const p=document.getElementById('fp-loc-postal').value.trim();
+    const co=document.getElementById('fp-loc-country').value.trim();
+    const lat=parseFloat(document.getElementById('fp-loc-lat').value)||null;
+    const lng=parseFloat(document.getElementById('fp-loc-lng').value)||null;
+    const sa=document.getElementById('fp-loc-service').value.split(',').map(x=>x.trim()).filter(Boolean);
+    if(!c&&!a){showToast('warning','Renseignez au moins la ville ou l\'adresse');return;}
+    try{
+      const r=await apiAction('PUT','/api/org/location',{address:a,city:c,postalCode:p,country:co,latitude:lat,longitude:lng,serviceArea:sa,locationSource:'manual'});
+      if(r.ok){
+        if(!STATE.me)STATE.me={};
+        if(!STATE.me.location)STATE.me.location={};
+        Object.assign(STATE.me.location,r.location||{address:a,city:c,postalCode:p,country:co,latitude:lat,longitude:lng,serviceArea:sa,locationConfigured:true,locationSource:'manual'});
+        showToast('success','📍 Localisation sauvegardée !');
+        render();
+      }else{showToast('error',r.error||'Erreur de sauvegarde');}
+    }catch(e){showToast('error','Erreur réseau — réessayez');}
+  })()`;
+
+  const geocodeBtn = `(async()=>{
+    const q=document.getElementById('fp-loc-address').value.trim()||document.getElementById('fp-loc-city').value.trim();
+    if(!q){showToast('warning','Saisissez une adresse ou une ville à géocoder');return;}
+    showToast('info','Géocodage en cours…');
+    try{
+      const r=await apiAction('POST','/api/org/geocode',{address:q});
+      if(r.ok){
+        if(r.address)document.getElementById('fp-loc-address').value=r.address;
+        if(r.city)document.getElementById('fp-loc-city').value=r.city;
+        if(r.postalCode)document.getElementById('fp-loc-postal').value=r.postalCode;
+        if(r.country)document.getElementById('fp-loc-country').value=r.country;
+        if(r.latitude!=null)document.getElementById('fp-loc-lat').value=r.latitude.toFixed(6);
+        if(r.longitude!=null)document.getElementById('fp-loc-lng').value=r.longitude.toFixed(6);
+        showToast('success','✓ Coordonnées obtenues : '+r.latitude.toFixed(4)+', '+r.longitude.toFixed(4));
+      }else{showToast('error',r.error||'Adresse introuvable');}
+    }catch(e){showToast('error','Erreur de géocodage');}
+  })()`;
+
+  const gpsBtn = `(async()=>{
+    if(!navigator.geolocation){showToast('error','Géolocalisation non supportée par ce navigateur');return;}
+    showToast('info','Demande d\'autorisation GPS…');
+    navigator.geolocation.getCurrentPosition(async function(pos){
+      const lat=pos.coords.latitude;const lng=pos.coords.longitude;
+      document.getElementById('fp-loc-lat').value=lat.toFixed(6);
+      document.getElementById('fp-loc-lng').value=lng.toFixed(6);
+      showToast('info','Position obtenue — géocodage inverse…');
+      try{
+        const r=await apiAction('POST','/api/org/geocode',{lat,lng});
+        if(r.ok){
+          if(r.address)document.getElementById('fp-loc-address').value=r.address;
+          if(r.city)document.getElementById('fp-loc-city').value=r.city;
+          if(r.postalCode)document.getElementById('fp-loc-postal').value=r.postalCode;
+          if(r.country)document.getElementById('fp-loc-country').value=r.country;
+          showToast('success','📡 Position détectée : '+r.city+', '+r.country);
+        }
+      }catch(e){showToast('success','📡 GPS : '+lat.toFixed(4)+', '+lng.toFixed(4));}
+    },function(err){
+      const msgs={1:'Autorisation refusée — activez la géolocalisation dans votre navigateur',2:'Position indisponible',3:'Délai dépassé'};
+      showToast('error',msgs[err.code]||'Erreur GPS');
+    },{enableHighAccuracy:true,timeout:10000});
+  })()`;
+
+  const gbpSyncBtn = gbpConnected ? `
+    <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(async()=>{
+      showToast('info','Synchronisation GBP…');
+      try{
+        const r=await apiAction('POST','/api/org/location/sync-gbp',{});
+        if(r.ok){
+          if(r.city)document.getElementById('fp-loc-city').value=r.city||'';
+          if(r.address)document.getElementById('fp-loc-address').value=r.address||'';
+          if(r.postalCode)document.getElementById('fp-loc-postal').value=r.postalCode||'';
+          if(r.country)document.getElementById('fp-loc-country').value=r.country||'';
+          if(r.latitude!=null)document.getElementById('fp-loc-lat').value=r.latitude.toFixed(6);
+          if(r.longitude!=null)document.getElementById('fp-loc-lng').value=r.longitude.toFixed(6);
+          showToast('success','🏢 Données GBP importées !');
+        }else{showToast('error',r.error||'Erreur sync GBP');}
+      }catch(e){showToast('error','Erreur réseau');}
+    })()">🏢 Sync Google Business</button>` : '';
+
+  return `
+    ${configBanner}
+    <div class="fp-card">
+      <div class="fp-card-title" style="margin-bottom:4px">
+        📍 Localisation de l'entreprise
+        ${configured ? `<span style="margin-left:8px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e">✓ Configurée</span>` : `<span style="margin-left:8px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#f59e0b">Non configurée</span>`}
+      </div>
+      <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:18px">${configured ? `Source : ${srcLabel} · Utilisée dans tous les modules Local SEO` : 'Renseignez votre adresse pour activer la personnalisation locale complète'}</div>
+
+      <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${gpsBtn.replace(/"/g,"'")}">📡 Détecter ma position</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${geocodeBtn.replace(/"/g,"'")}">🔍 Géocoder l'adresse</button>
+        ${gbpSyncBtn}
+      </div>
+
+      <div class="fp-grid-2" style="gap:14px;margin-bottom:14px">
+        <div class="fp-form-group">
+          <label class="fp-form-label">Adresse complète</label>
+          <input class="fp-input" id="fp-loc-address" type="text" placeholder="12 rue de la Paix" value="${escHtml(loc.address||'')}"/>
+        </div>
+        <div class="fp-form-group">
+          <label class="fp-form-label">Ville *</label>
+          <input class="fp-input" id="fp-loc-city" type="text" placeholder="Paris" value="${escHtml(loc.city||'')}"/>
+        </div>
+        <div class="fp-form-group">
+          <label class="fp-form-label">Code postal</label>
+          <input class="fp-input" id="fp-loc-postal" type="text" placeholder="75001" value="${escHtml(loc.postalCode||'')}"/>
+        </div>
+        <div class="fp-form-group">
+          <label class="fp-form-label">Pays</label>
+          <input class="fp-input" id="fp-loc-country" type="text" placeholder="France" value="${escHtml(loc.country||'')}"/>
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Coordonnées GPS</div>
+      <div class="fp-grid-2" style="gap:14px;margin-bottom:14px">
+        <div class="fp-form-group">
+          <label class="fp-form-label">Latitude</label>
+          <input class="fp-input" id="fp-loc-lat" type="number" step="0.000001" placeholder="48.856614" value="${loc.latitude!=null?loc.latitude:''}"/>
+        </div>
+        <div class="fp-form-group">
+          <label class="fp-form-label">Longitude</label>
+          <input class="fp-input" id="fp-loc-lng" type="number" step="0.000001" placeholder="2.352222" value="${loc.longitude!=null?loc.longitude:''}"/>
+        </div>
+      </div>
+
+      <div class="fp-form-group" style="margin-bottom:18px">
+        <label class="fp-form-label">Zone desservie <span style="font-weight:400;color:var(--fp-text-faint)">(zones séparées par des virgules)</span></label>
+        <input class="fp-input" id="fp-loc-service" type="text" placeholder="Paris 1er, Paris 2ème, Saint-Denis, Montreuil…" value="${escHtml(serviceAreas.join(', '))}"/>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="fp-btn fp-btn-primary" onclick="${saveBtn.replace(/"/g,"'")}">💾 Sauvegarder la localisation</button>
+        ${configured ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(async()=>{if(!confirm('Effacer la localisation ?'))return;try{const r=await apiAction('PUT','/api/org/location',{address:null,city:null,postalCode:null,country:null,latitude:null,longitude:null,serviceArea:[],locationConfigured:false,locationSource:'manual'});if(r.ok){if(STATE.me&&STATE.me.location)STATE.me.location={locationConfigured:false};showToast('success','Localisation effacée');render();}else showToast('error','Erreur');}catch(e){showToast('error','Erreur réseau');}})()">🗑 Effacer</button>` : ''}
+      </div>
+    </div>
+
+    ${configured ? `
+    <div class="fp-card" style="margin-top:16px">
+      <div class="fp-card-title" style="margin-bottom:14px">📊 Résumé de la localisation active</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px">
+        ${loc.city ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Ville</div><div style="font-weight:600;color:var(--fp-text)">${escHtml(loc.city)}</div></div>` : ''}
+        ${loc.country ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Pays</div><div style="font-weight:600;color:var(--fp-text)">${escHtml(loc.country)}</div></div>` : ''}
+        ${loc.latitude!=null ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Coordonnées GPS</div><div style="font-weight:600;color:var(--fp-text);font-family:monospace">${loc.latitude.toFixed(4)}, ${loc.longitude!=null?loc.longitude.toFixed(4):''}</div></div>` : ''}
+        ${serviceAreas.length > 0 ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Zones desservies</div><div style="font-weight:600;color:var(--fp-text)">${serviceAreas.slice(0,3).map(z=>escHtml(z)).join(' · ')}${serviceAreas.length>3?' + '+(serviceAreas.length-3):''}</div></div>` : ''}
+      </div>
+    </div>` : ''}
   `;
 }
 

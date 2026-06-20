@@ -38,6 +38,17 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         usage:              dbData.usage,
         addons:             dbData.addons,
         limits,
+        location: {
+          address:            dbData.address            ?? null,
+          city:               dbData.city               ?? null,
+          postalCode:         dbData.postalCode         ?? null,
+          country:            dbData.country            ?? null,
+          latitude:           dbData.latitude           ?? null,
+          longitude:          dbData.longitude          ?? null,
+          serviceArea:        dbData.serviceArea        ?? [],
+          locationConfigured: dbData.locationConfigured ?? false,
+          locationSource:     dbData.locationSource     ?? null,
+        },
       });
       return;
     }

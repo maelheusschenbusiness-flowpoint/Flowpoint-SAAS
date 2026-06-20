@@ -227,6 +227,17 @@
 
         <div class="row-2">
           <div class="field">
+            <label for="address">Adresse</label>
+            <input type="text" id="address" name="address" placeholder="12 rue de la Paix" autocomplete="street-address" />
+          </div>
+          <div class="field">
+            <label for="city">Ville</label>
+            <input type="text" id="city" name="city" placeholder="Paris, Lyon, Bruxelles…" autocomplete="address-level2" />
+          </div>
+        </div>
+
+        <div class="row-2">
+          <div class="field">
             <label for="companySize">Taille de l'équipe</label>
             <select id="companySize" name="companySize">
               <option value="">— Taille —</option>
@@ -375,7 +386,9 @@
       body: JSON.stringify({
         _hp: hp, firstName: firstName, lastName: lastName,
         email: email, companyName: company, website: website,
-        country: country, companySize: size, objective: objective
+        country: country, companySize: size, objective: objective,
+        city: (document.getElementById('city') ? document.getElementById('city').value.trim() : ''),
+        address: (document.getElementById('address') ? document.getElementById('address').value.trim() : '')
       })
     })
     .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })

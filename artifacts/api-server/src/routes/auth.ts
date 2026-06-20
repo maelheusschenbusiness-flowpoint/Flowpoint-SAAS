@@ -427,7 +427,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     _hp,          // honeypot
     firstName, lastName, email,
     companyName, website, country,
-    companySize, objective,
+    companySize, objective, city, address,
   } = req.body as Record<string, string | undefined>;
 
   // Honeypot check — bots fill this field, humans don't
@@ -479,13 +479,18 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   try {
     const { upsertOrgSettings } = await import("../services/org-settings.js");
     await upsertOrgSettings(orgId, {
-      email:       normalizedEmail,
-      name:        company,
-      primarySite: normalizedSite || null,
-      companySize: companySize ?? null,
-      industry:    objective ?? null,
-      plan:        "standard",
-      trialEndsAt: trialEndsAt,
+      email:              normalizedEmail,
+      name:               company,
+      primarySite:        normalizedSite || null,
+      companySize:        companySize ?? null,
+      industry:           objective ?? null,
+      plan:               "standard",
+      trialEndsAt:        trialEndsAt,
+      country:            country ?? null,
+      city:               city?.trim()    ?? null,
+      address:            address?.trim() ?? null,
+      locationConfigured: !!(city?.trim() || address?.trim()),
+      locationSource:     "manual",
     });
   } catch (err) {
     logger.warn({ err }, "[Auth/Signup] upsertOrgSettings failed (non-fatal)");
