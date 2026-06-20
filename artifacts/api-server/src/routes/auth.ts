@@ -122,14 +122,136 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
       from: fromEmail,
       to: email,
       subject: "Votre lien de connexion FlowPoint",
-      html: `
-        <div style="font-family:Inter,system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#070b18;color:#eaf0ff;border-radius:18px;">
-          <h2 style="margin:0 0 12px;font-size:22px;font-weight:800;letter-spacing:-.02em;">Connexion FlowPoint</h2>
-          <p style="margin:0 0 18px;color:rgba(234,240,255,.75);line-height:1.6;">Clique sur le bouton ci-dessous pour te connecter à FlowPoint. Ce lien expire dans 15 minutes.</p>
-          <a href="${link}" style="display:inline-block;padding:14px 28px;border-radius:14px;background:linear-gradient(180deg,#2f5bff,#2449ff);color:#fff;font-weight:800;text-decoration:none;font-size:15px;">Se connecter</a>
-          <p style="margin:18px 0 0;font-size:13px;color:rgba(234,240,255,.50);">Si tu n'as pas demandé ce lien, ignore cet email.</p>
-        </div>
-      `,
+      html: `<!DOCTYPE html>
+<html lang="fr" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="color-scheme" content="light dark"/>
+  <meta name="supported-color-schemes" content="light dark"/>
+  <title>Connexion FlowPoint</title>
+  <style>
+    :root { color-scheme: light dark; }
+
+    /* ── Dark mode overrides ──────────────────────────────────────────── */
+    @media (prefers-color-scheme: dark) {
+      .email-body   { background-color: #0d0f1a !important; }
+      .email-card   { background-color: #13162a !important; border-color: #252a45 !important; }
+      .email-header { background-color: #0a0c1c !important; border-bottom-color: #252a45 !important; }
+      .email-footer { background-color: #0a0c1c !important; border-top-color: #252a45 !important; }
+      .text-main    { color: #e8eeff !important; }
+      .text-muted   { color: #8891b8 !important; }
+      .text-footer  { color: #5a6380 !important; }
+      .link-footer  { color: #6c7aff !important; }
+      .divider      { border-color: #252a45 !important; }
+      .copy-block   { background-color: #0d0f1a !important; border-color: #252a45 !important; color: #8891b8 !important; }
+    }
+  </style>
+</head>
+<body class="email-body" style="margin:0;padding:0;background-color:#f0f2fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+
+        <!-- Card -->
+        <table class="email-card" width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"
+               style="max-width:560px;background-color:#ffffff;border-radius:16px;border:1px solid #dde1f0;overflow:hidden;">
+
+          <!-- Header -->
+          <tr>
+            <td class="email-header" style="background-color:#0f1229;border-bottom:1px solid #1e2340;padding:32px 40px 28px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+                <tr>
+                  <td>
+                    <!-- Wordmark -->
+                    <div style="display:inline-flex;align-items:center;gap:10px;">
+                      <!-- Icon mark -->
+                      <div style="width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#3d6bff,#1a3de8);display:inline-block;vertical-align:middle;"></div>
+                      <span style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-.03em;vertical-align:middle;">FlowPoint</span>
+                    </div>
+                    <div style="margin-top:6px;font-size:12px;color:#6878b0;letter-spacing:.08em;text-transform:uppercase;font-weight:600;">SEO · Monitoring · IA locale</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px 40px 32px;">
+
+              <!-- Eyebrow -->
+              <div style="display:inline-block;background:#eff2ff;border:1px solid #c7d0ff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;color:#3d6bff;letter-spacing:.06em;text-transform:uppercase;margin-bottom:20px;">Lien de connexion</div>
+
+              <!-- Title -->
+              <h1 class="text-main" style="margin:0 0 12px;font-size:26px;font-weight:800;color:#0d0f1a;letter-spacing:-.03em;line-height:1.2;">Connecte-toi à FlowPoint</h1>
+
+              <!-- Body copy -->
+              <p class="text-muted" style="margin:0 0 32px;font-size:15px;color:#4a5280;line-height:1.65;">
+                Clique sur le bouton ci-dessous pour accéder à ton espace. Ce lien est valide <strong style="color:#0d0f1a;">15&nbsp;minutes</strong> et ne peut être utilisé qu'une seule fois.
+              </p>
+
+              <!-- CTA -->
+              <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-bottom:32px;">
+                <tr>
+                  <td style="border-radius:10px;background:linear-gradient(135deg,#3d6bff 0%,#1a3de8 100%);">
+                    <a href="${link}"
+                       style="display:inline-block;padding:15px 36px;border-radius:10px;background:linear-gradient(135deg,#3d6bff 0%,#1a3de8 100%);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:-.01em;white-space:nowrap;">
+                      Se connecter →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Fallback link -->
+              <p class="text-muted" style="margin:0 0 8px;font-size:13px;color:#6878b0;">Bouton qui ne fonctionne pas ? Copie ce lien dans ton navigateur :</p>
+              <div class="copy-block" style="background:#f5f6fc;border:1px solid #dde1f0;border-radius:8px;padding:10px 14px;font-size:12px;color:#6878b0;word-break:break-all;line-height:1.5;font-family:'Courier New',monospace;">
+                ${link}
+              </div>
+
+              <!-- Divider -->
+              <hr class="divider" style="border:none;border-top:1px solid #eaedf5;margin:28px 0;"/>
+
+              <!-- Security note -->
+              <p class="text-muted" style="margin:0;font-size:13px;color:#8891b8;line-height:1.6;">
+                🔒 Si tu n'as pas demandé ce lien, ignore cet e-mail — ton compte est en sécurité. Ce lien expirera automatiquement.
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td class="email-footer" style="background-color:#f7f8fd;border-top:1px solid #eaedf5;padding:24px 40px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+                <tr>
+                  <td>
+                    <p class="text-footer" style="margin:0 0 6px;font-size:12px;color:#9aa0c0;line-height:1.5;">
+                      <a class="link-footer" href="https://flowpoint.pro" style="color:#3d6bff;text-decoration:none;font-weight:600;">flowpoint.pro</a>
+                      &nbsp;·&nbsp;
+                      <a class="link-footer" href="https://app.flowpoint.pro" style="color:#3d6bff;text-decoration:none;">Dashboard</a>
+                      &nbsp;·&nbsp;
+                      <a class="link-footer" href="mailto:support@flowpoint.pro" style="color:#3d6bff;text-decoration:none;">Support</a>
+                    </p>
+                    <p class="text-footer" style="margin:0;font-size:11px;color:#b0b6cc;">
+                      © ${new Date().getFullYear()} FlowPoint. Tous droits réservés.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+        </table>
+        <!-- /Card -->
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>`,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
