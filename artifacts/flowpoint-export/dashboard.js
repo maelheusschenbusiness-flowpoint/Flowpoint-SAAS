@@ -26243,21 +26243,13 @@ async function fpGetPSIAIReco() {
   }
 }
 
-// ── Wire analyze button after render ─────────────────────────────────────────
-const _origInitPageAnimations = typeof initPageAnimations === 'function' ? initPageAnimations : function(){};
-function initPageAnimations(route, sub) {
-  if (window.__fpAnimationsInitialized) return;
-  window.__fpAnimationsInitialized = true;
-  _origInitPageAnimations(route, sub);
-  // Bind PSI analyze button
-  const psiBtn = document.getElementById('fp-psi-analyze-btn');
-  if (psiBtn && !psiBtn._fpBound) {
-    psiBtn._fpBound = true;
-    psiBtn.addEventListener('click', fpAnalyzePSI);
-    const inp = document.getElementById('fp-psi-url-input');
-    if (inp) inp.addEventListener('keydown', e => { if (e.key==='Enter') fpAnalyzePSI(); });
-  }
-}
+// ── Wire analyze button after render (delegated — avoids function redeclaration hoisting conflict) ──
+document.addEventListener('click', function(e) {
+  if (e.target && e.target.closest && e.target.closest('#fp-psi-analyze-btn')) fpAnalyzePSI();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.target && e.target.id === 'fp-psi-url-input' && e.key === 'Enter') fpAnalyzePSI();
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI CHAT PANEL — Side assistant

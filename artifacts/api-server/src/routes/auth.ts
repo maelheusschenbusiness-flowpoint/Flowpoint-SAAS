@@ -416,6 +416,147 @@ router.post("/auth/register", authRateLimit, async (req: Request, res: Response)
   }
 });
 
+// ── Full signup: créer compte + org + quotas + magic link ─────────────────────
+const DISPOSABLE_DOMAINS = new Set([
+  "mailinator.com","guerrillamail.com","tempmail.com","throwaway.email","yopmail.com",
+  "sharklasers.com","grr.la","spam4.me","trashmail.com","dispostable.com","fakeinbox.com",
+  "10minutemail.com","mailnull.com","spamgourmet.com","trashmail.at","maildrop.cc",
+  "getairmail.com","filzmail.com","throwam.com","tempr.email","crazymailing.com",
+]);
+
+function isDisposableEmail(email: string): boolean {
+  const domain = email.split("@")[1]?.toLowerCase().replace(/\.$/, "") ?? "";
+  return DISPOSABLE_DOMAINS.has(domain);
+}
+
+function normalizeWebsite(url: string | undefined): string {
+  if (!url) return "";
+  url = url.trim();
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+  try { return new URL(url).origin; } catch { return url; }
+}
+
+router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) => {
+  const {
+    _hp,          // honeypot
+    firstName, lastName, email,
+    companyName, website, country,
+    companySize, objective,
+  } = req.body as Record<string, string | undefined>;
+
+  // Honeypot check — bots fill this field, humans don't
+  if (_hp && String(_hp).trim().length > 0) {
+    // Silently succeed — don't reveal it's a honeypot
+    res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+    return;
+  }
+
+  // Validate required fields
+  const normalizedEmail = String(email || "").toLowerCase().trim();
+  if (!normalizedEmail || !normalizedEmail.includes("@") || !normalizedEmail.includes(".")) {
+    res.status(400).json({ error: "Email invalide." });
+    return;
+  }
+  if (!String(firstName || "").trim()) {
+    res.status(400).json({ error: "Le prénom est requis." });
+    return;
+  }
+  if (!String(lastName || "").trim()) {
+    res.status(400).json({ error: "Le nom est requis." });
+    return;
+  }
+  if (!String(companyName || "").trim()) {
+    res.status(400).json({ error: "Le nom de l'entreprise est requis." });
+    return;
+  }
+
+  // Block disposable emails
+  if (isDisposableEmail(normalizedEmail)) {
+    res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
+    return;
+  }
+
+  if (!isEmailAllowed(normalizedEmail)) {
+    logger.warn({ email: normalizedEmail }, "[Auth/Signup] Email not on allowlist — silent success");
+    res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+    return;
+  }
+
+  const normalizedSite = normalizeWebsite(website);
+  const fn = String(firstName || "").trim();
+  const ln = String(lastName  || "").trim();
+  const company = String(companyName || "").trim();
+  const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60_000).toISOString();
+  const orgId = "default";
+
+  // Upsert org_settings (create or update org)
+  try {
+    const { upsertOrgSettings } = await import("../services/org-settings.js");
+    await upsertOrgSettings(orgId, {
+      email:       normalizedEmail,
+      name:        company,
+      primarySite: normalizedSite || null,
+      companySize: companySize ?? null,
+      industry:    objective ?? null,
+      plan:        "standard",
+      trialEndsAt: trialEndsAt,
+    });
+  } catch (err) {
+    logger.warn({ err }, "[Auth/Signup] upsertOrgSettings failed (non-fatal)");
+    // Non-fatal — still send the magic link
+  }
+
+  // Update in-memory store
+  store.me.firstName = fn;
+  store.me.org = { name: company };
+  store.me.plan = "standard";
+  store.me.trialEndsAt = trialEndsAt;
+
+  // Log activity
+  store.logActivity({
+    type: "account",
+    label: `Compte créé : ${fn} ${ln} (${company})`,
+    targetId: normalizedEmail,
+    targetType: "user",
+    metadata: { country: country ?? null, companySize: companySize ?? null, objective: objective ?? null },
+  }).catch(() => {});
+
+  // Generate and store magic link token
+  const token = generateToken();
+  const publicUrl = getPublicUrl();
+  const verifyPath = `${publicUrl}/login-verify.html?token=${token}`;
+
+  try {
+    await storeMagicToken(token, normalizedEmail);
+  } catch (dbErr) {
+    const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+    logger.error({ err: msg, email: normalizedEmail }, "[Auth/Signup] DB error storing token");
+    res.status(500).json({ error: "Impossible de créer le lien de connexion\u00a0: base de données indisponible." });
+    return;
+  }
+
+  const resendKey = process.env["RESEND_API_KEY"];
+  const isProduction = process.env["NODE_ENV"] === "production";
+
+  if (resendKey) {
+    try {
+      await sendMagicEmail(normalizedEmail, verifyPath);
+      logger.info({ email: normalizedEmail, company }, "[Auth/Signup] Account created — magic link sent");
+      res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg }, "[Auth/Signup] Resend failed");
+      res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019e-mail\u00a0: " + msg.substring(0, 120) });
+    }
+  } else if (!isProduction) {
+    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourné directement." });
+  } else {
+    logger.error("[Auth/Signup] RESEND_API_KEY not set in production");
+    res.status(503).json({ error: "Service email non configuré. Connectez-vous avec Google." });
+  }
+});
+
 router.get("/auth/login-verify", async (req: Request, res: Response) => {
   const { token } = req.query as { token?: string };
   if (!token) {
