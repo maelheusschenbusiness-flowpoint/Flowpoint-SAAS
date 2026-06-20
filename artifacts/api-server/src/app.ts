@@ -175,6 +175,11 @@ function servePage(file: string) {
   };
 }
 
+// ── Favicon — serve SVG for all icon requests (no favicon.ico file exists) ───
+app.get(["/favicon.ico", "/api/dashboard/favicon.ico"], (_req: Request, res: Response): void => {
+  res.redirect(301, "/favicon.svg");
+});
+
 // ── Frontend page routes ──────────────────────────────────────────────────────
 // Landing / Signup page — public marketing & auth entry point
 app.get(["/", "/index", "/index.html", "/signup", "/inscription"], servePage("index.html"));
