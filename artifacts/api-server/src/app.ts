@@ -186,8 +186,10 @@ app.get(["/login", "/login.html"], servePage("login.html"));
 app.get(["/login-verify", "/login-verify.html"], servePage("login-verify.html"));
 // Pricing
 app.get(["/pricing", "/pricing.html"], servePage("pricing.html"));
-// Legal pages (CGU / CGV / privacy / mentions)
-app.get(["/legal", "/legal.html", "/informations-legales"], servePage("legal.html"));
+// Legal pages — redirect to public flowpoint.pro page
+app.get(["/legal", "/legal.html", "/informations-legales"], (_req: Request, res: Response) => {
+  res.redirect(301, "https://flowpoint.pro/informations-legales");
+});
 // Report viewer (shared reports by token)
 app.get(["/report/:token", "/report-view.html"], servePage("report-view.html"));
 // Checkout pages

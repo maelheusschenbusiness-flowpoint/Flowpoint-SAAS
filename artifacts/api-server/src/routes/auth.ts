@@ -645,7 +645,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
   const publicUrl = getPublicUrl();
 
   if (oauthError) {
-    res.redirect(`${publicUrl}/index.html?error=${encodeURIComponent(oauthError)}`);
+    res.redirect(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError)}`);
     return;
   }
   if (!code) {
@@ -674,7 +674,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     const resolvedEmail = user.email ?? user.sub ?? "";
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ email: resolvedEmail }, "[Auth] Google login rejected — email not on allowlist");
-      res.redirect(`${publicUrl}/index.html?error=access_denied`);
+      res.redirect(`${publicUrl}/login.html?error=access_denied`);
       return;
     }
 
@@ -697,7 +697,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     res.redirect(`${publicUrl}/dashboard.html?provider=google`);
   } catch (err) {
     logger.error({ err }, "[Auth] Google login callback failed");
-    res.redirect(`${publicUrl}/index.html?error=google_auth_failed`);
+    res.redirect(`${publicUrl}/login.html?error=google_auth_failed`);
   }
 });
 
@@ -720,7 +720,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
   const publicUrl = getPublicUrl();
 
   if (oauthError || !code) {
-    res.redirect(`${publicUrl}/index.html?error=${encodeURIComponent(oauthError || "missing_code")}`);
+    res.redirect(`${publicUrl}/login.html?error=${encodeURIComponent(oauthError || "missing_code")}`);
     return;
   }
 
@@ -741,7 +741,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     const resolvedEmail = user.email ?? user.login ?? "";
     if (!isEmailAllowed(resolvedEmail)) {
       logger.warn({ login: user.login }, "[Auth] GitHub login rejected — email not on allowlist");
-      res.redirect(`${publicUrl}/index.html?error=access_denied`);
+      res.redirect(`${publicUrl}/login.html?error=access_denied`);
       return;
     }
 
@@ -763,7 +763,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     res.redirect(`${publicUrl}/dashboard.html?provider=github`);
   } catch (err) {
     logger.error({ err }, "[Auth] GitHub callback failed");
-    res.redirect(`${publicUrl}/index.html?error=github_auth_failed`);
+    res.redirect(`${publicUrl}/login.html?error=github_auth_failed`);
   }
 });
 

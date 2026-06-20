@@ -8,76 +8,58 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --fp-bg: #f1f5f9;
-      --fp-surface: #ffffff;
-      --fp-border: rgba(0,0,0,0.09);
-      --fp-text: #0f172a;
-      --fp-text-muted: #64748b;
-      --fp-accent: #2563eb;
-      --fp-accent-hover: #1d4ed8;
-      --fp-radius: 14px;
-      --fp-shadow: 0 8px 32px rgba(37,99,235,0.10), 0 1px 4px rgba(0,0,0,0.07);
-      --fp-btn-bg: #f8faff;
-      --fp-btn-hover: #eef3ff;
-      --fp-input-bg: #f8faff;
-      --fp-divider: rgba(0,0,0,0.08);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --fp-bg: #050810;
-        --fp-surface: #0d1117;
-        --fp-border: rgba(255,255,255,0.08);
-        --fp-text: #f1f5f9;
-        --fp-text-muted: #94a3b8;
-        --fp-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.4);
-        --fp-btn-bg: #161b22;
-        --fp-btn-hover: #1e2631;
-        --fp-input-bg: #0d1117;
-        --fp-divider: rgba(255,255,255,0.08);
-      }
+      --bg:        #0b1120;
+      --bg2:       #111827;
+      --surface:   #1e293b;
+      --border:    #2d3f55;
+      --blue:      #2563eb;
+      --blue-h:    #1d4ed8;
+      --blue-light:#3b82f6;
+      --text:      #f1f5f9;
+      --text-soft: #94a3b8;
+      --text-muted:#64748b;
+      --input-bg:  #162032;
+      --radius:    14px;
+      --shadow:    0 8px 40px rgba(0,0,0,.5);
     }
 
-    body {
+    html, body {
+      min-height: 100%; background: var(--bg); color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: var(--fp-bg);
-      color: var(--fp-text);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
+      font-size: 15px; line-height: 1.5;
     }
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; flex-direction: column; }
 
     .fp-login-wrap { width: 100%; max-width: 420px; }
 
     .fp-logo {
       display: flex; align-items: center; gap: 11px;
-      justify-content: center; margin-bottom: 32px;
-      text-decoration: none;
+      justify-content: center; margin-bottom: 32px; text-decoration: none;
     }
-    .fp-logo-name { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: var(--fp-text); }
+    .fp-logo-name { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+    .fp-logo-name span { color: var(--blue-light); }
 
     .fp-card {
-      background: var(--fp-surface);
-      border: 1px solid var(--fp-border);
-      border-radius: var(--fp-radius);
-      box-shadow: var(--fp-shadow);
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
       padding: 36px 32px 32px;
     }
 
-    h1 { font-size: 21px; font-weight: 700; margin-bottom: 6px; text-align: center; }
-    .fp-subtitle { font-size: 14px; color: var(--fp-text-muted); text-align: center; margin-bottom: 28px; }
+    h1 { font-size: 21px; font-weight: 700; margin-bottom: 6px; text-align: center; color: var(--text); }
+    .fp-subtitle { font-size: 14px; color: var(--text-soft); text-align: center; margin-bottom: 28px; }
 
     .fp-form-group { margin-bottom: 14px; }
-    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--fp-text-muted); }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text-soft); }
     input[type="email"] {
       width: 100%; padding: 11px 14px; font-size: 14px;
-      border: 1px solid var(--fp-border); border-radius: 8px;
-      background: var(--fp-input-bg); color: var(--fp-text);
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--input-bg); color: var(--text);
       outline: none; transition: border-color 0.15s, box-shadow 0.15s;
     }
-    input[type="email"]:focus { border-color: var(--fp-accent); box-shadow: 0 0 0 3px rgba(37,99,235,0.14); }
-    input[type="email"]::placeholder { color: var(--fp-text-muted); opacity: 0.6; }
+    input[type="email"]:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.2); }
+    input[type="email"]::placeholder { color: var(--text-muted); }
 
     .fp-btn {
       width: 100%; padding: 12px; font-size: 14px; font-weight: 600;
@@ -88,42 +70,45 @@
     .fp-btn:active { transform: scale(0.98); }
     .fp-btn + .fp-btn { margin-top: 10px; }
 
-    .fp-btn-primary { background: var(--fp-accent); color: #fff; }
-    .fp-btn-primary:hover { background: var(--fp-accent-hover); }
+    .fp-btn-primary { background: var(--blue); color: #fff; }
+    .fp-btn-primary:hover { background: var(--blue-h); }
     .fp-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
-    .fp-btn-oauth { background: var(--fp-btn-bg); color: var(--fp-text); border: 1px solid var(--fp-border); }
-    .fp-btn-oauth:hover { background: var(--fp-btn-hover); }
+    .fp-btn-oauth { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .fp-btn-oauth:hover { background: #253550; border-color: #3b5178; }
 
-    .fp-btn-apple { background: #000; color: #fff; border: none; }
-    .fp-btn-apple:hover { background: #1a1a1a; }
-    @media (prefers-color-scheme: dark) {
-      .fp-btn-apple { background: #fff; color: #000; }
-      .fp-btn-apple:hover { background: #f0f0f0; }
-    }
+    .fp-btn-apple { background: #f1f5f9; color: #0f172a; }
+    .fp-btn-apple:hover { background: #e2e8f0; }
 
     .fp-oauth-icon { width: 18px; height: 18px; flex-shrink: 0; }
 
     .fp-divider {
       display: flex; align-items: center; gap: 12px;
-      margin: 22px 0; color: var(--fp-text-muted); font-size: 12px;
+      margin: 22px 0; color: var(--text-muted); font-size: 12px;
     }
-    .fp-divider::before, .fp-divider::after { content:''; flex:1; border-top:1px solid var(--fp-divider); }
+    .fp-divider::before, .fp-divider::after { content:''; flex:1; height: 1px; background: var(--border); }
 
     .fp-alert {
       display: none; padding: 12px 14px; border-radius: 8px;
       font-size: 13px; margin-bottom: 16px; line-height: 1.55;
     }
-    .fp-alert-success { background: rgba(16,185,129,0.10); border: 1px solid rgba(16,185,129,0.25); color: #059669; }
-    .fp-alert-error   { background: rgba(239,68,68,0.10);  border: 1px solid rgba(239,68,68,0.25);  color: #dc2626; }
-    @media (prefers-color-scheme: dark) {
-      .fp-alert-success { color: #34d399; }
-      .fp-alert-error   { color: #f87171; }
-    }
+    .fp-alert-success { background: rgba(34,197,94,.1); border: 1px solid rgba(34,197,94,.3); color: #86efac; }
+    .fp-alert-error   { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3); color: #fca5a5; }
 
-    .fp-footer { margin-top: 22px; text-align: center; font-size: 12px; color: var(--fp-text-muted); line-height: 1.6; }
-    .fp-footer a { color: var(--fp-text-muted); text-decoration: underline; text-underline-offset: 2px; }
-    .fp-footer a:hover { color: var(--fp-text); }
+    .fp-footer {
+      margin-top: 20px; text-align: center; font-size: 12px; color: var(--text-muted); line-height: 1.6;
+    }
+    .fp-footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+    .fp-footer a:hover { color: var(--text); }
+
+    .fp-create-link {
+      display: block; text-align: center; margin-top: 16px;
+      font-size: 13.5px; color: var(--text-muted);
+    }
+    .fp-create-link a {
+      color: var(--blue-light); font-weight: 600; text-decoration: none;
+    }
+    .fp-create-link a:hover { text-decoration: underline; }
 
     .fp-spinner {
       display: inline-block; width: 15px; height: 15px;
@@ -131,21 +116,16 @@
       border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
     .fp-hidden { display: none !important; }
 
-    /* ── Responsive ≤ 400px ─────────────────────────────────────────────────── */
     @media (max-width: 400px) {
       body { padding: 12px 8px; align-items: flex-start; padding-top: 24px; }
       .fp-card { padding: 24px 18px 22px; border-radius: 12px; }
       h1 { font-size: 18px; }
       .fp-subtitle { font-size: 13px; margin-bottom: 20px; }
       .fp-logo { margin-bottom: 20px; }
-      .fp-logo-name { font-size: 19px; }
       .fp-btn { padding: 11px; font-size: 13px; }
       input[type="email"] { padding: 10px 12px; font-size: 14px; }
-      .fp-footer { font-size: 11px; }
-      .fp-divider { margin: 18px 0; }
     }
   </style>
 </head>
@@ -153,9 +133,20 @@
 
   <div class="fp-login-wrap">
 
-    <a class="fp-logo" href="https://flowpoint.pro/" target="_blank" rel="noopener noreferrer">
-      <img src="/assets/flowpoint-logo.svg" width="40" height="40" alt="FlowPoint"/>
-      <span class="fp-logo-name">FlowPoint</span>
+    <a class="fp-logo" href="https://flowpoint.pro/" rel="noopener noreferrer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="38" height="38">
+        <defs>
+          <linearGradient id="fp-login-g" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#2563EB"/>
+            <stop offset="100%" stop-color="#4F46E5"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="48" height="48" rx="10" ry="10" fill="url(#fp-login-g)"/>
+        <g transform="translate(12, 12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </g>
+      </svg>
+      <span class="fp-logo-name">Flow<span>Point</span></span>
     </a>
 
     <div class="fp-card">
@@ -199,6 +190,10 @@
       </div>
 
     </div>
+
+    <p class="fp-create-link">
+      Pas encore de compte ? <a href="/">Créer mon espace →</a>
+    </p>
 
     <div class="fp-footer">
       En vous connectant, vous acceptez nos
@@ -249,8 +244,10 @@
         google_auth_failed: '\u00C9chec de la connexion Google. R\u00E9essayez.',
         missing_code      : 'Connexion annul\u00E9e.',
         access_denied     : 'Acc\u00E8s refus\u00E9.',
+        github_auth_failed: '\u00C9chec de la connexion GitHub. R\u00E9essayez.',
       };
-      showError(msgs[e] || 'Erreur : ' + e.replace(/_/g, ' ') + '.');
+      showError(msgs[e] || 'Erreur\u00a0: ' + e.replace(/_/g, ' ') + '.');
+      history.replaceState({}, '', '/login.html');
     })();
 
     /* ── Magic link form ── */
