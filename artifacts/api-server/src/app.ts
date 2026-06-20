@@ -176,14 +176,18 @@ function servePage(file: string) {
 }
 
 // ── Frontend page routes ──────────────────────────────────────────────────────
-// Dashboard — primary app entry point
-app.get(["/", "/dashboard", "/dashboard.html", "/api/dashboard", "/api/dashboard/", "/api/dashboard/dashboard.html"], servePage("dashboard.html"));
-// Login
+// Landing / Signup page — public marketing & auth entry point
+app.get(["/", "/index", "/index.html", "/signup", "/inscription"], servePage("index.html"));
+// Dashboard — primary app entry point (authenticated)
+app.get(["/dashboard", "/dashboard.html", "/api/dashboard", "/api/dashboard/", "/api/dashboard/dashboard.html"], servePage("dashboard.html"));
+// Login (kept for direct link access / legacy)
 app.get(["/login", "/login.html"], servePage("login.html"));
 // Login verify (magic-link callback)
 app.get(["/login-verify", "/login-verify.html"], servePage("login-verify.html"));
 // Pricing
 app.get(["/pricing", "/pricing.html"], servePage("pricing.html"));
+// Legal pages (CGU / CGV / privacy / mentions)
+app.get(["/legal", "/legal.html", "/informations-legales"], servePage("legal.html"));
 // Report viewer (shared reports by token)
 app.get(["/report/:token", "/report-view.html"], servePage("report-view.html"));
 // Checkout pages

@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Informations légales — FlowPoint</title>
+  <meta name="description" content="CGU, CGV, politique de confidentialité et mentions légales de FlowPoint."/>
+  <link rel="icon" href="/assets/flowpoint-logo.svg" type="image/svg+xml"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --fp-blue: #2563EB; --fp-text: #0F172A; --fp-muted: #64748B;
+      --fp-border: #E2E8F0; --fp-bg: #F8FAFF; --fp-radius: 12px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #fff; color: var(--fp-text); line-height: 1.7; }
+    a { color: var(--fp-blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Nav */
+    nav {
+      position: sticky; top: 0; z-index: 50; background: rgba(255,255,255,.9);
+      backdrop-filter: blur(12px); border-bottom: 1px solid var(--fp-border);
+      padding: 0 24px; height: 60px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 700; color: var(--fp-text); text-decoration: none; }
+    .nav-back { font-size: 13px; color: var(--fp-muted); display: flex; align-items: center; gap: 5px; }
+    .nav-back:hover { color: var(--fp-text); }
+
+    /* Layout */
+    .legal-layout { display: grid; grid-template-columns: 220px 1fr; gap: 48px; max-width: 1000px; margin: 48px auto; padding: 0 24px 80px; }
+
+    /* Sidebar */
+    .legal-sidebar { position: sticky; top: 80px; height: fit-content; }
+    .legal-sidebar h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--fp-muted); margin-bottom: 12px; }
+    .legal-sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+    .legal-sidebar a {
+      padding: 7px 12px; border-radius: 7px; font-size: 13px; color: var(--fp-muted);
+      transition: all .15s; display: flex; align-items: center; gap: 7px;
+    }
+    .legal-sidebar a:hover, .legal-sidebar a.active { background: #EEF4FF; color: var(--fp-blue); text-decoration: none; font-weight: 600; }
+
+    /* Content */
+    .legal-content { min-width: 0; }
+    .legal-section { margin-bottom: 64px; scroll-margin-top: 80px; }
+    .legal-section-header {
+      padding: 20px 24px; border-radius: var(--fp-radius); margin-bottom: 28px;
+      background: linear-gradient(135deg, #EEF4FF, #F0F4FF);
+      border: 1px solid #C7D2FE;
+    }
+    .legal-section-header .tag {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em;
+      color: var(--fp-blue); margin-bottom: 4px;
+    }
+    .legal-section-header h2 { font-size: 22px; font-weight: 800; letter-spacing: -.03em; color: var(--fp-text); }
+    .legal-section-header p { font-size: 13px; color: var(--fp-muted); margin-top: 4px; }
+
+    h3 { font-size: 16px; font-weight: 700; margin: 24px 0 10px; color: var(--fp-text); }
+    p  { font-size: 14px; color: #334155; margin-bottom: 14px; line-height: 1.7; }
+    ul, ol { padding-left: 20px; margin-bottom: 14px; }
+    li { font-size: 14px; color: #334155; margin-bottom: 6px; line-height: 1.65; }
+    strong { color: var(--fp-text); }
+    .fp-table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 13px; }
+    .fp-table th { background: var(--fp-bg); padding: 10px 14px; text-align: left; font-weight: 600; border: 1px solid var(--fp-border); color: var(--fp-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    .fp-table td { padding: 10px 14px; border: 1px solid var(--fp-border); vertical-align: top; }
+    .fp-table tr:nth-child(even) td { background: var(--fp-bg); }
+
+    .legal-updated { font-size: 12px; color: var(--fp-muted); font-style: italic; margin-bottom: 24px; display: flex; align-items: center; gap: 5px; }
+    .legal-contact {
+      background: var(--fp-bg); border: 1px solid var(--fp-border); border-radius: var(--fp-radius);
+      padding: 20px 24px; margin-top: 24px; font-size: 13px; color: var(--fp-muted);
+    }
+    .legal-contact strong { display: block; margin-bottom: 4px; color: var(--fp-text); }
+    .divider { border: none; border-top: 1px solid var(--fp-border); margin: 32px 0; }
+
+    @media (max-width: 768px) {
+      .legal-layout { grid-template-columns: 1fr; }
+      .legal-sidebar { position: static; }
+      .legal-sidebar nav { flex-direction: row; flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="/">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="28" height="28">
+      <defs><linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient></defs>
+      <rect width="48" height="48" rx="10" fill="url(#lg)"/>
+      <g transform="translate(12,12)" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </g>
+    </svg>
+    FlowPoint
+  </a>
+  <a class="nav-back" href="/">
+    ← Retour à l'accueil
+  </a>
+</nav>
+
+<div class="legal-layout">
+
+  <!-- Sidebar -->
+  <aside class="legal-sidebar">
+    <h3>Sur cette page</h3>
+    <nav id="legal-nav">
+      <a href="#cgu">📄 CGU</a>
+      <a href="#cgv">🛒 CGV</a>
+      <a href="#privacy">🔒 Confidentialité</a>
+      <a href="#mentions">ℹ️ Mentions légales</a>
+    </nav>
+  </aside>
+
+  <!-- Content -->
+  <main class="legal-content">
+
+    <!-- CGU -->
+    <section class="legal-section" id="cgu">
+      <div class="legal-section-header">
+        <div class="tag">CGU</div>
+        <h2>Conditions Générales d'Utilisation</h2>
+        <p>Régissent l'utilisation de la plateforme FlowPoint.</p>
+      </div>
+      <p class="legal-updated">📅 Dernière mise à jour : 1er janvier 2024</p>
+
+      <h3>1. Objet</h3>
+      <p>Les présentes Conditions Générales d'Utilisation (« CGU ») régissent l'accès et l'utilisation de la plateforme FlowPoint (ci-après « le Service »), éditée par FlowPoint SAS, ainsi que l'ensemble des fonctionnalités associées.</p>
+
+      <h3>2. Acceptation des conditions</h3>
+      <p>L'utilisation du Service implique l'acceptation pleine et entière des présentes CGU. Si vous n'acceptez pas ces conditions, vous ne devez pas utiliser le Service.</p>
+
+      <h3>3. Accès au service</h3>
+      <p>Le Service est accessible à toute personne physique ou morale disposant d'un compte valide. L'inscription nécessite la fourniture d'informations exactes et à jour.</p>
+      <ul>
+        <li>L'utilisateur est responsable de la confidentialité de ses identifiants.</li>
+        <li>Tout accès non autorisé doit être signalé immédiatement à <a href="mailto:support@flowpoint.pro">support@flowpoint.pro</a>.</li>
+        <li>FlowPoint se réserve le droit de suspendre tout compte en cas d'utilisation abusive.</li>
+      </ul>
+
+      <h3>4. Utilisation acceptable</h3>
+      <p>L'utilisateur s'engage à utiliser le Service de manière licite et conforme aux présentes CGU. Il est notamment interdit de :</p>
+      <ul>
+        <li>Utiliser le Service à des fins illicites ou frauduleuses.</li>
+        <li>Tenter d'accéder à des données ou systèmes non autorisés.</li>
+        <li>Transmettre des contenus malveillants, offensants ou illégaux.</li>
+        <li>Revendre ou redistribuer l'accès au Service sans autorisation écrite préalable.</li>
+        <li>Effectuer des opérations de scraping ou d'extraction massives non autorisées.</li>
+      </ul>
+
+      <h3>5. Propriété intellectuelle</h3>
+      <p>L'ensemble des éléments constituant le Service (marques, logos, codes, textes, graphismes, bases de données) sont la propriété exclusive de FlowPoint SAS ou de ses partenaires et sont protégés par les lois françaises et internationales relatives à la propriété intellectuelle.</p>
+
+      <h3>6. Disponibilité du service</h3>
+      <p>FlowPoint s'efforce d'assurer la disponibilité du Service 24h/24 et 7j/7, mais ne garantit pas une disponibilité ininterrompue. Des interruptions peuvent survenir pour maintenance ou force majeure.</p>
+
+      <h3>7. Résiliation</h3>
+      <p>Chaque partie peut résilier le contrat à tout moment. FlowPoint peut suspendre ou résilier immédiatement l'accès en cas de violation des présentes CGU.</p>
+
+      <h3>8. Limitation de responsabilité</h3>
+      <p>Dans les limites autorisées par la loi, FlowPoint ne saurait être tenue responsable des dommages indirects, accessoires ou consécutifs résultant de l'utilisation ou de l'impossibilité d'utiliser le Service.</p>
+
+      <h3>9. Droit applicable</h3>
+      <p>Les présentes CGU sont soumises au droit français. Tout litige sera soumis à la compétence des tribunaux de Paris.</p>
+
+      <div class="legal-contact">
+        <strong>Contact CGU</strong>
+        Pour toute question relative aux CGU : <a href="mailto:legal@flowpoint.pro">legal@flowpoint.pro</a>
+      </div>
+    </section>
+
+    <hr class="divider"/>
+
+    <!-- CGV -->
+    <section class="legal-section" id="cgv">
+      <div class="legal-section-header">
+        <div class="tag">CGV</div>
+        <h2>Conditions Générales de Vente</h2>
+        <p>Régissent les transactions commerciales avec FlowPoint.</p>
+      </div>
+      <p class="legal-updated">📅 Dernière mise à jour : 1er janvier 2024</p>
+
+      <h3>1. Objet et champ d'application</h3>
+      <p>Les présentes Conditions Générales de Vente (« CGV ») régissent les relations contractuelles entre FlowPoint SAS et ses clients pour la souscription aux offres proposées sur la plateforme FlowPoint.</p>
+
+      <h3>2. Offres et tarifs</h3>
+      <p>FlowPoint propose les abonnements suivants :</p>
+      <table class="fp-table">
+        <thead>
+          <tr><th>Plan</th><th>Prix mensuel HT</th><th>Engagement</th><th>Résiliation</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Starter</strong></td><td>29 €</td><td>Mensuel</td><td>Préavis 30 jours</td></tr>
+          <tr><td><strong>Pro</strong></td><td>89 €</td><td>Mensuel</td><td>Préavis 30 jours</td></tr>
+          <tr><td><strong>Ultra</strong></td><td>249 €</td><td>Mensuel</td><td>Préavis 30 jours</td></tr>
+        </tbody>
+      </table>
+      <p>Les prix sont exprimés en euros HT. La TVA applicable est de 20 % pour les clients français.</p>
+
+      <h3>3. Commande et paiement</h3>
+      <p>La souscription à un abonnement est effectuée via la plateforme en ligne. Le paiement est sécurisé par Stripe. FlowPoint accepte les cartes bancaires (Visa, Mastercard, American Express).</p>
+      <ul>
+        <li>Le paiement est débité à la date de souscription, puis mensuellement à la même date.</li>
+        <li>En cas d'échec de paiement, FlowPoint se réserve le droit de suspendre l'accès au Service.</li>
+        <li>Les factures sont émises électroniquement et accessibles dans l'espace client.</li>
+      </ul>
+
+      <h3>4. Droit de rétractation</h3>
+      <p>Conformément à l'article L.221-28 du Code de la consommation, le droit de rétractation ne s'applique pas aux services numériques dont l'exécution a commencé avec l'accord du consommateur.</p>
+      <p>Néanmoins, FlowPoint accorde une garantie de satisfaction de <strong>14 jours</strong> : si vous n'êtes pas satisfait de votre premier abonnement, contactez-nous sous 14 jours pour un remboursement complet.</p>
+
+      <h3>5. Renouvellement et résiliation</h3>
+      <p>Les abonnements sont renouvelés automatiquement à échéance. La résiliation doit être effectuée depuis l'espace client ou par e-mail à <a href="mailto:billing@flowpoint.pro">billing@flowpoint.pro</a> au moins 30 jours avant la prochaine échéance.</p>
+
+      <h3>6. Modification des tarifs</h3>
+      <p>FlowPoint se réserve le droit de modifier ses tarifs. Tout changement sera notifié par e-mail 30 jours avant sa mise en application. Le client peut résilier sans pénalité dans ce délai.</p>
+
+      <h3>7. Remboursements</h3>
+      <p>Aucun remboursement partiel ne sera accordé pour les périodes entamées, sauf en cas de dysfonctionnement majeur imputable à FlowPoint.</p>
+
+      <div class="legal-contact">
+        <strong>Contact facturation</strong>
+        Pour toute question relative à la facturation : <a href="mailto:billing@flowpoint.pro">billing@flowpoint.pro</a>
+      </div>
+    </section>
+
+    <hr class="divider"/>
+
+    <!-- Privacy -->
+    <section class="legal-section" id="privacy">
+      <div class="legal-section-header">
+        <div class="tag">RGPD · Confidentialité</div>
+        <h2>Politique de Confidentialité</h2>
+        <p>Comment FlowPoint collecte, utilise et protège vos données personnelles.</p>
+      </div>
+      <p class="legal-updated">📅 Dernière mise à jour : 1er janvier 2024</p>
+
+      <h3>1. Responsable du traitement</h3>
+      <p>Le responsable du traitement des données personnelles est FlowPoint SAS, immatriculée au RCS de Paris. Contact DPO : <a href="mailto:privacy@flowpoint.pro">privacy@flowpoint.pro</a>.</p>
+
+      <h3>2. Données collectées</h3>
+      <p>FlowPoint collecte les données suivantes :</p>
+      <table class="fp-table">
+        <thead><tr><th>Catégorie</th><th>Données</th><th>Base légale</th></tr></thead>
+        <tbody>
+          <tr><td>Identification</td><td>Nom, prénom, adresse e-mail</td><td>Exécution du contrat</td></tr>
+          <tr><td>Entreprise</td><td>Nom de l'entreprise, site web, pays</td><td>Exécution du contrat</td></tr>
+          <tr><td>Paiement</td><td>Données de facturation (traitées par Stripe)</td><td>Obligation légale</td></tr>
+          <tr><td>Navigation</td><td>Journaux de connexion, adresse IP</td><td>Intérêt légitime</td></tr>
+          <tr><td>Usage</td><td>Fonctionnalités utilisées, métriques d'activité</td><td>Intérêt légitime</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3. Finalités du traitement</h3>
+      <ul>
+        <li>Fournir et améliorer le Service.</li>
+        <li>Envoyer les communications transactionnelles (liens de connexion, factures, alertes).</li>
+        <li>Respecter nos obligations légales et fiscales.</li>
+        <li>Prévenir la fraude et assurer la sécurité du Service.</li>
+        <li>Statistiques d'utilisation (données agrégées et anonymisées).</li>
+      </ul>
+
+      <h3>4. Partage des données</h3>
+      <p>FlowPoint ne vend jamais vos données personnelles. Elles peuvent être partagées avec :</p>
+      <ul>
+        <li><strong>Stripe</strong> : traitement des paiements.</li>
+        <li><strong>Supabase / PostgreSQL</strong> : hébergement des données (UE).</li>
+        <li><strong>Resend</strong> : envoi d'e-mails transactionnels.</li>
+        <li><strong>Prestataires techniques</strong> : hébergement, sécurité (sous conditions contractuelles strictes).</li>
+      </ul>
+
+      <h3>5. Durée de conservation</h3>
+      <ul>
+        <li>Données de compte actif : pendant toute la durée du contrat.</li>
+        <li>Données après résiliation : 3 ans (obligations légales).</li>
+        <li>Journaux de sécurité : 12 mois.</li>
+        <li>Données de paiement : 10 ans (obligation fiscale).</li>
+      </ul>
+
+      <h3>6. Vos droits</h3>
+      <p>Conformément au RGPD, vous disposez des droits suivants :</p>
+      <ul>
+        <li><strong>Accès</strong> : obtenir une copie de vos données.</li>
+        <li><strong>Rectification</strong> : corriger des données inexactes.</li>
+        <li><strong>Effacement</strong> : demander la suppression de vos données.</li>
+        <li><strong>Portabilité</strong> : recevoir vos données dans un format lisible.</li>
+        <li><strong>Opposition</strong> : vous opposer à certains traitements.</li>
+        <li><strong>Limitation</strong> : limiter le traitement de vos données.</li>
+      </ul>
+      <p>Pour exercer ces droits, contactez <a href="mailto:privacy@flowpoint.pro">privacy@flowpoint.pro</a>. Vous pouvez également introduire une réclamation auprès de la CNIL (<a href="https://www.cnil.fr" target="_blank" rel="noopener">www.cnil.fr</a>).</p>
+
+      <h3>7. Cookies</h3>
+      <p>FlowPoint utilise des cookies strictement nécessaires au fonctionnement du Service (session, sécurité). Aucun cookie publicitaire tiers n'est utilisé sans votre consentement explicite.</p>
+
+      <h3>8. Sécurité</h3>
+      <p>FlowPoint met en œuvre des mesures techniques et organisationnelles appropriées pour protéger vos données : chiffrement TLS, authentification sécurisée, accès limité aux données.</p>
+
+      <div class="legal-contact">
+        <strong>Contact DPO</strong>
+        Délégué à la Protection des Données : <a href="mailto:privacy@flowpoint.pro">privacy@flowpoint.pro</a>
+      </div>
+    </section>
+
+    <hr class="divider"/>
+
+    <!-- Mentions légales -->
+    <section class="legal-section" id="mentions">
+      <div class="legal-section-header">
+        <div class="tag">Mentions légales</div>
+        <h2>Mentions Légales</h2>
+        <p>Informations légales relatives à l'éditeur et à l'hébergeur du Service.</p>
+      </div>
+
+      <h3>Éditeur du site</h3>
+      <table class="fp-table">
+        <tbody>
+          <tr><td><strong>Dénomination sociale</strong></td><td>FlowPoint SAS</td></tr>
+          <tr><td><strong>Forme juridique</strong></td><td>Société par Actions Simplifiée (SAS)</td></tr>
+          <tr><td><strong>Capital social</strong></td><td>10 000 €</td></tr>
+          <tr><td><strong>RCS</strong></td><td>Paris (en cours d'immatriculation)</td></tr>
+          <tr><td><strong>TVA intracommunautaire</strong></td><td>FR XX XXX XXX XXX</td></tr>
+          <tr><td><strong>Siège social</strong></td><td>Paris, France</td></tr>
+          <tr><td><strong>Directeur de publication</strong></td><td>L'équipe FlowPoint</td></tr>
+          <tr><td><strong>E-mail</strong></td><td><a href="mailto:hello@flowpoint.pro">hello@flowpoint.pro</a></td></tr>
+          <tr><td><strong>Site web</strong></td><td><a href="https://flowpoint.pro">flowpoint.pro</a></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Hébergement</h3>
+      <table class="fp-table">
+        <tbody>
+          <tr><td><strong>Hébergeur backend</strong></td><td>Render Inc. · 525 Brannan St, San Francisco, CA 94107, USA</td></tr>
+          <tr><td><strong>Base de données</strong></td><td>Supabase Inc. · Données stockées dans l'UE</td></tr>
+          <tr><td><strong>CDN / Frontend</strong></td><td>Render Inc.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Propriété intellectuelle</h3>
+      <p>L'ensemble du contenu de ce site (textes, images, graphismes, logos, icônes, sons, logiciels) est la propriété exclusive de FlowPoint SAS, à l'exception des éléments appartenant à des tiers clairement identifiés.</p>
+      <p>Toute reproduction, représentation, modification, publication ou adaptation de tout ou partie des éléments du site, quel que soit le moyen ou le procédé utilisé, est interdite sans autorisation écrite préalable de FlowPoint SAS.</p>
+
+      <h3>Liens hypertextes</h3>
+      <p>FlowPoint ne peut être tenu responsable du contenu des sites externes accessibles via des liens hypertextes présents sur ce site.</p>
+
+      <h3>Contact</h3>
+      <p>Pour toute question, vous pouvez nous contacter à : <a href="mailto:hello@flowpoint.pro">hello@flowpoint.pro</a></p>
+
+      <div class="legal-contact">
+        <strong>Signalement</strong>
+        Pour signaler un abus ou une violation : <a href="mailto:abuse@flowpoint.pro">abuse@flowpoint.pro</a>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // Highlight active section in sidebar
+  (function () {
+    var sections = document.querySelectorAll('.legal-section');
+    var links = document.querySelectorAll('#legal-nav a');
+    function onScroll() {
+      var scrollY = window.scrollY + 120;
+      sections.forEach(function (s) {
+        if (s.offsetTop <= scrollY) {
+          links.forEach(function (l) { l.classList.remove('active'); });
+          var link = document.querySelector('#legal-nav a[href="#' + s.id + '"]');
+          if (link) link.classList.add('active');
+        }
+      });
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    // Scroll to hash on load
+    if (window.location.hash) {
+      var target = document.querySelector(window.location.hash);
+      if (target) setTimeout(function () { target.scrollIntoView({ behavior: 'smooth' }); }, 100);
+    }
+  })();
+</script>
+</body>
+</html>
