@@ -42,7 +42,11 @@ export class ValidationError extends AppError {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
+export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction): void {
+  // Guard: if response already started, delegate to default Express error handler
+  // to avoid ERR_HTTP_HEADERS_SENT crashes.
+  if (res.headersSent) { next(err); return; }
+
   const requestId = (req as { id?: string }).id ?? 'unknown';
   const isProduction = process.env.NODE_ENV === 'production';
 

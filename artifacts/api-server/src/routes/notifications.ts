@@ -27,8 +27,8 @@ router.get("/notifications", async (_req, res) => {
     await ensureSeed();
     const notifs = await db.select().from(notificationsTable).orderBy(desc(notificationsTable.createdAt)).limit(50);
     res.json(notifs);
-  } catch (e) {
-    res.status(500).json({ error: "Failed to fetch notifications" });
+  } catch {
+    res.json([]);
   }
 });
 

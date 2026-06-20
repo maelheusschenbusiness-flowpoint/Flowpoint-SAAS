@@ -27,6 +27,18 @@ class Store {
     seats: 5,
   };
 
+  /** SSE clients subscribed to real-time billing/event streams */
+  sseClients: Set<(data: string) => void> = new Set();
+
+  /** Broadcast a JSON event to all connected SSE clients */
+  broadcast(payload: Record<string, unknown>): void {
+    if (!this.sseClients.size) return;
+    const msg = `data: ${JSON.stringify(payload)}\n\n`;
+    this.sseClients.forEach(send => {
+      try { send(msg); } catch { /* client disconnected */ }
+    });
+  }
+
   async refresh(orgId = "default"): Promise<void> {
     try {
       const client = await pool.connect();
