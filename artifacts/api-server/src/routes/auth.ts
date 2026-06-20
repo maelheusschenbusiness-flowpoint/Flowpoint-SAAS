@@ -5,40 +5,69 @@ import { logger } from "../lib/logger.js";
 import { createSession, deleteSession, getSession, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { Resend } from "resend";
+import { pool } from "@workspace/db";
 
 const router = Router();
-
-interface MagicToken {
-  email: string;
-  expiresAt: number;
-  used: boolean;
-}
-
-const magicTokens = new Map<string, MagicToken>();
 
 function generateToken(): string {
   return randomBytes(32).toString("hex");
 }
 
+// ── PostgreSQL-backed magic link tokens ───────────────────────────────────────
+
+async function storeMagicToken(token: string, email: string): Promise<void> {
+  const expiresAt = new Date(Date.now() + 15 * 60_000);
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO magic_link_tokens (token, email, expires_at, used)
+       VALUES ($1, $2, $3, false)
+       ON CONFLICT (token) DO NOTHING`,
+      [token, email, expiresAt]
+    );
+  } finally {
+    client.release();
+  }
+}
+
+async function getMagicToken(token: string): Promise<{ email: string; used: boolean } | null> {
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      `SELECT email, used FROM magic_link_tokens
+       WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+      [token]
+    );
+    if (!res.rows[0]) return null;
+    return { email: res.rows[0].email as string, used: res.rows[0].used as boolean };
+  } finally {
+    client.release();
+  }
+}
+
+async function consumeMagicToken(token: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `UPDATE magic_link_tokens SET used = true WHERE token = $1`,
+      [token]
+    );
+  } finally {
+    client.release();
+  }
+}
+
 /**
- * Allowlist check — gates who may authenticate.
- *
- * Configure at least one of:
- *   ALLOWED_EMAILS       comma-separated list of exact emails
- *   ALLOWED_EMAIL_DOMAIN single domain (e.g. "acme.com"); all addresses on that domain are permitted
- *
- * In production, if neither variable is set, every login attempt is rejected
- * (fail-closed). In development/test, the check is skipped so local work
- * remains frictionless.
+ * Allowlist check.
+ * Set ALLOWED_EMAILS (comma-separated) or ALLOWED_EMAIL_DOMAIN on Render.
+ * If neither is set, all emails are allowed (open mode — email delivery is the gating factor).
  */
 function isEmailAllowed(email: string): boolean {
   const allowedEmails = process.env["ALLOWED_EMAILS"];
   const allowedDomain = process.env["ALLOWED_EMAIL_DOMAIN"];
-  const isProduction  = process.env["NODE_ENV"] === "production";
 
   if (!allowedEmails && !allowedDomain) {
-    // No allowlist configured — open in dev, closed in production.
-    return !isProduction;
+    return true; // Open mode — anyone who receives the email can log in
   }
 
   const normalized = email.toLowerCase().trim();
@@ -54,13 +83,6 @@ function isEmailAllowed(email: string): boolean {
   }
 
   return false;
-}
-
-function cleanExpired() {
-  const now = Date.now();
-  for (const [token, data] of magicTokens) {
-    if (data.expiresAt < now || data.used) magicTokens.delete(token);
-  }
 }
 
 function getPublicUrl(): string {
@@ -139,14 +161,14 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
 router.post("/auth/login-request", authRateLimit, async (req: Request, res: Response) => {
   const rawEmail = (req.body as { email?: string } | undefined)?.email;
 
-  // ── Entry diagnostic log (visible in Render logs) ────────────────────────────
+  // ── Entry diagnostic log — always visible in Render logs ─────────────────────
   logger.info({
     emailReceived: rawEmail ? String(rawEmail).replace(/(.{2}).+(@.+)/, "$1***$2") : "(none)",
-    fromEmail: process.env["FROM_EMAIL"] || process.env["ALERT_EMAIL_FROM"] || process.env["EMAIL_FROM"] || "(fallback: onboarding@resend.dev)",
+    fromEmail: process.env["FROM_EMAIL"] || process.env["RESEND_FROM"] || process.env["ALERT_EMAIL_FROM"] || process.env["EMAIL_FROM"] || "(fallback: onboarding@resend.dev)",
     publicBaseUrl: process.env["PUBLIC_BASE_URL"] || process.env["PUBLIC_URL"] || "(not set)",
     resendKeyPresent: !!(process.env["RESEND_API_KEY"]),
-    allowedEmails: process.env["ALLOWED_EMAILS"] ? "(set)" : "(not set)",
-    allowedDomain: process.env["ALLOWED_EMAIL_DOMAIN"] || "(not set)",
+    databaseUrlPresent: !!(process.env["DATABASE_URL"]),
+    allowedEmails: process.env["ALLOWED_EMAILS"] ? "(set)" : "(not set — open mode)",
     nodeEnv: process.env["NODE_ENV"] || "(not set)",
   }, "[Auth] login-request received");
 
@@ -158,19 +180,27 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
   const email = String(rawEmail).toLowerCase().trim();
 
   if (!isEmailAllowed(email)) {
-    logger.warn({ email }, "[Auth] Login rejected — email not on allowlist (set ALLOWED_EMAILS or ALLOWED_EMAIL_DOMAIN on Render)");
-    // Return a generic success to avoid leaking which emails are rejected
-    res.json({ ok: true, message: "Si cette adresse est enregistrée, vous recevrez un lien par email." });
+    logger.warn({ email }, "[Auth] Login rejected — email not on allowlist");
+    res.json({ ok: true, message: "Si cette adresse est autorisée, vous recevrez un lien par email." });
     return;
   }
 
-  cleanExpired();
-
+  // ── Store token in PostgreSQL (survives Render restarts) ──────────────────────
   const token = generateToken();
-  magicTokens.set(token, { email, expiresAt: Date.now() + 15 * 60_000, used: false });
-
   const publicUrl = getPublicUrl();
   const verifyPath = `${publicUrl}/login-verify.html?token=${token}`;
+
+  try {
+    await storeMagicToken(token, email);
+    logger.info({ email }, "[Auth] Magic token stored in PostgreSQL");
+  } catch (dbErr) {
+    const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+    logger.error({ err: msg, email }, "[Auth] DB error — cannot store magic token");
+    res.status(500).json({ error: "Impossible de créer le lien de connexion\u00a0: base de données indisponible." });
+    return;
+  }
+
+  // ── Send via Resend ───────────────────────────────────────────────────────────
   const resendKey = process.env["RESEND_API_KEY"];
   const isProduction = process.env["NODE_ENV"] === "production";
 
@@ -181,25 +211,25 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
       res.json({ ok: true, message: "Lien de connexion envoyé par email." });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg, email }, "[Auth] login-request: sendMagicEmail failed");
+      logger.error({ err: msg, email }, "[Auth] login-request: Resend failed");
 
       if (msg.startsWith("RESEND_API_KEY_MISSING")) {
         res.status(503).json({ error: "Service email non configuré." });
       } else if (msg.startsWith("DOMAIN_NOT_VERIFIED")) {
-        res.status(500).json({ error: "Configuration e-mail invalide\u00a0: domaine exp\u00e9diteur non v\u00e9rifi\u00e9. Contactez l\u2019administrateur." });
+        res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019e-mail\u00a0: configuration Resend invalide (domaine expéditeur non vérifié)." });
       } else {
-        res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019email. R\u00e9essayez ou connectez-vous avec Google." });
+        res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019e-mail\u00a0: " + msg.substring(0, 120) });
       }
     }
     return;
   }
 
   if (!isProduction) {
-    logger.warn({ email, debugLink: verifyPath }, "[Auth] No RESEND_API_KEY — returning debugLink (dev only)");
-    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourn\u00e9 directement." });
+    logger.warn({ email, debugLink: verifyPath }, "[Auth] No RESEND_API_KEY — returning debugLink");
+    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourné directement." });
   } else {
-    logger.error("[Auth] RESEND_API_KEY not set in production — cannot send magic link");
-    res.status(503).json({ error: "Service email non configur\u00e9. Connectez-vous avec Google." });
+    logger.error("[Auth] RESEND_API_KEY not set in production");
+    res.status(503).json({ error: "Service email non configuré. Connectez-vous avec Google." });
   }
 });
 
@@ -211,52 +241,67 @@ router.post("/auth/register", authRateLimit, async (req: Request, res: Response)
     return;
   }
 
-  if (!isEmailAllowed(String(email))) {
-    logger.warn({ email }, "[Auth] Registration rejected — email not on allowlist");
-    // Return a generic 200 so as not to enumerate valid addresses
+  const normalizedEmail = String(email).toLowerCase().trim();
+
+  if (!isEmailAllowed(normalizedEmail)) {
+    logger.warn({ email: normalizedEmail }, "[Auth] Registration rejected — email not on allowlist");
     res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
     return;
   }
 
-  if (firstName && String(firstName).trim()) {
-    store.me.firstName = String(firstName).trim();
-  }
-  if (companyName && String(companyName).trim()) {
-    store.me.org = { name: String(companyName).trim() };
-  }
-  if (plan && ["standard","pro","ultra"].includes(String(plan))) {
-    store.me.plan = String(plan);
-  }
+  if (firstName && String(firstName).trim()) store.me.firstName = String(firstName).trim();
+  if (companyName && String(companyName).trim()) store.me.org = { name: String(companyName).trim() };
+  if (plan && ["standard","pro","ultra"].includes(String(plan))) store.me.plan = String(plan);
 
-  cleanExpired();
   const token = generateToken();
-  magicTokens.set(token, { email: String(email).toLowerCase().trim(), expiresAt: Date.now() + 15 * 60_000, used: false });
-
   const publicUrl = getPublicUrl();
   const verifyPath = `${publicUrl}/login-verify.html?token=${token}`;
+
+  try {
+    await storeMagicToken(token, normalizedEmail);
+  } catch (dbErr) {
+    const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+    logger.error({ err: msg, email: normalizedEmail }, "[Auth] DB error in register");
+    res.status(500).json({ error: "Impossible de créer le lien de connexion\u00a0: base de données indisponible." });
+    return;
+  }
+
   const resendKey = process.env["RESEND_API_KEY"];
   const isProduction = process.env["NODE_ENV"] === "production";
 
   if (resendKey) {
-    await sendMagicEmail(email, verifyPath);
-    res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+    try {
+      await sendMagicEmail(normalizedEmail, verifyPath);
+      res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg }, "[Auth] register: Resend failed");
+      res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019e-mail\u00a0: " + msg.substring(0, 120) });
+    }
   } else if (!isProduction) {
-    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug: lien retourné directement" });
+    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourné directement." });
   } else {
-    logger.error("[Auth] RESEND_API_KEY not set in production — cannot send magic link");
-    res.status(503).json({ error: "Email service not configured" });
+    logger.error("[Auth] RESEND_API_KEY not set in production");
+    res.status(503).json({ error: "Service email non configuré." });
   }
 });
 
-router.get("/auth/login-verify", (req: Request, res: Response) => {
+router.get("/auth/login-verify", async (req: Request, res: Response) => {
   const { token } = req.query as { token?: string };
   if (!token) {
     res.status(400).json({ error: "Token manquant" });
     return;
   }
 
-  cleanExpired();
-  const entry = magicTokens.get(String(token));
+  let entry: { email: string; used: boolean } | null = null;
+  try {
+    entry = await getMagicToken(String(token));
+  } catch (dbErr) {
+    const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+    logger.error({ err: msg }, "[Auth] login-verify: DB error reading token");
+    res.status(500).json({ error: "Erreur base de données. Veuillez réessayer." });
+    return;
+  }
 
   if (!entry) {
     res.status(401).json({ error: "Lien invalide ou expiré" });
@@ -266,18 +311,20 @@ router.get("/auth/login-verify", (req: Request, res: Response) => {
     res.status(401).json({ error: "Lien déjà utilisé" });
     return;
   }
-  if (entry.expiresAt < Date.now()) {
-    magicTokens.delete(String(token));
-    res.status(401).json({ error: "Lien expiré" });
-    return;
+
+  try {
+    await consumeMagicToken(String(token));
+  } catch (dbErr) {
+    logger.warn({ err: dbErr }, "[Auth] login-verify: could not mark token as used");
+    // Non-fatal — continue with session creation
   }
 
-  entry.used = true;
-
-  // Issue a unique per-session token bound to this user. The API_SECRET_KEY
-  // is never used as a session credential for browser clients.
-  // In this single-tenant deployment every verified login is an owner/admin.
-  const sessionToken = createSession({ email: entry.email, role: "admin" });
+  const sessionToken = await createSession({
+    userId: entry.email,
+    orgId: "default",
+    email: entry.email,
+    role: "admin",
+  });
 
   logger.info({ email: entry.email }, "[Auth] Magic link verified — session started");
 
@@ -367,7 +414,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
 
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // In this single-tenant deployment every OAuth login is an owner/admin.
-    const sessionToken = createSession({ email: resolvedEmail, role: "admin" });
+    const sessionToken = await createSession({ userId: resolvedEmail, orgId: "default", email: resolvedEmail, role: "admin" });
     const isProd = process.env["NODE_ENV"] === "production";
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
@@ -433,7 +480,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
 
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // In this single-tenant deployment every OAuth login is an owner/admin.
-    const sessionToken = createSession({ email: resolvedEmail, role: "admin" });
+    const sessionToken = await createSession({ userId: resolvedEmail, orgId: "default", email: resolvedEmail, role: "admin" });
     const isProd = process.env["NODE_ENV"] === "production";
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,

@@ -13,7 +13,7 @@ const envSchema = z.object({
   STRIPE_CANCEL_URL: z.string().url().optional(),
   OPENAI_API_KEY: z.string().startsWith("sk-").optional(),
   RESEND_API_KEY: z.string().startsWith("re_").optional(),
-  EMAIL_FROM: z.string().email().default("noreply@flowpoint.app"),
+  EMAIL_FROM: z.string().min(1).default("noreply@flowpoint.app"),
   REDIS_URL: z.string().optional(),
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
   TWILIO_ACCOUNT_SID: z.string().optional(),

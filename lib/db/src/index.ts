@@ -390,6 +390,26 @@ export const aiAlertsTable = pgTable("ai_alerts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ── Auth tables ───────────────────────────────────────────────────────────────
+
+export const magicLinkTokensTable = pgTable("magic_link_tokens", {
+  token:     text("token").primaryKey(),
+  email:     text("email").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used:      boolean("used").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const userSessionsTable = pgTable("user_sessions", {
+  token:     text("token").primaryKey(),
+  userId:    text("user_id").notNull(),
+  orgId:     text("org_id").notNull().default("default"),
+  email:     text("email").notNull(),
+  role:      text("role").notNull().default("member"),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // ── Drizzle instance ──────────────────────────────────────────────────────────
 
 const schema = {
@@ -407,6 +427,7 @@ const schema = {
   revenueLeaksTable,
   reportTemplatesTable, customDomainsTable, reportExportsTable,
   aiUsageLogsTable, aiMonthlyUsageTable, aiAlertsTable,
+  magicLinkTokensTable, userSessionsTable,
 };
 
 export const db = drizzle(pool, { schema });
