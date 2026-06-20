@@ -12,7 +12,7 @@ router.get("/market-intelligence", async (req, res) => {
     await seedMarketData(orgId);
     const data = await getMarketDashboard(orgId);
     res.json(data);
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch { res.json({ trends: [], opportunities: [], competitors: [], movements: [], summary: null }); }
 });
 
 router.get("/market-intelligence/trends", async (req, res) => {

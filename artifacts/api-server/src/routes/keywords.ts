@@ -74,10 +74,7 @@ router.get("/keywords", async (req, res) => {
       return;
     }
     res.json({ keywords: kwRes.rows, total: kwRes.rows.length, source: "tracked" });
-  } catch (err) {
-    logger.error({ err }, "[keywords] list error");
-    res.status(500).json({ error: "Failed to fetch keywords" });
-  } finally { client.release(); }
+  } catch { res.json({ keywords: [], total: 0, source: "empty" }); } finally { client.release(); }
 });
 
 // GET /api/keywords/stats
@@ -86,7 +83,7 @@ router.get("/keywords/stats", async (req, res) => {
   try {
     const stats = await getKeywordStats(orgId);
     res.json({ ...stats, limit: getKeywordLimit(plan), plan });
-  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+  } catch { res.json({ keywords: 0, tracked: 0, top10: 0, avgPosition: null, limit: 0, plan: "starter" }); }
 });
 
 // GET /api/keywords/opportunities
@@ -102,7 +99,7 @@ router.get("/keywords/opportunities", async (req, res) => {
     params.push(parseInt(lim, 10));
     const r = await client.query(query, params);
     res.json({ opportunities: r.rows, count: r.rows.length });
-  } finally { client.release(); }
+  } catch { res.json({ opportunities: [], count: 0 }); } finally { client.release(); }
 });
 
 // GET /api/keywords/clusters
@@ -116,7 +113,7 @@ router.get("/keywords/clusters", async (req, res) => {
        LEFT JOIN tracked_keywords tk ON tk.cluster_id = kc.id AND tk.active = true
        WHERE kc.org_id = $1 GROUP BY kc.id ORDER BY kc.created_at DESC`, [orgId]);
     res.json({ clusters: r.rows, count: r.rows.length });
-  } finally { client.release(); }
+  } catch { res.json({ clusters: [], count: 0 }); } finally { client.release(); }
 });
 
 // GET /api/keywords/alerts
@@ -131,7 +128,7 @@ router.get("/keywords/alerts", async (req, res) => {
     query += ` ORDER BY triggered_at DESC LIMIT 50`;
     const r = await client.query(query, params);
     res.json({ alerts: r.rows, count: r.rows.length });
-  } finally { client.release(); }
+  } catch { res.json({ alerts: [], count: 0 }); } finally { client.release(); }
 });
 
 // GET /api/keywords/competitor-rankings

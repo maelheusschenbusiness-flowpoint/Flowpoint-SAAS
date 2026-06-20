@@ -10,8 +10,8 @@ router.get("/alert-rules", async (_req, res) => {
   try {
     const rules = await db.select().from(alertRulesTable).limit(200);
     res.json(rules);
-  } catch (err) {
-    res.status(500).json({ error: safeErrMsg(err) });
+  } catch {
+    res.json([]);
   }
 });
 

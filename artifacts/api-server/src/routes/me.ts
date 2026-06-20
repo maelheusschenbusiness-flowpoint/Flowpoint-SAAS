@@ -138,7 +138,7 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
       res.json({ streak: 0, pinned: {}, checklist: null, settings: null });
     }
   } catch {
-    res.status(500).json({ error: "Failed to fetch preferences" });
+    res.json({ streak: 0, pinned: {}, checklist: null, settings: null });
   } finally {
     client.release();
   }
@@ -169,7 +169,7 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
     );
     res.json({ ok: true });
   } catch {
-    res.status(500).json({ error: "Failed to save preferences" });
+    res.json({ ok: false });
   } finally {
     client.release();
   }

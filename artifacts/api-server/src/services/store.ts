@@ -64,6 +64,24 @@ class Store {
     } catch { /* non-fatal */ }
   }
 
+  async getRecentActivity(limit: number): Promise<ActivityLog[]> {
+    try {
+      const client = await pool.connect();
+      try {
+        const r = await client.query(
+          `SELECT type, label, target_id as "targetId", target_type as "targetType", metadata, created_at as "createdAt"
+           FROM activity_logs ORDER BY created_at DESC LIMIT $1`,
+          [limit]
+        );
+        return r.rows;
+      } finally {
+        client.release();
+      }
+    } catch {
+      return [];
+    }
+  }
+
   async logActivity(opts: ActivityLog): Promise<void> {
     try {
       const client = await pool.connect();

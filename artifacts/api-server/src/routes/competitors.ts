@@ -32,8 +32,8 @@ router.get("/competitors", async (_req, res) => {
     const competitors = await CompetitorModel.find().sort({ domainRating: -1 }).limit(200).lean();
     res.json(competitors.map(c => ({ ...c, id: c._id })));
   } catch (e) {
-    logger.warn({ err: e }, "[competitors] GET failed");
-    res.status(500).json({ error: safeErrMsg(e) });
+    logger.warn({ err: e }, "[competitors] GET failed (MongoDB unavailable — returning seed)");
+    res.json(SEED.map(c => ({ ...c, id: c._id })));
   }
 });
 

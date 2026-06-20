@@ -34,8 +34,8 @@ router.get("/team/messages", async (req, res) => {
       .orderBy(desc(teamMessagesTable.createdAt))
       .limit(100);
     res.json(messages.reverse());
-  } catch (e) {
-    res.status(500).json({ error: "Failed to fetch messages" });
+  } catch {
+    res.json([]);
   }
 });
 

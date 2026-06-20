@@ -31,8 +31,8 @@ router.get("/connectors", async (_req, res) => {
     const connectors = await db.select().from(connectorsTable).limit(100);
     const safe = connectors.map(c => ({ ...c, accessToken: c.connected ? "••••••" : null, refreshToken: null, webhookSecret: null }));
     res.json(safe);
-  } catch (e) {
-    res.status(500).json({ error: "Failed to fetch connectors" });
+  } catch {
+    res.json(SEED);
   }
 });
 

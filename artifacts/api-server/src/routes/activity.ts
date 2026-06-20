@@ -7,8 +7,8 @@ router.get("/activity", async (_req: Request, res: Response) => {
   try {
     const events = await store.getRecentActivity(50);
     res.json(events);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch activity" });
+  } catch {
+    res.json([]);
   }
 });
 

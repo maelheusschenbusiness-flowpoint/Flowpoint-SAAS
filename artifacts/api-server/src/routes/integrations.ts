@@ -79,7 +79,7 @@ router.get("/integrations/automation-logs", requireAdmin, async (req, res) => {
     params.push(parseInt(lim, 10));
     const r = await client.query(query, params);
     res.json({ logs: r.rows, count: r.rows.length });
-  } finally { client.release(); }
+  } catch { res.json({ logs: [], count: 0 }); } finally { client.release(); }
 });
 
 // ── GET /api/integrations/runs ────────────────────────────────────────────────
@@ -99,7 +99,7 @@ router.get("/integrations/runs", requireAdmin, async (req, res) => {
     params.push(parseInt(lim, 10));
     const r = await client.query(query, params);
     res.json({ runs: r.rows, count: r.rows.length });
-  } finally { client.release(); }
+  } catch { res.json({ runs: [], count: 0 }); } finally { client.release(); }
 });
 
 // ── GET /api/integrations/incoming-webhooks ───────────────────────────────────
@@ -109,7 +109,7 @@ router.get("/integrations/incoming-webhooks", requireAdmin, async (req, res) => 
   try {
     const r = await client.query(`SELECT * FROM incoming_webhooks WHERE org_id=$1 ORDER BY created_at DESC`, [orgId]);
     res.json({ webhooks: r.rows, count: r.rows.length });
-  } finally { client.release(); }
+  } catch { res.json({ webhooks: [], count: 0 }); } finally { client.release(); }
 });
 
 // ── GET /api/integrations/zapier ──────────────────────────────────────────────

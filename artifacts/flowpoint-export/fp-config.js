@@ -92,97 +92,10 @@
   window.FP_SOCKET_READY = false;
 
   function loadSocketIO() {
-    if (window.FP_CONFIG.socketUrl === '' && window.location.protocol === 'file:') {
-      console.warn('[FP] Socket.IO désactivé en mode fichier local');
-      return;
-    }
-
-    const socketSrc = window.FP_CONFIG.socketUrl
-      ? window.FP_CONFIG.socketUrl + '/socket.io/socket.io.js'
-      : '/socket.io/socket.io.js';
-
-    const script = document.createElement('script');
-    script.src = socketSrc;
-    script.async = true;
-
-    script.onload = function () {
-      if (typeof io === 'undefined') {
-        console.warn('[FP] socket.io.js chargé mais io() introuvable');
-        return;
-      }
-
-      const socket = io(window.FP_CONFIG.socketUrl || window.location.origin, {
-        withCredentials: true,
-        transports: ['websocket', 'polling'],
-        reconnectionAttempts: 5,
-        reconnectionDelay: 2000,
-        timeout: 10000,
-      });
-
-      window.FP_SOCKET = socket;
-
-      socket.on('connect', function () {
-        window.FP_SOCKET_READY = true;
-        console.log('[FP] Socket.IO connecté :', socket.id);
-        document.dispatchEvent(new CustomEvent('fp:socket:ready', { detail: { socket } }));
-      });
-
-      socket.on('disconnect', function (reason) {
-        window.FP_SOCKET_READY = false;
-        console.warn('[FP] Socket.IO déconnecté :', reason);
-        document.dispatchEvent(new CustomEvent('fp:socket:disconnect', { detail: { reason } }));
-      });
-
-      socket.on('connect_error', function (err) {
-        console.warn('[FP] Socket.IO erreur de connexion :', err.message);
-      });
-
-      // ── Événements temps réel diffusés par le backend ──────────────────────
-
-      // Monitor DOWN/UP → toast + refresh
-      socket.on('monitor:alert', function (data) {
-        document.dispatchEvent(new CustomEvent('fp:monitor:alert', { detail: data }));
-      });
-
-      // Nouvelle entrée d'activité
-      socket.on('activity:new', function (data) {
-        document.dispatchEvent(new CustomEvent('fp:activity:new', { detail: data }));
-      });
-
-      // Mise à jour du plan Stripe
-      socket.on('billing:updated', function (data) {
-        document.dispatchEvent(new CustomEvent('fp:billing:updated', { detail: data }));
-      });
-
-      // Message équipe (canal)
-      socket.on('team:message', function (data) {
-        document.dispatchEvent(new CustomEvent('fp:team:message', { detail: data }));
-      });
-
-      // Notification push générique
-      socket.on('notification', function (data) {
-        document.dispatchEvent(new CustomEvent('fp:notification', { detail: data }));
-      });
-
-      // Audit terminé (depuis queue Bull)
-      socket.on('audit:complete', function (data) {
-        document.dispatchEvent(new CustomEvent('fp:audit:complete', { detail: data }));
-      });
-
-      // Rapport PDF prêt
-      socket.on('report:ready', function (data) {
-        document.dispatchEvent(new CustomEvent('fp:report:ready', { detail: data }));
-      });
-    };
-
-    script.onerror = function () {
-      console.warn('[FP] Socket.IO non disponible — fonctionnement en mode polling uniquement');
-    };
-
-    document.head.appendChild(script);
+    // Socket.IO désactivé — le backend utilise SSE uniquement (/api/activity/events)
+    // Aucun /socket.io/socket.io.js n'est servi par ce backend.
   }
-
-  // Charge Socket.IO après que le DOM est prêt
+  // (appel conservé pour compatibilité — la fonction ne fait rien)
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', loadSocketIO);
   } else {

@@ -2727,9 +2727,12 @@ function renderSidebarStatus() {
   // Usage bars
   const usageEl = $('#sidebar-usage');
   if (usageEl) {
+    const _usg    = me.usage   || {};
+    const _auditU = _usg.audit   || { used: 0, limit: 100 };
+    const _monU   = _usg.monitor || { used: 0, limit: 10  };
     const bars = [
-      { l:'Audits',   v:me.usage.audit.used,   max:me.usage.audit.limit,   c:'#2563EB' },
-      { l:'Monitors', v:me.usage.monitor.used, max:me.usage.monitor.limit, c:'#22c55e' },
+      { l:'Audits',   v:_auditU.used, max:_auditU.limit, c:'#2563EB' },
+      { l:'Monitors', v:_monU.used,   max:_monU.limit,   c:'#22c55e' },
     ];
     usageEl.innerHTML = bars.map(u => `
       <div class="fp-usage-bar-item">
@@ -2826,6 +2829,7 @@ function renderShortcutsModal() {
 /* ── OVERVIEW ── */
 function renderOverview() {
   const me = STATE.me;
+  if (!me) return;
   const avg = avgScore();
   const down = monitorsDown();
   const isPro  = me.plan === 'Pro' || me.plan === 'Ultra';

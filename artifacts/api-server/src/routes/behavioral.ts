@@ -512,7 +512,7 @@ router.get("/behavioral/insights", async (req: Request, res: Response) => {
     const data = await getBehaviorInsights(siteUrl);
     res.json(data);
   } catch {
-    res.status(500).json({ error: "Failed to fetch behavioral insights" });
+    res.json({ insights: [], sessions: 0, events: 0, count: 0 });
   }
 });
 
