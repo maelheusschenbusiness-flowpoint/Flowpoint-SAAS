@@ -2445,8 +2445,18 @@ function _fpApplyLayout() {
 // NOTIFICATIONS
 // ─────────────────────────────────────────────────────────────────
 // ─── GOOGLE MAPS ──────────────────────────────────────────────
-const GMAPS_KEY = 'AIzaSyCaOy4EyDEWX_4Y1FvkH483PBEGLllqAd4';
+let _gmapsKey = null;
 let _gmapsLoading = false;
+
+async function _fetchGmapsKey() {
+  if (_gmapsKey !== null) return _gmapsKey;
+  try {
+    const r = await fetch('/api/maps/config', { credentials: 'include' });
+    if (r.ok) { const d = await r.json(); _gmapsKey = d.apiKey || ''; }
+    else { _gmapsKey = ''; }
+  } catch (_) { _gmapsKey = ''; }
+  return _gmapsKey;
+}
 
 function loadGoogleMaps(cb) {
   if (typeof google !== 'undefined' && google.maps) { cb(); return; }
@@ -2455,11 +2465,18 @@ function loadGoogleMaps(cb) {
     return;
   }
   _gmapsLoading = true;
-  window.__gmapsCb = () => { _gmapsLoading = false; cb(); };
-  const s = document.createElement('script');
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&callback=__gmapsCb`;
-  s.async = true;
-  document.head.appendChild(s);
+  _fetchGmapsKey().then(key => {
+    if (!key) {
+      _gmapsLoading = false;
+      console.warn('[FlowPoint] Google Maps API key not configured — add GOOGLE_MAPS_API_KEY to environment secrets');
+      return;
+    }
+    window.__gmapsCb = () => { _gmapsLoading = false; cb(); };
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsCb`;
+    s.async = true;
+    document.head.appendChild(s);
+  });
 }
 
 function initLocalSEOMap() {
@@ -5574,8 +5591,9 @@ function renderLocalSEO() {
   const totalZones = 8;
   const oppCount = 12;
 
+  const _orgCity = STATE.me&&STATE.me.location&&STATE.me.location.city ? STATE.me.location.city : null;
   const cities = [
-    { name: 'Paris Centre',   pos: 2,  delta: +1, mobile: 3,  desktop: 2,  cov: 91 },
+    { name: _orgCity ? _orgCity+' Centre' : 'Votre ville',   pos: 2,  delta: +1, mobile: 3,  desktop: 2,  cov: 91 },
     { name: 'Lyon 1-4',       pos: 1,  delta:  0, mobile: 2,  desktop: 1,  cov: 88 },
     { name: 'Liège',          pos: 4,  delta: +2, mobile: 5,  desktop: 4,  cov: 67 },
     { name: 'Verviers',       pos: 7,  delta: -1, mobile: 9,  desktop: 7,  cov: 41 },
@@ -7394,7 +7412,7 @@ function renderSettings() {
             {l:'Email',v:me.email||'',t:'email'},
             {l:'Organisation',v:me.org.name,t:'text'},
             {l:'Site web',v:me.org?.website||'',t:'url'},
-            {l:'Fuseau horaire',v:'Europe/Paris (UTC+2)',t:'text'},
+            {l:'Fuseau horaire',v:(me.org&&me.org.timezone)||STATE.settings&&STATE.settings.timezone||'Europe/Paris',t:'text'},
           ].map(f => `<div class="fp-form-group">
             <label class="fp-form-label">${escHtml(f.l)}</label>
             <input class="fp-input" type="${f.t}" value="${escHtml(f.v)}"/>
