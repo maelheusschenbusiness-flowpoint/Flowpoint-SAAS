@@ -133,6 +133,20 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .fp-hidden { display: none !important; }
+
+    /* ── Responsive ≤ 400px ─────────────────────────────────────────────────── */
+    @media (max-width: 400px) {
+      body { padding: 12px 8px; align-items: flex-start; padding-top: 24px; }
+      .fp-card { padding: 24px 18px 22px; border-radius: 12px; }
+      h1 { font-size: 18px; }
+      .fp-subtitle { font-size: 13px; margin-bottom: 20px; }
+      .fp-logo { margin-bottom: 20px; }
+      .fp-logo-name { font-size: 19px; }
+      .fp-btn { padding: 11px; font-size: 13px; }
+      input[type="email"] { padding: 10px 12px; font-size: 14px; }
+      .fp-footer { font-size: 11px; }
+      .fp-divider { margin: 18px 0; }
+    }
   </style>
 </head>
 <body>

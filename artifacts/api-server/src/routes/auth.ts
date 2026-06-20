@@ -74,19 +74,29 @@ function getPublicUrl(): string {
 async function sendMagicEmail(email: string, link: string): Promise<void> {
   const resendKey = process.env["RESEND_API_KEY"];
   if (!resendKey) {
-    logger.warn("[Auth] RESEND_API_KEY not set — skipping email send");
-    return;
+    logger.warn("[Auth] RESEND_API_KEY not set — cannot send magic link");
+    throw new Error("RESEND_API_KEY_MISSING");
   }
 
+  // Prefer verified custom domain; fall back to Resend's shared sender (works without domain verification)
   const fromEmail =
     process.env["FROM_EMAIL"] ||
     process.env["ALERT_EMAIL_FROM"] ||
     process.env["EMAIL_FROM"] ||
-    "noreply@flowpoint.pro";
+    "FlowPoint <onboarding@resend.dev>";
+
+  logger.info({
+    email,
+    from: fromEmail,
+    publicBaseUrl: process.env["PUBLIC_BASE_URL"] || "(not set)",
+    resendKeyPresent: true,
+  }, "[Auth] Sending magic link email");
+
+  const resend = new Resend(resendKey);
+  let result: Awaited<ReturnType<typeof resend.emails.send>>;
 
   try {
-    const resend = new Resend(resendKey);
-    const result = await resend.emails.send({
+    result = await resend.emails.send({
       from: fromEmail,
       to: email,
       subject: "Votre lien de connexion FlowPoint",
@@ -99,15 +109,47 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
         </div>
       `,
     });
-    logger.info({ email, id: (result as { data?: { id?: string } }).data?.id }, "[Auth] Magic link email delivered");
   } catch (err) {
-    logger.error({ err, email, from: fromEmail }, "[Auth] Resend email delivery failed");
-    throw err; // re-throw so the route handler can return a proper error
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ err: msg, email, from: fromEmail }, "[Auth] Resend threw unexpected error");
+    throw new Error("EMAIL_SEND_FAILED: " + msg);
   }
+
+  if (result.error) {
+    const errName = (result.error as { name?: string }).name || "";
+    const errMsg  = (result.error as { message?: string }).message || JSON.stringify(result.error);
+    logger.error({ error: result.error, email, from: fromEmail }, "[Auth] Resend API returned error");
+
+    // Surface a specific message for domain-verification failures
+    if (
+      errName.includes("domain") ||
+      errName.includes("validation") ||
+      errMsg.toLowerCase().includes("domain") ||
+      errMsg.toLowerCase().includes("not verified") ||
+      errMsg.toLowerCase().includes("sender")
+    ) {
+      throw new Error("DOMAIN_NOT_VERIFIED: " + errMsg);
+    }
+    throw new Error("RESEND_ERROR: " + errMsg);
+  }
+
+  logger.info({ email, id: result.data?.id, from: fromEmail }, "[Auth] Magic link email delivered");
 }
 
 router.post("/auth/login-request", authRateLimit, async (req: Request, res: Response) => {
   const rawEmail = (req.body as { email?: string } | undefined)?.email;
+
+  // ── Entry diagnostic log (visible in Render logs) ────────────────────────────
+  logger.info({
+    emailReceived: rawEmail ? String(rawEmail).replace(/(.{2}).+(@.+)/, "$1***$2") : "(none)",
+    fromEmail: process.env["FROM_EMAIL"] || process.env["ALERT_EMAIL_FROM"] || process.env["EMAIL_FROM"] || "(fallback: onboarding@resend.dev)",
+    publicBaseUrl: process.env["PUBLIC_BASE_URL"] || process.env["PUBLIC_URL"] || "(not set)",
+    resendKeyPresent: !!(process.env["RESEND_API_KEY"]),
+    allowedEmails: process.env["ALLOWED_EMAILS"] ? "(set)" : "(not set)",
+    allowedDomain: process.env["ALLOWED_EMAIL_DOMAIN"] || "(not set)",
+    nodeEnv: process.env["NODE_ENV"] || "(not set)",
+  }, "[Auth] login-request received");
+
   if (!rawEmail || !String(rawEmail).includes("@")) {
     res.status(400).json({ error: "Email valide requis" });
     return;
@@ -116,8 +158,9 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
   const email = String(rawEmail).toLowerCase().trim();
 
   if (!isEmailAllowed(email)) {
-    logger.warn({ email }, "[Auth] Login rejected — email not on allowlist");
-    res.json({ ok: true, message: "Lien envoyé par email" });
+    logger.warn({ email }, "[Auth] Login rejected — email not on allowlist (set ALLOWED_EMAILS or ALLOWED_EMAIL_DOMAIN on Render)");
+    // Return a generic success to avoid leaking which emails are rejected
+    res.json({ ok: true, message: "Si cette adresse est enregistrée, vous recevrez un lien par email." });
     return;
   }
 
@@ -134,19 +177,29 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
   if (resendKey) {
     try {
       await sendMagicEmail(email, verifyPath);
-      logger.info({ email }, "[Auth] Magic link email sent");
-      res.json({ ok: true, message: "Lien envoyé par email" });
+      logger.info({ email }, "[Auth] login-request: magic link sent successfully");
+      res.json({ ok: true, message: "Lien de connexion envoyé par email." });
     } catch (err) {
-      logger.error({ err, email }, "[Auth] login-request: sendMagicEmail threw");
-      res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019email. Veuillez r\u00E9essayer ou utiliser Google." });
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, email }, "[Auth] login-request: sendMagicEmail failed");
+
+      if (msg.startsWith("RESEND_API_KEY_MISSING")) {
+        res.status(503).json({ error: "Service email non configuré." });
+      } else if (msg.startsWith("DOMAIN_NOT_VERIFIED")) {
+        res.status(500).json({ error: "Configuration e-mail invalide\u00a0: domaine exp\u00e9diteur non v\u00e9rifi\u00e9. Contactez l\u2019administrateur." });
+      } else {
+        res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019email. R\u00e9essayez ou connectez-vous avec Google." });
+      }
     }
     return;
-  } else if (!isProduction) {
-    logger.warn({ email }, "[Auth] No RESEND_API_KEY — returning debugLink (dev only)");
-    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug: lien retourné directement" });
+  }
+
+  if (!isProduction) {
+    logger.warn({ email, debugLink: verifyPath }, "[Auth] No RESEND_API_KEY — returning debugLink (dev only)");
+    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourn\u00e9 directement." });
   } else {
     logger.error("[Auth] RESEND_API_KEY not set in production — cannot send magic link");
-    res.status(503).json({ error: "Email service not configured" });
+    res.status(503).json({ error: "Service email non configur\u00e9. Connectez-vous avec Google." });
   }
 });
 
