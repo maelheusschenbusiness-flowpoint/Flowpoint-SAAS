@@ -3113,6 +3113,17 @@ function renderOverview() {
       ${statCard('Missions complétées', missionsCompleted > 0 ? String(missionsCompleted) : '—', missionsCompleted > 0 ? 'dans votre portefeuille' : 'Créez votre première mission', missionsCompleted > 0 ? 'up' : 'neutral')}
     </div>
 
+    ${!_ga4Connected() ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 16px;background:rgba(234,179,8,0.07);border:1px solid rgba(234,179,8,0.2);border-radius:10px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0">
+        <span style="font-size:16px">📊</span>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#eab308">Analytics non connecté</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Connectez Google Analytics 4 pour voir trafic, conversions et revenus réels</div>
+        </div>
+      </div>
+      <button class="fp-btn fp-btn-sm" style="flex-shrink:0;background:rgba(234,179,8,0.12);color:#eab308;border:1px solid rgba(234,179,8,0.3)" onclick="navigate('analytics')">Connecter GA4 →</button>
+    </div>` : ''}
+
     <!-- ═══════════════════════════════════════════════════════ -->
     <!-- LIVE COMMAND CENTER + WORKSPACE MAP -->
     <!-- ═══════════════════════════════════════════════════════ -->
@@ -18553,7 +18564,7 @@ function renderConversion() {
     <div class="fp-stat-row fp-mb-20">
       ${statCard("Taux de conversion", displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, "0.23%"), PREVIEW_MODE ? "+0.04% vs M-1" : "Connectez analytics", "neutral", PREVIEW_MODE ? "Secteur : 0.18%" : "")}
       ${statCard("Clients/mois", displayStat(STATE.overview?.clientsPerMonth, "28"), PREVIEW_MODE ? "+4 vs M-1" : "Connectez analytics", "neutral")}
-      ${statCard("Revenu estimé", STATE.overview?.revenue ? STATE.overview.revenue.toLocaleString('fr-FR') + "€/mois" : "—", "+400€ vs M-1", STATE.overview?.revenue ? "up" : "neutral")}
+      ${statCard("Revenu estimé", displayStat(STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString('fr-FR') + "€/mois" : null, PREVIEW_MODE ? "3 220€/mois" : null), STATE.overview?.revenue != null ? "+400€ vs M-1" : PREVIEW_MODE ? "estimé ce mois" : "Connectez analytics", STATE.overview?.revenue != null ? "up" : "neutral")}
       ${statCard("Perte rev. détectée", displayStat(leakTotal !== null ? leakTotal.toLocaleString('fr-FR') + "€/mois" : null, PREVIEW_MODE ? "5 070€/mois" : null), leakTotal !== null || PREVIEW_MODE ? "fuites actives détectées" : "Connectez analytics", leakTotal !== null ? "down" : "neutral")}
     </div>
 
@@ -18585,6 +18596,12 @@ function renderConversion() {
         }).join("")}
       </div>
     </div>
+
+    ${!_ga4Connected() && !PREVIEW_MODE ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(100,116,139,0.07);border:1px dashed rgba(100,116,139,0.3);border-radius:10px;margin-bottom:14px">
+      <span style="font-size:14px">🧪</span>
+      <div style="font-size:11px;color:var(--fp-text-muted)"><strong style="color:var(--fp-text)">Données illustratives</strong> — Connectez Google Analytics 4 pour voir vos vraies données de conversion</div>
+      <button class="fp-btn fp-btn-sm" style="margin-left:auto;flex-shrink:0;font-size:11px" onclick="navigate('analytics')">Connecter GA4 →</button>
+    </div>` : ''}
 
     <!-- FUNNEL SNAPSHOT + SESSION INTEL -->
     <div class="fp-grid-2 fp-mb-20">
