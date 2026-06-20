@@ -58,32 +58,73 @@ app.use(
 
 // ── 4. CORS ───────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS: (string | RegExp)[] = [
+  // Local development
   /^https?:\/\/localhost(:\d+)?$/,
+  /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+  // Replit preview
   /\.replit\.dev$/,
   /\.replit\.app$/,
+  // FlowPoint production domains (always allowed — safe to hardcode public origins)
+  "https://app.flowpoint.pro",
+  "https://flowpoint.pro",
+  "https://www.flowpoint.pro",
 ];
-const PUBLIC_URL = process.env["PUBLIC_URL"];
-if (PUBLIC_URL) ALLOWED_ORIGINS.push(PUBLIC_URL);
+
+// Pull additional allowed origins from every env var name the Render config might use.
+// CORS_ORIGIN supports comma-separated list: "https://a.com,https://b.com"
+for (const envKey of ["PUBLIC_URL", "PUBLIC_BASE_URL", "APP_URL", "FRONTEND_URL", "CORS_ORIGIN"]) {
+  const val = process.env[envKey];
+  if (!val) continue;
+  for (const raw of val.split(",")) {
+    const origin = raw.trim();
+    if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+      ALLOWED_ORIGINS.push(origin);
+    }
+  }
+}
+
+logger.info({ allowedOrigins: ALLOWED_ORIGINS.map(o => o.toString()) }, "[CORS] Allowed origins");
 
 app.use(
   cors({
     origin: (origin, cb) => {
-      // Allow server-to-server requests (no origin) or matching origins
+      // No Origin header = same-origin / server-to-server → always allow
       if (!origin) { cb(null, true); return; }
-      // Allow registered behavioral-site origins (dynamic per-site allowlist).
-      // The behavioral routes apply their own Sec-Fetch-Site + session-token
-      // checks, so CORS allowlisting here is the transport-level gate only.
+      // Behavioral tracking origins are managed by their own allowlist
       if (behavioralOriginAllowlist.has(origin)) { cb(null, true); return; }
       const allowed = ALLOWED_ORIGINS.some(p =>
         typeof p === "string" ? p === origin : p.test(origin)
       );
-      cb(allowed ? null : new Error("CORS: origin not allowed"), allowed);
+      if (!allowed) {
+        // Log the blocked origin so it appears in Render logs — never throw
+        // (throwing here propagates as a 500 through Express error handlers).
+        logger.warn({ origin }, "[CORS] Blocked origin");
+      }
+      cb(null, allowed);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Org-Id", "X-Admin-Key", "X-FlowPoint-Token"],
   }),
 );
+
+// CORS rejection produces a response with no Access-Control-Allow-Origin header,
+// which the browser surfaces as a network error. Return a plain 403 for preflight
+// rejections so the cause is visible in Render logs and browser DevTools.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.method === "OPTIONS") {
+    const origin = req.headers.origin ?? "";
+    const allowed = !origin || ALLOWED_ORIGINS.some(p =>
+      typeof p === "string" ? p === origin : p.test(origin)
+    );
+    if (!allowed) {
+      logger.warn({ origin }, "[CORS] Preflight rejected — 403");
+      res.status(403).json({ ok: false, error: "CORS: origin not allowed" });
+      return;
+    }
+  }
+  next();
+});
 
 // ── 5. Stripe raw body (must come before JSON parser) ────────────────────────
 // Registered on both paths: canonical /api/webhooks/stripe AND legacy
