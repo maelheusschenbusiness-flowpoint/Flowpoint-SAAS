@@ -594,6 +594,11 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg }, "[Auth/Signup] Resend failed");
+      // In dev mode, return the magic link directly so the flow can be tested without email
+      if (!isProduction) {
+        res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: envoi email échoué, lien retourné directement." });
+        return;
+      }
       res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019e-mail\u00a0: " + msg.substring(0, 120) });
     }
   } else if (!isProduction) {
@@ -888,7 +893,13 @@ router.get("/auth/apple/login", (req: Request, res: Response) => {
 
 router.get("/auth/providers", (_req: Request, res: Response) => {
   const googleConfigured = !!(process.env["GOOGLE_CLIENT_ID"] && process.env["GOOGLE_CLIENT_SECRET"]);
-  const appleConfigured  = !!(process.env["APPLE_CLIENT_ID"]);
+  // Apple requires CLIENT_ID + TEAM_ID + KEY_ID + a private key + callback route
+  // Until all are present the button must stay hidden
+  const appleConfigured  = !!(
+    process.env["APPLE_CLIENT_ID"] &&
+    process.env["APPLE_TEAM_ID"] &&
+    process.env["APPLE_KEY_ID"]
+  );
   const githubConfigured = !!(process.env["GITHUB_CLIENT_ID"] && process.env["GITHUB_CLIENT_SECRET"]);
 
   res.json({
