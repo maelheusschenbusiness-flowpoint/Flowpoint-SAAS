@@ -42,6 +42,16 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     return;
   }
 
+  // ── Diagnostic: log plan → variable → price ID presence (no key logged) ──
+  const planKey = `STRIPE_PRICE_ID_${plan.toUpperCase()}`;
+  const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()] ?? "";
+  logger.info({
+    plan,
+    envVar: planKey,
+    priceIdSet: planPriceId.length > 0,
+    priceIdPrefix: planPriceId.slice(0, 12) || "(empty)",
+  }, "[PublicBilling] checkout-session requested");
+
   try {
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
