@@ -759,6 +759,24 @@ function showFatalError(msg) {
 }
 
 async function loadData() {
+  // ── Phase 0: Instant render from sessionStorage cache (stale-while-revalidate) ──
+  try {
+    const _sc = sessionStorage.getItem('fp-state-cache');
+    if (_sc) {
+      const _cp = JSON.parse(_sc);
+      if (Date.now() - (_cp._ts || 0) < 300000) {
+        if (_cp.me)            STATE.me            = _cp.me;
+        if (_cp.overview)      STATE.overview      = _cp.overview;
+        if (_cp.audits)        STATE.audits        = _cp.audits;
+        if (_cp.monitors)      STATE.monitors      = _cp.monitors;
+        if (_cp.reports)       STATE.reports       = _cp.reports;
+        if (_cp.team)          STATE.team          = _cp.team;
+        if (_cp.alertRules)    STATE.alertRules    = _cp.alertRules;
+        if (_cp.notifications) STATE.notifications = _cp.notifications;
+        render();
+      }
+    }
+  } catch(_) {}
   let me, overview, audits, monitors, reports, team;
   try {
     [me, overview] = await Promise.all([apiFetch('/api/me'), apiFetch('/api/overview')]);
@@ -794,44 +812,57 @@ async function loadData() {
   const _rep = normArr(reports,  'reports');  STATE.reports  = (_rep   && _rep.length   > 0) ? _rep   : (PREVIEW_MODE ? MOCK_REPORTS  : []);
   const _team= normArr(team,     'members');  STATE.team     = (_team  && _team.length  > 0) ? _team  : (PREVIEW_MODE ? MOCK_TEAM     : []);
 
-  try {
-    const schedules = await apiFetch('/api/audits/schedule');
-    STATE.auditSchedules = Array.isArray(schedules) ? schedules : [];
-  } catch(_) { STATE.auditSchedules = []; }
+  STATE.calendarEvents = [];
+  STATE.overview = overview;
+  if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
 
-  try {
-    const ud = await apiFetch('/api/billing/usage-details');
-    STATE.usageDetails = (ud && typeof ud === 'object') ? ud : {};
-  } catch(_) { STATE.usageDetails = {}; }
-  try {
-    const upcoming = await apiFetch('/api/audits/upcoming');
-    STATE.auditUpcoming = Array.isArray(upcoming) ? upcoming : [];
-  } catch(_) { STATE.auditUpcoming = []; }
-  try {
-    const alertRules = await apiFetch('/api/alert-rules');
-    STATE.alertRules = Array.isArray(alertRules) ? alertRules : [];
-  } catch(_) { STATE.alertRules = []; }
-  try {
-    const alertEvents = await apiFetch('/api/alert-events');
-    STATE.alertEvents = Array.isArray(alertEvents) ? alertEvents : [];
-  } catch(_) { STATE.alertEvents = []; }
-  try {
-    const activity = await apiFetch('/api/activity');
-    STATE.activityEvents = Array.isArray(activity) ? activity : [];
-  } catch(_) { STATE.activityEvents = []; }
-  try {
-    const teamMsgs = await apiFetch('/api/team/messages');
-    STATE.teamChatHistory = Array.isArray(teamMsgs) ? teamMsgs.map(m => ({ from: m.from, msg: m.text, time: new Date(m.createdAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) })) : [];
-  } catch(_) { STATE.teamChatHistory = []; }
-  try {
-    const prefs = await apiFetch('/api/me/prefs');
-    if (prefs) {
-      if (typeof prefs.streak === 'number') STATE.streak = prefs.streak;
-      if (prefs.pinned && typeof prefs.pinned === 'object') STATE.pinned = prefs.pinned;
-      if (prefs.checklist) STATE.checklist = prefs.checklist;
-      if (prefs.settings && typeof prefs.settings === 'object') STATE.settings = { ...STATE.settings, ...prefs.settings };
-    }
-  } catch(_) {}
+  // ── Phase 3: Early render with primary data so the UI is visible immediately ──
+  render();
+
+  // ── Phase 4: All secondary fetches in one parallel batch ─────────────────────
+  const _domain = (STATE.audits[0] && (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return ''; } })()) || '';
+  const [
+    _schedRes, _udRes, _upcomingRes, _alertRulesRes, _alertEventsRes,
+    _activityRes, _teamMsgsRes, _prefsRes, _notifsRes, _blRes, _llmRes,
+  ] = await Promise.allSettled([
+    apiFetch('/api/audits/schedule'),
+    apiFetch('/api/billing/usage-details'),
+    apiFetch('/api/audits/upcoming'),
+    apiFetch('/api/alert-rules'),
+    apiFetch('/api/alert-events'),
+    apiFetch('/api/activity'),
+    apiFetch('/api/team/messages'),
+    apiFetch('/api/me/prefs'),
+    apiFetch('/api/notifications'),
+    _domain ? apiFetch('/api/seo/backlinks?domain='      + encodeURIComponent(_domain)) : Promise.resolve(null),
+    _domain ? apiFetch('/api/seo/llm-visibility?domain=' + encodeURIComponent(_domain)) : Promise.resolve(null),
+  ]);
+
+  STATE.auditSchedules  = (_schedRes.status      === 'fulfilled' && Array.isArray(_schedRes.value))                                ? _schedRes.value      : [];
+  STATE.usageDetails    = (_udRes.status          === 'fulfilled' && _udRes.value && typeof _udRes.value === 'object')              ? _udRes.value         : {};
+  STATE.auditUpcoming   = (_upcomingRes.status    === 'fulfilled' && Array.isArray(_upcomingRes.value))                             ? _upcomingRes.value   : [];
+  STATE.alertRules      = (_alertRulesRes.status  === 'fulfilled' && Array.isArray(_alertRulesRes.value))                           ? _alertRulesRes.value : [];
+  STATE.alertEvents     = (_alertEventsRes.status === 'fulfilled' && Array.isArray(_alertEventsRes.value))                          ? _alertEventsRes.value: [];
+  STATE.activityEvents  = (_activityRes.status    === 'fulfilled' && Array.isArray(_activityRes.value))                             ? _activityRes.value   : [];
+  const _rawMsgs        = (_teamMsgsRes.status    === 'fulfilled' && Array.isArray(_teamMsgsRes.value))                             ? _teamMsgsRes.value   : [];
+  STATE.teamChatHistory = _rawMsgs.map(m => ({ from: m.from, msg: m.text, time: new Date(m.createdAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) }));
+  const _apiNotifs      = _notifsRes.status       === 'fulfilled' ? _notifsRes.value   : null;
+  STATE.notifications   = Array.isArray(_apiNotifs) ? _apiNotifs : Array.isArray(_apiNotifs?.notifications) ? _apiNotifs.notifications : [];
+  if (_domain) {
+    const _blData  = _blRes.status  === 'fulfilled' ? _blRes.value  : null;
+    const _llmData = _llmRes.status === 'fulfilled' ? _llmRes.value : null;
+    if (_blData  && typeof _blData  === 'object') STATE.backlinks     = _blData;  else STATE.backlinks     = null;
+    if (_llmData && typeof _llmData === 'object') STATE.llmVisibility = _llmData; else STATE.llmVisibility = null;
+  }
+
+  const _prefs = _prefsRes.status === 'fulfilled' ? _prefsRes.value : null;
+  if (_prefs) {
+    if (typeof _prefs.streak === 'number') STATE.streak = _prefs.streak;
+    if (_prefs.pinned && typeof _prefs.pinned === 'object') STATE.pinned = _prefs.pinned;
+    if (_prefs.checklist) STATE.checklist = _prefs.checklist;
+    if (_prefs.settings && typeof _prefs.settings === 'object') STATE.settings = { ...STATE.settings, ..._prefs.settings };
+  }
+
   // Compute streak from activity events when server prefs don't provide one
   if (!STATE.streak && STATE.activityEvents.length > 0) {
     const activeDays = new Set(STATE.activityEvents.map(e => String(e.createdAt || e.created_at || '').slice(0, 10)));
@@ -841,68 +872,37 @@ async function loadData() {
     }
     if (_s > 0) { STATE.streak = _s; localStorage.setItem('fp-streak', String(_s)); }
   }
-  if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
 
-  // Missions — backend uniquement (pas de localStorage pour les données métier)
-  if (typeof window.FP_MISSIONS_API !== 'undefined') {
-    const apiMissions = await window.FP_MISSIONS_API.load();
-    STATE.missions = apiMissions ?? (PREVIEW_MODE ? MOCK_MISSIONS : []);
-  } else {
-    STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : [];
-  }
-
-  STATE.calendarEvents = [];
-  STATE.overview = overview;
-
-  // Keywords — charger depuis API
-  if (typeof window.FP_KEYWORDS_API !== 'undefined') {
-    const apiKws = await window.FP_KEYWORDS_API.load();
-    if (apiKws) STATE.keywords = apiKws;
-  }
-
-  // Competitors — charger depuis API
-  if (typeof window.FP_COMPETITORS_API !== 'undefined') {
-    const apiComps = await window.FP_COMPETITORS_API.load();
-    if (apiComps) STATE.competitors = apiComps;
-  }
-
-  // Connectors — charger depuis API
-  if (typeof window.FP_CONNECTORS_API !== 'undefined') {
-    const apiConns = await window.FP_CONNECTORS_API.load();
-    if (apiConns) STATE.connectors = apiConns;
-  }
-
-  // Backlinks — charger depuis API (best-effort, non-bloquant)
-  try {
-    const _blDomain = (STATE.audits[0] && (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return ''; } })()) || '';
-    if (_blDomain) {
-      const _blData = await apiFetch('/api/seo/backlinks?domain=' + encodeURIComponent(_blDomain));
-      if (_blData && typeof _blData === 'object') STATE.backlinks = _blData;
-    }
-  } catch(_) { STATE.backlinks = null; }
-
-  // LLM Visibility — charger depuis API (best-effort, non-bloquant)
-  try {
-    const _llmDomain = (STATE.audits[0] && (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return ''; } })()) || '';
-    if (_llmDomain) {
-      const _llmData = await apiFetch('/api/seo/llm-visibility?domain=' + encodeURIComponent(_llmDomain));
-      if (_llmData && typeof _llmData === 'object') STATE.llmVisibility = _llmData;
-    }
-  } catch(_) { STATE.llmVisibility = null; }
-
-  // Notifications — depuis l\'API backend, fallback localStorage uniquement (pas de mock hardcodé)
-  try {
-    const apiNotifs = await apiFetch('/api/notifications');
-    STATE.notifications = Array.isArray(apiNotifs) ? apiNotifs
-      : Array.isArray(apiNotifs?.notifications) ? apiNotifs.notifications
-      : [];
-  } catch(_) {
-    STATE.notifications = [];
-  }
+  // ── Phase 5: API module data — all parallel ───────────────────────────────────
+  await Promise.allSettled([
+    window.FP_MISSIONS_API
+      ? window.FP_MISSIONS_API.load().then(r => { STATE.missions = r ?? (PREVIEW_MODE ? MOCK_MISSIONS : []); })
+      : Promise.resolve().then(() => { STATE.missions = PREVIEW_MODE ? MOCK_MISSIONS : []; }),
+    window.FP_KEYWORDS_API
+      ? window.FP_KEYWORDS_API.load().then(r => { if (r) STATE.keywords = r; })
+      : Promise.resolve(),
+    window.FP_COMPETITORS_API
+      ? window.FP_COMPETITORS_API.load().then(r => { if (r) STATE.competitors = r; })
+      : Promise.resolve(),
+    window.FP_CONNECTORS_API
+      ? window.FP_CONNECTORS_API.load().then(r => { if (r) STATE.connectors = r; })
+      : Promise.resolve(),
+  ]);
 
   // Apply pinned state
   STATE.audits   = STATE.audits.map(a => ({ ...a, pinned: !!(STATE.pinned['audit_'+a.id]) }));
   STATE.monitors = STATE.monitors.map(m => ({ ...m, pinned: !!(STATE.pinned['monitor_'+m.id]) }));
+
+  // ── Save to sessionStorage for next load (stale-while-revalidate) ─────────────
+  try {
+    sessionStorage.setItem('fp-state-cache', JSON.stringify({
+      _ts: Date.now(),
+      me: STATE.me, overview: STATE.overview,
+      audits: STATE.audits, monitors: STATE.monitors,
+      reports: STATE.reports, team: STATE.team,
+      alertRules: STATE.alertRules, notifications: STATE.notifications,
+    }));
+  } catch(_) {}
 
   // AI credits — best-effort, non-blocking (re-renders when resolved)
   loadAICredits().then(() => render()).catch(() => {});
@@ -10953,7 +10953,11 @@ function bindSectionEvents() {
         <div><div style="font-size:13px;font-weight:600;color:var(--fp-text)">${item.title}</div><div style="font-size:12px;color:var(--fp-text-muted)">${item.desc}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Il y a ${item.time}</div></div>
       </div>`;
     }).join('')));
-    $('#refresh-btn')?.addEventListener('click', () => showToast('success','Données actualisées'));
+    $('#refresh-btn')?.addEventListener('click', () => {
+      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+      showToast('info', 'Actualisation en cours…');
+      loadData().then(() => { render(); showToast('success', 'Données à jour ✓'); }).catch(() => showToast('error', 'Erreur d\'actualisation'));
+    });
     $('#export-btn')?.addEventListener('click', () => { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); });
     $('#mission-tomorrow')?.addEventListener('click', () => {
       const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
