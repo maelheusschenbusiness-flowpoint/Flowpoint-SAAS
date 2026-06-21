@@ -175,9 +175,16 @@ function servePage(file: string) {
   };
 }
 
-// ── Favicon — serve SVG for all icon requests (no favicon.ico file exists) ───
+// ── Favicon — serve files directly, never cached (avoids 301 browser cache) ──
+app.get(["/favicon.svg", "/api/dashboard/favicon.svg"], (_req: Request, res: Response): void => {
+  res.setHeader("Content-Type", "image/svg+xml");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.sendFile(path.join(dashboardDir, "favicon.svg"));
+});
 app.get(["/favicon.ico", "/api/dashboard/favicon.ico"], (_req: Request, res: Response): void => {
-  res.redirect(301, "/favicon.svg");
+  res.setHeader("Content-Type", "image/x-icon");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.sendFile(path.join(dashboardDir, "favicon.ico"));
 });
 
 // ── Frontend page routes ──────────────────────────────────────────────────────
