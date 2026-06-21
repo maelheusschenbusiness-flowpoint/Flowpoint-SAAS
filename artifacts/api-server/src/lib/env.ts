@@ -30,6 +30,12 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 function validateEnv(): Env {
+  // Prefer STRIPE_LIVE_API_KEY if provided (avoids overwriting the Replit
+  // shared-secret slot used for other keys).
+  if (process.env["STRIPE_LIVE_API_KEY"]) {
+    process.env["STRIPE_SECRET_KEY"] = process.env["STRIPE_LIVE_API_KEY"];
+  }
+
   const result = envSchema.safeParse(process.env);
   if (!result.success) {
     const errors = result.error.errors
