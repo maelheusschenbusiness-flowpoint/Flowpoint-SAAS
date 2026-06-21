@@ -6206,6 +6206,9 @@ function renderTeam() {
 function renderBilling() {
   const sub  = STATE.subRoute;
   const me   = STATE.me;
+  if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
+  const user   = STATE?.me?.user || STATE?.user || null;
+  const _usage = me?.usage || {};
   const plan = me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
   const isPro   = plan === 'Pro' || plan === 'Agency';
@@ -6246,10 +6249,10 @@ function renderBilling() {
   ];
 
   const usages = [
-    { l:'Audits',      icon:'search',     v:me.usage.audit.used,   max:me.usage.audit.limit,   color:'#2563EB', forecast:92 },
-    { l:'PDF',         icon:'file-text',  v:me.usage.pdf.used,     max:me.usage.pdf.limit,     color:'#8b5cf6', forecast:61 },
-    { l:'Exports',     icon:'download',   v:me.usage.exports.used, max:me.usage.exports.limit, color:'#22c55e', forecast:40 },
-    { l:'Monitors',    icon:'activity',   v:me.usage.monitor.used, max:me.usage.monitor.limit, color:'#f59e0b', forecast:78 },
+    { l:'Audits',      icon:'search',     v:_usage.audit?.used    ?? 0, max:_usage.audit?.limit    ?? 50,    color:'#2563EB', forecast:92 },
+    { l:'PDF',         icon:'file-text',  v:_usage.pdf?.used      ?? 0, max:_usage.pdf?.limit      ?? 10,    color:'#8b5cf6', forecast:61 },
+    { l:'Exports',     icon:'download',   v:_usage.exports?.used  ?? 0, max:_usage.exports?.limit  ?? 100,   color:'#22c55e', forecast:40 },
+    { l:'Monitors',    icon:'activity',   v:_usage.monitor?.used  ?? 0, max:_usage.monitor?.limit  ?? 10,    color:'#f59e0b', forecast:78 },
     { l:'Sièges',      icon:'users',      v:1,                     max:5,                      color:'#06b6d4', forecast:20 },
     { l:'Storage',     icon:'database',   v:2.4,                   max:10,                     color:'#8b5cf6', forecast:32, unit:'GB' },
     { l:'API Appels',  icon:'code',       v:3280,                  max:10000,                  color:'#f59e0b', forecast:44, unit:'' },
@@ -8841,6 +8844,9 @@ function renderSettings() {
 function renderAI() {
   const sub  = STATE.subRoute;
   const me   = STATE.me;
+  if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
+  const user   = STATE?.me?.user || STATE?.user || null;
+  const _usage = me?.usage || {};
   const plan = me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
   const isPro   = plan === 'Pro' || plan === 'Agency';
@@ -9486,13 +9492,13 @@ function renderAI() {
       <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">Contexte workspace actif</div>
       <div id="fp-ctx-body" class="fp-collapsible-m" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px">
         ${[
-          {l:'Plan',       v:plan,                                  c:'#2563EB'},
-          {l:'Audits',     v:me.usage.audit.used+'/'+me.usage.audit.limit, c:'#22c55e'},
-          {l:'Monitors DOWN', v:'3',                               c:'#ef4444'},
-          {l:'Score moyen',v:avgScore()+'/100',                    c:avgScore()>75?'#22c55e':'#f59e0b'},
-          {l:'Alerts',     v:'3 actives',                          c:'#f59e0b'},
-          {l:'Clients',    v:'3 actifs',                           c:'#8b5cf6'},
-          {l:'Workflows',  v:'4 actifs',                           c:'#06b6d4'},
+          {l:'Plan',          v:plan,                                                                                       c:'#2563EB'},
+          {l:'Audits',        v:(_usage?.audit?.used ?? 0)+'/'+ (_usage?.audit?.limit ?? '?'),                          c:'#22c55e'},
+          {l:'Monitors DOWN', v:String((STATE.monitors||[]).filter(function(m){return m.status==='down';}).length||0), c:'#ef4444'},
+          {l:'Score moyen',   v:avgScore()+'/100',                                                                      c:avgScore()>75?'#22c55e':'#f59e0b'},
+          {l:'Alerts actives',v:String((STATE.alertRules||[]).filter(function(a){return a.status==='active'||a.enabled;}).length||displayStat(null,PREVIEW_MODE?'3':'—')), c:'#f59e0b'},
+          {l:'Clients',       v:displayStat(null,PREVIEW_MODE?'3 actifs':'—'),                                          c:'#8b5cf6'},
+          {l:'Workflows',     v:String((STATE.workflows||[]).filter(function(w){return w.enabled;}).length)||(PREVIEW_MODE?'4':'—'), c:'#06b6d4'},
         ].map(k => `<div style="padding:8px 10px;border-radius:8px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.05)">
           <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(k.l)}</div>
           <div style="font-size:12px;font-weight:800;color:${k.c}">${escHtml(String(k.v))}</div>
@@ -18254,7 +18260,7 @@ function renderConversion() {
       { issue: "Pas de politique de confidentialité",fix: "Ajouter RGPD notice",        effort: "45 min" },
       { issue: "Photos équipe absentes",            fix: "Section équipe avec photos",  effort: "2h"     },
     ];
-    const totalLoss = leaks.reduce((s, l) => s + parseInt(l.loss || '0'), 0);
+    const totalLoss = leaks.reduce((s, l) => s + (parseInt(String(l.loss || '0')) || 0), 0);
     const _rlIsEmpty = !leaks.length;
     const _rlEmptyReason = (_rlData && _rlData.emptyReason) || "Aucune fuite de revenus détectée pour le moment — connectez GA4, PageSpeed et Behavioral Analytics pour activer la détection automatique.";
     return `
