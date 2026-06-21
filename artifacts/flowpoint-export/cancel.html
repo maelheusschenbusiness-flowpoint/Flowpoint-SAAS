@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="dark">
 <head>
   <meta charset="UTF-8"/>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -16,9 +16,7 @@
       --border: #2d3f55; --blue: #2563eb; --blue-h: #1d4ed8;
       --blue-light: #3b82f6; --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
     }
-    @media (prefers-color-scheme: light) {
-      :root { --bg: #f8fafc; --bg2: #ffffff; --surface: #f1f5f9; --border: rgba(0,0,0,.1); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8; }
-    }
+    html[data-theme="light"] { --bg: #f8fafc; --bg2: #ffffff; --surface: #f1f5f9; --border: rgba(0,0,0,.1); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8; }
     html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
     body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; gap: 20px; }
 
@@ -54,6 +52,7 @@
 
     @media (max-width: 560px) { .fp-card { padding: 32px 20px 28px; } }
   </style>
+  <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
 </head>
 <body>
 

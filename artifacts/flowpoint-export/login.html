@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="dark">
 <head>
   <meta charset="UTF-8"/>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -30,28 +30,26 @@
       --shadow:    0 8px 40px rgba(0,0,0,.5);
     }
 
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg:        #f8fafc;
-        --bg2:       #ffffff;
-        --surface:   #f1f5f9;
-        --border:    rgba(0,0,0,.1);
-        --blue:      #2563eb;
-        --blue-h:    #1d4ed8;
-        --blue-light:#2563eb;
-        --text:      #0f172a;
-        --text-soft: #475569;
-        --text-muted:#94a3b8;
-        --input-bg:  #f8fafc;
-        --shadow:    0 4px 24px rgba(0,0,0,.1);
-      }
-      .fp-alert-success { background: rgba(34,197,94,.08);  border-color: rgba(34,197,94,.25);  color: #16a34a; }
-      .fp-alert-error   { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); color: #dc2626; }
-      .fp-btn-oauth:hover { background: #e8f0fe; border-color: #93c5fd; }
-      .fp-btn-apple { background: #0f172a; color: #fff; }
-      .fp-btn-apple:hover { background: #1e293b; }
-      .fp-spinner { border-color: rgba(255,255,255,.35); border-top-color: #fff; }
+    html[data-theme="light"] {
+      --bg:        #f8fafc;
+      --bg2:       #ffffff;
+      --surface:   #f1f5f9;
+      --border:    rgba(0,0,0,.1);
+      --blue:      #2563eb;
+      --blue-h:    #1d4ed8;
+      --blue-light:#2563eb;
+      --text:      #0f172a;
+      --text-soft: #475569;
+      --text-muted:#94a3b8;
+      --input-bg:  #f8fafc;
+      --shadow:    0 4px 24px rgba(0,0,0,.1);
     }
+    html[data-theme="light"] .fp-alert-success { background: rgba(34,197,94,.08);  border-color: rgba(34,197,94,.25);  color: #16a34a; }
+    html[data-theme="light"] .fp-alert-error   { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); color: #dc2626; }
+    html[data-theme="light"] .fp-btn-oauth:hover { background: #e8f0fe; border-color: #93c5fd; }
+    html[data-theme="light"] .fp-btn-apple { background: #0f172a; color: #fff; }
+    html[data-theme="light"] .fp-btn-apple:hover { background: #1e293b; }
+    html[data-theme="light"] .fp-spinner { border-color: rgba(255,255,255,.35); border-top-color: #fff; }
 
     html, body {
       min-height: 100%; background: var(--bg); color: var(--text);
@@ -158,6 +156,7 @@
       input[type="email"] { padding: 10px 12px; font-size: 14px; }
     }
   </style>
+  <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
 </head>
 <body>
 

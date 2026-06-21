@@ -57,6 +57,11 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
     const lineItems = buildLineItems(plan, addons);
 
     if (lineItems.length === 0) {
+      if (process.env["NODE_ENV"] !== "production") {
+        logger.warn(`[Billing] No price IDs configured for plan="${plan}" — returning mock checkout (dev only)`);
+        res.json({ url: `https://checkout.stripe.com/c/pay/test_mock_${plan}_${Date.now()}`, plan, mock: true });
+        return;
+      }
       const errMsg = plan
         ? `No Stripe price configured for plan "${plan}". Set STRIPE_PRICE_${plan.toUpperCase()} env var.`
         : "No Stripe price configured for the selected add-ons. Contact support.";

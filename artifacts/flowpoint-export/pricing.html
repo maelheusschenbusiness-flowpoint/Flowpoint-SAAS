@@ -99,10 +99,16 @@
 
     /* ── Plans grid ── */
     .fp-plans-section { padding: 0 24px 64px; }
-    .fp-plans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1060px; margin: 0 auto; }
-    @media (max-width: 860px) { .fp-plans-grid { grid-template-columns: 1fr; max-width: 440px; } }
+    .fp-plans-scroll-outer { max-width: 1060px; margin: 0 auto; }
+    .fp-plans-grid { display: flex; gap: 20px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; padding: 4px 2px 16px; scrollbar-width: none; -ms-overflow-style: none; }
+    .fp-plans-grid::-webkit-scrollbar { display: none; }
 
-    .fp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); padding: 28px 24px 24px; position: relative; transition: border-color 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; }
+    .fp-scroll-nav { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 4px; }
+    .fp-scroll-btn { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; line-height: 1; padding: 0; flex-shrink: 0; }
+    .fp-scroll-btn:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); background: rgba(37,99,235,0.06); }
+    .fp-scroll-btn:disabled { opacity: .3; cursor: default; }
+
+    .fp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); padding: 28px 24px 24px; position: relative; transition: border-color 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; min-width: 290px; max-width: 370px; flex: 1 0 290px; scroll-snap-align: start; }
     .fp-card:hover { box-shadow: var(--shadow-lg); border-color: rgba(37,99,235,0.3); }
     .fp-card.featured { border-color: var(--blue); box-shadow: var(--shadow-lg); }
     .fp-card-badge { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; padding: 4px 14px; border-radius: 20px; white-space: nowrap; letter-spacing: 0.3px; }
@@ -172,15 +178,15 @@
     .fp-compare-table { width: 100%; border-collapse: collapse; min-width: 620px; }
     .fp-compare-table th { text-align: center; padding: 14px 16px; font-size: 13px; font-weight: 700; background: var(--surface); border-bottom: 2px solid var(--border); position: sticky; top: 0; }
     .fp-compare-table th:first-child { text-align: left; width: 38%; }
-    .fp-compare-table th.featured-col { color: var(--blue); }
+    .fp-compare-table th.featured-col { color: var(--text); }
     .fp-compare-table .fp-group-row td { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); background: var(--bg); padding: 10px 16px; border-bottom: 1px solid var(--border); }
     .fp-compare-table td { padding: 10px 16px; font-size: 13px; border-bottom: 1px solid var(--border); text-align: center; vertical-align: middle; }
     .fp-compare-table td:first-child { text-align: left; color: var(--text-soft); }
     .fp-compare-table tr:last-child td { border-bottom: none; }
     .fp-compare-table .fp-ccheck { color: var(--blue); font-size: 15px; }
     .fp-compare-table .fp-cdash  { color: var(--text-muted); }
-    .fp-compare-table .fp-featured-col { background: rgba(37,99,235,0.04); }
-    html[data-theme="dark"] .fp-compare-table .fp-featured-col { background: rgba(37,99,235,0.07); }
+    .fp-compare-table .fp-featured-col { }
+    html[data-theme="dark"] .fp-compare-table .fp-featured-col { }
 
     /* ── FAQ ── */
     .fp-faq-section { max-width: 720px; margin: 0 auto; padding: 0 24px 72px; }
@@ -244,7 +250,8 @@
 
 <!-- ── Plans ── -->
 <section class="fp-plans-section">
-  <div class="fp-plans-grid">
+  <div class="fp-plans-scroll-outer">
+  <div class="fp-plans-grid" id="fp-plans-grid">
 
     <!-- Standard -->
     <div class="fp-card" id="card-standard">
@@ -345,6 +352,11 @@
       <div class="fp-card-msg" id="fp-msg-ultra"></div>
     </div>
 
+  </div>
+  </div><!-- /.fp-plans-scroll-outer -->
+  <div class="fp-scroll-nav">
+    <button class="fp-scroll-btn" id="fp-plans-prev" onclick="scrollPlans(-1)" aria-label="Précédent" disabled>‹</button>
+    <button class="fp-scroll-btn" id="fp-plans-next" onclick="scrollPlans(1)" aria-label="Suivant">›</button>
   </div>
 </section>
 
@@ -680,13 +692,17 @@
   <h2 class="fp-section-title">Comparer toutes les fonctionnalités</h2>
   <p class="fp-section-sub">Tout ce que chaque plan inclut, en détail.</p>
 
-  <div class="fp-compare-wrap">
+  <div class="fp-scroll-nav" style="justify-content:flex-end;gap:8px;margin-bottom:10px;">
+    <button class="fp-scroll-btn" style="width:32px;height:32px;font-size:16px;" id="fp-cmp-prev" onclick="scrollCmp(-1)" aria-label="Précédent" disabled>‹</button>
+    <button class="fp-scroll-btn" style="width:32px;height:32px;font-size:16px;" id="fp-cmp-next" onclick="scrollCmp(1)" aria-label="Suivant">›</button>
+  </div>
+  <div class="fp-compare-wrap" id="fp-compare-wrap">
     <table class="fp-compare-table" role="grid">
       <thead>
         <tr>
           <th>Fonctionnalité</th>
           <th>Standard</th>
-          <th class="featured-col fp-featured-col">Pro <span style="font-size:10px;background:var(--blue);color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px;">✓</span></th>
+          <th>Pro</th>
           <th>Ultra</th>
         </tr>
       </thead>
@@ -970,6 +986,41 @@
     document.querySelectorAll('.fp-faq-icon.open').forEach(function (i) { i.classList.remove('open'); });
     if (!open && answer) { answer.classList.add('open'); if (icon) icon.classList.add('open'); }
   };
+
+  /* ── Horizontal scroll: plans ── */
+  (function () {
+    var grid = document.getElementById('fp-plans-grid');
+    if (!grid) return;
+    function upd() {
+      var atEnd = grid.scrollLeft >= grid.scrollWidth - grid.clientWidth - 8;
+      document.getElementById('fp-plans-prev').disabled = grid.scrollLeft <= 8;
+      document.getElementById('fp-plans-next').disabled = atEnd;
+    }
+    grid.addEventListener('scroll', upd, { passive: true });
+    window.addEventListener('resize', upd);
+    upd();
+    window.scrollPlans = function (dir) {
+      grid.scrollBy({ left: dir * 320, behavior: 'smooth' });
+      setTimeout(upd, 400);
+    };
+  })();
+
+  /* ── Horizontal scroll: comparison table ── */
+  (function () {
+    var wrap = document.getElementById('fp-compare-wrap');
+    if (!wrap) return;
+    function upd() {
+      document.getElementById('fp-cmp-prev').disabled = wrap.scrollLeft <= 8;
+      document.getElementById('fp-cmp-next').disabled = wrap.scrollLeft >= wrap.scrollWidth - wrap.clientWidth - 8;
+    }
+    wrap.addEventListener('scroll', upd, { passive: true });
+    window.addEventListener('resize', upd);
+    upd();
+    window.scrollCmp = function (dir) {
+      wrap.scrollBy({ left: dir * 220, behavior: 'smooth' });
+      setTimeout(upd, 400);
+    };
+  })();
 
 })();
 </script>
