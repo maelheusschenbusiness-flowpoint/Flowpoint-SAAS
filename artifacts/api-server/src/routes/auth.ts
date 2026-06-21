@@ -641,6 +641,9 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
 
   logger.info({ redirectUri }, "[Auth] Google OAuth login — redirect URI");
 
+  const rawPlan = String(req.query["plan"] ?? "");
+  const selectedPlan = ["standard","pro","ultra"].includes(rawPlan) ? rawPlan : null;
+
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -648,7 +651,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
     scope: "openid email profile",
     access_type: "offline",
     prompt: "select_account",
-    state: Buffer.from(JSON.stringify({ ts: Date.now() })).toString("base64"),
+    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan })).toString("base64"),
   });
 
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
@@ -694,6 +697,18 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
 
     if (user.name) store.me.firstName = user.name.split(" ")[0];
     if (user.email && !store.me.org?.name) store.me.org = { name: user.email };
+
+    // Apply plan from OAuth state if present
+    try {
+      const rawState = String(req.query["state"] ?? "");
+      if (rawState) {
+        const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as { plan?: string };
+        if (stateObj.plan && ["standard","pro","ultra"].includes(stateObj.plan)) {
+          store.me.plan = stateObj.plan;
+          logger.info({ plan: stateObj.plan }, "[Auth] Google login — plan set from OAuth state");
+        }
+      }
+    } catch { /* state parse error — ignore */ }
 
     logger.info({ email: user.email }, "[Auth] Google login successful");
 
