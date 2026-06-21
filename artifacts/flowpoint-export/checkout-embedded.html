@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%232563EB'/%3E%3Cstop offset='100%25' stop-color='%234F46E5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='48' height='48' rx='10' fill='url(%23g)'/%3E%3Cg transform='translate(12,12)' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
+  <title>Paiement sécurisé — FlowPoint</title>
+
+  <script>
+    (function(){
+      try {
+        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        var meta = document.getElementById('fp-meta-tc');
+        if (meta) meta.content = dark ? '#050810' : '#f8faff';
+      } catch(e){}
+    })();
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #f8faff;
+      --bg2:       #ffffff;
+      --surface:   #ffffff;
+      --border:    rgba(0,0,0,0.09);
+      --blue:      #2563eb;
+      --blue-h:    #1d4ed8;
+      --blue-light:#3b82f6;
+      --text:      #0f172a;
+      --text-soft: #475569;
+      --text-muted:#94a3b8;
+      --green:     #059669;
+      --green-bg:  rgba(16,185,129,0.1);
+    }
+    html[data-theme="dark"] {
+      --bg:        #050810;
+      --bg2:       #0d1117;
+      --surface:   #111827;
+      --border:    rgba(255,255,255,0.08);
+      --text:      #f1f5f9;
+      --text-soft: #94a3b8;
+      --text-muted:#64748b;
+      --green:     #34d399;
+      --green-bg:  rgba(52,211,153,0.1);
+    }
+
+    html, body {
+      min-height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px; line-height: 1.5;
+    }
+
+    /* Nav */
+    .fp-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px; height: 60px;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .fp-nav-logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; text-decoration: none; color: var(--text); }
+    .fp-nav-logo-word span { color: var(--blue); }
+    .fp-nav-back { font-size: 13px; color: var(--text-soft); text-decoration: none; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); transition: all .15s; }
+    .fp-nav-back:hover { border-color: var(--blue); color: var(--blue); }
+
+    /* Layout */
+    .fp-page { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+    .fp-page-title { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .fp-page-sub { font-size: 14px; color: var(--text-soft); margin-bottom: 32px; }
+
+    /* Checkout container */
+    #fp-checkout-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; min-height: 480px; overflow: hidden; }
+
+    /* Loading / error states */
+    .fp-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px 24px; text-align: center; gap: 16px; }
+    .fp-state-icon { font-size: 40px; }
+    .fp-state-title { font-size: 17px; font-weight: 700; }
+    .fp-state-sub { font-size: 14px; color: var(--text-soft); max-width: 360px; line-height: 1.6; }
+    .fp-spinner-lg { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: fp-spin .7s linear infinite; }
+    @keyframes fp-spin { to { transform: rotate(360deg); } }
+
+    .fp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 22px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; transition: all .15s; }
+    .fp-btn-primary { background: var(--blue); color: #fff; }
+    .fp-btn-primary:hover { background: var(--blue-h); }
+    .fp-btn-ghost { background: transparent; color: var(--text-soft); border: 1px solid var(--border); }
+    .fp-btn-ghost:hover { border-color: var(--blue); color: var(--blue); }
+
+    /* Footer */
+    .fp-footer { text-align: center; padding: 20px; font-size: 12px; color: var(--text-muted); background: var(--bg); border-top: 1px solid var(--border); }
+    .fp-footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+
+    /* Trust badges */
+    .fp-trust { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 24px; font-size: 12px; color: var(--text-muted); }
+    .fp-trust-item { display: flex; align-items: center; gap: 5px; }
+
+    @media (max-width: 600px) {
+      .fp-nav { padding: 0 16px; }
+      .fp-page { padding: 32px 16px 60px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="fp-nav">
+  <a href="/" class="fp-nav-logo">
+    <svg width="28" height="28" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="fp-g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient></defs>
+      <rect width="48" height="48" rx="10" fill="url(#fp-g)"/>
+      <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </g>
+    </svg>
+    <span class="fp-nav-logo-word">Flow<span>Point</span></span>
+  </a>
+  <a href="/pricing.html" class="fp-nav-back">← Retour aux tarifs</a>
+</nav>
+
+<main class="fp-page">
+  <h1 class="fp-page-title">Finaliser votre abonnement</h1>
+  <p class="fp-page-sub">Paiement sécurisé via Stripe · Annulable à tout moment · Essai 14 jours inclus</p>
+
+  <div id="fp-checkout-wrap">
+    <div class="fp-state" id="fp-loading-state">
+      <div class="fp-spinner-lg"></div>
+      <div class="fp-state-title">Chargement du terminal de paiement…</div>
+      <div class="fp-state-sub">Connexion sécurisée Stripe en cours.</div>
+    </div>
+    <div class="fp-state" id="fp-error-state" style="display:none;">
+      <div class="fp-state-icon">⚠️</div>
+      <div class="fp-state-title" id="fp-error-title">Une erreur est survenue</div>
+      <div class="fp-state-sub" id="fp-error-sub">Impossible de charger le terminal de paiement. Veuillez réessayer.</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px;">
+        <button class="fp-btn fp-btn-primary" onclick="initCheckout()">Réessayer</button>
+        <a href="/pricing.html" class="fp-btn fp-btn-ghost">Retour aux tarifs</a>
+      </div>
+    </div>
+    <div id="fp-stripe-checkout"></div>
+  </div>
+
+  <div class="fp-trust">
+    <span class="fp-trust-item">🔒 Paiement chiffré TLS</span>
+    <span class="fp-trust-item">💳 Visa · Mastercard · Amex · SEPA</span>
+    <span class="fp-trust-item">🔁 Annulable à tout moment</span>
+  </div>
+</main>
+
+<footer class="fp-footer">
+  <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Mentions légales</a> ·
+  <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Confidentialité</a> ·
+  <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">CGV</a>
+  <div style="margin-top:6px;">© 2026 FlowPoint — Paiements sécurisés par Stripe</div>
+</footer>
+
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+(function(){
+  'use strict';
+
+  /* ── Auto theme from OS ── */
+  (function(){
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    function applyTheme(dark) {
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      var meta = document.getElementById('fp-meta-tc');
+      if (meta) meta.content = dark ? '#050810' : '#f8faff';
+    }
+    if (mq.addEventListener) mq.addEventListener('change', function(e){ applyTheme(e.matches); });
+  })();
+
+  function showState(name) {
+    document.getElementById('fp-loading-state').style.display = name === 'loading' ? 'flex' : 'none';
+    document.getElementById('fp-error-state').style.display   = name === 'error'   ? 'flex' : 'none';
+    document.getElementById('fp-stripe-checkout').style.display = name === 'stripe' ? 'block' : 'none';
+  }
+
+  function showError(title, sub) {
+    document.getElementById('fp-error-title').textContent = title || 'Une erreur est survenue';
+    document.getElementById('fp-error-sub').textContent   = sub   || 'Veuillez réessayer ou contacter le support.';
+    showState('error');
+  }
+
+  function getToken() {
+    try { return localStorage.getItem('fp_token') || sessionStorage.getItem('fp_token'); } catch(e){ return null; }
+  }
+
+  function getCart() {
+    try {
+      var raw = localStorage.getItem('fp_cart');
+      return raw ? JSON.parse(raw) : null;
+    } catch(e){ return null; }
+  }
+
+  window.initCheckout = async function() {
+    showState('loading');
+
+    var token = getToken();
+    if (!token) {
+      var planParam = '';
+      try {
+        var c = getCart();
+        if (c && c.plan) planParam = '&plan=' + encodeURIComponent(c.plan);
+      } catch(e){}
+      window.location.href = '/login.html?redirect=' + encodeURIComponent('/checkout-embedded.html') + planParam;
+      return;
+    }
+
+    var cart = getCart();
+    if (!cart || (!cart.plan && Object.keys(cart.addons || {}).length === 0)) {
+      window.location.href = '/pricing.html';
+      return;
+    }
+
+    try {
+      var configRes = await fetch('/api/billing/config');
+      var configData = await configRes.json();
+      var publishableKey = configData.publishableKey;
+      if (!publishableKey) throw new Error('Stripe non configuré');
+
+      var sessionRes = await fetch('/api/billing/checkout-embedded', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ plan: cart.plan || '', addons: cart.addons || {} })
+      });
+
+      if (!sessionRes.ok) {
+        var errData = await sessionRes.json().catch(function(){ return {}; });
+        throw new Error(errData.error || 'Échec de la création de session Stripe');
+      }
+
+      var sessionData = await sessionRes.json();
+      var clientSecret = sessionData.clientSecret;
+
+      if (!clientSecret) throw new Error('Session Stripe invalide');
+
+      if (sessionData.mock) {
+        showError(
+          'Mode développement',
+          'Stripe n\'est pas configuré en local. En production, le terminal de paiement s\'affichera ici.'
+        );
+        return;
+      }
+
+      var stripe = Stripe(publishableKey);
+      var checkout = await stripe.initEmbeddedCheckout({ clientSecret: clientSecret });
+      showState('stripe');
+      checkout.mount('#fp-stripe-checkout');
+
+    } catch(err) {
+      console.error('[FlowPoint] Checkout error:', err);
+      showError(
+        'Erreur de connexion',
+        err.message || 'Impossible de charger le terminal de paiement. Vérifiez votre connexion et réessayez.'
+      );
+    }
+  };
+
+  initCheckout();
+})();
+</script>
+</body>
+</html>

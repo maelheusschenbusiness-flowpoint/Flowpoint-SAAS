@@ -1,11 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="dark">
+<html lang="fr">
 <head>
   <meta charset="UTF-8"/>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%232563EB'/%3E%3Cstop offset='100%25' stop-color='%234F46E5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='48' height='48' rx='10' fill='url(%23g)'/%3E%3Cg transform='translate(12,12)' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -21,10 +19,10 @@
   <script>
     (function(){
       try {
-        var t = localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-        document.documentElement.setAttribute('data-theme', t);
+        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
         var meta = document.getElementById('fp-meta-tc');
-        if (meta) meta.content = t === 'dark' ? '#050810' : '#f8faff';
+        if (meta) meta.content = dark ? '#050810' : '#f8faff';
       } catch(e){}
     })();
   </script>
@@ -73,7 +71,7 @@
     .fp-nav {
       display: flex; align-items: center; justify-content: space-between;
       padding: 0 28px; height: 60px;
-      background: var(--surface); border-bottom: 1px solid var(--border);
+      background: var(--bg); border-bottom: 1px solid var(--border);
       position: sticky; top: 0; z-index: 100; backdrop-filter: blur(8px);
     }
     .fp-nav-logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; text-decoration: none; color: var(--text); }
@@ -88,8 +86,6 @@
     .fp-nav-cta:hover { background: var(--blue-h); }
     .fp-cart-badge { display: none; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: #fff; color: var(--blue); font-size: 11px; font-weight: 800; border-radius: 20px; margin-left: 2px; }
     .fp-cart-badge.visible { display: inline-flex; }
-    .fp-theme-btn { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
-    .fp-theme-btn:hover { border-color: var(--blue); background: rgba(37,99,235,0.06); }
     .fp-card-btn-selected { background: rgba(16,185,129,0.12) !important; color: #34d399 !important; border-color: rgba(16,185,129,0.35) !important; }
     .fp-card.cart-selected { border-color: rgba(16,185,129,0.4) !important; box-shadow: 0 0 0 3px rgba(16,185,129,0.1), var(--shadow-lg) !important; }
 
@@ -104,7 +100,7 @@
     /* ── Plans grid ── */
     .fp-plans-section { padding: 0 24px 64px; }
     .fp-plans-scroll-outer { max-width: 1060px; margin: 0 auto; }
-    .fp-plans-grid { display: flex; gap: 20px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; padding: 4px 2px 16px; scrollbar-width: none; -ms-overflow-style: none; }
+    .fp-plans-grid { display: flex; gap: 20px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; padding: 28px 2px 16px; scrollbar-width: none; -ms-overflow-style: none; }
     .fp-plans-grid::-webkit-scrollbar { display: none; }
 
     .fp-scroll-nav { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 4px; }
@@ -115,7 +111,7 @@
     .fp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); padding: 28px 24px 24px; position: relative; transition: border-color 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; min-width: 290px; max-width: 370px; flex: 1 0 290px; scroll-snap-align: start; }
     .fp-card:hover { box-shadow: var(--shadow-lg); border-color: rgba(37,99,235,0.3); }
     .fp-card.featured { border-color: var(--blue); box-shadow: var(--shadow-lg); }
-    .fp-card-badge { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; padding: 4px 14px; border-radius: 20px; white-space: nowrap; letter-spacing: 0.3px; }
+    .fp-card-badge { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; padding: 5px 16px; border-radius: 20px; white-space: nowrap; letter-spacing: 0.3px; box-shadow: 0 2px 10px rgba(37,99,235,0.4); }
     .fp-card-plan { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 10px; }
     .fp-card-price { font-size: 42px; font-weight: 800; letter-spacing: -1.5px; line-height: 1; }
     .fp-card-price-unit { font-size: 16px; font-weight: 400; color: var(--text-muted); }
@@ -211,7 +207,7 @@
     .fp-faq-a.open { display: block; }
 
     /* ── Footer ── */
-    .fp-footer { border-top: 1px solid var(--border); padding: 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted); }
+    .fp-footer { background: var(--bg); border-top: 1px solid var(--border); padding: 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted); }
     .fp-footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
     .fp-footer a:hover { color: var(--text); }
     .fp-footer-links { display: flex; gap: 16px; flex-wrap: wrap; }
@@ -244,7 +240,7 @@
     <span class="fp-nav-logo-word">Flow<span>Point</span></span>
   </a>
   <div class="fp-nav-links">
-    <button class="fp-theme-btn" id="fp-theme-btn" onclick="toggleTheme()" aria-label="Basculer thème">🌙</button>
+    <a href="/login.html" class="fp-nav-link">Se connecter</a>
     <a href="/" class="fp-nav-signup">Créer un compte</a>
     <button class="fp-nav-cta" id="fp-cart-btn" onclick="goToCheckout()">
       Panier <span class="fp-cart-badge" id="fp-cart-badge">0</span>
@@ -553,8 +549,8 @@
     <div class="fp-addon-card fp-addon-hidden">
       <div class="fp-addon-top"><span class="fp-addon-icon">🏷️</span><div class="fp-addon-name">White-Label Exports</div></div>
       <div class="fp-addon-desc">Rapports et exports entièrement brandés à votre image. Logo, couleurs, domaine client — vos clients voient votre agence, pas FlowPoint.</div>
-      <div class="fp-addon-bottom">
-        <div class="fp-addon-price-incl">✓ Inclus dans Pro</div>
+      <div class="fp-addon-bottom" id="fp-wl-bottom">
+        <div class="fp-addon-price">17€<span> / mois</span></div>
         <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'whiteLabel',false)">Activer →</button></div>
       </div>
     </div>
@@ -701,15 +697,6 @@
       </div>
     </div>
 
-    <div class="fp-addon-card fp-addon-hidden">
-      <div class="fp-addon-top"><span class="fp-addon-icon">⚡</span><div class="fp-addon-name">Support prioritaire ≤ 2h</div></div>
-      <div class="fp-addon-desc">Un problème bloquant ? Votre ticket monte en priorité. Réponse garantie en moins de 2h en heures ouvrées sur un canal dédié avec un expert FlowPoint.</div>
-      <div class="fp-addon-bottom">
-        <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'prioritySupport',false)">Activer →</button></div>
-      </div>
-    </div>
-
   </div>
 
   <div class="fp-show-more-wrap">
@@ -803,7 +790,6 @@
         <tr class="fp-group-row fp-cmp-hidden"><td colspan="4">Support</td></tr>
         <tr class="fp-cmp-hidden"><td>Support par email</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr class="fp-cmp-hidden"><td>Support chat</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr class="fp-cmp-hidden"><td>Support prioritaire ≤ 2h</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-caddon">Add-on</span></td><td><span class="fp-caddon">Add-on</span></td></tr>
         <tr class="fp-cmp-hidden"><td>Support 24/7</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr class="fp-cmp-hidden"><td>Onboarding dédié</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr class="fp-cmp-hidden"><td>Account Manager dédié</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
@@ -916,23 +902,30 @@
 
   var _cart = { plan: null, addons: {} };
 
-  /* ── Theme toggle ── */
-  window.toggleTheme = function () {
-    var html = document.documentElement;
-    var current = html.getAttribute('data-theme');
-    var next = current === 'dark' ? 'light' : 'dark';
-    html.setAttribute('data-theme', next);
-    try { localStorage.setItem('fp-theme', next); } catch(e) {}
-    var btn = document.getElementById('fp-theme-btn');
-    if (btn) btn.textContent = next === 'dark' ? '🌙' : '☀️';
-    var meta = document.getElementById('fp-meta-tc');
-    if (meta) meta.content = next === 'dark' ? '#050810' : '#f8faff';
-  };
-  (function () {
-    var t = document.documentElement.getAttribute('data-theme');
-    var btn = document.getElementById('fp-theme-btn');
-    if (btn) btn.textContent = t === 'dark' ? '🌙' : '☀️';
+  /* ── Auto theme: follows OS preference ── */
+  (function(){
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    function applyTheme(dark) {
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      var meta = document.getElementById('fp-meta-tc');
+      if (meta) meta.content = dark ? '#050810' : '#f8faff';
+    }
+    if (mq.addEventListener) mq.addEventListener('change', function(e){ applyTheme(e.matches); });
   })();
+
+  /* ── White-Label add-on: plan-aware display ── */
+  function updateWhiteLabel(plan) {
+    var bottom = document.getElementById('fp-wl-bottom');
+    if (!bottom) return;
+    if (plan === 'pro') {
+      bottom.innerHTML = '<div class="fp-addon-price-incl">\u2713 Inclus dans Pro</div>';
+    } else if (plan === 'ultra') {
+      bottom.innerHTML = '<div class="fp-addon-price-incl">\u2713 Inclus dans Ultra</div>';
+    } else {
+      bottom.innerHTML = '<div class="fp-addon-price">17\u20AC<span> / mois</span></div><div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,\'whiteLabel\',false)">Activer \u2192</button></div>';
+    }
+  }
+  updateWhiteLabel('');
 
   /* ── Toast ── */
   var toastTimer;
@@ -977,6 +970,7 @@
     var card = btn.closest('.fp-card');
     if (card) card.classList.add('cart-selected');
     updateCartBadge();
+    updateWhiteLabel(_cart.plan);
     showToast('Plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' sélectionné — cliquez sur Panier pour continuer');
   };
 
@@ -1020,9 +1014,10 @@
     var token = null;
     try { token = localStorage.getItem('fp_token') || sessionStorage.getItem('fp_token'); } catch(e) {}
     if (token) {
-      window.location.href = '/dashboard.html';
+      window.location.href = '/checkout-embedded.html';
     } else {
-      window.location.href = '/index.html';
+      var planParam = _cart.plan ? '&plan=' + encodeURIComponent(_cart.plan) : '';
+      window.location.href = '/login.html?redirect=' + encodeURIComponent('/checkout-embedded.html') + planParam;
     }
   };
 

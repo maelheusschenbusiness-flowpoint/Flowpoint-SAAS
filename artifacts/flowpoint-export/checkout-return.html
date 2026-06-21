@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%232563EB'/%3E%3Cstop offset='100%25' stop-color='%234F46E5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='48' height='48' rx='10' fill='url(%23g)'/%3E%3Cg transform='translate(12,12)' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/%3E%3C/g%3E%3C/svg%3E" type="image/svg+xml">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
+  <title>Vérification du paiement — FlowPoint</title>
+
+  <script>
+    (function(){
+      try {
+        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        var meta = document.getElementById('fp-meta-tc');
+        if (meta) meta.content = dark ? '#050810' : '#f8faff';
+      } catch(e){}
+    })();
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f8faff; --surface: #fff; --border: rgba(0,0,0,0.09);
+      --blue: #2563eb; --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8;
+    }
+    html[data-theme="dark"] {
+      --bg: #050810; --surface: #111827; --border: rgba(255,255,255,0.08);
+      --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
+    }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; gap: 16px; text-align: center; }
+    .fp-spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: fp-spin .7s linear infinite; }
+    @keyframes fp-spin { to { transform: rotate(360deg); } }
+    .fp-title { font-size: 18px; font-weight: 700; }
+    .fp-sub { font-size: 14px; color: var(--text-soft); }
+  </style>
+</head>
+<body>
+  <div class="fp-spinner"></div>
+  <div class="fp-title" id="fp-title">Vérification de votre paiement…</div>
+  <div class="fp-sub" id="fp-sub">Merci de patienter quelques instants.</div>
+
+  <script>
+  (function(){
+    var params = new URLSearchParams(window.location.search);
+    var sessionId = params.get('session_id');
+
+    if (!sessionId) {
+      window.location.href = '/pricing.html';
+      return;
+    }
+
+    var token = null;
+    try { token = localStorage.getItem('fp_token') || sessionStorage.getItem('fp_token'); } catch(e){}
+
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+
+    fetch('/api/billing/verify?session_id=' + encodeURIComponent(sessionId), { headers: headers })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        var status = (data.status || '').toLowerCase();
+        if (status === 'paid' || status === 'trialing' || status === 'complete' || status === 'active') {
+          try { localStorage.removeItem('fp_cart'); } catch(e){}
+          window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId);
+        } else if (status === 'expired' || status === 'canceled') {
+          window.location.href = '/cancel.html';
+        } else {
+          document.getElementById('fp-title').textContent = 'Paiement en cours de traitement';
+          document.getElementById('fp-sub').textContent = 'Nous mettons votre compte à jour. Vous serez redirigé automatiquement.';
+          setTimeout(function(){ window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId); }, 3000);
+        }
+      })
+      .catch(function() {
+        document.getElementById('fp-title').textContent = 'Vérification impossible';
+        document.getElementById('fp-sub').textContent = 'Rendez-vous sur le tableau de bord pour vérifier votre abonnement.';
+        setTimeout(function(){ window.location.href = '/dashboard.html'; }, 3000);
+      });
+  })();
+  </script>
+</body>
+</html>
