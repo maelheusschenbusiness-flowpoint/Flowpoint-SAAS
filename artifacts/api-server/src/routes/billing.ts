@@ -34,7 +34,7 @@ function buildLineItems(plan: string, addons: AddonsMap): Array<{ price: string;
 }
 
 router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, res: Response) => {
-  const { plan = "pro", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
+  const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
 
   const stripeKey = process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
@@ -57,7 +57,10 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
     const lineItems = buildLineItems(plan, addons);
 
     if (lineItems.length === 0) {
-      res.status(400).json({ error: `No Stripe price configured for plan: ${plan}. Set STRIPE_PRICE_${plan.toUpperCase()} env var.` });
+      const errMsg = plan
+        ? `No Stripe price configured for plan "${plan}". Set STRIPE_PRICE_${plan.toUpperCase()} env var.`
+        : "No Stripe price configured for the selected add-ons. Contact support.";
+      res.status(400).json({ error: errMsg });
       return;
     }
 
@@ -85,7 +88,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
 });
 
 router.post("/billing/checkout-embedded", async (req: Request, res: Response) => {
-  const { plan = "pro", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
+  const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
 
   const stripeKey = process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
