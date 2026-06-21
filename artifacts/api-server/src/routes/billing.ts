@@ -420,6 +420,47 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /billing/usage-details ───────────────────────────────────────────────
+// Returns real counters for billing page (reports, team).
+// Infrastructure metrics (storage, bandwidth, API calls, emails) are not yet
+// instrumented server-side — those fields return null so the UI shows "—".
+router.get("/billing/usage-details", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgContext?.orgId ?? "default";
+  const me    = store.me;
+  const limits = PLAN_LIMITS[me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
+
+  let reportsUsed: number | null = null;
+  let teamMembersUsed: number | null = null;
+
+  try {
+    const r = await pool.query(
+      `SELECT COUNT(*) FROM reports WHERE org_id = $1 AND created_at > date_trunc('month', now())`,
+      [orgId]
+    );
+    reportsUsed = Number(r.rows[0]?.count ?? 0);
+  } catch { /* reports table may not exist yet */ }
+
+  try {
+    const r = await pool.query(
+      `SELECT COUNT(*) FROM team_members WHERE org_id = $1`,
+      [orgId]
+    );
+    teamMembersUsed = Math.max(1, Number(r.rows[0]?.count ?? 1));
+  } catch { /* team_members table may not exist yet */ }
+
+  res.json({
+    reportsUsed,
+    reportsLimit:       limits.reports,
+    teamMembersUsed,
+    teamMembersLimit:   limits.teamMembers,
+    // Not yet instrumented on server side — return null so UI shows "—"
+    emailsSent:    null,
+    apiCalls:      null,
+    storageUsed:   null,
+    bandwidthUsed: null,
+  });
+});
+
 router.get("/billing/config", (_req: Request, res: Response) => {
   const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
   res.json({ publishableKey });

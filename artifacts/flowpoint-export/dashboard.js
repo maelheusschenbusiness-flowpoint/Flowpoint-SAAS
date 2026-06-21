@@ -798,6 +798,11 @@ async function loadData() {
     const schedules = await apiFetch('/api/audits/schedule');
     STATE.auditSchedules = Array.isArray(schedules) ? schedules : [];
   } catch(_) { STATE.auditSchedules = []; }
+
+  try {
+    const ud = await apiFetch('/api/billing/usage-details');
+    STATE.usageDetails = (ud && typeof ud === 'object') ? ud : {};
+  } catch(_) { STATE.usageDetails = {}; }
   try {
     const upcoming = await apiFetch('/api/audits/upcoming');
     STATE.auditUpcoming = Array.isArray(upcoming) ? upcoming : [];
@@ -5037,20 +5042,20 @@ function renderReports() {
   // SUB: LOCAL SEO REPORTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'local') {
-    const zones = [
+    const zones = (_lseo.zones && _lseo.zones.length > 0) ? _lseo.zones : (PREVIEW_MODE ? [
       { name: '15e arrondissement', vis: 78, prev: 71, kw: 14, reviews: 4.4, comp: 'Moyen',   trend: +7,  dominant: true  },
       { name: '16e arrondissement', vis: 62, prev: 58, kw: 9,  reviews: 4.1, comp: 'Fort',    trend: +4,  dominant: false },
       { name: 'Montmartre',         vis: 44, prev: 38, kw: 6,  reviews: 4.6, comp: 'Tres fort',trend: +6, dominant: false },
       { name: 'Marais',             vis: 31, prev: 33, kw: 4,  reviews: 3.8, comp: 'Moyen',   trend: -2,  dominant: false },
-    ];
-    const gbpStats = [
+    ] : []);
+    const gbpStats = (_lseo.gbpStats && _lseo.gbpStats.length > 0) ? _lseo.gbpStats : (PREVIEW_MODE ? [
       { label: 'Appels depuis GBP',   val: 47,  trend: +12, unit: '',   color: '#22c55e' },
       { label: 'Itineraires demandes',val: 134, trend: +28, unit: '',   color: '#2563EB' },
       { label: 'Visites fiche',       val: 2840,trend: +21, unit: '',   color: '#8b5cf6' },
       { label: 'Note moyenne',        val: 4.4, trend: +0.2,unit: '★', color: '#f59e0b' },
       { label: 'Avis sans reponse',   val: 14,  trend: +5,  unit: '',   color: '#ef4444' },
       { label: 'Photos publiées',     val: 8,   trend: +3,  unit: '',   color: '#8b5cf6' },
-    ];
+    ] : []);
     return `
       ${aiBlock(PREVIEW_MODE
         ? "Visibilité locale en hausse sur 3 des 4 zones. Plusieurs zones progressent fortement. Alerte : une zone recule face à la concurrence renforcée. <strong>Avis sans réponse</strong> peuvent menacer votre note moyenne."
@@ -5165,9 +5170,9 @@ function renderReports() {
           ${svgIcon('filter').replace('stroke="currentColor"','stroke="#8b5cf6"')}
           Entonnoir de conversion — ${CUR_MONTH}
         </div>
-        ${funnelSteps.map((s, idx) => `
+        ${(funnelSteps||[]).map((s, idx) => `
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-            <div style="width:110px;font-size:11px;color:var(--fp-text-muted);text-align:right;flex-shrink:0">${escHtml(s.stage)}</div>
+            <div style="width:110px;font-size:11px;color:var(--fp-text-muted);text-align:right;flex-shrink:0">${escHtml(s.stage||s.label||'')}</div>
             <div style="flex:1;background:var(--fp-inner-card);border-radius:6px;height:28px;overflow:hidden">
               <div style="height:100%;width:${s.pct}%;background:linear-gradient(90deg,${idx===0?'#2563EB':idx===4?'#22c55e':'#8b5cf6'}99,${idx===0?'#2563EB':idx===4?'#22c55e':'#8b5cf6'}33);border-radius:6px;display:flex;align-items:center;padding-left:8px">
                 ${s.n >= 3000 ? `<span style="font-size:10px;font-weight:700;color:#fff">${s.n.toLocaleString('fr-FR')}</span>` : ''}
@@ -5596,14 +5601,15 @@ function renderLocalSEO() {
   const isPro  = plan === 'Pro' || plan === 'Agency';
   const isUltra = plan === 'Agency';
 
-  const domScore = 72;
+  const _lseo = STATE.localSeo || {};
+  const domScore = _lseo.domScore ?? (PREVIEW_MODE ? 72 : null);
   const circ = 2 * Math.PI * 52;
-  const dominatedZones = 4;
-  const totalZones = 8;
-  const oppCount = 12;
+  const dominatedZones = _lseo.dominatedZones ?? (PREVIEW_MODE ? 4 : null);
+  const totalZones = _lseo.totalZones ?? (PREVIEW_MODE ? 8 : null);
+  const oppCount = _lseo.oppCount ?? (PREVIEW_MODE ? 12 : null);
 
   const _orgCity = STATE.me&&STATE.me.location&&STATE.me.location.city ? STATE.me.location.city : null;
-  const cities = [
+  const _lseoPreviewCities = [
     { name: _orgCity ? _orgCity+' Centre' : 'Votre ville',   pos: 2,  delta: +1, mobile: 3,  desktop: 2,  cov: 91 },
     { name: 'Lyon 1-4',       pos: 1,  delta:  0, mobile: 2,  desktop: 1,  cov: 88 },
     { name: 'Liège',          pos: 4,  delta: +2, mobile: 5,  desktop: 4,  cov: 67 },
@@ -5617,6 +5623,7 @@ function renderLocalSEO() {
     { name: 'Nice',           pos: 8,  delta: -1, mobile: 10, desktop: 8,  cov: 38 },
     { name: 'Strasbourg',     pos: 12, delta:  0, mobile: 15, desktop: 12, cov: 18 },
   ];
+  const cities = (_lseo.cities && _lseo.cities.length > 0) ? _lseo.cities : (PREVIEW_MODE ? _lseoPreviewCities : []);
 
   const milestones = [
     { icon: '🏆', label: 'Domination locale', desc: '70%+ de couverture', done: true },
@@ -5625,13 +5632,14 @@ function renderLocalSEO() {
     { icon: '🤖', label: 'IA Stratège',         desc: 'Ultra requis',      done: false, locked: !isUltra },
   ];
 
-  const forecasts = [
+  const _forecastsRaw = (_lseo.forecasts && _lseo.forecasts.length > 0) ? _lseo.forecasts : null;
+  const forecasts = _forecastsRaw || (PREVIEW_MODE ? [
     { month: 'Juin',   val: 1420, prev: 1180 },
     { month: 'Juil.',  val: 1680, prev: 1420 },
     { month: 'Août',   val: 1540, prev: 1680 },
     { month: 'Sept.',  val: 1910, prev: 1540 },
-  ];
-  const maxForecast = Math.max(...forecasts.map(f => f.val));
+  ] : []);
+  const maxForecast = forecasts.length > 0 ? Math.max(...forecasts.map(f => f.val)) : 1;
 
   const missingPages = PREVIEW_MODE ? [
     { city: 'Zone A', kw: 'mot-clé local principal', vol: 340 },
@@ -5656,7 +5664,7 @@ function renderLocalSEO() {
 
     <!-- AI STRATEGIST -->
     ${isUltra
-      ? aiBlock('<strong>Score de domination : 72/100</strong> · Vous dominez <strong>63% des recherches locales</strong> dans votre zone cible. Opportunités majeures détectées sur vos zones cibles — aucun concurrent bien optimisé. Créer 3 pages locales peut générer <strong>+1 030 visites/mois</strong>.', ['Voir les opportunités', 'Générer pages locales', 'Rapport stratégique'])
+      ? aiBlock('<strong>Score de domination : '+(domScore!=null?domScore+'/100':'?/100')+'</strong> · '+(domScore!=null?'Vous dominez les recherches locales dans votre zone cible. Opportunités majeures détectées — Créer des pages locales peut augmenter votre visibilité.':'Connectez DataForSEO ou Google Business Profile pour calculer votre score de domination locale.'), ['Voir les opportunités', 'Générer pages locales', 'Rapport stratégique'])
       : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
           <div style="font-size:24px;flex-shrink:0">🤖</div>
           <div style="flex:1">
@@ -5669,9 +5677,9 @@ function renderLocalSEO() {
 
     <!-- KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Score domination', domScore + '/100', '+5 pts ce mois', 'up')}
-      ${statCard('Zones dominées', dominatedZones + '/' + totalZones, 'à 70%+ couverture', 'neutral')}
-      ${statCard('Opportunités détectées', oppCount, 'non exploitées', 'down')}
+      ${statCard('Score domination', displayStat(domScore!=null?domScore+'/100':null,'72/100'), PREVIEW_MODE?'+5 pts ce mois':domScore!=null?'+5 pts ce mois':'Connectez DataForSEO', domScore!=null?'up':'neutral')}
+      ${statCard('Zones dominées', displayStat(dominatedZones!=null?dominatedZones+'/'+(totalZones||8):null,'4/8'), PREVIEW_MODE?'à 70%+ couverture':dominatedZones!=null?'à 70%+ couverture':'Configurez vos zones', 'neutral')}
+      ${statCard('Opportunités détectées', displayStat(oppCount!=null?String(oppCount):null,'12'), PREVIEW_MODE?'non exploitées':oppCount!=null?'non exploitées':'Connectez DataForSEO', oppCount!=null?'down':'neutral')}
       ${statCard('Menaces actives', String(STATE.competitors && STATE.competitors.length > 0 ? STATE.competitors.length : PREVIEW_MODE ? 3 : 0), STATE.competitors && STATE.competitors.length > 0 ? 'concurrents configurés' : PREVIEW_MODE ? 'concurrents en hausse' : 'Aucun concurrent', STATE.competitors && STATE.competitors.length > 0 ? 'down' : 'neutral')}
     </div>
 
@@ -6209,6 +6217,7 @@ function renderBilling() {
   if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
   const user   = STATE?.me?.user || STATE?.user || null;
   const _usage = me?.usage || {};
+  const _ud    = STATE.usageDetails || {};
   const plan = me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
   const isPro   = plan === 'Pro' || plan === 'Agency';
@@ -6253,16 +6262,17 @@ function renderBilling() {
     { l:'PDF',         icon:'file-text',  v:_usage.pdf?.used      ?? 0, max:_usage.pdf?.limit      ?? 10,    color:'#8b5cf6', forecast:61 },
     { l:'Exports',     icon:'download',   v:_usage.exports?.used  ?? 0, max:_usage.exports?.limit  ?? 100,   color:'#22c55e', forecast:40 },
     { l:'Monitors',    icon:'activity',   v:_usage.monitor?.used  ?? 0, max:_usage.monitor?.limit  ?? 10,    color:'#f59e0b', forecast:78 },
-    { l:'Sièges',      icon:'users',      v:1,                     max:5,                      color:'#06b6d4', forecast:20 },
-    { l:'Storage',     icon:'database',   v:2.4,                   max:10,                     color:'#8b5cf6', forecast:32, unit:'GB' },
-    { l:'API Appels',  icon:'code',       v:3280,                  max:10000,                  color:'#f59e0b', forecast:44, unit:'' },
-    { l:'Bandwidth',   icon:'wifi',       v:18.2,                  max:50,                     color:'#06b6d4', forecast:48, unit:'GB' },
-    { l:'Emails',      icon:'mail',       v:842,                   max:5000,                   color:'#8b5cf6', forecast:36, unit:'' },
-    { l:'Rapports',    icon:'bar-chart-2', v:17,                   max:100,                    color:'#22c55e', forecast:22, unit:'' },
+    { l:'Sièges',      icon:'users',      v:(_ud.teamMembersUsed??1), max:(_ud.teamMembersLimit??5),         color:'#06b6d4', forecast:Math.round((_ud.teamMembersUsed??1)/(_ud.teamMembersLimit??5)*100) },
+    { l:'Storage',     icon:'database',   v:_ud.storageUsed,          max:10,    color:'#8b5cf6', forecast:null, unit:'GB',  na:_ud.storageUsed==null },
+    { l:'API Appels',  icon:'code',       v:_ud.apiCalls,             max:10000, color:'#f59e0b', forecast:null,             na:_ud.apiCalls==null },
+    { l:'Bandwidth',   icon:'wifi',       v:_ud.bandwidthUsed,        max:50,    color:'#06b6d4', forecast:null, unit:'GB',  na:_ud.bandwidthUsed==null },
+    { l:'Emails',      icon:'mail',       v:_ud.emailsSent,           max:5000,  color:'#8b5cf6', forecast:null,             na:_ud.emailsSent==null },
+    { l:'Rapports',    icon:'bar-chart-2',v:_ud.reportsUsed,          max:(_ud.reportsLimit??100), color:'#22c55e', forecast:null, na:_ud.reportsUsed==null },
   ];
 
-  const healthScore = 78;
-  const upgradeScore = isUltra ? 0 : 62;
+  const _liveUPcts = usages.filter(u=>!u.na&&u.v!=null&&u.max>0).map(u=>Math.round(u.v/u.max*100));
+  const healthScore = _liveUPcts.length>0 ? Math.max(0,100-Math.round(_liveUPcts.reduce((s,p)=>s+p,0)/_liveUPcts.length)) : null;
+  const upgradeScore = isUltra ? 0 : (healthScore!=null ? Math.round(healthScore*0.8) : null);
 
   // ══════════════════════════════════════════════════════════
   // SUB: PLANS & ABONNEMENTS
@@ -6685,6 +6695,7 @@ function renderBilling() {
       <!-- USAGE GRID -->
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:20px">
         ${usages.map(u => {
+          if (u.na) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><div style="display:flex;align-items:center;gap:7px;margin-bottom:8px"><div style="width:24px;height:24px;border-radius:7px;background:rgba(100,116,139,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgIcon(u.icon).replace('stroke="currentColor"','stroke="#64748b"').replace('width="14"','width="12"').replace('height="14"','height="12"')}</div><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(u.l)}</span></div><div style="font-size:11px;color:var(--fp-text-faint)">Non instrumenté</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">—</div></div>`;
           const pct  = Math.round(u.v / u.max * 100);
           const fc   = u.forecast;
           const pc   = pct > 80 ? '#ef4444' : pct > 60 ? '#f59e0b' : u.color;
@@ -6835,7 +6846,7 @@ function renderBilling() {
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Score optimisation', displayStat(null, '62/100'), PREVIEW_MODE ? '+15 pts ce mois' : 'Analyse en cours', 'neutral')}
+        ${statCard('Score optimisation', displayStat(upgradeScore!=null?upgradeScore+'/100':null, '62/100'), PREVIEW_MODE ? '+15 pts ce mois' : upgradeScore!=null?'+'+upgradeScore+'pts':'Analyse en cours', 'neutral')}
         ${statCard('Actions identifiées', displayStat(null, '3'), PREVIEW_MODE ? 'opportunités prioritaires' : 'Aucune action', 'neutral')}
         ${statCard('ROI add-ons estimé', displayStat(null, '+42%'), PREVIEW_MODE ? 'efficacité agence' : 'Activez des add-ons', 'neutral')}
         ${statCard('Alertes churn', String(churnRisks.length), 'signaux faibles détectés', 'neutral')}
@@ -6976,9 +6987,9 @@ function renderBilling() {
   // ══════════════════════════════════════════════════════════
   // DEFAULT (null) — Billing Command Center
   // ══════════════════════════════════════════════════════════
-  const usageHealth = healthScore;
+  const usageHealth = healthScore ?? 0;
   const circ42 = 2 * Math.PI * 42;
-  const criticalUsages = usages.filter(u => Math.round(u.v / u.max * 100) > 75);
+  const criticalUsages = usages.filter(u => !u.na && u.v!=null && u.max>0 && Math.round(u.v / u.max * 100) > 75);
 
   return `
     <div class="fp-section-header">
@@ -6987,7 +6998,7 @@ function renderBilling() {
           Billing Command Center
           <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.35);border-radius:20px;color:#2563EB">✦ SMART</span>
         </h1>
-        <div class="fp-section-sub">Plan ${plan} actif · Prochain débit 01/06/2026 · Usage health ${usageHealth}/100</div>
+        <div class="fp-section-sub">Plan ${plan} actif · ${healthScore!=null?'Usage health '+healthScore+'/100':'Calcul usage en cours'}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Télécharger facture','fp-btn fp-btn-ghost fp-btn-sm','download',"onclick=\"apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('success','Portail Stripe ouvert')}).catch(()=>showToast('info','Portail Stripe'))\"" )}
@@ -7009,8 +7020,8 @@ function renderBilling() {
     <!-- HERO KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Plan actuel', plan, 'actif · 79€/mois', 'up')}
-      ${statCard('Usage Health', usageHealth + '/100', usageHealth > 70 ? 'Sain — sous contrôle' : 'Attention requise', usageHealth > 70 ? 'up' : 'down')}
-      ${statCard('Potentiel upgrade', upgradeScore + '%', isUltra ? 'Plan optimal atteint' : 'Score upgrade détecté', isUltra ? 'up' : 'neutral')}
+      ${statCard('Usage Health', displayStat(healthScore!=null?healthScore+'/100':null,'78/100'), healthScore!=null?(healthScore > 70 ? 'Sain — sous contrôle' : 'Attention requise'):PREVIEW_MODE?'Sain — sous contrôle':'Calcul en cours', healthScore!=null?(healthScore > 70 ? 'up' : 'down'):'neutral')}
+      ${statCard('Potentiel upgrade', displayStat(upgradeScore!=null&&upgradeScore>0?upgradeScore+'%':null,'62%'), isUltra ? 'Plan optimal atteint' : 'Score upgrade détecté', isUltra ? 'up' : 'neutral')}
       ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount ? STATE.billing.nextAmount + '€' : null, '79€'), PREVIEW_MODE ? '01/06/2026 · dans 23j' : 'Voir Stripe', 'neutral')}
     </div>
 
@@ -7056,7 +7067,7 @@ function renderBilling() {
             <circle cx="50" cy="50" r="42" fill="none" stroke="${usageHealth > 70 ? '#22c55e' : '#f59e0b'}" stroke-width="8"
               stroke-dasharray="${(usageHealth/100*circ42).toFixed(1)} ${(circ42*(1-usageHealth/100)).toFixed(1)}"
               stroke-linecap="round" transform="rotate(-90 50 50)"/>
-            <text x="50" y="55" text-anchor="middle" font-size="22" font-weight="900" fill="${usageHealth > 70 ? '#22c55e' : '#f59e0b'}" font-family="Outfit,sans-serif">${usageHealth}</text>
+            <text x="50" y="55" text-anchor="middle" font-size="22" font-weight="900" fill="${usageHealth > 70 ? '#22c55e' : '#f59e0b'}" font-family="Outfit,sans-serif">${healthScore!=null?usageHealth:'—'}</text>
           </svg>
           <div>
             <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Usage Health Score</div>
@@ -8876,17 +8887,45 @@ function renderAI() {
   // SUB: WORKSPACE INTELLIGENCE
   // ══════════════════════════════════════════════════════════
   if (sub === 'intelligence') {
+    const _mkSysScore = v => v!=null?v:(PREVIEW_MODE?Math.floor(Math.random()*25)+55:null);
+    const _mkSysStatus = v => v==null?'—':v>=80?'Bon':v>=60?'Attention':'Faible';
+    const _mkSysColor  = v => v==null?'var(--fp-text-faint)':v>=80?'#22c55e':v>=60?'#f59e0b':'#ef4444';
+    const _auditScore  = STATE.overview?.avgScore ?? null;
+    const _monTotal    = (STATE.monitors||[]).length;
+    const _monDown     = (STATE.monitors||[]).filter(m=>m.status==='down').length;
+    const _monScore    = _monTotal>0 ? Math.round(((_monTotal-_monDown)/_monTotal)*100) : null;
+    const _convRate    = STATE.overview?.conversionRate ?? null;
+    const _convScore   = _convRate!=null ? Math.min(99,Math.round(_convRate*30)) : null;
+    const _repsCount   = (STATE.reports||[]).length;
+    const _aActive     = (STATE.alertRules||[]).filter(a=>a.enabled!==false).length;
+    const _aFiring     = (STATE.alertRules||[]).filter(a=>a.status==='triggered'||a.status==='firing').length;
+    const _alertScore  = _aActive>0 ? Math.round(((_aActive-_aFiring)/_aActive)*100) : null;
+    const _wfActive    = (STATE.workflows||[]).filter(w=>w.enabled!==false).length;
+    const _missTotal   = (STATE.missions||[]).length;
+    const _missDone    = (STATE.missions||[]).filter(m=>m.status==='completed').length;
+    const _billOk      = STATE.me?.subscriptionStatus==='active';
+    const _compScore   = STATE.competitors&&STATE.competitors.length>0 ? Math.min(100,Math.round((STATE.competitors[0].domainRating||50)*1.2)) : null;
     const systems = [
-      {name:'SEO & Audits',      icon:'🔍', score:74,  status:'Bon',      color:'#22c55e', route:'audits',        detail:'4 sites actifs · Score moyen 74/100'},
-      {name:'Monitors',          icon:'📡', score:61,  status:'Attention', color:'#f59e0b', route:'monitors',      detail:'3 DOWN · Uptime moyen 97.2%'},
-      {name:'Local SEO',         icon:'📍', score:68,  status:'Moyen',    color:'#f59e0b', route:'local-seo',     detail:'2 zones non couvertes · GBP actif'},
-      {name:'Concurrents',       icon:'🏁', score:82,  status:'Alerte',   color:'#ef4444', route:'competitor',    detail:(STATE.competitors&&STATE.competitors.length>0?STATE.competitors[0].name||'Concurrent #1':'Concurrent #1') + ' en progression cette semaine'},
-      {name:'Conversion',        icon:'💰', score:61,  status:'Faible',   color:'#ef4444', route:'conversion',    detail:'Friction mobile détectée · CTA sous-optimaux'},
-      {name:'Rapports',          icon:'📄', score:90,  status:'Excellent',color:'#22c55e', route:'reports',       detail:'Rapport mensuel généré · 3 clients actifs'},
-      {name:'Alertes',           icon:'🔔', score:55,  status:'Attention', color:'#f59e0b', route:'alerts-center', detail:'3 incidents actifs · 2 non résolus'},
-      {name:'Facturation',       icon:'💳', score:88,  status:'Bon',      color:'#22c55e', route:'billing',       detail:'Plan Pro actif · Prochain débit 01/06'},
-      {name:'Missions IA',       icon:'✅', score:77,  status:'En cours', color:'#2563EB', route:'missions',      detail:'5 missions actives · 2 terminées ce mois'},
-      {name:'Workflows',         icon:'⚡', score:85,  status:'Bon',      color:'#22c55e', route:'settings',      detail:'4 actifs · 0 erreur · ~6h économisées/mois'},
+      {name:'SEO & Audits', icon:'🔍', score:_mkSysScore(_auditScore), status:_mkSysStatus(_auditScore), color:_mkSysColor(_auditScore), route:'audits',
+        detail:_auditScore!=null?(STATE.audits&&STATE.audits.length>0?STATE.audits.length+' site(s) · Score moyen '+_auditScore+'/100':'Score '+_auditScore+'/100'):PREVIEW_MODE?'4 sites actifs · Score moyen 74/100':'Aucun audit — Lancez votre premier audit'},
+      {name:'Monitors', icon:'📡', score:_mkSysScore(_monScore), status:_mkSysStatus(_monScore), color:_mkSysColor(_monScore), route:'monitors',
+        detail:_monTotal>0?_monDown+' DOWN · '+_monTotal+' monitor(s) actif(s)':PREVIEW_MODE?'3 DOWN · Uptime moyen 97.2%':'Aucun monitor configuré'},
+      {name:'Local SEO', icon:'📍', score:_mkSysScore(domScore!=null?Math.round(domScore*0.9):null), status:_mkSysStatus(domScore!=null?Math.round(domScore*0.9):null), color:_mkSysColor(domScore!=null?Math.round(domScore*0.9):null), route:'local-seo',
+        detail:STATE.dfsStatus?.configured?'DataForSEO connecté':PREVIEW_MODE?'2 zones non couvertes · GBP actif':'Connectez DataForSEO ou Google Business Profile'},
+      {name:'Concurrents', icon:'🏁', score:_mkSysScore(_compScore), status:_mkSysStatus(_compScore), color:_mkSysColor(_compScore), route:'competitor',
+        detail:STATE.competitors&&STATE.competitors.length>0?(STATE.competitors[0].name||'Concurrent #1')+' — '+STATE.competitors.length+' concurrent(s) suivi(s)':PREVIEW_MODE?'Concurrent #1 en progression cette semaine':'Aucun concurrent — Ajoutez des concurrents'},
+      {name:'Conversion', icon:'💰', score:_mkSysScore(_convScore), status:_mkSysStatus(_convScore), color:_mkSysColor(_convScore), route:'conversion',
+        detail:_convRate!=null?'Taux global : '+(_convRate*100).toFixed(2)+'%':PREVIEW_MODE?'Friction mobile détectée · CTA sous-optimaux':'Connectez GA4 pour analyser la conversion'},
+      {name:'Rapports', icon:'📄', score:_mkSysScore(_repsCount>0?Math.min(99,60+_repsCount*3):null), status:_mkSysStatus(_repsCount>0?Math.min(99,60+_repsCount*3):null), color:_mkSysColor(_repsCount>0?Math.min(99,60+_repsCount*3):null), route:'reports',
+        detail:_repsCount>0?_repsCount+' rapport(s) généré(s)':PREVIEW_MODE?'Rapport mensuel généré · 3 clients actifs':'Aucun rapport généré'},
+      {name:'Alertes', icon:'🔔', score:_mkSysScore(_alertScore), status:_mkSysStatus(_alertScore), color:_mkSysColor(_alertScore), route:'alerts-center',
+        detail:_aActive>0?_aActive+' alerte(s) · '+_aFiring+' déclenchée(s)':PREVIEW_MODE?'3 incidents actifs · 2 non résolus':'Aucune alerte configurée'},
+      {name:'Facturation', icon:'💳', score:_mkSysScore(_billOk?88:null), status:_mkSysStatus(_billOk?88:null), color:_mkSysColor(_billOk?88:null), route:'billing',
+        detail:_billOk?'Plan '+STATE.me.plan+' actif':PREVIEW_MODE?'Plan Pro actif · Prochain débit 01/06':'Aucun abonnement actif'},
+      {name:'Missions IA', icon:'✅', score:_mkSysScore(_missTotal>0?Math.round((_missDone/_missTotal)*100):null), status:_mkSysStatus(_missTotal>0?Math.round((_missDone/_missTotal)*100):null), color:_mkSysColor(_missTotal>0?Math.round((_missDone/_missTotal)*100):null), route:'missions',
+        detail:_missTotal>0?_missTotal+' mission(s) · '+_missDone+' terminée(s)':PREVIEW_MODE?'5 missions actives · 2 terminées ce mois':'Aucune mission IA — Lancez votre première mission'},
+      {name:'Workflows', icon:'⚡', score:_mkSysScore(_wfActive>0?85:null), status:_mkSysStatus(_wfActive>0?85:null), color:_mkSysColor(_wfActive>0?85:null), route:'settings',
+        detail:_wfActive>0?_wfActive+' workflow(s) actif(s)':PREVIEW_MODE?'4 actifs · 0 erreur · ~6h économisées/mois':'Aucun workflow actif'},
     ];
     const correlations = [
       {
@@ -8910,7 +8949,7 @@ function renderAI() {
       {
         icon:'🔗', color:'#06b6d4',
         title:'Rapports + Mode Client',
-        body:'3 rapports PDF programmés ce mois — aucun n\'a été consulté par vos clients. Suggérez un accès Mode Client pour améliorer l\'engagement.',
+        body:(STATE.reports&&STATE.reports.length>0 ? STATE.reports.length+' rapport(s) généré(s) ce mois. Activez le Mode Client pour notifier vos clients et suivre les consultations.' : PREVIEW_MODE ? '3 rapports PDF programmés ce mois — aucun n\'a été consulté par vos clients. Suggérez un accès Mode Client pour améliorer l\'engagement.' : 'Aucun rapport généré ce mois. Configurez vos rapports automatiques pour vos clients.'),
         chips:[chip('Mode Client','client-mode',null), chip('Voir les rapports','reports',null)],
       },
     ];
@@ -8933,9 +8972,9 @@ function renderAI() {
               <svg width="36" height="36" viewBox="0 0 54 54">
                 <circle cx="27" cy="27" r="22" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="5"/>
                 <circle cx="27" cy="27" r="22" fill="none" stroke="${sys.color}" stroke-width="5"
-                  stroke-dasharray="${(sys.score/100*circ22).toFixed(1)} ${(circ22*(1-sys.score/100)).toFixed(1)}"
+                  stroke-dasharray="${((sys.score??0)/100*circ22).toFixed(1)} ${(circ22*(1-(sys.score??0)/100)).toFixed(1)}"
                   stroke-linecap="round" transform="rotate(-90 27 27)"/>
-                <text x="27" y="32" text-anchor="middle" font-size="12" font-weight="900" fill="${sys.color}" font-family="Outfit,sans-serif">${sys.score}</text>
+                <text x="27" y="32" text-anchor="middle" font-size="12" font-weight="900" fill="${sys.color}" font-family="Outfit,sans-serif">${sys.score??'—'}</text>
               </svg>
             </div>
             <div style="font-size:10px;color:var(--fp-text-faint);line-height:1.4">${escHtml(sys.detail)}</div>
@@ -16900,10 +16939,10 @@ function renderCompetitor() {
         kw:      c.keywords || 0, bl: 0, content: 0,
         threat:  (['critical','high','medium','low'].includes(c.threatLevel||'') ? c.threatLevel : 'low'),
       }))
-    : _fbLetters.slice(0,3).map(l => ({
-        name: `Concurrent ${l}`, url: '—', score: 0, speed: 0, reviews: 0, stars: 0,
+    : (PREVIEW_MODE ? _fbLetters.slice(0,3).map(l => ({
+        name: `Concurrent ${l}`, url: 'exemple.com', score: Math.floor(Math.random()*25)+55, speed: Math.floor(Math.random()*20)+60, reviews: 0, stars: 0,
         local: false, auth: 0, traffic: 0, delta: 0, kw: 0, bl: 0, content: 0, threat: 'low',
-      }));
+      })) : []);
   const _latestAudit = STATE.audits && STATE.audits.length > 0 ? STATE.audits[STATE.audits.length-1] : null;
   const myScore   = _latestAudit?.score   ?? STATE.overview?.avgScore      ?? (PREVIEW_MODE ? 74   : null);
   const mySpeed   = _latestAudit?.speed   ?? STATE.overview?.avgSpeed      ?? (PREVIEW_MODE ? 84   : null);
@@ -17821,13 +17860,14 @@ function renderConversion() {
   const isUltra = plan === 'Agency';
 
   // ── Shared data ────────────────────────────────────────────
-  const funnelSteps = [
+  const _ga4Funnel = STATE.ga4?.funnelSteps || STATE.analytics?.funnelSteps || null;
+  const funnelSteps = _ga4Funnel || (PREVIEW_MODE ? [
     { label: 'Impressions Google', val: '12 400', abs: 12400, pct: 100,  drop: null,  color: '#2563EB' },
     { label: 'Clics vers le site', val: '1 488',  abs: 1488,  pct: 12.0, drop: 88.0,  color: '#3b82f6' },
     { label: 'Pages vues',          val: '892',    abs: 892,   pct: 7.2,  drop: 40.1,  color: '#8b5cf6' },
     { label: 'Contacts initiés',    val: '134',    abs: 134,   pct: 1.1,  drop: 85.0,  color: '#f59e0b' },
     { label: 'Clients convertis',   val: '28',     abs: 28,    pct: 0.23, drop: 79.1,  color: '#22c55e' },
-  ];
+  ] : null);
 
   const _croScRaw = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.scores && window.FP_DATA.cro.scores[0];
   const _mkHCol = function(v) { return v >= 70 ? '#22c55e' : v >= 50 ? '#f59e0b' : '#ef4444'; };
@@ -17857,7 +17897,7 @@ function renderConversion() {
   // SUB: FUNNEL ANALYTICS
   // ══════════════════════════════════════════════════════════
   if (sub === 'funnel') {
-    const mobileSteps = [
+    const mobileSteps = STATE.behavioral?.mobileSteps || (PREVIEW_MODE ? [
       { label: 'Impressions',    mob: 100,  desk: 100  },
       { label: 'Clics',          mob: 9.8,  desk: 14.2 },
       { label: 'Pages vues',     mob: 5.9,  desk: 8.6  },
@@ -17867,17 +17907,17 @@ function renderConversion() {
       { label: 'Panier ajouté',  mob: 0.41, desk: 0.89 },
       { label: 'Checkout',       mob: 0.21, desk: 0.52 },
       { label: 'Clients',        mob: 0.12, desk: 0.34 },
-    ];
-    const friction = [
+    ] : []);
+    const friction = STATE.behavioral?.friction || (PREVIEW_MODE ? [
       { step: 'Page formulaire',   score: 42, issue: 'Trop de champs (8 champs requis)', impact: 'Critique' },
       { step: 'Page tarifs',       score: 58, issue: 'Pas de CTA visible above the fold', impact: "Élevé" },
       { step: 'Page contact',      score: 61, issue: 'Absence de numéro de téléphone', impact: "Élevé" },
       { step: 'Page accueil',      score: 67, issue: 'Vitesse chargement 3.2s mobile', impact: "Moyen" },
-    ];
+    ] : []);
     return `
       ${aiBlock(PREVIEW_MODE
         ? "La plus grande perte de votre funnel : <strong>88% des visiteurs quittent sans explorer le site</strong> (clics Google non convertis). Sur mobile, le taux contact-client est <strong>3x inférieur</strong> au desktop. Priorité absolue : simplifier le formulaire et accélérer le mobile."
-        : "Connectez votre analytics (GA4, Matomo) et vos données de conversion pour obtenir l'analyse de funnel personnalisée.",
+        : (funnelSteps ? "Analyse de funnel chargée depuis votre analytics." : "Connectez votre analytics (GA4, Matomo) et vos données de conversion pour obtenir l'analyse de funnel personnalisée."),
         ["Optimiser le formulaire", "Comparer mobile vs desktop", "Plan CRO complet"])}
 
       <div class="fp-stat-row fp-mb-20">
@@ -17897,7 +17937,7 @@ function renderConversion() {
           <span style="font-size:11px;color:var(--fp-text-faint)">12 400 impressions initiales</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          ${funnelSteps.map((s, idx) => `
+          ${funnelSteps && funnelSteps.length > 0 ? funnelSteps.map((s, idx) => `
             <div>
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
                 <span style="font-size:11px;color:var(--fp-text-muted);min-width:140px">${escHtml(s.label)}</span>
@@ -17913,7 +17953,7 @@ function renderConversion() {
               </div>
               ${idx < funnelSteps.length - 1 ? `<div style="margin-left:140px;font-size:10px;color:var(--fp-text-faint);padding-left:4px">▼ ${100 - Math.round(funnelSteps[idx+1].abs / s.abs * 100)}% de chute vers "${escHtml(funnelSteps[idx+1].label)}"</div>` : ""}
             </div>
-          `).join("")}
+          `).join("") : `<div style="padding:24px;text-align:center;background:var(--fp-inner-card);border-radius:10px;font-size:13px;color:var(--fp-text-muted)">🔌 Connectez GA4 ou Matomo pour afficher votre entonnoir en temps réel.<br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="navigate('integrations')">Connecter analytics</button></div>`}
         </div>
       </div>
 
@@ -18139,19 +18179,19 @@ function renderConversion() {
   // SUB: CTA INTELLIGENCE
   // ══════════════════════════════════════════════════════════
   if (sub === 'cta') {
-    const ctas = [
+    const ctas = STATE.behavioral?.ctas || (PREVIEW_MODE ? [
       { name: "Appeler maintenant",       page: "Accueil",    ctr: 2.1, mob: 1.2, pos: "Above fold", vis: 82, impact: "Critique" },
       { name: "Demander un devis",        page: "Services",   ctr: 1.4, mob: 0.8, pos: "Below fold", vis: 54, impact: "Élevé"    },
       { name: "Nous contacter",           page: "Contact",    ctr: 3.2, mob: 2.6, pos: "Header",     vis: 91, impact: "Moyen"    },
       { name: "En savoir plus",           page: "Services",   ctr: 0.8, mob: 0.5, pos: "Mid-page",   vis: 62, impact: "Faible"   },
       { name: "Voir nos offres",          page: "Accueil",    ctr: 1.9, mob: 1.1, pos: "Hero",       vis: 78, impact: "Moyen"    },
       { name: "Réserver un appel",        page: "Tarifs",     ctr: 0.4, mob: 0.2, pos: "Bottom",     vis: 31, impact: "Critique" },
-    ];
-    const abIdeas = [
+    ] : []);
+    const abIdeas = STATE.behavioral?.abIdeas || (PREVIEW_MODE ? [
       { cta: "Appeler maintenant", varB: "Appel gratuit — 24h/24", estGain: "+34%", effort: "30 min" },
       { cta: "Demander un devis",  varB: "Devis gratuit en 2 min",  estGain: "+22%", effort: "20 min" },
       { cta: "Réserver un appel",  varB: "Parler à un expert",       estGain: "+18%", effort: "15 min" },
-    ];
+    ] : []);
     return `
       ${isPro
         ? aiBlock("Le CTA <strong>Réserver un appel</strong> est quasi-invisible (31/100) et génère 0.4% de CTR — <strong>coût : environ 23 clients perdus par mois</strong>. Sur mobile, tous vos CTAs principaux perdent en moyenne -48% de CTR. Simple action : déplacer le CTA principal au-dessus de la ligne de flottaison.",
@@ -18254,12 +18294,12 @@ function renderConversion() {
       id: l.id,
     })) : [
     ];
-    const trustIssues = [
+    const trustIssues = STATE.behavioral?.trustIssues || (PREVIEW_MODE ? [
       { issue: "Pas de badge certifié visible",     fix: "Ajouter logo RGE / assurance", effort: "30 min" },
       { issue: "Aucune mention légale en footer",   fix: "Ajouter mentions légales",    effort: "15 min" },
       { issue: "Pas de politique de confidentialité",fix: "Ajouter RGPD notice",        effort: "45 min" },
       { issue: "Photos équipe absentes",            fix: "Section équipe avec photos",  effort: "2h"     },
-    ];
+    ] : []);
     const totalLoss = leaks.reduce((s, l) => s + (parseInt(String(l.loss || '0')) || 0), 0);
     const _rlIsEmpty = !leaks.length;
     const _rlEmptyReason = (_rlData && _rlData.emptyReason) || "Aucune fuite de revenus détectée pour le moment — connectez GA4, PageSpeed et Behavioral Analytics pour activer la détection automatique.";
@@ -18619,7 +18659,7 @@ function renderConversion() {
           </div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('funnel')">Analyse complète →</button>
         </div>
-        ${funnelSteps.map((s, idx) => `
+        ${funnelSteps && funnelSteps.length > 0 ? funnelSteps.map((s, idx) => `
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:${idx < funnelSteps.length - 1 ? "4px" : "0"}">
             <span style="font-size:10px;color:var(--fp-text-faint);min-width:120px">${escHtml(s.label)}</span>
             <div class="fp-progress-track" style="flex:1;height:8px;border-radius:4px">
@@ -18627,10 +18667,10 @@ function renderConversion() {
             </div>
             <span style="font-size:11px;font-weight:700;color:${s.color};min-width:48px;text-align:right">${escHtml(s.val)}</span>
           </div>
-        `).join("")}
-        <div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.06);border-radius:8px;font-size:11px;color:#ef4444;text-align:center">
+        `).join("") : `<div style="padding:14px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez analytics pour afficher le funnel →</div>`}
+        ${funnelSteps && funnelSteps.length > 0 ? `<div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.06);border-radius:8px;font-size:11px;color:#ef4444;text-align:center">
           ⚠ 88% des visiteurs quittent sans explorer le site
-        </div>
+        </div>` : ''}
       </div>
 
       <div class="fp-card">
