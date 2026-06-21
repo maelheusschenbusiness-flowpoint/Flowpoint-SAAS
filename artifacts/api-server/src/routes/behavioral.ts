@@ -459,7 +459,9 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
 router.get("/behavioral/status", async (req: Request, res: Response) => {
   const { siteUrl } = req.query as { siteUrl?: string };
   if (!siteUrl) {
-    res.status(400).json({ error: "siteUrl query param required" }); return;
+    res.json({ status: "not_configured", installed: false, totalEvents: 0, lastEventAt: null,
+               message: "Aucun site configuré. Générez d'abord un snippet via GET /api/behavioral/snippet." });
+    return;
   }
 
   const orgId = req.orgId ?? "default";

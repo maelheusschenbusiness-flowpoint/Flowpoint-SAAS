@@ -40,17 +40,18 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
   const cached = _cache.get(orgId);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
-  const client = await pool.connect();
+  // Use pool.query() for each call so the pool assigns separate connections —
+  // avoids the "client already executing a query" warning from parallel client.query().
   try {
     const [audits, monitors, keywords, missions, ai, leaks, connectors] = await Promise.allSettled([
-      client.query(`SELECT AVG(score) as avg_score, COUNT(*) as count FROM audits WHERE created_at > NOW() - INTERVAL '30 days'`),
-      client.query(`SELECT status, AVG(latency) as avg_latency, AVG(uptime) as avg_uptime FROM monitors GROUP BY status`),
-      client.query(`SELECT COUNT(*) as total, SUM(CASE WHEN current_position <= 3 THEN 1 ELSE 0 END) as top3, SUM(CASE WHEN current_position <= 10 THEN 1 ELSE 0 END) as top10, SUM(CASE WHEN trend='up' THEN 1 ELSE 0 END) as up, SUM(CASE WHEN trend='down' THEN 1 ELSE 0 END) as down FROM tracked_keywords WHERE org_id=$1 AND active=true`, [orgId]),
-      client.query(`SELECT status, COUNT(*) as count FROM missions WHERE org_id=$1 GROUP BY status`, [orgId]),
-      client.query(`SELECT credits_used, credits_limit FROM ai_monthly_usage WHERE org_id=$1 ORDER BY month DESC LIMIT 1`, [orgId]),
-      client.query(`SELECT COUNT(*) as count, COALESCE(SUM(estimated_loss),0) as total FROM revenue_leaks WHERE status='active'`),
+      pool.query(`SELECT AVG(score) as avg_score, COUNT(*) as count FROM audits WHERE created_at > NOW() - INTERVAL '30 days'`),
+      pool.query(`SELECT status, AVG(latency) as avg_latency, AVG(uptime) as avg_uptime FROM monitors GROUP BY status`),
+      pool.query(`SELECT COUNT(*) as total, SUM(CASE WHEN current_position <= 3 THEN 1 ELSE 0 END) as top3, SUM(CASE WHEN current_position <= 10 THEN 1 ELSE 0 END) as top10, SUM(CASE WHEN trend='up' THEN 1 ELSE 0 END) as up, SUM(CASE WHEN trend='down' THEN 1 ELSE 0 END) as down FROM tracked_keywords WHERE org_id=$1 AND active=true`, [orgId]),
+      pool.query(`SELECT status, COUNT(*) as count FROM missions WHERE org_id=$1 GROUP BY status`, [orgId]),
+      pool.query(`SELECT credits_used, credits_limit FROM ai_monthly_usage WHERE org_id=$1 ORDER BY month DESC LIMIT 1`, [orgId]),
+      pool.query(`SELECT COUNT(*) as count, COALESCE(SUM(estimated_loss),0) as total FROM revenue_leaks WHERE status='active'`),
       // Check if an analytics connector (GA4, Matomo) is connected for this org
-      client.query(`SELECT 1 FROM connectors WHERE org_id=$1 AND provider IN ('ga4','google_analytics','matomo') AND status='active' LIMIT 1`, [orgId]),
+      pool.query(`SELECT 1 FROM connectors WHERE org_id=$1 AND provider IN ('ga4','google_analytics','matomo') AND status='active' LIMIT 1`, [orgId]),
     ]);
 
     const auditRow    = audits.status    === "fulfilled" ? audits.value.rows[0]    : null;
@@ -114,7 +115,7 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
 
     _cache.set(orgId, { data: result, expiresAt: Date.now() + 60_000 });
     return result;
-  } finally {
-    client.release();
+  } catch (err) {
+    throw err;
   }
 }
