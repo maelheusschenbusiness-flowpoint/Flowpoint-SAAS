@@ -95,6 +95,25 @@
     .fp-hero { text-align: center; padding: 72px 24px 52px; }
     .fp-hero-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--green-bg); color: var(--green); font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-bottom: 18px; border: 1px solid rgba(16,185,129,0.2); }
     html[data-theme="dark"] .fp-hero-badge { border-color: rgba(52,211,153,0.2); }
+
+    /* ── Dark mode: cartes plan & addon assombries ── */
+    html[data-theme="dark"] .fp-card {
+      background: rgba(8, 14, 30, 0.92);
+      border-color: rgba(255,255,255,0.07);
+    }
+    html[data-theme="dark"] .fp-card.featured {
+      background: rgba(10, 18, 40, 0.95);
+      border-color: rgba(37,99,235,0.35);
+    }
+    html[data-theme="dark"] .fp-addon-card {
+      background: rgba(8, 13, 27, 0.92);
+      border-color: rgba(255,255,255,0.06);
+    }
+    html[data-theme="dark"] .fp-addon-card:hover {
+      border-color: rgba(37,99,235,0.3);
+      background: rgba(10, 16, 35, 0.97);
+    }
+
     .fp-hero h1 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; margin-bottom: 14px; }
     .fp-hero-accent { color: var(--blue); }
     .fp-hero-sub { font-size: 16px; color: var(--text-soft); max-width: 540px; margin: 0 auto 28px; line-height: 1.65; }
