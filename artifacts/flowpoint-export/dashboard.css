@@ -8754,10 +8754,10 @@ html[data-theme="light"] .fp-ai-quick-prompts .fp-ai-quick {
    Light mode : #ffffff = blanc pur, se distingue du fond #f0f2f5
    ══════════════════════════════════════════════════════════════ */
 :root {
-  --fp-inner-card: rgba(255,255,255,0.02);
+  --fp-inner-card: rgba(10,16,36,0.88);
 }
 html[data-theme="light"] {
-  --fp-inner-card: #ffffff;
+  --fp-inner-card: #eef2ff;
 }
 
 /* Bordures des sous-cartes : rgba(255,255,255,0.06) invisible en

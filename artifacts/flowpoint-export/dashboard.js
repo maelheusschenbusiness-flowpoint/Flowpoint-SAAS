@@ -6351,7 +6351,9 @@ function renderBilling() {
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:20px">
         ${PLANS.map(p => {
           const isCurrent = p.id === plan.toLowerCase() || (p.id === 'ultra' && isUltra);
-          return `<div style="border-radius:16px;border:2px solid ${isCurrent ? p.color : 'var(--fp-border)'};background:${isCurrent ? p.color + '08' : 'var(--fp-inner-card)'};padding:22px;position:relative;overflow:hidden;transition:border-color 0.2s;display:flex;flex-direction:column">
+          const _planDark = document.documentElement.getAttribute('data-theme') !== 'light';
+          const _planBg = isCurrent ? p.color + '0d' : (_planDark ? 'rgba(8,14,30,0.92)' : '#eef2ff');
+          return `<div style="border-radius:16px;border:2px solid ${isCurrent ? p.color : 'var(--fp-border)'};background:${_planBg};padding:22px;position:relative;overflow:hidden;transition:border-color 0.2s;display:flex;flex-direction:column">
             ${isCurrent ? `<div style="position:absolute;top:14px;right:14px;font-size:10px;font-weight:700;background:${p.color};color:#fff;padding:3px 10px;border-radius:20px">Plan actuel</div>` : ''}
             <div style="margin-bottom:16px">
               <div style="font-size:11px;font-weight:600;color:${p.color};margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">${escHtml(p.badge)}</div>
@@ -6593,8 +6595,8 @@ function renderBilling() {
           const inc = isIncluded(a);
           const cardAccent = _rc;
           const _addonDark = document.documentElement.getAttribute('data-theme') !== 'light';
-          const borderColor = (inc || a.active) ? cardAccent + '88' : _addonDark ? cardAccent + '33' : cardAccent + '77';
-          const bgColor     = cardAccent + '0d';
+          const borderColor = (inc || a.active) ? cardAccent + '88' : _addonDark ? cardAccent + '33' : cardAccent + '44';
+          const bgColor     = _addonDark ? 'rgba(8,13,27,0.92)' : cardAccent + '08';
           return `
           <div onclick="window.fpShowAddonDetail(${_i})" style="border-radius:14px;border:1px solid ${borderColor};background:${bgColor};padding:16px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s" onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,0.18)'" onmouseleave="this.style.transform='';this.style.boxShadow=''">
             ${(inc || a.active) ? `<div style="position:absolute;top:0;right:0;width:3px;height:100%;background:linear-gradient(to bottom,${cardAccent},${cardAccent}44)"></div>` : ''}

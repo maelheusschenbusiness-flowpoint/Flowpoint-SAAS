@@ -269,10 +269,9 @@
     if (hasPlan) body.plan = cart.plan;
     if (hasAddons) body.addons = cart.addons;
 
-    fetch('/api/billing/checkout', {
+    fetch('/api/public/checkout-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(body)
     })
     .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, data: d }; }); })

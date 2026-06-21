@@ -49,6 +49,7 @@ import betterstackRouter from "./betterstack.js";
 import diagnosticsRouter from "./diagnostics.js";
 import adminRouter from "./admin.js";
 import locationRouter from "./location.js";
+import publicBillingRouter from "./public-billing.js";
 
 const router: IRouter = Router();
 
@@ -91,6 +92,9 @@ router.use(publicSsoRouter);
 // SSE real-time event stream — must be public so the dashboard can subscribe
 // before the user is authenticated (shows live monitor status on login page too).
 router.use(eventsRouter);
+
+// Public Stripe checkout session — pricing.html public tunnel, no auth required.
+router.use(publicBillingRouter);
 
 // ── Protected routes (authentication required) ─────────────────────────────
 // All management endpoints require a valid API secret supplied via:
