@@ -5,10 +5,16 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.svg">
   <link rel="manifest" href="/site.webmanifest">
-  <meta name="theme-color" content="#2563EB">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
-  <title>Tarifs — FlowPoint</title>
+
+  <title>Tarifs FlowPoint — SEO, monitoring & IA pour votre croissance</title>
+  <meta name="description" content="Découvrez les plans FlowPoint : Standard, Pro et Enterprise. Audits SEO, monitoring uptime, IA copilot, Local SEO, rapports avancés. Essai 14 jours gratuit."/>
+  <meta property="og:title" content="Tarifs FlowPoint — SEO, monitoring & IA"/>
+  <meta property="og:description" content="Plans flexibles pour indépendants, équipes et agences. Essai gratuit 14 jours, sans carte bancaire."/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:url" content="https://app.flowpoint.pro/pricing.html"/>
+
   <script>
     (function(){
       try {
@@ -18,239 +24,967 @@
       } catch(e){}
     })();
   </script>
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     :root {
-      --fp-bg: #f8faff; --fp-surface: #ffffff; --fp-border: rgba(0,0,0,0.08);
-      --fp-text: #0f172a; --fp-text-muted: #64748b; --fp-accent: #2563eb;
-      --fp-accent-hover: #1d4ed8; --fp-radius: 14px;
-      --fp-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      --bg:           #f8faff;
+      --bg2:          #ffffff;
+      --surface:      #ffffff;
+      --border:       rgba(0,0,0,0.08);
+      --blue:         #2563eb;
+      --blue-h:       #1d4ed8;
+      --blue-light:   #3b82f6;
+      --text:         #0f172a;
+      --text-soft:    #475569;
+      --text-muted:   #94a3b8;
+      --green:        #059669;
+      --green-bg:     rgba(16,185,129,0.1);
+      --radius:       14px;
+      --shadow:       0 2px 12px rgba(0,0,0,0.07);
+      --shadow-lg:    0 8px 40px rgba(37,99,235,0.13);
     }
     html[data-theme="dark"] {
-      --fp-bg: #050810; --fp-surface: #0d1117; --fp-border: rgba(255,255,255,0.08);
-      --fp-text: #f1f5f9; --fp-text-muted: #94a3b8;
-      --fp-shadow: 0 2px 12px rgba(0,0,0,0.3);
+      --bg:         #050810;
+      --bg2:        #0d1117;
+      --surface:    #111827;
+      --border:     rgba(255,255,255,0.08);
+      --text:       #f1f5f9;
+      --text-soft:  #94a3b8;
+      --text-muted: #64748b;
+      --green:      #34d399;
+      --green-bg:   rgba(52,211,153,0.1);
+      --shadow:     0 2px 12px rgba(0,0,0,0.4);
+      --shadow-lg:  0 8px 40px rgba(37,99,235,0.2);
     }
-    body {
+
+    html, body {
+      min-height: 100%; background: var(--bg); color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: var(--fp-bg); color: var(--fp-text);
-      min-height: 100vh; padding: 0;
+      font-size: 15px; line-height: 1.5;
     }
 
-    .fp-topbar {
+    /* ── Nav ── */
+    .fp-nav {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 0 24px; height: 56px;
-      background: var(--fp-surface); border-bottom: 1px solid var(--fp-border);
+      padding: 0 28px; height: 60px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
       position: sticky; top: 0; z-index: 100;
+      backdrop-filter: blur(8px);
     }
-    .fp-topbar-logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; text-decoration: none; color: inherit; }
-    .fp-topbar-logo-icon {
-      width: 30px; height: 30px; background: linear-gradient(135deg, #2563eb, #7c3aed);
-      border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px;
+    .fp-nav-logo {
+      display: flex; align-items: center; gap: 9px;
+      font-weight: 700; font-size: 16px; text-decoration: none; color: var(--text);
     }
-    .fp-topbar-actions { display: flex; align-items: center; gap: 10px; }
-    .fp-topbar-link { font-size: 13px; color: var(--fp-text-muted); text-decoration: none; padding: 6px 10px; border-radius: 6px; }
-    .fp-topbar-link:hover { background: var(--fp-bg); color: var(--fp-text); }
-    .fp-topbar-btn {
+    .fp-nav-logo svg { flex-shrink: 0; }
+    .fp-nav-logo-word span { color: var(--blue); }
+    .fp-nav-links { display: flex; align-items: center; gap: 6px; }
+    .fp-nav-link {
+      font-size: 13px; color: var(--text-soft); text-decoration: none;
+      padding: 7px 12px; border-radius: 8px; transition: background 0.15s, color 0.15s;
+    }
+    .fp-nav-link:hover { background: var(--border); color: var(--text); }
+    .fp-nav-link.active { color: var(--blue); font-weight: 600; }
+    .fp-nav-cta {
       font-size: 13px; font-weight: 600; color: #fff;
-      background: var(--fp-accent); border: none; border-radius: 7px;
-      padding: 7px 14px; cursor: pointer; text-decoration: none;
+      background: var(--blue); border: none; border-radius: 8px;
+      padding: 8px 16px; cursor: pointer; text-decoration: none;
+      transition: background 0.15s;
     }
-    .fp-topbar-btn:hover { background: var(--fp-accent-hover); }
+    .fp-nav-cta:hover { background: var(--blue-h); }
 
-    .fp-pricing-hero {
-      text-align: center; padding: 64px 24px 48px;
+    /* ── Hero ── */
+    .fp-hero {
+      text-align: center; padding: 72px 24px 52px;
     }
-    .fp-pricing-hero h1 { font-size: 36px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 12px; }
-    .fp-pricing-hero p { font-size: 16px; color: var(--fp-text-muted); max-width: 520px; margin: 0 auto; line-height: 1.6; }
+    .fp-hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--green-bg); color: var(--green);
+      font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px;
+      margin-bottom: 18px; border: 1px solid rgba(16,185,129,0.2);
+    }
+    html[data-theme="dark"] .fp-hero-badge { border-color: rgba(52,211,153,0.2); }
+    .fp-hero h1 {
+      font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.8px;
+      line-height: 1.15; margin-bottom: 14px;
+    }
+    .fp-hero-accent { color: var(--blue); }
+    .fp-hero-sub {
+      font-size: 16px; color: var(--text-soft); max-width: 540px; margin: 0 auto 28px;
+      line-height: 1.65;
+    }
 
-    .fp-toggle-wrap { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 28px; }
-    .fp-toggle-label { font-size: 13px; font-weight: 500; color: var(--fp-text-muted); }
-    .fp-toggle-label.active { color: var(--fp-text); }
-    .fp-badge-save { background: rgba(16,185,129,0.12); color: #059669; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 20px; }
-    html[data-theme="dark"] .fp-badge-save { color: #34d399; }
-    .fp-toggle {
-      position: relative; width: 44px; height: 24px;
-      background: var(--fp-border); border-radius: 12px; cursor: pointer; border: none;
-      transition: background 0.2s;
+    /* ── Billing toggle ── */
+    .fp-toggle-wrap { display: flex; align-items: center; justify-content: center; gap: 12px; }
+    .fp-toggle-label { font-size: 14px; font-weight: 500; color: var(--text-muted); cursor: pointer; }
+    .fp-toggle-label.active { color: var(--text); }
+    .fp-badge-save {
+      background: var(--green-bg); color: var(--green);
+      font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+      margin-left: 6px;
     }
-    .fp-toggle.on { background: var(--fp-accent); }
-    .fp-toggle::after {
-      content: ''; position: absolute; top: 3px; left: 3px;
+    .fp-toggle-btn {
+      position: relative; width: 48px; height: 26px;
+      background: var(--border); border-radius: 13px;
+      cursor: pointer; border: none; transition: background 0.2s;
+    }
+    .fp-toggle-btn.on { background: var(--blue); }
+    .fp-toggle-btn::after {
+      content: ''; position: absolute; top: 4px; left: 4px;
       width: 18px; height: 18px; background: #fff; border-radius: 50%;
-      transition: transform 0.2s;
+      transition: transform 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,.2);
     }
-    .fp-toggle.on::after { transform: translateX(20px); }
+    .fp-toggle-btn.on::after { transform: translateX(22px); }
 
-    .fp-plans {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 20px; max-width: 1040px; margin: 0 auto; padding: 0 24px 64px;
+    /* ── Plans grid ── */
+    .fp-plans-section { padding: 0 24px 64px; }
+    .fp-plans-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 20px; max-width: 1060px; margin: 0 auto;
     }
+    @media (max-width: 860px) { .fp-plans-grid { grid-template-columns: 1fr; max-width: 440px; } }
 
-    .fp-plan-card {
-      background: var(--fp-surface); border: 1px solid var(--fp-border);
-      border-radius: var(--fp-radius); box-shadow: var(--fp-shadow);
-      padding: 28px 24px; position: relative; transition: border-color 0.2s, box-shadow 0.2s;
+    .fp-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; box-shadow: var(--shadow);
+      padding: 28px 24px 24px; position: relative;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      display: flex; flex-direction: column;
     }
-    .fp-plan-card:hover { border-color: var(--fp-accent); box-shadow: 0 4px 24px rgba(37,99,235,0.12); }
-    .fp-plan-card.featured {
-      border-color: var(--fp-accent);
-      box-shadow: 0 4px 32px rgba(37,99,235,0.18);
+    .fp-card:hover { box-shadow: var(--shadow-lg); border-color: rgba(37,99,235,0.3); }
+    .fp-card.featured {
+      border-color: var(--blue);
+      box-shadow: var(--shadow-lg);
     }
-    .fp-plan-badge {
-      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
-      background: var(--fp-accent); color: #fff; font-size: 11px; font-weight: 700;
-      padding: 3px 12px; border-radius: 20px; white-space: nowrap;
+    .fp-card-badge {
+      position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+      background: var(--blue); color: #fff;
+      font-size: 11px; font-weight: 700; padding: 4px 14px; border-radius: 20px;
+      white-space: nowrap; letter-spacing: 0.3px;
     }
+    .fp-card-plan {
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--text-muted); margin-bottom: 10px;
+    }
+    .fp-card-price {
+      font-size: 42px; font-weight: 800; letter-spacing: -1.5px; line-height: 1;
+    }
+    .fp-card-price-unit { font-size: 16px; font-weight: 400; color: var(--text-muted); }
+    .fp-card-annual-note {
+      font-size: 12px; color: var(--green); font-weight: 600;
+      margin-top: 4px; min-height: 18px;
+    }
+    .fp-card-desc {
+      font-size: 13px; color: var(--text-soft);
+      margin: 14px 0 20px; line-height: 1.55;
+    }
+    .fp-card-trial {
+      font-size: 12px; color: var(--text-muted);
+      background: var(--green-bg); border-radius: 8px;
+      padding: 6px 10px; margin-bottom: 18px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .fp-card-trial-dot { color: var(--green); font-weight: 700; }
 
-    .fp-plan-name { font-size: 13px; font-weight: 600; color: var(--fp-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-    .fp-plan-price { font-size: 40px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
-    .fp-plan-price span { font-size: 16px; font-weight: 400; color: var(--fp-text-muted); }
-    .fp-plan-desc { font-size: 13px; color: var(--fp-text-muted); margin-top: 10px; margin-bottom: 20px; line-height: 1.5; }
-
-    .fp-plan-features { list-style: none; margin-bottom: 24px; }
-    .fp-plan-features li {
+    .fp-card-features {
+      list-style: none; margin-bottom: 24px; flex: 1;
+    }
+    .fp-card-features li {
       font-size: 13px; padding: 6px 0;
       display: flex; align-items: flex-start; gap: 8px;
-      border-bottom: 1px solid var(--fp-border);
+      border-bottom: 1px solid var(--border);
     }
-    .fp-plan-features li:last-child { border-bottom: none; }
-    .fp-plan-features li::before { content: '✓'; color: var(--fp-accent); font-weight: 700; margin-top: 1px; flex-shrink: 0; }
+    .fp-card-features li:last-child { border-bottom: none; }
+    .fp-feat-check { color: var(--blue); font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+    .fp-feat-no    { color: var(--text-muted); flex-shrink: 0; margin-top: 1px; }
+    .fp-feat-text  { flex: 1; }
+    .fp-feat-highlight { font-weight: 600; color: var(--text); }
 
-    .fp-plan-btn {
-      width: 100%; padding: 11px; font-size: 14px; font-weight: 600;
-      border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s;
-    }
-    .fp-plan-btn-primary { background: var(--fp-accent); color: #fff; }
-    .fp-plan-btn-primary:hover { background: var(--fp-accent-hover); }
-    .fp-plan-btn-secondary {
-      background: transparent; color: var(--fp-text);
-      border-color: var(--fp-border);
-    }
-    .fp-plan-btn-secondary:hover { border-color: var(--fp-accent); color: var(--fp-accent); }
+    .fp-card-sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
-    .fp-faq { max-width: 720px; margin: 0 auto; padding: 0 24px 64px; }
-    .fp-faq h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; text-align: center; }
-    .fp-faq-item { border-bottom: 1px solid var(--fp-border); }
-    .fp-faq-q {
-      width: 100%; text-align: left; background: none; border: none; color: var(--fp-text);
-      font-size: 15px; font-weight: 500; padding: 16px 0; cursor: pointer;
-      display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    .fp-card-btn {
+      width: 100%; padding: 12px; font-size: 14px; font-weight: 600;
+      border-radius: 9px; cursor: pointer; border: 1px solid transparent;
+      transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px;
     }
-    .fp-faq-a { font-size: 13px; color: var(--fp-text-muted); padding: 0 0 16px; line-height: 1.6; display: none; }
+    .fp-card-btn-primary { background: var(--blue); color: #fff; }
+    .fp-card-btn-primary:hover { background: var(--blue-h); }
+    .fp-card-btn-secondary {
+      background: transparent; color: var(--text); border-color: var(--border);
+    }
+    .fp-card-btn-secondary:hover { border-color: var(--blue); color: var(--blue); background: rgba(37,99,235,0.04); }
+    .fp-card-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+    .fp-card-msg {
+      font-size: 12px; text-align: center; margin-top: 8px;
+      min-height: 18px; border-radius: 6px; padding: 4px 8px;
+    }
+    .fp-card-msg.error { color: #dc2626; background: rgba(239,68,68,.08); }
+    .fp-card-msg.ok { color: var(--green); }
 
     .fp-spinner {
       display: inline-block; width: 14px; height: 14px;
       border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff;
-      border-radius: 50%; animation: spin 0.7s linear infinite;
-      vertical-align: middle; margin-right: 6px;
+      border-radius: 50%; animation: fp-spin 0.7s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .fp-card-btn-secondary .fp-spinner { border-color: rgba(0,0,0,.2); border-top-color: var(--blue); }
+    @keyframes fp-spin { to { transform: rotate(360deg); } }
+
+    /* ── Add-ons ── */
+    .fp-addons-section { max-width: 1060px; margin: 0 auto; padding: 0 24px 72px; }
+    .fp-section-title {
+      font-size: 24px; font-weight: 800; text-align: center;
+      margin-bottom: 8px; letter-spacing: -0.3px;
+    }
+    .fp-section-sub {
+      text-align: center; font-size: 14px; color: var(--text-soft);
+      margin-bottom: 36px;
+    }
+    .fp-addons-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 14px;
+    }
+    .fp-addon-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px 18px;
+      display: flex; flex-direction: column; gap: 6px;
+      transition: border-color 0.15s;
+    }
+    .fp-addon-card:hover { border-color: rgba(37,99,235,0.3); }
+    .fp-addon-name { font-size: 13px; font-weight: 600; }
+    .fp-addon-desc { font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+    .fp-addon-price { font-size: 13px; font-weight: 700; color: var(--blue); margin-top: 2px; }
+
+    .fp-addon-hidden { display: none; }
+    .fp-addon-hidden.visible { display: flex; flex-direction: column; }
+
+    .fp-show-more-wrap { text-align: center; margin-top: 22px; }
+    .fp-show-more-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-soft); font-size: 13px; font-weight: 500;
+      padding: 9px 20px; border-radius: 8px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .fp-show-more-btn:hover { border-color: var(--blue); color: var(--blue); background: rgba(37,99,235,0.04); }
+    .fp-show-more-icon { font-size: 16px; transition: transform 0.2s; }
+    .fp-show-more-icon.open { transform: rotate(180deg); }
+
+    /* ── Comparison table ── */
+    .fp-compare-section { max-width: 1060px; margin: 0 auto; padding: 0 24px 72px; }
+    .fp-compare-wrap { overflow-x: auto; }
+    .fp-compare-table {
+      width: 100%; border-collapse: collapse; min-width: 620px;
+    }
+    .fp-compare-table th {
+      text-align: center; padding: 14px 16px;
+      font-size: 13px; font-weight: 700; background: var(--surface);
+      border-bottom: 2px solid var(--border);
+      position: sticky; top: 0;
+    }
+    .fp-compare-table th:first-child { text-align: left; width: 38%; }
+    .fp-compare-table th.featured-col { color: var(--blue); }
+
+    .fp-compare-table .fp-group-row td {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; color: var(--text-muted);
+      background: var(--bg); padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .fp-compare-table td {
+      padding: 10px 16px; font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      text-align: center; vertical-align: middle;
+    }
+    .fp-compare-table td:first-child { text-align: left; color: var(--text-soft); }
+    .fp-compare-table tr:last-child td { border-bottom: none; }
+    .fp-compare-table .fp-ccheck { color: var(--blue); font-size: 15px; }
+    .fp-compare-table .fp-cdash  { color: var(--text-muted); }
+    .fp-compare-table .fp-featured-col { background: rgba(37,99,235,0.04); }
+    html[data-theme="dark"] .fp-compare-table .fp-featured-col { background: rgba(37,99,235,0.07); }
+
+    /* ── FAQ ── */
+    .fp-faq-section { max-width: 720px; margin: 0 auto; padding: 0 24px 72px; }
+    .fp-faq-item { border-bottom: 1px solid var(--border); }
+    .fp-faq-q {
+      width: 100%; text-align: left; background: none; border: none;
+      color: var(--text); font-size: 15px; font-weight: 500; font-family: inherit;
+      padding: 18px 0; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    }
+    .fp-faq-icon { color: var(--text-muted); font-size: 18px; flex-shrink: 0; transition: transform 0.2s; }
+    .fp-faq-icon.open { transform: rotate(45deg); }
+    .fp-faq-a {
+      font-size: 14px; color: var(--text-soft); padding: 0 0 18px; line-height: 1.65;
+      display: none;
+    }
+    .fp-faq-a.open { display: block; }
+
+    /* ── Footer ── */
+    .fp-footer {
+      border-top: 1px solid var(--border); padding: 28px 28px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted);
+    }
+    .fp-footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+    .fp-footer a:hover { color: var(--text); }
+    .fp-footer-links { display: flex; gap: 16px; flex-wrap: wrap; }
+
+    /* ── Toast ── */
+    .fp-toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: #1e293b; color: #f1f5f9;
+      padding: 12px 20px; border-radius: 10px; font-size: 13px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.3);
+      transition: transform 0.3s; z-index: 9999; max-width: 380px; text-align: center;
+    }
+    .fp-toast.show { transform: translateX(-50%) translateY(0); }
+    .fp-toast.error { background: #7f1d1d; border: 1px solid #dc2626; }
+
+    @media (max-width: 600px) {
+      .fp-hero { padding: 48px 20px 40px; }
+      .fp-nav { padding: 0 16px; }
+      .fp-nav-link { display: none; }
+      .fp-footer { flex-direction: column; text-align: center; }
+    }
   </style>
 </head>
 <body>
 
-  <nav class="fp-topbar">
-    <a href="/" class="fp-topbar-logo">
-      <div class="fp-topbar-logo-icon">⚡</div>
-      FlowPoint
-    </a>
-    <div class="fp-topbar-actions">
-      <a href="/" class="fp-topbar-link">Tableau de bord</a>
-      <a href="/login" class="fp-topbar-btn">Se connecter</a>
-    </div>
-  </nav>
+<!-- ── Nav ── -->
+<nav class="fp-nav">
+  <a href="/" class="fp-nav-logo">
+    <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
+      <defs>
+        <linearGradient id="fp-pr-g" x1="0" y1="0" x2="48" y2="48">
+          <stop offset="0%" stop-color="#3b82f6"/>
+          <stop offset="100%" stop-color="#7c3aed"/>
+        </linearGradient>
+      </defs>
+      <rect width="48" height="48" rx="10" fill="url(#fp-pr-g)"/>
+      <polygon points="25 14 15 26 24 26 23 34 33 22 24 22" fill="white"/>
+    </svg>
+    <span class="fp-nav-logo-word">Flow<span>Point</span></span>
+  </a>
+  <div class="fp-nav-links">
+    <a href="/dashboard.html" class="fp-nav-link">Tableau de bord</a>
+    <a href="/pricing.html" class="fp-nav-link active">Tarifs</a>
+    <a href="/" class="fp-nav-cta">Essai gratuit →</a>
+  </div>
+</nav>
 
-  <div class="fp-pricing-hero">
-    <h1>Tarifs simples et transparents</h1>
-    <p>Choisissez le plan adapté à votre activité. Pas de frais cachés, annulation à tout moment.</p>
-    <div class="fp-toggle-wrap">
-      <span class="fp-toggle-label active" id="fp-label-monthly">Mensuel</span>
-      <button class="fp-toggle" id="fp-billing-toggle"></button>
-      <span class="fp-toggle-label" id="fp-label-annual">Annuel <span class="fp-badge-save">−20%</span></span>
+<!-- ── Hero ── -->
+<section class="fp-hero">
+  <div class="fp-hero-badge">🎁 14 jours d'essai gratuit · Sans carte bancaire</div>
+  <h1>Des tarifs <span class="fp-hero-accent">simples</span>,<br>des résultats mesurables</h1>
+  <p class="fp-hero-sub">
+    SEO avancé, monitoring uptime, IA copilot et Local SEO — tout ce qu'il faut pour dominer votre marché.
+    Annulation à tout moment, sans engagement.
+  </p>
+  <div class="fp-toggle-wrap">
+    <span class="fp-toggle-label active" id="fp-label-m">Mensuel</span>
+    <button class="fp-toggle-btn" id="fp-billing-toggle" aria-label="Basculer facturation annuelle" aria-checked="false" role="switch"></button>
+    <span class="fp-toggle-label" id="fp-label-a">Annuel<span class="fp-badge-save">−20%</span></span>
+  </div>
+</section>
+
+<!-- ── Plans ── -->
+<section class="fp-plans-section">
+  <div class="fp-plans-grid">
+
+    <!-- Standard -->
+    <div class="fp-card" id="card-standard">
+      <div class="fp-card-plan">Standard</div>
+      <div class="fp-card-price"><span id="fp-p-standard">29€</span><span class="fp-card-price-unit">/mois</span></div>
+      <div class="fp-card-annual-note" id="fp-annual-standard"></div>
+      <div class="fp-card-desc">Pour les indépendants qui veulent un SEO solide et un monitoring fiable.</div>
+      <div class="fp-card-trial"><span class="fp-feat-check">✓</span> 14 jours d'essai gratuit · Sans carte</div>
+      <ul class="fp-card-features">
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>1 site web</strong></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>30 audits SEO</strong>/mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">50 mots-clés suivis</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>3 monitors</strong> d'uptime</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">30 rapports/mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">30 exports PDF/CSV</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>30 000 crédits IA</strong>/mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Alertes essentielles</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Dashboard FlowPoint</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Analyse Core Web Vitals</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Historique 30 jours</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">1 membre d'équipe</span></li>
+        <li><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Google Business Profile</span></li>
+        <li><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Intelligence concurrentielle</span></li>
+        <li><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">IA avancée & prévisions</span></li>
+      </ul>
+      <button class="fp-card-btn fp-card-btn-secondary" data-plan="standard" onclick="startCheckout(this)">
+        Commencer Standard
+      </button>
+      <div class="fp-card-msg" id="fp-msg-standard"></div>
     </div>
+
+    <!-- Pro -->
+    <div class="fp-card featured" id="card-pro">
+      <div class="fp-card-badge">⭐ Le plus populaire</div>
+      <div class="fp-card-plan">Pro</div>
+      <div class="fp-card-price"><span id="fp-p-pro">79€</span><span class="fp-card-price-unit">/mois</span></div>
+      <div class="fp-card-annual-note" id="fp-annual-pro"></div>
+      <div class="fp-card-desc">Pour les équipes qui veulent croître avec des données actionables et une IA puissante.</div>
+      <div class="fp-card-trial"><span class="fp-feat-check">✓</span> 14 jours d'essai gratuit · Sans carte</div>
+      <ul class="fp-card-features">
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>Plusieurs sites web</strong></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>300 audits SEO</strong>/mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">500 mots-clés suivis</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>50 monitors</strong> d'uptime</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">300 rapports/mois + partage</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">300 exports PDF/CSV</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>100 000 crédits IA</strong>/mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>Google Business Profile</strong></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Local SEO avancé</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Intelligence concurrentielle</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Rapport exécutif IA</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Prévisions & CRO IA</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Workflows IA & automatisations</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Zapier / Make / n8n</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Historique 90 jours</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>5 membres d'équipe</strong></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Rôles & permissions</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Webhooks avancés</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">SLA 99.9%</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support chat prioritaire</span></li>
+      </ul>
+      <button class="fp-card-btn fp-card-btn-primary" data-plan="pro" onclick="startCheckout(this)">
+        Démarrer Pro — le meilleur choix
+      </button>
+      <div class="fp-card-msg" id="fp-msg-pro"></div>
+    </div>
+
+    <!-- Ultra / Enterprise -->
+    <div class="fp-card" id="card-ultra">
+      <div class="fp-card-plan">Enterprise</div>
+      <div class="fp-card-price"><span id="fp-p-ultra">249€</span><span class="fp-card-price-unit">/mois</span></div>
+      <div class="fp-card-annual-note" id="fp-annual-ultra"></div>
+      <div class="fp-card-desc">Pour les agences et grandes équipes avec des besoins avancés, white-label et multi-clients.</div>
+      <div class="fp-card-trial"><span class="fp-feat-check">✓</span> 14 jours d'essai gratuit · Sans carte</div>
+      <ul class="fp-card-features">
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>Sites & clients illimités</strong></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>2 000 audits SEO</strong>/mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Mots-clés illimités</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>300 monitors</strong> d'uptime</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">2 000 rapports + white-label</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">2 000 exports PDF/CSV</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>500 000 crédits IA</strong>/mois</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">White-label complet</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Multi-clients (agence)</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Behavioral AI & Revenue Leak</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Market Intelligence</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Review Intelligence</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">DataForSEO avancé</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">API avancée (accès complet)</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">CRM & intégrations enterprise</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">SSO & audit logs</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Historique 365 jours</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>10 membres d'équipe</strong></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Domaines personnalisés</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Onboarding dédié + Account Manager</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support 24/7 prioritaire</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">SLA garanti 99.99%</span></li>
+      </ul>
+      <button class="fp-card-btn fp-card-btn-secondary" data-plan="ultra" onclick="startCheckout(this)">
+        Démarrer Enterprise
+      </button>
+      <div class="fp-card-msg" id="fp-msg-ultra"></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Add-ons ── -->
+<section class="fp-addons-section">
+  <h2 class="fp-section-title">Personnalisez avec des add-ons</h2>
+  <p class="fp-section-sub">Ajoutez exactement ce qu'il vous faut, quand vous en avez besoin.</p>
+
+  <div class="fp-addons-grid" id="fp-addons-grid">
+
+    <!-- Always visible -->
+    <div class="fp-addon-card">
+      <div class="fp-addon-name">+50 000 crédits IA</div>
+      <div class="fp-addon-desc">Boostez votre quota mensuel d'intelligence artificielle.</div>
+      <div class="fp-addon-price">Dès 9€/mois</div>
+    </div>
+    <div class="fp-addon-card">
+      <div class="fp-addon-name">+200 000 crédits IA</div>
+      <div class="fp-addon-desc">Pour les équipes qui utilisent l'IA intensivement.</div>
+      <div class="fp-addon-price">Dès 29€/mois</div>
+    </div>
+    <div class="fp-addon-card">
+      <div class="fp-addon-name">Pack monitors +50</div>
+      <div class="fp-addon-desc">50 monitors d'uptime supplémentaires pour votre compte.</div>
+      <div class="fp-addon-price">19€/mois</div>
+    </div>
+    <div class="fp-addon-card">
+      <div class="fp-addon-name">Siège équipe supplémentaire</div>
+      <div class="fp-addon-desc">Invitez un collaborateur de plus dans votre espace.</div>
+      <div class="fp-addon-price">15€/mois par siège</div>
+    </div>
+    <div class="fp-addon-card">
+      <div class="fp-addon-name">Pack audits +200</div>
+      <div class="fp-addon-desc">200 audits SEO supplémentaires par mois.</div>
+      <div class="fp-addon-price">12€/mois</div>
+    </div>
+    <div class="fp-addon-card">
+      <div class="fp-addon-name">Pack exports +1 000</div>
+      <div class="fp-addon-desc">1 000 exports PDF/CSV supplémentaires par mois.</div>
+      <div class="fp-addon-price">19€/mois</div>
+    </div>
+    <div class="fp-addon-card">
+      <div class="fp-addon-name">Support prioritaire</div>
+      <div class="fp-addon-desc">Réponse garantie en moins de 4h, canal dédié.</div>
+      <div class="fp-addon-price">29€/mois</div>
+    </div>
+    <div class="fp-addon-card">
+      <div class="fp-addon-name">Historique 90 jours</div>
+      <div class="fp-addon-desc">Conservez et comparez vos données sur 3 mois.</div>
+      <div class="fp-addon-price">9€/mois</div>
+    </div>
+
+    <!-- Hidden by default -->
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Pack audits +1 000</div>
+      <div class="fp-addon-desc">1 000 audits SEO supplémentaires par mois.</div>
+      <div class="fp-addon-price">39€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Pack PDF +200</div>
+      <div class="fp-addon-desc">200 rapports PDF supplémentaires par mois.</div>
+      <div class="fp-addon-price">9€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Historique 365 jours</div>
+      <div class="fp-addon-desc">Accédez à une année complète de données historiques.</div>
+      <div class="fp-addon-price">19€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">White-label complet</div>
+      <div class="fp-addon-desc">Rapports à votre marque, domaine personnalisé, logo client.</div>
+      <div class="fp-addon-price">49€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Rapport exécutif IA</div>
+      <div class="fp-addon-desc">Synthèse automatique C-level générée chaque semaine par l'IA.</div>
+      <div class="fp-addon-price">29€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Prévisions IA</div>
+      <div class="fp-addon-desc">Forecasting de trafic, conversions et revenus sur 90 jours.</div>
+      <div class="fp-addon-price">29€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">CRO IA</div>
+      <div class="fp-addon-desc">Recommandations d'optimisation de conversion générées par l'IA.</div>
+      <div class="fp-addon-price">39€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Behavioral AI</div>
+      <div class="fp-addon-desc">Analyse comportementale avancée des visiteurs par IA.</div>
+      <div class="fp-addon-price">49€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Workflows IA</div>
+      <div class="fp-addon-desc">Automatisez vos analyses et actions avec des workflows pilotés par l'IA.</div>
+      <div class="fp-addon-price">29€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Market Intelligence</div>
+      <div class="fp-addon-desc">Veille concurrentielle automatisée, tendances de marché en temps réel.</div>
+      <div class="fp-addon-price">49€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Revenue Leak Detection</div>
+      <div class="fp-addon-desc">Identifiez les fuites de revenus cachées dans votre funnel.</div>
+      <div class="fp-addon-price">49€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Review Intelligence</div>
+      <div class="fp-addon-desc">Analyse sémantique des avis Google et recommandations d'actions.</div>
+      <div class="fp-addon-price">19€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Domaine personnalisé</div>
+      <div class="fp-addon-desc">Hébergez FlowPoint sur votre propre domaine (yourapp.com).</div>
+      <div class="fp-addon-price">15€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Agency Packs</div>
+      <div class="fp-addon-desc">Bundle agence : white-label, multi-clients, rapports personnalisés.</div>
+      <div class="fp-addon-price">99€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Intégration Zapier / Make</div>
+      <div class="fp-addon-desc">Connectez FlowPoint à 5 000+ outils via Zapier, Make ou n8n.</div>
+      <div class="fp-addon-price">15€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Webhooks avancés</div>
+      <div class="fp-addon-desc">Webhooks personnalisés pour toutes les alertes et événements.</div>
+      <div class="fp-addon-price">19€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">Intégration CRM</div>
+      <div class="fp-addon-desc">Synchronisez vos données avec HubSpot, Salesforce, Pipedrive et plus.</div>
+      <div class="fp-addon-price">29€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">SSO Enterprise</div>
+      <div class="fp-addon-desc">Single Sign-On SAML 2.0 / OIDC pour votre organisation.</div>
+      <div class="fp-addon-price">99€/mois</div>
+    </div>
+    <div class="fp-addon-card fp-addon-hidden">
+      <div class="fp-addon-name">+500 000 crédits IA</div>
+      <div class="fp-addon-desc">Volume maximal pour les usages IA les plus intensifs.</div>
+      <div class="fp-addon-price">69€/mois</div>
+    </div>
+
   </div>
 
-  <div class="fp-plans" id="fp-plans-container">
-
-    <div class="fp-plan-card">
-      <div class="fp-plan-name">Standard</div>
-      <div class="fp-plan-price" id="fp-price-standard">29€<span>/mois</span></div>
-      <div class="fp-plan-desc">Pour les indépendants et petites équipes qui démarrent.</div>
-      <ul class="fp-plan-features">
-        <li>3 sites web</li>
-        <li>5 monitors d'uptime</li>
-        <li>Analyses SEO de base</li>
-        <li>Rapports mensuels</li>
-        <li>Support par email</li>
-      </ul>
-      <button class="fp-plan-btn fp-plan-btn-secondary" data-plan="standard" data-price-monthly="29" data-price-annual="278">
-        Commencer
-      </button>
-    </div>
-
-    <div class="fp-plan-card featured">
-      <div class="fp-plan-badge">⭐ Le plus populaire</div>
-      <div class="fp-plan-name">Pro</div>
-      <div class="fp-plan-price" id="fp-price-pro">79€<span>/mois</span></div>
-      <div class="fp-plan-desc">Pour les équipes qui veulent croître avec des données actionables.</div>
-      <ul class="fp-plan-features">
-        <li>10 sites web</li>
-        <li>50 monitors d'uptime</li>
-        <li>Analyses SEO avancées</li>
-        <li>Rapports hebdomadaires</li>
-        <li>Suivi de mots-clés (500)</li>
-        <li>Intelligence concurrentielle</li>
-        <li>Alertes temps réel</li>
-        <li>Support prioritaire</li>
-      </ul>
-      <button class="fp-plan-btn fp-plan-btn-primary" data-plan="pro" data-price-monthly="79" data-price-annual="758">
-        Commencer — Pro
-      </button>
-    </div>
-
-    <div class="fp-plan-card">
-      <div class="fp-plan-name">Enterprise</div>
-      <div class="fp-plan-price" id="fp-price-enterprise">249€<span>/mois</span></div>
-      <div class="fp-plan-desc">Pour les agences et grandes équipes avec des besoins personnalisés.</div>
-      <ul class="fp-plan-features">
-        <li>Sites illimités</li>
-        <li>Monitors illimités</li>
-        <li>White label complet</li>
-        <li>API dédiée</li>
-        <li>SSO & gestion d'équipe</li>
-        <li>SLA garanti 99.9%</li>
-        <li>Onboarding dédié</li>
-        <li>Support 24/7</li>
-      </ul>
-      <button class="fp-plan-btn fp-plan-btn-secondary" data-plan="enterprise" data-price-monthly="249" data-price-annual="2390">
-        Nous contacter
-      </button>
-    </div>
-
+  <div class="fp-show-more-wrap">
+    <button class="fp-show-more-btn" id="fp-addon-toggle" onclick="toggleAddons()">
+      <span class="fp-show-more-icon" id="fp-addon-icon">▾</span>
+      <span id="fp-addon-label">Voir tous les add-ons (17 de plus)</span>
+    </button>
   </div>
+</section>
 
-  <div class="fp-faq">
-    <h2>Questions fréquentes</h2>
-    <div class="fp-faq-item">
-      <button class="fp-faq-q">Puis-je changer de plan à tout moment ? <span>+</span></button>
-      <div class="fp-faq-a">Oui, vous pouvez upgrader ou downgrader votre plan à tout moment depuis votre tableau de bord. Les changements sont effectifs immédiatement au prorata.</div>
-    </div>
-    <div class="fp-faq-item">
-      <button class="fp-faq-q">Y a-t-il une période d'essai ? <span>+</span></button>
-      <div class="fp-faq-a">Oui, tous les plans bénéficient de 14 jours d'essai gratuit, sans carte de crédit requise.</div>
-    </div>
-    <div class="fp-faq-item">
-      <button class="fp-faq-q">Comment fonctionne l'annulation ? <span>+</span></button>
-      <div class="fp-faq-a">Vous pouvez annuler à tout moment depuis votre tableau de bord. Votre accès reste actif jusqu'à la fin de la période de facturation en cours.</div>
-    </div>
-    <div class="fp-faq-item">
-      <button class="fp-faq-q">Quels moyens de paiement acceptez-vous ? <span>+</span></button>
-      <div class="fp-faq-a">Nous acceptons toutes les cartes bancaires (Visa, Mastercard, Amex) ainsi que SEPA Direct Debit pour les entreprises européennes.</div>
+<!-- ── Comparison table ── -->
+<section class="fp-compare-section">
+  <h2 class="fp-section-title">Comparer toutes les fonctionnalités</h2>
+  <p class="fp-section-sub">Tout ce que chaque plan inclut, en détail.</p>
+
+  <div class="fp-compare-wrap">
+    <table class="fp-compare-table" role="grid">
+      <thead>
+        <tr>
+          <th>Fonctionnalité</th>
+          <th>Standard</th>
+          <th class="featured-col fp-featured-col">Pro <span style="font-size:10px;background:var(--blue);color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px;">★</span></th>
+          <th>Enterprise</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <!-- SEO -->
+        <tr class="fp-group-row"><td colspan="4">SEO &amp; Analyse</td></tr>
+        <tr><td>Audits SEO / mois</td><td>30</td><td class="fp-featured-col">300</td><td>2 000</td></tr>
+        <tr><td>Mots-clés suivis</td><td>50</td><td class="fp-featured-col">500</td><td>Illimités</td></tr>
+        <tr><td>Audit technique complet</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Core Web Vitals</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Analyse de contenu</td><td>Basique</td><td class="fp-featured-col">Avancée</td><td>Complète</td></tr>
+        <tr><td>Intelligence concurrentielle</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>DataForSEO avancé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+
+        <!-- Local SEO -->
+        <tr class="fp-group-row"><td colspan="4">Local SEO</td></tr>
+        <tr><td>Google Business Profile</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Gestion avis Google</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Local SEO avancé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Multi-établissements</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">Jusqu'à 5</td><td>Illimités</td></tr>
+        <tr><td>Review Intelligence IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+
+        <!-- Monitoring -->
+        <tr class="fp-group-row"><td colspan="4">Monitoring</td></tr>
+        <tr><td>Monitors d'uptime</td><td>3</td><td class="fp-featured-col">50</td><td>300</td></tr>
+        <tr><td>Fréquence de vérification</td><td>5 min</td><td class="fp-featured-col">1 min</td><td>30 sec</td></tr>
+        <tr><td>Alertes temps réel</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Monitoring avancé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>SLA garanti</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">99.9%</td><td>99.99%</td></tr>
+
+        <!-- IA -->
+        <tr class="fp-group-row"><td colspan="4">IA &amp; Copilot</td></tr>
+        <tr><td>Crédits IA / mois</td><td>30 000</td><td class="fp-featured-col">100 000</td><td>500 000</td></tr>
+        <tr><td>Copilot IA</td><td>Limité</td><td class="fp-featured-col">Complet</td><td>Premium</td></tr>
+        <tr><td>Rapport exécutif IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Prévisions IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>CRO IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Revenue Leak Detection</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Behavioral AI</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Market Intelligence</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Workflows IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+
+        <!-- Rapports -->
+        <tr class="fp-group-row"><td colspan="4">Rapports</td></tr>
+        <tr><td>Rapports / mois</td><td>30</td><td class="fp-featured-col">300</td><td>2 000</td></tr>
+        <tr><td>Exports PDF / CSV</td><td>30</td><td class="fp-featured-col">300</td><td>2 000</td></tr>
+        <tr><td>Partage de rapports</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Rapports white-label</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Historique des données</td><td>30 jours</td><td class="fp-featured-col">90 jours</td><td>365 jours</td></tr>
+
+        <!-- Équipe -->
+        <tr class="fp-group-row"><td colspan="4">Équipe &amp; Collaboration</td></tr>
+        <tr><td>Membres d'équipe</td><td>1</td><td class="fp-featured-col">5</td><td>10</td></tr>
+        <tr><td>Rôles &amp; permissions</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Multi-clients (agence)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>White-label complet</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+
+        <!-- Intégrations -->
+        <tr class="fp-group-row"><td colspan="4">Intégrations &amp; Automatisation</td></tr>
+        <tr><td>Intégrations natives</td><td>Basiques</td><td class="fp-featured-col">Avancées</td><td>Complètes</td></tr>
+        <tr><td>Zapier / Make / n8n</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Webhooks avancés</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>CRM (HubSpot, Salesforce…)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>API</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">Standard</td><td>Avancée</td></tr>
+        <tr><td>Automatisations IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">10</td><td>Illimitées</td></tr>
+
+        <!-- Sécurité -->
+        <tr class="fp-group-row"><td colspan="4">Sécurité</td></tr>
+        <tr><td>HTTPS / TLS</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>2FA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>SSO (SAML / OIDC)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Audit logs</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Domaines personnalisés</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+
+        <!-- Support -->
+        <tr class="fp-group-row"><td colspan="4">Support</td></tr>
+        <tr><td>Support par email</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Support chat</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Support prioritaire</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Onboarding dédié</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Account Manager dédié</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Support 24/7</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── FAQ ── -->
+<section class="fp-faq-section">
+  <h2 class="fp-section-title">Questions fréquentes</h2>
+
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Y a-t-il une période d'essai gratuit ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Oui — tous les plans bénéficient de 14 jours d'essai gratuit complet. Aucune carte bancaire n'est requise pour démarrer.
+      Vous avez accès à l'ensemble des fonctionnalités de votre plan pendant la période d'essai.
     </div>
   </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Puis-je changer de plan à tout moment ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Oui, vous pouvez upgrader ou downgrader à tout moment depuis votre tableau de bord.
+      Les upgrades prennent effet immédiatement au prorata, les downgrades à la fin de la période de facturation en cours.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Comment fonctionne l'annulation ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Annulation en un clic depuis votre tableau de bord, sans justification requise.
+      Votre accès reste actif jusqu'à la fin de la période de facturation en cours. Aucun frais supplémentaire.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Quels moyens de paiement acceptez-vous ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Nous acceptons toutes les principales cartes bancaires (Visa, Mastercard, Amex) ainsi que le prélèvement SEPA pour les entreprises européennes, via Stripe.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      La facturation annuelle est-elle remboursable ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Si vous souscrivez en annuel et souhaitez annuler dans les 30 premiers jours, nous vous remboursons intégralement.
+      Au-delà, la période restante n'est pas remboursée mais votre accès reste actif jusqu'au terme.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Qu'arrive-t-il à mes données si j'annule ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Vos données sont conservées pendant 30 jours après la fin de votre abonnement, le temps d'effectuer un éventuel export.
+      Passé ce délai, elles sont supprimées conformément à notre politique RGPD.
+    </div>
+  </div>
+  <div class="fp-faq-item">
+    <button class="fp-faq-q" onclick="toggleFaq(this)">
+      Les add-ons sont-ils engagements ou à la demande ?
+      <span class="fp-faq-icon">+</span>
+    </button>
+    <div class="fp-faq-a">
+      Les add-ons sont facturés mensuellement et peuvent être ajoutés ou supprimés à tout moment depuis votre tableau de bord, sans engagement minimum.
+    </div>
+  </div>
+</section>
 
-  <script src="fp-config.js"></script>
-  <script src="pricing.js"></script>
+<!-- ── Footer ── -->
+<footer class="fp-footer">
+  <span>© 2025 FlowPoint — Tous droits réservés</span>
+  <div class="fp-footer-links">
+    <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Mentions légales</a>
+    <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Politique de confidentialité</a>
+    <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">CGV</a>
+    <a href="/">Créer un compte</a>
+    <a href="/login.html">Se connecter</a>
+  </div>
+</footer>
+
+<!-- Toast notification -->
+<div class="fp-toast" id="fp-toast" role="alert" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Billing toggle ── */
+  var annual = false;
+  var prices = {
+    standard: { m: 29,  a: 278  },
+    pro:      { m: 79,  a: 758  },
+    ultra:    { m: 249, a: 2390 }
+  };
+
+  function updatePrices() {
+    ['standard','pro','ultra'].forEach(function(p) {
+      var el = document.getElementById('fp-p-' + p);
+      var note = document.getElementById('fp-annual-' + p);
+      if (!el) return;
+      var monthly = annual ? Math.round(prices[p].a / 12) : prices[p].m;
+      el.textContent = monthly + '€';
+      if (note) {
+        note.textContent = annual
+          ? 'Facturé ' + prices[p].a + '€/an — économisez ' + (prices[p].m * 12 - prices[p].a) + '€'
+          : '';
+      }
+    });
+    var lm = document.getElementById('fp-label-m');
+    var la = document.getElementById('fp-label-a');
+    var tgl = document.getElementById('fp-billing-toggle');
+    if (lm) lm.classList.toggle('active', !annual);
+    if (la) la.classList.toggle('active', annual);
+    if (tgl) {
+      tgl.classList.toggle('on', annual);
+      tgl.setAttribute('aria-checked', annual ? 'true' : 'false');
+    }
+  }
+
+  var tglBtn = document.getElementById('fp-billing-toggle');
+  if (tglBtn) {
+    tglBtn.addEventListener('click', function () {
+      annual = !annual;
+      updatePrices();
+    });
+  }
+
+  /* ── Checkout ── */
+  window.startCheckout = function (btn) {
+    var plan = btn.getAttribute('data-plan');
+    if (!plan) return;
+
+    var msgEl = document.getElementById('fp-msg-' + plan);
+    var origText = btn.textContent.trim();
+    btn.disabled = true;
+    btn.innerHTML = '<span class="fp-spinner"></span> Redirection…';
+    if (msgEl) { msgEl.textContent = ''; msgEl.className = 'fp-card-msg'; }
+
+    fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ plan: plan })
+    })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+    .then(function (res) {
+      if (!res.ok || !res.data.url) {
+        throw new Error(res.data.error || 'Impossible de créer la session de paiement.');
+      }
+      window.location.href = res.data.url;
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = origText;
+      var msg = err.message || 'Une erreur est survenue. Veuillez réessayer.';
+      if (msgEl) {
+        msgEl.textContent = msg;
+        msgEl.className = 'fp-card-msg error';
+      }
+      showToast(msg, true);
+    });
+  };
+
+  /* ── Add-ons expand/collapse ── */
+  window.toggleAddons = function () {
+    var hidden = document.querySelectorAll('.fp-addon-hidden');
+    var icon = document.getElementById('fp-addon-icon');
+    var label = document.getElementById('fp-addon-label');
+    var expanded = icon && icon.classList.contains('open');
+
+    hidden.forEach(function (el) {
+      if (expanded) {
+        el.classList.remove('visible');
+      } else {
+        el.classList.add('visible');
+      }
+    });
+
+    if (icon) icon.classList.toggle('open', !expanded);
+    if (label) label.textContent = expanded ? 'Voir tous les add-ons (17 de plus)' : 'Réduire les add-ons';
+  };
+
+  /* ── FAQ ── */
+  window.toggleFaq = function (btn) {
+    var answer = btn.nextElementSibling;
+    var icon = btn.querySelector('.fp-faq-icon');
+    var open = answer && answer.classList.contains('open');
+
+    document.querySelectorAll('.fp-faq-a.open').forEach(function (a) { a.classList.remove('open'); });
+    document.querySelectorAll('.fp-faq-icon.open').forEach(function (i) { i.classList.remove('open'); });
+
+    if (!open && answer) {
+      answer.classList.add('open');
+      if (icon) icon.classList.add('open');
+    }
+  };
+
+  /* ── Toast ── */
+  var toastTimer;
+  function showToast(msg, isError) {
+    var el = document.getElementById('fp-toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'fp-toast' + (isError ? ' error' : '') + ' show';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 5000);
+  }
+
+  /* ── Tracking (analytics event) ── */
+  document.querySelectorAll('.fp-card-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var plan = btn.getAttribute('data-plan');
+      if (plan && typeof gtag === 'function') {
+        gtag('event', 'begin_checkout', { plan: plan, currency: 'EUR' });
+      }
+    });
+  });
+
+  /* ── Init ── */
+  updatePrices();
+
+})();
+</script>
+
 </body>
 </html>
