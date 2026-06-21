@@ -81,9 +81,9 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   exportsPack1000:      process.env["STRIPE_PRICE_ID_EXPORTS_PACK1000"]         ?? "",
 
   // ── AI Credit packs (one-time purchases) ──────────────────────────────────
-  aiCreditsPack50k:     process.env["STRIPE_PRICE_ID_AI_CREDITS_50K"]           ?? "",
-  aiCreditsPack200k:    process.env["STRIPE_PRICE_ID_AI_CREDITS_200K"]          ?? "",
-  aiCreditsPack500k:    process.env["STRIPE_PRICE_ID_AI_CREDITS_500K"]          ?? "",
+  aiCreditsPack50k:     process.env["STRIPE_PRICE_AI_50K"]  ?? process.env["STRIPE_PRICE_ID_AI_CREDITS_50K"]  ?? "",
+  aiCreditsPack200k:    process.env["STRIPE_PRICE_AI_200K"] ?? process.env["STRIPE_PRICE_ID_AI_CREDITS_200K"] ?? "",
+  aiCreditsPack500k:    process.env["STRIPE_PRICE_AI_500K"] ?? process.env["STRIPE_PRICE_ID_AI_CREDITS_500K"] ?? "",
 };
 
 export const FLAG_ADDONS = new Set([

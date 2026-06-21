@@ -108,7 +108,58 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   switch (event.type) {
 
     case "checkout.session.completed": {
-      const plan = String(obj["metadata"] && (obj["metadata"] as Record<string,string>)["plan"] || "");
+      const meta = (obj["metadata"] as Record<string,string>) ?? {};
+
+      // ── One-time AI credit pack purchase ──────────────────────────────────
+      if (meta["type"] === "ai_credits") {
+        const pack    = meta["pack"]    ?? "";
+        const credits = parseInt(meta["credits"] ?? "0", 10);
+        const amountEurCents = parseInt(meta["amountEurCents"] ?? "0", 10);
+        const sessionId      = String(obj["id"] ?? "");
+        const paymentIntent  = String(obj["payment_intent"] ?? "");
+
+        if (obj["customer"]) store.me.stripeCustomerId = String(obj["customer"]);
+
+        if (credits > 0) {
+          try {
+            const { pool: pgPool } = await import("@workspace/db");
+            const client = await pgPool.connect();
+            const month = (() => {
+              const d = new Date();
+              return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+            })();
+            try {
+              // Record the purchase
+              const purchaseId = `acp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+              await client.query(
+                `INSERT INTO ai_credit_purchases
+                   (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
+                 VALUES ($1, 'default', $2, $3, $4, $5, $6)
+                 ON CONFLICT (id) DO NOTHING`,
+                [purchaseId, pack, credits, amountEurCents, sessionId, paymentIntent]
+              );
+
+              // Add credits_extra to current month's usage row
+              await client.query(
+                `UPDATE ai_monthly_usage
+                 SET credits_extra = credits_extra + $1, updated_at = NOW()
+                 WHERE org_id = 'default' AND month = $2`,
+                [credits, month]
+              );
+            } finally {
+              client.release();
+            }
+            store.broadcast({ type: "ai:credits_added", pack, credits });
+            logger.info({ pack, credits }, "[Webhook] AI credits credited to org");
+          } catch (e) {
+            logger.error({ e }, "[Webhook] Failed to credit AI credits to org");
+          }
+        }
+        break;
+      }
+
+      // ── Subscription checkout ──────────────────────────────────────────────
+      const plan     = meta["plan"] ?? "";
       const planNorm = plan.toLowerCase();
       if (["standard","pro","ultra"].includes(planNorm)) {
         store.broadcastPlanUpdate(planNorm);

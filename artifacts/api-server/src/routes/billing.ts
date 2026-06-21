@@ -470,6 +470,80 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
   });
 });
 
+// ── POST /billing/checkout-ai-credits — one-time AI credit pack purchase ─────
+router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+  const { pack = "" } = req.body as { pack?: string };
+
+  const AI_PACK_MAP: Record<string, { addonKey: string; credits: number; envVar: string; amountEurCents: number }> = {
+    "ai_credits_50k":  { addonKey: "aiCreditsPack50k",  credits: 50000,  envVar: "STRIPE_PRICE_AI_50K",  amountEurCents: 400  },
+    "ai_credits_200k": { addonKey: "aiCreditsPack200k", credits: 200000, envVar: "STRIPE_PRICE_AI_200K", amountEurCents: 900  },
+    "ai_credits_500k": { addonKey: "aiCreditsPack500k", credits: 500000, envVar: "STRIPE_PRICE_AI_500K", amountEurCents: 1900 },
+  };
+
+  const packInfo = AI_PACK_MAP[pack.toLowerCase()];
+  if (!packInfo) {
+    res.status(400).json({ error: `Pack IA inconnu : ${pack}. Valeurs valides : ai_credits_50k, ai_credits_200k, ai_credits_500k` });
+    return;
+  }
+
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
+
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      logger.error("[Billing] STRIPE_SECRET_KEY not set in production — AI credits checkout unavailable");
+      res.status(503).json({ error: "Payment service not configured. Contact support." });
+      return;
+    }
+    logger.warn("[Billing] STRIPE_SECRET_KEY not set — returning mock AI credits checkout (dev only)");
+    res.json({ url: `https://checkout.stripe.com/c/pay/test_ai_${pack}_${Date.now()}`, pack, credits: packInfo.credits, mock: true });
+    return;
+  }
+
+  const priceId = process.env[packInfo.envVar] || ADDON_PRICE_IDS[packInfo.addonKey];
+  if (!priceId) {
+    if (process.env["NODE_ENV"] !== "production") {
+      logger.warn(`[Billing] No Stripe price for ${pack} — mock checkout (dev only)`);
+      res.json({ url: `https://checkout.stripe.com/c/pay/test_ai_${pack}_${Date.now()}`, pack, credits: packInfo.credits, mock: true });
+      return;
+    }
+    res.status(400).json({ error: `Prix Stripe non configuré pour ${pack}. Définissez ${packInfo.envVar}.` });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    let customerId = store.me.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { orgId: "default" } });
+      customerId = customer.id;
+      store.me.stripeCustomerId = customerId;
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer: customerId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}&type=ai_credits&pack=${encodeURIComponent(pack)}&credits=${packInfo.credits}`,
+      cancel_url:  `${publicUrl}/dashboard.html#billing`,
+      metadata: {
+        type:            "ai_credits",
+        pack,
+        credits:         String(packInfo.credits),
+        amountEurCents:  String(packInfo.amountEurCents),
+      },
+    });
+
+    logger.info({ pack, credits: packInfo.credits }, "[Billing] AI credits checkout session created");
+    res.json({ url: session.url, pack, credits: packInfo.credits });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to create AI credits checkout session");
+    res.status(500).json({ error: "Failed to create checkout session" });
+  }
+});
+
 router.get("/billing/config", (_req: Request, res: Response) => {
   const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
   res.json({ publishableKey });

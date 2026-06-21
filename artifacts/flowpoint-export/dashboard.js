@@ -6794,26 +6794,26 @@ function renderBilling() {
               <span style="font-size:14px;font-weight:800;color:var(--fp-text)">AI Credits</span>
               <span style="font-size:10px;font-weight:700;padding:1px 8px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">IA Performante</span>
             </div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(u.limit)+' AI Credits consommés ce mois';})() : 'Chargement des crédits IA…'} · Réinitialisation le ${STATE.aiCredits?.resetDate ? new Date(STATE.aiCredits.resetDate).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) : '01/' + String(new Date().getMonth()+2).padStart(2,'0') + '/' + new Date().getFullYear()}</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+' / '+fk(t)+' AI Credits consommés ce mois';})() : 'Chargement des crédits IA…'} · Réinitialisation le ${STATE.aiCredits?.resetDate ? new Date(STATE.aiCredits.resetDate).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) : '01/' + String(new Date().getMonth()+2).padStart(2,'0') + '/' + new Date().getFullYear()}</div>
           </div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('ai');setTimeout(()=>navigateSub('usage'),50)">Voir détails complets →</button>
         </div>
         <div style="height:8px;border-radius:99px;background:var(--fp-track);overflow:hidden;margin-bottom:8px">
-          <div style="height:100%;width:${STATE.aiCredits ? Math.min(Math.round(STATE.aiCredits.used/Math.max(STATE.aiCredits.limit,1)*100),100) : 0}%;background:linear-gradient(90deg,#2563EB,#3b82f6);border-radius:99px;transition:width 0.6s ease"></div>
+          <div style="height:100%;width:${STATE.aiCredits ? Math.min(Math.round(STATE.aiCredits.used/Math.max((STATE.aiCredits.limit||0)+(STATE.aiCredits.extra||0),1)*100),100) : 0}%;background:linear-gradient(90deg,#2563EB,#3b82f6);border-radius:99px;transition:width 0.6s ease"></div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <span style="font-size:10px;color:var(--fp-text-faint)">${STATE.aiCredits ? Math.round(STATE.aiCredits.used/Math.max(STATE.aiCredits.limit,1)*100)+'% utilisé' : '…% utilisé'}</span>
-          <span style="font-size:10px;font-weight:700;color:#2563EB">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(Math.max(0,u.limit-u.used))+' AI Credits restants';}()) : '…'}</span>
+          <span style="font-size:10px;color:var(--fp-text-faint)">${STATE.aiCredits ? Math.round(STATE.aiCredits.used/Math.max((STATE.aiCredits.limit||0)+(STATE.aiCredits.extra||0),1)*100)+'% utilisé' : '…% utilisé'}</span>
+          <span style="font-size:10px;font-weight:700;color:#2563EB">${STATE.aiCredits ? (function(){var u=STATE.aiCredits,t=(u.limit||0)+(u.extra||0),fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(Math.max(0,t-u.used))+' AI Credits restants';}()) : '…'}</span>
         </div>
         <div>
           <span style="font-size:11px;color:var(--fp-text-muted);font-weight:600;display:block;margin-bottom:8px">Acheter des AI Credits :</span>
           <div style="display:flex;gap:8px;flex-wrap:nowrap;align-items:center">
             ${[
-              { label:'+50k',  price:'4€',  credits:50000,  badge:null         },
-              { label:'+200k', price:'9€',  credits:200000, badge:'Best value' },
-              { label:'+500k', price:'19€', credits:500000, badge:null         },
+              { label:'+50k',  price:'4€',  pack:'ai_credits_50k',  credits:50000,  badge:null         },
+              { label:'+200k', price:'9€',  pack:'ai_credits_200k', credits:200000, badge:'Best value' },
+              { label:'+500k', price:'19€', pack:'ai_credits_500k', credits:500000, badge:null         },
             ].map(p => `
-              <button onclick="showToast('success','${p.label} AI Credits ajoutés !')" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;border:${p.badge?'2px':'1px'} solid rgba(37,99,235,${p.badge?'0.5':'0.3'});background:rgba(37,99,235,${p.badge?'0.15':'0.08'});cursor:pointer;position:relative;flex-shrink:0">
+              <button onclick="window.FP_AI_CREDITS_API&&window.FP_AI_CREDITS_API.buyCredits('${p.pack}')" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;border:${p.badge?'2px':'1px'} solid rgba(37,99,235,${p.badge?'0.5':'0.3'});background:rgba(37,99,235,${p.badge?'0.15':'0.08'});cursor:pointer;position:relative;flex-shrink:0">
                 ${p.badge ? `<span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#2563EB;color:#fff;font-size:7px;font-weight:800;padding:1px 6px;border-radius:10px;white-space:nowrap">${p.badge}</span>` : ''}
                 <span style="font-size:11px;font-weight:700;color:#2563EB">${p.label}</span>
                 <span style="font-size:10px;color:var(--fp-text-faint)">·</span>
@@ -9313,9 +9313,9 @@ function renderAI() {
     const estCostEur   = liveCredits?.costEur != null ? Number(liveCredits.costEur).toFixed(3) : '0.000';
 
     const creditPackages = [
-      { label:'+50k',  price:'4€',  credits:50000,  badge:null,          tag:'Économique' },
-      { label:'+200k', price:'9€',  credits:200000, badge:'⭐ Best value',tag:'Populaire'  },
-      { label:'+500k', price:'19€', credits:500000, badge:null,          tag:'Pro+'        },
+      { label:'+50k',  price:'4€',  pack:'ai_credits_50k',  credits:50000,  badge:null,          tag:'Économique' },
+      { label:'+200k', price:'9€',  pack:'ai_credits_200k', credits:200000, badge:'⭐ Best value',tag:'Populaire'  },
+      { label:'+500k', price:'19€', pack:'ai_credits_500k', credits:500000, badge:null,          tag:'Pro+'        },
     ];
 
     // Real per-feature breakdown from DB; fallback to empty array when collecting
@@ -9425,7 +9425,7 @@ function renderAI() {
           <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:12px">Disponibles immédiatement · Valables jusqu\'au prochain rechargement</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             ${creditPackages.map(p => `
-              <button onclick="showToast('success','${escHtml(p.label)} AI Credits ajoutés !')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:10px;border:${p.badge?'2px solid rgba(37,99,235,0.5)':'1px solid rgba(255,255,255,0.08)'};background:${p.badge?'rgba(37,99,235,0.1)':'var(--fp-inner-card)'};cursor:pointer;width:100%;position:relative;overflow:hidden;transition:all 0.15s">
+              <button onclick="window.FP_AI_CREDITS_API&&window.FP_AI_CREDITS_API.buyCredits('${p.pack}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:10px;border:${p.badge?'2px solid rgba(37,99,235,0.5)':'1px solid rgba(255,255,255,0.08)'};background:${p.badge?'rgba(37,99,235,0.1)':'var(--fp-inner-card)'};cursor:pointer;width:100%;position:relative;overflow:hidden;transition:all 0.15s">
                 ${p.badge ? `<div style="position:absolute;top:0;right:0;background:#2563EB;color:#fff;font-size:8px;font-weight:800;padding:2px 9px;border-radius:0 8px 0 7px;letter-spacing:0.04em">${p.badge}</div>` : ''}
                 <div style="text-align:left">
                   <div style="font-size:12px;font-weight:700;color:${p.badge?'#2563EB':'var(--fp-text)'}">${p.label} AI Credits</div>
@@ -28592,11 +28592,16 @@ window.FP_ADDONS_API = {
   },
 
   async buyCredits(pack) {
-    showToast('info', `Achat pack crédits IA ${pack}…`);
+    showToast('info', 'Redirection vers le paiement Stripe…');
     try {
-      const r = await apiFetch('/api/addons/ai-credits/buy', { method: 'POST', body: JSON.stringify({ pack }) });
-      if (r?.ok) showToast('success', `+${r.creditsAdded?.toLocaleString('fr-FR') || '?'} crédits IA ajoutés`);
-      else showToast('error', r?.error || 'Erreur');
+      const r = await apiFetch('/api/billing/checkout-ai-credits', { method: 'POST', body: JSON.stringify({ pack }) });
+      if (r?.url) {
+        window.location.href = r.url;
+      } else if (r?.mock) {
+        showToast('success', `[Dev] Pack ${pack} — Stripe non configuré · ${(r.credits||0).toLocaleString('fr-FR')} crédits`);
+      } else {
+        showToast('error', r?.error || 'Erreur lors du paiement');
+      }
       return r;
     } catch(e) { showToast('error', String(e)); return null; }
   },
