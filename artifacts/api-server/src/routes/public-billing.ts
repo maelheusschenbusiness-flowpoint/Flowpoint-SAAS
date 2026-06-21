@@ -42,14 +42,18 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     return;
   }
 
-  // ── Diagnostic: log plan → variable → price ID presence (no key logged) ──
+  // ── Diagnostic: log plan → variable → price ID presence + key mode (no key value logged) ──
   const planKey = `STRIPE_PRICE_ID_${plan.toUpperCase()}`;
   const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()] ?? "";
+  const keySource = process.env["STRIPE_LIVE_API_KEY"] ? "STRIPE_LIVE_API_KEY" : "STRIPE_SECRET_KEY";
+  const keyMode   = stripeKey?.startsWith("sk_live_") ? "live" : stripeKey?.startsWith("sk_test_") ? "test" : "unknown";
   logger.info({
     plan,
     envVar: planKey,
     priceIdSet: planPriceId.length > 0,
-    priceIdPrefix: planPriceId.slice(0, 12) || "(empty)",
+    priceIdPrefix: planPriceId.slice(0, 14) || "(empty)",
+    keySource,
+    keyMode,
   }, "[PublicBilling] checkout-session requested");
 
   try {
