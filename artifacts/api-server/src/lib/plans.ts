@@ -13,77 +13,77 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
 };
 
 export const PLAN_PRICE_IDS: Record<string, string> = {
-  standard: process.env["STRIPE_PRICE_STANDARD"] ?? "",
-  pro:      process.env["STRIPE_PRICE_PRO"]      ?? "",
-  ultra:    process.env["STRIPE_PRICE_ULTRA"]     ?? "",
+  standard: process.env["STRIPE_PRICE_ID_STANDARD"] ?? "",
+  pro:      process.env["STRIPE_PRICE_ID_PRO"]      ?? "",
+  ultra:    process.env["STRIPE_PRICE_ID_ULTRA"]     ?? "",
 };
 
 export const ADDON_PRICE_IDS: Record<string, string> = {
   // ── Monitoring ──────────────────────────────────────────────────────────────
-  monitorsPack10:      process.env["STRIPE_ADDON_MONITORS_PACK10"]  ?? "",
-  monitorsPack50:      process.env["STRIPE_ADDON_MONITORS_PACK50"]  ?? "price_1T6A839eqtbj6iPBTXCaiv0W",
-  globalMonitoring:    process.env["STRIPE_ADDON_GLOBAL_MONITORING"]?? "",
-  slaMonitoring:       process.env["STRIPE_ADDON_SLA_MONITORING"]   ?? "",
+  monitorsPack10:       process.env["STRIPE_PRICE_ID_10MONITORS"]               ?? "",
+  monitorsPack50:       process.env["STRIPE_PRICE_ID_50MONITORS"]               ?? "",
+  globalMonitoring:     process.env["STRIPE_PRICE_ID_GLOBAL_MONITORING"]        ?? "",
+  slaMonitoring:        process.env["STRIPE_PRICE_ID_SLA_MONITORING_ADVANCED"]  ?? "",
 
   // ── SEO ────────────────────────────────────────────────────────────────────
-  advancedSeoLab:      process.env["STRIPE_ADDON_ADVANCED_SEO_LAB"] ?? "",
-  keywordDomination:   process.env["STRIPE_ADDON_KEYWORD_DOM"]      ?? "",
-  backlinkIntelligence:process.env["STRIPE_ADDON_BACKLINK_INTEL"]   ?? "",
-  aiContentStrategist: process.env["STRIPE_ADDON_AI_CONTENT"]       ?? "",
+  advancedSeoLab:       process.env["STRIPE_PRICE_ID_ADVANCED_SEO_LAB"]         ?? "",
+  keywordDomination:    process.env["STRIPE_PRICE_ID_KEYBORD_DOMINATION_ENGINE"] ?? "",
+  backlinkIntelligence: process.env["STRIPE_PRICE_ID_BACKLINK_INTELLIGENCE"]    ?? "",
+  aiContentStrategist:  process.env["STRIPE_PRICE_ID_AI_CONTENT_STRATEGIST"]    ?? "",
 
   // ── Local SEO ─────────────────────────────────────────────────────────────
-  gbpSlots10:          process.env["STRIPE_ADDON_GBP_SLOTS_10"]     ?? "",
-  aiGbpPosting:        process.env["STRIPE_ADDON_AI_GBP_POSTING"]   ?? "",
-  reviewIntelligence:  process.env["STRIPE_ADDON_REVIEW_INTELLIGENCE"] ?? "",
-  localDominationMaps: process.env["STRIPE_ADDON_LOCAL_DOM_MAPS"]   ?? "",
+  gbpSlots10:           process.env["STRIPE_PRICE_ID_10GBPLOCATIONS"]           ?? "",
+  aiGbpPosting:         process.env["STRIPE_PRICE_ID_AI_GBP_POSTING"]           ?? "",
+  reviewIntelligence:   process.env["STRIPE_PRICE_ID_REVIEW_INTELLIGENCE"]      ?? "",
+  localDominationMaps:  process.env["STRIPE_PRICE_ID_LOCAL_DOMINATION_MAPS"]    ?? "",
 
   // ── Conversion / AI ────────────────────────────────────────────────────────
-  aiCro:               process.env["STRIPE_ADDON_AI_CRO"]               ?? "",
-  behavioralAI:        process.env["STRIPE_ADDON_BEHAVIORAL_AI"]        ?? "",
-  revenueLeak:         process.env["STRIPE_ADDON_REVENUE_LEAK"]         ?? "",
-  abTestingAI:         process.env["STRIPE_ADDON_AB_TESTING_AI"]        ?? "",
+  aiCro:                process.env["STRIPE_PRICE_ID_AI_CRO_STRATEGIST"]        ?? "",
+  behavioralAI:         process.env["STRIPE_PRICE_ID_BEHAVORIAL_AI"]            ?? "",
+  revenueLeak:          process.env["STRIPE_PRICE_ID_REVENUE_LEAK_AI"]          ?? "",
+  abTestingAI:          process.env["STRIPE_PRICE_ID_AB_TESTING_AI"]            ?? "",
 
   // ── Reporting ─────────────────────────────────────────────────────────────
-  whiteLabel:          process.env["STRIPE_ADDON_WHITE_LABEL"]          ?? "",
-  agencyPacks:         process.env["STRIPE_ADDON_AGENCY_PACKS"]         ?? "",
-  aiExecutiveReport:   process.env["STRIPE_ADDON_AI_EXECUTIVE_REPORT"]  ?? "",
-  aiForecasting:       process.env["STRIPE_ADDON_AI_FORECASTING"]       ?? "",
+  whiteLabel:           process.env["STRIPE_PRICE_ID_WHITE_LABEL_EXPORTS"]      ?? "",
+  agencyPacks:          process.env["STRIPE_PRICE_ID_AGENCY_REPORTING_PACKS"]   ?? "",
+  aiExecutiveReport:    process.env["STRIPE_PRICE_ID_AI_EXECUTIVE_REPORTING"]   ?? "",
+  aiForecasting:        process.env["STRIPE_PRICE_ID_AI_FORECASTING_ENGINE"]    ?? "",
 
   // ── Intelligence ──────────────────────────────────────────────────────────
-  marketIntelligence:  process.env["STRIPE_ADDON_MARKET_INTELLIGENCE"]  ?? "",
-  aiWorkflows:         process.env["STRIPE_ADDON_AI_WORKFLOWS"]         ?? "",
+  marketIntelligence:   process.env["STRIPE_PRICE_ID_AI_MARKET_INTELLIGENCE"]   ?? "",
+  aiWorkflows:          process.env["STRIPE_PRICE_ID_AI_AUTOMATION_WORKFLOWS"]  ?? "",
 
   // ── Team ──────────────────────────────────────────────────────────────────
-  extraSeats:          process.env["STRIPE_ADDON_EXTRA_SEATS"]      ?? "price_1T6AB29eqtbj6iPBYcWdWqXZ",
-  enterprisePermissions:process.env["STRIPE_ADDON_ENTERPRISE_PERMS"]?? "",
+  extraSeats:           process.env["STRIPE_PRICE_ID_5SEATS"]                   ?? "",
+  enterprisePermissions:process.env["STRIPE_PRICE_ID_ENTERPRISE_PERMISSIONS"]   ?? "",
 
   // ── Data retention ────────────────────────────────────────────────────────
-  retention90d:        process.env["STRIPE_ADDON_RETENTION_90D"]    ?? "price_1T6APj9eqtbj6iPBXxYeJDzH",
-  retention365d:       process.env["STRIPE_ADDON_RETENTION_365D"]   ?? "price_1T6AQc9eqtbj6iPBEGxIWH2I",
+  retention90d:         process.env["STRIPE_PRICE_ID_RETENTION90D"]             ?? "",
+  retention365d:        process.env["STRIPE_PRICE_ID_RETENTION365D"]            ?? "",
 
   // ── Integrations ──────────────────────────────────────────────────────────
-  advancedWebhooks:    process.env["STRIPE_ADDON_WEBHOOKS"]         ?? "",
-  zapierIntegration:   process.env["STRIPE_ADDON_ZAPIER"]           ?? "",
-  crmIntegration:      process.env["STRIPE_ADDON_CRM"]              ?? "",
+  advancedWebhooks:     process.env["STRIPE_PRICE_ID_ADVANCED_WEBHOOKS"]        ?? "",
+  zapierIntegration:    process.env["STRIPE_PRICE_ID_ZAPIER_MAKE_INTEGRATION"]  ?? "",
+  crmIntegration:       process.env["STRIPE_PRICE_ID_CRM_INTEGRATIONS"]         ?? "",
 
   // ── Enterprise ─────────────────────────────────────────────────────────────
-  customDomain:        process.env["STRIPE_ADDON_CUSTOM_DOMAIN"]    ?? "price_1T6ANQ9eqtbj6iPB4OVhPmh3",
-  ssoEnterprise:       process.env["STRIPE_ADDON_SSO"]              ?? "",
-  aiWorkspaceLaunch:   process.env["STRIPE_ADDON_AI_WORKSPACE"]     ?? "",
+  customDomain:         process.env["STRIPE_PRICE_ID_CUSTOM_DOMAIN"]            ?? "",
+  ssoEnterprise:        process.env["STRIPE_PRICE_ID_SSO_ENTERPRISE"]           ?? "",
+  aiWorkspaceLaunch:    process.env["STRIPE_PRICE_ID_AI_WORKSPACE_LAUNCH"]      ?? "",
 
   // ── Support ────────────────────────────────────────────────────────────────
-  prioritySupport:     process.env["STRIPE_ADDON_PRIORITY_SUPPORT"] ?? "price_1T6AOd9eqtbj6iPBz7CUiIge",
+  prioritySupport:      process.env["STRIPE_PRICE_ID_PRIORITY_SUPPORT"]         ?? "",
 
   // ── Legacy packs (still redeemable via API) ────────────────────────────────
-  auditsPack200:       process.env["STRIPE_ADDON_AUDITS_PACK200"]   ?? "price_1T6AHh9eqtbj6iPBb8rj1l1P",
-  auditsPack1000:      process.env["STRIPE_ADDON_AUDITS_PACK1000"]  ?? "price_1T6AIt9eqtbj6iPBxqy7CduM",
-  pdfPack200:          process.env["STRIPE_ADDON_PDF_PACK200"]      ?? "price_1T6AJL9eqtbj6iPBbIpRPzVf",
-  exportsPack1000:     process.env["STRIPE_ADDON_EXPORTS_PACK1000"] ?? "price_1T6AKW9eqtbj6iPBGJdJ96TQ",
+  auditsPack200:        process.env["STRIPE_PRICE_ID_AUDITS_PACK200"]           ?? "",
+  auditsPack1000:       process.env["STRIPE_PRICE_ID_AUDITS_PACK1000"]          ?? "",
+  pdfPack200:           process.env["STRIPE_PRICE_ID_PDF_PACK200"]              ?? "",
+  exportsPack1000:      process.env["STRIPE_PRICE_ID_EXPORTS_PACK1000"]         ?? "",
 
   // ── AI Credit packs (one-time purchases) ──────────────────────────────────
-  aiCreditsPack50k:    process.env["STRIPE_ADDON_AI_CREDITS_50K"]   ?? "",
-  aiCreditsPack200k:   process.env["STRIPE_ADDON_AI_CREDITS_200K"]  ?? "",
-  aiCreditsPack500k:   process.env["STRIPE_ADDON_AI_CREDITS_500K"]  ?? "",
+  aiCreditsPack50k:     process.env["STRIPE_PRICE_ID_AI_CREDITS_50K"]           ?? "",
+  aiCreditsPack200k:    process.env["STRIPE_PRICE_ID_AI_CREDITS_200K"]          ?? "",
+  aiCreditsPack500k:    process.env["STRIPE_PRICE_ID_AI_CREDITS_500K"]          ?? "",
 };
 
 export const FLAG_ADDONS = new Set([
