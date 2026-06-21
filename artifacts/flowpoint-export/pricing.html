@@ -22,7 +22,7 @@
         var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
         var meta = document.getElementById('fp-meta-tc');
-        if (meta) meta.content = dark ? '#050810' : '#f8faff';
+        if (meta) meta.content = dark ? '#0b1120' : '#f8faff';
       } catch(e){}
     })();
   </script>
@@ -48,9 +48,9 @@
       --shadow-lg:    0 8px 40px rgba(37,99,235,0.13);
     }
     html[data-theme="dark"] {
-      --bg:         #050810;
-      --bg2:        #0d1117;
-      --surface:    #111827;
+      --bg:         #0b1120;
+      --bg2:        #111827;
+      --surface:    #1e293b;
       --border:     rgba(255,255,255,0.08);
       --text:       #f1f5f9;
       --text-soft:  #94a3b8;
@@ -908,7 +908,7 @@
     function applyTheme(dark) {
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
       var meta = document.getElementById('fp-meta-tc');
-      if (meta) meta.content = dark ? '#050810' : '#f8faff';
+      if (meta) meta.content = dark ? '#0b1120' : '#f8faff';
     }
     if (mq.addEventListener) mq.addEventListener('change', function(e){ applyTheme(e.matches); });
   })();
