@@ -36,6 +36,11 @@ function validateEnv(): Env {
     process.env["STRIPE_SECRET_KEY"] = process.env["STRIPE_LIVE_API_KEY"];
   }
 
+  // Some deployments use OPEN_AI_KEY instead of OPENAI_API_KEY — normalize.
+  if (process.env["OPEN_AI_KEY"] && !process.env["OPENAI_API_KEY"]) {
+    process.env["OPENAI_API_KEY"] = process.env["OPEN_AI_KEY"];
+  }
+
   const result = envSchema.safeParse(process.env);
   if (!result.success) {
     const errors = result.error.errors

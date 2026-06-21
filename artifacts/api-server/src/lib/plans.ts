@@ -75,8 +75,9 @@ export const ADDON_PRICE_IDS: Record<string, string> = {
   prioritySupport:      process.env["STRIPE_PRICE_ID_PRIORITY_SUPPORT"]         ?? "",
 
   // ── Legacy packs (still redeemable via API) ────────────────────────────────
-  auditsPack200:        process.env["STRIPE_PRICE_ID_AUDITS_PACK200"]           ?? "",
-  auditsPack1000:       process.env["STRIPE_PRICE_ID_AUDITS_PACK1000"]          ?? "",
+  // env file may use bare key "auditsPack200" — fall back to it
+  auditsPack200:        process.env["STRIPE_PRICE_ID_AUDITS_PACK200"]  ?? process.env["auditsPack200"]  ?? "",
+  auditsPack1000:       process.env["STRIPE_PRICE_ID_AUDITS_PACK1000"] ?? process.env["auditsPack1000"] ?? "",
   pdfPack200:           process.env["STRIPE_PRICE_ID_PDF_PACK200"]              ?? "",
   exportsPack1000:      process.env["STRIPE_PRICE_ID_EXPORTS_PACK1000"]         ?? "",
 
