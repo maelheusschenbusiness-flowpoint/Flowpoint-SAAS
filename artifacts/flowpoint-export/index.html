@@ -2,7 +2,6 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%232563EB'/><stop offset='100%25' stop-color='%234F46E5'/></linearGradient></defs><rect width='48' height='48' rx='10' fill='url(%23g)'/><polygon points='25 14 15 26 24 26 23 34 33 22 24 22' fill='white'/></svg>" type="image/svg+xml">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
@@ -11,7 +10,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <meta name="theme-color" content="#2563EB">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FlowPoint — Créer votre espace</title>
+  <title>FlowPoint — Créer votre compte</title>
   <meta name="robots" content="noindex, nofollow" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -182,8 +181,10 @@
         <stop offset="100%" stop-color="#4F46E5"/>
       </linearGradient>
     </defs>
-    <rect width="48" height="48" rx="10" fill="url(#fp-logo-g)"/>
-    <polygon points="25 14 15 26 24 26 23 34 33 22 24 22" fill="white"/>
+    <rect width="48" height="48" rx="10" ry="10" fill="url(#fp-logo-g)"/>
+    <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </g>
   </svg>
   <span class="logo-wordmark">Flow<span>Point</span></span>
 </a>
@@ -193,18 +194,18 @@
 
   <!-- ── SIGNUP ── -->
   <div id="signup-screen">
-    <h1 class="card-title">Créer votre espace FlowPoint</h1>
-    <p class="card-sub">Choisissez votre plan, puis configurez votre espace en 30 secondes</p>
+    <h1 class="card-title">Créer votre compte FlowPoint</h1>
+    <p class="card-sub">Choisissez votre plan, puis configurez votre compte en 30 secondes</p>
 
     <!-- ── Plan selector ── -->
     <div class="plan-selector">
       <div class="plan-label">Choisir mon plan</div>
       <div class="plan-btns">
         <button class="plan-btn" data-plan="standard" onclick="selectPlan('standard', this)">Standard</button>
-        <button class="plan-btn selected" data-plan="pro" onclick="selectPlan('pro', this)">Pro ⭐</button>
-        <button class="plan-btn" data-plan="ultra" onclick="selectPlan('ultra', this)">Enterprise</button>
+        <button class="plan-btn selected" data-plan="pro" onclick="selectPlan('pro', this)">Pro</button>
+        <button class="plan-btn" data-plan="ultra" onclick="selectPlan('ultra', this)">Ultra</button>
       </div>
-      <div class="plan-trial-note">🎁 <strong>14 jours d'essai gratuit</strong> — Sans carte bancaire · Annulation à tout moment</div>
+      <div class="plan-trial-note"><strong>14 jours d'essai gratuit</strong> — Carte requise, débit après l'essai · Annulation à tout moment</div>
     </div>
 
     <a href="/api/auth/google/login" class="btn-oauth" id="btn-google-oauth">
@@ -348,7 +349,7 @@
     document.querySelectorAll('.plan-btn').forEach(function(c) { c.classList.remove('selected'); });
     el.classList.add('selected');
     // Update the submit button label
-    var names = { standard: 'Standard', pro: 'Pro', ultra: 'Enterprise' };
+    var names = { standard: 'Standard', pro: 'Pro', ultra: 'Ultra' };
     var btn = document.getElementById('signup-btn');
     if (btn) {
       var span = btn.querySelector('.btn-text');

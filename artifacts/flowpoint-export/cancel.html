@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="light">
+<html lang="fr">
 <head>
   <meta charset="UTF-8"/>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -7,63 +7,46 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <link rel="manifest" href="/site.webmanifest">
-  <meta name="theme-color" content="#2563EB">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
   <title>Paiement annulé — FlowPoint</title>
-  <script>
-    (function(){
-      try {
-        var t = localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', t);
-        document.getElementById('fp-meta-tc').content = t === 'dark' ? '#050810' : '#f8faff';
-      } catch(e){}
-    })();
-  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --fp-bg: #f8faff; --fp-surface: #ffffff; --fp-border: rgba(0,0,0,0.08);
-      --fp-text: #0f172a; --fp-text-muted: #64748b; --fp-accent: #2563eb;
-      --fp-shadow: 0 4px 24px rgba(37,99,235,0.08), 0 1px 3px rgba(0,0,0,0.06);
+      --bg: #0b1120; --bg2: #111827; --surface: #1e293b;
+      --border: #2d3f55; --blue: #2563eb; --blue-h: #1d4ed8;
+      --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
     }
-    html[data-theme="dark"] {
-      --fp-bg: #050810; --fp-surface: #0d1117; --fp-border: rgba(255,255,255,0.08);
-      --fp-text: #f1f5f9; --fp-text-muted: #94a3b8;
-      --fp-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #f8fafc; --bg2: #ffffff; --surface: #f1f5f9; --border: rgba(0,0,0,.1); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8; }
     }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: var(--fp-bg); color: var(--fp-text);
-      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
-    }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; }
     .fp-card {
-      background: var(--fp-surface); border: 1px solid var(--fp-border);
-      border-radius: 14px; box-shadow: var(--fp-shadow);
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.4);
       padding: 52px 40px; max-width: 440px; width: 100%; text-align: center;
     }
     .fp-icon-wrap {
       width: 72px; height: 72px; border-radius: 50%;
-      background: rgba(100,116,139,0.1); display: flex; align-items: center;
-      justify-content: center; margin: 0 auto 24px; font-size: 36px;
+      background: rgba(100,116,139,0.1); border: 2px solid rgba(100,116,139,0.2);
+      display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 36px;
     }
     h1 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
-    p { font-size: 14px; color: var(--fp-text-muted); line-height: 1.6; margin-bottom: 6px; }
+    p { font-size: 14px; color: var(--text-soft); line-height: 1.6; margin-bottom: 6px; }
     .fp-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 28px; }
     .fp-btn-primary {
-      display: block; padding: 12px; background: var(--fp-accent); color: #fff;
-      border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+      display: block; padding: 13px; background: var(--blue); color: #fff;
+      border: none; border-radius: 9px; font-size: 14px; font-weight: 600;
       cursor: pointer; text-decoration: none; transition: background 0.15s;
     }
-    .fp-btn-primary:hover { background: #1d4ed8; }
+    .fp-btn-primary:hover { background: var(--blue-h); }
     .fp-btn-secondary {
       display: block; padding: 12px; background: transparent;
-      color: var(--fp-text-muted); border: 1px solid var(--fp-border);
-      border-radius: 8px; font-size: 14px; font-weight: 500;
-      cursor: pointer; text-decoration: none;
+      color: var(--text-muted); border: 1px solid var(--border);
+      border-radius: 9px; font-size: 14px; font-weight: 500;
+      cursor: pointer; text-decoration: none; transition: border-color 0.15s, color 0.15s;
     }
-    .fp-btn-secondary:hover { border-color: var(--fp-accent); color: var(--fp-accent); }
+    .fp-btn-secondary:hover { border-color: var(--blue); color: var(--blue); }
   </style>
 </head>
 <body>
@@ -73,10 +56,9 @@
     <p>Votre paiement a été annulé. Aucun montant n'a été débité.</p>
     <p>Vous pouvez réessayer à tout moment ou rester sur votre plan actuel.</p>
     <div class="fp-actions">
-      <a href="/pricing" class="fp-btn-primary">Voir les tarifs</a>
-      <a href="/" class="fp-btn-secondary">Retour au tableau de bord</a>
+      <a href="/pricing.html" class="fp-btn-primary">Retour aux tarifs</a>
+      <a href="/login.html" class="fp-btn-secondary">Se connecter</a>
     </div>
   </div>
-  <script src="fp-config.js"></script>
 </body>
 </html>

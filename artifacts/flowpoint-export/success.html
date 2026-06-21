@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="light">
+<html lang="fr">
 <head>
   <meta charset="UTF-8"/>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -7,96 +7,86 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <link rel="manifest" href="/site.webmanifest">
-  <meta name="theme-color" content="#2563EB">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
   <title>Paiement confirmé — FlowPoint</title>
-  <script>
-    (function(){
-      try {
-        var t = localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', t);
-        document.getElementById('fp-meta-tc').content = t === 'dark' ? '#050810' : '#f8faff';
-      } catch(e){}
-    })();
-  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --fp-bg: #f8faff; --fp-surface: #ffffff; --fp-border: rgba(0,0,0,0.08);
-      --fp-text: #0f172a; --fp-text-muted: #64748b; --fp-accent: #2563eb;
-      --fp-shadow: 0 4px 24px rgba(37,99,235,0.08), 0 1px 3px rgba(0,0,0,0.06);
+      --bg: #0b1120; --bg2: #111827; --surface: #1e293b;
+      --border: #2d3f55; --blue: #2563eb; --blue-h: #1d4ed8;
+      --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
     }
-    html[data-theme="dark"] {
-      --fp-bg: #050810; --fp-surface: #0d1117; --fp-border: rgba(255,255,255,0.08);
-      --fp-text: #f1f5f9; --fp-text-muted: #94a3b8;
-      --fp-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #f8fafc; --bg2: #ffffff; --surface: #f1f5f9; --border: rgba(0,0,0,.1); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8; }
     }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: var(--fp-bg); color: var(--fp-text);
-      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
-    }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; flex-direction: column; }
     .fp-card {
-      background: var(--fp-surface); border: 1px solid rgba(16,185,129,0.25);
-      border-radius: 14px; box-shadow: var(--fp-shadow);
-      padding: 52px 40px; max-width: 440px; width: 100%; text-align: center;
+      background: var(--bg2); border: 1px solid rgba(16,185,129,0.25);
+      border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.4);
+      padding: 52px 40px; max-width: 460px; width: 100%; text-align: center;
     }
     .fp-success-icon {
       width: 72px; height: 72px; border-radius: 50%;
-      background: rgba(16,185,129,0.12); display: flex; align-items: center;
-      justify-content: center; margin: 0 auto 24px; font-size: 36px;
+      background: rgba(16,185,129,0.12); border: 2px solid rgba(16,185,129,0.3);
+      display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 36px;
     }
-    h1 { font-size: 24px; font-weight: 800; margin-bottom: 10px; color: #059669; }
-    html[data-theme="dark"] h1 { color: #34d399; }
-    p { font-size: 14px; color: var(--fp-text-muted); line-height: 1.6; margin-bottom: 8px; }
+    h1 { font-size: 24px; font-weight: 800; margin-bottom: 10px; color: #34d399; }
+    p { font-size: 14px; color: var(--text-soft); line-height: 1.6; margin-bottom: 8px; }
     .fp-features {
-      background: var(--fp-bg); border-radius: 10px;
-      padding: 16px 20px; margin: 24px 0; text-align: left;
+      background: var(--surface); border-radius: 12px;
+      padding: 16px 20px; margin: 24px 0; text-align: left; border: 1px solid var(--border);
     }
     .fp-features li {
-      font-size: 13px; padding: 5px 0; list-style: none;
-      display: flex; align-items: center; gap: 8px; color: var(--fp-text-muted);
+      font-size: 13px; padding: 6px 0; list-style: none;
+      display: flex; align-items: center; gap: 8px; color: var(--text-soft);
+      border-bottom: 1px solid var(--border);
     }
-    .fp-features li::before { content: '✓'; color: #059669; font-weight: 700; }
-    html[data-theme="dark"] .fp-features li::before { color: #34d399; }
+    .fp-features li:last-child { border-bottom: none; }
+    .fp-features li::before { content: '✓'; color: #34d399; font-weight: 700; flex-shrink: 0; }
     .fp-cta {
-      display: inline-block; padding: 13px 32px;
-      background: var(--fp-accent); color: #fff; border: none;
+      display: inline-block; padding: 13px 32px; width: 100%;
+      background: var(--blue); color: #fff; border: none;
       border-radius: 9px; font-size: 15px; font-weight: 700;
-      cursor: pointer; text-decoration: none; transition: background 0.15s;
+      cursor: pointer; text-decoration: none; transition: background 0.15s; margin-bottom: 10px;
     }
-    .fp-cta:hover { background: #1d4ed8; }
-    .fp-counter { font-size: 12px; color: var(--fp-text-muted); margin-top: 12px; }
+    .fp-cta:hover { background: var(--blue-h); }
+    .fp-cta-sec {
+      display: block; text-align: center; font-size: 13px; color: var(--text-muted);
+      text-decoration: none; margin-top: 4px;
+    }
+    .fp-cta-sec:hover { color: var(--text-soft); }
+    .fp-counter { font-size: 12px; color: var(--text-muted); margin-top: 14px; }
   </style>
 </head>
 <body>
   <div class="fp-card">
     <div class="fp-success-icon">🎉</div>
     <h1>Paiement confirmé !</h1>
-    <p>Votre abonnement FlowPoint est maintenant actif. Bienvenue dans la croissance.</p>
+    <p>Votre abonnement FlowPoint est maintenant actif.<br>Bienvenue dans la croissance.</p>
 
     <ul class="fp-features">
       <li>Accès complet à votre tableau de bord</li>
       <li>Monitors d'uptime activés</li>
       <li>Analyses SEO disponibles</li>
-      <li>Support prioritaire débloqué</li>
+      <li>IA Copilot débloquée</li>
+      <li>Essai 14 jours — débit après l'essai</li>
     </ul>
 
-    <a href="/" class="fp-cta">Accéder au tableau de bord</a>
+    <a href="/api/dashboard/" class="fp-cta" id="fp-cta">Accéder au tableau de bord →</a>
+    <a href="/login.html" class="fp-cta-sec">Ou se connecter d'abord</a>
     <div class="fp-counter" id="fp-counter">Redirection automatique dans <span id="fp-count">10</span>s</div>
   </div>
 
-  <script src="fp-config.js"></script>
   <script>
     (function () {
+      try { localStorage.removeItem('fp_cart'); } catch(e) {}
       var count = 10;
       var el = document.getElementById('fp-count');
       var t = setInterval(function () {
         count--;
         if (el) el.textContent = count;
-        if (count <= 0) { clearInterval(t); window.location.href = '/'; }
+        if (count <= 0) { clearInterval(t); window.location.href = '/api/dashboard/'; }
       }, 1000);
     })();
   </script>

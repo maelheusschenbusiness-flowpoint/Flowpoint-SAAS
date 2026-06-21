@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="light">
+<html lang="fr" data-theme="dark">
 <head>
   <meta charset="UTF-8"/>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta id="fp-meta-tc" name="theme-color" content="#f8faff"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
 
   <title>Tarifs FlowPoint — SEO, monitoring &amp; IA pour votre croissance</title>
   <meta name="description" content="Plans FlowPoint : Standard 29€, Pro 79€, Ultra 149€. Audits SEO, monitoring uptime, IA copilot, Local SEO. Essai 14 jours."/>
@@ -21,7 +21,7 @@
   <script>
     (function(){
       try {
-        var t = localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        var t = localStorage.getItem('fp-theme') || 'dark';
         document.documentElement.setAttribute('data-theme', t);
         document.getElementById('fp-meta-tc').content = t === 'dark' ? '#050810' : '#f8faff';
       } catch(e){}
@@ -82,8 +82,12 @@
     .fp-nav-link { font-size: 13px; color: var(--text-soft); text-decoration: none; padding: 7px 12px; border-radius: 8px; transition: background 0.15s, color 0.15s; }
     .fp-nav-link:hover { background: var(--border); color: var(--text); }
     .fp-nav-link.active { color: var(--blue); font-weight: 600; }
-    .fp-nav-cta { font-size: 13px; font-weight: 600; color: #fff; background: var(--blue); border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; text-decoration: none; transition: background 0.15s; }
+    .fp-nav-cta { font-size: 13px; font-weight: 600; color: #fff; background: var(--blue); border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; text-decoration: none; transition: background 0.15s; display: flex; align-items: center; gap: 4px; }
     .fp-nav-cta:hover { background: var(--blue-h); }
+    .fp-cart-badge { display: none; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: #fff; color: var(--blue); font-size: 11px; font-weight: 800; border-radius: 20px; margin-left: 2px; }
+    .fp-cart-badge.visible { display: inline-flex; }
+    .fp-card-btn-selected { background: rgba(16,185,129,0.12) !important; color: #34d399 !important; border-color: rgba(16,185,129,0.35) !important; }
+    .fp-card.cart-selected { border-color: rgba(16,185,129,0.4) !important; box-shadow: 0 0 0 3px rgba(16,185,129,0.1), var(--shadow-lg) !important; }
 
     /* ── Hero ── */
     .fp-hero { text-align: center; padding: 72px 24px 52px; }
@@ -211,17 +215,19 @@
 <!-- ── Nav ── -->
 <nav class="fp-nav">
   <a href="/" class="fp-nav-logo">
-    <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
-      <defs><linearGradient id="fp-pr-g" x1="0" y1="0" x2="48" y2="48"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient></defs>
-      <rect width="48" height="48" rx="10" fill="url(#fp-pr-g)"/>
-      <polygon points="25 14 15 26 24 26 23 34 33 22 24 22" fill="white"/>
+    <svg width="32" height="32" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="fp-pr-g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient></defs>
+      <rect width="48" height="48" rx="10" ry="10" fill="url(#fp-pr-g)"/>
+      <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </g>
     </svg>
     <span class="fp-nav-logo-word">Flow<span>Point</span></span>
   </a>
   <div class="fp-nav-links">
-    <a href="/dashboard.html" class="fp-nav-link">Tableau de bord</a>
-    <a href="/pricing.html" class="fp-nav-link active">Tarifs</a>
-    <a href="/" class="fp-nav-cta">Démarrer l'essai →</a>
+    <button class="fp-nav-cta" id="fp-cart-btn" onclick="goToCheckout()">
+      Panier <span class="fp-cart-badge" id="fp-cart-badge">0</span>
+    </button>
   </div>
 </nav>
 
@@ -262,7 +268,7 @@
         <li><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Intelligence concurrentielle</span></li>
         <li><span class="fp-feat-no">—</span><span class="fp-feat-text" style="color:var(--text-muted)">Rapport exécutif IA &amp; prévisions</span></li>
       </ul>
-      <button class="fp-card-btn fp-card-btn-secondary" data-plan="standard" onclick="startCheckout(this)">
+      <button class="fp-card-btn fp-card-btn-secondary" data-plan="standard" onclick="selectPlan(this)">
         Commencer Standard
       </button>
       <div class="fp-card-msg" id="fp-msg-standard"></div>
@@ -270,7 +276,7 @@
 
     <!-- Pro -->
     <div class="fp-card featured" id="card-pro">
-      <div class="fp-card-badge">⭐ Le plus populaire</div>
+      <div class="fp-card-badge">Le plus populaire</div>
       <div class="fp-card-plan">Pro</div>
       <div class="fp-card-price"><span>79€</span><span class="fp-card-price-unit">/mois</span></div>
       <div class="fp-card-desc">Pour les équipes qui veulent croître avec des données actionables, une IA complète et un Local SEO puissant.</div>
@@ -297,7 +303,7 @@
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">SLA 99,9% · Support chat prioritaire</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">2FA inclus</span></li>
       </ul>
-      <button class="fp-card-btn fp-card-btn-primary" data-plan="pro" onclick="startCheckout(this)">
+      <button class="fp-card-btn fp-card-btn-primary" data-plan="pro" onclick="selectPlan(this)">
         Démarrer Pro — le meilleur choix
       </button>
       <div class="fp-card-msg" id="fp-msg-pro"></div>
@@ -333,7 +339,7 @@
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Onboarding dédié + Account Manager</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support 24/7 · SLA 99,99%</span></li>
       </ul>
-      <button class="fp-card-btn fp-card-btn-secondary" data-plan="ultra" onclick="startCheckout(this)">
+      <button class="fp-card-btn fp-card-btn-secondary" data-plan="ultra" onclick="selectPlan(this)">
         Démarrer Ultra
       </button>
       <div class="fp-card-msg" id="fp-msg-ultra"></div>
@@ -362,7 +368,7 @@
             <input id="qty-monitorsPack50" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
             <button class="fp-addon-qty-btn" onclick="changeQty('monitorsPack50',1)">+</button>
           </div>
-          <button class="fp-addon-btn" onclick="buyAddon(this,'monitorsPack50',true)">Ajouter →</button>
+          <button class="fp-addon-btn" onclick="addToCart(this,'monitorsPack50',true)">Ajouter →</button>
         </div>
       </div>
     </div>
@@ -378,7 +384,7 @@
             <input id="qty-extraSeats" class="fp-addon-qty-input" type="number" value="1" min="1" max="50" readonly>
             <button class="fp-addon-qty-btn" onclick="changeQty('extraSeats',1)">+</button>
           </div>
-          <button class="fp-addon-btn" onclick="buyAddon(this,'extraSeats',true)">Ajouter →</button>
+          <button class="fp-addon-btn" onclick="addToCart(this,'extraSeats',true)">Ajouter →</button>
         </div>
       </div>
     </div>
@@ -394,7 +400,7 @@
             <input id="qty-aiCreditsPack50k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
             <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',1)">+</button>
           </div>
-          <button class="fp-addon-btn" onclick="buyAddon(this,'aiCreditsPack50k',true)">Ajouter →</button>
+          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack50k',true)">Ajouter →</button>
         </div>
       </div>
     </div>
@@ -404,7 +410,7 @@
       <div class="fp-addon-desc">Un problème bloquant ? Votre ticket monte en priorité. Réponse garantie en moins de 2h en heures ouvrées sur un canal dédié avec un expert FlowPoint.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'prioritySupport',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'prioritySupport',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -413,7 +419,7 @@
       <div class="fp-addon-desc">Comparez vos performances sur 3 mois complets. Identifiez les tendances de fond, mesurez l'impact SEO dans le temps et détectez les régressions avant qu'elles coûtent cher.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">14€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'retention90d',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'retention90d',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -422,7 +428,7 @@
       <div class="fp-addon-desc">Votre marque, votre image. Portail client entièrement brandé — logo, couleurs, domaine personnalisé. Vos clients voient votre agence, pas FlowPoint.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">39€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'whiteLabel',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'whiteLabel',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -431,7 +437,7 @@
       <div class="fp-addon-desc">Chaque semaine, l'IA génère une synthèse C-level prête à partager : performances SEO, alertes critiques, opportunités prioritaires — en un document, sans effort.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'aiExecutiveReport',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiExecutiveReport',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -440,13 +446,13 @@
       <div class="fp-addon-desc">Trouvez l'argent que vous perdez sans le savoir. L'IA analyse votre funnel, identifie les pages qui freinent les conversions et chiffre l'impact financier de chaque fuite.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">49€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'revenueLeak',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'revenueLeak',false)">Ajouter →</button></div>
       </div>
     </div>
 
     <!-- ─ Add-ons masqués par défaut (19) ─ -->
 
-    <div class="fp-addon-card fp-addon-hidden">
+    <div class="fp-addon-card">
       <div class="fp-addon-top"><span class="fp-addon-icon">🔍</span><div class="fp-addon-name">Pack audits +200</div></div>
       <div class="fp-addon-desc">200 audits SEO supplémentaires par mois. Idéal pour les sites e-commerce ou portails avec des centaines de pages à analyser régulièrement.</div>
       <div class="fp-addon-bottom">
@@ -457,7 +463,7 @@
             <input id="qty-auditsPack200" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
             <button class="fp-addon-qty-btn" onclick="changeQty('auditsPack200',1)">+</button>
           </div>
-          <button class="fp-addon-btn" onclick="buyAddon(this,'auditsPack200',true)">Ajouter →</button>
+          <button class="fp-addon-btn" onclick="addToCart(this,'auditsPack200',true)">Ajouter →</button>
         </div>
       </div>
     </div>
@@ -473,7 +479,7 @@
             <input id="qty-auditsPack1000" class="fp-addon-qty-input" type="number" value="1" min="1" max="10" readonly>
             <button class="fp-addon-qty-btn" onclick="changeQty('auditsPack1000',1)">+</button>
           </div>
-          <button class="fp-addon-btn" onclick="buyAddon(this,'auditsPack1000',true)">Ajouter →</button>
+          <button class="fp-addon-btn" onclick="addToCart(this,'auditsPack1000',true)">Ajouter →</button>
         </div>
       </div>
     </div>
@@ -489,7 +495,7 @@
             <input id="qty-pdfPack200" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
             <button class="fp-addon-qty-btn" onclick="changeQty('pdfPack200',1)">+</button>
           </div>
-          <button class="fp-addon-btn" onclick="buyAddon(this,'pdfPack200',true)">Ajouter →</button>
+          <button class="fp-addon-btn" onclick="addToCart(this,'pdfPack200',true)">Ajouter →</button>
         </div>
       </div>
     </div>
@@ -505,7 +511,7 @@
             <input id="qty-exportsPack1000" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
             <button class="fp-addon-qty-btn" onclick="changeQty('exportsPack1000',1)">+</button>
           </div>
-          <button class="fp-addon-btn" onclick="buyAddon(this,'exportsPack1000',true)">Ajouter →</button>
+          <button class="fp-addon-btn" onclick="addToCart(this,'exportsPack1000',true)">Ajouter →</button>
         </div>
       </div>
     </div>
@@ -515,7 +521,7 @@
       <div class="fp-addon-desc">Un an d'historique complet. Comparez mois par mois, identifiez les saisonnalités SEO et prouvez la progression de votre stratégie avec des données incontestables.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'retention365d',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'retention365d',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -524,7 +530,7 @@
       <div class="fp-addon-desc">Hébergez votre portail FlowPoint sur votre propre domaine (analyse.votreagence.com). Renforce la crédibilité client et donne une image 100% professionnelle.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">15€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'customDomain',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'customDomain',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -533,7 +539,7 @@
       <div class="fp-addon-desc">Anticipez l'avenir avec des modèles prédictifs entraînés sur vos données réelles. Trafic, conversions, revenus — visualisez les 90 prochains jours avant la concurrence.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'aiForecasting',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiForecasting',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -542,7 +548,7 @@
       <div class="fp-addon-desc">L'IA génère des recommandations d'optimisation de conversion priorisées par impact estimé — moins de tests A/B hasardeux, plus de résultats concrets et mesurables.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">39€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'aiCro',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiCro',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -551,7 +557,7 @@
       <div class="fp-addon-desc">Comprenez vraiment le comportement de vos visiteurs. Parcours, hésitations, abandons — l'IA comportementale traduit chaque signal en insight actionable pour booster l'engagement.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">49€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'behavioralAI',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'behavioralAI',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -560,7 +566,7 @@
       <div class="fp-addon-desc">Automatisez votre veille et vos alertes sur mesure. Des workflows pilotés par l'IA déclenchent des actions automatiquement — rapport Slack, tâche créée, email envoyé.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'aiWorkflows',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiWorkflows',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -569,7 +575,7 @@
       <div class="fp-addon-desc">Surveillez votre marché en temps réel : positions concurrentes, tendances de requêtes, opportunités de mots-clés émergentes — soyez le premier à agir quand le marché bouge.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">49€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'marketIntelligence',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'marketIntelligence',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -578,7 +584,7 @@
       <div class="fp-addon-desc">Transformez vos avis Google en levier de croissance. L'IA analyse la sémantique, identifie les thèmes récurrents et vous suggère des réponses et améliorations prioritaires.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">19€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'reviewIntelligence',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'reviewIntelligence',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -593,7 +599,7 @@
             <input id="qty-aiCreditsPack200k" class="fp-addon-qty-input" type="number" value="1" min="1" max="10" readonly>
             <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',1)">+</button>
           </div>
-          <button class="fp-addon-btn" onclick="buyAddon(this,'aiCreditsPack200k',true)">Ajouter →</button>
+          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack200k',true)">Ajouter →</button>
         </div>
       </div>
     </div>
@@ -609,7 +615,7 @@
             <input id="qty-aiCreditsPack500k" class="fp-addon-qty-input" type="number" value="1" min="1" max="5" readonly>
             <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',1)">+</button>
           </div>
-          <button class="fp-addon-btn" onclick="buyAddon(this,'aiCreditsPack500k',true)">Ajouter →</button>
+          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack500k',true)">Ajouter →</button>
         </div>
       </div>
     </div>
@@ -619,7 +625,7 @@
       <div class="fp-addon-desc">Connectez FlowPoint à 5 000+ outils. Alertes dans Slack, tâches Asana, enrichissement CRM — sans une ligne de code, en quelques minutes.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">15€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'zapierIntegration',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'zapierIntegration',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -628,7 +634,7 @@
       <div class="fp-addon-desc">Recevez toutes les alertes FlowPoint dans votre infrastructure. Webhooks personnalisables avec retry automatique et historique complet des appels.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">19€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'advancedWebhooks',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'advancedWebhooks',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -637,7 +643,7 @@
       <div class="fp-addon-desc">Synchronisez vos données SEO dans HubSpot, Salesforce ou Pipedrive. Enrichissez vos fiches contacts et déclenchez des actions commerciales sur signal SEO.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'crmIntegration',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'crmIntegration',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -646,7 +652,7 @@
       <div class="fp-addon-desc">Le bundle ultime pour les agences : white-label, multi-clients, rapports personnalisés et support dédié — tout pour revendre FlowPoint sous votre propre marque.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">99€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'agencyPacks',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'agencyPacks',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -655,7 +661,7 @@
       <div class="fp-addon-desc">SAML 2.0 / OIDC pour toute votre organisation. Connectez FlowPoint à Okta, Azure AD ou Google Workspace et gérez les accès depuis un point central.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">99€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="buyAddon(this,'ssoEnterprise',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'ssoEnterprise',false)">Ajouter →</button></div>
       </div>
     </div>
 
@@ -664,7 +670,7 @@
   <div class="fp-show-more-wrap">
     <button class="fp-show-more-btn" id="fp-addon-toggle" onclick="toggleAddons()">
       <span class="fp-show-more-icon" id="fp-addon-icon">▾</span>
-      <span id="fp-addon-label">Voir tous les add-ons (19 de plus)</span>
+      <span id="fp-addon-label">Voir tous les add-ons (18 de plus)</span>
     </button>
   </div>
 </section>
@@ -680,7 +686,7 @@
         <tr>
           <th>Fonctionnalité</th>
           <th>Standard</th>
-          <th class="featured-col fp-featured-col">Pro <span style="font-size:10px;background:var(--blue);color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px;">★</span></th>
+          <th class="featured-col fp-featured-col">Pro <span style="font-size:10px;background:var(--blue);color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px;">✓</span></th>
           <th>Ultra</th>
         </tr>
       </thead>
@@ -840,7 +846,7 @@
 
 <!-- ── Footer ── -->
 <footer class="fp-footer">
-  <span>© 2025 FlowPoint — Tous droits réservés</span>
+  <span>© 2026 FlowPoint — Tous droits réservés</span>
   <div class="fp-footer-links">
     <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Mentions légales</a>
     <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Politique de confidentialité</a>
@@ -856,6 +862,8 @@
 (function () {
   'use strict';
 
+  var _cart = { plan: null, addons: {} };
+
   /* ── Toast ── */
   var toastTimer;
   function showToast(msg, isError) {
@@ -864,38 +872,42 @@
     el.textContent = msg;
     el.className = 'fp-toast' + (isError ? ' error' : '') + ' show';
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 5500);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 3500);
   }
   window.showToast = showToast;
 
-  /* ── Plan checkout ── */
-  window.startCheckout = function (btn) {
+  /* ── Cart badge ── */
+  function updateCartBadge() {
+    var count = (_cart.plan ? 1 : 0) + Object.keys(_cart.addons).length;
+    var badge = document.getElementById('fp-cart-badge');
+    if (!badge) return;
+    badge.textContent = count;
+    if (count > 0) badge.classList.add('visible');
+    else badge.classList.remove('visible');
+  }
+
+  /* ── Select plan ── */
+  window.selectPlan = function (btn) {
     var plan = btn.getAttribute('data-plan');
     if (!plan) return;
-    var msgEl = document.getElementById('fp-msg-' + plan);
-    var origText = btn.textContent.trim();
-    btn.disabled = true;
-    btn.innerHTML = '<span class="fp-spinner"></span> Redirection…';
-    if (msgEl) { msgEl.textContent = ''; msgEl.className = 'fp-card-msg'; }
-
-    fetch('/api/billing/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ plan: plan })
-    })
-    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-    .then(function (res) {
-      if (!res.ok || !res.data.url) throw new Error(res.data.error || 'Impossible de créer la session de paiement.');
-      window.location.href = res.data.url;
-    })
-    .catch(function (err) {
-      btn.disabled = false;
-      btn.textContent = origText;
-      var msg = err.message || 'Une erreur est survenue. Réessayez.';
-      if (msgEl) { msgEl.textContent = msg; msgEl.className = 'fp-card-msg error'; }
-      showToast(msg, true);
+    _cart.plan = plan;
+    var planLabels = {
+      standard: 'Commencer Standard',
+      pro:      'Démarrer Pro — le meilleur choix',
+      ultra:    'Démarrer Ultra'
+    };
+    document.querySelectorAll('.fp-card-btn[data-plan]').forEach(function (b) {
+      b.textContent = planLabels[b.getAttribute('data-plan')] || 'Sélectionner';
+      b.classList.remove('fp-card-btn-selected');
+      var c = b.closest('.fp-card');
+      if (c) c.classList.remove('cart-selected');
     });
+    btn.textContent = '✓ Sélectionné — Essai 14 jours';
+    btn.classList.add('fp-card-btn-selected');
+    var card = btn.closest('.fp-card');
+    if (card) card.classList.add('cart-selected');
+    updateCartBadge();
+    showToast('Plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' sélectionné — cliquez sur Panier pour payer');
   };
 
   /* ── Quantity helpers ── */
@@ -905,38 +917,37 @@
     var min = parseInt(input.min) || 1;
     var max = parseInt(input.max) || 99;
     input.value = Math.min(max, Math.max(min, (parseInt(input.value) || 1) + delta));
+    if (_cart.addons[addonId] !== undefined) {
+      _cart.addons[addonId] = parseInt(input.value) || 1;
+      updateCartBadge();
+    }
   };
 
-  /* ── Add-on checkout — works during trial and after ── */
-  window.buyAddon = function (btn, addonId, isQty) {
+  /* ── Add addon to cart ── */
+  window.addToCart = function (btn, addonId, isQty) {
     var qty = 1;
     if (isQty) {
       var inp = document.getElementById('qty-' + addonId);
       qty = inp ? (parseInt(inp.value) || 1) : 1;
     }
-    var addonMap = {};
-    addonMap[addonId] = qty;
+    _cart.addons[addonId] = qty;
+    btn.textContent = '✓ Dans le panier';
+    btn.style.background = 'rgba(16,185,129,0.15)';
+    btn.style.borderColor = 'rgba(16,185,129,0.35)';
+    btn.style.color = '#34d399';
+    updateCartBadge();
+    showToast('Add-on ajouté au panier');
+  };
 
-    var origHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(37,99,235,0.3);border-top-color:var(--blue);border-radius:50%;animation:fp-spin 0.7s linear infinite"></span>';
-
-    fetch('/api/billing/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ addons: addonMap })
-    })
-    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-    .then(function (res) {
-      if (!res.ok || !res.data.url) throw new Error(res.data.error || 'Erreur de paiement.');
-      window.location.href = res.data.url;
-    })
-    .catch(function (err) {
-      btn.disabled = false;
-      btn.innerHTML = origHtml;
-      showToast(err.message || 'Impossible de démarrer le paiement. Réessayez.', true);
-    });
+  /* ── Go to checkout ── */
+  window.goToCheckout = function () {
+    var count = (_cart.plan ? 1 : 0) + Object.keys(_cart.addons).length;
+    if (count === 0) {
+      showToast('Sélectionnez d\'abord un plan ou un add-on', true);
+      return;
+    }
+    try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
+    window.location.href = '/checkout.html';
   };
 
   /* ── Expand/collapse add-ons ── */
@@ -947,7 +958,7 @@
     var expanded = icon && icon.classList.contains('open');
     hidden.forEach(function (el) { expanded ? el.classList.remove('visible') : el.classList.add('visible'); });
     if (icon)  icon.classList.toggle('open', !expanded);
-    if (label) label.textContent = expanded ? 'Voir tous les add-ons (19 de plus)' : 'Réduire les add-ons';
+    if (label) label.textContent = expanded ? 'Voir tous les add-ons (18 de plus)' : 'Réduire les add-ons';
   };
 
   /* ── FAQ accordion ── */
@@ -959,14 +970,6 @@
     document.querySelectorAll('.fp-faq-icon.open').forEach(function (i) { i.classList.remove('open'); });
     if (!open && answer) { answer.classList.add('open'); if (icon) icon.classList.add('open'); }
   };
-
-  /* ── Analytics ── */
-  document.querySelectorAll('.fp-card-btn[data-plan]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var plan = btn.getAttribute('data-plan');
-      if (plan && typeof gtag === 'function') gtag('event', 'begin_checkout', { plan: plan, currency: 'EUR' });
-    });
-  });
 
 })();
 </script>
