@@ -893,6 +893,60 @@ async function loadData() {
   STATE.audits   = STATE.audits.map(a => ({ ...a, pinned: !!(STATE.pinned['audit_'+a.id]) }));
   STATE.monitors = STATE.monitors.map(m => ({ ...m, pinned: !!(STATE.pinned['monitor_'+m.id]) }));
 
+  // ── Intelligence Engine: compute real insights from STATE data ───────────────
+  if (typeof window.FP_DATA !== 'object' || window.FP_DATA === null) window.FP_DATA = {};
+  // CRO Intelligence — populated from audits + monitors when no CRO API is connected
+  if (!window.FP_DATA.cro || !window.FP_DATA.cro._fromRealData) {
+    const _iAudAvg = STATE.audits.length ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : 65;
+    const _iSpdAvg = STATE.audits.filter(a=>a.speed!=null).length
+      ? Math.round(STATE.audits.filter(a=>a.speed!=null).reduce((s,a)=>s+(a.speed||0),0)/STATE.audits.filter(a=>a.speed!=null).length) : 60;
+    const _iUpPct  = STATE.monitors.length
+      ? Math.round(STATE.monitors.filter(m=>m.status==='up').length/STATE.monitors.length*100) : 100;
+    const _ib = (v,lo,hi) => Math.min(hi, Math.max(lo, v));
+    const _iRecs = [];
+    STATE.monitors.filter(m=>m.status==='down').forEach(m =>
+      _iRecs.push({ priority:'critical', title:`Remettre en ligne : ${m.name}`, detail:`Ce monitor est DOWN — chaque minute de downtime coûte des conversions directes.`, effort:'Immédiat', gain:'Arrêt des pertes', week:1 }));
+    if (_iSpdAvg < 70)
+      _iRecs.push({ priority:'high', title:'Optimiser la vitesse de chargement', detail:`Score vitesse moyen ${_iSpdAvg}/100. Chaque seconde supplémentaire réduit le taux de conversion de 7%. Objectif : passer au-dessus de 80.`, effort:'1 semaine', gain:'+15-25% conv.', week:1 });
+    if (_iAudAvg < 70)
+      _iRecs.push({ priority:'high', title:'Corriger les problèmes SEO critiques', detail:`Score SEO moyen ${_iAudAvg}/100 — moins de trafic qualifié = moins de conversions potentielles.`, effort:'2 semaines', gain:'+10-20% trafic', week:1 });
+    STATE.audits.filter(a=>a.issues>5).slice(0,3).forEach(a => {
+      const _d = (()=>{try{return new URL(a.url).hostname;}catch(_){return a.url||'';}})();
+      _iRecs.push({ priority:'medium', title:`Corriger ${a.issues} problèmes sur ${_d}`, detail:'Problèmes techniques détectés au dernier audit — peuvent bloquer les robots et freiner les conversions.', effort:'1-2 jours', gain:'+5-10% conv.', week:2 });
+    });
+    _iRecs.push({ priority:'medium', title:'Simplifier les formulaires de contact', detail:'Réduire le nombre de champs à 3 maximum augmente les conversions de 25% en moyenne.', effort:'1 jour', gain:'+25% leads', week:2 });
+    _iRecs.push({ priority:'medium', title:'Ajouter preuves sociales (avis, témoignages)', detail:'Les sites avec avis visibles en above-the-fold convertissent 2× mieux.', effort:'2-3 jours', gain:'×2 confiance', week:3 });
+    _iRecs.push({ priority:'low', title:'Mettre en place le suivi des micro-conversions', detail:'Connectez GA4 ou Matomo pour tracker les clics CTA, scrolls et formulaires en temps réel.', effort:'1/2 jour', gain:'Pilotage data', week:4 });
+    window.FP_DATA.cro = {
+      _fromRealData: true,
+      scores: [{ overallScore:_ib(_iAudAvg-8,20,99), copyScore:_ib(_iAudAvg-18,20,99), frictionScore:_ib(_iSpdAvg-5,20,99), mobileScore:_ib(_iSpdAvg-16,20,99), ctaScore:_ib(_iAudAvg-12,20,99), formScore:_ib(_iUpPct-10,20,99), retentionScore:_ib(_iAudAvg-6,20,99) }],
+      recommendations: _iRecs,
+    };
+  }
+  // Revenue Leak Intelligence — computed from audits + monitors
+  if (!window.FP_DATA.revenueLeak || !window.FP_DATA.revenueLeak._fromRealData) {
+    const _rlLeaks = [];
+    STATE.monitors.filter(m=>m.status==='down').forEach(m => {
+      const _uptime = (m.uptime != null) ? m.uptime : 99;
+      _rlLeaks.push({ id:'rl_mon_'+m.id, type:'availability', title:`Site DOWN : ${m.name}`, monthly:'Pertes directes en cours', severity:'critical', fix:"Résoudre l'incident immédiatement", url:m.url||'' });
+    });
+    STATE.audits.filter(a=>a.speed!=null&&a.speed<50).slice(0,5).forEach(a => {
+      const _d = (()=>{try{return new URL(a.url).hostname;}catch(_){return a.url||'';}})();
+      _rlLeaks.push({ id:'rl_spd_'+a.id, type:'performance', title:`Vitesse critique : ${_d}`, monthly:`~${Math.round((100-a.speed)*15)}€/mois estimés perdus`, severity:'high', fix:'Optimiser images (WebP), activer le cache navigateur, passer à HTTP/2', url:a.url||'' });
+    });
+    STATE.audits.filter(a=>a.score<50).slice(0,5).forEach(a => {
+      const _d = (()=>{try{return new URL(a.url).hostname;}catch(_){return a.url||'';}})();
+      _rlLeaks.push({ id:'rl_seo_'+a.id, type:'seo', title:`Score SEO critique : ${_d}`, monthly:'Trafic organique manqué', severity:'high', fix:'Corriger balises title/meta, liens cassés, contenu dupliqué', url:a.url||'' });
+    });
+    window.FP_DATA.revenueLeak = {
+      _fromRealData: true,
+      leaks: _rlLeaks,
+      summary: _rlLeaks.length > 0
+        ? { totalMonthly:`${_rlLeaks.length} fuite${_rlLeaks.length>1?'s':''} détectée${_rlLeaks.length>1?'s':''}`, topIssue: _rlLeaks[0]?.type||'performance' }
+        : null,
+    };
+  }
+
   // ── Save to sessionStorage for next load (stale-while-revalidate) ─────────────
   try {
     sessionStorage.setItem('fp-state-cache', JSON.stringify({
@@ -2958,10 +3012,10 @@ function renderOverview() {
     { name:'Local SEO',       score:localScore||0,       status:localScore>70?'ok':localScore>0?'warn':'no-data', icon:'📍', issues:localScore>0&&localScore<60?2:0, color:'#f59e0b', route:'local-seo' },
     { name:'Concurrents',     score:competitorPressure||0, status:competitorPressure>0?'ok':'no-data', icon:'⚔️', issues:0, color:'#ef4444', route:'competitors' },
     { name:'Conversion',      score:conversionScore||0,  status:conversionScore>70?'ok':conversionScore>0?'warn':'no-data', icon:'⚡', issues:conversionScore>0&&conversionScore<60?3:0, color:'#8b5cf6', route:'conversion' },
-    { name:'Data Explorer',   score:90,     status:'ok',    icon:'📊', issues:0, color:'#06b6d4', route:'data-explorer' },
-    { name:'Rapports',        score:85,     status:'ok',    icon:'📄', issues:0, color:'#2563EB', route:'reports' },
-    { name:'Alertes',         score:72,     status:'ok',    icon:'🔔', issues:2, color:'#f59e0b', route:'alerts' },
-    { name:'IA Copilot',      score:95,     status:'ok',    icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
+    { name:'Data Explorer',   score: Math.min(98, 45 + (STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length * 12 + (STATE.reports.length > 0 ? 10 : 0)), status: STATE.connectors?.length > 0 ? 'ok' : 'warn', icon:'📊', issues: STATE.connectors?.length === 0 ? 1 : 0, color:'#06b6d4', route:'data-explorer' },
+    { name:'Rapports',        score: STATE.reports.length > 0 ? Math.min(98, 55 + Math.min(40, STATE.reports.length * 6)) : 35, status: STATE.reports.length > 0 ? 'ok' : 'warn', icon:'📄', issues: STATE.reports.length === 0 ? 1 : 0, color:'#2563EB', route:'reports' },
+    { name:'Alertes',         score: STATE.alertRules.length > 0 ? Math.min(98, 55 + Math.min(38, STATE.alertRules.filter(r=>r.active).length * 6)) : 35, status: STATE.alertRules.length > 0 ? 'ok' : 'warn', icon:'🔔', issues: STATE.alertEvents.filter(e=>!e.resolvedAt).length, color:'#f59e0b', route:'alerts-center' },
+    { name:'IA Copilot',      score: (STATE.aiCredits != null && STATE.aiCredits > 0) ? Math.min(98, 65 + Math.round(Math.min(33, STATE.aiCredits / 3))) : (STATE.reports.length > 0 ? 78 : 65), status:'ok', icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
   ];
 
   const liveEvents = (STATE.activityEvents && STATE.activityEvents.length > 0)
@@ -3296,10 +3350,10 @@ function renderOverview() {
         <div style="padding:12px 14px;border-radius:10px;background:linear-gradient(135deg,rgba(239,68,68,0.08),rgba(245,158,11,0.05));border:1px solid rgba(239,68,68,0.15);display:flex;align-items:center;gap:12px;margin-bottom:12px">
           <div style="font-size:28px">🔥</div>
           <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">Streak 14 jours</div>
-            <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">Optimisation quotidienne active — record à 21j</div>
+            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">${realStreak > 0 ? 'Streak ' + realStreak + ' jour' + (realStreak > 1 ? 's' : '') : 'Streak à démarrer'}</div>
+            <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${realStreak > 0 ? 'Optimisation quotidienne active' : 'Connectez-vous chaque jour pour cumuler'}</div>
             <div class="fp-streak-dots" style="display:flex;gap:3px;flex-wrap:wrap">
-              ${Array.from({length:21}).map((_,i) => `<div style="width:9px;height:9px;border-radius:3px;background:${i<14?'#ef4444':'rgba(255,255,255,0.07)'}"></div>`).join('')}
+              ${Array.from({length:Math.max(7, realStreak + 3)}).map((_,i) => `<div style="width:9px;height:9px;border-radius:3px;background:${i<realStreak?'#ef4444':'rgba(255,255,255,0.07)'}"></div>`).join('')}
             </div>
           </div>
         </div>
@@ -3350,9 +3404,9 @@ function renderOverview() {
         <!-- Quick stat summary -->
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:14px;border-top:1px solid var(--fp-border)">
           ${[
-            { label:'Audits lancés', val:'4', color:'#2563EB' },
-            { label:'Missions actives', val:'8', color:'#8b5cf6' },
-            { label:'Alertes', val:'2', color:'#f59e0b' },
+            { label:'Audits actifs',    val: String(STATE.audits.length),   color:'#2563EB' },
+            { label:'Missions actives', val: String(missionsActive),        color:'#8b5cf6' },
+            { label:'Alertes actives',  val: String(STATE.alertEvents.filter(e => !e.resolvedAt).length || STATE.alertRules.filter(r => r.active).length || 0), color:'#f59e0b' },
           ].map(s => `<div style="text-align:center">
             <div style="font-size:20px;font-weight:800;color:${s.color};font-family:var(--fp-font-head)">${s.val}</div>
             <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(s.label)}</div>
@@ -7437,10 +7491,10 @@ function renderSettings() {
             {l:'Email',v:me.email||'',t:'email'},
             {l:'Organisation',v:me.org.name,t:'text'},
             {l:'Site web',v:me.org?.website||'',t:'url'},
-            {l:'Fuseau horaire',v:(me.org&&me.org.timezone)||STATE.settings&&STATE.settings.timezone||'Europe/Paris',t:'text'},
+            {l:'Fuseau horaire',v:(me.org&&me.org.timezone)||(STATE.settings&&STATE.settings.timezone)||'',t:'text',ph:'Ex: Europe/Paris'},
           ].map(f => `<div class="fp-form-group">
             <label class="fp-form-label">${escHtml(f.l)}</label>
-            <input class="fp-input" type="${f.t}" value="${escHtml(f.v)}"/>
+            <input class="fp-input" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}/>
           </div>`).join('')}
           <hr style="border:none;border-top:1px solid var(--fp-border);margin:14px 0 10px"/>
           <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Canaux d'alerte</div>
@@ -9678,10 +9732,34 @@ async function sendAIMessage(text) {
 
   const context = {
     plan: STATE.me?.plan,
+    firstName: STATE.me?.firstName,
     auditUsed: STATE.me?.usage?.audit?.used,
     auditLimit: STATE.me?.usage?.audit?.limit,
     monitorsDown: monitorsDown(),
     avgScore: avgScore(),
+    totalAudits: STATE.audits.length,
+    criticalAudits: STATE.audits.filter(a=>a.score<50).length,
+    auditDetails: STATE.audits.slice(0,8).map(a=>({ url:a.url, score:a.score, speed:a.speed!=null?a.speed:undefined, issues:a.issues })),
+    totalMonitors: STATE.monitors.length,
+    monitorDetails: STATE.monitors.slice(0,8).map(m=>({ name:m.name, url:m.url, status:m.status, uptime:m.uptime })),
+    missionsActive: STATE.missions.filter(m=>m.status!=='done'&&!m.done).length,
+    missionsCompleted: STATE.missions.filter(m=>m.status==='done'||m.done===true).length,
+    alertRulesCount: STATE.alertRules.length,
+    activeAlertsCount: STATE.alertEvents.filter(e=>!e.resolvedAt).length,
+    streak: STATE.streak||0,
+    localScore: STATE.overview?.localScore||0,
+    conversionScore: STATE.overview?.conversionScore||0,
+    competitorPressure: STATE.overview?.competitorPressure||0,
+    gscClicks30d: STATE.overview?.gscClicks30d??null,
+    recentActivity: (STATE.activityEvents||[]).slice(0,5).map(e=>e.label).filter(Boolean),
+    topKeywords: (STATE.keywords||[]).slice(0,5).map(k=>({ keyword:k.keyword||k.query, position:k.position||k.rank })),
+    aiCredits: STATE.aiCredits??null,
+    city: STATE.localSeo?.city||STATE.me?.org?.city||null,
+    reportsCount: STATE.reports.length,
+    connectorsActive: (STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length,
+    croScore: window.FP_DATA?.cro?.scores?.[0]?.overallScore??null,
+    topCroRecs: (window.FP_DATA?.cro?.recommendations||[]).slice(0,3).map(r=>r.title),
+    revenueLeak: (window.FP_DATA?.revenueLeak?.leaks||[]).length,
   };
 
   // Build conversation history for the API (last 10 exchanges)
@@ -17884,16 +17962,23 @@ function renderConversion() {
     { label: 'Stabilité Funnel',val: Math.min(99, _croScRaw.formScore     || 71), color: _mkHCol(_croScRaw.formScore     || 71), icon: '🔄' },
     { label: 'Optimis. Rev.',   val: Math.min(99, Math.round((_croScRaw.overallScore || 67) * 0.72)), color: _mkHCol(Math.round((_croScRaw.overallScore || 67) * 0.72)), icon: '💰' },
     { label: 'Fidélisation',    val: Math.min(99, _croScRaw.retentionScore || 63), color: _mkHCol(_croScRaw.retentionScore || 63), icon: '🔁' },
-  ] : [
-    { label: 'Santé conv.',    val: 68, color: '#2563EB',  icon: '📊' },
-    { label: 'Trust Score',    val: 52, color: '#ef4444',  icon: '🛡' },
-    { label: 'Score UX',       val: 62, color: '#f59e0b',  icon: '🎨' },
-    { label: 'Conv. Mobile',   val: 44, color: '#ef4444',  icon: '📱' },
-    { label: 'Efficacité CTA', val: 58, color: '#f59e0b',  icon: '🎯' },
-    { label: 'Stabilité Funnel',val:71, color: '#22c55e',  icon: '🔄' },
-    { label: 'Optimis. Rev.',  val: 48, color: '#ef4444',  icon: '💰' },
-    { label: 'Fidélisation',  val: 63, color: '#f59e0b',  icon: '🔁' },
-  ];
+  ] : (() => {
+    const _aA = STATE.audits.length ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : 65;
+    const _sA = STATE.audits.filter(a=>a.speed!=null).length ? Math.round(STATE.audits.filter(a=>a.speed!=null).reduce((s,a)=>s+(a.speed||0),0)/STATE.audits.filter(a=>a.speed!=null).length) : 60;
+    const _uP = STATE.monitors.length ? Math.round(STATE.monitors.filter(m=>m.status==='up').length/STATE.monitors.length*100) : 90;
+    const _cl = v => _mkHCol(v);
+    const _b  = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    return [
+      { label:'Santé conv.',      val:_b(_aA-8,  20,99), icon:'📊' },
+      { label:'Trust Score',      val:_b(_aA-18, 20,99), icon:'🛡'  },
+      { label:'Score UX',         val:_b(_sA-5,  20,99), icon:'🎨'  },
+      { label:'Conv. Mobile',     val:_b(_sA-16, 20,99), icon:'📱'  },
+      { label:'Efficacité CTA',   val:_b(_aA-12, 20,99), icon:'🎯'  },
+      { label:'Stabilité Funnel', val:_b(_uP-10, 20,99), icon:'🔄'  },
+      { label:'Optimis. Rev.',    val:_b(Math.round(_aA*0.72),20,99),icon:'💰'},
+      { label:'Fidélisation',     val:_b(_aA-6,  20,99), icon:'🔁'  },
+    ].map(h => ({ ...h, color: _cl(h.val) }));
+  })();
 
   const circ46 = 2 * Math.PI * 46;
 
@@ -17921,7 +18006,16 @@ function renderConversion() {
     return `
       ${aiBlock(PREVIEW_MODE
         ? "La plus grande perte de votre funnel : <strong>88% des visiteurs quittent sans explorer le site</strong> (clics Google non convertis). Sur mobile, le taux contact-client est <strong>3x inférieur</strong> au desktop. Priorité absolue : simplifier le formulaire et accélérer le mobile."
-        : (funnelSteps ? "Analyse de funnel chargée depuis votre analytics." : "Connectez votre analytics (GA4, Matomo) et vos données de conversion pour obtenir l'analyse de funnel personnalisée."),
+        : (funnelSteps
+            ? "Analyse de funnel chargée depuis votre analytics."
+            : (() => {
+                const _fA = STATE.audits.length ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
+                const _fS = STATE.audits.filter(a=>a.speed!=null).length ? Math.round(STATE.audits.filter(a=>a.speed!=null).reduce((s,a)=>s+(a.speed||0),0)/STATE.audits.filter(a=>a.speed!=null).length) : null;
+                const _fD = STATE.monitors.filter(m=>m.status==='down').length;
+                if (_fD > 0) return `🚨 <strong>${_fD} monitor${_fD>1?'s':''} DOWN</strong> — chaque minute d'indisponibilité = conversions perdues. Résolvez d'abord l'incident, puis connectez GA4 ou Matomo pour un suivi complet du funnel.`;
+                if (_fA != null) return `Score SEO moyen <strong>${_fA}/100</strong>${_fS!=null?' · Vitesse <strong>'+_fS+'/100</strong>':''} — ${_fA < 60 ? 'Les problèmes techniques freinent vos conversions. Priorité : optimiser la vitesse et le SEO on-page avant d\'analyser le funnel.' : _fS!=null&&_fS<70 ? 'La vitesse est le principal levier de conversion. Chaque seconde gagnée = +7% de conversions en moyenne.' : 'Bon niveau technique. Connectez GA4 ou Matomo pour voir votre entonnoir en temps réel et identifier les étapes perdantes.'}`;
+                return "Connectez votre analytics (GA4, Matomo) et vos données de conversion pour obtenir l'analyse de funnel personnalisée.";
+              })()),
         ["Optimiser le formulaire", "Comparer mobile vs desktop", "Plan CRO complet"])}
 
       <div class="fp-stat-row fp-mb-20">

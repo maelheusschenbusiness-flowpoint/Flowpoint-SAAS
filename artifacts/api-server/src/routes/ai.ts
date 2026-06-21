@@ -53,22 +53,76 @@ async function getOpenAI() {
 async function buildFlowpointContext(extra?: Record<string, unknown>): Promise<string> {
   try {
     const [audits, monitors] = await Promise.all([
-      db.select().from(auditsTable).orderBy(desc(auditsTable.createdAt)).limit(5),
-      db.select().from(monitorsTable).limit(5),
+      db.select().from(auditsTable).orderBy(desc(auditsTable.createdAt)).limit(10),
+      db.select().from(monitorsTable).limit(10),
     ]);
     const avgScore = audits.length > 0
       ? Math.round(audits.reduce((s, a) => s + a.score, 0) / audits.length)
       : 0;
     const downCount = monitors.filter(m => m.status === "down").length;
+    const criticalAudits = audits.filter(a => a.score < 50);
 
-    return [
-      `Platform: Flowpoint SaaS SEO Dashboard`,
-      `Plan: ${store.me.plan ?? "Pro"}`,
-      `Avg SEO score: ${avgScore}/100 across ${audits.length} audited sites`,
-      `Monitors: ${monitors.length} total, ${downCount} DOWN`,
-      `Top sites: ${audits.slice(0, 3).map(a => `${a.url} (${a.score}/100)`).join(", ")}`,
-      extra ? `Additional context: ${JSON.stringify(extra)}` : "",
-    ].filter(Boolean).join("\n");
+    // Prefer frontend-enriched context fields when available
+    const e = extra ?? {};
+    const plan         = (e["plan"] as string)  ?? store.me.plan ?? "Pro";
+    const firstName    = (e["firstName"] as string) ?? "";
+    const streak       = (e["streak"] as number) ?? 0;
+    const localScore   = (e["localScore"] as number) ?? 0;
+    const convScore    = (e["conversionScore"] as number) ?? 0;
+    const city         = (e["city"] as string)  ?? null;
+    const topKw        = (e["topKeywords"] as Array<{keyword:string;position:number}>) ?? [];
+    const recentAct    = (e["recentActivity"] as string[]) ?? [];
+    const topCroRecs   = (e["topCroRecs"] as string[]) ?? [];
+    const revLeak      = (e["revenueLeak"] as number) ?? 0;
+    const missAct      = (e["missionsActive"] as number) ?? 0;
+    const missComp     = (e["missionsCompleted"] as number) ?? 0;
+    const activeAlerts = (e["activeAlertsCount"] as number) ?? 0;
+    const aiCredits    = (e["aiCredits"] as number|null) ?? null;
+
+    const lines: string[] = [
+      `=== CONTEXTE FLOWPOINT ===`,
+      `Utilisateur : ${firstName || "Utilisateur"} | Plan : ${plan}`,
+      city ? `Ville/zone : ${city}` : "",
+      ``,
+      `=== SEO ===`,
+      `Score SEO moyen : ${avgScore}/100 sur ${audits.length} site(s) audité(s)`,
+      criticalAudits.length > 0
+        ? `Sites critiques (score < 50) : ${criticalAudits.map(a => `${a.url} (${a.score}/100)`).join(", ")}`
+        : `Aucun site critique`,
+      audits.length > 0
+        ? `Détail audits : ${audits.slice(0,5).map(a => `${a.url} ${a.score}/100${a.speed!=null?` vitesse ${a.speed}/100`:""}${a.issues>0?` ${a.issues} problème(s)`:""}`).join(" | ")}`
+        : "",
+      ``,
+      `=== MONITORING ===`,
+      `Monitors : ${monitors.length} total, ${downCount} DOWN, ${monitors.length - downCount} UP`,
+      downCount > 0
+        ? `Sites DOWN : ${monitors.filter(m=>m.status==="down").map(m=>m.url||m.name||"?").join(", ")}`
+        : `Tous les monitors sont UP`,
+      ``,
+      `=== PERFORMANCE ===`,
+      `Score local SEO : ${localScore}/100`,
+      `Score conversion : ${convScore}/100`,
+      `Streak activité : ${streak} jour(s)`,
+      topKw.length > 0
+        ? `Top keywords : ${topKw.map(k=>`"${k.keyword}" pos.${k.position}`).join(", ")}`
+        : "",
+      ``,
+      `=== MISSIONS & ALERTES ===`,
+      `Missions actives : ${missAct} | Missions complétées : ${missComp}`,
+      `Alertes actives : ${activeAlerts}`,
+      topCroRecs.length > 0
+        ? `Recommandations CRO prioritaires : ${topCroRecs.join(" / ")}`
+        : "",
+      revLeak > 0
+        ? `Fuites de revenus détectées : ${revLeak}`
+        : "",
+      ``,
+      `=== ACTIVITÉ RÉCENTE ===`,
+      recentAct.length > 0 ? recentAct.join(" | ") : "Aucune activité récente",
+      aiCredits != null ? `Crédits IA restants : ${aiCredits}` : "",
+    ];
+
+    return lines.filter(l => l !== "").join("\n");
   } catch {
     return `Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "Pro"}.`;
   }
