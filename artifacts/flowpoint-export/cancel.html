@@ -14,51 +14,136 @@
     :root {
       --bg: #0b1120; --bg2: #111827; --surface: #1e293b;
       --border: #2d3f55; --blue: #2563eb; --blue-h: #1d4ed8;
-      --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
+      --blue-light: #3b82f6; --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
     }
     @media (prefers-color-scheme: light) {
       :root { --bg: #f8fafc; --bg2: #ffffff; --surface: #f1f5f9; --border: rgba(0,0,0,.1); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8; }
     }
     html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
-    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; gap: 20px; }
+
+    .fp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .fp-logo-name { font-size: 19px; font-weight: 700; color: var(--text); }
+    .fp-logo-name span { color: var(--blue-light); }
+
     .fp-card {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.4);
-      padding: 52px 40px; max-width: 440px; width: 100%; text-align: center;
+      width: 100%; max-width: 460px; background: var(--bg2);
+      border: 1px solid var(--border); border-radius: 18px;
+      padding: 44px 36px 36px; box-shadow: 0 8px 40px rgba(0,0,0,.5); text-align: center;
     }
-    .fp-icon-wrap {
-      width: 72px; height: 72px; border-radius: 50%;
-      background: rgba(100,116,139,0.1); border: 2px solid rgba(100,116,139,0.2);
-      display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 36px;
-    }
-    h1 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
-    p { font-size: 14px; color: var(--text-soft); line-height: 1.6; margin-bottom: 6px; }
-    .fp-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 28px; }
-    .fp-btn-primary {
-      display: block; padding: 13px; background: var(--blue); color: #fff;
-      border: none; border-radius: 9px; font-size: 14px; font-weight: 600;
-      cursor: pointer; text-decoration: none; transition: background 0.15s;
-    }
+
+    .fp-icon-wrap { width: 72px; height: 72px; border-radius: 50%; background: rgba(100,116,139,0.1); border: 2px solid rgba(100,116,139,0.2); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 34px; }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    .fp-subtitle { font-size: 14px; color: var(--text-soft); line-height: 1.6; margin-bottom: 8px; }
+    .fp-notice { font-size: 12px; color: var(--text-muted); margin-bottom: 28px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; line-height: 1.5; }
+
+    /* Cart preview */
+    .fp-cart-preview { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; font-size: 13px; color: var(--text-soft); text-align: left; }
+    .fp-cart-preview-title { font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .fp-cart-item { padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .fp-cart-item:last-child { border-bottom: none; }
+
+    .fp-actions { display: flex; flex-direction: column; gap: 10px; }
+    .fp-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 13px 20px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; text-decoration: none; transition: background .15s; }
+    .fp-btn-primary { background: var(--blue); color: #fff; }
     .fp-btn-primary:hover { background: var(--blue-h); }
-    .fp-btn-secondary {
-      display: block; padding: 12px; background: transparent;
-      color: var(--text-muted); border: 1px solid var(--border);
-      border-radius: 9px; font-size: 14px; font-weight: 500;
-      cursor: pointer; text-decoration: none; transition: border-color 0.15s, color 0.15s;
-    }
-    .fp-btn-secondary:hover { border-color: var(--blue); color: var(--blue); }
+    .fp-btn-secondary { background: transparent; color: var(--text-soft); border: 1px solid var(--border); font-weight: 600; }
+    .fp-btn-secondary:hover { border-color: var(--blue); color: var(--blue-light); }
+    .fp-btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-weight: 500; font-size: 13px; }
+    .fp-btn-ghost:hover { border-color: rgba(100,116,139,0.5); color: var(--text-soft); }
+
+    @media (max-width: 560px) { .fp-card { padding: 32px 20px 28px; } }
   </style>
 </head>
 <body>
-  <div class="fp-card">
-    <div class="fp-icon-wrap">🛑</div>
-    <h1>Paiement annulé</h1>
-    <p>Votre paiement a été annulé. Aucun montant n'a été débité.</p>
-    <p>Vous pouvez réessayer à tout moment ou rester sur votre plan actuel.</p>
-    <div class="fp-actions">
-      <a href="/pricing.html" class="fp-btn-primary">Retour aux tarifs</a>
-      <a href="/login.html" class="fp-btn-secondary">Se connecter</a>
-    </div>
+
+<a href="/pricing.html" class="fp-logo">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="34" height="34">
+    <defs><linearGradient id="fp-ca-g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient></defs>
+    <rect width="48" height="48" rx="10" ry="10" fill="url(#fp-ca-g)"/>
+    <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </g>
+  </svg>
+  <span class="fp-logo-name">Flow<span>Point</span></span>
+</a>
+
+<div class="fp-card">
+  <div class="fp-icon-wrap">🛑</div>
+  <h1>Paiement annulé</h1>
+  <p class="fp-subtitle">Vous avez annulé la procédure de paiement.</p>
+  <p class="fp-notice">Aucun abonnement actif n'a été confirmé. Aucun montant n'a été débité de votre compte.</p>
+
+  <div class="fp-cart-preview" id="fp-cart-preview" style="display:none">
+    <div class="fp-cart-preview-title">Votre sélection est conservée</div>
+    <div id="fp-cart-items"></div>
   </div>
+
+  <div class="fp-actions">
+    <a href="/checkout.html" class="fp-btn fp-btn-primary" id="fp-resume-btn">
+      Reprendre le paiement →
+    </a>
+    <a href="/pricing.html" class="fp-btn fp-btn-secondary">
+      Retour aux tarifs
+    </a>
+    <a href="/login.html" class="fp-btn fp-btn-ghost">
+      Se connecter
+    </a>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var PLAN_NAMES  = { standard: 'Plan Standard', pro: 'Plan Pro', ultra: 'Plan Ultra' };
+  var ADDON_NAMES = {
+    monitorsPack50: 'Pack monitors +50', extraSeats: 'Siège supplémentaire',
+    aiCreditsPack50k: '+50 000 crédits IA', prioritySupport: 'Support prioritaire',
+    retention90d: 'Rétention 90j', whiteLabel: 'White-label', aiExecutiveReport: 'Rapport IA',
+    revenueLeak: 'Revenue Leak Detection', auditsPack200: 'Pack audits +200',
+    auditsPack1000: 'Pack audits +1 000', pdfPack200: 'Pack PDF +200',
+    exportsPack1000: 'Pack exports +1 000', retention365d: 'Rétention 365j',
+    customDomain: 'Domaine personnalisé', aiForecasting: 'Prévisions IA',
+    aiCro: 'CRO IA', behavioralAI: 'Behavioral AI', aiWorkflows: 'Workflows IA',
+    marketIntelligence: 'Market Intelligence', reviewIntelligence: 'Review Intelligence',
+    aiCreditsPack200k: '+200 000 crédits IA', aiCreditsPack500k: '+500 000 crédits IA',
+    zapierIntegration: 'Zapier / Make', advancedWebhooks: 'Webhooks avancés',
+    crmIntegration: 'Intégration CRM', agencyPacks: 'Agency Packs', ssoEnterprise: 'SSO Enterprise'
+  };
+
+  /* Show saved cart if available */
+  var cart = null;
+  try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+
+  /* Also try URL params as fallback */
+  if (!cart || (!cart.plan && !Object.keys(cart.addons || {}).length)) {
+    var params = new URLSearchParams(window.location.search);
+    var planParam = params.get('plan') || params.get('next');
+    if (planParam && PLAN_NAMES[planParam.toLowerCase()]) {
+      cart = { plan: planParam.toLowerCase(), addons: {} };
+    }
+  }
+
+  if (cart && (cart.plan || Object.keys(cart.addons || {}).length)) {
+    var previewEl = document.getElementById('fp-cart-preview');
+    var itemsEl   = document.getElementById('fp-cart-items');
+    var html      = '';
+
+    if (cart.plan && PLAN_NAMES[cart.plan]) {
+      html += '<div class="fp-cart-item">' + PLAN_NAMES[cart.plan] + ' — essai 14 jours</div>';
+    }
+    Object.keys(cart.addons || {}).forEach(function (id) {
+      var qty = cart.addons[id];
+      html += '<div class="fp-cart-item">' + (ADDON_NAMES[id] || id) + (qty > 1 ? ' × ' + qty : '') + '</div>';
+    });
+
+    if (html) { itemsEl.innerHTML = html; previewEl.style.display = 'block'; }
+  }
+
+})();
+</script>
 </body>
 </html>

@@ -8,7 +8,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Paiement — FlowPoint</title>
+  <title>Paiement sécurisé — FlowPoint</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -20,61 +20,70 @@
       :root { --bg: #f8fafc; --bg2: #ffffff; --surface: #f1f5f9; --border: rgba(0,0,0,.1); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8; }
     }
     html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
-    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; gap: 24px; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; gap: 20px; }
 
     .fp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
     .fp-logo-name { font-size: 19px; font-weight: 700; color: var(--text); letter-spacing: -.3px; }
     .fp-logo-name span { color: var(--blue-light); }
 
     .fp-card {
-      width: 100%; max-width: 500px; background: var(--bg2);
+      width: 100%; max-width: 520px; background: var(--bg2);
       border: 1px solid var(--border); border-radius: 18px;
       padding: 36px 36px 32px; box-shadow: 0 8px 40px rgba(0,0,0,.5);
     }
 
-    .fp-card-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .fp-card-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
     .fp-card-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
 
-    .fp-summary { display: flex; flex-direction: column; gap: 0; margin-bottom: 24px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-    .fp-summary-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; gap: 12px; }
+    /* Summary */
+    .fp-summary { display: flex; flex-direction: column; margin-bottom: 20px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .fp-summary-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; gap: 12px; }
     .fp-summary-row:last-child { border-bottom: none; }
-    .fp-summary-row-label { color: var(--text-soft); }
-    .fp-summary-row-price { font-weight: 700; color: var(--text); white-space: nowrap; }
-    .fp-summary-plan-label { font-weight: 600; }
-    .fp-summary-trial { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-    .fp-summary-total { background: rgba(37,99,235,0.06); border-top: 1px solid var(--border); padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; }
+    .fp-summary-label { color: var(--text-soft); flex: 1; min-width: 0; }
+    .fp-summary-label-main { font-weight: 600; color: var(--text); }
+    .fp-summary-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .fp-summary-price { font-weight: 700; color: var(--text); white-space: nowrap; flex-shrink: 0; }
+    .fp-summary-total-row { background: rgba(37,99,235,0.06); padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; }
     .fp-summary-total-label { font-size: 13px; font-weight: 700; }
-    .fp-summary-total-amount { font-size: 16px; font-weight: 800; color: var(--blue-light); }
-    .fp-summary-trial-note { font-size: 11px; color: var(--text-muted); text-align: center; margin-bottom: 16px; }
+    .fp-summary-total-amount { font-size: 18px; font-weight: 800; color: var(--blue-light); }
 
-    .fp-badge-trial { display: inline-block; font-size: 11px; font-weight: 600; background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.25); border-radius: 20px; padding: 2px 8px; margin-left: 6px; }
-    .fp-badge-now { display: inline-block; font-size: 11px; font-weight: 600; background: rgba(37,99,235,0.1); color: var(--blue-light); border: 1px solid rgba(37,99,235,0.2); border-radius: 20px; padding: 2px 8px; margin-left: 6px; }
+    /* Badges */
+    .fp-badge { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 2px 7px; margin-left: 6px; vertical-align: middle; }
+    .fp-badge-trial { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+    .fp-badge-now { background: rgba(37,99,235,0.1); color: var(--blue-light); border: 1px solid rgba(37,99,235,0.2); }
 
-    .fp-btn {
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      width: 100%; padding: 14px 20px; border: none; border-radius: 10px;
-      font-size: 15px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s;
-      text-decoration: none;
-    }
+    /* Info box */
+    .fp-info-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; font-size: 12px; color: var(--text-soft); line-height: 1.6; }
+    .fp-info-box li { display: flex; gap: 8px; padding: 3px 0; list-style: none; }
+    .fp-info-box li::before { content: '•'; color: var(--blue-light); flex-shrink: 0; }
+
+    /* Buttons */
+    .fp-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px 20px; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s; text-decoration: none; }
     .fp-btn-primary { background: var(--blue); color: #fff; margin-bottom: 10px; }
     .fp-btn-primary:hover:not(:disabled) { background: var(--blue-h); }
     .fp-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-    .fp-btn-secondary { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-size: 13px; font-weight: 500; padding: 11px; }
+    .fp-btn-secondary { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-size: 13px; font-weight: 500; padding: 11px; margin-bottom: 6px; }
     .fp-btn-secondary:hover { border-color: var(--blue); color: var(--blue-light); }
 
     .fp-lock-note { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: var(--text-muted); margin-top: 14px; }
 
-    .fp-error { display: none; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); border-radius: 10px; padding: 14px 16px; font-size: 13px; color: #fca5a5; margin-bottom: 20px; line-height: 1.5; }
-    .fp-error.show { display: block; }
+    /* Alerts */
+    .fp-alert { display: none; border-radius: 10px; padding: 13px 16px; font-size: 13px; line-height: 1.5; margin-bottom: 20px; }
+    .fp-alert.show { display: block; }
+    .fp-alert-error { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); color: #fca5a5; }
+    .fp-alert-warn { background: rgba(234,179,8,.08); border: 1px solid rgba(234,179,8,.25); color: #fbbf24; }
 
-    .fp-empty { text-align: center; padding: 20px 0; }
+    /* Empty */
+    .fp-empty { text-align: center; padding: 16px 0; }
     .fp-empty-icon { font-size: 40px; margin-bottom: 14px; }
     .fp-empty p { font-size: 14px; color: var(--text-soft); margin-bottom: 20px; }
 
     @keyframes spin { to { transform: rotate(360deg); } }
-    .fp-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .7s linear infinite; }
+    .fp-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .7s linear infinite; flex-shrink: 0; }
 
-    @media (max-width: 520px) { .fp-card { padding: 28px 20px 24px; border-radius: 14px; } }
+    @media (max-width: 560px) {
+      .fp-card { padding: 28px 18px 24px; border-radius: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -93,24 +102,27 @@
 </a>
 
 <div class="fp-card">
-  <div id="fp-error" class="fp-error"></div>
+
+  <div id="fp-alert-error" class="fp-alert fp-alert-error"></div>
+  <div id="fp-alert-warn" class="fp-alert fp-alert-warn"></div>
 
   <div id="fp-content">
     <div class="fp-card-title">Récapitulatif de commande</div>
-    <div class="fp-card-sub">Vérifiez votre sélection avant de passer au paiement sécurisé.</div>
+    <div class="fp-card-sub">Vérifiez votre sélection avant de procéder au paiement.</div>
 
     <div class="fp-summary" id="fp-summary"></div>
-    <p class="fp-summary-trial-note" id="fp-trial-note"></p>
+
+    <ul class="fp-info-box" id="fp-info-box"></ul>
 
     <button class="fp-btn fp-btn-primary" id="fp-pay-btn" onclick="startPayment()">
-      <span class="fp-btn-text">Payer et activer →</span>
+      <span id="fp-btn-text">Continuer vers le paiement sécurisé →</span>
       <span class="fp-spinner" style="display:none" id="fp-spinner"></span>
     </button>
-    <a href="/pricing.html" class="fp-btn fp-btn-secondary">← Modifier la sélection</a>
+    <a href="/pricing.html" class="fp-btn fp-btn-secondary">Modifier mon plan</a>
 
     <p class="fp-lock-note">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      Paiement sécurisé par Stripe · Données chiffrées
+      Paiement sécurisé Stripe · TLS · Données chiffrées
     </p>
   </div>
 
@@ -119,6 +131,7 @@
     <p>Votre panier est vide.<br>Sélectionnez un plan ou un add-on depuis la page tarifs.</p>
     <a href="/pricing.html" class="fp-btn fp-btn-primary">Voir les tarifs →</a>
   </div>
+
 </div>
 
 <script>
@@ -160,8 +173,20 @@
     ssoEnterprise:     { name: 'SSO Enterprise',            price: 99, unit: '/mois' }
   };
 
+  /* ── Load cart: localStorage first, then URL params ── */
   var cart = null;
   try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+
+  /* Fallback: build cart from URL params (?plan=pro&addon=retention90d) */
+  if (!cart || (!cart.plan && !Object.keys(cart.addons || {}).length)) {
+    var params = new URLSearchParams(window.location.search);
+    var planParam = params.get('plan');
+    var addonParam = params.get('addon');
+    if (planParam && PLAN_INFO[planParam.toLowerCase()]) {
+      cart = { plan: planParam.toLowerCase(), addons: {} };
+      if (addonParam && ADDON_INFO[addonParam]) cart.addons[addonParam] = 1;
+    }
+  }
 
   var hasPlan   = cart && cart.plan && PLAN_INFO[cart.plan];
   var hasAddons = cart && cart.addons && Object.keys(cart.addons).length > 0;
@@ -172,18 +197,27 @@
     return;
   }
 
-  /* ── Build summary ── */
-  var summaryEl   = document.getElementById('fp-summary');
-  var trialNoteEl = document.getElementById('fp-trial-note');
-  var addonTotal  = 0;
+  /* ── Build summary rows ── */
+  var summaryEl = document.getElementById('fp-summary');
+  var infoEl    = document.getElementById('fp-info-box');
+  var addonTotal = 0;
   var rows = '';
+  var infoItems = [];
 
   if (hasPlan) {
     var p = PLAN_INFO[cart.plan];
-    rows += '<div class="fp-summary-row">' +
-      '<div><div class="fp-summary-plan-label">' + p.name + ' <span class="fp-badge-trial">14j d\'essai gratuit</span></div>' +
-      '<div class="fp-summary-trial">Débit de ' + p.price + '€/mois après l\'essai</div></div>' +
-      '<div class="fp-summary-row-price">0€ maintenant</div></div>';
+    rows +=
+      '<div class="fp-summary-row">' +
+        '<div class="fp-summary-label">' +
+          '<div class="fp-summary-label-main">' + p.name +
+            '<span class="fp-badge fp-badge-trial">14j d\'essai</span>' +
+          '</div>' +
+          '<div class="fp-summary-sub">Débit de ' + p.price + '€/mois après l\'essai · annulable à tout moment</div>' +
+        '</div>' +
+        '<div class="fp-summary-price">0€</div>' +
+      '</div>';
+    infoItems.push('Carte bancaire requise à l\'inscription — vous ne serez débité qu\'après les 14 jours d\'essai.');
+    infoItems.push('Annulation sans frais avant la fin de la période d\'essai.');
   }
 
   if (hasAddons) {
@@ -193,34 +227,41 @@
       var qty = cart.addons[id] || 1;
       var lineTotal = info.price * qty;
       addonTotal += lineTotal;
-      var label = info.name + (qty > 1 ? ' × ' + qty : '') + ' <span class="fp-badge-now">Immédiat</span>';
-      rows += '<div class="fp-summary-row">' +
-        '<div class="fp-summary-row-label">' + label + '</div>' +
-        '<div class="fp-summary-row-price">' + lineTotal + '€<small style="font-weight:400;color:var(--text-muted)">' + info.unit + '</small></div></div>';
+      var label = info.name + (qty > 1 ? ' <small style="color:var(--text-muted)">× ' + qty + '</small>' : '');
+      rows +=
+        '<div class="fp-summary-row">' +
+          '<div class="fp-summary-label">' +
+            '<div>' + label + '<span class="fp-badge fp-badge-now">Facturé maintenant</span></div>' +
+            '<div class="fp-summary-sub">' + info.price + '€' + info.unit + (qty > 1 ? ' × ' + qty : '') + '</div>' +
+          '</div>' +
+          '<div class="fp-summary-price">' + lineTotal + '€</div>' +
+        '</div>';
     });
+    infoItems.push('Les add-ons sont facturés immédiatement puis chaque mois · résiliables depuis le tableau de bord.');
   }
 
-  var totalLabel = hasPlan && addonTotal > 0
-    ? 'Aujourd\'hui (add-ons uniquement)'
-    : hasPlan ? 'Aujourd\'hui (essai gratuit)' : 'Total aujourd\'hui';
-  var totalAmount = addonTotal + '€';
+  var todayAmount = addonTotal;
+  var todayLabel  = hasPlan && addonTotal > 0 ? 'Dû aujourd\'hui (add-ons)' : hasPlan ? 'Dû aujourd\'hui (essai gratuit)' : 'Dû aujourd\'hui';
+  rows +=
+    '<div class="fp-summary-total-row">' +
+      '<span class="fp-summary-total-label">' + todayLabel + '</span>' +
+      '<span class="fp-summary-total-amount">' + todayAmount + '€</span>' +
+    '</div>';
 
-  summaryEl.innerHTML = rows +
-    '<div class="fp-summary-total">' +
-    '<span class="fp-summary-total-label">' + totalLabel + '</span>' +
-    '<span class="fp-summary-total-amount">' + totalAmount + '</span></div>';
+  summaryEl.innerHTML = rows;
 
-  if (hasPlan) {
-    trialNoteEl.textContent = 'Le plan sera facturé à la fin des 14 jours d\'essai. Annulation sans frais avant la fin de la période.';
-  }
+  /* Info box */
+  infoEl.innerHTML = infoItems.map(function(t) { return '<li>' + t + '</li>'; }).join('');
 
-  /* ── Start payment ── */
+  /* ── Payment ── */
   window.startPayment = function () {
     var btn    = document.getElementById('fp-pay-btn');
-    var txt    = btn.querySelector('.fp-btn-text');
+    var txt    = document.getElementById('fp-btn-text');
     var spin   = document.getElementById('fp-spinner');
-    var errEl  = document.getElementById('fp-error');
+    var errEl  = document.getElementById('fp-alert-error');
+    var warnEl = document.getElementById('fp-alert-warn');
     errEl.classList.remove('show');
+    warnEl.classList.remove('show');
     btn.disabled = true;
     txt.style.display = 'none';
     spin.style.display = 'inline-block';
@@ -237,20 +278,38 @@
     })
     .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, data: d }; }); })
     .then(function (res) {
+      btn.disabled = false;
+      txt.style.display = '';
+      spin.style.display = 'none';
+
       if (res.status === 401) {
         try { sessionStorage.setItem('fp_next', '/checkout.html'); } catch(ex) {}
         window.location.href = '/login.html?next=' + encodeURIComponent('/checkout.html');
         return;
       }
-      if (!res.ok || !res.data.url) throw new Error(res.data.error || 'Impossible de créer la session de paiement.');
+
+      /* Dev mode: Stripe not configured */
+      if (res.data && res.data.mock) {
+        warnEl.textContent = '⚙️ Mode développement — Stripe n\'est pas configuré (STRIPE_PRICE_* env vars). Aucun paiement réel n\'a été effectué.';
+        warnEl.classList.add('show');
+        return;
+      }
+
+      if (!res.ok || !res.data.url) {
+        throw new Error(res.data && res.data.error ? res.data.error : 'Impossible de créer la session de paiement. Vérifiez la configuration Stripe.');
+      }
+
       window.location.href = res.data.url;
     })
     .catch(function (err) {
-      btn.disabled = false;
-      txt.style.display = '';
-      spin.style.display = 'none';
-      errEl.textContent = err.message || 'Une erreur est survenue. Veuillez réessayer.';
-      errEl.classList.add('show');
+      var btn2   = document.getElementById('fp-pay-btn');
+      var txt2   = document.getElementById('fp-btn-text');
+      var spin2  = document.getElementById('fp-spinner');
+      btn2.disabled = false;
+      txt2.style.display = '';
+      spin2.style.display = 'none';
+      document.getElementById('fp-alert-error').textContent = err.message || 'Une erreur inattendue est survenue. Réessayez.';
+      document.getElementById('fp-alert-error').classList.add('show');
     });
   };
 

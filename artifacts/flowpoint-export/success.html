@@ -14,81 +14,178 @@
     :root {
       --bg: #0b1120; --bg2: #111827; --surface: #1e293b;
       --border: #2d3f55; --blue: #2563eb; --blue-h: #1d4ed8;
-      --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
+      --blue-light: #3b82f6; --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
+      --green: #34d399; --green-bg: rgba(16,185,129,0.12); --green-border: rgba(16,185,129,0.25);
     }
     @media (prefers-color-scheme: light) {
       :root { --bg: #f8fafc; --bg2: #ffffff; --surface: #f1f5f9; --border: rgba(0,0,0,.1); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8; }
     }
     html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
-    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; flex-direction: column; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; gap: 20px; }
+
+    .fp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .fp-logo-name { font-size: 19px; font-weight: 700; color: var(--text); }
+    .fp-logo-name span { color: var(--blue-light); }
+
     .fp-card {
-      background: var(--bg2); border: 1px solid rgba(16,185,129,0.25);
-      border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.4);
-      padding: 52px 40px; max-width: 460px; width: 100%; text-align: center;
+      width: 100%; max-width: 500px; background: var(--bg2);
+      border: 1px solid var(--green-border); border-radius: 18px;
+      padding: 44px 36px 36px; box-shadow: 0 8px 40px rgba(0,0,0,.5), 0 0 0 1px var(--green-border);
+      text-align: center;
     }
-    .fp-success-icon {
-      width: 72px; height: 72px; border-radius: 50%;
-      background: rgba(16,185,129,0.12); border: 2px solid rgba(16,185,129,0.3);
-      display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 36px;
-    }
-    h1 { font-size: 24px; font-weight: 800; margin-bottom: 10px; color: #34d399; }
-    p { font-size: 14px; color: var(--text-soft); line-height: 1.6; margin-bottom: 8px; }
-    .fp-features {
-      background: var(--surface); border-radius: 12px;
-      padding: 16px 20px; margin: 24px 0; text-align: left; border: 1px solid var(--border);
-    }
-    .fp-features li {
-      font-size: 13px; padding: 6px 0; list-style: none;
-      display: flex; align-items: center; gap: 8px; color: var(--text-soft);
-      border-bottom: 1px solid var(--border);
-    }
-    .fp-features li:last-child { border-bottom: none; }
-    .fp-features li::before { content: '✓'; color: #34d399; font-weight: 700; flex-shrink: 0; }
-    .fp-cta {
-      display: inline-block; padding: 13px 32px; width: 100%;
-      background: var(--blue); color: #fff; border: none;
-      border-radius: 9px; font-size: 15px; font-weight: 700;
-      cursor: pointer; text-decoration: none; transition: background 0.15s; margin-bottom: 10px;
-    }
-    .fp-cta:hover { background: var(--blue-h); }
-    .fp-cta-sec {
-      display: block; text-align: center; font-size: 13px; color: var(--text-muted);
-      text-decoration: none; margin-top: 4px;
-    }
-    .fp-cta-sec:hover { color: var(--text-soft); }
+
+    .fp-check { width: 72px; height: 72px; border-radius: 50%; background: var(--green-bg); border: 2px solid var(--green-border); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 34px; }
+    h1 { font-size: 24px; font-weight: 800; color: var(--green); margin-bottom: 8px; }
+    .fp-subtitle { font-size: 14px; color: var(--text-soft); margin-bottom: 24px; line-height: 1.6; }
+
+    /* Purchased summary */
+    .fp-purchase-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 24px; text-align: left; }
+    .fp-purchase-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
+    .fp-purchase-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; gap: 8px; }
+    .fp-purchase-item:last-child { border-bottom: none; }
+    .fp-purchase-item-name { color: var(--text-soft); }
+    .fp-purchase-item-badge { font-size: 10px; font-weight: 700; border-radius: 20px; padding: 2px 6px; }
+    .fp-badge-trial { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .fp-badge-paid  { background: rgba(37,99,235,.1); color: var(--blue-light); border: 1px solid rgba(37,99,235,.2); }
+
+    /* Buttons */
+    .fp-actions { display: flex; flex-direction: column; gap: 10px; }
+    .fp-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 13px 20px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; text-decoration: none; transition: background .15s; }
+    .fp-btn-primary { background: var(--blue); color: #fff; }
+    .fp-btn-primary:hover { background: var(--blue-h); }
+    .fp-btn-secondary { background: transparent; color: var(--text-soft); border: 1px solid var(--border); font-weight: 500; }
+    .fp-btn-secondary:hover { border-color: var(--blue); color: var(--blue-light); }
+    .fp-btn-ghost { font-size: 13px; color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px; background: none; border: none; cursor: pointer; padding: 4px; }
+    .fp-btn-ghost:hover { color: var(--text-soft); }
+
     .fp-counter { font-size: 12px; color: var(--text-muted); margin-top: 14px; }
+
+    @media (max-width: 560px) { .fp-card { padding: 32px 20px 28px; } }
   </style>
 </head>
 <body>
-  <div class="fp-card">
-    <div class="fp-success-icon">🎉</div>
-    <h1>Paiement confirmé !</h1>
-    <p>Votre abonnement FlowPoint est maintenant actif.<br>Bienvenue dans la croissance.</p>
 
-    <ul class="fp-features">
-      <li>Accès complet à votre tableau de bord</li>
-      <li>Monitors d'uptime activés</li>
-      <li>Analyses SEO disponibles</li>
-      <li>IA Copilot débloquée</li>
-      <li>Essai 14 jours — débit après l'essai</li>
-    </ul>
+<a href="/api/dashboard/" class="fp-logo">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="34" height="34">
+    <defs><linearGradient id="fp-ok-g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient></defs>
+    <rect width="48" height="48" rx="10" ry="10" fill="url(#fp-ok-g)"/>
+    <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </g>
+  </svg>
+  <span class="fp-logo-name">Flow<span>Point</span></span>
+</a>
 
-    <a href="/api/dashboard/" class="fp-cta" id="fp-cta">Accéder au tableau de bord →</a>
-    <a href="/login.html" class="fp-cta-sec">Ou se connecter d'abord</a>
-    <div class="fp-counter" id="fp-counter">Redirection automatique dans <span id="fp-count">10</span>s</div>
+<div class="fp-card">
+  <div class="fp-check">🎉</div>
+  <h1>Paiement confirmé !</h1>
+  <p class="fp-subtitle" id="fp-subtitle">Votre abonnement FlowPoint est actif. Bienvenue !</p>
+
+  <div class="fp-purchase-box" id="fp-purchase-box" style="display:none">
+    <div class="fp-purchase-title">Ce que vous avez commandé</div>
+    <div id="fp-purchase-items"></div>
   </div>
 
-  <script>
-    (function () {
-      try { localStorage.removeItem('fp_cart'); } catch(e) {}
-      var count = 10;
-      var el = document.getElementById('fp-count');
-      var t = setInterval(function () {
-        count--;
-        if (el) el.textContent = count;
-        if (count <= 0) { clearInterval(t); window.location.href = '/api/dashboard/'; }
-      }, 1000);
-    })();
-  </script>
+  <div class="fp-actions" id="fp-actions">
+    <a href="/api/dashboard/" class="fp-btn fp-btn-primary" id="fp-dashboard-btn">
+      Accéder au tableau de bord →
+    </a>
+    <a href="/api/dashboard/#integrations" class="fp-btn fp-btn-secondary">
+      Configurer mes intégrations
+    </a>
+    <a href="/login.html" class="fp-btn-ghost" id="fp-login-link" style="display:none">
+      Vous n'êtes pas encore connecté ? Se connecter →
+    </a>
+  </div>
+
+  <p class="fp-counter" id="fp-counter" style="display:none">
+    Redirection automatique dans <span id="fp-count">8</span>s
+  </p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var PLAN_INFO = {
+    standard: 'Plan Standard — 29€/mois après essai',
+    pro:      'Plan Pro — 79€/mois après essai',
+    ultra:    'Plan Ultra — 149€/mois après essai'
+  };
+  var ADDON_NAMES = {
+    monitorsPack50: 'Pack monitors +50', extraSeats: 'Siège supplémentaire',
+    aiCreditsPack50k: '+50 000 crédits IA', prioritySupport: 'Support prioritaire',
+    retention90d: 'Rétention 90j', whiteLabel: 'White-label', aiExecutiveReport: 'Rapport IA',
+    revenueLeak: 'Revenue Leak Detection', auditsPack200: 'Pack audits +200',
+    auditsPack1000: 'Pack audits +1 000', pdfPack200: 'Pack PDF +200',
+    exportsPack1000: 'Pack exports +1 000', retention365d: 'Rétention 365j',
+    customDomain: 'Domaine personnalisé', aiForecasting: 'Prévisions IA',
+    aiCro: 'CRO IA', behavioralAI: 'Behavioral AI', aiWorkflows: 'Workflows IA',
+    marketIntelligence: 'Market Intelligence', reviewIntelligence: 'Review Intelligence',
+    aiCreditsPack200k: '+200 000 crédits IA', aiCreditsPack500k: '+500 000 crédits IA',
+    zapierIntegration: 'Zapier / Make', advancedWebhooks: 'Webhooks avancés',
+    crmIntegration: 'Intégration CRM', agencyPacks: 'Agency Packs', ssoEnterprise: 'SSO Enterprise'
+  };
+
+  /* ── Show purchased items from cart ── */
+  var cart = null;
+  try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+
+  if (cart && (cart.plan || Object.keys(cart.addons || {}).length)) {
+    var boxEl   = document.getElementById('fp-purchase-box');
+    var itemsEl = document.getElementById('fp-purchase-items');
+    var html    = '';
+
+    if (cart.plan && PLAN_INFO[cart.plan]) {
+      html += '<div class="fp-purchase-item">' +
+        '<span class="fp-purchase-item-name">' + PLAN_INFO[cart.plan] + '</span>' +
+        '<span class="fp-purchase-item-badge fp-badge-trial">Essai 14j</span></div>';
+    }
+    Object.keys(cart.addons || {}).forEach(function (id) {
+      var name = ADDON_NAMES[id] || id;
+      var qty  = cart.addons[id];
+      html += '<div class="fp-purchase-item">' +
+        '<span class="fp-purchase-item-name">' + name + (qty > 1 ? ' × ' + qty : '') + '</span>' +
+        '<span class="fp-purchase-item-badge fp-badge-paid">Payé</span></div>';
+    });
+
+    if (html) { itemsEl.innerHTML = html; boxEl.style.display = 'block'; }
+    try { localStorage.removeItem('fp_cart'); } catch(e) {}
+  }
+
+  /* ── Check if user is logged in ── */
+  fetch('/api/auth/me', { credentials: 'include' })
+    .then(function (r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+    .then(function (res) {
+      if (res.ok && res.data && res.data.id) {
+        /* Logged in — auto-redirect to dashboard */
+        var counter    = document.getElementById('fp-counter');
+        var countEl    = document.getElementById('fp-count');
+        var subtitleEl = document.getElementById('fp-subtitle');
+        counter.style.display = 'block';
+        subtitleEl.textContent = 'Votre abonnement est actif, ' + (res.data.firstName || 'bienvenue') + ' ! Vous allez être redirigé.';
+
+        var n = 8;
+        var t = setInterval(function () {
+          n--;
+          countEl.textContent = n;
+          if (n <= 0) { clearInterval(t); window.location.href = '/api/dashboard/'; }
+        }, 1000);
+      } else {
+        /* Not logged in — show login link */
+        document.getElementById('fp-login-link').style.display = 'block';
+        document.getElementById('fp-dashboard-btn').href = '/api/dashboard/';
+        document.getElementById('fp-subtitle').textContent =
+          'Paiement confirmé ! Connectez-vous pour accéder à votre tableau de bord.';
+      }
+    })
+    .catch(function () {
+      /* Network error — still show buttons */
+    });
+
+})();
+</script>
 </body>
 </html>
