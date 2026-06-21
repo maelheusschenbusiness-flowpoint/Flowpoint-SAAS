@@ -31,8 +31,16 @@
     if (r.ok && r.data.ok) {
       show('fp-success');
       setTimeout(function () {
-        window.location.href = '/dashboard';
-      }, 1500);
+        var next = '/api/dashboard/';
+        try {
+          var stored = sessionStorage.getItem('fp_next');
+          if (stored && stored.startsWith('/')) {
+            next = stored;
+            sessionStorage.removeItem('fp_next');
+          }
+        } catch(e) {}
+        window.location.href = next;
+      }, 1200);
     } else {
       var msg = (r.data && r.data.error) ? r.data.error : 'Lien invalide ou expiré.';
       document.getElementById('fp-error-msg').textContent = msg;

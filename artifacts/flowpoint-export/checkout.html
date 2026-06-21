@@ -235,8 +235,13 @@
       credentials: 'include',
       body: JSON.stringify(body)
     })
-    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, data: d }; }); })
     .then(function (res) {
+      if (res.status === 401) {
+        try { sessionStorage.setItem('fp_next', '/checkout.html'); } catch(ex) {}
+        window.location.href = '/login.html?next=' + encodeURIComponent('/checkout.html');
+        return;
+      }
       if (!res.ok || !res.data.url) throw new Error(res.data.error || 'Impossible de créer la session de paiement.');
       window.location.href = res.data.url;
     })
