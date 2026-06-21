@@ -115,27 +115,6 @@
       line-height: 1.65;
     }
 
-    /* ── Billing toggle ── */
-    .fp-toggle-wrap { display: flex; align-items: center; justify-content: center; gap: 12px; }
-    .fp-toggle-label { font-size: 14px; font-weight: 500; color: var(--text-muted); cursor: pointer; }
-    .fp-toggle-label.active { color: var(--text); }
-    .fp-badge-save {
-      background: var(--green-bg); color: var(--green);
-      font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
-      margin-left: 6px;
-    }
-    .fp-toggle-btn {
-      position: relative; width: 48px; height: 26px;
-      background: var(--border); border-radius: 13px;
-      cursor: pointer; border: none; transition: background 0.2s;
-    }
-    .fp-toggle-btn.on { background: var(--blue); }
-    .fp-toggle-btn::after {
-      content: ''; position: absolute; top: 4px; left: 4px;
-      width: 18px; height: 18px; background: #fff; border-radius: 50%;
-      transition: transform 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,.2);
-    }
-    .fp-toggle-btn.on::after { transform: translateX(22px); }
 
     /* ── Plans grid ── */
     .fp-plans-section { padding: 0 24px 64px; }
@@ -171,10 +150,6 @@
       font-size: 42px; font-weight: 800; letter-spacing: -1.5px; line-height: 1;
     }
     .fp-card-price-unit { font-size: 16px; font-weight: 400; color: var(--text-muted); }
-    .fp-card-annual-note {
-      font-size: 12px; color: var(--green); font-weight: 600;
-      margin-top: 4px; min-height: 18px;
-    }
     .fp-card-desc {
       font-size: 13px; color: var(--text-soft);
       margin: 14px 0 20px; line-height: 1.55;
@@ -382,11 +357,7 @@
     SEO avancé, monitoring uptime, IA copilot et Local SEO — tout ce qu'il faut pour dominer votre marché.
     Annulation à tout moment, sans engagement.
   </p>
-  <div class="fp-toggle-wrap">
-    <span class="fp-toggle-label active" id="fp-label-m">Mensuel</span>
-    <button class="fp-toggle-btn" id="fp-billing-toggle" aria-label="Basculer facturation annuelle" aria-checked="false" role="switch"></button>
-    <span class="fp-toggle-label" id="fp-label-a">Annuel<span class="fp-badge-save">−20%</span></span>
-  </div>
+  <p style="font-size:13px;color:var(--text-muted);margin-top:4px;">Facturation mensuelle · Sans engagement</p>
 </section>
 
 <!-- ── Plans ── -->
@@ -397,7 +368,6 @@
     <div class="fp-card" id="card-standard">
       <div class="fp-card-plan">Standard</div>
       <div class="fp-card-price"><span id="fp-p-standard">29€</span><span class="fp-card-price-unit">/mois</span></div>
-      <div class="fp-card-annual-note" id="fp-annual-standard"></div>
       <div class="fp-card-desc">Pour les indépendants qui veulent un SEO solide et un monitoring fiable.</div>
       <div class="fp-card-trial"><span class="fp-feat-check">✓</span> 14 jours d'essai gratuit · Sans carte</div>
       <ul class="fp-card-features">
@@ -428,7 +398,6 @@
       <div class="fp-card-badge">⭐ Le plus populaire</div>
       <div class="fp-card-plan">Pro</div>
       <div class="fp-card-price"><span id="fp-p-pro">79€</span><span class="fp-card-price-unit">/mois</span></div>
-      <div class="fp-card-annual-note" id="fp-annual-pro"></div>
       <div class="fp-card-desc">Pour les équipes qui veulent croître avec des données actionables et une IA puissante.</div>
       <div class="fp-card-trial"><span class="fp-feat-check">✓</span> 14 jours d'essai gratuit · Sans carte</div>
       <ul class="fp-card-features">
@@ -463,7 +432,6 @@
     <div class="fp-card" id="card-ultra">
       <div class="fp-card-plan">Enterprise</div>
       <div class="fp-card-price"><span id="fp-p-ultra">249€</span><span class="fp-card-price-unit">/mois</span></div>
-      <div class="fp-card-annual-note" id="fp-annual-ultra"></div>
       <div class="fp-card-desc">Pour les agences et grandes équipes avec des besoins avancés, white-label et multi-clients.</div>
       <div class="fp-card-trial"><span class="fp-feat-check">✓</span> 14 jours d'essai gratuit · Sans carte</div>
       <ul class="fp-card-features">
@@ -849,46 +817,6 @@
 (function () {
   'use strict';
 
-  /* ── Billing toggle ── */
-  var annual = false;
-  var prices = {
-    standard: { m: 29,  a: 278  },
-    pro:      { m: 79,  a: 758  },
-    ultra:    { m: 249, a: 2390 }
-  };
-
-  function updatePrices() {
-    ['standard','pro','ultra'].forEach(function(p) {
-      var el = document.getElementById('fp-p-' + p);
-      var note = document.getElementById('fp-annual-' + p);
-      if (!el) return;
-      var monthly = annual ? Math.round(prices[p].a / 12) : prices[p].m;
-      el.textContent = monthly + '€';
-      if (note) {
-        note.textContent = annual
-          ? 'Facturé ' + prices[p].a + '€/an — économisez ' + (prices[p].m * 12 - prices[p].a) + '€'
-          : '';
-      }
-    });
-    var lm = document.getElementById('fp-label-m');
-    var la = document.getElementById('fp-label-a');
-    var tgl = document.getElementById('fp-billing-toggle');
-    if (lm) lm.classList.toggle('active', !annual);
-    if (la) la.classList.toggle('active', annual);
-    if (tgl) {
-      tgl.classList.toggle('on', annual);
-      tgl.setAttribute('aria-checked', annual ? 'true' : 'false');
-    }
-  }
-
-  var tglBtn = document.getElementById('fp-billing-toggle');
-  if (tglBtn) {
-    tglBtn.addEventListener('click', function () {
-      annual = !annual;
-      updatePrices();
-    });
-  }
-
   /* ── Checkout ── */
   window.startCheckout = function (btn) {
     var plan = btn.getAttribute('data-plan');
@@ -979,9 +907,6 @@
       }
     });
   });
-
-  /* ── Init ── */
-  updatePrices();
 
 })();
 </script>
