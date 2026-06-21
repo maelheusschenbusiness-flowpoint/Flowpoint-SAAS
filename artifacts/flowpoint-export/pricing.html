@@ -162,6 +162,10 @@
     .fp-addon-btn { font-size: 12px; font-weight: 600; color: var(--blue); background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2); border-radius: 7px; padding: 6px 12px; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
     .fp-addon-btn:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
     .fp-addon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .fp-addon-soon-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; color: #f59e0b; background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.2); border-radius: 6px; padding: 5px 10px; white-space: nowrap; }
+    .fp-feat-soon { color: #f59e0b; font-size: 13px; flex-shrink: 0; min-width: 18px; }
+    .fp-feat-badge-soon { font-size: 10px; font-weight: 700; color: #f59e0b; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); border-radius: 4px; padding: 1px 5px; margin-left: 4px; text-transform: uppercase; letter-spacing: 0.3px; vertical-align: middle; }
+    .fp-csoon { color: #f59e0b; font-size: 11px; font-weight: 600; letter-spacing: 0.2px; }
 
     .fp-addon-hidden { display: none; }
     .fp-addon-hidden.visible { display: flex; flex-direction: column; }
@@ -262,7 +266,6 @@
       <ul class="fp-card-features">
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>1 site web</strong></span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>30 audits SEO</strong> / mois</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">50 mots-clés suivis</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>3 monitors</strong> uptime (vérif. 5 min)</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">30 rapports &amp; exports PDF/CSV / mois</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>30 000 crédits IA</strong> / mois</span></li>
@@ -291,24 +294,20 @@
       <ul class="fp-card-features">
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>Plusieurs sites web</strong></span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>300 audits SEO</strong> / mois</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">500 mots-clés suivis</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>50 monitors</strong> uptime (vérif. 1 min)</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">300 rapports + partage sécurisé</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">300 exports PDF/CSV / mois</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>100 000 crédits IA</strong> / mois</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>Google Business Profile</strong></span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Local SEO avancé</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Intelligence concurrentielle</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Rapport exécutif IA hebdomadaire</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Prévisions &amp; CRO IA</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Workflows IA &amp; automatisations (10)</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Zapier / Make / n8n</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Webhooks avancés</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Historique 90 jours</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>5 membres d'équipe</strong></span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Rôles &amp; permissions</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">SLA 99,9% · Support chat prioritaire</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">2FA inclus</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Google Business Profile <em style="font-style:normal;font-size:10px;color:var(--text-muted)">(après connexion Google)</em></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Local SEO</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Copilot IA complet</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>5 membres d'équipe</strong> + rôles &amp; permissions</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Historique 30 jours <em style="font-style:normal;font-size:10px;color:var(--text-muted)">(extension 90j add-on)</em></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support chat prioritaire</span></li>
+        <li><span class="fp-feat-soon">🔜</span><span class="fp-feat-text">Intelligence concurrentielle <span class="fp-feat-badge-soon">Bientôt</span></span></li>
+        <li><span class="fp-feat-soon">🔜</span><span class="fp-feat-text">Rapport exécutif IA <span class="fp-feat-badge-soon">Add-on</span></span></li>
+        <li><span class="fp-feat-soon">🔜</span><span class="fp-feat-text">Prévisions &amp; CRO IA <span class="fp-feat-badge-soon">Add-on</span></span></li>
+        <li><span class="fp-feat-soon">🔜</span><span class="fp-feat-text">Zapier / Make / Webhooks <span class="fp-feat-badge-soon">Add-on</span></span></li>
       </ul>
       <button class="fp-card-btn fp-card-btn-primary" data-plan="pro" onclick="selectPlan(this)">
         Démarrer Pro — le meilleur choix
@@ -320,31 +319,27 @@
     <div class="fp-card" id="card-ultra">
       <div class="fp-card-plan">Ultra</div>
       <div class="fp-card-price"><span>149€</span><span class="fp-card-price-unit">/mois</span></div>
-      <div class="fp-card-desc">Pour les agences et grandes équipes : white-label, multi-clients, IA avancée et volumétrie illimitée.</div>
+      <div class="fp-card-desc">Pour les agences et grandes équipes : forts volumes, IA avancée et fonctionnalités enterprise en cours de déploiement.</div>
       <div class="fp-card-trial">✓ 14 jours gratuits · puis 149€/mois</div>
       <ul class="fp-card-features">
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>Sites &amp; clients illimités</strong></span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>2 000 audits SEO</strong> / mois</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Mots-clés illimités</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>300 monitors</strong> uptime (vérif. 30 s)</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">2 000 rapports / mois</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">2 000 exports PDF/CSV / mois</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>500 000 crédits IA</strong> / mois</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>White-label complet</strong></span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Multi-clients (mode agence)</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Behavioral AI &amp; Revenue Leak</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Market Intelligence temps réel</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Review Intelligence IA</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Google Business Profile + Local SEO</span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">DataForSEO avancé</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">API avancée (accès complet)</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">CRM &amp; intégrations enterprise</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">SSO SAML/OIDC &amp; audit logs</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Historique 365 jours</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>10 membres d'équipe</strong></span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Domaines personnalisés</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Automatisations IA illimitées</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Accès API</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text"><strong>10 membres d'équipe</strong> + rôles &amp; permissions</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Historique 30 jours <em style="font-style:normal;font-size:10px;color:var(--text-muted)">(extension 365j add-on)</em></span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Domaine personnalisé <em style="font-style:normal;font-size:10px;color:var(--text-muted)">(add-on disponible)</em></span></li>
         <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Onboarding dédié + Account Manager</span></li>
-        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support 24/7 · SLA 99,99%</span></li>
+        <li><span class="fp-feat-check">✓</span><span class="fp-feat-text">Support 24/7 prioritaire</span></li>
+        <li><span class="fp-feat-soon">🔜</span><span class="fp-feat-text">White-label complet <span class="fp-feat-badge-soon">Add-on</span></span></li>
+        <li><span class="fp-feat-soon">🔜</span><span class="fp-feat-text">Multi-clients (mode agence) <span class="fp-feat-badge-soon">Bientôt</span></span></li>
+        <li><span class="fp-feat-soon">🔜</span><span class="fp-feat-text">Behavioral AI &amp; Revenue Leak <span class="fp-feat-badge-soon">Add-on</span></span></li>
+        <li><span class="fp-feat-soon">🔜</span><span class="fp-feat-text">Market Intelligence + Review IA <span class="fp-feat-badge-soon">Add-on</span></span></li>
+        <li><span class="fp-feat-soon">🔜</span><span class="fp-feat-text">SSO SAML/OIDC &amp; CRM enterprise <span class="fp-feat-badge-soon">Bientôt</span></span></li>
       </ul>
       <button class="fp-card-btn fp-card-btn-secondary" data-plan="ultra" onclick="selectPlan(this)">
         Démarrer Ultra
@@ -406,14 +401,7 @@
       <div class="fp-addon-desc">Plus de crédits = plus d'analyses, de rapports automatiques, de recommandations CRO et de génération de contenu chaque mois. Cumulable pour les gros volumes.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">19€<span> / pack / mois</span></div>
-        <div class="fp-addon-actions">
-          <div class="fp-addon-qty">
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',-1)">−</button>
-            <input id="qty-aiCreditsPack50k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',1)">+</button>
-          </div>
-          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack50k',true)">Ajouter →</button>
-        </div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -440,7 +428,7 @@
       <div class="fp-addon-desc">Votre marque, votre image. Portail client entièrement brandé — logo, couleurs, domaine personnalisé. Vos clients voient votre agence, pas FlowPoint.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">39€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'whiteLabel',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -449,7 +437,7 @@
       <div class="fp-addon-desc">Chaque semaine, l'IA génère une synthèse C-level prête à partager : performances SEO, alertes critiques, opportunités prioritaires — en un document, sans effort.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiExecutiveReport',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -458,7 +446,7 @@
       <div class="fp-addon-desc">Trouvez l'argent que vous perdez sans le savoir. L'IA analyse votre funnel, identifie les pages qui freinent les conversions et chiffre l'impact financier de chaque fuite.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">49€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'revenueLeak',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -551,7 +539,7 @@
       <div class="fp-addon-desc">Anticipez l'avenir avec des modèles prédictifs entraînés sur vos données réelles. Trafic, conversions, revenus — visualisez les 90 prochains jours avant la concurrence.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiForecasting',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -560,7 +548,7 @@
       <div class="fp-addon-desc">L'IA génère des recommandations d'optimisation de conversion priorisées par impact estimé — moins de tests A/B hasardeux, plus de résultats concrets et mesurables.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">39€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiCro',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -569,7 +557,7 @@
       <div class="fp-addon-desc">Comprenez vraiment le comportement de vos visiteurs. Parcours, hésitations, abandons — l'IA comportementale traduit chaque signal en insight actionable pour booster l'engagement.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">49€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'behavioralAI',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -578,7 +566,7 @@
       <div class="fp-addon-desc">Automatisez votre veille et vos alertes sur mesure. Des workflows pilotés par l'IA déclenchent des actions automatiquement — rapport Slack, tâche créée, email envoyé.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'aiWorkflows',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -587,7 +575,7 @@
       <div class="fp-addon-desc">Surveillez votre marché en temps réel : positions concurrentes, tendances de requêtes, opportunités de mots-clés émergentes — soyez le premier à agir quand le marché bouge.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">49€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'marketIntelligence',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -596,7 +584,7 @@
       <div class="fp-addon-desc">Transformez vos avis Google en levier de croissance. L'IA analyse la sémantique, identifie les thèmes récurrents et vous suggère des réponses et améliorations prioritaires.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">19€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'reviewIntelligence',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -605,14 +593,7 @@
       <div class="fp-addon-desc">Pour les équipes qui utilisent l'IA intensivement. 200 000 crédits supplémentaires pour des analyses en masse et des rapports automatisés à grande échelle.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">49€<span> / pack / mois</span></div>
-        <div class="fp-addon-actions">
-          <div class="fp-addon-qty">
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',-1)">−</button>
-            <input id="qty-aiCreditsPack200k" class="fp-addon-qty-input" type="number" value="1" min="1" max="10" readonly>
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',1)">+</button>
-          </div>
-          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack200k',true)">Ajouter →</button>
-        </div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -621,14 +602,7 @@
       <div class="fp-addon-desc">Volume maximum pour les usages IA les plus intensifs. Idéal pour les agences multi-clients qui génèrent des dizaines de rapports et analyses IA chaque jour.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">99€<span> / pack / mois</span></div>
-        <div class="fp-addon-actions">
-          <div class="fp-addon-qty">
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',-1)">−</button>
-            <input id="qty-aiCreditsPack500k" class="fp-addon-qty-input" type="number" value="1" min="1" max="5" readonly>
-            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',1)">+</button>
-          </div>
-          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack500k',true)">Ajouter →</button>
-        </div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -637,7 +611,7 @@
       <div class="fp-addon-desc">Connectez FlowPoint à 5 000+ outils. Alertes dans Slack, tâches Asana, enrichissement CRM — sans une ligne de code, en quelques minutes.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">15€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'zapierIntegration',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -646,7 +620,7 @@
       <div class="fp-addon-desc">Recevez toutes les alertes FlowPoint dans votre infrastructure. Webhooks personnalisables avec retry automatique et historique complet des appels.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">19€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'advancedWebhooks',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -655,7 +629,7 @@
       <div class="fp-addon-desc">Synchronisez vos données SEO dans HubSpot, Salesforce ou Pipedrive. Enrichissez vos fiches contacts et déclenchez des actions commerciales sur signal SEO.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">29€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'crmIntegration',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -664,7 +638,7 @@
       <div class="fp-addon-desc">Le bundle ultime pour les agences : white-label, multi-clients, rapports personnalisés et support dédié — tout pour revendre FlowPoint sous votre propre marque.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">99€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'agencyPacks',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -673,7 +647,7 @@
       <div class="fp-addon-desc">SAML 2.0 / OIDC pour toute votre organisation. Connectez FlowPoint à Okta, Azure AD ou Google Workspace et gérez les accès depuis un point central.</div>
       <div class="fp-addon-bottom">
         <div class="fp-addon-price">99€<span> / mois</span></div>
-        <div class="fp-addon-actions"><button class="fp-addon-btn" onclick="addToCart(this,'ssoEnterprise',false)">Ajouter →</button></div>
+        <div class="fp-addon-actions"><span class="fp-addon-soon-badge">Bientôt disponible</span></div>
       </div>
     </div>
 
@@ -710,70 +684,68 @@
 
         <tr class="fp-group-row"><td colspan="4">SEO &amp; Analyse</td></tr>
         <tr><td>Audits SEO / mois</td><td>30</td><td class="fp-featured-col">300</td><td>2 000</td></tr>
-        <tr><td>Mots-clés suivis</td><td>50</td><td class="fp-featured-col">500</td><td>Illimités</td></tr>
         <tr><td>Audit technique complet</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Core Web Vitals</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Analyse de contenu</td><td>Basique</td><td class="fp-featured-col">Avancée</td><td>Complète</td></tr>
-        <tr><td>Intelligence concurrentielle</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Intelligence concurrentielle</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Bientôt</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
         <tr><td>DataForSEO avancé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
 
         <tr class="fp-group-row"><td colspan="4">Local SEO</td></tr>
         <tr><td>Google Business Profile</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Gestion avis Google</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Local SEO avancé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Multi-établissements</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">Jusqu'à 5</td><td>Illimités</td></tr>
-        <tr><td>Review Intelligence IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Multi-établissements</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Bientôt</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
+        <tr><td>Review Intelligence IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
 
         <tr class="fp-group-row"><td colspan="4">Monitoring</td></tr>
         <tr><td>Monitors d'uptime</td><td>3</td><td class="fp-featured-col">50</td><td>300</td></tr>
         <tr><td>Fréquence de vérification</td><td>5 min</td><td class="fp-featured-col">1 min</td><td>30 sec</td></tr>
         <tr><td>Alertes temps réel</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Monitoring avancé</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>SLA garanti</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">99,9%</td><td>99,99%</td></tr>
 
         <tr class="fp-group-row"><td colspan="4">IA &amp; Copilot</td></tr>
         <tr><td>Crédits IA / mois</td><td>30 000</td><td class="fp-featured-col">100 000</td><td>500 000</td></tr>
         <tr><td>Copilot IA</td><td>Limité</td><td class="fp-featured-col">Complet</td><td>Premium</td></tr>
-        <tr><td>Rapport exécutif IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Prévisions IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>CRO IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Revenue Leak Detection</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Behavioral AI</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Market Intelligence</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Workflows IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">10</td><td>Illimités</td></tr>
+        <tr><td>Rapport exécutif IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Add-on</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
+        <tr><td>Prévisions IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Add-on</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
+        <tr><td>CRO IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Add-on</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
+        <tr><td>Revenue Leak Detection</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
+        <tr><td>Behavioral AI</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
+        <tr><td>Market Intelligence</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
+        <tr><td>Workflows IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Bientôt</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
 
         <tr class="fp-group-row"><td colspan="4">Rapports</td></tr>
         <tr><td>Rapports / mois</td><td>30</td><td class="fp-featured-col">300</td><td>2 000</td></tr>
         <tr><td>Exports PDF / CSV</td><td>30</td><td class="fp-featured-col">300</td><td>2 000</td></tr>
         <tr><td>Partage de rapports</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Rapports white-label</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Historique des données</td><td>30 jours</td><td class="fp-featured-col">90 jours</td><td>365 jours</td></tr>
+        <tr><td>Rapports white-label</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
+        <tr><td>Historique des données</td><td>30 jours</td><td class="fp-featured-col">30 jours <span class="fp-csoon">+ext.</span></td><td>30 jours <span class="fp-csoon">+ext.</span></td></tr>
 
         <tr class="fp-group-row"><td colspan="4">Équipe &amp; Collaboration</td></tr>
         <tr><td>Membres d'équipe</td><td>1</td><td class="fp-featured-col">5</td><td>10</td></tr>
         <tr><td>Rôles &amp; permissions</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Multi-clients (agence)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>White-label complet</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Multi-clients (agence)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
+        <tr><td>White-label complet</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
 
         <tr class="fp-group-row"><td colspan="4">Intégrations &amp; Automatisation</td></tr>
         <tr><td>Intégrations natives</td><td>Basiques</td><td class="fp-featured-col">Avancées</td><td>Complètes</td></tr>
-        <tr><td>Zapier / Make / n8n</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Webhooks avancés</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>CRM (HubSpot, Salesforce…)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Zapier / Make / n8n</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Bientôt</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
+        <tr><td>Webhooks avancés</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Bientôt</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
+        <tr><td>CRM (HubSpot, Salesforce…)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
         <tr><td>API</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">Standard</td><td>Avancée</td></tr>
-        <tr><td>Automatisations IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col">10</td><td>Illimitées</td></tr>
+        <tr><td>Automatisations IA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Bientôt</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
 
         <tr class="fp-group-row"><td colspan="4">Sécurité</td></tr>
         <tr><td>HTTPS / TLS</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>2FA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>SSO (SAML / OIDC)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>2FA</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Bientôt</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
+        <tr><td>SSO (SAML / OIDC)</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Bientôt</span></td></tr>
         <tr><td>Audit logs</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Domaines personnalisés</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Domaines personnalisés</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
 
         <tr class="fp-group-row"><td colspan="4">Support</td></tr>
         <tr><td>Support par email</td><td><span class="fp-ccheck">✓</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Support chat</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
-        <tr><td>Support prioritaire ≤ 2h</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-ccheck">✓</span></td><td><span class="fp-ccheck">✓</span></td></tr>
+        <tr><td>Support prioritaire ≤ 2h</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-csoon">Add-on</span></td><td><span class="fp-csoon">Add-on</span></td></tr>
         <tr><td>Support 24/7</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Onboarding dédié</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
         <tr><td>Account Manager dédié</td><td><span class="fp-cdash">—</span></td><td class="fp-featured-col"><span class="fp-cdash">—</span></td><td><span class="fp-ccheck">✓</span></td></tr>
