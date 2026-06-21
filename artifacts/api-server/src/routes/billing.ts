@@ -486,4 +486,178 @@ router.get("/billing/events", (req: Request, res: Response) => {
   });
 });
 
+// ── Stripe Webhook ────────────────────────────────────────────────────────────
+// Raw body is already applied in app.ts for /api/billing/webhook
+router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res: Response) => {
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
+
+  if (!stripeKey) {
+    res.status(503).json({ error: "Stripe not configured" });
+    return;
+  }
+
+  const sig = req.headers["stripe-signature"];
+  if (!sig) {
+    res.status(400).json({ error: "Missing stripe-signature header" });
+    return;
+  }
+
+  let event: import("stripe").Stripe.Event;
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const rawBody = req.rawBody ?? req.body;
+
+    if (webhookSecret) {
+      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+    } else {
+      logger.warn("[Webhook] STRIPE_WEBHOOK_SECRET not set — skipping signature verification (dev only)");
+      if (process.env["NODE_ENV"] === "production") {
+        res.status(400).json({ error: "Webhook secret not configured" });
+        return;
+      }
+      event = JSON.parse(rawBody.toString()) as import("stripe").Stripe.Event;
+    }
+  } catch (err) {
+    logger.error({ err }, "[Webhook] Signature verification failed");
+    res.status(400).json({ error: "Webhook signature invalid" });
+    return;
+  }
+
+  logger.info({ type: event.type }, "[Webhook] Stripe event received");
+
+  try {
+    const { upsertOrgSettings } = await import("../services/org-settings.js");
+    const { pool } = await import("@workspace/db");
+    const orgId = "default";
+
+    switch (event.type) {
+      // ── Trial started ──────────────────────────────────────────────────────
+      case "customer.subscription.created": {
+        const sub = event.data.object as import("stripe").Stripe.Subscription;
+        const plan = (sub.metadata?.["plan"] || "standard").toLowerCase();
+        const status = sub.status; // "trialing" | "active" | ...
+        const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
+
+        store.me.subscriptionStatus = status;
+        store.me.trialEndsAt = trialEnd ?? store.me.trialEndsAt;
+        if (plan) { store.me.plan = plan; store.broadcastPlanUpdate(plan); }
+        if (sub.customer) store.me.stripeCustomerId = String(sub.customer);
+
+        await upsertOrgSettings(orgId, {
+          subscriptionStatus: status,
+          plan: plan || undefined,
+          trialEndsAt: trialEnd ?? undefined,
+          stripeCustomerId: String(sub.customer),
+        });
+        await trackBillingEvent("subscription_created", { plan, amount: 0, currency: "eur", subscriptionId: sub.id });
+        break;
+      }
+
+      // ── Subscription changed (upgrade/downgrade/cancel scheduled) ──────────
+      case "customer.subscription.updated": {
+        const sub = event.data.object as import("stripe").Stripe.Subscription;
+        const plan = (sub.metadata?.["plan"] || store.me.plan || "standard").toLowerCase();
+        const status = sub.status;
+        const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
+
+        store.me.subscriptionStatus = status;
+        if (trialEnd) store.me.trialEndsAt = trialEnd;
+        if (plan) { store.me.plan = plan; store.broadcastPlanUpdate(plan); }
+
+        await upsertOrgSettings(orgId, {
+          subscriptionStatus: status,
+          plan: plan || undefined,
+          trialEndsAt: trialEnd ?? undefined,
+        });
+        break;
+      }
+
+      // ── Subscription ended (canceled / trial expired without payment) ───────
+      case "customer.subscription.deleted": {
+        const sub = event.data.object as import("stripe").Stripe.Subscription;
+        store.me.subscriptionStatus = "canceled";
+
+        await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" });
+        await trackBillingEvent("subscription_canceled", { plan: store.me.plan, amount: 0, currency: "eur", subscriptionId: sub.id });
+        logger.warn({ subId: sub.id }, "[Webhook] Subscription canceled");
+        break;
+      }
+
+      // ── Trial ending soon (3 days before) ─────────────────────────────────
+      case "customer.subscription.trial_will_end": {
+        const sub = event.data.object as import("stripe").Stripe.Subscription;
+        const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
+        logger.info({ trialEnd, subId: sub.id }, "[Webhook] Trial will end soon — send reminder email here");
+        // TODO: trigger reminder email via Resend
+        break;
+      }
+
+      // ── Payment succeeded → mark active ────────────────────────────────────
+      case "invoice.payment_succeeded": {
+        const invoice = event.data.object as import("stripe").Stripe.Invoice;
+        const subId = (invoice as { subscription?: string }).subscription;
+        const amount = (invoice.amount_paid || 0) / 100;
+
+        store.me.subscriptionStatus = "active";
+        await upsertOrgSettings(orgId, { subscriptionStatus: "active" });
+        await trackBillingEvent("subscription_renewed", {
+          plan: store.me.plan, amount, currency: invoice.currency ?? "eur",
+          invoiceId: invoice.id, subscriptionId: subId,
+        });
+        logger.info({ invoiceId: invoice.id, amount }, "[Webhook] Payment succeeded — subscription active");
+        break;
+      }
+
+      // ── Payment failed → mark past_due ─────────────────────────────────────
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as import("stripe").Stripe.Invoice;
+        store.me.subscriptionStatus = "past_due";
+        await upsertOrgSettings(orgId, { subscriptionStatus: "past_due" });
+        logger.warn({ invoiceId: invoice.id }, "[Webhook] Payment failed — subscription past_due");
+        break;
+      }
+
+      // ── Checkout session completed (alternative activation path) ───────────
+      case "checkout.session.completed": {
+        const session = event.data.object as import("stripe").Stripe.Checkout.Session;
+        const plan = (session.metadata?.["plan"] || "pro").toLowerCase();
+        if (session.customer) store.me.stripeCustomerId = String(session.customer);
+        store.me.subscriptionStatus = "active";
+        store.me.plan = plan;
+        store.broadcastPlanUpdate(plan);
+        await upsertOrgSettings(orgId, {
+          subscriptionStatus: "active",
+          plan,
+          stripeCustomerId: session.customer ? String(session.customer) : undefined,
+        });
+        await trackBillingEvent("subscription_created", { plan, amount: 0, currency: "eur", sessionId: session.id });
+        break;
+      }
+
+      default:
+        logger.debug({ type: event.type }, "[Webhook] Unhandled Stripe event type");
+    }
+
+    // Log raw event to DB for audit trail
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query(
+          `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,now())
+           ON CONFLICT DO NOTHING`,
+          [orgId, event.type, 0, "eur", store.me.plan, JSON.stringify({ eventId: event.id })]
+        );
+      } finally { client.release(); }
+    } catch { /* non-fatal */ }
+
+  } catch (err) {
+    logger.error({ err, type: event.type }, "[Webhook] Event processing failed");
+  }
+
+  res.json({ received: true });
+});
+
 export default router;

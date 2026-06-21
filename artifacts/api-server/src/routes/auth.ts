@@ -428,7 +428,13 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     firstName, lastName, email,
     companyName, website, country,
     companySize, objective, city, address,
+    plan: planField,
   } = req.body as Record<string, string | undefined>;
+
+  // Validate and resolve selected plan (default: standard)
+  const selectedPlan = (["standard","pro","ultra"] as string[]).includes(String(planField ?? ""))
+    ? String(planField)
+    : "standard";
 
   // Honeypot check — bots fill this field, humans don't
   if (_hp && String(_hp).trim().length > 0) {
@@ -481,10 +487,13 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     await upsertOrgSettings(orgId, {
       email:              normalizedEmail,
       name:               company,
+      firstName:          fn,
+      lastName:           ln,
       primarySite:        normalizedSite || null,
       companySize:        companySize ?? null,
       industry:           objective ?? null,
-      plan:               "standard",
+      plan:               selectedPlan,
+      subscriptionStatus: "trialing",
       trialEndsAt:        trialEndsAt,
       country:            country ?? null,
       city:               city?.trim()    ?? null,
@@ -500,7 +509,8 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   // Update in-memory store
   store.me.firstName = fn;
   store.me.org = { name: company };
-  store.me.plan = "standard";
+  store.me.plan = selectedPlan;
+  store.me.subscriptionStatus = "trialing";
   store.me.trialEndsAt = trialEndsAt;
 
   // Log activity
@@ -522,7 +532,8 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
         email: normalizedEmail, firstName: fn, lastName: ln,
         companyName: company, website: normalizedSite || "",
         country: country || "", companySize: companySize || "",
-        objective: objective || "", plan: "standard",
+        objective: objective || "", plan: selectedPlan,
+        subscriptionStatus: "trialing",
         trialEndsAt, orgId,
       },
       { upsert: true, new: true },
@@ -556,8 +567,30 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   if (resendKey) {
     try {
       await sendMagicEmail(normalizedEmail, verifyPath);
-      logger.info({ email: normalizedEmail, company }, "[Auth/Signup] Account created — magic link sent");
+      logger.info({ email: normalizedEmail, company, plan: selectedPlan }, "[Auth/Signup] Account created — magic link sent");
       res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+
+      // ── Fire-and-forget: create Stripe customer + start trial ───────────
+      const stripeKey = process.env["STRIPE_SECRET_KEY"];
+      if (stripeKey) {
+        (async () => {
+          try {
+            const { default: Stripe } = await import("stripe");
+            const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+            const customer = await stripe.customers.create({
+              name: `${fn} ${ln}`.trim(),
+              email: normalizedEmail,
+              metadata: { plan: selectedPlan, orgId, company },
+            });
+            store.me.stripeCustomerId = customer.id;
+            const { upsertOrgSettings } = await import("../services/org-settings.js");
+            await upsertOrgSettings(orgId, { stripeCustomerId: customer.id });
+            logger.info({ customerId: customer.id, plan: selectedPlan }, "[Auth/Signup] Stripe customer created");
+          } catch (stripeErr) {
+            logger.warn({ err: stripeErr }, "[Auth/Signup] Stripe customer creation failed (non-fatal)");
+          }
+        })();
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg }, "[Auth/Signup] Resend failed");
