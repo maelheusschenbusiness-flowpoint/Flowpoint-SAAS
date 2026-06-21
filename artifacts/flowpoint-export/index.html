@@ -2,6 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%232563EB'/><stop offset='100%25' stop-color='%234F46E5'/></linearGradient></defs><rect width='48' height='48' rx='10' fill='url(%23g)'/><polygon points='25 14 15 26 24 26 23 34 33 22 24 22' fill='white'/></svg>" type="image/svg+xml">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.svg">
   <link rel="manifest" href="/site.webmanifest">
@@ -141,28 +142,19 @@
     /* ── Plan selector ── */
     .plan-selector { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
     .plan-label { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
-    .plan-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-    .plan-card {
-      position: relative; padding: 12px 10px 10px;
+    .plan-btns { display: flex; gap: 8px; }
+    .plan-btn {
+      flex: 1; padding: 9px 8px; font-family: inherit;
       background: var(--surface); border: 1.5px solid var(--border);
-      border-radius: 10px; cursor: pointer; transition: border-color .15s, background .15s;
+      border-radius: 9px; cursor: pointer; transition: border-color .15s, background .15s, color .15s;
+      font-size: 13px; font-weight: 600; color: var(--text-muted);
       text-align: center; user-select: none;
     }
-    .plan-card:hover { border-color: var(--blue-light); }
-    .plan-card.selected { border-color: var(--blue); background: rgba(37,99,235,.08); }
-    .plan-card.selected::after {
-      content: '✓';
-      position: absolute; top: 5px; right: 7px;
-      font-size: 10px; font-weight: 800; color: var(--blue);
+    .plan-btn:hover { border-color: var(--blue-light); color: var(--text); }
+    .plan-btn.selected {
+      border-color: var(--blue); background: rgba(37,99,235,.1);
+      color: var(--blue-light);
     }
-    .plan-card-badge {
-      font-size: 9px; font-weight: 700; color: #fff;
-      background: var(--blue); border-radius: 4px;
-      padding: 1px 5px; display: inline-block; margin-bottom: 4px; letter-spacing: .04em;
-    }
-    .plan-card-name { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
-    .plan-card-price { font-size: 11px; color: var(--text-muted); }
-    .plan-card-price strong { color: var(--text-soft); font-size: 13px; font-weight: 700; }
     .plan-trial-note {
       font-size: 12px; color: var(--text-muted); text-align: center;
       background: rgba(34,197,94,.07); border: 1px solid rgba(34,197,94,.2);
@@ -204,20 +196,10 @@
     <!-- ── Plan selector ── -->
     <div class="plan-selector">
       <div class="plan-label">Choisir mon plan</div>
-      <div class="plan-cards">
-        <div class="plan-card" data-plan="standard" onclick="selectPlan('standard', this)">
-          <div class="plan-card-name">Standard</div>
-          <div class="plan-card-price"><strong>29€</strong>/mois</div>
-        </div>
-        <div class="plan-card selected" data-plan="pro" onclick="selectPlan('pro', this)">
-          <div class="plan-card-badge">⭐ Populaire</div>
-          <div class="plan-card-name">Pro</div>
-          <div class="plan-card-price"><strong>79€</strong>/mois</div>
-        </div>
-        <div class="plan-card" data-plan="ultra" onclick="selectPlan('ultra', this)">
-          <div class="plan-card-name">Enterprise</div>
-          <div class="plan-card-price"><strong>249€</strong>/mois</div>
-        </div>
+      <div class="plan-btns">
+        <button class="plan-btn" data-plan="standard" onclick="selectPlan('standard', this)">Standard</button>
+        <button class="plan-btn selected" data-plan="pro" onclick="selectPlan('pro', this)">Pro ⭐</button>
+        <button class="plan-btn" data-plan="ultra" onclick="selectPlan('ultra', this)">Enterprise</button>
       </div>
       <div class="plan-trial-note">🎁 <strong>14 jours d'essai gratuit</strong> — Sans carte bancaire · Annulation à tout moment</div>
     </div>
@@ -360,7 +342,7 @@
 
   function selectPlan(plan, el) {
     _selectedPlan = plan;
-    document.querySelectorAll('.plan-card').forEach(function(c) { c.classList.remove('selected'); });
+    document.querySelectorAll('.plan-btn').forEach(function(c) { c.classList.remove('selected'); });
     el.classList.add('selected');
     // Update the submit button label
     var names = { standard: 'Standard', pro: 'Pro', ultra: 'Enterprise' };
