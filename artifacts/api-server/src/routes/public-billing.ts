@@ -407,28 +407,56 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       metadata: { source: "checkout_payment", plan: planKey },
     });
 
-    /* ── 3. Create subscription — plan + add-ons, 14-day trial ── */
-    const { subscriptionItems } = buildLineItems(planKey, addonsResolved);
-    if (subscriptionItems.length === 0) {
+    /* ── 3a. Plan subscription — 14-day trial, plan price only ── */
+    const planPriceId = PLAN_PRICE_IDS[planKey];
+    if (!planPriceId) {
       res.status(400).json({ error: "Plan introuvable dans Stripe." });
       return;
     }
 
-    const subscription = await stripe.subscriptions.create({
-      customer:                customer.id,
-      items:                   subscriptionItems,
-      trial_period_days:       14,
-      default_payment_method:  paymentMethodId,
+    const planSubscription = await stripe.subscriptions.create({
+      customer:               customer.id,
+      items:                  [{ price: planPriceId, quantity: 1 }],
+      trial_period_days:      14,
+      default_payment_method: paymentMethodId,
       metadata: {
-        plan:            planKey,
-        addons:          JSON.stringify(addonsResolved),
-        source:          "checkout_payment",
-        flowpoint_cart:  "true",
+        plan:           planKey,
+        source:         "checkout_payment",
+        flowpoint_cart: "true",
       },
     });
 
-    logger.info({ plan: planKey, subscriptionId: subscription.id, customerId: customer.id }, "[PublicBilling] finalize: subscription created");
-    res.json({ success: true, subscriptionId: subscription.id });
+    /* ── 3b. Add-on subscription — independent of trial ──────────────────
+       Add-ons were already charged immediately via PaymentIntent (month 1).
+       We create a recurring subscription that starts billing at month 2
+       (trial_end = now + 30 days) so the customer is never double-charged.
+    ────────────────────────────────────────────────────────────────────── */
+    const { subscriptionItems } = buildLineItems(planKey, addonsResolved);
+    const addonItems = subscriptionItems.filter(i => i.price !== planPriceId);
+
+    let addonSubscriptionId: string | null = null;
+    if (addonItems.length > 0) {
+      const thirtyDaysFromNow = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+      const addonSub = await stripe.subscriptions.create({
+        customer:               customer.id,
+        items:                  addonItems,
+        trial_end:              thirtyDaysFromNow,   /* skip first 30d — already paid via PI */
+        default_payment_method: paymentMethodId,
+        metadata: {
+          plan:           planKey,
+          addons:         JSON.stringify(addonsResolved),
+          source:         "checkout_payment_addons",
+          flowpoint_cart: "true",
+        },
+      });
+      addonSubscriptionId = addonSub.id;
+    }
+
+    logger.info(
+      { plan: planKey, planSubscriptionId: planSubscription.id, addonSubscriptionId, customerId: customer.id },
+      "[PublicBilling] finalize: subscriptions created"
+    );
+    res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId });
   } catch (err) {
     logger.error({ err }, "[PublicBilling] finalize-checkout failed");
     res.status(500).json({ error: "Erreur lors de la finalisation." });

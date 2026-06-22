@@ -260,7 +260,8 @@
     else              { addonImmediate += info.price * qty; }
   });
   var immediateTotal   = addonImmediate + oneTimeTotal;
-  var monthlyAfterTrial = planPrice + addonImmediate;
+  /* Plan only after trial — add-ons are billed independently, not linked to trial */
+  var monthlyAfterTrial = planPrice;
   var hasPlan          = !!(plan && PLAN_INFO[plan]);
 
   /* ── Render summary ── */
@@ -287,8 +288,9 @@
           '<span class="fp-sum-amount">' + (info.price * qty) + '€</span>' +
         '</div>';
       } else {
+        /* Monthly add-ons: billed now AND every month after — independent of trial */
         html += '<div class="fp-sum-row">' +
-          '<span class="fp-sum-label">' + info.name + (qty > 1 ? ' ×' + qty : '') + '<span class="fp-sum-badge fp-badge-now">Maintenant</span></span>' +
+          '<span class="fp-sum-label">' + info.name + (qty > 1 ? ' ×' + qty : '') + '<span class="fp-sum-badge fp-badge-now">Maintenant · mensuel</span></span>' +
           '<span class="fp-sum-amount">' + (info.price * qty) + '€/mois</span>' +
         '</div>';
       }
@@ -296,7 +298,7 @@
     html += '<div class="fp-divider"></div>';
     html += '<div class="fp-total-row"><span class="fp-total-lbl">Dû aujourd\'hui</span><span class="fp-total-val">' + immediateTotal + '€</span></div>';
     if (hasPlan) {
-      html += '<div class="fp-total-row"><span class="fp-total-lbl">Mensuel après 14 jours</span><span class="fp-total-val after">' + monthlyAfterTrial + '€<span class="fp-total-unit">/mois</span></span></div>';
+      html += '<div class="fp-total-row"><span class="fp-total-lbl">Plan après essai</span><span class="fp-total-val after">' + monthlyAfterTrial + '€<span class="fp-total-unit">/mois</span></span></div>';
     }
     document.getElementById('fp-summary-card').innerHTML = html;
   })();
