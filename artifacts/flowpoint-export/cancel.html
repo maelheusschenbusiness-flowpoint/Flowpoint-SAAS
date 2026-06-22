@@ -8,15 +8,19 @@
   <link rel="icon" type="image/x-icon" href="/favicon.ico?v=4">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=4">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
   <title>Paiement annulé — FlowPoint</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg: #0b1120; --bg2: #111827; --surface: #1e293b;
-      --border: #2d3f55; --blue: #2563eb; --blue-h: #1d4ed8;
+      --border: rgba(255,255,255,0.08); --blue: #2563eb; --blue-h: #1d4ed8;
       --blue-light: #3b82f6; --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
     }
-    html[data-theme="light"] { --bg: #f8fafc; --bg2: #ffffff; --surface: #f1f5f9; --border: rgba(0,0,0,.1); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8; }
+    html[data-theme="light"] {
+      --bg: #f8faff; --bg2: #ffffff; --surface: #f1f5f9;
+      --border: rgba(0,0,0,0.08); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8;
+    }
     html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
     body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; gap: 20px; }
 
@@ -24,21 +28,15 @@
     .fp-logo-name { font-size: 19px; font-weight: 700; color: var(--text); }
     .fp-logo-name span { color: var(--blue-light); }
 
-    .fp-card {
-      width: 100%; max-width: 460px; background: var(--bg2);
-      border: 1px solid var(--border); border-radius: 18px;
-      padding: 44px 36px 36px; box-shadow: 0 8px 40px rgba(0,0,0,.5); text-align: center;
-    }
-
+    .fp-card { width: 100%; max-width: 480px; background: var(--bg2); border: 1px solid var(--border); border-radius: 18px; padding: 44px 36px 36px; box-shadow: 0 8px 40px rgba(0,0,0,.4); text-align: center; }
     .fp-icon-wrap { width: 72px; height: 72px; border-radius: 50%; background: rgba(100,116,139,0.1); border: 2px solid rgba(100,116,139,0.2); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 34px; }
     h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
     .fp-subtitle { font-size: 14px; color: var(--text-soft); line-height: 1.6; margin-bottom: 8px; }
-    .fp-notice { font-size: 12px; color: var(--text-muted); margin-bottom: 28px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; line-height: 1.5; }
+    .fp-notice { font-size: 12.5px; color: var(--text-muted); margin-bottom: 24px; padding: 11px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; line-height: 1.6; }
 
-    /* Cart preview */
-    .fp-cart-preview { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; font-size: 13px; color: var(--text-soft); text-align: left; }
-    .fp-cart-preview-title { font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
-    .fp-cart-item { padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .fp-cart-preview { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; text-align: left; }
+    .fp-cart-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+    .fp-cart-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-soft); gap: 8px; }
     .fp-cart-item:last-child { border-bottom: none; }
 
     .fp-actions { display: flex; flex-direction: column; gap: 10px; }
@@ -52,7 +50,7 @@
 
     @media (max-width: 560px) { .fp-card { padding: 32px 20px 28px; } }
   </style>
-  <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
+  <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
 </head>
 <body>
 
@@ -73,10 +71,10 @@
   <div class="fp-icon-wrap">🛑</div>
   <h1>Paiement annulé</h1>
   <p class="fp-subtitle">Vous avez annulé la procédure de paiement.</p>
-  <p class="fp-notice">Aucun abonnement actif n'a été confirmé. Aucun montant n'a été débité de votre compte.</p>
+  <p class="fp-notice">Aucun abonnement n'a été confirmé. Aucun montant n'a été débité.</p>
 
   <div class="fp-cart-preview" id="fp-cart-preview" style="display:none">
-    <div class="fp-cart-preview-title">Votre sélection est conservée</div>
+    <div class="fp-cart-title">Votre sélection est conservée</div>
     <div id="fp-cart-items"></div>
   </div>
 
@@ -85,10 +83,10 @@
       Reprendre le paiement →
     </a>
     <a href="/pricing.html" class="fp-btn fp-btn-secondary">
-      Retour aux tarifs
+      ← Modifier mon panier
     </a>
-    <a href="/login.html" class="fp-btn fp-btn-ghost">
-      Se connecter
+    <a href="/pricing.html" class="fp-btn fp-btn-ghost">
+      Retour aux tarifs
     </a>
   </div>
 </div>
@@ -97,30 +95,38 @@
 (function () {
   'use strict';
 
-  var PLAN_NAMES  = { standard: 'Plan Standard', pro: 'Plan Pro', ultra: 'Plan Ultra' };
+  var PLAN_NAMES = { standard: 'Plan Standard', pro: 'Plan Pro', ultra: 'Plan Ultra' };
   var ADDON_NAMES = {
-    monitorsPack50: 'Pack monitors +50', extraSeats: 'Siège supplémentaire',
-    aiCreditsPack50k: '+50 000 crédits IA', prioritySupport: 'Support prioritaire',
-    retention90d: 'Rétention 90j', whiteLabel: 'White-label', aiExecutiveReport: 'Rapport IA',
-    revenueLeak: 'Revenue Leak Detection', auditsPack200: 'Pack audits +200',
-    auditsPack1000: 'Pack audits +1 000', pdfPack200: 'Pack PDF +200',
-    exportsPack1000: 'Pack exports +1 000', retention365d: 'Rétention 365j',
-    customDomain: 'Domaine personnalisé', aiForecasting: 'Prévisions IA',
-    aiCro: 'CRO IA', behavioralAI: 'Behavioral AI', aiWorkflows: 'Workflows IA',
-    marketIntelligence: 'Market Intelligence', reviewIntelligence: 'Review Intelligence',
-    aiCreditsPack200k: '+200 000 crédits IA', aiCreditsPack500k: '+500 000 crédits IA',
-    zapierIntegration: 'Zapier / Make', advancedWebhooks: 'Webhooks avancés',
-    crmIntegration: 'Intégration CRM', agencyPacks: 'Agency Packs', ssoEnterprise: 'SSO Enterprise'
+    monitorsPack10: '+10 Monitors', monitorsPack50: '+50 Monitors',
+    globalMonitoring: 'Global Monitoring', slaMonitoring: 'SLA Monitoring Avancé',
+    advancedSeoLab: 'Advanced SEO Lab', keywordDomination: 'Keyword Domination Engine',
+    backlinkIntelligence: 'Backlink Intelligence', aiContentStrategist: 'AI Content Strategist',
+    gbpSlots10: '+10 Emplacements GBP', aiGbpPosting: 'AI GBP Posting',
+    reviewIntelligence: 'Review Intelligence', localDominationMaps: 'Local Domination Maps',
+    aiCro: 'AI CRO Strategist', behavioralAI: 'Behavioral AI',
+    revenueLeak: 'Revenue Leak AI', abTestingAI: 'AB Testing IA',
+    whiteLabel: 'White-Label Exports', agencyPacks: 'Agency Reporting Packs',
+    aiExecutiveReport: 'AI Executive Reporting', aiForecasting: 'AI Forecasting Engine',
+    marketIntelligence: 'AI Market Intelligence', aiWorkflows: 'AI Automation Workflows',
+    extraSeats: '+5 Sièges', enterprisePermissions: 'Enterprise Permissions',
+    retention90d: 'Rétention 90 jours', retention365d: 'Rétention 365 jours',
+    advancedWebhooks: 'Webhooks Avancés', zapierIntegration: 'Zapier / Make',
+    crmIntegration: 'Intégration CRM', customDomain: 'Custom Domain',
+    ssoEnterprise: 'SSO Enterprise', aiWorkspaceLaunch: 'AI Workspace Launch',
+    prioritySupport: 'Support Prioritaire',
+    auditsPack200: 'Pack audits +200', auditsPack1000: 'Pack audits +1 000',
+    pdfPack200: 'Pack PDF +200', exportsPack1000: 'Pack exports +1 000',
+    aiCreditsPack50k: '+50 000 crédits IA', aiCreditsPack200k: '+200 000 crédits IA',
+    aiCreditsPack500k: '+500 000 crédits IA'
   };
 
-  /* Show saved cart if available */
   var cart = null;
   try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
 
-  /* Also try URL params as fallback */
+  /* Fallback URL params */
   if (!cart || (!cart.plan && !Object.keys(cart.addons || {}).length)) {
     var params = new URLSearchParams(window.location.search);
-    var planParam = params.get('plan') || params.get('next');
+    var planParam = params.get('plan');
     if (planParam && PLAN_NAMES[planParam.toLowerCase()]) {
       cart = { plan: planParam.toLowerCase(), addons: {} };
     }
@@ -129,14 +135,14 @@
   if (cart && (cart.plan || Object.keys(cart.addons || {}).length)) {
     var previewEl = document.getElementById('fp-cart-preview');
     var itemsEl   = document.getElementById('fp-cart-items');
-    var html      = '';
+    var html = '';
 
     if (cart.plan && PLAN_NAMES[cart.plan]) {
-      html += '<div class="fp-cart-item">' + PLAN_NAMES[cart.plan] + ' — essai 14 jours</div>';
+      html += '<div class="fp-cart-item"><span>' + PLAN_NAMES[cart.plan] + ' — essai 14 jours</span><span style="color:var(--text-muted);font-size:12px">0€ / 14j</span></div>';
     }
     Object.keys(cart.addons || {}).forEach(function (id) {
       var qty = cart.addons[id];
-      html += '<div class="fp-cart-item">' + (ADDON_NAMES[id] || id) + (qty > 1 ? ' × ' + qty : '') + '</div>';
+      html += '<div class="fp-cart-item"><span>' + (ADDON_NAMES[id] || id) + (qty > 1 ? ' × ' + qty : '') + '</span></div>';
     });
 
     if (html) { itemsEl.innerHTML = html; previewEl.style.display = 'block'; }

@@ -8,201 +8,278 @@
   <link rel="icon" type="image/x-icon" href="/favicon.ico?v=4">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=4">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Paiement sécurisé — FlowPoint</title>
+  <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
+  <title>Récapitulatif de commande — FlowPoint</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg: #0b1120; --bg2: #111827; --surface: #1e293b;
-      --border: #2d3f55; --blue: #2563eb; --blue-h: #1d4ed8;
+      --border: rgba(255,255,255,0.08); --blue: #2563eb; --blue-h: #1d4ed8;
       --blue-light: #3b82f6; --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
+      --green: #34d399; --green-bg: rgba(52,211,153,0.1); --green-border: rgba(52,211,153,0.2);
+      --shadow: 0 2px 12px rgba(0,0,0,0.4); --shadow-lg: 0 8px 40px rgba(37,99,235,0.15);
     }
-    html[data-theme="light"] { --bg: #f8fafc; --bg2: #ffffff; --surface: #f1f5f9; --border: rgba(0,0,0,.1); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8; }
+    html[data-theme="light"] {
+      --bg: #f8faff; --bg2: #ffffff; --surface: #ffffff;
+      --border: rgba(0,0,0,0.08); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8;
+      --green-bg: rgba(16,185,129,0.08); --green-border: rgba(16,185,129,0.2);
+      --shadow: 0 2px 12px rgba(0,0,0,0.08); --shadow-lg: 0 8px 40px rgba(37,99,235,0.1);
+    }
+    html[data-theme="dark"] .fp-card { background: rgba(8,14,30,0.92); border-color: rgba(255,255,255,0.07); }
     html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
-    body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; gap: 20px; }
 
-    .fp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-    .fp-logo-name { font-size: 19px; font-weight: 700; color: var(--text); letter-spacing: -.3px; }
-    .fp-logo-name span { color: var(--blue-light); }
+    /* ── Nav ── */
+    .fp-nav { display: flex; align-items: center; justify-content: space-between; padding: 0 28px; height: 60px; background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(8px); }
+    .fp-nav-logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; text-decoration: none; color: var(--text); }
+    .fp-nav-logo-word span { color: var(--blue); }
+    .fp-nav-back { font-size: 13px; color: var(--text-soft); text-decoration: none; display: flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 8px; transition: background .15s, color .15s; }
+    .fp-nav-back:hover { background: var(--border); color: var(--text); }
 
-    .fp-card {
-      width: 100%; max-width: 520px; background: var(--bg2);
-      border: 1px solid var(--border); border-radius: 18px;
-      padding: 36px 36px 32px; box-shadow: 0 8px 40px rgba(0,0,0,.5);
-    }
+    /* ── Page ── */
+    .fp-page { max-width: 900px; margin: 0 auto; padding: 48px 24px 80px; }
+    .fp-page-title { font-size: clamp(22px, 4vw, 30px); font-weight: 800; letter-spacing: -.5px; margin-bottom: 6px; }
+    .fp-page-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 36px; }
 
-    .fp-card-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-    .fp-card-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
+    /* ── Layout ── */
+    .fp-layout { display: grid; grid-template-columns: 1fr 360px; gap: 28px; align-items: start; }
+    @media (max-width: 820px) { .fp-layout { grid-template-columns: 1fr; } }
 
-    /* Summary */
-    .fp-summary { display: flex; flex-direction: column; margin-bottom: 20px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-    .fp-summary-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; gap: 12px; }
-    .fp-summary-row:last-child { border-bottom: none; }
-    .fp-summary-label { color: var(--text-soft); flex: 1; min-width: 0; }
-    .fp-summary-label-main { font-weight: 600; color: var(--text); }
-    .fp-summary-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-    .fp-summary-price { font-weight: 700; color: var(--text); white-space: nowrap; flex-shrink: 0; }
-    .fp-summary-total-row { background: rgba(37,99,235,0.06); padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; }
-    .fp-summary-total-label { font-size: 13px; font-weight: 700; }
-    .fp-summary-total-amount { font-size: 18px; font-weight: 800; color: var(--blue-light); }
+    /* ── Summary card ── */
+    .fp-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }
+    .fp-card-head { padding: 20px 22px 0; }
+    .fp-card-head-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 14px; }
 
-    /* Badges */
-    .fp-badge { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 2px 7px; margin-left: 6px; vertical-align: middle; }
-    .fp-badge-trial { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
-    .fp-badge-now { background: rgba(37,99,235,0.1); color: var(--blue-light); border: 1px solid rgba(37,99,235,0.2); }
+    /* ── Summary rows ── */
+    .fp-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 13px 22px; border-bottom: 1px solid var(--border); gap: 12px; font-size: 13.5px; }
+    .fp-row:last-child { border-bottom: none; }
+    .fp-row-label { flex: 1; min-width: 0; }
+    .fp-row-name { font-weight: 600; color: var(--text); }
+    .fp-row-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+    .fp-row-price { font-weight: 700; color: var(--text); white-space: nowrap; flex-shrink: 0; }
+    .fp-row-price.muted { color: var(--text-muted); font-weight: 500; }
 
-    /* Info box */
-    .fp-info-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; font-size: 12px; color: var(--text-soft); line-height: 1.6; }
-    .fp-info-box li { display: flex; gap: 8px; padding: 3px 0; list-style: none; }
-    .fp-info-box li::before { content: '•'; color: var(--blue-light); flex-shrink: 0; }
+    /* ── Total rows ── */
+    .fp-total-now { background: rgba(37,99,235,0.06); padding: 14px 22px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); }
+    .fp-total-after { background: rgba(16,185,129,0.04); padding: 12px 22px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); border-radius: 0 0 16px 16px; }
+    .fp-total-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+    .fp-total-amount { font-size: 20px; font-weight: 800; color: var(--blue-light); }
+    .fp-total-amount.green { color: var(--green); font-size: 16px; }
 
-    /* Buttons */
-    .fp-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px 20px; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s; text-decoration: none; }
+    /* ── Section divider ── */
+    .fp-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); padding: 10px 22px 4px; background: var(--bg); border-top: 1px solid var(--border); }
+
+    /* ── Badges ── */
+    .fp-badge { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 2px 7px; margin-left: 6px; vertical-align: middle; white-space: nowrap; }
+    .fp-badge-trial { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .fp-badge-now   { background: rgba(37,99,235,0.1); color: var(--blue-light); border: 1px solid rgba(37,99,235,0.2); }
+    .fp-badge-incl  { background: rgba(100,116,139,0.1); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.2); }
+    .fp-badge-one   { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); }
+
+    /* ── Action card ── */
+    .fp-action-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); position: sticky; top: 80px; }
+    .fp-action-title { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+
+    .fp-info-list { list-style: none; margin-bottom: 22px; display: flex; flex-direction: column; gap: 6px; }
+    .fp-info-list li { display: flex; gap: 8px; font-size: 12.5px; color: var(--text-soft); align-items: flex-start; }
+    .fp-info-list li::before { content: '✓'; color: var(--green); font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+
+    .fp-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px 20px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s; text-decoration: none; }
     .fp-btn-primary { background: var(--blue); color: #fff; margin-bottom: 10px; }
     .fp-btn-primary:hover:not(:disabled) { background: var(--blue-h); }
     .fp-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-    .fp-btn-secondary { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-size: 13px; font-weight: 500; padding: 11px; margin-bottom: 6px; }
+    .fp-btn-secondary { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-weight: 500; font-size: 13px; }
     .fp-btn-secondary:hover { border-color: var(--blue); color: var(--blue-light); }
 
-    .fp-lock-note { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: var(--text-muted); margin-top: 14px; }
+    .fp-lock-note { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11.5px; color: var(--text-muted); margin-top: 14px; }
 
-    /* Alerts */
-    .fp-alert { display: none; border-radius: 10px; padding: 13px 16px; font-size: 13px; line-height: 1.5; margin-bottom: 20px; }
+    /* ── Alerts ── */
+    .fp-alert { display: none; border-radius: 10px; padding: 14px 18px; font-size: 13px; line-height: 1.6; margin-bottom: 24px; }
     .fp-alert.show { display: block; }
     .fp-alert-error { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); color: #fca5a5; }
-    .fp-alert-warn { background: rgba(234,179,8,.08); border: 1px solid rgba(234,179,8,.25); color: #fbbf24; }
+    .fp-alert-warn  { background: rgba(234,179,8,.08); border: 1px solid rgba(234,179,8,.25); color: #fbbf24; }
 
-    /* Empty */
-    .fp-empty { text-align: center; padding: 16px 0; }
-    .fp-empty-icon { font-size: 40px; margin-bottom: 14px; }
-    .fp-empty p { font-size: 14px; color: var(--text-soft); margin-bottom: 20px; }
-
+    /* ── Spinner ── */
     @keyframes spin { to { transform: rotate(360deg); } }
     .fp-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .7s linear infinite; flex-shrink: 0; }
 
-    @media (max-width: 560px) {
-      .fp-card { padding: 28px 18px 24px; border-radius: 14px; }
-    }
+    /* ── Plan selector (shown when no plan) ── */
+    .fp-plan-required { margin-bottom: 40px; }
+    .fp-plan-required-msg { background: rgba(234,179,8,.08); border: 1px solid rgba(234,179,8,.25); border-radius: 12px; padding: 14px 18px; font-size: 13.5px; color: #fbbf24; margin-bottom: 24px; display: flex; gap: 10px; align-items: flex-start; }
+    .fp-plan-required-msg::before { content: '⚠️'; flex-shrink: 0; }
+    .fp-plan-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    @media (max-width: 680px) { .fp-plan-cards { grid-template-columns: 1fr; } }
+    .fp-plan-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 22px 18px; cursor: pointer; transition: border-color .2s, box-shadow .2s; position: relative; }
+    .fp-plan-card:hover { border-color: rgba(37,99,235,0.4); box-shadow: 0 0 0 3px rgba(37,99,235,0.08); }
+    .fp-plan-card.selected { border-color: rgba(37,99,235,0.6); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .fp-plan-card.featured { border-color: rgba(37,99,235,0.35); }
+    .fp-plan-badge { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; font-size: 10px; font-weight: 700; padding: 3px 12px; border-radius: 20px; white-space: nowrap; }
+    .fp-plan-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .fp-plan-price { font-size: 24px; font-weight: 800; color: var(--blue-light); }
+    .fp-plan-price span { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+    .fp-plan-desc { font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
+    .fp-plan-select-btn { margin-top: 14px; width: 100%; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-soft); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+    .fp-plan-card:hover .fp-plan-select-btn,
+    .fp-plan-card.selected .fp-plan-select-btn { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+    /* ── Empty ── */
+    .fp-empty { text-align: center; padding: 48px 24px; }
+    .fp-empty-icon { font-size: 48px; margin-bottom: 16px; }
+    .fp-empty h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .fp-empty p { font-size: 14px; color: var(--text-soft); margin-bottom: 24px; }
+
+    /* ── Footer ── */
+    .fp-footer { text-align: center; padding: 24px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
+    .fp-footer a { color: var(--text-muted); text-decoration: none; }
+    .fp-footer a:hover { color: var(--text-soft); }
   </style>
-  <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
+  <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
 </head>
 <body>
 
-<a href="/pricing.html" class="fp-logo">
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="36" height="36">
-    <defs><linearGradient id="fp-co-g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/>
-    </linearGradient></defs>
-    <rect width="48" height="48" rx="10" ry="10" fill="url(#fp-co-g)"/>
-    <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-    </g>
-  </svg>
-  <span class="fp-logo-name">Flow<span>Point</span></span>
-</a>
+<!-- ── Nav ── -->
+<nav class="fp-nav">
+  <a href="/pricing.html" class="fp-nav-logo">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="32" height="32" aria-hidden="true">
+      <defs><linearGradient id="nav-g" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/>
+      </linearGradient></defs>
+      <rect width="48" height="48" rx="10" ry="10" fill="url(#nav-g)"/>
+      <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </g>
+    </svg>
+    <span class="fp-nav-logo-word">Flow<span>Point</span></span>
+  </a>
+  <a href="/pricing.html" class="fp-nav-back">← Retour aux tarifs</a>
+</nav>
 
-<div class="fp-card">
+<!-- ── Main ── -->
+<main class="fp-page">
 
-  <div id="fp-alert-error" class="fp-alert fp-alert-error"></div>
-  <div id="fp-alert-warn" class="fp-alert fp-alert-warn"></div>
+  <div id="fp-alert-error" class="fp-alert fp-alert-error" role="alert"></div>
 
-  <div id="fp-content">
-    <div class="fp-card-title">Récapitulatif de commande</div>
-    <div class="fp-card-sub">Vérifiez votre sélection avant de procéder au paiement.</div>
-
-    <div class="fp-summary" id="fp-summary"></div>
-
-    <ul class="fp-info-box" id="fp-info-box"></ul>
-
-    <button class="fp-btn fp-btn-primary" id="fp-pay-btn" onclick="startPayment()">
-      <span id="fp-btn-text">Continuer vers le paiement sécurisé →</span>
-      <span class="fp-spinner" style="display:none" id="fp-spinner"></span>
-    </button>
-    <a href="/pricing.html" class="fp-btn fp-btn-secondary">Modifier mon plan</a>
-
-    <p class="fp-lock-note">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      Paiement sécurisé Stripe · TLS · Données chiffrées
-    </p>
-  </div>
-
+  <!-- Empty state -->
   <div id="fp-empty" class="fp-empty" style="display:none">
     <div class="fp-empty-icon">🛒</div>
-    <p>Votre panier est vide.<br>Sélectionnez un plan ou un add-on depuis la page tarifs.</p>
-    <a href="/pricing.html" class="fp-btn fp-btn-primary">Voir les tarifs →</a>
+    <h2>Votre panier est vide</h2>
+    <p>Sélectionnez un plan depuis la page tarifs pour continuer.</p>
+    <a href="/pricing.html" class="fp-btn fp-btn-primary" style="max-width:280px;margin:0 auto;">Voir les tarifs →</a>
   </div>
 
-</div>
+  <!-- Plan required + addons-only selector -->
+  <div id="fp-plan-required" class="fp-plan-required" style="display:none">
+    <div class="fp-plan-required-msg">
+      Choisissez d'abord un abonnement FlowPoint pour activer votre espace. Un plan est requis pour accéder à votre dashboard.
+    </div>
+    <div class="fp-plan-cards" id="fp-plan-cards"></div>
+  </div>
+
+  <!-- Checkout content -->
+  <div id="fp-checkout" style="display:none">
+    <h1 class="fp-page-title">Récapitulatif de commande</h1>
+    <p class="fp-page-sub">Vérifiez votre sélection avant de procéder au paiement sécurisé.</p>
+
+    <div class="fp-layout">
+      <!-- Left: order summary -->
+      <div>
+        <div class="fp-card" id="fp-summary-card"></div>
+      </div>
+
+      <!-- Right: action panel -->
+      <div>
+        <div class="fp-action-card">
+          <div class="fp-action-title">Votre commande</div>
+          <ul class="fp-info-list" id="fp-info-list"></ul>
+          <button class="fp-btn fp-btn-primary" id="fp-pay-btn" onclick="startPayment()">
+            <span id="fp-btn-text">Continuer vers le paiement sécurisé →</span>
+            <span class="fp-spinner" id="fp-spinner" style="display:none"></span>
+          </button>
+          <a href="/pricing.html" class="fp-btn fp-btn-secondary">← Modifier mon panier</a>
+          <p class="fp-lock-note">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Paiement sécurisé par Stripe · Données chiffrées TLS
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Footer ── -->
+<footer class="fp-footer">
+  © 2026 FlowPoint ·
+  <a href="/pricing.html">Tarifs</a> ·
+  <a href="/login.html">Se connecter</a>
+</footer>
 
 <script>
 (function () {
   'use strict';
 
+  /* ── Data: plans ── */
   var PLAN_INFO = {
-    standard: { name: 'Plan Standard', price: 29 },
-    pro:      { name: 'Plan Pro',      price: 79 },
-    ultra:    { name: 'Plan Ultra',    price: 149 }
+    standard: { name: 'Plan Standard', price: 29,  desc: 'Pour les indépendants et consultants.' },
+    pro:      { name: 'Plan Pro',      price: 79,  desc: 'Pour les équipes en croissance.', featured: true },
+    ultra:    { name: 'Plan Ultra',    price: 149, desc: 'Pour les agences et experts SEO.' }
   };
+
+  /* ── Data: add-ons (source de vérité = pricing.html) ── */
   var ADDON_INFO = {
-    // ── Monitoring ──────────────────────────────────────────────────────────
     monitorsPack10:       { name: '+10 Monitors',              price: 9,  unit: '/pack/mois', qty: true },
     monitorsPack50:       { name: '+50 Monitors',              price: 29, unit: '/pack/mois', qty: true },
     globalMonitoring:     { name: 'Global Monitoring',         price: 49, unit: '/mois' },
     slaMonitoring:        { name: 'SLA Monitoring Avancé',     price: 19, unit: '/mois' },
-    // ── SEO ─────────────────────────────────────────────────────────────────
     advancedSeoLab:       { name: 'Advanced SEO Lab',          price: 29, unit: '/mois' },
     keywordDomination:    { name: 'Keyword Domination Engine', price: 39, unit: '/mois' },
     backlinkIntelligence: { name: 'Backlink Intelligence',     price: 24, unit: '/mois' },
     aiContentStrategist:  { name: 'AI Content Strategist',     price: 34, unit: '/mois' },
-    // ── Local SEO ───────────────────────────────────────────────────────────
     gbpSlots10:           { name: '+10 Emplacements GBP',      price: 19, unit: '/pack/mois', qty: true },
     aiGbpPosting:         { name: 'AI GBP Posting',            price: 29, unit: '/mois' },
     reviewIntelligence:   { name: 'Review Intelligence',       price: 19, unit: '/mois' },
     localDominationMaps:  { name: 'Local Domination Maps',     price: 24, unit: '/mois' },
-    // ── Conversion / AI ─────────────────────────────────────────────────────
     aiCro:                { name: 'AI CRO Strategist',         price: 34, unit: '/mois' },
     behavioralAI:         { name: 'Behavioral AI',             price: 44, unit: '/mois' },
     revenueLeak:          { name: 'Revenue Leak AI',           price: 29, unit: '/mois' },
     abTestingAI:          { name: 'AB Testing IA',             price: 24, unit: '/mois' },
-    // ── Reporting ───────────────────────────────────────────────────────────
     whiteLabel:           { name: 'White-Label Exports',       price: 17, unit: '/mois' },
     agencyPacks:          { name: 'Agency Reporting Packs',    price: 49, unit: '/mois' },
     aiExecutiveReport:    { name: 'AI Executive Reporting',    price: 24, unit: '/mois' },
     aiForecasting:        { name: 'AI Forecasting Engine',     price: 39, unit: '/mois' },
-    // ── Intelligence ────────────────────────────────────────────────────────
     marketIntelligence:   { name: 'AI Market Intelligence',   price: 49, unit: '/mois' },
     aiWorkflows:          { name: 'AI Automation Workflows',   price: 34, unit: '/mois' },
-    // ── Team ────────────────────────────────────────────────────────────────
     extraSeats:           { name: '+5 Sièges',                 price: 35, unit: '/pack/mois', qty: true },
     enterprisePermissions:{ name: 'Enterprise Permissions',   price: 19, unit: '/mois' },
-    // ── Data retention ──────────────────────────────────────────────────────
     retention90d:         { name: 'Rétention 90 jours',        price: 9,  unit: '/mois' },
     retention365d:        { name: 'Rétention 365 jours',       price: 19, unit: '/mois' },
-    // ── Integrations ────────────────────────────────────────────────────────
     advancedWebhooks:     { name: 'Webhooks Avancés',          price: 14, unit: '/mois' },
     zapierIntegration:    { name: 'Zapier / Make',             price: 19, unit: '/mois' },
     crmIntegration:       { name: 'Intégration CRM',           price: 29, unit: '/mois' },
-    // ── Enterprise ──────────────────────────────────────────────────────────
     customDomain:         { name: 'Custom Domain',             price: 9,  unit: '/mois' },
     ssoEnterprise:        { name: 'SSO Enterprise',            price: 49, unit: '/mois' },
     aiWorkspaceLaunch:    { name: 'AI Workspace Launch',       price: 49, unit: '/mois' },
-    // ── Support ─────────────────────────────────────────────────────────────
-    prioritySupport:      { name: 'Support prioritaire ≤ 2h',  price: 29, unit: '/mois' },
-    // ── Audit / Export packs ────────────────────────────────────────────────
+    prioritySupport:      { name: 'Support Prioritaire',       price: 29, unit: '/mois' },
     auditsPack200:        { name: 'Pack audits +200',          price: 12, unit: '/pack/mois', qty: true },
     auditsPack1000:       { name: 'Pack audits +1 000',        price: 39, unit: '/pack/mois', qty: true },
     pdfPack200:           { name: 'Pack PDF +200',             price: 12, unit: '/pack/mois', qty: true },
     exportsPack1000:      { name: 'Pack exports +1 000',       price: 14, unit: '/pack/mois', qty: true },
-    // ── AI Credit packs ─────────────────────────────────────────────────────
-    aiCreditsPack50k:     { name: '+50 000 crédits IA',        price: 19, unit: '/pack/mois', qty: true },
-    aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 49, unit: '/pack/mois', qty: true },
-    aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 99, unit: '/pack/mois', qty: true }
+    aiCreditsPack50k:     { name: '+50 000 crédits IA',        price: 19, unit: '/pack', qty: true, oneTime: true },
+    aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 49, unit: '/pack', qty: true, oneTime: true },
+    aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 99, unit: '/pack', qty: true, oneTime: true }
   };
 
-  /* ── Load cart: localStorage first, then URL params ── */
+  /* ── Add-ons inclus dans chaque plan (non facturés) ── */
+  var PLAN_INCLUDED = {
+    standard: [],
+    pro:      ['whiteLabel'],
+    ultra:    ['whiteLabel', 'agencyPacks']
+  };
+
+  /* ── Load cart ── */
   var cart = null;
   try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
 
-  /* Fallback: build cart from URL params (?plan=pro&addon=retention90d) */
+  /* Fallback URL params */
   if (!cart || (!cart.plan && !Object.keys(cart.addons || {}).length)) {
     var params = new URLSearchParams(window.location.search);
     var planParam = params.get('plan');
@@ -214,126 +291,230 @@
   }
 
   var hasPlan   = cart && cart.plan && PLAN_INFO[cart.plan];
-  var hasAddons = cart && cart.addons && Object.keys(cart.addons).length > 0;
+  var hasAddons = cart && Object.keys(cart.addons || {}).length > 0;
 
+  /* ── Empty ── */
   if (!hasPlan && !hasAddons) {
-    document.getElementById('fp-content').style.display = 'none';
     document.getElementById('fp-empty').style.display = 'block';
     return;
   }
 
-  /* ── Build summary rows ── */
-  var summaryEl = document.getElementById('fp-summary');
-  var infoEl    = document.getElementById('fp-info-box');
-  var addonTotal = 0;
-  var rows = '';
-  var infoItems = [];
+  /* ── No plan but has addons: show plan selector ── */
+  if (!hasPlan && hasAddons) {
+    renderPlanRequired();
+    renderCheckout(); /* show addons while plan is being picked */
+    document.getElementById('fp-plan-required').style.display = 'block';
+    document.getElementById('fp-checkout').style.display = 'block';
+    document.getElementById('fp-pay-btn').disabled = true;
+    document.getElementById('fp-btn-text').textContent = 'Sélectionnez d\'abord un plan';
+    return;
+  }
 
-  if (hasPlan) {
-    var p = PLAN_INFO[cart.plan];
-    rows +=
-      '<div class="fp-summary-row">' +
-        '<div class="fp-summary-label">' +
-          '<div class="fp-summary-label-main">' + p.name +
-            '<span class="fp-badge fp-badge-trial">14j d\'essai</span>' +
-          '</div>' +
-          '<div class="fp-summary-sub">Débit de ' + p.price + '€/mois après l\'essai · annulable à tout moment</div>' +
-        '</div>' +
-        '<div class="fp-summary-price">0€</div>' +
+  /* ── Normal flow: has plan ── */
+  renderCheckout();
+  document.getElementById('fp-checkout').style.display = 'block';
+
+  /* ── Render plan selector cards ── */
+  function renderPlanRequired() {
+    var container = document.getElementById('fp-plan-cards');
+    var html = '';
+    ['standard', 'pro', 'ultra'].forEach(function (key) {
+      var p = PLAN_INFO[key];
+      html += '<div class="fp-plan-card' + (p.featured ? ' featured' : '') + '" id="pc-' + key + '" onclick="selectPlanFromCard(\'' + key + '\')">' +
+        (p.featured ? '<div class="fp-plan-badge">Le plus populaire</div>' : '') +
+        '<div class="fp-plan-name">' + p.name + '</div>' +
+        '<div class="fp-plan-price">' + p.price + '€<span>/mois</span></div>' +
+        '<div class="fp-plan-desc">' + p.desc + '</div>' +
+        '<button class="fp-plan-select-btn">Choisir ce plan</button>' +
       '</div>';
-    infoItems.push('Carte bancaire requise à l\'inscription — vous ne serez débité qu\'après les 14 jours d\'essai.');
-    infoItems.push('Annulation sans frais avant la fin de la période d\'essai.');
-  }
-
-  if (hasAddons) {
-    Object.keys(cart.addons).forEach(function (id) {
-      var info = ADDON_INFO[id];
-      if (!info) return;
-      var qty = cart.addons[id] || 1;
-      var lineTotal = info.price * qty;
-      addonTotal += lineTotal;
-      var label = info.name + (qty > 1 ? ' <small style="color:var(--text-muted)">× ' + qty + '</small>' : '');
-      rows +=
-        '<div class="fp-summary-row">' +
-          '<div class="fp-summary-label">' +
-            '<div>' + label + '<span class="fp-badge fp-badge-now">Facturé maintenant</span></div>' +
-            '<div class="fp-summary-sub">' + info.price + '€' + info.unit + (qty > 1 ? ' × ' + qty : '') + '</div>' +
-          '</div>' +
-          '<div class="fp-summary-price">' + lineTotal + '€</div>' +
-        '</div>';
     });
-    infoItems.push('Les add-ons sont facturés immédiatement puis chaque mois · résiliables depuis le tableau de bord.');
+    container.innerHTML = html;
   }
 
-  var todayAmount = addonTotal;
-  var todayLabel  = hasPlan && addonTotal > 0 ? 'Dû aujourd\'hui (add-ons)' : hasPlan ? 'Dû aujourd\'hui (essai gratuit)' : 'Dû aujourd\'hui';
-  rows +=
-    '<div class="fp-summary-total-row">' +
-      '<span class="fp-summary-total-label">' + todayLabel + '</span>' +
-      '<span class="fp-summary-total-amount">' + todayAmount + '€</span>' +
+  window.selectPlanFromCard = function (key) {
+    if (!cart) cart = { plan: null, addons: {} };
+    cart.plan = key;
+    try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
+    document.querySelectorAll('.fp-plan-card').forEach(function (c) { c.classList.remove('selected'); });
+    var el = document.getElementById('pc-' + key);
+    if (el) el.classList.add('selected');
+    document.getElementById('fp-plan-required').style.display = 'none';
+    renderCheckout();
+    document.getElementById('fp-checkout').style.display = 'block';
+    var btn = document.getElementById('fp-pay-btn');
+    btn.disabled = false;
+    document.getElementById('fp-btn-text').textContent = 'Continuer vers le paiement sécurisé →';
+  };
+
+  /* ── Render checkout summary ── */
+  function renderCheckout() {
+    var plan     = cart && cart.plan ? cart.plan : null;
+    var addons   = cart ? (cart.addons || {}) : {};
+    var included = plan ? (PLAN_INCLUDED[plan] || []) : [];
+
+    var summaryCard = document.getElementById('fp-summary-card');
+    var infoList    = document.getElementById('fp-info-list');
+    var html = '<div class="fp-card-head"><div class="fp-card-head-title">Détail de votre commande</div></div>';
+
+    var monthlyTotal  = 0;
+    var oneTimeTotal  = 0;
+    var hasMonthly    = false;
+    var hasOneTime    = false;
+    var hasIncluded   = false;
+    var hasTrialPlan  = !!plan;
+
+    /* Plan row */
+    if (plan) {
+      var p = PLAN_INFO[plan];
+      monthlyTotal += p.price;
+      hasMonthly = true;
+      html += '<div class="fp-row">' +
+        '<div class="fp-row-label">' +
+          '<div class="fp-row-name">' + p.name + '<span class="fp-badge fp-badge-trial">14j d\'essai</span></div>' +
+          '<div class="fp-row-sub">Débité à ' + p.price + '€/mois après la période d\'essai</div>' +
+        '</div>' +
+        '<div class="fp-row-price muted">0€</div>' +
+      '</div>';
+    }
+
+    /* Monthly addons rows */
+    var monthlyAddonRows = '';
+    var monthlyAddonCount = 0;
+    Object.keys(addons).forEach(function (id) {
+      var info = ADDON_INFO[id];
+      if (!info || info.oneTime) return;
+      if (included.indexOf(id) !== -1) return; /* skip included ones for now */
+      var qty = addons[id] || 1;
+      var lineTotal = info.price * qty;
+      monthlyTotal += lineTotal;
+      hasMonthly = true;
+      monthlyAddonCount++;
+      var label = info.name + (qty > 1 ? ' <small style="color:var(--text-muted)">× ' + qty + '</small>' : '');
+      monthlyAddonRows += '<div class="fp-row">' +
+        '<div class="fp-row-label">' +
+          '<div class="fp-row-name">' + label + (hasTrialPlan ? '<span class="fp-badge fp-badge-trial">Après essai</span>' : '<span class="fp-badge fp-badge-now">Facturé maintenant</span>') + '</div>' +
+          '<div class="fp-row-sub">' + info.price + '€' + info.unit + '</div>' +
+        '</div>' +
+        '<div class="fp-row-price">' + lineTotal + '€</div>' +
+      '</div>';
+    });
+
+    /* Included addons rows */
+    var includedRows = '';
+    Object.keys(addons).forEach(function (id) {
+      var info = ADDON_INFO[id];
+      if (!info || info.oneTime) return;
+      if (included.indexOf(id) === -1) return;
+      hasIncluded = true;
+      includedRows += '<div class="fp-row">' +
+        '<div class="fp-row-label">' +
+          '<div class="fp-row-name">' + info.name + '<span class="fp-badge fp-badge-incl">Inclus dans le plan</span></div>' +
+          '<div class="fp-row-sub">Déjà compris dans votre abonnement</div>' +
+        '</div>' +
+        '<div class="fp-row-price muted">0€</div>' +
+      '</div>';
+    });
+
+    /* AI credits rows */
+    var oneTimeRows = '';
+    Object.keys(addons).forEach(function (id) {
+      var info = ADDON_INFO[id];
+      if (!info || !info.oneTime) return;
+      var qty = addons[id] || 1;
+      var lineTotal = info.price * qty;
+      oneTimeTotal += lineTotal;
+      hasOneTime = true;
+      var label = info.name + (qty > 1 ? ' <small style="color:var(--text-muted)">× ' + qty + '</small>' : '');
+      oneTimeRows += '<div class="fp-row">' +
+        '<div class="fp-row-label">' +
+          '<div class="fp-row-name">' + label + '<span class="fp-badge fp-badge-one">Paiement immédiat</span></div>' +
+          '<div class="fp-row-sub">Achat unique · non récurrent</div>' +
+        '</div>' +
+        '<div class="fp-row-price">' + lineTotal + '€</div>' +
+      '</div>';
+    });
+
+    /* Section headers + rows */
+    if (monthlyAddonCount > 0) {
+      html += '<div class="fp-section-label">Add-ons mensuels</div>';
+      html += monthlyAddonRows;
+    }
+    if (hasIncluded) {
+      html += '<div class="fp-section-label">Add-ons inclus dans le plan</div>';
+      html += includedRows;
+    }
+    if (hasOneTime) {
+      html += '<div class="fp-section-label">Crédits IA (achat unique)</div>';
+      html += oneTimeRows;
+    }
+
+    /* Totals */
+    html += '<div class="fp-total-now">' +
+      '<span class="fp-total-label">Dû aujourd\'hui' + (hasTrialPlan ? ' (essai)' : '') + '</span>' +
+      '<span class="fp-total-amount">' + oneTimeTotal + '€</span>' +
     '</div>';
+    if (hasMonthly) {
+      html += '<div class="fp-total-after">' +
+        '<span class="fp-total-label">À partir du ' + (hasTrialPlan ? 'jour 15' : 'mois prochain') + '</span>' +
+        '<span class="fp-total-amount green">' + monthlyTotal + '€<span style="font-size:11px;font-weight:400;color:var(--text-muted)">/mois</span></span>' +
+      '</div>';
+    }
 
-  summaryEl.innerHTML = rows;
+    summaryCard.innerHTML = html;
 
-  /* Info box */
-  infoEl.innerHTML = infoItems.map(function(t) { return '<li>' + t + '</li>'; }).join('');
+    /* Info list */
+    var infoItems = [];
+    if (hasTrialPlan) {
+      infoItems.push('Carte bancaire requise · aucun débit pendant l\'essai.');
+      infoItems.push('Abonnement débité après 14 jours · annulable à tout moment.');
+    }
+    if (hasOneTime) {
+      infoItems.push('Crédits IA débités immédiatement · achat unique non renouvelable.');
+    }
+    if (!hasTrialPlan && hasMonthly) {
+      infoItems.push('Add-ons facturés maintenant · renouvelés mensuellement.');
+    }
+    infoItems.push('Paiement 100% sécurisé via Stripe. Annulation sans frais pendant l\'essai.');
+    infoList.innerHTML = infoItems.map(function (t) { return '<li>' + t + '</li>'; }).join('');
+  }
 
-  /* ── Payment ── */
+  /* ── Start payment ── */
   window.startPayment = function () {
-    var btn    = document.getElementById('fp-pay-btn');
-    var txt    = document.getElementById('fp-btn-text');
-    var spin   = document.getElementById('fp-spinner');
-    var errEl  = document.getElementById('fp-alert-error');
-    var warnEl = document.getElementById('fp-alert-warn');
-    errEl.classList.remove('show');
-    warnEl.classList.remove('show');
+    var btn     = document.getElementById('fp-pay-btn');
+    var spinner = document.getElementById('fp-spinner');
+    var text    = document.getElementById('fp-btn-text');
+    var errEl   = document.getElementById('fp-alert-error');
+
+    if (btn.disabled) return;
     btn.disabled = true;
-    txt.style.display = 'none';
-    spin.style.display = 'inline-block';
+    text.textContent = 'Connexion à Stripe…';
+    spinner.style.display = 'inline-block';
+    errEl.classList.remove('show');
 
     var body = {};
-    if (hasPlan) body.plan = cart.plan;
-    if (hasAddons) body.addons = cart.addons;
+    if (cart && cart.plan) body.plan = cart.plan;
+    if (cart && cart.addons) body.addons = cart.addons;
+    body.source = 'checkout_html';
 
     fetch('/api/public/checkout-session', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
-    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, data: d }; }); })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
     .then(function (res) {
-      btn.disabled = false;
-      txt.style.display = '';
-      spin.style.display = 'none';
-
-      if (res.status === 401) {
-        try { sessionStorage.setItem('fp_next', '/checkout.html'); } catch(ex) {}
-        window.location.href = '/login.html?next=' + encodeURIComponent('/checkout.html');
-        return;
-      }
-
-      /* Dev mode: Stripe not configured */
-      if (res.data && res.data.mock) {
-        warnEl.textContent = '⚙️ Mode développement — Stripe n\'est pas configuré (STRIPE_PRICE_* env vars). Aucun paiement réel n\'a été effectué.';
-        warnEl.classList.add('show');
-        return;
-      }
-
       if (!res.ok || !res.data.url) {
-        throw new Error(res.data && res.data.error ? res.data.error : 'Impossible de créer la session de paiement. Vérifiez la configuration Stripe.');
+        throw new Error(res.data.error || 'Erreur lors de la création de la session.');
       }
-
       window.location.href = res.data.url;
     })
     .catch(function (err) {
-      var btn2   = document.getElementById('fp-pay-btn');
-      var txt2   = document.getElementById('fp-btn-text');
-      var spin2  = document.getElementById('fp-spinner');
-      btn2.disabled = false;
-      txt2.style.display = '';
-      spin2.style.display = 'none';
-      document.getElementById('fp-alert-error').textContent = err.message || 'Une erreur inattendue est survenue. Réessayez.';
-      document.getElementById('fp-alert-error').classList.add('show');
+      btn.disabled = false;
+      text.textContent = 'Continuer vers le paiement sécurisé →';
+      spinner.style.display = 'none';
+      errEl.textContent = '❌ ' + (err.message || 'Une erreur est survenue. Réessayez.');
+      errEl.classList.add('show');
     });
   };
 
