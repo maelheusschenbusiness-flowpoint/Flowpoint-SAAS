@@ -175,16 +175,36 @@ function servePage(file: string) {
   };
 }
 
-// ── Favicon — serve files directly, never cached (avoids 301 browser cache) ──
+// ── Favicon — serve all assets explicitly, never cached ──
 app.get(["/favicon.svg", "/api/dashboard/favicon.svg"], (_req: Request, res: Response): void => {
   res.setHeader("Content-Type", "image/svg+xml");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Expires", "0");
   res.sendFile(path.join(dashboardDir, "favicon.svg"));
 });
 app.get(["/favicon.ico", "/api/dashboard/favicon.ico"], (_req: Request, res: Response): void => {
   res.setHeader("Content-Type", "image/x-icon");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Expires", "0");
   res.sendFile(path.join(dashboardDir, "favicon.ico"));
+});
+app.get(["/favicon-32x32.png", "/api/dashboard/favicon-32x32.png"], (_req: Request, res: Response): void => {
+  res.setHeader("Content-Type", "image/png");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Expires", "0");
+  res.sendFile(path.join(dashboardDir, "favicon-32x32.png"));
+});
+app.get(["/favicon-16x16.png", "/api/dashboard/favicon-16x16.png"], (_req: Request, res: Response): void => {
+  res.setHeader("Content-Type", "image/png");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Expires", "0");
+  res.sendFile(path.join(dashboardDir, "favicon-16x16.png"));
+});
+app.get(["/apple-touch-icon.png", "/api/dashboard/apple-touch-icon.png"], (_req: Request, res: Response): void => {
+  res.setHeader("Content-Type", "image/png");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Expires", "0");
+  res.sendFile(path.join(dashboardDir, "apple-touch-icon.png"));
 });
 
 // ── Frontend page routes ──────────────────────────────────────────────────────
@@ -206,6 +226,8 @@ app.get(["/legal", "/legal.html", "/informations-legales"], (_req: Request, res:
 app.get(["/report/:token", "/report-view.html"], servePage("report-view.html"));
 // Checkout pages
 app.get(["/checkout", "/checkout.html"], servePage("checkout.html"));
+app.get(["/checkout-embedded", "/checkout-embedded.html"], servePage("checkout-embedded.html"));
+app.get(["/checkout-return", "/checkout-return.html"], servePage("checkout-return.html"));
 app.get(["/success", "/success.html"], servePage("success.html"));
 app.get(["/cancel", "/cancel.html"], servePage("cancel.html"));
 
