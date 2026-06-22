@@ -147,7 +147,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
     function urlOrEmbedded(params: Record<string, unknown>) {
       if (embedded) {
-        return { ...params, ui_mode: "embedded", return_url: returnUrl };
+        return { ...params, ui_mode: "embedded_page", return_url: returnUrl };
       }
       return { ...params, success_url: successUrl, cancel_url: cancelUrl };
     }
