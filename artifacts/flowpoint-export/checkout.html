@@ -358,6 +358,17 @@
   }
 
   /* ── DEFINED BEFORE any early return ── */
+
+  window.startPayment = function () {
+    var btn = document.getElementById('fp-pay-btn');
+    if (!btn || btn.disabled) return;
+    try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
+    btn.disabled = true;
+    document.getElementById('fp-btn-text').textContent = 'Redirection…';
+    document.getElementById('fp-spinner').style.display = 'inline-block';
+    window.location.href = '/checkout-embedded.html';
+  };
+
   window.selectPlanFromCard = function (key) {
     if (!cart) cart = { plan: null, addons: {} };
     cart.plan = key;
@@ -381,26 +392,37 @@
     var addons   = cart ? (cart.addons || {}) : {};
     var included = plan ? (PLAN_INCLUDED[plan] || []) : [];
 
+    /*
+     * Billing logic:
+     *  - Plan (Standard/Pro/Ultra) → always has 14-day trial → billed after trial
+     *  - Monthly add-ons (non-included, non-one-time) → billed IMMEDIATELY (activés dès aujourd'hui)
+     *  - Included add-ons (in plan) → 0€, just shown as Inclus
+     *  - One-time AI credit packs → billed IMMEDIATELY (achat unique)
+     *
+     *  Totals:
+     *    Dû aujourd'hui  = monthly add-ons (immediate) + one-time credits
+     *    Mensuel après 14j = plan price + monthly add-ons (recurring subscription)
+     */
     var html = '';
-    var monthlyTotal = 0;
-    var oneTimeTotal = 0;
-    var hasMonthly   = false;
-    var hasOneTime   = false;
-    var hasIncluded  = false;
-    var hasTrial     = !!plan;
+    var planPrice        = 0;
+    var addonImmediate   = 0;  /* monthly add-ons billed now */
+    var oneTimeTotal     = 0;  /* AI credit packs, one-time */
+    var hasMonthlyAddon  = false;
+    var hasOneTime       = false;
+    var hasIncluded      = false;
+    var hasPlanHere      = !!plan;
 
     /* ── Plan row ── */
     if (plan) {
       var p = PLAN_INFO[plan];
-      monthlyTotal += p.price;
-      hasMonthly = true;
+      planPrice = p.price;
       html += '<div class="fp-plan-block">' +
         '<div class="fp-plan-icon">' +
           '<svg width="20" height="20" viewBox="0 0 48 48" fill="none"><polygon points="25 4 5 28 23 28 22 44 42 20 24 20 25 4" fill="#3b82f6"/></svg>' +
         '</div>' +
         '<div class="fp-plan-info">' +
           '<div class="fp-plan-name">' + p.name + '<span class="fp-badge fp-badge-trial" style="margin-left:8px">14j offerts</span></div>' +
-          '<div class="fp-plan-sub">Débité après la période d\'essai</div>' +
+          '<div class="fp-plan-sub">Débité après la période d\'essai · annulable avant</div>' +
         '</div>' +
         '<div class="fp-plan-price-wrap">' +
           '<div class="fp-plan-price">' + p.price + '€</div>' +
@@ -409,26 +431,28 @@
       '</div>';
     }
 
-    /* ── Monthly addons ── */
+    /* ── Monthly add-ons → billed immediately ── */
     var monthlyRows = '';
     var monthlyCount = 0;
     Object.keys(addons).forEach(function (id) {
       var info = ADDON_INFO[id];
       if (!info || info.oneTime || included.indexOf(id) !== -1) return;
       var qty = addons[id] || 1;
-      monthlyTotal += info.price * qty;
-      hasMonthly = true;
+      addonImmediate += info.price * qty;
+      hasMonthlyAddon = true;
       monthlyCount++;
       monthlyRows += '<div class="fp-addon-row">' +
         '<div class="fp-addon-row-left"><div class="fp-addon-name">' +
           info.name + (qty > 1 ? ' <span style="color:var(--text-muted);font-size:11px">×' + qty + '</span>' : '') +
-          (hasTrial ? ' <span class="fp-badge fp-badge-trial">Après essai</span>' : ' <span class="fp-badge fp-badge-now">Maintenant</span>') +
-        '</div></div>' +
-        '<div class="fp-addon-right"><span class="fp-addon-price">' + (info.price * qty) + '€</span></div>' +
+          ' <span class="fp-badge fp-badge-now">Facturé maintenant</span>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--green);margin-top:2px">Activé immédiatement</div>' +
+        '</div>' +
+        '<div class="fp-addon-right"><span class="fp-addon-price">' + (info.price * qty) + '€<span style="font-size:10px;font-weight:400;color:var(--text-muted)">/mois</span></span></div>' +
       '</div>';
     });
 
-    /* ── Included addons ── */
+    /* ── Included add-ons ── */
     var includedRows = '';
     Object.keys(addons).forEach(function (id) {
       var info = ADDON_INFO[id];
@@ -442,7 +466,7 @@
       '</div>';
     });
 
-    /* ── AI credits (one-time) ── */
+    /* ── One-time AI credits ── */
     var oneTimeRows = '';
     Object.keys(addons).forEach(function (id) {
       var info = ADDON_INFO[id];
@@ -453,15 +477,17 @@
       oneTimeRows += '<div class="fp-addon-row">' +
         '<div class="fp-addon-row-left"><div class="fp-addon-name">' +
           info.name + (qty > 1 ? ' <span style="color:var(--text-muted);font-size:11px">×' + qty + '</span>' : '') +
-          ' <span class="fp-badge fp-badge-one">Immédiat</span>' +
-        '</div></div>' +
+          ' <span class="fp-badge fp-badge-one">Achat unique</span>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--green);margin-top:2px">Crédits disponibles immédiatement</div>' +
+        '</div>' +
         '<div class="fp-addon-right"><span class="fp-addon-price">' + (info.price * qty) + '€</span></div>' +
       '</div>';
     });
 
     /* ── Assemble sections ── */
     if (monthlyCount > 0) {
-      html += '<div class="fp-group-label">Add-ons mensuels</div>';
+      html += '<div class="fp-group-label">Add-ons actifs dès aujourd\'hui</div>';
       html += '<div class="fp-addon-list">' + monthlyRows + '</div>';
     }
     if (hasIncluded) {
@@ -474,15 +500,28 @@
     }
 
     /* ── Totals ── */
+    var immediateTotal = addonImmediate + oneTimeTotal;
+    var monthlyAfterTrial = planPrice + addonImmediate;
+
     html += '<div class="fp-divider"></div><div class="fp-totals">';
+
+    /* Line 1: Dû aujourd'hui */
     html += '<div class="fp-total-row">' +
-      '<span class="fp-total-label">Dû aujourd\'hui' + (hasTrial ? ' (essai)' : '') + '</span>' +
-      '<span class="fp-total-amount">' + oneTimeTotal + '€</span>' +
+      '<span class="fp-total-label">Dû aujourd\'hui</span>' +
+      '<span class="fp-total-amount">' + immediateTotal + '€</span>' +
     '</div>';
-    if (hasMonthly) {
+
+    /* Line 2: Mensuel après essai (si plan) */
+    if (hasPlanHere) {
       html += '<div class="fp-total-row">' +
-        '<span class="fp-total-label">' + (hasTrial ? 'Après 14 jours' : 'Mensuel') + '</span>' +
-        '<span class="fp-total-amount secondary">' + monthlyTotal + '€<span class="fp-total-unit">/mois</span></span>' +
+        '<span class="fp-total-label">Mensuel après 14 jours</span>' +
+        '<span class="fp-total-amount secondary">' + monthlyAfterTrial + '€<span class="fp-total-unit">/mois</span></span>' +
+      '</div>';
+    } else if (hasMonthlyAddon) {
+      /* add-on only, no plan → monthly recurring */
+      html += '<div class="fp-total-row">' +
+        '<span class="fp-total-label">Mensuel</span>' +
+        '<span class="fp-total-amount secondary">' + addonImmediate + '€<span class="fp-total-unit">/mois</span></span>' +
       '</div>';
     }
     html += '</div>';
@@ -491,13 +530,16 @@
 
     /* ── Info list ── */
     var items = [];
-    if (hasTrial) {
-      items.push('Carte bancaire requise · aucun débit pendant l\'essai.');
-      items.push('Abonnement actif après 14 jours · annulable à tout moment.');
+    if (hasPlanHere) {
+      items.push('14 jours d\'essai gratuit · aucun débit si annulation avant.');
     }
-    if (hasOneTime) items.push('Crédits IA débités immédiatement · achat non récurrent.');
-    if (!hasTrial && hasMonthly) items.push('Add-ons facturés maintenant · renouvelés chaque mois.');
-    items.push('Paiement 100% sécurisé via Stripe.');
+    if (hasMonthlyAddon) {
+      items.push('Add-ons facturés aujourd\'hui · actifs immédiatement · renouvelés chaque mois.');
+    }
+    if (hasOneTime) {
+      items.push('Crédits IA débités maintenant · achat non récurrent.');
+    }
+    items.push('Paiement 100% sécurisé via Stripe · annulable à tout moment.');
     document.getElementById('fp-info-list').innerHTML = items.map(function(t){return '<li>'+t+'</li>';}).join('');
   }
 
@@ -522,18 +564,6 @@
   renderSummary();
   document.getElementById('fp-summary-card').style.display = 'block';
   document.getElementById('fp-cta-card').style.display = 'block';
-
-  /* ────────────────── Start payment ────────────────── */
-
-  window.startPayment = function () {
-    var btn = document.getElementById('fp-pay-btn');
-    if (btn.disabled) return;
-    try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
-    btn.disabled = true;
-    document.getElementById('fp-btn-text').textContent = 'Redirection…';
-    document.getElementById('fp-spinner').style.display = 'inline-block';
-    window.location.href = '/checkout-embedded.html';
-  };
 
 })();
 </script>

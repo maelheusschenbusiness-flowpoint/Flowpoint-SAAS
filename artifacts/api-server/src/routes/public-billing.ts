@@ -117,10 +117,25 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     const { subscriptionItems, oneTimeItems, checkoutType } = buildLineItems(planKey, addons);
 
     const selectedAddonNames = addonKeys.join(",");
+    /* Classify add-ons for webhook processing */
+    const included       = PLAN_INCLUDED_ADDONS[planKey] ?? new Set();
+    const immediateAddons = addonKeys.filter(k => !AI_CREDIT_PACKS.has(k) && !included.has(k));
+    const includedAddons  = addonKeys.filter(k => included.has(k));
+    const aiCredits       = addonKeys.filter(k => AI_CREDIT_PACKS.has(k));
+
+    const finalCheckoutType = (checkoutType === "subscription" && immediateAddons.length > 0)
+      ? "subscription_with_immediate_addons"
+      : checkoutType;
+
     const metadata: Record<string, string> = {
-      flowpoint_checkout_type: checkoutType,
+      flowpoint_checkout_type: finalCheckoutType,
       selected_plan:           planKey || "",
       selected_addons:         selectedAddonNames,
+      immediate_addons:        immediateAddons.join(","),
+      included_addons:         includedAddons.join(","),
+      ai_credits:              aiCredits.join(","),
+      trial_plan:              hasPlan ? "true" : "false",
+      addons_billed_now:       immediateAddons.length > 0 ? "true" : "false",
       source,
       flowpoint_cart:          "true",
     };
