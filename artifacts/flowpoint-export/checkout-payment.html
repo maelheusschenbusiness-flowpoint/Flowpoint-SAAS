@@ -11,8 +11,8 @@
   <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
   <meta name="robots" content="noindex, nofollow"/>
   <title>Paiement — FlowPoint</title>
-  <script src="https://js.stripe.com/v3/"></script>
   <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
+  <script src="https://js.stripe.com/v3/"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -165,9 +165,7 @@
   <!-- Payment Form -->
   <div class="fp-card" id="fp-payment-card" style="display:none">
     <div class="fp-card-title">Informations de paiement</div>
-    <div id="fp-trial-note" class="fp-trial-note" style="display:none">
-      14 jours d'essai gratuit · aucun débit pendant l'essai · annulable à tout moment
-    </div>
+    <div id="fp-trial-note" class="fp-trial-note" style="display:none"></div>
     <div class="fp-alert fp-alert-error" id="fp-alert"></div>
     <div id="fp-payment-element"></div>
     <button class="fp-btn fp-btn-primary" id="fp-pay-btn" disabled>
@@ -298,15 +296,19 @@
     html += '<div class="fp-divider"></div>';
     html += '<div class="fp-total-row"><span class="fp-total-lbl">Dû aujourd\'hui</span><span class="fp-total-val">' + immediateTotal + '€</span></div>';
     if (hasPlan) {
-      html += '<div class="fp-total-row"><span class="fp-total-lbl">Plan après essai</span><span class="fp-total-val after">' + monthlyAfterTrial + '€<span class="fp-total-unit">/mois</span></span></div>';
+      html += '<div class="fp-total-row"><span class="fp-total-lbl">Mensuel après essai</span><span class="fp-total-val after">' + monthlyAfterTrial + '€<span class="fp-total-unit">/mois</span></span></div>';
     }
     document.getElementById('fp-summary-card').innerHTML = html;
   })();
 
   /* ── Show payment card ── */
   document.getElementById('fp-payment-card').style.display = 'block';
-  if (hasPlan && immediateTotal === 0) {
-    document.getElementById('fp-trial-note').style.display = 'block';
+  if (hasPlan) {
+    var noteEl = document.getElementById('fp-trial-note');
+    noteEl.textContent = immediateTotal === 0
+      ? 'Aucun débit aujourd\'hui. Premier paiement après 14 jours.'
+      : 'Add-ons facturés aujourd\'hui. Abonnement débité après 14 jours.';
+    noteEl.style.display = 'block';
   }
 
   /* ── Helpers ── */
