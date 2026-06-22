@@ -275,7 +275,7 @@ router.get("/diagnostics/integrations", async (_req, res) => {
   const integrations: ProbeResult[] = [];
 
   // ── Stripe (API key → live probe) ─────────────────────────────────────────
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   if (stripeKey) {
     const p = await probeApi(
       "https://api.stripe.com/v1/balance",
@@ -474,7 +474,7 @@ router.get("/diagnostics/integrations", async (_req, res) => {
 
 // ── Billing / Stripe status ───────────────────────────────────────────────────
 router.get("/diagnostics/billing", async (_req, res) => {
-  const stripeKeyPresent     = !!process.env["STRIPE_SECRET_KEY"];
+  const stripeKeyPresent     = !!(process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"]);
   const webhookSecretPresent = !!process.env["STRIPE_WEBHOOK_SECRET"];
   const webhookRenderPresent = !!process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
 

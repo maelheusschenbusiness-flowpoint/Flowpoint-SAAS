@@ -36,7 +36,7 @@ function buildLineItems(plan: string, addons: AddonsMap): Array<{ price: string;
 router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, res: Response) => {
   const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
 
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
   if (!stripeKey) {
@@ -96,7 +96,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
 router.post("/billing/checkout-embedded", async (req: Request, res: Response) => {
   const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
 
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
   if (!stripeKey) {
@@ -147,7 +147,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
   const sessionId = String(req.query["session_id"] || "");
   if (!sessionId) { res.status(400).json({ error: "session_id required" }); return; }
 
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const apiSecretKey = process.env["API_SECRET_KEY"];
 
   if (!stripeKey) {
@@ -211,7 +211,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
 });
 
 router.post("/billing/portal", billingCheckoutRateLimit, async (_req: Request, res: Response) => {
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
   const returnUrl = process.env["STRIPE_RETURN_URL"] || `${publicUrl}/dashboard`;
 
@@ -334,7 +334,7 @@ router.post("/billing/coupon/validate", async (req: Request, res: Response) => {
 
 // ── NEW: GET /billing/subscription ──────────────────────────────────────────
 router.get("/billing/subscription", async (_req: Request, res: Response) => {
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const me = store.me;
 
   if (!stripeKey || !me.stripeCustomerId) {
@@ -375,7 +375,7 @@ router.get("/billing/subscription", async (_req: Request, res: Response) => {
 // We add /billing/checkout/annual as a convenience.
 router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
   const { plan = "pro", addons = {}, coupon } = req.body as { plan?: string; addons?: AddonsMap; coupon?: string };
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
   if (!stripeKey) {
@@ -486,7 +486,7 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req
     return;
   }
 
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
   if (!stripeKey) {
@@ -572,7 +572,7 @@ router.get("/billing/events", (req: Request, res: Response) => {
 // ── Stripe Webhook ────────────────────────────────────────────────────────────
 // Raw body is already applied in app.ts for /api/billing/webhook
 router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res: Response) => {
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
 
   if (!stripeKey) {

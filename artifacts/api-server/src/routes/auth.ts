@@ -571,7 +571,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
       res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
 
       // ── Fire-and-forget: create Stripe customer + start trial ───────────
-      const stripeKey = process.env["STRIPE_SECRET_KEY"];
+      const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
       if (stripeKey) {
         (async () => {
           try {

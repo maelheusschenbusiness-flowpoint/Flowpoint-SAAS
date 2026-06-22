@@ -42,7 +42,7 @@ function syncAddonsFromSubscription(subscription: Record<string, unknown>) {
 }
 
 async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
 
   let event: { type: string; data: { object: Record<string, unknown> } };

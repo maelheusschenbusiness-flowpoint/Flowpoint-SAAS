@@ -67,7 +67,7 @@ router.get("/healthz/deep", async (_req, res) => {
   }
 
   // ── Stripe — live /v1/balance probe ──────────────────────────────────────
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   if (stripeKey) {
     checks.stripe = await probeUrl(
       "https://api.stripe.com/v1/balance",

@@ -78,7 +78,7 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
     embedded?: boolean;
   };
 
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
 
   const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
@@ -262,7 +262,7 @@ const ADDON_PRICES_EUR_CENTS: Record<string, number> = {
  ───────────────────────────────────────────────────────────────────────── */
 router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Request, res: Response) => {
   const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
-  const stripeKey      = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey      = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
 
   if (!stripeKey) {
@@ -345,7 +345,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     plan?: string;
     addons?: AddonsMap;
   };
-  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
 
   if (!stripeKey) {
     res.status(503).json({ error: "Payment service not configured." });
