@@ -228,4 +228,211 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
   }
 });
 
+/* ─────────────────────────────────────────────────────────────────────────
+   EUR prices in cents — mirrors checkout.html / checkout-payment.html
+   Used to create PaymentIntents for immediate add-on billing.
+ ───────────────────────────────────────────────────────────────────────── */
+const ADDON_PRICES_EUR_CENTS: Record<string, number> = {
+  monitorsPack10:        900,  monitorsPack50:       2900,
+  globalMonitoring:     4900,  slaMonitoring:        1900,
+  advancedSeoLab:       2900,  keywordDomination:    3900,
+  backlinkIntelligence: 2400,  aiContentStrategist:  3400,
+  gbpSlots10:           1900,  aiGbpPosting:         2900,
+  reviewIntelligence:   1900,  localDominationMaps:  2400,
+  aiCro:                3400,  behavioralAI:         4400,
+  revenueLeak:          2900,  abTestingAI:          2400,
+  whiteLabel:           1700,  agencyPacks:          4900,
+  aiExecutiveReport:    2400,  aiForecasting:        3900,
+  marketIntelligence:   4900,  aiWorkflows:          3400,
+  extraSeats:           3500,  enterprisePermissions:1900,
+  retention90d:          900,  retention365d:        1900,
+  advancedWebhooks:     1400,  zapierIntegration:    1900,
+  crmIntegration:       2900,  customDomain:          900,
+  ssoEnterprise:        4900,  aiWorkspaceLaunch:    4900,
+  prioritySupport:      2900,  auditsPack200:        1200,
+  auditsPack1000:       3900,  pdfPack200:           1200,
+  exportsPack1000:      1400,
+  /* AI credit packs (one-time) */
+  aiCreditsPack50k:  1900, aiCreditsPack200k: 4900, aiCreditsPack500k: 9900,
+};
+
+/* ─── POST /api/public/payment-intent ────────────────────────────────────
+   Creates a PaymentIntent (immediate add-on charge) or a SetupIntent
+   (plan-only trial — no charge today, card saved for subscription).
+ ───────────────────────────────────────────────────────────────────────── */
+router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Request, res: Response) => {
+  const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
+  const stripeKey      = process.env["STRIPE_SECRET_KEY"];
+  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
+
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      res.status(503).json({ error: "Payment service not configured." });
+      return;
+    }
+    res.json({ clientSecret: "seti_test_mock_secret", publishableKey: "pk_test_mock", mode: "setup", immediateAmount: 0 });
+    return;
+  }
+
+  const planKey  = plan.toLowerCase();
+  const hasPlan  = !!PLAN_PRICE_IDS[planKey];
+  const included = PLAN_INCLUDED_ADDONS[planKey] ?? new Set();
+  const addonKeys = Object.keys(addons as AddonsMap).filter(k => (addons as AddonsMap)[k]);
+
+  /* Calculate immediate charge (add-ons not included, any qty) */
+  let immediateAmountCents = 0;
+  for (const key of addonKeys) {
+    if (included.has(key)) continue; /* skip plan-included add-ons */
+    const qty = Number((addons as AddonsMap)[key] || 1);
+    immediateAmountCents += (ADDON_PRICES_EUR_CENTS[key] || 0) * qty;
+  }
+
+  const metadata: Record<string, string> = {
+    source:         "checkout_payment",
+    plan:           planKey,
+    addons:         JSON.stringify(addons),
+    flowpoint_cart: "true",
+  };
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    if (immediateAmountCents > 0) {
+      /* PaymentIntent — immediate charge for add-ons / credits */
+      const pi = await stripe.paymentIntents.create({
+        amount:   immediateAmountCents,
+        currency: "eur",
+        /* save PM for subscription after trial */
+        ...(hasPlan ? { setup_future_usage: "off_session" } : {}),
+        automatic_payment_methods: { enabled: true },
+        metadata,
+      });
+      logger.info({ plan: planKey, addonCount: addonKeys.length, immediateAmountCents }, "[PublicBilling] PaymentIntent created");
+      res.json({ clientSecret: pi.client_secret, publishableKey, mode: "payment", immediateAmount: immediateAmountCents });
+      return;
+    }
+
+    if (hasPlan) {
+      /* SetupIntent — collect card for trial subscription, 0€ today */
+      const si = await stripe.setupIntents.create({
+        automatic_payment_methods: { enabled: true },
+        usage: "off_session",
+        metadata,
+      });
+      logger.info({ plan: planKey }, "[PublicBilling] SetupIntent created");
+      res.json({ clientSecret: si.client_secret, publishableKey, mode: "setup", immediateAmount: 0 });
+      return;
+    }
+
+    res.status(400).json({ error: "Panier invalide." });
+  } catch (err) {
+    logger.error({ err }, "[PublicBilling] payment-intent failed");
+    res.status(500).json({ error: "Erreur lors de la création du paiement." });
+  }
+});
+
+/* ─── POST /api/public/finalize-checkout ─────────────────────────────────
+   Called by checkout-return.html after Stripe redirects back.
+   Verifies the PaymentIntent / SetupIntent, creates a Stripe Customer,
+   attaches the payment method, and creates the subscription with 14-day
+   trial. Add-ons were already charged via the PaymentIntent.
+ ───────────────────────────────────────────────────────────────────────── */
+router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Request, res: Response) => {
+  const { intentId, intentType, plan = "", addons = {} } = req.body as {
+    intentId?: string;
+    intentType?: string;
+    plan?: string;
+    addons?: AddonsMap;
+  };
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+
+  if (!stripeKey) {
+    res.status(503).json({ error: "Payment service not configured." });
+    return;
+  }
+  if (!intentId || !intentType) {
+    res.status(400).json({ error: "Intent ID manquant." });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    /* ── 1. Verify intent & get payment method ── */
+    let paymentMethodId: string | null = null;
+    let intentMeta: Record<string, string> = {};
+
+    if (intentType === "payment") {
+      const pi = await stripe.paymentIntents.retrieve(intentId);
+      if (pi.status !== "succeeded" && pi.status !== "processing") {
+        res.status(400).json({ error: "Paiement non confirmé (statut: " + pi.status + ")." });
+        return;
+      }
+      paymentMethodId = (typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id) ?? null;
+      intentMeta = (pi.metadata || {}) as Record<string, string>;
+    } else {
+      const si = await stripe.setupIntents.retrieve(intentId);
+      if (si.status !== "succeeded") {
+        res.status(400).json({ error: "Configuration non confirmée (statut: " + si.status + ")." });
+        return;
+      }
+      paymentMethodId = (typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id) ?? null;
+      intentMeta = (si.metadata || {}) as Record<string, string>;
+    }
+
+    if (!paymentMethodId) {
+      res.status(400).json({ error: "Moyen de paiement introuvable." });
+      return;
+    }
+
+    /* Resolve plan/addons (prefer request body, fallback to intent metadata) */
+    const planKey  = (plan || intentMeta["plan"] || "").toLowerCase();
+    const addonsResolved: AddonsMap = Object.keys(addons as AddonsMap).length
+      ? (addons as AddonsMap)
+      : (() => { try { return JSON.parse(intentMeta["addons"] || "{}"); } catch { return {}; } })();
+
+    if (!PLAN_PRICE_IDS[planKey]) {
+      /* AI credits only — no subscription needed */
+      logger.info({ planKey }, "[PublicBilling] finalize: credits-only, no subscription");
+      res.json({ success: true, message: "Crédits activés." });
+      return;
+    }
+
+    /* ── 2. Create customer & attach payment method ── */
+    const customer = await stripe.customers.create({
+      payment_method: paymentMethodId,
+      invoice_settings: { default_payment_method: paymentMethodId },
+      metadata: { source: "checkout_payment", plan: planKey },
+    });
+
+    /* ── 3. Create subscription — plan + add-ons, 14-day trial ── */
+    const { subscriptionItems } = buildLineItems(planKey, addonsResolved);
+    if (subscriptionItems.length === 0) {
+      res.status(400).json({ error: "Plan introuvable dans Stripe." });
+      return;
+    }
+
+    const subscription = await stripe.subscriptions.create({
+      customer:                customer.id,
+      items:                   subscriptionItems,
+      trial_period_days:       14,
+      default_payment_method:  paymentMethodId,
+      metadata: {
+        plan:            planKey,
+        addons:          JSON.stringify(addonsResolved),
+        source:          "checkout_payment",
+        flowpoint_cart:  "true",
+      },
+    });
+
+    logger.info({ plan: planKey, subscriptionId: subscription.id, customerId: customer.id }, "[PublicBilling] finalize: subscription created");
+    res.json({ success: true, subscriptionId: subscription.id });
+  } catch (err) {
+    logger.error({ err }, "[PublicBilling] finalize-checkout failed");
+    res.status(500).json({ error: "Erreur lors de la finalisation." });
+  }
+});
+
 export default router;

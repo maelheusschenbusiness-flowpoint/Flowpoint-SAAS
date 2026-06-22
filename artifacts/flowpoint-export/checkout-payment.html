@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=5">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=5">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" id="fp-meta-tc" content="#0b1120"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <title>Paiement — FlowPoint</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0b1120;
+      --bg2:       #111827;
+      --surface:   #1e293b;
+      --border:    #2d3f55;
+      --blue:      #2563eb;
+      --blue-h:    #1d4ed8;
+      --blue-light:#3b82f6;
+      --text:      #f1f5f9;
+      --text-soft: #94a3b8;
+      --text-muted:#64748b;
+      --green:     #34d399;
+      --green-bg:  rgba(52,211,153,0.08);
+      --green-brd: rgba(52,211,153,0.2);
+      --radius:    16px;
+      --shadow:    0 8px 40px rgba(0,0,0,.5);
+    }
+    html[data-theme="light"] {
+      --bg:        #f8faff;
+      --bg2:       #ffffff;
+      --surface:   #f1f5f9;
+      --border:    rgba(0,0,0,.09);
+      --text:      #0f172a;
+      --text-soft: #475569;
+      --text-muted:#94a3b8;
+      --shadow:    0 4px 24px rgba(0,0,0,.1);
+    }
+    html[data-theme="dark"] .fp-card { background: rgba(8,14,30,0.94); border-color: rgba(255,255,255,0.07); }
+
+    html, body {
+      min-height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px; line-height: 1.5;
+    }
+    body { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 32px 16px 64px; }
+
+    /* ── Logo ── */
+    .fp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-bottom: 28px; }
+    .fp-logo-name { font-size: 20px; font-weight: 800; letter-spacing: -.4px; color: var(--text); }
+    .fp-logo-name span { color: var(--blue-light); }
+
+    /* ── Steps ── */
+    .fp-steps { display: flex; align-items: center; gap: 0; margin-bottom: 28px; font-size: 12px; font-weight: 600; }
+    .fp-step { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+    .fp-step.active { color: var(--blue-light); }
+    .fp-step.done { color: var(--green); }
+    .fp-step-num { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+    .fp-step.done .fp-step-num { background: var(--green-bg); border-color: var(--green-brd); }
+    .fp-step.active .fp-step-num { background: rgba(37,99,235,0.12); border-color: rgba(37,99,235,0.4); }
+    .fp-step-sep { width: 28px; height: 1.5px; background: var(--border); margin: 0 8px; flex-shrink: 0; }
+
+    /* ── Wrap ── */
+    .fp-wrap { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── Cards ── */
+    .fp-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      padding: 22px 24px;
+    }
+    .fp-card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); margin-bottom: 14px; }
+
+    /* ── Summary rows ── */
+    .fp-sum-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 7px 0; }
+    .fp-sum-row + .fp-sum-row { border-top: 1px solid rgba(255,255,255,0.05); }
+    html[data-theme="light"] .fp-sum-row + .fp-sum-row { border-top-color: rgba(0,0,0,0.05); }
+    .fp-sum-label { font-size: 13.5px; color: var(--text-soft); flex: 1; min-width: 0; }
+    .fp-sum-badge { display: inline-block; font-size: 9.5px; font-weight: 700; border-radius: 20px; padding: 1.5px 6px; vertical-align: middle; white-space: nowrap; margin-left: 6px; }
+    .fp-badge-trial { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-brd); }
+    .fp-badge-now   { background: rgba(37,99,235,0.1); color: var(--blue-light); border: 1px solid rgba(37,99,235,0.2); }
+    .fp-badge-incl  { background: rgba(100,116,139,0.1); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.2); }
+    .fp-sum-amount  { font-size: 13.5px; font-weight: 600; color: var(--text); white-space: nowrap; text-align: right; }
+    .fp-sum-amount.muted { color: var(--text-muted); font-weight: 400; }
+
+    /* ── Totals ── */
+    .fp-divider { height: 1px; background: var(--border); margin: 10px 0; }
+    .fp-total-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; }
+    .fp-total-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+    .fp-total-val { font-size: 20px; font-weight: 800; color: var(--blue-light); }
+    .fp-total-val.after { font-size: 15px; color: var(--green); }
+    .fp-total-unit { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 1px; }
+
+    /* ── Stripe element ── */
+    #fp-payment-element { margin-bottom: 18px; }
+
+    /* ── Alert ── */
+    .fp-alert { display: none; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
+    .fp-alert.show { display: block; }
+    .fp-alert-error { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); color: #fca5a5; }
+    html[data-theme="light"] .fp-alert-error { color: #dc2626; }
+
+    /* ── Buttons ── */
+    .fp-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 15px 20px; border: none; border-radius: 11px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s; text-decoration: none; }
+    .fp-btn-primary { background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); color: #fff; box-shadow: 0 4px 16px rgba(37,99,235,.3); margin-bottom: 10px; }
+    .fp-btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%); }
+    .fp-btn-primary:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+    .fp-btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-size: 13px; font-weight: 500; padding: 11px; }
+    .fp-btn-ghost:hover { border-color: var(--blue); color: var(--blue-light); }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fp-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .7s linear infinite; flex-shrink: 0; }
+
+    /* ── Loading state ── */
+    .fp-loading { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 48px 0; text-align: center; }
+    .fp-loading-spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--blue-light); animation: spin .7s linear infinite; }
+    .fp-loading p { font-size: 14px; color: var(--text-muted); }
+
+    /* ── Security note ── */
+    .fp-secure-note { display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; color: var(--text-muted); margin-top: 14px; }
+    .fp-trial-note { text-align: center; font-size: 12.5px; color: var(--green); background: var(--green-bg); border: 1px solid var(--green-brd); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
+  </style>
+</head>
+<body>
+
+<!-- Logo -->
+<a href="/checkout.html" class="fp-logo">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="34" height="34" aria-hidden="true">
+    <defs><linearGradient id="fp-g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient></defs>
+    <rect width="48" height="48" rx="10" fill="url(#fp-g)"/>
+    <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </g>
+  </svg>
+  <span class="fp-logo-name">Flow<span>Point</span></span>
+</a>
+
+<!-- Steps -->
+<div class="fp-steps">
+  <div class="fp-step done"><div class="fp-step-num">✓</div><span>Tarifs</span></div>
+  <div class="fp-step-sep"></div>
+  <div class="fp-step done"><div class="fp-step-num">✓</div><span>Récapitulatif</span></div>
+  <div class="fp-step-sep"></div>
+  <div class="fp-step active"><div class="fp-step-num">3</div><span>Paiement</span></div>
+</div>
+
+<!-- Wrap -->
+<div class="fp-wrap">
+
+  <!-- Order Summary -->
+  <div class="fp-card" id="fp-summary-card">
+    <div class="fp-loading"><div class="fp-loading-spinner"></div><p>Chargement du récapitulatif…</p></div>
+  </div>
+
+  <!-- Payment Form -->
+  <div class="fp-card" id="fp-payment-card" style="display:none">
+    <div class="fp-card-title">Informations de paiement</div>
+    <div id="fp-trial-note" class="fp-trial-note" style="display:none">
+      14 jours d'essai gratuit · aucun débit pendant l'essai · annulable à tout moment
+    </div>
+    <div class="fp-alert fp-alert-error" id="fp-alert"></div>
+    <div id="fp-payment-element"></div>
+    <button class="fp-btn fp-btn-primary" id="fp-pay-btn" disabled>
+      <span id="fp-btn-text">Chargement…</span>
+      <span class="fp-spinner" id="fp-spinner" style="display:none"></span>
+    </button>
+    <a href="/checkout.html" class="fp-btn fp-btn-ghost">← Récapitulatif</a>
+    <p class="fp-secure-note">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Paiement sécurisé · TLS · vos données ne transitent pas par nos serveurs
+    </p>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Pricing reference (mirrors checkout.html) ── */
+  var PLAN_INFO = {
+    standard: { name: 'Plan Standard', price: 29 },
+    pro:      { name: 'Plan Pro',      price: 79 },
+    ultra:    { name: 'Plan Ultra',    price: 149 }
+  };
+  var ADDON_INFO = {
+    monitorsPack10:       { name: '+10 Monitors',              price: 9  },
+    monitorsPack50:       { name: '+50 Monitors',              price: 29 },
+    globalMonitoring:     { name: 'Global Monitoring',         price: 49 },
+    slaMonitoring:        { name: 'SLA Monitoring Avancé',     price: 19 },
+    advancedSeoLab:       { name: 'Advanced SEO Lab',          price: 29 },
+    keywordDomination:    { name: 'Keyword Domination Engine', price: 39 },
+    backlinkIntelligence: { name: 'Backlink Intelligence',     price: 24 },
+    aiContentStrategist:  { name: 'AI Content Strategist',     price: 34 },
+    gbpSlots10:           { name: '+10 Emplacements GBP',      price: 19 },
+    aiGbpPosting:         { name: 'AI GBP Posting',            price: 29 },
+    reviewIntelligence:   { name: 'Review Intelligence',       price: 19 },
+    localDominationMaps:  { name: 'Local Domination Maps',     price: 24 },
+    aiCro:                { name: 'AI CRO Strategist',         price: 34 },
+    behavioralAI:         { name: 'Behavioral AI',             price: 44 },
+    revenueLeak:          { name: 'Revenue Leak AI',           price: 29 },
+    abTestingAI:          { name: 'AB Testing IA',             price: 24 },
+    whiteLabel:           { name: 'White-Label Exports',       price: 17 },
+    agencyPacks:          { name: 'Agency Reporting Packs',    price: 49 },
+    aiExecutiveReport:    { name: 'AI Executive Reporting',    price: 24 },
+    aiForecasting:        { name: 'AI Forecasting Engine',     price: 39 },
+    marketIntelligence:   { name: 'AI Market Intelligence',    price: 49 },
+    aiWorkflows:          { name: 'AI Automation Workflows',   price: 34 },
+    extraSeats:           { name: '+5 Sièges',                 price: 35 },
+    enterprisePermissions:{ name: 'Enterprise Permissions',    price: 19 },
+    retention90d:         { name: 'Rétention 90 jours',        price: 9  },
+    retention365d:        { name: 'Rétention 365 jours',       price: 19 },
+    advancedWebhooks:     { name: 'Webhooks Avancés',          price: 14 },
+    zapierIntegration:    { name: 'Zapier / Make',             price: 19 },
+    crmIntegration:       { name: 'Intégration CRM',           price: 29 },
+    customDomain:         { name: 'Custom Domain',             price: 9  },
+    ssoEnterprise:        { name: 'SSO Enterprise',            price: 49 },
+    aiWorkspaceLaunch:    { name: 'AI Workspace Launch',       price: 49 },
+    prioritySupport:      { name: 'Support Prioritaire',       price: 29 },
+    auditsPack200:        { name: 'Pack audits +200',          price: 12 },
+    auditsPack1000:       { name: 'Pack audits +1 000',        price: 39 },
+    pdfPack200:           { name: 'Pack PDF +200',             price: 12 },
+    exportsPack1000:      { name: 'Pack exports +1 000',       price: 14 },
+    aiCreditsPack50k:     { name: '+50 000 crédits IA',        price: 19, oneTime: true },
+    aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 49, oneTime: true },
+    aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 99, oneTime: true }
+  };
+  var PLAN_INCLUDED = { standard: [], pro: ['whiteLabel'], ultra: ['whiteLabel', 'agencyPacks'] };
+
+  /* ── Cart ── */
+  var cart = null;
+  try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+  if (!cart || (!cart.plan && !Object.keys(cart.addons || {}).length)) {
+    window.location.href = '/checkout.html';
+    return;
+  }
+  var plan     = cart.plan || null;
+  var addons   = cart.addons || {};
+  var included = plan ? (PLAN_INCLUDED[plan] || []) : [];
+
+  /* ── Compute amounts ── */
+  var planPrice       = plan && PLAN_INFO[plan] ? PLAN_INFO[plan].price : 0;
+  var addonImmediate  = 0;
+  var oneTimeTotal    = 0;
+  Object.keys(addons).forEach(function (id) {
+    var info = ADDON_INFO[id];
+    if (!info || included.indexOf(id) !== -1) return;
+    var qty = Number(addons[id] || 1);
+    if (info.oneTime) { oneTimeTotal += info.price * qty; }
+    else              { addonImmediate += info.price * qty; }
+  });
+  var immediateTotal   = addonImmediate + oneTimeTotal;
+  var monthlyAfterTrial = planPrice + addonImmediate;
+  var hasPlan          = !!(plan && PLAN_INFO[plan]);
+
+  /* ── Render summary ── */
+  (function renderSummary() {
+    var html = '<div class="fp-card-title">Récapitulatif</div>';
+    if (plan && PLAN_INFO[plan]) {
+      html += '<div class="fp-sum-row">' +
+        '<span class="fp-sum-label">' + PLAN_INFO[plan].name + '<span class="fp-sum-badge fp-badge-trial">14j offerts</span></span>' +
+        '<span class="fp-sum-amount">' + planPrice + '€/mois</span>' +
+      '</div>';
+    }
+    Object.keys(addons).forEach(function (id) {
+      var info = ADDON_INFO[id];
+      if (!info) return;
+      var qty = Number(addons[id] || 1);
+      if (included.indexOf(id) !== -1) {
+        html += '<div class="fp-sum-row">' +
+          '<span class="fp-sum-label">' + info.name + '<span class="fp-sum-badge fp-badge-incl">Inclus</span></span>' +
+          '<span class="fp-sum-amount muted">0€</span>' +
+        '</div>';
+      } else if (info.oneTime) {
+        html += '<div class="fp-sum-row">' +
+          '<span class="fp-sum-label">' + info.name + (qty > 1 ? ' ×' + qty : '') + '<span class="fp-sum-badge fp-badge-now">Maintenant</span></span>' +
+          '<span class="fp-sum-amount">' + (info.price * qty) + '€</span>' +
+        '</div>';
+      } else {
+        html += '<div class="fp-sum-row">' +
+          '<span class="fp-sum-label">' + info.name + (qty > 1 ? ' ×' + qty : '') + '<span class="fp-sum-badge fp-badge-now">Maintenant</span></span>' +
+          '<span class="fp-sum-amount">' + (info.price * qty) + '€/mois</span>' +
+        '</div>';
+      }
+    });
+    html += '<div class="fp-divider"></div>';
+    html += '<div class="fp-total-row"><span class="fp-total-lbl">Dû aujourd\'hui</span><span class="fp-total-val">' + immediateTotal + '€</span></div>';
+    if (hasPlan) {
+      html += '<div class="fp-total-row"><span class="fp-total-lbl">Mensuel après 14 jours</span><span class="fp-total-val after">' + monthlyAfterTrial + '€<span class="fp-total-unit">/mois</span></span></div>';
+    }
+    document.getElementById('fp-summary-card').innerHTML = html;
+  })();
+
+  /* ── Show payment card ── */
+  document.getElementById('fp-payment-card').style.display = 'block';
+  if (hasPlan && immediateTotal === 0) {
+    document.getElementById('fp-trial-note').style.display = 'block';
+  }
+
+  /* ── Helpers ── */
+  function showAlert(msg) {
+    var el = document.getElementById('fp-alert');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+  function hideAlert() { document.getElementById('fp-alert').classList.remove('show'); }
+  function setLoading(on, label) {
+    var btn = document.getElementById('fp-pay-btn');
+    var txt = document.getElementById('fp-btn-text');
+    var spin = document.getElementById('fp-spinner');
+    btn.disabled = on;
+    spin.style.display = on ? 'inline-block' : 'none';
+    if (label) txt.textContent = label;
+  }
+
+  /* ── Init Stripe ── */
+  var stripe, elements;
+
+  async function initStripe() {
+    var resp = await fetch('/api/public/payment-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: plan || '', addons: addons })
+    });
+    var data = await resp.json();
+    if (!resp.ok) { showAlert(data.error || 'Erreur de chargement du paiement.'); return; }
+
+    stripe = Stripe(data.publishableKey);
+    var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    var appearance = {
+      theme: isDark ? 'night' : 'stripe',
+      variables: {
+        colorPrimary:           '#2563eb',
+        colorBackground:        isDark ? '#111827' : '#ffffff',
+        colorText:              isDark ? '#f1f5f9' : '#0f172a',
+        colorTextSecondary:     isDark ? '#94a3b8' : '#475569',
+        colorDanger:            '#f87171',
+        borderRadius:           '10px',
+        fontFamily:             '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+        fontSizeBase:           '14px',
+      },
+      rules: {
+        '.Input': { border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.15)', padding: '12px 14px' },
+        '.Input:focus': { border: '1px solid #2563eb', boxShadow: '0 0 0 3px rgba(37,99,235,0.15)' },
+        '.Label': { marginBottom: '6px', fontWeight: '600', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' },
+      }
+    };
+
+    elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance });
+    var paymentElement = elements.create('payment', {
+      layout: { type: 'tabs', defaultCollapsed: false }
+    });
+    paymentElement.mount('#fp-payment-element');
+    paymentElement.on('ready', function() {
+      var btnLabel;
+      if (data.mode === 'setup') {
+        btnLabel = 'Démarrer l\'essai gratuit →';
+      } else {
+        btnLabel = 'Payer ' + immediateTotal + '€ →';
+      }
+      document.getElementById('fp-btn-text').textContent = btnLabel;
+      document.getElementById('fp-pay-btn').disabled = false;
+    });
+
+    /* Store mode for submit handler */
+    document.getElementById('fp-pay-btn').setAttribute('data-mode', data.mode);
+  }
+
+  initStripe().catch(function(err) {
+    console.error('[FlowPoint Payment]', err);
+    showAlert('Erreur de chargement du terminal de paiement. Réessayez.');
+  });
+
+  /* ── Submit ── */
+  document.getElementById('fp-pay-btn').addEventListener('click', async function() {
+    if (this.disabled) return;
+    hideAlert();
+    setLoading(true, 'Vérification en cours…');
+
+    var mode = this.getAttribute('data-mode') || 'payment';
+    var returnUrl = window.location.origin + '/checkout-return.html';
+
+    try {
+      var result;
+      if (mode === 'payment') {
+        result = await stripe.confirmPayment({ elements: elements, confirmParams: { return_url: returnUrl } });
+      } else {
+        result = await stripe.confirmSetup({ elements: elements, confirmParams: { return_url: returnUrl } });
+      }
+      if (result.error) {
+        var msg = result.error.message || 'Le paiement a échoué. Vérifiez vos informations.';
+        showAlert(msg);
+        setLoading(false, mode === 'payment' ? 'Payer ' + immediateTotal + '€ →' : 'Démarrer l\'essai gratuit →');
+      }
+    } catch(err) {
+      console.error('[FlowPoint Payment]', err);
+      showAlert('Une erreur est survenue. Réessayez ou contactez le support.');
+      setLoading(false);
+    }
+  });
+
+})();
+</script>
+</body>
+</html>

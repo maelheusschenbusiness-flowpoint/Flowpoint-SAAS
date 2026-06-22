@@ -11,77 +11,108 @@
   <meta name="robots" content="noindex, nofollow"/>
   <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
   <title>Vérification du paiement — FlowPoint</title>
-
-  <script>
-    (function(){
-      try {
-        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-        var meta = document.getElementById('fp-meta-tc');
-        if (meta) meta.content = dark ? '#050810' : '#f8faff';
-      } catch(e){}
-    })();
-  </script>
-
+  <script>(function(){try{var d=window.matchMedia('(prefers-color-scheme:dark)').matches;document.documentElement.setAttribute('data-theme',d?'dark':'light');var m=document.getElementById('fp-meta-tc');if(m)m.content=d?'#050810':'#f8faff';}catch(e){}})();</script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #f8faff; --surface: #fff; --border: rgba(0,0,0,0.09);
-      --blue: #2563eb; --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8;
-    }
-    html[data-theme="dark"] {
-      --bg: #050810; --surface: #111827; --border: rgba(255,255,255,0.08);
-      --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
-    }
+    :root { --bg: #0b1120; --surface: #111827; --border: rgba(255,255,255,0.08); --blue: #2563eb; --text: #f1f5f9; --text-soft: #94a3b8; --green: #34d399; }
+    html[data-theme="light"] { --bg: #f8faff; --surface: #fff; --border: rgba(0,0,0,0.09); --text: #0f172a; --text-soft: #475569; }
     html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; }
     body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; gap: 16px; text-align: center; }
     .fp-spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: fp-spin .7s linear infinite; }
     @keyframes fp-spin { to { transform: rotate(360deg); } }
     .fp-title { font-size: 18px; font-weight: 700; }
-    .fp-sub { font-size: 14px; color: var(--text-soft); }
+    .fp-sub { font-size: 14px; color: var(--text-soft); max-width: 340px; line-height: 1.55; }
+    .fp-check { font-size: 42px; }
+    .fp-btn { display: inline-flex; align-items: center; justify-content: center; padding: 12px 24px; background: linear-gradient(135deg,#2563eb,#4f46e5); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; text-decoration: none; margin-top: 6px; }
   </style>
 </head>
 <body>
-  <div class="fp-spinner"></div>
-  <div class="fp-title" id="fp-title">Vérification de votre paiement…</div>
+  <div class="fp-spinner" id="fp-spinner"></div>
+  <div class="fp-title" id="fp-title">Finalisation de votre commande…</div>
   <div class="fp-sub" id="fp-sub">Merci de patienter quelques instants.</div>
 
   <script>
   (function(){
     var params = new URLSearchParams(window.location.search);
+
+    /* ── Case A: Stripe Elements redirect (new flow) ── */
+    var paymentIntentId    = params.get('payment_intent');
+    var setupIntentId      = params.get('setup_intent');
+    var paymentIntentStat  = params.get('payment_intent_client_secret');
+    var setupIntentStat    = params.get('setup_intent_client_secret');
+
+    /* ── Case B: legacy Stripe Checkout session_id ── */
     var sessionId = params.get('session_id');
 
-    if (!sessionId) {
-      window.location.href = '/pricing.html';
-      return;
-    }
+    if (paymentIntentId || setupIntentId) {
+      /* New Elements flow: call finalize-checkout, then create subscription */
+      var intentId   = paymentIntentId || setupIntentId;
+      var intentType = paymentIntentId ? 'payment' : 'setup';
 
-    var token = null;
-    try { token = localStorage.getItem('fp_token') || sessionStorage.getItem('fp_token'); } catch(e){}
+      var cart = null;
+      try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+      var plan   = (cart && cart.plan)   ? cart.plan   : '';
+      var addons = (cart && cart.addons) ? cart.addons : {};
 
-    var headers = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = 'Bearer ' + token;
-
-    fetch('/api/billing/verify?session_id=' + encodeURIComponent(sessionId), { headers: headers })
+      fetch('/api/public/finalize-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intentId: intentId, intentType: intentType, plan: plan, addons: addons })
+      })
       .then(function(r){ return r.json(); })
       .then(function(data) {
-        var status = (data.status || '').toLowerCase();
-        if (status === 'paid' || status === 'trialing' || status === 'complete' || status === 'active') {
-          try { localStorage.removeItem('fp_cart'); } catch(e){}
-          window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId);
-        } else if (status === 'expired' || status === 'canceled') {
-          window.location.href = '/cancel.html';
+        if (data.success) {
+          try { localStorage.removeItem('fp_cart'); } catch(e) {}
+          document.getElementById('fp-spinner').style.display = 'none';
+          document.getElementById('fp-title').textContent = 'Votre commande est confirmée !';
+          document.getElementById('fp-sub').innerHTML = 'Abonnement activé · 14 jours d\'essai en cours.<br>Vous allez être redirigé…';
+          setTimeout(function(){
+            window.location.href = '/success.html';
+          }, 1800);
         } else {
-          document.getElementById('fp-title').textContent = 'Paiement en cours de traitement';
-          document.getElementById('fp-sub').textContent = 'Nous mettons votre compte à jour. Vous serez redirigé automatiquement.';
-          setTimeout(function(){ window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId); }, 3000);
+          document.getElementById('fp-spinner').style.display = 'none';
+          document.getElementById('fp-title').textContent = 'Erreur de finalisation';
+          document.getElementById('fp-sub').textContent = data.error || 'Une erreur est survenue lors de la création de votre abonnement.';
+          document.getElementById('fp-sub').innerHTML += '<br><br><a href="/checkout-payment.html" class="fp-btn">Réessayer</a>';
         }
       })
       .catch(function() {
-        document.getElementById('fp-title').textContent = 'Vérification impossible';
-        document.getElementById('fp-sub').textContent = 'Rendez-vous sur le tableau de bord pour vérifier votre abonnement.';
-        setTimeout(function(){ window.location.href = '/dashboard.html'; }, 3000);
+        document.getElementById('fp-spinner').style.display = 'none';
+        document.getElementById('fp-title').textContent = 'Connexion impossible';
+        document.getElementById('fp-sub').innerHTML = 'Votre paiement a peut-être abouti. Rendez-vous sur votre tableau de bord pour vérifier.<br><br><a href="/dashboard.html" class="fp-btn">Tableau de bord</a>';
       });
+
+    } else if (sessionId) {
+      /* Legacy Stripe Checkout session flow */
+      var headers = { 'Content-Type': 'application/json' };
+      var token = null;
+      try { token = localStorage.getItem('fp_token') || sessionStorage.getItem('fp_token'); } catch(e) {}
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+
+      fetch('/api/billing/verify?session_id=' + encodeURIComponent(sessionId), { headers: headers })
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+          var status = (data.status || '').toLowerCase();
+          if (status === 'paid' || status === 'trialing' || status === 'complete' || status === 'active') {
+            try { localStorage.removeItem('fp_cart'); } catch(e) {}
+            window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId);
+          } else if (status === 'expired' || status === 'canceled') {
+            window.location.href = '/cancel.html';
+          } else {
+            document.getElementById('fp-title').textContent = 'Paiement en cours de traitement';
+            document.getElementById('fp-sub').textContent = 'Mise à jour de votre compte en cours. Vous serez redirigé automatiquement.';
+            setTimeout(function(){ window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId); }, 3000);
+          }
+        })
+        .catch(function() {
+          document.getElementById('fp-title').textContent = 'Vérification impossible';
+          document.getElementById('fp-sub').textContent = 'Rendez-vous sur le tableau de bord pour vérifier votre abonnement.';
+          setTimeout(function(){ window.location.href = '/dashboard.html'; }, 3000);
+        });
+
+    } else {
+      window.location.href = '/pricing.html';
+    }
   })();
   </script>
 </body>

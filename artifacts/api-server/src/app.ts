@@ -226,7 +226,7 @@ app.get(["/legal", "/legal.html", "/informations-legales"], (_req: Request, res:
 app.get(["/report/:token", "/report-view.html"], servePage("report-view.html"));
 // Checkout pages
 app.get(["/checkout", "/checkout.html"], servePage("checkout.html"));
-app.get(["/checkout-embedded", "/checkout-embedded.html"], servePage("checkout-embedded.html"));
+app.get(["/checkout-payment", "/checkout-payment.html"], servePage("checkout-payment.html"));
 app.get(["/checkout-return", "/checkout-return.html"], servePage("checkout-return.html"));
 app.get(["/success", "/success.html"], servePage("success.html"));
 app.get(["/cancel", "/cancel.html"], servePage("cancel.html"));
