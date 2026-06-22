@@ -201,6 +201,26 @@
     .fp-show-more-icon { font-size: 16px; transition: transform 0.2s; }
     .fp-show-more-icon.open { transform: rotate(180deg); }
 
+    /* ── AI Credits Section ── */
+    .fp-credits-section { max-width: 960px; margin: 0 auto; padding: 0 24px 72px; }
+    .fp-credits-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
+    .fp-credit-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px; padding: 22px 20px 18px; display: flex; flex-direction: column; gap: 10px; position: relative; transition: border-color 0.15s, box-shadow 0.15s; }
+    .fp-credit-card:hover { border-color: rgba(37,99,235,0.35); box-shadow: var(--shadow); }
+    .fp-credit-card.fp-credit-featured { border-color: rgba(37,99,235,0.45); box-shadow: 0 0 0 3px rgba(37,99,235,0.07); }
+    html[data-theme="dark"] .fp-credit-card { background: rgba(8,14,30,0.85); }
+    html[data-theme="dark"] .fp-credit-card.fp-credit-featured { border-color: rgba(99,140,255,0.5); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .fp-credit-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; width: fit-content; }
+    .fp-credit-badge-pop { color: var(--blue-light); border-color: rgba(37,99,235,0.3); background: rgba(37,99,235,0.06); }
+    .fp-credit-top { display: flex; align-items: center; gap: 10px; }
+    .fp-credit-icon { font-size: 24px; }
+    .fp-credit-name { font-size: 15px; font-weight: 700; }
+    .fp-credit-desc { font-size: 12.5px; color: var(--text-soft); line-height: 1.55; flex: 1; }
+    .fp-credit-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+    .fp-credit-price { font-size: 26px; font-weight: 800; color: var(--text); }
+    .fp-credit-unit { font-size: 13px; font-weight: 400; color: var(--text-muted); }
+    .fp-credit-note { font-size: 11px; color: var(--green); background: var(--green-bg); border-radius: 5px; padding: 3px 8px; width: fit-content; font-weight: 600; }
+    @media (max-width: 700px) { .fp-credits-grid { grid-template-columns: 1fr; } }
+
     /* ── Comparison table ── */
     .fp-compare-section { max-width: 1060px; margin: 0 auto; padding: 0 24px 72px; }
     .fp-compare-wrap { overflow-x: auto; }
@@ -726,6 +746,79 @@
       <span class="fp-show-more-icon" id="fp-addon-icon">▾</span>
       <span id="fp-addon-label">Voir tous les add-ons (24 de plus)</span>
     </button>
+  </div>
+</section>
+
+<!-- ── AI Credits Section ── -->
+<section class="fp-credits-section">
+  <h2 class="fp-section-title">Packs de crédits IA</h2>
+  <p class="fp-section-sub">Achat unique — crédits disponibles immédiatement, sans abonnement ni renouvellement. Cumulables à tout moment.</p>
+
+  <div class="fp-credits-grid">
+
+    <div class="fp-credit-card">
+      <div class="fp-credit-badge">Achat unique</div>
+      <div class="fp-credit-top">
+        <span class="fp-credit-icon">⚡</span>
+        <div class="fp-credit-name">+50 000 crédits IA</div>
+      </div>
+      <div class="fp-credit-desc">Boostez votre quota mensuel avec 50 000 crédits supplémentaires. Idéal pour les pics d'activité ponctuels ou tester l'IA de façon intensive.</div>
+      <div class="fp-credit-bottom">
+        <div class="fp-credit-price">4€<span class="fp-credit-unit"> une fois</span></div>
+        <div class="fp-credit-note">✓ Disponibles immédiatement</div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',-1)">−</button>
+            <input id="qty-aiCreditsPack50k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack50k',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack50k',true)">Acheter →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-credit-card fp-credit-featured">
+      <div class="fp-credit-badge fp-credit-badge-pop">★ Le plus choisi</div>
+      <div class="fp-credit-top">
+        <span class="fp-credit-icon">🔋</span>
+        <div class="fp-credit-name">+200 000 crédits IA</div>
+      </div>
+      <div class="fp-credit-desc">Quadruplez votre capacité IA pour un mois complet. Parfait pour les campagnes de contenu, les audits massifs ou les sprints stratégiques.</div>
+      <div class="fp-credit-bottom">
+        <div class="fp-credit-price">9€<span class="fp-credit-unit"> une fois</span></div>
+        <div class="fp-credit-note">✓ Disponibles immédiatement</div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',-1)">−</button>
+            <input id="qty-aiCreditsPack200k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack200k',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack200k',true)">Acheter →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-credit-card">
+      <div class="fp-credit-badge">Achat unique</div>
+      <div class="fp-credit-top">
+        <span class="fp-credit-icon">🚀</span>
+        <div class="fp-credit-name">+500 000 crédits IA</div>
+      </div>
+      <div class="fp-credit-desc">Le pack maximal pour agences et équipes intensives. Un demi-million de crédits disponibles en un seul achat, sans engagement.</div>
+      <div class="fp-credit-bottom">
+        <div class="fp-credit-price">19€<span class="fp-credit-unit"> une fois</span></div>
+        <div class="fp-credit-note">✓ Disponibles immédiatement</div>
+        <div class="fp-addon-actions">
+          <div class="fp-addon-qty">
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',-1)">−</button>
+            <input id="qty-aiCreditsPack500k" class="fp-addon-qty-input" type="number" value="1" min="1" max="20" readonly>
+            <button class="fp-addon-qty-btn" onclick="changeQty('aiCreditsPack500k',1)">+</button>
+          </div>
+          <button class="fp-addon-btn" onclick="addToCart(this,'aiCreditsPack500k',true)">Acheter →</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </section>
 

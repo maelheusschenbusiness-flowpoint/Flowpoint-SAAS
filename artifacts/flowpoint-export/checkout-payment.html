@@ -229,9 +229,9 @@
     auditsPack1000:       { name: 'Pack audits +1 000',        price: 39 },
     pdfPack200:           { name: 'Pack PDF +200',             price: 12 },
     exportsPack1000:      { name: 'Pack exports +1 000',       price: 14 },
-    aiCreditsPack50k:     { name: '+50 000 crédits IA',        price: 19, oneTime: true },
-    aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 49, oneTime: true },
-    aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 99, oneTime: true }
+    aiCreditsPack50k:     { name: '+50 000 crédits IA',        price: 4,  oneTime: true },
+    aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 9,  oneTime: true },
+    aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 19, oneTime: true }
   };
   var PLAN_INCLUDED = { standard: [], pro: ['whiteLabel'], ultra: ['whiteLabel', 'agencyPacks'] };
 
@@ -305,9 +305,17 @@
   document.getElementById('fp-payment-card').style.display = 'block';
   if (hasPlan) {
     var noteEl = document.getElementById('fp-trial-note');
-    noteEl.textContent = immediateTotal === 0
-      ? 'Aucun débit aujourd\'hui. Premier paiement après 14 jours.'
-      : 'Add-ons facturés aujourd\'hui. Abonnement débité après 14 jours.';
+    if (immediateTotal === 0) {
+      noteEl.textContent = 'Aucun débit aujourd\'hui. Premier paiement après 14 jours.';
+    } else {
+      /* Determine if only AI credits are in the immediate charge */
+      var hasOnlyOneTime = Object.keys(addons).length > 0 && Object.keys(addons).every(function(id) {
+        return !ADDON_INFO[id] || ADDON_INFO[id].oneTime;
+      });
+      noteEl.textContent = hasOnlyOneTime
+        ? 'Crédits IA facturés aujourd\'hui. Abonnement débité après 14 jours.'
+        : 'Add-ons facturés aujourd\'hui. Abonnement débité après 14 jours.';
+    }
     noteEl.style.display = 'block';
   }
 
@@ -362,7 +370,8 @@
 
     elements = stripe.elements({ clientSecret: data.clientSecret, appearance: appearance });
     var paymentElement = elements.create('payment', {
-      layout: { type: 'tabs', defaultCollapsed: false }
+      layout: { type: 'tabs', defaultCollapsed: false },
+      wallets: { googlePay: 'never' }  /* prevent play.google.com requests blocked by ad-blockers */
     });
     paymentElement.mount('#fp-payment-element');
     paymentElement.on('ready', function() {

@@ -252,8 +252,8 @@ const ADDON_PRICES_EUR_CENTS: Record<string, number> = {
   prioritySupport:      2900,  auditsPack200:        1200,
   auditsPack1000:       3900,  pdfPack200:           1200,
   exportsPack1000:      1400,
-  /* AI credit packs (one-time) */
-  aiCreditsPack50k:  1900, aiCreditsPack200k: 4900, aiCreditsPack500k: 9900,
+  /* AI credit packs (one-time) — 4€ / 9€ / 19€ */
+  aiCreditsPack50k:   400, aiCreditsPack200k:  900, aiCreditsPack500k: 1900,
 };
 
 /* ─── POST /api/public/payment-intent ────────────────────────────────────

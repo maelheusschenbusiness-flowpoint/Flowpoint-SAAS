@@ -305,9 +305,9 @@
     auditsPack1000:       { name: 'Pack audits +1 000',        price: 39, unit: '/pack/mois', qty: true },
     pdfPack200:           { name: 'Pack PDF +200',             price: 12, unit: '/pack/mois', qty: true },
     exportsPack1000:      { name: 'Pack exports +1 000',       price: 14, unit: '/pack/mois', qty: true },
-    aiCreditsPack50k:     { name: '+50 000 crédits IA',        price: 19, unit: '/pack', qty: true, oneTime: true },
-    aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 49, unit: '/pack', qty: true, oneTime: true },
-    aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 99, unit: '/pack', qty: true, oneTime: true }
+    aiCreditsPack50k:     { name: '+50 000 crédits IA',        price: 4,  unit: '/pack', qty: true, oneTime: true },
+    aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 9,  unit: '/pack', qty: true, oneTime: true },
+    aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 19, unit: '/pack', qty: true, oneTime: true }
   };
 
   var PLAN_INCLUDED = {
@@ -551,6 +551,23 @@
   }
 
   if (!hasPlan && hasAddons) {
+    /* Check if ALL add-ons are one-time (AI credits only → no plan required) */
+    var addonsObj = cart && cart.addons ? cart.addons : {};
+    var allOneTime = Object.keys(addonsObj).length > 0 && Object.keys(addonsObj).every(function (id) {
+      return ADDON_INFO[id] && ADDON_INFO[id].oneTime;
+    });
+
+    if (allOneTime) {
+      /* AI credits only — standalone purchase, no plan needed */
+      renderSummary();
+      document.getElementById('fp-summary-card').style.display = 'block';
+      document.getElementById('fp-cta-card').style.display = 'block';
+      document.getElementById('fp-pay-btn').disabled = false;
+      document.getElementById('fp-btn-text').textContent = 'Continuer vers le paiement →';
+      return;
+    }
+
+    /* Monthly add-ons without plan → require plan selection */
     renderPlanPicker();
     renderSummary();
     document.getElementById('fp-plan-required').style.display = 'block';
