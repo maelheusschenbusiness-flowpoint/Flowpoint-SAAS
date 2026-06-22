@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="dark">
 <head>
   <meta charset="UTF-8"/>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
@@ -9,82 +9,50 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=4">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="robots" content="noindex, nofollow"/>
-  <meta id="fp-meta-tc" name="theme-color" content="#050810"/>
+  <meta id="fp-meta-tc" name="theme-color" content="#0b1120"/>
   <title>Paiement sécurisé — FlowPoint</title>
-
-  <script>
-    (function(){
-      try {
-        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-        var meta = document.getElementById('fp-meta-tc');
-        if (meta) meta.content = dark ? '#050810' : '#f8faff';
-      } catch(e){}
-    })();
-  </script>
-
+  <script>(function(){var t=localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);var m=document.getElementById('fp-meta-tc');if(m)m.content=t==='light'?'#f8faff':'#0b1120';})();</script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:        #f8faff;
-      --bg2:       #ffffff;
-      --surface:   #ffffff;
-      --border:    rgba(0,0,0,0.09);
-      --blue:      #2563eb;
-      --blue-h:    #1d4ed8;
-      --blue-light:#3b82f6;
-      --text:      #0f172a;
-      --text-soft: #475569;
-      --text-muted:#94a3b8;
-      --green:     #059669;
-      --green-bg:  rgba(16,185,129,0.1);
+      --bg: #0b1120; --bg2: #111827; --surface: #1e293b;
+      --border: rgba(255,255,255,0.08); --blue: #2563eb; --blue-h: #1d4ed8;
+      --blue-light: #3b82f6; --text: #f1f5f9; --text-soft: #94a3b8; --text-muted: #64748b;
+      --green: #34d399;
     }
-    html[data-theme="dark"] {
-      --bg:        #050810;
-      --bg2:       #0d1117;
-      --surface:   #111827;
-      --border:    rgba(255,255,255,0.08);
-      --text:      #f1f5f9;
-      --text-soft: #94a3b8;
-      --text-muted:#64748b;
-      --green:     #34d399;
-      --green-bg:  rgba(52,211,153,0.1);
+    html[data-theme="light"] {
+      --bg: #f8faff; --bg2: #ffffff; --surface: #f1f5f9;
+      --border: rgba(0,0,0,0.08); --text: #0f172a; --text-soft: #475569; --text-muted: #94a3b8;
     }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
 
-    html, body {
-      min-height: 100%; background: var(--bg); color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      font-size: 15px; line-height: 1.5;
-    }
-
-    /* Nav */
-    .fp-nav {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 28px; height: 60px;
-      background: var(--bg); border-bottom: 1px solid var(--border);
-      position: sticky; top: 0; z-index: 100;
-    }
+    /* ── Nav ── */
+    .fp-nav { display: flex; align-items: center; justify-content: space-between; padding: 0 28px; height: 60px; background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
     .fp-nav-logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; text-decoration: none; color: var(--text); }
     .fp-nav-logo-word span { color: var(--blue); }
-    .fp-nav-back { font-size: 13px; color: var(--text-soft); text-decoration: none; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); transition: all .15s; }
+    .fp-nav-back { font-size: 13px; color: var(--text-soft); text-decoration: none; display: flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); transition: all .15s; }
     .fp-nav-back:hover { border-color: var(--blue); color: var(--blue); }
 
-    /* Layout */
-    .fp-page { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
-    .fp-page-title { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
-    .fp-page-sub { font-size: 14px; color: var(--text-soft); margin-bottom: 32px; }
+    /* ── Page ── */
+    .fp-page { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
+    .fp-page-title { font-size: clamp(20px, 4vw, 26px); font-weight: 800; letter-spacing: -.4px; margin-bottom: 4px; }
+    .fp-page-sub { font-size: 13.5px; color: var(--text-soft); margin-bottom: 28px; }
 
-    /* Checkout container */
-    #fp-checkout-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; min-height: 480px; overflow: hidden; }
+    /* ── Checkout container ── */
+    #fp-checkout-wrap {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 16px; min-height: 500px; overflow: hidden;
+    }
+    html[data-theme="dark"] #fp-checkout-wrap { background: rgba(8,14,30,0.92); }
 
-    /* Loading / error states */
-    .fp-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px 24px; text-align: center; gap: 16px; }
-    .fp-state-icon { font-size: 40px; }
-    .fp-state-title { font-size: 17px; font-weight: 700; }
-    .fp-state-sub { font-size: 14px; color: var(--text-soft); max-width: 360px; line-height: 1.6; }
-    .fp-spinner-lg { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: fp-spin .7s linear infinite; }
+    /* ── Loading / error states ── */
+    .fp-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 72px 24px; text-align: center; gap: 14px; }
+    .fp-state-icon { font-size: 38px; }
+    .fp-state-title { font-size: 16px; font-weight: 700; }
+    .fp-state-sub { font-size: 13.5px; color: var(--text-soft); max-width: 380px; line-height: 1.6; }
+
     @keyframes fp-spin { to { transform: rotate(360deg); } }
+    .fp-spinner-lg { width: 38px; height: 38px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: fp-spin .7s linear infinite; }
 
     .fp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 22px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; transition: all .15s; }
     .fp-btn-primary { background: var(--blue); color: #fff; }
@@ -92,62 +60,72 @@
     .fp-btn-ghost { background: transparent; color: var(--text-soft); border: 1px solid var(--border); }
     .fp-btn-ghost:hover { border-color: var(--blue); color: var(--blue); }
 
-    /* Footer */
-    .fp-footer { text-align: center; padding: 20px; font-size: 12px; color: var(--text-muted); background: var(--bg); border-top: 1px solid var(--border); }
+    /* ── Trust strip ── */
+    .fp-trust { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 22px; font-size: 12px; color: var(--text-muted); }
+    .fp-trust span { display: flex; align-items: center; gap: 5px; }
+
+    /* ── Footer ── */
+    .fp-footer { text-align: center; padding: 20px 24px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
     .fp-footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
 
-    /* Trust badges */
-    .fp-trust { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 24px; font-size: 12px; color: var(--text-muted); }
-    .fp-trust-item { display: flex; align-items: center; gap: 5px; }
+    /* ── Stripe container ── */
+    #fp-stripe-checkout { display: none; }
 
     @media (max-width: 600px) {
       .fp-nav { padding: 0 16px; }
-      .fp-page { padding: 32px 16px 60px; }
+      .fp-page { padding: 28px 14px 60px; }
     }
   </style>
 </head>
 <body>
 
 <nav class="fp-nav">
-  <a href="/" class="fp-nav-logo">
-    <svg width="28" height="28" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-      <defs><linearGradient id="fp-g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/></linearGradient></defs>
-      <rect width="48" height="48" rx="10" fill="url(#fp-g)"/>
+  <a href="/pricing.html" class="fp-nav-logo">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="30" height="30">
+      <defs><linearGradient id="nav-g" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#4F46E5"/>
+      </linearGradient></defs>
+      <rect width="48" height="48" rx="10" fill="url(#nav-g)"/>
       <g transform="translate(12,12)" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
       </g>
     </svg>
     <span class="fp-nav-logo-word">Flow<span>Point</span></span>
   </a>
-  <a href="/pricing.html" class="fp-nav-back">← Retour aux tarifs</a>
+  <a href="/checkout.html" class="fp-nav-back">← Récapitulatif</a>
 </nav>
 
 <main class="fp-page">
-  <h1 class="fp-page-title">Finaliser votre abonnement</h1>
-  <p class="fp-page-sub">Paiement sécurisé via Stripe · Annulable à tout moment · Essai 14 jours inclus</p>
+  <h1 class="fp-page-title" id="fp-page-title">Finaliser votre abonnement</h1>
+  <p class="fp-page-sub" id="fp-page-sub">Paiement sécurisé via Stripe · Annulable à tout moment · Essai 14 jours inclus</p>
 
   <div id="fp-checkout-wrap">
+    <!-- Loading -->
     <div class="fp-state" id="fp-loading-state">
       <div class="fp-spinner-lg"></div>
       <div class="fp-state-title">Chargement du terminal de paiement…</div>
-      <div class="fp-state-sub">Connexion sécurisée Stripe en cours.</div>
+      <div class="fp-state-sub">Connexion sécurisée à Stripe en cours.</div>
     </div>
-    <div class="fp-state" id="fp-error-state" style="display:none;">
+
+    <!-- Error -->
+    <div class="fp-state" id="fp-error-state" style="display:none">
       <div class="fp-state-icon">⚠️</div>
       <div class="fp-state-title" id="fp-error-title">Une erreur est survenue</div>
       <div class="fp-state-sub" id="fp-error-sub">Impossible de charger le terminal de paiement. Veuillez réessayer.</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px;">
         <button class="fp-btn fp-btn-primary" onclick="initCheckout()">Réessayer</button>
-        <a href="/pricing.html" class="fp-btn fp-btn-ghost">Retour aux tarifs</a>
+        <a href="/checkout.html" class="fp-btn fp-btn-ghost">← Récapitulatif</a>
       </div>
     </div>
+
+    <!-- Stripe Embedded Checkout mounts here -->
     <div id="fp-stripe-checkout"></div>
   </div>
 
   <div class="fp-trust">
-    <span class="fp-trust-item">🔒 Paiement chiffré TLS</span>
-    <span class="fp-trust-item">💳 Visa · Mastercard · Amex · SEPA</span>
-    <span class="fp-trust-item">🔁 Annulable à tout moment</span>
+    <span>🔒 Paiement chiffré TLS</span>
+    <span>💳 Visa · Mastercard · Amex · SEPA</span>
+    <span>🔁 Annulable à tout moment</span>
   </div>
 </main>
 
@@ -160,24 +138,15 @@
 
 <script src="https://js.stripe.com/v3/"></script>
 <script>
-(function(){
+(function () {
   'use strict';
 
-  /* ── Auto theme from OS ── */
-  (function(){
-    var mq = window.matchMedia('(prefers-color-scheme: dark)');
-    function applyTheme(dark) {
-      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-      var meta = document.getElementById('fp-meta-tc');
-      if (meta) meta.content = dark ? '#050810' : '#f8faff';
-    }
-    if (mq.addEventListener) mq.addEventListener('change', function(e){ applyTheme(e.matches); });
-  })();
+  var checkoutInstance = null;
 
   function showState(name) {
-    document.getElementById('fp-loading-state').style.display = name === 'loading' ? 'flex' : 'none';
-    document.getElementById('fp-error-state').style.display   = name === 'error'   ? 'flex' : 'none';
-    document.getElementById('fp-stripe-checkout').style.display = name === 'stripe' ? 'block' : 'none';
+    document.getElementById('fp-loading-state').style.display  = name === 'loading' ? 'flex'  : 'none';
+    document.getElementById('fp-error-state').style.display    = name === 'error'   ? 'flex'  : 'none';
+    document.getElementById('fp-stripe-checkout').style.display = name === 'stripe'  ? 'block' : 'none';
   }
 
   function showError(title, sub) {
@@ -186,29 +155,33 @@
     showState('error');
   }
 
-  function getToken() {
-    try { return localStorage.getItem('fp_token') || sessionStorage.getItem('fp_token'); } catch(e){ return null; }
-  }
-
   function getCart() {
-    try {
-      var raw = localStorage.getItem('fp_cart');
-      return raw ? JSON.parse(raw) : null;
-    } catch(e){ return null; }
+    try { return JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) { return null; }
   }
 
-  window.initCheckout = async function() {
+  /* Adapt page title/subtitle based on cart type */
+  function adaptPageText(cart) {
+    var AI_PACKS = ['aiCreditsPack50k','aiCreditsPack200k','aiCreditsPack500k'];
+    var title  = document.getElementById('fp-page-title');
+    var sub    = document.getElementById('fp-page-sub');
+    if (!cart) return;
+    var addonKeys = Object.keys(cart.addons || {}).filter(function(k){ return cart.addons[k]; });
+    var onlyAI = addonKeys.length > 0 && addonKeys.every(function(k){ return AI_PACKS.indexOf(k) !== -1; });
+    if (onlyAI && !cart.plan) {
+      title.textContent = 'Achat de crédits IA';
+      sub.textContent   = 'Paiement unique sécurisé via Stripe · Crédits ajoutés immédiatement';
+    } else if (!cart.plan) {
+      title.textContent = 'Finaliser votre commande';
+      sub.textContent   = 'Paiement sécurisé via Stripe';
+    }
+  }
+
+  window.initCheckout = async function () {
     showState('loading');
 
-    var token = getToken();
-    if (!token) {
-      var planParam = '';
-      try {
-        var c = getCart();
-        if (c && c.plan) planParam = '&plan=' + encodeURIComponent(c.plan);
-      } catch(e){}
-      window.location.href = '/login.html?redirect=' + encodeURIComponent('/checkout-embedded.html') + planParam;
-      return;
+    if (checkoutInstance) {
+      try { checkoutInstance.destroy(); } catch(e) {}
+      checkoutInstance = null;
     }
 
     var cart = getCart();
@@ -217,32 +190,31 @@
       return;
     }
 
-    try {
-      var configRes = await fetch('/api/billing/config');
-      var configData = await configRes.json();
-      var publishableKey = configData.publishableKey;
-      if (!publishableKey) throw new Error('Stripe non configuré');
+    adaptPageText(cart);
 
-      var sessionRes = await fetch('/api/billing/checkout-embedded', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token
-        },
-        body: JSON.stringify({ plan: cart.plan || '', addons: cart.addons || {} })
+    try {
+      var body = {
+        plan:     cart.plan    || '',
+        addons:   cart.addons  || {},
+        source:   'checkout_html',
+        embedded: true
+      };
+
+      var res = await fetch('/api/public/checkout-session', {
+        method:      'POST',
+        credentials: 'include',
+        headers:     { 'Content-Type': 'application/json' },
+        body:        JSON.stringify(body)
       });
 
-      if (!sessionRes.ok) {
-        var errData = await sessionRes.json().catch(function(){ return {}; });
-        throw new Error(errData.error || 'Échec de la création de session Stripe');
+      var data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de la création de la session.');
       }
 
-      var sessionData = await sessionRes.json();
-      var clientSecret = sessionData.clientSecret;
-
-      if (!clientSecret) throw new Error('Session Stripe invalide');
-
-      if (sessionData.mock) {
+      /* Dev mock mode */
+      if (data.mock) {
         showError(
           'Mode développement',
           'Stripe n\'est pas configuré en local. En production, le terminal de paiement s\'affichera ici.'
@@ -250,21 +222,30 @@
         return;
       }
 
-      var stripe = Stripe(publishableKey);
-      var checkout = await stripe.initEmbeddedCheckout({ clientSecret: clientSecret });
-      showState('stripe');
-      checkout.mount('#fp-stripe-checkout');
+      var clientSecret   = data.clientSecret;
+      var publishableKey = data.publishableKey;
 
-    } catch(err) {
-      console.error('[FlowPoint] Checkout error:', err);
+      if (!clientSecret || !publishableKey) {
+        throw new Error('Session Stripe invalide — clé manquante.');
+      }
+
+      var stripe   = Stripe(publishableKey);
+      checkoutInstance = await stripe.initEmbeddedCheckout({ clientSecret: clientSecret });
+
+      showState('stripe');
+      checkoutInstance.mount('#fp-stripe-checkout');
+
+    } catch (err) {
+      console.error('[FlowPoint Checkout]', err);
       showError(
         'Erreur de connexion',
-        err.message || 'Impossible de charger le terminal de paiement. Vérifiez votre connexion et réessayez.'
+        err.message || 'Impossible de charger le terminal. Vérifiez votre connexion et réessayez.'
       );
     }
   };
 
   initCheckout();
+
 })();
 </script>
 </body>

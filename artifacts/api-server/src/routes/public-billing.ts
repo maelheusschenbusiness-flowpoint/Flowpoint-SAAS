@@ -71,14 +71,17 @@ function buildLineItems(
 }
 
 router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Request, res: Response) => {
-  const { plan = "", addons = {}, source = "checkout_html" } = req.body as {
+  const { plan = "", addons = {}, source = "checkout_html", embedded = false } = req.body as {
     plan?: string;
     addons?: AddonsMap;
     source?: string;
+    embedded?: boolean;
   };
 
   const stripeKey = process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
+
+  const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
 
   /* No key in dev → mock */
   if (!stripeKey) {
@@ -122,6 +125,27 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       flowpoint_cart:          "true",
     };
 
+    /* ── Helper: build common embedded vs redirect params ── */
+    const returnUrl = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
+    const successUrl = `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl  = `${publicUrl}/cancel.html`;
+
+    function urlOrEmbedded(params: Record<string, unknown>) {
+      if (embedded) {
+        return { ...params, ui_mode: "embedded", return_url: returnUrl };
+      }
+      return { ...params, success_url: successUrl, cancel_url: cancelUrl };
+    }
+
+    function respond(session: { id: string; url: string | null; client_secret: string | null }) {
+      logger.info({ checkoutType, sessionId: session.id, embedded }, "[PublicBilling] Session created");
+      if (embedded) {
+        res.json({ clientSecret: session.client_secret, publishableKey });
+      } else {
+        res.json({ url: session.url });
+      }
+    }
+
     /* ── Case 1: subscription (with optional one-time add_invoice_items) ── */
     if (checkoutType === "subscription") {
       if (subscriptionItems.length === 0) {
@@ -129,29 +153,21 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         return;
       }
 
-      const sessionParams: Parameters<typeof stripe.checkout.sessions.create>[0] = {
+      const sessionParams = urlOrEmbedded({
         mode: "subscription",
         line_items: subscriptionItems,
         subscription_data: {
           trial_period_days: 14,
           metadata,
+          ...(oneTimeItems.length > 0 ? {
+            add_invoice_items: oneTimeItems.map(i => ({ price: i.price, quantity: i.quantity })),
+          } : {}),
         },
-        success_url: `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url:  `${publicUrl}/cancel.html`,
         metadata,
-      };
-
-      /* Add one-time AI credits as invoice items billed immediately */
-      if (oneTimeItems.length > 0) {
-        sessionParams.subscription_data!.add_invoice_items = oneTimeItems.map(i => ({
-          price: i.price,
-          quantity: i.quantity,
-        }));
-      }
+      }) as Parameters<typeof stripe.checkout.sessions.create>[0];
 
       const session = await stripe.checkout.sessions.create(sessionParams);
-      logger.info({ plan: planKey, checkoutType, sessionId: session.id }, "[PublicBilling] Session created");
-      res.json({ url: session.url });
+      respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
     }
 
@@ -161,35 +177,32 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         res.status(400).json({ error: "Aucun pack IA sélectionné." });
         return;
       }
-      const session = await stripe.checkout.sessions.create({
+      const sessionParams = urlOrEmbedded({
         mode: "payment",
         line_items: oneTimeItems,
-        success_url: `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url:  `${publicUrl}/cancel.html`,
         metadata,
-      });
-      logger.info({ checkoutType, sessionId: session.id }, "[PublicBilling] AI credits session created");
-      res.json({ url: session.url });
+      }) as Parameters<typeof stripe.checkout.sessions.create>[0];
+
+      const session = await stripe.checkout.sessions.create(sessionParams);
+      respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
     }
 
-    /* ── Case 3: addon_only (logged-in user with active plan) ── */
+    /* ── Case 3: addon_only (client with active plan) ── */
     if (checkoutType === "addon_only") {
       const allItems = [...subscriptionItems, ...oneTimeItems];
       if (allItems.length === 0) {
         res.status(400).json({ error: "Aucun add-on valide sélectionné." });
         return;
       }
-      /* Use subscription mode without trial for addon-only */
-      const session = await stripe.checkout.sessions.create({
+      const sessionParams = urlOrEmbedded({
         mode: "subscription",
         line_items: allItems,
-        success_url: `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url:  `${publicUrl}/cancel.html`,
         metadata,
-      });
-      logger.info({ checkoutType, sessionId: session.id }, "[PublicBilling] Addon-only session created");
-      res.json({ url: session.url });
+      }) as Parameters<typeof stripe.checkout.sessions.create>[0];
+
+      const session = await stripe.checkout.sessions.create(sessionParams);
+      respond(session as { id: string; url: string | null; client_secret: string | null });
       return;
     }
 

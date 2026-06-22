@@ -293,27 +293,6 @@
   var hasPlan   = cart && cart.plan && PLAN_INFO[cart.plan];
   var hasAddons = cart && Object.keys(cart.addons || {}).length > 0;
 
-  /* ── Empty ── */
-  if (!hasPlan && !hasAddons) {
-    document.getElementById('fp-empty').style.display = 'block';
-    return;
-  }
-
-  /* ── No plan but has addons: show plan selector ── */
-  if (!hasPlan && hasAddons) {
-    renderPlanRequired();
-    renderCheckout(); /* show addons while plan is being picked */
-    document.getElementById('fp-plan-required').style.display = 'block';
-    document.getElementById('fp-checkout').style.display = 'block';
-    document.getElementById('fp-pay-btn').disabled = true;
-    document.getElementById('fp-btn-text').textContent = 'Sélectionnez d\'abord un plan';
-    return;
-  }
-
-  /* ── Normal flow: has plan ── */
-  renderCheckout();
-  document.getElementById('fp-checkout').style.display = 'block';
-
   /* ── Render plan selector cards ── */
   function renderPlanRequired() {
     var container = document.getElementById('fp-plan-cards');
@@ -331,6 +310,7 @@
     container.innerHTML = html;
   }
 
+  /* ── MUST be defined before any early returns ── */
   window.selectPlanFromCard = function (key) {
     if (!cart) cart = { plan: null, addons: {} };
     cart.plan = key;
@@ -345,6 +325,27 @@
     btn.disabled = false;
     document.getElementById('fp-btn-text').textContent = 'Continuer vers le paiement sécurisé →';
   };
+
+  /* ── Empty ── */
+  if (!hasPlan && !hasAddons) {
+    document.getElementById('fp-empty').style.display = 'block';
+    return;
+  }
+
+  /* ── No plan but has addons: show plan selector ── */
+  if (!hasPlan && hasAddons) {
+    renderPlanRequired();
+    renderCheckout();
+    document.getElementById('fp-plan-required').style.display = 'block';
+    document.getElementById('fp-checkout').style.display = 'block';
+    document.getElementById('fp-pay-btn').disabled = true;
+    document.getElementById('fp-btn-text').textContent = 'Sélectionnez d\'abord un plan';
+    return;
+  }
+
+  /* ── Normal flow: has plan ── */
+  renderCheckout();
+  document.getElementById('fp-checkout').style.display = 'block';
 
   /* ── Render checkout summary ── */
   function renderCheckout() {
@@ -478,44 +479,16 @@
     infoList.innerHTML = infoItems.map(function (t) { return '<li>' + t + '</li>'; }).join('');
   }
 
-  /* ── Start payment ── */
+  /* ── Start payment: save cart then go to embedded checkout ── */
   window.startPayment = function () {
-    var btn     = document.getElementById('fp-pay-btn');
-    var spinner = document.getElementById('fp-spinner');
-    var text    = document.getElementById('fp-btn-text');
-    var errEl   = document.getElementById('fp-alert-error');
-
+    var btn  = document.getElementById('fp-pay-btn');
+    var text = document.getElementById('fp-btn-text');
     if (btn.disabled) return;
+    try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
     btn.disabled = true;
-    text.textContent = 'Connexion à Stripe…';
-    spinner.style.display = 'inline-block';
-    errEl.classList.remove('show');
-
-    var body = {};
-    if (cart && cart.plan) body.plan = cart.plan;
-    if (cart && cart.addons) body.addons = cart.addons;
-    body.source = 'checkout_html';
-
-    fetch('/api/public/checkout-session', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-    .then(function (res) {
-      if (!res.ok || !res.data.url) {
-        throw new Error(res.data.error || 'Erreur lors de la création de la session.');
-      }
-      window.location.href = res.data.url;
-    })
-    .catch(function (err) {
-      btn.disabled = false;
-      text.textContent = 'Continuer vers le paiement sécurisé →';
-      spinner.style.display = 'none';
-      errEl.textContent = '❌ ' + (err.message || 'Une erreur est survenue. Réessayez.');
-      errEl.classList.add('show');
-    });
+    text.textContent = 'Redirection…';
+    document.getElementById('fp-spinner').style.display = 'inline-block';
+    window.location.href = '/checkout-embedded.html';
   };
 
 })();
