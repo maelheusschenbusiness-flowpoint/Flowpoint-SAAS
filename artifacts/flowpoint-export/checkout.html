@@ -143,33 +143,59 @@
     ultra:    { name: 'Plan Ultra',    price: 149 }
   };
   var ADDON_INFO = {
-    monitorsPack50:    { name: 'Pack monitors +50',         price: 9,  unit: '/pack/mois', qty: true },
-    extraSeats:        { name: 'Siège supplémentaire',      price: 12, unit: '/siège/mois', qty: true },
-    aiCreditsPack50k:  { name: '+50 000 crédits IA',        price: 19, unit: '/pack/mois', qty: true },
-    prioritySupport:   { name: 'Support prioritaire ≤ 2h', price: 29, unit: '/mois' },
-    retention90d:      { name: 'Rétention 90 jours',       price: 14, unit: '/mois' },
-    whiteLabel:        { name: 'White-label complet',       price: 39, unit: '/mois' },
-    aiExecutiveReport: { name: 'Rapport exécutif IA',       price: 29, unit: '/mois' },
-    revenueLeak:       { name: 'Revenue Leak Detection',    price: 49, unit: '/mois' },
-    auditsPack200:     { name: 'Pack audits +200',          price: 12, unit: '/pack/mois', qty: true },
-    auditsPack1000:    { name: 'Pack audits +1 000',        price: 39, unit: '/pack/mois', qty: true },
-    pdfPack200:        { name: 'Pack PDF +200',             price: 12, unit: '/pack/mois', qty: true },
-    exportsPack1000:   { name: 'Pack exports +1 000',       price: 14, unit: '/pack/mois', qty: true },
-    retention365d:     { name: 'Rétention 365 jours',      price: 29, unit: '/mois' },
-    customDomain:      { name: 'Domaine personnalisé',      price: 15, unit: '/mois' },
-    aiForecasting:     { name: 'Prévisions IA',             price: 29, unit: '/mois' },
-    aiCro:             { name: 'CRO IA',                    price: 39, unit: '/mois' },
-    behavioralAI:      { name: 'Behavioral AI',             price: 49, unit: '/mois' },
-    aiWorkflows:       { name: 'Workflows IA',              price: 29, unit: '/mois' },
-    marketIntelligence:{ name: 'Market Intelligence',       price: 49, unit: '/mois' },
-    reviewIntelligence:{ name: 'Review Intelligence',       price: 19, unit: '/mois' },
-    aiCreditsPack200k: { name: '+200 000 crédits IA',       price: 49, unit: '/pack/mois', qty: true },
-    aiCreditsPack500k: { name: '+500 000 crédits IA',       price: 99, unit: '/pack/mois', qty: true },
-    zapierIntegration: { name: 'Zapier / Make',             price: 15, unit: '/mois' },
-    advancedWebhooks:  { name: 'Webhooks avancés',          price: 19, unit: '/mois' },
-    crmIntegration:    { name: 'Intégration CRM',           price: 29, unit: '/mois' },
-    agencyPacks:       { name: 'Agency Packs',              price: 99, unit: '/mois' },
-    ssoEnterprise:     { name: 'SSO Enterprise',            price: 99, unit: '/mois' }
+    // ── Monitoring ──────────────────────────────────────────────────────────
+    monitorsPack10:       { name: '+10 Monitors',              price: 9,  unit: '/pack/mois', qty: true },
+    monitorsPack50:       { name: '+50 Monitors',              price: 29, unit: '/pack/mois', qty: true },
+    globalMonitoring:     { name: 'Global Monitoring',         price: 49, unit: '/mois' },
+    slaMonitoring:        { name: 'SLA Monitoring Avancé',     price: 19, unit: '/mois' },
+    // ── SEO ─────────────────────────────────────────────────────────────────
+    advancedSeoLab:       { name: 'Advanced SEO Lab',          price: 29, unit: '/mois' },
+    keywordDomination:    { name: 'Keyword Domination Engine', price: 39, unit: '/mois' },
+    backlinkIntelligence: { name: 'Backlink Intelligence',     price: 24, unit: '/mois' },
+    aiContentStrategist:  { name: 'AI Content Strategist',     price: 34, unit: '/mois' },
+    // ── Local SEO ───────────────────────────────────────────────────────────
+    gbpSlots10:           { name: '+10 Emplacements GBP',      price: 19, unit: '/pack/mois', qty: true },
+    aiGbpPosting:         { name: 'AI GBP Posting',            price: 29, unit: '/mois' },
+    reviewIntelligence:   { name: 'Review Intelligence',       price: 19, unit: '/mois' },
+    localDominationMaps:  { name: 'Local Domination Maps',     price: 24, unit: '/mois' },
+    // ── Conversion / AI ─────────────────────────────────────────────────────
+    aiCro:                { name: 'AI CRO Strategist',         price: 34, unit: '/mois' },
+    behavioralAI:         { name: 'Behavioral AI',             price: 44, unit: '/mois' },
+    revenueLeak:          { name: 'Revenue Leak AI',           price: 29, unit: '/mois' },
+    abTestingAI:          { name: 'AB Testing IA',             price: 24, unit: '/mois' },
+    // ── Reporting ───────────────────────────────────────────────────────────
+    whiteLabel:           { name: 'White-Label Exports',       price: 17, unit: '/mois' },
+    agencyPacks:          { name: 'Agency Reporting Packs',    price: 49, unit: '/mois' },
+    aiExecutiveReport:    { name: 'AI Executive Reporting',    price: 24, unit: '/mois' },
+    aiForecasting:        { name: 'AI Forecasting Engine',     price: 39, unit: '/mois' },
+    // ── Intelligence ────────────────────────────────────────────────────────
+    marketIntelligence:   { name: 'AI Market Intelligence',   price: 49, unit: '/mois' },
+    aiWorkflows:          { name: 'AI Automation Workflows',   price: 34, unit: '/mois' },
+    // ── Team ────────────────────────────────────────────────────────────────
+    extraSeats:           { name: '+5 Sièges',                 price: 35, unit: '/pack/mois', qty: true },
+    enterprisePermissions:{ name: 'Enterprise Permissions',   price: 19, unit: '/mois' },
+    // ── Data retention ──────────────────────────────────────────────────────
+    retention90d:         { name: 'Rétention 90 jours',        price: 9,  unit: '/mois' },
+    retention365d:        { name: 'Rétention 365 jours',       price: 19, unit: '/mois' },
+    // ── Integrations ────────────────────────────────────────────────────────
+    advancedWebhooks:     { name: 'Webhooks Avancés',          price: 14, unit: '/mois' },
+    zapierIntegration:    { name: 'Zapier / Make',             price: 19, unit: '/mois' },
+    crmIntegration:       { name: 'Intégration CRM',           price: 29, unit: '/mois' },
+    // ── Enterprise ──────────────────────────────────────────────────────────
+    customDomain:         { name: 'Custom Domain',             price: 9,  unit: '/mois' },
+    ssoEnterprise:        { name: 'SSO Enterprise',            price: 49, unit: '/mois' },
+    aiWorkspaceLaunch:    { name: 'AI Workspace Launch',       price: 49, unit: '/mois' },
+    // ── Support ─────────────────────────────────────────────────────────────
+    prioritySupport:      { name: 'Support prioritaire ≤ 2h',  price: 29, unit: '/mois' },
+    // ── Audit / Export packs ────────────────────────────────────────────────
+    auditsPack200:        { name: 'Pack audits +200',          price: 12, unit: '/pack/mois', qty: true },
+    auditsPack1000:       { name: 'Pack audits +1 000',        price: 39, unit: '/pack/mois', qty: true },
+    pdfPack200:           { name: 'Pack PDF +200',             price: 12, unit: '/pack/mois', qty: true },
+    exportsPack1000:      { name: 'Pack exports +1 000',       price: 14, unit: '/pack/mois', qty: true },
+    // ── AI Credit packs ─────────────────────────────────────────────────────
+    aiCreditsPack50k:     { name: '+50 000 crédits IA',        price: 19, unit: '/pack/mois', qty: true },
+    aiCreditsPack200k:    { name: '+200 000 crédits IA',       price: 49, unit: '/pack/mois', qty: true },
+    aiCreditsPack500k:    { name: '+500 000 crédits IA',       price: 99, unit: '/pack/mois', qty: true }
   };
 
   /* ── Load cart: localStorage first, then URL params ── */
