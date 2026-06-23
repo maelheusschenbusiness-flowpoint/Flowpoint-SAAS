@@ -14,7 +14,7 @@
   var plan    = getParam('plan')    || 'pro';
   var billing = getParam('billing') || 'monthly';
 
-  fetch('/api/billing/create-checkout-session', {
+  fetch('/api/billing/checkout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

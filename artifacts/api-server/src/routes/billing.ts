@@ -33,6 +33,11 @@ function buildLineItems(plan: string, addons: AddonsMap): Array<{ price: string;
   return items;
 }
 
+// Alias for legacy frontend calls using old endpoint name
+router.post("/billing/create-checkout-session", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+  res.redirect(307, "/api/billing/checkout");
+});
+
 router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, res: Response) => {
   const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
 

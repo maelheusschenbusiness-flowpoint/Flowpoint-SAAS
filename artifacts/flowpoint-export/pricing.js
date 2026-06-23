@@ -49,7 +49,7 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="fp-spinner"></span>Chargement…';
 
-    fetch('/api/billing/create-checkout-session', {
+    fetch('/api/billing/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
