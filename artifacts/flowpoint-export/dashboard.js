@@ -646,20 +646,26 @@ function fullscreenPresent() {
 }
 
 function openPasswordChangePanel() {
-  openFloatPanel('Changer le mot de passe', `
-    <div class="fp-form-group"><label class="fp-form-label">Mot de passe actuel</label><input class="fp-input" type="password" id="pw-current" placeholder="••••••••"/></div>
-    <div class="fp-form-group"><label class="fp-form-label">Nouveau mot de passe</label><input class="fp-input" type="password" id="pw-new" placeholder="••••••••"/></div>
-    <div class="fp-form-group"><label class="fp-form-label">Confirmer le nouveau</label><input class="fp-input" type="password" id="pw-confirm" placeholder="••••••••"/></div>
-    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="pw-save">Changer le mot de passe</button>
+  const email = STATE.me?.email || '';
+  openFloatPanel('S\u00e9curit\u00e9 du compte', `
+    <div style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">\uD83D\uDD11 Authentification sans mot de passe</div>
+      <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.6">FlowPoint utilise des <strong>liens magiques s\u00e9curis\u00e9s</strong> — aucun mot de passe \u00e0 m\u00e9moriser. Pour acc\u00e9der \u00e0 votre compte depuis un nouvel appareil, cliquez sur le bouton ci-dessous pour recevoir un lien de connexion par email.</div>
+    </div>
+    <div class="fp-form-group"><label class="fp-form-label">Email de connexion</label><input class="fp-input" type="email" id="sec-email" value="${escHtml(email)}" placeholder="votre@email.com"/></div>
+    <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:8px" id="sec-send">Envoyer un nouveau lien de connexion</button>
+    <div style="font-size:10px;color:var(--fp-text-faint);text-align:center;margin-top:10px">\u23F1\uFE0F Le lien expire dans 30 minutes</div>
   `);
   setTimeout(() => {
-    document.getElementById('pw-save')?.addEventListener('click', () => {
-      const nw = document.getElementById('pw-new')?.value;
-      const cf = document.getElementById('pw-confirm')?.value;
-      if (!nw || nw.length < 6) { showToast('warning', 'Minimum 6 caractères'); return; }
-      if (nw !== cf) { showToast('warning', 'Les mots de passe ne correspondent pas'); return; }
-      showToast('success', 'Mot de passe mis à jour !');
-      closeFloatPanel();
+    document.getElementById('sec-send')?.addEventListener('click', async () => {
+      const btn = document.getElementById('sec-send');
+      const emailVal = document.getElementById('sec-email')?.value.trim();
+      if (!emailVal || !emailVal.includes('@')) { showToast('warning', 'Email invalide'); return; }
+      if (btn) { btn.disabled = true; btn.textContent = 'Envoi\u2026'; }
+      const r = await apiAction('POST', '/api/auth/login-request', { email: emailVal }).catch(() => null);
+      if (btn) { btn.disabled = false; btn.textContent = 'Envoyer un nouveau lien de connexion'; }
+      if (r && !r.error) { showToast('success', 'Lien de connexion envoy\u00e9 \u00e0 ' + emailVal + ' !'); closeFloatPanel(); }
+      else { showToast('error', r?.error || 'Erreur lors de l\'envoi'); }
     });
   }, 60);
 }
@@ -7652,6 +7658,10 @@ function renderSettings() {
             {l:'Organisation', id:'prof-org',     v:me.org.name,                                                                                t:'text'},
             {l:'Site web',     id:'prof-website', v:me.org?.website||'',                                                                        t:'url'},
             {l:'Fuseau horaire',id:'prof-tz',     v:(me.org&&me.org.timezone)||(STATE.settings&&STATE.settings.timezone)||'', t:'text',ph:'Ex: Europe/Paris'},
+            {l:'Adresse',      id:'prof-addr',   v:me.location?.address||'',                t:'text', ph:'12 rue de la Paix'},
+            {l:'Ville',        id:'prof-city',   v:me.location?.city||'',                   t:'text', ph:'Paris'},
+            {l:'Code postal',  id:'prof-postal', v:me.location?.postalCode||'',             t:'text', ph:'75001'},
+            {l:'Pays',         id:'prof-country',v:me.location?.country||'',                t:'text', ph:'France'},
           ].map(f => `<div class="fp-form-group">
             <label class="fp-form-label">${escHtml(f.l)}</label>
             <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}/>
@@ -7668,7 +7678,7 @@ function renderSettings() {
               oninput="STATE.settings['${f.k}']=this.value;saveSettings()"/>
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const body={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim(),timezone:(document.getElementById('prof-tz')?.value||'').trim()};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me){if(body.firstName)STATE.me.firstName=body.firstName;STATE.me.lastName=body.lastName;if(STATE.me.org){STATE.me.org.name=body.orgName||STATE.me.org.name;STATE.me.org.website=body.website;if(body.timezone)STATE.me.org.timezone=body.timezone;}}showToast('success','Profil sauvegard\u00e9 !');}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const body={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim(),timezone:(document.getElementById('prof-tz')?.value||'').trim(),address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim()};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me){if(body.firstName)STATE.me.firstName=body.firstName;STATE.me.lastName=body.lastName;if(STATE.me.org){STATE.me.org.name=body.orgName||STATE.me.org.name;STATE.me.org.website=body.website;if(body.timezone)STATE.me.org.timezone=body.timezone;}STATE.me.location=STATE.me.location||{};STATE.me.location.address=body.address;STATE.me.location.city=body.city;STATE.me.location.postalCode=body.postalCode;STATE.me.location.country=body.country;}showToast('success','Profil sauvegard\u00e9 !');render();}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openPasswordChangePanel()">Changer le mot de passe</button>
           </div>
         </div>
@@ -8786,6 +8796,11 @@ function renderSettings() {
       {key:'aiChurn',      label:'Détection churn IA',            desc:'Signaux faibles de désengagement client détectés',         color:'#f59e0b', plan:'Ultra',    active:isUltra},
       {key:'aiMarket',     label:'Intelligence marché IA',        desc:'Veille concurrentielle et tendances sectorielles',         color:'#06b6d4', plan:'Ultra',    active:false  },
     ];
+    const _savedAIMods = STATE.settings && STATE.settings.aiModules;
+    if (_savedAIMods && typeof _savedAIMods === 'object') {
+      aiModules.forEach(m => { if (m.key in _savedAIMods) m.active = !!_savedAIMods[m.key]; });
+    }
+    const _savedIntensity = (STATE.settings && STATE.settings.aiIntensity) || 'Équilibré';
     const intensityLevels = ['Conservateur','Équilibré','Agressif'];
     return `
       ${isUltra
@@ -8798,7 +8813,7 @@ function renderSettings() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Modules IA actifs', String(aiModules.filter(m => m.active).length) + '/' + aiModules.length, 'modules configurés', 'up')}
-        ${statCard('Intensité IA',      'Équilibré',      'recommandations mesurées', 'up')}
+        ${statCard('Intensité IA', _savedIntensity, 'recommandations mesurées', 'up')}
         ${statCard('AI Credits', STATE.aiCredits ? (function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()) : '…/…', PREVIEW_MODE ? '41% utilisés ce mois' : (STATE.aiCredits ? Math.round(STATE.aiCredits.used/Math.max(STATE.aiCredits.limit,1)*100)+'% utilisés' : 'Chargement…'), 'neutral')}
         ${statCard('Précision IA', displayStat(null, '87%'), PREVIEW_MODE ? 'recommandations pertinentes' : 'Analyse en cours', 'neutral')}
       </div>
@@ -8808,7 +8823,7 @@ function renderSettings() {
         <div class="fp-card-title" style="margin-bottom:14px">🎛️ Intensité des recommandations IA</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;align-items:stretch">
           ${intensityLevels.map((lvl, i) => `
-            <div class="fp-ai-int-opt${i === 1 ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>e.classList.remove('fp-ai-int-opt--active'));el.classList.add('fp-ai-int-opt--active');await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).catch(()=>{});showToast('success','Intensité ${lvl} appliquée');})(this)">
+            <div class="fp-ai-int-opt${lvl === _savedIntensity ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>e.classList.remove('fp-ai-int-opt--active'));el.classList.add('fp-ai-int-opt--active');if(STATE.settings)STATE.settings.aiIntensity='${lvl}';await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).catch(()=>{});showToast('success','Intensité ${lvl} appliquée');})(this)">
               <div style="font-size:18px;margin-bottom:4px">${['🧘','⚖️','🚀'][i]}</div>
               <div style="font-size:12px;font-weight:700;color:${i === 1 ? 'var(--fp-accent)' : 'var(--fp-text)'}">${escHtml(lvl)}${i === 1 ? ' ✓' : ''}</div>
               <div style="font-size:10px;color:var(--fp-text-faint);overflow:hidden;word-break:break-word;hyphens:auto">${['Peu de recommandations, fortes certitudes', 'Équilibre pertinence/fréquence', 'Toutes les recommandations IA activées'][i]}</div>
@@ -12196,7 +12211,7 @@ function bindSectionEvents() {
         });
       }, 50);
     });
-    $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', () => showToast('error','Membre retiré')));
+    $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', async () => { const memberId = btn.dataset.removeMember; if (!memberId || !confirm('Retirer ce membre de l\'équipe ?')) return; const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }));
     const sendChat = async () => {
       const input = $('#team-chat-input');
       if (!input?.value.trim()) return;
@@ -12229,7 +12244,16 @@ function bindSectionEvents() {
       showToast('success', 'Toutes les sessions fermées');
       setTimeout(() => { window.location.href = '/login.html'; }, 1200);
     });
-    $('#renew-access')?.addEventListener('click', () => showToast('success','Lien envoyé par email'));
+    $('#renew-access')?.addEventListener('click', async () => {
+      const email = STATE.me?.email;
+      if (!email) { showToast('warning', 'Email introuvable — reconnectez-vous'); return; }
+      const btn = document.getElementById('renew-access');
+      if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
+      const r = await apiAction('POST', '/api/auth/login-request', { email }).catch(() => null);
+      if (btn) { btn.disabled = false; btn.textContent = 'Renvoyer le lien'; }
+      if (r && !r.error) showToast('success', 'Lien de connexion envoyé à ' + email);
+      else showToast('error', r?.error || 'Erreur lors de l\'envoi');
+    });
 
     if (STATE.subRoute === 'alerts') {
       $('#show-add-rule-form')?.addEventListener('click', () => {
@@ -17699,7 +17723,7 @@ function renderCompetitor() {
                 <td style="text-align:center;color:${t.comps>=3?'#ef4444':'#f59e0b'}">${t.comps}/${comps.length}</td>
                 <td style="text-align:center;font-weight:700;color:#22c55e">+${t.vol}</td>
                 <td style="text-align:center">${badge(t.yours?'✓ Couvert':'✗ Manquant', t.yours?'#22c55e':'#ef4444')}</td>
-                <td style="text-align:center">${!t.yours ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Mission contenu créée !')">Créer</button>` : '<span style="font-size:10px;color:#22c55e">OK</span>'}</td>
+                <td style="text-align:center">${!t.yours ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('missions');setTimeout(()=>document.querySelector('[data-action=new-mission]')?.click(),300)">Créer</button>` : '<span style="font-size:10px;color:#22c55e">OK</span>'}</td>
               </tr>`).join('')}
             </tbody>
           </table>
@@ -18772,7 +18796,7 @@ function renderConversion() {
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between">
                 <span style="font-size:10px;color:var(--fp-text-faint)">Effort : ${escHtml(ab.effort)}</span>
-                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('info','La création de tests A/B se configure dans la section Conversion > UX Lab')">Lancer le test</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('billing');showToast('info','Activez l\'add-on \u00abAB Testing IA\u00bb pour lancer des tests')">Activer l'add-on</button>
               </div>
             </div>
           `).join("")}
@@ -20909,7 +20933,7 @@ function renderActivityFeed() {
         <div class="fp-section-sub">${liveFeed.length} événements · Mis à jour à l\'instant</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Exporter', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"showToast('success','Export en cours…')\"")}
+        ${btn('Exporter', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"exportActivityCsv()\"")}
         ${btn('Filtrer',  'fp-btn fp-btn-ghost fp-btn-sm', 'filter',   "onclick=\"showToast('info','Filtres bientôt disponibles')\"")}
       </div>
     </div>
@@ -23921,7 +23945,7 @@ function renderLocalSEOMap() {
             </div>
             <div style="text-align:right">
               <div style="font-size:11px;font-weight:700;color:#22c55e">${z.gain}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:9px;margin-top:2px" onclick="showToast('success','Mission locale créée !')">Créer page</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:9px;margin-top:2px" onclick="navigate('missions')">Créer page</button>
             </div>
           </div>
         `).join('')}
@@ -24208,7 +24232,7 @@ function renderConversionHeatmap() {
             </div>
           </div>
         `).join('')}
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="navigate('missions');showToast('success','3 missions CRO créées !')">Créer les missions CRO</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="navigate('missions');showToast('info','Accédez aux missions pour créer vos optimisations CRO')">Créer les missions CRO</button>
       </div>
     </div>
     <div class="fp-card" style="text-align:center;padding:32px 20px">
@@ -25893,7 +25917,7 @@ function renderGA4Campaigns() {
           <option value="7">7 jours</option><option value="30" selected>30 jours</option><option value="90">90 jours</option>
         </select>
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.reload()">🔄 Actualiser</button>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Export CSV en cours…')">📥 CSV</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(){const rows=(window.FP_DATA?.campaigns?.rows||[]);if(!rows.length){showToast('info','Connectez Google Analytics pour exporter les données');return;}const csv=rows.map(r=>'\"'+escHtml(r.dimensionValues?.[0]?.value||'')+'\",'+(r.metricValues?.[0]?.value||0)+','+(r.metricValues?.[1]?.value||0)).join('\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,Source,Sessions,Conversions\n'+csv;a.download='campagnes-'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('success','CSV exporté — '+rows.length+' campagne'+(rows.length>1?'s':''))})()">📥 CSV</button>
       </div>
     </div>
 

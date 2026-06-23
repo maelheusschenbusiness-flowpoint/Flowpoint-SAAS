@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { upsertOrgSettings } from "../services/org-settings.js";
 import { PLAN_CONFIG, ADDON_CATALOG, getUsageSummary, getMRRData, getSubscriptionAnalytics, startTrial, validateCoupon, getInvoices, trackBillingEvent } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 
@@ -190,21 +191,31 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     let addonsMeta: Record<string, boolean | number> = {};
     try { addonsMeta = JSON.parse(session.metadata?.["addons"] || "{}"); } catch {}
 
-    if (addonsMeta["whiteLabel"] !== undefined) {
-      store.me.addons.whiteLabel = !!addonsMeta["whiteLabel"];
+    // Activate all purchased FLAG addons
+    for (const key of FLAG_ADDONS) {
+      if (addonsMeta[key] !== undefined) {
+        (store.me.addons as Record<string, unknown>)[key] = !!addonsMeta[key];
+      }
     }
-    if (addonsMeta["customDomain"] !== undefined) {
-      store.me.addons.customDomain = !!addonsMeta["customDomain"];
+    // Activate all purchased QTY addons
+    for (const key of QTY_ADDONS) {
+      if (addonsMeta[key] !== undefined) {
+        (store.me.addons as Record<string, unknown>)[key] = Number(addonsMeta[key] || 0);
+      }
     }
-    if (addonsMeta["prioritySupport"] !== undefined) {
-      store.me.addons.prioritySupport = !!addonsMeta["prioritySupport"];
-    }
-    if (addonsMeta["extraSeats"] !== undefined) {
-      store.me.addons.extraSeats = Number(addonsMeta["extraSeats"] || 0);
-    }
-    if (addonsMeta["monitorsPack50"] !== undefined) {
-      store.me.addons.monitorsPack50 = Number(addonsMeta["monitorsPack50"] || 0);
-    }
+
+    // Persist addon changes to DB so they survive server restart
+    const orgId = "default";
+    upsertOrgSettings(orgId, {
+      plan: store.me.plan,
+      firstName: store.me.firstName,
+      orgName: store.me.org.name,
+      subscriptionStatus: "active",
+      stripeCustomerId: store.me.stripeCustomerId ?? "",
+      addons: store.me.addons as Record<string, unknown>,
+      usage: store.me.usage,
+      trialEndsAt: store.me.trialEndsAt ?? null,
+    }).catch(err => logger.error({ err }, "[Billing] Failed to persist addons after checkout"));
 
     logger.info({ plan: planMeta, sessionId }, "[Billing] Checkout verified — plan activated");
 

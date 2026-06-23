@@ -1,32 +1,68 @@
 ---
 name: FlowPoint demock final state
-description: État final du démockage complet dashboard.js — ce qui est fait, ce qui reste côté API
+description: État final après session phase commerciale — tous boutons morts corrigés, 0 showToast success factice visible
 ---
 
-## État au 23 juin 2026 — après session T001-T007
+## Règle absolue
+Tout bouton visible doit appeler une API réelle OU écrire en base OU modifier un état persistant (localStorage avec raison valide, ou browser API comme push notifications).
 
-### dashboard.js stats
-- **30 728 lignes** — syntaxe ✅ OK (node --check)
+## dashboard.js stats (post-session commerciale)
+- **~30 750 lignes** — syntaxe ✅ OK (node --check)
 - **124 appels aiBlock()** — toutes les pages couvertes
 - **0 nom client hardcodé hors guard** — tous derrière PREVIEW_MODE ou STATE
 
-### Pages avec aiBlock
-Overview ✅ (3), Audits ✅ (6), Monitors ✅ (7), Missions ✅ (4), Reports ✅ (5), LocalSEO ✅ (7), Team ✅ (4), Billing ✅ (2), Settings ✅ (3), Growth ✅ (6), GA4 Analytics ✅ (1, ajouté session finale), AI ✅, ClientMode ✅, Conversion ✅, Competitors ✅
+## Corrections Phase Commerciale (session T001→T010)
 
-### Mécanismes de garde
-- `PREVIEW_MODE` (`?preview=1`) — fallback démo nouveaux utilisateurs
-- `isDemoMode()` — guard Math.random fake data
-- `displayStat(liveVal, previewFallback)` — KPI cards
-- `_fpMQ(title, cat, prio, navAfter?)` — ~25 boutons Mission → FP_MISSIONS_API.create()
+### Settings form
+- `prof-address / city / postalCode / country` inclus dans `PATCH /api/me` body
+- `render()` appelé après save pour refléter les nouvelles valeurs
 
-### Clés STATE nouvelles (dashboard prêt, endpoints API à créer si besoin)
+### Billing webhook (billing.ts)
+- Boucles génériques `FLAG_ADDONS` + `QTY_ADDONS` dans `billing.ts`
+- `upsertOrgSettings` persist en DB après chaque activation addon Stripe
+- `subscription.updated/deleted/invoice.payment_succeeded/payment_failed` tous avec DB persist
+
+### Team
+- `data-remove-member` → `DELETE /api/team/:memberId` réel (était showToast factice)
+
+### AI Settings
+- `aiModules` et `aiIntensity` chargés depuis `STATE.settings` (DB via PATCH /api/me/prefs)
+
+### A/B tests
+- "Lancer le test" → `navigate('billing')` (supprimé bouton factice)
+
+### Boutons morts corrigés (T010 audit global)
+| Bouton | Avant | Fix |
+|--------|-------|-----|
+| "Changer le mot de passe" | showToast factice | Panel magic link → POST /api/auth/login-request |
+| "#renew-access" (settings) | showToast factice | POST /api/auth/login-request avec STATE.me.email |
+| "Exporter" Activity Command Center | showToast factice | exportActivityCsv() réelle |
+| "📥 CSV" Campagnes & Attribution | showToast factice | Export réel depuis FP_DATA.campaigns |
+| "Créer page" Local SEO zones | showToast factice | navigate('missions') |
+| "Créer les missions CRO" | showToast factice | navigate('missions') + toast info |
+| "Créer" Content gap table | showToast factice | navigate('missions') + click new-mission |
+
+## Légitimes (non faux — à ne pas modifier)
+- CSV exports → client-side depuis STATE data ✅
+- Thème appliqué → CSS only, pas d'API nécessaire ✅
+- Layout cards → `_fpSaveLayout()` (localStorage) ✅
+- Calendrier RDV → `saveCalendarEvents()` (localStorage, feature locale) ✅
+- Plan switcher → marqué "démo" dans le dropdown, feature de test ✅
+- Branding White Label → `localStorage.setItem('fp-wl-branding',...)` (client-side) ✅
+- `saveSettings()` → appelle `PATCH /api/me/prefs` en background ✅
+- Logout all → clear localStorage + redirect /login.html ✅
+- Alert rule toggle → try/catch avec API call dans le bloc ✅
+
+## APIs existantes vérifiées ✅
+- `FP_CRM_API` défini ligne ~29214, `_connectCrm` ligne ~29511
+- `FP_AUTOMATION_API.run/toggle/create` wirés (POST /api/automation/workflows/:id/run)
+- `saveSettings()` → `PATCH /api/me/prefs` ✅
+- Auth: `POST /api/auth/login-request` existe et envoie magic link via Resend
+
+## Clés STATE (dashboard prêt, endpoints API à créer si besoin)
 - `STATE.reports` — historique rapports réels
 - `STATE.threads` / `STATE.communications` — fils discussion client
 - `STATE.shareLinks` — liens partage rapports
 - `STATE.onboardings` — suivi onboarding clients
-- `STATE.scheduledReports` — rapports planifiés
-- `STATE.approvals` — approbations en attente
 
-**Why:** Ces clés sont lues par le dashboard avec fallback PREVIEW_MODE propre si null/vide — aucun crash. À implémenter côté API quand les fonctionnalités seront activées.
-
-**How to apply:** Quand un endpoint est créé (ex: GET /api/reports), peupler STATE.reports dans le loader principal (loadState() ou apiAction) — le dashboard s'adapte automatiquement.
+**Why:** Tout showToast('success') sans action réelle = utilisateur trompé = mauvaise réputation SaaS.
