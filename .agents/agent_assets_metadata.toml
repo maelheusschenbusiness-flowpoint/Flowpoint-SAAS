@@ -6,3 +6,9 @@ id = "z0XcdgFASiJ614rrqjGGD"
 uri = "file://dashboard-flowpoint.zip"
 type = "unspecified"
 title = "Dashboard FlowPoint (3 fichiers)"
+
+[[outputs]]
+id = "fYKxoyz382CAySI3Ffyyb"
+uri = "file://flowpoint-complet.zip"
+type = "unspecified"
+title = "FlowPoint — Projet complet (155 fichiers)"
