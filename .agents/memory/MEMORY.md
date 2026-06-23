@@ -12,3 +12,4 @@
 - [JS IIFE string apostrophe rule](js-iife-apostrophe.md) — dans les IIFEs qui concaténent HTML: toute apostrophe française dans single-quoted JS string doit être escapée \'; tester node --check après chaque lot d'édits
 - [FlowPoint demock final state](flowpoint-demock-final.md) — 124 aiBlocks, 0 fake names hors guard, 0 boutons mission faux; STATE.reports/threads/shareLinks/onboardings attendus mais endpoints API pas encore créés
 - [Python template literal escaping pitfall](python-js-template-escaping.md) — Ne jamais écrire \` ou \$ dans des strings Python pour du JS: \` dans fichier = char invalide en expression JS, \$ bloque l'interpolation. Utiliser concaténation string JS ou remplacement ligne-à-ligne.
+- [Stripe live price IDs](stripe-price-ids.md) — 44 price IDs hardcoded in plans.ts; env vars optional override

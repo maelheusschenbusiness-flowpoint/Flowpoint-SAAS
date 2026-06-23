@@ -263,7 +263,10 @@ router.post("/billing/portal", billingCheckoutRateLimit, async (_req: Request, r
 
 // ── NEW: GET /billing/plans ──────────────────────────────────────────────────
 router.get("/billing/plans", (_req: Request, res: Response) => {
-  const plans = Object.values(PLAN_CONFIG);
+  const plans = Object.values(PLAN_CONFIG).map(p => ({
+    ...p,
+    priceId: PLAN_PRICE_IDS[p.id] ?? "",
+  }));
   res.json({
     plans,
     addons: ADDON_CATALOG,
