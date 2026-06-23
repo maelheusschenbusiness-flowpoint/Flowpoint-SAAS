@@ -17,10 +17,12 @@ export interface OrgMe {
   addons: Record<string, boolean>;
   seats: number;
   trialEndsAt?: string;
+  subscriptionStatus?: string;
+  stripeCustomerId?: string;
 }
 
 class Store {
-  me: OrgMe = {
+  me: OrgMe & Record<string, unknown> = {
     plan: "pro",
     orgId: "default",
     addons: {},
@@ -39,12 +41,35 @@ class Store {
     });
   }
 
+  /**
+   * Update plan in memory, broadcast to SSE clients, and persist to org_settings DB.
+   * This is the single authoritative way to change the active plan.
+   */
+  broadcastPlanUpdate(plan: string): void {
+    this.me.plan = plan;
+    this.broadcast({ type: "billing:plan_updated", plan });
+
+    // Persist to DB so plan survives server restarts — fire-and-forget
+    pool.connect().then(client =>
+      client.query(
+        `INSERT INTO org_settings (org_id, plan)
+         VALUES ('default', $1)
+         ON CONFLICT (org_id) DO UPDATE SET plan = EXCLUDED.plan, updated_at = NOW()`,
+        [plan]
+      )
+        .then(() => { logger.info({ plan }, "[Store] Plan persisted to org_settings"); })
+        .catch(err => { logger.error({ err, plan }, "[Store] Failed to persist plan to org_settings"); })
+        .finally(() => client.release())
+    ).catch(err => { logger.error({ err }, "[Store] Pool connect failed for plan persist"); });
+  }
+
   async refresh(orgId = "default"): Promise<void> {
     try {
       const client = await pool.connect();
       try {
         const row = await client.query(
-          `SELECT plan, email, name, trial_ends_at FROM org_settings WHERE org_id = $1 LIMIT 1`,
+          `SELECT plan, email, name, trial_ends_at, subscription_status, stripe_customer_id
+           FROM org_settings WHERE org_id = $1 LIMIT 1`,
           [orgId]
         );
         if (row.rows[0]) {
@@ -52,6 +77,8 @@ class Store {
           this.me.email = row.rows[0].email;
           this.me.name = row.rows[0].name;
           this.me.trialEndsAt = row.rows[0].trial_ends_at;
+          if (row.rows[0].subscription_status) this.me.subscriptionStatus = row.rows[0].subscription_status;
+          if (row.rows[0].stripe_customer_id)  this.me.stripeCustomerId  = row.rows[0].stripe_customer_id;
         }
         const addons = await client.query(
           `SELECT addon_key FROM org_addons WHERE org_id = $1 AND active = true`,

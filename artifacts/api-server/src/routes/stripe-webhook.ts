@@ -3,6 +3,36 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 
+/** Persist subscription status and Stripe customer ID to org_settings — fire and forget */
+async function persistSubscriptionMeta(opts: {
+  subscriptionStatus?: string;
+  stripeCustomerId?: string;
+  orgId?: string;
+}): Promise<void> {
+  const { subscriptionStatus, stripeCustomerId, orgId = "default" } = opts;
+  if (!subscriptionStatus && !stripeCustomerId) return;
+  try {
+    const { pool: pgPool } = await import("@workspace/db");
+    const client = await pgPool.connect();
+    try {
+      const setClauses: string[] = ["updated_at = NOW()"];
+      const values: unknown[] = [orgId];
+      if (subscriptionStatus) { values.push(subscriptionStatus); setClauses.push(`subscription_status = $${values.length}`); }
+      if (stripeCustomerId)   { values.push(stripeCustomerId);   setClauses.push(`stripe_customer_id = $${values.length}`); }
+      await client.query(
+        `INSERT INTO org_settings (org_id)
+         VALUES ($1)
+         ON CONFLICT (org_id) DO UPDATE SET ${setClauses.join(", ")}`,
+        values
+      );
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.error({ err, opts }, "[Webhook] Failed to persist subscription meta to org_settings");
+  }
+}
+
 const router = Router();
 
 function parsePlanFromSubscription(subscription: Record<string, unknown>): string | null {
@@ -164,8 +194,11 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       if (["standard","pro","ultra"].includes(planNorm)) {
         store.broadcastPlanUpdate(planNorm);
       }
-      if (obj["customer"]) store.me.stripeCustomerId = String(obj["customer"]);
+      const customerId = obj["customer"] ? String(obj["customer"]) : undefined;
+      if (customerId) store.me.stripeCustomerId = customerId;
       store.me.subscriptionStatus = "active";
+      // Persist status + customer ID so they survive restarts
+      await persistSubscriptionMeta({ subscriptionStatus: "active", stripeCustomerId: customerId });
       logger.info({ plan: planNorm }, "[Webhook] Checkout session completed");
       break;
     }
@@ -181,6 +214,9 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         logger.info({ newPlan, status }, "[Webhook] Subscription updated — broadcasting plan change");
         store.broadcastPlanUpdate(newPlan);
       }
+
+      // Persist subscription status so it survives restarts
+      await persistSubscriptionMeta({ subscriptionStatus: status });
 
       syncAddonsFromSubscription(obj);
 
@@ -222,6 +258,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
     case "invoice.payment_succeeded": {
       logger.info("[Webhook] Payment succeeded");
       store.me.subscriptionStatus = "active";
+      await persistSubscriptionMeta({ subscriptionStatus: "active" });
       store.broadcast({ type: "payment_succeeded" });
       // Persist active add-ons to DB on successful payment
       try {
@@ -240,6 +277,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const attemptCount = Number(obj["attempt_count"] || 1);
       logger.warn({ attemptCount }, "[Webhook] Payment failed");
       store.me.subscriptionStatus = "past_due";
+      await persistSubscriptionMeta({ subscriptionStatus: "past_due" });
       store.broadcast({ type: "payment_failed", attemptCount });
       break;
     }

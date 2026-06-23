@@ -6649,7 +6649,7 @@ function renderBilling() {
       if (!_sk) { showToast('info', 'Contactez le support pour activer cet add-on.'); return; }
       try {
         showToast('info', 'Redirection vers le paiement…');
-        const _r = await apiAction('POST', '/billing/addon-checkout', { addonKey: _sk, addonName: _a.name, price: _a.price });
+        const _r = await apiAction('POST', '/api/billing/addon-checkout', { addonKey: _sk, addonName: _a.name, price: _a.price });
         if (_r && _r.url) {
           window.location.href = _r.url;
         } else if (_r && _r.error) {
@@ -8181,8 +8181,8 @@ function renderSettings() {
                 </div>
                 <div style="font-size:9px;color:var(--fp-text-faint);margin-top:2px">${wf.runs} exécutions · Dernier : ${escHtml(wf.lastRun)}</div>
               </div>
-              <button class="fp-toggle${wf.active ? ' on' : ''}" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.toggle('${escHtml(wf.id)}',${!wf.active}):showToast('info','...')` : `showToast('success','Workflow ${wf.active ? 'désactivé' : 'activé'}')`}"></button>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.run('${escHtml(wf.id)}'):showToast('info','...')` : `showToast('success','Workflow lancé !')`}">▶ Run</button>
+              <button class="fp-toggle${wf.active ? ' on' : ''}" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.toggle('${escHtml(wf.id)}',${!wf.active}):showToast('error','Module automations non chargé — rechargez la page')` : `showToast('error','Workflow invalide : identifiant manquant')`}"></button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="${wf.id ? `typeof window.FP_AUTOMATION_API!=='undefined'?window.FP_AUTOMATION_API.run('${escHtml(wf.id)}'):showToast('error','Module automations non chargé — rechargez la page')` : `showToast('error','Workflow invalide : identifiant manquant')`}">▶ Run</button>
             </div>
           `).join('')}
         </div>
@@ -10247,7 +10247,7 @@ function openMonitorPanel(monitor) {
   `;
   openFloatPanel('Monitor : ' + escHtml(monitor.name), content);
   setTimeout(() => {
-    $('#monitor-panel-test')?.addEventListener('click', () => { if(typeof window.FP_MONITORS_API!=='undefined'){ window.FP_MONITORS_API.ping(monitor.id); } else { showToast('success', 'Test lancé pour ' + escHtml(monitor.name)); } });
+    $('#monitor-panel-test')?.addEventListener('click', () => { if(typeof window.FP_MONITORS_API!=='undefined'){ window.FP_MONITORS_API.ping(monitor.id); } else { showToast('info', 'Test indisponible — rechargez la page pour charger le module monitors'); } });
     $('#monitor-panel-delete')?.addEventListener('click', () => {
       STATE.monitors = STATE.monitors.filter(m => m.id !== monitor.id);
       closeFloatPanel();
@@ -23254,7 +23254,7 @@ function renderLocalSEOGBP() {
               </div>
               <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:8px">${escHtml(p.preview)}</div>
               <div style="display:flex;gap:6px">
-                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var form=btn.closest('.fp-card');var textarea=form?form.querySelector('textarea'):null;var text=textarea?textarea.value.trim():'';if(!text){showToast('error','Rédigez votre post avant de publier');return;}apiAction('POST','/api/gbp-posts',{content:text,status:'published'}).then(r=>{if(r&&r.id)showToast('success','Post GBP publié ✓');else showToast('error','Erreur publication');}).catch(()=>showToast('error','Erreur publication'));})(this)">Publier</button>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var form=btn.closest('.fp-card');var textarea=form?form.querySelector('textarea'):null;var text=textarea?textarea.value.trim():'';if(!text){showToast('error','Rédigez votre post avant de publier');return;}apiAction('POST','/api/gbp-posts',{content:text,status:'draft'}).then(r=>{if(r&&r.id)showToast('info','Post sauvegardé localement — connectez Google Business Profile pour le publier sur Google');else showToast('error','Erreur de sauvegarde');}).catch(()=>showToast('error','Erreur de sauvegarde'));})(this)">Enregistrer</button>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()">Planifier</button>
               </div>
             </div>
@@ -28331,8 +28331,8 @@ window.FP_GBP_API = {
     const r = await apiFetch('/api/google/posts', {
       method: 'POST', body: JSON.stringify({ locationId, ...data })
     });
-    if (r?.ok) showToast('success', 'Post GBP publié');
-    else showToast('error', r?.error || 'Erreur');
+    if (r?.ok) showToast('info', 'Post sauvegardé — publication Google requiert connexion GBP active');
+    else showToast('error', r?.error || 'Erreur de publication');
     return r;
   },
 };
