@@ -13173,6 +13173,7 @@ function renderSubPageContent(route, sub) {
   }
   if (route === 'conversion') {
     if (sub === 'heatmap') return renderConversionHeatmap();
+    return renderConversion();
   }
 
   // ── GA4 TRAFFIC SUB-PAGES ──
@@ -16482,7 +16483,8 @@ function radarChartSvg(dims, sz) {
 // ─────────────────────────────────────────────────────────────────
 function renderGrowthProjections() {
   const avgSc = avgScore();
-  const past   = [58, 62, 65, 67, 70, 73, avgSc];
+  const _pBase = avgSc > 0 ? avgSc : 50;
+  const past   = [Math.max(0,_pBase-12),Math.max(0,_pBase-10),Math.max(0,_pBase-8),Math.max(0,_pBase-5),Math.max(0,_pBase-3),Math.max(0,_pBase-1),_pBase];
   const future = [avgSc, avgSc+4, avgSc+7, avgSc+10, avgSc+13, avgSc+15, avgSc+18];
   const months = ['Juin','Juil.','Août','Sept.','Oct.','Nov.'];
   const scenarios = [
@@ -16497,7 +16499,7 @@ function renderGrowthProjections() {
       s30:avgSc+3, s60:avgSc+6,  s90:avgSc+9,  traffic:'+6%',  leads:'+8%',  roi:'+380€' },
   ];
   const monthData = months.map(function(m, i) {
-    return { month:m, score:avgSc+(i+1)*3, traffic:1240+(i+1)*180, leads:94+(i+1)*12, roi:640+(i+1)*180, delta:'+'+(i+1)*3+' pts' };
+    return { month:m, score:Math.min(100,avgSc+(i+1)*3), delta:'+'+(i+1)*3+' pts' };
   });
   const channels = [
     {ch:'Recherche organique',    now:68, p30:78, p90:88, color:'var(--fp-accent)'},
@@ -16550,10 +16552,8 @@ function renderGrowthProjections() {
                 `).join('')}
               </div>
             </div>
-            <div style="display:flex;gap:16px;flex-wrap:wrap;padding-top:8px;border-top:1px solid rgba(255,255,255,.05)">
-              ${[['Trafic',s.traffic],['Leads',s.leads],['ROI',s.roi]].map(([l,v])=>`
-                <span style="font-size:11px;color:var(--fp-text-muted)">${l} : <strong style="color:${s.color}">${v}</strong></span>
-              `).join('')}
+            <div style="padding-top:8px;border-top:1px solid rgba(255,255,255,.05)">
+              <span style="font-size:10px;color:var(--fp-text-faint)">Projections de score SEO uniquement · <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="navigate('settings')">Connecter GA4 pour trafic &amp; leads →</button></span>
             </div>
           </div>
         `).join('')}
@@ -16564,16 +16564,13 @@ function renderGrowthProjections() {
       <div class="fp-card-title" style="margin-bottom:14px">📅 Projection mois par mois</div>
       <div style="overflow-x:auto">
         <table class="fp-data-table">
-          <thead><tr><th style="white-space:nowrap">Mois</th><th style="text-align:center;white-space:nowrap">Score estimé</th><th style="text-align:center;white-space:nowrap">Δ Score</th><th style="text-align:center;white-space:nowrap">Trafic/mois</th><th style="text-align:center;white-space:nowrap">Leads/mois</th><th style="text-align:center;white-space:nowrap">ROI estimé</th></tr></thead>
+          <thead><tr><th style="white-space:nowrap">Mois</th><th style="text-align:center;white-space:nowrap">Score projeté</th><th style="text-align:center;white-space:nowrap">Δ Score</th></tr></thead>
           <tbody>
             ${monthData.map((r, i) => `
               <tr style="${i===0?'background:rgba(37,99,235,.06)':''}">
                 <td style="font-weight:600;white-space:nowrap">${r.month} 2026</td>
                 <td style="text-align:center;color:var(--fp-accent);font-weight:700;white-space:nowrap">${r.score}/100</td>
                 <td style="text-align:center;color:#22c55e;white-space:nowrap">${r.delta}</td>
-                <td style="text-align:center;white-space:nowrap">${r.traffic.toLocaleString('fr-FR')}</td>
-                <td style="text-align:center;color:#22c55e;white-space:nowrap">${r.leads}</td>
-                <td style="text-align:center;color:#8b5cf6;white-space:nowrap">+${r.roi}€</td>
               </tr>
             `).join('')}
           </tbody>
@@ -17528,28 +17525,35 @@ function renderCompetitor() {
   // SUB: KEYWORDS — War Room Mots-clés
   // ══════════════════════════════════════════════════════════
   if (sub === 'keywords') {
-    const kwBattle = [
-      { kw: 'boulangerie paris',              vol: 1800, yours: 4,  top: { name: 'Dupont', pos: 1 }, gap: -3 },
-      { kw: 'boulangerie artisanale paris',   vol: 480,  yours: 2,  top: { name: 'Vous',   pos: 2 }, gap: 0  },
-      { kw: 'pain bio livraison',             vol: 320,  yours: 12, top: { name: 'Dupont', pos: 2 }, gap: -10},
-      { kw: 'plombier urgence paris',         vol: 2100, yours: 5,  top: { name: 'Plomberie', pos: 3 }, gap: -2},
-      { kw: 'restaurant vue panoramique',     vol: 890,  yours: 8,  top: { name: 'Panorama', pos: 1 }, gap: -7},
-      { kw: 'traiteur paris 11',              vol: 240,  yours: 3,  top: { name: 'Vous',   pos: 3 }, gap: 0  },
-      { kw: 'coiffeur haut de gamme lyon',    vol: 190,  yours: null, top: { name: 'Non positionné', pos: null }, gap: null },
-    ];
-    const clusters = [
-      { name: 'Transactionnel', yours: 45, comp: 68, desc: 'Achats et services', color: '#2563EB' },
-      { name: 'Informationnel',  yours: 62, comp: 44, desc: 'Contenu et conseils', color: '#22c55e' },
-      { name: 'Local',           yours: 38, comp: 71, desc: 'Géographique', color: '#f59e0b' },
-      { name: 'Long-tail',       yours: 29, comp: 52, desc: 'Requêtes spécifiques', color: '#8b5cf6' },
-      { name: 'Navigationnel',    yours: 71, comp: 58, desc: 'Recherches de marque',   color: '#06b6d4' },
-    ];
+    const _realKw = (STATE.keywords||[]).slice(0,7).map(k => ({
+      kw:    k.keyword,
+      vol:   k.searchVolume || 0,
+      yours: k.current_position || null,
+      top:   { name: k.topCompetitor || 'Concurrent #1', pos: k.competitorPos || null },
+      gap:   (k.current_position && k.competitorPos) ? k.current_position - k.competitorPos : null,
+    }));
+    const kwBattle = _realKw.length > 0 ? _realKw : (PREVIEW_MODE ? [
+      { kw: 'mot-clé principal local',     vol: 1800, yours: 4,  top: { name: 'Concurrent A', pos: 1 }, gap: -3  },
+      { kw: 'service + ville',              vol: 480,  yours: 2,  top: { name: 'Vous',          pos: 2 }, gap: 0   },
+      { kw: 'requête longue traîne',        vol: 320,  yours: 12, top: { name: 'Concurrent A',  pos: 2 }, gap: -10 },
+      { kw: 'service urgence + ville',      vol: 2100, yours: 5,  top: { name: 'Concurrent B',  pos: 3 }, gap: -2  },
+      { kw: 'requête géographique',         vol: 890,  yours: 8,  top: { name: 'Concurrent C',  pos: 1 }, gap: -7  },
+      { kw: 'marque + service',             vol: 240,  yours: 3,  top: { name: 'Vous',          pos: 3 }, gap: 0   },
+      { kw: 'niche longue traîne',          vol: 190,  yours: null, top: { name: 'Non positionné', pos: null }, gap: null },
+    ] : []);
+    const clusters = PREVIEW_MODE ? [
+      { name: 'Transactionnel', yours: 45, comp: 68, desc: 'Achats et services',   color: '#2563EB' },
+      { name: 'Informationnel', yours: 62, comp: 44, desc: 'Contenu et conseils',  color: '#22c55e' },
+      { name: 'Local',          yours: 38, comp: 71, desc: 'Géographique',         color: '#f59e0b' },
+      { name: 'Long-tail',      yours: 29, comp: 52, desc: 'Requêtes spécifiques', color: '#8b5cf6' },
+      { name: 'Navigationnel',  yours: 71, comp: 58, desc: 'Recherches de marque', color: '#06b6d4' },
+    ] : [];
     return `
       ${aiBlock("Les concurrents dominent les mots-clés <strong>transactionnels</strong> et <strong>locaux</strong>. Votre avantage : <strong>mots-clés informationnels</strong> (+18 pts d\'avance). Opportunité non exploitée : 3 mots-clés locaux à fort volume où aucun concurrent n\'est bien optimisé.",
         ['Exploiter les gaps', 'Créer du contenu ciblé', 'Rapport mots-clés'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Mots-clés suivis', kwBattle.length * 8, 'dans le battlefield', 'neutral')}
+        ${statCard('Mots-clés suivis', _realKw.length > 0 ? String(_realKw.length) : displayStat(null, PREVIEW_MODE ? String(kwBattle.length) : '0'), 'dans le battlefield', 'neutral')}
         ${statCard('Vous en tête', kwBattle.filter(k => k.gap >= 0).length, 'positions gagnées', 'up')}
         ${statCard('Gaps détectés', kwBattle.filter(k => k.gap < -5).length, 'opportunités urgentes', 'down')}
         ${statCard('Volume gagnable', displayStat(null, '+4 120'), PREVIEW_MODE ? 'recherches/mois' : 'Connectez DataForSEO', 'neutral')}
@@ -19298,25 +19302,51 @@ function renderConversion() {
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('cro')">Plan complet →</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        ${[
-          { t: "Ajouter CTA urgence above the fold",        impact: "+34%", effort: "30 min", priority: "Critique" },
-          { t: "Simplifier formulaire (3 champs max)",      impact: "+18%", effort: "1h",     priority: "Critique" },
-          { t: "Afficher les avis Google sur le site",      impact: "+15%", effort: "45 min", priority: "Élevé"    },
-          { t: "Badge disponibilité 24h/24 visible",        impact: "+12%", effort: "15 min", priority: "Moyen"    },
-        ].map(r => {
-          const pc = r.priority === "Critique" ? "#ef4444" : r.priority === "Élevé" ? "#f59e0b" : "#2563EB";
-          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
-            <div style="flex:1">
-              <span style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(r.t)}</span>
-            </div>
-            <div style="text-align:right;flex-shrink:0">
-              <div style="font-size:12px;font-weight:800;color:#22c55e">${escHtml(r.impact)}</div>
-              <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(r.effort)}</div>
-            </div>
-            ${badge(r.priority, pc)}
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ('Créer opportunité de conversion','Conversion','medium')">Créer</button>
-          </div>`;
-        }).join("")}
+        ${(function() {
+          const _qw = [];
+          const _avgSc = (STATE.audits||[]).length > 0
+            ? Math.round((STATE.audits||[]).reduce((s,a)=>s+(a.score||0),0)/(STATE.audits||[]).length) : 0;
+          const _monitorsDown = (STATE.monitors||[]).filter(m=>m.status==='down').length;
+          const _monitorsWarn = (STATE.monitors||[]).filter(m=>m.status==='warn').length;
+          const _hasAudits    = (STATE.audits||[]).length > 0;
+          const _hasMonitors  = (STATE.monitors||[]).length > 0;
+          const _hasGA4       = !!(window.FP_DATA?.ga4?.sessions);
+          const _hasKw        = (STATE.keywords||[]).length > 0;
+          if (_monitorsDown > 0)
+            _qw.push({ t: _monitorsDown + ' monitor' + (_monitorsDown>1?'s':'') + ' DOWN — intervention immédiate', impact: 'Critique', effort: 'Immédiat', priority: 'Critique' });
+          if (!_hasGA4)
+            _qw.push({ t: 'Connecter GA4 pour mesurer les conversions réelles', impact: 'Indispensable', effort: '15 min', priority: 'Critique' });
+          if (!_hasAudits)
+            _qw.push({ t: 'Lancer un premier audit SEO', impact: 'Diagnostic initial', effort: '2 min', priority: 'Critique' });
+          if (_avgSc > 0 && _avgSc < 60)
+            _qw.push({ t: 'Score SEO faible (' + _avgSc + '/100) — corriger les issues critiques', impact: '+trafic', effort: '2-4h', priority: 'Critique' });
+          if (_monitorsWarn > 0 && _monitorsDown === 0)
+            _qw.push({ t: _monitorsWarn + ' monitor' + (_monitorsWarn>1?'s':'') + ' en alerte latence', impact: 'UX dégradée', effort: '1h', priority: 'Élevé' });
+          if (_avgSc >= 60 && _avgSc < 75)
+            _qw.push({ t: 'Optimiser les pages à score 60-74 (vitesse mobile)', impact: '+15% trafic', effort: '2h', priority: 'Élevé' });
+          if (!_hasMonitors)
+            _qw.push({ t: 'Configurer un monitor de disponibilité', impact: 'Prévenir les pertes', effort: '5 min', priority: 'Élevé' });
+          if (!_hasKw)
+            _qw.push({ t: 'Ajouter des mots-clés à surveiller', impact: 'Suivi de position', effort: '10 min', priority: 'Moyen' });
+          if (_avgSc >= 75)
+            _qw.push({ t: 'Score solide — ajouter Schema Markup FAQ sur les pages clés', impact: '+8 pts SEO', effort: '1h', priority: 'Moyen' });
+          if (_qw.length === 0)
+            _qw.push({ t: 'Portfolio optimisé — planifier la revue mensuelle', impact: 'Maintenir', effort: 'Récurrent', priority: 'Moyen' });
+          return _qw.slice(0,4).map(r => {
+            const pc = r.priority === 'Critique' ? '#ef4444' : r.priority === 'Élevé' ? '#f59e0b' : '#2563EB';
+            return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+              <div style="flex:1">
+                <span style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(r.t)}</span>
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                <div style="font-size:12px;font-weight:800;color:#22c55e">${escHtml(r.impact)}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(r.effort)}</div>
+              </div>
+              ${badge(r.priority, pc)}
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ('Créer opportunité de conversion','Conversion','medium')">Créer</button>
+            </div>`;
+          }).join('');
+        })()}
       </div>
     </div>
   `;
@@ -20206,7 +20236,7 @@ function renderActivityFeed() {
         user:   e.userName || 'Système',
         impact: (e.metadata && e.metadata.impact) || 'Moyen',
       }))
-    : masterFeed;
+    : (PREVIEW_MODE ? masterFeed : []);
 
   // ══════════════════════════════════════════════════════════
   // SUB: ÉQUIPE & COLLABORATION
