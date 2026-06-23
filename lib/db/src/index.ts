@@ -431,3 +431,12 @@ const schema = {
 };
 
 export const db = drizzle(pool, { schema });
+
+// ── Missions tables (raw SQL — déclarées ici pour référence de schéma) ────────
+// Ces tables sont créées via migration dans init-missions.ts
+
+export const missionsSchemaRef = {
+  missions: "missions",
+  missionHistory: "mission_history",
+  missionAiLogs: "mission_ai_logs",
+};

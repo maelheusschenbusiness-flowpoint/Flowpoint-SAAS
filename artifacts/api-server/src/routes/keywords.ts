@@ -10,6 +10,7 @@ import {
   generateClusters, generateOpportunities, getAIRecommendations, getKeywordLimit,
 } from "../services/keyword-engine.js";
 import { logger } from "../lib/logger.js";
+import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
 
@@ -32,7 +33,7 @@ const SEED: Array<typeof keywordsTable.$inferInsert> = [
 ];
 
 // GET /api/keywords
-router.get("/keywords", async (req, res) => {
+router.get("/keywords", withCache(60), async (req, res) => {
   const orgId = getOrg(req);
   const { filter, cluster, intent, device, sortBy = "position" } = req.query as Record<string,string>;
   const client = await pool.connect();

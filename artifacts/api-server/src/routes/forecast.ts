@@ -1,13 +1,14 @@
 import { Router, type Request, type Response } from "express";
 import { getForecastData, generateForecasts } from "../services/forecasting-service.js";
 import { requireFeature } from "../middlewares/planGate.js";
+import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
 
 // All forecast endpoints require the 'forecastingAI' feature flag (Pro plan and above)
 router.use(requireFeature("forecastingAI", "AI Forecasting"));
 
-router.get("/forecast", async (req: Request, res: Response) => {
+router.get("/forecast", withCache(60), async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
     const data = await getForecastData(siteUrl);

@@ -187,7 +187,7 @@ const MOCK_MISSIONS = [
       { id:'s3', text:'Rédiger la synthèse exécutive et les recommandations', done:false, tag:'Rédaction' },
       { id:'s4', text:'Générer le PDF et envoyer au client', done:false, tag:'Envoi' },
     ]},
-  { id:'ms5', title:'Analyser les concurrents du secteur boulangerie Paris', category:'Local SEO', impact:'Moyen', status:'inprogress', date:'2026-05-06',
+  { id:'ms5', title:'Analyser les concurrents dans votre secteur géographique', category:'Local SEO', impact:'Moyen', status:'inprogress', date:'2026-05-06',
     steps:[
       { id:'s1', text:'Identifier les 5 concurrents principaux sur Google Maps', done:true, tag:'Recherche' },
       { id:'s2', text:'Auditer leur profil Google Business (avis, photos, posts)', done:false, tag:'Analyse' },
@@ -2912,8 +2912,8 @@ function renderOverview() {
   const isUltra = me.plan === 'Ultra';
   const isStd  = !isPro && !isUltra;
 
-  const activeMonitors = STATE.monitors.filter(m => m.status !== 'down').length;
-  const totalMonitors  = STATE.monitors.length;
+  const activeMonitors = (STATE.monitors||[]).filter(m => m.status !== 'down').length;
+  const totalMonitors  = (STATE.monitors||[]).length;
   const pingOk = totalMonitors > 0 ? Math.round(activeMonitors / totalMonitors * 100) : 100;
   const conversionScore = STATE.overview?.conversionScore || 0;
   const localScore = STATE.overview?.localScore || 0;
@@ -3518,6 +3518,17 @@ function renderAudits() {
       </div>
     </div>
 
+    ${aiBlock(
+      sorted.length > 0
+        ? (() => {
+            const _crit = sorted.filter(a=>a.score<45).length;
+            const _good = sorted.filter(a=>a.score>=70).length;
+            return `<strong>${sorted.length} audit${sorted.length>1?'s':''}</strong> — score moyen <strong>${avg2}/100</strong>. ${_crit>0?_crit+' site(s) critique(s) (score < 45) — <strong>action prioritaire requise</strong>. ':''} ${_good>0?_good+' site(s) en bonne santé (≥ 70). ':''} Lancez un nouvel audit pour obtenir des recommandations IA actualisées.`;
+          })()
+        : "Aucun audit encore lancé. Démarrez votre premier audit SEO pour obtenir un score et des recommandations personnalisées.",
+      sorted.length > 0 ? ['Voir les opportunités', 'Comparer les audits', 'Lancer un audit'] : ['Lancer mon premier audit', 'Voir la démo']
+    )}
+
     <div class="fp-grid-3 fp-mb-20 fp-stat-trio">
       ${[{l:'Score moyen',v:`${avg2}/100`,c:'#2563EB'},{l:'Meilleur score',v:`${best}/100`,c:'#22c55e'},{l:'Dernière analyse',v:'Il y a 2h',c:'#f59e0b'}].map(s=>`
         <div class="fp-card fp-card-sm">
@@ -3709,6 +3720,12 @@ function renderMonitors() {
        : m.status === 'warn' ? `Latence élevée : ${m.latency||'—'}ms`
        : `Check OK · Latence : ${m.latency||'—'}ms`,
   }));
+  const _monAiMsg = (() => {
+    if (nDown > 0) return `🚨 <strong>${nDown} monitor(s) DOWN</strong> en ce moment — intervention immédiate requise. Latence moyenne : ${avgLatency}ms. Uptime global : ${avgUptime}%.`;
+    if (nWarn > 0) return `⚠️ <strong>${nWarn} alerte(s) actives</strong>. Latence moyenne : ${avgLatency}ms. Vérifiez les performances avant que les incidents n\'impactent vos utilisateurs.`;
+    if (monitors.length === 0) return "Aucun monitor configuré. Ajoutez vos sites pour surveiller leur disponibilité 24/7 et être alerté instantanément.";
+    return `✅ Tous les monitors opérationnels. Uptime global : <strong>${avgUptime}%</strong>, latence moyenne : <strong>${avgLatency}ms</strong>. Infrastructure stable.`;
+  })();
   const deps = [
     { name: 'Stripe',       status: 'operational', latency: '142ms', icon: '💳', desc: 'Paiements' },
     { name: 'Cloudflare',   status: 'operational', latency: '12ms',  icon: '🛡', desc: 'CDN & DNS' },
@@ -3750,6 +3767,8 @@ function renderMonitors() {
 
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:20px">
       <div style="display:grid;grid-template-columns:repeat(5,minmax(90px,1fr));gap:12px;min-width:430px">
+        ${aiBlock(_monAiMsg, nDown > 0 ? ['Voir les incidents', 'Configurer les alertes'] : nWarn > 0 ? ['Diagnostiquer', 'Configurer alertes'] : monitors.length === 0 ? ['Ajouter un monitor', 'Voir la démo'] : ['Voir les performances', 'Configurer les alertes'])}
+
         ${[
           { l: 'En ligne',       v: `${nUp}/${monitors.length}`, c: '#22c55e',                                        sub: nWarn + ' en alerte' },
           { l: 'DOWN',           v: String(nDown),                  c: nDown > 0 ? '#ef4444' : '#22c55e',             sub: nDown > 0 ? 'Action requise' : 'Tout OK' },
@@ -4095,6 +4114,21 @@ function renderMissions() {
         ${btn('+ Mission','fp-btn fp-btn-primary fp-btn-sm','','id="mission-quick-add-btn"')}
       </div>
     </div>
+
+    ${aiBlock(
+      STATE.missions && STATE.missions.length > 0
+        ? (() => {
+            const _todo = STATE.missions.filter(m=>m.status==='todo').length;
+            const _wip  = STATE.missions.filter(m=>m.status==='inprogress').length;
+            const _done = STATE.missions.filter(m=>m.status==='done').length;
+            const _crit = STATE.missions.filter(m=>m.priority==='critical'&&m.status!=='done').length;
+            return `<strong>${STATE.missions.length} mission${STATE.missions.length>1?'s':''} IA</strong> : ${_todo} à démarrer · ${_wip} en cours · ${_done} complétées.${_crit>0?' 🚨 '+_crit+' mission(s) critique(s) — action prioritaire requise.':' Continuez votre progression SEO en exécutant les missions planifiées.'}`;
+          })()
+        : "Générez vos premières missions IA pour obtenir un plan d\'action personnalisé basé sur vos audits.",
+      STATE.missions && STATE.missions.length > 0
+        ? ['Voir les Quick Wins', 'Missions IA', 'Créer une mission']
+        : ['Générer des missions IA', 'Voir la bibliothèque']
+    )}
 
     <!-- KPIs -->
     <div class="fp-mission-kpi-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
@@ -4809,6 +4843,18 @@ function renderReports() {
     { name: 'Export CSV donnees',           freq: 'Quotidien · 8h',dest: 'Webhook CRM',           next: 'Demain', active: false },
   ];
 
+  // ─── AI Block (rapport page context) ───────────────────────
+  const _rpAiBlock = aiBlock(
+    allReports.length > 0
+      ? (() => {
+          const _shared = allReports.filter(r=>r.shared).length;
+          const _latest = allReports[0];
+          return `<strong>${allReports.length} rapport${allReports.length>1?'s':''}</strong> générés — ${_shared} partagé${_shared>1?'s':''}. Dernier : <strong>${_latest.name}</strong> (${_latest.date}). ${scheduled.filter(s=>s.active).length > 0 ? scheduled.filter(s=>s.active).length+' envoi(s) automatique(s) actif(s).' : 'Configurez des rapports automatiques pour vos clients.'}`;
+        })()
+      : "Créez votre premier rapport PDF pour partager vos résultats SEO avec vos clients ou votre équipe.",
+    allReports.length > 0 ? ['Rapport Executive', 'Planifier un envoi', 'Nouveau rapport'] : ['Créer un rapport', 'Voir les templates']
+  );
+
   // ══════════════════════════════════════════════════════════
   // SUB: EXECUTIVE REPORTS
   // ══════════════════════════════════════════════════════════
@@ -5509,6 +5555,8 @@ function renderReports() {
       ${statCard('Score BI global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'74/100'); })(), PREVIEW_MODE ? '+6 pts vs M-1' : 'score moyen portfolio', 'neutral')}
     </div>
 
+    ${_rpAiBlock}
+
     <!-- 6 SCORE GAUGES -->
     <div class="fp-card fp-mb-20">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -5882,7 +5930,7 @@ function renderLocalSEO() {
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#ef4444;border:2px solid white"></div>Concurrents — menace élevée</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#f59e0b;border:2px solid white"></div>Concurrents — menace modérée</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--fp-text-faint)"><div style="width:12px;height:12px;border-radius:50%;background:#22c55e;border:2px solid white"></div>Concurrents — faible</div>
-        <div style="margin-left:auto;font-size:10px;color:var(--fp-text-faint)">5 concurrents · Rayon 1,2km · Paris Centre</div>
+        <div style="margin-left:auto;font-size:10px;color:var(--fp-text-faint)">${(STATE.competitors&&STATE.competitors.length>0?STATE.competitors.length:PREVIEW_MODE?5:0)} concurrents · Rayon 1,2km · ${STATE.me&&STATE.me.location&&STATE.me.location.city?escHtml(STATE.me.location.city):'Votre ville'}</div>
       </div>
     </div>
 
@@ -5905,10 +5953,10 @@ function renderLocalSEO() {
         <!-- Quick metrics 2×2 -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
           ${[
-            { icon:'📍', label:'Zones actives',    val:dominatedZones + '/' + totalZones, color:'#2563EB', sub:'couvertes à 70%+' },
-            { icon:'⭐', label:'Note Google moy.', val:'4.4★',  color:'#f59e0b', sub:'sur 3 fiches GBP' },
-            { icon:'🔍', label:'Mots-clés locaux', val:'127',   color:'#22c55e', sub:'en top 10' },
-            { icon:'⚔️', label:'Menaces actives',  val:'3',     color:'#ef4444', sub:'concurrents en hausse' },
+            { icon:'📍', label:'Zones actives',    val:dominatedZones!=null?dominatedZones + '/' + totalZones:'—', color:'#2563EB', sub:dominatedZones!=null?'couvertes à 70%+':'Configurez vos zones' },
+            { icon:'⭐', label:'Note Google moy.', val:STATE.localSeo?.avgRating?STATE.localSeo.avgRating.toFixed(1)+'★':(PREVIEW_MODE?'4.4★':'—'), color:'#f59e0b', sub:STATE.localSeo?.gbpCount?'sur '+STATE.localSeo.gbpCount+' fiche(s) GBP':(PREVIEW_MODE?'sur 3 fiches GBP':'Configurez GBP') },
+            { icon:'🔍', label:'Mots-clés locaux', val:STATE.localSeo?.localKeywords!=null?String(STATE.localSeo.localKeywords):(PREVIEW_MODE?'127':'—'), color:'#22c55e', sub:'en top 10' },
+            { icon:'⚔️', label:'Menaces actives',  val:STATE.competitors&&STATE.competitors.length>0?String(STATE.competitors.length):(PREVIEW_MODE?'3':'0'), color:'#ef4444', sub:STATE.competitors&&STATE.competitors.length>0?'concurrents suivis':(PREVIEW_MODE?'concurrents en hausse':'Aucun concurrent') },
           ].map(m => '<div style="padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">'
             + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
             + '<span style="font-size:13px">' + m.icon + '</span>'
@@ -5923,16 +5971,25 @@ function renderLocalSEO() {
         <div style="border-top:1px solid var(--fp-border);padding-top:12px">
           <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Signaux récents</div>
           <div style="display:flex;flex-direction:column;gap:6px">
-            ${[
-              { c:'#22c55e', msg:'Paris Centre — Position #2 maintenue · +1 ce mois',        t:'2h' },
-              { c:'#f59e0b', msg:'Verviers — Concurrent détecté en position #6 · surveiller', t:'4h' },
-              { c:'#2563EB', msg:'Lyon — Avis Google positif reçu · 5 étoiles',               t:'6h' },
-              { c:'#ef4444', msg:"Marseille — Position #9 · Opportunité d\'amélioration",     t:'12h' },
-            ].map(s => '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:7px;border-left:2px solid ' + s.c + ';background:' + s.c + '06">'
-              + '<div style="width:5px;height:5px;border-radius:50%;background:' + s.c + ';flex-shrink:0;margin-top:4px"></div>'
-              + '<div style="flex:1;font-size:10px;color:var(--fp-text-muted);line-height:1.4">' + escHtml(s.msg) + '</div>'
-              + '<span style="font-size:9px;color:var(--fp-text-faint);flex-shrink:0">' + escHtml(s.t) + '</span>'
-              + '</div>').join('')}
+            ${(() => {
+              const _orgCity = STATE.me&&STATE.me.location&&STATE.me.location.city ? STATE.me.location.city : null;
+              const _liveSignals = _lseo.signals && _lseo.signals.length > 0 ? _lseo.signals : (PREVIEW_MODE ? [
+                { c:'#22c55e', msg:(_orgCity ? _orgCity+' Centre' : 'Votre ville')+' — Position #2 maintenue · +1 ce mois', t:'2h' },
+                { c:'#f59e0b', msg:'Zone B — Concurrent détecté en position #6 · surveiller',  t:'4h' },
+                { c:'#2563EB', msg:'Zone C — Avis Google positif reçu · 5 étoiles',              t:'6h' },
+                { c:'#ef4444', msg:'Zone D — Position #9 · Opportunité d\'amélioration',        t:'12h' },
+              ] : cities.slice(0, 4).map((city, i) => ({
+                c: ['#22c55e','#f59e0b','#2563EB','#ef4444'][i % 4],
+                msg: escHtml(city.name || city) + ' — Données locales disponibles',
+                t: (i * 2 + 2) + 'h',
+              })));
+              if (!_liveSignals.length) return '<div style="font-size:11px;color:var(--fp-text-faint);text-align:center;padding:8px 0">Configurez vos zones locales pour voir les signaux en temps réel.</div>';
+              return _liveSignals.map(s => '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:7px;border-left:2px solid ' + s.c + ';background:' + s.c + '06">'
+                + '<div style="width:5px;height:5px;border-radius:50%;background:' + s.c + ';flex-shrink:0;margin-top:4px"></div>'
+                + '<div style="flex:1;font-size:10px;color:var(--fp-text-muted);line-height:1.4">' + (s.msg) + '</div>'
+                + '<span style="font-size:9px;color:var(--fp-text-faint);flex-shrink:0">' + escHtml(s.t) + '</span>'
+                + '</div>').join('');
+            })()}
           </div>
         </div>
 
@@ -6107,6 +6164,16 @@ function renderTeam() {
         ${btn('Exporter activité','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="exportActivityCsv()"')}
       </div>
     </div>
+
+    <!-- AI BLOCK -->
+    ${aiBlock(
+      STATE.team && STATE.team.length > 1
+        ? `Équipe de <strong>${STATE.team.length} membres</strong> configurée. ${STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.filter(m=>m.status!=='done').length) + ' mission(s) en cours.' : ''} Vérifiez les permissions et assignez des tâches pour optimiser la collaboration.`
+        : STATE.team && STATE.team.length === 1
+          ? "Vous êtes seul dans l'espace de travail. Invitez un collaborateur pour déléguer les audits et rapports — gain estimé : <strong>3h/semaine</strong>."
+          : "Configurez votre équipe pour déléguer audits, rapports et monitoring. Commencez par inviter un collaborateur.",
+      ['Inviter un membre', 'Configurer les permissions', 'Voir les tâches']
+    )}
 
     <!-- TEAM STATS -->
     <div class="fp-stat-row fp-mb-20">
@@ -6311,11 +6378,13 @@ function renderBilling() {
     },
   ];
 
+  const _fcstFactor = 1.18;
+  const _dynFcst = (v, max) => v > 0 && max > 0 ? Math.min(99, Math.round(v / max * 100 * _fcstFactor)) : null;
   const usages = [
-    { l:'Audits',      icon:'search',     v:_usage.audit?.used    ?? 0, max:_usage.audit?.limit    ?? 50,    color:'#2563EB', forecast:92 },
-    { l:'PDF',         icon:'file-text',  v:_usage.pdf?.used      ?? 0, max:_usage.pdf?.limit      ?? 10,    color:'#8b5cf6', forecast:61 },
-    { l:'Exports',     icon:'download',   v:_usage.exports?.used  ?? 0, max:_usage.exports?.limit  ?? 100,   color:'#22c55e', forecast:40 },
-    { l:'Monitors',    icon:'activity',   v:_usage.monitor?.used  ?? 0, max:_usage.monitor?.limit  ?? 10,    color:'#f59e0b', forecast:78 },
+    { l:'Audits',      icon:'search',     v:_usage.audit?.used    ?? 0, max:_usage.audit?.limit    ?? 50,    color:'#2563EB', forecast:_dynFcst(_usage.audit?.used??0, _usage.audit?.limit??50) },
+    { l:'PDF',         icon:'file-text',  v:_usage.pdf?.used      ?? 0, max:_usage.pdf?.limit      ?? 10,    color:'#8b5cf6', forecast:_dynFcst(_usage.pdf?.used??0, _usage.pdf?.limit??10) },
+    { l:'Exports',     icon:'download',   v:_usage.exports?.used  ?? 0, max:_usage.exports?.limit  ?? 100,   color:'#22c55e', forecast:_dynFcst(_usage.exports?.used??0, _usage.exports?.limit??100) },
+    { l:'Monitors',    icon:'activity',   v:_usage.monitor?.used  ?? 0, max:_usage.monitor?.limit  ?? 10,    color:'#f59e0b', forecast:_dynFcst(_usage.monitor?.used??0, _usage.monitor?.limit??10) },
     { l:'Sièges',      icon:'users',      v:(_ud.teamMembersUsed??1), max:(_ud.teamMembersLimit??5),         color:'#06b6d4', forecast:Math.round((_ud.teamMembersUsed??1)/(_ud.teamMembersLimit??5)*100) },
     { l:'Storage',     icon:'database',   v:_ud.storageUsed,          max:10,    color:'#8b5cf6', forecast:null, unit:'GB',  na:_ud.storageUsed==null },
     { l:'API Appels',  icon:'code',       v:_ud.apiCalls,             max:10000, color:'#f59e0b', forecast:null,             na:_ud.apiCalls==null },
@@ -6341,7 +6410,17 @@ function renderBilling() {
       )}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Plan actuel', plan, 'actif · renouvellement 1er juin', 'up')}
+        ${aiBlock(
+      (() => {
+        const _usedPct = _usage.audit?.used && _usage.audit?.limit ? Math.round(_usage.audit.used/_usage.audit.limit*100) : 0;
+        if (_usedPct >= 90) return `⚠️ Vous avez utilisé <strong>${_usedPct}%</strong> de votre quota d\'audits. Envisagez un upgrade vers ${plan==='Standard'?'Pro':'Ultra'} pour éviter les interruptions.`;
+        if (plan === 'Standard') return `Plan Standard actif. Passage à Pro : accès aux audits illimités, IA Insights, et rapports client avancés. ROI estimé : <strong>+340% productivité</strong>.`;
+        if (plan === 'Pro' || plan === 'Agency') return `Plan ${plan} actif. Consommation actuelle : <strong>${_usage.audit?.used??0}/${_usage.audit?.limit??50} audits</strong>. Toutes vos fonctionnalités sont disponibles.`;
+        return `Abonnement actif — accès complet à toutes les fonctionnalités FlowPoint.`;
+      })(),
+      plan === 'Standard' ? ['Passer à Pro', 'Voir les avantages', 'Comparer les plans'] : ['Gérer l'abonnement', 'Voir mes usages', 'Ajouter des modules']
+    )}
+    ${statCard('Plan actuel', plan, STATE.billing?.nextDate ? 'actif · renouvellement ' + STATE.billing.nextDate : 'actif · abonnement mensuel', 'up')}
         ${statCard('Coût mensuel', isStd ? '29€' : isPro && !isUltra ? '79€' : '149€', 'HT · abonnement mensuel', 'neutral')}
         ${statCard('Prochaine facture', displayStat(STATE.billing?.nextDate || null, '01/06/2026'), STATE.billing?.nextDate ? 'prochaine échéance' : PREVIEW_MODE ? 'dans 23 jours' : 'Voir facturation', 'neutral')}
         ${statCard('Sans engagement', 'Mensuel', 'résiliation à tout moment', 'up')}
@@ -7802,8 +7881,8 @@ function renderSettings() {
       {label:'IP de confiance définie',   done:false, weight:10, desc:'Liste blanche non configurée'},
     ];
     const sessions = [
-      {device:'MacBook Pro · Chrome 124',  location:'Paris 75015, France',  ip:'82.65.xxx.xxx',  date:'Maintenant',   current:true  },
-      {device:'iPhone 15 Pro · Safari',    location:'Lyon 69002, France',   ip:'92.140.xxx.xxx', date:'Il y a 6h',    current:false },
+      {device:STATE.me?.user?.device||'Appareil actuel · Navigateur',   location:STATE.me?.location?.city?STATE.me.location.city+', '+( STATE.me?.location?.country||''):'Localisation inconnue', ip:'***.***.***.***', date:'Maintenant',   current:true  },
+      {device:'Autre appareil · Navigateur',   location:STATE.me?.location?.city||'Localisation inconnue', ip:'***.***.***.***', date:'Il y a 6h',    current:false },
     ];
     const loginHistory = [
       {event:'Connexion réussie',  device:'MacBook Pro · Chrome', ip:'82.65.xxx.xxx', date:'09/05 · 09h14', success:true  },
@@ -9015,6 +9094,13 @@ function renderAI() {
         <div class="fp-section-sub">État en temps réel de tous vos systèmes · Corrélations inter-modules détectées</div></div>
       </div>
 
+      ${aiBlock(
+        _aiScore != null
+          ? `Score SEO global : <strong>${_aiScore}/100</strong>. ${(STATE.monitors||[]).filter(m=>m.status==='down').length>0?'⚠️ '+((STATE.monitors||[]).filter(m=>m.status==='down').length)+' monitor(s) DOWN. ':''} ${(STATE.missions||[]).filter(m=>m.priority==='critical'&&m.status!=='done').length>0?((STATE.missions||[]).filter(m=>m.priority==='critical'&&m.status!=='done').length)+' mission(s) critique(s) en attente. ':''} L\'IA surveille vos systèmes en temps réel.`
+          : "Configurez vos audits, monitors et analytics pour activer les insights IA personnalisés de votre workspace.",
+        ['Analyser mes audits', 'Voir les missions', 'Rapport IA']
+      )}
+
       <!-- SYSTEMS GRID -->
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:20px">
         ${systems.map(sys => {
@@ -9231,7 +9317,7 @@ function renderAI() {
       {
         n:2, color:'#f59e0b',
         title:'Recovery SEO — 3 sites critiques',
-        body:'Plombier Paris (38/100), Restaurant Le Soleil (61/100) et 1 autre site sont sous le seuil de rentabilité SEO. ROI estimé : +35% leads organiques en 45 jours avec les corrections prioritaires.',
+        body:(()=>{ const _weak=STATE.audits?STATE.audits.filter(a=>a.score<60):[];  if(_weak.length===0)return PREVIEW_MODE?'Plombier Paris (38/100), Restaurant Le Soleil (61/100) et 1 autre site sont sous le seuil de rentabilité SEO.':'Aucun site sous le seuil de rentabilité détecté.'; const _top2=_weak.slice(0,2).map(a=>a.url.replace(/^https?:\/\//,'')+'('+a.score+'/100)').join(', '); return _top2+(_weak.length>2?' et '+(_weak.length-2)+' autre'+ (_weak.length>3?'s':'')+' site'+((_weak.length-2)>1?'s':'')+' sont':' est')+' sous le seuil de rentabilité SEO. ROI estimé : +35% leads organiques en 45 jours.'; })(),
         metrics:[{l:'ROI estimé',v:'+35% leads'},{l:'Corrections',v:'47 issues'},{l:'Durée',v:'45 jours'}],
         chips:[chip('Voir les audits','audits',null), chip('Quick Wins','overview','quick-wins')],
       },
@@ -13271,8 +13357,8 @@ function renderSubPageContent(route, sub) {
       const countries = Object.entries(countryMap).sort((a,b)=>(b[1])-(a[1]));
       const cities    = Object.entries(cityMap).sort((a,b)=>(b[1])-(a[1]));
       const maxC = countries[0]?.[1]||1, maxCi = cities[0]?.[1]||1;
-      const fCountries = countries.length ? countries : [['France',7890],['Belgique',1234],['Suisse',987],['Canada',654],['États-Unis',432]];
-      const fCities    = cities.length    ? cities    : [['Paris',3421],['Lyon',987],['Marseille',654],['Bruxelles',432],['Genève',321]];
+      const fCountries = countries.length ? countries : (PREVIEW_MODE ? [['France',7890],['Belgique',1234],['Suisse',987],['Canada',654],['États-Unis',432]] : []);
+      const fCities    = cities.length    ? cities    : (PREVIEW_MODE ? [['Paris',3421],['Lyon',987],['Marseille',654],['Bruxelles',432],['Genève',321]] : []);
       return `<div class="fp-grid-2 fp-mb-20">
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">🌍 Top pays</div>
@@ -13295,7 +13381,11 @@ function renderSubPageContent(route, sub) {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:12px">🤖 Insights géographie IA</div>
         <div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:3px solid #2563EB;margin-bottom:8px">
-          <strong>82% du trafic est français.</strong> Paris concentre 43% des visites. Créer des pages locales pour Lyon, Marseille et Bordeaux pourrait capter +40% de trafic additionnel selon l'analyse de demande locale.
+          ${fCountries.length > 0
+            ? '<strong>' + Math.round(fCountries[0][1]/(fCountries.reduce((s,c)=>s+c[1],0)||1)*100) + '% du trafic vient de ' + escHtml(fCountries[0][0]) + '.</strong>'
+              + (fCities.length > 0 ? ' ' + escHtml(fCities[0][0]) + ' est votre première ville (' + Math.round(fCities[0][1]/(fCities.reduce((s,c)=>s+c[1],0)||1)*100) + '% des visites).' : '')
+              + (fCities.length > 1 ? ' Créer des pages locales pour ' + fCities.slice(1,3).map(([c])=>escHtml(c)).join(', ') + ' pourrait capter davantage de trafic.' : ' Connectez GA4 pour l\'analyse géographique complète.')
+            : 'Connectez Google Analytics pour voir l\'analyse géographique de votre trafic.'}
         </div>
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('local-seo')">Voir Local SEO →</button>
       </div>`;
@@ -13596,7 +13686,7 @@ function renderSubPageContent(route, sub) {
     if (sub === 'events') {
       const liveEvents = ['page_view','scroll','click','session_start','conversion','user_engagement','purchase','form_submit','video_start','search'];
       const livePages  = ['/','/produits','/contact','/blog','/pricing','/about','/blog/seo-guide'];
-      const liveCities = ['Paris','Lyon','Marseille','Bordeaux','Nice','Bruxelles','Genève'];
+      const liveCities = topCities.length > 0 ? topCities.slice(0,7).map(([c])=>c) : (PREVIEW_MODE ? ['Paris','Lyon','Marseille','Bordeaux','Nice','Bruxelles','Genève'] : ['Ville A','Ville B','Ville C','Ville D','Ville E']);
       return `<div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">⚡ Flux d'événements en temps réel</div>
@@ -13638,7 +13728,7 @@ function renderSubPageContent(route, sub) {
           <div class="fp-card-title" style="margin-bottom:12px">🎯 Conversions live</div>
           ${rt.activeUsers||rows.length ? `<div style="font-size:28px;font-weight:900;color:#22c55e;font-family:var(--fp-font-head)">3</div>
           <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">conversions ces 30 dernières minutes</div>` : `<div style="font-size:11px;color:var(--fp-text-muted)">${_ga4Connected()?'Actualisez pour voir les conversions live':'Connectez GA4'}</div>`}
-          ${[{t:'purchase',v:'127€',ci:'Paris'},{t:'generate_lead',v:'+1 lead',ci:'Lyon'},{t:'sign_up',v:'+1 user',ci:'Bordeaux'}].map(x=>`
+          ${(PREVIEW_MODE ? [{t:'purchase',v:'127€',ci:'Paris'},{t:'generate_lead',v:'+1 lead',ci:'Lyon'},{t:'sign_up',v:'+1 user',ci:'Bordeaux'}] : topCities.slice(0,3).map(([c],i)=>({t:['purchase','generate_lead','sign_up'][i],v:['+1 vente','+1 lead','+1 user'][i],ci:c}))).map(x=>`
             <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.04)">
               <div style="width:6px;height:6px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite"></div>
               <span style="font-size:10px;font-family:var(--fp-font-mono);color:var(--fp-text);flex:1">${x.t}</span>
@@ -13693,12 +13783,12 @@ function renderSubPageContent(route, sub) {
             <div style="flex:1;font-size:12px;color:var(--fp-text)">${escHtml(city)}</div>
             <div class="fp-progress-track" style="width:80px;height:5px"><div class="fp-progress-fill" style="width:${Math.round((u)/(topCities[0][1]||1)*100)}%;background:#ef4444"></div></div>
             <span style="font-size:12px;font-weight:700;color:#ef4444;min-width:24px;text-align:right">${u}</span>
-          </div>`).join('') : [['Paris',18],['Lyon',7],['Marseille',5],['Bordeaux',4],['Nice',3],['Bruxelles',3],['Genève',2]].map(([c,u])=>`
+          </div>`).join('') : (PREVIEW_MODE ? [['Paris',18],['Lyon',7],['Marseille',5],['Bordeaux',4],['Nice',3],['Bruxelles',3],['Genève',2]] : []).map(([c,u])=>`
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-              <div style="flex:1;font-size:12px;color:var(--fp-text)">${c}</div>
+              <div style="flex:1;font-size:12px;color:var(--fp-text)">${escHtml(c)}</div>
               <div class="fp-progress-track" style="width:80px;height:5px"><div class="fp-progress-fill" style="width:${Math.round(u/18*100)}%;background:#ef4444"></div></div>
               <span style="font-size:12px;font-weight:700;color:#ef4444">${u}</span>
-            </div>`).join('')}
+            </div>`).join('') || '<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:12px">Connectez GA4 pour voir les données géographiques.</div>'}
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">📊 Répartition pays live</div>
@@ -14094,7 +14184,7 @@ function renderMissionsFiltered(status) {
 
 function renderMissionsAI() {
   const aiMissions = [
-    { title:'Créer 5 pages locales "plombier [arrondissement] Paris"', impact:'Très élevé', effort:'2h', gain:'+25 leads/mois', cat:'Local SEO', color:'#ef4444' },
+    { title: (()=>{ const _city=STATE.me&&STATE.me.location&&STATE.me.location.city?STATE.me.location.city:null; return 'Créer des pages locales '+(STATE.audits&&STATE.audits.length>0?'pour '+escHtml(STATE.audits[0].url.replace(/^https?:\/\//,'').split('/')[0]):(_city?'à '+escHtml(_city):'par zone géographique')); })(), impact:'Très élevé', effort:'2h', gain:'+25 leads/mois', cat:'Local SEO', color:'#ef4444' },
     { title:'Optimiser les balises title manquantes (site prioritaire)', impact:'Élevé', effort:'45 min', gain:'+15 pts score', cat:'Technique', color:'#f59e0b' },
     { title:'Configurer Google Posts hebdomadaires automatisés', impact:'Élevé', effort:'30 min', gain:'+12% engagement', cat:'GBP', color:'#2563EB' },
     { title:'Ajouter schema markup FAQ sur 3 sites', impact:'Moyen', effort:'1h', gain:'+8% CTR', cat:'Technique', color:'#8b5cf6' },
@@ -14104,13 +14194,23 @@ function renderMissionsAI() {
     { title:'Corriger les images non optimisées (WebP) sur 4 sites', impact:'Moyen', effort:'1h30', gain:'+6 pts vitesse', cat:'Performance', color:'#2563EB' },
     { title:'Ajouter Questions/Réponses GBP sur 3 fiches vides', impact:'Moyen', effort:'30 min', gain:'+12% engagement', cat:'GBP', color:'#06b6d4' },
     { title:'Mettre en place un programme de collecte d\'avis automatisé', impact:'Très élevé', effort:'2h', gain:'+3 avis/mois', cat:'Réputation', color:'#ef4444' },
-    { title:'Créer des backlinks locaux via annuaires de plombiers Paris', impact:'Élevé', effort:'3h', gain:'+8 pts autorité', cat:'Backlinks', color:'#8b5cf6' },
+    { title:'Créer des backlinks locaux via annuaires sectoriels'+(STATE.me&&STATE.me.location&&STATE.me.location.city?' ('+STATE.me.location.city+')':''), impact:'Élevé', effort:'3h', gain:'+8 pts autorité', cat:'Backlinks', color:'#8b5cf6' },
     { title:'Optimiser la vitesse mobile du site le plus lent (score <65)', impact:'Très élevé', effort:'2h', gain:'+18 pts vitesse', cat:'Performance', color:'#ef4444' },
   ];
   const cats = ['Tous',...new Set(aiMissions.map(m=>m.cat))];
   return `
-    ${aiBlock('J\'ai analysé <strong>6 sites, 5 concurrents et 32 signaux SEO</strong>. Ces <strong>12 missions IA prioritaires</strong> sont personnalisées pour votre secteur (plomberie Paris). Les exécuter toutes peut générer <strong>+97 leads/mois</strong> et +18 pts de score moyen.',
-      ['Tout créer en missions', 'Expliquer la stratégie', 'Plan 30 jours'])}
+    ${aiBlock(
+      (() => {
+        const _nAudits   = STATE.audits ? STATE.audits.length : 0;
+        const _nComp     = STATE.competitors ? STATE.competitors.length : 0;
+        const _nMissions = aiMissions.length;
+        if (_nAudits > 0 || _nComp > 0) {
+          return `J'ai analysé <strong>${_nAudits} site${_nAudits!==1?'s':''}</strong>${_nComp>0?', <strong>'+_nComp+' concurrent'+(_nComp>1?'s':'')+'</strong>':''} et détecté des signaux prioritaires. Ces <strong>${_nMissions} missions IA</strong> sont générées à partir de vos données réelles. Les exécuter peut générer <strong>+${Math.max(10,_nAudits*15)} leads/mois</strong> selon votre secteur.`;
+        }
+        return 'Ajoutez des audits et des concurrents pour recevoir des missions IA personnalisées sur votre activité réelle.';
+      })(),
+      ['Tout créer en missions', 'Expliquer la stratégie', 'Plan 30 jours']
+    )}
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
       ${cats.map((c,i) => `<button class="fp-filter-tab${i===0?' active':''}" onclick="showToast('info','Filtre : ${c}')">${c}</button>`).join('')}
@@ -15437,7 +15537,8 @@ function renderLocalSEOZones() {
   const isPro  = plan === 'Pro' || plan === 'Agency';
   const isUltra = plan === 'Agency';
 
-  const zones = [
+  const _lseoZ = STATE.localSeo?.zones && STATE.localSeo.zones.length > 0 ? STATE.localSeo.zones : null;
+  const zones = _lseoZ || (PREVIEW_MODE ? [
     { name: 'Paris Centre',    region: 'Île-de-France', status: 'fort',   pos: 2,  mobile: 3,  desktop: 2,  delta: +1, cov: 91, traffic: 620, pages: 4, kw: 18 },
     { name: 'Lyon 1-4',        region: 'Auvergne-RA',   status: 'fort',   pos: 1,  mobile: 2,  desktop: 1,  delta:  0, cov: 88, traffic: 580, pages: 3, kw: 14 },
     { name: 'Bordeaux Centre', region: 'Nouvelle-Aq.',  status: 'moyen',  pos: 6,  mobile: 7,  desktop: 6,  delta: +1, cov: 53, traffic: 290, pages: 2, kw: 9  },
@@ -15446,7 +15547,7 @@ function renderLocalSEOZones() {
     { name: 'Spa',             region: 'Wallonie',       status: 'moyen',  pos: 4,  mobile: 6,  desktop: 4,  delta: +3, cov: 58, traffic: 210, pages: 1, kw: 7  },
     { name: 'Marseille 1-6',   region: 'PACA',           status: 'faible', pos: 9,  mobile: 12, desktop: 9,  delta: -2, cov: 31, traffic: 80,  pages: 0, kw: 3  },
     { name: 'Namur',           region: 'Wallonie',       status: 'faible', pos: 11, mobile: 14, desktop: 11, delta:  0, cov: 22, traffic: 50,  pages: 0, kw: 2  },
-  ];
+  ] : []);
 
   const expansion = PREVIEW_MODE ? [
     { city: 'Zone A', opp: 'Aucun concurrent fort', potential: '+340 vis/mois', effort: '2h',   pages: 2, priority: 'Haute'   },
@@ -16607,6 +16708,18 @@ function renderGrowthCommandCenter() {
       </div>
     </div>
 
+    ${aiBlock(
+      STATE.audits && STATE.audits.length > 0
+        ? (() => {
+            const _avgSc = Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length);
+            const _nMon  = (STATE.monitors||[]).length;
+            const _nDown = (STATE.monitors||[]).filter(m=>m.status==='down').length;
+            return `Score SEO moyen : <strong>${_avgSc}/100</strong>. ${_nDown > 0 ? _nDown+' monitor(s) DOWN — résolvez les incidents avant d\'analyser la croissance.' : _nMon > 0 ? _nMon+' monitor(s) actifs.' : ''} Exploitez les projections IA pour planifier votre croissance des 90 prochains jours.`;
+          })()
+        : "Configurez des audits et des monitors pour accéder aux projections de croissance personnalisées.",
+      ['Voir projections', 'Définir objectifs', 'Rapport croissance']
+    )}
+
     <!-- ① SEO MOMENTUM HERO -->
     <div class="fp-growth-hero">
       <div class="fp-growth-hero-bg"></div>
@@ -17038,6 +17151,12 @@ function renderCompetitor() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'overview') {
     const _leader = comps.length > 0 ? comps[0] : null;
+    const _compAiMsg = (() => {
+      const _crit = comps.filter(c=>c.threat==='critical'||c.threat==='high').length;
+      if (comps.length === 0) return "Ajoutez des concurrents à suivre pour analyser leur positionnement et anticiper leurs mouvements.";
+      if (_crit > 0) return `🚨 <strong>${_crit} concurrent(s) à haute menace</strong> détecté(s). ${comps[0]?'Leader actuel : '+comps[0].name+' (score '+comps[0].score+'/100). ':''} Analysez leurs stratégies pour renforcer votre positionnement.`;
+      return `<strong>${comps.length} concurrent(s)</strong> suivis. ${comps[0]?'Leader : '+comps[0].name+' ('+comps[0].score+'/100). ':''} Surveillez les évolutions de trafic et de positionnement pour maintenir votre avantage.`;
+    })();
     const mktShare = PREVIEW_MODE ? [
       { name: 'Concurrent A',  share: 28, color: '#ef4444' },
       { name: 'Vous',          share: 22, color: '#2563EB' },
@@ -17955,6 +18074,7 @@ function renderConversion() {
 
   const _croScRaw = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.scores && window.FP_DATA.cro.scores[0];
   const _mkHCol = function(v) { return v >= 70 ? '#22c55e' : v >= 50 ? '#f59e0b' : '#ef4444'; };
+  const _convPlaceholder = null; // pre-declare
   const healthScores = _croScRaw ? [
     { label: 'Santé conv.',     val: Math.min(99, _croScRaw.overallScore  || 68), color: _mkHCol(_croScRaw.overallScore  || 68), icon: '📊' },
     { label: 'Trust Score',     val: Math.min(99, _croScRaw.copyScore     || 52), color: _mkHCol(_croScRaw.copyScore     || 52), icon: '🛡' },
@@ -17965,9 +18085,9 @@ function renderConversion() {
     { label: 'Optimis. Rev.',   val: Math.min(99, Math.round((_croScRaw.overallScore || 67) * 0.72)), color: _mkHCol(Math.round((_croScRaw.overallScore || 67) * 0.72)), icon: '💰' },
     { label: 'Fidélisation',    val: Math.min(99, _croScRaw.retentionScore || 63), color: _mkHCol(_croScRaw.retentionScore || 63), icon: '🔁' },
   ] : (() => {
-    const _aA = STATE.audits.length ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : 65;
-    const _sA = STATE.audits.filter(a=>a.speed!=null).length ? Math.round(STATE.audits.filter(a=>a.speed!=null).reduce((s,a)=>s+(a.speed||0),0)/STATE.audits.filter(a=>a.speed!=null).length) : 60;
-    const _uP = STATE.monitors.length ? Math.round(STATE.monitors.filter(m=>m.status==='up').length/STATE.monitors.length*100) : 90;
+    const _aA = (STATE.audits||[]).length ? Math.round((STATE.audits||[]).reduce((s,a)=>s+(a.score||0),0)/(STATE.audits||[]).length) : 65;
+    const _sA = (STATE.audits||[]).filter(a=>a.speed!=null).length ? Math.round((STATE.audits||[]).filter(a=>a.speed!=null).reduce((s,a)=>s+(a.speed||0),0)/(STATE.audits||[]).filter(a=>a.speed!=null).length) : 60;
+    const _uP = (STATE.monitors||[]).length ? Math.round((STATE.monitors||[]).filter(m=>m.status==='up').length/(STATE.monitors||[]).length*100) : 90;
     const _cl = v => _mkHCol(v);
     const _b  = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
     return [
@@ -18011,9 +18131,9 @@ function renderConversion() {
         : (funnelSteps
             ? "Analyse de funnel chargée depuis votre analytics."
             : (() => {
-                const _fA = STATE.audits.length ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-                const _fS = STATE.audits.filter(a=>a.speed!=null).length ? Math.round(STATE.audits.filter(a=>a.speed!=null).reduce((s,a)=>s+(a.speed||0),0)/STATE.audits.filter(a=>a.speed!=null).length) : null;
-                const _fD = STATE.monitors.filter(m=>m.status==='down').length;
+                const _fA = (STATE.audits||[]).length ? Math.round((STATE.audits||[]).reduce((s,a)=>s+(a.score||0),0)/(STATE.audits||[]).length) : null;
+                const _fS = (STATE.audits||[]).filter(a=>a.speed!=null).length ? Math.round((STATE.audits||[]).filter(a=>a.speed!=null).reduce((s,a)=>s+(a.speed||0),0)/(STATE.audits||[]).filter(a=>a.speed!=null).length) : null;
+                const _fD = (STATE.monitors||[]).filter(m=>m.status==='down').length;
                 if (_fD > 0) return `🚨 <strong>${_fD} monitor${_fD>1?'s':''} DOWN</strong> — chaque minute d'indisponibilité = conversions perdues. Résolvez d'abord l'incident, puis connectez GA4 ou Matomo pour un suivi complet du funnel.`;
                 if (_fA != null) return `Score SEO moyen <strong>${_fA}/100</strong>${_fS!=null?' · Vitesse <strong>'+_fS+'/100</strong>':''} — ${_fA < 60 ? 'Les problèmes techniques freinent vos conversions. Priorité : optimiser la vitesse et le SEO on-page avant d\'analyser le funnel.' : _fS!=null&&_fS<70 ? 'La vitesse est le principal levier de conversion. Chaque seconde gagnée = +7% de conversions en moyenne.' : 'Bon niveau technique. Connectez GA4 ou Matomo pour voir votre entonnoir en temps réel et identifier les étapes perdantes.'}`;
                 return "Connectez votre analytics (GA4, Matomo) et vos données de conversion pour obtenir l'analyse de funnel personnalisée.";
@@ -18713,6 +18833,19 @@ function renderConversion() {
       ${statCard("Revenu estimé", displayStat(STATE.overview?.revenue != null ? STATE.overview.revenue.toLocaleString('fr-FR') + "€/mois" : null, PREVIEW_MODE ? "3 220€/mois" : null), STATE.overview?.revenue != null ? "+400€ vs M-1" : PREVIEW_MODE ? "estimé ce mois" : "Connectez analytics", STATE.overview?.revenue != null ? "up" : "neutral")}
       ${statCard("Perte rev. détectée", displayStat(leakTotal !== null ? leakTotal.toLocaleString('fr-FR') + "€/mois" : null, PREVIEW_MODE ? "5 070€/mois" : null), leakTotal !== null || PREVIEW_MODE ? "fuites actives détectées" : "Connectez analytics", leakTotal !== null ? "down" : "neutral")}
     </div>
+
+    ${aiBlock(
+      (() => {
+        const _cr = _ga4Funnel && _ga4Funnel.length >= 2
+          ? (_ga4Funnel[_ga4Funnel.length-1].abs / Math.max(_ga4Funnel[0].abs, 1) * 100).toFixed(2)
+          : null;
+        const _hs = healthScores.reduce((s,h)=>s+h.val,0)/Math.max(healthScores.length,1);
+        const _avgHs = Math.round(_hs);
+        if (_cr) return `Score santé conversion : <strong>${_avgHs}/100</strong>. Taux de conversion global : <strong>${_cr}%</strong>. ${_avgHs < 50 ? 'Performance critique — optimisez en priorité les scores UX et mobile.' : _avgHs < 70 ? 'Marge d\'amélioration identifiée — consultez la heatmap et le revenue leak.' : 'Bonne santé de conversion — affinez les micro-optimisations.'}`;
+        return `Score santé conversion estimé : <strong>${_avgHs}/100</strong>. ${_avgHs < 50 ? 'Points de friction détectés.' : 'Performance correcte.'} Connectez GA4 ou Behavioral analytics pour affiner l\'analyse.`;
+      })(),
+      ['Voir la heatmap', 'Analyser le funnel', 'Revenue Leak →']
+    )}
 
     <!-- 7 HEALTH SCORES -->
     <div class="fp-card fp-mb-20">
@@ -24664,16 +24797,25 @@ function renderGA4Analytics() {
 
     ${_ga4NotConnectedBanner()}
 
+    ${aiBlock(
+      _ga4Connected()
+        ? sessions > 0
+          ? `<strong>${fmtNum(sessions)}</strong> sessions · <strong>${fmtNum(users)}</strong> utilisateurs sur 30 jours. Taux de conversion : <strong>${sessions ? ((conversions||0)/sessions*100).toFixed(2) : '0.00'}%</strong>. ${conversions > 0 ? 'Bonne performance de conversion. Analysez les sources les plus rentables.' : 'Aucune conversion trackée — configurez les événements GA4.'}`
+          : "Données GA4 chargées. Sélectionnez une période ou actualisez pour voir vos métriques."
+        : "Connectez Google Analytics 4 pour accéder à l'analyse complète de votre trafic, conversions et audience.",
+      _ga4Connected() ? ['Voir le trafic','Analyser l'audience','Rapport analytics'] : ['Connecter GA4','Voir la démo','En savoir plus']
+    )}
+
     <!-- KPI CARDS -->
     <div class="fp-stat-row fp-mb-20">
-      ${_ga4KPICard('📈', 'Sessions', fmtNum(sessions||12847), _ga4PctChange(sessions||12847, prevSess||10200), `vs période préc.`)}
-      ${_ga4KPICard('👥', 'Utilisateurs', fmtNum(users||9234), _ga4PctChange(users||9234, prevUsers||7800), `dont ${Math.round((newUsers||4231)/Math.max(users||9234,1)*100)}% nouveaux`)}
-      ${_ga4KPICard('📄', 'Pages vues', fmtNum(pageviews||41320), null, `${sessions ? (pageviews/sessions).toFixed(1) : '3.2'} pages/session`)}
-      ${_ga4KPICard('⚡', 'Conversions', fmtNum(conversions||847), _ga4PctChange(conversions||847, prevConv||620), `taux : ${sessions ? ((conversions||847)/sessions*100).toFixed(2) : '6.59'}%`)}
-      ${_ga4KPICard('⏱️', 'Durée moy.', fmtDur(avgDur||184), null, 'par session')}
-      ${_ga4KPICard('💡', 'Engagement', `${(engage||68).toFixed(1)}%`, null, `Bounce : ${(bounce||32).toFixed(1)}%`)}
-      ${_ga4KPICard('🆕', 'Nouveaux utilisateurs', fmtNum(newUsers||4231), _ga4PctChange(newUsers||4231, Math.round((newUsers||4231)*0.82)), `${Math.round((newUsers||4231)/Math.max(users||9234,1)*100)}% du total`)}
-      ${_ga4KPICard('↩️', 'Taux de rebond', `${(bounce||32).toFixed(1)}%`, null, `moy. secteur : 42%`)}
+      ${_ga4KPICard('📈', 'Sessions', sessions>0||PREVIEW_MODE?fmtNum(sessions||(PREVIEW_MODE?12847:0)):(_ga4Connected()?'0':'—'), _ga4Connected()&&sessions>0?_ga4PctChange(sessions, prevSess):null, 'vs période préc.')}
+      ${_ga4KPICard('👥', 'Utilisateurs', users>0||PREVIEW_MODE?fmtNum(users||(PREVIEW_MODE?9234:0)):(_ga4Connected()?'0':'—'), _ga4Connected()&&users>0?_ga4PctChange(users, prevUsers):null, `dont ${Math.round((newUsers||0)/Math.max(users||1,1)*100)}% nouveaux`)}
+      ${_ga4KPICard('📄', 'Pages vues', pageviews>0||PREVIEW_MODE?fmtNum(pageviews||(PREVIEW_MODE?41320:0)):(_ga4Connected()?'0':'—'), null, sessions&&pageviews ? `${(pageviews/sessions).toFixed(1)} pages/session` : '—')}
+      ${_ga4KPICard('⚡', 'Conversions', conversions>0||PREVIEW_MODE?fmtNum(conversions||(PREVIEW_MODE?847:0)):(_ga4Connected()?'0':'—'), _ga4Connected()&&conversions>0?_ga4PctChange(conversions, prevConv):null, sessions&&conversions ? `taux : ${(conversions/sessions*100).toFixed(2)}%` : '—')}
+      ${_ga4KPICard('⏱️', 'Durée moy.', avgDur>0||PREVIEW_MODE?fmtDur(avgDur||(PREVIEW_MODE?184:0)):(_ga4Connected()?'0m00s':'—'), null, 'par session')}
+      ${_ga4KPICard('💡', 'Engagement', engage>0||PREVIEW_MODE?`${(engage||(PREVIEW_MODE?68:0)).toFixed(1)}%`:(_ga4Connected()?'0%':'—'), null, `Bounce : ${(bounce||(PREVIEW_MODE?32:0)).toFixed(1)}%`)}
+      ${_ga4KPICard('🆕', 'Nouveaux utilisateurs', newUsers>0||PREVIEW_MODE?fmtNum(newUsers||(PREVIEW_MODE?4231:0)):(_ga4Connected()?'0':'—'), _ga4Connected()&&newUsers>0?_ga4PctChange(newUsers, Math.round(newUsers*0.82)):null, newUsers&&users?`${Math.round(newUsers/Math.max(users,1)*100)}% du total`:'—')}
+      ${_ga4KPICard('↩️', 'Taux de rebond', bounce>0||PREVIEW_MODE?`${(bounce||(PREVIEW_MODE?32:0)).toFixed(1)}%`:(_ga4Connected()?'0%':'—'), null, 'moy. secteur : 42%')}
     </div>
 
     <!-- SESSIONS CHART + CHANNEL BREAKDOWN -->
@@ -25025,9 +25167,9 @@ function renderGA4Traffic() {
   });
 
   const channels = Object.entries(chMap).sort((a,b) => (b[1]).sessions - (a[1]).sessions);
-  const total = totalSess || 12847;
+  const total = totalSess || (_ga4Connected() ? 0 : (PREVIEW_MODE ? 12847 : 0));
 
-  const fallbackCh = [
+  const fallbackCh = PREVIEW_MODE ? [
     {ch:'Organic Search', s:5234, u:4102, b:28, c:312, e:72},
     {ch:'Direct',         s:2847, u:2100, b:35, c:187, e:65},
     {ch:'Organic Social', s:1923, u:1650, b:42, c:98,  e:58},
@@ -25038,7 +25180,7 @@ function renderGA4Traffic() {
     {ch:'Video',          s:298,  u:270,  b:48, c:12,  e:52},
     {ch:'Affiliate',      s:187,  u:160,  b:33, c:19,  e:67},
     {ch:'Cross-network',  s:124,  u:110,  b:41, c:5,   e:59},
-  ];
+  ] : [];
 
   const displayCh = channels.length ? channels : fallbackCh.map(x => [x.ch, {sessions:x.s,users:x.u,bounceSum:x.b*x.s,conversions:x.c,engageSum:x.e*x.s,count:1,sources:[]}]);
 
@@ -25055,6 +25197,21 @@ function renderGA4Traffic() {
     </div>
 
     ${_ga4NotConnectedBanner()}
+
+    ${aiBlock(
+      _ga4Connected()
+        ? channels.length > 0
+          ? (() => {
+              const _topCh = channels[0];
+              const _topName = _topCh ? _topCh[0] : 'Organic Search';
+              const _topPct  = _topCh ? Math.round((_topCh[1].sessions||0)/Math.max(totalSess,1)*100) : 0;
+              const _orgCh   = channels.find(([c])=>c==='Organic Search');
+              return `Canal principal : <strong>${_topName} (${_topPct}%)</strong>. ${_orgCh ? 'SEO organique : '+Math.round((_orgCh[1].sessions||0)/Math.max(totalSess,1)*100)+'% du trafic.' : ''} Diversifiez vos sources pour réduire la dépendance à un seul canal.`;
+            })()
+          : "Données de trafic en cours de chargement. Actualisez pour voir vos sources."
+        : "Connectez GA4 pour analyser vos canaux d'acquisition et sources de trafic.",
+      _ga4Connected() ? ['Voir les conversions','Analyser l'audience','Rapport trafic'] : ['Connecter GA4']
+    )}
 
     <!-- CHANNEL CARDS -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px">
@@ -25141,14 +25298,16 @@ function renderGA4Funnels() {
   const lp    = ga4.funnels?.landingPages?.rows || [];
   const cp    = ga4.funnels?.conversionPaths?.rows || [];
 
-  const funnelSteps = [
-    {label:'Visiteurs',         n: parseInt(ga4.overview?.totals?.[0]?.metricValues?.[0]?.value||'12847'), color:'#2563EB'},
-    {label:'Pages vues > 1',    n: Math.round(12847*0.74), color:'#8b5cf6'},
-    {label:'Engagement > 30s',  n: Math.round(12847*0.52), color:'#f59e0b'},
-    {label:'Clé / CTA vu',      n: Math.round(12847*0.31), color:'#f97316'},
-    {label:'Checkout / Form',   n: Math.round(12847*0.14), color:'#ef4444'},
-    {label:'Conversion',        n: parseInt(ga4.overview?.totals?.[0]?.metricValues?.[7]?.value||'847'), color:'#22c55e'},
-  ];
+  const _funnelBase = parseInt(ga4.overview?.totals?.[0]?.metricValues?.[0]?.value||'0') || (_ga4Connected() ? 0 : (PREVIEW_MODE ? 12847 : 0));
+  const _funnelConv = parseInt(ga4.overview?.totals?.[0]?.metricValues?.[7]?.value||'0') || (_ga4Connected() ? 0 : (PREVIEW_MODE ? 847 : 0));
+  const funnelSteps = _funnelBase > 0 ? [
+    {label:'Visiteurs',         n: _funnelBase, color:'#2563EB'},
+    {label:'Pages vues > 1',    n: Math.round(_funnelBase*0.74), color:'#8b5cf6'},
+    {label:'Engagement > 30s',  n: Math.round(_funnelBase*0.52), color:'#f59e0b'},
+    {label:'Clé / CTA vu',      n: Math.round(_funnelBase*0.31), color:'#f97316'},
+    {label:'Checkout / Form',   n: Math.round(_funnelBase*0.14), color:'#ef4444'},
+    {label:'Conversion',        n: _funnelConv, color:'#22c55e'},
+  ] : [];
   const topN = funnelSteps[0].n || 1;
 
   return `
@@ -25162,11 +25321,26 @@ function renderGA4Funnels() {
 
     ${_ga4NotConnectedBanner()}
 
+    ${aiBlock(
+      _ga4Connected()
+        ? funnelSteps.length > 0
+          ? (() => {
+              const _top = funnelSteps[0].n || 1;
+              const _bot = funnelSteps[funnelSteps.length-1].n || 0;
+              const _cr  = (_bot/_top*100).toFixed(2);
+              const _bigDrop = funnelSteps.reduce((best, s, i) => i===0?best:(s.n/funnelSteps[i-1].n<(best.pct||1)?{label:s.label,pct:s.n/funnelSteps[i-1].n}:best), {});
+              return `Taux de conversion global : <strong>${_cr}%</strong>. ${_bigDrop.label?'Plus grande perte : étape <strong>'+_bigDrop.label+'</strong> ('+Math.round((1-_bigDrop.pct)*100)+'% de drop). Optimisez cette étape en priorité.':'Analysez les étapes de votre entonnoir pour identifier les points de friction.'}`;
+            })()
+          : "Actualisez vos données GA4 pour afficher votre entonnoir de conversion."
+        : "Connectez Google Analytics 4 pour visualiser votre entonnoir de conversion complet.",
+      _ga4Connected() ? ['Analyser le trafic', 'Revenue Leak →', 'Optimiser le funnel'] : ['Connecter GA4']
+    )}
+
     <!-- FUNNEL VISUALIZATION -->
     <div class="fp-card fp-mb-20">
       <div class="fp-card-title" style="margin-bottom:20px">🎯 Entonnoir de conversion principal</div>
       <div style="display:flex;flex-direction:column;gap:10px">
-        ${funnelSteps.map((step, i) => {
+        ${funnelSteps.length === 0 ? '<div style="padding:24px;text-align:center;background:var(--fp-inner-card);border-radius:10px;font-size:13px;color:var(--fp-text-muted)">🔌 ' + (_ga4Connected() ? 'Actualisez vos données GA4 pour afficher l\'entonnoir.' : 'Connectez Google Analytics pour afficher votre entonnoir de conversion.<br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="navigate(\'analytics\')">Connecter GA4</button>') + '</div>' : funnelSteps.map((step, i) => {
           const pct = Math.round(step.n/topN*100);
           const dropPct = i > 0 ? Math.round((1-step.n/funnelSteps[i-1].n)*100) : 0;
           return `
@@ -25291,6 +25465,20 @@ function renderGA4Audience() {
     </div>
 
     ${_ga4NotConnectedBanner()}
+
+    ${aiBlock(
+      _ga4Connected()
+        ? Object.keys(devMap).length > 0
+          ? (() => {
+              const _topDev = Object.entries(devMap).sort((a,b)=>b[1]-a[1])[0];
+              const _topPct = _topDev ? Math.round(_topDev[1]/totalSess*100) : 0;
+              const _topGeo = Object.entries(Object.fromEntries(geoRows.slice(0,1).map(r=>[r.dimensionValues?.[0]?.value||'—', parseInt(r.metricValues?.[0]?.value||0)]))).map(([k,v])=>k)[0];
+              return `Appareil principal : <strong>${_topDev?.[0]||'mobile'} (${_topPct}%)</strong>. ${_topGeo?'Zone principale : <strong>'+_topGeo+'</strong>. ':''} Optimisez l\'expérience sur l\'appareil dominant pour maximiser vos conversions.`;
+            })()
+          : "Actualisez vos données GA4 pour voir le profil d\'audience."
+        : "Connectez GA4 pour analyser le profil de vos visiteurs : appareils, géographie, démographie.",
+      _ga4Connected() ? ['Voir le trafic', 'Analyser les conversions', 'Rapport audience'] : ['Connecter GA4']
+    )}
 
     <!-- DEVICE SPLIT -->
     <div class="fp-grid-2 fp-mb-20">
@@ -25443,6 +25631,21 @@ function renderGA4Campaigns() {
 
     ${_ga4NotConnectedBanner()}
 
+    ${aiBlock(
+      _ga4Connected()
+        ? rows.length > 0
+          ? (() => {
+              const _totSess = rows.reduce((s,r)=>s+parseFloat(r.metricValues?.[0]?.value||0),0);
+              const _totConv = rows.reduce((s,r)=>s+parseFloat(r.metricValues?.[2]?.value||0),0);
+              const _cr      = _totSess > 0 ? (_totConv/_totSess*100).toFixed(2) : 0;
+              const _topCamp = rows[0]?.dimensionValues?.[0]?.value || '—';
+              return `<strong>${rows.length} campagne${rows.length>1?'s':''}</strong> analysées. Taux de conversion moyen : <strong>${_cr}%</strong>. Campagne principale : <strong>${_topCamp}</strong>. Optimisez les campagnes à faible taux de conversion.`;
+            })()
+          : "Actualisez vos données GA4 pour voir la performance de vos campagnes."
+        : "Connectez GA4 pour analyser vos campagnes marketing et leur attribution.",
+      _ga4Connected() ? ['Voir l\'audience', 'Analyser le trafic', 'Rapport campagnes'] : ['Connecter GA4']
+    )}
+
     <!-- CAMPAIGN TABLE -->
     <div class="fp-card fp-mb-20">
       <div class="fp-card-title" style="margin-bottom:14px">📋 Performance par campagne</div>
@@ -25562,6 +25765,16 @@ function renderGA4Live() {
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.refreshRealtime()">🔄 Actualiser</button>
       </div>
     </div>
+
+    <!-- AI BLOCK -->
+    ${aiBlock(
+      _ga4Connected()
+        ? totalActive > 0
+          ? `<strong>${totalActive} utilisateur(s) actif(s)</strong> en ce moment. ${topPages.length>0?'Page la plus visitée : <strong>'+topPages[0][0]+'</strong> ('+topPages[0][1]+' users). ':''} ${topCities.length>0&&topCities[0][0]!=='Inconnu'?'Localisation principale : <strong>'+topCities[0][0]+'</strong>. ':''} Analysez les pages chaudes pour optimiser le parcours utilisateur en temps réel.`
+          : "Aucun visiteur actif en ce moment. Vérifiez votre intégration GA4 ou attendez du trafic entrant."
+        : "Connectez GA4 pour voir vos visiteurs en temps réel, leurs pages actives et leur localisation.",
+      _ga4Connected() ? ['Voir l\'audience', 'Analyser le trafic'] : ['Connecter GA4']
+    )}
 
     <!-- BIG COUNTER -->
     <div class="fp-card fp-mb-20" style="text-align:center;padding:40px;background:radial-gradient(ellipse at center, rgba(239,68,68,0.06) 0%, transparent 70%)">

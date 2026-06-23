@@ -1,0 +1,79 @@
+import { pool } from "@workspace/db";
+import { logger } from "../lib/logger.js";
+
+export async function initMissionsTables(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS missions (
+        id                        TEXT PRIMARY KEY,
+        org_id                    TEXT NOT NULL DEFAULT 'default',
+        title                     TEXT NOT NULL,
+        description               TEXT,
+        category                  TEXT NOT NULL DEFAULT 'general',
+        type                      TEXT NOT NULL DEFAULT 'action',
+        priority                  TEXT NOT NULL DEFAULT 'medium',
+        priority_score            INTEGER DEFAULT 50,
+        status                    TEXT NOT NULL DEFAULT 'todo',
+        impact                    TEXT DEFAULT 'Moyen',
+        effort                    TEXT DEFAULT '1h',
+        estimated_traffic_impact  REAL DEFAULT 0,
+        estimated_revenue_impact  REAL DEFAULT 0,
+        estimated_seo_impact      REAL DEFAULT 0,
+        estimated_conversion_impact REAL DEFAULT 0,
+        difficulty_score          INTEGER DEFAULT 50,
+        business_impact_score     INTEGER DEFAULT 50,
+        ai_explanation            TEXT,
+        ai_action_steps           JSONB DEFAULT '[]',
+        ai_quick_win              BOOLEAN DEFAULT false,
+        ai_reasoning              TEXT,
+        ai_summary                TEXT,
+        source_type               TEXT DEFAULT 'manual',
+        source_data               JSONB DEFAULT '{}',
+        steps                     JSONB DEFAULT '[]',
+        due_date                  TEXT,
+        completed_at              TIMESTAMP,
+        dismissed_at              TIMESTAMP,
+        last_refreshed_at         TIMESTAMP,
+        history                   JSONB DEFAULT '[]',
+        created_at                TIMESTAMP DEFAULT NOW(),
+        updated_at                TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS mission_history (
+        id          TEXT PRIMARY KEY,
+        mission_id  TEXT NOT NULL,
+        org_id      TEXT NOT NULL DEFAULT 'default',
+        action      TEXT NOT NULL,
+        from_status TEXT,
+        to_status   TEXT,
+        notes       TEXT,
+        created_at  TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS mission_ai_logs (
+        id            TEXT PRIMARY KEY,
+        org_id        TEXT NOT NULL DEFAULT 'default',
+        mission_id    TEXT,
+        prompt_type   TEXT NOT NULL DEFAULT 'generate',
+        model         TEXT DEFAULT 'gpt-4o-mini',
+        tokens_used   INTEGER DEFAULT 0,
+        credits_used  INTEGER DEFAULT 0,
+        response_ok   BOOLEAN DEFAULT true,
+        error         TEXT,
+        metadata      JSONB DEFAULT '{}',
+        created_at    TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_missions_org_id ON missions(org_id);
+      CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status);
+      CREATE INDEX IF NOT EXISTS idx_mission_history_mission_id ON mission_history(mission_id);
+    `);
+    logger.info("Missions tables initialized");
+  } catch (err) {
+    logger.error("Failed to init missions tables", { err });
+    throw err;
+  } finally {
+    client.release();
+  }
+}

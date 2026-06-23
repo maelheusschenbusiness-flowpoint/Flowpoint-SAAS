@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { getOverviewMetrics } from "../services/overview-service.js";
+import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
 
-router.get("/overview", async (req, res) => {
+router.get("/overview", withCache(60), async (req, res) => {
   try {
     const orgId = (req as unknown as { orgId?: string }).orgId ?? "default";
     const metrics = await getOverviewMetrics(orgId);

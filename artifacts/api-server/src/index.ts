@@ -2,6 +2,8 @@ import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import app from "./app.js";
 import { pool } from "@workspace/db";
+import { initMissionsTables } from "./services/init-missions.js";
+import { initAutomationTables } from "./services/init-automation.js";
 
 const PORT = env.PORT;
 
@@ -11,6 +13,18 @@ async function main() {
     logger.info("Database connection OK");
   } catch (err) {
     logger.warn({ err }, "Database connection check failed — continuing startup");
+  }
+
+  try {
+    await initMissionsTables();
+  } catch (err) {
+    logger.warn({ err }, "Missions table init failed — non-fatal, continuing");
+  }
+
+  try {
+    await initAutomationTables();
+  } catch (err) {
+    logger.warn({ err }, "Automation table init failed — non-fatal, continuing");
   }
 
   const server = app.listen(PORT, () => {

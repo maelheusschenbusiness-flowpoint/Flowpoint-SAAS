@@ -6,6 +6,7 @@ import { isDemoMode } from "../services/mock-data.js";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
+import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
 
@@ -25,7 +26,7 @@ async function ensureSeed() {
   }
 }
 
-router.get("/competitors", async (_req, res) => {
+router.get("/competitors", withCache(60), async (_req, res) => {
   try {
     await connectMongo();
     await ensureSeed();
