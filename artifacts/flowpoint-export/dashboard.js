@@ -5728,9 +5728,9 @@ function renderLocalSEO() {
   const cities = (_lseo.cities && _lseo.cities.length > 0) ? _lseo.cities : (PREVIEW_MODE ? _lseoPreviewCities : []);
 
   const milestones = [
-    { icon: '🏆', label: 'Domination locale', desc: '70%+ de couverture', done: true },
-    { icon: '⭐', label: 'GBP Elite',          desc: '4.5+ avec 50 avis',  done: true },
-    { icon: '🗺️', label: 'Expansion Pro',      desc: '5+ zones actives',  done: false },
+    { icon: '🏆', label: 'Domination locale', desc: '70%+ de couverture', done: domScore != null && domScore >= 70 },
+    { icon: '⭐', label: 'GBP Elite',          desc: '4.5+ avec 50 avis',  done: (STATE.localSeo?.avgRating||0) >= 4.5 && (STATE.localSeo?.reviewCount||0) >= 50 },
+    { icon: '🗺️', label: 'Expansion Pro',      desc: '5+ zones actives',  done: (STATE.localSeo?.totalZones||0) >= 5 },
     { icon: '🤖', label: 'IA Stratège',         desc: 'Ultra requis',      done: false, locked: !isUltra },
   ];
 
@@ -7392,6 +7392,12 @@ function renderAlertRules() {
   };
 
   return `
+    ${aiBlock(
+      (rules||[]).length > 0
+        ? `${rules.length} règle${rules.length !== 1 ? 's' : ''} d\'alerte configurée${rules.length !== 1 ? 's' : ''} — ${(rules||[]).filter(r=>r.enabled!==false).length} active${(rules||[]).filter(r=>r.enabled!==false).length !== 1 ? 's' : ''}. ${(rules||[]).some(r=>r.status==='triggered') ? '⚠️ Une ou plusieurs alertes déclenchées — vérifiez immédiatement.' : 'Surveillance automatique de vos sites en cours.'}`
+        : "Configurez vos premières règles d\'alerte pour être notifié automatiquement des incidents, chutes de score ou problèmes de monitoring.",
+      ['Créer une règle', 'Monitor DOWN', 'Score SEO critique', 'Latence élevée']
+    )}
     <div class="fp-card" style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div>
@@ -9022,6 +9028,8 @@ function renderAI() {
   // SUB: WORKSPACE INTELLIGENCE
   // ══════════════════════════════════════════════════════════
   if (sub === 'intelligence') {
+    const domScore = STATE.localSeo?.domScore ?? null;
+    const _aiScore = STATE.overview?.avgScore ?? ((STATE.audits||[]).length>0?Math.round((STATE.audits||[]).reduce((s,a)=>s+(a.score||0),0)/(STATE.audits||[]).length):null);
     const _mkSysScore = v => v!=null?v:(PREVIEW_MODE?Math.floor(Math.random()*25)+55:null);
     const _mkSysStatus = v => v==null?'—':v>=80?'Bon':v>=60?'Attention':'Faible';
     const _mkSysColor  = v => v==null?'var(--fp-text-faint)':v>=80?'#22c55e':v>=60?'#f59e0b':'#ef4444';
@@ -26079,6 +26087,15 @@ function renderPerformance() {
 
   ${renderPerformanceUrlBar(getFirstAuditUrl())}
 
+  ${aiBlock(
+    psi
+      ? `Score mobile : <strong>${psi.mobile?.scores?.performance||0}/100</strong> · Score desktop : <strong>${psi.desktop?.scores?.performance||0}/100</strong>. ${(psi.mobile?.scores?.performance||0) < 70 ? 'Performance mobile insuffisante — optimisez images et serveur pour améliorer les conversions.' : 'Bonne performance. Analysez les Core Web Vitals pour aller plus loin.'}`
+      : (STATE.audits||[]).length > 0
+        ? `${(STATE.audits||[]).length} site${(STATE.audits||[]).length>1?'s':''} dans votre portefeuille. Entrez une URL et lancez une analyse PageSpeed pour voir les scores en temps réel.`
+        : "Entrez une URL et lancez une analyse PageSpeed Insights pour obtenir vos scores mobile, desktop et Core Web Vitals.",
+    ['Analyser mes sites', 'Core Web Vitals', 'Audit technique']
+  )}
+
   ${isAnalyzing ? `
   <div class="fp-psi-loading">
     <div class="fp-psi-spinner"></div>
@@ -26330,6 +26347,13 @@ function renderCoreWebVitals() {
       ${psi ? `<button class="fp-btn fp-btn-primary" onclick="navigateSub('compare')">Comparaison →</button>` : ''}
     </div>
   </div>
+
+  ${aiBlock(
+    psi
+      ? `LCP mobile : <strong>${psi.mobile?.cwv?.lcp?.displayValue||'?'}</strong> · CLS : <strong>${psi.mobile?.cwv?.cls?.displayValue||'?'}</strong> · INP : <strong>${psi.mobile?.cwv?.inp?.displayValue||'?'}</strong>. ${(psi.mobile?.scores?.performance||0) < 60 ? '⚠️ Score mobile critique — priorité aux optimisations LCP et CLS.' : 'Core Web Vitals analysés. Consultez les opportunités pour optimiser chaque métrique.'}`
+      : "Lancez une analyse depuis Performance pour voir vos Core Web Vitals (LCP, CLS, INP, TTFB) en temps réel.",
+    ['Analyser LCP', 'Comparer mobile vs desktop', 'Voir les opportunités']
+  )}
 
   ${!psi ? `
   <div class="fp-card" style="text-align:center;padding:48px">
@@ -27670,7 +27694,11 @@ function renderSearchConsole() {
     return `${siteHeader}${renderGSCIndexing(gsc)}`;
   }
 
-  return `${siteHeader}${statsRow}${renderGSCOverview(keywords, pages, timeSeries, gsc)}`;
+  const _gscAiBlock = aiBlock(
+    `${(gsc.clicksTotal||0).toLocaleString('fr-FR')} clics · ${(gsc.impressionsTotal||0).toLocaleString('fr-FR')} impressions · CTR <strong>${(gsc.avgCTR||0).toFixed(2)}%</strong> · Position moyenne <strong>${(gsc.avgPosition||0).toFixed(1)}</strong>. ${(gsc.avgCTR||0) < 3 ? 'CTR faible — optimisez vos balises title et meta description.' : (gsc.avgPosition||0) > 20 ? 'Position éloignée du top 10 — ciblez vos mots-clés à fort potentiel.' : 'Bonne visibilité organique. Analysez vos top mots-clés pour de nouvelles opportunités.'}`,
+    ['Optimiser le CTR', 'Top mots-clés', 'Opportunités manquées']
+  );
+  return `${siteHeader}${statsRow}${_gscAiBlock}${renderGSCOverview(keywords, pages, timeSeries, gsc)}`;
 }
 
 function renderGSCOverview(keywords, pages, timeSeries, gsc) {

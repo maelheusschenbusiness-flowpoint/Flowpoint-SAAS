@@ -11,3 +11,4 @@
 - [FlowPoint Stripe Elements payment flow](flowpoint-stripe-elements.md) — checkout-payment.html uses Stripe Payment/Setup Element; payment-intent + finalize-checkout endpoints in public-billing.ts
 - [FlowPoint mock-free rendering patterns](flowpoint-mock-free-patterns.md) — STATE.localSeo/behavioral/usageDetails keys; na:true billing rows; funnelSteps null guard; comps empty in prod
 - [FlowPoint session finale T001-T007](flowpoint-final-session.md) — 23/24 pages avec aiBlock, 326 PREVIEW_MODE guards, migrations DB missions+automation, cache API 60s
+- [renderAI scope variables](rendai-scope-fix.md) — domScore + _aiScore non définis dans renderAI() intelligence block; fix: const domScore = STATE.localSeo?.domScore ?? null; ajouter en tête du bloc
