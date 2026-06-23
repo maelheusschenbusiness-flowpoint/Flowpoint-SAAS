@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "z0XcdgFASiJ614rrqjGGD"
+uri = "file://dashboard-flowpoint.zip"
+type = "unspecified"
+title = "Dashboard FlowPoint (3 fichiers)"
