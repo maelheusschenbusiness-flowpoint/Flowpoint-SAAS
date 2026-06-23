@@ -34,8 +34,16 @@ router.get("/monitors", async (_req, res) => {
     const monitors = await MonitorModel.find().limit(500).lean({ virtuals: false });
     res.json(monitors.map(m => ({ ...m, id: m._id })));
   } catch (err) {
-    logger.warn({ err }, "[monitors] GET failed");
-    res.json([]);
+    const msg = (err as Error).message ?? String(err);
+    logger.error({ err }, "[monitors] GET failed");
+    const isAuthFail = msg.includes("bad auth") || msg.includes("Authentication failed") || msg.includes("MONGO_URI_MISSING");
+    res.status(503).json({
+      error: isAuthFail
+        ? "Monitor database unavailable: authentication failed. Check MONGO_URI credentials and Atlas IP whitelist."
+        : `Monitor database unavailable: ${msg}`,
+      code: isAuthFail ? "MONGO_AUTH_FAILED" : "MONGO_UNAVAILABLE",
+      monitors: [],
+    });
   }
 });
 

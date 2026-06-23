@@ -8,17 +8,24 @@ import { logger } from "../logger.js";
 import { TIMEOUTS } from "../config.js";
 
 let _stripe: Stripe | null = null;
+let _stripeKey: string | undefined;
 
 export function getStripeClient(): Stripe | null {
-  if (!process.env.STRIPE_SECRET_KEY) return null;
-  if (!_stripe) {
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  const key = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  if (!key) return null;
+  if (!_stripe || _stripeKey !== key) {
+    _stripeKey = key;
+    _stripe = new Stripe(key, {
       apiVersion: '2025-04-30.basil',
       timeout: TIMEOUTS.stripe,
       maxNetworkRetries: 2,
     });
   }
   return _stripe;
+}
+
+export function getStripeKey(): string | null {
+  return process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"] || null;
 }
 
 export function requireStripe(): Stripe {
