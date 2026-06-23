@@ -9,7 +9,5 @@
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [FlowPoint mock-free rendering patterns](flowpoint-mock-free-patterns.md) — STATE.localSeo/behavioral/usageDetails keys; na:true billing rows; funnelSteps null guard; comps empty in prod
-- [FlowPoint session finale T001-T007](flowpoint-final-session.md) — 23/24 pages avec aiBlock, 326 PREVIEW_MODE guards, migrations DB missions+automation, cache API 60s
-- [renderAI scope variables](rendai-scope-fix.md) — domScore + _aiScore non définis dans renderAI() intelligence block; fix: const domScore = STATE.localSeo?.domScore ?? null; ajouter en tête du bloc
-- [renderGrowthCommandCenter demock](growth-demock.md) — 19 édits: sparklines depuis auditHistory, radarDims depuis comp1, badges depuis missions/audits/streak, _launchQuickWin crée mission via FP_MISSIONS_API.create(); apostrophes françaises dans IIFEs JS single-quoted strings = crashs syntax
 - [JS IIFE string apostrophe rule](js-iife-apostrophe.md) — dans les IIFEs qui concaténent HTML: toute apostrophe française (d', l', c', j') dans single-quoted JS string doit être escapée \'; onclicks avec navigate() → navigate(\'route\'); tester node --check après chaque lot d'édits
+- [FlowPoint demock final state](flowpoint-demock-final.md) — 124 aiBlocks, 0 fake names hors guard, 0 boutons mission faux; STATE.reports/threads/shareLinks/onboardings attendus mais endpoints API pas encore créés

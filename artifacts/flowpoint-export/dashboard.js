@@ -1003,6 +1003,29 @@ function saveMissions() {
   // Persistance backend uniquement — mutations gérées par FP_MISSIONS_API directement.
   // Pas de localStorage pour les données métier en production.
 }
+// ── Quick mission creator — used by inline buttons throughout the dashboard ──
+window._fpMQ = async function(title, category, priority, navAfter) {
+  if (!title) return;
+  const ms = {
+    id: 'qm_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+    title: title,
+    category: category || 'Optimisation',
+    priority: priority || 'medium',
+    status: 'todo',
+    createdAt: new Date().toISOString(),
+    steps: [],
+  };
+  if (!STATE.missions) STATE.missions = [];
+  STATE.missions.unshift(ms);
+  try {
+    if (window.FP_MISSIONS_API && typeof FP_MISSIONS_API.create === 'function') {
+      await FP_MISSIONS_API.create(ms);
+    }
+  } catch(e) {}
+  showToast('success', 'Mission créée · ' + title.slice(0, 40));
+  logActivityEvent('success', 'Mission créée : ' + title.slice(0, 60));
+  if (navAfter) setTimeout(() => navigate('missions'), 600);
+};
 function logActivityEvent(type, label, metadata = {}) {
   fetch('/api/activity', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type, label, metadata }) }).catch(() => {});
 }
@@ -4828,14 +4851,17 @@ function renderReports() {
     { label: 'Score Fidélisation',  val: 66, color: '#ec4899', icon: '💎' },
   ];
 
-  const allReports = [
-    { id:'r1', name:'Rapport SEO Executive — Mai 2026',    date:'Aujourd\'hui', type:'PDF', pages:14, shared:true,  size:'2.8 MB',  client:'Global',           score:'+7 pts', color:'#2563EB' },
-    { id:'r2', name:'Rapport client Boulangerie Martin',   date:'05/05/2026',   type:'PDF', pages:8,  shared:true,  size:'1.6 MB',  client:'Boulangerie Martin',score:'+5 pts', color:'#22c55e' },
-    { id:'r3', name:'Monitoring SLA — Avril 2026',         date:'01/05/2026',   type:'PDF', pages:6,  shared:false, size:'0.9 MB',  client:'Interne',          score:'99.1%',  color:'#22c55e' },
-    { id:'r4', name:'Rapport concurrent — Mai 2026',       date:'29/04/2026',   type:'PDF', pages:10, shared:false, size:'2.1 MB',  client:'Interne',          score:'Critique',color:'#ef4444' },
-    { id:'r5', name:'Rapport Q1 2026 — Synthese globale', date:'01/04/2026',   type:'PDF', pages:22, shared:true,  size:'4.8 MB',  client:'Global',           score:'+18 pts',color:'#8b5cf6' },
-    { id:'r6', name:'Export donnees CSV — Audits',         date:'28/04/2026',   type:'CSV', pages:1,  shared:false, size:'34 KB',   client:'Interne',          score:'—',      color:'#64748b' },
-  ];
+  // allReports: real STATE data or PREVIEW_MODE demo
+  const _stRepts = (STATE.reports||[]);
+  const _DEMO_AR = PREVIEW_MODE ? [
+    { id:'r1', name:'Rapport SEO Executive — '+CUR_MONTH, date:"Aujourd'hui", type:'PDF', pages:14, shared:true,  size:'2.8 MB', client:'Global',  score:'+7 pts',  color:'#2563EB' },
+    { id:'r2', name:'Monitoring SLA — '+PREV_MONTH,        date:'01/'+PREV_MONTH, type:'PDF', pages:6, shared:false, size:'0.9 MB', client:'Interne', score:'99.1%',   color:'#22c55e' },
+    { id:'r3', name:'Rapport concurrent — '+CUR_MONTH,     date:'29/04/2026', type:'PDF', pages:10, shared:false, size:'2.1 MB', client:'Interne', score:'Critique', color:'#ef4444' },
+    { id:'r4', name:'Export données CSV — Audits',     date:'28/04/2026', type:'CSV', pages:1,  shared:false, size:'34 KB',  client:'Interne', score:'—',   color:'#64748b' },
+  ] : [];
+  const allReports = _stRepts.length > 0
+    ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString('fr-FR'):'—', type:r.type||r.format||'PDF', pages:r.pages||null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', score:r.score||null, color:r.color||'#2563EB' }))
+    : _DEMO_AR;
 
   const scheduled = [
     { name: 'Rapport SEO mensuel',         freq: 'Mensuel · 1er', dest: 'client@boulangerie.fr', next: '01/06', active: true  },
@@ -5331,12 +5357,16 @@ function renderReports() {
   // SUB: CLIENT & WHITE-LABEL REPORTING
   // ══════════════════════════════════════════════════════════
   if (sub === 'client') {
-    const clients = [
-      { name: 'Boulangerie Martin',   reports: 3, lastSent: '05/05', nextSend: '01/06', score: 74, trend: +5, logo: '🥐', active: true  },
-      { name: 'Restaurant Le Soleil', reports: 2, lastSent: '01/05', nextSend: '01/06', score: 61, trend: +2, logo: '🍽️', active: true  },
-      { name: 'Plombier Urgences 75', reports: 4, lastSent: '29/04', nextSend: '01/06', score: 82, trend: +8, logo: '🔧', active: true  },
-      { name: 'Fleuriste Madeleine',  reports: 1, lastSent: '15/04', nextSend: 'Manuel', score: 48, trend: -3, logo: '🌹', active: false },
-    ];
+    // Reports client list from STATE.clients, fallback to PREVIEW_MODE only
+    const _rClientsRaw = STATE.clients && Array.isArray(STATE.clients) && STATE.clients.length > 0 ? STATE.clients : null;
+    const clients = _rClientsRaw
+      ? _rClientsRaw.map(c=>({ name:c.name||c.companyName||'Client', reports:c.reportsCount||0, lastSent:c.lastReport?new Date(c.lastReport).toLocaleDateString('fr-FR').slice(0,5):'—', nextSend:c.nextReport?new Date(c.nextReport).toLocaleDateString('fr-FR').slice(0,5):'Manuel', score:c.seoScore||c.score||null, trend:c.trend||0, logo:'🏢', active:c.active!==false }))
+      : (PREVIEW_MODE ? [
+          { name: 'Boulangerie Martin',   reports: 3, lastSent: '05/05', nextSend: '01/06', score: 74, trend: +5, logo: '🥐', active: true  },
+          { name: 'Restaurant Le Soleil', reports: 2, lastSent: '01/05', nextSend: '01/06', score: 61, trend: +2, logo: '🍽️', active: true  },
+          { name: 'Plombier Urgences 75', reports: 4, lastSent: '29/04', nextSend: '01/06', score: 82, trend: +8, logo: '🔧', active: true  },
+          { name: 'Fleuriste Madeleine',  reports: 1, lastSent: '15/04', nextSend: 'Manuel', score: 48, trend: -3, logo: '🌹', active: false },
+        ] : []);
     const brandFields = [
       { label: 'Logo agence',         type: 'upload', val: 'logo-agence.png',                       locked: false },
       { label: 'Couleur principale',  type: 'color',  val: '#2563EB',                               locked: false },
@@ -5351,8 +5381,8 @@ function renderReports() {
     ];
     return `
       ${isUltra
-        ? aiBlock("4 clients configures. <strong>3 rapports actifs</strong> avec envoi automatique mensuel. Boulangerie Martin est le client le plus engage (3 rapports consultes). Fleuriste Madeleine n\'a pas recu de rapport depuis 3 semaines — risque de desengagement.",
-            ['Generer rapport groupe', 'Config white-label', 'Ajouter un client'])
+        ? aiBlock((()=>{const _ac=clients.filter(c=>c.active);if(!_ac.length)return 'Aucun client configuré. Ajoutez vos premiers clients pour activer le reporting automatique.';const _top=_ac.sort((a,b)=>(b.reports||0)-(a.reports||0))[0];const _risk=_ac.find(c=>!c.active||c.score<50);return _ac.length+' client(s) configuré(s). <strong>'+_ac.filter(c=>c.active).length+' rapports actifs</strong> avec envoi automatique.'+(_top?' '+escHtml(_top.name)+' est le plus engagé ('+(_top.reports||0)+' rapport(s)).':'') +(_risk?' Attention : '+escHtml(_risk.name)+' — risque de désengagement.':'');})(),
+            ['Générer rapport groupe', 'Config white-label', 'Ajouter un client'])
         : `<div style="background:linear-gradient(135deg,rgba(34,197,94,0.06),rgba(37,99,235,0.04));border:1px solid rgba(34,197,94,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🎨</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Configuration White-Label — Inclus dans votre plan</div><div style="font-size:12px;color:var(--fp-text-muted)">Logo, couleurs, nom agence, domaine portail — tout est gratuit. L'export PDF co-marqué est disponible en supplément Ultra.</div></div>
@@ -6651,7 +6681,7 @@ function renderBilling() {
 
     return `
       ${aiBlock(
-        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Recommandation IA : <strong>AI Forecasting Engine</strong> (39€/mois) pourrait améliorer votre planification growth de +34%. <strong>Review Intelligence</strong> est prioritaire pour le compte Restaurant Le Soleil.`,
+        `Vous avez <strong>${activeCount} add-ons actifs ou inclus</strong> dans votre plan ${escHtml(currentPlan)}. Recommandation IA : <strong>AI Forecasting Engine</strong> (39€/mois) peut améliorer votre planification growth. <strong>Review Intelligence</strong> est prioritaire si vous gérez des avis Google Business Profile.`,
         ['Ajouter AI Forecasting', 'Activer Review Intelligence', 'Voir ROI des add-ons']
       )}
 
@@ -6813,9 +6843,14 @@ function renderBilling() {
   if (sub === 'usage') {
     return `
       ${isPro
-        ? aiBlock(
-            "Analyse usage "+CUR_MONTH+". <strong>Audits à 76% — seuil d'alerte atteint dans ~8 jours</strong> au rythme actuel. AI Crédits 41% — consommation stable. Storage très faible (24%) — aucune action nécessaire. Recommandation : activer +200 Audits (9€/mois) ou passer Ultra pour audits illimités.",
-            ['Ajouter +200 Audits', 'Voir prévisions 30j', 'Rapport usage complet']
+        ? aiBlock((()=>{
+            if(!usages||!usages.length)return 'Aucune donnée d\'usage disponible. Connectez votre compte pour voir vos métriques en temps réel.';
+            const _crit=usages.filter(u=>(u.forecast||0)>80);
+            const _top=usages.sort((a,b)=>Math.round(b.v/b.max*100)-Math.round(a.v/a.max*100))[0];
+            const _topPct=_top?Math.round(_top.v/_top.max*100):null;
+            return 'Analyse usage '+CUR_MONTH+'. '+(_crit.length?'<strong>'+_crit.length+' ressource(s) en alerte prévision (&gt;80%)</strong> — action recommandée dans les 8 prochains jours. ':'')+(_top&&_topPct!=null?escHtml(_top.label||'Usage')+' à <strong>'+_topPct+'%</strong> — ressource la plus sollicitée. ':'')+(_crit.length===0?'Consommation stable sur toutes les ressources.':'');
+          })(),
+          ['Ajouter des crédits', 'Voir prévisions 30j', 'Rapport usage complet']
           )
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Usage Analytics avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions, alertes de seuil et analytics d\'utilisation détaillés.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('pro'):navigate('billing'))">Passer Pro</button></div>`
       }
@@ -7559,7 +7594,7 @@ function renderSettings() {
 
       <div class="fp-grid-2 fp-mb-20">
         <!-- PROFIL & ORGANISATION -->
-        <div class="fp-card">
+        <div class="fp-card" id="fp-profile-form">
           <div class="fp-card-title">
             ${svgIcon('user').replace('stroke="currentColor"','stroke="#2563EB"')}
             Profil & Organisation
@@ -7595,7 +7630,7 @@ function renderSettings() {
               oninput="STATE.settings['${f.k}']=this.value;saveSettings()"/>
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Profil mis à jour !')">Sauvegarder</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde…';const ins=document.querySelectorAll('#settings-workspace-form .fp-input');const body={firstName:ins[0]?.value||STATE.me?.firstName||'',lastName:ins[1]?.value||STATE.me?.lastName||'',email:ins[2]?.value||STATE.me?.email||''};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me)Object.assign(STATE.me,body);showToast('success','Profil mis à jour !');}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openPasswordChangePanel()">Changer le mot de passe</button>
           </div>
         </div>
@@ -7812,7 +7847,7 @@ function renderSettings() {
             ${svgIcon('users').replace('stroke="currentColor"','stroke="#2563EB"')}
             Membres de l\'équipe
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('info','Invitation envoyée…')">+ Inviter</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Inviter un membre',renderInvitePanel());setTimeout(()=>{const btn=document.getElementById('invite-send');if(btn)btn.onclick=async()=>{const em=document.getElementById('invite-email')?.value?.trim();const rl=document.getElementById('invite-role')?.value||'Viewer';if(!em)return showToast('error','Email requis');btn.disabled=true;btn.textContent='Envoi…';const r=await apiAction('POST','/api/team/invite',{email:em,role:rl}).catch(()=>null);btn.disabled=false;btn.textContent='Envoyer l\'invitation';if(r&&!r.error){closeFloatPanel&&closeFloatPanel();showToast('success','Invitation envoyée à '+em);}else{showToast('error','Erreur d\'envoi');}}},100)">+ Inviter</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${members.map(m => `
@@ -8880,16 +8915,37 @@ function renderSettings() {
   // ══════════════════════════════════════════════════════════
   // DEFAULT (null) — Settings Command Center
   // ══════════════════════════════════════════════════════════
-  const workspaceHealth = 85;
+  // Workspace health calculated from real STATE
+  const _wfAct=(STATE.workflows||[]).filter(w=>w.enabled!==false).length;
+  const _intAct=Object.values((STATE.settings&&STATE.settings.integrations)||{}).filter(Boolean).length;
+  const _monOkS=(STATE.monitors||[]).length>0&&(STATE.monitors||[]).filter(m=>m.status==='down').length===0;
+  const _billOkS=STATE.me?.subscriptionStatus==='active';
+  const _has2fa=STATE.settings?.twoFa||false;
+  const _hasAudits=(STATE.audits||[]).length>0;
+  const _hasReports=(STATE.reports||[]).length>0;
+  const workspaceHealth=Math.min(100,
+    50+
+    (_wfAct>0?10:0)+
+    (_intAct>0?8:0)+
+    (_monOkS?8:0)+
+    (_billOkS?8:0)+
+    (_hasAudits?8:0)+
+    (_has2fa?5:0)+
+    (_hasReports?3:0)
+  );
   const circ38 = 2 * Math.PI * 38;
-  const configTimeline = [
-    {d:'09/05/2026', ev:'Workflow «Alerte monitor» activé',             c:'#22c55e' },
-    {d:'07/05/2026', ev:'Paramètre notifications mis à jour',           c:'#2563EB' },
-    {d:'05/05/2026', ev:'Add-on Monitors +50 configuré',               c:'#8b5cf6' },
-    {d:'01/05/2026', ev:'Rapport mensuel généré automatiquement',       c:'#22c55e' },
-    {d:'28/04/2026', ev:'Tentative de connexion inconnue bloquée',      c:'#ef4444' },
-    {d:'15/04/2026', ev:'Branding white-label configuré',              c:'#06b6d4' },
-  ];
+  // Config timeline: from STATE activity log or empty for new users
+  const _actEntries=(STATE.activityLog||[]).slice(0,6);
+  const _typeColor={info:'#2563EB',success:'#22c55e',warning:'#f59e0b',error:'#ef4444',security:'#8b5cf6',billing:'#06b6d4'};
+  const configTimeline=_actEntries.length>0
+    ? _actEntries.map(a=>({
+        d:new Date(a.createdAt||a.date||Date.now()).toLocaleDateString('fr-FR'),
+        ev:a.label||a.action||a.message||a.description||'Activité',
+        c:_typeColor[a.type||'info']||'#2563EB'
+      }))
+    : (PREVIEW_MODE
+        ? [{d:'09/05/2026',ev:'Workflow «Alerte monitor» activé',c:'#22c55e'},{d:'07/05/2026',ev:'Paramètre notifications mis à jour',c:'#2563EB'},{d:'05/05/2026',ev:'Add-on configuré',c:'#8b5cf6'},{d:'01/05/2026',ev:'Rapport mensuel généré',c:'#22c55e'},{d:'28/04/2026',ev:'Connexion inconnue bloquée',c:'#ef4444'},{d:'15/04/2026',ev:'Branding white-label configuré',c:'#06b6d4'}]
+        : []);
 
   return `
     <div class="fp-section-header">
@@ -10065,7 +10121,7 @@ function renderAuditDetailPanel(audit) {
       <div style="display:flex;flex-direction:column;gap:6px">
         ${btn('🔄 Relancer l\'audit','fp-btn fp-btn-primary fp-btn-sm','','id="audit-panel-rerun" style="width:100%"')}
         <div style="display:flex;gap:6px">
-          ${btn('+ Mission','fp-btn fp-btn-ghost fp-btn-sm','','onclick="showToast(\'info\',\'Mission créée depuis l\\\'audit\')" style="flex:1"')}
+          ${btn('+ Mission','fp-btn fp-btn-ghost fp-btn-sm','','onclick="_fpMQ(\'Optimiser \'+(audit.url||\'\').replace(/^https?:\/\//,\'\'),\'SEO\',\'medium\')" style="flex:1"')}
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;${isPro?'':'opacity:0.55;cursor:not-allowed'}" onclick="${isPro?"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()":`navigate('billing')`}">
             📄 PDF${isPro?'':' 🔒'}
           </button>
@@ -13227,7 +13283,7 @@ function renderSubPageContent(route, sub) {
         ].map(x=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
           <div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--fp-text)">${x.t}</div>
           <div style="font-size:10px;color:var(--fp-text-muted)">${x.d}</div></div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('success','Mission créée !')">${x.btn}</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="_fpMQ(x.t||'Mission contenu','Contenu','medium')">${x.btn}</button>
         </div>`).join('')}
       </div>`;
     }
@@ -13309,7 +13365,7 @@ function renderSubPageContent(route, sub) {
         <div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:3px solid #2563EB">
           Le parcours Blog → Article → Contact représente 19% du trafic mais n'a que 4% de taux de conversion. 
           Ajouter un <strong>CTA contextuel</strong> sur les articles de blog pourrait générer +34 leads/mois supplémentaires.
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:8px;width:100%" onclick="showToast('success','Mission créée !')">Créer mission CTA Blog</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:8px;width:100%" onclick="_fpMQ('Créer CTA Blog contextuel','Contenu','high',true)">Créer mission CTA Blog</button>
         </div>
       </div>`;
     }
@@ -13332,7 +13388,7 @@ function renderSubPageContent(route, sub) {
             </div>
             <div style="text-align:right;flex-shrink:0">
               <div style="font-size:12px;font-weight:700;color:#22c55e">${x.gain}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:4px" onclick="showToast('success','Mission créée !')">Créer mission</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:4px" onclick="_fpMQ(x?.fix||'Optimiser le funnel de conversion','Conversion','high')">Créer mission</button>
             </div>
           </div>`;
         }).join('')}
@@ -13825,7 +13881,7 @@ function renderOverviewInsights() {
   };
   const insights = [
     { type:'success', title:'Score moyen en hausse', desc:'+7 points ce mois grâce à 3 optimisations title & meta. Continuez sur cette lancée.', impact:'Élevé', action:'Voir les détails' },
-    { type:'warning', title:'2 sites sous-performants', desc:'Restaurant Le Soleil (61/100) et Plombier Paris (38/100) ont besoin d\'actions urgentes pour éviter une pénalité.', impact:'Critique', action:'Corriger maintenant' },
+    ...(()=>{const _wA=(STATE.audits||[]).filter(a=>a.score!=null&&a.score<65).sort((a,b)=>a.score-b.score).slice(0,2);if(!_wA.length)return[];const _wd=_wA.map(a=>((a.url||a.name||'').replace(/^https?:\/\//,'')||'Un site')+'\u00a0('+a.score+'/100)').join(' et ');return[{type:'warning',title:_wA.length+' site(s) sous-performant(s)',desc:_wd+' ont besoin d\'actions urgentes pour éviter une pénalité.',impact:'Critique',action:'Corriger maintenant'}];})(),
     { type:'info', title:'Opportunités locales détectées', desc:'Créez des pages géolocalisées sur vos zones cibles pour capter du trafic supplémentaire. Consultez la section Local SEO pour les détails.', impact:'Élevé', action:'Voir Local SEO' },
     { type:'success', title:'Monitors uptime > 99%', desc:'5 monitors sur 5 ont un uptime supérieur à 99% ce mois. La stabilité de vos sites est excellente.', impact:'Moyen', action:'Voir le rapport SLA' },
     { type:'warning', title:'14 avis sans réponse', desc:'14 avis récents sur 3 fiches Google Business Profile n\'ont pas de réponse. Cela impacte directement votre score local.', impact:'Élevé', action:'Répondre maintenant' },
@@ -13836,19 +13892,18 @@ function renderOverviewInsights() {
     { type:'warning', title:'SSL expire dans 28 jours', desc:'Le certificat SSL de ' + (STATE.monitors&&STATE.monitors.length>0?(STATE.monitors[0].url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''):'votre site') + ' expire bientôt. Renouvelez-le pour éviter une interruption de service.', impact:'Critique', action:'Renouveler maintenant' },
   ];
 
-  const weeklyData = [
-    { day:'Lun', score:71, issues:8, visitors:142 },
-    { day:'Mar', score:72, issues:7, visitors:165 },
-    { day:'Mer', score:73, issues:6, visitors:158 },
-    { day:'Jeu', score:73, issues:6, visitors:189 },
-    { day:'Ven', score:74, issues:5, visitors:203 },
-    { day:'Sam', score:74, issues:5, visitors:98 },
-    { day:'Dim', score:74, issues:5, visitors:87 },
-  ];
+  const _wDays=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const _wHist=(STATE.overview?.auditHistory||[]).slice(-7);
+  const _wAvg=avgScore()||70;
+  const weeklyData = _wHist.length>=3
+    ? _wHist.map((sc,i)=>({day:_wDays[i%7],score:sc,issues:Math.max(0,Math.round((100-sc)/12)),visitors:null}))
+    : (PREVIEW_MODE
+        ? [{day:'Lun',score:71,issues:8,visitors:142},{day:'Mar',score:72,issues:7,visitors:165},{day:'Mer',score:73,issues:6,visitors:158},{day:'Jeu',score:73,issues:6,visitors:189},{day:'Ven',score:74,issues:5,visitors:203},{day:'Sam',score:74,issues:5,visitors:98},{day:'Dim',score:74,issues:5,visitors:87}]
+        : _wDays.map(d=>({day:d,score:_wAvg,issues:0,visitors:null})));
 
   return `
     ${aiBlock('Vos données révèlent <strong>3 axes d\'amélioration prioritaires</strong> ce mois : réponses aux avis Google, optimisation des sites sous 65/100, et création de pages locales. Agir sur ces points peut booster votre score moyen de <strong>+12 points en 30 jours</strong>.',
-      ['Corriger Plombier Paris', 'Répondre aux avis', 'Créer pages locales', 'Plan d\'action complet'])}
+      [(()=>{const _w=(STATE.audits||[]).sort((a,b)=>(a.score||99)-(b.score||99))[0];return _w?'Corriger '+(((_w.url||_w.name||'').replace(/^https?:\/\//,'')).split('/')[0]||'le site'):'Optimiser les audits';})(), 'Répondre aux avis', 'Créer pages locales', 'Plan d\'action complet'])}
 
     <!-- TENDANCES SEMAINE -->
     <div class="fp-card fp-mb-20">
@@ -13956,7 +14011,7 @@ function renderOverviewQuickWins() {
             <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(q.effort)}</div>
           </div>
           ${!q.done
-            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('success','Mission créée !')">+ Mission</button>`
+            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ(q.title||'Mission Quick Win','Optimisation','medium')">+ Mission</button>`
             : `<span style="font-size:10px;font-weight:700;color:#22c55e">✓ Fait</span>`}
         </div>
       `).join('')}
@@ -15564,7 +15619,17 @@ function renderLocalSEOZones() {
   ] : [];
 
   return `
-    ${aiBlock('Couverture forte sur <strong>Paris Centre</strong> et <strong>Lyon 1-4</strong>. Opportunité stratégique : <strong>Namur</strong> et <strong>Marseille 1-6</strong> ne sont pas du tout couverts — 0 page locale. Gains estimés : <strong>+130 visites/mois</strong> avec 2 pages.', ['Développer Marseille', 'Créer pages Namur', 'Rapport zones'])}
+    ${aiBlock((()=>{
+      if(!zones.length)return 'Aucune zone locale configurée. Ajoutez vos zones géographiques cibles pour suivre votre couverture locale et identifier les opportunités.';
+      const _fort=zones.filter(z=>z.status==='fort');
+      const _faible=zones.filter(z=>z.status==='faible');
+      const _top=_fort[0]?.name;
+      const _low=_faible[0]?.name;
+      const _avgCov=zones.length?Math.round(zones.reduce((s,z)=>s+(z.cov||0),0)/zones.length):0;
+      if(_top&&_low)return 'Couverture forte sur <strong>'+_top+'</strong>. Zone à développer en priorité : <strong>'+_low+'</strong> — faible couverture ('+(_faible[0].cov||0)+'%). Score moyen : '+_avgCov+'%.';
+      if(_top)return 'Couverture forte sur <strong>'+_top+'</strong>. Score moyen de couverture : <strong>'+_avgCov+'%</strong>.';
+      return 'Score moyen de couverture locale : <strong>'+_avgCov+'%</strong>. Optimisez vos pages locales pour améliorer votre visibilité.';
+    })(), ['Développer les zones faibles', 'Créer pages locales', 'Rapport zones'])}
 
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Zones fortes', zones.filter(z => z.status === 'fort').length + '/' + zones.length, 'à 70%+ couverture', 'neutral')}
@@ -15628,7 +15693,7 @@ function renderLocalSEOZones() {
             </div>
 
             ${z.status !== 'fort'
-              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%" onclick="STATE.missions.push({id:'ms'+Date.now(),title:'Développer la zone ${z.name}',category:'Local SEO',impact:'Élevé',status:'todo',date:new Date(Date.now()+7*86400000).toISOString().slice(0,10),steps:[]});saveMissions();showToast('success','Mission créée !')">+ Mission pour cette zone</button>`
+              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%" onclick="_fpMQ('Développer la zone '+(z.name||'locale'),'Local SEO','medium')">+ Mission pour cette zone</button>`
               : `<div style="font-size:11px;color:#22c55e;text-align:center;padding:6px">✓ Zone bien couverte</div>`
             }
           </div>
@@ -15971,7 +16036,7 @@ function renderLocalSEOOpportunities() {
               </div>
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
                 ${badge('Impact ' + o.impact, ic)}
-                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="STATE.missions.push({id:'ms'+Date.now(),title:${JSON.stringify(o.title)},category:'Local SEO',impact:o.impact,status:'todo',date:new Date(Date.now()+7*86400000).toISOString().slice(0,10),steps:[]});saveMissions();showToast('success','Mission créée !')">Créer</button>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="_fpMQ(o.title,'Local SEO',o.impact==='Critique'||o.impact==='Élevé'?'high':'medium')">Créer</button>
               </div>
             </div>
           `;
@@ -17469,7 +17534,7 @@ function renderCompetitor() {
                       `}
                     </div>
                   </td>
-                  <td style="text-align:center">${k.gap !== null && k.gap < 0 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Optimisation de ${escHtml(k.kw)}…')">Optimiser</button>` : k.gap === null ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Mission créée !')">Cibler</button>` : '<span style="font-size:11px;color:#22c55e">✓ Bonne position</span>'}</td>
+                  <td style="text-align:center">${k.gap !== null && k.gap < 0 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Optimisation de ${escHtml(k.kw)}…')">Optimiser</button>` : k.gap === null ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="_fpMQ('Cibler mot-clé','SEO Keywords','high')">Cibler</button>` : '<span style="font-size:11px;color:#22c55e">✓ Bonne position</span>'}</td>
                 </tr>`;
               }).join('');})()}
             </tbody>
@@ -17523,7 +17588,7 @@ function renderCompetitor() {
                 <div style="font-size:12px;font-weight:700;color:#22c55e">+${v.vol} rech/mois</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">à capter</div>
               </div>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Mission créée !')">Saisir</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="_fpMQ('Nouvelle mission','Optimisation','medium')">Saisir</button>
             </div>
           `).join('')}
         </div>
@@ -17764,16 +17829,27 @@ function renderCompetitor() {
   // SUB: LOCAL — Carte de concurrence locale
   // ══════════════════════════════════════════════════════════
   if (sub === 'local') {
-    const localComp = [
-      { city: 'Paris Centre',    yours: 2,  comp1: 1,  comp2: 4,  gbp: 4.4, compGbp: 4.8, reviews: 47,  compReviews: 142, cov: 74 },
-      { city: 'Lyon 1-4',        yours: 1,  comp1: 3,  comp2: 6,  gbp: 4.4, compGbp: 4.6, reviews: 47,  compReviews: 87,  cov: 88 },
-      { city: 'Bordeaux Centre', yours: 6,  comp1: 2,  comp2: 5,  gbp: 4.4, compGbp: 4.9, reviews: 47,  compReviews: 201, cov: 42 },
-      { city: 'Liège Centre',    yours: 4,  comp1: 7,  comp2: 9,  gbp: 4.4, compGbp: 4.2, reviews: 47,  compReviews: 63,  cov: 67 },
-      { city: 'Marseille 1-6',   yours: 9,  comp1: 3,  comp2: 7,  gbp: 4.4, compGbp: 4.7, reviews: 47,  compReviews: 89,  cov: 31 },
-    ];
+    const _lseoZonesForComp = STATE.localSeo?.zones && STATE.localSeo.zones.length > 0 ? STATE.localSeo.zones : null;
+    const _comp1Nm = STATE.competitors&&STATE.competitors.length>0 ? (STATE.competitors[0].name||'Concurrent 1') : null;
+    const _comp2Nm = STATE.competitors&&STATE.competitors.length>1 ? (STATE.competitors[1].name||'Concurrent 2') : null;
+    const localComp = _lseoZonesForComp
+      ? _lseoZonesForComp.map(z=>({
+          city:z.name, yours:z.pos||0, comp1:z.comp1Pos||Math.max(1,z.pos-1)||1, comp2:z.comp2Pos||Math.max(1,z.pos+2)||3,
+          gbp:STATE.localSeo?.avgRating||null, compGbp:STATE.localSeo?.avgRating?STATE.localSeo.avgRating+0.2:null,
+          reviews:STATE.localSeo?.reviewCount||null, compReviews:null, cov:z.cov||0
+        }))
+      : (PREVIEW_MODE ? [
+          { city: 'Paris Centre',    yours: 2,  comp1: 1,  comp2: 4,  gbp: 4.4, compGbp: 4.8, reviews: 47,  compReviews: 142, cov: 74 },
+          { city: 'Lyon 1-4',        yours: 1,  comp1: 3,  comp2: 6,  gbp: 4.4, compGbp: 4.6, reviews: 47,  compReviews: 87,  cov: 88 },
+          { city: 'Bordeaux Centre', yours: 6,  comp1: 2,  comp2: 5,  gbp: 4.4, compGbp: 4.9, reviews: 47,  compReviews: 201, cov: 42 },
+          { city: 'Liège Centre',    yours: 4,  comp1: 7,  comp2: 9,  gbp: 4.4, compGbp: 4.2, reviews: 47,  compReviews: 63,  cov: 67 },
+          { city: 'Marseille 1-6',   yours: 9,  comp1: 3,  comp2: 7,  gbp: 4.4, compGbp: 4.7, reviews: 47,  compReviews: 89,  cov: 31 },
+        ] : []);
+    const _lcAiMsg = localComp.length>0
+      ? (()=>{const _ld=localComp.filter(z=>z.yours<=z.comp1);const _lw=localComp.filter(z=>z.yours<z.comp1);return _lw.length>0?'Vous gagnez sur <strong>'+_lw.length+' zone(s)</strong>. '+(_ld.length<localComp.length?'Zones à renforcer : <strong>'+localComp.filter(z=>z.yours>z.comp1).map(z=>z.city).slice(0,2).join(', ')+'</strong>.':'Excellente domination locale.'):'Renforcez votre présence locale pour dépasser '+(_comp1Nm?escHtml(_comp1Nm):'vos concurrents')+'.'})()
+      : 'Connectez votre DataForSEO et Google Business Profile pour obtenir la carte de domination locale.';
     return `
-      ${aiBlock("Vous dominez la zone <strong>Paris Centre et Lyon 1-4</strong> mais restez faibles sur <strong>Bordeaux et Marseille</strong>. Vos concurrents gagnent de la visibilité via une <strong>activité d\'avis plus forte</strong> (+3x vos avis sur Bordeaux). Opportunité : renforcer GBP sur 3 zones.",
-        ['Plan domination locale', 'Renforcer GBP', 'Comparer les zones'])}
+      ${aiBlock(_lcAiMsg, ['Plan domination locale', 'Renforcer GBP', 'Comparer les zones'])}
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Zones où vous gagnez', localComp.filter(z => z.yours <= z.comp1).length + '/' + localComp.length, 'vs meilleur concurrent', 'up')}
@@ -18739,7 +18815,7 @@ function renderConversion() {
               </div>
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:15px;font-weight:800;color:${sc}">-${escHtml(l.loss)}</div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" onclick="showToast('success','Mission créée !')">Corriger</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px" onclick="_fpMQ(this.closest('[data-step]')?.dataset?.step||'Corriger point de friction conversion','Conversion','high')">Corriger</button>
               </div>
             </div>`;
           }).join("")}
@@ -18862,7 +18938,7 @@ function renderConversion() {
               </div>
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:12px;font-weight:800;color:#22c55e">${escHtml(r.impact)}</div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:3px" onclick="showToast('success','Mission créée !')">Mission</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:3px" onclick="_fpMQ('Optimiser la conversion','Conversion','medium')">Mission</button>
               </div>
             </div>
           `).join("")}
@@ -19176,7 +19252,7 @@ function renderConversion() {
               <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(r.effort)}</div>
             </div>
             ${badge(r.priority, pc)}
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('success','Mission créée !')">Créer</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ('Créer opportunité de conversion','Conversion','medium')">Créer</button>
           </div>`;
         }).join("")}
       </div>
@@ -20474,21 +20550,27 @@ function renderActivityFeed() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'reports') {
     const repActs = liveFeed.filter(a => a.cat === 'reports');
-    const reportHistory = [
-      { name:"Rapport SEO Executive Mai 2026",       type:'PDF',  size:'2.4 MB', date:"09/05", shared:3, status:'Partagé',     color:'#2563EB' },
-      { name:"Export données trafic — CSV complet",  type:'CSV',  size:'840 KB', date:"08/05", shared:0, status:'Téléchargé',  color:'#22c55e' },
-      { name:"Rapport client — Restaurant Le Soleil",type:'PDF',  size:'1.8 MB', date:"07/05", shared:1, status:'Envoyé auto', color:'#8b5cf6' },
-      { name:"Rapport Local SEO — " + (STATE.me?.firstName || STATE.me?.name || 'Équipe'), type:'PDF', size:'3.1 MB', date:new Date(Date.now()-4*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), shared:2, status:'Partagé', color:'#f59e0b' },
-      { name:"Export conversions Q1-Q2 2026",        type:'XLSX', size:'1.2 MB', date:"01/05", shared:0, status:'Téléchargé',  color:'#22c55e' },
-    ];
-    const scheduled = [
-      { name:"Rapport hebdo — lundi 8h",           next:"12/05 · 08h00", status:'actif',  clients:3 },
-      { name:"Rapport mensuel executive",           next:"01/06 · 07h00", status:'actif',  clients:5 },
-      { name:"Bilan concurrent mensuel",            next:"01/06 · 09h00", status:'actif',  clients:0 },
-      { name:"Rapport client — Restaurant le Soleil", next:"15/05 · 09h00", status:'pause',  clients:1 },
-    ];
+    const _stRH = (STATE.reports||[]);
+    const reportHistory = _stRH.length > 0
+      ? _stRH.map(r=>({ name:r.name||r.title||'Rapport', type:r.type||'PDF', size:r.size||null, date:r.date?new Date(r.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}):'—', shared:r.shared||r.views||0, status:r.status||'Généré', color:r.color||'#2563EB' }))
+      : (PREVIEW_MODE ? [
+          { name:"Rapport SEO Executive "+CUR_MONTH,  type:'PDF',  size:'2.4 MB', date:"09/05", shared:3, status:'Partagé',    color:'#2563EB' },
+          { name:"Export données trafic — CSV",       type:'CSV',  size:'840 KB', date:"08/05", shared:0, status:'Téléchargé', color:'#22c55e' },
+          { name:"Rapport Local SEO — "+(STATE.me?.firstName||STATE.me?.name||'Équipe'), type:'PDF', size:'3.1 MB', date:new Date(Date.now()-4*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), shared:2, status:'Partagé', color:'#f59e0b' },
+          { name:"Export conversions Q1-Q2 2026",     type:'XLSX', size:'1.2 MB', date:"01/05", shared:0, status:'Téléchargé', color:'#22c55e' },
+        ] : []);
+    const _stSched = (STATE.scheduledReports||[]);
+    const scheduled = _stSched.length > 0
+      ? _stSched.map(s=>({ name:s.name||'Rapport planifié', next:s.nextRun?new Date(s.nextRun).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+' · '+new Date(s.nextRun).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'—', status:s.active!==false?'actif':'pause', clients:s.clientCount||0 }))
+      : (PREVIEW_MODE ? [
+          { name:"Rapport hebdo — lundi 8h",    next:"12/05 · 08h00", status:'actif', clients:3 },
+          { name:"Rapport mensuel executive",   next:"01/06 · 07h00", status:'actif', clients:5 },
+          { name:"Bilan concurrent mensuel",    next:"01/06 · 09h00", status:'actif', clients:0 },
+        ] : []);
     return `
-      ${aiBlock("Activité rapports intense ce mois : <strong>5 rapports générés, 6 partages</strong>. Le rapport executive a été ouvert 2× par le client. 4 envois automatiques planifiés. Recommandation : activer le rapport Restaurant Le Soleil mis en pause.",
+      ${aiBlock(reportHistory.length>0
+        ? reportHistory.length+' rapport(s) générés ce mois — <strong>'+reportHistory.reduce((s,r)=>s+(r.shared||0),0)+' partage(s)</strong>. '+scheduled.filter(s=>s.status==='actif').length+' envoi(s) planifié(s) actif(s). '+(reportHistory.find(r=>r.status==='pause')?'Un rapport est en pause — pensez à le réactiver.':'Toutes les planifications sont actives.')
+        : 'Aucun rapport généré ce mois. Créez votre premier rapport pour partager les résultats avec vos clients.',
         ['Générer un rapport', 'Gérer les planifications', 'Voir historique complet'])}
 
       <div class="fp-stat-row fp-mb-20">
@@ -21453,7 +21535,7 @@ function renderDataExplorer() {
       { name: 'Rapport SEO Executive — Mai 2026',       type: 'PDF',  size: '2.4 MB', date: 'Aujourd\'hui', brand: true,  auto: true  },
       { name: 'Audits SEO — Données complètes',          type: 'CSV',  size: '34 KB',  date: 'Aujourd\'hui', brand: false, auto: false },
       { name: 'Monitors — Historique uptime Q2',         type: 'CSV',  size: '18 KB',  date: 'Hier',         brand: false, auto: false },
-      { name: 'Rapport Client Boulangerie Martin',       type: 'PDF',  size: '1.8 MB', date: '05/05',        brand: true,  auto: false },
+      ...(PREVIEW_MODE ? [{ name: 'Rapport client — '+CUR_MONTH, type: 'PDF', size: '1.8 MB', date: '05/05', brand: true, auto: false }] : []),
       { name: 'Dashboard Data — Export JSON',            type: 'JSON', size: '88 KB',  date: '03/05',        brand: false, auto: false },
       { name: 'Rapport mensuel — Avril 2026',            type: 'PDF',  size: '3.1 MB', date: '01/05',        brand: true,  auto: true  },
     ];
@@ -21719,13 +21801,31 @@ function renderClientMode() {
   const avg = avgScore();
   const me  = STATE.me;
 
-  // ── Shared client data ────────────────────────────────────
-  const clients = [
+  // ── Shared client data — from STATE.clients or PREVIEW_MODE demo
+  const _rawClients = STATE.clients && Array.isArray(STATE.clients) && STATE.clients.length > 0 ? STATE.clients : null;
+  const _DEMO_CLIENTS = PREVIEW_MODE ? [
     { id:'bm', name:"Boulangerie Martin",      avatar:"BM", color:"#22c55e", seoScore:82, uptime:99.98, engagement:92, satisfaction:96, lastActivity:"Il y a 2h",    health:'excellent', trend:'+4pts', risk:'Faible',   tags:['Local SEO','GBP','Rapports'] },
     { id:'rs', name:"Restaurant Le Soleil",     avatar:"RS", color:"#f59e0b", seoScore:67, uptime:98.72, engagement:61, satisfaction:74, lastActivity:"Il y a 3j",    health:'attention', trend:'-2pts', risk:'Moyen',    tags:['Monitor','Avis','Urgence']   },
     { id:'cl', name:"Coiffeur Lyon",            avatar:"CL", color:"#ef4444", seoScore:44, uptime:99.12, engagement:43, satisfaction:58, lastActivity:"Il y a 1sem.", health:'critique',  trend:'-8pts', risk:'Élevé',    tags:['Perf','SEO Critique']        },
     { id:'pp', name:"Plombier Paris",           avatar:"PP", color:"#2563EB", seoScore:71, uptime:99.91, engagement:78, satisfaction:82, lastActivity:"Il y a 1j",    health:'bon',       trend:'+6pts', risk:'Faible',   tags:['Croissance','Rankings']      },
-  ];
+  ] : [];
+  const clients = _rawClients
+    ? _rawClients.map(c=>({
+        id:c.id||c._id||'c'+Math.random(),
+        name:c.name||c.companyName||'Client',
+        avatar:(c.name||'C').slice(0,2).toUpperCase(),
+        color:c.color||'#2563EB',
+        seoScore:c.seoScore||c.score||null,
+        uptime:c.uptime||null,
+        engagement:c.engagement||null,
+        satisfaction:c.satisfaction||null,
+        lastActivity:c.lastActivity||c.lastSeen||'—',
+        health:c.health||(c.seoScore>=80?'excellent':c.seoScore>=65?'bon':c.seoScore>=50?'attention':'critique'),
+        trend:c.trend||null,
+        risk:c.risk||(c.seoScore>=70?'Faible':c.seoScore>=50?'Moyen':'Élevé'),
+        tags:c.tags||[]
+      }))
+    : _DEMO_CLIENTS;
 
   const healthColor = { excellent:'#22c55e', bon:'#2563EB', attention:'#f59e0b', critique:'#ef4444' };
   const healthLabel = { excellent:'Excellent', bon:'Bon', attention:'Attention', critique:'Critique' };
@@ -21741,7 +21841,7 @@ function renderClientMode() {
       trend: [+4, -2, +1, +6, +3][STATE.audits.indexOf(a)] || 0,
     }));
     return `
-      ${aiBlock("Tableau de bord client simplifié. <strong>Score moyen : " + avg + "/100</strong> (+7 pts ce mois). Boulangerie Martin en tête à 82/100. Restaurant Le Soleil nécessite attention : monitor instable + 14 avis sans réponse.",
+      ${aiBlock("Tableau de bord client simplifié. <strong>Score moyen : " + avg + "/100</strong>. " + (clients.length > 0 ? escHtml(clients.sort((a,b)=>(b.seoScore||0)-(a.seoScore||0))[0].name) + " en tête à " + (clients[0].seoScore||'—') + "/100." : "Ajoutez vos clients pour suivre leur performance.") + (clients.find(c=>c.health==='critique'||c.health==='attention') ? " Attention : " + escHtml(clients.find(c=>c.health==='critique'||c.health==='attention').name) + " nécessite une action." : ""),
         ['Générer un rapport client', 'Envoyer une mise à jour', 'Planifier une réunion'])}
 
       <!-- EXECUTIVE KPI -->
@@ -21825,21 +21925,27 @@ function renderClientMode() {
   // SUB: REPORTING CENTER
   // ══════════════════════════════════════════════════════════
   if (sub === 'reporting') {
-    const reports = [
-      { name:"Rapport Executive Mai 2026",        client:"Boulangerie Martin",   type:'PDF',  date:"09/05", views:4,  shared:true,  status:'Partagé',    color:'#22c55e' },
-      { name:"Rapport SEO local — Plombier Paris",client:"Plombier Paris",       type:'PDF',  date:"07/05", views:2,  shared:true,  status:'Lu',         color:'#2563EB' },
-      { name:"Rapport mensuel — Restaurant",      client:"Restaurant Le Soleil", type:'PDF',  date:"05/05", views:1,  shared:false, status:'Non lu',     color:'#f59e0b' },
-      { name:"Export données — Coiffeur Lyon",    client:"Coiffeur Lyon",        type:'CSV',  date:"03/05", views:0,  shared:false, status:'Brouillon',  color:'#475569' },
-      { name:"Rapport Q1-Q2 2026 — Global",       client:"Tous les clients",     type:'PDF',  date:"01/05", views:8,  shared:true,  status:'Partagé',    color:'#22c55e' },
-    ];
-    const shareLinks = [
-      { name:"Boulangerie Martin",      url:"share.flowpoint.pro/bm-2026",  expires:"30/06/2026", views:12, active:true  },
-      { name:"Restaurant Le Soleil",    url:"share.flowpoint.pro/rs-2026",  expires:"15/06/2026", views:3,  active:true  },
-      { name:"Accès Dupont (expiré)",   url:"share.flowpoint.pro/cd-old",   expires:"01/05/2026", views:28, active:false },
-    ];
+    // Client mode reports and share links from STATE or PREVIEW_MODE demo
+    const _cmRepts = (STATE.reports||[]).length>0 ? STATE.reports : null;
+    const reports = _cmRepts
+      ? _cmRepts.map(r=>({ name:r.name||r.title||'Rapport', client:r.client||r.clientName||'—', type:r.type||'PDF', date:r.date?new Date(r.date).toLocaleDateString('fr-FR').slice(0,5):'—', views:r.views||0, shared:r.shared||false, status:r.status||'Généré', color:r.color||'#2563EB' }))
+      : (PREVIEW_MODE ? [
+          { name:"Rapport Executive "+CUR_MONTH, client:"Client A", type:'PDF', date:"09/05", views:4, shared:true,  status:'Partagé',  color:'#22c55e' },
+          { name:"Rapport SEO local",             client:"Client B", type:'PDF', date:"07/05", views:2, shared:true,  status:'Lu',       color:'#2563EB' },
+          { name:"Rapport mensuel",               client:"Client C", type:'PDF', date:"05/05", views:1, shared:false, status:'Non lu',   color:'#f59e0b' },
+          { name:"Export données — Audits",        client:"Interne",  type:'CSV', date:"03/05", views:0, shared:false, status:'Brouillon',color:'#475569' },
+        ] : []);
+    const _cmShareLinks = (STATE.shareLinks||[]).length>0 ? STATE.shareLinks : null;
+    const shareLinks = _cmShareLinks
+      ? _cmShareLinks.map(s=>({ name:s.name||'Rapport partagé', url:s.url||'', expires:s.expiresAt?new Date(s.expiresAt).toLocaleDateString('fr-FR'):'—', views:s.views||0, active:s.active!==false }))
+      : (PREVIEW_MODE ? [
+          { name:"Client A",             url:"share.flowpoint.pro/a-2026", expires:"30/06/2026", views:12, active:true  },
+          { name:"Client B",             url:"share.flowpoint.pro/b-2026", expires:"15/06/2026", views:3,  active:true  },
+          { name:"Accès expiré",         url:"share.flowpoint.pro/old",    expires:"01/05/2026", views:28, active:false },
+        ] : []);
     return `
       ${isPro
-        ? aiBlock("5 rapports générés ce mois — <strong>3 partagés, 1 non lu</strong> (Restaurant Le Soleil — risque satisfaction). Recommandation : envoyer une mise à jour proactive au Restaurant Le Soleil avec les améliorements du monitor. Activer le rapport automatique pour Coiffeur Lyon.",
+        ? aiBlock((()=>{const _nr=reports.filter(r=>r.status==='Non lu'||r.status==='non lu');const _np=reports.filter(r=>r.shared).length;if(!reports.length)return 'Aucun rapport généré ce mois. Créez votre premier rapport pour partager la progression avec vos clients.';return reports.length+' rapport(s) générés ce mois — <strong>'+_np+' partagés'+(_nr.length?' · '+_nr.length+' non lu(s)':'')+' </strong>.'+ (_nr.length ? ' Envoyez une mise à jour aux clients n\'ayant pas consulté leur rapport.' : ' Bonne progression — tous les rapports ont été consultés.');})(),
             ['Générer un rapport', 'Envoyer mise à jour', 'Planifier envoi auto'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">📄</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Reporting avancé — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports white-label, envois automatiques et tracking d\'engagement client.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('pro'):navigate('billing'))">Passer Pro</button></div>`
       }
@@ -21920,42 +22026,17 @@ function renderClientMode() {
   // SUB: COMMUNICATION HUB
   // ══════════════════════════════════════════════════════════
   if (sub === 'communication') {
-    const threads = [
-      {
-        id:'t1', client:"Boulangerie Martin", avatar:"BM", color:"#22c55e",
-        subject:"Rapport Mai 2026 — Vos questions",
-        messages: [
-          { from:(STATE.me?.name||STATE.me?.firstName||'Agence') + ' (Agence)', text:"Bonjour ! Votre rapport " + new Date().toLocaleString('fr-FR',{month:'long',year:'numeric'}) + " est disponible. Score " + (STATE.overview?.seoScore||82) + "/100 — record ! Points clés : Local Pack #1, +4pts SEO, uptime 100%.", time:"09/05 · 10h14", isClient:false },
-          { from:"Boulangerie Martin", text:"Excellent ! On voit la progression sur Google Maps. Quand peut-on mettre à jour nos photos GBP ?", time:"09/05 · 11h42", isClient:true },
-          { from:(STATE.me?.name||STATE.me?.firstName||'Agence') + ' (Agence)', text:"Planifié pour cette semaine — notre IA va optimiser les 3 meilleures photos automatiquement.", time:"09/05 · 12h01", isClient:false },
-        ],
-        status:'actif', unread:0,
-      },
-      {
-        id:'t2', client:"Restaurant Le Soleil", avatar:"RS", color:"#f59e0b",
-        subject:"Incident monitor — Mise à jour",
-        messages: [
-          { from:"Système FlowPoint", text:"Alerte : un monitor était inaccessible 44 min. Incident résolu. Rapport disponible.", time:"09/05 · 15h16", isClient:false },
-          { from:"Restaurant Le Soleil", text:"Merci pour l\'info rapide. C\'est grave pour notre référencement ?", time:"09/05 · 16h30", isClient:true },
-        ],
-        status:'en attente', unread:1,
-      },
-      {
-        id:'t3', client:"Plombier Paris", avatar:"PP", color:"#2563EB",
-        subject:"Progression ranking — Semaine 19",
-        messages: [
-          { from:(STATE.me?.name||STATE.me?.firstName||'Agence') + ' (Agence)', text:"Bonne nouvelle : +6 positions sur vos mots-clés principaux ! Progression confirmée sur les positions locales clés.", time:"08/05 · 09h00", isClient:false },
-        ],
-        status:'actif', unread:0,
-      },
-    ];
-    const approvals = [
-      { title:"Stratégie contenu Q3 2026",  client:"Boulangerie Martin",   due:"12/05", status:'En attente', color:'#f59e0b' },
-      { title:"Budget publicité locale",     client:"Restaurant Le Soleil", due:"15/05", status:'En attente', color:'#f59e0b' },
-    ];
+    // Communication threads: from STATE or PREVIEW_MODE demo using clients
+    const _stThr = (STATE.threads||STATE.communications||[]);
+    const threads = _stThr.length > 0
+      ? _stThr.map(t=>({ id:t.id||t._id||'t'+Math.random(), client:t.client||t.clientName||'Client', avatar:(t.client||'C').slice(0,2).toUpperCase(), color:t.color||'#2563EB', subject:t.subject||t.title||'Message', messages:(t.messages||[]), status:t.status||'actif', unread:t.unread||0 }))
+      : (PREVIEW_MODE && clients.length>0 ? clients.slice(0,3).map((c,i)=>({ id:'t'+(i+1), client:c.name, avatar:c.avatar, color:c.color, subject:['Rapport '+CUR_MONTH+' — Vos questions','Mise à jour performance','Progression rankings'][i]||'Message', messages:[{ from:(STATE.me?.name||STATE.me?.firstName||'Agence')+' (Agence)', text:'Rapport '+CUR_MONTH+' disponible. Score '+(c.seoScore||STATE.overview?.seoScore||'—')+'/100.', time:'09/05 · 10h00', isClient:false }], status:i===1?'en attente':'actif', unread:i===1?1:0 })) : []);
+    const approvals = (STATE.approvals||[]).length>0
+      ? (STATE.approvals||[]).map(a=>({ title:a.title||a.name||'Approbation', client:a.client||a.clientName||'—', due:a.due||a.dueDate?new Date(a.due||a.dueDate).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}):'—', status:a.status||'En attente', color:a.color||'#f59e0b' }))
+      : (PREVIEW_MODE && clients.length>0 ? clients.slice(0,2).map((c,i)=>({ title:['Stratégie contenu Q3 2026','Budget publicité locale'][i]||'Approbation', client:c.name, due:['12/05','15/05'][i]||'—', status:'En attente', color:'#f59e0b' })) : []);
     return `
-      ${aiBlock("1 fil en attente de réponse urgente — <strong>Restaurant Le Soleil</strong> attend votre réponse depuis 22h sur l\'incident monitor. 2 approbations en attente. Suggestion : envoyer une mise à jour rassurante avec le rapport de résolution d\'incident.",
-        ['Répondre au Restaurant', 'Gérer les approbations', 'Envoyer un résumé IA'])}
+      ${aiBlock((()=>{const _ur=threads.filter(t=>t.unread>0);const _urC=_ur.length>0?escHtml(_ur[0].client):null;if(!threads.length)return 'Aucun fil de communication actif. Démarrez une conversation avec vos clients pour centraliser les échanges.';return (_urC?'<strong>'+_urC+'<\/strong> attend votre réponse — action urgente. ':'')+threads.length+' fil(s) actif(s), '+approvals.length+' approbation(s) en attente.';})(),
+        ['Répondre', 'Gérer les approbations', 'Envoyer un résumé IA'])}
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Fils actifs', String(threads.length), 'avec clients', 'up')}
@@ -22031,44 +22112,16 @@ function renderClientMode() {
   // SUB: ONBOARDING CENTER
   // ══════════════════════════════════════════════════════════
   if (sub === 'onboarding') {
-    const onboardings = [
-      {
-        client:"Boulangerie Martin", avatar:"BM", color:"#22c55e",
-        progress:100, status:'Terminé', startDate:"15/03/2026",
-        steps: [
-          { label:"Fiche client créée",                done:true  },
-          { label:"Audit initial lancé",               done:true  },
-          { label:"Monitor configuré",                 done:true  },
-          { label:"Fiche GBP connectée",               done:true  },
-          { label:"Rapport de démarrage envoyé",       done:true  },
-          { label:"Réunion kick-off réalisée",         done:true  },
-        ],
-      },
-      {
-        client:"Restaurant Le Soleil", avatar:"RS", color:"#f59e0b",
-        progress:67, status:'En cours', startDate:"01/04/2026",
-        steps: [
-          { label:"Fiche client créée",                done:true  },
-          { label:"Audit initial lancé",               done:true  },
-          { label:"Monitor configuré",                 done:true  },
-          { label:"Fiche GBP connectée",               done:false },
-          { label:"Rapport de démarrage envoyé",       done:false },
-          { label:"Réunion kick-off réalisée",         done:false },
-        ],
-      },
-      {
-        client:"Coiffeur Lyon", avatar:"CL", color:"#ef4444",
-        progress:33, status:'En retard', startDate:"22/04/2026",
-        steps: [
-          { label:"Fiche client créée",                done:true  },
-          { label:"Audit initial lancé",               done:true  },
-          { label:"Monitor configuré",                 done:false },
-          { label:"Fiche GBP connectée",               done:false },
-          { label:"Rapport de démarrage envoyé",       done:false },
-          { label:"Réunion kick-off réalisée",         done:false },
-        ],
-      },
+    // Onboarding data: from STATE.onboardings or PREVIEW_MODE demo using clients
+    const _stOnb = (STATE.onboardings||[]);
+    const _DEFAULT_STEPS = [
+      {label:"Fiche client créée",done:true},{label:"Audit initial lancé",done:false},
+      {label:"Monitor configuré",done:false},{label:"Fiche GBP connectée",done:false},
+      {label:"Rapport de démarrage envoyé",done:false},{label:"Réunion kick-off réalisée",done:false},
     ];
+    const onboardings = _stOnb.length > 0
+      ? _stOnb.map(o=>({ client:o.client||o.clientName||'Client', avatar:(o.client||'C').slice(0,2).toUpperCase(), color:o.color||'#2563EB', progress:o.progress||Math.round((o.steps||_DEFAULT_STEPS).filter(s=>s.done).length/((o.steps||_DEFAULT_STEPS).length||1)*100), status:o.status||'En cours', startDate:o.startDate||o.createdAt?new Date(o.startDate||o.createdAt).toLocaleDateString('fr-FR'):'—', steps:(o.steps||_DEFAULT_STEPS) }))
+      : (PREVIEW_MODE ? clients.slice(0,3).map((c,i)=>({ client:c.name, avatar:c.avatar, color:c.color, progress:[100,67,33][i]||50, status:['Terminé','En cours','En retard'][i]||'En cours', startDate:['15/03/2026','01/04/2026','22/04/2026'][i]||'—', steps:_DEFAULT_STEPS.map((s,si)=>({...s,done:si<[6,3,2][i]})) })) : []);
     return `
       ${aiBlock(PREVIEW_MODE
         ? "Onboarding globalement en bonne voie. <strong>1 client 100% complet ✅</strong>. Alerte : <strong>1 client en retard</strong> — monitor et GBP non configurés depuis 17 jours. Action recommandée : relancer le client et planifier une session de configuration."
@@ -22138,7 +22191,7 @@ function renderClientMode() {
     ];
     const prioColor = { urgent:'#ef4444', high:'#f59e0b', normal:'#22c55e' };
     return `
-      ${aiBlock("2 tâches urgentes actives. <strong>Priorité #1 : répondre aux 14 avis Google</strong> (impact note et Maps). Priorité #2 : vitesse mobile Coiffeur Lyon (impact conversion et rankings). Le roadmap Q3 2026 est en bonne voie — jalons Q2 atteints.",
+      ${aiBlock((()=>{const _urg=missions.filter(m=>m.priority==='urgent'||m.priority==='high');const _done=missions.filter(m=>m.status==='done');const _atRisk=clients.find(c=>c.health==='critique');if(!missions.length&&!clients.length)return 'Aucune tâche active. Créez des missions et ajoutez des clients pour activer le suivi de projet.';return (_urg.length?'<strong>'+_urg.length+' tâche(s) prioritaire(s)</strong> en attente d\'action. ':'')+(_done.length?_done.length+' tâche(s) terminée(s) ce mois. ':'')+(_atRisk?'Client en situation critique : <strong>'+escHtml(_atRisk.name)+'</strong>.':'Tous les clients sont en bonne voie.');})(),
         ['Plan IA des priorités', 'Assigner des tâches', 'Rapport projets'])}
 
       <div class="fp-stat-row fp-mb-20">
@@ -22205,8 +22258,8 @@ function renderClientMode() {
     }));
     return `
       ${isUltra
-        ? aiBlock("Analyse engagement client IA. <strong>Coiffeur Lyon — risque churn 71%</strong> : 1 connexion en 30 jours, 0 vue rapport, communication mensuelle uniquement. <strong>Action urgente : appel de rétention recommandé.</strong> Boulangerie Martin : engagement exemplaire 92%, client ambassadeur potentiel.",
-            ['Plan rétention Coiffeur Lyon', 'Rapport engagement', 'Stratégie satisfaction'])
+        ? aiBlock((()=>{const _highRisk=engagementData.sort((a,b)=>(b.churnRisk||0)-(a.churnRisk||0))[0];const _topEngage=engagementData.sort((a,b)=>(b.engScore||0)-(a.engScore||0))[0];if(!engagementData.length)return 'Ajoutez des clients pour activer l\'analyse engagement IA.';return 'Analyse engagement client IA. '+(_highRisk&&_highRisk.churnRisk>40?'<strong>'+escHtml(_highRisk.name||_highRisk.client||'Client')+' — risque churn '+(_highRisk.churnRisk||'?')+'%</strong> : action urgente. ':'')+(_topEngage&&_topEngage.churnRisk<20?escHtml(_topEngage.name||_topEngage.client||'Client')+' : engagement exemplaire '+(_topEngage.engScore||'?')+'%.':'');})(),
+            ['Plan rétention', 'Rapport engagement', 'Stratégie satisfaction'])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">📊</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Analytics & Engagement — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection churn IA, scoring engagement client et analyse relationnelle avancée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('ultra'):navigate('billing'))">Passer Ultra</button></div>`
       }
 
@@ -22272,18 +22325,14 @@ function renderClientMode() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🚨 Actions de rétention recommandées</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${[
-            { client:"Coiffeur Lyon",        risk:71, action:"Appel de rétention urgent — 1 connexion en 30 jours",                   color:'#ef4444', btn:"Appeler" },
-            { client:"Restaurant Le Soleil", risk:42, action:"Envoyer rapport de résolution incident + prochaines étapes GBP",          color:'#f59e0b', btn:"Envoyer email" },
-          ].map(r => `
-            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:${r.color}07;border:1px solid ${r.color}28">
+          ${engagementData.filter(c=>(c.churnRisk||0)>30).sort((a,b)=>(b.churnRisk||0)-(a.churnRisk||0)).slice(0,3).map(r => { const _col=r.churnRisk>60?'#ef4444':r.churnRisk>40?'#f59e0b':'#64748b'; return `
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:${_col}07;border:1px solid ${_col}28">
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(r.client)} — Risque ${r.risk}%</div>
-                <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(r.action)}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${escHtml(r.name||r.client||'Client')} — Risque churn ${r.churnRisk||'?'}%</div>
+                <div style="font-size:11px;color:var(--fp-text-muted)">${r.loginDays<=3?'Dernière connexion : '+r.loginDays+' jour(s). Action urgente recommandée.':'Engagement en baisse — suivre de près.'}</div>
               </div>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('success','Action lancée…')">${escHtml(r.btn)}</button>
-            </div>
-          `).join('')}
+              <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="_fpMQ('Rétention client : '+encodeURIComponent(r.name||r.client||'Client'),'Clients','high')">Action</button>
+            </div>`; }).join('')}
         </div>
       </div>
     `;
@@ -22408,7 +22457,7 @@ function renderClientMode() {
 
     <!-- AI CLIENT INTELLIGENCE -->
     ${isUltra
-      ? aiBlock("4 clients actifs gérés. Score satisfaction global <strong>84/100</strong>. Alerte : <strong>Coiffeur Lyon — risque churn 71%</strong> — 1 connexion en 30 jours. Action immédiate : appel de rétention. Restaurant Le Soleil non lu depuis 3 jours — envoyer rapport résolution incident.",
+      ? aiBlock((()=>{if(!clients.length)return 'Aucun client configuré. Ajoutez vos clients pour accéder à l\'intelligence client IA.';const _sat=Math.round(clients.reduce((s,c)=>s+(c.satisfaction||c.seoScore||0),0)/clients.length);const _risk=clients.filter(c=>c.health==='critique'||c.health==='attention');return clients.length+' client(s) actif(s). Score satisfaction global <strong>'+_sat+'/100</strong>.'+(_risk.length?'Alerte : <strong>'+escHtml(_risk[0].name)+'</strong> nécessite une action immédiate.':'Tous les clients sont en bonne santé.')})(),
           ['Plan rétention clients', 'Rapport agence complet', 'Générer rapport executive'])
       : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🤝</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Client Intelligence IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse satisfaction, détection churn IA et stratégie relationnelle automatique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('ultra'):navigate('billing'))">Passer Ultra</button></div>`
     }
@@ -22483,7 +22532,7 @@ function renderClientMode() {
             { label:'Communication Hub',   sub:'communication', icon:'💬', desc:'1 fil en attente · 2 approbations' },
             { label:'Onboarding Center',   sub:'onboarding',    icon:'🚀', desc:'1/3 terminé · 1 en retard' },
             { label:'Gestion de projets',  sub:'projects',      icon:'📋', desc:'2 tâches urgentes actives' },
-            { label:'Analytics & Churn',   sub:'analytics',     icon:'📈', desc:'Churn Coiffeur Lyon 71% — urgent' },
+            { label:'Analytics & Churn',   sub:'analytics',     icon:'📈', desc:(()=>{const _r=clients.filter(c=>c.health==='critique');return _r.length?'Churn '+escHtml(_r[0].name)+' — urgent':'Analyse engagement clients';})() },
             { label:'Agency Lab',          sub:'agency',        icon:'🏢', desc:isUltra ? 'White-label actif' : 'Ultra requis' },
           ].map(n => `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
@@ -24038,7 +24087,7 @@ function renderCompetitorsMap() {
               <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${x.title}</div>
               <div style="font-size:10px;color:var(--fp-text-muted)">${x.desc}</div>
             </div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('success','Mission créée !')">${x.action}</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="_fpMQ(x.label||x.action||'Mission UX','Conversion','medium')">${x.action}</button>
           </div>
         `).join('')}
       </div>
@@ -24943,6 +24992,18 @@ function renderGA4Analytics() {
   if (sub === 'conversions') return _renderGA4Conversions();
 
   return `
+    ${aiBlock(_ga4Connected()
+      ? (()=>{
+          const _sess=sessions?fmtNum(sessions)+' sessions':null;
+          const _conv=conversions?fmtNum(conversions)+' conversion(s)':null;
+          const _delta=prevSess>0?Math.round((sessions-prevSess)/prevSess*100):null;
+          return 'GA4 connecté — '+(_sess||'données en cours de chargement')+(conversions?' · <strong>'+_conv+'</strong>':'')+((_delta!=null)?(_delta>=0?' · <strong style="color:#22c55e">+'+_delta+'%</strong> sessions vs période précédente':' · <strong style="color:#ef4444">'+_delta+'%</strong> sessions vs période précédente'):'')+'.'
+        })()
+      : 'Google Analytics 4 n\'est pas encore connecté. Connectez votre propriété GA4 pour accéder aux données de trafic, sessions et conversions en temps réel.',
+      _ga4Connected()
+        ? ['Voir les pages', 'Analyser conversions', 'Rapport trafic']
+        : ['Connecter GA4', 'Voir la démo']
+    )}
     <div class="fp-section-header">
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
@@ -25591,7 +25652,7 @@ function renderGA4Funnels() {
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="font-size:12px;font-weight:700;color:#22c55e">${x.gain}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:3px" onclick="showToast('success','Mission créée !')">Créer mission</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:3px" onclick="_fpMQ('Optimiser la zone locale','Local SEO','medium')">Créer mission</button>
           </div>
         </div>
       `).join('')}
@@ -25745,8 +25806,8 @@ function renderGA4Audience() {
             });
             const cities = Object.entries(cityMap).sort((a,b)=>(b[1])-(a[1])).slice(0,8);
             const maxS = cities[0]?.[1] || 1;
-            const fallback = [['Paris',3421],['Lyon',987],['Marseille',654],['Bruxelles',432],['Genève',321]];
-            const display = cities.length ? cities : fallback;
+            const display = cities.length ? cities : [];
+            if(!display.length)return '<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-muted)">🔌 Connectez Google Analytics 4 pour voir vos villes</div>';
             return display.map(([c,s]) => `<div style="display:grid;grid-template-columns:1fr 60px 40px;gap:0 8px;align-items:center;margin-bottom:8px">
               <div style="font-size:11px;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c)}</div>
               <div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${Math.round((s)/maxS*100)}%;background:#8b5cf6"></div></div>
@@ -29582,7 +29643,7 @@ function renderMarketIntelligence() {
               ${o.timeframe?`<span style="font-size:9px;padding:2px 8px;border-radius:8px;background:var(--fp-track);color:var(--fp-text-faint)">${o.timeframe}</span>`:''}
             </div>
             ${o.estimated_traffic?`<div style="font-size:11px;color:var(--fp-success);font-weight:600">📈 +${(o.estimated_traffic).toLocaleString('fr-FR')} visites/mois estimées</div>`:''}
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px;margin-top:10px" onclick="navigate('missions');showToast('success','Mission créée depuis l\'opportunité')">⚡ Créer mission</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px;margin-top:10px" onclick="_fpMQ(o.title||o.keyword||'Opportunité','Keywords','high',true)">⚡ Créer mission</button>
           </div>
         `).join('')}
       </div>
@@ -30104,7 +30165,7 @@ function renderLocalDominationMaps() {
               <span style="font-size:9px;padding:2px 8px;border-radius:8px;background:rgba(37,99,235,0.1);color:var(--fp-accent)">${o.opportunity_type}</span>
               ${o.geo ? `<span style="font-size:9px;padding:2px 8px;border-radius:8px;background:var(--fp-track);color:var(--fp-text-faint)">📍 ${escHtml(o.geo)}</span>` : ''}
             </div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px" onclick="navigate('missions');showToast('success','Mission créée depuis l\'opportunité locale')">⚡ Créer mission</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px" onclick="_fpMQ(o.title||o.keyword||'Opportunité locale','Local SEO','high',true)">⚡ Créer mission</button>
           </div>
         `).join('')}
       </div>
