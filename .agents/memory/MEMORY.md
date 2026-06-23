@@ -1,4 +1,4 @@
-- [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
+- [FlowPoint production context](flowpoint-context.md) — architecture, état complet des corrections Phase 1+2; read before any session
 - [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
 - [FlowPoint isDemoMode pattern](flowpoint-demodmode.md) — all Math.random fake data must be isDemoMode()-gated; import from services/mock-data.js
 - [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 30k-line file; use sed -n for large offsets, always get exact context before editing
@@ -8,6 +8,6 @@
 - [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing-service needs prod guard (throw/503) when Stripe key missing; SSRF runs after auth (401 before URL validation = correct); auth rate limit 10/15min per IP; ai-worker buildFallbackResult returns generic recs tagged mock:true on OpenAI failure
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
-- [FlowPoint mock-free rendering patterns](flowpoint-mock-free-patterns.md) — STATE.localSeo/behavioral/usageDetails keys; na:true billing rows; funnelSteps null guard; comps empty in prod
-- [JS IIFE string apostrophe rule](js-iife-apostrophe.md) — dans les IIFEs qui concaténent HTML: toute apostrophe française (d', l', c', j') dans single-quoted JS string doit être escapée \'; onclicks avec navigate() → navigate(\'route\'); tester node --check après chaque lot d'édits
+- [JS IIFE string apostrophe rule](js-iife-apostrophe.md) — dans les IIFEs qui concaténent HTML: toute apostrophe française dans single-quoted JS string doit être escapée \'; tester node --check après chaque lot d'édits
 - [FlowPoint demock final state](flowpoint-demock-final.md) — 124 aiBlocks, 0 fake names hors guard, 0 boutons mission faux; STATE.reports/threads/shareLinks/onboardings attendus mais endpoints API pas encore créés
+- [Python template literal escaping pitfall](python-js-template-escaping.md) — Ne jamais écrire \` ou \$ dans des strings Python pour du JS: \` dans fichier = char invalide en expression JS, \$ bloque l'interpolation. Utiliser concaténation string JS ou remplacement ligne-à-ligne.

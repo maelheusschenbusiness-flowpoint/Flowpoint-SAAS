@@ -5401,7 +5401,7 @@ function renderReports() {
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">👥 Gestion des clients</div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Client ajoute !')">+ Ajouter</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Ajouter un client','<div style=\'padding:16px\'><input id=\'fp-new-client-name\' type=\'text\' placeholder=\'Nom / domaine\' style=\'width:100%;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:8px 10px;box-sizing:border-box;margin-bottom:8px\'><button class=\'fp-btn fp-btn-primary fp-btn-sm\' style=\'width:100%\' onclick=\'(function(){var n=document.getElementById(\'fp-new-client-name\').value.trim();if(!n){showToast(\'error\',\'Entrez un nom\');return;}apiAction(\'POST\',\'/api/reports/clients\',{name:n}).then(r=>{if(r&&r.id)showToast(\'success\',\'Client \'+n+\' ajouté !\');else showToast(\'info\',\'Client enregistré localement\');closeFloatPanel&&closeFloatPanel();}).catch(()=>{showToast(\'info\',n+\' enregistré\');closeFloatPanel&&closeFloatPanel();})})()\'>Ajouter</button></div>')" >+ Ajouter</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${clients.map(c => {
@@ -5423,7 +5423,7 @@ function renderReports() {
                 <span style="font-size:11px;color:var(--fp-text-faint)">${c.reports} rapports</span>
                 <div style="display:flex;gap:6px;margin-left:auto">
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()">Generer</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('success','Envoye !')">Envoyer</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/reports/send-invoice',{invoiceId:this.closest('tr')?.[Symbol.iterator]?.[0]||''}).then(r=>showToast('success','Facture envoyée par email')).catch(()=>showToast('info','Fonctionnalité disponible dans votre espace client'))">Envoyer</button>
                 </div>
               </div>
             </div>`;
@@ -5645,7 +5645,7 @@ function renderReports() {
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">⏰ Envois planifies</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('success','Planification creee !')">+ Planifier</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>navigateSub('scheduled'),50)" >+ Planifier</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
           ${scheduled.map(s => `
@@ -5721,7 +5721,7 @@ function renderReports() {
           `).join('')}
         </div>
       </div>
-      ${btn('Generer le rapport IA', 'fp-btn fp-btn-primary fp-btn-sm', 'file', "onclick=\"showToast('success','Rapport en cours de generation…')\"" )}
+      ${btn('Generer le rapport IA', 'fp-btn fp-btn-primary fp-btn-sm', 'file', "onclick=\"typeof window.setupNewReportPanel==='function'?window.setupNewReportPanel():navigate('reports')\"" )}
     </div>
   `;
 }
@@ -5790,7 +5790,7 @@ function renderLocalSEO() {
       </div>
       <div class="fp-section-actions">
         ${btn('Rapport local', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
-        ${btn('+ Mission locale', 'fp-btn fp-btn-primary fp-btn-sm', 'plus', "onclick=\"showToast('success','Mission locale créée !')\"" )}
+        ${btn('+ Mission locale', 'fp-btn fp-btn-primary fp-btn-sm', 'plus', "onclick=\"apiAction('POST','/api/missions',{title:'Mission SEO local',source:'local-seo',status:'todo',priority:'high'}).then(r=>{if(r&&r.id){showToast('success','Mission locale créée !');navigate('missions');}else showToast('error','Erreur')}).catch(()=>showToast('error','Erreur'))\"" )}
       </div>
     </div>
 
@@ -6245,7 +6245,7 @@ function renderTeam() {
         <div class="fp-card fp-card-sm" style="flex:1">
           <div class="fp-flex-between" style="margin-bottom:12px">
             <div class="fp-card-title" style="margin-bottom:0">Tâches partagées</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('success','Nouvelle tâche créée !')">+ Ajouter</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('missions')" >+ Ajouter</button>
           </div>
           <div style="display:flex;flex-direction:column;gap:8px">
             ${(()=>{
@@ -6617,6 +6617,44 @@ function renderBilling() {
       return false;
     };
 
+    const _ADDON_STRIPE_KEYS = {
+      '+10 Monitors':'monitorsPack10', '+50 Monitors':'monitorsPack50',
+      'Global Monitoring':'globalMonitoring', 'SLA Monitoring Avancé':'slaMonitoring',
+      'Advanced SEO Lab':'advancedSeoLab', 'Keyword Domination Engine':'keywordDomination',
+      'Backlink Intelligence':'backlinkIntelligence', 'AI Content Strategist':'aiContentStrategist',
+      '+10 Emplacements GBP':'gbpSlots10', 'AI GBP Posting':'aiGbpPosting',
+      'Review Intelligence':'reviewIntelligence', 'Local Domination Maps':'localDominationMaps',
+      'AI CRO Strategist':'aiCro', 'Behavioral AI':'behavioralAI',
+      'Revenue Leak AI':'revenueLeak', 'AB Testing IA':'abTestingAI',
+      'White-Label Exports':'whiteLabel', 'Agency Reporting Packs':'agencyPacks',
+      'AI Executive Reporting':'aiExecutiveReport', 'AI Forecasting Engine':'aiForecasting',
+      'AI Market Intelligence':'marketIntelligence', 'AI Automation Workflows':'aiWorkflows',
+      '+5 Sièges':'extraSeats', 'Enterprise Permissions':'enterprisePermissions',
+      'Rétention 90 jours':'retention90d', 'Rétention 365 jours':'retention365d',
+      'Webhooks Avancés':'advancedWebhooks', 'Zapier/Make Integration':'zapierIntegration',
+      'CRM Intégrations':'crmIntegration', 'Custom Domain':'customDomain',
+      'SSO Enterprise':'ssoEnterprise', 'AI Workspace Launch':'aiWorkspaceLaunch',
+    };
+    window._fpAddonStripeKeys = _ADDON_STRIPE_KEYS;
+    window.fpActivateAddon = async function(addonIdx) {
+      const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
+      if (!_a) return;
+      const _sk = (window._fpAddonStripeKeys && window._fpAddonStripeKeys[_a.name]) || '';
+      if (!_sk) { showToast('info', 'Contactez le support pour activer cet add-on.'); return; }
+      try {
+        showToast('info', 'Redirection vers le paiement…');
+        const _r = await apiAction('POST', '/billing/addon-checkout', { addonKey: _sk, addonName: _a.name, price: _a.price });
+        if (_r && _r.url) {
+          window.location.href = _r.url;
+        } else if (_r && _r.error) {
+          showToast('error', _r.error || 'Erreur paiement');
+        } else {
+          showToast('info', 'Contactez le support pour activer : ' + _a.name);
+        }
+      } catch(_e) {
+        showToast('error', 'Impossible d’activer cet add-on');
+      }
+    };
     window._fpAllAddons = allAddons;
     window.fpShowAddonDetail = function(idx) {
       const a = window._fpAllAddons[idx];
@@ -6669,7 +6707,7 @@ function renderBilling() {
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" onclick="showToast('info','Désactivation en cours…');closeFloatPanel&&closeFloatPanel()">Désactiver</button>`
                 : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
-                  : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="showToast('success','Add-on activé — ${escHtml(a.name)}');closeFloatPanel&&closeFloatPanel()">Activer — ${escHtml(a.price)}</button>`
+                  : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>`
             }
           </div>
         </div>`
@@ -6790,7 +6828,7 @@ function renderBilling() {
               </div>
               ${pm.default ? badge('Par défaut', '#22c55e') : ''}
               <div class="fp-payment-btns" style="display:flex;gap:6px;flex-shrink:0">
-                ${!pm.default ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('success','Carte par défaut mise à jour')">Définir par défaut</button>` : ''}
+                ${!pm.default ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Gérez vos cartes via le portail Stripe')}).catch(()=>showToast('info','Portail Stripe'))">Définir par défaut</button>` : ''}
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Gérez vos cartes via le portail Stripe')}).catch(()=>showToast('info','Portail Stripe'))">Supprimer</button>
               </div>
             </div>
@@ -6826,7 +6864,7 @@ function renderBilling() {
                 <td style="text-align:center;vertical-align:middle">
                   <div style="display:inline-flex;gap:4px;justify-content:center">
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Facture ${escHtml(inv.id)} — portail Stripe')}).catch(()=>showToast('info','Facture ${escHtml(inv.id)}'))">PDF</button>
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('success','Envoi email…')">Email</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('info','La facture sera envoyée par email — vérifiez votre adresse dans les paramètres')">Email</button>
                   </div>
                 </td>
               </tr>`).join('')}
@@ -7036,7 +7074,7 @@ function renderBilling() {
                 </div>
                 <div style="display:flex;align-items:center;gap:10px">
                   ${badge('Priorité ' + s.priority, s.color)}
-                  <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${s.color};border-color:${s.color}" onclick="showToast('success','Action lancée…')">${escHtml(s.action)} →</button>
+                  <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${s.color};border-color:${s.color}" onclick="showToast('info','Gérez vos options depuis le portail de facturation')">${escHtml(s.action)} →</button>
                 </div>
               </div>
             </div>
@@ -7608,15 +7646,15 @@ function renderSettings() {
             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Modification avatar…')">Changer</button>
           </div>
           ${[
-            {l:'Prénom',v:me.firstName,t:'text'},
-            {l:'Nom',v:me.lastName||'',t:'text'},
-            {l:'Email',v:me.email||'',t:'email'},
-            {l:'Organisation',v:me.org.name,t:'text'},
-            {l:'Site web',v:me.org?.website||'',t:'url'},
-            {l:'Fuseau horaire',v:(me.org&&me.org.timezone)||(STATE.settings&&STATE.settings.timezone)||'',t:'text',ph:'Ex: Europe/Paris'},
+            {l:'Prénom',       id:'prof-fname',   v:me.firstName,                                                                           t:'text'},
+            {l:'Nom',          id:'prof-lname',   v:me.lastName||'',                                                                            t:'text'},
+            {l:'Email',        id:'prof-email',   v:me.email||'',                                                                               t:'email'},
+            {l:'Organisation', id:'prof-org',     v:me.org.name,                                                                                t:'text'},
+            {l:'Site web',     id:'prof-website', v:me.org?.website||'',                                                                        t:'url'},
+            {l:'Fuseau horaire',id:'prof-tz',     v:(me.org&&me.org.timezone)||(STATE.settings&&STATE.settings.timezone)||'', t:'text',ph:'Ex: Europe/Paris'},
           ].map(f => `<div class="fp-form-group">
             <label class="fp-form-label">${escHtml(f.l)}</label>
-            <input class="fp-input" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}/>
+            <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}/>
           </div>`).join('')}
           <hr style="border:none;border-top:1px solid var(--fp-border);margin:14px 0 10px"/>
           <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Canaux d'alerte</div>
@@ -7630,7 +7668,7 @@ function renderSettings() {
               oninput="STATE.settings['${f.k}']=this.value;saveSettings()"/>
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde…';const ins=document.querySelectorAll('#settings-workspace-form .fp-input');const body={firstName:ins[0]?.value||STATE.me?.firstName||'',lastName:ins[1]?.value||STATE.me?.lastName||'',email:ins[2]?.value||STATE.me?.email||''};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me)Object.assign(STATE.me,body);showToast('success','Profil mis à jour !');}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const body={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim(),timezone:(document.getElementById('prof-tz')?.value||'').trim()};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me){if(body.firstName)STATE.me.firstName=body.firstName;STATE.me.lastName=body.lastName;if(STATE.me.org){STATE.me.org.name=body.orgName||STATE.me.org.name;STATE.me.org.website=body.website;if(body.timezone)STATE.me.org.timezone=body.timezone;}}showToast('success','Profil sauvegard\u00e9 !');}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openPasswordChangePanel()">Changer le mot de passe</button>
           </div>
         </div>
@@ -7792,7 +7830,7 @@ function renderSettings() {
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
                 ${g.options.map(o => `
-                  <button onclick="showToast('success','${escHtml(g.label)} : ${escHtml(o.label)}')"
+                  <button onclick="(function(btn){apiAction('PATCH','/api/me/prefs',{settings:{${JSON.stringify(g.key)}:${JSON.stringify(o.val||o.label)}}}).then(()=>{showToast('success','${escHtml(g.label)} : ${escHtml(o.label)}');btn.parentElement.querySelectorAll('button').forEach(b=>b.style.border='1.5px solid var(--fp-border)');btn.style.border='1.5px solid #2563EB';}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)"
                     style="padding:5px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid ${o.active ? '#2563EB' : 'var(--fp-border)'};background:${o.active ? 'rgba(37,99,235,0.12)' : 'transparent'};color:${o.active ? '#2563EB' : 'var(--fp-text-muted)'};transition:all 0.15s">
                     ${o.active ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="3" style="margin-right:4px;vertical-align:middle" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>` : ''}${escHtml(o.label)}
                   </button>
@@ -7857,10 +7895,10 @@ function renderSettings() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(m.email)} · ${escHtml(m.last)}</div>
               </div>
-              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="showToast('success','Rôle mis à jour')">
+              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const r=await apiAction('PATCH','/api/team/${m.id}',{role:el.value}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=el.value;showToast('success','R\u00f4le mis \u00e0 jour');}else{showToast('error','Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
                 ${roles.map(r => `<option ${r === m.role ? 'selected' : ''}>${r}</option>`).join('')}
               </select>
-              ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="showToast('warning','Membre retiré')">Retirer</button>` : ''}
+              ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="(async()=>{if(!confirm('Retirer ce membre de l\\'\\'équipe ?'))return;const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');showToast('success','Membre retir\u00e9');render();}else{showToast('error','Erreur lors du retrait');}})()">Retirer</button>` : ''}
             </div>
           `).join('')}
         </div>
@@ -8149,7 +8187,7 @@ function renderSettings() {
               <div style="font-size:20px;margin-bottom:6px">${t.icon}</div>
               <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(t.name)}</div>
               <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:10px;flex:1">${escHtml(t.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="showToast('success','Template chargé !')">Utiliser ce template</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="showToast('info','Sélectionnez ce template et configurez-le dans les Automatisations')">Utiliser ce template</button>
             </div>
           `).join('')}
         </div>
@@ -8770,7 +8808,7 @@ function renderSettings() {
         <div class="fp-card-title" style="margin-bottom:14px">🎛️ Intensité des recommandations IA</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;align-items:stretch">
           ${intensityLevels.map((lvl, i) => `
-            <div class="fp-ai-int-opt${i === 1 ? ' fp-ai-int-opt--active' : ''}" onclick="showToast('success','Intensité ${lvl} appliquée')">
+            <div class="fp-ai-int-opt${i === 1 ? ' fp-ai-int-opt--active' : ''}" data-intensity="${lvl}" onclick="(async(el)=>{document.querySelectorAll('.fp-ai-int-opt').forEach(e=>e.classList.remove('fp-ai-int-opt--active'));el.classList.add('fp-ai-int-opt--active');await apiAction('PATCH','/api/me/prefs',{settings:{aiIntensity:'${lvl}'}}).catch(()=>{});showToast('success','Intensité ${lvl} appliquée');})(this)">
               <div style="font-size:18px;margin-bottom:4px">${['🧘','⚖️','🚀'][i]}</div>
               <div style="font-size:12px;font-weight:700;color:${i === 1 ? 'var(--fp-accent)' : 'var(--fp-text)'}">${escHtml(lvl)}${i === 1 ? ' ✓' : ''}</div>
               <div style="font-size:10px;color:var(--fp-text-faint);overflow:hidden;word-break:break-word;hyphens:auto">${['Peu de recommandations, fortes certitudes', 'Équilibre pertinence/fréquence', 'Toutes les recommandations IA activées'][i]}</div>
@@ -8797,7 +8835,7 @@ function renderSettings() {
               </div>
               ${locked
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('ultra'):navigate('billing'))">🔒 Upgrader</button>`
-                : `<button class="fp-toggle${m.active ? ' on' : ''}" onclick="showToast('success','Module ${escHtml(m.label)} ${m.active ? 'désactivé' : 'activé'}')"></button>`
+                : `<button class="fp-toggle${m.active ? ' on' : ''}" data-ai-module="${m.key}" onclick="(async(btn)=>{const next=!btn.classList.contains('on');btn.classList.toggle('on',next);btn.setAttribute('aria-pressed',String(next));const mods={};document.querySelectorAll('[data-ai-module]').forEach(b=>{mods[b.dataset.aiModule]=b.classList.contains('on');});await apiAction('PATCH','/api/me/prefs',{settings:{aiModules:mods}}).catch(()=>{});showToast(next?'success':'info',next?'Module activ\u00e9':'Module d\u00e9sactiv\u00e9');})(this)"></button>`
               }
             </div>`;
           }).join('')}
@@ -8820,7 +8858,7 @@ function renderSettings() {
     const totalTotal = storageItems.reduce((s,i) => s + i.total, 0);
     return `
       ${aiBlock(
-        "Données en bonne santé — 3.2 GB sur 10 GB utilisés (32%). Rétention actuelle : <strong>90 jours (Pro)</strong>. Recommandation : activer le backup automatique mensuel pour garantir la continuité des données historiques.",
+        'Données en bonne santé — <strong>'+totalUsed.toFixed(1)+' GB sur '+totalTotal+' GB utilisés ('+Math.round(totalUsed/totalTotal*100)+'%)</strong>. Rétention actuelle : <strong>'+(isStd?'30 jours':isPro&&!isUltra?'90 jours':'365 jours')+'</strong>. Recommandation : activer le backup automatique mensuel pour garantir la continuité des données historiques.',
         ['Activer backup auto', 'Exporter toutes les données', 'Voir la rétention']
       )}
 
@@ -8957,7 +8995,7 @@ function renderSettings() {
         <div class="fp-section-sub">Workspace health ${workspaceHealth}/100 · 4 intégrations actives · 4 workflows actifs</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Sauvegarder','fp-btn fp-btn-primary fp-btn-sm','','id="settings-save" onclick="showToast(\'success\',\'Paramètres sauvegardés \')"')}
+        ${btn('Sauvegarder','fp-btn fp-btn-primary fp-btn-sm','','id="settings-save" onclick="(()=>{const pb=document.getElementById(\'profile-save-btn\');if(pb){pb.click();return;}const prefs=Object.fromEntries([...document.querySelectorAll(\'[data-toggle]\')].map(el=>[el.dataset.toggle,el.classList.contains(\'on\')]));apiAction(\'PATCH\',\'/api/me/prefs\',{settings:prefs}).then(r=>showToast(r&&r.ok?\'success\':\'error\',r&&r.ok?\'Param\\u00e8tres sauvegard\\u00e9s\':\'Erreur\')).catch(()=>showToast(\'error\',\'Erreur\'));})();"')}
       </div>
     </div>
 
@@ -9030,7 +9068,7 @@ function renderSettings() {
           {label:'Intégrations',      sub:'integrations', icon:'🔌', desc:'4 actives · GSC non connectée',                status:'⚠ À compléter',sc:'#f59e0b'},
           {label:'API & Développeurs',sub:'api',          icon:'💻', desc:'2 clés actives · Webhooks configurés',          status:'✓ Actif',       sc:'#22c55e'},
           {label:'IA Config Lab',     sub:'ai-config',    icon:'🤖', desc:'5 modules IA actifs · Équilibré',              status:'✓ Optimisé',   sc:'#22c55e'},
-          {label:'Données & Rétention',sub:'data',        icon:'💾', desc:'3.2 GB / 10 GB · 90 jours rétention',          status:'✓ Sain',        sc:'#22c55e'},
+          {label:'Données & Rétention',sub:'data',        icon:'💾', desc:'Stockage monitored · Rétention active',            status:'✓ Sain',        sc:'#22c55e'},
           {label:'Rapports & Exports', sub:'reports',    icon:'📄', desc:'17 rapports · Partage client · Planification',   status:'✓ Actif',       sc:'#22c55e'},
         ].map(n => `
           <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
@@ -13610,7 +13648,7 @@ function renderSubPageContent(route, sub) {
             <div style="font-size:10px;color:var(--fp-text-faint);font-weight:600;margin-bottom:3px">${f.label}</div>
             <input type="text" placeholder="${f.placeholder}" style="width:100%;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:11px;padding:6px 10px;box-sizing:border-box" />
           </div>`).join('')}
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:4px" onclick="showToast('success','UTM copié dans le presse-papier !')">🔗 Générer & Copier</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:4px" onclick="(function(){var p=document.querySelectorAll('.fp-utm-form input');var b=window.location.origin+'?';var params=[];var labels=['utm_source','utm_medium','utm_campaign'];p.forEach(function(i,n){if(i.value)params.push(labels[n]+'='+encodeURIComponent(i.value));});var url=b+params.join('&');if(navigator.clipboard){navigator.clipboard.writeText(url).then(function(){showToast('success','URL UTM copiée !')}).catch(function(){showToast('info','URL : '+url)})}else{showToast('info','URL : '+url)}})()" >🔗 Générer & Copier</button>
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:12px">⚠️ Trafic sans UTM détecté</div>
@@ -14301,7 +14339,7 @@ function renderMissionsAI() {
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="font-size:12px;font-weight:700;color:#22c55e;white-space:nowrap">${escHtml(m.gain)}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="showToast('success','Mission IA créée !')">+ Créer</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(btn){var t=btn.closest('[data-mission-title]');var title=t?t.dataset.missionTitle:'Mission IA';apiAction('POST','/api/missions',{title:title,source:'ai',status:'todo',priority:'high'}).then(r=>{if(r&&r.id){showToast('success','Mission créée !');navigate('missions');}else showToast('error','Erreur création mission');}).catch(()=>showToast('error','Erreur création mission'));})(this)">+ Créer</button>
           </div>
         </div>
       `).join('')}
@@ -15718,7 +15756,7 @@ function renderLocalSEOZones() {
               <div style="font-size:11px;color:var(--fp-text-muted)">${e.opp} · ${e.pages} page${e.pages > 1 ? 's' : ''} à créer · ${e.effort}</div>
               <div style="font-size:12px;font-weight:700;color:#22c55e;margin-top:2px">${e.potential}</div>
             </div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Mission expansion créée !')">Déployer</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var card=btn.closest('[data-expansion-title]');var title=card?card.dataset.expansionTitle:'Mission expansion';apiAction('POST','/api/missions',{title:title,source:'expansion',status:'todo',priority:'medium'}).then(r=>{if(r&&r.id){showToast('success','Mission expansion créée !');navigate('missions');}else showToast('info','Accéder aux missions pour créer');}).catch(()=>navigate('missions'));})(this)">Déployer</button>
           </div>
         `).join('')}
       </div>
@@ -16062,7 +16100,7 @@ function renderLocalSEOOpportunities() {
                 <div style="font-size:10px;color:var(--fp-text-faint)">${c.type} · DA ${c.da}</div>
               </div>
               ${c.status === 'missing'
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="showToast('success','Citation ajoutée pour '+escHtml(c.name)+' !')">Ajouter</button>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="apiAction('POST','/api/local-seo/citations',{name:c&&c.name||''}).then(r=>r&&r.id?showToast('success','Citation ajoutée !'):showToast('info','Configurer DataForSEO pour les citations')).catch(()=>showToast('info','Connectez DataForSEO pour les citations'))">Ajouter</button>`
                 : `<span style="font-size:11px;color:#22c55e;font-weight:600">✓ Présent</span>`
               }
             </div>
@@ -16243,7 +16281,7 @@ function renderTeamFiles() {
             <div class="fp-opp-desc">${escHtml(f.size)} · par ${escHtml(f.shared)} · ${escHtml(f.date)}</div>
           </div>
           <div style="display:flex;gap:5px;flex-shrink:0">
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('success','Lien copié !')" title="Copier le lien" style="gap:4px;font-size:11px">
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))" title="Copier le lien" style="gap:4px;font-size:11px">
               ${svgIcon('copy').replace('width="14"','width="11"').replace('height="14"','height="11"')} Copier
             </button>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="downloadFileAsset(f.name)" title="Télécharger" style="gap:4px;font-size:11px">
@@ -18734,7 +18772,7 @@ function renderConversion() {
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between">
                 <span style="font-size:10px;color:var(--fp-text-faint)">Effort : ${escHtml(ab.effort)}</span>
-                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Test A/B créé !')">Lancer le test</button>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('info','La création de tests A/B se configure dans la section Conversion > UX Lab')">Lancer le test</button>
               </div>
             </div>
           `).join("")}
@@ -18961,7 +18999,7 @@ function renderConversion() {
                     <span style="font-size:11px;font-weight:700;color:#22c55e">${escHtml(ex.est)}</span>
                     <span style="font-size:10px;color:var(--fp-text-faint)"> · Durée : ${escHtml(ex.dur)}</span>
                   </div>
-                  <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Test lancé !')">Lancer</button>
+                  <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('info','Configurez votre test depuis le panel UX Lab')">Lancer</button>
                 </div>
               </div>
             `).join("")}
@@ -19977,7 +20015,7 @@ function renderAlertsCenter() {
         <div class="fp-section-sub">Surveillance temps réel · ${criticals.length} critiques · ${warnings.length} alertes · Mis à jour à l\'instant</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Tout marquer lu', 'fp-btn fp-btn-ghost fp-btn-sm', 'check', "onclick=\"showToast('success','Alertes marquées lues')\"" )}
+        ${btn('Tout marquer lu', 'fp-btn fp-btn-ghost fp-btn-sm', 'check', "onclick=\"apiAction('POST','/api/alert-rules/mark-all-read').then(()=>{showToast('success','Alertes marquées lues');render(STATE.currentSection);}).catch(()=>showToast('error','Erreur'))\"" )}
         ${btn('Config alertes',  'fp-btn fp-btn-ghost fp-btn-sm', 'settings', "onclick=\"navigate('settings');setTimeout(()=>navigateSub('alerts'),50)\"" )}
       </div>
     </div>
@@ -21302,7 +21340,7 @@ function renderDataExplorer() {
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">Dashboards sauvegardés</div>
-          ${isPro ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Nouveau dashboard créé !')">+ Créer</button>` : ''}
+          ${isPro ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('analytics')" class="fp-btn fp-btn-primary fp-btn-sm">+ Créer</button>` : ''}
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
           ${presets.map(p => `
@@ -21319,7 +21357,7 @@ function renderDataExplorer() {
                 <span style="font-size:10px;color:${p.color};font-weight:600">${p.widgets} widgets</span>
                 <div style="display:flex;gap:6px">
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('overview')">Ouvrir</button>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('success','Lien copié !')">Partager</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))">Partager</button>
                 </div>
               </div>
             </div>
@@ -21338,7 +21376,7 @@ function renderDataExplorer() {
               <div style="font-size:24px;margin-bottom:6px">${w.icon}</div>
               <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:6px">${escHtml(w.name)}</div>
               <div style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;display:inline-block;background:${pc}20;color:${pc}">${w.plan}</div>
-              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="showToast('success','Widget ajouté !')">Ajouter</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
+              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="showToast('info','Personnalisez votre dashboard depuis les Paramètres > Analytique')">Ajouter</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
             </div>`;
           }).join('')}
         </div>
@@ -21518,7 +21556,7 @@ function renderDataExplorer() {
                     </div>
                   `).join('')}
                 </div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('success','Simulation lancée !')">Simuler</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','La simulation de scénarios est disponible dans le plan Ultra')">Simuler</button>
               </div>
             </div>
           `).join('')}
@@ -21569,7 +21607,7 @@ function renderDataExplorer() {
             ${svgIcon('file-text').replace('stroke="currentColor"', 'stroke="#06b6d4"')}
             Rapports et exports disponibles
           </div>
-          ${isPro ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Génération rapport…')">+ Générer</button>` : ''}
+          ${isPro ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('reports')" class="fp-btn fp-btn-primary fp-btn-sm">+ Générer</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${reports.map(r => {
@@ -21584,7 +21622,7 @@ function renderDataExplorer() {
               </div>
               <div style="display:flex;gap:6px;flex-shrink:0">
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('info','Téléchargement…')">↓ Télécharger</button>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('success','Lien copié !')">Partager</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))">Partager</button>
               </div>
             </div>`;
           }).join('')}
@@ -21595,7 +21633,7 @@ function renderDataExplorer() {
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">⏰ Rapports planifiés</div>
-          ${isPro ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('success','Planification créée !')">+ Planifier</button>` : ''}
+          ${isPro ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>navigateSub('scheduled'),50)" class="fp-btn fp-btn-ghost fp-btn-sm">+ Planifier</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${scheduled.map(s => `
@@ -21987,7 +22025,7 @@ function renderClientMode() {
                 <td style="text-align:center">${badge(r.status, r.status === 'Partagé' ? '#22c55e' : r.status === 'Lu' ? '#2563EB' : r.status === 'Non lu' ? '#f59e0b' : '#475569')}</td>
                 <td style="text-align:center;vertical-align:middle">
                   <div style="display:inline-flex;gap:4px;justify-content:center">
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('success','Lien copié !')">Partager</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))">Partager</button>
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="if(r?.id){downloadReportPdf(r.id,r.name||'rapport');showToast('success','Téléchargement PDF…');}else{showToast('info','PDF non disponible')}">PDF</button>
                   </div>
                 </td>
@@ -22013,7 +22051,7 @@ function renderClientMode() {
                 <div style="font-size:10px;color:var(--fp-text-faint)">${s.views} vues · Expire ${escHtml(s.expires)}</div>
               </div>
               ${badge(s.active ? 'Actif' : 'Expiré', sc)}
-              ${s.active ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('success','Lien copié !')">Copier</button>` : ''}
+              ${s.active ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))">Copier</button>` : ''}
             </div>`;
           }).join('')}
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:4px" onclick="createShareLink()">+ Créer un lien de partage</button>
@@ -22079,7 +22117,7 @@ function renderClientMode() {
               </div>
               ${t.unread ? `<div style="padding:8px 14px;border-top:1px solid var(--fp-border);display:flex;gap:6px">
                 <input placeholder="Répondre à ${escHtml(t.client)}…" style="flex:1;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:6px 10px;font-size:11px;color:var(--fp-text)" />
-                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Réponse envoyée !')">Envoyer</button>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var ta=btn.closest('.fp-card')?btn.closest('.fp-card').querySelector('textarea'):null;var reply=ta?ta.value.trim():'';if(!reply){showToast('error','Rédigez votre réponse');return;}apiAction('POST','/api/review-intelligence/reply',{content:reply}).then(r=>r&&r.ok?showToast('success','Réponse envoyée !'):showToast('info','Publiez votre réponse sur la plateforme d\'avis')).catch(()=>showToast('info','Publiez votre réponse sur la plateforme d\'avis'));})(this)">Envoyer</button>
               </div>` : ''}
             </div>
           `).join('')}
@@ -22098,7 +22136,7 @@ function renderClientMode() {
                 ${badge('En attente', '#f59e0b')}
                 <div style="display:flex;gap:6px;margin-left:auto">
                   <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="this.closest('[style*=padding]').style.opacity='0.4';this.closest('[style*=padding]').style.pointerEvents='none';showToast('warning','Approbation refusée')">Refuser</button>
-                  <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="this.closest('[style*=padding]').style.borderColor='rgba(34,197,94,0.4)';this.textContent='✓ Approuvé';this.disabled=true;showToast('success','Approuvé et notifié au client !')">Approuver</button>
+                  <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="(function(btn){btn.closest('[style*=padding]').style.borderColor='rgba(34,197,94,0.4)';btn.textContent='✓ Approuvé';btn.disabled=true;apiAction('POST','/api/reports/approve',{}).then(()=>showToast('success','Approuvé et notifié au client !')).catch(()=>showToast('success','Approuvé !'));})(this)">Approuver</button>
                 </div>
               </div>
             </div>
@@ -22450,7 +22488,7 @@ function renderClientMode() {
         <div class="fp-section-sub">${clients.length} clients actifs · Score satisfaction 84/100 · Mis à jour à l\'instant</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Partager', 'fp-btn fp-btn-ghost fp-btn-sm', 'link',    "onclick=\"showToast('success','Lien de partage copié !')\"" )}
+        ${btn('Partager', 'fp-btn fp-btn-ghost fp-btn-sm', 'link',    "onclick=\"navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))\"" )}
         ${btn('Présenter','fp-btn fp-btn-primary fp-btn-sm','monitor', "onclick=\"fullscreenPresent()\"" )}
       </div>
     </div>
@@ -22581,7 +22619,7 @@ function renderMonitorsSLA() {
       </div>
       <div class="fp-section-actions">
         ${btn('Rapport SLA PDF', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', 'onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}
-        ${btn('Page statut', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', `onclick="const u=(STATE.settings&&STATE.settings.statusPageUrl)||'Non configuré';showToast('success','Lien copié : '+u);"`)}
+        ${btn('Page statut', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', `onclick="const u=(STATE.settings&&STATE.settings.statusPageUrl)||window.location.href;navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>showToast('success','Lien copié : '+u)).catch(()=>showToast('info','URL : '+u));"  `)}
       </div>
     </div>
 
@@ -23192,7 +23230,7 @@ function renderLocalSEOGBP() {
               </div>
               <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:8px">${escHtml(p.preview)}</div>
               <div style="display:flex;gap:6px">
-                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Post GBP publié ✓')">Publier</button>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var form=btn.closest('.fp-card');var textarea=form?form.querySelector('textarea'):null;var text=textarea?textarea.value.trim():'';if(!text){showToast('error','Rédigez votre post avant de publier');return;}apiAction('POST','/api/gbp-posts',{content:text,status:'published'}).then(r=>{if(r&&r.id)showToast('success','Post GBP publié ✓');else showToast('error','Erreur publication');}).catch(()=>showToast('error','Erreur publication'));})(this)">Publier</button>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()">Planifier</button>
               </div>
             </div>
@@ -23216,7 +23254,7 @@ function renderLocalSEOGBP() {
                 <span style="font-size:10px;color:var(--fp-text-faint)">${qa.date}</span>
                 ${qa.answered
                   ? `<span style="font-size:10px;color:#22c55e;font-weight:600">✓ Répondu</span>`
-                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="showToast('success','Réponse IA générée !')">Répondre</button>`
+                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="showToast('info','Fonctionnalité IA : cliquez sur \'Générer réponse IA\' dans les détails de l\'avis')">Répondre</button>`
                 }
               </div>
             </div>
@@ -24276,7 +24314,7 @@ function renderTeamPerformance() {
             ${badge(t.status, t.status==='Terminé'?'success':t.status==='En cours'?'warning':'#64748b')}
           </div>
         `).join('')}
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="align-self:flex-start;margin-top:4px" onclick="showToast('success','Nouvelle tâche créée !')">+ Assigner une tâche</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="align-self:flex-start;margin-top:4px" onclick="apiAction('POST','/api/missions',{title:'Tâche équipe',source:'team',status:'todo',priority:'medium'}).then(r=>{if(r&&r.id){showToast('success','Tâche créée !');navigate('missions');}else showToast('error','Erreur')}).catch(()=>showToast('error','Erreur'))">+ Assigner une tâche</button>
       </div>
     </div>
   `;
@@ -24469,7 +24507,7 @@ function renderSettingsAPI() {
               </div>
               <div class="fp-mono" style="font-size:11px;color:var(--fp-accent);background:rgba(37,99,235,0.08);border-radius:6px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k.key}</span>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('success','Clé copiée !')" style="padding:2px 8px;font-size:10px;flex-shrink:0">Copier</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(btn){var el=btn.previousElementSibling||btn.closest('div').querySelector('code,input');var key=el?el.textContent||el.value:'';if(key&&navigator.clipboard)navigator.clipboard.writeText(key).then(()=>showToast('success','Clé copiée !')).catch(()=>showToast('info','Copiez manuellement la clé'));else showToast('info','Sélectionnez et copiez la clé manuellement');})(this)" style="padding:2px 8px;font-size:10px;flex-shrink:0">Copier</button>
               </div>
               <div style="font-size:10px;color:var(--fp-text-faint);margin-top:6px">Créée le ${k.created}</div>
             </div>
@@ -24494,7 +24532,7 @@ function renderSettingsAPI() {
             <input class="fp-input" placeholder="https://votre-endpoint.com/webhook" value="${escHtml(w.url)}" style="font-family:var(--fp-font-mono);font-size:11px;margin-bottom:8px"/>
             <div style="display:flex;gap:8px">
               <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Ping de test envoyé !')">Tester</button>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Webhook sauvegardé !')">Sauver</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var form=btn.closest('.fp-card');var urlEl=form?form.querySelector('input[type=url],input[type=text]'):null;var url=urlEl?urlEl.value.trim():'';if(!url){showToast('error','Entrez une URL webhook');return;}apiAction('POST','/api/integrations/webhooks',{url:url}).then(r=>{if(r&&r.id)showToast('success','Webhook sauvegardé !');else showToast('error','Erreur sauvegarde');}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)">Sauver</button>
             </div>
           </div>
         `).join('')}
@@ -26079,7 +26117,7 @@ function renderGA4Live() {
         </div>
       </div>
       <div id="fp-event-stream" style="font-family:var(--fp-font-mono);font-size:11px;color:var(--fp-text-muted);max-height:200px;overflow-y:auto">
-        ${[...Array(8)].map((_,i) => {
+        ${(isDemoMode() || PREVIEW_MODE) ? [...Array(8)].map((_,i) => {
           const events = ['page_view','scroll','click','session_start','conversion','user_engagement','purchase','form_submit'];
           const pages_ = ['/','/produits','/contact','/blog','/pricing','/about'];
           const cities_ = ['Paris','Lyon','Marseille','Bordeaux','Nice','Bruxelles'];
@@ -26087,13 +26125,8 @@ function renderGA4Live() {
           const pg = pages_[i%pages_.length];
           const ci = cities_[i%cities_.length];
           const sec = i*3;
-          return `<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-            <span style="color:var(--fp-text-faint)">il y a ${sec}s</span>
-            <span style="margin:0 8px;color:${ev==='conversion'||ev==='purchase'?'#22c55e':ev==='session_start'?'#2563EB':'var(--fp-text)'}">${ev}</span>
-            <span style="color:#8b5cf6">${pg}</span>
-            <span style="margin-left:8px;color:var(--fp-text-faint)">${ci}</span>
-          </div>`;
-        }).join('')}
+          return '<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)"><span style="color:var(--fp-text-faint)">il y a '+sec+'s</span><span style="margin:0 8px;color:'+(ev==='conversion'||ev==='purchase'?'#22c55e':ev==='session_start'?'#2563EB':'var(--fp-text)')+'">'+ev+'</span><span style="color:#8b5cf6">'+pg+'</span><span style="margin-left:8px;color:var(--fp-text-faint)">'+ci+'</span></div>';
+        }).join('') : '<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">Connectez Google Analytics 4 pour voir les événements en temps réel.</div>'}
       </div>
     </div>
 
@@ -27570,7 +27603,7 @@ function renderCodeAnalysis() {
         <option value="flowpoint-app/api-server">api-server</option>
         <option value="flowpoint-app/marketing-site">marketing-site</option>
       </select>
-      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('info','Analyse en cours…');setTimeout(()=>showToast('success','Analyse terminée — 18 issues détectées'),2500)">
+      <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(){showToast('info','Analyse en cours…');apiAction('POST','/api/audits/quick-scan').then(r=>{if(r&&r.issues!=null)showToast('success','Analyse terminée — '+r.issues+' issue(s) détectée(s)');else showToast('info','Audit terminé — aucun rapport disponible');}).catch(()=>showToast('info','Lancez un audit complet depuis la page Audits'));})()">
         Analyser maintenant
       </button>
       <span style="font-size:11px;color:var(--fp-text-faint);margin-left:auto">Dernière analyse : il y a 3h</span>
@@ -29408,7 +29441,7 @@ function renderCRM() {
                 <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${s.label}</div>
                 <div style="font-size:11px;color:var(--fp-text-faint)">${s.desc}</div>
               </div>
-              ${s.ultra&&!isUltra ? `<span style="font-size:10px;color:var(--fp-text-faint)">Ultra</span>` : s.pro&&isStd ? `<span style="font-size:10px;color:var(--fp-text-faint)">Pro</span>` : `<button class="fp-toggle${s.active?' on':''}" onclick="showToast('success','Paramètre mis à jour')"></button>`}
+              ${s.ultra&&!isUltra ? `<span style="font-size:10px;color:var(--fp-text-faint)">Ultra</span>` : s.pro&&isStd ? `<span style="font-size:10px;color:var(--fp-text-faint)">Pro</span>` : `<button class="fp-toggle${s.active?' on':''}" onclick="(function(btn){var key=btn.dataset.settingKey||'setting';var val=!btn.classList.contains('on');apiAction('PATCH','/api/me/prefs',{settings:{[key]:val}}).then(()=>{btn.classList.toggle('on');}).catch(()=>showToast('error','Erreur'));}).call(this,this)"></button>`}
             </div>
           `).join('')}
         </div>
@@ -30367,7 +30400,7 @@ function renderLocalSEOReviews() {
               <div style="font-weight:600;color:var(--fp-danger)">${escHtml(a.title)}</div>
               <div style="color:var(--fp-text-faint);font-size:10px">${escHtml(a.description || '')}</div>
             </div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('success','Alerte résolue')">Résoudre</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('info','Marquez l\'alerte comme résolue depuis le panel Monitors')">Résoudre</button>
           </div>
         `).join('')}
       </div>
@@ -30402,7 +30435,7 @@ function renderLocalSEOReviews() {
                 <div style="margin-top:8px;padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:2px solid rgba(37,99,235,0.3)">
                   <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 RÉPONSE IA SUGGÉRÉE</div>
                   <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml((r.ai_reply || '').slice(0, 150))}${r.ai_reply?.length > 150 ? '…' : ''}</div>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;font-size:9px" onclick="showToast('success','Réponse marquée comme publiée')">✓ Marquer publiée</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;font-size:9px" onclick="showToast('info','Publiez votre réponse depuis la plateforme d\'avis (Google, Trustpilot…)')">✓ Marquer publiée</button>
                 </div>
               ` : isPro ? `
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;font-size:10px" onclick="showToast('info','Génération réponse IA…');window.FP_REVIEW_INTEL_API?.generateReply('${r.id}','professional','fr').then(reply=>{showToast('success','Réponse générée !');window.FP_REVIEW_INTEL_API.load();render(STATE.currentSection)})">🤖 Générer réponse IA</button>
@@ -30614,7 +30647,7 @@ function renderSettingsSSO() {
                 <span style="font-size:9px;color:var(--fp-text-faint);margin-right:4px">${pol.req}</span>
                 ${locked
                   ? `<span style="font-size:10px;color:var(--fp-text-faint)">🔒</span>`
-                  : `<button class="fp-toggle${pol.active ? ' on' : ''}" onclick="showToast('success','Politique mise à jour')"></button>`
+                  : `<button class="fp-toggle${pol.active ? ' on' : ''}" onclick="(function(btn){var active=btn.classList.contains('on');apiAction('PATCH','/api/sso/policies',{[btn.dataset.policy||'policy']:!active}).then(r=>{if(r)btn.classList.toggle('on');else showToast('error','Erreur');}).catch(()=>showToast('error','Erreur'));})(this)"></button>`
                 }
               </div>
             `;
@@ -30625,7 +30658,7 @@ function renderSettingsSSO() {
           <input class="fp-input" placeholder="votre-domaine.com, filiale.fr" ${isStd ? 'disabled' : ''}/>
         </div>
         <div style="margin-top:10px;display:flex;justify-content:flex-end">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('success','Politiques sauvegardées')">Sauvegarder</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(){var form=document.querySelector('.fp-sso-policies');var data={};form&&form.querySelectorAll('[data-policy]').forEach(t=>{data[t.dataset.policy]=t.classList.contains('on');});apiAction('PATCH','/api/sso/policies',data).then(r=>showToast('success','Politiques sauvegardées')).catch(()=>showToast('error','Erreur sauvegarde'));})()">Sauvegarder</button>
         </div>
       </div>
     ` : activeTab === 'audit' ? `

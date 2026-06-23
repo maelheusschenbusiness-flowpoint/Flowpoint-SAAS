@@ -62,20 +62,40 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
 });
 
 // ── PATCH /api/me ─────────────────────────────────────────────────────────────
-// Updates name, org name or plan — persists to DB and syncs in-memory store.
+// Updates profile, org info or plan — persists to DB and syncs in-memory store.
 router.patch("/me", async (req: Request, res: Response): Promise<void> => {
-  const { firstName, orgName, plan } = req.body as {
-    firstName?: string;
-    orgName?:   string;
-    plan?:      string;
+  const {
+    firstName, lastName, orgName, plan,
+    website, timezone, address, city, postalCode, country,
+  } = req.body as {
+    firstName?:  string;
+    lastName?:   string;
+    orgName?:    string;
+    plan?:       string;
+    website?:    string;
+    timezone?:   string;
+    address?:    string;
+    city?:       string;
+    postalCode?: string;
+    country?:    string;
   };
   const orgId = req.orgContext?.orgId ?? "default";
 
   if (typeof firstName === "string" && firstName.trim()) {
     store.me.firstName = firstName.trim();
   }
+  if (typeof lastName === "string") {
+    store.me.lastName = lastName.trim();
+  }
   if (typeof orgName === "string" && orgName.trim()) {
-    store.me.org = { name: orgName.trim() };
+    store.me.org = { ...store.me.org, name: orgName.trim() };
+  }
+  if (typeof website === "string") {
+    store.me.org = { ...store.me.org, website: website.trim() };
+  }
+  if (typeof timezone === "string" && timezone.trim()) {
+    store.me.org = { ...store.me.org, timezone: timezone.trim() };
+    if (store.settings) store.settings.timezone = timezone.trim();
   }
   if (typeof plan === "string" && ["standard", "pro", "ultra"].includes(plan.toLowerCase())) {
     store.broadcastPlanUpdate(plan.toLowerCase());
@@ -84,8 +104,15 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   // Persist to DB (non-blocking on failure)
   upsertOrgSettings(orgId, {
     firstName:   store.me.firstName,
+    lastName:    typeof lastName === "string" ? lastName.trim() : undefined,
     orgName:     store.me.org.name,
     plan:        store.me.plan,
+    website:     typeof website === "string" ? website.trim() : undefined,
+    timezone:    typeof timezone === "string" ? timezone.trim() : undefined,
+    address:     typeof address === "string" ? address.trim() : undefined,
+    city:        typeof city === "string" ? city.trim() : undefined,
+    postalCode:  typeof postalCode === "string" ? postalCode.trim() : undefined,
+    country:     typeof country === "string" ? country.trim() : undefined,
     subscriptionStatus: store.me.subscriptionStatus,
     trialEndsAt: store.me.trialEndsAt ?? null,
     stripeCustomerId: store.me.stripeCustomerId ?? "",

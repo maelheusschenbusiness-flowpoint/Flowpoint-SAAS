@@ -748,4 +748,51 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
   res.json({ received: true });
 });
 
+// ── POST /billing/addon-checkout ───────────────────────────────────────────────
+// Creates a Stripe checkout session for a single add-on purchase.
+router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Request, res: Response): Promise<void> => {
+  const { addonKey = "", addonName = "", price = "" } = req.body as { addonKey?: string; addonName?: string; price?: string };
+  if (!addonKey) { res.status(400).json({ error: "addonKey required" }); return; }
+
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
+
+  const priceId = ADDON_PRICE_IDS[addonKey];
+  if (!priceId) {
+    res.status(422).json({ error: `Aucun prix Stripe configuré pour l'add-on "${addonName || addonKey}". Contactez le support.` });
+    return;
+  }
+
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      logger.error("[Billing] STRIPE_SECRET_KEY not set — addon checkout unavailable");
+      res.status(503).json({ error: "Payment service not configured. Contact support." });
+      return;
+    }
+    logger.warn("[Billing] STRIPE_SECRET_KEY not set — returning mock addon checkout (dev only)");
+    res.json({ url: `https://checkout.stripe.com/c/pay/test_addon_${addonKey}_${Date.now()}`, mock: true });
+    return;
+  }
+
+  try {
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-05-28.basil" as Parameters<typeof Stripe>[1]["apiVersion"] });
+    const orgId  = (req as Request & { orgId?: string }).orgId ?? "default";
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${publicUrl}/billing?addon_success=${encodeURIComponent(addonKey)}`,
+      cancel_url:  `${publicUrl}/billing?addon_cancel=1`,
+      metadata: { addonKey, addonName, orgId },
+    });
+
+    store.logActivity({ type: "billing", label: `Add-on checkout initié : ${addonName || addonKey}`, targetId: session.id, targetType: "billing", metadata: { addonKey } }).catch(() => {});
+    res.json({ url: session.url });
+  } catch (err) {
+    logger.error({ err, addonKey }, "[Billing] addon-checkout failed");
+    res.status(500).json({ error: "Erreur lors de la création du paiement" });
+  }
+});
+
 export default router;
