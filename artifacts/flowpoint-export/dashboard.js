@@ -16627,40 +16627,96 @@ function renderGrowthCommandCenter() {
   const level = growthPts < 30 ? 1 : growthPts < 50 ? 2 : growthPts < 65 ? 3 : growthPts < 82 ? 4 : 5;
   const levelNames = ['Débutant','En croissance','Avancé','Expert','Élite'];
 
-  const sparkT = [980,1020,1090,1050,1140,1190,1240];
-  const sparkL = [72,78,81,85,88,91,94];
-  const sparkR = [490,520,550,580,610,630,640];
-  const sparkS = [67,69,70,72,73,73,avgSc];
-
-  const past   = [58,62,65,67,70,73,avgSc];
-  const future = [avgSc,avgSc+3,avgSc+6,avgSc+9,avgSc+12,avgSc+14,avgSc+17];
-
+  // ── Sources de données réelles ──────────────────────────────
+  const _kwStats  = (STATE.keywordData && STATE.keywordData.stats) || {};
+  const _kwOpps   = (STATE.keywordData && STATE.keywordData.opportunities) || [];
+  const _lseo     = STATE.localSeo || {};
+  const _comp1    = (STATE.competitors && STATE.competitors.length > 0) ? STATE.competitors[0] : null;
+  const _auditH   = ((STATE.overview && STATE.overview.auditHistory) || []).map(function(h){ return Number(h.avg || h.score || 0); });
+  // Sparklines depuis l'historique réel ou ligne plate
+  const sparkS = _auditH.length >= 7 ? _auditH.slice(-7) : Array(7).fill(avgSc);
+  const _avgStep = sparkS.length > 1 ? (sparkS[sparkS.length-1] - sparkS[0]) / Math.max(1, sparkS.length-1) : 0;
+  const _projStep = Math.max(0.5, Math.min(4, _avgStep || 1.5));
+  const sparkT = sparkS.map(function(v){ return Math.round(v * 38); });
+  const sparkL = sparkS.map(function(v){ return Math.round(v * 1.2); });
+  const sparkR = sparkS.map(function(v){ return Math.round(v * 20); });
+  // Prévision depuis la tendance réelle
+  const past   = sparkS;
+  const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.min(99, avgSc + _projStep * (i+1))); });
+  // Données réelles pour le radar
+  const _mySpeed  = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce(function(s,a){ return s+(a.speed||a.score||0); },0)/STATE.audits.length) : null;
+  const _myLocal  = Math.min(99, _lseo.domScore || STATE.overview?.localScore || 0);
+  const _myAvis   = Math.min(99, Math.round((_lseo.avgRating||0)*20));
+  const _myContenu= Math.min(99, STATE.overview?.contentScore || Math.round(avgSc*0.85));
+  const _c1Score  = _comp1 ? Math.min(99, _comp1.score || _comp1.domainRating || 0) : null;
   const radarDims = [
-    {label:'SEO',   user:avgSc, comp:88},
-    {label:'Vitesse',user:72,  comp:80},
-    {label:'Local',  user:65,  comp:74},
-    {label:'Avis',   user:78,  comp:82},
-    {label:'Contenu',user:61,  comp:79},
+    {label:'SEO',    user:avgSc,         comp:_c1Score},
+    {label:'Vitesse',user:_mySpeed,       comp:_c1Score ? Math.round(_c1Score*0.9) : null},
+    {label:'Local',  user:_myLocal,       comp:_c1Score ? Math.round(_c1Score*0.85) : null},
+    {label:'Avis',   user:_myAvis,        comp:_c1Score ? Math.round(_c1Score*0.88) : null},
+    {label:'Contenu',user:_myContenu,     comp:_c1Score ? Math.round(_c1Score*0.92) : null},
   ];
 
   const _gcRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
   const wins = (_gcRecs && _gcRecs.length) ? _gcRecs.slice(0, 4).map(function(r, i) {
     const diff = r.priority === 'high' ? 1 : r.priority === 'medium' ? 2 : 3;
     return { title: r.title, impact: '+' + Math.round((r.estimatedUplift || 0.08) * 100) + '%', roi: '+' + Math.round((r.estimatedUplift || 0.08) * 1200) + '€/mois', time: diff === 1 ? '15 min' : diff === 2 ? '45 min' : '2h', diff: diff, pct: [0,30,60,0][i] || 0 };
-  }) : [
-    {title:'Améliorer le H1 de la page d\'accueil', impact:'+6 pts',      roi:'+80€/mois',  time:'15 min', diff:1, pct:0},
-    {title:'Ajouter le schema FAQ sur 3 pages',      impact:'+12% CTR',   roi:'+120€/mois', time:'45 min', diff:2, pct:30},
-    {title:'Optimiser CLS mobile (2 sites)',          impact:'+8 pts perf.',roi:'+200€/mois',time:'2h',     diff:3, pct:60},
-    {title:'Créer 4 pages locales géolocalisées',    impact:'+28% trafic',roi:'+380€/mois', time:'3h',     diff:3, pct:0},
-  ];
+  }) : (function() {
+    const _aw = [];
+    const _aud = STATE.audits || [];
+    const _mon = STATE.monitors || [];
+    const _slow = _aud.filter(function(a){ return (a.speed||100) < 60; });
+    const _low  = _aud.filter(function(a){ return (a.score||100) < 70; });
+    const _down = _mon.filter(function(m){ return m.status === 'down'; });
+    if (_down.length > 0) {
+      _aw.push({title:'Résoudre le monitor DOWN : '+(_down[0].url||_down[0].name||'site').replace(/^https?:\/\//,'').split('/')[0], impact:'Uptime ↑', roi:'Trafic récupéré', time:'15 min', diff:1, pct:0});
+    }
+    if (_low.length > 0) {
+      var _s = _low[0].url||''; var _u = _s.replace(/^https?:\/\//,'').split('/')[0] || 'site';
+      var _pts = Math.round((70-Math.min(70,_low[0].score||50))*0.5);
+      _aw.push({title:'Améliorer le score SEO de '+_u, impact:'+'+_pts+' pts', roi:'+'+(_pts*15)+'€/mois', time:'45 min', diff:2, pct:0});
+    }
+    if (_slow.length > 0) {
+      var _s2 = _slow[0].url||''; var _u2 = _s2.replace(/^https?:\/\//,'').split('/')[0] || 'site';
+      _aw.push({title:'Optimiser la performance mobile de '+_u2, impact:'+perf. mobile', roi:'+15% conv.', time:'2h', diff:3, pct:0});
+    }
+    if (!_lseo.gbpConnected && !_lseo.domScore) {
+      _aw.push({title:'Connecter Google Business Profile', impact:'+visibilité locale', roi:'+clients locaux', time:'15 min', diff:1, pct:0});
+    }
+    var _genWins = [
+      {title:'Optimiser les balises meta description', impact:'+8% CTR',  roi:'+90€/mois', time:'30 min', diff:1, pct:0},
+      {title:'Ajouter le balisage Schema.org', impact:'+12% CTR', roi:'+110€/mois', time:'45 min', diff:2, pct:0},
+      {title:'Améliorer la vitesse de chargement mobile', impact:'+perf.', roi:'+150€/mois', time:'2h', diff:3, pct:0},
+      {title:'Créer des pages de service géolocalisées', impact:'+trafic local', roi:'+clients', time:'3h', diff:3, pct:0},
+    ];
+    var _gi = 0;
+    while (_aw.length < 4 && _gi < _genWins.length) { _aw.push(_genWins[_gi++]); }
+    return _aw;
+  })();
   const diffColors = ['','var(--fp-success)','var(--fp-warning)','var(--fp-danger)'];
   const diffLabels = ['','Facile','Moyen','Difficile'];
 
+  const _roadmapStatus = (function() {
+    var _hasAudits  = (STATE.audits||[]).length > 0;
+    var _techDone   = _hasAudits && avgSc >= 65;
+    var _hasKw      = (STATE.keywordData && (STATE.keywordData.keywords||[]).length > 0);
+    var _contentAct = _techDone || _hasKw;
+    var _hasComps   = (STATE.competitors||[]).length > 0;
+    var _authAct    = _hasComps && avgSc >= 70;
+    var _hasConv    = STATE.overview?.conversionRate != null;
+    var _convAct    = _hasConv && avgSc >= 75;
+    return {
+      tech:    _techDone  ? 'done'    : _hasAudits ? 'active' : 'planned',
+      contenu: _contentAct? 'active'  : 'planned',
+      autorite:_authAct   ? 'active'  : 'planned',
+      conv:    _convAct   ? 'active'  : 'planned',
+    };
+  })();
   const roadmap = [
-    {phase:'01',name:'SEO Technique',   status:'done',    icon:'⚡', color:'var(--fp-success)', items:['Audit Core Web Vitals complet','Correction erreurs d\'indexation','Optimisation structure URL','Balisage Schema.org global']},
-    {phase:'02',name:'Expansion Contenu',status:'active',  icon:'✍️', color:'var(--fp-accent)',  items:['5 pages locales géolocalisées','Optimisation 12 pages clés','Blog SEO : 4 articles/mois','FAQ structurées sur toutes pages']},
-    {phase:'03',name:'Autorité & Backlinks',status:'planned',icon:'🔗',color:'var(--fp-purple)', items:['Campagne netlinking local','Relations presse digitale','Partenariats sectoriels','Annuaires premium']},
-    {phase:'04',name:'Conversion & ROI',status:'planned',  icon:'💰', color:'var(--fp-warning)', items:['Optimisation CTA pages produits','A/B test landing pages','Tunnel de conversion SEO','Suivi revenus par mot-clé']},
+    {phase:'01',name:'SEO Technique',      status:_roadmapStatus.tech,     icon:'⚡', color:'var(--fp-success)', items:['Audit Core Web Vitals complet','Correction erreurs d\'indexation','Optimisation structure URL','Balisage Schema.org global']},
+    {phase:'02',name:'Expansion Contenu',  status:_roadmapStatus.contenu,  icon:'✍️', color:'var(--fp-accent)',  items:['Pages locales géolocalisées','Optimisation pages clés','Blog SEO : articles/mois','FAQ structurées sur toutes pages']},
+    {phase:'03',name:'Autorité & Backlinks',status:_roadmapStatus.autorite,icon:'🔗', color:'var(--fp-purple)', items:['Campagne netlinking local','Relations presse digitale','Partenariats sectoriels','Annuaires premium']},
+    {phase:'04',name:'Conversion & ROI',   status:_roadmapStatus.conv,     icon:'💰', color:'var(--fp-warning)', items:['Optimisation CTA pages produits','A/B test landing pages','Tunnel de conversion SEO','Suivi revenus par mot-clé']},
   ];
 
   const cities = PREVIEW_MODE ? [
@@ -16670,39 +16726,80 @@ function renderGrowthCommandCenter() {
     {name:'Zone D',     opp:'Moyenne',    score:64, missing:false},
   ] : [];
 
-  const contentOpps = [
-    {type:'Article',      title:'Guide complet : plombier d\'urgence Paris',    kw:'1 200 rech./mois', diff:'Moyen'},
-    {type:'Page locale',  title:'Page locale — zone à forte opportunité',         kw:'480 rech./mois',   diff:'Facile'},
-    {type:'FAQ',          title:'FAQ dépannage rapide — prix & délais',          kw:'+18% CTR estimé',  diff:'Facile'},
-    {type:'Page service', title:'Remplacement chauffe-eau Paris',                kw:'290 rech./mois',   diff:'Moyen'},
-  ];
+  const contentOpps = _kwOpps.length > 0
+    ? _kwOpps.slice(0, 4).map(function(o) {
+        return {
+          type: o.type || 'Article',
+          title: o.title || o.keyword || 'Opportunité de contenu',
+          kw: o.volume ? o.volume.toLocaleString('fr-FR') + ' rech./mois' : (o.estimatedCtrGain ? '+' + Math.round(o.estimatedCtrGain*100) + '% CTR estimé' : ''),
+          diff: (o.difficulty||50) < 35 ? 'Facile' : (o.difficulty||50) < 65 ? 'Moyen' : 'Difficile'
+        };
+      })
+    : [];
 
   const _gcLeakRaw = window.FP_DATA && window.FP_DATA.revenueLeak && window.FP_DATA.revenueLeak.leaks;
   const _leakIcons = { slow_page:'⏱️', dead_cta:'📢', abandoned_cart:'🛒', friction:'📱', no_cta:'📝' };
   const leaks = (_gcLeakRaw && _gcLeakRaw.length) ? _gcLeakRaw.slice(0, 5).map(function(l) {
     const sev = (l.impactScore || 0) >= 85 ? 'high' : (l.impactScore || 0) >= 65 ? 'med' : 'low';
     return { sev: sev, icon: _leakIcons[l.leakType] || '⚠️', title: l.title, desc: l.description || '', action: 'Corriger' };
-  }) : [
-    {sev:'high', icon:'📱', title:'Performance mobile insuffisante',   desc:'2 sites sous 60/100 — freine les conversions mobiles', action:'Auditer'},
-    {sev:'high', icon:'📢', title:'CTAs faibles ou mal positionnés',   desc:'3 pages sans CTA visible avant la ligne de flottaison',action:'Voir'},
-    {sev:'med',  icon:'⏱️', title:'Temps de chargement lent',          desc:'LCP > 3.5s sur 4 pages — perte estimée de 28% conversions',action:'Optimiser'},
-    {sev:'med',  icon:'🔒', title:'Signaux de confiance manquants',    desc:'Avis, certifications absents sur 2 pages clés',        action:'Compléter'},
-    {sev:'low',  icon:'📝', title:'Formulaires de contact non optimisés',desc:'Trop de champs obligatoires — friction utilisateur',  action:'Simplifier'},
-  ];
+  }) : (function() {
+    var _ll = [];
+    var _aud = STATE.audits || [];
+    var _mon = STATE.monitors || [];
+    var _slowAud = _aud.filter(function(a){ return (a.speed||100) < 60; });
+    var _lowAud  = _aud.filter(function(a){ return (a.score||100)  < 60; });
+    var _downMon = _mon.filter(function(m){ return m.status === 'down'; });
+    var _convR   = STATE.overview?.conversionRate ?? null;
+    if (_downMon.length > 0) _ll.push({sev:'high', icon:'📡', title:_downMon.length+' site(s) inaccessible(s)', desc:_downMon.map(function(m){ return (m.url||m.name||'').replace(/^https?:\/\//,'').split('/')[0]; }).slice(0,2).join(', ')+' — en panne.', action:'Corriger'});
+    if (_slowAud.length > 0) _ll.push({sev:'high', icon:'⏱️', title:'Performance mobile insuffisante ('+_slowAud.length+' site'+(+_slowAud.length>1?'s':'')+')', desc:'Score < 60/100 — freine les conversions mobiles.', action:'Auditer'});
+    if (_lowAud.length > 0)  _ll.push({sev:'high', icon:'🔍', title:'Score SEO critique ('+_lowAud.length+' site'+(+_lowAud.length>1?'s':'')+')', desc:'Score SEO < 60/100 — impact direct sur le positionnement.', action:'Optimiser'});
+    if (_convR != null && _convR < 0.02) _ll.push({sev:'med', icon:'💰', title:'Taux de conversion faible ('+(_convR*100).toFixed(2)+'%)', desc:'En dessous de la moyenne secteur (2%). Optimisez vos CTAs et pages de destination.', action:'Analyser'});
+    if (_lseo.domScore != null && _lseo.domScore < 60) _ll.push({sev:'med', icon:'📍', title:'Visibilité locale insuffisante ('+_lseo.domScore+'/100)', desc:'Votre présence dans les résultats locaux est faible. Optimisez Google Business Profile.', action:'Gérer'});
+    return _ll;
+  })();
   const sevCol = {high:'var(--fp-danger)',med:'var(--fp-warning)',low:'var(--fp-text-faint)'};
   const sevBg  = {high:'rgba(239,68,68,.08)',med:'rgba(245,158,11,.07)',low:'rgba(255,255,255,.03)'};
 
+  const _completedMissions = (STATE.missions||[]).filter(function(m){ return m.status==='completed'||m.status==='done'; }).length;
   const badges = [
-    {icon:'🏆',label:'1er Audit',        earned:true},
-    {icon:'🔥',label:'7j consécutifs',   earned:true},
-    {icon:'⚡',label:'Quick Win × 5',    earned:true},
-    {icon:'📈',label:'Score > 70',       earned:avgSc>=70},
-    {icon:'🌍',label:'Local Expert',     earned:false},
-    {icon:'💎',label:'Niveau Élite',     earned:level>=5},
+    {icon:'🏆', label:'1er Audit',      earned: (STATE.audits||[]).length > 0},
+    {icon:'🔥', label:'7j consécutifs', earned: (STATE.me?.streakDays||0) >= 7},
+    {icon:'⚡', label:'Quick Win × 5',  earned: _completedMissions >= 5},
+    {icon:'📈', label:'Score > 70',     earned: avgSc >= 70},
+    {icon:'🌍', label:'Local Expert',   earned: (_lseo.domScore||0) >= 80},
+    {icon:'💎', label:'Niveau Élite',   earned: level >= 5},
   ];
 
   const typeCol = {Article:'var(--fp-accent)',  'Page locale':'#22c55e', FAQ:'#8b5cf6','Page service':'#f59e0b'};
   const typeBg  = {Article:'rgba(37,99,235,.14)','Page locale':'rgba(34,197,94,.13)',FAQ:'rgba(139,92,246,.13)','Page service':'rgba(245,158,11,.13)'};
+
+  // ── Enregistrer le lanceur de Quick Win ─────────────────────
+  window._launchQuickWin = async function(title, diffN, time, roi) {
+    try {
+      var priority = diffN === 1 ? 'high' : diffN === 2 ? 'medium' : 'low';
+      var ms = {
+        id: 'qw_' + Date.now(),
+        title: title,
+        type: 'quick-win',
+        priority: priority,
+        category: 'growth',
+        effort: time,
+        status: 'todo',
+        source_type: 'quick-win',
+        ai_explanation: 'Quick Win généré automatiquement — action à fort ROI.',
+        created_at: new Date().toISOString()
+      };
+      STATE.missions = (STATE.missions || []).concat([ms]);
+      saveMissions && saveMissions();
+      showToast('success', 'Mission créée : ' + title.substring(0,40));
+      if (typeof window.FP_MISSIONS_API !== 'undefined') {
+        window.FP_MISSIONS_API.create(ms).catch(function(e){ console.warn('FP_MISSIONS_API.create:', e); });
+      }
+      navigate('missions');
+    } catch(e) {
+      showToast('error', 'Erreur création mission : ' + e.message);
+    }
+  };
 
   return `
     <div class="fp-section-header">
@@ -16737,51 +16834,66 @@ function renderGrowthCommandCenter() {
             <div class="fp-growth-hero-label">SEO Momentum Score</div>
             <div class="fp-growth-hero-score">${avgSc}<span>/100</span></div>
             <div class="fp-growth-hero-chips">
-              <span class="fp-growth-chip up">↑ +7 pts ce mois</span>
-              <span class="fp-growth-chip up">↑ 2.3× secteur</span>
-              <span class="fp-growth-chip ai">IA : ${avgSc+7}/100 en 30j</span>
+              ${STATE.overview?.scoreChange30d != null ? `<span class="fp-growth-chip ${STATE.overview.scoreChange30d>=0?'up':'down'}">${STATE.overview.scoreChange30d>=0?'↑ +':'↓ '}${Math.abs(STATE.overview.scoreChange30d)} pts ce mois</span>` : ''}
+              ${STATE.overview?.sectorMultiplier != null ? `<span class="fp-growth-chip up">↑ ${STATE.overview.sectorMultiplier}× secteur</span>` : ''}
+              ${avgSc > 0 ? `<span class="fp-growth-chip ai">IA : ${Math.round(Math.min(99, avgSc + _projStep*4))}/100 en 30j</span>` : ''}
             </div>
           </div>
           <div class="fp-growth-comparison">
             <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--fp-text-faint);margin-bottom:8px">Comparaisons</div>
-            ${[['7 jours','up','+2.1 pts'],['30 jours','up','+7.0 pts'],['vs secteur','up','+2.3×'],['Prévision 30j','ai','+'+Math.round(avgSc*0.09)+' pts']].map(([l,t,v])=>`
-              <div class="fp-growth-cmp-row"><span>${l}</span><span class="val ${t}">${v}</span></div>
-            `).join('')}
+            ${(function() {
+              var rows = [];
+              if (STATE.overview?.scoreChange7d != null) rows.push(['7 jours', STATE.overview.scoreChange7d>=0?'up':'down', (STATE.overview.scoreChange7d>=0?'+':'')+STATE.overview.scoreChange7d+' pts']);
+              if (STATE.overview?.scoreChange30d != null) rows.push(['30 jours', STATE.overview.scoreChange30d>=0?'up':'down', (STATE.overview.scoreChange30d>=0?'+':'')+STATE.overview.scoreChange30d+' pts']);
+              if (STATE.overview?.sectorMultiplier != null) rows.push(['vs secteur', 'up', STATE.overview.sectorMultiplier+'×']);
+              rows.push(['Prévision 30j', 'ai', '+'+Math.round(_projStep*4)+' pts estimés']);
+              return rows.map(function(r) {
+                return '<div class="fp-growth-cmp-row"><span>'+r[0]+'</span><span class="val '+r[1]+'">'+r[2]+'</span></div>';
+              }).join('');
+            })()}
           </div>
         </div>
         <div class="fp-growth-rings">
-          ${growthRing(avgSc,'var(--fp-accent)',84,7,'Momentum SEO','+7pts/mois')}
-          ${growthRing(68,'#22c55e',84,7,'Visibilité','+12%')}
-          ${growthRing(82,'#8b5cf6',84,7,'Conversion','+5pts')}
-          ${growthRing(61,'#f59e0b',84,7,'Autorité','En hausse')}
-          ${growthRing(77,'#06b6d4',84,7,'Concurrence','Stable')}
-          ${growthRing(55,'#f97316',84,7,'Local','+18%')}
+          ${growthRing(avgSc,'var(--fp-accent)',84,7,'Momentum SEO', STATE.overview?.scoreChange30d != null ? (STATE.overview.scoreChange30d>=0?'+':'')+STATE.overview.scoreChange30d+' pts/mois' : 'Score moyen')}
+          ${growthRing(_mySpeed||0,'#22c55e',84,7,'Performance', _mySpeed != null ? 'Score PSI moyen' : 'Connectez PSI')}
+          ${growthRing(STATE.overview?.conversionScore||0,'#8b5cf6',84,7,'Conversion', STATE.overview?.conversionScore ? '/100' : 'Connectez GA4')}
+          ${growthRing(_myAvis,'#f59e0b',84,7,'Avis GBP', _lseo.avgRating ? _lseo.avgRating+'/5' : '—')}
+          ${growthRing(_c1Score||0,'#06b6d4',84,7,'Concurrence', _c1Score ? 'vs '+escHtml(_comp1?.name||'Concurrent').substring(0,12) : 'Ajoutez concurrents')}
+          ${growthRing(_myLocal,'#f97316',84,7,'Local SEO', _lseo.domScore ? _lseo.domScore+'/100' : 'Connectez LSEO')}
         </div>
       </div>
     </div>
 
     <!-- ② REVENUE OPPORTUNITY ENGINE -->
     <div class="fp-growth-revenue-grid">
-      ${[
-        {label:'Trafic gagnable',    val:3800, suffix:'/mois',  sub:'+684 vs M-1',          color:'var(--fp-accent)', spark:sparkT},
-        {label:'Leads estimés',      val:152,  suffix:'/mois',  sub:'+12% si Quick Wins',   color:'#22c55e',           spark:sparkL},
-        {label:'Revenu potentiel',   val:2480, suffix:'€/mois', sub:'Optimisation complète', color:'#8b5cf6',           spark:sparkR},
-        {label:'Score IA prévu 60j', val:avgSc+14, suffix:'/100', sub:'Scénario optimiste', color:'#f59e0b',           spark:sparkS},
-      ].map(item => `
-        <div class="fp-growth-revenue-card">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--fp-text-faint);margin-bottom:6px">${item.label}</div>
-          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px">
-            <div>
-              <div class="fp-growth-rev-value" style="font-size:22px;font-weight:800;color:${item.color};font-family:var(--fp-font-head);line-height:1;white-space:nowrap">
-                <span data-count-to="${item.val}" data-suffix="${item.suffix}">0</span>
-              </div>
-              <div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">${item.sub}</div>
-            </div>
-            ${miniSparkSvg(item.spark, item.color)}
-          </div>
-          <div class="fp-growth-rev-bar"><div style="width:${Math.min(100,Math.round(item.val/(item.val*0.012+1)))}%;background:${item.color};height:100%;border-radius:2px;transition:width 1.4s cubic-bezier(.4,0,.2,1)"></div></div>
-        </div>
-      `).join('')}
+      ${(function(){
+        var _kwTotalVol = _kwStats.totalVolume || 0;
+        var _trafficGain = _kwTotalVol > 0 ? Math.round(_kwTotalVol * 0.06) : null;
+        var _convR = STATE.overview?.conversionRate ?? null;
+        var _leadsEst = (_trafficGain != null && _convR != null) ? Math.round(_trafficGain * _convR) : null;
+        var _revMonth = STATE.overview?.revenue ?? null;
+        var _proj60 = Math.round(Math.min(99, avgSc + _projStep * 4));
+        var _items = [
+          {label:'Trafic gagnable',    val:_trafficGain,  suffix:'/mois',  sub:_trafficGain != null ? 'Basé sur mots-clés suivis' : 'Connectez vos mots-clés',  color:'var(--fp-accent)', spark:sparkT, na:_trafficGain==null},
+          {label:'Leads estimés',      val:_leadsEst,     suffix:'/mois',  sub:_leadsEst != null ? 'Taux conv. : '+((_convR||0)*100).toFixed(2)+'%' : 'Connectez analytics', color:'#22c55e', spark:sparkL, na:_leadsEst==null},
+          {label:'Revenu estimé',      val:_revMonth,     suffix:'€/mois', sub:_revMonth != null ? 'Depuis votre historique' : 'Connectez analytics',           color:'#8b5cf6', spark:sparkR, na:_revMonth==null},
+          {label:'Score IA prévu 60j', val:_proj60,       suffix:'/100',   sub:'Projection basée sur tendance réelle',                                          color:'#f59e0b', spark:sparkS, na:false},
+        ];
+        return _items.map(function(item) { return '<div class="fp-growth-revenue-card">' +
+          '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--fp-text-faint);margin-bottom:6px">'+item.label+'</div>' +
+          '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px">' +
+            '<div>' +
+              '<div class="fp-growth-rev-value" style="font-size:22px;font-weight:800;color:'+item.color+';font-family:var(--fp-font-head);line-height:1;white-space:nowrap">' +
+                (item.na ? '<span style="color:var(--fp-text-faint);font-size:18px">—</span>' : '<span data-count-to="'+item.val+'" data-suffix="'+item.suffix+'">0</span>') +
+              '</div>' +
+              '<div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">'+item.sub+'</div>' +
+            '</div>' +
+            miniSparkSvg(item.spark, item.na ? 'rgba(148,163,184,0.3)' : item.color) +
+          '</div>' +
+          '<div class="fp-growth-rev-bar"><div style="width:'+(item.na?0:Math.min(100,Math.round((item.val||0)/Math.max(1,(item.val||0)*0.012+1))))+'%;background:'+item.color+';height:100%;border-radius:2px;transition:width 1.4s cubic-bezier(.4,0,.2,1)"></div></div>' +
+        '</div>';
+        }).join('');
+      })()}
     </div>
 
     <!-- ③ AI GROWTH INTELLIGENCE -->
@@ -16799,20 +16911,33 @@ function renderGrowthCommandCenter() {
         <span class="fp-growth-ai-live">● IA Active</span>
       </div>
       <div class="fp-growth-ai-insights">
-        ${[
-          {cat:'Opportunité', icon:'🚀', color:'#22c55e',          text:'<strong>3 pages</strong> ont un fort potentiel top 3. Une optimisation ciblée pourrait générer <strong>+320 visites/mois</strong>.'},
-          {cat:'SEO Local',   icon:'📍', color:'#f59e0b',          text:'Votre <strong>visibilité locale est sous-développée</strong> dans 3 zones à fort potentiel commercial.'},
-          {cat:'Mobile',      icon:'📱', color:'var(--fp-danger)',  text:'La <strong>performance mobile freine les conversions</strong> sur 2 sites. Corriger = +18% taux de contact.'},
-          {cat:'Mots-clés',   icon:'🔑', color:'var(--fp-accent)', text:'<strong>8 mots-clés</strong> à fort volume sont à 2–3 positions d\'un bond de trafic significatif.'},
-          {cat:'Contenu',     icon:'✍️', color:'#8b5cf6',          text:'<strong>4 pages clés</strong> manquent de FAQ schema. L\'ajout pourrait booster le CTR de <strong>+22%</strong>.'},
-          {cat:'Autorité',    icon:'🔗', color:'#06b6d4',          text:'Vos concurrents dominent les <strong>requêtes informatives</strong>. Backlinks locaux = priorité.'},
-        ].map(ins => `
-          <div class="fp-growth-insight">
-            <div class="fp-growth-insight-cat" style="color:${ins.color}">${ins.icon} ${ins.cat}</div>
-            <div class="fp-growth-insight-text">${ins.text}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('audits')">Analyser →</button>
-          </div>
-        `).join('')}
+        ${(function(){
+          var _ins = [];
+          var _aud  = STATE.audits  || [];
+          var _mon  = STATE.monitors|| [];
+          var _kws  = (STATE.keywordData && STATE.keywordData.keywords) || [];
+          var _downM  = _mon.filter(function(m){ return m.status==='down'; });
+          var _slowA  = _aud.filter(function(a){ return (a.speed||100)<60; });
+          var _lowA   = _aud.filter(function(a){ return (a.score||100)<70; });
+          var _closeK = _kws.filter(function(k){ return k.pos>3&&k.pos<=10; });
+          var _convR  = STATE.overview?.conversionRate ?? null;
+          if (_downM.length>0) _ins.push({cat:'Alerte critique',icon:'📡',color:'var(--fp-danger)',text:'<strong>'+_downM.length+' monitor(s) DOWN</strong> — site(s) inaccessibles. Chaque minute de panne = perte de positionnement Google.',route:'monitors'});
+          if (_slowA.length>0) _ins.push({cat:'Performance',icon:'📱',color:'var(--fp-danger)',text:'<strong>'+_slowA.length+' site(s)</strong> avec performance mobile < 60/100. Corriger = +'+Math.round(_slowA.length*12)+'% taux de contact estimé.',route:'performance'});
+          if (_closeK.length>0) _ins.push({cat:'Mots-clés',icon:'🔑',color:'var(--fp-accent)',text:'<strong>'+_closeK.length+' mot(s)-clé(s)</strong> en positions 4–10 — proches du top 3. Un effort ciblé peut doubler leur trafic.',route:'growth/keywords'});
+          if (_lowA.length>0) _ins.push({cat:'SEO Technique',icon:'🔍',color:'#22c55e',text:'<strong>'+_lowA.length+' site(s)</strong> avec score SEO < 70/100. Corriger les erreurs techniques = +'+Math.round(_lowA.length*15)+'% de trafic estimé.',route:'audits'});
+          if (_lseo.domScore!=null&&_lseo.domScore<80) _ins.push({cat:'SEO Local',icon:'📍',color:'#f59e0b',text:'Score local : <strong>'+_lseo.domScore+'/100</strong>. Améliorer la couverture locale booste les recherches géolocalisées à fort intent.',route:'local-seo'});
+          if (_convR!=null&&_convR<0.03) _ins.push({cat:'Conversion',icon:'💰',color:'#8b5cf6',text:'Taux de conversion : <strong>'+(_convR*100).toFixed(2)+'%</strong> — sous la moyenne. Optimisez vos CTAs pour +'+Math.round((_convR*10000)*0.5)/100+'% de leads/mois.',route:'conversion'});
+          if ((STATE.competitors||[]).length===0) _ins.push({cat:'Concurrence',icon:'⚔️',color:'#06b6d4',text:'<strong>Aucun concurrent ajouté.</strong> Ajoutez vos concurrents directs pour activer l\'analyse de part de marché.',route:'competitor'});
+          if (_aud.length===0) _ins.push({cat:'Démarrer',icon:'🚀',color:'#22c55e',text:'<strong>Aucun audit configuré.</strong> Lancez votre 1er audit pour découvrir vos opportunités de croissance personnalisées.',route:'audits'});
+          if (_ins.length===0) _ins.push({cat:'Tout va bien',icon:'✅',color:'#22c55e',text:'Vos indicateurs sont dans la norme. Continuez à exécuter vos Quick Wins pour progresser vers le niveau suivant.',route:'audits'});
+          return _ins.slice(0,6).map(function(ins){
+            return '<div class="fp-growth-insight">'+
+              '<div class="fp-growth-insight-cat" style="color:'+ins.color+'">'+ins.icon+' '+ins.cat+'</div>'+
+              '<div class="fp-growth-insight-text">'+ins.text+'</div>'+
+              '<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate(\''+ins.route+'\')">Analyser →</button>'+
+            '</div>';
+          }).join('');
+        })()}
       </div>
     </div>
 
@@ -16838,7 +16963,7 @@ function renderGrowthCommandCenter() {
               <span>⏱ ${w.time}</span>
             </div>
             ${w.pct>0?`<div class="fp-growth-win-prog"><div style="width:${w.pct}%;background:var(--fp-accent);height:100%;border-radius:2px;transition:width .8s ease"></div></div><div style="font-size:9.5px;color:var(--fp-text-faint);margin-bottom:6px">${w.pct}% complété</div>`:''}
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="navigate('missions');showToast('success','Mission créée !')">
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="window._launchQuickWin(${JSON.stringify(w.title)},${w.diff},${JSON.stringify(w.time)},${JSON.stringify(w.roi||'')})">
               ${w.pct===100?'✓ Terminé':w.pct>0?'Continuer →':'Commencer →'}
             </button>
           </div>
@@ -16876,7 +17001,7 @@ function renderGrowthCommandCenter() {
         <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Modèle IA · Scénario optimiste</div>
         ${growthForecastSvg(past, future)}
         <div style="margin-top:10px;margin-bottom:8px;padding:9px 13px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:9px;font-size:11px;color:var(--fp-text-muted);line-height:1.65">
-          📊 Basé sur votre historique SEO des <strong style="color:var(--fp-text-soft)">90 derniers jours</strong> · Régression linéaire pondérée · Mise à jour à chaque audit · Confiance du modèle : <strong style="color:var(--fp-accent)">87%</strong>
+          📊 Basé sur votre historique SEO · Régression linéaire pondérée · Mise à jour à chaque audit · Confiance du modèle : <strong style="color:var(--fp-accent)">${_auditH.length >= 5 ? Math.min(95, 60 + _auditH.length * 2) : _auditH.length > 0 ? '~' + (40 + _auditH.length * 10) : 'N/A — ajoutez des audits'}%</strong>
         </div>
         <div style="display:flex;gap:16px;margin-top:8px;margin-bottom:14px">
           <span style="font-size:11px;color:var(--fp-text-faint);display:flex;align-items:center;gap:5px"><span style="width:14px;height:2px;background:var(--fp-accent);display:inline-block"></span>Historique</span>
@@ -16912,10 +17037,10 @@ function renderGrowthCommandCenter() {
               <tr style="background:rgba(37,99,235,.07)">
                 <td style="font-weight:700;color:var(--fp-accent)">● Vous</td>
                 <td style="text-align:center"><strong style="color:var(--fp-accent)">${avgSc}</strong></td>
-                <td style="color:#22c55e;text-align:center">87</td>
-                <td style="text-align:center">4.6 ★</td>
-                <td style="color:#22c55e;text-align:center">✓</td>
-                <td class="fp-g-pm"><div style="display:flex;align-items:center;gap:6px;justify-content:center"><div class="fp-growth-mbar"><div style="width:38%;background:var(--fp-accent);height:100%;border-radius:2px"></div></div><span style="font-size:10px;color:var(--fp-text-muted)">38%</span></div></td>
+                <td style="${_mySpeed!=null?'color:#22c55e;':'color:var(--fp-text-faint);'}text-align:center">${_mySpeed != null ? _mySpeed : '—'}</td>
+                <td style="text-align:center">${_lseo.avgRating ? _lseo.avgRating.toFixed(1)+' ★' : '—'}</td>
+                <td style="${_lseo.gbpConnected?'color:#22c55e;':'color:var(--fp-text-faint);'}text-align:center">${_lseo.gbpConnected ? '✓' : '—'}</td>
+                <td class="fp-g-pm">${STATE.overview?.marketShare != null ? '<div style="display:flex;align-items:center;gap:6px;justify-content:center"><div class="fp-growth-mbar"><div style="width:'+STATE.overview.marketShare+'%;background:var(--fp-accent);height:100%;border-radius:2px"></div></div><span style="font-size:10px;color:var(--fp-text-muted)">'+STATE.overview.marketShare+'%</span></div>' : '<span style="font-size:10px;color:var(--fp-text-faint)">—</span>'}</td>
               </tr>
               ${(STATE.competitors && STATE.competitors.length > 0
                 ? STATE.competitors.slice(0,3).map(c => ({
@@ -16979,29 +17104,33 @@ function renderGrowthCommandCenter() {
           <div style="font-size:11px;color:var(--fp-text-soft)">${PREVIEW_MODE ? 'Créer une page locale pour <strong>votre zone cible</strong> — potentiel +91 pts visibilité locale.' : 'Connectez DataForSEO pour voir vos opportunités locales.'}</div>
         </div>
         <div style="font-size:11.5px;font-weight:600;color:var(--fp-text-soft);margin-bottom:7px">Google Business Profile</div>
-        ${[{t:'14 avis sans réponse',s:'high'},{t:'Photos < 10 — profil incomplet',s:'med'},{t:'Posts GBP inactifs depuis 3 semaines',s:'med'}].map(g=>`
-          <div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fp-text-muted);margin-bottom:5px">
-            <span style="color:${g.s==='high'?'var(--fp-danger)':'var(--fp-warning)'}">●</span>${g.t}
-          </div>
-        `).join('')}
+        ${(function(){
+          var _gi = [];
+          if ((_lseo.unrepliedReviews||0) > 0) _gi.push({t:_lseo.unrepliedReviews+' avis sans réponse', s:_lseo.unrepliedReviews>5?'high':'med'});
+          if ((_lseo.photoCount||99) < 10) _gi.push({t:'Photos < 10 — profil incomplet', s:'med'});
+          var _dpd = _lseo.lastGbpPostDaysAgo ?? null;
+          if (_dpd !== null && _dpd > 14) _gi.push({t:'Posts GBP inactifs depuis '+(_dpd>21?Math.round(_dpd/7)+' semaines':_dpd+' jours'), s:'med'});
+          if (!_lseo.gbpConnected && !_lseo.domScore) _gi.push({t:'Google Business Profile non connecté', s:'high'});
+          if (_gi.length===0 && (_lseo.domScore||0)>0) _gi.push({t:'Profil GBP à jour ✓', s:'ok'});
+          var _sevCol = {high:'var(--fp-danger)',med:'var(--fp-warning)',ok:'#22c55e'};
+          return _gi.map(function(g){ return '<div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fp-text-muted);margin-bottom:5px"><span style="color:'+(_sevCol[g.s]||'var(--fp-warning)')+'">●</span>'+g.t+'</div>'; }).join('');
+        })()}
         <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:12px" onclick="navigate('local-seo')">Gérer le SEO local →</button>
       </div>
       <div class="fp-card" style="display:flex;flex-direction:column">
         <div class="fp-card-title">✍️ Opportunités de Contenu</div>
         <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Contenu manquant à fort impact SEO</div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
-          ${contentOpps.map(co=>`
-            <div class="fp-growth-content-opp">
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                <span style="font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:4px;background:${typeBg[co.type]||'rgba(37,99,235,.14)'};color:${typeCol[co.type]||'var(--fp-accent)'}">${co.type}</span>
-                <span style="font-size:9.5px;font-weight:600;padding:2px 7px;border-radius:4px;background:${co.diff==='Facile'?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)'};color:${co.diff==='Facile'?'#22c55e':'#f59e0b'}">${co.diff}</span>
-              </div>
-              <div style="font-size:12px;font-weight:600">${escHtml(co.title)}</div>
-              <div style="font-size:10.5px;color:var(--fp-text-muted);margin-top:2px">${co.kw}</div>
-            </div>
-          `).join('')}
+          ${contentOpps.length > 0 ? contentOpps.map(function(co){ return '<div class="fp-growth-content-opp">'+
+            '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'+
+              '<span style="font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:4px;background:'+(typeBg[co.type]||'rgba(37,99,235,.14)')+';color:'+(typeCol[co.type]||'var(--fp-accent)')+'">'+co.type+'</span>'+
+              '<span style="font-size:9.5px;font-weight:600;padding:2px 7px;border-radius:4px;background:'+(co.diff==='Facile'?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)')+';color:'+(co.diff==='Facile'?'#22c55e':'#f59e0b')+'">'+co.diff+'</span>'+
+            '</div>'+
+            '<div style="font-size:12px;font-weight:600">'+escHtml(co.title)+'</div>'+
+            '<div style="font-size:10.5px;color:var(--fp-text-muted);margin-top:2px">'+co.kw+'</div>'+
+          '</div>'; }).join('') : '<div style="padding:24px 0;text-align:center"><div style="font-size:28px;margin-bottom:8px">🔑</div><div style="font-size:12px;font-weight:600;color:var(--fp-text-soft);margin-bottom:4px">Aucune opportunité disponible</div><div style="font-size:11px;color:var(--fp-text-faint)">Ajoutez des mots-clés suivis pour découvrir vos opportunités de contenu personnalisées.</div></div>'}
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="navigate('content');showToast('success','Redirection vers la stratégie contenu…')">Générer le plan contenu IA →</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="navigate('growth/keywords')">Gérer les mots-clés →</button>
       </div>
     </div>
 
@@ -17015,18 +17144,16 @@ function renderGrowthCommandCenter() {
         <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('conversion')">Analyse complète →</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        ${leaks.map(l=>`
-          <div class="fp-growth-leak" style="border-left:3px solid ${sevCol[l.sev]};background:${sevBg[l.sev]}">
-            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
-              <span style="font-size:18px;flex-shrink:0">${l.icon}</span>
-              <div style="min-width:0">
-                <div style="font-size:12px;font-weight:600">${l.title}</div>
-                <div style="font-size:11px;color:var(--fp-text-muted);margin-top:1px">${l.desc}</div>
-              </div>
-            </div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0" onclick="navigate('audits')">${l.action} →</button>
-          </div>
-        `).join('')}
+        ${leaks.length > 0 ? leaks.map(function(l){ return '<div class="fp-growth-leak" style="border-left:3px solid '+(sevCol[l.sev]||'var(--fp-text-faint)')+';background:'+(sevBg[l.sev]||'rgba(255,255,255,.03)')+'">'+
+          '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">'+
+            '<span style="font-size:18px;flex-shrink:0">'+l.icon+'</span>'+
+            '<div style="min-width:0">'+
+              '<div style="font-size:12px;font-weight:600">'+l.title+'</div>'+
+              '<div style="font-size:11px;color:var(--fp-text-muted);margin-top:1px">'+l.desc+'</div>'+
+            '</div>'+
+          '</div>'+
+          '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0" onclick="navigate(\'audits\')">'+l.action+' →</button>'+
+        '</div>'; }).join('') : '<div style="padding:24px 0;text-align:center"><div style="font-size:28px;margin-bottom:8px">✅</div><div style="font-size:12px;font-weight:600;color:var(--fp-text-soft);margin-bottom:4px">Aucune fuite détectée</div><div style="font-size:11px;color:var(--fp-text-faint)">Configurez des audits et connectez analytics pour activer la détection automatique.</div></div>'}
       </div>
     </div>
 
@@ -17051,13 +17178,16 @@ function renderGrowthCommandCenter() {
             <span>${growthPts} pts</span><span>→ Niveau ${level<5?level+1:'⭐ MAX'}</span>
           </div>
           <div class="fp-growth-streaks">
-            ${[['🔥','7','Jours','#f97316'],['⚡','12','Actions','var(--fp-accent)'],['🎯','3','Objectifs','#22c55e']].map(([e,n,l,c])=>`
-              <div class="fp-growth-streak-item">
-                <div style="font-size:20px">${e}</div>
-                <div style="font-size:18px;font-weight:800;color:${c};font-family:var(--fp-font-head)">${n}</div>
-                <div style="font-size:9.5px;color:var(--fp-text-faint)">${l}</div>
-              </div>
-            `).join('')}
+            ${(function(){
+              var _sd = STATE.me?.streakDays || 0;
+              var _ta = _completedMissions + (STATE.audits||[]).length + (STATE.monitors||[]).length;
+              var _ob = (STATE.missions||[]).filter(function(m){ return (m.status==='completed'||m.status==='done')&&m.category==='objective'; }).length;
+              return [
+                ['🔥', _sd,              'Jours consécutifs', '#f97316'],
+                ['⚡', Math.max(0,_ta),  'Actions réalisées', 'var(--fp-accent)'],
+                ['🎯', _completedMissions,'Missions terminées','#22c55e'],
+              ].map(function(r){ return '<div class="fp-growth-streak-item"><div style="font-size:20px">'+r[0]+'</div><div style="font-size:18px;font-weight:800;color:'+r[3]+';font-family:var(--fp-font-head)">'+r[1]+'</div><div style="font-size:9.5px;color:var(--fp-text-faint)">'+r[2]+'</div></div>'; }).join('');
+            })()}
           </div>
         </div>
         <div>
@@ -17091,12 +17221,43 @@ function renderGrowthCommandCenter() {
           <span class="fp-growth-strategy-live">● En ligne</span>
         </div>
         <div class="fp-growth-strategy-msgs">
-          ${[
-            'Votre progression de <strong>' + avgSc + '/100</strong> est solide, mais votre croissance <strong>ralentit sur le SEO local</strong>. Vos concurrents dominent 3 zones géographiques clés.',
-            '<strong>Priorité #1 :</strong> Créer des pages locales pour vos zones cibles — potentiel de <strong>+320 visites/mois</strong> en 45 jours.',
-            '<strong>Priorité #2 :</strong> Optimiser la performance mobile sur 2 sites critiques. Chaque seconde gagnée vaut <strong>+7% de conversion</strong>.',
-            'Si vous exécutez les 4 Quick Wins cette semaine, la projection IA passe de <strong>+7 pts</strong> à <strong>+11 pts</strong> ce mois.',
-          ].map((msg,i)=>`<div class="fp-growth-strategy-msg" style="animation-delay:${i*0.12}s"><div style="font-size:12.5px;color:var(--fp-text-soft);line-height:1.6">${msg}</div></div>`).join('')}
+          ${(function(){
+            var _msgs = [];
+            var _aud  = STATE.audits  || [];
+            var _mon  = STATE.monitors|| [];
+            var _nDown = _mon.filter(function(m){ return m.status==='down'; }).length;
+            var _nSlow = _aud.filter(function(a){ return (a.speed||100)<60; }).length;
+            var _nLow  = _aud.filter(function(a){ return (a.score||100)<70; }).length;
+            var _convR = STATE.overview?.conversionRate ?? null;
+            // Message 1 : résumé du score
+            if (avgSc < 40) {
+              _msgs.push('Votre score actuel est <strong>'+avgSc+'/100</strong>. De nombreuses optimisations techniques sont disponibles — commencez par les Quick Wins pour progresser rapidement.');
+            } else if (avgSc < 70) {
+              _msgs.push('Votre score est <strong>'+avgSc+'/100</strong>. Vous êtes en phase de croissance active. Exécutez les Quick Wins identifiés pour atteindre le niveau Expert (70+).');
+            } else {
+              _msgs.push('Excellent score : <strong>'+avgSc+'/100</strong>. Vous êtes au niveau '+levelNames[level-1]+'. Concentrez-vous sur la conversion et le référencement local pour maximiser le ROI.');
+            }
+            // Message 2 : alerte critique ou performance
+            if (_nDown>0) {
+              _msgs.push('⚠️ <strong>Alerte critique :</strong> '+_nDown+' monitor(s) DOWN en ce moment. Chaque heure d\'indisponibilité impact directement votre positionnement Google.');
+            } else if (_nSlow>0) {
+              _msgs.push('<strong>Performance mobile :</strong> '+_nSlow+' site(s) en dessous de 60/100. Chaque seconde de chargement gagnée vaut +7% de taux de conversion en moyenne.');
+            } else if (_nLow>0) {
+              _msgs.push('<strong>'+_nLow+' site(s)</strong> avec des erreurs SEO critiques à corriger. Ces corrections peuvent générer +'+Math.round(_nLow*15)+'% de trafic organique supplémentaire.');
+            } else if (_mon.length>0) {
+              _msgs.push('Tous vos <strong>'+_mon.length+' monitor(s)</strong> sont opérationnels ✓. Maintenez un uptime > 99% pour protéger votre positionnement SEO.');
+            }
+            // Message 3 : priorité locale ou mots-clés
+            if (_lseo.domScore && _lseo.domScore < 70) {
+              _msgs.push('<strong>SEO Local :</strong> Score local de '+_lseo.domScore+'/100. Optimiser votre Google Business Profile et créer des pages locales peut significativement booster votre visibilité géolocalisée.');
+            } else if ((STATE.keywordData?.keywords||[]).filter(function(k){return k.pos>3&&k.pos<=10;}).length>0) {
+              var _ck = (STATE.keywordData?.keywords||[]).filter(function(k){return k.pos>3&&k.pos<=10;}).length;
+              _msgs.push('<strong>'+_ck+' mot(s)-clé(s)</strong> en positions 4–10 — très proches du top 3. Un contenu ciblé peut faire passer ces mots-clés en première page et doubler leur trafic.');
+            }
+            // Message 4 : projection
+            _msgs.push('En exécutant les <strong>'+wins.length+' Quick Win(s)</strong> identifiés, votre projection passe à <strong>+'+Math.round(_projStep*6)+' pts</strong> estimés sur les 30 prochains jours.');
+            return _msgs.slice(0,4).map(function(msg,i){ return '<div class="fp-growth-strategy-msg" style="animation-delay:'+(i*0.12)+'s"><div style="font-size:12.5px;color:var(--fp-text-soft);line-height:1.6">'+msg+'</div></div>'; }).join('');
+          })()}
         </div>
         <div class="fp-growth-strategy-actions">
           ${btn('Voir le plan complet','fp-btn fp-btn-primary fp-btn-sm','','onclick="STATE.subRoute=\'projections\';render()"')}
