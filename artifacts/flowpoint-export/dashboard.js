@@ -6418,7 +6418,7 @@ function renderBilling() {
         if (plan === 'Pro' || plan === 'Agency') return `Plan ${plan} actif. Consommation actuelle : <strong>${_usage.audit?.used??0}/${_usage.audit?.limit??50} audits</strong>. Toutes vos fonctionnalités sont disponibles.`;
         return `Abonnement actif — accès complet à toutes les fonctionnalités FlowPoint.`;
       })(),
-      plan === 'Standard' ? ['Passer à Pro', 'Voir les avantages', 'Comparer les plans'] : ['Gérer l'abonnement', 'Voir mes usages', 'Ajouter des modules']
+      plan === 'Standard' ? ['Passer à Pro', 'Voir les avantages', 'Comparer les plans'] : ['Gérer l\'abonnement', 'Voir mes usages', 'Ajouter des modules']
     )}
     ${statCard('Plan actuel', plan, STATE.billing?.nextDate ? 'actif · renouvellement ' + STATE.billing.nextDate : 'actif · abonnement mensuel', 'up')}
         ${statCard('Coût mensuel', isStd ? '29€' : isPro && !isUltra ? '79€' : '149€', 'HT · abonnement mensuel', 'neutral')}
@@ -24803,7 +24803,7 @@ function renderGA4Analytics() {
           ? `<strong>${fmtNum(sessions)}</strong> sessions · <strong>${fmtNum(users)}</strong> utilisateurs sur 30 jours. Taux de conversion : <strong>${sessions ? ((conversions||0)/sessions*100).toFixed(2) : '0.00'}%</strong>. ${conversions > 0 ? 'Bonne performance de conversion. Analysez les sources les plus rentables.' : 'Aucune conversion trackée — configurez les événements GA4.'}`
           : "Données GA4 chargées. Sélectionnez une période ou actualisez pour voir vos métriques."
         : "Connectez Google Analytics 4 pour accéder à l'analyse complète de votre trafic, conversions et audience.",
-      _ga4Connected() ? ['Voir le trafic','Analyser l'audience','Rapport analytics'] : ['Connecter GA4','Voir la démo','En savoir plus']
+      _ga4Connected() ? ['Voir le trafic','Analyser l\'audience','Rapport analytics'] : ['Connecter GA4','Voir la démo','En savoir plus']
     )}
 
     <!-- KPI CARDS -->
@@ -25210,7 +25210,7 @@ function renderGA4Traffic() {
             })()
           : "Données de trafic en cours de chargement. Actualisez pour voir vos sources."
         : "Connectez GA4 pour analyser vos canaux d'acquisition et sources de trafic.",
-      _ga4Connected() ? ['Voir les conversions','Analyser l'audience','Rapport trafic'] : ['Connecter GA4']
+      _ga4Connected() ? ['Voir les conversions','Analyser l\'audience','Rapport trafic'] : ['Connecter GA4']
     )}
 
     <!-- CHANNEL CARDS -->
