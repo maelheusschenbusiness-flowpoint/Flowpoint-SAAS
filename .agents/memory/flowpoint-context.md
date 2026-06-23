@@ -88,3 +88,20 @@ org_id, first_name, last_name, org_name, plan, subscription_status, trial_ends_a
 ## STRIPE_LIVE_API_KEY valide
 - `STRIPE_LIVE_API_KEY` = valide pour Stripe production
 - `STRIPE_SECRET_KEY` = expiré (Replit env) — webhook utilise LIVE_API_KEY en priorité
+
+## GA4 P0 Fixes — COMPLÉTÉS (Session 2)
+Toutes les sections GA4 de dashboard.js sont propres :
+- Canal acquisition : empty state si chMap vide (plus de fallback Organic:5234)
+- AI Insights : génère depuis sessions/bounce/canal/conv réels, sinon onboarding
+- New vs Returning : || 0, empty state si pas de données
+- Anomaly detection : gated PREVIEW_MODE
+- Funnels drop-off : calculé depuis funnelSteps réels
+- Audience totalSess : || 0 (plus || 12847)
+- Device devDisplay : {} vide (plus {mobile:7209}), empty state affiché
+- Pays/Geo : liste vide (plus [['France',7890]...]), empty state affiché
+- Insights audience IA : générés depuis devMap + geoRows
+- ROI par canal : taux conv. réels depuis ga4.campaigns.rows
+- Live active : || 0 (plus || 42), guard div-by-zero device %
+
+## Prochaine étape
+Monitors : migrer de MongoDB vers Supabase/PostgreSQL — CRUD+check+historique+SLA persistants

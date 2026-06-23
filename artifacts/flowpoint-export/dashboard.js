@@ -25181,13 +25181,12 @@ function renderGA4Analytics() {
             const s  = parseFloat(r.metricValues?.[0]?.value || 0);
             chMap[ch] = (chMap[ch] || 0) + s;
           });
-          const total = Object.values(chMap).reduce((a,b) => a+(b), 0) || sessions || 12847;
-          const fallback = {'Organic Search': 5234, 'Direct': 2847, 'Organic Social': 1923, 'Referral': 1240, 'Email': 847, 'Paid Search': 756};
-          const data = Object.keys(chMap).length ? chMap : fallback;
-          const sorted = Object.entries(data).sort((a,b) => (b[1])-(a[1])).slice(0,6);
+          const total = Object.values(chMap).reduce((a,b) => a+(b), 0);
+          if (!Object.keys(chMap).length) return `<div style="padding:20px;text-align:center;color:var(--fp-text-muted);font-size:12px">${_ga4Connected() ? '⏳ Actualisez vos données GA4 pour voir vos canaux d\'acquisition.<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_GA4_API&&window.FP_GA4_API.reload()">🔄 Actualiser</button>' : '🔌 Connectez Google Analytics 4 pour voir vos canaux d\'acquisition.<br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button>'}</div>`;
+          const sorted = Object.entries(chMap).sort((a,b) => (b[1])-(a[1])).slice(0,6);
           return sorted.map(([ch, s]) => {
             const color = GA4_CHANNEL_COLORS[ch] || '#64748b';
-            return _ga4ChannelRow(ch, s, Math.round((s)/total*100), color);
+            return _ga4ChannelRow(ch, s, Math.round((s)/Math.max(total,1)*100), color);
           }).join('');
         })()}
       </div>
@@ -25197,31 +25196,28 @@ function renderGA4Analytics() {
     <div class="fp-grid-2 fp-mb-20">
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🧠 Insights IA — Résumé</div>
-        ${[
-          { icon:'📈', color:'#22c55e', title:'Croissance organique', desc:`Sessions Google +${STATE.overview?.organicGrowthPct ?? 17}% ce mois. Contenu de blog performant.` },
-          { icon:'⚠️', color:'#f59e0b', title:'Taux de rebond mobile élevé', desc:'Bounce mobile : 58% vs 29% desktop. Page d\'accueil à optimiser.' },
-          { icon:'🎯', color:'#2563EB', title:'Email = meilleur ROI', desc:'Email converge à 8.4% vs moyenne 6.6%. Amplifier cette source.' },
-          { icon:'💡', color:'#8b5cf6', title:'Opportunité social', desc:'Trafic social en hausse +34%. Aucune campagne payante. Momentum naturel.' },
-        ].map(x => `
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;background:${x.color}08;border-left:3px solid ${x.color};margin-bottom:6px">
-            <span style="font-size:16px;flex-shrink:0">${x.icon}</span>
-            <div>
-              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${x.title}</div>
-              <div style="font-size:11px;color:var(--fp-text-muted)">${x.desc}</div>
-            </div>
-          </div>
-        `).join('')}
+        ${(() => {
+          if (!_ga4Connected()) return `<div style="padding:16px;text-align:center"><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:10px">🔌 Connectez GA4 pour des insights basés sur vos vraies données.</div><div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:12px">L'IA analysera : sessions, conversions, rebond, sources de trafic.</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button></div>`;
+          const _ins = [];
+          if (sessions > 0 && prevSess > 0) { const d=Math.round((sessions-prevSess)/prevSess*100); _ins.push({icon:d>=0?'📈':'📉',color:d>=0?'#22c55e':'#ef4444',title:`Sessions ${d>=0?'en hausse':'en baisse'} (${d>=0?'+':''}${d}%)`,desc:`${sessions.toLocaleString('fr-FR')} sessions vs ${prevSess.toLocaleString('fr-FR')} période précédente.`}); }
+          if (bounce > 0) _ins.push({icon:bounce>50?'⚠️':'✅',color:bounce>50?'#f59e0b':'#22c55e',title:`Taux de rebond : ${bounce.toFixed(1)}%`,desc:bounce>50?'Taux élevé — optimisez le contenu et la vitesse de chargement.':'Bon engagement — les visiteurs explorent votre site.'});
+          const _sr2=ga4.sources?.rows||[];if(_sr2.length){const _cm2={};_sr2.forEach(r=>{const ch=r.dimensionValues?.[0]?.value||'Other';const s2=parseFloat(r.metricValues?.[0]?.value||0);_cm2[ch]=(_cm2[ch]||0)+s2;});const _top=Object.entries(_cm2).sort((a,b)=>b[1]-a[1])[0];const _tot2=Object.values(_cm2).reduce((a,b)=>a+b,0)||1;if(_top)_ins.push({icon:'🎯',color:'#2563EB',title:`Canal principal : ${_top[0]}`,desc:`${Math.round(_top[1]/_tot2*100)}% de votre trafic. Diversifiez vos sources pour réduire la dépendance.`});}
+          if (conversions > 0 && sessions > 0) { const cr=(conversions/sessions*100).toFixed(2); _ins.push({icon:'⚡',color:'#8b5cf6',title:`Taux de conversion : ${cr}%`,desc:parseFloat(cr)<2?'Sous la moyenne (2%). Analysez le parcours et les points de friction.':'Bonne performance de conversion.'}); }
+          if(!_ins.length) return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-muted)">Actualisez vos données GA4 pour générer des insights.<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_GA4_API&&window.FP_GA4_API.reload()">🔄 Actualiser</button></div>`;
+          return _ins.map(x=>`<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;background:${x.color}08;border-left:3px solid ${x.color};margin-bottom:6px"><span style="font-size:16px;flex-shrink:0">${x.icon}</span><div><div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${x.title}</div><div style="font-size:11px;color:var(--fp-text-muted)">${x.desc}</div></div></div>`).join('');
+        })()}
       </div>
 
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🔄 Nouveaux vs Récurrents</div>
         ${(() => {
           const nvr = ga4.audience?.newVsReturn?.rows || [];
-          let newU = newUsers || 4231, retU = users - newU || 5003;
+          let newU = newUsers || 0, retU = Math.max(0, (users || 0) - newU);
           nvr.forEach(r => {
             if (r.dimensionValues?.[0]?.value === 'new') newU = parseFloat(r.metricValues?.[0]?.value || newU);
             else retU = parseFloat(r.metricValues?.[0]?.value || retU);
           });
+          if (!newU && !retU) return `<div style="padding:24px;text-align:center;font-size:12px;color:var(--fp-text-muted)">${_ga4Connected() ? '⏳ Actualisez vos données GA4 pour voir la répartition nouveaux/récurrents.' : '🔌 Connectez GA4 pour voir la répartition de votre audience.'}</div>`;
           const total = newU + retU || 1;
           const newPct = Math.round(newU/total*100);
           const retPct = 100-newPct;
@@ -25593,7 +25589,7 @@ function renderGA4Traffic() {
     <!-- ANOMALY DETECTION -->
     <div class="fp-card">
       <div class="fp-card-title" style="margin-bottom:14px">⚠️ Détection d\'anomalies</div>
-      ${[
+      ${PREVIEW_MODE ? [
         {type:'warn',  icon:'📉', title:'Chute trafic organique', desc:'Organic Search -23% lundi vs moyenne 30j. Possible mise à jour d\'algo Google.', action:'Investiguer'},
         {type:'info',  icon:'📈', title:'Pic trafic referral', desc:'Referral +156% hier. Probable mention dans un article ou forum populaire.', action:'Voir source'},
         {type:'danger',icon:'🚨', title:'Rebond mobile anormal', desc:'Bounce mobile 78% cette semaine vs 45% normale. Problème UX probable.', action:'Analyser'},
@@ -25607,7 +25603,7 @@ function renderGA4Traffic() {
           </div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0">${x.action}</button>
         </div>`;
-      }).join('')}
+      }).join('') : `<div style="padding:20px;text-align:center;font-size:12px;color:var(--fp-text-muted)">${_ga4Connected() ? '✅ Aucune anomalie détectée. La détection automatique analyse votre trafic au fil du temps.' : '🔌 Connectez GA4 pour activer la détection d\'anomalies sur votre trafic.'}</div>`}
     </div>
   `;
 }
@@ -25731,23 +25727,24 @@ function renderGA4Funnels() {
     <!-- DROP-OFF ANALYSIS -->
     <div class="fp-card">
       <div class="fp-card-title" style="margin-bottom:14px">💡 Analyse drop-off & recommandations IA</div>
-      ${[
-        {step:'Accueil → Produit', drop:26, fix:'Améliorer le CTA principal — test A/B couleur et texte', gain:'+142 conv./mois'},
-        {step:'Produit → Panier',  drop:34, fix:'Ajouter preuves sociales et garanties sur la page produit', gain:'+89 conv./mois'},
-        {step:'Panier → Checkout', drop:48, fix:'Réduire les champs du formulaire — checkout en 1 étape', gain:'+203 conv./mois'},
-        {step:'Checkout → Paiement',drop:19,fix:'Ajouter PayPal et Apple Pay — friction paiement réduite', gain:'+61 conv./mois'},
-      ].map(x => `
-        <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:rgba(239,68,68,0.04);border-left:3px solid #ef4444;margin-bottom:6px;flex-wrap:wrap">
-          <div style="flex:1;min-width:200px">
-            <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${x.step} — <span style="color:#ef4444">-${x.drop}%</span></div>
-            <div style="font-size:11px;color:var(--fp-text-muted)">${x.fix}</div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:12px;font-weight:700;color:#22c55e">${x.gain}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:3px" onclick="_fpMQ('Optimiser la zone locale','Local SEO','medium')">Créer mission</button>
-          </div>
-        </div>
-      `).join('')}
+      ${(() => {
+        if (!_ga4Connected()) return `<div style="padding:20px;text-align:center;font-size:12px;color:var(--fp-text-muted)">🔌 Connectez GA4 pour l'analyse automatique des points de friction dans votre entonnoir.</div>`;
+        if (funnelSteps.length < 2) return `<div style="padding:20px;text-align:center;font-size:12px;color:var(--fp-text-muted)">⏳ Actualisez vos données GA4 pour voir l'analyse drop-off de votre entonnoir.</div>`;
+        return funnelSteps.slice(1).map((step, i) => {
+          const prev = funnelSteps[i];
+          const drop = Math.round((1 - step.n / Math.max(prev.n, 1)) * 100);
+          if (drop <= 0) return '';
+          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:rgba(239,68,68,0.04);border-left:3px solid #ef4444;margin-bottom:6px;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px">
+              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${escHtml(prev.label)} → ${escHtml(step.label)} — <span style="color:#ef4444">-${drop}%</span></div>
+              <div style="font-size:11px;color:var(--fp-text-muted)">${(step.n).toLocaleString('fr-FR')} / ${(prev.n).toLocaleString('fr-FR')} visiteurs ont continué</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="_fpMQ('Optimiser étape ${escHtml(step.label)}','Funnel','high')">Créer mission</button>
+            </div>
+          </div>`;
+        }).join('') || `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-muted)">Aucun drop-off significatif détecté.</div>`;
+      })()}
     </div>
   `;
 }
@@ -25770,9 +25767,8 @@ function renderGA4Audience() {
     devMap[dev] = (devMap[dev]||0)+s; osMap[os]=(osMap[os]||0)+s; brMap[br]=(brMap[br]||0)+s;
   });
 
-  const totalSess = Object.values(devMap).reduce((a,b) => a+(b), 0) || 12847;
-  const devFallback = {'mobile':7209,'desktop':4327,'tablet':1311};
-  const devDisplay = Object.keys(devMap).length ? devMap : devFallback;
+  const totalSess = Object.values(devMap).reduce((a,b) => a+(b), 0) || 0;
+  const devDisplay = Object.keys(devMap).length ? devMap : {};
   const devIcons = {'mobile':'📱','desktop':'🖥️','tablet':'📱','smart tv':'📺'};
   const devColors = {'mobile':'#8b5cf6','desktop':'#2563EB','tablet':'#f59e0b','smart tv':'#06b6d4'};
 
@@ -25806,13 +25802,14 @@ function renderGA4Audience() {
     <div class="fp-grid-2 fp-mb-20">
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">📱 Répartition des appareils</div>
+        ${!Object.keys(devDisplay).length ? `<div style="padding:24px;text-align:center;font-size:12px;color:var(--fp-text-muted)">${_ga4Connected() ? '⏳ Actualisez GA4 pour voir la répartition des appareils.' : '🔌 Connectez GA4 pour voir vos appareils.'}</div>` : `
         <div style="display:flex;height:16px;border-radius:8px;overflow:hidden;margin-bottom:16px">
           ${Object.entries(devDisplay).map(([dev, s]) => {
-            const pct = Math.round((s)/totalSess*100);
+            const pct = Math.round((s)/Math.max(totalSess,1)*100);
             const color = devColors[dev.toLowerCase()]||'#475569';
             return `<div style="width:${pct}%;background:${color}" title="${dev}: ${pct}%"></div>`;
           }).join('')}
-        </div>
+        </div>`}
         ${Object.entries(devDisplay).sort((a,b)=>(b[1])-(a[1])).map(([dev, s]) => {
           const pct = Math.round((s)/totalSess*100);
           const color = devColors[dev.toLowerCase()]||'#475569';
@@ -25874,10 +25871,9 @@ function renderGA4Audience() {
               countryMap[country] = (countryMap[country]||0)+s;
             });
             const countries = Object.entries(countryMap).sort((a,b)=>(b[1])-(a[1])).slice(0,8);
+            if (!countries.length) return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-muted)">${_ga4Connected() ? '⏳ Actualisez GA4 pour voir vos pays.' : '🔌 Connectez GA4 pour voir vos pays.'}</div>`;
             const maxS = countries[0]?.[1] || 1;
-            const fallback = [['France',7890],['Belgique',1234],['Suisse',987],['Canada',654],['États-Unis',432]];
-            const display = countries.length ? countries : fallback;
-            return display.map(([c,s]) => `<div style="display:grid;grid-template-columns:22px 1fr 60px 40px;gap:0 8px;align-items:center;margin-bottom:8px">
+            return countries.map(([c,s]) => `<div style="display:grid;grid-template-columns:22px 1fr 60px 40px;gap:0 8px;align-items:center;margin-bottom:8px">
               <span style="font-size:14px;line-height:1">${fpFlag(c)}</span>
               <div style="font-size:11px;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c)}</div>
               <div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${Math.round((s)/maxS*100)}%"></div></div>
@@ -25913,16 +25909,16 @@ function renderGA4Audience() {
     <!-- INSIGHTS AUDIENCE IA -->
     <div class="fp-card">
       <div class="fp-card-title" style="margin-bottom:14px">🧠 Insights audience IA</div>
-      ${[
-        {icon:'📱',color:'#8b5cf6',title:'Mobile dominant', desc:`${Object.keys(devDisplay).length?Math.round((devDisplay['mobile']||7209)/totalSess*100):56}% du trafic vient du mobile. Priorisez l\'UX mobile dans les optimisations.`},
-        {icon:'🇫🇷',color:'#2563EB',title:'Audience majoritairement française',desc:'82% du trafic depuis la France. Contenus locaux et horaires français à prioriser.'},
-        {icon:'♻️',color:'#22c55e',title:'Taux de récurrence faible',desc:'Seulement 37% de visiteurs récurrents. Email retargeting et push notifications recommandés.'},
-        {icon:'🖥️',color:'#f59e0b',title:'Desktop = meilleur convertisseur',desc:'Desktop convertit 2.3× mieux que mobile. Investir dans l\'UX mobile checkout.'},
-      ].map(x=>`<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;background:${x.color}08;border-left:3px solid ${x.color};margin-bottom:6px">
-        <span style="font-size:16px;flex-shrink:0">${x.icon}</span>
-        <div><div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${x.title}</div>
-        <div style="font-size:11px;color:var(--fp-text-muted)">${x.desc}</div></div>
-      </div>`).join('')}
+      ${(() => {
+        if (!_ga4Connected()) return `<div style="padding:16px;text-align:center"><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:10px">🔌 Connectez GA4 pour des insights sur votre audience.</div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.connectGoogle()">Connecter GA4</button></div>`;
+        const _aIns = [];
+        const _devEntries = Object.entries(devMap).sort((a,b)=>b[1]-a[1]);
+        if (_devEntries.length && totalSess > 0) { const [_topDev, _topN]=_devEntries[0]; const _pct=Math.round(_topN/totalSess*100); _aIns.push({icon:_topDev==='mobile'?'📱':'🖥️',color:'#8b5cf6',title:`${_topDev.charAt(0).toUpperCase()+_topDev.slice(1)} dominant (${_pct}%)`,desc:`Priorisez l'UX ${_topDev} dans vos optimisations de conversion.`}); }
+        const _geoEntries = Object.entries((() => { const cm={}; geoRows.forEach(r=>{const c=r.dimensionValues?.[0]?.value||'Unknown';const s=parseFloat(r.metricValues?.[0]?.value||0);cm[c]=(cm[c]||0)+s;}); return cm; })()).sort((a,b)=>b[1]-a[1]);
+        if (_geoEntries.length && totalSess > 0) { const _topGeo=_geoEntries[0]; const _gpct=Math.round(_topGeo[1]/totalSess*100); _aIns.push({icon:'🌍',color:'#2563EB',title:`Principal marché : ${_topGeo[0]} (${_gpct}%)`,desc:'Adaptez vos contenus et horaires de publication à ce marché.'}); }
+        if (!_aIns.length) return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-muted)">Actualisez vos données GA4 pour générer des insights audience.<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_GA4_API&&window.FP_GA4_API.reload()">🔄 Actualiser</button></div>`;
+        return _aIns.map(x=>`<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;background:${x.color}08;border-left:3px solid ${x.color};margin-bottom:6px"><span style="font-size:16px;flex-shrink:0">${x.icon}</span><div><div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${x.title}</div><div style="font-size:11px;color:var(--fp-text-muted)">${x.desc}</div></div></div>`).join('');
+      })()}
     </div>
   `;
 }
@@ -26027,23 +26023,18 @@ function renderGA4Campaigns() {
 
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">💰 ROI estimé par canal</div>
-        ${[
-          {ch:'Email',         roi:8.4, spend:0,    conv:71,  rpc:42, color:'#ec4899'},
-          {ch:'Organic Search',roi:6.1, spend:0,    conv:312, rpc:28, color:'#22c55e'},
-          {ch:'Paid Search',   roi:3.2, spend:1200, conv:23,  rpc:87, color:'#2563EB'},
-          {ch:'Organic Social',roi:2.8, spend:0,    conv:98,  rpc:15, color:'#f59e0b'},
-          {ch:'Referral',      roi:5.9, spend:0,    conv:156, rpc:31, color:'#06b6d4'},
-        ].map(x => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <div style="width:10px;height:10px;border-radius:2px;background:${x.color};flex-shrink:0"></div>
-          <div style="flex:1">
-            <div style="font-size:11px;font-weight:600;color:var(--fp-text)">${x.ch}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint)">${x.conv} conv. · ${x.spend?x.spend+'€ dépensés':'organique'}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:13px;font-weight:800;color:${x.roi>5?'#22c55e':x.roi>3?'#f59e0b':'#ef4444'}">${x.roi}×</div>
-            <div style="font-size:10px;color:var(--fp-text-faint)">${x.rpc}€/conv.</div>
-          </div>
-        </div>`).join('')}
+        ${(() => {
+          if (!_ga4Connected()) return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-muted)">🔌 Connectez GA4 pour voir le ROI réel par canal d'acquisition.</div>`;
+          const _cRows = rows.slice(0,8);
+          if (!_cRows.length) return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-muted)">⏳ Actualisez vos données GA4 pour voir le ROI par canal.</div>`;
+          const _chConv = {};
+          _cRows.forEach(r => { const ch=r.dimensionValues?.[1]?.value||'(Other)'; const c=parseFloat(r.metricValues?.[2]?.value||0); const s=parseFloat(r.metricValues?.[0]?.value||0); if(!_chConv[ch])_chConv[ch]={conv:0,sess:0}; _chConv[ch].conv+=c; _chConv[ch].sess+=s; });
+          return Object.entries(_chConv).sort((a,b)=>b[1].conv-a[1].conv).slice(0,5).map(([ch,d]) => {
+            const color=GA4_CHANNEL_COLORS[ch]||'#64748b';
+            const cr=d.sess>0?(d.conv/d.sess*100).toFixed(1):'—';
+            return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0"></div><div style="flex:1"><div style="font-size:11px;font-weight:600;color:var(--fp-text)">${ch}</div><div style="font-size:10px;color:var(--fp-text-faint)">${d.conv.toLocaleString('fr-FR')} conv. · ${d.sess.toLocaleString('fr-FR')} sessions</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:800;color:${parseFloat(cr)>3?'#22c55e':parseFloat(cr)>1?'#f59e0b':'#ef4444'}">${cr}%</div><div style="font-size:10px;color:var(--fp-text-faint)">taux conv.</div></div></div>`;
+          }).join('');
+        })()}
       </div>
     </div>
   `;
@@ -26071,7 +26062,7 @@ function renderGA4Live() {
 
   const topPages = Object.entries(pageMap).sort((a,b)=>(b[1])-(a[1])).slice(0,10);
   const topCities = Object.entries(cityMap).sort((a,b)=>(b[1])-(a[1])).slice(0,8);
-  const totalActive = active || Object.values(devMap).reduce((a,b)=>a+(b),0) || 42;
+  const totalActive = active || Object.values(devMap).reduce((a,b)=>a+(b),0) || 0;
 
   return `
     <div class="fp-section-header">
@@ -26103,9 +26094,11 @@ function renderGA4Live() {
       <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--fp-text-faint);margin-bottom:8px">Utilisateurs actifs en ce moment</div>
       <div style="font-size:96px;font-weight:900;color:#ef4444;font-family:var(--fp-font-head);line-height:1;margin-bottom:8px" id="fp-live-count">${totalActive}</div>
       <div style="display:flex;justify-content:center;gap:24px;font-size:12px;color:var(--fp-text-muted)">
-        <span>📱 Mobile : ${Math.round((devMap['mobile']||totalActive*0.62)/totalActive*100)}%</span>
-        <span>🖥️ Desktop : ${Math.round((devMap['desktop']||totalActive*0.31)/totalActive*100)}%</span>
-        <span>📱 Tablet : ${Math.round((devMap['tablet']||totalActive*0.07)/totalActive*100)}%</span>
+        ${totalActive > 0 ? `
+        <span>📱 Mobile : ${Math.round((devMap['mobile']||0)/totalActive*100)}%</span>
+        <span>🖥️ Desktop : ${Math.round((devMap['desktop']||0)/totalActive*100)}%</span>
+        <span>📱 Tablet : ${Math.round((devMap['tablet']||0)/totalActive*100)}%</span>
+        ` : `<span style="color:var(--fp-text-faint)">${_ga4Connected()?'Aucun visiteur actif en ce moment':'Connectez GA4 pour les données live'}</span>`}
       </div>
     </div>
 
