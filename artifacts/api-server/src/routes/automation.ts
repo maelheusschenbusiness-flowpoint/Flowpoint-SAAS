@@ -69,13 +69,33 @@ router.post("/automation/workflows/:id/run", async (req: Request, res: Response)
   }
 });
 
+router.delete("/automation/workflows/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await db.delete(automationWorkflowsTable).where(eq(automationWorkflowsTable.id, id));
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "Failed to delete workflow" });
+  }
+});
+
 router.get("/automation/runs", async (_req: Request, res: Response) => {
   try {
-    const runs = await db.select().from(workflowRunsTable)
-      .orderBy(eq(workflowRunsTable.status, "running"))
-      .limit(50);
-    res.json({ runs });
-  } catch {
+    const { pool } = await import("@workspace/db");
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT id, workflow_id, status, started_at, ended_at, duration_ms,
+                steps_completed, steps_failed, error, output, metadata
+         FROM workflow_runs
+         ORDER BY started_at DESC
+         LIMIT 50`
+      );
+      res.json({ runs: result.rows });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
     res.status(500).json({ error: "Failed to fetch runs" });
   }
 });

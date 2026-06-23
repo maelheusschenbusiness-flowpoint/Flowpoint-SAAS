@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
-import { db, reportsTable, auditsTable, shareTokensTable } from "@workspace/db";
+import { db, reportsTable, auditsTable } from "@workspace/db";
+import { pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { streamReportPdf } from "../services/pdf.js";
 import { store } from "../services/store.js";
@@ -83,105 +84,134 @@ router.get("/reports/:id/download", async (req, res) => {
 });
 
 router.post("/reports/:id/share", async (req, res) => {
-  const [report] = await db.select().from(reportsTable).where(eq(reportsTable.id, req.params.id));
-  if (!report) { res.status(404).json({ error: "Report not found" }); return; }
+  try {
+    const [report] = await db.select().from(reportsTable).where(eq(reportsTable.id, req.params.id));
+    if (!report) { res.status(404).json({ error: "Report not found" }); return; }
 
-  const { branding, auditIds } = req.body as {
-    branding?: {
-      agencyName?: string;
-      logoUrl?: string;
-      primaryColor?: string;
-      secondaryColor?: string;
-      footerMsg?: string;
+    const { branding, auditIds } = req.body as {
+      branding?: {
+        agencyName?: string;
+        logoUrl?: string;
+        primaryColor?: string;
+        secondaryColor?: string;
+        footerMsg?: string;
+      };
+      auditIds?: string[];
     };
-    auditIds?: string[];
-    meetingNotes?: Array<{ title: string; date: string; notes: string; site?: string }>;
-  };
-  const token = randomBytes(16).toString("hex");
-  const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-  const createdAt = new Date().toISOString();
+    const token = randomBytes(16).toString("hex");
+    const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+    const createdAt = new Date().toISOString();
 
-  // Only include the audit that belongs to this specific report.
-  // If the caller supplied auditIds, honour them only when they match the
-  // report's own auditId so unrelated audit records can never be attached.
-  let audits: Record<string, unknown>[] = [];
-  if (report.auditId) {
-    const allowed = new Set([report.auditId]);
-    const requested = auditIds && auditIds.length > 0 ? auditIds : [report.auditId];
-    const scoped = requested.filter((id) => allowed.has(id));
-    if (scoped.length > 0) {
-      const [ownAudit] = await db.select().from(auditsTable).where(eq(auditsTable.id, report.auditId));
-      if (ownAudit) audits = [ownAudit];
+    let audits: Record<string, unknown>[] = [];
+    if (report.auditId) {
+      const allowed = new Set([report.auditId]);
+      const requested = auditIds && auditIds.length > 0 ? auditIds : [report.auditId];
+      const scoped = requested.filter((id) => allowed.has(id));
+      if (scoped.length > 0) {
+        const [ownAudit] = await db.select().from(auditsTable).where(eq(auditsTable.id, report.auditId));
+        if (ownAudit) audits = [ownAudit];
+      }
     }
+
+    const brandingObj = {
+      agencyName: branding?.agencyName || store.me.org?.name || "Mon Agence",
+      logoUrl:    branding?.logoUrl    || "",
+      primaryColor:   branding?.primaryColor   || "#2563EB",
+      secondaryColor: branding?.secondaryColor || "#1d4ed8",
+      footerMsg:  branding?.footerMsg  || "",
+    };
+
+    const { meetingNotesJson: _omit, ...publicReport } = report;
+
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `INSERT INTO share_tokens (token, report_id, report_json, branding_json, audits_json, meeting_notes_json, views, created_at, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8)`,
+        [
+          token,
+          report.id,
+          JSON.stringify(publicReport),
+          JSON.stringify(brandingObj),
+          JSON.stringify(audits),
+          JSON.stringify([]),
+          createdAt,
+          expiresAt,
+        ]
+      );
+    } finally {
+      client.release();
+    }
+
+    await db.update(reportsTable).set({ shared: true }).where(eq(reportsTable.id, report.id));
+
+    store.logActivity({
+      type: "report",
+      label: `Rapport partagé : ${report.name}`,
+      targetId: report.id,
+      targetType: "report",
+      metadata: { name: report.name },
+    }).catch(() => {});
+
+    res.status(201).json({ token, expiresAt });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: "Failed to share report" });
   }
-
-  // Meeting notes are internal — never expose them through a public share link.
-  const shareMeetingNotes: Array<{ title: string; date: string; notes: string; site?: string }> = [];
-
-  const brandingObj = {
-    agencyName: branding?.agencyName || store.me.org.name || "Mon Agence",
-    logoUrl:    branding?.logoUrl    || "",
-    primaryColor:   branding?.primaryColor   || "#2563EB",
-    secondaryColor: branding?.secondaryColor || "#1d4ed8",
-    footerMsg:  branding?.footerMsg  || "",
-  };
-
-  // Strip internal-only fields before persisting the public report snapshot.
-  const { meetingNotesJson: _omit, ...publicReport } = report;
-  await db.insert(shareTokensTable).values({
-    token,
-    reportId: report.id,
-    reportJson: JSON.stringify(publicReport),
-    brandingJson: JSON.stringify(brandingObj),
-    auditsJson: JSON.stringify(audits),
-    meetingNotesJson: JSON.stringify(shareMeetingNotes),
-    views: 0,
-    createdAt,
-    expiresAt,
-  });
-
-  await db.update(reportsTable).set({ shared: true }).where(eq(reportsTable.id, report.id));
-
-  store.logActivity({
-    type: "report",
-    label: `Rapport partagé : ${report.name}`,
-    targetId: report.id,
-    targetType: "report",
-    metadata: { name: report.name },
-  }).catch(() => {});
-
-  res.status(201).json({ token, expiresAt });
 });
 
 router.get("/reports/:id/shares", async (req, res) => {
-  const rows = await db.select().from(shareTokensTable).where(eq(shareTokensTable.reportId, req.params.id));
-  const tokens = rows.map((r) => ({
-    token: r.token,
-    reportId: r.reportId,
-    report: JSON.parse(r.reportJson),
-    branding: JSON.parse(r.brandingJson),
-    audits: JSON.parse(r.auditsJson),
-    createdAt: r.createdAt,
-    expiresAt: r.expiresAt,
-    views: r.views,
-  }));
-  res.json(tokens);
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `SELECT token, report_id, report_json, branding_json, audits_json, created_at, expires_at, views FROM share_tokens WHERE report_id = $1`,
+      [req.params.id]
+    );
+    const tokens = r.rows.map((row) => ({
+      token: row.token,
+      reportId: row.report_id,
+      report: JSON.parse(row.report_json || "{}"),
+      branding: JSON.parse(row.branding_json || "{}"),
+      audits: JSON.parse(row.audits_json || "[]"),
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+      views: row.views,
+    }));
+    res.json(tokens);
+  } catch {
+    res.json([]);
+  } finally {
+    client.release();
+  }
 });
 
 router.delete("/reports/:id/shares/:token", async (req, res) => {
-  const [row] = await db.select().from(shareTokensTable).where(eq(shareTokensTable.token, req.params.token));
-  if (!row || row.reportId !== req.params.id) {
-    res.status(404).json({ error: "Share token not found" });
-    return;
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `SELECT token FROM share_tokens WHERE token = $1 AND report_id = $2`,
+      [req.params.token, req.params.id]
+    );
+    if (!r.rows[0]) { res.status(404).json({ error: "Share token not found" }); return; }
+    await client.query(`DELETE FROM share_tokens WHERE token = $1`, [req.params.token]);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to delete share token" });
+  } finally {
+    client.release();
   }
-  await db.delete(shareTokensTable).where(eq(shareTokensTable.token, req.params.token));
-  res.json({ ok: true });
 });
 
 router.delete("/reports/:id", async (req, res) => {
-  await db.delete(shareTokensTable).where(eq(shareTokensTable.reportId, req.params.id));
-  await db.delete(reportsTable).where(eq(reportsTable.id, req.params.id));
-  res.json({ ok: true });
+  const client = await pool.connect();
+  try {
+    await client.query(`DELETE FROM share_tokens WHERE report_id = $1`, [req.params.id]);
+    await db.delete(reportsTable).where(eq(reportsTable.id, req.params.id));
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to delete report" });
+  } finally {
+    client.release();
+  }
 });
 
 export default router;

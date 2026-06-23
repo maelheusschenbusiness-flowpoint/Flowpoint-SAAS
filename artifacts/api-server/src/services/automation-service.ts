@@ -98,9 +98,21 @@ export async function getWorkflowsData(orgId = "default"): Promise<{
 }> {
   try {
     await ensureDefaultWorkflows(orgId);
-    const [workflows, runs] = await Promise.all([
+    const { pool } = await import("@workspace/db");
+    const pgClient = await pool.connect();
+    let runs: Array<Record<string, unknown>> = [];
+    try {
+      const runsRes = await pgClient.query(
+        `SELECT id, workflow_id, status, started_at, ended_at, duration_ms,
+                steps_completed, steps_failed, error, output
+         FROM workflow_runs ORDER BY started_at DESC LIMIT 20`
+      );
+      runs = runsRes.rows;
+    } finally {
+      pgClient.release();
+    }
+    const [workflows] = await Promise.all([
       db.select().from(automationWorkflowsTable).where(eq(automationWorkflowsTable.orgId, orgId)).orderBy(desc(automationWorkflowsTable.createdAt)),
-      db.select().from(workflowRunsTable).orderBy(desc(workflowRunsTable.startedAt)).limit(20),
     ]);
 
     const active = workflows.filter(w => w.enabled).length;

@@ -130,4 +130,8 @@ router.get("/alert-events", (_req, res) => {
   res.json(store.triggeredAlerts);
 });
 
+router.get("/alerts", (_req, res) => {
+  res.json(store.triggeredAlerts);
+});
+
 export default router;

@@ -83,20 +83,21 @@ export async function getUsageSummary(orgId: string = ORG_ID) {
       client.query(`SELECT COUNT(*) FROM team_members`),
     ]);
 
-    const auditsUsed   = Number(auditCount.rows[0]?.count ?? me.usage.audit.used);
-    const monitorsUsed = Number(monitorCount.rows[0]?.count ?? me.usage.monitor.used);
-    const reportsUsed  = Number(reportCount.rows[0]?.count ?? me.usage.pdf.used);
-    const seatsUsed    = Number(memberCount.rows[0]?.count ?? 1);
+    const usage = (me as Record<string, unknown>).usage as Record<string, Record<string, number>> | undefined;
+    const auditsUsed   = Number(auditCount.rows[0]?.count  ?? usage?.audit?.used   ?? 0);
+    const monitorsUsed = Number(monitorCount.rows[0]?.count ?? usage?.monitor?.used ?? 0);
+    const reportsUsed  = Number(reportCount.rows[0]?.count  ?? usage?.pdf?.used     ?? 0);
+    const seatsUsed    = Number(memberCount.rows[0]?.count  ?? 1);
 
     return {
       plan,
       billing_period: new Date().toISOString().slice(0, 7),
       usage: {
-        audits:   { used: auditsUsed,   limit: limits.audits + (me.usage.audit.limit - limits.audits),   pct: Math.round((auditsUsed / Math.max(limits.audits, 1)) * 100) },
-        monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors * 50,                       pct: Math.round((monitorsUsed / Math.max(limits.monitors, 1)) * 100) },
-        reports:  { used: reportsUsed,  limit: limits.reports,                                             pct: Math.round((reportsUsed / Math.max(limits.reports, 1)) * 100) },
-        exports:  { used: me.usage.exports.used, limit: limits.exports,                                    pct: Math.round((me.usage.exports.used / Math.max(limits.exports, 1)) * 100) },
-        seats:    { used: seatsUsed,    limit: limits.teamMembers + extraSeats,                            pct: Math.round((seatsUsed / Math.max(limits.teamMembers, 1)) * 100) },
+        audits:   { used: auditsUsed,   limit: limits.audits,   pct: Math.round((auditsUsed   / Math.max(limits.audits,   1)) * 100) },
+        monitors: { used: monitorsUsed, limit: limits.monitors + extraMonitors * 50, pct: Math.round((monitorsUsed / Math.max(limits.monitors, 1)) * 100) },
+        reports:  { used: reportsUsed,  limit: limits.reports,  pct: Math.round((reportsUsed  / Math.max(limits.reports,  1)) * 100) },
+        exports:  { used: usage?.exports?.used ?? 0, limit: limits.exports, pct: Math.round(((usage?.exports?.used ?? 0) / Math.max(limits.exports, 1)) * 100) },
+        seats:    { used: seatsUsed,    limit: limits.teamMembers + extraSeats, pct: Math.round((seatsUsed / Math.max(limits.teamMembers, 1)) * 100) },
       },
       addons: me.addons,
       subscriptionStatus: me.subscriptionStatus,
@@ -113,11 +114,12 @@ export function checkQuota(resource: "audits" | "monitors" | "reports" | "export
   const plan = (me.plan || "standard").toLowerCase();
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.standard;
 
+  const u = (me as Record<string, unknown>).usage as Record<string, Record<string, number>> | undefined;
   const map: Record<string, { used: number; limit: number }> = {
-    audits:   { used: me.usage.audit.used,   limit: me.usage.audit.limit   || limits.audits },
-    monitors: { used: me.usage.monitor.used, limit: me.usage.monitor.limit || limits.monitors },
-    reports:  { used: me.usage.pdf.used,     limit: me.usage.pdf.limit     || limits.reports },
-    exports:  { used: me.usage.exports.used, limit: me.usage.exports.limit || limits.exports },
+    audits:   { used: u?.audit?.used   ?? 0, limit: u?.audit?.limit   || limits.audits },
+    monitors: { used: u?.monitor?.used ?? 0, limit: u?.monitor?.limit || limits.monitors },
+    reports:  { used: u?.pdf?.used     ?? 0, limit: u?.pdf?.limit     || limits.reports },
+    exports:  { used: u?.exports?.used ?? 0, limit: u?.exports?.limit || limits.exports },
     seats:    { used: 1,                     limit: limits.teamMembers },
   };
 

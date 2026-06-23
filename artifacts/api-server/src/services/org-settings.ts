@@ -5,29 +5,17 @@ export interface OrgSettings {
   orgId: string;
   plan: string;
   email: string | null;
-  name: string | null;
-  logoUrl: string | null;
-  timezone: string;
-  language: string;
-  currency: string;
-  monthlyBudget: number | null;
-  primarySite: string | null;
-  industry: string | null;
-  companySize: string | null;
-  billingEmail: string | null;
-  trialEndsAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  // Extended fields (migration 005)
   firstName: string | null;
   lastName: string | null;
   orgName: string | null;
   website: string | null;
   subscriptionStatus: string | null;
   stripeCustomerId: string | null;
+  trialEndsAt: string | null;
   addons: Record<string, unknown>;
   usage: Record<string, unknown>;
-  // Location fields (migration 006)
+  createdAt: string;
+  updatedAt: string;
   address: string | null;
   city: string | null;
   postalCode: string | null;
@@ -40,140 +28,142 @@ export interface OrgSettings {
 }
 
 export async function loadOrgSettings(orgId = "default"): Promise<OrgSettings | null> {
+  const client = await pool.connect();
   try {
-    const client = await pool.connect();
-    try {
-      const res = await client.query(
-        `SELECT * FROM org_settings WHERE org_id = $1 LIMIT 1`,
-        [orgId]
-      );
-      if (!res.rows[0]) return null;
-      const r = res.rows[0];
-      return {
-        orgId: r.org_id,
-        plan: r.plan ?? "pro",
-        email: r.email ?? null,
-        name: r.name ?? null,
-        logoUrl: r.logo_url ?? null,
-        timezone: r.timezone ?? "Europe/Paris",
-        language: r.language ?? "fr",
-        currency: r.currency ?? "EUR",
-        monthlyBudget: r.monthly_budget ?? null,
-        primarySite: r.primary_site ?? null,
-        industry: r.industry ?? null,
-        companySize: r.company_size ?? null,
-        billingEmail: r.billing_email ?? null,
-        trialEndsAt: r.trial_ends_at ?? null,
-        createdAt: r.created_at ?? new Date().toISOString(),
-        updatedAt: r.updated_at ?? new Date().toISOString(),
-        firstName: r.first_name ?? null,
-        lastName: r.last_name ?? null,
-        orgName: r.org_name ?? r.name ?? null,
-        website: r.website ?? null,
-        subscriptionStatus: r.subscription_status ?? null,
-        stripeCustomerId: r.stripe_customer_id ?? null,
-        addons: r.addons ?? {},
-        usage: r.usage ?? {},
-        address: r.address ?? null,
-        city: r.city ?? null,
-        postalCode: r.postal_code ?? null,
-        country: r.country ?? null,
-        latitude: r.latitude != null ? parseFloat(r.latitude) : null,
-        longitude: r.longitude != null ? parseFloat(r.longitude) : null,
-        serviceArea: Array.isArray(r.service_area) ? r.service_area : (r.service_area ? JSON.parse(r.service_area) : []),
-        locationConfigured: r.location_configured ?? false,
-        locationSource: r.location_source ?? null,
-      };
-    } finally {
-      client.release();
-    }
+    const res = await client.query(`SELECT * FROM org_settings WHERE org_id = $1 LIMIT 1`, [orgId]);
+    if (!res.rows[0]) return null;
+    const r = res.rows[0];
+    return {
+      orgId: r.org_id,
+      plan: r.plan ?? "standard",
+      email: r.email ?? null,
+      firstName: r.first_name ?? null,
+      lastName: r.last_name ?? null,
+      orgName: r.org_name ?? null,
+      website: r.website ?? null,
+      subscriptionStatus: r.subscription_status ?? null,
+      stripeCustomerId: r.stripe_customer_id ?? null,
+      trialEndsAt: r.trial_ends_at ?? null,
+      addons: r.addons ?? {},
+      usage: r.usage ?? {},
+      createdAt: r.created_at ?? new Date().toISOString(),
+      updatedAt: r.updated_at ?? new Date().toISOString(),
+      address: r.address ?? null,
+      city: r.city ?? null,
+      postalCode: r.postal_code ?? null,
+      country: r.country ?? null,
+      latitude: r.latitude != null ? parseFloat(r.latitude) : null,
+      longitude: r.longitude != null ? parseFloat(r.longitude) : null,
+      serviceArea: Array.isArray(r.service_area) ? r.service_area : (r.service_area ? JSON.parse(r.service_area) : []),
+      locationConfigured: r.location_configured ?? false,
+      locationSource: r.location_source ?? null,
+    };
   } catch (err) {
     logger.debug({ err }, "[org-settings] loadOrgSettings failed");
     return null;
+  } finally {
+    client.release();
   }
 }
 
-export async function upsertOrgSettings(orgId: string, data: Partial<Omit<OrgSettings, "orgId" | "createdAt" | "updatedAt">>): Promise<OrgSettings> {
+/**
+ * Upsert org_settings using two separate queries to avoid PostgreSQL type-inference
+ * issues with multi-param CASE/COALESCE expressions across mixed column types.
+ *
+ * Step 1 — Ensure the row exists with safe NOT NULL defaults (INSERT ON CONFLICT DO NOTHING).
+ * Step 2 — UPDATE only the columns that were explicitly provided (non-null in `data`).
+ *           Each column gets its own typed bind parameter, so pg can resolve types trivially.
+ */
+export async function upsertOrgSettings(
+  orgId: string,
+  data: Partial<Omit<OrgSettings, "orgId" | "createdAt" | "updatedAt">>
+): Promise<OrgSettings> {
   const client = await pool.connect();
   try {
+    // ── Step 1: guarantee row exists ──────────────────────────────────────────
     await client.query(
-      `INSERT INTO org_settings (
-         org_id, plan, email, name, logo_url, timezone, language, currency,
-         monthly_budget, primary_site, industry, company_size, billing_email, trial_ends_at,
-         first_name, last_name, org_name, website, subscription_status, stripe_customer_id,
-         addons, usage,
-         address, city, postal_code, country, latitude, longitude,
-         service_area, location_configured, location_source,
-         created_at, updated_at
-       )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,NOW(),NOW())
-       ON CONFLICT (org_id) DO UPDATE SET
-         plan                = COALESCE(EXCLUDED.plan,              org_settings.plan),
-         email               = COALESCE(EXCLUDED.email,             org_settings.email),
-         name                = COALESCE(EXCLUDED.name,              org_settings.name),
-         logo_url            = COALESCE(EXCLUDED.logo_url,          org_settings.logo_url),
-         timezone            = COALESCE(EXCLUDED.timezone,          org_settings.timezone),
-         language            = COALESCE(EXCLUDED.language,          org_settings.language),
-         currency            = COALESCE(EXCLUDED.currency,          org_settings.currency),
-         monthly_budget      = COALESCE(EXCLUDED.monthly_budget,    org_settings.monthly_budget),
-         primary_site        = COALESCE(EXCLUDED.primary_site,      org_settings.primary_site),
-         industry            = COALESCE(EXCLUDED.industry,          org_settings.industry),
-         company_size        = COALESCE(EXCLUDED.company_size,      org_settings.company_size),
-         billing_email       = COALESCE(EXCLUDED.billing_email,     org_settings.billing_email),
-         trial_ends_at       = COALESCE(EXCLUDED.trial_ends_at,     org_settings.trial_ends_at),
-         first_name          = COALESCE(EXCLUDED.first_name,        org_settings.first_name),
-         last_name           = COALESCE(EXCLUDED.last_name,         org_settings.last_name),
-         org_name            = COALESCE(EXCLUDED.org_name,          org_settings.org_name),
-         website             = COALESCE(EXCLUDED.website,           org_settings.website),
-         subscription_status = COALESCE(EXCLUDED.subscription_status, org_settings.subscription_status),
-         stripe_customer_id  = COALESCE(EXCLUDED.stripe_customer_id, org_settings.stripe_customer_id),
-         addons              = COALESCE(EXCLUDED.addons,            org_settings.addons),
-         usage               = COALESCE(EXCLUDED.usage,             org_settings.usage),
-         address             = COALESCE(EXCLUDED.address,           org_settings.address),
-         city                = COALESCE(EXCLUDED.city,              org_settings.city),
-         postal_code         = COALESCE(EXCLUDED.postal_code,       org_settings.postal_code),
-         country             = COALESCE(EXCLUDED.country,           org_settings.country),
-         latitude            = COALESCE(EXCLUDED.latitude,          org_settings.latitude),
-         longitude           = COALESCE(EXCLUDED.longitude,         org_settings.longitude),
-         service_area        = COALESCE(EXCLUDED.service_area,      org_settings.service_area),
-         location_configured = COALESCE(EXCLUDED.location_configured, org_settings.location_configured),
-         location_source     = COALESCE(EXCLUDED.location_source,   org_settings.location_source),
-         updated_at          = NOW()`,
-      [
-        orgId,
-        data.plan             ?? null,
-        data.email            ?? null,
-        data.name             ?? null,
-        data.logoUrl          ?? null,
-        data.timezone         ?? null,
-        data.language         ?? null,
-        data.currency         ?? null,
-        data.monthlyBudget    ?? null,
-        data.primarySite      ?? null,
-        data.industry         ?? null,
-        data.companySize      ?? null,
-        data.billingEmail     ?? null,
-        data.trialEndsAt      ?? null,
-        data.firstName        ?? null,
-        data.lastName         ?? null,
-        data.orgName          ?? null,
-        data.website          ?? null,
-        data.subscriptionStatus ?? null,
-        data.stripeCustomerId ?? null,
-        data.addons           ? JSON.stringify(data.addons)  : null,
-        data.usage            ? JSON.stringify(data.usage)   : null,
-        data.address          ?? null,
-        data.city             ?? null,
-        data.postalCode       ?? null,
-        data.country          ?? null,
-        data.latitude         ?? null,
-        data.longitude        ?? null,
-        data.serviceArea      ? JSON.stringify(data.serviceArea) : null,
-        data.locationConfigured ?? null,
-        data.locationSource   ?? null,
-      ]
+      `INSERT INTO org_settings (org_id)
+       VALUES ($1)
+       ON CONFLICT (org_id) DO NOTHING`,
+      [orgId]
     );
+
+    // ── Step 2: update only provided fields ───────────────────────────────────
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    let n = 1;
+
+    // text columns (plain text, no cast needed)
+    const textCols: Array<[string | null | undefined, string]> = [
+      [data.firstName,          "first_name"],
+      [data.lastName,           "last_name"],
+      [data.orgName,            "org_name"],
+      [data.email,              "email"],
+      [data.website,            "website"],
+      [data.plan,               "plan"],
+      [data.subscriptionStatus, "subscription_status"],
+      [data.stripeCustomerId,   "stripe_customer_id"],
+      [data.address,            "address"],
+      [data.city,               "city"],
+      [data.postalCode,         "postal_code"],
+      [data.country,            "country"],
+      [data.locationSource,     "location_source"],
+    ];
+    for (const [val, col] of textCols) {
+      if (val !== undefined && val !== null) {
+        sets.push(`${col} = $${n++}`);
+        vals.push(val);
+      }
+    }
+
+    // timestamptz
+    if (data.trialEndsAt !== undefined && data.trialEndsAt !== null) {
+      sets.push(`trial_ends_at = $${n++}::timestamptz`);
+      vals.push(data.trialEndsAt);
+    }
+
+    // jsonb
+    if (data.addons !== undefined && data.addons !== null) {
+      sets.push(`addons = $${n++}::jsonb`);
+      vals.push(JSON.stringify(data.addons));
+    }
+    if (data.usage !== undefined && data.usage !== null) {
+      sets.push(`usage = $${n++}::jsonb`);
+      vals.push(JSON.stringify(data.usage));
+    }
+    if (data.serviceArea !== undefined && data.serviceArea !== null) {
+      sets.push(`service_area = $${n++}::jsonb`);
+      vals.push(JSON.stringify(data.serviceArea));
+    }
+
+    // numeric
+    if (data.latitude !== undefined && data.latitude !== null) {
+      sets.push(`latitude = $${n++}::numeric`);
+      vals.push(data.latitude);
+    }
+    if (data.longitude !== undefined && data.longitude !== null) {
+      sets.push(`longitude = $${n++}::numeric`);
+      vals.push(data.longitude);
+    }
+
+    // boolean
+    if (data.locationConfigured !== undefined && data.locationConfigured !== null) {
+      sets.push(`location_configured = $${n++}::boolean`);
+      vals.push(data.locationConfigured);
+    }
+
+    if (sets.length > 0) {
+      sets.push(`updated_at = NOW()`);
+      await client.query(
+        `UPDATE org_settings SET ${sets.join(", ")} WHERE org_id = $${n}`,
+        [...vals, orgId]
+      );
+    }
+
     return (await loadOrgSettings(orgId))!;
+  } catch (err) {
+    logger.error({ err }, "[org-settings] upsertOrgSettings failed");
+    throw err;
   } finally {
     client.release();
   }

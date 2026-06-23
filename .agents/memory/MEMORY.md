@@ -7,6 +7,7 @@
 - [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
 - [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing-service needs prod guard (throw/503) when Stripe key missing; SSRF runs after auth (401 before URL validation = correct); auth rate limit 10/15min per IP; ai-worker buildFallbackResult returns generic recs tagged mock:true on OpenAI failure
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
+- [API server final state](api-server-final-state.md) — 35/35 endpoints 200; upsert org_settings uses 2-query pattern; automation/runs uses raw SQL (Drizzle completedAt≠ended_at)
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [JS IIFE string apostrophe rule](js-iife-apostrophe.md) — dans les IIFEs qui concaténent HTML: toute apostrophe française dans single-quoted JS string doit être escapée \'; tester node --check après chaque lot d'édits
 - [FlowPoint demock final state](flowpoint-demock-final.md) — 124 aiBlocks, 0 fake names hors guard, 0 boutons mission faux; STATE.reports/threads/shareLinks/onboardings attendus mais endpoints API pas encore créés

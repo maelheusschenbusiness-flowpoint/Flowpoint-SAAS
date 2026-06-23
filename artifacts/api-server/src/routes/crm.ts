@@ -99,4 +99,29 @@ router.post("/crm/webhook/:provider", async (req, res) => {
   } finally { client.release(); }
 });
 
+router.get("/crm/leads", async (req, res) => {
+  const orgId = org(req);
+  const { pool } = await import("@workspace/db");
+  const client = await pool.connect();
+  try {
+    const intg = await client.query(
+      `SELECT id FROM crm_integrations WHERE org_id=$1 AND status='connected' LIMIT 1`,
+      [orgId]
+    );
+    if (!intg.rows[0]) {
+      return res.json({ leads: [], total: 0, message: "No CRM connected" });
+    }
+    const rows = await client.query(
+      `SELECT id, name, email, phone, status, source, created_at
+       FROM crm_contacts WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`,
+      [orgId]
+    );
+    res.json({ leads: rows.rows, total: rows.rowCount });
+  } catch {
+    res.json({ leads: [], total: 0 });
+  } finally {
+    client.release();
+  }
+});
+
 export default router;

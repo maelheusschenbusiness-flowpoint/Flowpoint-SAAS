@@ -101,24 +101,27 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     store.broadcastPlanUpdate(plan.toLowerCase());
   }
 
-  // Persist to DB (non-blocking on failure)
-  upsertOrgSettings(orgId, {
-    firstName:   store.me.firstName,
-    lastName:    typeof lastName === "string" ? lastName.trim() : undefined,
-    orgName:     store.me.org.name,
-    plan:        store.me.plan,
-    website:     typeof website === "string" ? website.trim() : undefined,
-    timezone:    typeof timezone === "string" ? timezone.trim() : undefined,
-    address:     typeof address === "string" ? address.trim() : undefined,
-    city:        typeof city === "string" ? city.trim() : undefined,
-    postalCode:  typeof postalCode === "string" ? postalCode.trim() : undefined,
-    country:     typeof country === "string" ? country.trim() : undefined,
-    subscriptionStatus: store.me.subscriptionStatus,
-    trialEndsAt: store.me.trialEndsAt ?? null,
-    stripeCustomerId: store.me.stripeCustomerId ?? "",
-    addons:      store.me.addons,
-    usage:       store.me.usage,
-  }).catch(() => {});
+  // Persist to DB
+  try {
+    await upsertOrgSettings(orgId, {
+      firstName:   store.me.firstName,
+      lastName:    typeof lastName === "string" ? lastName.trim() : undefined,
+      orgName:     store.me.org?.name ?? (typeof orgName === "string" ? orgName.trim() : undefined),
+      plan:        store.me.plan,
+      website:     typeof website === "string" ? website.trim() : (store.me.org?.website ?? undefined),
+      address:     typeof address === "string" ? address.trim() : undefined,
+      city:        typeof city === "string" ? city.trim() : undefined,
+      postalCode:  typeof postalCode === "string" ? postalCode.trim() : undefined,
+      country:     typeof country === "string" ? country.trim() : undefined,
+      subscriptionStatus: store.me.subscriptionStatus,
+      trialEndsAt: store.me.trialEndsAt ?? null,
+      stripeCustomerId: store.me.stripeCustomerId ?? "",
+      addons:      store.me.addons,
+      usage:       store.me.usage,
+    });
+  } catch {
+    // Non-fatal: in-memory state was already updated, DB sync will retry on next save
+  }
 
   const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
   res.json({ ...store.me, limits });
@@ -196,10 +199,10 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
   try {
     await client.query(
       `INSERT INTO user_prefs (org_id, streak, pinned, checklist, settings, updated_at)
-       VALUES ($1, $2, $3, $4, $5, now())
+       VALUES ($1, COALESCE($2, 0), COALESCE($3::jsonb, '{}'::jsonb), $4, $5, now())
        ON CONFLICT (org_id) DO UPDATE SET
          streak     = COALESCE($2, user_prefs.streak),
-         pinned     = COALESCE($3, user_prefs.pinned),
+         pinned     = COALESCE($3::jsonb, user_prefs.pinned),
          checklist  = COALESCE($4, user_prefs.checklist),
          settings   = COALESCE($5, user_prefs.settings),
          updated_at = now()`,

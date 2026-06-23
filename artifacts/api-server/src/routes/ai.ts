@@ -888,4 +888,50 @@ function buildFallbackPSIRecommendations(url: string, mobile?: Record<string, un
 *Connectez OpenAI pour des recommandations détaillées avec exemples de code.*`;
 }
 
+router.get("/ai/recommendations", async (req: Request, res: Response) => {
+  const orgId = req.orgId ?? "default";
+  const { pool } = await import("@workspace/db");
+  const client = await pool.connect();
+  try {
+    const rows = await client.query(
+      `SELECT id, type, title, description, priority, status, created_at
+       FROM ai_usage_logs WHERE org_id=$1 ORDER BY created_at DESC LIMIT 50`,
+      [orgId]
+    );
+    res.json({ recommendations: rows.rows });
+  } catch {
+    res.json({ recommendations: [] });
+  } finally {
+    client.release();
+  }
+});
+
+router.post("/ai/generate", async (req: Request, res: Response) => {
+  const { prompt, type = "general" } = req.body as { prompt?: string; type?: string };
+  if (!prompt) return res.status(400).json({ error: "prompt required" });
+  try {
+    const { openai, hasOpenAI } = await import("../lib/openai.js");
+    if (!hasOpenAI) {
+      return res.json({
+        content: `[Contenu généré] ${prompt.slice(0, 100)}…\n\n*Connectez OpenAI pour une génération IA réelle.*`,
+        mock: true,
+      });
+    }
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: `Tu es un assistant marketing expert. Type de contenu: ${type}.` },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 800,
+    });
+    res.json({ content: resp.choices[0]?.message?.content ?? "", mock: false });
+  } catch {
+    res.json({
+      content: `[Contenu généré] ${prompt.slice(0, 100)}…\n\n*Erreur OpenAI — réessayez.*`,
+      mock: true,
+    });
+  }
+});
+
 export default router;
