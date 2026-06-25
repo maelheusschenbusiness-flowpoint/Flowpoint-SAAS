@@ -383,7 +383,7 @@ function downloadReportPdf(reportId, name) {
 }
 
 function exportActivityCsv() {
-  const rows = (STATE.activity || ACTIVITY_FEED || []).map(item =>
+  const rows = (STATE.activity || (PREVIEW_MODE ? ACTIVITY_FEED : []) || []).map(item =>
     `"${(item.label || item.title || '').replace(/"/g,'""')}","${(item.type||'')}","${(item.time||item.date||'')}"`
   );
   exportCsv('Label,Type,Date', rows, `activite-flowpoint-${new Date().toISOString().slice(0,10)}.csv`);
@@ -3472,7 +3472,7 @@ function renderOverview() {
           <button class="fp-link-btn" id="activity-see-all">Voir tout →</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${ACTIVITY_FEED.slice(0,6).map(item => {
+          ${(PREVIEW_MODE ? ACTIVITY_FEED : []).slice(0,6).map(item => {
             const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
             const c = colors[item.type] || '#2563EB';
             return `<div class="fp-activity-item">
@@ -6351,7 +6351,7 @@ function renderTeam() {
         <button class="fp-link-btn" onclick="navigateSub('activity')">Voir tout →</button>
       </div>
       <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
-        ${ACTIVITY_FEED.slice(0,6).map(item => {
+        ${(PREVIEW_MODE ? ACTIVITY_FEED : []).slice(0,6).map(item => {
           const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
           const c = colors[item.type] || '#2563EB';
           return `<div class="fp-activity-item" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:8px 12px">
@@ -11228,7 +11228,7 @@ function bindSectionEvents() {
       const monitor = STATE.monitors.find(m => m.id === btn.dataset.monitorPinned);
       if (monitor) openMonitorPanel(monitor);
     }));
-    $('#activity-see-all')?.addEventListener('click', () => openFloatPanel('Historique complet', ACTIVITY_FEED.map(item => {
+    $('#activity-see-all')?.addEventListener('click', () => openFloatPanel('Historique complet', (PREVIEW_MODE ? ACTIVITY_FEED : []).map(item => {
       const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
       const c = colors[item.type]||'#2563EB';
       return `<div style="display:flex;gap:10px;padding:12px;background:var(--fp-inner-card);border-radius:10px;margin-bottom:8px">
@@ -16240,7 +16240,9 @@ function renderTeamActivity() {
   return `
     ${aiBlock('Activité de l\'équipe ce mois. <strong>' + _topAct + '</strong> est le membre le plus actif (' + _actCount + ' événements enregistrés). Aucune activité suspecte détectée.',[])}
     <div class="fp-timeline">
-      ${ACTIVITY_FEED.map(item => {
+      ${(PREVIEW_MODE ? ACTIVITY_FEED : (STATE.activityEvents||[])).length === 0
+        ? '<div style="padding:32px;text-align:center;color:var(--fp-text-faint);font-size:13px">Aucune activité enregistrée pour le moment. Les événements apparaîtront ici au fil de vos actions.</div>'
+        : (PREVIEW_MODE ? ACTIVITY_FEED : (STATE.activityEvents||[]).map(e => ({type:e.type==='monitor'?'info':e.type==='alert'?'warning':e.type==='audit'?'success':'info',icon:e.type==='monitor'?'activity':e.type==='alert'?'alert-triangle':e.type==='audit'?'trending-up':'zap',title:e.label||'Événement',desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'',time:e.createdAt?new Date(e.createdAt).toLocaleDateString('fr-FR'):'—'}))).map(item => {
         const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
         const c = colors[item.type] || '#2563EB';
         return `<div class="fp-timeline-item">
@@ -16501,12 +16503,12 @@ function renderGrowthProjections() {
   const monthData = months.map(function(m, i) {
     return { month:m, score:Math.min(100,avgSc+(i+1)*3), delta:'+'+(i+1)*3+' pts' };
   });
-  const channels = [
+  const channels = PREVIEW_MODE ? [
     {ch:'Recherche organique',    now:68, p30:78, p90:88, color:'var(--fp-accent)'},
     {ch:'Google Maps / Local Pack',now:42, p30:55, p90:68, color:'#f59e0b'},
     {ch:'Référents & annuaires',  now:18, p30:22, p90:28, color:'#8b5cf6'},
     {ch:'Direct & marque',        now:12, p30:14, p90:16, color:'#06b6d4'},
-  ];
+  ] : [];
   return `<div style="display:flex;flex-direction:column;gap:16px">
     <div class="fp-section-header">
       <div><h1>Projections IA</h1><div class="fp-section-sub">Modèles prédictifs · Scénarios Mai–Nov. 2026</div></div>
@@ -16609,9 +16611,9 @@ function renderGrowthProjections() {
 
     <div class="fp-card">
       <div class="fp-card-title" style="margin-bottom:14px">⚡ Impact des Quick Wins sur la projection</div>
-      ${aiBlock('En exécutant les <strong>4 Quick Wins actives</strong> cette semaine, votre projection à 30 jours passe de <strong>${avgSc+7}/100</strong> à <strong>${avgSc+11}/100</strong>. Gain : <strong>+4 pts supplémentaires</strong> et <strong>+28% de leads</strong>.',['Voir Quick Wins'])}
+      ${aiBlock(PREVIEW_MODE ? 'En exécutant les <strong>4 Quick Wins actives</strong> cette semaine, votre projection à 30 jours passe de <strong>'+(avgSc+7)+'/100</strong> à <strong>'+(avgSc+11)+'/100</strong>. Gain : <strong>+4 pts supplémentaires</strong>.' : 'Exécutez vos premières optimisations pour voir l\'impact projeté sur votre score SEO.',['Voir Quick Wins'])}
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
-        ${[
+        ${!PREVIEW_MODE ? '<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Aucune Quick Win enregistrée. Lancez un audit et exécutez les recommandations pour activer le suivi.</div>' : [
           {title:'H1 page accueil optimisé',     gain:'+2 pts',  cum:avgSc+9,  col:'#22c55e'},
           {title:'Schema FAQ sur 3 pages',        gain:'+3 pts',  cum:avgSc+10, col:'#22c55e'},
           {title:'CLS mobile corrigé (2 sites)',  gain:'+2 pts',  cum:avgSc+10, col:'var(--fp-accent)'},
@@ -17958,10 +17960,12 @@ function renderCompetitor() {
             <rect x="250" y="47" width="100" height="17" rx="3" fill="rgba(34,197,94,0.8)"/>
             <text x="300" y="59" text-anchor="middle" font-size="9" fill="white" font-family="Inter,sans-serif" font-weight="700">Lyon 1-4 · #1 · 88%</text>
             <!-- Competitor zone labels -->
-            <rect x="309" y="152" width="102" height="16" rx="3" fill="rgba(239,68,68,0.75)"/>
-            <text x="360" y="163" text-anchor="middle" font-size="8.5" fill="white" font-family="Inter,sans-serif">Concurrent A · men. &#9650;&#9650;</text>
-            <rect x="49" y="164" width="102" height="16" rx="3" fill="rgba(245,158,11,0.75)"/>
-            <text x="100" y="175" text-anchor="middle" font-size="8.5" fill="white" font-family="Inter,sans-serif">Concurrent B · stable</text>
+            ${(comps.length > 0 || PREVIEW_MODE) ? (
+              '<rect x="309" y="152" width="102" height="16" rx="3" fill="rgba(239,68,68,0.75)"/>' +
+              '<text x="360" y="163" text-anchor="middle" font-size="8.5" fill="white" font-family="Inter,sans-serif">' + escHtml(comps[0]?.name || 'Concurrent A') + ' \xB7 men. \u25B2\u25B2</text>' +
+              '<rect x="49" y="164" width="102" height="16" rx="3" fill="rgba(245,158,11,0.75)"/>' +
+              '<text x="100" y="175" text-anchor="middle" font-size="8.5" fill="white" font-family="Inter,sans-serif">' + escHtml(comps[1]?.name || 'Concurrent B') + ' \xB7 stable</text>'
+            ) : ''}
             <!-- Your markers -->
             <circle cx="175" cy="88" r="9" fill="#2563EB"/>
             <circle cx="175" cy="88" r="9" fill="none" stroke="white" stroke-width="2"/>

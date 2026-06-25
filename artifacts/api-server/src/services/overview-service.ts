@@ -56,7 +56,7 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
   try {
-    const [audits, auditsPrev, monitors, keywords, missions, ai, leaks, connectors, gbpPosts] =
+    const [audits, auditsPrev, monitors, keywords, missions, ai, leaks, connectors, gbpPosts, competitorsQ] =
       await Promise.allSettled([
         // Current 30-day audit avg + count
         pool.query(
@@ -125,6 +125,11 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
            WHERE org_id=$1`,
           [orgId]
         ),
+        // Competitor count from Supabase table for pressure calculation
+        pool.query(
+          `SELECT COUNT(*) as count FROM competitors WHERE org_id=$1`,
+          [orgId]
+        ),
       ]);
 
     const auditRow    = audits.status      === "fulfilled" ? audits.value.rows[0]       : null;
@@ -137,6 +142,7 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
     const analyticsConnected =
       connectors.status === "fulfilled" && connectors.value.rows.length > 0;
     const gbpRow      = gbpPosts.status    === "fulfilled" ? gbpPosts.value.rows[0]     : null;
+    const compRow     = competitorsQ.status === "fulfilled" ? competitorsQ.value.rows[0] : null;
 
     // ── Core metrics ────────────────────────────────────────────────────────────
     const seoScore    = Math.round(Number(auditRow?.avg_score ?? 0));
@@ -192,9 +198,11 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
       localScore = Math.min(100, baseScore + gbpContrib + monContrib);
     }
 
-    // ── Competitor pressure: null until real competitor data is available ───────
-    // MongoDB-based competitors can't be queried here; set null to avoid fabrication.
-    const competitorPressure: number | null = null;
+    // ── Competitor pressure: derived from Supabase competitors table count ──────
+    const competitorCount = Number(compRow?.count ?? 0);
+    const competitorPressure: number | null = competitorCount > 0
+      ? Math.min(100, Math.round(20 + competitorCount * 15))
+      : null;
 
     // ── Score trend delta ───────────────────────────────────────────────────────
     const seoTrendDelta: number | null =
@@ -233,7 +241,7 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
       revenueLeakAmount: Math.round(Number(leakRow?.total ?? 0)),
       avgLatency,
       uptime,
-      competitors: 0,   // MongoDB-based — cannot query from this service
+      competitors: competitorCount,
       trendsUp:   Number(kwRow?.up   ?? 0),
       trendsDown: Number(kwRow?.down ?? 0),
       growthMomentum,
