@@ -16337,7 +16337,7 @@ function renderReportsTemplates() {
 // ── TEAM SUB-PAGES ──
 function renderTeamChat() {
   const msgs = STATE.teamChatHistory;
-  const myName = STATE.me?.name || 'Maël H.';
+  const myName = STATE.me?.name || STATE.me?.email?.split('@')[0] || 'Vous';
   return `
     <div class="fp-card" style="display:flex;flex-direction:column;height:460px">
       <div id="team-chat-msgs" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:14px">

@@ -258,7 +258,7 @@ router.post("/admin/demo-seed", async (req: Request, res: Response): Promise<voi
     for (const k of kwRows) {
       try {
         await client.query(
-          `INSERT INTO tracked_keywords (id, keyword, current_position, prev_position, volume, difficulty, trend, tag, org_id, active, created_at)
+          `INSERT INTO tracked_keywords (id, keyword, current_position, prev_position, search_volume, difficulty, trend, tag, org_id, active, created_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,NOW()) ON CONFLICT (id) DO NOTHING`,
           [k.id, k.keyword, k.position, k.prev_position, k.volume, k.difficulty, k.trend, k.tag, orgId]
         );
