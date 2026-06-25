@@ -207,7 +207,7 @@ export async function getSubscriptionAnalytics() {
 
 // ── Trial management ──────────────────────────────────────────────────────────
 export async function startTrial(plan: string = "pro", days: number = 14) {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
       throw new Error("STRIPE_LIVE_API_KEY is required in production — cannot activate trial");
@@ -264,7 +264,7 @@ export async function startTrial(plan: string = "pro", days: number = 14) {
 
 // ── Coupon validation ─────────────────────────────────────────────────────────
 export async function validateCoupon(code: string) {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
       return { valid: false, error: "Payment service not configured" };
@@ -297,7 +297,7 @@ export async function validateCoupon(code: string) {
 
 // ── Invoices ──────────────────────────────────────────────────────────────────
 export async function getInvoices(limit: number = 20) {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"];
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   if (!stripeKey || !store.me.stripeCustomerId) {
     return { invoices: [], mock: true };
   }

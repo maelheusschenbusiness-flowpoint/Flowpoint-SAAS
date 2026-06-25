@@ -819,6 +819,7 @@ async function loadData() {
   const _team= normArr(team,     'members');  STATE.team     = (_team  && _team.length  > 0) ? _team  : (PREVIEW_MODE ? MOCK_TEAM     : []);
 
   STATE.calendarEvents = [];
+  STATE.clients = [];
   STATE.overview = overview;
   if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
 
@@ -830,6 +831,7 @@ async function loadData() {
   const [
     _schedRes, _udRes, _upcomingRes, _alertRulesRes, _alertEventsRes,
     _activityRes, _teamMsgsRes, _prefsRes, _notifsRes, _blRes, _llmRes,
+    _clientsRes, _calRes,
   ] = await Promise.allSettled([
     apiFetch('/api/audits/schedule'),
     apiFetch('/api/billing/usage-details'),
@@ -842,6 +844,8 @@ async function loadData() {
     apiFetch('/api/notifications'),
     _domain ? apiFetch('/api/seo/backlinks?domain='      + encodeURIComponent(_domain)) : Promise.resolve(null),
     _domain ? apiFetch('/api/seo/llm-visibility?domain=' + encodeURIComponent(_domain)) : Promise.resolve(null),
+    apiFetch('/api/reports/clients'),
+    apiFetch('/api/calendar-events'),
   ]);
 
   STATE.auditSchedules  = (_schedRes.status      === 'fulfilled' && Array.isArray(_schedRes.value))                                ? _schedRes.value      : [];
@@ -860,6 +864,14 @@ async function loadData() {
     if (_blData  && typeof _blData  === 'object') STATE.backlinks     = _blData;  else STATE.backlinks     = null;
     if (_llmData && typeof _llmData === 'object') STATE.llmVisibility = _llmData; else STATE.llmVisibility = null;
   }
+
+  const _clientsRaw = (_clientsRes.status === 'fulfilled' && Array.isArray(_clientsRes.value)) ? _clientsRes.value : [];
+  STATE.clients = _clientsRaw.filter(c => c.type !== 'client' || c.type === 'client').filter(c => c.name);
+  const _calRaw = (_calRes.status === 'fulfilled' && Array.isArray(_calRes.value)) ? _calRes.value : [];
+  STATE.calendarEvents = _calRaw.map(e => ({
+    id: e.id, title: e.title, site: e.site||'', type: e.type||'Autre',
+    date: e.date||'', startTime: e.startTime||'', duration: e.duration||60, notes: e.notes||'',
+  }));
 
   const _prefs = _prefsRes.status === 'fulfilled' ? _prefsRes.value : null;
   if (_prefs) {
@@ -4741,7 +4753,9 @@ function setupNewCalEventPanel(dateStr) {
       };
       if (!STATE.calendarEvents) STATE.calendarEvents = [];
       STATE.calendarEvents.push(ev);
-      saveCalendarEvents();
+      apiFetch('/api/calendar-events', { method: 'POST', body: JSON.stringify(ev) })
+        .then(created => { if (created && created.id) ev.id = created.id; })
+        .catch(() => {});
       showToast('success','RDV créé !');
       closeFloatPanel();
       render();
@@ -4821,14 +4835,14 @@ function setupEditCalEventPanel(ev) {
       ev.startTime = $('#ce-time')?.value || '';
       ev.duration  = parseInt($('#ce-duration')?.value || '60', 10);
       ev.notes     = sanitizeNotes($('#ce-notes')?.value || '');
-      saveCalendarEvents();
+      apiFetch('/api/calendar-events/' + ev.id, { method: 'PATCH', body: JSON.stringify({ title: ev.title, site: ev.site, type: ev.type, date: ev.date, startTime: ev.startTime, duration: ev.duration, notes: ev.notes }) }).catch(() => {});
       showToast('success','RDV mis à jour !');
       closeFloatPanel();
       render();
     });
     $('#ce-delete')?.addEventListener('click', () => {
+      apiFetch('/api/calendar-events/' + ev.id, { method: 'DELETE' }).catch(() => {});
       STATE.calendarEvents = (STATE.calendarEvents||[]).filter(ce => ce.id !== ev.id);
-      saveCalendarEvents();
       showToast('error','RDV supprimé');
       closeFloatPanel();
       render();
@@ -10948,6 +10962,9 @@ function _doRender() {
     case 'crm':              html = renderCRM(); break;
     case 'market-intelligence': html = renderMarketIntelligence(); break;
     case 'permissions':      html = renderPermissions(); break;
+    case 'automations':      STATE.route = 'settings'; STATE.subRoute = 'automations'; html = renderSettings(); break;
+    case 'integrations':     STATE.route = 'settings'; STATE.subRoute = 'integrations'; html = renderSettings(); break;
+    case 'addons':           STATE.route = 'billing';  STATE.subRoute = 'addons';       html = renderBilling();  break;
     default:               html = renderOverview();
   }
 
@@ -13180,7 +13197,13 @@ function renderSubPageContent(route, sub) {
     if (sub === 'sso')    return renderSettingsSSO();
   }
   if (route === 'conversion') {
-    if (sub === 'heatmap') return renderConversionHeatmap();
+    if (sub === 'heatmap')      return renderConversionHeatmap();
+    if (sub === 'funnel')       return renderConversion();
+    if (sub === 'ux-lab')       return renderConversion();
+    if (sub === 'revenue-leak') return renderConversion();
+    if (sub === 'cro')          return renderConversion();
+    if (sub === 'cta')          return renderConversion();
+    if (!sub) return null;
     return renderConversion();
   }
 
@@ -16500,13 +16523,13 @@ function renderGrowthProjections() {
   const scenarios = [
     { label:'🚀 Optimiste',  color:'#22c55e',          bg:'rgba(34,197,94,.07)',  border:'rgba(34,197,94,.2)',
       desc:'Toutes les Quick Wins exécutées + 2 audits/mois',
-      s30:avgSc+9, s60:avgSc+17, s90:avgSc+23, traffic:'+28%', leads:'+35%', roi:'+1 840€' },
+      s30:avgSc+9, s60:avgSc+17, s90:avgSc+23, traffic:PREVIEW_MODE?'+28%':'—', leads:PREVIEW_MODE?'+35%':'—', roi:PREVIEW_MODE?'+1 840€':'—' },
     { label:'📈 Réaliste',   color:'var(--fp-accent)',  bg:'rgba(37,99,235,.07)', border:'rgba(37,99,235,.2)',
       desc:'Rythme actuel maintenu, corrections critiques faites',
-      s30:avgSc+7, s60:avgSc+14, s90:avgSc+19, traffic:'+18%', leads:'+22%', roi:'+1 240€' },
+      s30:avgSc+7, s60:avgSc+14, s90:avgSc+19, traffic:PREVIEW_MODE?'+18%':'—', leads:PREVIEW_MODE?'+22%':'—', roi:PREVIEW_MODE?'+1 240€':'—' },
     { label:'⚠️ Prudent',   color:'#f59e0b',           bg:'rgba(245,158,11,.06)', border:'rgba(245,158,11,.2)',
       desc:'Sans action supplémentaire, croissance organique seule',
-      s30:avgSc+3, s60:avgSc+6,  s90:avgSc+9,  traffic:'+6%',  leads:'+8%',  roi:'+380€' },
+      s30:avgSc+3, s60:avgSc+6,  s90:avgSc+9,  traffic:PREVIEW_MODE?'+6%':'—',  leads:PREVIEW_MODE?'+8%':'—',  roi:PREVIEW_MODE?'+380€':'—' },
   ];
   const monthData = months.map(function(m, i) {
     return { month:m, score:Math.min(100,avgSc+(i+1)*3), delta:'+'+(i+1)*3+' pts' };
@@ -16529,7 +16552,7 @@ function renderGrowthProjections() {
       ${statCard('Score dans 30j',  (avgSc+7)+'/100',  '+7 pts estimés',  'up', 'Scénario réaliste')}
       ${statCard('Score dans 60j',  (avgSc+14)+'/100', '+14 pts estimés', 'up', 'Scénario réaliste')}
       ${statCard('Score dans 90j',  (avgSc+19)+'/100', '+19 pts estimés', 'up', 'Scénario réaliste')}
-      ${statCard('ROI cumulé 90j', displayStat(null, '+3 720€'), PREVIEW_MODE ? 'leads estimés' : 'Connectez analytics', 'neutral')}
+      ${statCard('ROI cumulé 90j', displayStat(null, PREVIEW_MODE ? '+3 720€' : '—'), PREVIEW_MODE ? 'leads estimés' : 'Connectez analytics', 'neutral')}
     </div>
 
     <div class="fp-card">
@@ -21114,7 +21137,7 @@ function renderDataExplorer() {
   const isUltra = plan === 'Agency';
 
   // ── Shared data ────────────────────────────────────────────
-  const trafficSources = [
+  const trafficSources = PREVIEW_MODE ? [
     { src: 'Organique Google', sessions: 4820, pct: 38, quality: 82, bounce: 41, conv: 1.8,  trend: +12, color: '#22c55e' },
     { src: 'Direct',           sessions: 2140, pct: 17, quality: 74, bounce: 34, conv: 2.4,  trend: +3,  color: '#2563EB' },
     { src: 'Google Maps',      sessions: 1780, pct: 14, quality: 88, bounce: 28, conv: 3.2,  trend: +21, color: '#f59e0b' },
@@ -21123,20 +21146,20 @@ function renderDataExplorer() {
     { src: 'Publicité payante',sessions: 640,  pct: 5,  quality: 71, bounce: 44, conv: 1.6,  trend: -2,  color: '#ef4444' },
     { src: 'Email',            sessions: 390,  pct: 3,  quality: 91, bounce: 22, conv: 4.1,  trend: +5,  color: '#a78bfa' },
     { src: 'Autres',           sessions: 570,  pct: 5,  quality: 52, bounce: 62, conv: 0.6,  trend: 0,   color: '#475569' },
-  ];
+  ] : [];
 
   const _behDE = window.FP_DATA && window.FP_DATA.behavioral && window.FP_DATA.behavioral.sessionStats;
   const _croDE = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.scores && window.FP_DATA.cro.scores[0];
   const _avgSEO = typeof avgScore === 'function' ? avgScore() : 71;
   const kpiScores = [
-    { label: 'Business Health',    val: Math.min(99, _avgSEO || 72),                                                                           color: '#22c55e', icon: '🏢' },
-    { label: 'Growth Momentum',    val: Math.min(99, Math.round((_avgSEO || 64) * 0.9)),                                                       color: '#2563EB', icon: '📈' },
-    { label: 'Traffic Intel',      val: _behDE ? Math.min(99, 100 - (_behDE.bounceRate || 22)) : 78,                                           color: '#06b6d4', icon: '🚦' },
-    { label: 'Conversion Intel',   val: _croDE ? Math.min(99, _croDE.overallScore || 44) : 44,                                                 color: '#ef4444', icon: '🎯' },
-    { label: 'SEO Data Score',     val: Math.min(99, _avgSEO || 71),                                                                           color: '#f59e0b', icon: '🔍' },
-    { label: 'Perf. Stability',    val: _behDE ? Math.max(20, Math.min(99, 90 - Math.round((_behDE.rageClicks || 0) * 0.3))) : 83,             color: '#22c55e', icon: '⚡' },
-    { label: 'Revenue Opportunity',val: _croDE ? Math.min(99, Math.round(_croDE.overallScore * 0.75)) : 52,                                    color: '#8b5cf6', icon: '💰' },
-    { label: 'Local Visibility',   val: Math.min(99, Math.round((_avgSEO || 68) * 0.88)),                                                      color: '#f97316', icon: '📍' },
+    { label: 'Business Health',    val: Math.min(99, _avgSEO || 72),                                                                                           color: '#22c55e', icon: '🏢' },
+    { label: 'Growth Momentum',    val: Math.min(99, Math.round((_avgSEO || 64) * 0.9)),                                                                       color: '#2563EB', icon: '📈' },
+    { label: 'Traffic Intel',      val: _behDE ? Math.min(99, 100 - (_behDE.bounceRate || 22)) : (PREVIEW_MODE ? 78 : null),                                    color: '#06b6d4', icon: '🚦' },
+    { label: 'Conversion Intel',   val: _croDE ? Math.min(99, _croDE.overallScore || 44) : (PREVIEW_MODE ? 44 : null),                                          color: '#ef4444', icon: '🎯' },
+    { label: 'SEO Data Score',     val: Math.min(99, _avgSEO || 71),                                                                                           color: '#f59e0b', icon: '🔍' },
+    { label: 'Perf. Stability',    val: _behDE ? Math.max(20, Math.min(99, 90 - Math.round((_behDE.rageClicks || 0) * 0.3))) : (PREVIEW_MODE ? 83 : null),     color: '#22c55e', icon: '⚡' },
+    { label: 'Revenue Opportunity',val: _croDE ? Math.min(99, Math.round(_croDE.overallScore * 0.75)) : (PREVIEW_MODE ? 52 : null),                             color: '#8b5cf6', icon: '💰' },
+    { label: 'Local Visibility',   val: Math.min(99, Math.round((_avgSEO || 68) * 0.88)),                                                                      color: '#f97316', icon: '📍' },
   ];
 
   const circ46 = 2 * Math.PI * 46;
@@ -21159,7 +21182,7 @@ function renderDataExplorer() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Sessions totales', displayStat(STATE.overview?.sessions ? STATE.overview.sessions.toLocaleString('fr-FR') : null, '12 640'), PREVIEW_MODE ? '+18% vs M-1' : 'Connectez analytics', 'neutral')}
-        ${statCard('Meilleure source', 'Google Maps', 'Connectez analytics pour les détails', 'up')}
+        ${statCard('Meilleure source', displayStat(null, PREVIEW_MODE ? 'Google Maps' : '—'), PREVIEW_MODE ? 'Connectez analytics pour les détails' : 'Connectez analytics', PREVIEW_MODE ? 'up' : 'neutral')}
         ${statCard('Source en déclin', displayStat(null, 'Référents'), PREVIEW_MODE ? '-4% · rebond 58%' : 'Connectez analytics', 'neutral')}
         ${statCard('Qualité trafic moy.', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'72/100'); })(), PREVIEW_MODE ? '+6 pts vs M-1' : 'score audits', 'neutral')}
       </div>
@@ -21973,7 +21996,7 @@ function renderClientMode() {
         ${statCard('Score SEO moyen', avg + '/100', '+7 pts ce mois', 'up')}
         ${statCard('Disponibilité', (()=>{ const _mu2 = STATE.monitors && STATE.monitors.length > 0 ? (STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length).toFixed(1) : null; return displayStat(_mu2!==null?_mu2+'%':null,'99.1%'); })(), 'SLA tenu', 'neutral')}
         ${statCard('Missions', STATE.missions && STATE.missions.length > 0 ? STATE.missions.filter(m=>m.status==='done').length + '/' + STATE.missions.length : '—', 'complétées ce mois', 'up')}
-        ${statCard('Note Google', displayStat(null, '4.4 ⭐'), PREVIEW_MODE ? '+0.2 vs M-1' : 'Connectez GBP', 'neutral')}
+        ${statCard('Note Google', displayStat(STATE.localSeo?.avgRating ? STATE.localSeo.avgRating.toFixed(1) + ' ⭐' : null, PREVIEW_MODE ? '4.4 ⭐' : '—'), PREVIEW_MODE ? '+0.2 vs M-1' : 'Connectez GBP', 'neutral')}
       </div>
 
       <!-- SITE SCORES + ACHIEVEMENTS -->

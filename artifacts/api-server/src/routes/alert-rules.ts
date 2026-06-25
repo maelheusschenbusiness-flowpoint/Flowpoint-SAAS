@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { db, alertRulesTable } from "@workspace/db";
+import { pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { store } from "../services/store.js";
-import { safeErrMsg } from "../lib/safe-error.js";
 
 const router = Router();
 
@@ -126,20 +126,85 @@ router.delete("/alert-rules/:id", async (req, res) => {
   }
 });
 
-router.get("/alert-events", (_req, res) => {
-  res.json(store.triggeredAlerts);
+// ── Alert events — DB-persisted ──────────────────────────────────────────────
+
+router.get("/alert-events", async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `SELECT id, rule_id, rule_name, type, metric_value, threshold, operator,
+              severity, message, site_url, read_at, resolved_at, triggered_at
+       FROM alert_events
+       ORDER BY triggered_at DESC
+       LIMIT 200`
+    );
+    res.json(r.rows.map((row) => ({
+      id:          row.id,
+      ruleId:      row.rule_id,
+      ruleName:    row.rule_name,
+      type:        row.type,
+      metricValue: row.metric_value,
+      threshold:   row.threshold,
+      operator:    row.operator,
+      severity:    row.severity,
+      message:     row.message,
+      siteUrl:     row.site_url,
+      readAt:      row.read_at,
+      resolvedAt:  row.resolved_at,
+      triggeredAt: row.triggered_at,
+    })));
+  } catch {
+    res.json(store.triggeredAlerts);
+  } finally {
+    client.release();
+  }
 });
 
-router.get("/alerts", (_req, res) => {
-  res.json(store.triggeredAlerts);
+router.post("/alert-events", async (req, res) => {
+  const { ruleId, ruleName, type, metricValue, threshold, operator, severity, message, siteUrl } = req.body as {
+    ruleId?: string; ruleName?: string; type?: string; metricValue?: number;
+    threshold?: number; operator?: string; severity?: string; message?: string; siteUrl?: string;
+  };
+  const id = `ae_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO alert_events (id, rule_id, rule_name, type, metric_value, threshold, operator, severity, message, site_url)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [id, ruleId||"", ruleName||"", type||"seo_score", metricValue??null, threshold??null,
+       operator||"lt", severity||"warning", message||"", siteUrl||""]
+    );
+    res.status(201).json({ id, triggeredAt: new Date().toISOString() });
+  } catch {
+    res.status(500).json({ error: "Failed to create alert event" });
+  } finally {
+    client.release();
+  }
+});
+
+router.get("/alerts", async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    const r = await client.query(`SELECT * FROM alert_events ORDER BY triggered_at DESC LIMIT 50`);
+    res.json(r.rows);
+  } catch {
+    res.json(store.triggeredAlerts);
+  } finally {
+    client.release();
+  }
 });
 
 router.patch("/alert-rules/mark-all-read", async (_req, res) => {
+  const client = await pool.connect();
   try {
+    await client.query(`UPDATE alert_events SET read_at = NOW() WHERE read_at IS NULL`);
     store.triggeredAlerts = [];
     res.json({ ok: true });
   } catch {
+    store.triggeredAlerts = [];
     res.json({ ok: true });
+  } finally {
+    client.release();
   }
 });
 

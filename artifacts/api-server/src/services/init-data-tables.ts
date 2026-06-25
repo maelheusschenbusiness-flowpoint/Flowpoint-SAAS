@@ -90,7 +90,47 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE competitors ADD COLUMN IF NOT EXISTS delta INTEGER DEFAULT 0;`);
     await run(client, `CREATE INDEX IF NOT EXISTS competitors_domain_rating_idx ON competitors(domain_rating);`);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors ready");
+    // ── alert_events ──────────────────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS alert_events (
+        id           TEXT PRIMARY KEY,
+        rule_id      TEXT NOT NULL DEFAULT '',
+        rule_name    TEXT NOT NULL DEFAULT '',
+        type         TEXT NOT NULL DEFAULT 'seo_score',
+        metric_value REAL,
+        threshold    REAL,
+        operator     TEXT NOT NULL DEFAULT 'lt',
+        severity     TEXT NOT NULL DEFAULT 'warning',
+        message      TEXT NOT NULL DEFAULT '',
+        site_url     TEXT NOT NULL DEFAULT '',
+        read_at      TIMESTAMP,
+        resolved_at  TIMESTAMP,
+        triggered_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS alert_events_triggered_at_idx ON alert_events(triggered_at DESC);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS alert_events_read_at_idx ON alert_events(read_at);`);
+
+    // ── calendar_events ───────────────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS calendar_events (
+        id         TEXT PRIMARY KEY,
+        title      TEXT NOT NULL,
+        site       TEXT NOT NULL DEFAULT '',
+        type       TEXT NOT NULL DEFAULT 'Autre',
+        date       TEXT NOT NULL DEFAULT '',
+        start_time TEXT NOT NULL DEFAULT '',
+        duration   INTEGER NOT NULL DEFAULT 60,
+        notes      TEXT NOT NULL DEFAULT '',
+        org_id     TEXT NOT NULL DEFAULT 'default',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_date_idx ON calendar_events(date);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_org_id_idx ON calendar_events(org_id);`);
+
+    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;
