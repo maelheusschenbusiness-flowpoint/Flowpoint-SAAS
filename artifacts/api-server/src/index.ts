@@ -4,6 +4,7 @@ import app from "./app.js";
 import { pool } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
 import { initAutomationTables } from "./services/init-automation.js";
+import { initMonitorsTables } from "./services/init-monitors.js";
 
 const PORT = env.PORT;
 
@@ -25,6 +26,12 @@ async function main() {
     await initAutomationTables();
   } catch (err) {
     logger.warn({ err }, "Automation table init failed — non-fatal, continuing");
+  }
+
+  try {
+    await initMonitorsTables();
+  } catch (err) {
+    logger.warn({ err }, "Monitors table init failed — non-fatal, continuing");
   }
 
   const server = app.listen(PORT, () => {

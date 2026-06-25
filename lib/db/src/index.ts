@@ -39,29 +39,42 @@ export const auditSchedulesTable = pgTable("audit_schedules", {
 });
 
 export const monitorsTable = pgTable("monitors", {
-  id:           text("id").primaryKey(),
-  name:         text("name").notNull(),
-  url:          text("url").notNull(),
-  status:       text("status").notNull().default("up"),
-  uptime:       real("uptime").notNull().default(100),
-  latency:      integer("latency").notNull().default(0),
-  lastCheck:    text("last_check"),
-  alertEmail:   text("alert_email").default(""),
-  alertPhone:   text("alert_phone").default(""),
-  isCritical:   boolean("is_critical").notNull().default(false),
-  frequency:    text("frequency").notNull().default("5min"),
+  id:            text("id").primaryKey(),
+  orgId:         text("org_id").notNull().default("default"),
+  name:          text("name").notNull(),
+  url:           text("url").notNull(),
+  status:        text("status").notNull().default("up"),
+  uptimePct:     real("uptime_pct").notNull().default(100),
+  latencyMs:     integer("latency_ms").notNull().default(0),
+  checkInterval: text("check_interval").notNull().default("5min"),
+  alertEmail:    text("alert_email").notNull().default(""),
+  alertPhone:    text("alert_phone").notNull().default(""),
+  isCritical:    boolean("is_critical").notNull().default(false),
+  lastCheck:     text("last_check"),
   lastAlertSent: timestamp("last_alert_sent"),
-  createdAt:    timestamp("created_at").defaultNow(),
+  createdAt:     timestamp("created_at").defaultNow(),
+  updatedAt:     timestamp("updated_at").defaultNow(),
 });
 
 export const monitorChecksTable = pgTable("monitor_checks", {
-  id:        text("id").primaryKey(),
-  monitorId: text("monitor_id").notNull(),
-  checkedAt: bigint("checked_at", { mode: "number" }).notNull(),
-  ok:        boolean("ok").notNull(),
-  latency:   integer("latency").default(0),
+  id:         text("id").primaryKey(),
+  monitorId:  text("monitor_id").notNull(),
+  orgId:      text("org_id").notNull().default("default"),
+  checkedAt:  bigint("checked_at", { mode: "number" }).notNull(),
+  ok:         boolean("ok").notNull(),
+  latencyMs:  integer("latency_ms").default(0),
   statusCode: integer("status_code"),
-  error:     text("error"),
+  error:      text("error"),
+});
+
+export const monitorIncidentsTable = pgTable("monitor_incidents", {
+  id:         text("id").primaryKey(),
+  monitorId:  text("monitor_id").notNull(),
+  orgId:      text("org_id").notNull().default("default"),
+  startedAt:  timestamp("started_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+  durationS:  integer("duration_s"),
+  error:      text("error"),
 });
 
 export const reportsTable = pgTable("reports", {
@@ -414,7 +427,7 @@ export const userSessionsTable = pgTable("user_sessions", {
 
 const schema = {
   auditsTable, auditSchedulesTable,
-  monitorsTable, monitorChecksTable,
+  monitorsTable, monitorChecksTable, monitorIncidentsTable,
   reportsTable, shareTokensTable,
   competitorsTable, keywordsTable,
   alertRulesTable,

@@ -7,6 +7,7 @@
 - [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
 - [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing uses STRIPE_LIVE_API_KEY only (STRIPE_SECRET_KEY fallback removed); SSRF runs after auth; auth rate limit 10/15min per IP; ai-worker returns mock:true on OpenAI failure
 - [ACTIVITY_FEED gating pattern](activity-feed-gating.md) — ACTIVITY_FEED used as fallback in 5 places (exportCsv, overview widget, team widget, see-all handler, timeline); all must be (PREVIEW_MODE ? ACTIVITY_FEED : []); real users get STATE.activityEvents or clean empty state
+- [Monitors PostgreSQL migration](monitors-pg-migration.md) — monitors/monitor_checks pre-exist in Supabase with old column names (uptime not uptime_pct etc); use ALTER TABLE ADD COLUMN IF NOT EXISTS; routes use existing column names
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
 - [API server final state](api-server-final-state.md) — 35/35 endpoints 200; upsert org_settings uses 2-query pattern; automation/runs uses raw SQL (Drizzle completedAt≠ended_at)
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
