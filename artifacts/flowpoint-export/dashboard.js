@@ -40,6 +40,12 @@ const CUR_MONTH = new Date().toLocaleDateString('fr-FR',{month:'long'}).replace(
 const PREV_MONTH = (function(){var d=new Date();d.setMonth(d.getMonth()-1);return d.toLocaleDateString('fr-FR',{month:'long'}).replace(/^\w/,c=>c.toUpperCase())+' '+d.getFullYear();}());
 
 // ─────────────────────────────────────────────────────────────────
+// PREVIEW_MODE — must be declared before any constant that uses it
+// ─────────────────────────────────────────────────────────────────
+const _prevParam = new URLSearchParams(window.location.search).get('preview');
+const PREVIEW_MODE = _prevParam === '1' || _prevParam === 'true';
+
+// ─────────────────────────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────────────────────────
 const STATE = {
@@ -302,10 +308,6 @@ const AI_MOCK = {
 // ─────────────────────────────────────────────────────────────────
 // API HELPERS
 // ─────────────────────────────────────────────────────────────────
-// PREVIEW_MODE : uniquement si ?preview=1 est explicitement dans l\'URL.
-// En production (app.flowpoint.pro) ce paramètre n\'est jamais présent → toujours false.
-const _prevParam = new URLSearchParams(window.location.search).get('preview');
-const PREVIEW_MODE = _prevParam === '1' || _prevParam === 'true';
 function displayStat(liveVal, previewFallback, emptyFallback) {
   const _empty = emptyFallback !== undefined ? emptyFallback : '—';
   if (liveVal !== null && liveVal !== undefined && liveVal !== '') return String(liveVal);
