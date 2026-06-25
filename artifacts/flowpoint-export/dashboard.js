@@ -2959,10 +2959,14 @@ function renderOverview() {
   const totalMonitors  = (STATE.monitors||[]).length;
   const pingOk = totalMonitors > 0 ? Math.round(activeMonitors / totalMonitors * 100) : 100;
   const conversionScore = STATE.overview?.conversionScore || 0;
-  const localScore = STATE.overview?.localScore || 0;
-  const competitorPressure = STATE.overview?.competitorPressure || 0;
+  const localScore = STATE.overview?.localScore || STATE.overview?.seoScore || avg;
+  const competitorPressure = STATE.overview?.competitorPressure
+    ?? (STATE.competitors && STATE.competitors.length > 0
+        ? Math.min(100, Math.round(STATE.competitors.filter(c => (c.domainRating||0) > 30).length / STATE.competitors.length * 100))
+        : 0);
   const revenueOpp = STATE.overview?.revenueOpportunity ?? null;
-  const growthMomentum = STATE.overview?.growthMomentum || 0;
+  const growthMomentum = STATE.overview?.growthMomentum
+    ?? ((STATE.keywords||[]).filter(k => (k.current_position||99) <= 5).length > 0 ? 55 : 35);
   const globalScore = Math.round((avg + localScore + conversionScore + growthMomentum) / 4);
 
   const missionsCompleted = STATE.missions.filter(m => m.status === 'done' || m.done === true).length;
@@ -3034,18 +3038,19 @@ function renderOverview() {
     { title:'Avis Google sans réponse', score:79, roi:'+0.4 note Google estimée', type:'Réputation', color:'#f59e0b', icon:'⭐', desc:'Impact direct Local Pack · Répondre sous 24h recommandé' },
     { title:'Duplicate content détecté', score:71, roi:'Potentiel SEO technique', type:'Technique', color:'#06b6d4', icon:'🔄', desc:'Canonicals manquants — pages dupliquées pénalisent l\'indexation' },
   ];
+  const _quickWinMissions = _liveMissions ? _liveMissions.filter(m => m.ai_quick_win || m.aiQuickWin) : [];
+  const _oppSource = _quickWinMissions.length > 0 ? _quickWinMissions : (_liveMissions || []);
   const opportunities = _liveMissions
-    ? _liveMissions
-        .filter(m => m.ai_quick_win || m.aiQuickWin)
+    ? _oppSource
         .slice(0, 5)
         .map(m => ({
           title: m.title,
           score: m.business_impact_score || m.priority_score || 80,
-          roi:   m.estimated_traffic_impact ? `+${m.estimated_traffic_impact} visites/mois` : '—',
+          roi:   m.estimated_traffic_impact ? `+${m.estimated_traffic_impact} visites/mois` : (m.description || '').slice(0, 50),
           type:  m.category === 'local_seo' ? 'Local SEO' : m.category === 'seo' ? 'SEO' : m.category === 'conversion' ? 'CRO' : 'Technique',
           color: '#22c55e',
           icon:  _catIcon(m.category),
-          desc:  (m.description || '').slice(0, 80) + '…',
+          desc:  (m.description || m.title).slice(0, 80),
         }))
     : (PREVIEW_MODE ? _previewOpps : []);
 
@@ -7329,7 +7334,7 @@ function renderBilling() {
             <div style="font-size:22px;font-weight:900;color:var(--fp-text);font-family:var(--fp-font-head)">Plan ${plan}</div>
             <div style="font-size:12px;color:#22c55e;display:flex;align-items:center;gap:5px;margin-top:2px">
               ${svgIcon('check').replace('stroke="currentColor"','stroke="#22c55e"').replace('width="14"','width="12"').replace('height="14"','height="12"')}
-              Actif · Renouvellement 01/06/2026
+              Actif · Renouvellement ${STATE.billing?.nextDate || '—'}
             </div>
           </div>
         </div>
@@ -7337,8 +7342,8 @@ function renderBilling() {
           ${[
             { label:'Coût mensuel',       val: isStd ? '29€' : isPro && !isUltra ? '79€' : '149€' },
             { label:'Sans engagement',    val: 'Mensuel — résiliation libre' },
-            { label:'Add-ons actifs',     val:'3 modules' },
-            { label:'Prochaine facture',  val:'01/06/2026' },
+            { label:'Add-ons actifs',     val: STATE.billing?.addons?.length != null ? String(STATE.billing.addons.length) + ' modules' : '—' },
+            { label:'Prochaine facture',  val: STATE.billing?.nextDate || '—' },
           ].map(m => `<div style="padding:10px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:3px">${escHtml(m.label)}</div>
             <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${m.val}</div>
