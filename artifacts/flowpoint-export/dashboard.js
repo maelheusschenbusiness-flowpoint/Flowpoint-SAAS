@@ -7185,11 +7185,14 @@ function renderBilling() {
   // SUB: ENTERPRISE LAB
   // ══════════════════════════════════════════════════════════
   if (sub === 'enterprise') {
-    const workspaces = [
-      { name:'Agence Principale',  clients:4, seats:3, plan:'Pro',   mrr:'316€', status:'Actif',   color:'#2563EB' },
-      { name:'Client Boulangerie', clients:1, seats:1, plan:'Shared','mrr':'—',  status:'Géré',    color:'#22c55e' },
-      { name:'Client Plombier',    clients:1, seats:1, plan:'Shared', mrr:'—',   status:'Géré',    color:'#22c55e' },
-    ];
+    const _rawWorkspaces = STATE.workspaces && Array.isArray(STATE.workspaces) && STATE.workspaces.length > 0 ? STATE.workspaces : null;
+    const workspaces = _rawWorkspaces
+      ? _rawWorkspaces.map(w => ({ name:w.name||'Workspace', clients:w.clients||0, seats:w.seats||0, plan:w.plan||'Pro', mrr:w.mrr||'—', status:w.status||'Actif', color:w.color||'#2563EB' }))
+      : (PREVIEW_MODE ? [
+          { name:'Agence Principale',  clients:4, seats:3, plan:'Pro',   mrr:'316€', status:'Actif', color:'#2563EB' },
+          { name:'Client Boulangerie', clients:1, seats:1, plan:'Shared', mrr:'—',   status:'Géré',  color:'#22c55e' },
+          { name:'Client Plombier',    clients:1, seats:1, plan:'Shared', mrr:'—',   status:'Géré',  color:'#22c55e' },
+        ] : [{ name: STATE.me?.orgName || 'Espace principal', clients: (STATE.clients||[]).length || 0, seats: (STATE.team||[]).length || 1, plan: STATE.me?.plan || 'Pro', mrr: '—', status: 'Actif', color: '#2563EB' }]);
     const features = [
       { name:'White-Label Rapports',  active:true, desc:'Rapports PDF 100% à votre marque — logo, couleurs, pied de page personnalisés',    icon:'🎨', color:'#f59e0b' },
       { name:'Multi-workspace',       active:true, desc:'Gérez plusieurs workspaces clients séparés dans une seule interface unifiée',       icon:'🏢', color:'#2563EB' },
@@ -18296,7 +18299,7 @@ function renderCompetitor() {
         <div class="fp-section-sub">Centre de commandement IA · Intelligence concurrentielle en temps réel</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Ajouter concurrent', 'fp-btn fp-btn-ghost fp-btn-sm', 'plus', "onclick=\"showToast('info','Ajout concurrent…')\"" )}
+        ${btn('Ajouter concurrent', 'fp-btn fp-btn-ghost fp-btn-sm', 'plus', `onclick="openFloatPanel('Ajouter un concurrent',\`<div style='padding:16px;display:flex;flex-direction:column;gap:10px'><input id='fp-comp-name' class='fp-input' placeholder='Nom du concurrent (ex: Restaurant Le Soleil)' style='width:100%;box-sizing:border-box'/><input id='fp-comp-url' class='fp-input' placeholder='URL (ex: https://restaurant-lesoleil.com)' style='width:100%;box-sizing:border-box'/><select id='fp-comp-threat' class='fp-select' style='width:100%'><option value='low'>Faible risque</option><option value='medium'>À surveiller</option><option value='high'>Menace forte</option><option value='critical'>Menace critique</option></select><button class='fp-btn fp-btn-primary' style='width:100%' onclick='(async()=>{const n=document.getElementById(\"fp-comp-name\").value.trim();const u=document.getElementById(\"fp-comp-url\").value.trim();const t=document.getElementById(\"fp-comp-threat\").value;if(!n||!u){showToast(\"error\",\"Nom et URL requis\");return;}if(typeof window.FP_COMPETITORS_API===\"undefined\"){showToast(\"error\",\"API non disponible\");return;}const r=await window.FP_COMPETITORS_API.create({name:n,url:u,threatLevel:t,domainRating:0,keywords:0,traffic:0});if(r&&r.id){showToast(\"success\",\"Concurrent \"+n+\" ajouté !\");closeFloatPanel&&closeFloatPanel();}else showToast(\"error\",\"Erreur lors de l\\\"ajout\");})()'>Ajouter</button></div>\`)"`  )}
         ${btn('Rapport complet', 'fp-btn fp-btn-primary fp-btn-sm', 'download', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
       </div>
     </div>
@@ -31029,5 +31032,86 @@ function renderSettingsSSO() {
     </script>
   `;
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FP COMPETITORS API — Real competitor tracking client
+// ═══════════════════════════════════════════════════════════════════════════════
+window.FP_COMPETITORS_API = {
+  async load() {
+    try {
+      const data = await apiFetch('/api/competitors').catch(() => null);
+      if (!Array.isArray(data)) return null;
+      // Normalize: expose domainRating also as score for backward compat
+      const normalized = data.map(c => ({
+        ...c,
+        score: c.score ?? c.domainRating ?? 0,
+      }));
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.competitors = normalized;
+      return normalized;
+    } catch(e) { console.warn('[FP_COMPETITORS_API] load error:', e); return null; }
+  },
+  async create(payload) {
+    try {
+      const r = await apiFetch('/api/competitors', { method: 'POST', body: JSON.stringify(payload) });
+      if (r && r.id) {
+        const c = { ...r, score: r.score ?? r.domainRating ?? 0 };
+        STATE.competitors = [...(STATE.competitors || []), c];
+        render();
+      }
+      return r;
+    } catch(e) { console.warn('[FP_COMPETITORS_API] create error:', e); return null; }
+  },
+  async update(id, patch) {
+    try {
+      return await apiFetch('/api/competitors/' + id, { method: 'PATCH', body: JSON.stringify(patch) });
+    } catch(e) { console.warn('[FP_COMPETITORS_API] update error:', e); return null; }
+  },
+  async delete(id) {
+    try {
+      await apiFetch('/api/competitors/' + id, { method: 'DELETE' });
+      STATE.competitors = (STATE.competitors || []).filter(c => c.id !== id);
+      render();
+    } catch(e) { console.warn('[FP_COMPETITORS_API] delete error:', e); }
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FP CONNECTORS API — Real integration connector client
+// ═══════════════════════════════════════════════════════════════════════════════
+window.FP_CONNECTORS_API = {
+  async load() {
+    try {
+      const data = await apiFetch('/api/connectors').catch(() => null);
+      if (!Array.isArray(data)) return null;
+      window.FP_DATA = window.FP_DATA || {};
+      window.FP_DATA.connectors = data;
+      return data;
+    } catch(e) { console.warn('[FP_CONNECTORS_API] load error:', e); return null; }
+  },
+  async connect(provider, payload) {
+    try {
+      return await apiFetch('/api/connectors/' + provider + '/connect', { method: 'POST', body: JSON.stringify(payload || {}) });
+    } catch(e) { console.warn('[FP_CONNECTORS_API] connect error:', e); return null; }
+  },
+  async disconnect(provider) {
+    try {
+      const r = await apiFetch('/api/connectors/' + provider + '/disconnect', { method: 'POST', body: '{}' });
+      const conns = await this.load();
+      if (conns) { STATE.connectors = conns; render(); }
+      return r;
+    } catch(e) { console.warn('[FP_CONNECTORS_API] disconnect error:', e); return null; }
+  },
+  async sync(provider) {
+    try {
+      return await apiFetch('/api/connectors/' + provider + '/sync', { method: 'POST', body: '{}' });
+    } catch(e) { console.warn('[FP_CONNECTORS_API] sync error:', e); return null; }
+  },
+  isConnected(provider) {
+    const conn = (STATE.connectors || []).find(c => c.provider === provider);
+    return !!(conn && (conn.connected || conn.status === 'connected' || conn.status === 'active'));
+  },
+};
 
 })(); // end IIFE

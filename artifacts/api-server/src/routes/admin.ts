@@ -170,6 +170,131 @@ router.post("/admin/user/set-plan", async (req: Request, res: Response): Promise
   }
 });
 
+// ── POST /api/admin/demo-seed ─────────────────────────────────────────────────
+// Inserts a realistic demo dataset for sales demonstrations.
+// Strictly manual — never runs automatically. Never pollutes real client data.
+// Always call with the correct ADMIN_KEY header.
+router.post("/admin/demo-seed", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { orgId = "default", clear = false } = req.body as { orgId?: string; clear?: boolean };
+
+  const client = await pool.connect();
+  try {
+    // Optionally clear existing demo data first
+    if (clear) {
+      await Promise.allSettled([
+        client.query("DELETE FROM audits WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        client.query("DELETE FROM monitors WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        client.query("DELETE FROM missions WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        client.query("DELETE FROM competitors WHERE id LIKE 'demo_%'"),
+        client.query("DELETE FROM tracked_keywords WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+      ]);
+    }
+
+    const now = new Date().toISOString();
+    const inserted: Record<string, number> = {};
+
+    // Audits — 4 realistic French local business sites
+    const auditRows = [
+      { id: "demo_a1", url: "https://boulangerie-martin.fr", score: 82, status: "ok",    speed: 88, issues: 3,  origin: "manual" },
+      { id: "demo_a2", url: "https://restaurant-lesoleil.com", score: 61, status: "warn", speed: 64, issues: 11, origin: "manual" },
+      { id: "demo_a3", url: "https://coiffeur-lyon.com",      score: 75, status: "ok",    speed: 91, issues: 5,  origin: "scheduled" },
+      { id: "demo_a4", url: "https://pharmacie-centre.fr",    score: 55, status: "warn",  speed: 58, issues: 14, origin: "manual" },
+    ];
+    for (const a of auditRows) {
+      try {
+        await client.query(
+          `INSERT INTO audits (id, url, score, status, speed, date, issues, origin, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) ON CONFLICT (id) DO NOTHING`,
+          [a.id, a.url, a.score, a.status, a.speed, now, a.issues, a.origin]
+        );
+      } catch { /* skip if already exists */ }
+    }
+    inserted.audits = auditRows.length;
+
+    // Monitors — 3 monitors with realistic latency
+    const monitorRows = [
+      { id: "demo_m1", name: "Boulangerie Martin",   url: "https://boulangerie-martin.fr",   status: "up",   uptime: 99.8, latency: 142 },
+      { id: "demo_m2", name: "Restaurant Le Soleil", url: "https://restaurant-lesoleil.com", status: "down", uptime: 97.2, latency: 0   },
+      { id: "demo_m3", name: "Coiffeur Lyon",        url: "https://coiffeur-lyon.com",        status: "up",   uptime: 99.5, latency: 98  },
+    ];
+    for (const m of monitorRows) {
+      try {
+        await client.query(
+          `INSERT INTO monitors (id, name, url, status, uptime, latency, last_check, org_id, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) ON CONFLICT (id) DO NOTHING`,
+          [m.id, m.name, m.url, m.status, m.uptime, m.latency, "2 min", orgId]
+        );
+      } catch { /* skip */ }
+    }
+    inserted.monitors = monitorRows.length;
+
+    // Competitors — 3 local competitors
+    const compRows = [
+      { id: "demo_c1", name: "Boulangerie Dupont",  url: "https://boulangerie-dupont.fr",   domain_rating: 42, keywords: 38, traffic: 1200, threat_level: "high"   },
+      { id: "demo_c2", name: "Boulangerie Bio Lyon", url: "https://boulangerie-bio-lyon.fr", domain_rating: 35, keywords: 22, traffic: 780,  threat_level: "medium" },
+      { id: "demo_c3", name: "Boulangerie Centrale", url: "https://boulangerie-centrale.fr", domain_rating: 28, keywords: 14, traffic: 450,  threat_level: "low"    },
+    ];
+    for (const c of compRows) {
+      try {
+        await client.query(
+          `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,0,NOW()) ON CONFLICT (id) DO NOTHING`,
+          [c.id, c.name, c.url, c.domain_rating, c.keywords, c.traffic, c.threat_level]
+        );
+      } catch { /* skip */ }
+    }
+    inserted.competitors = compRows.length;
+
+    // Keywords — 5 tracked keywords
+    const kwRows = [
+      { id: "demo_kw1", keyword: "boulangerie artisanale paris", position: 3,  prev_position: 5,  volume: 1900, difficulty: 45, trend: "up",   tag: "Local" },
+      { id: "demo_kw2", keyword: "pain au levain livraison",     position: 7,  prev_position: 6,  volume: 890,  difficulty: 38, trend: "down", tag: "Local SEO" },
+      { id: "demo_kw3", keyword: "boulangerie bio quartier",     position: 12, prev_position: 15, volume: 590,  difficulty: 32, trend: "up",   tag: "Local" },
+      { id: "demo_kw4", keyword: "viennoiserie maison paris",    position: 4,  prev_position: 4,  volume: 1100, difficulty: 29, trend: "stable", tag: "Produits" },
+      { id: "demo_kw5", keyword: "meilleure boulangerie 15e",    position: 1,  prev_position: 2,  volume: 320,  difficulty: 22, trend: "up",   tag: "Local Pack" },
+    ];
+    for (const k of kwRows) {
+      try {
+        await client.query(
+          `INSERT INTO tracked_keywords (id, keyword, current_position, prev_position, volume, difficulty, trend, tag, org_id, active, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,NOW()) ON CONFLICT (id) DO NOTHING`,
+          [k.id, k.keyword, k.position, k.prev_position, k.volume, k.difficulty, k.trend, k.tag, orgId]
+        );
+      } catch { /* skip */ }
+    }
+    inserted.keywords = kwRows.length;
+
+    // Missions — 3 demo missions
+    const missionRows = [
+      { id: "demo_ms1", title: "Optimiser les balises title — site prioritaire", category: "SEO", priority: "high",   status: "todo",       source_type: "ai" },
+      { id: "demo_ms2", title: "Répondre aux avis Google en attente (3 avis)",   category: "GBP", priority: "high",   status: "inprogress", source_type: "ai" },
+      { id: "demo_ms3", title: "Créer une page locale pour le 15e arrondissement", category: "Local SEO", priority: "medium", status: "todo", source_type: "ai" },
+    ];
+    for (const m of missionRows) {
+      try {
+        await client.query(
+          `INSERT INTO missions (id, title, category, priority, status, source_type, org_id, steps, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'[]'::jsonb,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
+          [m.id, m.title, m.category, m.priority, m.status, m.source_type, orgId]
+        );
+      } catch { /* skip */ }
+    }
+    inserted.missions = missionRows.length;
+
+    res.json({
+      ok: true,
+      message: `Demo data seeded for orgId="${orgId}". Tables: ${JSON.stringify(inserted)}. Use clear=true to wipe first.`,
+      inserted,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
 // ── DELETE /api/admin/sessions ────────────────────────────────────────────────
 // Purge all expired sessions (maintenance).
 router.delete("/admin/sessions/expired", async (req: Request, res: Response): Promise<void> => {
