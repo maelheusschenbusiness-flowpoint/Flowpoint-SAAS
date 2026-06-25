@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS } from "../lib/plans.js";
 import { upsertOrgSettings } from "../services/org-settings.js";
 import { PLAN_CONFIG, ADDON_CATALOG, getUsageSummary, getMRRData, getSubscriptionAnalytics, startTrial, validateCoupon, getInvoices, trackBillingEvent } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";

@@ -7,6 +7,8 @@
     "dev": "pnpm --filter @workspace/api-server run dev"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "playwright": "^1.61.1",
     "typescript": "^5.8.3"
   }
 }

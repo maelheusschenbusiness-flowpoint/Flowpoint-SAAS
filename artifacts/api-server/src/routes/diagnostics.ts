@@ -162,9 +162,10 @@ router.get("/diagnostics", async (_req, res) => {
     .filter(k => envVars[k] === "not_set");
 
   // Worker / cron summary
-  const crons = getCronStatus();
-  const cronCount = crons.length;
-  const enabledCronCount = crons.filter(w => w.enabled).length;
+  const cronStatus = getCronStatus();
+  const cronJobs = cronStatus.jobs ?? [];
+  const cronCount = cronStatus.totalJobs ?? cronJobs.length;
+  const enabledCronCount = cronJobs.filter(w => w.status !== "disabled").length;
 
   const allOk = Object.values(checks).every(c => c.ok);
   const failCount = Object.values(checks).filter(c => !c.ok).length;
