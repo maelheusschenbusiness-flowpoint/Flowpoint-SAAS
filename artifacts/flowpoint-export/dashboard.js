@@ -283,13 +283,13 @@ const ACTIVITY_FEED = [
   { type:'info',    icon:'wifi',  title:'Monitor UP',            desc:'Un monitor est de nouveau en ligne', time:'Hier 22:30' },
 ];
 
-const KEYWORDS = [
+const KEYWORDS = PREVIEW_MODE ? [
   { kw:'boulangerie paris 15', pos:3,  trend:'up',      vol:1200 },
   { kw:'plombier urgence paris',pos:7,  trend:'down',    vol:3400 },
   { kw:'restaurant lyon centre',pos:2,  trend:'up',      vol:890 },
   { kw:'coiffeur bordeaux',     pos:12, trend:'neutral', vol:560 },
   { kw:'pharmacie garde nuit',  pos:5,  trend:'up',      vol:2100 },
-];
+] : [];
 
 const AI_MOCK = {
   default: `Basé sur votre tableau de bord, voici mes recommandations :\n\n**1. Site prioritaire (score faible)** — Priorité haute. Corrigez les balises manquantes et améliorez la vitesse mobile.\n\n**2. Site critique (problèmes urgents)** — Des problèmes techniques détectés. Commencez par les balises title.\n\n**3. Monitors actifs** — Vérifiez le statut de vos monitors et résolvez les incidents ouverts.\n\nQuel point souhaitez-vous traiter en premier ?`,
@@ -2672,12 +2672,12 @@ const CHANNEL_MSGS_DEFAULT = {
 };
 
 function getChMsgs() {
-  if (!STATE.channelMessages) STATE.channelMessages = JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT));
+  if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
   return STATE.channelMessages[STATE.msgChannel || 'general'] || [];
 }
 
 function getMsgUnreadTotal() {
-  if (!STATE.channelMessages) STATE.channelMessages = JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT));
+  if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
   return Object.values(STATE.channelMessages).flat().filter(m => !m.read && !m.self).length;
 }
 
@@ -2685,7 +2685,7 @@ function renderMsgDropdown() {
   const msgs = getChMsgs();
   const ch = STATE.msgChannel || 'general';
   const attach = STATE.msgAttachment;
-  if (!STATE.channelMessages) STATE.channelMessages = JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT));
+  if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
 
   return `
   <div class="fp-msg-header">
@@ -2734,7 +2734,7 @@ function renderMsgDropdown() {
 }
 
 function bindMsgPanel(dd) {
-  if (!STATE.channelMessages) STATE.channelMessages = JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT));
+  if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
 
   const refreshBadge = () => {
     const u = getMsgUnreadTotal();
@@ -4003,27 +4003,43 @@ function renderMonitors() {
         <table class="fp-data-table">
           <thead><tr><th>Endpoint</th><th style="text-align:center">Méthode</th><th style="text-align:center">Statut</th><th style="text-align:center">Latence</th><th style="text-align:center">Uptime</th><th style="text-align:center">Check</th><th style="text-align:center">Action</th></tr></thead>
           <tbody>
-            ${[
-              { name: 'API Contact Form',  url: '/api/contact',  method: 'POST', status: 'UP',   latency: '142ms',   rate: '99.8%', last: '2 min' },
-              { name: 'Webhook GBP Sync',  url: '/webhooks/gbp', method: 'POST', status: 'UP',   latency: '89ms',    rate: '100%',  last: '5 min' },
-              { name: 'API Avis Google',   url: '/api/reviews',  method: 'GET',  status: 'UP',   latency: '312ms',   rate: '99.1%', last: '1 min' },
-              { name: 'Sitemap Generator', url: '/sitemap.xml',  method: 'GET',  status: 'SLOW', latency: '1 240ms', rate: '97.4%', last: '3 min' },
-            ].map(ep => {
-              const sc = ep.status === 'UP' ? '#22c55e' : ep.status === 'SLOW' ? '#f59e0b' : '#ef4444';
-              const mc = ep.method === 'GET' ? '#2563EB' : '#8b5cf6';
-              return `<tr>
-                <td>
-                  <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${ep.name}</div>
-                  <div style="font-size:10px;color:var(--fp-text-faint);font-family:var(--fp-font-mono)">${ep.url}</div>
-                </td>
-                <td style="text-align:center"><span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:${mc}18;color:${mc}">${ep.method}</span></td>
-                <td style="text-align:center">${badge(ep.status, sc)}</td>
-                <td style="text-align:center"><span style="font-weight:700;color:${parseInt(ep.latency) > 500 ? '#f59e0b' : 'var(--fp-text)'}">${ep.latency}</span></td>
-                <td style="text-align:center"><span style="color:${parseFloat(ep.rate) >= 99 ? '#22c55e' : '#f59e0b'};font-weight:600">${ep.rate}</span></td>
-                <td style="text-align:center"><span style="font-size:11px;color:var(--fp-text-muted)">Il y a ${ep.last}</span></td>
-                <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Ping envoyé…')">Ping</button></td>
-              </tr>`;
-            }).join('')}
+            ${(()=>{
+              const _eps = PREVIEW_MODE ? [
+                { name: 'API Contact Form',  url: '/api/contact',  method: 'POST', status: 'UP',   latency: '142ms',   rate: '99.8%', last: '2 min', id: null },
+                { name: 'Webhook GBP Sync',  url: '/webhooks/gbp', method: 'POST', status: 'UP',   latency: '89ms',    rate: '100%',  last: '5 min', id: null },
+                { name: 'API Avis Google',   url: '/api/reviews',  method: 'GET',  status: 'UP',   latency: '312ms',   rate: '99.1%', last: '1 min', id: null },
+                { name: 'Sitemap Generator', url: '/sitemap.xml',  method: 'GET',  status: 'SLOW', latency: '1 240ms', rate: '97.4%', last: '3 min', id: null },
+              ] : (STATE.monitors||[]).map(m => ({
+                id: m.id,
+                name: m.name || (m.url||'').replace(/^https?:\/\//,''),
+                url: (m.url||'').replace(/^https?:\/\//,''),
+                method: 'GET',
+                status: m.status === 'up' ? 'UP' : m.status === 'warn' ? 'SLOW' : 'DOWN',
+                latency: m.latency ? m.latency + 'ms' : '—',
+                rate: m.uptime != null ? m.uptime.toFixed(1) + '%' : '—',
+                last: m.lastCheck || '—',
+              }));
+              if (_eps.length === 0) return `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:13px">Aucun monitor configuré — ajoutez-en depuis l'onglet Monitors.</td></tr>`;
+              return _eps.map(ep => {
+                const sc = ep.status === 'UP' ? '#22c55e' : ep.status === 'SLOW' ? '#f59e0b' : '#ef4444';
+                const mc = ep.method === 'GET' ? '#2563EB' : '#8b5cf6';
+                const pingAction = ep.id
+                  ? `apiAction('POST','/api/monitors/${ep.id}/check').then(r=>showToast(r?.ok?'success':'error',r?.ok?'Ping OK — '+r.responseTime+'ms':'Ping échoué')).catch(()=>showToast('error','Ping échoué'))`
+                  : `showToast('info','Ping envoyé…')`;
+                return `<tr>
+                  <td>
+                    <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(ep.name)}</div>
+                    <div style="font-size:10px;color:var(--fp-text-faint);font-family:var(--fp-font-mono)">${escHtml(ep.url)}</div>
+                  </td>
+                  <td style="text-align:center"><span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:${mc}18;color:${mc}">${ep.method}</span></td>
+                  <td style="text-align:center">${badge(ep.status, sc)}</td>
+                  <td style="text-align:center"><span style="font-weight:700;color:${ep.latency!=='—'&&parseInt(ep.latency)>500?'#f59e0b':'var(--fp-text)'}">${escHtml(ep.latency)}</span></td>
+                  <td style="text-align:center"><span style="color:${ep.rate!=='—'&&parseFloat(ep.rate)>=99?'#22c55e':'#f59e0b'};font-weight:600">${escHtml(ep.rate)}</span></td>
+                  <td style="text-align:center"><span style="font-size:11px;color:var(--fp-text-muted)">${escHtml(String(ep.last))}</span></td>
+                  <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${pingAction}">Ping</button></td>
+                </tr>`;
+              }).join('');
+            })()}
           </tbody>
         </table>
       </div>
@@ -4995,13 +5011,16 @@ function renderReports() {
   if (sub === 'seo') {
     const mths = ['Jan','Fev','Mar','Avr','Mai'];
     const seoM = [58, 62, 66, 69, 74];
-    const kwds = [
-      { kw: 'boulangerie paris 15', pos: 2,  prev: 4,  vol: 320, diff: 34, trend: +2, opp: 'high'   },
-      { kw: 'plombier urgence paris', pos: 7,  prev: 12, vol: 580, diff: 51, trend: +5, opp: 'medium' },
-      { kw: 'restaurant gastronomique montmartre', pos: 14, prev: 18, vol: 210, diff: 48, trend: +4, opp: 'medium' },
-      { kw: 'serrurier 75011',   pos: 1,  prev: 1,  vol: 440, diff: 28, trend: 0,  opp: 'low'    },
-      { kw: 'fleuriste mariage paris', pos: 22, prev: 29, vol: 190, diff: 62, trend: +7, opp: 'high'  },
-    ];
+    const _kwdsRaw = STATE.keywords || STATE.keywordData?.keywords || [];
+    const kwds = _kwdsRaw.length > 0
+      ? _kwdsRaw.slice(0,5).map(k=>({ kw:k.keyword||k.kw||k.term||'—', pos:k.pos||k.position||null, prev:k.prev||null, vol:k.volume||k.vol||null, diff:k.difficulty||k.diff||null, trend:k.position_change||(k.prev!=null?k.prev-(k.pos||k.position||0):0), opp:((k.pos||k.position||99)<=3?'low':(k.pos||k.position||99)<=10?'medium':'high') }))
+      : (PREVIEW_MODE ? [
+          { kw: 'boulangerie paris 15', pos: 2,  prev: 4,  vol: 320, diff: 34, trend: +2, opp: 'high'   },
+          { kw: 'plombier urgence paris', pos: 7,  prev: 12, vol: 580, diff: 51, trend: +5, opp: 'medium' },
+          { kw: 'restaurant gastronomique montmartre', pos: 14, prev: 18, vol: 210, diff: 48, trend: +4, opp: 'medium' },
+          { kw: 'serrurier 75011',   pos: 1,  prev: 1,  vol: 440, diff: 28, trend: 0,  opp: 'low'    },
+          { kw: 'fleuriste mariage paris', pos: 22, prev: 29, vol: 190, diff: 62, trend: +7, opp: 'high'  },
+        ] : []);
     const maxSeo = Math.max(...seoM);
     return `
       ${aiBlock((STATE.audits && STATE.audits.length > 0)
@@ -5480,13 +5499,16 @@ function renderReports() {
   // SUB: AI INSIGHTS REPORTING LAB
   // ══════════════════════════════════════════════════════════
   if (sub === 'ai') {
-    const aiInsights = [
-      { pri: 'critical', icon: '🚨', cat: 'Conversion',  title: 'Perte revenue weekend confirmee',        body: 'Samedi et dimanche representent 0% de conversion malgre 22% du trafic mensuel. Impact estime : -800€/weekend. Cause probable : formulaire de contact ferme ou non visible en mobile.', action: 'Corriger le formulaire' },
-      { pri: 'critical', icon: '📱', cat: 'Mobile UX',   title: 'Conversion mobile critique (0.12%)',     body: 'Le segment mobile (58% du trafic) convertit 14× moins bien que le desktop. La page Tarifs affiche 61% d\'abandons. Chaque point de conversion mobile = +47 clients/mois.',              action: 'Plan UX mobile'          },
-      { pri: 'high',     icon: '📍', cat: 'Local SEO',   title: 'Opportunite Maps non capturee',          body: 'Google Maps est votre source la plus qualitative (conv. 3.2%, qualite 88/100) mais represente seulement 14% du trafic. Potentiel x3 si GBP renforce et avis manages.',              action: 'Renforcer GBP'           },
-      { pri: 'high',     icon: '🔗', cat: 'Trafic',      title: 'Declin referents accelere',              body: 'Le trafic referent a baisse 4% avec un taux de rebond 58% — source la moins qualitative. 3 partenaires cles ont reduit ou supprime leurs liens entrants ce trimestre.',             action: 'Analyser les referents'  },
-      { pri: 'positive', icon: '📈', cat: 'Croissance',  title: 'Acceleration trafic organique',          body: 'Le trafic organique a progresse de +130% en 8 mois — acceleration confirmee depuis mars. Le 15e arrondissement domine deja 4 mots-cles cles. Continuer sur cette lancee.',           action: 'Amplifier la strategie'  },
-    ];
+    const _aiInsRaw = window.FP_DATA?.dataExplorer?.insights || null;
+    const aiInsights = _aiInsRaw
+      ? _aiInsRaw.map(i=>({ pri:i.priority||i.pri||'high', icon:i.icon||'💡', cat:i.category||i.cat||'IA', title:i.title||'Insight IA', body:i.body||i.description||'', action:i.action||'Analyser' }))
+      : (PREVIEW_MODE ? [
+          { pri: 'critical', icon: '🚨', cat: 'Conversion',  title: 'Perte revenue weekend confirmee',        body: 'Samedi et dimanche representent 0% de conversion malgre 22% du trafic mensuel. Impact estime : -800€/weekend. Cause probable : formulaire de contact ferme ou non visible en mobile.', action: 'Corriger le formulaire' },
+          { pri: 'critical', icon: '📱', cat: 'Mobile UX',   title: 'Conversion mobile critique (0.12%)',     body: 'Le segment mobile (58% du trafic) convertit 14× moins bien que le desktop. La page Tarifs affiche 61% d\'abandons. Chaque point de conversion mobile = +47 clients/mois.',              action: 'Plan UX mobile'          },
+          { pri: 'high',     icon: '📍', cat: 'Local SEO',   title: 'Opportunite Maps non capturee',          body: 'Google Maps est votre source la plus qualitative (conv. 3.2%, qualite 88/100) mais represente seulement 14% du trafic. Potentiel x3 si GBP renforce et avis manages.',              action: 'Renforcer GBP'           },
+          { pri: 'high',     icon: '🔗', cat: 'Trafic',      title: 'Declin referents accelere',              body: 'Le trafic referent a baisse 4% avec un taux de rebond 58% — source la moins qualitative. 3 partenaires cles ont reduit ou supprime leurs liens entrants ce trimestre.',             action: 'Analyser les referents'  },
+          { pri: 'positive', icon: '📈', cat: 'Croissance',  title: 'Acceleration trafic organique',          body: 'Le trafic organique a progresse de +130% en 8 mois — acceleration confirmee depuis mars. Le 15e arrondissement domine deja 4 mots-cles cles. Continuer sur cette lancee.',           action: 'Amplifier la strategie'  },
+        ] : []);
     const forecast = [
       { metric: 'Trafic M+3',    val: '+22%', conf: 78, color: '#2563EB', note: 'Avec maintien strategie SEO actuelle'     },
       { metric: 'Conversion M+3',val: '+0.8%',conf: 64, color: '#22c55e', note: 'Si plan CRO mobile execute en juin'       },
@@ -7045,9 +7067,9 @@ function renderBilling() {
       },
       {
         title:'Review Intelligence — Quick Win immédiat',
-        body:'14 avis Google sans réponse détectés. Review Intelligence (19€/mois) automatise les réponses IA et améliore la note moyenne de +0.4 points — impact direct sur le Local Pack.',
+        body:(STATE.gbp?.unansweredReviews != null ? STATE.gbp.unansweredReviews : (PREVIEW_MODE ? 14 : 'Des')) + ' avis Google sans réponse détectés. Review Intelligence (19€/mois) automatise les réponses IA et améliore la note moyenne de +0.4 points — impact direct sur le Local Pack.',
         priority:'Urgente', color:'#ef4444', action:'Activer Review Intelligence',
-        metrics:['14 avis sans réponse', '+0.4 note Google estimée', 'ROI < 1 semaine'],
+        metrics:[(STATE.gbp?.unansweredReviews != null ? STATE.gbp.unansweredReviews : (PREVIEW_MODE ? 14 : 'Avis'))+' sans réponse', '+0.4 note Google estimée', 'ROI < 1 semaine'],
       },
       {
         title:'AI CRO Strategist — Conversion non exploitée',
@@ -9301,7 +9323,7 @@ function renderAI() {
       },
       {
         icon:'🟡', color:'#eab308', priority:'Cette semaine',
-        title:'14 avis Google sans réponse',
+        title:(STATE.gbp?.unansweredReviews != null ? STATE.gbp.unansweredReviews : (PREVIEW_MODE ? 14 : 'Des')) + ' avis Google sans réponse',
         body:'Impact négatif sur le score GBP et le trust signal local. Recommandation : répondre sous 24h.',
         chips:[chip('Gérer le GBP','local-seo','gbp'), chip('Dashboard local','local-seo',null)],
       },
@@ -13007,7 +13029,7 @@ async function init() {
   renderNotifications();
 
   // Init messages badge (uses channels system)
-  { if (!STATE.channelMessages) STATE.channelMessages = JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT));
+  { if (!STATE.channelMessages) STATE.channelMessages = PREVIEW_MODE ? JSON.parse(JSON.stringify(CHANNEL_MSGS_DEFAULT)) : {general:[],seo:[],rapports:[],support:[]};
     const u = getMsgUnreadTotal();
     const b = $('#fp-msg-badge'); if (b) { u > 0 ? (b.removeAttribute('hidden'), b.textContent = u) : b.setAttribute('hidden', ''); } }
 
@@ -13977,9 +13999,8 @@ function renderOverviewInsights() {
     { type:'success', title:'Score moyen en hausse', desc:'+7 points ce mois grâce à 3 optimisations title & meta. Continuez sur cette lancée.', impact:'Élevé', action:'Voir les détails' },
     ...(()=>{const _wA=(STATE.audits||[]).filter(a=>a.score!=null&&a.score<65).sort((a,b)=>a.score-b.score).slice(0,2);if(!_wA.length)return[];const _wd=_wA.map(a=>((a.url||a.name||'').replace(/^https?:\/\//,'')||'Un site')+'\u00a0('+a.score+'/100)').join(' et ');return[{type:'warning',title:_wA.length+' site(s) sous-performant(s)',desc:_wd+' ont besoin d\'actions urgentes pour éviter une pénalité.',impact:'Critique',action:'Corriger maintenant'}];})(),
     { type:'info', title:'Opportunités locales détectées', desc:'Créez des pages géolocalisées sur vos zones cibles pour capter du trafic supplémentaire. Consultez la section Local SEO pour les détails.', impact:'Élevé', action:'Voir Local SEO' },
-    { type:'success', title:'Monitors uptime > 99%', desc:'5 monitors sur 5 ont un uptime supérieur à 99% ce mois. La stabilité de vos sites est excellente.', impact:'Moyen', action:'Voir le rapport SLA' },
-    { type:'warning', title:'14 avis sans réponse', desc:'14 avis récents sur 3 fiches Google Business Profile n\'ont pas de réponse. Cela impacte directement votre score local.', impact:'Élevé', action:'Répondre maintenant' },
-    { type:'info', title:'2 rapports non partagés', desc:'Vous avez généré 2 rapports ce mois qui n\'ont pas encore été envoyés à vos clients. Partagez-les pour montrer votre valeur.', impact:'Moyen', action:'Partager les rapports' },
+    ...(()=>{ const _upMons=(STATE.monitors||[]).filter(m=>m.uptime>=99).length; const _total=(STATE.monitors||[]).length; return _total>0?[{type:'success',title:'Monitors uptime > 99%',desc:_upMons+' monitor'+((_upMons>1)?'s':'')+' sur '+_total+' ont un uptime supérieur à 99% ce mois. La stabilité de vos sites est excellente.',impact:'Moyen',action:'Voir le rapport SLA'}]:[];})(),
+    ...(()=>{ const _noShare=(STATE.reports||[]).filter(r=>!r.shared).length; return _noShare>0?[{type:'info',title:_noShare+' rapport'+((_noShare>1)?'s':'')+' non partagé'+(_noShare>1?'s':''),desc:'Vous avez '+_noShare+' rapport'+(_noShare>1?'s':'')+' ce mois qui n\'ont pas encore été envoyé'+(_noShare>1?'s':'')+" à vos clients. Partagez-les pour montrer votre valeur.",impact:'Moyen',action:'Partager les rapports'}]:[];})(),
     { type:'purple', title:'Concurrent en progression', desc:(STATE.competitors&&STATE.competitors.length>0?escHtml(STATE.competitors[0].name||'Un concurrent'):'Un concurrent') + ' a amélioré son score cette semaine. Surveillez ses actions et réagissez rapidement.', impact:'Élevé', action:'Analyser le concurrent' },
     { type:'success', title:'Missions du mois', desc:'Consultez votre tableau de missions pour voir votre progression et vos records.', impact:'Moyen', action:'Voir mes missions' },
     { type:'info', title:'Nouvelle opportunité mots-clés', desc:'3 nouveaux mots-clés locaux à fort volume détectés sur votre zone. Consultez la section mots-clés pour les détails.', impact:'Élevé', action:'Voir les mots-clés' },
@@ -14346,7 +14367,7 @@ function renderMissionsAI() {
     { title:'Configurer Google Posts hebdomadaires automatisés', impact:'Élevé', effort:'30 min', gain:'+12% engagement', cat:'GBP', color:'#2563EB' },
     { title:'Ajouter schema markup FAQ sur 3 sites', impact:'Moyen', effort:'1h', gain:'+8% CTR', cat:'Technique', color:'#8b5cf6' },
     { title:'Auditer et corriger les citations NAP incohérentes', impact:'Élevé', effort:'2h', gain:'+10 pts local', cat:'Local SEO', color:'#f59e0b' },
-    { title:'Répondre aux 14 avis Google sans réponse', impact:'Très élevé', effort:'45 min', gain:'+9% ranking local', cat:'Réputation', color:'#ef4444' },
+    { title:(()=>{ const _ua=STATE.gbp?.unansweredReviews; return 'Répondre aux '+(_ua!=null?_ua:'avis')+' Google sans réponse'; })(), impact:'Très élevé', effort:'45 min', gain:'+9% ranking local', cat:'Réputation', color:'#ef4444' },
     { title:'Créer une vidéo Google Business pour votre site prioritaire', impact:'Élevé', effort:'1h', gain:'+22% visibilité', cat:'GBP', color:'#22c55e' },
     { title:'Corriger les images non optimisées (WebP) sur 4 sites', impact:'Moyen', effort:'1h30', gain:'+6 pts vitesse', cat:'Performance', color:'#2563EB' },
     { title:'Ajouter Questions/Réponses GBP sur 3 fiches vides', impact:'Moyen', effort:'30 min', gain:'+12% engagement', cat:'GBP', color:'#06b6d4' },
@@ -16667,12 +16688,10 @@ function renderGrowthObjectives() {
   const nbSites = Math.min(STATE.audits.length || 6, 8);
   const objectives = [
     { icon:'📊', label:'Score moyen ≥ 80/100',         progress:avgSc, target:80,   unit:'pts',   inverse:false, status:'on-track', deadline:'30 juin 2026',    trend:'+7 pts/mois',      next:'Optimiser 3 pages à fort potentiel',    detail:'Score actuel portefeuille', history:[58,62,65,67,70,73,avgSc] },
-    { icon:'✅', label:'Monitors UP ≥ 99.5%',           progress:97.2,  target:99.5, unit:'%',     inverse:false, status:'at-risk',  deadline:'15 juin 2026',    trend:'+0.8%/semaine',    next:'Investiguer les 3 monitors DOWN',       detail:'Disponibilité moyenne portefeuille', history:[94,95,96,95,97,97,97.2] },
+    ...(()=>{ const _mu=(STATE.monitors&&STATE.monitors.length>0?(STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length):null); const _mp=_mu!=null?parseFloat(_mu.toFixed(1)):(PREVIEW_MODE?97.2:null); return _mp!=null?[{ icon:'✅', label:'Monitors UP ≥ 99.5%', progress:_mp, target:99.5, unit:'%', inverse:false, status:_mp>=99.5?'done':'at-risk', deadline:'15 juin 2026', trend:'+0.8%/semaine', next:'Investiguer les monitors DOWN', detail:'Disponibilité moyenne portefeuille', history:[94,95,96,95,97,97,_mp] }]:[];})(),
     { icon:'🌐', label:'8 sites en portefeuille',       progress:nbSites,target:8,   unit:'sites', inverse:false, status:nbSites>=8?'done':'on-track', deadline:'30 sept. 2026', trend:'+1 site/mois', next:'Prospecter 2 nouveaux clients locaux', detail:'Sites actifs sous gestion', history:[3,4,4,5,5,6,nbSites] },
-    { icon:'⚡', label:'0 issue critique ouverte',      progress:3,     target:0,    unit:'issues',inverse:true,  status:'at-risk',  deadline:'7 juin 2026',     trend:'-1 issue/semaine', next:'Corriger les 2 issues LCP critiques',   detail:'Issues sévérité haute en attente', history:[12,10,8,7,5,4,3] },
-    { icon:'⭐', label:'Note Google ≥ 4.5★',           progress:4.2,   target:4.5,  unit:'★',     inverse:false, status:'at-risk',  deadline:'30 juin 2026',    trend:'+0.1★/mois',       next:'Répondre aux 14 avis en attente',       detail:'Moyenne avis Google portefeuille', history:[3.9,4.0,4.1,4.1,4.2,4.2,4.2] },
-    { icon:'📱', label:'Core Web Vitals ≥ 85/100',     progress:72,    target:85,   unit:'/100',  inverse:false, status:'on-track', deadline:'31 juil. 2026',   trend:'+4 pts/mois',      next:'Optimiser CLS sur 2 sites prioritaires',detail:'Score CWV mobile moyen', history:[55,58,62,65,68,70,72] },
-    { icon:'💰', label:'ROI/site ≥ 500€/mois',         progress:426,   target:500,  unit:'€',     inverse:false, status:'on-track', deadline:'30 sept. 2026',   trend:'+30€/mois',        next:'Activer 2 pages locales à fort ROI',    detail:'Revenu moyen estimé par site', history:[280,320,350,380,400,415,426] },
+    ...(()=>{ const _gbpR=STATE.gbp?.averageRating; const _rp=_gbpR!=null?parseFloat(parseFloat(_gbpR).toFixed(1)):(PREVIEW_MODE?4.2:null); const _ua=STATE.gbp?.unansweredReviews; return _rp!=null?[{ icon:'⭐', label:'Note Google ≥ 4.5★', progress:_rp, target:4.5, unit:'★', inverse:false, status:_rp>=4.5?'done':'at-risk', deadline:'30 juin 2026', trend:'+0.1★/mois', next:'Répondre aux '+(_ua!=null?_ua+' ':'')+'avis en attente', detail:'Moyenne avis Google portefeuille', history:[3.9,4.0,4.1,4.1,4.2,_rp,_rp] }]:[];})(),
+    ...(()=>{ const _cwv=STATE.overview?.coreWebVitals||(PREVIEW_MODE?72:null); return _cwv!=null?[{ icon:'📱', label:'Core Web Vitals ≥ 85/100', progress:_cwv, target:85, unit:'/100', inverse:false, status:_cwv>=85?'done':'on-track', deadline:'31 juil. 2026', trend:'+4 pts/mois', next:'Optimiser CLS sur les sites prioritaires', detail:'Score CWV mobile moyen', history:[55,58,62,65,68,70,_cwv] }]:[];})(),
   ];
   const statusLabel = {done:'Atteint', 'on-track':'En bonne voie', 'at-risk':'À risque'};
   const statusBdg   = {done:'success', 'on-track':'primary',       'at-risk':'warning'};
@@ -19450,10 +19469,10 @@ function renderAlertsCenter() {
       title: 'Latence élevée — ' + (_alMonWarn[0].url||_alMonWarn[0].name||'').replace(/^https?:\/\//,''),
       desc: `Répond en ${_alMonWarn[0].latency||'—'}ms (seuil 500ms) — Core Web Vitals dégradés`,
       time:'En cours', color:'#ef4444', impact:'Moyen — UX mobile impactée' }] : []),
-    { id:'al4',  sev:'critical',  cat:'Local SEO',  icon:'message-circle',title:"14 avis Google sans réponse",                  desc:"3 fiches GBP concernées — impact note moyenne et confiance client",          time:"1j",      color:'#ef4444', impact:"Élevé — note en baisse"       },
-    { id:'al5',  sev:'warning',   cat:'Quota',      icon:'alert-circle',  title:"Quota audits à 80% — 240/300 utilisés",        desc:"60 audits restants ce mois — penser à optimiser les planifications",         time:"2j",      color:'#f59e0b', impact:"Faible — risque dépassement"  },
+    ...((()=>{ const _ua=STATE.gbp?.unansweredReviews; return (_ua>0||PREVIEW_MODE)?[{ id:'al4', sev:'critical', cat:'Local SEO', icon:'message-circle', title:(_ua!=null?_ua:'14')+' avis Google sans réponse', desc:(_ua!=null?_ua+' avis':'Avis')+' sur fiches GBP — impact note moyenne et confiance client', time:'1j', color:'#ef4444', impact:'Élevé — note en baisse' }]:[];})()),
+    ...((()=>{ const _nA=(STATE.audits||[]).length; const _plan=STATE.me?.plan||'Pro'; const _lim=_plan==='Standard'?50:_plan==='Pro'?150:300; if(_nA===0&&!PREVIEW_MODE)return[]; const _pct=Math.round(_nA/_lim*100); return (_pct>=70||PREVIEW_MODE)?[{ id:'al5', sev:'warning', cat:'Quota', icon:'alert-circle', title:'Quota audits à '+(_pct||80)+'% — '+(_nA||240)+'/'+(_lim||300)+' utilisés', desc:(_lim-_nA||60)+' audits restants ce mois — penser à optimiser les planifications', time:'2j', color:'#f59e0b', impact:'Faible — risque dépassement' }]:[];})()),
     { id:'al6',  sev:'warning',   cat:'Concurrent', icon:'users',         title:(STATE.competitors&&STATE.competitors.length>0?escHtml(STATE.competitors[0].name||'Un concurrent'):'Un concurrent') + " +12 positions ce mois",      desc:"Concurrent en accélération locale — risque perte Local Pack",                time:"2j",      color:'#f59e0b', impact:"Moyen — pression concurrence" },
-    { id:'al7',  sev:'warning',   cat:'Conversion', icon:'trending-down', title:"Conversion weekend à 0%",                      desc:"Aucun client détecté sur 1200 sessions — vérifiez les formulaires",           time:"3j",      color:'#f59e0b', impact:"Critique — revenue manqué"    },
+    ...(PREVIEW_MODE?[{ id:'al7', sev:'warning', cat:'Conversion', icon:'trending-down', title:"Conversion weekend à 0%", desc:"Aucun client détecté sur 1200 sessions — vérifiez les formulaires", time:"3j", color:'#f59e0b', impact:"Critique — revenue manqué" }]:[]),
     ...(_alMonUp.length > 0 ? [{ id:'al8', sev:'info', cat:'Monitor', icon:'check-circle',
       title: 'Monitor OK — ' + (_alMonUp[0].url||_alMonUp[0].name||'').replace(/^https?:\/\//,''),
       desc: `Uptime ${typeof _alMonUp[0].uptime === 'number' ? _alMonUp[0].uptime + '%' : 'ok'} · Latence ${_alMonUp[0].latency||'—'}ms`,
@@ -19582,13 +19601,16 @@ function renderAlertsCenter() {
   // SUB: SEO ALERTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'seo') {
-    const rankDrops = [
-      { kw: "boulangerie paris 15",            before: 2,  after: 4,  delta: -2, vol: 320, cause: "Concurrent renforcé son contenu",         risk: 'Élevé',  color: '#ef4444' },
-      { kw: "plombier urgence paris",           before: 7,  after: 12, delta: -5, vol: 580, cause: "Mise à jour algo Google détectée",         risk: 'Critique',color: '#ef4444' },
-      { kw: "restaurant gastronomique 75018",   before: 14, after: 18, delta: -4, vol: 210, cause: "Page non optimisée pour intent local",      risk: 'Moyen',  color: '#f59e0b' },
-      { kw: "serrurier 75011",                  before: 1,  after: 1,  delta: 0,  vol: 440, cause: "Position stable — surveiller",              risk: 'Faible', color: '#22c55e' },
-      { kw: "fleuriste mariage paris",          before: 29, after: 22, delta: +7, vol: 190, cause: "Optimisation de page réussie",              risk: 'Positif',color: '#22c55e' },
-    ];
+    const _kwRD = STATE.keywords || STATE.keywordData?.keywords || [];
+    const rankDrops = _kwRD.length > 0
+      ? _kwRD.filter(k=>(k.position_change||0)!==0).slice(0,5).map(k=>{ const d=k.position_change||(k.prev!=null?k.prev-(k.pos||k.position||0):0); return { kw:k.keyword||k.kw||'—', before:k.prev||(k.pos||k.position||0)+d, after:k.pos||k.position||null, delta:d, vol:k.volume||k.vol||null, cause:d<0?'Analyse en cours':'Optimisation récente', risk:Math.abs(d)>=5?'Critique':Math.abs(d)>=3?'Élevé':d<0?'Moyen':d>0?'Positif':'Faible', color:d<=-5?'#ef4444':d<0?'#f59e0b':d>0?'#22c55e':'#64748b' }; })
+      : (PREVIEW_MODE ? [
+          { kw: "boulangerie paris 15",            before: 2,  after: 4,  delta: -2, vol: 320, cause: "Concurrent renforcé son contenu",         risk: 'Élevé',  color: '#ef4444' },
+          { kw: "plombier urgence paris",           before: 7,  after: 12, delta: -5, vol: 580, cause: "Mise à jour algo Google détectée",         risk: 'Critique',color: '#ef4444' },
+          { kw: "restaurant gastronomique 75018",   before: 14, after: 18, delta: -4, vol: 210, cause: "Page non optimisée pour intent local",      risk: 'Moyen',  color: '#f59e0b' },
+          { kw: "serrurier 75011",                  before: 1,  after: 1,  delta: 0,  vol: 440, cause: "Position stable — surveiller",              risk: 'Faible', color: '#22c55e' },
+          { kw: "fleuriste mariage paris",          before: 29, after: 22, delta: +7, vol: 190, cause: "Optimisation de page réussie",              risk: 'Positif',color: '#22c55e' },
+        ] : []);
     const trafficAnomalies = [
       { title: "Pic trafic anormal +340 sessions",    time: "06/05 · 14h", type: 'info',    desc: "Partage viral Facebook local — rebond 89% — pas de conversion" },
       { title: "Chute organique -23% lundi 5 mai",    time: "05/05 · 08h", type: 'warning', desc: "Probable filtre Google — 3 pages dé-indexées temporairement" },
@@ -19759,29 +19781,38 @@ function renderAlertsCenter() {
   // SUB: CONVERSION & UX ALERTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'conversion') {
-    const convAlerts = [
-      { sev:'critical', icon:'📉', title:"Conversion weekend à 0%",         desc:"Samedi 3 et dimanche 4 mai — 0 client sur 1200 sessions. Formulaire contact probable hors service sur mobile iOS.",  impact:"-800€ estimé",  action:"Vérifier formulaire" },
-      { sev:'critical', icon:'📱', title:"Taux conversion mobile 0.12%",      desc:"58% du trafic — converti 14× moins que le desktop. Page Tarifs : 61% d\'abandons avec seulement 39% de scroll.",      impact:"-2 840€/mois",  action:"Plan UX mobile"      },
-      { sev:'warning',  icon:'🎯', title:"CTA Hero — CTR chute à 2.8%",       desc:"Le CTA principal Devis a perdu 1.4 points vs M-1. Visibilité réduite sur mobile (bouton trop bas dans la page).",    impact:"-480€/mois",    action:"Optimiser le CTA"   },
-      { sev:'warning',  icon:'😤', title:"Rage clicks x47 sur formulaire",    desc:"47 rage clicks détectés sur le champ email du formulaire principal — probable bug de validation ou UX confuse.",        impact:"UX dégradée",    action:"Corriger formulaire" },
-      { sev:'info',     icon:'✅', title:"CTA Appeler +4.1% — en hausse",     desc:"Le bouton Appeler maintenant performe mieux que prévu sur mobile. CTR mobile 6.2% vs 4.1% desktop.",                   impact:"Positif",        action:"Amplifier"          },
-    ];
-    const frictions = [
-      { page: "Formulaire contact",  score: 28, issues: 3, sev: 'critical', color: '#ef4444' },
-      { page: "Page Tarifs",         score: 44, issues: 2, sev: 'high',     color: '#f59e0b' },
-      { page: "Page Services",       score: 62, issues: 1, sev: 'medium',   color: '#f59e0b' },
-      { page: "Accueil mobile",      score: 51, issues: 2, sev: 'high',     color: '#f59e0b' },
-      { page: "Blog",                score: 84, issues: 0, sev: 'ok',       color: '#22c55e' },
-    ];
+    const _croAlertsRaw = window.FP_DATA?.cro?.alerts || null;
+    const convAlerts = _croAlertsRaw ? _croAlertsRaw.map(a=>({ sev:a.severity||a.sev||'warning', icon:a.icon||'⚠️', title:a.title||a.label||'Alerte conversion', desc:a.description||a.desc||'', impact:a.impact||'—', action:a.action||'Analyser' }))
+      : (PREVIEW_MODE ? [
+          { sev:'critical', icon:'📉', title:"Conversion weekend à 0%",         desc:"Samedi 3 et dimanche 4 mai — 0 client sur 1200 sessions. Formulaire contact probable hors service sur mobile iOS.",  impact:"-800€ estimé",  action:"Vérifier formulaire" },
+          { sev:'critical', icon:'📱', title:"Taux conversion mobile 0.12%",     desc:"58% du trafic — converti 14× moins que le desktop. Page Tarifs : 61% d\'abandons avec seulement 39% de scroll.",     impact:"-2 840€/mois",  action:"Plan UX mobile"      },
+          { sev:'warning',  icon:'🎯', title:"CTA Hero — CTR chute à 2.8%",      desc:"Le CTA principal Devis a perdu 1.4 points vs M-1. Visibilité réduite sur mobile (bouton trop bas dans la page).",   impact:"-480€/mois",    action:"Optimiser le CTA"   },
+          { sev:'warning',  icon:'😤', title:"Rage clicks x47 sur formulaire",   desc:"47 rage clicks détectés sur le champ email du formulaire principal — probable bug de validation ou UX confuse.",       impact:"UX dégradée",   action:"Corriger formulaire" },
+          { sev:'info',     icon:'✅', title:"CTA Appeler +4.1% — en hausse",    desc:"Le bouton Appeler maintenant performe mieux que prévu sur mobile. CTR mobile 6.2% vs 4.1% desktop.",                  impact:"Positif",       action:"Amplifier"          },
+        ] : []);
+    const _frictionsRaw = window.FP_DATA?.cro?.frictionPages || null;
+    const frictions = _frictionsRaw
+      ? _frictionsRaw.map(p=>({ page:p.url||p.page||p.name||'Page', score:p.score||p.convScore||0, issues:p.issues||0, sev:p.severity||((p.score||0)<40?'critical':(p.score||0)<60?'high':'ok'), color:(p.score||0)<40?'#ef4444':(p.score||0)<60?'#f59e0b':'#22c55e' }))
+      : (PREVIEW_MODE ? [
+          { page: "Formulaire contact",  score: 28, issues: 3, sev: 'critical', color: '#ef4444' },
+          { page: "Page Tarifs",         score: 44, issues: 2, sev: 'high',     color: '#f59e0b' },
+          { page: "Page Services",       score: 62, issues: 1, sev: 'medium',   color: '#f59e0b' },
+          { page: "Accueil mobile",      score: 51, issues: 2, sev: 'high',     color: '#f59e0b' },
+          { page: "Blog",                score: 84, issues: 0, sev: 'ok',       color: '#22c55e' },
+        ] : []);
     return `
-      ${aiBlock("2 alertes critiques conversion actives. <strong>Perte estimée : -3 640€/mois</strong>. Priorité #1 : formulaire mobile cassé (weekend 0%). Priorité #2 : UX mobile Tarifs — 61% d\'abandons avec seulement 39% de scroll.",
+      ${aiBlock(PREVIEW_MODE
+          ? "2 alertes critiques conversion actives. <strong>Perte estimée : -3 640€/mois</strong>. Priorité #1 : formulaire mobile cassé (weekend 0%). Priorité #2 : UX mobile Tarifs — 61% d\'abandons avec seulement 39% de scroll."
+          : (convAlerts.length > 0
+              ? convAlerts.length + ' alerte(s) conversion actives. ' + convAlerts.filter(a=>a.sev==='critical').length + ' critiques. Connectez vos outils analytics et heatmaps pour des recommandations précises.'
+              : 'Aucune alerte conversion détectée. Connectez vos outils analytics pour une surveillance continue.'),
         ['Plan CRO mobile', 'Corriger le formulaire', 'Rapport conversion'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Alertes conversion', String(convAlerts.length), 'dont 2 critiques', 'down')}
-        ${statCard('Perte estimée', displayStat(null, '-3 640€'), PREVIEW_MODE ? 'ce mois — récupérable' : 'Connectez analytics', 'neutral')}
-        ${statCard('Score UX moyen', displayStat(null, '54/100'), PREVIEW_MODE ? 'Page critique : 28/100' : 'Connectez heatmaps', 'neutral')}
-        ${statCard('Rage clicks', displayStat(null, '47×'), PREVIEW_MODE ? 'formulaire principal' : 'Connectez heatmaps', 'neutral')}
+        ${statCard('Alertes conversion', String(convAlerts.length), 'dont '+convAlerts.filter(a=>a.sev==='critical').length+' critiques', convAlerts.length>0?'down':'neutral')}
+        ${statCard('Perte estimée', displayStat(null, PREVIEW_MODE?'-3 640€':null), PREVIEW_MODE ? 'ce mois — récupérable' : 'Connectez analytics', 'neutral')}
+        ${statCard('Score UX moyen', displayStat(null, PREVIEW_MODE?'54/100':null), PREVIEW_MODE ? 'Page critique : 28/100' : 'Connectez heatmaps', 'neutral')}
+        ${statCard('Rage clicks', displayStat(null, PREVIEW_MODE?'47×':null), PREVIEW_MODE ? 'formulaire principal' : 'Connectez heatmaps', 'neutral')}
       </div>
 
       <!-- CONVERSION ALERTS -->
@@ -19839,30 +19870,42 @@ function renderAlertsCenter() {
   // SUB: LOCAL SEO & GBP ALERTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'local') {
-    const gbpAlerts = [
+    const _gbpLocs = STATE.gbp?.locations || [];
+    const _unanswered = STATE.gbp?.unansweredReviews ?? (PREVIEW_MODE ? 14 : null);
+    const _gbpRating  = STATE.gbp?.averageRating ?? (PREVIEW_MODE ? 4.4 : null);
+    const _gbpReviews = STATE.gbp?.totalReviews ?? (PREVIEW_MODE ? 23 : null);
+    const gbpAlerts = PREVIEW_MODE ? [
       { icon:'💬', sev:'critical', title:"14 avis Google sans réponse",       desc:"Avis récents non traités sur 3 fiches — impact négatif sur la note et la confiance client. Risque baisse ranking Maps.",  time:"1j",    color:'#ef4444' },
       { icon:'📍', sev:'warning',  title:"Visibilité Maps -8% — Marais",       desc:"Le 4e arrondissement a perdu 8 points de visibilité locale cette semaine — concurrent renforcé sa fiche GBP.",           time:"3j",    color:'#f59e0b' },
       { icon:'📷', sev:'warning',  title:"Photos GBP obsolètes — 3 fiches",    desc:"Aucune photo ajoutée depuis > 60 jours sur 3 fiches. Google favorise les fiches actives avec contenu visuel récent.",     time:"5j",    color:'#f59e0b' },
       { icon:'🏆', sev:'info',     title:"Position #1 Local Pack",  desc:(STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'') + ' domine le Local Pack — performance GBP en amélioration.'):'Performance GBP en amélioration — Local Pack atteint.'),               time:"2j",    color:'#22c55e' },
+    ] : [
+      ...(_unanswered > 0 ? [{ icon:'💬', sev:'critical', title:_unanswered + ' avis Google sans réponse', desc:'Avis récents non traités — impact négatif sur la note et la confiance client. Risque baisse ranking Maps.', time:'Récemment', color:'#ef4444' }] : []),
+      ...(STATE.audits&&STATE.audits.length>0 ? [{ icon:'🏆', sev:'info', title:'Position #1 Local Pack', desc:((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'') + ' — performance GBP en amélioration.'), time:'Récemment', color:'#22c55e' }] : []),
     ];
-    const localDrops = [
+    const localDrops = PREVIEW_MODE ? [
       { zone: "Marais (4e)",          vis: 31, delta: -8,  cause: "Concurrent renforcé GBP + 3 nouveaux avis",    risk: 'Élevé'   },
       { zone: "Montmartre (18e)",     vis: 44, delta: -2,  cause: "Baisse de régularité des publications GBP",     risk: 'Moyen'   },
       { zone: "République (11e)",     vis: 28, delta: -5,  cause: "Manque de mots-clés locaux dans description",   risk: 'Élevé'   },
-    ];
+    ] : (_gbpLocs.filter(l => (l.visibilityDelta||0) < -1).map(l => ({ zone: l.name||l.address||'Zone', vis: l.visibility||0, delta: l.visibilityDelta||0, cause: l.trend||'Baisse détectée', risk: (l.visibilityDelta||0) < -5 ? 'Élevé' : 'Moyen' })));
     const reviewStats = [
-      { label: "Avis sans réponse",     val: 14,  alert: true,  color: '#ef4444' },
-      { label: "Avis récents (30j)",    val: 23,  alert: false, color: '#22c55e' },
-      { label: "Note moyenne",          val: 4.4, alert: false, color: '#f59e0b', unit: '★' },
-      { label: "Sentiment négatif",     val: 3,   alert: true,  color: '#ef4444' },
+      { label: "Avis sans réponse",     val: _unanswered ?? '—',  alert: (_unanswered||0) > 0,  color: '#ef4444' },
+      { label: "Avis récents (30j)",    val: _gbpReviews ?? '—',  alert: false, color: '#22c55e' },
+      { label: "Note moyenne",          val: _gbpRating  ?? '—',  alert: false, color: '#f59e0b', unit: '★' },
+      { label: "Fiches connectées",     val: _gbpLocs.length > 0 ? _gbpLocs.length : (PREVIEW_MODE ? 3 : 0), alert: false, color: '#2563EB' },
     ];
     return `
-      ${aiBlock("2 alertes locales critiques. <strong>14 avis sans réponse</strong> menacent votre note et votre ranking Maps. La zone Marais recule de -8 pts suite au renforcement GBP d\'un concurrent. Action immédiate : répondre aux avis + publier 3 nouvelles photos GBP.",
+      ${aiBlock(
+        PREVIEW_MODE
+          ? "2 alertes locales critiques. <strong>14 avis sans réponse</strong> menacent votre note et votre ranking Maps. La zone Marais recule de -8 pts suite au renforcement GBP d'un concurrent. Action immédiate : répondre aux avis + publier 3 nouvelles photos GBP."
+          : (gbpAlerts.length > 0
+              ? gbpAlerts[0].desc
+              : "Aucune alerte locale critique. Connectez Google Business Profile pour une surveillance continue de vos fiches."),
         ['Répondre aux avis', 'Renforcer les fiches GBP', 'Rapport local complet'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Alertes locales', String(gbpAlerts.length), 'dont 1 critique', 'down')}
-        ${statCard('Avis sans réponse', displayStat(null, '14'), PREVIEW_MODE ? 'risque note Google' : 'Connectez GBP', 'neutral')}
+        ${statCard('Alertes locales', String(gbpAlerts.length), 'en cours', gbpAlerts.length > 0 ? 'down' : 'neutral')}
+        ${statCard('Avis sans réponse', _unanswered != null ? String(_unanswered) : '—', _unanswered != null ? 'risque note Google' : 'Connectez GBP', _unanswered > 0 ? 'down' : 'neutral')}
         ${statCard('Zones en recul', String(localDrops.length), 'cette semaine', 'down')}
         ${statCard('Zone dominée', displayStat(STATE.dfsStatus?.configured ? 'Live' : null, PREVIEW_MODE ? '15e arr.' : '—'), STATE.dfsStatus?.configured ? 'Local Pack' : PREVIEW_MODE ? 'Local Pack #1' : 'Connectez DataForSEO', 'neutral')}
       </div>
@@ -19921,7 +19964,7 @@ function renderAlertsCenter() {
               </div>
             `).join('')}
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:14px" onclick="showToast('info','Gestion des avis…')">Répondre aux 14 avis →</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:14px" onclick="showToast('info','Gestion des avis…')">Répondre aux ${_unanswered != null ? _unanswered : ''} avis →</button>
         </div>
       </div>
     `;
@@ -20018,7 +20061,7 @@ function renderAlertsCenter() {
     const vulns = [
       { cat: 'Conversion', score: 28, risk: 'Critique', items: ['Formulaire mobile cassé', 'CTA Hero invisible mobile', 'Page Tarifs sans ancrage'] },
       { cat: 'Infrastructure', score: 44, risk: 'Élevé', items: ['2 sites vitesse < 500ms', 'CDN non configuré', 'Cache navigateur absent'] },
-      { cat: 'Local SEO', score: 61, risk: 'Moyen', items: ['14 avis sans réponse', 'Photos GBP obsolètes', 'Zones Marais en recul'] },
+      { cat: 'Local SEO', score: 61, risk: 'Moyen', items: [(STATE.gbp?.unansweredReviews!=null?STATE.gbp.unansweredReviews+' avis sans réponse':(PREVIEW_MODE?'14 avis sans réponse':'Avis GBP en attente')), 'Photos GBP obsolètes', 'Zones locales en recul'] },
       { cat: 'SEO Technique', score: 74, risk: 'Faible',  items: ['2 sites mots-clés en baisse', 'Schema markup partiel'] },
       { cat: 'Contenu',       score: 51, risk: 'Moyen',   items: ['Fréquence publication faible (4/mois)', 'Aucune page locale quartier', 'FAQ manquante'] },
     ];
@@ -20211,8 +20254,8 @@ function renderAlertsCenter() {
             { label:'Incidents actifs',     sub:'incidents',  icon:'🚨', count:2,  sev:'critical', desc:'2 incidents en cours' },
             { label:'Alertes SEO',          sub:'seo',        icon:'🔍', count:4,  sev:'warning',  desc:'3 positions perdues' },
             { label:'Performance & Uptime', sub:'performance',icon:'⚡', count:3,  sev:'critical', desc:'1 site DOWN · 2 lents' },
-            { label:'Conversion & UX',      sub:'conversion', icon:'🎯', count:5,  sev:'critical', desc:'Perte -3640€ ce mois' },
-            { label:'Local SEO & GBP',      sub:'local',      icon:'📍', count:4,  sev:'warning',  desc:'14 avis sans réponse' },
+            { label:'Conversion & UX',      sub:'conversion', icon:'🎯', count:5,  sev:'critical', desc:PREVIEW_MODE?'Perte -3640€ ce mois':'Alertes conversion actives' },
+            { label:'Local SEO & GBP',      sub:'local',      icon:'📍', count:4,  sev:'warning',  desc:(STATE.gbp?.unansweredReviews != null ? STATE.gbp.unansweredReviews+' avis sans réponse' : PREVIEW_MODE ? '14 avis sans réponse' : 'Avis GBP en attente') },
             { label:'Concurrents',          sub:'competitor', icon:'🏴', count:4,  sev:'warning',  desc:(STATE.competitors&&STATE.competitors.length>0?escHtml(STATE.competitors[0].name||'Concurrent #1'):'Concurrent') + ' en progression' },
             { label:'IA Threat Lab',        sub:'ai',         icon:'🔮', count:5,  sev:'critical', desc:'5 risques prédits' },
             { label:'Quotas & Limites',       sub:'quotas',     icon:'📊', count:1,  sev:'warning',  desc:'2 sites proches du seuil' },
@@ -20392,19 +20435,26 @@ function renderActivityFeed() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'seo') {
     const seoActs = liveFeed.filter(a => a.cat === 'seo');
+    const _bestScore = STATE.audits&&STATE.audits.length>0?Math.max(...STATE.audits.map(a=>a.score||0)):null;
+    const _kwCount = (STATE.keywords||STATE.keywordData?.keywords||[]).filter(k=>(k.pos||k.position||99)<=10).length;
     const milestones = [
-      { icon:'🏆', title:"Local Pack #1 — 15e arrondissement",  date:"09/05", detail:"4 mots-clés dominés dans le 15e"   },
-      { icon:'📈', title:'Score SEO ' + (STATE.audits&&STATE.audits.length>0?Math.max(...STATE.audits.map(a=>a.score||0)):82) + '/100 — meilleur site ce mois', date:'09/05', detail:"Record absolu depuis le lancement" },
-      { icon:'🌍', title:"Trafic organique +130% en 8 mois",    date:"Mai 26", detail:"4 820 sessions organiques ce mois"  },
-      { icon:'🔑', title:"25 mots-clés top 10 Google",           date:"Avr 26", detail:"+8 positions nouvelles top 10"      },
+      ...(_bestScore!=null?[{ icon:'📈', title:'Score SEO '+_bestScore+'/100 — meilleur site ce mois', date:CUR_MONTH, detail:'Performance actuelle du portefeuille' }]:[]),
+      ...(_kwCount>0?[{ icon:'🔑', title:_kwCount+' mot'+((_kwCount>1)?'s-clés':'-clé')+' top 10 Google', date:CUR_MONTH, detail:'Positions suivies ce mois' }]:[]),
+      ...(PREVIEW_MODE?[
+        { icon:'🏆', title:"Local Pack #1 — 15e arrondissement",  date:"09/05", detail:"4 mots-clés dominés dans le 15e"   },
+        { icon:'🌍', title:"Trafic organique +130% en 8 mois",    date:"Mai 26", detail:"4 820 sessions organiques ce mois"  },
+        { icon:'🔑', title:"25 mots-clés top 10 Google",           date:"Avr 26", detail:"+8 positions nouvelles top 10"      },
+      ]:[]),
     ];
-    const kws = [
-      { kw:"boulangerie paris 15",          pos:1,  vol:320, delta:+2,  action:"Renforcer les avis" },
-      { kw:"plombier urgence paris",         pos:12, vol:580, delta:-5,  action:"Corriger la page"   },
-      { kw:"restaurant gastronomique 75018", pos:18, vol:210, delta:-4,  action:"Optimiser contenu"  },
-      { kw:"coiffeur lyon centre",           pos:4,  vol:490, delta:+1,  action:"Suivre"             },
-      { kw:"fleuriste mariage paris",        pos:22, vol:190, delta:+7,  action:"Amplifier"          },
-    ];
+    const _kwsRaw = (STATE.keywords||STATE.keywordData?.keywords||[]);
+    const kws = _kwsRaw.length > 0 ? _kwsRaw.slice(0, 5).map(k=>({ kw: k.keyword||k.kw||k.term||'—', pos: k.pos||k.position||null, vol: k.volume||k.vol||null, delta: k.position_change||(k.prev!=null?(k.prev-(k.pos||k.position||0)):0), action: (k.pos||k.position||99)>10 ? 'Corriger la page' : 'Suivre' }))
+      : (PREVIEW_MODE ? [
+          { kw:"boulangerie paris 15",          pos:1,  vol:320, delta:+2,  action:"Renforcer les avis" },
+          { kw:"plombier urgence paris",         pos:12, vol:580, delta:-5,  action:"Corriger la page"   },
+          { kw:"restaurant gastronomique 75018", pos:18, vol:210, delta:-4,  action:"Optimiser contenu"  },
+          { kw:"coiffeur lyon centre",           pos:4,  vol:490, delta:+1,  action:"Suivre"             },
+          { kw:"fleuriste mariage paris",        pos:22, vol:190, delta:+7,  action:"Amplifier"          },
+        ] : []);
     return `
       ${aiBlock('Activité SEO intense cette semaine. <strong>' + (STATE.audits&&STATE.audits.length>0?Math.max(...STATE.audits.map(a=>a.score||0)):82) + '/100 record historique</strong> atteint ce mois. <strong>Momentum global : +7 pts ce mois.</strong>',
         ['Timeline SEO complète', 'Rapport croissance', 'Optimiser les baisses'])}
@@ -21168,11 +21218,13 @@ function renderDataExplorer() {
   // SUB: TRAFFIC INTELLIGENCE
   // ══════════════════════════════════════════════════════════
   if (sub === 'traffic') {
-    const months = ['Oct', 'Nov', 'Déc', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai'];
-    const organic = [2100, 2380, 2290, 2610, 2840, 3120, 3890, 4820];
-    const local   = [480,  520,  610,  720,  850,  1010, 1340, 1780];
-    const total   = organic.map((v, i) => v + local[i]);
-    const maxT    = Math.max(...total);
+    const _behSess = window.FP_DATA?.behavioral?.sessionStats;
+    const _ga4Traf = STATE.ga4?.trafficSeries || STATE.analytics?.trafficSeries || null;
+    const months = _ga4Traf ? _ga4Traf.map(p=>p.month||p.label||'—') : ['Oct', 'Nov', 'Déc', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai'];
+    const organic = _ga4Traf ? _ga4Traf.map(p=>p.organic||0) : (PREVIEW_MODE ? [2100, 2380, 2290, 2610, 2840, 3120, 3890, 4820] : []);
+    const local   = _ga4Traf ? _ga4Traf.map(p=>p.local||0)   : (PREVIEW_MODE ? [480,  520,  610,  720,  850,  1010, 1340, 1780] : []);
+    const total   = organic.map((v, i) => v + (local[i]||0));
+    const maxT    = total.length > 0 ? Math.max(...total) : 1;
 
     return `
       ${aiBlock(PREVIEW_MODE
@@ -21497,24 +21549,30 @@ function renderDataExplorer() {
   // SUB: AI INSIGHTS CENTER
   // ══════════════════════════════════════════════════════════
   if (sub === 'insights') {
-    const insights = [
-      { cat: 'Trafic',      pri: 'critical', icon: '🚦', title: 'Déclin du trafic référent accéléré',           body: 'Le trafic référent a baissé de 4% avec un taux de rebond de 58% — source la moins qualitative. Vérifier les partenariats et backlinks actifs.',    action: 'Analyser les référents' },
-      { cat: 'SEO',         pri: 'high',     icon: '🔍', title: 'Opportunité mots-clés locaux sous-exploités',  body: 'Détection de 3 mots-clés locaux à fort volume (> 200 rech/mois) où aucun concurrent bien optimisé. Capture estimée : +480 sessions/mois.',          action: 'Voir les mots-clés'     },
-      { cat: 'Conversion',  pri: 'critical', icon: '🎯', title: 'Perte de conversion mobile critique',          body: 'Le taux de conversion mobile (0.12%) est 2.8× inférieur au desktop. La page Tarifs a 61% d\'abandons. Action prioritaire : simplifier le formulaire.',  action: 'Corriger le formulaire' },
-      { cat: 'Comportement',pri: 'high',     icon: '🧬', title: 'Segment rebondisseurs en hausse (+3%)',        body: '16% des sessions durent moins de 10 secondes. Ces visiteurs arrivent majoritairement via réseaux sociaux. Améliorer la cohérence message/page.',     action: 'Analyser les segments'  },
-      { cat: 'Performance', pri: 'medium',   icon: '⚡', title: 'Corrélation vitesse/conversion confirmée',     body: 'Les pages avec vitesse > 80/100 convertissent 2.4× mieux. 2 pages principales sont à 55-62/100. Impact estimé sur conversion : -18%.',               action: 'Voir la performance'    },
-      { cat: 'Croissance',  pri: 'positive', icon: '📈', title: 'Accélération trafic local Maps remarquable',  body: '+21% de trafic Maps ce mois — votre meilleure source (conv. 3.2%, qualité 88). La fiche GBP renforcée en avril explique cette accélération.',         action: 'Renforcer GBP'          },
-    ];
-    const anomalies = [
-      { title: 'Pic de trafic anormal — mardi 6 mai', desc: '+340 sessions en 2h entre 14h et 16h — origine : partage viral sur Facebook local. Taux de rebond 89%.', sev: 'info',    date: '06/05' },
-      { title: 'Chute soudaine de position #3',       desc: 'boulangerie-paris.fr est passé de #3 à #7 en 48h. Probable mise à jour algorithmique Google ou action concurrente.', sev: 'warning', date: '04/05' },
-      { title: 'Conversion 0% weekend 3-4 mai',       desc: 'Aucune conversion samedi et dimanche. Historiquement 20% du volume mensuel. Vérifier formulaire de contact.', sev: 'critical', date: '04/05' },
-    ];
+    const _insRaw = window.FP_DATA?.insights || STATE.insights || null;
+    const insights = _insRaw && Array.isArray(_insRaw) && _insRaw.length > 0
+      ? _insRaw.map(i=>({ cat:i.category||i.cat||'IA', pri:i.priority||i.pri||'high', icon:i.icon||'💡', title:i.title||'Insight', body:i.body||i.description||'', action:i.action||'Analyser' }))
+      : (PREVIEW_MODE ? [
+          { cat: 'Trafic',      pri: 'critical', icon: '🚦', title: 'Déclin du trafic référent accéléré',          body: 'Le trafic référent a baissé de 4% avec un taux de rebond de 58% — source la moins qualitative. Vérifier les partenariats et backlinks actifs.',    action: 'Analyser les référents' },
+          { cat: 'SEO',         pri: 'high',     icon: '🔍', title: 'Opportunité mots-clés locaux sous-exploités', body: 'Détection de 3 mots-clés locaux à fort volume (> 200 rech/mois) où aucun concurrent bien optimisé. Capture estimée : +480 sessions/mois.',          action: 'Voir les mots-clés'     },
+          { cat: 'Conversion',  pri: 'critical', icon: '🎯', title: 'Perte de conversion mobile critique',         body: 'Le taux de conversion mobile est inférieur au desktop. La page Tarifs a un taux d\'abandon élevé. Action prioritaire : simplifier le formulaire.',     action: 'Corriger le formulaire' },
+          { cat: 'Comportement',pri: 'high',     icon: '🧬', title: 'Segment rebondisseurs en hausse (+3%)',       body: '16% des sessions durent moins de 10 secondes. Ces visiteurs arrivent majoritairement via réseaux sociaux. Améliorer la cohérence message/page.',     action: 'Analyser les segments'  },
+          { cat: 'Performance', pri: 'medium',   icon: '⚡', title: 'Corrélation vitesse/conversion confirmée',    body: 'Les pages avec vitesse élevée convertissent mieux. Plusieurs pages principales ont un score moyen. Impact estimé sur conversion : -18%.',                action: 'Voir la performance'    },
+          { cat: 'Croissance',  pri: 'positive', icon: '📈', title: 'Accélération trafic local Maps remarquable',  body: 'Votre meilleure source de trafic qualifié. La fiche GBP renforcée récemment explique l\'accélération locale.',                                          action: 'Renforcer GBP'          },
+        ] : []);
+    const _anomRaw = window.FP_DATA?.anomalies || STATE.anomalies || null;
+    const anomalies = _anomRaw && Array.isArray(_anomRaw) && _anomRaw.length > 0
+      ? _anomRaw.map(a=>({ title:a.title||'Anomalie', desc:a.description||a.desc||'', sev:a.severity||a.sev||'info', date:a.date||'—' }))
+      : (PREVIEW_MODE ? [
+          { title: 'Pic de trafic anormal détecté',   desc: 'Trafic inhabituel en 2h — origine : probable partage viral. Taux de rebond élevé.', sev: 'info',    date: CUR_MONTH },
+          { title: 'Chute soudaine de position',      desc: 'Position en baisse en 48h. Probable mise à jour algorithmique Google ou action concurrente.', sev: 'warning', date: CUR_MONTH },
+          { title: 'Conversion 0% weekend',           desc: 'Aucune conversion sur le weekend. Vérifier le formulaire de contact mobile.', sev: 'critical', date: CUR_MONTH },
+        ] : []);
     const priC = { critical: '#ef4444', high: '#f59e0b', medium: '#2563EB', positive: '#22c55e' };
     const priL = { critical: 'Critique', high: 'Priorité haute', medium: 'Moyen', positive: 'Positif' };
     return `
       ${isUltra
-        ? aiBlock("6 insights générés cette semaine. 2 menaces critiques nécessitent une action immédiate : <strong>conversion mobile à 0.12%</strong> et <strong>conversion week-end à 0%</strong>. Opportunité positive : le trafic Maps accélère fortement — potentiel +30% si GBP renforcé.",
+        ? aiBlock(insights.length > 0 ? insights.length + " insight" + (insights.length > 1 ? "s" : "") + " générés. " + insights.filter(i=>i.pri==='critical').length + " critiques nécessitent une action immédiate. " + (insights.filter(i=>i.pri==='positive').length > 0 ? "Opportunités positives détectées." : "") : "Connectez vos outils analytics et CRO pour générer des insights IA personnalisés.",
             ['Plan actions critiques', 'Rapport IA complet', 'Programmer les alertes'])
         : `<div style="padding:14px 16px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🤖</div>
@@ -21706,7 +21764,7 @@ function renderDataExplorer() {
         ${statCard('Rapports disponibles', String(reports.length), 'dont 3 PDF brandés', 'neutral')}
         ${statCard('Exports planifiés', String(scheduled.filter(s => s.active).length), 'actifs ce mois', 'up')}
         ${statCard('Volume exporté', displayStat(null, '6.3 MB'), 'ce mois', 'neutral')}
-        ${statCard('Rapports white-label', '2', isUltra ? 'actifs' : 'Ultra requis', isUltra ? 'up' : 'neutral')}
+        ${statCard('Rapports white-label', String((STATE.reports||[]).filter(r=>r.whiteLabel||r.branded||r.isWhiteLabel).length), isUltra ? 'actifs' : 'Ultra requis', isUltra ? 'up' : 'neutral')}
       </div>
 
       <!-- REPORTS LIST -->
@@ -22021,14 +22079,24 @@ function renderClientMode() {
 
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">✅ Réalisations du mois</div>
-          ${[
-            { ok:true,  warn:false, info:false, text:"3 audits SEO complets réalisés"           },
-            { ok:true,  warn:false, info:false, text:"6 monitors configurés — uptime 99.1%"      },
-            { ok:true,  warn:false, info:false, text:"2 rapports clients générés et partagés"    },
-            { ok:true,  warn:false, info:false, text:"Score moyen augmenté de +7 pts"            },
-            { ok:false, warn:true,  info:false, text:"14 avis Google en attente de réponse"      },
-            { ok:false, warn:false, info:true,  text:"4 missions en cours de traitement"         },
-          ].map(r => {
+          ${(()=>{
+            const _nA=(STATE.audits||[]).length;
+            const _nM=(STATE.monitors||[]).length;
+            const _avgUp=_nM>0?(STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/_nM).toFixed(1):null;
+            const _nR=(STATE.reports||[]).length;
+            const _nShared=(STATE.reports||[]).filter(r=>r.shared).length;
+            const _avg=avgScore()||0;
+            const _ua=STATE.gbp?.unansweredReviews;
+            const _nMiss=(STATE.missions||[]).filter(m=>m.status==='in_progress').length;
+            return [
+              ...((_nA>0)?[{ ok:true,  warn:false, info:false, text:_nA+' audit'+((_nA>1)?'s':'')+' SEO réalisé'+(_nA>1?'s':'') }]:[]),
+              ...(_nM>0?[{ ok:true,  warn:false, info:false, text:_nM+' monitor'+(_nM>1?'s':'')+' configuré'+(_nM>1?'s':'')+(_avgUp?' — uptime '+_avgUp+'%':'') }]:[]),
+              ...(_nR>0?[{ ok:true,  warn:false, info:false, text:_nShared+' rapport'+(_nShared>1?'s':'')+' client'+(_nShared>1?'s':'')+' partagé'+(_nShared>1?'s':'') }]:[]),
+              ...(_avg>=60?[{ ok:true,  warn:false, info:false, text:'Score moyen : '+_avg+'/100' }]:[]),
+              ...(_ua>0?[{ ok:false, warn:true,  info:false, text:_ua+' avis Google en attente de réponse' }]:(PREVIEW_MODE?[{ ok:false, warn:true,  info:false, text:'14 avis Google en attente de réponse' }]:[])),
+              ...(_nMiss>0?[{ ok:false, warn:false, info:true,  text:_nMiss+' mission'+(_nMiss>1?'s':'')+' en cours de traitement' }]:[]),
+            ];
+          })().map(r => {
             const ic = r.warn ? '#f59e0b' : r.info ? '#2563EB' : '#22c55e';
             const path = r.warn
               ? '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'
@@ -22318,7 +22386,7 @@ function renderClientMode() {
   if (sub === 'projects') {
     const missions = [
       { title:"Corriger balises title — " + (STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.score||0)<(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')||'site prioritaire'):'site prioritaire'), cat:"SEO Technique", client:"SEO Technique", priority:'urgent',  status:'todo',       assign:(STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') },
-      { title:"Répondre aux 14 avis Google",                 cat:"Local SEO",     client:"Multi-clients",       priority:'urgent',  status:'todo',       assign:(STATE.team&&STATE.team.length>1?STATE.team[1].name:STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') },
+      ...((STATE.gbp?.unansweredReviews>0||PREVIEW_MODE)?[{ title:"Répondre aux "+(STATE.gbp?.unansweredReviews!=null?STATE.gbp.unansweredReviews:'14')+" avis Google", cat:"Local SEO", client:"Multi-clients", priority:'urgent', status:'todo', assign:(STATE.team&&STATE.team.length>1?STATE.team[1].name:STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') }]:[]),
       { title:"Optimiser vitesse mobile — " + (STATE.monitors&&STATE.monitors.length>0?((STATE.monitors.reduce((b,m)=>(m.latency||0)>(b.latency||0)?m:b,STATE.monitors[0]).url||STATE.monitors[0].name||'').replace(/^https?:\/\//,'')||'site critique'):'site critique'), cat:"Performance", client:"Performance", priority:'high', status:'inprogress', assign:(STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') },
       { title:"Connexion fiche GBP — nouveau client",  cat:"Onboarding",   client:"Onboarding",priority:'high',    status:'inprogress', assign:(STATE.team&&STATE.team.length>1?STATE.team[1].name:STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') },
       { title:"Score SEO " + (STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')):'votre site') + " " + (STATE.audits&&STATE.audits.length>0?Math.max(...STATE.audits.map(a=>a.score||0)):82) + "/100 ✅", cat:"SEO", client:"SEO",  priority:'normal',  status:'done',       assign:(STATE.team&&STATE.team.length>0?STATE.team[0].name:'—') },
@@ -22743,7 +22811,7 @@ function renderMonitorsSLA() {
       ${[
         { l: 'SLA Global',       v: globalUptime + '%', c: slaOK ? '#22c55e' : '#ef4444', sub: 'Cible : 99.0%' },
         { l: 'Sites conformes',  v: slaData.filter(s => s.ok).length + '/' + monitors.length, c: '#22c55e', sub: 'Au-dessus du seuil' },
-        { l: 'Downtime total',   v: '44 min',   c: '#f59e0b', sub: '0.10% du mois' },
+        { l: 'Downtime total',   v: (()=>{ const _d=slaData.reduce((s,sd)=>s+(sd.downMin||0),0); return _d===0?'0 min':_d<60?_d+' min':Math.round(_d/60)+'h '+(_d%60?_d%60+'min':''); })(), c: slaData.some(s=>!s.ok)?'#ef4444':'#22c55e', sub: 'Incidents ce mois' },
         { l: 'Page statut', v: (STATE.settings&&STATE.settings.statusPageUrl)?'Active':'Non config.', c: (STATE.settings&&STATE.settings.statusPageUrl)?'#22c55e':'#94a3b8', sub: (STATE.settings&&STATE.settings.statusPageUrl)||'Non configuré' },
       ].map(s => `
         <div class="fp-card fp-card-sm">
@@ -24602,10 +24670,14 @@ function renderSettingsAPI() {
         <div class="fp-card-title" style="margin-bottom:14px">Clés API Flowpoint</div>
         ${aiBlock('Vos clés API permettent d\'intégrer Flowpoint dans vos propres outils. Ne partagez jamais votre clé secrète — régénérez-la immédiatement si elle est compromise.',[])}
         <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
-          ${[
-            { label:'Clé publique (lecture seule)', key:'fp_pub_k7m2x9q3a1b4c5d6e7f8', created:'01/01/2026' },
-            { label:'Clé secrète (accès complet)', key:'fp_sec_••••••••••••••••••••', created:'01/01/2026' },
-          ].map(k => `
+          ${(()=>{
+            const _pk = STATE.settings?.publicApiKey || STATE.me?.publicApiKey || null;
+            const _pkCreated = STATE.settings?.apiKeyCreated || STATE.me?.createdAt ? (STATE.me?.createdAt ? new Date(STATE.me.createdAt).toLocaleDateString('fr-FR') : '—') : '—';
+            return [
+              { label:'Clé publique (lecture seule)', key: _pk || (PREVIEW_MODE ? 'fp_pub_k7m2x9q3a1b4c5d6e7f8' : '(clé non disponible — contactez le support)'), created: _pkCreated },
+              { label:'Clé secrète (accès complet)',  key:'fp_sec_••••••••••••••••••••', created: _pkCreated },
+            ];
+          })().map(k => `
             <div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:14px 16px">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${k.label}</div>
@@ -24627,10 +24699,22 @@ function renderSettingsAPI() {
         <div class="fp-card-title" style="margin-bottom:6px">Webhooks</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Recevez des événements Flowpoint dans vos outils (Zapier, Make, n8n, Slack…)</div>
         ${[
-          { event:'monitor.down', url:'https://hooks.zapier.com/hooks/catch/abc123', active:true },
-          { event:'audit.completed', url:'https://webhook.site/xyz456', active:true },
-          { event:'report.generated', url:'', active:false },
-          { event:'score.alert', url:'', active:false },
+          ...(STATE.settings?.webhooks && Array.isArray(STATE.settings.webhooks) && STATE.settings.webhooks.length > 0
+            ? STATE.settings.webhooks
+            : (PREVIEW_MODE
+              ? [
+                  { event:'monitor.down',     url:'https://hooks.zapier.com/hooks/catch/abc123', active:true  },
+                  { event:'audit.completed',  url:'https://webhook.site/xyz456',                active:true  },
+                  { event:'report.generated', url:'',                                            active:false },
+                  { event:'score.alert',      url:'',                                            active:false },
+                ]
+              : [
+                  { event:'monitor.down',     url:'', active:false },
+                  { event:'audit.completed',  url:'', active:false },
+                  { event:'report.generated', url:'', active:false },
+                  { event:'score.alert',      url:'', active:false },
+                ]
+            )),
         ].map(w => `
           <div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -30239,7 +30323,7 @@ function renderLocalDominationMaps() {
         </div>
         ${heatmaps.length === 0 ? `
           <div style="display:flex;flex-direction:column;gap:10px">
-            ${[
+            ${PREVIEW_MODE ? [
               {name:'Paris Centre — Plomberie',   kw:'plombier urgence paris',        km:5,   g:7, score:62, color:'#f59e0b'},
               {name:'Lyon 1-4 — Boulangerie',     kw:'boulangerie artisanale lyon',   km:3,   g:5, score:78, color:'#22c55e'},
               {name:'Bordeaux — Coiffeur',        kw:'coiffeur bordeaux centre',      km:4,   g:7, score:34, color:'#ef4444'},
@@ -30256,9 +30340,9 @@ function renderLocalDominationMaps() {
                 </div>
                 <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px" onclick="window._showCreateHeatmapModal()">Créer</button>
               </div>
-            `).join('')}
+            `).join('') : ''}
             <div style="text-align:center;padding:14px;border:2px dashed var(--fp-border);border-radius:10px;color:var(--fp-text-muted);font-size:12px">
-              ☝️ Exemples ci-dessus — créez vos propres grilles pour voir vos vrais résultats
+              ${PREVIEW_MODE ? '☝️ Exemples ci-dessus — créez vos propres grilles pour voir vos vrais résultats' : 'Aucune heatmap créée — visualisez votre domination locale par zone géographique'}
               <br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="window._showCreateHeatmapModal()">+ Créer ma première heatmap</button>
             </div>
           </div>
