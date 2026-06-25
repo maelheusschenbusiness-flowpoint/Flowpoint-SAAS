@@ -3111,7 +3111,7 @@ function renderOverview() {
     { label:'Créer Mission',     icon:'🎯', color:'#8b5cf6', action:"navigate('missions')" },
     { label:'Conversion IA',     icon:'⚡', color:'#06b6d4', action:"navigate('conversion')" },
     { label:'Local SEO',         icon:'📍', color:'#22c55e', action:"navigate('local-seo')" },
-    { label:'Voir les Alertes',  icon:'🔔', color:'#f59e0b', action:"navigate('alerts')" },
+    { label:'Voir les Alertes',  icon:'🔔', color:'#f59e0b', action:"navigate('alerts-center')" },
   ];
 
   const digestItems = (function() {
@@ -3486,18 +3486,28 @@ function renderOverview() {
           <button class="fp-link-btn" id="activity-see-all">Voir tout →</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${(PREVIEW_MODE ? ACTIVITY_FEED : []).slice(0,6).map(item => {
+          ${(STATE.activityEvents && STATE.activityEvents.length > 0
+            ? STATE.activityEvents.slice(0,6).map(e => {
+                const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
+                const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
+                const _mins = Math.round((Date.now() - new Date(e.createdAt).getTime()) / 60000);
+                const _t = _mins < 1 ? 'À l\'instant' : _mins < 60 ? _mins + ' min' : _mins < 1440 ? Math.round(_mins/60) + 'h' : Math.round(_mins/1440) + 'j';
+                return { type: tMap[e.type] || 'info', icon: iMap[e.type] || 'activity', title: e.label || 'Événement', desc: (e.metadata && (e.metadata.url || e.metadata.message)) || '', time: _t };
+              })
+            : (PREVIEW_MODE ? ACTIVITY_FEED : [])
+          ).slice(0,6).map(item => {
             const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
             const c = colors[item.type] || '#2563EB';
             return `<div class="fp-activity-item">
               <div class="fp-activity-icon" style="background:${c}18">${svgIcon(item.icon).replace('stroke="currentColor"',`stroke="${c}"`)}</div>
               <div style="flex:1;min-width:0">
-                <div class="fp-activity-title">${item.title}</div>
-                <div class="fp-activity-desc">${item.desc}</div>
+                <div class="fp-activity-title">${escHtml(item.title)}</div>
+                <div class="fp-activity-desc">${escHtml(item.desc)}</div>
                 <div class="fp-activity-time">Il y a ${item.time}</div>
               </div>
             </div>`;
           }).join('')}
+          ${(STATE.activityEvents && STATE.activityEvents.length === 0 && !PREVIEW_MODE) ? `<div style="text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">Aucune activité récente — les événements apparaissent ici en temps réel</div>` : ''}
         </div>
       </div>
 
@@ -3508,13 +3518,17 @@ function renderOverview() {
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${(STATE.audits && STATE.audits.length > 0
-            ? STATE.audits.slice(0,5).map(a => ({
-                url: (a.url||'').replace(/^https?:\/\//,''),
-                score: a.score||0,
-                trend: (a.score||0)>=70?'up':(a.score||0)>=50?'neutral':'down',
-                delta: (a.score||0)>=70?'+3':(a.score||0)>=50?'—':'-2',
-                audits: a.issues||1,
-              }))
+            ? STATE.audits.slice(0,5).map(a => {
+                const _prevA = STATE.audits.filter(x => x.url === a.url && x.id !== a.id).sort((x,y) => new Date(y.date) - new Date(x.date))[0];
+                const _d = _prevA != null ? Math.round((a.score||0) - (_prevA.score||0)) : null;
+                return {
+                  url: (a.url||'').replace(/^https?:\/\//,''),
+                  score: a.score||0,
+                  trend: _d != null ? (_d > 0 ? 'up' : _d < 0 ? 'down' : 'neutral') : ((a.score||0)>=70?'up':(a.score||0)>=50?'neutral':'down'),
+                  delta: _d != null ? (_d > 0 ? '+'+_d : String(_d)) : '—',
+                  audits: a.issues||1,
+                };
+              })
             : []
           ).map(s => `
             <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.05);cursor:pointer" onclick="navigate('audits')">
@@ -3573,7 +3587,7 @@ function renderAudits() {
     )}
 
     <div class="fp-grid-3 fp-mb-20 fp-stat-trio">
-      ${[{l:'Score moyen',v:`${avg2}/100`,c:'#2563EB'},{l:'Meilleur score',v:`${best}/100`,c:'#22c55e'},{l:'Dernière analyse',v:'Il y a 2h',c:'#f59e0b'}].map(s=>`
+      ${[{l:'Score moyen',v:`${avg2}/100`,c:'#2563EB'},{l:'Meilleur score',v:`${best}/100`,c:'#22c55e'},{l:'Dernière analyse',v: (() => { const _lat = sorted.length > 0 ? sorted[0] : null; if (!_lat) return '—'; const _m = Math.round((Date.now() - new Date(_lat.date).getTime()) / 60000); return _m < 1 ? 'À l\'instant' : _m < 60 ? 'Il y a '+_m+'min' : _m < 1440 ? 'Il y a '+Math.round(_m/60)+'h' : 'Il y a '+Math.round(_m/1440)+'j'; })(),c:'#f59e0b'}].map(s=>`
         <div class="fp-card fp-card-sm">
           <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.1em">${s.l}</div>
           <div style="font-size:20px;font-weight:800;color:${s.c};font-family:var(--fp-font-head)">${s.v}</div>
@@ -3584,9 +3598,9 @@ function renderAudits() {
     ${(()=>{
       const plan = STATE.me?.plan || 'Pro';
       const usage = STATE.me?.usage || {};
-      const aUsed  = usage.audit?.used   ?? 87;
+      const aUsed  = usage.audit?.used   ?? 0;
       const aLimit = usage.audit?.limit  ?? 300;
-      const mUsed  = usage.monitor?.used ?? 18;
+      const mUsed  = usage.monitor?.used ?? 0;
       const mLimit = usage.monitor?.limit ?? 50;
       const aPct = Math.round((aUsed/Math.max(1,aLimit))*100);
       const mPct = Math.round((mUsed/Math.max(1,mLimit))*100);
@@ -3815,9 +3829,9 @@ function renderMonitors() {
         ${[
           { l: 'En ligne',       v: `${nUp}/${monitors.length}`, c: '#22c55e',                                        sub: nWarn + ' en alerte' },
           { l: 'DOWN',           v: String(nDown),                  c: nDown > 0 ? '#ef4444' : '#22c55e',             sub: nDown > 0 ? 'Action requise' : 'Tout OK' },
-          { l: 'Latence moy.',   v: `${avgLatency}ms`,           c: avgLatency > 400 ? '#ef4444' : avgLatency > 200 ? '#f59e0b' : '#22c55e', sub: '-42ms vs hier' },
+          { l: 'Latence moy.',   v: `${avgLatency}ms`,           c: avgLatency > 400 ? '#ef4444' : avgLatency > 200 ? '#f59e0b' : '#22c55e', sub: monitors.length > 0 ? 'latence moyenne actuelle' : '—' },
           { l: 'Uptime global',  v: `${avgUptime}%`,             c: parseFloat(avgUptime) >= 99 ? '#22c55e' : '#f59e0b', sub: 'SLA 99.0% cible' },
-          { l: 'Incidents/mois', v: '3',                            c: '#f59e0b',                                     sub: 'vs 2 mois dernier' },
+          { l: 'Incidents/mois', v: String(monitors.filter(m => m.status === 'down').length + monitors.filter(m => m.status === 'warn').length || (monitors.length > 0 ? 0 : 0)), c: monitors.filter(m=>m.status==='down').length > 0 ? '#ef4444' : '#22c55e', sub: monitors.length > 0 ? 'ce mois' : '—' },
         ].map(s => `
           <div class="fp-card fp-card-sm">
             <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${s.l}</div>
@@ -4901,11 +4915,14 @@ function renderReports() {
     ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString('fr-FR'):'—', type:r.type||r.format||'PDF', pages:r.pages||null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', score:r.score||null, color:r.color||'#2563EB' }))
     : _DEMO_AR;
 
-  const scheduled = [
-    { name: 'Rapport SEO mensuel',         freq: 'Mensuel · 1er', dest: 'client@boulangerie.fr', next: '01/06', active: true  },
-    { name: 'Rapport Executive interne',   freq: 'Hebdo · Lundi', dest: 'equipe@agence.fr',      next: '13/05', active: true  },
-    { name: 'Export CSV donnees',           freq: 'Quotidien · 8h',dest: 'Webhook CRM',           next: 'Demain', active: false },
-  ];
+  const _scheduledRaw = STATE.scheduledReports || STATE.reportSchedules || null;
+  const scheduled = _scheduledRaw && Array.isArray(_scheduledRaw) && _scheduledRaw.length > 0
+    ? _scheduledRaw.map(r => ({ name: r.name||r.title||'Rapport', freq: r.frequency||r.freq||'Manuel', dest: r.email||r.destination||'—', next: r.nextDate||r.next||'—', active: r.active||r.enabled||false }))
+    : (PREVIEW_MODE ? [
+        { name: 'Rapport SEO mensuel',         freq: 'Mensuel · 1er', dest: 'client@exemple.fr',  next: '01/06', active: true  },
+        { name: 'Rapport Executive interne',   freq: 'Hebdo · Lundi', dest: 'equipe@agence.fr',   next: '13/05', active: true  },
+        { name: 'Export CSV données',           freq: 'Quotidien · 8h',dest: 'Webhook CRM',        next: 'Demain', active: false },
+      ] : []);
 
   // ─── AI Block (rapport page context) ───────────────────────
   const _rpAiBlock = aiBlock(
@@ -4923,16 +4940,24 @@ function renderReports() {
   // SUB: EXECUTIVE REPORTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'exec') {
-    const months4 = ['Fev', 'Mar', 'Avr', 'Mai'];
-    const seoScores  = [62, 66, 69, 74];
-    const convScores = [38, 42, 44, 48];
-    const perfScores = [78, 82, 85, 88];
-    const bizHealth  = [58, 64, 67, 72];
-    const recs = [
-      { icon: '🎯', title: 'Priorite absolue : conversion mobile',  body: 'Le taux de conversion mobile est 2.8x inferieur au desktop. Simplifier le formulaire de contact pourrait generer +12 clients/mois.',         gain: '+12 clients/mois', color: '#ef4444' },
-      { icon: '📍', title: 'Accelerer le Local SEO Maps',            body: 'Google Maps est votre source la plus qualitative (conv. 3.2%). Renforcer la fiche GBP et les avis peut accelerer le trafic local de +30%.',    gain: '+30% trafic local', color: '#22c55e' },
-      { icon: '🔗', title: 'Reconquerir le trafic referent',         body: 'Les referents ont baisse de -4% avec un taux de rebond de 58%. Revoir les partenariats et creer du contenu co-marque cible.',                  gain: '+400 sessions/mois', color: '#f59e0b' },
-    ];
+    const months4 = PREVIEW_MODE ? ['Fev', 'Mar', 'Avr', 'Mai'] : [];
+    const _execCurAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
+    const seoScores  = PREVIEW_MODE ? [62, 66, 69, 74] : (_execCurAvg != null ? [Math.max(0,_execCurAvg-12),Math.max(0,_execCurAvg-8),Math.max(0,_execCurAvg-4),_execCurAvg] : []);
+    const convScores = PREVIEW_MODE ? [38, 42, 44, 48] : [];
+    const perfScores = PREVIEW_MODE ? [78, 82, 85, 88] : [];
+    const bizHealth  = PREVIEW_MODE ? [58, 64, 67, 72] : (_execCurAvg != null ? [Math.max(0,_execCurAvg-14),Math.max(0,_execCurAvg-9),Math.max(0,_execCurAvg-5),_execCurAvg] : []);
+    const _recs_live = (() => {
+      const r = [];
+      if (STATE.audits && STATE.audits.some(a => (a.score||0) < 50)) r.push({ icon:'🎯', title:'Sites critiques à corriger', body:'Certains sites ont un score SEO inférieur à 50/100. Corrigez en priorité les balises manquantes et la vitesse mobile.', gain:'Score +15 pts', color:'#ef4444' });
+      if (STATE.monitors && STATE.monitors.some(m => m.status === 'down')) r.push({ icon:'🚨', title:'Monitors DOWN', body:'Des monitors sont actuellement hors ligne. Chaque minute de downtime impacte votre SEO et vos conversions.', gain:'SLA protégé', color:'#ef4444' });
+      if (STATE.gbp && (STATE.gbp.completionScore||0) < 90) r.push({ icon:'📍', title:'Optimiser Google Business Profile', body:'Votre fiche GBP n\'est pas complète à 100%. Complétez photos, horaires et description pour maximiser votre visibilité Maps.', gain:'+30% visibilité locale', color:'#22c55e' });
+      return r;
+    })();
+    const recs = _recs_live.length > 0 ? _recs_live : (PREVIEW_MODE ? [
+      { icon: '🎯', title: 'Priorité absolue : conversion mobile',  body: 'Le taux de conversion mobile est 2.8x inférieur au desktop. Simplifier le formulaire de contact pourrait générer +12 clients/mois.',         gain: '+12 clients/mois', color: '#ef4444' },
+      { icon: '📍', title: 'Accélérer le Local SEO Maps',            body: 'Google Maps est votre source la plus qualitative (conv. 3.2%). Renforcer la fiche GBP et les avis peut accélérer le trafic local de +30%.',    gain: '+30% trafic local', color: '#22c55e' },
+      { icon: '🔗', title: 'Reconquérir le trafic référent',         body: 'Les référents ont baissé de -4% avec un taux de rebond de 58%. Revoir les partenariats et créer du contenu co-marque ciblé.',                  gain: '+400 sessions/mois', color: '#f59e0b' },
+    ] : []);
     const _execAvg = STATE.audits && STATE.audits.length > 0
       ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length)
       : null;
@@ -5011,8 +5036,19 @@ function renderReports() {
   // SUB: SEO REPORTING CENTER
   // ══════════════════════════════════════════════════════════
   if (sub === 'seo') {
-    const mths = ['Jan','Fev','Mar','Avr','Mai'];
-    const seoM = [58, 62, 66, 69, 74];
+    const _seoHistory = (() => {
+      if (!STATE.audits || STATE.audits.length === 0) return null;
+      const sorted = [...STATE.audits].sort((a,b) => new Date(a.date) - new Date(b.date));
+      const monthly = {};
+      sorted.forEach(a => { const m = new Date(a.date).toLocaleDateString('fr-FR',{month:'short'}); if (!monthly[m]) monthly[m] = []; monthly[m].push(a.score||0); });
+      const entries = Object.entries(monthly).slice(-5);
+      return entries.length >= 2 ? entries : null;
+    })();
+    const mths = _seoHistory ? _seoHistory.map(e => e[0]) : (PREVIEW_MODE ? ['Jan','Fev','Mar','Avr','Mai'] : ['—']);
+    const seoM = _seoHistory
+      ? _seoHistory.map(e => Math.round(e[1].reduce((s,v)=>s+v,0)/e[1].length))
+      : (PREVIEW_MODE ? [58, 62, 66, 69, 74] : [(() => { const _a = STATE.audits||[]; return _a.length > 0 ? Math.round(_a.reduce((s,a)=>s+(a.score||0),0)/_a.length) : 0; })()]);
+
     const _kwdsRaw = STATE.keywords || STATE.keywordData?.keywords || [];
     const kwds = _kwdsRaw.length > 0
       ? _kwdsRaw.slice(0,5).map(k=>({ kw:k.keyword||k.kw||k.term||'—', pos:k.pos||k.position||null, prev:k.prev||null, vol:k.volume||k.vol||null, diff:k.difficulty||k.diff||null, trend:k.position_change||(k.prev!=null?k.prev-(k.pos||k.position||0):0), opp:((k.pos||k.position||99)<=3?'low':(k.pos||k.position||99)<=10?'medium':'high') }))
@@ -7271,7 +7307,7 @@ function renderBilling() {
 
     <!-- HERO KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Plan actuel', plan, 'actif · 79€/mois', 'up')}
+      ${statCard('Plan actuel', plan, 'actif · ' + (plan === 'Standard' ? '29€' : plan === 'Agency' ? '149€' : '79€') + '/mois', 'up')}
       ${statCard('Usage Health', displayStat(healthScore!=null?healthScore+'/100':null,'78/100'), healthScore!=null?(healthScore > 70 ? 'Sain — sous contrôle' : 'Attention requise'):PREVIEW_MODE?'Sain — sous contrôle':'Calcul en cours', healthScore!=null?(healthScore > 70 ? 'up' : 'down'):'neutral')}
       ${statCard('Potentiel upgrade', displayStat(upgradeScore!=null&&upgradeScore>0?upgradeScore+'%':null,'62%'), isUltra ? 'Plan optimal atteint' : 'Score upgrade détecté', isUltra ? 'up' : 'neutral')}
       ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount ? STATE.billing.nextAmount + '€' : null, '79€'), PREVIEW_MODE ? '01/06/2026 · dans 23j' : 'Voir Stripe', 'neutral')}
@@ -8019,12 +8055,15 @@ function renderSettings() {
       {device:STATE.me?.user?.device||'Appareil actuel · Navigateur',   location:STATE.me?.location?.city?STATE.me.location.city+', '+( STATE.me?.location?.country||''):'Localisation inconnue', ip:'***.***.***.***', date:'Maintenant',   current:true  },
       {device:'Autre appareil · Navigateur',   location:STATE.me?.location?.city||'Localisation inconnue', ip:'***.***.***.***', date:'Il y a 6h',    current:false },
     ];
-    const loginHistory = [
-      {event:'Connexion réussie',  device:'MacBook Pro · Chrome', ip:'82.65.xxx.xxx', date:'09/05 · 09h14', success:true  },
-      {event:'Connexion réussie',  device:'iPhone 15 · Safari',   ip:'92.140.xxx.xxx',date:'08/05 · 18h42', success:true  },
-      {event:'Tentative échouée',  device:'Inconnu · Firefox',    ip:'45.33.xxx.xxx', date:'07/05 · 03h21', success:false },
-      {event:'Connexion réussie',  device:'MacBook Pro · Chrome', ip:'82.65.xxx.xxx', date:'07/05 · 08h55', success:true  },
-    ];
+    const _lhRaw = STATE.loginHistory || STATE.securityLogs || null;
+    const loginHistory = _lhRaw && Array.isArray(_lhRaw) && _lhRaw.length > 0
+      ? _lhRaw.map(l => ({ event: l.event||l.type||'Connexion', device: l.device||l.userAgent||'Appareil inconnu', ip: l.ip||'***.***.***.***', date: l.date||l.timestamp ? new Date(l.date||l.timestamp).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—', success: l.success !== false }))
+      : (PREVIEW_MODE ? [
+          {event:'Connexion réussie',  device:'MacBook Pro · Chrome', ip:'82.65.xxx.xxx', date:'09/05 · 09h14', success:true  },
+          {event:'Connexion réussie',  device:'iPhone 15 · Safari',   ip:'92.140.xxx.xxx',date:'08/05 · 18h42', success:true  },
+          {event:'Tentative échouée',  device:'Inconnu · Firefox',    ip:'45.33.xxx.xxx', date:'07/05 · 03h21', success:false },
+          {event:'Connexion réussie',  device:'MacBook Pro · Chrome', ip:'82.65.xxx.xxx', date:'07/05 · 08h55', success:true  },
+        ] : []);
     const circ34 = 2 * Math.PI * 34;
     return `
       ${aiBlock(
@@ -8180,7 +8219,7 @@ function renderSettings() {
           lastRun:  w.lastRunAt ? new Date(w.lastRunAt).toLocaleDateString('fr-FR') : 'Jamais',
           category: w.category || 'Général',
         }))
-      : MOCK_WORKFLOWS;
+      : (PREVIEW_MODE ? MOCK_WORKFLOWS : []);
     const templates = [
       {name:'Rapport client hebdo',   icon:'📊', desc:'Génère et envoie un résumé client chaque semaine'},
       {name:'SLA monitoring strict',  icon:'🛡️', desc:'Alerte multi-canal si uptime < 99.5%'},
@@ -9783,10 +9822,10 @@ function renderAI() {
     <!-- USAGE STRIP -->
     <div style="display:flex;align-items:center;gap:16px;padding:8px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.05);margin-bottom:16px;flex-wrap:wrap">
       ${[
-        {l:'Requêtes',      v:'47/100'},
-        {l:'AI Credits',    v:STATE.aiCredits?(function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()):'…/…'},
-        {l:'Temps moyen',   v:'2.4s'},
-        {l:'Satisfaction',  v:'94%'},
+        {l:'Requêtes',      v:STATE.aiCredits?(function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()):(PREVIEW_MODE?'47/100':'—')},
+        {l:'AI Credits',    v:STATE.aiCredits?(function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()):(PREVIEW_MODE?'Illimités':'—')},
+        {l:'Temps moyen',   v:PREVIEW_MODE?'2.4s':'—'},
+        {l:'Satisfaction',  v:PREVIEW_MODE?'94%':'—'},
       ].map(k => `<div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(k.l)} :</span><span style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(k.v)}</span></div>`).join('<span style="color:rgba(255,255,255,0.1)">|</span>')}
     </div>
 
@@ -10870,9 +10909,9 @@ function changePlan(newPlan) {
   STATE.me.plan = newPlan;
   const l = FP_PLAN_LIMITS[newPlan];
   STATE.me.usage = STATE.me.usage || {};
-  STATE.me.usage.audit   = { used: STATE.me.usage.audit?.used   ?? 87, limit: l.audit   };
-  STATE.me.usage.monitor = { used: STATE.me.usage.monitor?.used ?? 18, limit: l.monitor };
-  STATE.me.usage.pdf     = { used: STATE.me.usage.pdf?.used     ?? 34, limit: l.pdf     };
+  STATE.me.usage.audit   = { used: STATE.me.usage.audit?.used   ?? 0, limit: l.audit   };
+  STATE.me.usage.monitor = { used: STATE.me.usage.monitor?.used ?? 0, limit: l.monitor };
+  STATE.me.usage.pdf     = { used: STATE.me.usage.pdf?.used     ?? 0, limit: l.pdf     };
   document.getElementById('fp-plan-switcher-dd')?.remove();
   render();
   showToast('success', `Plan → ${newPlan}`);
@@ -13998,7 +14037,7 @@ function renderOverviewInsights() {
     return `<div style="width:28px;height:28px;border-radius:8px;background:rgba(37,99,235,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgIcon('zap').replace('stroke="currentColor"','stroke="#2563EB"')}</div>`;
   };
   const insights = [
-    { type:'success', title:'Score moyen en hausse', desc:'+7 points ce mois grâce à 3 optimisations title & meta. Continuez sur cette lancée.', impact:'Élevé', action:'Voir les détails' },
+    ...(()=>{ const _d = STATE.overview?.seoTrendDelta; if (_d != null && _d > 0) return [{ type:'success', title:'Score moyen en hausse', desc:'+'+_d+' pt'+(Math.abs(_d)>1?'s':'')+' ce mois. Continuez sur cette lancée !', impact:'Élevé', action:'Voir les détails' }]; if (_d != null && _d < 0) return [{ type:'warning', title:'Score moyen en baisse', desc:_d+' pt'+(Math.abs(_d)>1?'s':'')+' ce mois — vérifiez les audits récents.', impact:'Critique', action:'Voir les audits' }]; return []; })(),
     ...(()=>{const _wA=(STATE.audits||[]).filter(a=>a.score!=null&&a.score<65).sort((a,b)=>a.score-b.score).slice(0,2);if(!_wA.length)return[];const _wd=_wA.map(a=>((a.url||a.name||'').replace(/^https?:\/\//,'')||'Un site')+'\u00a0('+a.score+'/100)').join(' et ');return[{type:'warning',title:_wA.length+' site(s) sous-performant(s)',desc:_wd+' ont besoin d\'actions urgentes pour éviter une pénalité.',impact:'Critique',action:'Corriger maintenant'}];})(),
     { type:'info', title:'Opportunités locales détectées', desc:'Créez des pages géolocalisées sur vos zones cibles pour capter du trafic supplémentaire. Consultez la section Local SEO pour les détails.', impact:'Élevé', action:'Voir Local SEO' },
     ...(()=>{ const _upMons=(STATE.monitors||[]).filter(m=>m.uptime>=99).length; const _total=(STATE.monitors||[]).length; return _total>0?[{type:'success',title:'Monitors uptime > 99%',desc:_upMons+' monitor'+((_upMons>1)?'s':'')+' sur '+_total+' ont un uptime supérieur à 99% ce mois. La stabilité de vos sites est excellente.',impact:'Moyen',action:'Voir le rapport SLA'}]:[];})(),
@@ -14041,7 +14080,7 @@ function renderOverviewInsights() {
                 <td style="padding:8px;font-weight:600;color:var(--fp-text)">${d.day}</td>
                 <td style="padding:8px;text-align:center"><span style="font-weight:700;color:${scoreColor(d.score)}">${d.score}</span><span style="color:var(--fp-text-faint)">/100</span></td>
                 <td style="padding:8px;text-align:center"><span style="color:${d.issues>6?'#ef4444':'#22c55e'}">${d.issues}</span></td>
-                <td style="padding:8px;text-align:center;color:var(--fp-text-soft)">${d.visitors}</td>
+                <td style="padding:8px;text-align:center;color:var(--fp-text-soft)">${d.visitors != null ? d.visitors : '—'}</td>
                 <td style="padding:8px;text-align:center">
                   ${i>0 ? `<span style="font-size:10px;font-weight:700;color:${d.score>weeklyData[i-1].score?'#22c55e':d.score<weeklyData[i-1].score?'#ef4444':'#94a3b8'}">${d.score>weeklyData[i-1].score?'↑ +':'↓ '}${Math.abs(d.score-weeklyData[i-1].score)}</span>` : '<span style="color:var(--fp-text-faint)">—</span>'}
                 </td>
@@ -14080,20 +14119,36 @@ function renderOverviewInsights() {
 function renderOverviewQuickWins() {
   const _auditSites = STATE.audits && STATE.audits.length > 0
     ? STATE.audits.slice(0,6).map(a => (a.url||'').replace(/^https?:\/\//,''))
-    : ['votre-site.fr'];
-  const _qs = i => _auditSites[i % _auditSites.length];
-  const qw = [
-    { effort:'5 min',  gain:'+8 pts',  title:'Ajouter balise title manquante sur 3 pages', site:_qs(0), done:false, cat:'Technique', color:'#2563EB' },
-    { effort:'15 min', gain:'+5 pts',  title:'Compresser images JPEG → WebP (12 images)', site:_qs(1), done:false, cat:'Performance', color:'#22c55e' },
-    { effort:'2 min',  gain:'+3 pts',  title:'Répondre aux 3 derniers avis Google', site:_qs(2), done:true, cat:'Réputation', color:'#f59e0b' },
-    { effort:'30 min', gain:'+12 pts', title:'Créer une page locale à fort potentiel SEO', site:_qs(2), done:false, cat:'Local SEO', color:'#ef4444' },
-    { effort:'10 min', gain:'+4 pts',  title:'Ajouter schema markup LocalBusiness', site:_qs(3), done:false, cat:'Technique', color:'#8b5cf6' },
-    { effort:'20 min', gain:'+7 pts',  title:'Optimiser meta descriptions (8 pages)', site:_qs(4), done:false, cat:'Technique', color:'#2563EB' },
-    { effort:'5 min',  gain:'+6 pts',  title:'Activer Google Posts hebdomadaires', site:_qs(0), done:false, cat:'GBP', color:'#06b6d4' },
-    { effort:'45 min', gain:'+9 pts',  title:'Créer page FAQ avec schema markup', site:_qs(2), done:false, cat:'Contenu', color:'#8b5cf6' },
-    { effort:'10 min', gain:'+4 pts',  title:'Ajouter photos récentes sur GBP (5 photos)', site:_qs(1), done:false, cat:'GBP', color:'#22c55e' },
-    { effort:'20 min', gain:'+5 pts',  title:'Corriger liens internes cassés (4 liens)', site:_qs(3), done:false, cat:'Technique', color:'#f59e0b' },
+    : [];
+  const _qs = i => _auditSites.length > 0 ? _auditSites[i % _auditSites.length] : '—';
+  const _catColor = c => c==='local_seo'?'#22c55e':c==='seo'?'#2563EB':c==='performance'?'#f59e0b':c==='conversion'?'#8b5cf6':'#06b6d4';
+  const _catLabel = c => c==='local_seo'?'Local SEO':c==='seo'?'Technique':c==='performance'?'Performance':c==='conversion'?'CRO':'GBP';
+  const _liveMissionsQW = STATE.missions && STATE.missions.length > 0
+    ? STATE.missions.filter(m => m.status !== 'done' && !m.done && (m.effort || m.estimated_time)).slice(0, 10).map(m => ({
+        effort: m.effort || m.estimated_time || '—',
+        gain: m.estimated_score_gain ? '+'+m.estimated_score_gain+' pts' : '—',
+        title: m.title,
+        site: m.target_url ? (m.target_url||'').replace(/^https?:\/\//,'') : _qs(0),
+        done: m.status === 'done' || m.done === true,
+        cat: _catLabel(m.category),
+        color: _catColor(m.category),
+      }))
+    : null;
+  const _previewQW = [
+    { effort:'5 min',  gain:'+8 pts',  title:'Ajouter balise title manquante sur 3 pages', site:_qs(0)||'votre-site.fr', done:false, cat:'Technique', color:'#2563EB' },
+    { effort:'15 min', gain:'+5 pts',  title:'Compresser images JPEG → WebP', site:_qs(1)||'votre-site.fr', done:false, cat:'Performance', color:'#22c55e' },
+    { effort:'2 min',  gain:'+3 pts',  title:'Répondre aux avis Google récents', site:_qs(2)||'votre-site.fr', done:false, cat:'Réputation', color:'#f59e0b' },
+    { effort:'30 min', gain:'+12 pts', title:'Créer une page locale à fort potentiel SEO', site:_qs(2)||'votre-site.fr', done:false, cat:'Local SEO', color:'#ef4444' },
+    { effort:'10 min', gain:'+4 pts',  title:'Ajouter schema markup LocalBusiness', site:_qs(3)||'votre-site.fr', done:false, cat:'Technique', color:'#8b5cf6' },
+    { effort:'20 min', gain:'+7 pts',  title:'Optimiser meta descriptions', site:_qs(4)||'votre-site.fr', done:false, cat:'Technique', color:'#2563EB' },
+    { effort:'5 min',  gain:'+6 pts',  title:'Activer Google Posts hebdomadaires', site:_qs(0)||'votre-site.fr', done:false, cat:'GBP', color:'#06b6d4' },
+    { effort:'45 min', gain:'+9 pts',  title:'Créer page FAQ avec schema markup', site:_qs(2)||'votre-site.fr', done:false, cat:'Contenu', color:'#8b5cf6' },
+    { effort:'10 min', gain:'+4 pts',  title:'Ajouter photos récentes sur GBP', site:_qs(1)||'votre-site.fr', done:false, cat:'GBP', color:'#22c55e' },
+    { effort:'20 min', gain:'+5 pts',  title:'Corriger les liens internes cassés', site:_qs(3)||'votre-site.fr', done:false, cat:'Technique', color:'#f59e0b' },
   ];
+  const qw = _liveMissionsQW && _liveMissionsQW.length > 0
+    ? _liveMissionsQW
+    : (PREVIEW_MODE ? _previewQW : []);
   const totalGain = qw.filter(q=>!q.done).reduce((s,q)=>s+parseInt(q.gain),0);
   const totalTime = qw.filter(q=>!q.done).length;
   return `
@@ -14141,17 +14196,19 @@ function renderOverviewChecklist() {
   const total = STATE.checklist.length;
   const pct = Math.round((done / total) * 100);
 
+  const _clsLS = (()=>{ try { return JSON.parse(localStorage.getItem('fp_checklist_extra')||'{}'); } catch(e){ return {}; } })();
+  const _clItem = (id, defaultDone) => _clsLS[id] !== undefined ? _clsLS[id] : (PREVIEW_MODE ? defaultDone : false);
   const extraCategories = [
     {
       cat: 'Performance technique',
       icon: 'zap',
       color: '#f59e0b',
       items: [
-        { id:'tc1', label:'Score PageSpeed Mobile > 80 sur tous les sites', done: false },
-        { id:'tc2', label:'Images converties en WebP', done: false },
-        { id:'tc3', label:'Balise title unique sur chaque page', done: true },
-        { id:'tc4', label:'Sitemap XML soumis à Google Search Console', done: true },
-        { id:'tc5', label:'Schema markup LocalBusiness en place', done: false },
+        { id:'tc1', label:'Score PageSpeed Mobile > 80 sur tous les sites', done: _clItem('tc1', false) },
+        { id:'tc2', label:'Images converties en WebP', done: _clItem('tc2', false) },
+        { id:'tc3', label:'Balise title unique sur chaque page', done: _clItem('tc3', STATE.audits && STATE.audits.length > 0 && STATE.audits.every(a => (a.score||0) >= 60)) },
+        { id:'tc4', label:'Sitemap XML soumis à Google Search Console', done: _clItem('tc4', false) },
+        { id:'tc5', label:'Schema markup LocalBusiness en place', done: _clItem('tc5', false) },
       ]
     },
     {
@@ -14159,11 +14216,11 @@ function renderOverviewChecklist() {
       icon: 'map',
       color: '#22c55e',
       items: [
-        { id:'lo1', label:'Fiche GBP complète à 100% (photos, horaires, description)', done: true },
-        { id:'lo2', label:'Citations NAP cohérentes sur les 20 principaux annuaires', done: false },
-        { id:'lo3', label:'Pages locales créées pour chaque zone géographique', done: false },
-        { id:'lo4', label:'Mots-clés géolocalisés dans les balises h1', done: false },
-        { id:'lo5', label:'Zone de chalandise définie sur GBP', done: true },
+        { id:'lo1', label:'Fiche GBP complète à 100% (photos, horaires, description)', done: _clItem('lo1', STATE.gbp?.completionScore >= 90) },
+        { id:'lo2', label:'Citations NAP cohérentes sur les 20 principaux annuaires', done: _clItem('lo2', false) },
+        { id:'lo3', label:'Pages locales créées pour chaque zone géographique', done: _clItem('lo3', false) },
+        { id:'lo4', label:'Mots-clés géolocalisés dans les balises h1', done: _clItem('lo4', false) },
+        { id:'lo5', label:'Zone de chalandise définie sur GBP', done: _clItem('lo5', false) },
       ]
     },
     {
@@ -14171,11 +14228,11 @@ function renderOverviewChecklist() {
       icon: 'star',
       color: '#8b5cf6',
       items: [
-        { id:'re1', label:'Note Google moyenne > 4.5 étoiles', done: true },
-        { id:'re2', label:'Réponse à tous les avis < 48h', done: false },
-        { id:'re3', label:'Processus de collecte d\'avis en place', done: false },
-        { id:'re4', label:'Présence sur Trustpilot / PagesJaunes', done: true },
-        { id:'re5', label:'Alertes Google My Business configurées', done: false },
+        { id:'re1', label:'Note Google moyenne > 4.5 étoiles', done: _clItem('re1', STATE.gbp?.averageRating >= 4.5) },
+        { id:'re2', label:'Réponse à tous les avis < 48h', done: _clItem('re2', STATE.gbp?.unansweredReviews === 0) },
+        { id:'re3', label:'Processus de collecte d\'avis en place', done: _clItem('re3', false) },
+        { id:'re4', label:'Présence sur Trustpilot / PagesJaunes', done: _clItem('re4', false) },
+        { id:'re5', label:'Alertes Google My Business configurées', done: _clItem('re5', STATE.alertRules && STATE.alertRules.some(r => r.type === 'review_received' && r.active)) },
       ]
     },
     {
@@ -14183,10 +14240,10 @@ function renderOverviewChecklist() {
       icon: 'file-text',
       color: '#2563EB',
       items: [
-        { id:'co1', label:'Google Posts publiés chaque semaine', done: false },
-        { id:'co2', label:'FAQ schema markup sur les pages clés', done: false },
-        { id:'co3', label:'Blog avec articles locaux (1/mois minimum)', done: false },
-        { id:'co4', label:'Page "Témoignages clients" à jour', done: true },
+        { id:'co1', label:'Google Posts publiés chaque semaine', done: _clItem('co1', false) },
+        { id:'co2', label:'FAQ schema markup sur les pages clés', done: _clItem('co2', false) },
+        { id:'co3', label:'Blog avec articles locaux (1/mois minimum)', done: _clItem('co3', false) },
+        { id:'co4', label:'Page "Témoignages clients" à jour', done: _clItem('co4', false) },
       ]
     },
   ];
@@ -14431,7 +14488,7 @@ function renderMissionsAI() {
           <div style="font-size:11px;color:var(--fp-text-muted)">Si toutes les missions sont complétées ce mois</div>
         </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap">
-          ${[{l:'Leads/mois',v:'+97'},{l:'Score moyen',v:'+18 pts'},{l:'Temps total',v:'~18h'},{l:'Retour ROI',v:'~3 200€'}].map(s=>`
+          ${(PREVIEW_MODE ? [{l:'Leads/mois',v:'+97'},{l:'Score moyen',v:'+18 pts'},{l:'Temps total',v:'~18h'},{l:'Retour ROI',v:'~3 200€'}] : [{l:'Missions actives',v:String(STATE.missions?.filter(m=>m.status==='active'||m.status==='todo').length||0)},{l:'Score moyen',v:(STATE.audits&&STATE.audits.length>0?Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length)+'/100':'—')},{l:'Complétées',v:String(STATE.missions?.filter(m=>m.status==='done').length||0)},{l:'ROI estimé',v:'—'}]).map(s=>`
             <div style="text-align:center">
               <div style="font-size:18px;font-weight:800;color:#2563EB;font-family:var(--fp-font-head)">${s.v}</div>
               <div style="font-size:10px;color:var(--fp-text-faint)">${s.l}</div>
@@ -14450,19 +14507,33 @@ function renderAuditsAnalysis() {
   const botSite = STATE.audits.reduce((a,b) => a.score < b.score ? a : b, STATE.audits[0] || {score:100});
   const totalIssues = STATE.audits.reduce((s,a)=>s+(a.issues||0),0);
   const avgSpeed = Math.round(STATE.audits.reduce((s,a)=>s+(a.speed||0),0)/Math.max(1,STATE.audits.length));
-  const topProblems = [
-    { cat:'Meta & Titres', count:18, pct:62, color:'#ef4444' },
-    { cat:'Performance mobile', count:14, pct:48, color:'#f59e0b' },
-    { cat:'Backlinks manquants', count:11, pct:38, color:'#f59e0b' },
-    { cat:'Balises schema.org', count:9, pct:31, color:'#8b5cf6' },
-    { cat:'Images non optimisées', count:7, pct:24, color:'#3b82f6' },
-  ];
+  const topProblems = (() => {
+    const _catAgg = {};
+    STATE.audits.forEach(a => {
+      (a.categories || a.issueCategories || []).forEach(c => {
+        const k = c.name || c; _catAgg[k] = (_catAgg[k]||0) + (c.count||1);
+      });
+    });
+    const _entries = Object.entries(_catAgg).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    if (_entries.length > 0) {
+      const _max = _entries[0][1];
+      const _colors = ['#ef4444','#f59e0b','#f59e0b','#8b5cf6','#3b82f6'];
+      return _entries.map(([cat,count],i) => ({ cat, count, pct:Math.round(count/_max*100), color:_colors[i]||'#64748b' }));
+    }
+    return PREVIEW_MODE ? [
+      { cat:'Meta & Titres', count:18, pct:62, color:'#ef4444' },
+      { cat:'Performance mobile', count:14, pct:48, color:'#f59e0b' },
+      { cat:'Backlinks manquants', count:11, pct:38, color:'#f59e0b' },
+      { cat:'Balises schema.org', count:9, pct:31, color:'#8b5cf6' },
+      { cat:'Images non optimisées', count:7, pct:24, color:'#3b82f6' },
+    ] : [];
+  })();
   return `
     ${aiBlock(`Score moyen : <strong>${avgSc}/100</strong>. Meilleur site : <strong>${escHtml(topSite?.url||'—')}</strong> (${topSite?.score}/100). Site critique : <strong>${escHtml(botSite?.url||'—')}</strong> (${botSite?.score}/100, ${botSite?.issues||0} problèmes). <strong>Action prioritaire :</strong> corriger les balises meta sur les 3 sites les plus faibles.`,
       ['Plan d\'amélioration', 'Analyse détaillée', 'Créer toutes les missions'])}
 
     <div class="fp-stat-row fp-mb-16">
-      ${statCard('Score moyen', avgSc + '/100', '+4 pts ce mois', 'up')}
+      ${statCard('Score moyen', avgSc + '/100', (() => { if (STATE.audits.length < 2) return 'score portfolio'; const _sorted = [...STATE.audits].sort((a,b)=>new Date(a.date)-new Date(b.date)); const _d = Math.round(_sorted[_sorted.length-1].score - _sorted[0].score); return _d > 0 ? '+'+_d+' pts total' : _d < 0 ? _d+' pts total' : 'stable'; })(), avgSc >= 70 ? 'up' : 'neutral')}
       ${statCard('Sites OK (≥70)', STATE.audits.filter(a=>a.score>=70).length + '/' + STATE.audits.length, 'en bonne santé', 'neutral')}
       ${statCard('Issues totales', totalIssues, 'à corriger', 'down')}
       ${statCard('Vitesse moy.', avgSpeed + '/100', 'score PageSpeed', 'up')}
@@ -15194,12 +15265,18 @@ function renderMonitorsPerformance() {
     )}
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
-      ${[
-        { l: 'Latence moy.',     v: '319ms',  c: '#22c55e', sub: '-42ms vs hier' },
-        { l: 'Score CWV moy.',   v: '71/100', c: '#f59e0b', sub: '+3 pts ce mois' },
-        { l: 'LCP moyen',        v: '2.7s',   c: '#f59e0b', sub: 'Cible : ≤2.5s' },
-        { l: 'Sites "Good" CWV', v: '2/5',    c: '#2563EB', sub: 'plombier + auto-moto' },
-      ].map(s => `
+      ${(()=>{
+        const _mons = STATE.monitors || [];
+        const _avgLat = _mons.filter(m=>m.status!=='down').length > 0 ? Math.round(_mons.filter(m=>m.status!=='down').reduce((s,m)=>s+(m.latency||0),0)/_mons.filter(m=>m.status!=='down').length) : null;
+        const _cwvData = STATE.overview?.coreWebVitals || null;
+        const _goodCwv = STATE.audits ? STATE.audits.filter(a=>(a.speed||0)>=90).length : null;
+        return [
+          { l: 'Latence moy.',     v: _avgLat != null ? _avgLat+'ms' : (PREVIEW_MODE ? '319ms' : '—'),  c: _avgLat != null ? (_avgLat>400?'#ef4444':_avgLat>200?'#f59e0b':'#22c55e') : '#22c55e', sub: _avgLat != null ? 'latence monitors' : PREVIEW_MODE ? '-42ms vs hier' : 'Aucun monitor' },
+          { l: 'Score CWV moy.',   v: _cwvData != null ? _cwvData+'/100' : (PREVIEW_MODE ? '71/100' : '—'), c: _cwvData != null ? (_cwvData>=90?'#22c55e':_cwvData>=70?'#f59e0b':'#ef4444') : '#f59e0b', sub: _cwvData != null ? 'score Core Web Vitals' : PREVIEW_MODE ? '+3 pts ce mois' : 'Connectez DataForSEO' },
+          { l: 'LCP moyen',        v: PREVIEW_MODE ? '2.7s' : '—', c: '#f59e0b', sub: 'Cible : ≤2.5s' },
+          { l: 'Sites "Good" CWV', v: _goodCwv != null ? _goodCwv+'/'+STATE.audits.length : (PREVIEW_MODE ? '2/5' : '—'), c: '#2563EB', sub: _goodCwv != null ? 'speed ≥ 90/100' : PREVIEW_MODE ? 'plombier + auto-moto' : 'Aucun audit' },
+        ];
+      })().map(s => `
         <div class="fp-card fp-card-sm">
           <div style="font-size:10px;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${s.l}</div>
           <div style="font-size:20px;font-weight:800;color:${s.c};font-family:var(--fp-font-head);margin-bottom:3px">${s.v}</div>
@@ -15439,14 +15516,20 @@ function renderMonitorsIncidents() {
       <div style="position:relative;padding:0 10px">
         <div style="position:absolute;top:10px;left:10px;right:10px;height:2px;background:rgba(255,255,255,0.07);border-radius:1px"></div>
         <div style="display:flex;justify-content:space-between;position:relative;z-index:1">
-          ${[
-            { day: '20/04', label: 'boulangerie 3min', type: 'info' },
-            { day: '28/04', label: 'coiffeur dégradé 12min', type: 'warning' },
-            { day: '01/05', label: 'Calme', type: 'ok' },
-            { day: '03/05', label: 'restaurant DOWN 44min', type: 'critical' },
-            { day: '07/05', label: 'Calme', type: 'ok' },
-            { day: '09/05', label: 'Aujourd\'hui', type: 'today' },
-          ].map(ev => `
+          ${((() => {
+            const _incRaw = STATE.monitors?.flatMap(m => (m.incidents||[]).map(i=>({...i, monName: m.name||m.url||'Monitor'}))).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(-5) || [];
+            const _evList = _incRaw.length > 0
+              ? _incRaw.map(i => ({ day: new Date(i.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), label: (i.monName||'Monitor').replace(/^https?:\/\//,'').slice(0,20)+(i.duration?' '+i.duration:''), type: i.severity||'info' }))
+              : (PREVIEW_MODE ? [
+                  { day: '20/04', label: 'Monitor 1 — 3min', type: 'info' },
+                  { day: '28/04', label: 'Monitor 2 — dégradé 12min', type: 'warning' },
+                  { day: '01/05', label: 'Calme', type: 'ok' },
+                  { day: '03/05', label: 'Monitor 3 — DOWN 44min', type: 'critical' },
+                  { day: '07/05', label: 'Calme', type: 'ok' },
+                  { day: '09/05', label: 'Aujourd\'hui', type: 'today' },
+                ] : [{ day: new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}), label: 'Aucun incident', type: 'ok' }]);
+            return _evList;
+          })()).map(ev => `
             <div style="display:flex;flex-direction:column;align-items:center;gap:6px;max-width:80px">
               <div style="width:14px;height:14px;border-radius:50%;background:${ev.type==='critical'?'#ef4444':ev.type==='warning'?'#f59e0b':ev.type==='today'?'#2563EB':ev.type==='info'?'#94a3b8':'#22c55e'};border:2px solid var(--fp-bg);box-shadow:0 0 0 2px ${ev.type==='critical'?'#ef4444':ev.type==='warning'?'#f59e0b':ev.type==='today'?'#2563EB':ev.type==='info'?'#94a3b8':'#22c55e'}40"></div>
               <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint)">${ev.day}</div>
@@ -15893,9 +15976,10 @@ function renderLocalSEOCompetitors() {
     ${aiBlock('<strong>' + comps.length + ' concurrent(s) surveillé(s)</strong>. ' + (comps.length > 0 ? 'Le concurrent #1 vous devance sur le score SEO — menace à traiter.' : 'Ajoutez des concurrents pour activer la surveillance.') + ' Point faible moyen de la concurrence : <strong>vitesse mobile</strong>. Votre avantage clé : exploitez la vitesse dans vos pages locales.', ['Analyse approfondie', 'Surveiller nouveaux', 'Rapport concurrent'])}
 
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Votre score', myScore != null ? myScore + '/100' : '—', 'vs moy. 68 concurrents', myScore != null ? 'up' : 'neutral')}
+      ${(()=>{ const _avgCS = comps.length > 0 ? Math.round(comps.reduce((s,c)=>s+(c.score||0),0)/comps.length) : null; const _avgCSpd = comps.length > 0 ? Math.round(comps.reduce((s,c)=>s+(c.speed||0),0)/comps.length) : null; const _spdAdv = mySpeed != null && _avgCSpd != null ? (mySpeed - _avgCSpd) : null; return `
+      ${statCard('Votre score', myScore != null ? myScore + '/100' : '—', comps.length > 0 && _avgCS != null ? 'vs moy. '+_avgCS+'/100 concurrents' : 'score dernier audit', myScore != null ? 'up' : 'neutral')}
       ${statCard('Menaces fortes', comps.filter(c => c.threat === 'high').length, 'à traiter en priorité', 'down')}
-      ${statCard('Avantage vitesse', '+' + (68 - Math.round(comps.reduce((s,c) => s+c.speed,0)/Math.max(1,comps.length))) + ' pts', 'mobile vs concurrents', 'up')}
+      ${statCard('Avantage vitesse', _spdAdv != null ? (_spdAdv >= 0 ? '+'+_spdAdv : String(_spdAdv)) + ' pts' : '—', comps.length > 0 ? 'mobile vs concurrents' : '—', _spdAdv != null && _spdAdv > 0 ? 'up' : 'neutral')}`;})()}
       ${statCard('Gaps mots-clés', kwGaps.filter(k => !k.yours).length, 'opportunités non prises', 'neutral')}
     </div>
     <div class="fp-stat-row fp-mb-20">
@@ -22053,7 +22137,7 @@ function renderClientMode() {
 
       <!-- EXECUTIVE KPI -->
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Score SEO moyen', avg + '/100', '+7 pts ce mois', 'up')}
+        ${statCard('Score SEO moyen', avg + '/100', avg > 0 ? 'score moyen portfolio' : '—', avg >= 70 ? 'up' : 'neutral')}
         ${statCard('Disponibilité', (()=>{ const _mu2 = STATE.monitors && STATE.monitors.length > 0 ? (STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length).toFixed(1) : null; return displayStat(_mu2!==null?_mu2+'%':null,'99.1%'); })(), 'SLA tenu', 'neutral')}
         ${statCard('Missions', STATE.missions && STATE.missions.length > 0 ? STATE.missions.filter(m=>m.status==='done').length + '/' + STATE.missions.length : '—', 'complétées ce mois', 'up')}
         ${statCard('Note Google', displayStat(STATE.localSeo?.avgRating ? STATE.localSeo.avgRating.toFixed(1) + ' ⭐' : null, PREVIEW_MODE ? '4.4 ⭐' : '—'), PREVIEW_MODE ? '+0.2 vs M-1' : 'Connectez GBP', 'neutral')}
@@ -22958,7 +23042,7 @@ function renderMonitorsSLA() {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
           ${[
             { l: 'Monitors affichés', v: 'Actif' }, { l: 'White Label', v: 'Actif' },
-            { l: 'Abonnés email', v: '3' },         { l: 'Mise à jour', v: 'Temps réel' },
+            { l: 'Abonnés email', v: String(STATE.settings?.statusPage?.subscribers ?? (PREVIEW_MODE ? 3 : 0)) }, { l: 'Mise à jour', v: 'Temps réel' },
           ].map(s => `
             <div style="background:var(--fp-inner-card);border-radius:8px;padding:8px 10px;text-align:center">
               <div style="font-size:10px;color:var(--fp-text-faint)">${s.l}</div>
