@@ -66,6 +66,21 @@ const DEFAULT_TEMPLATES = [
   { name: "Uptime faible (< 98%)", type: "uptime", operator: "lt", threshold: 98, durationMin: 10, channels: ["email", "sms"], siteUrls: [] },
 ];
 
+router.patch("/alert-rules/mark-all-read", async (_req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query(`UPDATE alert_events SET read_at = NOW() WHERE read_at IS NULL`);
+    if (Array.isArray(store.triggeredAlerts)) store.triggeredAlerts = [];
+    res.json({ ok: true });
+  } catch {
+    if (Array.isArray(store.triggeredAlerts)) store.triggeredAlerts = [];
+    res.json({ ok: true });
+  } finally {
+    if (client) client.release();
+  }
+});
+
 router.patch("/alert-rules/:id", async (req, res) => {
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;
@@ -189,20 +204,6 @@ router.get("/alerts", async (_req, res) => {
     res.json(r.rows);
   } catch {
     res.json(store.triggeredAlerts);
-  } finally {
-    client.release();
-  }
-});
-
-router.patch("/alert-rules/mark-all-read", async (_req, res) => {
-  const client = await pool.connect();
-  try {
-    await client.query(`UPDATE alert_events SET read_at = NOW() WHERE read_at IS NULL`);
-    store.triggeredAlerts = [];
-    res.json({ ok: true });
-  } catch {
-    store.triggeredAlerts = [];
-    res.json({ ok: true });
   } finally {
     client.release();
   }

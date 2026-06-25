@@ -80,7 +80,22 @@ router.get("/reports/:id/download", async (req, res) => {
     : undefined;
   let meetingNotes: Array<{ title: string; date: string; notes: string; site?: string }> = [];
   try { meetingNotes = JSON.parse(report.meetingNotesJson || "[]"); } catch {}
-  await streamReportPdf(res, report, audit, meetingNotes);
+
+  let monitors: Array<{ name: string; url?: string; status?: string; uptime?: number | null }> = [];
+  let missions: Array<{ title: string; status?: string; priority?: string; dueDate?: string | null }> = [];
+  try {
+    const mc = await pool.connect();
+    try {
+      const mr = await mc.query(`SELECT name, url, status, uptime FROM monitors ORDER BY name LIMIT 20`);
+      monitors = mr.rows;
+      const misr = await mc.query(`SELECT title, status, priority, due_date FROM missions ORDER BY created_at DESC LIMIT 20`);
+      missions = misr.rows.map(r => ({ title: r.title, status: r.status, priority: r.priority, dueDate: r.due_date }));
+    } finally {
+      mc.release();
+    }
+  } catch { /* skip if tables not available */ }
+
+  await streamReportPdf(res, report, audit, meetingNotes, monitors, missions);
 });
 
 router.post("/reports/:id/share", async (req, res) => {
