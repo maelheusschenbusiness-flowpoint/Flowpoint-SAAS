@@ -117,6 +117,16 @@ router.get("/ga4/realtime", async (req: Request, res: Response) => {
 
 // ── GET /api/ga4/sources ──────────────────────────────────────────────────────
 
+router.get("/ga4/traffic-sources", async (req: Request, res: Response) => {
+  try {
+    const pid = await resolveProperty(req);
+    if (!pid) { res.json({ ok: false, data: [] }); return; }
+    const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
+    const data = await getGA4Sources(ORG_ID, pid, days);
+    res.json({ ok: true, data });
+  } catch { res.json({ ok: false, data: [] }); }
+});
+
 router.get("/ga4/sources", async (req: Request, res: Response) => {
   try {
     const pid = await resolveProperty(req);

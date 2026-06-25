@@ -29,6 +29,9 @@ class Store {
     seats: 5,
   };
 
+  /** In-memory log of triggered alerts (alert rules that fired) */
+  triggeredAlerts: Array<Record<string, unknown>> = [];
+
   /** SSE clients subscribed to real-time billing/event streams */
   sseClients: Set<(data: string) => void> = new Set();
 

@@ -1,71 +1,118 @@
 import { Router } from "express";
-import { connectMongo } from "../lib/mongo.js";
-import { CompetitorModel } from "../models/Competitor.js";
+import { pool } from "@workspace/db";
 import { store } from "../services/store.js";
-import { isDemoMode } from "../services/mock-data.js";
-import { safeErrMsg } from "../lib/safe-error.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
 import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
 
-const SEED = [
-  { _id: "comp1", name: "AgenceSEO Pro",     url: "https://agenceseopro.fr",     domainRating: 52, keywords: 4300, traffic: 28000, threatLevel: "high",    delta: 8  },
-  { _id: "comp2", name: "RéférenMax",        url: "https://referencmax.fr",      domainRating: 44, keywords: 2800, traffic: 15000, threatLevel: "medium",  delta: 3  },
-  { _id: "comp3", name: "DigitalBoost Paris",url: "https://digitalboost.paris",  domainRating: 38, keywords: 1900, traffic: 9200,  threatLevel: "low",     delta: -2 },
-  { _id: "comp4", name: "VisibilityFirst",   url: "https://visibilityfirst.com", domainRating: 61, keywords: 6800, traffic: 45000, threatLevel: "critical", delta: 15 },
-  { _id: "comp5", name: "LocalSEO Expert",   url: "https://localseoexpert.fr",   domainRating: 35, keywords: 1200, traffic: 5600,  threatLevel: "low",     delta: 1  },
-];
-
-async function ensureSeed() {
-  if (!isDemoMode()) return;
-  const count = await CompetitorModel.countDocuments();
-  if (count === 0) {
-    await CompetitorModel.insertMany(SEED, { ordered: false }).catch(() => {});
-  }
+// ── DB row → public shape ──────────────────────────────────────────────────────
+function toPublic(row: Record<string, unknown>) {
+  return {
+    id:           row["id"],
+    name:         row["name"],
+    url:          row["url"],
+    domainRating: row["domain_rating"],
+    keywords:     row["keywords"],
+    traffic:      row["traffic"],
+    threatLevel:  row["threat_level"],
+    delta:        row["delta"],
+    createdAt:    row["created_at"],
+  };
 }
+
+// ── GET /competitors ──────────────────────────────────────────────────────────
 
 router.get("/competitors", withCache(60), async (_req, res) => {
   try {
-    await connectMongo();
-    await ensureSeed();
-    const competitors = await CompetitorModel.find().sort({ domainRating: -1 }).limit(200).lean();
-    res.json(competitors.map(c => ({ ...c, id: c._id })));
-  } catch (e) {
-    logger.warn({ err: e }, "[competitors] GET failed (MongoDB unavailable — returning seed)");
-    res.json(SEED.map(c => ({ ...c, id: c._id })));
+    const result = await pool.query(
+      `SELECT * FROM competitors ORDER BY domain_rating DESC LIMIT 200`,
+    );
+    res.json(result.rows.map(toPublic));
+  } catch (err) {
+    logger.warn({ err }, "[competitors] GET failed");
+    res.json([]);
   }
 });
 
+// ── POST /competitors ─────────────────────────────────────────────────────────
+
 router.post("/competitors", reportRateLimit, async (req, res) => {
-  const { name, url, domainRating = 0, keywords = 0, traffic = 0, threatLevel = "low" } = req.body as {
-    name?: string; url?: string; domainRating?: number; keywords?: number;
-    traffic?: number; threatLevel?: string;
+  const {
+    name, url,
+    domainRating = 0, keywords = 0, traffic = 0, threatLevel = "low",
+  } = req.body as {
+    name?: string; url?: string; domainRating?: number;
+    keywords?: number; traffic?: number; threatLevel?: string;
   };
   if (!name || !url) { res.status(400).json({ error: "name and url required" }); return; }
+
   try {
-    await connectMongo();
-    const comp = await CompetitorModel.create({
-      _id: `comp${Date.now()}`, name, url,
-      domainRating: Number(domainRating), keywords: Number(keywords),
-      traffic: Number(traffic), threatLevel: threatLevel || "low", delta: 0,
-    });
+    const id     = `comp${Date.now()}`;
+    const result = await pool.query(
+      `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,0,NOW()) RETURNING *`,
+      [id, name, url, Number(domainRating), Number(keywords), Number(traffic), threatLevel || "low"],
+    );
     store.logActivity({
       type: "alert", label: `Concurrent ajouté : ${name}`,
-      targetId: comp._id as string, targetType: "competitor",
+      targetId: id, targetType: "competitor",
     }).catch(() => {});
-    res.status(201).json(comp.toJSON());
-  } catch (e) {
-    logger.error({ err: e }, "[competitors] POST failed");
-    res.status(500).json({ error: safeErrMsg(e) });
+    res.status(201).json(toPublic(result.rows[0]));
+  } catch (err) {
+    logger.error({ err }, "[competitors] POST failed");
+    res.status(500).json({ error: "Failed to create competitor" });
   }
 });
+
+// ── PATCH /competitors/:id ────────────────────────────────────────────────────
+
+router.patch("/competitors/:id", async (req, res) => {
+  const { id } = req.params;
+  const body = req.body as {
+    name?: string; url?: string; domainRating?: number;
+    keywords?: number; traffic?: number; threatLevel?: string; delta?: number;
+  };
+
+  const values: unknown[]    = [];
+  const setClauses: string[] = [];
+
+  function addField(col: string, val: unknown): void {
+    values.push(val);
+    setClauses.push(`${col} = $${values.length + 1}`);
+  }
+
+  if (body.name         !== undefined) addField("name",          body.name);
+  if (body.url          !== undefined) addField("url",           body.url);
+  if (body.domainRating !== undefined) addField("domain_rating", Number(body.domainRating));
+  if (body.keywords     !== undefined) addField("keywords",      Number(body.keywords));
+  if (body.traffic      !== undefined) addField("traffic",       Number(body.traffic));
+  if (body.threatLevel  !== undefined) addField("threat_level",  body.threatLevel);
+  if (body.delta        !== undefined) addField("delta",         Number(body.delta));
+
+  if (setClauses.length === 0) {
+    res.status(400).json({ error: "No valid fields to update" }); return;
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE competitors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
+      [id, ...values],
+    );
+    if (!result.rowCount) { res.status(404).json({ error: "not found" }); return; }
+    res.json(toPublic(result.rows[0]));
+  } catch (err) {
+    logger.error({ err }, "[competitors] PATCH failed");
+    res.status(500).json({ error: "Update failed" });
+  }
+});
+
+// ── DELETE /competitors/:id ───────────────────────────────────────────────────
 
 router.delete("/competitors/:id", async (req, res) => {
   try {
-    await connectMongo();
-    await CompetitorModel.findByIdAndDelete(req.params.id);
+    await pool.query(`DELETE FROM competitors WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch { res.json({ ok: true }); }
 });

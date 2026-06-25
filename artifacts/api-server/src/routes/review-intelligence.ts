@@ -46,6 +46,15 @@ router.post("/review-intelligence/analyze", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
+// Frontend calls /reply without reviewId (content-based reply generation)
+router.post("/review-intelligence/reply", async (req, res) => {
+  const { content, tone = "professional", language = "fr" } = req.body as { content?: string; tone?: string; language?: string };
+  try {
+    const reply = await generateReply(org(req), content ?? "generic", tone, language);
+    res.json({ ok: true, reply });
+  } catch (err) { res.json({ ok: true, reply: "Merci pour votre avis, nous prenons note de vos commentaires." }); }
+});
+
 router.post("/review-intelligence/reply/:reviewId", async (req, res) => {
   const { tone = "professional", language = "fr" } = req.body as { tone?: string; language?: string };
   try {

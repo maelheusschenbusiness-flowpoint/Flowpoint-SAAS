@@ -7877,7 +7877,15 @@ function renderSettings() {
     };
     return `
       ${aiBlock(
-        "3 membres actifs. <strong>Sophie Martin (Manager) a accès à la facturation</strong> — vérifiez si ce niveau de permission est souhaité. Recommandation : créer un rôle personnalisé «Rapporteur» pour les utilisateurs qui génèrent uniquement des rapports.",
+        (function() {
+          const _tm = STATE.team || [];
+          if (_tm.length === 0) return "Aucun membre dans l'équipe. Invitez des collaborateurs pour partager l'accès au tableau de bord et gérer les permissions.";
+          const _mgrs = _tm.filter(function(m) { return m.role === 'manager'; });
+          const _billingWarn = _mgrs.length > 0
+            ? ' <strong>' + escHtml(_mgrs[0].name || _mgrs[0].email || 'Un manager') + ' (Manager) a accès à la facturation</strong> — vérifiez si ce niveau de permission est souhaité.'
+            : ' Recommandation : créer un rôle personnalisé «Rapporteur» pour les utilisateurs qui génèrent uniquement des rapports.';
+          return _tm.length + ' membre' + (_tm.length > 1 ? 's' : '') + ' actif' + (_tm.length > 1 ? 's' : '') + '.' + _billingWarn;
+        })(),
         ['Créer un rôle custom', 'Auditer les permissions', 'Inviter un membre']
       )}
 
@@ -19274,23 +19282,43 @@ function renderConversion() {
           </div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('revenue-leak')">Toutes les fuites →</button>
         </div>
-        ${[
-          { page: "Formulaire (8 champs)",  loss: "1 890€/mois", urg: "critical" },
-          { page: "CTA tarifs invisible",   loss: "1 240€/mois", urg: "critical" },
-          { page: "Vitesse mobile 3.2s",    loss: "820€/mois",   urg: "high"     },
-          { page: "Pas de preuves sociales",loss: "630€/mois",   urg: "high"     },
-        ].map(l => {
-          const lc = l.urg === "critical" ? "#ef4444" : "#f59e0b";
-          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-            <div style="display:flex;align-items:center;gap:8px">
-              <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
-              <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.page)}</span>
-            </div>
-            <span style="font-size:12px;font-weight:800;color:${lc}">-${escHtml(l.loss)}</span>
-          </div>`;
-        }).join("")}
+        ${(function() {
+          const _realLeaks = window.FP_DATA && window.FP_DATA.revenueLeak && window.FP_DATA.revenueLeak.leaks;
+          const _icons = { slow_page:'⏱️', dead_cta:'📢', abandoned_cart:'🛒', friction:'📱', no_cta:'📝' };
+          if (_realLeaks && _realLeaks.length > 0) {
+            return _realLeaks.slice(0, 4).map(l => {
+              const lc = (l.impactScore||0) >= 75 ? '#ef4444' : '#f59e0b';
+              const lossStr = l.monthlyLoss ? l.monthlyLoss.toLocaleString('fr-FR') + '€/mois' : '—';
+              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
+                  <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.title||l.description||'Fuite détectée')}</span>
+                </div>
+                <span style="font-size:12px;font-weight:800;color:${lc}">-${lossStr}</span>
+              </div>`;
+            }).join('');
+          }
+          if (PREVIEW_MODE) {
+            return [
+              { page: "Formulaire (8 champs)",  loss: "1 890€/mois", urg: "critical" },
+              { page: "CTA tarifs invisible",   loss: "1 240€/mois", urg: "critical" },
+              { page: "Vitesse mobile 3.2s",    loss: "820€/mois",   urg: "high"     },
+              { page: "Pas de preuves sociales",loss: "630€/mois",   urg: "high"     },
+            ].map(l => {
+              const lc = l.urg === "critical" ? "#ef4444" : "#f59e0b";
+              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:6px;height:6px;border-radius:50%;background:${lc};flex-shrink:0"></div>
+                  <span style="font-size:12px;color:var(--fp-text-soft)">${escHtml(l.page)}</span>
+                </div>
+                <span style="font-size:12px;font-weight:800;color:${lc}">-${escHtml(l.loss)}</span>
+              </div>`;
+            }).join('');
+          }
+          return `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez vos analytics pour détecter les fuites de revenus →</div>`;
+        })()}
         <div style="margin-top:12px;padding:10px;background:rgba(239,68,68,0.08);border-radius:8px;text-align:center">
-          <div style="font-size:15px;font-weight:800;color:#ef4444">-${leakTotal.toLocaleString('fr-FR')}€/mois</div>
+          <div style="font-size:15px;font-weight:800;color:#ef4444">${leakTotal != null ? '-' + leakTotal.toLocaleString('fr-FR') + '€/mois' : PREVIEW_MODE ? '-5 070€/mois' : '—'}</div>
           <div style="font-size:10px;color:var(--fp-text-faint)">Perte totale estimée à corriger</div>
         </div>
       </div>

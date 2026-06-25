@@ -429,6 +429,14 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
 router.post("/monitors/:id/check", handleCheck);
 router.post("/monitors/:id/ping",  handleCheck);
 
+// ── POST /monitors/:id/test-sms ───────────────────────────────────────────────
+// Sends a test SMS alert for a monitor (requires TWILIO or similar — stub OK)
+router.post("/monitors/:id/test-sms", async (req: Request, res: Response) => {
+  const { phone } = req.body as { phone?: string };
+  if (!phone) { res.status(400).json({ error: "phone required" }); return; }
+  res.json({ ok: true, message: `Test SMS would be sent to ${phone}` });
+});
+
 // ── DELETE /monitors/:id ──────────────────────────────────────────────────────
 
 router.delete("/monitors/:id", async (req: Request, res: Response) => {

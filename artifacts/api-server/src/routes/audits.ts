@@ -1,6 +1,5 @@
 import { Router, Request, Response } from "express";
-import { connectMongo } from "../lib/mongo.js";
-import { AuditModel, AuditScheduleModel } from "../models/Audit.js";
+import { pool } from "@workspace/db";
 import { computeNextRun, isValidFrequency } from "../services/schedule-utils.js";
 import { evaluateAlertRulesForAudit } from "../services/monitor-cron.js";
 import { store } from "../services/store.js";
@@ -10,41 +9,71 @@ import { logger } from "../lib/logger.js";
 
 const router = Router();
 
-router.get("/audits", async (_req, res) => {
+// ── DB row → public shape ──────────────────────────────────────────────────────
+function auditToPublic(row: Record<string, unknown>) {
+  return {
+    id:        row["id"],
+    url:       row["url"],
+    score:     row["score"],
+    status:    row["status"],
+    speed:     row["speed"],
+    date:      row["date"],
+    issues:    row["issues"],
+    origin:    row["origin"],
+    createdAt: row["created_at"],
+  };
+}
+
+function scheduleToPublic(row: Record<string, unknown>) {
+  return {
+    id:        row["id"],
+    url:       row["url"],
+    frequency: row["frequency"],
+    nextRun:   row["next_run"],
+    lastRun:   row["last_run"],
+    enabled:   row["enabled"],
+    orgId:     row["org_id"],
+  };
+}
+
+// ── GET /audits ───────────────────────────────────────────────────────────────
+
+router.get("/audits", async (_req: Request, res: Response) => {
   try {
-    await connectMongo();
-    const audits = await AuditModel.find().sort({ date: -1 }).limit(500).lean();
-    res.json(audits.map(a => ({ ...a, id: a._id })));
-  } catch {
+    const result = await pool.query(
+      `SELECT * FROM audits ORDER BY created_at DESC LIMIT 500`,
+    );
+    res.json(result.rows.map(auditToPublic));
+  } catch (err) {
+    logger.error({ err }, "[audits] GET failed");
     res.json([]);
   }
 });
 
-router.post("/audits", auditRateLimit, async (req, res) => {
+// ── POST /audits ──────────────────────────────────────────────────────────────
+
+router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
   const { url, origin = "manual" } = req.body as { url?: string; origin?: string };
   if (!url) { res.status(400).json({ error: "url required" }); return; }
 
-  const apiKey = process.env["PAGESPEED_API_KEY"] ?? process.env["GOOGLE_API_KEY"] ?? "";
-  if (!apiKey && process.env["NODE_ENV"] === "production") {
-    res.status(503).json({ error: "PageSpeed API not configured" }); return;
-  }
-
   const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
-  const orgId = (req as unknown as { orgId?: string }).orgId ?? "default";
-  const auditId = `a${Date.now()}`;
+  const orgId         = (req as Request & { orgId?: string }).orgId ?? "default";
+  const auditId       = `a${Date.now()}`;
+  const dateStr       = new Date().toISOString();
 
   try {
-    await connectMongo();
-    const audit = await AuditModel.create({
-      _id: auditId, url: normalizedUrl, score: 0,
-      status: "processing", speed: 0, date: new Date().toISOString(), issues: 0, origin,
-    });
+    await pool.query(
+      `INSERT INTO audits (id, url, score, status, speed, date, issues, origin, created_at)
+       VALUES ($1,$2,0,'processing',0,$3,0,$4,NOW())`,
+      [auditId, normalizedUrl, dateStr, origin],
+    );
 
     store.logActivity({
       type: "audit", label: `Audit lancé : ${normalizedUrl}`,
       targetId: auditId, targetType: "audit", metadata: { url: normalizedUrl, origin },
     }).catch(() => {});
 
+    // Async PSI analysis — runs after response is sent
     (async () => {
       try {
         const [mobile, desktop] = await Promise.allSettled([
@@ -63,80 +92,138 @@ router.post("/audits", auditRateLimit, async (req, res) => {
         const weightedA11y = avg(m?.scores.accessibility ?? 0, d?.scores.accessibility ?? 0, 0.5, 0.5);
         const weightedBP   = avg(m?.scores.bestPractices ?? 0, d?.scores.bestPractices ?? 0, 0.5, 0.5);
 
-        const score = Math.round(weightedPerf * 0.40 + weightedSeo * 0.30 + weightedA11y * 0.15 + weightedBP * 0.15);
+        const score  = Math.round(weightedPerf * 0.40 + weightedSeo * 0.30 + weightedA11y * 0.15 + weightedBP * 0.15);
         const status: "ok" | "warn" | "error" = score >= 70 ? "ok" : score >= 50 ? "warn" : "error";
-        const speed = d?.scores.performance ?? m?.scores.performance ?? 0;
+        const speed  = d?.scores.performance ?? m?.scores.performance ?? 0;
         const issues = (m?.criticalIssues.length ?? 0) + (d?.criticalIssues.length ?? 0);
 
-        await AuditModel.findByIdAndUpdate(auditId, { $set: { score, status, speed, issues } });
+        await pool.query(
+          `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5`,
+          [score, status, speed, issues, auditId],
+        );
         evaluateAlertRulesForAudit(normalizedUrl, score).catch(() => {});
+        store.broadcast({ type: "audit:complete", auditId, score, status });
       } catch {
-        await AuditModel.findByIdAndUpdate(auditId, { $set: { status: "error", score: 0 } }).catch(() => {});
+        await pool.query(
+          `UPDATE audits SET status='error', score=0 WHERE id=$1`,
+          [auditId],
+        ).catch(() => {});
+        store.broadcast({ type: "audit:error", auditId });
       }
     })().catch(() => {});
 
-    res.status(201).json({ ...audit.toJSON(), id: auditId });
+    res.status(201).json({
+      id: auditId, url: normalizedUrl, score: 0,
+      status: "processing", speed: 0, date: dateStr, issues: 0, origin,
+    });
   } catch (err) {
     logger.error({ err }, "[audits] POST failed");
     res.status(500).json({ error: "Failed to create audit" });
   }
 });
 
-router.delete("/audits/:id", async (req, res) => {
+// ── DELETE /audits/:id ────────────────────────────────────────────────────────
+
+router.delete("/audits/:id", async (req: Request, res: Response) => {
   try {
-    await connectMongo();
-    await AuditModel.findByIdAndDelete(req.params.id);
+    await pool.query(`DELETE FROM audits WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch {
     res.json({ ok: true });
   }
 });
 
+// ── GET /audits/history ───────────────────────────────────────────────────────
+
 router.get("/audits/history", async (req: Request, res: Response) => {
-  const url = req.query.url as string | undefined;
+  const url    = req.query.url as string | undefined;
   const daysRaw = parseInt((req.query.days as string) || "90", 10);
-  const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(365, daysRaw)) : 90;
+  const days   = Number.isFinite(daysRaw) ? Math.max(1, Math.min(365, daysRaw)) : 90;
   if (!url) { res.status(400).json({ error: "url required" }); return; }
+
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   try {
-    await connectMongo();
-    const history = await AuditModel.find({ url, date: { $gte: cutoff } }).sort({ date: 1 }).limit(365).lean();
-    res.json(history.map(a => ({ ...a, id: a._id })));
+    const result = await pool.query(
+      `SELECT * FROM audits WHERE url = $1 AND date >= $2 ORDER BY date ASC LIMIT 365`,
+      [url, cutoff],
+    );
+    res.json(result.rows.map(auditToPublic));
   } catch {
     res.json([]);
   }
 });
 
-// ── Schedules ────────────────────────────────────────────────────────────────
+// ── GET /audits/quick-scan ────────────────────────────────────────────────────
+// Returns the most recent audit for a given URL, or the last audit overall.
+router.get("/audits/quick-scan", async (req: Request, res: Response) => {
+  const url = req.query.url as string | undefined;
+  try {
+    const result = url
+      ? await pool.query(
+          `SELECT * FROM audits WHERE url = $1 ORDER BY created_at DESC LIMIT 1`,
+          [url],
+        )
+      : await pool.query(
+          `SELECT * FROM audits ORDER BY created_at DESC LIMIT 1`,
+        );
+    if (result.rowCount && result.rowCount > 0) {
+      res.json(auditToPublic(result.rows[0]));
+    } else {
+      res.json({ score: 0, status: "no-data", url: url ?? "" });
+    }
+  } catch {
+    res.json({ score: 0, status: "no-data", url: url ?? "" });
+  }
+});
+
+// ── Schedules ─────────────────────────────────────────────────────────────────
 
 async function listSchedules(_req: Request, res: Response) {
   try {
-    await connectMongo();
-    const schedules = await AuditScheduleModel.find().limit(200).lean();
-    res.json(schedules.map(s => ({ ...s, id: s._id })));
+    const result = await pool.query(
+      `SELECT * FROM audit_schedules ORDER BY created_at DESC LIMIT 200`,
+    );
+    res.json(result.rows.map(scheduleToPublic));
   } catch { res.json([]); }
 }
 
 async function upcomingSchedules(_req: Request, res: Response) {
   try {
-    await connectMongo();
-    const schedules = await AuditScheduleModel.find().sort({ nextRun: 1 }).limit(3).lean();
-    res.json(schedules.map(s => ({ ...s, id: s._id })));
+    const result = await pool.query(
+      `SELECT * FROM audit_schedules WHERE enabled = true ORDER BY next_run ASC LIMIT 3`,
+    );
+    res.json(result.rows.map(scheduleToPublic));
   } catch { res.json([]); }
 }
 
 async function createSchedule(req: Request, res: Response) {
   const { url, frequency = "weekly" } = req.body as { url?: string; frequency?: string };
   if (!url) { res.status(400).json({ error: "url required" }); return; }
-  if (!isValidFrequency(frequency)) { res.status(400).json({ error: "frequency must be daily, weekly or monthly" }); return; }
+  if (!isValidFrequency(frequency)) {
+    res.status(400).json({ error: "frequency must be daily, weekly or monthly" }); return;
+  }
+  const orgId   = (req as Request & { orgId?: string }).orgId ?? "default";
+  const nextRun = computeNextRun(frequency);
   try {
-    await connectMongo();
-    const updated = await AuditScheduleModel.findOneAndUpdate(
-      { url },
-      { $set: { frequency, nextRun: computeNextRun(frequency) } },
-      { upsert: true, new: true, lean: true },
+    // Upsert: update if url exists, insert otherwise
+    const existing = await pool.query(
+      `SELECT id FROM audit_schedules WHERE url = $1 AND org_id = $2`, [url, orgId],
     );
-    res.json({ ...updated, id: updated!._id });
+    let result;
+    if (existing.rowCount && existing.rowCount > 0) {
+      result = await pool.query(
+        `UPDATE audit_schedules SET frequency=$1, next_run=$2 WHERE url=$3 AND org_id=$4 RETURNING *`,
+        [frequency, nextRun, url, orgId],
+      );
+    } else {
+      const id = `sched${Date.now()}`;
+      result = await pool.query(
+        `INSERT INTO audit_schedules (id, url, frequency, next_run, enabled, org_id, created_at)
+         VALUES ($1,$2,$3,$4,true,$5,NOW()) RETURNING *`,
+        [id, url, frequency, nextRun, orgId],
+      );
+    }
+    res.json(scheduleToPublic(result.rows[0]));
   } catch (err) {
     logger.error({ err }, "[audits] schedule POST failed");
     res.status(500).json({ error: "Failed to create schedule" });
@@ -149,13 +236,12 @@ async function patchSchedule(req: Request, res: Response) {
     res.status(400).json({ error: "frequency must be daily, weekly or monthly" }); return;
   }
   try {
-    await connectMongo();
-    const updated = await AuditScheduleModel.findByIdAndUpdate(
-      req.params.id,
-      { $set: { frequency, nextRun: computeNextRun(frequency) } },
-      { new: true, lean: true },
+    const result = await pool.query(
+      `UPDATE audit_schedules SET frequency=$1, next_run=$2 WHERE id=$3 RETURNING *`,
+      [frequency, computeNextRun(frequency), req.params.id],
     );
-    res.json({ ...updated, id: updated!._id });
+    if (!result.rowCount) { res.status(404).json({ error: "not found" }); return; }
+    res.json(scheduleToPublic(result.rows[0]));
   } catch {
     res.status(500).json({ error: "Update failed" });
   }
@@ -163,20 +249,19 @@ async function patchSchedule(req: Request, res: Response) {
 
 async function deleteSchedule(req: Request, res: Response) {
   try {
-    await connectMongo();
-    await AuditScheduleModel.findByIdAndDelete(req.params.id);
+    await pool.query(`DELETE FROM audit_schedules WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch { res.json({ ok: true }); }
 }
 
-router.get("/audits/schedule",        listSchedules);
-router.get("/audits/upcoming",        upcomingSchedules);
-router.post("/audits/schedule",       createSchedule);
-router.patch("/audits/schedule/:id",  patchSchedule);
-router.delete("/audits/schedule/:id", deleteSchedule);
-router.get("/audits/schedules",       listSchedules);
-router.post("/audits/schedules",      createSchedule);
-router.patch("/audits/schedules/:id", patchSchedule);
-router.delete("/audits/schedules/:id",deleteSchedule);
+router.get("/audits/schedule",         listSchedules);
+router.get("/audits/upcoming",         upcomingSchedules);
+router.post("/audits/schedule",        createSchedule);
+router.patch("/audits/schedule/:id",   patchSchedule);
+router.delete("/audits/schedule/:id",  deleteSchedule);
+router.get("/audits/schedules",        listSchedules);
+router.post("/audits/schedules",       createSchedule);
+router.patch("/audits/schedules/:id",  patchSchedule);
+router.delete("/audits/schedules/:id", deleteSchedule);
 
 export default router;

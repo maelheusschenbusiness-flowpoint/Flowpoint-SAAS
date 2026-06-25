@@ -134,4 +134,13 @@ router.get("/alerts", (_req, res) => {
   res.json(store.triggeredAlerts);
 });
 
+router.patch("/alert-rules/mark-all-read", async (_req, res) => {
+  try {
+    store.triggeredAlerts = [];
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: true });
+  }
+});
+
 export default router;

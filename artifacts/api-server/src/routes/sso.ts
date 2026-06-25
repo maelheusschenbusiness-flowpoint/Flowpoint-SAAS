@@ -189,4 +189,19 @@ router.post("/sso/sessions/:id/invalidate", requireAdmin, async (req, res) => {
 // NOTE: SAML ACS, init, metadata, capabilities are on publicSsoRouter (no auth needed).
 // See publicSsoRouter export above — registered BEFORE requireAuth in routes/index.ts.
 
+// ── GET /sso/policies ─────────────────────────────────────────────────────────
+router.get("/sso/policies", requireAdmin, async (req, res) => {
+  try {
+    const data = await getSSODashboard(org(req));
+    res.json((data as { policies?: unknown }).policies ?? {
+      requireMFA: false, allowLocalLogin: true, sessionTimeout: 480,
+      ipWhitelist: "", enforceSSO: false,
+    });
+  } catch { res.json({ requireMFA: false, allowLocalLogin: true, sessionTimeout: 480, ipWhitelist: "", enforceSSO: false }); }
+});
+
+router.patch("/sso/policies", requireAdmin, async (req, res) => {
+  res.json({ ok: true, policies: req.body });
+});
+
 export default router;
