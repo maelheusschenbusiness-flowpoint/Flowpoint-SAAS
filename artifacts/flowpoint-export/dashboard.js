@@ -3083,11 +3083,11 @@ function renderOverview() {
         var time = mins < 1 ? 'À l\'instant' : mins < 60 ? 'Il y a ' + mins + ' min' : mins < 1440 ? 'Il y a ' + Math.round(mins/60) + 'h' : 'Il y a ' + Math.round(mins/1440) + 'j';
         var typeMap = { audit:'info', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'info' };
         var iconMap = { audit:'🔍', monitor:'📡', alert:'⚠️', report:'📄', team:'👥' };
-        return { time: time, type: typeMap[e.type] || 'info', msg: e.label, icon: iconMap[e.type] || '📌' };
+        return { time: time, type: typeMap[e.type] || 'info', msg: e.label || '', icon: iconMap[e.type] || '📌' };
       })
     : [];
 
-  var _ah = (STATE.overview && STATE.overview.auditHistory || []).map(function(h){ return Number(h.avg); });
+  var _ah = (Array.isArray(STATE.overview?.auditHistory) ? STATE.overview.auditHistory : []).map(function(h){ return Number(h.avg || h.score || 0); }).filter(function(v){ return !isNaN(v); });
   var _gscClicks = STATE.overview?.gscClicks30d ?? null;
   var _gscPrev   = STATE.overview?.organicGrowthPct ?? null;
   var _convCurr  = conversionScore > 0 ? conversionScore + '%' : '—';
@@ -3263,8 +3263,8 @@ function renderOverview() {
             return `<div class="fp-live-ev" style="display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:9px;background:rgba(255,255,255,0.015);margin-bottom:2px;border-left:2px solid ${c}22">
               <div style="font-size:14px;flex-shrink:0;margin-top:1px">${ev.icon}</div>
               <div style="flex:1;min-width:0">
-                <div style="font-size:11px;color:var(--fp-text);line-height:1.4">${ev.msg}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${ev.time}</div>
+                <div style="font-size:11px;color:var(--fp-text);line-height:1.4">${escHtml(ev.msg || '')}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${ev.time || ''}</div>
               </div>
               <div style="width:6px;height:6px;border-radius:50%;background:${c};flex-shrink:0;margin-top:4px"></div>
             </div>`;
@@ -3914,9 +3914,9 @@ function renderMonitors() {
               <div style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:${tlColor(ev.type)}18;border:1.5px solid ${tlColor(ev.type)}40;display:flex;align-items:center;justify-content:center;font-size:9px;margin-top:1px">${tlIcon(ev.type)}</div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:11.5px;font-weight:600;color:var(--fp-text-soft)">${escHtml(ev.site)}</div>
-                <div style="font-size:11px;color:var(--fp-text-muted)">${ev.msg}</div>
+                <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(ev.msg || '')}</div>
               </div>
-              <span style="font-size:10px;color:var(--fp-text-faint);flex-shrink:0;white-space:nowrap">${ev.time}</span>
+              <span style="font-size:10px;color:var(--fp-text-faint);flex-shrink:0;white-space:nowrap">${ev.time || ''}</span>
             </div>
           `).join('')}
         </div>

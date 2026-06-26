@@ -1,4 +1,4 @@
-- [FlowPoint production context](flowpoint-context.md) — Phases 1+2+3 done: UI audit, CRUD 10/10, RLS 67 tables; read before any session
+- [FlowPoint production context](flowpoint-context.md) — Phases 1+2+3 done: UI audit, CRUD 10/10, RLS 66 tables active; read before any session
 - [FlowPoint alert rules routing](flowpoint-alert-rules-routing.md) — renderAlertRules() via settings+navigateSub('alerts'), NOT alerts-center; two separate components
 - [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
 - [FlowPoint isDemoMode pattern](flowpoint-demodmode.md) — all Math.random fake data must be isDemoMode()-gated; import from services/mock-data.js
@@ -18,3 +18,4 @@
 - [FlowPoint demock final state](flowpoint-demock-final.md) — Phase finale Bloc 3+4 done: 0 mock visible hors PREVIEW_MODE; tables alert_events+calendar_events créées; calendar CRUD câblé sur /api/calendar-events; trafficSources/kpiScores/ROI growth/4.4⭐ tous PREVIEW_MODE-gated
 - [Python template literal escaping pitfall](python-js-template-escaping.md) — Ne jamais écrire \` ou \$ dans des strings Python pour du JS: \` dans fichier = char invalide en expression JS, \$ bloque l'interpolation. Utiliser concaténation string JS ou remplacement ligne-à-ligne.
 - [Stripe live price IDs](stripe-price-ids.md) — 44 price IDs hardcoded in plans.ts; env vars optional override
+- [RLS migration 010 execution notes](rls-migration-notes.md) — Replit PG has no anon/authenticated roles; must create them first; DROP POLICY IF EXISTS produces NOTICEs that kill executeSql; fix: SET client_min_messages=WARNING; crm_field_mappings needed org_id added separately
