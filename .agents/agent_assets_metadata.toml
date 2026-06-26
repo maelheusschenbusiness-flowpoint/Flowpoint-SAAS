@@ -12,3 +12,9 @@ id = "fYKxoyz382CAySI3Ffyyb"
 uri = "file://flowpoint-complet.zip"
 type = "unspecified"
 title = "FlowPoint — Projet complet (155 fichiers)"
+
+[[outputs]]
+id = "qMvFtads3bec0xf5MmlI1"
+uri = "file://flowpoint-dashboard-export.zip"
+type = "unspecified"
+title = "FlowPoint Dashboard — Frontend + Backend complets"
