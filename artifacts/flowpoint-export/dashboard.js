@@ -6152,12 +6152,12 @@ function renderLocalSEO() {
           <svg width="140" height="140" viewBox="0 0 140 140">
             <circle cx="70" cy="70" r="52" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
             <circle cx="70" cy="70" r="52" fill="none" stroke="url(#domGrad)" stroke-width="12"
-              stroke-dasharray="${(circ*domScore/100).toFixed(1)} ${(circ*(1-domScore/100)).toFixed(1)}"
+              stroke-dasharray="${domScore!=null?(circ*domScore/100).toFixed(1)+' '+(circ*(1-domScore/100)).toFixed(1):'0 '+circ.toFixed(1)}"
               stroke-dashoffset="${(circ*0.25).toFixed(1)}"
               stroke-linecap="round" transform="rotate(-90 70 70)"/>
             <defs><linearGradient id="domGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs>
-            <text x="70" y="64" text-anchor="middle" font-family="Outfit,sans-serif" font-size="26" font-weight="800" fill="var(--fp-text)">${domScore}</text>
-            <text x="70" y="80" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="var(--fp-text-muted)">/100</text>
+            <text x="70" y="64" text-anchor="middle" font-family="Outfit,sans-serif" font-size="26" font-weight="800" fill="var(--fp-text)">${domScore!=null?domScore:'—'}</text>
+            <text x="70" y="80" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="var(--fp-text-muted)">${domScore!=null?'/100':'N/A'}</text>
           </svg>
         </div>
         <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:4px">Territoire maîtrisé</div>
@@ -13237,7 +13237,8 @@ async function init() {
   (function subscribeBillingEvents() {
     if (PREVIEW_MODE) return;
     try {
-      const es = new EventSource('/api/billing/events');
+      const _sseToken = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+      const es = new EventSource('/api/billing/events' + (_sseToken ? '?token=' + encodeURIComponent(_sseToken) : ''));
       es.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
@@ -15682,21 +15683,21 @@ function renderMonitorsIncidents() {
                 ${badge('Résolu', '#22c55e')}
                 ${inc.notifiedBool ? badge('Notifié ✓', '#2563EB') : '<span style="font-size:10px;color:var(--fp-text-faint)">⚠ Non notifié</span>'}
               </div>
-              <div style="font-size:11px;color:var(--fp-text-faint);font-family:var(--fp-font-mono)">${inc.date} · ${inc.start} → ${inc.end} · <strong>${inc.duration}</strong></div>
+              <div style="font-size:11px;color:var(--fp-text-faint);font-family:var(--fp-font-mono)">${inc.date||'—'} · ${inc.start||'—'} → ${inc.end||'—'} · <strong>${inc.duration||'—'}</strong></div>
             </div>
             <div style="display:flex;gap:16px;flex-shrink:0;text-align:center">
-              <div><div style="font-size:12px;font-weight:700;color:var(--fp-text)">${inc.ttd}</div><div style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase">TTD</div></div>
-              <div><div style="font-size:12px;font-weight:700;color:var(--fp-text)">${inc.ttr}</div><div style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase">TTR</div></div>
+              <div><div style="font-size:12px;font-weight:700;color:var(--fp-text)">${inc.ttd||'—'}</div><div style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase">TTD</div></div>
+              <div><div style="font-size:12px;font-weight:700;color:var(--fp-text)">${inc.ttr||'—'}</div><div style="font-size:9px;color:var(--fp-text-faint);text-transform:uppercase">TTR</div></div>
             </div>
           </div>
 
           <!-- Mini timeline -->
           <div style="display:flex;align-items:flex-start;gap:2px;margin-bottom:14px;padding:10px;background:var(--fp-inner-card);border-radius:8px;overflow-x:auto">
             ${[
-              { label: 'Début',   time: inc.start,             color: '#ef4444' },
-              { label: 'Détecté', time: inc.detected,          color: '#f59e0b' },
-              { label: 'Notifié', time: inc.notified || '—',   color: inc.notified ? '#8b5cf6' : '#64748b' },
-              { label: 'Résolu',  time: inc.end,               color: '#22c55e' },
+              { label: 'Début',   time: inc.start    || '—', color: '#ef4444' },
+              { label: 'Détecté', time: inc.detected || '—', color: '#f59e0b' },
+              { label: 'Notifié', time: inc.notified || '—', color: inc.notified ? '#8b5cf6' : '#64748b' },
+              { label: 'Résolu',  time: inc.end      || '—', color: '#22c55e' },
             ].map((step, i, arr) => `
               <div style="display:flex;align-items:center;flex-shrink:0">
                 <div style="text-align:center;min-width:55px">
@@ -15960,8 +15961,8 @@ function renderLocalSEOZones() {
 
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Zones fortes', zones.filter(z => z.status === 'fort').length + '/' + zones.length, 'à 70%+ couverture', 'neutral')}
-      ${statCard('Trafic total', zones.reduce((s,z) => s + z.traffic, 0) + '/mois', 'toutes zones', 'up')}
-      ${statCard('Position moy.', '#' + (zones.reduce((s,z) => s + z.pos, 0) / zones.length).toFixed(1), 'moyenne globale', 'neutral')}
+      ${statCard('Trafic total', zones.reduce((s,z) => s + (z.traffic||0), 0) + '/mois', 'toutes zones', 'up')}
+      ${statCard('Position moy.', zones.length > 0 ? '#' + (zones.reduce((s,z) => s + (z.pos||0), 0) / zones.length).toFixed(1) : '—', 'moyenne globale', 'neutral')}
       ${statCard('Zones à développer', zones.filter(z => z.status !== 'fort').length, 'opportunités', 'down')}
     </div>
 
@@ -20826,7 +20827,7 @@ function renderActivityFeed() {
                 </div>
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(inc.title)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">Cause : ${escHtml(inc.cause)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${escHtml(inc.start)} → ${escHtml(inc.end)} · ${escHtml(inc.dur)}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${escHtml(inc.start||'—')} → ${escHtml(inc.end||'—')} · ${escHtml(inc.dur||'—')}</div>
               </div>`;
             }).join('')}
           </div>
@@ -21964,11 +21965,11 @@ function renderDataExplorer() {
       { name: 'Dashboard Data — Export JSON',            type: 'JSON', size: '88 KB',  date: '03/05',        brand: false, auto: false },
       { name: 'Rapport mensuel — Avril 2026',            type: 'PDF',  size: '3.1 MB', date: '01/05',        brand: true,  auto: true  },
     ];
-    const scheduled = [
+    const scheduled = PREVIEW_MODE ? [
       { name: 'Rapport SEO mensuel',    freq: 'Mensuel · 1er du mois',   dest: 'email',   next: '01/06', active: true  },
-      { name: 'Rapport client Dupont',  freq: 'Hebdomadaire · Lundi',    dest: 'email',   next: '13/05', active: true  },
+      { name: 'Rapport client exemple', freq: 'Hebdomadaire · Lundi',    dest: 'email',   next: '13/05', active: true  },
       { name: 'Export données CSV',     freq: 'Quotidien · 8h00',         dest: 'Webhook', next: 'Demain', active: false },
-    ];
+    ] : [];
     return `
       ${isPro
         ? aiBlock("2 rapports automatisés actifs ce mois. Votre <strong>rapport SEO Executive de mai</strong> est le plus téléchargé. Suggestion : activer l\'export automatique CSV quotidien pour intégrer les données dans votre CRM.",
@@ -22053,7 +22054,7 @@ function renderDataExplorer() {
     { icon: '⚠',  title: 'Taux rebond mobile en hausse +8%',sev: 'warning',  desc: 'Dégradation UX mobile corrélée avec chute conversion mobile' },
     { icon: '🔗', title: 'Corrélation vitesse/conversion : 91%',  sev: 'warning',  desc: 'Pages lentes < 70/100 convertissent 2.4x moins bien — priorité optimisation' },
     { icon: '🏆', title: 'Local Pack #1 — 4 mots-clés gagnés',    sev: 'positive', desc: (STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')):'votre site') + ' domine — renforcement GBP confirmé' },
-    { icon: '🎯', title: 'Concurrent Dupont accélère fortement',   sev: 'critical', desc: '+12 positions + 180% backlinks ce mois — fenêtre d’action : 3 semaines' },
+    ...(STATE.competitors && STATE.competitors.length > 0 ? [{ icon: '🎯', title: (escHtml(STATE.competitors[0].name||'Concurrent principal')) + ' accélère fortement', sev: 'critical', desc: '+12 positions ce mois — fenêtre d’action : 3 semaines' }] : PREVIEW_MODE ? [{ icon: '🎯', title: 'Concurrent principal accélère fortement', sev: 'critical', desc: '+12 positions + 180% backlinks ce mois — fenêtre d’action : 3 semaines' }] : []),
   ];
 
   return `
@@ -30915,10 +30916,37 @@ function renderSettingsSSO() {
   const isUltra = plan === 'Agency' || plan === 'Ultra';
   const ssoData = window.FP_DATA?.sso || {};
   const providers = ssoData.providers || [];
-  const stats = ssoData.stats || {};
-  const audits = ssoData.login_audits || [];
-  const catalog = ssoData.providers_catalog || [];
-  const sessions = ssoData.active_sessions || [];
+  const rawStats = ssoData.stats || {};
+  // Normalize stats field names (API uses different keys)
+  const stats = {
+    totalProviders:   rawStats.totalProviders   ?? rawStats.providers       ?? providers.length,
+    activeProviders:  rawStats.activeProviders  ?? providers.filter(p=>p.enabled!==false).length,
+    totalLogins:      rawStats.totalLogins      ?? rawStats.total           ?? 0,
+    failedLogins:     rawStats.failedLogins     ?? rawStats.failed          ?? 0,
+    activeSessions:   rawStats.activeSessions   ?? rawStats.sessions        ?? 0,
+    suspiciousLogins: rawStats.suspiciousLogins ?? rawStats.suspicious      ?? 0,
+  };
+  // API returns recentLogins, code expects login_audits
+  const audits = ssoData.login_audits || ssoData.recentLogins || [];
+  // API returns providers_catalog as array of strings OR objects — normalize to objects
+  const CATALOG_META = {
+    google_workspace: {name:'Google Workspace', protocol:'OAuth 2.0', plan:'Pro',  icon:'🔑', roadmap:false},
+    github:           {name:'GitHub',            protocol:'OAuth 2.0', plan:'Pro',  icon:'🐙', roadmap:false},
+    auth0:            {name:'Auth0',             protocol:'OAuth 2.0', plan:'Ultra',icon:'🔐', roadmap:false},
+    microsoft_azure:  {name:'Microsoft Azure AD',protocol:'SAML 2.0', plan:'Ultra',icon:'🏢', roadmap:true},
+    azure_ad:         {name:'Microsoft Azure AD',protocol:'SAML 2.0', plan:'Ultra',icon:'🏢', roadmap:true},
+    okta:             {name:'Okta',              protocol:'SAML 2.0', plan:'Ultra',icon:'🔵', roadmap:true},
+    onelogin:         {name:'OneLogin',          protocol:'SAML 2.0', plan:'Ultra',icon:'🔶', roadmap:true},
+    saml:             {name:'SAML générique',    protocol:'SAML 2.0', plan:'Ultra',icon:'🔒', roadmap:true},
+    saml_generic:     {name:'SAML générique',    protocol:'SAML 2.0', plan:'Ultra',icon:'🔒', roadmap:true},
+  };
+  const rawCatalog = ssoData.providers_catalog || [];
+  const catalog = rawCatalog.map(entry =>
+    typeof entry === 'string'
+      ? { id: entry, ...(CATALOG_META[entry] || {name:entry, protocol:'SSO', plan:'Pro', icon:'🔑', roadmap:false}) }
+      : entry
+  );
+  const sessions = ssoData.active_sessions || ssoData.activeSessions || [];
   const activeTab = window._ssoTab || 'providers';
 
   const planIcon = (p) => p === 'Ultra' ? '💎' : p === 'Pro' ? '🔵' : '';
@@ -30990,11 +31018,11 @@ function renderSettingsSSO() {
                   <span style="width:26px;height:26px;display:flex;align-items:center;flex-shrink:0">${SSO_LOGOS[p.id] || '<span style="font-size:22px">'+p.icon+'</span>'}</span>
                   <div style="flex:1">
                     <div style="font-size:13px;font-weight:700">${p.name}</div>
-                    <div style="font-size:10px;color:var(--fp-text-faint)">${p.protocol} ${planIcon(p.plan)} ${p.plan}</div>
+                    <div style="font-size:10px;color:var(--fp-text-faint)">${p.protocol||'SSO'} ${planIcon(p.plan||'')} ${p.plan||''}</div>
                   </div>
                 </div>
                 ${locked
-                  ? `<div style="font-size:10px;color:var(--fp-text-faint);text-align:center">${p.plan} requis</div>`
+                  ? `<div style="font-size:10px;color:var(--fp-text-faint);text-align:center">${p.plan||'Plan'} requis</div>`
                   : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px" onclick="window._showSSOProviderModal('${p.id}','${p.name}')">Configurer</button>`
                 }
               </div>
@@ -31013,10 +31041,10 @@ function renderSettingsSSO() {
               return `
                 <div style="padding:14px;border-radius:10px;border:1px solid ${isRoadmap ? 'rgba(99,102,241,0.25)' : 'var(--fp-border)'};background:var(--fp-inner-card);opacity:${locked ? '0.6' : '1'}">
                   <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                    <span style="width:26px;height:26px;display:flex;align-items:center;flex-shrink:0">${SSO_LOGOS[p.id]}</span>
+                    <span style="width:26px;height:26px;display:flex;align-items:center;flex-shrink:0">${SSO_LOGOS[p.id] || '<span style="font-size:20px">🔑</span>'}</span>
                     <div style="flex:1">
                       <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">${p.name}${isRoadmap ? '<span style="font-size:9px;font-weight:700;padding:1px 6px;background:rgba(99,102,241,0.12);color:#6366f1;border-radius:8px;border:1px solid rgba(99,102,241,0.3)">Roadmap</span>' : ''}</div>
-                      <div style="font-size:10px;color:var(--fp-text-faint)">${p.protocol} · ${p.plan}</div>
+                      <div style="font-size:10px;color:var(--fp-text-faint)">${p.protocol||'SSO'} · ${p.plan||''}</div>
                     </div>
                   </div>
                   ${isRoadmap

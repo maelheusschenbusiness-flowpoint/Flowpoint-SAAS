@@ -12,6 +12,7 @@
 - [API server final state](api-server-final-state.md) — 35/35 endpoints 200; upsert org_settings uses 2-query pattern; automation/runs uses raw SQL (Drizzle completedAt≠ended_at)
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [FlowPoint mock audit results](flowpoint-mock-audit-results.md) — T001-T008 already gated; only real violation was enterprise lab workspaces (line ~7187); FP_COMPETITORS_API+FP_CONNECTORS_API added as globals at IIFE end
+- [SSO API normalization](sso-api-normalization.md) — providers_catalog is string[], stats fields mismatch, recentLogins alias; normalize all in renderSettingsSSO() before rendering
 - [JS IIFE string apostrophe rule](js-iife-apostrophe.md) — dans les IIFEs qui concaténent HTML: toute apostrophe française dans single-quoted JS string doit être escapée \'; tester node --check après chaque lot d'édits
 - [FlowPoint demock final state](flowpoint-demock-final.md) — Phase finale Bloc 3+4 done: 0 mock visible hors PREVIEW_MODE; tables alert_events+calendar_events créées; calendar CRUD câblé sur /api/calendar-events; trafficSources/kpiScores/ROI growth/4.4⭐ tous PREVIEW_MODE-gated
 - [Python template literal escaping pitfall](python-js-template-escaping.md) — Ne jamais écrire \` ou \$ dans des strings Python pour du JS: \` dans fichier = char invalide en expression JS, \$ bloque l'interpolation. Utiliser concaténation string JS ou remplacement ligne-à-ligne.

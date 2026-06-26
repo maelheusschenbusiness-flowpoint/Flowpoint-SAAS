@@ -50,6 +50,11 @@ function extractToken(req: Request): string | undefined {
   if (typeof cookieToken === "string" && cookieToken.trim()) {
     return cookieToken.trim();
   }
+  // Query param — for SSE/EventSource which cannot send custom headers
+  const queryToken = (req.query as Record<string, string>)["token"];
+  if (typeof queryToken === "string" && queryToken.trim()) {
+    return queryToken.trim();
+  }
   return undefined;
 }
 
