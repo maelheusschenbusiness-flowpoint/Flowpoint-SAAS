@@ -1,16 +1,35 @@
 import { pool } from "@workspace/db";
 
+export type PostType = "standard" | "event" | "offer" | "product";
+export type CtaType = "CALL" | "LEARN_MORE" | "ORDER" | "BOOK" | "SIGN_UP" | "GET_OFFER" | "NONE";
+
 export interface GBPPost {
   id: string;
-  type: string;
+  org_id: string;
+  location_id: string | null;
+  location_name: string | null;
+  post_type: string;
+  title: string | null;
   content: string;
-  callToAction: string | null;
-  imageUrl: string | null;
+  cta_type: string | null;
+  cta_url: string | null;
+  media_urls: string[];
+  event_title: string | null;
+  event_start: string | null;
+  event_end: string | null;
+  offer_code: string | null;
+  offer_terms: string | null;
   status: "draft" | "scheduled" | "published" | "failed";
-  scheduledAt: string | null;
-  publishedAt: string | null;
-  orgId: string;
-  createdAt: string;
+  scheduled_at: string | null;
+  published_at: string | null;
+  google_post_id: string | null;
+  views: number;
+  clicks: number;
+  calls: number;
+  ai_generated: boolean;
+  seo_keywords: string[];
+  created_at: string;
+  updated_at: string;
 }
 
 export async function getPostsDashboard(orgId: string): Promise<{
@@ -43,23 +62,48 @@ export async function getPostsDashboard(orgId: string): Promise<{
 }
 
 export async function createPost(orgId: string, data: {
-  type: string; content: string; callToAction?: string; imageUrl?: string; scheduledAt?: string;
+  locationId?: string; locationName?: string; postType?: PostType;
+  title?: string; content: string; ctaType?: CtaType; ctaUrl?: string;
+  mediaUrls?: string[]; scheduledAt?: string; seoKeywords?: string[];
+  eventTitle?: string; eventStart?: string; eventEnd?: string; offerCode?: string;
 }): Promise<GBPPost> {
   const client = await pool.connect();
   try {
-    const id = `gbp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const id = `gp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const status = data.scheduledAt ? "scheduled" : "draft";
     await client.query(
-      `INSERT INTO gbp_posts (id, org_id, type, content, call_to_action, image_url, status, scheduled_at, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
-      [id, orgId, data.type, data.content, data.callToAction ?? null, data.imageUrl ?? null, status, data.scheduledAt ?? null]
+      `INSERT INTO gbp_posts (
+        id, org_id, location_id, location_name, post_type, title, content,
+        cta_type, cta_url, media_urls, event_title, event_start, event_end,
+        offer_code, status, scheduled_at, seo_keywords, ai_generated,
+        views, clicks, calls, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,false,0,0,0,NOW(),NOW())`,
+      [
+        id, orgId,
+        data.locationId ?? null,
+        data.locationName ?? null,
+        data.postType ?? "standard",
+        data.title ?? null,
+        data.content,
+        data.ctaType ?? null,
+        data.ctaUrl ?? null,
+        data.mediaUrls ?? [],
+        data.eventTitle ?? null,
+        data.eventStart ?? null,
+        data.eventEnd ?? null,
+        data.offerCode ?? null,
+        status,
+        data.scheduledAt ?? null,
+        data.seoKeywords ?? [],
+      ]
     );
     const res = await client.query(`SELECT * FROM gbp_posts WHERE id=$1`, [id]);
     return res.rows[0];
   } finally { client.release(); }
 }
 
-export async function generateAiPost(orgId: string, topic: string): Promise<{ content: string; callToAction: string; type: string }> {
+export async function generateAiPost(orgId: string, data?: { locationId?: string; locationName?: string; postType?: PostType; industry?: string; keywords?: string[]; tone?: string; objective?: string; }): Promise<{ content: string; callToAction: string; type: string }> {
+  void orgId; void data;
   const templates: Record<string, { content: string; callToAction: string }> = {
     "promo":     { content: `🎉 Offre spéciale cette semaine ! Profitez de notre service premium avec une consultation gratuite de 30 minutes. Réservez maintenant et transformez votre présence en ligne. 📈 #SEO #LocalSEO #Digital`, callToAction: "Réserver" },
     "news":      { content: `📢 Nouvelle mise à jour Google Algorithm ! Suite au récent update, voici les 3 ajustements clés à faire sur votre site pour maintenir votre positionnement. Contactez-nous pour un audit gratuit. 🔍`, callToAction: "En savoir plus" },

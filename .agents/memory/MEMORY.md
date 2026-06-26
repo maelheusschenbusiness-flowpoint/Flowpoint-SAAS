@@ -1,4 +1,5 @@
-- [FlowPoint production context](flowpoint-context.md) — architecture, état complet des corrections Phase 1+2; read before any session
+- [FlowPoint production context](flowpoint-context.md) — Phases 1+2+3 done: UI audit, CRUD 10/10, RLS 67 tables; read before any session
+- [FlowPoint alert rules routing](flowpoint-alert-rules-routing.md) — renderAlertRules() via settings+navigateSub('alerts'), NOT alerts-center; two separate components
 - [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
 - [FlowPoint isDemoMode pattern](flowpoint-demodmode.md) — all Math.random fake data must be isDemoMode()-gated; import from services/mock-data.js
 - [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 30k-line file; use sed -n for large offsets, always get exact context before editing

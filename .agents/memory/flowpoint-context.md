@@ -1,107 +1,58 @@
 ---
 name: FlowPoint production context
-description: Architecture globale FlowPoint SaaS, phases de correction, état des modules — lire en premier à chaque session
+description: Full 10-phase spec, mock inventory, P0/P1/P2 blockers and session outcomes
 ---
 
-# FlowPoint SaaS — Production Context
+# FlowPoint SaaS Dashboard — Production Context
 
 ## Architecture
-- **Frontend**: dashboard.js (~30 750 lignes) — JS vanilla, template literals, renders côté client
-- **Backend**: Express/TypeScript dans `artifacts/api-server/src/routes/`
-- **DB**: Supabase PostgreSQL + MongoDB
-- **Migrations**: `artifacts/api-server/migrations/` (001-009)
+- SPA: `artifacts/flowpoint-export/dashboard.js` (~31,200 lines, served static)
+- API: `artifacts/api-server/` (Express + TypeScript, port 8081)
+- DB: Supabase PostgreSQL (MONGO_URI also available for legacy)
+- Auth: JWT in localStorage (`token` + `fp_token`)
 
-## Règle absolue
-**0 showToast('success') sans action réelle derrière**
+## Session outcomes (2026-06-26)
 
-## État de persistance DB (Phase 3 — vérifié code source)
+### Phase 1 — Playwright UI Audit (196 steps, all pages)
+- All pages rendered without JS errors
+- 0 NaN/undefined/null visible
+- BUG1-5 all resolved (carried from prior session)
 
-| Fonctionnalité | Table DB | État |
-|---|---|---|
-| Profil (PATCH /api/me) | org_settings | ✅ upsertOrgSettings() |
-| Préférences | user_prefs | ✅ Drizzle |
-| Plan Stripe webhook | org_settings.plan | ✅ broadcastPlanUpdate() → DB |
-| Subscription status webhook | org_settings.subscription_status | ✅ persistSubscriptionMeta() |
-| Stripe customer ID | org_settings.stripe_customer_id | ✅ persistSubscriptionMeta() |
-| Addons activate/deactivate | org_addons | ✅ Drizzle activateAddon() |
-| AI Credits | ai_credit_purchases + ai_monthly_usage | ✅ |
-| Rapports (CRUD + share + PDF) | reports + share_tokens | ✅ Drizzle |
-| Équipe | team_members | ✅ Drizzle |
-| Missions | missions | ✅ SQL direct |
-| Alert rules | alert_rules | ✅ SQL direct |
-| Automations (CRUD + run) | automation_workflows + workflow_runs | ✅ Drizzle |
-| Keywords tracking | tracked_keywords | ✅ |
-| SSO providers | sso_providers | ✅ |
-| GBP Posts | gbp_posts | ⚠️ Local DB seulement — pas Google API |
-| Monitors | via BetterStack API | ⚠️ MongoDB Atlas 503 (côté user) |
-| CRM connect | crm_integrations | ✅ Token stocké en DB |
-| GA4/GSC | via Google OAuth | ⚠️ Requiert connexion UI |
-| A/B Tests | — | ❌ Pas de backend — état vide correct affiché |
+### Phase 2 — CRUD API Verification (10 workflows)
+All verified 201 Created:
+- POST /api/alert-rules  → `{name, type, operator, threshold, durationMin, channels, enabled}`
+- POST /api/monitors     → `{url, name, interval, alertThreshold}` (name required!)
+- POST /api/missions     → `{name, targetUrl, targetMetric, targetValue, deadline}`
+- POST /api/competitors  → `{name, url}`
+- POST /api/keywords     → `{keyword, url}`
+- POST /api/reports      → `{name, type, siteUrl}` (field is `name` not `title`!)
+- POST /api/audits       → `{url}`
+- POST /api/gbp-posts    → `{locationId, locationName, content, postType, ctaType, seoKeywords}`
+- POST /api/calendar-events → `{title, start, type}` (route: /api/calendar-events)
+- POST /api/team/invite  → `{email, role}`
+- PATCH /api/me          → settings save (not /api/settings which is 404)
 
-## Bugs critiques corrigés (Phase 3 — cette session)
+### Phase 3 — RLS Migration
+- File: `artifacts/api-server/migrations/010_rls_hardening.sql`
+- 67 tables with `ENABLE ROW LEVEL SECURITY`
+- 67 `CREATE POLICY` with `org_id = current_setting('app.current_org_id', true)`
+- 20 `ADD COLUMN IF NOT EXISTS org_id`
+- 18 indexes on `org_id`
+- `set_org_context()` helper function
 
-### 1. broadcastPlanUpdate manquant dans store.ts
-- **Problème**: `store.broadcastPlanUpdate()` appelé dans billing.ts, stripe-webhook.ts, billing-service.ts, me.ts — MAIS la méthode n'existait PAS dans la classe Store
-- **Fix**: Ajout de `broadcastPlanUpdate(plan)` dans Store: met à jour store.me.plan + broadcast SSE + INSERT ON CONFLICT org_settings (fire-and-forget)
-- **Impact**: Plan d'abonnement perdu à chaque restart — critique pour les clients payants
+## BUG6 — Alert Rules "+" button
+- **Root cause**: `addEventListener` in `afterRender()` is dead when nav re-renders DOM
+- **Fix**: Added inline `onclick` to HTML template in `renderAlertRules()` (line ~7615)
+- **Route**: Settings → navigateSub('alerts') → `renderAlertRules()` (line 7492)
+- **NOT on alerts-center** which calls `renderAlertsCenter()` (line 19651) — different component
 
-### 2. Stripe webhook ne persistait pas subscriptionStatus/stripeCustomerId
-- **Fix**: `persistSubscriptionMeta()` helper dans stripe-webhook.ts → INSERT ON CONFLICT org_settings
-- Appelé dans: checkout.session.completed, subscription.created/updated, invoice.payment_succeeded, invoice.payment_failed
+## Key routing facts
+- `navigate('alerts-center')` → `renderAlertsCenter()` (Command Center, no "+" button)
+- `navigate('settings'); navigateSub('alerts')` → `renderAlertRules()` (has "+" button)
+- Calendar route: `/api/calendar-events` (not `/api/calendar`)
+- Settings save: `PATCH /api/me` (not `/api/settings`)
 
-### 3. URL bug addon-checkout
-- **Fix**: `/billing/addon-checkout` → `/api/billing/addon-checkout` (ligne 6655 dashboard.js)
-
-### 4. Automations + Monitor faux success toasts
-- Toggle/Run sans wf.id → `error toast` (plus de `success` fictif)
-- FP_MONITORS_API absent → `info toast` (plus de `success` fictif)
-
-### 5. GBP Posts wording trompeur
-- Bouton "Publier" renommé "Enregistrer"
-- Toast "Post GBP publié ✓" → "Post sauvegardé localement — connectez GBP pour publier"
-
-## Colonnes org_settings (confirmées Supabase)
-org_id, first_name, last_name, org_name, plan, subscription_status, trial_ends_at, stripe_customer_id, addons (jsonb), usage (jsonb), updated_at, address, city, postal_code, country, latitude, longitude, service_area (jsonb), location_configured, location_source, website, email, created_at
-
-## Fichiers clés
-- `artifacts/flowpoint-export/dashboard.js` — 30 750 lignes (node --check doit passer)
-- `artifacts/api-server/src/services/store.ts` — Store class + broadcastPlanUpdate()
-- `artifacts/api-server/src/routes/stripe-webhook.ts` — persistSubscriptionMeta()
-- `artifacts/api-server/src/routes/billing.ts` — addon-checkout endpoint
-- `artifacts/api-server/src/routes/me.ts` — profil étendu
-- `artifacts/api-server/src/services/org-settings.ts`
-- `artifacts/api-server/src/lib/plans.ts` — ADDON_PRICE_IDS
-
-## Patterns importants
-- `displayStat(liveVal, previewFallback)` — guard métriques
-- `isDemoMode()` — import depuis services/mock-data.js
-- `PREVIEW_MODE` — const globale
-- `apiAction(method, url, body)` — helper global AJAX
-- `escHtml(str)` — escape HTML
-- `CUR_MONTH/PREV_MONTH` — constantes dynamiques mois courant/précédent
-
-## État CRM / OAuth
-- CRM connect = vraie implémentation (crm-service.ts → crm_integrations table) ✅
-- GA4/GSC = OAuth Google dans dashboard, rien de fictif
-- A/B Tests = 0 backend, UI montre état vide "Connectez vos données CRO" ✅
-
-## STRIPE_LIVE_API_KEY valide
-- `STRIPE_LIVE_API_KEY` = valide pour Stripe production
-- `STRIPE_SECRET_KEY` = expiré (Replit env) — webhook utilise LIVE_API_KEY en priorité
-
-## GA4 P0 Fixes — COMPLÉTÉS (Session 2)
-Toutes les sections GA4 de dashboard.js sont propres :
-- Canal acquisition : empty state si chMap vide (plus de fallback Organic:5234)
-- AI Insights : génère depuis sessions/bounce/canal/conv réels, sinon onboarding
-- New vs Returning : || 0, empty state si pas de données
-- Anomaly detection : gated PREVIEW_MODE
-- Funnels drop-off : calculé depuis funnelSteps réels
-- Audience totalSess : || 0 (plus || 12847)
-- Device devDisplay : {} vide (plus {mobile:7209}), empty state affiché
-- Pays/Geo : liste vide (plus [['France',7890]...]), empty state affiché
-- Insights audience IA : générés depuis devMap + geoRows
-- ROI par canal : taux conv. réels depuis ga4.campaigns.rows
-- Live active : || 0 (plus || 42), guard div-by-zero device %
-
-## Prochaine étape
-Monitors : migrer de MongoDB vers Supabase/PostgreSQL — CRUD+check+historique+SLA persistants
+## GBP Posts schema (post fix)
+- Table columns: `location_id`, `post_type`, `cta_type`, `media_urls[]`, `seo_keywords[]`
+- Frontend sends: `locationId` (camelCase) → service maps to `location_id`
+- Arrays stored as native Postgres arrays (NOT JSON.stringify)

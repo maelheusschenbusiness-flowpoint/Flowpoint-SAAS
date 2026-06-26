@@ -7612,7 +7612,7 @@ function renderAlertRules() {
           <div class="fp-card-title">Règles d\'alerte personnalisées</div>
           <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${rules.length} règle${rules.length !== 1 ? 's' : ''} configurée${rules.length !== 1 ? 's' : ''}</div>
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" id="show-add-rule-form">+ Nouvelle règle</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" id="show-add-rule-form" onclick="(function(){var f=document.getElementById('add-rule-form');if(f)f.style.display=f.style.display==='none'?'block':'none';})()">+ Nouvelle règle</button>
       </div>
 
       ${rules.length === 0 ? `
@@ -7684,8 +7684,8 @@ function renderAlertRules() {
           </div>` : ''}
         </div>
         <div style="display:flex;gap:8px">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" id="save-alert-rule">Créer la règle</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" id="cancel-rule-form">Annuler</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" id="save-alert-rule" onclick="(async function(){var name=(document.getElementById('rule-name')||{}).value?.trim();var type=(document.getElementById('rule-type')||{}).value;var operator=(document.getElementById('rule-operator')||{}).value;var threshold=parseFloat((document.getElementById('rule-threshold')||{}).value);var durationMin=parseInt((document.getElementById('rule-duration')||{}).value||'0',10);var channels=[];if((document.getElementById('rule-ch-email')||{}).checked)channels.push('email');if((document.getElementById('rule-ch-sms')||{}).checked)channels.push('sms');var siteUrls=[...document.querySelectorAll('.new-rule-site:checked')].map(function(cb){return cb.dataset.url;}).filter(Boolean);if(!name||!type||!operator||isNaN(threshold)){showToast('error','Remplissez tous les champs obligatoires');return;}try{var rule=await apiAction('POST','/api/alert-rules',{name:name,type:type,operator:operator,threshold:threshold,durationMin:durationMin,channels:channels,siteUrls:siteUrls,enabled:true});if(rule){STATE.alertRules.push(rule);showToast('success','Règle \"'+name+'\" créée !');navigateSub('alerts');}}catch(e){showToast('error','Erreur lors de la création de la règle');}})()">Créer la règle</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" id="cancel-rule-form" onclick="(function(){var f=document.getElementById('add-rule-form');if(f)f.style.display='none';})()">Annuler</button>
         </div>
       </div>
     </div>
