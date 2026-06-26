@@ -783,7 +783,8 @@ async function loadData() {
         if (_cp.team)          STATE.team          = _cp.team;
         if (_cp.alertRules)    STATE.alertRules    = _cp.alertRules;
         if (_cp.notifications) STATE.notifications = _cp.notifications;
-        render();
+        // Cache restores partial STATE — do NOT render yet; wait for full live data
+        // (keywords, competitors, missions, connectors, activityEvents are not in cache)
       }
     }
   } catch(_) {}
@@ -915,6 +916,13 @@ async function loadData() {
   // Apply pinned state
   STATE.audits   = STATE.audits.map(a => ({ ...a, pinned: !!(STATE.pinned['audit_'+a.id]) }));
   STATE.monitors = STATE.monitors.map(m => ({ ...m, pinned: !!(STATE.pinned['monitor_'+m.id]) }));
+
+  // ── Mandatory final render — all data now in STATE ───────────────────────────
+  console.debug('[FP] loadData complete — audits:', STATE.audits.length,
+    'monitors:', STATE.monitors.length, 'missions:', (STATE.missions||[]).length,
+    'keywords:', (STATE.keywords||[]).length, 'competitors:', (STATE.competitors||[]).length,
+    'reports:', STATE.reports.length, 'activityEvents:', (STATE.activityEvents||[]).length);
+  render();
 
   // ── Intelligence Engine: compute real insights from STATE data ───────────────
   if (typeof window.FP_DATA !== 'object' || window.FP_DATA === null) window.FP_DATA = {};
@@ -1619,7 +1627,7 @@ const CMD_ITEMS = [
   // ── Navigation principale ──────────────────────────────────────────
   { cat:'Navigation', label:'Vue d\'ensemble',       icon:'activity',     route:'overview',           shortcut:'G O' },
   { cat:'Navigation', label:'Live — Temps réel',     icon:'wifi',         route:'live',               shortcut:'' },
-  { cat:'Navigation', label:'Activité équipe',        icon:'users',        route:'activity',           shortcut:'' },
+  { cat:'Navigation', label:'Activité équipe',        icon:'users',        route:'activity-feed',      shortcut:'' },
   { cat:'Navigation', label:'Missions SEO',           icon:'rocket',       route:'missions',           shortcut:'G P' },
   { cat:'Navigation', label:'Rapports',               icon:'file',         route:'reports',            shortcut:'G R' },
   { cat:'Navigation', label:'Facturation',            icon:'shield',       route:'billing',            shortcut:'G B' },
@@ -1640,14 +1648,14 @@ const CMD_ITEMS = [
   { cat:'Analyse & Performance', label:'Search Console',       icon:'search',       route:'search-console',     shortcut:'' },
   { cat:'Analyse & Performance', label:'Explorateur de données',icon:'search',      route:'data-explorer',      shortcut:'' },
   // ── Marketing & Contenu ───────────────────────────────────────────
-  { cat:'Marketing & Contenu', label:'Contenu',                icon:'file',         route:'content',            shortcut:'' },
+  { cat:'Marketing & Contenu', label:'Contenu',                icon:'file',         route:'growth',             shortcut:'' },
   { cat:'Marketing & Contenu', label:'Campagnes',              icon:'zap',          route:'campaigns',          shortcut:'' },
-  { cat:'Marketing & Contenu', label:'Concurrents',            icon:'trending-up',  route:'competitors',        shortcut:'' },
+  { cat:'Marketing & Contenu', label:'Concurrents',            icon:'trending-up',  route:'competitor',         shortcut:'' },
   { cat:'Marketing & Contenu', label:'Local SEO',              icon:'pin',          route:'local-seo',          shortcut:'G L' },
   { cat:'Marketing & Contenu', label:'Market Intelligence',    icon:'trending-up',  route:'market-intelligence',shortcut:'' },
   // ── Monitoring & Alertes ──────────────────────────────────────────
   { cat:'Monitoring & Alertes', label:'Monitors',              icon:'wifi',         route:'monitors',           shortcut:'G M' },
-  { cat:'Monitoring & Alertes', label:'Alertes',               icon:'alert',        route:'alerts',             shortcut:'' },
+  { cat:'Monitoring & Alertes', label:'Alertes',               icon:'alert',        route:'alerts-center',      shortcut:'' },
   { cat:'Monitoring & Alertes', label:'Centre d\'alertes',     icon:'alert',        route:'alerts-center',      shortcut:'' },
   // ── Équipe & Admin ────────────────────────────────────────────────
   { cat:'Équipe & Admin', label:'Équipe',                      icon:'users',        route:'team',               shortcut:'G T' },
@@ -1669,10 +1677,10 @@ const CMD_ITEMS = [
   { cat:'Actions', label:'Analyser balises title manquantes',  icon:'search',       route:'audits',             shortcut:'' },
   { cat:'Actions', label:'Voir l\'uptime des monitors',        icon:'activity',     route:'monitors',           shortcut:'' },
   { cat:'Actions', label:'Taux de conversion mobile',          icon:'trending-up',  route:'conversion',         shortcut:'' },
-  { cat:'Actions', label:'Concurrents — nouvelles menaces',    icon:'trending-up',  route:'competitors',        shortcut:'' },
+  { cat:'Actions', label:'Concurrents — nouvelles menaces',    icon:'trending-up',  route:'competitor',         shortcut:'' },
   { cat:'Actions', label:'Optimiser ma fiche Google Business', icon:'pin',          route:'local-seo',          shortcut:'' },
   { cat:'Actions', label:'Générer 3 posts GBP cette semaine',  icon:'pin',          route:'local-seo',          shortcut:'' },
-  { cat:'Actions', label:'Comparer mon score vs concurrents',  icon:'bar-chart',    route:'competitors',        shortcut:'' },
+  { cat:'Actions', label:'Comparer mon score vs concurrents',  icon:'bar-chart',    route:'competitor',         shortcut:'' },
   // ── Assistant IA ──────────────────────────────────────────────────
   { cat:'Assistant IA', label:'Améliorer mon score SEO moyen', icon:'trending-up',  route:'ai', shortcut:'',
     fn: () => { navigate('ai'); setTimeout(() => { const inp = document.getElementById('ai-input'); if(inp){inp.value='Améliorer mon score SEO moyen'; document.getElementById('ai-send')?.click();} }, 400); } },
@@ -1810,7 +1818,7 @@ function _cmdRenderResults() {
         ['Améliorer mon score SEO moyen','Que faire en priorité ?','Analyser les monitors DOWN','Créer un rapport mensuel','Opportunités Local SEO','Plan d\'action 30 jours','Voir les alertes actives','Rapport exécutif du mois']
           .map((s,i) => `<div class="fp-cmd-item" data-idx="${i}"><div class="fp-cmd-item-icon">${svgIcon('zap')}</div><span class="fp-cmd-item-label">${escHtml(s)}</span><span style="font-size:10px;color:var(--fp-text-faint);flex-shrink:0">IA</span></div>`).join('') +
         `<div class="fp-cmd-category">Navigation rapide</div>` +
-        [['Audits SEO','audits'],['Monitors','monitors'],['Local SEO','local-seo'],['Assistant IA','ai'],['Rapports','reports'],['Concurrents','competitors']]
+        [['Audits SEO','audits'],['Monitors','monitors'],['Local SEO','local-seo'],['Assistant IA','ai'],['Rapports','reports'],['Concurrents','competitor']]
           .map(([l,r],i) => `<div class="fp-cmd-item" data-idx="${8+i}"><div class="fp-cmd-item-icon">${svgIcon('activity')}</div><span class="fp-cmd-item-label">${escHtml(l)}</span></div>`).join('');
   } else {
     let gIdx = 0;
@@ -2983,10 +2991,10 @@ function renderOverview() {
     { label:'Conversion',         val:conversionScore,     max:100, color:'#22c55e',  icon:'⚡', trend:'—',         unit:'/100', route:'conversion' },
     { label:'Monitoring',         val:pingOk,              max:100, color:pingOk===100?'#22c55e':'#ef4444', icon:'📡', trend:down>0?'-'+down:'OK', unit:'%', route:'monitors' },
     { label:'Local Visibility',   val:localScore,          max:100, color:'#f59e0b',  icon:'📍', trend:'—',         unit:'%',    route:'local-seo' },
-    { label:'Competitor Pressure',val:competitorPressure,  max:100, color:'#ef4444',  icon:'⚔️', trend:'—',         unit:'/100', route:'competitors' },
-    { label:'Growth Momentum',    val:growthMomentum,      max:100, color:'#8b5cf6',  icon:'🚀', trend:_growthTrend, unit:'/100', route:'overview' },
-    { label:'Revenue Opportunity',val:revenueOpp != null ? Math.min(100,Math.round(revenueOpp/50)) : 0, max:100, color:'#06b6d4', icon:'💰', trend:revenueOpp != null ? (revenueOpp>0?'+':'') + Math.round(revenueOpp/1000)+'k€' : '—', unit:'k€', route:'overview' },
-    { label:'Workspace Stability',val:Math.round((activeMonitors/Math.max(totalMonitors,1))*100), max:100, color:'#22c55e', icon:'🏢', trend:'Stable', unit:'%', route:'overview' },
+    { label:'Competitor Pressure',val:competitorPressure,  max:100, color:'#ef4444',  icon:'⚔️', trend:'—',         unit:'/100', route:'competitor' },
+    { label:'Growth Momentum',    val:growthMomentum,      max:100, color:'#8b5cf6',  icon:'🚀', trend:_growthTrend, unit:'/100', route:'growth' },
+    { label:'Revenue Opportunity',val:revenueOpp != null ? Math.min(100,Math.round(revenueOpp/50)) : 0, max:100, color:'#06b6d4', icon:'💰', trend:revenueOpp != null ? (revenueOpp>0?'+':'') + Math.round(revenueOpp/1000)+'k€' : '—', unit:'k€', route:'conversion' },
+    { label:'Workspace Stability',val:Math.round((activeMonitors/Math.max(totalMonitors,1))*100), max:100, color:'#22c55e', icon:'🏢', trend:'Stable', unit:'%', route:'monitors' },
   ];
 
   const circ30 = 2 * Math.PI * 30;
@@ -3048,7 +3056,7 @@ function renderOverview() {
         .slice(0, 5)
         .map(m => ({
           title: m.title,
-          score: m.business_impact_score || m.priority_score || 80,
+          score: m.business_impact_score || m.priority_score || null,
           roi:   m.estimated_traffic_impact ? `+${m.estimated_traffic_impact} visites/mois` : (m.description || '').slice(0, 50),
           type:  m.category === 'local_seo' ? 'Local SEO' : m.category === 'seo' ? 'SEO' : m.category === 'conversion' ? 'CRO' : 'Technique',
           color: '#22c55e',
@@ -3061,7 +3069,7 @@ function renderOverview() {
     { name:'Audits SEO',      score:avg,    status:avg>70?'ok':'warn', icon:'🔍', issues:avg<70?3:0, color:'#2563EB',  route:'audits' },
     { name:'Monitors',        score:pingOk, status:down===0?'ok':'down', icon:'📡', issues:down, color:'#22c55e', route:'monitors' },
     { name:'Local SEO',       score:localScore||0,       status:localScore>70?'ok':localScore>0?'warn':'no-data', icon:'📍', issues:localScore>0&&localScore<60?2:0, color:'#f59e0b', route:'local-seo' },
-    { name:'Concurrents',     score:competitorPressure||0, status:competitorPressure>0?'ok':'no-data', icon:'⚔️', issues:0, color:'#ef4444', route:'competitors' },
+    { name:'Concurrents',     score:competitorPressure||0, status:competitorPressure>0?'ok':'no-data', icon:'⚔️', issues:0, color:'#ef4444', route:'competitor' },
     { name:'Conversion',      score:conversionScore||0,  status:conversionScore>70?'ok':conversionScore>0?'warn':'no-data', icon:'⚡', issues:conversionScore>0&&conversionScore<60?3:0, color:'#8b5cf6', route:'conversion' },
     { name:'Data Explorer',   score: Math.min(98, 45 + (STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length * 12 + (STATE.reports.length > 0 ? 10 : 0)), status: STATE.connectors?.length > 0 ? 'ok' : 'warn', icon:'📊', issues: STATE.connectors?.length === 0 ? 1 : 0, color:'#06b6d4', route:'data-explorer' },
     { name:'Rapports',        score: STATE.reports.length > 0 ? Math.min(98, 55 + Math.min(40, STATE.reports.length * 6)) : 35, status: STATE.reports.length > 0 ? 'ok' : 'warn', icon:'📄', issues: STATE.reports.length === 0 ? 1 : 0, color:'#2563EB', route:'reports' },
@@ -3114,7 +3122,7 @@ function renderOverview() {
   const quickActions = [
     { label:'Audit SEO',         icon:'🔍', color:'#2563EB', action:"navigate('audits')" },
     { label:'Rapport Exécutif',  icon:'📄', color:'#22c55e', action:"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()" },
-    { label:'Analyser Concurrents', icon:'⚔️', color:'#ef4444', action:"navigate('competitors')" },
+    { label:'Analyser Concurrents', icon:'⚔️', color:'#ef4444', action:"navigate('competitor')" },
     { label:'Nouveau Monitor',   icon:'📡', color:'#f59e0b', action:"openFloatPanel('Nouveau monitor',renderNewMonitorPanel());setupNewMonitorPanel()" },
     { label:'Créer Mission',     icon:'🎯', color:'#8b5cf6', action:"navigate('missions')" },
     { label:'Conversion IA',     icon:'⚡', color:'#06b6d4', action:"navigate('conversion')" },
@@ -3197,11 +3205,12 @@ function renderOverview() {
     <!-- ═══════════════════════════════════════════════════════ -->
     ${isPro
       ? aiBlock(
-          'Votre portefeuille affiche un score global de <strong>' + globalScore + '/100</strong> — en hausse de +7 pts ce mois. ' +
-          (down > 0 ? '<span style="color:#ef4444">⚠ ' + down + ' monitor(s) DOWN — intervention requise.</span> ' : 'Monitoring optimal. ') +
-          'IA recommande 3 actions haute priorité : <strong>répondre aux avis Google</strong> (+12% visibilité locale), ' +
-          '<strong>créer des pages locales ciblées</strong> (+40% trafic estimé), et <strong>corriger le CLS mobile</strong> (+18% conversion). ',
-          ["Voir le plan d\'action", "Créer les missions", "Analyser les concurrents", "Générer rapport exécutif"]
+          'Votre portefeuille affiche un score global de <strong>' + globalScore + '/100</strong>. ' +
+          (down > 0 ? '<span style="color:#ef4444">⚠ ' + down + ' monitor(s) DOWN — intervention requise.</span> ' : (totalMonitors > 0 ? 'Monitoring optimal. ' : '')) +
+          (avg > 0 && avg < 70 ? 'Priorité : corriger les sites sous 65/100 pour améliorer le score moyen. ' : (avg >= 70 ? 'Score portfolio en bonne santé. ' : '')) +
+          (STATE.competitors && STATE.competitors.length > 0 ? 'Analyse concurrentielle disponible pour ' + STATE.competitors.length + ' concurrent(s). ' : '') +
+          (STATE.keywords && STATE.keywords.length > 0 ? STATE.keywords.length + ' mots-clés suivis — consultez les opportunités de croissance.' : 'Ajoutez des mots-clés pour activer le suivi de positionnement.'),
+          [(STATE.competitors&&STATE.competitors.length>0?"Analyser les concurrents":"Ajouter des concurrents"), "Créer les missions", "Générer rapport exécutif", "Voir les alertes"]
         )
       : `<div style="padding:18px 20px;background:linear-gradient(135deg,rgba(37,99,235,0.08),rgba(139,92,246,0.05));border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;gap:14px;align-items:center">
           <div style="font-size:28px">🧠</div>
@@ -3261,7 +3270,7 @@ function renderOverview() {
             </div>`;
           }).join('')}
         </div>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:10px;font-size:11px" onclick="navigate('activity')">Voir toute l\'activité →</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:10px;font-size:11px" onclick="navigate('activity-feed')">Voir toute l\'activité →</button>
       </div>
 
       <!-- WORKSPACE MAP -->
@@ -3297,18 +3306,18 @@ function renderOverview() {
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${opportunities.map(o => `
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all 0.15s" onclick="navigate('audits')" title="${o.title}">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all 0.15s" onclick="navigate('missions')" title="${o.title}">
               <div style="font-size:18px;flex-shrink:0">${o.icon}</div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${escHtml(o.title)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(o.desc)}</div>
               </div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:11px;font-weight:800;color:${o.color}">${o.score}</div>
+                <div style="font-size:11px;font-weight:800;color:${o.color}">${o.score != null ? o.score : '—'}</div>
                 <div style="font-size:9px;color:var(--fp-text-faint)">${o.roi}</div>
               </div>
               <div style="width:36px;flex-shrink:0">
-                <div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${o.score}%;background:${o.color}"></div></div>
+                ${o.score != null ? `<div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${o.score}%;background:${o.color}"></div></div>` : ''}
               </div>
             </div>
           `).join('')}
@@ -6455,7 +6464,14 @@ function renderTeam() {
         <button class="fp-link-btn" onclick="navigateSub('activity')">Voir tout →</button>
       </div>
       <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
-        ${(PREVIEW_MODE ? ACTIVITY_FEED : []).slice(0,6).map(item => {
+        ${(STATE.activityEvents && STATE.activityEvents.length > 0
+            ? STATE.activityEvents.slice(0,6).map(e => {
+                const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
+                const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
+                return { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: e.label||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time:'récemment' };
+              })
+            : (PREVIEW_MODE ? ACTIVITY_FEED : []).slice(0,6)
+          ).map(item => {
           const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
           const c = colors[item.type] || '#2563EB';
           return `<div class="fp-activity-item" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:8px 12px">
@@ -10885,11 +10901,34 @@ async function loadHistoryForUrl(url) {
   }
 }
 
-function navigate(route) {
-  STATE.route = route;
-  STATE.subRoute = null;
-  try { history.replaceState(null, '', '#' + route); } catch(e) { /* sandboxed */ }
-  try { localStorage.setItem('fp-last-route', route); localStorage.removeItem('fp-last-sub'); } catch(e) {}
+// ── Route normalisation ────────────────────────────────────────────────────
+// Maps legacy / invalid aliases to canonical route names.
+// Handles "route/subroute" slash syntax and all alias shortcuts.
+function normalizeRoute(route, subRoute) {
+  if (!route) return { route: 'overview', subRoute: null };
+  // Parse "route/subroute" slash format
+  if (route.includes('/')) {
+    const _parts = route.split('/');
+    route    = _parts[0];
+    subRoute = subRoute || _parts.slice(1).join('/') || null;
+  }
+  // Alias map — canonical target
+  switch (route) {
+    case 'competitors':    route = 'competitor';    break;
+    case 'activity':       route = 'activity-feed'; break;
+    case 'alerts':         route = 'alerts-center'; break;
+    case 'keywords':       route = 'growth'; subRoute = subRoute || 'keywords'; break;
+    case 'content':        route = 'growth';        break;
+  }
+  return { route, subRoute: subRoute || null };
+}
+
+function navigate(route, subRoute) {
+  const _n = normalizeRoute(route, subRoute || null);
+  STATE.route    = _n.route;
+  STATE.subRoute = _n.subRoute;
+  try { history.replaceState(null, '', '#' + STATE.route + (STATE.subRoute ? '/' + STATE.subRoute : '')); } catch(e) { /* sandboxed */ }
+  try { localStorage.setItem('fp-last-route', STATE.route); if (STATE.subRoute) localStorage.setItem('fp-last-sub', STATE.subRoute); else localStorage.removeItem('fp-last-sub'); } catch(e) {}
   document.querySelectorAll('.fp-chart-tooltip').forEach(t => t.remove());
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
@@ -11080,6 +11119,12 @@ function _doRender() {
     case 'automations':      STATE.route = 'settings'; STATE.subRoute = 'automations'; html = renderSettings(); break;
     case 'integrations':     STATE.route = 'settings'; STATE.subRoute = 'integrations'; html = renderSettings(); break;
     case 'addons':           STATE.route = 'billing';  STATE.subRoute = 'addons';       html = renderBilling();  break;
+    // ── Alias cases — redirect invalid / legacy route names ──
+    case 'competitors':      STATE.route = 'competitor';   html = renderCompetitor();   break;
+    case 'activity':         STATE.route = 'activity-feed'; html = renderActivityFeed(); break;
+    case 'alerts':           STATE.route = 'alerts-center'; html = renderAlertsCenter(); break;
+    case 'keywords':         STATE.route = 'growth'; if (!STATE.subRoute) STATE.subRoute = 'keywords'; html = renderGrowth(); break;
+    case 'content':          STATE.route = 'growth';        html = renderGrowth();       break;
     default:               html = renderOverview();
   }
 
@@ -11368,14 +11413,30 @@ function bindSectionEvents() {
       const monitor = STATE.monitors.find(m => m.id === btn.dataset.monitorPinned);
       if (monitor) openMonitorPanel(monitor);
     }));
-    $('#activity-see-all')?.addEventListener('click', () => openFloatPanel('Historique complet', (PREVIEW_MODE ? ACTIVITY_FEED : []).map(item => {
-      const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
-      const c = colors[item.type]||'#2563EB';
-      return `<div style="display:flex;gap:10px;padding:12px;background:var(--fp-inner-card);border-radius:10px;margin-bottom:8px">
-        <div style="width:32px;height:32px;border-radius:10px;background:${c}18;display:flex;align-items:center;justify-content:center">${svgIcon(item.icon).replace('stroke="currentColor"',`stroke="${c}"`)}</div>
-        <div><div style="font-size:13px;font-weight:600;color:var(--fp-text)">${item.title}</div><div style="font-size:12px;color:var(--fp-text-muted)">${item.desc}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Il y a ${item.time}</div></div>
-      </div>`;
-    }).join('')));
+    $('#activity-see-all')?.addEventListener('click', () => {
+      // Use live events first, fallback to PREVIEW_MODE static list only in demo
+      const _liveItems = (STATE.activityEvents && STATE.activityEvents.length > 0)
+        ? STATE.activityEvents.map(e => {
+            const _mins = Math.round((Date.now() - new Date(e.createdAt).getTime()) / 60000);
+            const _t = _mins < 1 ? 'À l\'instant' : _mins < 60 ? _mins + ' min' : _mins < 1440 ? Math.round(_mins/60) + 'h' : Math.round(_mins/1440) + 'j';
+            const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
+            const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
+            return { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: e.label||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
+          })
+        : (PREVIEW_MODE ? ACTIVITY_FEED : []);
+      if (_liveItems.length === 0) {
+        openFloatPanel('Historique complet', '<div style="text-align:center;padding:32px;color:var(--fp-text-faint);font-size:13px">Aucune activité enregistrée pour l\'instant.</div>');
+        return;
+      }
+      openFloatPanel('Historique complet', _liveItems.map(item => {
+        const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
+        const c = colors[item.type]||'#2563EB';
+        return `<div style="display:flex;gap:10px;padding:12px;background:var(--fp-inner-card);border-radius:10px;margin-bottom:8px">
+          <div style="width:32px;height:32px;border-radius:10px;background:${c}18;display:flex;align-items:center;justify-content:center">${svgIcon(item.icon).replace('stroke="currentColor"',`stroke="${c}"`)}</div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--fp-text)">${item.title}</div><div style="font-size:12px;color:var(--fp-text-muted)">${item.desc}</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Il y a ${item.time}</div></div>
+        </div>`;
+      }).join(''));
+    });
     $('#refresh-btn')?.addEventListener('click', () => {
       try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
       showToast('info', 'Actualisation en cours…');
@@ -13070,10 +13131,15 @@ function bindGlobalEvents() {
     if (e.key.toLowerCase()==='e') { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); return; }
   });
 
-  // Hash routing
+  // Hash routing — normalise aliases and sub-routes from URL
   window.addEventListener('hashchange', () => {
     const hash = window.location.hash.slice(1);
-    if (hash && hash !== STATE.route) { STATE.route = hash; STATE.subRoute = null; render(); }
+    if (hash) {
+      const _n = normalizeRoute(hash, null);
+      if (_n.route !== STATE.route || _n.subRoute !== STATE.subRoute) {
+        STATE.route = _n.route; STATE.subRoute = _n.subRoute; render();
+      }
+    }
   });
 }
 
@@ -13135,9 +13201,9 @@ async function init() {
     }
   });
 
-  // Route from hash
+  // Route from hash — normalise aliases and sub-routes from URL
   const hash = window.location.hash.slice(1);
-  if (hash) STATE.route = hash;
+  if (hash) { const _n = normalizeRoute(hash, null); STATE.route = _n.route; STATE.subRoute = _n.subRoute; }
 
   // Render
   render();
@@ -14095,20 +14161,22 @@ function renderOverviewInsights() {
     { type:'info', title:'Opportunités locales détectées', desc:'Créez des pages géolocalisées sur vos zones cibles pour capter du trafic supplémentaire. Consultez la section Local SEO pour les détails.', impact:'Élevé', action:'Voir Local SEO' },
     ...(()=>{ const _upMons=(STATE.monitors||[]).filter(m=>m.uptime>=99).length; const _total=(STATE.monitors||[]).length; return _total>0?[{type:'success',title:'Monitors uptime > 99%',desc:_upMons+' monitor'+((_upMons>1)?'s':'')+' sur '+_total+' ont un uptime supérieur à 99% ce mois. La stabilité de vos sites est excellente.',impact:'Moyen',action:'Voir le rapport SLA'}]:[];})(),
     ...(()=>{ const _noShare=(STATE.reports||[]).filter(r=>!r.shared).length; return _noShare>0?[{type:'info',title:_noShare+' rapport'+((_noShare>1)?'s':'')+' non partagé'+(_noShare>1?'s':''),desc:'Vous avez '+_noShare+' rapport'+(_noShare>1?'s':'')+' ce mois qui n\'ont pas encore été envoyé'+(_noShare>1?'s':'')+" à vos clients. Partagez-les pour montrer votre valeur.",impact:'Moyen',action:'Partager les rapports'}]:[];})(),
-    { type:'purple', title:'Concurrent en progression', desc:(STATE.competitors&&STATE.competitors.length>0?escHtml(STATE.competitors[0].name||'Un concurrent'):'Un concurrent') + ' a amélioré son score cette semaine. Surveillez ses actions et réagissez rapidement.', impact:'Élevé', action:'Analyser le concurrent' },
+    // Gate: only if real competitors exist
+    ...(STATE.competitors && STATE.competitors.length > 0 ? [{ type:'purple', title:'Concurrent en progression', desc:escHtml(STATE.competitors[0].name||'Votre concurrent principal') + ' a amélioré son score cette semaine. Surveillez ses actions et réagissez rapidement.', impact:'Élevé', action:'Analyser le concurrent' }] : []),
     { type:'success', title:'Missions du mois', desc:'Consultez votre tableau de missions pour voir votre progression et vos records.', impact:'Moyen', action:'Voir mes missions' },
-    { type:'info', title:'Nouvelle opportunité mots-clés', desc:'3 nouveaux mots-clés locaux à fort volume détectés sur votre zone. Consultez la section mots-clés pour les détails.', impact:'Élevé', action:'Voir les mots-clés' },
+    // Gate: only if real keywords are tracked
+    ...(STATE.keywords && STATE.keywords.length > 0 ? [{ type:'info', title:STATE.keywords.length + ' mots-clés suivis', desc:STATE.keywords.length + ' mots-clés actifs dans votre portefeuille. Consultez la section Croissance pour les opportunités de contenu.', impact:'Élevé', action:'Voir les mots-clés' }] : []),
     { type:'warning', title:'SSL expire dans 28 jours', desc:'Le certificat SSL de ' + (STATE.monitors&&STATE.monitors.length>0?(STATE.monitors[0].url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''):'votre site') + ' expire bientôt. Renouvelez-le pour éviter une interruption de service.', impact:'Critique', action:'Renouveler maintenant' },
   ];
 
   const _wDays=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
   const _wHist=(STATE.overview?.auditHistory||[]).slice(-7);
   const _wAvg=avgScore()||70;
-  const weeklyData = _wHist.length>=3
+  const weeklyData = _wHist.length>=1
     ? _wHist.map((sc,i)=>({day:_wDays[i%7],score:sc,issues:Math.max(0,Math.round((100-sc)/12)),visitors:null}))
     : (PREVIEW_MODE
         ? [{day:'Lun',score:71,issues:8,visitors:142},{day:'Mar',score:72,issues:7,visitors:165},{day:'Mer',score:73,issues:6,visitors:158},{day:'Jeu',score:73,issues:6,visitors:189},{day:'Ven',score:74,issues:5,visitors:203},{day:'Sam',score:74,issues:5,visitors:98},{day:'Dim',score:74,issues:5,visitors:87}]
-        : _wDays.map(d=>({day:d,score:_wAvg,issues:0,visitors:null})));
+        : []);  // No fabricated days in production
 
   return `
     ${aiBlock('Vos données révèlent <strong>3 axes d\'amélioration prioritaires</strong> ce mois : réponses aux avis Google, optimisation des sites sous 65/100, et création de pages locales. Agir sur ces points peut booster votre score moyen de <strong>+12 points en 30 jours</strong>.',
@@ -14120,7 +14188,13 @@ function renderOverviewInsights() {
         <div class="fp-card-title" style="margin-bottom:0">Tendances de la semaine</div>
         <div style="font-size:11px;color:var(--fp-text-faint)">7 derniers jours</div>
       </div>
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--fp-radius-md);border:1px solid var(--fp-border)">
+      ${weeklyData.length === 0
+        ? `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
+            <div style="font-size:24px;margin-bottom:8px">📊</div>
+            <div style="font-weight:600;margin-bottom:4px">Pas encore d'historique disponible</div>
+            <div style="font-size:11px">Les tendances s'afficheront après votre prochain audit.</div>
+          </div>`
+        : `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--fp-radius-md);border:1px solid var(--fp-border)">
         <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:400px">
           <thead>
             <tr>
@@ -14141,7 +14215,7 @@ function renderOverviewInsights() {
             `).join('')}
           </tbody>
         </table>
-      </div>
+      </div>`}
     </div>
 
     <!-- INSIGHTS GRID -->
@@ -16101,7 +16175,7 @@ function renderLocalSEOCompetitors() {
                   ${c.delta > 0 ? '↑+' + c.delta : c.delta < 0 ? '↓' + c.delta : '→'}
                 </td>
                 <td>${badge(tl[c.threat], tc[c.threat])}</td>
-                <td><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('competitors')">Analyser</button></td>
+                <td><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('competitor')">Analyser</button></td>
               </tr>
             `).join('')}
           </tbody>
@@ -17382,7 +17456,10 @@ function renderGrowthCommandCenter() {
           ${radarChartSvg(radarDims, 168)}
           <div style="display:flex;gap:14px;justify-content:center;margin-top:6px">
             <span style="font-size:10px;color:var(--fp-accent);display:flex;align-items:center;gap:4px"><span style="width:10px;height:2px;background:var(--fp-accent);display:inline-block"></span>Vous</span>
-            <span style="font-size:10px;color:rgba(239,68,68,.8);display:flex;align-items:center;gap:4px"><span style="width:10px;height:2px;background:rgba(239,68,68,.6);display:inline-block"></span>Concurrent #1</span>
+            ${STATE.competitors && STATE.competitors.length > 0
+              ? `<span style="font-size:10px;color:rgba(239,68,68,.8);display:flex;align-items:center;gap:4px"><span style="width:10px;height:2px;background:rgba(239,68,68,.6);display:inline-block"></span>${escHtml(STATE.competitors[0].name||'Concurrent #1')}</span>`
+              : PREVIEW_MODE ? '<span style="font-size:10px;color:rgba(239,68,68,.8);display:flex;align-items:center;gap:4px"><span style="width:10px;height:2px;background:rgba(239,68,68,.6);display:inline-block"></span>Concurrent #1</span>' : ''
+            }
           </div>
         </div>
       </div>
@@ -17445,7 +17522,7 @@ function renderGrowthCommandCenter() {
             '<div style="font-size:10.5px;color:var(--fp-text-muted);margin-top:2px">'+co.kw+'</div>'+
           '</div>'; }).join('') : '<div style="padding:24px 0;text-align:center"><div style="font-size:28px;margin-bottom:8px">🔑</div><div style="font-size:12px;font-weight:600;color:var(--fp-text-soft);margin-bottom:4px">Aucune opportunité disponible</div><div style="font-size:11px;color:var(--fp-text-faint)">Ajoutez des mots-clés suivis pour découvrir vos opportunités de contenu personnalisées.</div></div>'}
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="navigate('growth/keywords')">Gérer les mots-clés →</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="navigate('growth','keywords')">Gérer les mots-clés →</button>
       </div>
     </div>
 
@@ -18485,7 +18562,7 @@ function renderCompetitor() {
                 </div>
               </div>
               <div style="font-size:11px;font-weight:700;color:${dc};flex:1;text-align:right;white-space:nowrap">${ds}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('competitors')">Analyser</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('competitor')">Analyser</button>
             </div>
           </div>`;
         }).join('')}
