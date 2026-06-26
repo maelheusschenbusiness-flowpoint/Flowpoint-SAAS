@@ -1,5 +1,4 @@
-import { Router } from "express";
-import { pool } from "@workspace/db";
+import { Router, Request } from "express";
 import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
@@ -23,10 +22,11 @@ function toPublic(row: Record<string, unknown>) {
 }
 
 // ── GET /competitors ──────────────────────────────────────────────────────────
+// req.orgDb scopes via RLS → only this org's competitors are returned.
 
-router.get("/competitors", withCache(60), async (_req, res) => {
+router.get("/competitors", withCache(60), async (req, res) => {
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `SELECT * FROM competitors ORDER BY domain_rating DESC LIMIT 200`,
     );
     res.json(result.rows.map(toPublic));
@@ -48,12 +48,14 @@ router.post("/competitors", reportRateLimit, async (req, res) => {
   };
   if (!name || !url) { res.status(400).json({ error: "name and url required" }); return; }
 
+  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
+
   try {
     const id     = `comp${Date.now()}`;
-    const result = await pool.query(
-      `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,0,NOW()) RETURNING *`,
-      [id, name, url, Number(domainRating), Number(keywords), Number(traffic), threatLevel || "low"],
+    const result = await req.orgDb(
+      `INSERT INTO competitors (id, name, url, domain_rating, keywords, traffic, threat_level, delta, org_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,NOW()) RETURNING *`,
+      [id, name, url, Number(domainRating), Number(keywords), Number(traffic), threatLevel || "low", orgId],
     );
     store.logActivity({
       type: "alert", label: `Concurrent ajouté : ${name}`,
@@ -96,7 +98,7 @@ router.patch("/competitors/:id", async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `UPDATE competitors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
       [id, ...values],
     );
@@ -109,10 +111,11 @@ router.patch("/competitors/:id", async (req, res) => {
 });
 
 // ── DELETE /competitors/:id ───────────────────────────────────────────────────
+// RLS ensures cross-org deletes are silently blocked.
 
 router.delete("/competitors/:id", async (req, res) => {
   try {
-    await pool.query(`DELETE FROM competitors WHERE id = $1`, [req.params.id]);
+    await req.orgDb(`DELETE FROM competitors WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch { res.json({ ok: true }); }
 });

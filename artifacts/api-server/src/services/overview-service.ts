@@ -58,24 +58,29 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
   try {
     const [audits, auditsPrev, monitors, keywords, missions, ai, leaks, connectors, gbpPosts, competitorsQ] =
       await Promise.allSettled([
-        // Current 30-day audit avg + count
+        // Current 30-day audit avg + count — scoped to this org
         pool.query(
           `SELECT AVG(score) as avg_score, COUNT(*) as count
            FROM audits
-           WHERE created_at > NOW() - INTERVAL '30 days'`
+           WHERE org_id = $1 AND created_at > NOW() - INTERVAL '30 days'`,
+          [orgId]
         ),
-        // Previous 30-60 day period for trend computation
+        // Previous 30-60 day period for trend computation — scoped to this org
         pool.query(
           `SELECT AVG(score) as prev_avg
            FROM audits
-           WHERE created_at BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days'`
+           WHERE org_id = $1
+             AND created_at BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days'`,
+          [orgId]
         ),
         pool.query(
           `SELECT status,
                   AVG(latency) as avg_latency,
                   AVG(uptime)  as avg_uptime
            FROM monitors
-           GROUP BY status`
+           WHERE org_id = $1
+           GROUP BY status`,
+          [orgId]
         ),
         pool.query(
           `SELECT COUNT(*) as total,

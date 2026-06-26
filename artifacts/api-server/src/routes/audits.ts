@@ -37,10 +37,11 @@ function scheduleToPublic(row: Record<string, unknown>) {
 }
 
 // ── GET /audits ───────────────────────────────────────────────────────────────
+// req.orgDb scopes the query to the authenticated org via RLS.
 
-router.get("/audits", async (_req: Request, res: Response) => {
+router.get("/audits", async (req: Request, res: Response) => {
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `SELECT * FROM audits ORDER BY created_at DESC LIMIT 500`,
     );
     res.json(result.rows.map(auditToPublic));
@@ -62,10 +63,10 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
   const dateStr       = new Date().toISOString();
 
   try {
-    await pool.query(
-      `INSERT INTO audits (id, url, score, status, speed, date, issues, origin, created_at)
-       VALUES ($1,$2,0,'processing',0,$3,0,$4,NOW())`,
-      [auditId, normalizedUrl, dateStr, origin],
+    await req.orgDb(
+      `INSERT INTO audits (id, url, score, status, speed, date, issues, origin, org_id, created_at)
+       VALUES ($1,$2,0,'processing',0,$3,0,$4,$5,NOW())`,
+      [auditId, normalizedUrl, dateStr, origin, orgId],
     );
 
     store.logActivity({
@@ -73,7 +74,8 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
       targetId: auditId, targetType: "audit", metadata: { url: normalizedUrl, origin },
     }).catch(() => {});
 
-    // Async PSI analysis — runs after response is sent
+    // Async PSI analysis — runs after response is sent.
+    // Uses pool (superuser) intentionally: background UPDATE by id, not a cross-org read.
     (async () => {
       try {
         const [mobile, desktop] = await Promise.allSettled([
@@ -123,10 +125,11 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
 });
 
 // ── DELETE /audits/:id ────────────────────────────────────────────────────────
+// RLS ensures only the org's own audits can be deleted.
 
 router.delete("/audits/:id", async (req: Request, res: Response) => {
   try {
-    await pool.query(`DELETE FROM audits WHERE id = $1`, [req.params.id]);
+    await req.orgDb(`DELETE FROM audits WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch {
     res.json({ ok: true });
@@ -136,14 +139,14 @@ router.delete("/audits/:id", async (req: Request, res: Response) => {
 // ── GET /audits/history ───────────────────────────────────────────────────────
 
 router.get("/audits/history", async (req: Request, res: Response) => {
-  const url    = req.query.url as string | undefined;
+  const url     = req.query.url as string | undefined;
   const daysRaw = parseInt((req.query.days as string) || "90", 10);
-  const days   = Number.isFinite(daysRaw) ? Math.max(1, Math.min(365, daysRaw)) : 90;
+  const days    = Number.isFinite(daysRaw) ? Math.max(1, Math.min(365, daysRaw)) : 90;
   if (!url) { res.status(400).json({ error: "url required" }); return; }
 
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `SELECT * FROM audits WHERE url = $1 AND date >= $2 ORDER BY date ASC LIMIT 365`,
       [url, cutoff],
     );
@@ -154,16 +157,16 @@ router.get("/audits/history", async (req: Request, res: Response) => {
 });
 
 // ── GET /audits/quick-scan ────────────────────────────────────────────────────
-// Returns the most recent audit for a given URL, or the last audit overall.
+
 router.get("/audits/quick-scan", async (req: Request, res: Response) => {
   const url = req.query.url as string | undefined;
   try {
     const result = url
-      ? await pool.query(
+      ? await req.orgDb(
           `SELECT * FROM audits WHERE url = $1 ORDER BY created_at DESC LIMIT 1`,
           [url],
         )
-      : await pool.query(
+      : await req.orgDb(
           `SELECT * FROM audits ORDER BY created_at DESC LIMIT 1`,
         );
     if (result.rowCount && result.rowCount > 0) {
@@ -178,18 +181,18 @@ router.get("/audits/quick-scan", async (req: Request, res: Response) => {
 
 // ── Schedules ─────────────────────────────────────────────────────────────────
 
-async function listSchedules(_req: Request, res: Response) {
+async function listSchedules(req: Request, res: Response) {
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `SELECT * FROM audit_schedules ORDER BY created_at DESC LIMIT 200`,
     );
     res.json(result.rows.map(scheduleToPublic));
   } catch { res.json([]); }
 }
 
-async function upcomingSchedules(_req: Request, res: Response) {
+async function upcomingSchedules(req: Request, res: Response) {
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `SELECT * FROM audit_schedules WHERE enabled = true ORDER BY next_run ASC LIMIT 3`,
     );
     res.json(result.rows.map(scheduleToPublic));
@@ -205,19 +208,19 @@ async function createSchedule(req: Request, res: Response) {
   const orgId   = (req as Request & { orgId?: string }).orgId ?? "default";
   const nextRun = computeNextRun(frequency);
   try {
-    // Upsert: update if url exists, insert otherwise
-    const existing = await pool.query(
-      `SELECT id FROM audit_schedules WHERE url = $1 AND org_id = $2`, [url, orgId],
+    const existing = await req.orgDb(
+      `SELECT id FROM audit_schedules WHERE url = $1 AND org_id = $2`,
+      [url, orgId],
     );
     let result;
     if (existing.rowCount && existing.rowCount > 0) {
-      result = await pool.query(
+      result = await req.orgDb(
         `UPDATE audit_schedules SET frequency=$1, next_run=$2 WHERE url=$3 AND org_id=$4 RETURNING *`,
         [frequency, nextRun, url, orgId],
       );
     } else {
       const id = `sched${Date.now()}`;
-      result = await pool.query(
+      result = await req.orgDb(
         `INSERT INTO audit_schedules (id, url, frequency, next_run, enabled, org_id, created_at)
          VALUES ($1,$2,$3,$4,true,$5,NOW()) RETURNING *`,
         [id, url, frequency, nextRun, orgId],
@@ -236,7 +239,7 @@ async function patchSchedule(req: Request, res: Response) {
     res.status(400).json({ error: "frequency must be daily, weekly or monthly" }); return;
   }
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `UPDATE audit_schedules SET frequency=$1, next_run=$2 WHERE id=$3 RETURNING *`,
       [frequency, computeNextRun(frequency), req.params.id],
     );
@@ -249,7 +252,7 @@ async function patchSchedule(req: Request, res: Response) {
 
 async function deleteSchedule(req: Request, res: Response) {
   try {
-    await pool.query(`DELETE FROM audit_schedules WHERE id = $1`, [req.params.id]);
+    await req.orgDb(`DELETE FROM audit_schedules WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch { res.json({ ok: true }); }
 }

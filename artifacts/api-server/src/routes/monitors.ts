@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { pool } from "@workspace/db";
+import { pool, withOrgDb } from "@workspace/db";
 import { validateMonitorUrl, isPrivateHost, checkDnsResolution } from "../lib/validateMonitorUrl.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
@@ -35,8 +35,6 @@ function validateAlertPhone(phone: string | undefined): string | null {
 }
 
 // ── DB row → frontend shape ────────────────────────────────────────────────────
-// Column names match the existing Supabase schema (uptime, latency, frequency).
-// The JSON field names match what dashboard.js already expects.
 
 function toPublic(row: Record<string, unknown>) {
   return {
@@ -124,6 +122,7 @@ async function performCheck(url: string): Promise<CheckResult> {
 }
 
 // ── Save check + handle incident transitions ───────────────────────────────────
+// Uses withOrgDb so RLS is enforced: INSERT/UPDATE only affect this org's rows.
 
 async function saveCheckResult(
   monitorId: string,
@@ -135,10 +134,7 @@ async function saveCheckResult(
   const checkedAt = Date.now();
   const newStatus = result.ok ? "up" : "down";
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
+  await withOrgDb(orgId, async (client) => {
     // 1. Insert check record
     await client.query(
       `INSERT INTO monitor_checks (id, monitor_id, org_id, checked_at, ok, latency, status_code, error)
@@ -155,8 +151,8 @@ async function saveCheckResult(
        WHERE monitor_id = $1 AND checked_at > $2`,
       [monitorId, checkedAt - 30 * 24 * 60 * 60 * 1000],
     );
-    const okCount  = Number(uptimeRes.rows[0]?.ok_count ?? 0);
-    const total    = Number(uptimeRes.rows[0]?.total    ?? 1);
+    const okCount   = Number(uptimeRes.rows[0]?.ok_count ?? 0);
+    const total     = Number(uptimeRes.rows[0]?.total    ?? 1);
     const uptimePct = total > 0 ? Math.round((okCount / total) * 1000) / 10 : 100;
 
     // 3. Update monitor row
@@ -169,7 +165,6 @@ async function saveCheckResult(
 
     // 4. Incident transitions
     if (previousStatus === "up" && newStatus === "down") {
-      // UP → DOWN : open a new incident
       const incId = `inc${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
       await client.query(
         `INSERT INTO monitor_incidents (id, monitor_id, org_id, started_at, error)
@@ -177,7 +172,6 @@ async function saveCheckResult(
         [incId, monitorId, orgId, result.error ?? "Service unreachable"],
       );
     } else if (previousStatus === "down" && newStatus === "up") {
-      // DOWN → UP : resolve any open incident
       await client.query(
         `UPDATE monitor_incidents
          SET resolved_at = NOW(),
@@ -186,22 +180,17 @@ async function saveCheckResult(
         [monitorId],
       );
     }
+  });
 
-    await client.query("COMMIT");
-    return newStatus;
-  } catch (e) {
-    await client.query("ROLLBACK");
-    throw e;
-  } finally {
-    client.release();
-  }
+  return newStatus;
 }
 
 // ── GET /monitors ─────────────────────────────────────────────────────────────
+// req.orgDb scopes via RLS → only this org's monitors are returned.
 
-router.get("/monitors", async (_req: Request, res: Response) => {
+router.get("/monitors", async (req: Request, res: Response) => {
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `SELECT * FROM monitors ORDER BY created_at DESC LIMIT 500`,
     );
     res.json(result.rows.map(toPublic));
@@ -219,7 +208,7 @@ router.get("/monitors/:id/checks-summary", async (req: Request, res: Response) =
     const now   = Date.now();
     const since = now - 30 * 24 * 60 * 60 * 1000;
 
-    const result = await pool.query(
+    const result = await req.orgDb(
       `SELECT checked_at, ok FROM monitor_checks WHERE monitor_id = $1 AND checked_at >= $2`,
       [id, since],
     );
@@ -253,7 +242,7 @@ router.get("/monitors/:id/checks", async (req: Request, res: Response) => {
     const days  = Math.min(Number(req.query["days"] ?? 30), 90);
     const since = Date.now() - days * 24 * 60 * 60 * 1000;
 
-    const result = await pool.query(
+    const result = await req.orgDb(
       `SELECT * FROM monitor_checks
        WHERE monitor_id = $1 AND checked_at >= $2
        ORDER BY checked_at DESC LIMIT 10000`,
@@ -278,7 +267,7 @@ router.get("/monitors/:id/checks", async (req: Request, res: Response) => {
 router.get("/monitors/:id/incidents", async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `SELECT * FROM monitor_incidents WHERE monitor_id = $1 ORDER BY started_at DESC LIMIT 50`,
       [id],
     );
@@ -310,7 +299,7 @@ router.post("/monitors", monitorCreateRateLimit, async (req: Request, res: Respo
     const id    = `m${Date.now()}`;
     const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
 
-    await pool.query(
+    await req.orgDb(
       `INSERT INTO monitors
          (id, org_id, name, url, status, uptime, latency,
           frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
@@ -318,7 +307,7 @@ router.post("/monitors", monitorCreateRateLimit, async (req: Request, res: Respo
       [id, orgId, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false, new Date().toISOString()],
     );
 
-    const row = await pool.query(`SELECT * FROM monitors WHERE id = $1`, [id]);
+    const row = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
     store.logActivity({
       type: "monitor", label: `Monitor créé : ${name} (${url})`,
       targetId: id, targetType: "monitor", metadata: { url, name },
@@ -353,13 +342,12 @@ router.patch("/monitors/:id", async (req: Request, res: Response) => {
     if (phoneError) { res.status(400).json({ error: phoneError }); return; }
   }
 
-  // Build parameterised SET clause — $1 is reserved for the WHERE id
   const values: unknown[]    = [];
   const setClauses: string[] = [];
 
   function addField(col: string, val: unknown): void {
     values.push(val);
-    setClauses.push(`${col} = $${values.length + 1}`); // +1 because $1 = id
+    setClauses.push(`${col} = $${values.length + 1}`);
   }
 
   if (body.name       !== undefined) addField("name",        body.name);
@@ -375,7 +363,7 @@ router.patch("/monitors/:id", async (req: Request, res: Response) => {
   setClauses.push("updated_at = NOW()");
 
   try {
-    const result = await pool.query(
+    const result = await req.orgDb(
       `UPDATE monitors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
       [id, ...values],
     );
@@ -392,7 +380,7 @@ router.patch("/monitors/:id", async (req: Request, res: Response) => {
 async function handleCheck(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   try {
-    const monRow = await pool.query(`SELECT * FROM monitors WHERE id = $1`, [id]);
+    const monRow = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
     if (monRow.rowCount === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
 
     const monitor        = monRow.rows[0] as Record<string, unknown>;
@@ -402,7 +390,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
     const result    = await performCheck(monitor["url"] as string);
     const newStatus = await saveCheckResult(id, orgId, previousStatus, result);
 
-    const updated = await pool.query(`SELECT * FROM monitors WHERE id = $1`, [id]);
+    const updated = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
 
     store.logActivity({
       type: "monitor",
@@ -430,7 +418,7 @@ router.post("/monitors/:id/check", handleCheck);
 router.post("/monitors/:id/ping",  handleCheck);
 
 // ── POST /monitors/:id/test-sms ───────────────────────────────────────────────
-// Sends a test SMS alert for a monitor (requires TWILIO or similar — stub OK)
+
 router.post("/monitors/:id/test-sms", async (req: Request, res: Response) => {
   const { phone } = req.body as { phone?: string };
   if (!phone) { res.status(400).json({ error: "phone required" }); return; }
@@ -438,17 +426,18 @@ router.post("/monitors/:id/test-sms", async (req: Request, res: Response) => {
 });
 
 // ── DELETE /monitors/:id ──────────────────────────────────────────────────────
+// RLS ensures cross-org deletes are silently blocked.
 
 router.delete("/monitors/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const existing = await pool.query(`SELECT * FROM monitors WHERE id = $1`, [id]);
+    const existing = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
     if (existing.rowCount === 0) { res.json({ ok: true }); return; }
     const m = existing.rows[0] as Record<string, unknown>;
 
-    await pool.query(`DELETE FROM monitor_checks    WHERE monitor_id = $1`, [id]);
-    await pool.query(`DELETE FROM monitor_incidents WHERE monitor_id = $1`, [id]);
-    await pool.query(`DELETE FROM monitors          WHERE id = $1`,         [id]);
+    await req.orgDb(`DELETE FROM monitor_checks    WHERE monitor_id = $1`, [id]);
+    await req.orgDb(`DELETE FROM monitor_incidents WHERE monitor_id = $1`, [id]);
+    await req.orgDb(`DELETE FROM monitors          WHERE id = $1`,         [id]);
 
     store.logActivity({
       type: "monitor",

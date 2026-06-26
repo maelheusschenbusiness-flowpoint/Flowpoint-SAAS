@@ -453,3 +453,40 @@ export const missionsSchemaRef = {
   missionHistory: "mission_history",
   missionAiLogs: "mission_ai_logs",
 };
+
+// ── RLS-scoped query helper ───────────────────────────────────────────────────
+//
+// Runs `callback` inside a short transaction that:
+//   1. Drops to app_user role  → disables BYPASSRLS so policies are evaluated
+//   2. Sets the app.current_org_id GUC  → all rls_org_isolation policies filter
+//      rows to this org automatically.
+//
+// Usage in route handlers:
+//   const result = await withOrgDb(req.orgId, client => client.query(sql, params));
+//
+// The postgres superuser connection (pool) is still used for background tasks
+// (migrations, async PSI updates) that are not tenant-scoped reads.
+
+import type { PoolClient } from "pg";
+
+export async function withOrgDb<T>(
+  orgId: string,
+  callback: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SET LOCAL ROLE app_user");
+    // SET does not accept $N parameters — escape the value as a SQL literal
+    const safeOrgId = orgId.replace(/'/g, "''");
+    await client.query(`SET LOCAL "app.current_org_id" = '${safeOrgId}'`);
+    const result = await callback(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}

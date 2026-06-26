@@ -11,7 +11,8 @@ import { behavioralOriginAllowlist } from "./routes/behavioral.js";
 import { logger } from "./lib/logger.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { requestId } from "./middlewares/requestId.js";
-import { orgContext } from "./middlewares/orgContext.js";
+import { orgContext }    from "./middlewares/orgContext.js";
+import { dbContext }      from "./middlewares/dbContext.js";
 import { globalRateLimit } from "./middlewares/rateLimiter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -147,6 +148,10 @@ app.use(cookieParser());
 
 // ── 7. Org/User context extraction from JWT or X-Org-Id header ───────────────
 app.use(orgContext);
+
+// ── 7b. Per-request RLS-scoped DB helper (req.orgDb) ─────────────────────────
+// Must run after orgContext so req.orgId is already populated.
+app.use(dbContext);
 
 // ── 8. Rate limiting + API-level security headers ────────────────────────────
 app.use("/api", globalRateLimit);

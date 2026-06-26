@@ -1,4 +1,6 @@
 - [FlowPoint production context](flowpoint-context.md) — Phases 1+2+3 done: UI audit, CRUD 10/10, RLS 66 tables active; read before any session
+- [Supabase RLS migration 012](supabase-rls-migration.md) — 51 tables, migration file written, apply via Supabase SQL Editor (service role bypasses RLS)
+- [API route name map](api-route-name-map.md) — correct paths for settings/local-seo/conversions/analytics; alert-rules valid types; monitors alertEmail constraint
 - [FlowPoint alert rules routing](flowpoint-alert-rules-routing.md) — renderAlertRules() via settings+navigateSub('alerts'), NOT alerts-center; two separate components
 - [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
 - [FlowPoint isDemoMode pattern](flowpoint-demodmode.md) — all Math.random fake data must be isDemoMode()-gated; import from services/mock-data.js
