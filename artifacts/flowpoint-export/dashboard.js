@@ -13284,6 +13284,45 @@ async function init() {
   window.toggleLayoutEditMode = toggleLayoutEditMode;
   window.fpCardMove = fpCardMove;
   window.fpCardToggleWide = fpCardToggleWide;
+  // Report panel functions used by inline onclick handlers
+  window.renderNewReportPanel = renderNewReportPanel;
+  window.setupNewReportPanel = setupNewReportPanel;
+  // Keyword modal — defined here because <script> tags inside innerHTML do NOT execute in browsers
+  window._showAddKeyword = function() {
+    const m = document.getElementById('fp-kw-modal');
+    if (m) m.style.display = 'flex';
+  };
+  // Local maps / heatmap modal — same reason
+  window._showCreateHeatmapModal = function() {
+    const m = document.getElementById('fp-heatmap-modal');
+    if (m) m.style.display = 'flex';
+  };
+  // Competitor add panel — extracted from inline onclick to avoid nested-quote HTML breakage
+  window.FP_showAddCompetitor = function() {
+    openFloatPanel('Ajouter un concurrent',
+      "<div style='padding:16px;display:flex;flex-direction:column;gap:10px'>" +
+      "<input id='fp-comp-name' class='fp-input' placeholder='Nom du concurrent (ex: Restaurant Le Soleil)' style='width:100%;box-sizing:border-box'/>" +
+      "<input id='fp-comp-url' class='fp-input' placeholder='URL (ex: https://restaurant-lesoleil.com)' style='width:100%;box-sizing:border-box'/>" +
+      "<select id='fp-comp-threat' class='fp-select' style='width:100%'>" +
+        "<option value='low'>Faible risque</option>" +
+        "<option value='medium'>\u00C0 surveiller</option>" +
+        "<option value='high'>Menace forte</option>" +
+        "<option value='critical'>Menace critique</option>" +
+      "</select>" +
+      "<button class='fp-btn fp-btn-primary' style='width:100%' onclick='window.FP_submitAddCompetitor()'>Ajouter</button>" +
+      "</div>"
+    );
+  };
+  window.FP_submitAddCompetitor = async function() {
+    const n = document.getElementById('fp-comp-name').value.trim();
+    const u = document.getElementById('fp-comp-url').value.trim();
+    const t = document.getElementById('fp-comp-threat') ? document.getElementById('fp-comp-threat').value : 'medium';
+    if (!n || !u) { showToast('error', 'Nom et URL requis'); return; }
+    if (typeof window.FP_COMPETITORS_API === 'undefined') { showToast('error', 'API non disponible'); return; }
+    const r = await window.FP_COMPETITORS_API.create({ name: n, url: u, threatLevel: t, domainRating: 0, keywords: 0, traffic: 0 });
+    if (r && r.id) { showToast('success', 'Concurrent ' + n + ' ajout\u00E9 !'); if (typeof closeFloatPanel === 'function') closeFloatPanel(); }
+    else showToast('error', "Erreur lors de l'ajout");
+  };
 
   // Apply initial sidebar collapsed state (desktop only — on mobile the sidebar is a fixed drawer)
   if (STATE.sidebarCollapsed && window.innerWidth > 768) {
@@ -18427,7 +18466,7 @@ function renderCompetitor() {
         <div class="fp-section-sub">Centre de commandement IA · Intelligence concurrentielle en temps réel</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Ajouter concurrent', 'fp-btn fp-btn-ghost fp-btn-sm', 'plus', `onclick="openFloatPanel('Ajouter un concurrent',\`<div style='padding:16px;display:flex;flex-direction:column;gap:10px'><input id='fp-comp-name' class='fp-input' placeholder='Nom du concurrent (ex: Restaurant Le Soleil)' style='width:100%;box-sizing:border-box'/><input id='fp-comp-url' class='fp-input' placeholder='URL (ex: https://restaurant-lesoleil.com)' style='width:100%;box-sizing:border-box'/><select id='fp-comp-threat' class='fp-select' style='width:100%'><option value='low'>Faible risque</option><option value='medium'>À surveiller</option><option value='high'>Menace forte</option><option value='critical'>Menace critique</option></select><button class='fp-btn fp-btn-primary' style='width:100%' onclick='(async()=>{const n=document.getElementById(\"fp-comp-name\").value.trim();const u=document.getElementById(\"fp-comp-url\").value.trim();const t=document.getElementById(\"fp-comp-threat\").value;if(!n||!u){showToast(\"error\",\"Nom et URL requis\");return;}if(typeof window.FP_COMPETITORS_API===\"undefined\"){showToast(\"error\",\"API non disponible\");return;}const r=await window.FP_COMPETITORS_API.create({name:n,url:u,threatLevel:t,domainRating:0,keywords:0,traffic:0});if(r&&r.id){showToast(\"success\",\"Concurrent \"+n+\" ajouté !\");closeFloatPanel&&closeFloatPanel();}else showToast(\"error\",\"Erreur lors de l\\\"ajout\");})()'>Ajouter</button></div>\`)"`  )}
+        ${btn('Ajouter concurrent', 'fp-btn fp-btn-ghost fp-btn-sm', 'plus', 'onclick="window.FP_showAddCompetitor()"')}
         ${btn('Rapport complet', 'fp-btn fp-btn-primary fp-btn-sm', 'download', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
       </div>
     </div>

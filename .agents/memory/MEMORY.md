@@ -1,4 +1,6 @@
-- [FlowPoint production context](flowpoint-context.md) — Phases 1+2+3 done: UI audit, CRUD 10/10, RLS 66 tables active; read before any session
+- [FlowPoint production context](flowpoint-context.md) — Phases 1+2+3 done: UI audit 18 pages + 6 modals, CRUD 10/10, RLS 66 tables; read before any session
+- [dashboard.js script-tag-in-innerHTML pitfall](dashboard-js-script-tag-pitfall.md) — <script> in innerHTML never executes; all window.* fns must be in IIFE init block; broken onclick fix too
+- [FlowPoint SPA route and sub-route map](dashboard-spa-routes.md) — correct navigate()/navigateSub() routes; heatmap under sub=map not zones; missions calendar via STATE.missionView
 - [Supabase RLS migration 012](supabase-rls-migration.md) — 51 tables, migration file written, apply via Supabase SQL Editor (service role bypasses RLS)
 - [API route name map](api-route-name-map.md) — correct paths for settings/local-seo/conversions/analytics; alert-rules valid types; monitors alertEmail constraint
 - [FlowPoint alert rules routing](flowpoint-alert-rules-routing.md) — renderAlertRules() via settings+navigateSub('alerts'), NOT alerts-center; two separate components
