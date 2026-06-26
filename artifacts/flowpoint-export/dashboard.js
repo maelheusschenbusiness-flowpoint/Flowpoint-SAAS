@@ -44,6 +44,7 @@ const PREV_MONTH = (function(){var d=new Date();d.setMonth(d.getMonth()-1);retur
 // ─────────────────────────────────────────────────────────────────
 const _prevParam = new URLSearchParams(window.location.search).get('preview');
 const PREVIEW_MODE = _prevParam === '1' || _prevParam === 'true';
+const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 
 // ─────────────────────────────────────────────────────────────────
 // STATE
@@ -13279,6 +13280,7 @@ async function init() {
   window.closeFloatPanel = closeFloatPanel;
   window.navigate = navigate;
   window.navigateSub = navigateSub;
+  window.apiAction = apiAction;
   window.togglePushNotifications = togglePushNotifications;
   window.openFloatPanel = openFloatPanel;
   window.toggleLayoutEditMode = toggleLayoutEditMode;
@@ -13287,6 +13289,9 @@ async function init() {
   // Report panel functions used by inline onclick handlers
   window.renderNewReportPanel = renderNewReportPanel;
   window.setupNewReportPanel = setupNewReportPanel;
+  // Calendar event panel — exposed so Playwright/external callers can open panel directly
+  window.renderNewCalEventPanel = renderNewCalEventPanel;
+  window.setupNewCalEventPanel = setupNewCalEventPanel;
   // Keyword modal — defined here because <script> tags inside innerHTML do NOT execute in browsers
   window._showAddKeyword = function() {
     const m = document.getElementById('fp-kw-modal');
@@ -14316,7 +14321,7 @@ function renderOverviewQuickWins() {
   const qw = _liveMissionsQW && _liveMissionsQW.length > 0
     ? _liveMissionsQW
     : (PREVIEW_MODE ? _previewQW : []);
-  const totalGain = qw.filter(q=>!q.done).reduce((s,q)=>s+parseInt(q.gain),0);
+  const totalGain = qw.filter(q=>!q.done).reduce((s,q)=>s+(parseInt(q.gain)||0),0);
   const totalTime = qw.filter(q=>!q.done).length;
   return `
     ${aiBlock(`Ces <strong>${qw.length} actions rapides</strong> peuvent vous faire gagner <strong>+${totalGain} points</strong> de score moyen collectif. La durée totale est de moins de 3 heures — commencez par les plus rapides.`,
@@ -14359,9 +14364,9 @@ function renderOverviewQuickWins() {
 }
 
 function renderOverviewChecklist() {
-  const done = STATE.checklist.filter(c => c.done).length;
-  const total = STATE.checklist.length;
-  const pct = Math.round((done / total) * 100);
+  const done = (STATE.checklist || []).filter(c => c.done).length;
+  const total = (STATE.checklist || []).length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const _clsLS = (()=>{ try { return JSON.parse(localStorage.getItem('fp_checklist_extra')||'{}'); } catch(e){ return {}; } })();
   const _clItem = (id, defaultDone) => _clsLS[id] !== undefined ? _clsLS[id] : (PREVIEW_MODE ? defaultDone : false);
@@ -23673,10 +23678,21 @@ function renderLocalSEOGBP() {
             </div>
           `).join('')}
         </div>
-        ` : `<div style="height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.5;margin-bottom:14px">
-          <div style="font-size:28px">🤖</div>
-          <div style="font-size:12px;color:var(--fp-text-muted)">Générateur IA disponible en Ultra</div>
+        ` : `<div style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.15);border-radius:8px;margin-bottom:10px">
+            <span style="font-size:18px">🤖</span>
+            <span style="font-size:11px;color:var(--fp-text-muted)">Suggestions IA disponibles en plan Ultra</span>
+          </div>
         </div>`}
+        <!-- DRAFT POST COMPOSER — always visible, all plans -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:8px">✏️ Rédiger un post</div>
+          <textarea id="gbp-post-draft" placeholder="Rédigez votre post GBP ici…" style="width:100%;min-height:80px;padding:10px;border-radius:8px;border:1px solid var(--fp-border);background:var(--fp-bg-inset);color:var(--fp-text);font-size:12px;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="gbp-post-save" onclick="(function(){var ta=document.getElementById('gbp-post-draft');var text=ta?ta.value.trim():'';if(!text){showToast('error','Rédigez votre post avant de sauvegarder');return;}apiAction('POST','/api/gbp-posts',{content:text,status:'draft'}).then(r=>{if(r&&r.id){showToast('info','Post sauvegardé — connectez GBP pour le publier sur Google');ta.value='';}else showToast('error','Erreur de sauvegarde');}).catch(()=>showToast('error','Erreur de sauvegarde'));})()">Enregistrer le brouillon</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(){var ta=document.getElementById('gbp-post-draft');if(ta)ta.value='';})()">Effacer</button>
+          </div>
+        </div>
         <!-- Q&A MONITORING -->
         <div class="fp-card-title" style="font-size:12px;margin-bottom:10px">❓ Questions & réponses (Q&A)</div>
         <div style="display:flex;flex-direction:column;gap:6px">

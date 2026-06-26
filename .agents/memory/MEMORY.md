@@ -23,3 +23,4 @@
 - [Python template literal escaping pitfall](python-js-template-escaping.md) — Ne jamais écrire \` ou \$ dans des strings Python pour du JS: \` dans fichier = char invalide en expression JS, \$ bloque l'interpolation. Utiliser concaténation string JS ou remplacement ligne-à-ligne.
 - [Stripe live price IDs](stripe-price-ids.md) — 44 price IDs hardcoded in plans.ts; env vars optional override
 - [RLS migration 010 execution notes](rls-migration-notes.md) — Replit PG has no anon/authenticated roles; must create them first; DROP POLICY IF EXISTS produces NOTICEs that kill executeSql; fix: SET client_min_messages=WARNING; crm_field_mappings needed org_id added separately
+- [FlowPoint RLS migration](flowpoint-rls-migration.md) — 145 tables RLS enabled, 481 policies, postgres bypasses RLS
