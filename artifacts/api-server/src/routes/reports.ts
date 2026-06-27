@@ -1,13 +1,18 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { db, reportsTable, auditsTable } from "@workspace/db";
-import { pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { streamReportPdf } from "../services/pdf.js";
 import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 
 const router = Router();
+
+type OrgReq = Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
+
+function getOrg(req: Request): string {
+  return (req as OrgReq).orgId ?? "default";
+}
 
 const STRIP_HTML = /(<([^>]+)>)/gi;
 const CTRL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
@@ -72,7 +77,7 @@ router.post("/reports", reportRateLimit, async (req, res) => {
   res.status(201).json(report);
 });
 
-router.get("/reports/:id/download", async (req, res) => {
+router.get("/reports/:id/download", async (req: Request, res: Response) => {
   const [report] = await db.select().from(reportsTable).where(eq(reportsTable.id, req.params.id));
   if (!report) { res.status(404).json({ error: "Report not found" }); return; }
   const audit = report.auditId
@@ -84,21 +89,17 @@ router.get("/reports/:id/download", async (req, res) => {
   let monitors: Array<{ name: string; url?: string; status?: string; uptime?: number | null }> = [];
   let missions: Array<{ title: string; status?: string; priority?: string; dueDate?: string | null }> = [];
   try {
-    const mc = await pool.connect();
-    try {
-      const mr = await mc.query(`SELECT name, url, status, uptime FROM monitors ORDER BY name LIMIT 20`);
-      monitors = mr.rows;
-      const misr = await mc.query(`SELECT title, status, priority, due_date FROM missions ORDER BY created_at DESC LIMIT 20`);
-      missions = misr.rows.map(r => ({ title: r.title, status: r.status, priority: r.priority, dueDate: r.due_date }));
-    } finally {
-      mc.release();
-    }
+    const db2 = (req as OrgReq).orgDb;
+    const mr = await db2(`SELECT name, url, status, uptime FROM monitors ORDER BY name LIMIT 20`);
+    monitors = mr.rows as typeof monitors;
+    const misr = await db2(`SELECT title, status, priority, due_date FROM missions ORDER BY created_at DESC LIMIT 20`);
+    missions = misr.rows.map(r => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
   } catch { /* skip if tables not available */ }
 
   await streamReportPdf(res, report, audit, meetingNotes, monitors, missions);
 });
 
-router.post("/reports/:id/share", async (req, res) => {
+router.post("/reports/:id/share", async (req: Request, res: Response) => {
   try {
     const [report] = await db.select().from(reportsTable).where(eq(reportsTable.id, req.params.id));
     if (!report) { res.status(404).json({ error: "Report not found" }); return; }
@@ -138,25 +139,20 @@ router.post("/reports/:id/share", async (req, res) => {
 
     const { meetingNotesJson: _omit, ...publicReport } = report;
 
-    const client = await pool.connect();
-    try {
-      await client.query(
-        `INSERT INTO share_tokens (token, report_id, report_json, branding_json, audits_json, meeting_notes_json, views, created_at, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8)`,
-        [
-          token,
-          report.id,
-          JSON.stringify(publicReport),
-          JSON.stringify(brandingObj),
-          JSON.stringify(audits),
-          JSON.stringify([]),
-          createdAt,
-          expiresAt,
-        ]
-      );
-    } finally {
-      client.release();
-    }
+    await (req as OrgReq).orgDb(
+      `INSERT INTO share_tokens (token, report_id, report_json, branding_json, audits_json, meeting_notes_json, views, created_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8)`,
+      [
+        token,
+        report.id,
+        JSON.stringify(publicReport),
+        JSON.stringify(brandingObj),
+        JSON.stringify(audits),
+        JSON.stringify([]),
+        createdAt,
+        expiresAt,
+      ]
+    );
 
     await db.update(reportsTable).set({ shared: true }).where(eq(reportsTable.id, report.id));
 
@@ -174,19 +170,18 @@ router.post("/reports/:id/share", async (req, res) => {
   }
 });
 
-router.get("/reports/:id/shares", async (req, res) => {
-  const client = await pool.connect();
+router.get("/reports/:id/shares", async (req: Request, res: Response) => {
   try {
-    const r = await client.query(
+    const r = await (req as OrgReq).orgDb(
       `SELECT token, report_id, report_json, branding_json, audits_json, created_at, expires_at, views FROM share_tokens WHERE report_id = $1`,
       [req.params.id]
     );
     const tokens = r.rows.map((row) => ({
       token: row.token,
       reportId: row.report_id,
-      report: JSON.parse(row.report_json || "{}"),
-      branding: JSON.parse(row.branding_json || "{}"),
-      audits: JSON.parse(row.audits_json || "[]"),
+      report: JSON.parse(row.report_json as string || "{}"),
+      branding: JSON.parse(row.branding_json as string || "{}"),
+      audits: JSON.parse(row.audits_json as string || "[]"),
       createdAt: row.created_at,
       expiresAt: row.expires_at,
       views: row.views,
@@ -194,33 +189,27 @@ router.get("/reports/:id/shares", async (req, res) => {
     res.json(tokens);
   } catch {
     res.json([]);
-  } finally {
-    client.release();
   }
 });
 
-router.delete("/reports/:id/shares/:token", async (req, res) => {
-  const client = await pool.connect();
+router.delete("/reports/:id/shares/:token", async (req: Request, res: Response) => {
   try {
-    const r = await client.query(
+    const r = await (req as OrgReq).orgDb(
       `SELECT token FROM share_tokens WHERE token = $1 AND report_id = $2`,
       [req.params.token, req.params.id]
     );
     if (!r.rows[0]) { res.status(404).json({ error: "Share token not found" }); return; }
-    await client.query(`DELETE FROM share_tokens WHERE token = $1`, [req.params.token]);
+    await (req as OrgReq).orgDb(`DELETE FROM share_tokens WHERE token = $1`, [req.params.token]);
     res.json({ ok: true });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to delete share token" });
-  } finally {
-    client.release();
   }
 });
 
 // ── GET /reports/clients ─────────────────────────────────────────────────────
-// White-label client management — returns list stored as a report with type 'client'
-router.get("/reports/clients", async (_req, res) => {
+router.get("/reports/clients", async (req: Request, res: Response) => {
   try {
-    const result = await pool.query(
+    const result = await (req as OrgReq).orgDb(
       `SELECT * FROM reports WHERE type = 'client' ORDER BY date DESC LIMIT 200`,
     );
     res.json(result.rows);
@@ -266,16 +255,13 @@ router.post("/reports/send-invoice", async (req, res) => {
   res.json({ ok: true, invoiceId: invoiceId ?? null, sent: true });
 });
 
-router.delete("/reports/:id", async (req, res) => {
-  const client = await pool.connect();
+router.delete("/reports/:id", async (req: Request, res: Response) => {
   try {
-    await client.query(`DELETE FROM share_tokens WHERE report_id = $1`, [req.params.id]);
+    await (req as OrgReq).orgDb(`DELETE FROM share_tokens WHERE report_id = $1`, [req.params.id]);
     await db.delete(reportsTable).where(eq(reportsTable.id, req.params.id));
     res.json({ ok: true });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to delete report" });
-  } finally {
-    client.release();
   }
 });
 

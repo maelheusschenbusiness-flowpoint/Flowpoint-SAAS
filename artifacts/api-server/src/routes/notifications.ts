@@ -1,14 +1,19 @@
-import { Router } from "express";
-import { pool } from "@workspace/db";
+import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
 
+type OrgReq = Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
+
+function getOrg(req: Request): string {
+  return (req as OrgReq).orgId ?? "default";
+}
+
 // ── GET /notifications ────────────────────────────────────────────────────────
 
-router.get("/notifications", async (_req, res) => {
+router.get("/notifications", async (req: Request, res: Response) => {
   try {
-    const result = await pool.query(
+    const result = await (req as OrgReq).orgDb(
       `SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50`,
     );
     res.json(result.rows.map(n => ({
@@ -28,7 +33,7 @@ router.get("/notifications", async (_req, res) => {
 
 // ── POST /notifications ───────────────────────────────────────────────────────
 
-router.post("/notifications", async (req, res) => {
+router.post("/notifications", async (req: Request, res: Response) => {
   const { type = "info", title, message, link } = req.body as {
     type?: string; title?: string; message?: string; link?: string;
   };
@@ -36,11 +41,12 @@ router.post("/notifications", async (req, res) => {
     res.status(400).json({ error: "title and message required" }); return;
   }
   try {
-    const id     = `notif${Date.now()}`;
-    const result = await pool.query(
-      `INSERT INTO notifications (id, type, title, message, link, read, created_at)
-       VALUES ($1,$2,$3,$4,$5,false,NOW()) RETURNING *`,
-      [id, type, title, message, link ?? null],
+    const id  = `notif${Date.now()}`;
+    const org = getOrg(req);
+    const result = await (req as OrgReq).orgDb(
+      `INSERT INTO notifications (id, org_id, type, title, message, link, read, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,false,NOW()) RETURNING *`,
+      [id, org, type, title, message, link ?? null],
     );
     const n = result.rows[0];
     res.status(201).json({
@@ -55,9 +61,9 @@ router.post("/notifications", async (req, res) => {
 
 // ── PATCH /notifications/:id/read ─────────────────────────────────────────────
 
-router.patch("/notifications/:id/read", async (req, res) => {
+router.patch("/notifications/:id/read", async (req: Request, res: Response) => {
   try {
-    const result = await pool.query(
+    const result = await (req as OrgReq).orgDb(
       `UPDATE notifications SET read = true WHERE id = $1 RETURNING *`,
       [req.params.id],
     );
@@ -73,9 +79,9 @@ router.patch("/notifications/:id/read", async (req, res) => {
 
 // ── PATCH /notifications/read-all ────────────────────────────────────────────
 
-router.patch("/notifications/read-all", async (_req, res) => {
+router.patch("/notifications/read-all", async (req: Request, res: Response) => {
   try {
-    await pool.query(`UPDATE notifications SET read = true`);
+    await (req as OrgReq).orgDb(`UPDATE notifications SET read = true`);
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "[notifications] PATCH read-all failed");
@@ -85,9 +91,9 @@ router.patch("/notifications/read-all", async (_req, res) => {
 
 // ── DELETE /notifications/:id ─────────────────────────────────────────────────
 
-router.delete("/notifications/:id", async (req, res) => {
+router.delete("/notifications/:id", async (req: Request, res: Response) => {
   try {
-    await pool.query(`DELETE FROM notifications WHERE id = $1`, [req.params.id]);
+    await (req as OrgReq).orgDb(`DELETE FROM notifications WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch { res.json({ ok: true }); }
 });

@@ -27,12 +27,14 @@ export async function trackKeyword(orgId: string, keyword: string, opts: {
 }): Promise<string> {
   const client = await pool.connect();
   try {
+    const loc    = opts.location ?? "France";
+    const device = opts.device   ?? "desktop";
     const id = `kw_${orgId}_${keyword.replace(/\s+/g, "_").toLowerCase().slice(0, 40)}_${Date.now()}`;
     await client.query(
-      `INSERT INTO tracked_keywords (id, org_id, keyword, target_url, location, device, intent, tag, active, created_at)
+      `INSERT INTO tracked_keywords (id, org_id, keyword, url, location, device, intent, tag, active, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,NOW())
-       ON CONFLICT (org_id, keyword) DO UPDATE SET active=true, updated_at=NOW()`,
-      [id, orgId, keyword, opts.targetUrl ?? null, opts.location ?? "France", opts.device ?? "desktop", opts.intent ?? null, opts.tag ?? null]
+       ON CONFLICT (org_id, keyword, device, location) DO UPDATE SET active=true, updated_at=NOW()`,
+      [id, orgId, keyword, opts.targetUrl ?? null, loc, device, opts.intent ?? null, opts.tag ?? null]
     );
     return id;
   } finally {

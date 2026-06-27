@@ -2,7 +2,6 @@ import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
 import { db, keywordsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { pool } from "@workspace/db";
 import { store } from "../services/store.js";
 import { isDemoMode } from "../services/mock-data.js";
 import {
@@ -14,8 +13,10 @@ import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
 
+type OrgReq = import("express").Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
+
 function getOrg(req: import("express").Request): string {
-  return (req as unknown as { orgId?: string }).orgId ?? "default";
+  return (req as OrgReq).orgId ?? "default";
 }
 function getPlan(req: import("express").Request): string {
   return ((req as unknown as { me?: { plan?: string } }).me?.plan) ?? "Pro";
@@ -36,7 +37,6 @@ const SEED: Array<typeof keywordsTable.$inferInsert> = [
 router.get("/keywords", withCache(60), async (req, res) => {
   const orgId = getOrg(req);
   const { filter, cluster, intent, device, sortBy = "position" } = req.query as Record<string,string>;
-  const client = await pool.connect();
   try {
     let query = `SELECT * FROM tracked_keywords WHERE org_id = $1 AND active = true`;
     const params: unknown[] = [orgId];
@@ -54,14 +54,13 @@ router.get("/keywords", withCache(60), async (req, res) => {
     else if (sortBy === "volatility") query += ` ORDER BY volatility DESC`;
     else if (sortBy === "created")    query += ` ORDER BY created_at DESC`;
     else                              query += ` ORDER BY current_position ASC NULLS LAST`;
-    const kwRes = await client.query(query, params);
+    const kwRes = await (req as OrgReq).orgDb(query, params);
     if (kwRes.rows.length === 0) {
-      // In production: return a clean empty state — never inject mock keywords.
       if (!isDemoMode()) {
         res.json({ keywords: [], total: 0, hasData: false, source: "empty" });
         return;
       }
-      // Demo/dev: seed legacy mock keywords so the UI is populated for demos.
+      // Demo/dev: seed legacy mock keywords
       const existing = await db.select().from(keywordsTable).limit(1);
       if (existing.length === 0) {
         await db.insert(keywordsTable).values(SEED).onConflictDoNothing();
@@ -75,7 +74,7 @@ router.get("/keywords", withCache(60), async (req, res) => {
       return;
     }
     res.json({ keywords: kwRes.rows, total: kwRes.rows.length, source: "tracked" });
-  } catch { res.json({ keywords: [], total: 0, source: "empty" }); } finally { client.release(); }
+  } catch { res.json({ keywords: [], total: 0, source: "empty" }); }
 });
 
 // GET /api/keywords/stats
@@ -91,60 +90,56 @@ router.get("/keywords/stats", async (req, res) => {
 router.get("/keywords/opportunities", async (req, res) => {
   const orgId = getOrg(req);
   const { type, limit: lim = "20" } = req.query as Record<string,string>;
-  const client = await pool.connect();
   try {
     let query = `SELECT * FROM keyword_opportunities WHERE org_id = $1`;
     const params: unknown[] = [orgId];
     if (type) { params.push(type); query += ` AND type = $${params.length}`; }
     query += ` ORDER BY opportunity_score DESC LIMIT $${params.length + 1}`;
     params.push(parseInt(lim, 10));
-    const r = await client.query(query, params);
+    const r = await (req as OrgReq).orgDb(query, params);
     res.json({ opportunities: r.rows, count: r.rows.length });
-  } catch { res.json({ opportunities: [], count: 0 }); } finally { client.release(); }
+  } catch { res.json({ opportunities: [], count: 0 }); }
 });
 
 // GET /api/keywords/clusters
 router.get("/keywords/clusters", async (req, res) => {
   const orgId = getOrg(req);
-  const client = await pool.connect();
   try {
-    const r = await client.query(
+    const r = await (req as OrgReq).orgDb(
       `SELECT kc.*, COALESCE(COUNT(tk.id),0)::int as kw_count_live
        FROM keyword_clusters kc
        LEFT JOIN tracked_keywords tk ON tk.cluster_id = kc.id AND tk.active = true
        WHERE kc.org_id = $1 GROUP BY kc.id ORDER BY kc.created_at DESC`, [orgId]);
     res.json({ clusters: r.rows, count: r.rows.length });
-  } catch { res.json({ clusters: [], count: 0 }); } finally { client.release(); }
+  } catch { res.json({ clusters: [], count: 0 }); }
 });
 
 // GET /api/keywords/alerts
 router.get("/keywords/alerts", async (req, res) => {
   const orgId = getOrg(req);
   const { unread_only } = req.query as Record<string,string>;
-  const client = await pool.connect();
   try {
     let query = `SELECT * FROM ranking_alerts WHERE org_id = $1`;
     const params: unknown[] = [orgId];
     if (unread_only === "true") query += ` AND read = false`;
     query += ` ORDER BY triggered_at DESC LIMIT 50`;
-    const r = await client.query(query, params);
+    const r = await (req as OrgReq).orgDb(query, params);
     res.json({ alerts: r.rows, count: r.rows.length });
-  } catch { res.json({ alerts: [], count: 0 }); } finally { client.release(); }
+  } catch { res.json({ alerts: [], count: 0 }); }
 });
 
 // GET /api/keywords/competitor-rankings
 router.get("/keywords/competitor-rankings", async (req, res) => {
   const orgId = getOrg(req);
   const { domain } = req.query as Record<string,string>;
-  const client = await pool.connect();
   try {
     let query = `SELECT * FROM competitor_rankings WHERE org_id = $1`;
     const params: unknown[] = [orgId];
     if (domain) { params.push(domain); query += ` AND competitor_domain = $${params.length}`; }
     query += ` ORDER BY checked_at DESC LIMIT 100`;
-    const r = await client.query(query, params);
+    const r = await (req as OrgReq).orgDb(query, params);
     res.json({ rankings: r.rows, count: r.rows.length });
-  } finally { client.release(); }
+  } catch { res.json({ rankings: [], count: 0 }); }
 });
 
 // GET /api/keywords/ai-recommendations
@@ -173,7 +168,7 @@ router.post("/keywords/track", async (req, res) => {
   const { keyword, url, device, location, language, tag } = req.body as Record<string,string>;
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
   try {
-    const tracked = await trackKeyword(orgId, plan, keyword, { url, device, location, language, tag });
+    const tracked = await trackKeyword(orgId, keyword, { targetUrl: url, device, location, tag });
     res.status(201).json(tracked);
   } catch (err) {
     const msg = safeErrMsg(err);
@@ -211,11 +206,10 @@ router.post("/keywords/opportunities/generate", async (req, res) => {
 
 // PATCH /api/keywords/alerts/:id/read
 router.patch("/keywords/alerts/:id/read", async (req, res) => {
-  const client = await pool.connect();
   try {
-    await client.query(`UPDATE ranking_alerts SET read = true WHERE id = $1`, [req.params.id]);
+    await (req as OrgReq).orgDb(`UPDATE ranking_alerts SET read = true WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
-  } finally { client.release(); }
+  } catch { res.json({ ok: true }); }
 });
 
 // POST /api/keywords (legacy)
@@ -237,9 +231,8 @@ router.post("/keywords", async (req, res) => {
 // PATCH /api/keywords/:id
 router.patch("/keywords/:id", async (req, res) => {
   const orgId = getOrg(req);
-  const client = await pool.connect();
   try {
-    const exists = await client.query(
+    const exists = await (req as OrgReq).orgDb(
       `SELECT id FROM tracked_keywords WHERE id = $1 AND org_id = $2`, [req.params.id, orgId]);
     if (exists.rows.length > 0) {
       const { tag, cluster_id, active } = req.body as { tag?: string; cluster_id?: string; active?: boolean };
@@ -249,8 +242,8 @@ router.patch("/keywords/:id", async (req, res) => {
       if (cluster_id !== undefined) { params.push(cluster_id); updates.push(`cluster_id = $${params.length}`); }
       if (active !== undefined)     { params.push(active);     updates.push(`active = $${params.length}`); }
       params.push(req.params.id);
-      await client.query(`UPDATE tracked_keywords SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
-      const updated = await client.query(`SELECT * FROM tracked_keywords WHERE id = $1`, [req.params.id]);
+      await (req as OrgReq).orgDb(`UPDATE tracked_keywords SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
+      const updated = await (req as OrgReq).orgDb(`SELECT * FROM tracked_keywords WHERE id = $1 AND org_id = $2`, [req.params.id, orgId]);
       res.json(updated.rows[0]);
     } else {
       const [kw] = await db.update(keywordsTable).set(req.body).where(eq(keywordsTable.id, req.params.id)).returning();
@@ -259,15 +252,14 @@ router.patch("/keywords/:id", async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ error: safeErrMsg(err) });
-  } finally { client.release(); }
+  }
 });
 
 // DELETE /api/keywords/:id
 router.delete("/keywords/:id", async (req, res) => {
   const orgId = getOrg(req);
-  const client = await pool.connect();
   try {
-    const deleted = await client.query(
+    const deleted = await (req as OrgReq).orgDb(
       `UPDATE tracked_keywords SET active = false, updated_at = now() WHERE id = $1 AND org_id = $2 RETURNING keyword`,
       [req.params.id, orgId]);
     if (deleted.rows.length > 0) {
@@ -276,7 +268,7 @@ router.delete("/keywords/:id", async (req, res) => {
       await db.delete(keywordsTable).where(eq(keywordsTable.id, req.params.id));
     }
     res.json({ ok: true });
-  } finally { client.release(); }
+  } catch { res.json({ ok: true }); }
 });
 
 export default router;

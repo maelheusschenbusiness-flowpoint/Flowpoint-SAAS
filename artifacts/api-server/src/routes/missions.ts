@@ -1,17 +1,22 @@
 import { Router, Request, Response } from "express";
-import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 import { runMissionEngine, getMissionsStats } from "../services/mission-engine.js";
 
 const router = Router();
 
+type OrgReq = Request & { orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>; orgId?: string };
+
 function uid(): string {
   return `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function orgId(req: Request): string {
-  return (req as Request & { orgId?: string }).orgId || "default";
+  return (req as OrgReq).orgId || "default";
+}
+
+function orgDb(req: Request) {
+  return (req as OrgReq).orgDb.bind(req);
 }
 
 function rowToMission(row: Record<string, unknown>) {
@@ -52,11 +57,11 @@ function rowToMission(row: Record<string, unknown>) {
 }
 
 async function logHistory(
-  client: Awaited<ReturnType<typeof pool.connect>>,
+  db: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>,
   missionId: string, org: string, action: string,
   fromStatus: string | null, toStatus: string | null
 ): Promise<void> {
-  await client.query(
+  await db(
     `INSERT INTO mission_history (id, mission_id, org_id, action, from_status, to_status, created_at)
      VALUES ($1,$2,$3,$4,$5,$6,NOW())`,
     [`mh_${Date.now()}`, missionId, org, action, fromStatus, toStatus]
@@ -65,8 +70,8 @@ async function logHistory(
 
 // GET /missions
 router.get("/missions", async (req: Request, res: Response) => {
-  const client = await pool.connect();
   try {
+    const db = orgDb(req);
     const org = orgId(req);
     const { status, category, priority, quick_win, limit = "100", offset = "0" } = req.query as Record<string, string>;
 
@@ -82,13 +87,11 @@ router.get("/missions", async (req: Request, res: Response) => {
     query += ` ORDER BY priority_score DESC, created_at DESC LIMIT $${p++} OFFSET $${p++}`;
     params.push(parseInt(limit) || 100, parseInt(offset) || 0);
 
-    const result = await client.query(query, params);
+    const result = await db(query, params);
     res.json(result.rows.map(rowToMission));
   } catch (err) {
     logger.error({ err }, "[Missions] GET /missions error");
     res.json([]);
-  } finally {
-    client.release();
   }
 });
 
@@ -104,9 +107,8 @@ router.get("/missions/stats", async (req: Request, res: Response) => {
 
 // GET /missions/quick-wins
 router.get("/missions/quick-wins", async (req: Request, res: Response) => {
-  const client = await pool.connect();
   try {
-    const result = await client.query(
+    const result = await orgDb(req)(
       `SELECT * FROM missions WHERE org_id = $1 AND ai_quick_win = true AND status = 'todo'
        ORDER BY priority_score DESC LIMIT 5`,
       [orgId(req)]
@@ -114,16 +116,13 @@ router.get("/missions/quick-wins", async (req: Request, res: Response) => {
     res.json(result.rows.map(rowToMission));
   } catch {
     res.json([]);
-  } finally {
-    client.release();
   }
 });
 
 // GET /missions/roadmap
 router.get("/missions/roadmap", async (req: Request, res: Response) => {
-  const client = await pool.connect();
   try {
-    const result = await client.query(
+    const result = await orgDb(req)(
       `SELECT * FROM missions WHERE org_id = $1 AND status NOT IN ('done','dismissed','stale')
        ORDER BY due_date ASC NULLS LAST, priority_score DESC LIMIT 50`,
       [orgId(req)]
@@ -132,38 +131,32 @@ router.get("/missions/roadmap", async (req: Request, res: Response) => {
     const week = new Date(Date.now() + 7 * 86400000);
     const month = new Date(Date.now() + 30 * 86400000);
     res.json({
-      thisWeek:  missions.filter(m => m.dueDate && new Date(m.dueDate) <= week),
-      thisMonth: missions.filter(m => m.dueDate && new Date(m.dueDate) > week && new Date(m.dueDate) <= month),
-      later:     missions.filter(m => !m.dueDate || new Date(m.dueDate) > month),
+      thisWeek:  missions.filter(m => m.dueDate && new Date(m.dueDate as string) <= week),
+      thisMonth: missions.filter(m => m.dueDate && new Date(m.dueDate as string) > week && new Date(m.dueDate as string) <= month),
+      later:     missions.filter(m => !m.dueDate || new Date(m.dueDate as string) > month),
     });
   } catch {
     res.json({ thisWeek: [], thisMonth: [], later: [] });
-  } finally {
-    client.release();
   }
 });
 
 // GET /missions/logs
 router.get("/missions/logs", async (req: Request, res: Response) => {
-  const client = await pool.connect();
   try {
-    const result = await client.query(
+    const result = await orgDb(req)(
       `SELECT * FROM mission_ai_logs WHERE org_id = $1 ORDER BY created_at DESC LIMIT 20`,
       [orgId(req)]
     );
     res.json(result.rows);
   } catch {
     res.json([]);
-  } finally {
-    client.release();
   }
 });
 
 // GET /missions/:id
 router.get("/missions/:id", async (req: Request, res: Response) => {
-  const client = await pool.connect();
   try {
-    const result = await client.query(
+    const result = await orgDb(req)(
       `SELECT m.*,
         (SELECT json_agg(h ORDER BY h.created_at DESC) FROM mission_history h WHERE h.mission_id = m.id) as history
        FROM missions m WHERE m.id = $1 AND m.org_id = $2`,
@@ -171,10 +164,8 @@ router.get("/missions/:id", async (req: Request, res: Response) => {
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Mission not found" }); return; }
     res.json(rowToMission(result.rows[0]));
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Database error" });
-  } finally {
-    client.release();
   }
 });
 
@@ -191,8 +182,8 @@ router.post("/missions/generate", async (req: Request, res: Response) => {
 
 // POST /missions — create manual mission
 router.post("/missions", async (req: Request, res: Response) => {
-  const client = await pool.connect();
   try {
+    const db = orgDb(req);
     const org = orgId(req);
     const {
       title, description, category = "seo", type = "seo", status = "todo",
@@ -205,7 +196,7 @@ router.post("/missions", async (req: Request, res: Response) => {
     const id = uid();
     const pScore = Number(priorityScore) || ({ critical: 90, high: 75, medium: 50, low: 25 }[(priority as string)] ?? 50);
 
-    await client.query(`
+    await db(`
       INSERT INTO missions (
         id, org_id, title, description, category, type, priority, priority_score,
         status, impact, effort, steps, due_date, source_type, created_at, updated_at, last_refreshed_at
@@ -213,10 +204,10 @@ router.post("/missions", async (req: Request, res: Response) => {
     `, [id, org, title, description || null, category, type, priority, pScore, status, impact, effort,
         JSON.stringify(steps || []), (dueDate as string) || null]);
 
-    const row = await client.query(`SELECT * FROM missions WHERE id = $1`, [id]);
+    const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
     const mission = rowToMission(row.rows[0]);
 
-    await logHistory(client, id, org, "created", null, status as string);
+    await logHistory(db, id, org, "created", null, status as string);
     await store.logActivity({
       type: "report", label: `Mission créée : ${title}`,
       targetId: id, targetType: "mission",
@@ -227,19 +218,17 @@ router.post("/missions", async (req: Request, res: Response) => {
   } catch (err) {
     logger.error({ err }, "[Missions] POST error");
     res.status(500).json({ error: "Database error" });
-  } finally {
-    client.release();
   }
 });
 
 // PATCH /missions/:id
 router.patch("/missions/:id", async (req: Request, res: Response) => {
-  const client = await pool.connect();
   try {
+    const db = orgDb(req);
     const org = orgId(req);
     const { id } = req.params;
 
-    const existing = await client.query(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
+    const existing = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
     if (!existing.rows[0]) { res.status(404).json({ error: "Mission not found" }); return; }
     const prev = existing.rows[0];
 
@@ -248,11 +237,11 @@ router.patch("/missions/:id", async (req: Request, res: Response) => {
       steps, dueDate, priorityScore,
     } = req.body as Record<string, unknown>;
 
-    const newStatus = (status as string) || prev.status;
+    const newStatus = (status as string) || (prev.status as string);
     const isNowDone      = newStatus === "done"      && prev.status !== "done";
     const isNowDismissed = newStatus === "dismissed" && prev.status !== "dismissed";
 
-    await client.query(`
+    await db(`
       UPDATE missions SET
         title        = COALESCE($1, title),
         description  = COALESCE($2, description),
@@ -278,11 +267,11 @@ router.patch("/missions/:id", async (req: Request, res: Response) => {
       id, org,
     ]);
 
-    const row = await client.query(`SELECT * FROM missions WHERE id = $1`, [id]);
+    const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
     const mission = rowToMission(row.rows[0]);
 
     if (newStatus !== prev.status) {
-      await logHistory(client, id, org, "status_changed", prev.status, newStatus);
+      await logHistory(db, id, org, "status_changed", prev.status as string, newStatus);
       if (isNowDone) {
         await store.logActivity({
           type: "report", label: `Mission accomplie : ${prev.title}`,
@@ -296,24 +285,22 @@ router.patch("/missions/:id", async (req: Request, res: Response) => {
   } catch (err) {
     logger.error({ err }, "[Missions] PATCH error");
     res.status(500).json({ error: "Database error" });
-  } finally {
-    client.release();
   }
 });
 
 // DELETE /missions/:id
 router.delete("/missions/:id", async (req: Request, res: Response) => {
-  const client = await pool.connect();
   try {
+    const db = orgDb(req);
     const org = orgId(req);
-    const existing = await client.query(
+    const existing = await db(
       `SELECT title, category FROM missions WHERE id = $1 AND org_id = $2`,
       [req.params.id, org]
     );
     if (!existing.rows[0]) { res.status(404).json({ error: "Mission not found" }); return; }
 
-    await client.query(`DELETE FROM missions WHERE id = $1 AND org_id = $2`, [req.params.id, org]);
-    await client.query(`DELETE FROM mission_history WHERE mission_id = $1`, [req.params.id]);
+    await db(`DELETE FROM missions WHERE id = $1 AND org_id = $2`, [req.params.id, org]);
+    await db(`DELETE FROM mission_history WHERE mission_id = $1`, [req.params.id]);
 
     await store.logActivity({
       type: "report", label: `Mission supprimée : ${existing.rows[0].title}`,
@@ -324,17 +311,15 @@ router.delete("/missions/:id", async (req: Request, res: Response) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Database error" });
-  } finally {
-    client.release();
   }
 });
 
 // PATCH /missions/:id/steps/:stepId
 router.patch("/missions/:id/steps/:stepId", async (req: Request, res: Response) => {
-  const client = await pool.connect();
   try {
+    const db = orgDb(req);
     const org = orgId(req);
-    const row = await client.query(
+    const row = await db(
       `SELECT steps FROM missions WHERE id = $1 AND org_id = $2`,
       [req.params.id, org]
     );
@@ -346,15 +331,13 @@ router.patch("/missions/:id/steps/:stepId", async (req: Request, res: Response) 
     if (req.body.done !== undefined) step.done = Boolean(req.body.done);
     if (req.body.title) step.title = req.body.title;
 
-    await client.query(
-      `UPDATE missions SET steps = $1::jsonb, updated_at = NOW() WHERE id = $2`,
-      [JSON.stringify(steps), req.params.id]
+    await db(
+      `UPDATE missions SET steps = $1::jsonb, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
+      [JSON.stringify(steps), req.params.id, org]
     );
     res.json({ ok: true, steps });
   } catch (err) {
     res.status(500).json({ error: "Database error" });
-  } finally {
-    client.release();
   }
 });
 

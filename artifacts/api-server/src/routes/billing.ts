@@ -461,7 +461,7 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
   let teamMembersUsed: number | null = null;
 
   try {
-    const r = await pool.query(
+    const r = await req.orgDb(
       `SELECT COUNT(*) FROM reports WHERE org_id = $1 AND created_at > date_trunc('month', now())`,
       [orgId]
     );
@@ -469,7 +469,7 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
   } catch { /* reports table may not exist yet */ }
 
   try {
-    const r = await pool.query(
+    const r = await req.orgDb(
       `SELECT COUNT(*) FROM team_members WHERE org_id = $1`,
       [orgId]
     );
@@ -631,7 +631,6 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
 
   try {
     const { upsertOrgSettings } = await import("../services/org-settings.js");
-    const { pool } = await import("@workspace/db");
     const orgId = "default";
 
     switch (event.type) {
@@ -742,17 +741,15 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         logger.debug({ type: event.type }, "[Webhook] Unhandled Stripe event type");
     }
 
-    // Log raw event to DB for audit trail
+    // Log raw event to DB for audit trail (uses superuser pool — webhook is called by Stripe, not org-user)
     try {
-      const client = await pool.connect();
-      try {
-        await client.query(
-          `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,now())
-           ON CONFLICT DO NOTHING`,
-          [orgId, event.type, 0, "eur", store.me.plan, JSON.stringify({ eventId: event.id })]
-        );
-      } finally { client.release(); }
+      const { pool: rawPool } = await import("@workspace/db");
+      await rawPool.query(
+        `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,now())
+         ON CONFLICT DO NOTHING`,
+        [orgId, event.type, 0, "eur", store.me.plan, JSON.stringify({ eventId: event.id })]
+      );
     } catch { /* non-fatal */ }
 
   } catch (err) {
