@@ -18,3 +18,9 @@ id = "qMvFtads3bec0xf5MmlI1"
 uri = "file://flowpoint-dashboard-export.zip"
 type = "unspecified"
 title = "FlowPoint Dashboard — Frontend + Backend complets"
+
+[[outputs]]
+id = "mEdehkMQbYGYli_qGB2Id"
+uri = "file://ARCHITECTURE.md"
+type = "text"
+title = "FlowPoint — Documentation Technique Complète"
