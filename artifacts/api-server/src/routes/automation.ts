@@ -1,13 +1,26 @@
 import { Router, type Request, type Response } from "express";
-import { getWorkflowsData, executeWorkflow, ensureDefaultWorkflows } from "../services/automation-service.js";
-import { db, automationWorkflowsTable, workflowRunsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { getWorkflowsData, executeWorkflow } from "../services/automation-service.js";
 import { store } from "../services/store.js";
 
 const router = Router();
 
-router.get("/automation/workflows", async (_req: Request, res: Response) => {
+type OrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgId?: string;
+};
+const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
+const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+router.get("/automation/workflows", async (req: Request, res: Response) => {
   try {
+    const r = await db(req)(
+      `SELECT * FROM automation_workflows WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`,
+      [org(req)]
+    );
+    if (r.rows.length > 0) {
+      res.json({ workflows: r.rows, runs: [], stats: { totalRuns: 0, successRate: 100, avgDuration: 0 } });
+      return;
+    }
     const data = await getWorkflowsData();
     res.json(data);
   } catch {
@@ -20,21 +33,14 @@ router.post("/automation/workflows", async (req: Request, res: Response) => {
   if (!name || !triggerType || !actions) {
     res.status(400).json({ error: "name, triggerType, actions required" }); return;
   }
+  const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
-    const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    await db.insert(automationWorkflowsTable).values({
-      id,
-      orgId: "default",
-      name,
-      icon: icon ?? "⚡",
-      description,
-      triggerType,
-      triggerConfig: triggerConfig ?? {},
-      actions,
-      enabled: true,
-      runsCount: 0,
-      category: category ?? "general",
-    });
+    await db(req)(
+      `INSERT INTO automation_workflows (id, org_id, name, icon, description, trigger_type, trigger_config, actions, enabled, runs_count, category)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,0,$9)`,
+      [id, org(req), name, icon ?? "⚡", description ?? null, triggerType,
+       JSON.stringify(triggerConfig ?? {}), JSON.stringify(actions), category ?? "general"]
+    );
     res.status(201).json({ ok: true, id });
   } catch {
     res.status(500).json({ error: "Failed to create workflow" });
@@ -42,15 +48,21 @@ router.post("/automation/workflows", async (req: Request, res: Response) => {
 });
 
 router.patch("/automation/workflows/:id", async (req: Request, res: Response) => {
-  const { id } = req.params;
   const { enabled, name, triggerConfig, actions } = req.body ?? {};
+  const setClauses: string[] = ["updated_at=now()"];
+  const params: unknown[] = [];
+
+  if (enabled  !== undefined) { params.push(enabled);                   setClauses.push(`enabled=$${params.length}`); }
+  if (name)                   { params.push(name);                      setClauses.push(`name=$${params.length}`); }
+  if (triggerConfig)          { params.push(JSON.stringify(triggerConfig)); setClauses.push(`trigger_config=$${params.length}`); }
+  if (actions)                { params.push(JSON.stringify(actions));   setClauses.push(`actions=$${params.length}`); }
+
+  params.push(req.params.id, org(req));
   try {
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (enabled !== undefined) updates.enabled = enabled;
-    if (name) updates.name = name;
-    if (triggerConfig) updates.triggerConfig = triggerConfig;
-    if (actions) updates.actions = actions;
-    await db.update(automationWorkflowsTable).set(updates).where(eq(automationWorkflowsTable.id, id));
+    await db(req)(
+      `UPDATE automation_workflows SET ${setClauses.join(",")} WHERE id=$${params.length - 1} AND org_id=$${params.length}`,
+      params
+    );
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to update workflow" });
@@ -70,32 +82,25 @@ router.post("/automation/workflows/:id/run", async (req: Request, res: Response)
 });
 
 router.delete("/automation/workflows/:id", async (req: Request, res: Response) => {
-  const { id } = req.params;
   try {
-    await db.delete(automationWorkflowsTable).where(eq(automationWorkflowsTable.id, id));
+    await db(req)(`DELETE FROM automation_workflows WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to delete workflow" });
   }
 });
 
-router.get("/automation/runs", async (_req: Request, res: Response) => {
+router.get("/automation/runs", async (req: Request, res: Response) => {
   try {
-    const { pool } = await import("@workspace/db");
-    const client = await pool.connect();
-    try {
-      const result = await client.query(
-        `SELECT id, workflow_id, status, started_at, ended_at, duration_ms,
-                steps_completed, steps_failed, error, output, metadata
-         FROM workflow_runs
-         ORDER BY started_at DESC
-         LIMIT 50`
-      );
-      res.json({ runs: result.rows });
-    } finally {
-      client.release();
-    }
-  } catch (err) {
+    const r = await db(req)(
+      `SELECT id, workflow_id, org_id, status, started_at, completed_at, error, output
+       FROM workflow_runs
+       WHERE org_id = $1
+       ORDER BY started_at DESC LIMIT 50`,
+      [org(req)]
+    );
+    res.json({ runs: r.rows });
+  } catch {
     res.status(500).json({ error: "Failed to fetch runs" });
   }
 });

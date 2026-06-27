@@ -79,6 +79,14 @@ export async function initAutomationTables(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow_id ON workflow_runs(workflow_id);
       CREATE INDEX IF NOT EXISTS idx_automation_runs_org ON automation_runs(org_id);
     `);
+    // Ensure all columns exist on workflow_runs (table may predate schema changes)
+    await client.query(`ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS org_id      TEXT      NOT NULL DEFAULT 'default'`);
+    await client.query(`ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS status      TEXT      NOT NULL DEFAULT 'pending'`);
+    await client.query(`ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS started_at  TIMESTAMP DEFAULT NOW()`);
+    await client.query(`ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP`);
+    await client.query(`ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS error       TEXT`);
+    await client.query(`ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS output      JSONB`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_workflow_runs_org ON workflow_runs(org_id)`);
     logger.info("Automation tables initialized");
   } catch (err) {
     logger.error("Failed to init automation tables", { err });

@@ -2,13 +2,16 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { PLAN_LIMITS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
-import { pool } from "@workspace/db";
 
 const router = Router();
 
+type OrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgId?: string;
+};
+const orgDb = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
 // ── GET /api/me ───────────────────────────────────────────────────────────────
-// Returns org-level settings from DB, merged with session-level identity.
-// Falls back to in-memory store.me when the DB row doesn't exist yet.
 router.get("/me", async (req: Request, res: Response): Promise<void> => {
   res.setHeader("Cache-Control", "no-store, no-cache");
 
@@ -21,7 +24,6 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       const plan   = dbData.plan.toLowerCase();
       const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
 
-      // Use session email prefix as firstName fallback if DB field is empty
       const firstName = dbData.firstName ||
         (req.orgContext?.email?.split("@")[0] ?? store.me.firstName);
 
@@ -56,44 +58,27 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
     // Non-fatal — fall through to in-memory store
   }
 
-  // Fall back to in-memory singleton (first run before DB row exists)
   const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
   res.json({ ...store.me, email: req.orgContext?.email ?? "", lastName: "", limits });
 });
 
 // ── PATCH /api/me ─────────────────────────────────────────────────────────────
-// Updates profile, org info or plan — persists to DB and syncs in-memory store.
 router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   const {
     firstName, lastName, orgName, plan,
     website, timezone, address, city, postalCode, country,
   } = req.body as {
-    firstName?:  string;
-    lastName?:   string;
-    orgName?:    string;
-    plan?:       string;
-    website?:    string;
-    timezone?:   string;
-    address?:    string;
-    city?:       string;
-    postalCode?: string;
-    country?:    string;
+    firstName?:  string; lastName?:   string; orgName?:    string; plan?:       string;
+    website?:    string; timezone?:   string; address?:    string;
+    city?:       string; postalCode?: string; country?:    string;
   };
   const orgId = req.orgContext?.orgId ?? "default";
 
-  if (typeof firstName === "string" && firstName.trim()) {
-    store.me.firstName = firstName.trim();
-  }
-  if (typeof lastName === "string") {
-    store.me.lastName = lastName.trim();
-  }
-  if (typeof orgName === "string" && orgName.trim()) {
-    store.me.org = { ...store.me.org, name: orgName.trim() };
-  }
-  if (typeof website === "string") {
-    store.me.org = { ...store.me.org, website: website.trim() };
-  }
-  if (typeof timezone === "string" && timezone.trim()) {
+  if (typeof firstName === "string" && firstName.trim()) store.me.firstName = firstName.trim();
+  if (typeof lastName  === "string") store.me.lastName = lastName.trim();
+  if (typeof orgName   === "string" && orgName.trim()) store.me.org = { ...store.me.org, name: orgName.trim() };
+  if (typeof website   === "string") store.me.org = { ...store.me.org, website: website.trim() };
+  if (typeof timezone  === "string" && timezone.trim()) {
     store.me.org = { ...store.me.org, timezone: timezone.trim() };
     if (store.settings) store.settings.timezone = timezone.trim();
   }
@@ -101,7 +86,6 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     store.broadcastPlanUpdate(plan.toLowerCase());
   }
 
-  // Persist to DB
   try {
     await upsertOrgSettings(orgId, {
       firstName:   store.me.firstName,
@@ -109,10 +93,10 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
       orgName:     store.me.org?.name ?? (typeof orgName === "string" ? orgName.trim() : undefined),
       plan:        store.me.plan,
       website:     typeof website === "string" ? website.trim() : (store.me.org?.website ?? undefined),
-      address:     typeof address === "string" ? address.trim() : undefined,
-      city:        typeof city === "string" ? city.trim() : undefined,
+      address:     typeof address    === "string" ? address.trim()    : undefined,
+      city:        typeof city       === "string" ? city.trim()       : undefined,
       postalCode:  typeof postalCode === "string" ? postalCode.trim() : undefined,
-      country:     typeof country === "string" ? country.trim() : undefined,
+      country:     typeof country    === "string" ? country.trim()    : undefined,
       subscriptionStatus: store.me.subscriptionStatus,
       trialEndsAt: store.me.trialEndsAt ?? null,
       stripeCustomerId: store.me.stripeCustomerId ?? "",
@@ -120,7 +104,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
       usage:       store.me.usage,
     });
   } catch {
-    // Non-fatal: in-memory state was already updated, DB sync will retry on next save
+    // Non-fatal
   }
 
   const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
@@ -128,24 +112,20 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
 });
 
 // ── PUT /api/me/addons ────────────────────────────────────────────────────────
-// Saves addon selections server-side (persists to DB, survives page refresh).
 router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
   const orgId  = req.orgContext?.orgId ?? "default";
   const body   = req.body as Partial<typeof store.me.addons>;
 
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    res.status(400).json({ ok: false, error: "Invalid addons payload — expected an object" });
-    return;
+    res.status(400).json({ ok: false, error: "Invalid addons payload — expected an object" }); return;
   }
 
-  // Merge only recognised keys with strict type checks
-  if (typeof body.whiteLabel     === "boolean") store.me.addons.whiteLabel     = body.whiteLabel;
+  if (typeof body.whiteLabel      === "boolean") store.me.addons.whiteLabel      = body.whiteLabel;
   if (typeof body.prioritySupport === "boolean") store.me.addons.prioritySupport = body.prioritySupport;
-  if (typeof body.customDomain   === "boolean") store.me.addons.customDomain   = body.customDomain;
-  if (typeof body.extraSeats     === "number"  && body.extraSeats     >= 0) store.me.addons.extraSeats     = Math.floor(body.extraSeats);
-  if (typeof body.monitorsPack50 === "number"  && body.monitorsPack50 >= 0) store.me.addons.monitorsPack50 = Math.floor(body.monitorsPack50);
+  if (typeof body.customDomain    === "boolean") store.me.addons.customDomain    = body.customDomain;
+  if (typeof body.extraSeats      === "number" && body.extraSeats     >= 0) store.me.addons.extraSeats     = Math.floor(body.extraSeats);
+  if (typeof body.monitorsPack50  === "number" && body.monitorsPack50 >= 0) store.me.addons.monitorsPack50 = Math.floor(body.monitorsPack50);
 
-  // Persist to DB
   try {
     await upsertOrgSettings(orgId, {
       firstName:   store.me.firstName,
@@ -158,8 +138,7 @@ router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
       usage:       store.me.usage,
     });
   } catch {
-    res.status(500).json({ ok: false, error: "Failed to persist addons — try again" });
-    return;
+    res.status(500).json({ ok: false, error: "Failed to persist addons — try again" }); return;
   }
 
   const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
@@ -167,12 +146,10 @@ router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
 });
 
 // ── GET /api/me/prefs ─────────────────────────────────────────────────────────
-// Returns cross-device user preferences (streak, pinned, checklist, settings).
 router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
   const orgId = req.orgContext?.orgId ?? "default";
-  const client = await pool.connect();
   try {
-    const r = await client.query(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const r = await orgDb(req)(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
     if (r.rows[0]) {
       res.json(r.rows[0]);
     } else {
@@ -180,39 +157,34 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
     }
   } catch {
     res.json({ streak: 0, pinned: {}, checklist: null, settings: null });
-  } finally {
-    client.release();
   }
 });
 
 // ── PATCH /api/me/prefs ───────────────────────────────────────────────────────
-// Upserts cross-device user preferences (streak, pinned, checklist, settings).
 router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => {
   const orgId = req.orgContext?.orgId ?? "default";
   const { streak, pinned, checklist, settings } = req.body as {
-    streak?: number;
-    pinned?: Record<string, boolean>;
-    checklist?: unknown;
-    settings?: Record<string, unknown>;
+    streak?: number; pinned?: Record<string, boolean>; checklist?: unknown; settings?: Record<string, unknown>;
   };
-  const client = await pool.connect();
   try {
-    await client.query(
+    await orgDb(req)(
       `INSERT INTO user_prefs (org_id, streak, pinned, checklist, settings, updated_at)
-       VALUES ($1, COALESCE($2, 0), COALESCE($3::jsonb, '{}'::jsonb), $4, $5, now())
+       VALUES ($1, COALESCE($2,0), COALESCE($3::jsonb,'{}'), $4, $5, now())
        ON CONFLICT (org_id) DO UPDATE SET
-         streak     = COALESCE($2, user_prefs.streak),
-         pinned     = COALESCE($3::jsonb, user_prefs.pinned),
-         checklist  = COALESCE($4, user_prefs.checklist),
-         settings   = COALESCE($5, user_prefs.settings),
+         streak    = COALESCE($2, user_prefs.streak),
+         pinned    = COALESCE($3::jsonb, user_prefs.pinned),
+         checklist = COALESCE($4, user_prefs.checklist),
+         settings  = COALESCE($5, user_prefs.settings),
          updated_at = now()`,
-      [orgId, streak ?? null, pinned ? JSON.stringify(pinned) : null, checklist ? JSON.stringify(checklist) : null, settings ? JSON.stringify(settings) : null]
+      [orgId,
+       streak    ?? null,
+       pinned    ? JSON.stringify(pinned)    : null,
+       checklist ? JSON.stringify(checklist) : null,
+       settings  ? JSON.stringify(settings)  : null]
     );
     res.json({ ok: true });
   } catch {
     res.json({ ok: false });
-  } finally {
-    client.release();
   }
 });
 

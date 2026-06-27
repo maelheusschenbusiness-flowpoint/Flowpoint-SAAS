@@ -24,3 +24,4 @@
 - [Stripe live price IDs](stripe-price-ids.md) — 44 price IDs hardcoded in plans.ts; env vars optional override
 - [RLS migration 010 execution notes](rls-migration-notes.md) — Replit PG has no anon/authenticated roles; must create them first; DROP POLICY IF EXISTS produces NOTICEs that kill executeSql; fix: SET client_min_messages=WARNING; crm_field_mappings needed org_id added separately
 - [FlowPoint RLS migration](flowpoint-rls-migration.md) — 145 tables RLS enabled, 481 policies, postgres bypasses RLS
+- [RLS local dev setup](rls-local-dev-setup.md) — app_user role missing locally (Supabase-only migration 011); patch via initRlsSetup(); legacy table columns need DROP NOT NULL + SET DEFAULT

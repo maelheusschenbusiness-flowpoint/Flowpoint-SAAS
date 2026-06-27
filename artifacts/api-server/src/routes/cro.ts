@@ -1,12 +1,15 @@
 import { Router, type Request, type Response } from "express";
 import { getCROData, generateCRORecommendations, upsertCROScore } from "../services/cro-service.js";
-import { db, croRecommendationsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import { requireFeature } from "../middlewares/planGate.js";
 
 const router = Router();
 
-// All CRO endpoints require the 'cro' feature flag (Pro plan and above)
+type OrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgId?: string;
+};
+const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
 router.use(requireFeature("cro", "CRO AI"));
 
 router.get("/cro", async (req: Request, res: Response) => {
@@ -36,9 +39,10 @@ router.patch("/cro/recommendations/:id", async (req: Request, res: Response) => 
   const { status } = req.body ?? {};
   if (!status) { res.status(400).json({ error: "status required" }); return; }
   try {
-    await db.update(croRecommendationsTable)
-      .set({ status, updatedAt: new Date() })
-      .where(eq(croRecommendationsTable.id, id));
+    await db(req)(
+      `UPDATE cro_recommendations SET status=$1, updated_at=now() WHERE id=$2`,
+      [status, id]
+    );
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to update recommendation" });

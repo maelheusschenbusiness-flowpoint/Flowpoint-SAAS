@@ -1,9 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import { getRevenueLeakData, detectRevenueLeaks } from "../services/revenue-leak-service.js";
-import { db, revenueLeaksTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 
 const router = Router();
+
+type OrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgId?: string;
+};
+const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
 router.get("/revenue-leak", async (req: Request, res: Response) => {
   try {
@@ -30,9 +34,10 @@ router.post("/revenue-leak/detect", async (req: Request, res: Response) => {
 router.patch("/revenue-leak/:id/resolve", async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    await db.update(revenueLeaksTable)
-      .set({ status: "resolved", resolvedAt: new Date() })
-      .where(eq(revenueLeaksTable.id, id));
+    await db(req)(
+      `UPDATE revenue_leaks SET status='resolved', resolved_at=now() WHERE id=$1`,
+      [id]
+    );
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to resolve leak" });

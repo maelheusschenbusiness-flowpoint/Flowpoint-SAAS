@@ -130,7 +130,57 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_date_idx ON calendar_events(date);`);
     await run(client, `CREATE INDEX IF NOT EXISTS calendar_events_org_id_idx ON calendar_events(org_id);`);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events ready");
+    // ── report_exports ────────────────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS report_exports (
+        id         TEXT PRIMARY KEY,
+        report_id  TEXT NOT NULL DEFAULT '',
+        org_id     TEXT NOT NULL DEFAULT 'default',
+        format     TEXT NOT NULL DEFAULT 'pdf',
+        url        TEXT,
+        size       INTEGER DEFAULT 0,
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `ALTER TABLE report_exports ADD COLUMN IF NOT EXISTS org_id     TEXT      NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE report_exports ADD COLUMN IF NOT EXISTS report_id  TEXT      NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE report_exports ADD COLUMN IF NOT EXISTS format     TEXT      NOT NULL DEFAULT 'pdf';`);
+    await run(client, `ALTER TABLE report_exports ADD COLUMN IF NOT EXISTS url        TEXT;`);
+    await run(client, `ALTER TABLE report_exports ADD COLUMN IF NOT EXISTS size       INTEGER   DEFAULT 0;`);
+    await run(client, `ALTER TABLE report_exports ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;`);
+    await run(client, `ALTER TABLE report_exports ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();`);
+    await run(client, `CREATE INDEX IF NOT EXISTS report_exports_org_id_idx     ON report_exports(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS report_exports_created_at_idx ON report_exports(created_at);`);
+
+    // ── team_messages ─────────────────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS team_messages (
+        id          TEXT PRIMARY KEY,
+        org_id      TEXT NOT NULL DEFAULT 'default',
+        sender_id   TEXT NOT NULL DEFAULT 'user',
+        sender_name TEXT NOT NULL DEFAULT '',
+        content     TEXT NOT NULL DEFAULT '',
+        channel     TEXT NOT NULL DEFAULT 'general',
+        type        TEXT NOT NULL DEFAULT 'text',
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS org_id      TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS sender_id   TEXT NOT NULL DEFAULT 'user';`);
+    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS sender_name TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS content     TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS channel     TEXT NOT NULL DEFAULT 'general';`);
+    await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS type        TEXT NOT NULL DEFAULT 'text';`);
+    // Patch legacy columns if they exist (old schema used "from"/"text", new uses sender_name/content)
+    await run(client, `ALTER TABLE team_messages ALTER COLUMN "from" DROP NOT NULL;`);
+    await run(client, `ALTER TABLE team_messages ALTER COLUMN "from" SET DEFAULT '';`);
+    await run(client, `ALTER TABLE team_messages ALTER COLUMN "text" DROP NOT NULL;`);
+    await run(client, `ALTER TABLE team_messages ALTER COLUMN "text" SET DEFAULT '';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_messages_org_id_idx  ON team_messages(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_messages_channel_idx ON team_messages(channel);`);
+
+    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;

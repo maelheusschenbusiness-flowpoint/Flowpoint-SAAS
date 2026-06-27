@@ -1,93 +1,91 @@
-import { Router } from "express";
-import { db, alertRulesTable } from "@workspace/db";
-import { pool } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { Router, type Request } from "express";
 import { store } from "../services/store.js";
 
 const router = Router();
 
-router.get("/alert-rules", async (_req, res) => {
+type OrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgId?: string;
+};
+const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
+const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+const VALID_TYPES    = ["seo_score", "latency", "uptime", "monitor_down", "keyword_ranking_drop"];
+const VALID_OPS      = ["lt", "gt", "eq"];
+const VALID_CHANNELS = ["email", "sms"];
+
+const DEFAULT_TEMPLATES = [
+  { name: "Monitor DOWN",                   type: "monitor_down",          operator: "eq", threshold: 1,    durationMin: 0,  channels: ["email"],          siteUrls: [] },
+  { name: "Score SEO critique (< 50)",      type: "seo_score",             operator: "lt", threshold: 50,   durationMin: 0,  channels: ["email"],          siteUrls: [] },
+  { name: "Chute ranking mot-clé (> 5 pos)",type: "keyword_ranking_drop",  operator: "gt", threshold: 5,    durationMin: 0,  channels: ["email"],          siteUrls: [] },
+  { name: "Latence élevée (> 1s)",          type: "latency",               operator: "gt", threshold: 1000, durationMin: 5,  channels: ["email"],          siteUrls: [] },
+  { name: "Uptime faible (< 98%)",          type: "uptime",                operator: "lt", threshold: 98,   durationMin: 10, channels: ["email", "sms"],   siteUrls: [] },
+];
+
+// ── GET /alert-rules ──────────────────────────────────────────────────────────
+router.get("/alert-rules", async (req, res) => {
   try {
-    const rules = await db.select().from(alertRulesTable).limit(200);
-    res.json(rules);
+    const r = await db(req)(`SELECT * FROM alert_rules WHERE org_id=$1 ORDER BY created_at DESC LIMIT 200`, [org(req)]);
+    res.json(r.rows);
   } catch {
     res.json([]);
   }
 });
 
+// ── POST /alert-rules ─────────────────────────────────────────────────────────
 router.post("/alert-rules", async (req, res) => {
   const { name, type, operator, threshold, durationMin, channels, siteUrls, enabled } = req.body as {
-    name?: string;
-    type?: string;
-    operator?: string;
-    threshold?: number;
-    durationMin?: number;
-    channels?: string[];
-    siteUrls?: string[];
-    enabled?: boolean;
+    name?: string; type?: string; operator?: string; threshold?: number;
+    durationMin?: number; channels?: string[]; siteUrls?: string[]; enabled?: boolean;
   };
   if (!name || !type || !operator || threshold === undefined) {
-    res.status(400).json({ error: "name, type, operator, threshold required" });
-    return;
+    res.status(400).json({ error: "name, type, operator, threshold required" }); return;
   }
-  if (!["seo_score", "latency", "uptime", "monitor_down", "keyword_ranking_drop"].includes(type)) {
+  if (!VALID_TYPES.includes(type)) {
     res.status(400).json({ error: "type must be seo_score|latency|uptime|monitor_down|keyword_ranking_drop" }); return;
   }
-  const validOps = ["lt", "gt", "eq"];
-  if (!validOps.includes(operator)) { res.status(400).json({ error: "operator must be lt|gt|eq" }); return; }
+  if (!VALID_OPS.includes(operator)) {
+    res.status(400).json({ error: "operator must be lt|gt|eq" }); return;
+  }
 
+  const id = `ar_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
-    const [rule] = await db.insert(alertRulesTable).values({
-      id: `ar_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name,
-      type,
-      operator,
-      threshold: Number(threshold),
-      durationMin: Number(durationMin ?? 0),
-      channels: JSON.stringify(channels ?? ["email"]),
-      siteUrls: JSON.stringify(siteUrls ?? []),
-      enabled: enabled ?? true,
-    }).returning();
-    res.status(201).json(rule);
-  } catch (err) {
+    await db(req)(
+      `INSERT INTO alert_rules (id, org_id, name, type, operator, threshold, duration_min, channels, site_urls, enabled)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [id, org(req), name, type, operator, Number(threshold), Number(durationMin ?? 0),
+       JSON.stringify(channels ?? ["email"]), JSON.stringify(siteUrls ?? []), enabled ?? true]
+    );
+    const r = await db(req)(`SELECT * FROM alert_rules WHERE id=$1`, [id]);
+    res.status(201).json(r.rows[0] ?? { id });
+  } catch {
     res.status(500).json({ error: "Failed to create alert rule" });
   }
 });
 
-const VALID_TYPES = ["seo_score", "latency", "uptime", "monitor_down", "keyword_ranking_drop"];
-const VALID_OPS = ["lt", "gt", "eq"];
-const VALID_CHANNELS = ["email", "sms"];
+// ── GET /alert-rules/templates ────────────────────────────────────────────────
+router.get("/alert-rules/templates", (_req, res) => {
+  res.json(DEFAULT_TEMPLATES);
+});
 
-const DEFAULT_TEMPLATES = [
-  { name: "Monitor DOWN", type: "monitor_down", operator: "eq", threshold: 1, durationMin: 0, channels: ["email"], siteUrls: [] },
-  { name: "Score SEO critique (< 50)", type: "seo_score", operator: "lt", threshold: 50, durationMin: 0, channels: ["email"], siteUrls: [] },
-  { name: "Chute ranking mot-clé (> 5 pos)", type: "keyword_ranking_drop", operator: "gt", threshold: 5, durationMin: 0, channels: ["email"], siteUrls: [] },
-  { name: "Latence élevée (> 1s)", type: "latency", operator: "gt", threshold: 1000, durationMin: 5, channels: ["email"], siteUrls: [] },
-  { name: "Uptime faible (< 98%)", type: "uptime", operator: "lt", threshold: 98, durationMin: 10, channels: ["email", "sms"], siteUrls: [] },
-];
-
-router.patch("/alert-rules/mark-all-read", async (_req, res) => {
-  let client;
+// ── PATCH /alert-rules/mark-all-read ─────────────────────────────────────────
+router.patch("/alert-rules/mark-all-read", async (req, res) => {
   try {
-    client = await pool.connect();
-    await client.query(`UPDATE alert_events SET read_at = NOW() WHERE read_at IS NULL`);
+    await db(req)(`UPDATE alert_events SET read_at=NOW() WHERE read_at IS NULL AND org_id=$1`, [org(req)]);
     if (Array.isArray(store.triggeredAlerts)) store.triggeredAlerts = [];
     res.json({ ok: true });
   } catch {
     if (Array.isArray(store.triggeredAlerts)) store.triggeredAlerts = [];
     res.json({ ok: true });
-  } finally {
-    if (client) client.release();
   }
 });
 
+// ── PATCH /alert-rules/:id ────────────────────────────────────────────────────
 router.patch("/alert-rules/:id", async (req, res) => {
-  const { id } = req.params;
   const body = req.body as Record<string, unknown>;
 
-  // Validate provided fields (same constraints as POST)
   if (body.type !== undefined && !VALID_TYPES.includes(body.type as string)) {
-    res.status(400).json({ error: "type must be seo_score|latency|uptime" }); return;
+    res.status(400).json({ error: "type invalide" }); return;
   }
   if (body.operator !== undefined && !VALID_OPS.includes(body.operator as string)) {
     res.status(400).json({ error: "operator must be lt|gt|eq" }); return;
@@ -101,59 +99,55 @@ router.patch("/alert-rules/:id", async (req, res) => {
     }
   }
   if (body.siteUrls !== undefined && !Array.isArray(body.siteUrls)) {
-    res.status(400).json({ error: "siteUrls must be an array of strings" }); return;
+    res.status(400).json({ error: "siteUrls must be an array" }); return;
   }
 
-  const updates: Record<string, unknown> = {};
-  if (body.name !== undefined) updates.name = body.name;
-  if (body.type !== undefined) updates.type = body.type;
-  if (body.operator !== undefined) updates.operator = body.operator;
-  if (body.threshold !== undefined) updates.threshold = Number(body.threshold);
-  if (body.durationMin !== undefined) updates.durationMin = Number(body.durationMin);
-  if (body.channels !== undefined) updates.channels = JSON.stringify(body.channels);
-  if (body.siteUrls !== undefined) updates.siteUrls = JSON.stringify(body.siteUrls);
-  if (body.enabled !== undefined) updates.enabled = body.enabled;
+  const setClauses: string[] = [];
+  const params: unknown[] = [];
+  if (body.name !== undefined)      { params.push(body.name);                             setClauses.push(`name=$${params.length}`); }
+  if (body.type !== undefined)      { params.push(body.type);                             setClauses.push(`type=$${params.length}`); }
+  if (body.operator !== undefined)  { params.push(body.operator);                        setClauses.push(`operator=$${params.length}`); }
+  if (body.threshold !== undefined) { params.push(Number(body.threshold));               setClauses.push(`threshold=$${params.length}`); }
+  if (body.durationMin !== undefined){ params.push(Number(body.durationMin));            setClauses.push(`duration_min=$${params.length}`); }
+  if (body.channels !== undefined)  { params.push(JSON.stringify(body.channels));        setClauses.push(`channels=$${params.length}`); }
+  if (body.siteUrls !== undefined)  { params.push(JSON.stringify(body.siteUrls));        setClauses.push(`site_urls=$${params.length}`); }
+  if (body.enabled !== undefined)   { params.push(body.enabled);                         setClauses.push(`enabled=$${params.length}`); }
 
-  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
+  if (setClauses.length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
 
+  params.push(req.params.id, org(req));
   try {
-    const [updated] = await db.update(alertRulesTable)
-      .set(updates)
-      .where(eq(alertRulesTable.id, id))
-      .returning();
-    if (!updated) { res.status(404).json({ error: "not found" }); return; }
-    res.json(updated);
-  } catch (err) {
+    const r = await db(req)(
+      `UPDATE alert_rules SET ${setClauses.join(",")} WHERE id=$${params.length - 1} AND org_id=$${params.length} RETURNING *`,
+      params
+    );
+    if (!r.rows[0]) { res.status(404).json({ error: "not found" }); return; }
+    res.json(r.rows[0]);
+  } catch {
     res.status(500).json({ error: "Failed to update alert rule" });
   }
 });
 
-router.get("/alert-rules/templates", (_req, res) => {
-  res.json(DEFAULT_TEMPLATES);
-});
-
+// ── DELETE /alert-rules/:id ───────────────────────────────────────────────────
 router.delete("/alert-rules/:id", async (req, res) => {
   try {
-    await db.delete(alertRulesTable).where(eq(alertRulesTable.id, req.params.id));
+    await db(req)(`DELETE FROM alert_rules WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     res.json({ ok: true });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Failed to delete alert rule" });
   }
 });
 
-// ── Alert events — DB-persisted ──────────────────────────────────────────────
-
-router.get("/alert-events", async (_req, res) => {
-  const client = await pool.connect();
+// ── GET /alert-events ─────────────────────────────────────────────────────────
+router.get("/alert-events", async (req, res) => {
   try {
-    const r = await client.query(
+    const r = await db(req)(
       `SELECT id, rule_id, rule_name, type, metric_value, threshold, operator,
               severity, message, site_url, read_at, resolved_at, triggered_at
-       FROM alert_events
-       ORDER BY triggered_at DESC
-       LIMIT 200`
+       FROM alert_events WHERE org_id=$1 ORDER BY triggered_at DESC LIMIT 200`,
+      [org(req)]
     );
-    res.json(r.rows.map((row) => ({
+    res.json(r.rows.map(row => ({
       id:          row.id,
       ruleId:      row.rule_id,
       ruleName:    row.rule_name,
@@ -170,42 +164,36 @@ router.get("/alert-events", async (_req, res) => {
     })));
   } catch {
     res.json(store.triggeredAlerts);
-  } finally {
-    client.release();
   }
 });
 
+// ── POST /alert-events ────────────────────────────────────────────────────────
 router.post("/alert-events", async (req, res) => {
   const { ruleId, ruleName, type, metricValue, threshold, operator, severity, message, siteUrl } = req.body as {
     ruleId?: string; ruleName?: string; type?: string; metricValue?: number;
     threshold?: number; operator?: string; severity?: string; message?: string; siteUrl?: string;
   };
   const id = `ae_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const client = await pool.connect();
   try {
-    await client.query(
-      `INSERT INTO alert_events (id, rule_id, rule_name, type, metric_value, threshold, operator, severity, message, site_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [id, ruleId||"", ruleName||"", type||"seo_score", metricValue??null, threshold??null,
-       operator||"lt", severity||"warning", message||"", siteUrl||""]
+    await db(req)(
+      `INSERT INTO alert_events (id, org_id, rule_id, rule_name, type, metric_value, threshold, operator, severity, message, site_url)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [id, org(req), ruleId ?? "", ruleName ?? "", type ?? "seo_score", metricValue ?? null, threshold ?? null,
+       operator ?? "lt", severity ?? "warning", message ?? "", siteUrl ?? ""]
     );
     res.status(201).json({ id, triggeredAt: new Date().toISOString() });
   } catch {
     res.status(500).json({ error: "Failed to create alert event" });
-  } finally {
-    client.release();
   }
 });
 
-router.get("/alerts", async (_req, res) => {
-  const client = await pool.connect();
+// ── GET /alerts (alias) ───────────────────────────────────────────────────────
+router.get("/alerts", async (req, res) => {
   try {
-    const r = await client.query(`SELECT * FROM alert_events ORDER BY triggered_at DESC LIMIT 50`);
+    const r = await db(req)(`SELECT * FROM alert_events WHERE org_id=$1 ORDER BY triggered_at DESC LIMIT 50`, [org(req)]);
     res.json(r.rows);
   } catch {
     res.json(store.triggeredAlerts);
-  } finally {
-    client.release();
   }
 });
 

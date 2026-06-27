@@ -6,6 +6,7 @@ import { initMissionsTables } from "./services/init-missions.js";
 import { initAutomationTables } from "./services/init-automation.js";
 import { initMonitorsTables } from "./services/init-monitors.js";
 import { initDataTables } from "./services/init-data-tables.js";
+import { initRlsSetup } from "./services/init-rls-setup.js";
 
 const PORT = env.PORT;
 
@@ -15,6 +16,12 @@ async function main() {
     logger.info("Database connection OK");
   } catch (err) {
     logger.warn({ err }, "Database connection check failed — continuing startup");
+  }
+
+  try {
+    await initRlsSetup();
+  } catch (err) {
+    logger.warn({ err }, "RLS setup failed — non-fatal, continuing");
   }
 
   try {

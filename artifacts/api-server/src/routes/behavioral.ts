@@ -1,8 +1,10 @@
 import { Router, type Request, type Response } from "express";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { randomBytes } from "crypto";
-import { trackBehaviorEvent, upsertSession, generateBehaviorInsights, getBehaviorInsights } from "../services/behavioral-service.js";
-import { pool, db, behaviorSiteTokensTable } from "@workspace/db";
+import {
+  trackBehaviorEvent, upsertSession, generateBehaviorInsights, getBehaviorInsights,
+} from "../services/behavioral-service.js";
+import { db, behaviorSiteTokensTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireFeature } from "../middlewares/planGate.js";
 import { behavioralRateLimit } from "../middlewares/rateLimiter.js";
@@ -11,12 +13,11 @@ import { behavioralRateLimit } from "../middlewares/rateLimiter.js";
 export const publicBehavioralRouter = Router();
 
 // ── Per-registered-site CORS allowlist ────────────────────────────────────────
-// Exported so app.ts can dynamically allow registered customer-domain origins
-// through the global CORS middleware without wildcard * allowlisting.
 export const behavioralOriginAllowlist = new Set<string>();
 
 /**
  * Pre-load all registered site origins into the CORS allowlist at server startup.
+ * Uses superuser Drizzle db — called once at boot, no req context available.
  */
 export async function loadBehavioralCorsAllowlist(): Promise<void> {
   const rows = await db
@@ -33,15 +34,6 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-/**
- * Verify an HMAC-SHA256 signature over a canonical message using timingSafeEqual.
- *
- * Used in two places:
- *   1. POST /behavioral/token — the snippet proves it holds the site secret
- *      before the server issues a short-lived session token.
- *   2. POST /behavioral/event|session (optional belt-and-suspenders; events
- *      require an active session token AND carry their own signature).
- */
 function verifyHmac(key: string, message: string, receivedHex: string): boolean {
   const expected = createHmac("sha256", key).update(message).digest("hex");
   try {
@@ -52,28 +44,11 @@ function verifyHmac(key: string, message: string, receivedHex: string): boolean 
 }
 
 /**
- * Look up the site token hash in the DB and return the plain stored hash for
- * HMAC verification, together with the canonical siteUrl.
- *
- * NOTE: the DB only stores the SHA-256 hash of the token, not the token itself.
- * HMAC verification is therefore done differently from a classic HMAC flow:
- *
- *   • The snippet embeds the plain token T.
- *   • The snippet computes: sig = HMAC-SHA256(key=T, msg=canonical)
- *   • The server looks up hash(T) → row.
- *   • The server re-derives the expected HMAC-SHA256(key=T, msg=canonical)
- *     by receiving T in the request body (same as the original approach).
- *
- * This is intentional: the token is a site credential that is embedded in the
- * snippet (like an install key), used only once per session to prove ownership
- * at token-exchange time. The exchanged short-lived session token is used for
- * all subsequent event/session ingestion, so the site secret is never replayed
- * on each individual analytics event.
+ * Look up site token hash — used in public router, no req.orgDb available.
+ * Intentionally uses superuser Drizzle since siteTokens are validated before
+ * org context is established (token-exchange endpoint is public, pre-auth).
  */
-async function lookupSiteToken(
-  plaintextToken: string,
-  siteUrl: string,
-): Promise<boolean> {
+async function lookupSiteToken(plaintextToken: string, siteUrl: string): Promise<boolean> {
   try {
     const hash = hashToken(plaintextToken);
     const [row] = await db
@@ -81,15 +56,11 @@ async function lookupSiteToken(
       .from(behaviorSiteTokensTable)
       .where(eq(behaviorSiteTokensTable.tokenHash, hash))
       .limit(1);
-
     if (!row || row.siteUrl !== siteUrl) return false;
-
-    // Fire-and-forget last_used_at update
     void db
       .update(behaviorSiteTokensTable)
       .set({ lastUsedAt: new Date() })
       .where(eq(behaviorSiteTokensTable.tokenHash, hash));
-
     return true;
   } catch {
     return false;
@@ -97,14 +68,6 @@ async function lookupSiteToken(
 }
 
 // ── Browser attestation ───────────────────────────────────────────────────────
-//
-// Sec-Fetch-Site is a Fetch spec §2.2.5 "forbidden header": browsers set it
-// automatically on cross-origin requests and JavaScript cannot override it.
-// Standard HTTP clients (curl, Python requests, etc.) do not send it by default.
-// Its absence is a reliable signal of a non-browser caller.
-//
-// Origin is checked as a secondary signal — it must be present and match the
-// registered siteUrl.
 function browserAttestationPasses(req: Request, siteUrl: string): boolean {
   try {
     const secFetchSite = req.headers["sec-fetch-site"];
@@ -118,11 +81,8 @@ function browserAttestationPasses(req: Request, siteUrl: string): boolean {
 }
 
 // ── Timestamp + per-site nonce store ─────────────────────────────────────────
-//
-// Nonces are scoped per site (siteUrl+nonce key) to prevent cross-site
-// replay and to keep the key-space bounded. Lazy GC runs on every check.
 const MAX_TS_SKEW_MS = 5 * 60 * 1000;
-const _usedNonces = new Map<string, number>(); // "${siteUrl}|${nonce}" → expiry
+const _usedNonces = new Map<string, number>();
 
 function consumeNonce(siteUrl: string, nonce: string, tsMs: number): boolean {
   const now = Date.now();
@@ -136,24 +96,13 @@ function consumeNonce(siteUrl: string, nonce: string, tsMs: number): boolean {
 }
 
 // ── Short-lived session tokens ────────────────────────────────────────────────
-//
-// Issued by POST /behavioral/token after cryptographic proof (HMAC) is verified.
-// Bound to (siteUrl, requestOrigin) at issuance. Valid for SESSION_TOKEN_TTL_MS.
-// Stored in-process; a shared cache (e.g. Redis) is needed for multi-instance.
 const SESSION_TOKEN_TTL_MS = 5 * 60 * 1000;
-
-interface SessionTokenEntry {
-  siteUrl: string;
-  allowedOrigin: string;
-  exp: number;
-}
+interface SessionTokenEntry { siteUrl: string; allowedOrigin: string; exp: number; }
 const _sessionTokens = new Map<string, SessionTokenEntry>();
 
 function issueSessionToken(siteUrl: string, origin: string): { token: string; expiresAt: number } {
   const now = Date.now();
-  for (const [k, v] of _sessionTokens) {
-    if (v.exp < now) _sessionTokens.delete(k);
-  }
+  for (const [k, v] of _sessionTokens) { if (v.exp < now) _sessionTokens.delete(k); }
   const token = randomBytes(32).toString("hex");
   const exp = now + SESSION_TOKEN_TTL_MS;
   _sessionTokens.set(token, { siteUrl, allowedOrigin: origin, exp });
@@ -168,106 +117,57 @@ function validateSessionToken(token: string, siteUrl: string, origin: string): b
   return true;
 }
 
-// ── POST /api/behavioral/token — HMAC-authenticated token exchange ─────────────
-//
-// Exchanges a site's install credential for a short-lived session token.
-//
-// The snippet embeds a site-specific install secret (siteToken) issued by the
-// server and uses it to compute an HMAC-SHA256 proof-of-possession signature.
-// The server verifies the HMAC against the DB-stored hash of the token before
-// issuing a short-lived session token.  Events/sessions carry only the session
-// token — the install secret is never sent again after this exchange.
-//
-// Authentication chain:
-//   1. HMAC-SHA256(key=siteToken, msg="${siteUrl}|${origin}|${ts}|${nonce}")
-//      verified against DB entry — proves the caller holds the site secret
-//   2. Sec-Fetch-Site: cross-site|same-site — browser-only forbidden header
-//   3. Origin header present and matching siteUrl
-//   4. Timestamp within ±5 min + per-site nonce deduplication
+// ── POST /api/behavioral/token ────────────────────────────────────────────────
 publicBehavioralRouter.post("/behavioral/token", behavioralRateLimit("token"), async (req: Request, res: Response) => {
   const { siteKey, siteToken, ts, nonce, sig } = req.body ?? {};
-
   if (!siteKey || !siteToken || !ts || !nonce || !sig) {
     res.status(400).json({ error: "siteKey, siteToken, ts, nonce, sig required" }); return;
   }
-
-  // Gate 1: browser attestation (Sec-Fetch-Site + Origin)
   if (!browserAttestationPasses(req, siteKey)) {
     res.status(403).json({ error: "Browser attestation failed: valid Origin and Sec-Fetch-Site required" }); return;
   }
-
   const origin = req.headers["origin"] as string;
-
-  // Gate 2: timestamp freshness
   const tsNum = Number(ts);
   if (isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS) {
     res.status(403).json({ error: "Timestamp missing or outside acceptable window" }); return;
   }
-
-  // Gate 3: per-site nonce deduplication
   if (!consumeNonce(siteKey, nonce, tsNum)) {
     res.status(403).json({ error: "Nonce already used — replay rejected" }); return;
   }
-
-  // Gate 4: HMAC-SHA256 proof-of-possession (proves caller holds siteToken)
-  // Canonical message: "${siteUrl}|${origin}|${ts}|${nonce}"
   const canonical = `${siteKey}|${origin}|${tsNum}|${nonce}`;
   if (!verifyHmac(siteToken, canonical, sig)) {
     res.status(403).json({ error: "Invalid HMAC signature" }); return;
   }
-
-  // Gate 5: DB lookup — verify siteToken hash is registered for this siteUrl
   if (!await lookupSiteToken(siteToken, siteKey)) {
     res.status(403).json({ error: "Unregistered site or invalid credentials" }); return;
   }
-
   const { token, expiresAt } = issueSessionToken(siteKey, origin);
   res.json({ sessionToken: token, expiresAt });
 });
 
-// ── POST /api/behavioral/event — session-token-authenticated ingestion ─────────
-//
-// Authentication chain:
-//   1. Browser attestation (Sec-Fetch-Site + Origin)
-//   2. Short-lived session token (origin-bound, 5 min expiry)
-//   3. Timestamp freshness
-//   4. Per-site nonce deduplication
+// ── POST /api/behavioral/event ────────────────────────────────────────────────
 publicBehavioralRouter.post("/behavioral/event", behavioralRateLimit("event"), async (req: Request, res: Response) => {
-  const {
-    sessionId, siteUrl, page, eventType, element, xPos, yPos, scrollDepth,
-    timeOnPage, metadata, sessionToken, ts, nonce,
-  } = req.body ?? {};
-
+  const { sessionId, siteUrl, page, eventType, element, xPos, yPos, scrollDepth, timeOnPage, metadata, sessionToken, ts, nonce } = req.body ?? {};
   if (!sessionId || !siteUrl || !page || !eventType) {
     res.status(400).json({ error: "sessionId, siteUrl, page, eventType required" }); return;
   }
   if (!sessionToken) {
     res.status(401).json({ error: "sessionToken required — call POST /behavioral/token first" }); return;
   }
-
-  // Gate 1: browser attestation
   if (!browserAttestationPasses(req, siteUrl)) {
     res.status(403).json({ error: "Origin header required and must match siteUrl" }); return;
   }
-
   const origin = req.headers["origin"] as string;
-
-  // Gate 2: short-lived session token (origin-bound, expiry-checked)
   if (!validateSessionToken(sessionToken, siteUrl, origin)) {
     res.status(403).json({ error: "Invalid or expired session token — call POST /behavioral/token to refresh" }); return;
   }
-
-  // Gate 3: timestamp freshness
   const tsNum = Number(ts);
   if (!ts || isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS) {
     res.status(403).json({ error: "Timestamp missing or outside acceptable window" }); return;
   }
-
-  // Gate 4: per-site nonce deduplication
   if (!nonce || !consumeNonce(siteUrl, nonce, tsNum)) {
     res.status(403).json({ error: "Missing nonce or nonce already used — replay rejected" }); return;
   }
-
   try {
     await trackBehaviorEvent({ sessionId, siteUrl, page, eventType, element, xPos, yPos, scrollDepth, timeOnPage, metadata });
     res.status(201).json({ ok: true });
@@ -276,38 +176,27 @@ publicBehavioralRouter.post("/behavioral/event", behavioralRateLimit("event"), a
   }
 });
 
-// ── POST /api/behavioral/session — session-token-authenticated ingestion ───────
+// ── POST /api/behavioral/session ──────────────────────────────────────────────
 publicBehavioralRouter.post("/behavioral/session", behavioralRateLimit("session"), async (req: Request, res: Response) => {
   const { id, siteUrl, userAgent, deviceType, country, sessionToken, ts, nonce } = req.body ?? {};
-
   if (!id || !siteUrl) { res.status(400).json({ error: "id and siteUrl required" }); return; }
   if (!sessionToken) {
     res.status(401).json({ error: "sessionToken required — call POST /behavioral/token first" }); return;
   }
-
-  // Gate 1: browser attestation
   if (!browserAttestationPasses(req, siteUrl)) {
     res.status(403).json({ error: "Origin header required and must match siteUrl" }); return;
   }
-
   const origin = req.headers["origin"] as string;
-
-  // Gate 2: short-lived session token
   if (!validateSessionToken(sessionToken, siteUrl, origin)) {
     res.status(403).json({ error: "Invalid or expired session token — call POST /behavioral/token to refresh" }); return;
   }
-
-  // Gate 3: timestamp freshness
   const tsNum = Number(ts);
   if (!ts || isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS) {
     res.status(403).json({ error: "Timestamp missing or outside acceptable window" }); return;
   }
-
-  // Gate 4: per-site nonce deduplication
   if (!nonce || !consumeNonce(siteUrl, nonce, tsNum)) {
     res.status(403).json({ error: "Missing nonce or nonce already used — replay rejected" }); return;
   }
-
   try {
     await upsertSession({ id, siteUrl, userAgent, deviceType, country });
     res.status(201).json({ ok: true });
@@ -319,44 +208,38 @@ publicBehavioralRouter.post("/behavioral/session", behavioralRateLimit("session"
 // ── Protected router (auth required) ─────────────────────────────────────────
 const router = Router();
 
-// ── GET /api/behavioral/snippet — provisions site + issues install credential ──
-//
-// Auth-gated. Issues a per-site install token (stored as SHA-256 hash in DB)
-// embedded in the snippet. The snippet uses this token as an HMAC key to sign
-// the POST /behavioral/token request, proving possession before a session token
-// is issued. The install secret is NOT sent on individual event/session calls.
+type OrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  orgId?: string;
+};
+const orgDb = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
+
+// ── GET /api/behavioral/snippet ───────────────────────────────────────────────
 router.get("/behavioral/snippet", async (req: Request, res: Response) => {
   const { siteUrl } = req.query as { siteUrl?: string };
   if (!siteUrl) { res.status(400).json({ error: "siteUrl query param required" }); return; }
 
   const orgId = req.orgId ?? "default";
-
   const plainToken = randomBytes(32).toString("hex");
   const tokenHash  = hashToken(plainToken);
 
   try {
-    // Ownership guard: prevent cross-tenant token rotation (availability attack).
-    const [existing] = await db
-      .select({ orgId: behaviorSiteTokensTable.orgId })
-      .from(behaviorSiteTokensTable)
-      .where(eq(behaviorSiteTokensTable.siteUrl, siteUrl))
-      .limit(1);
-
-    if (existing && existing.orgId !== orgId) {
-      res.status(403).json({ error: "This site URL is already registered to another organization" });
-      return;
+    // Cross-tenant ownership guard using req.orgDb (RLS-enforced)
+    const existing = await orgDb(req)(
+      `SELECT org_id FROM behavior_site_tokens WHERE site_url=$1 LIMIT 1`,
+      [siteUrl]
+    );
+    if (existing.rows[0] && (existing.rows[0] as Record<string, unknown>).org_id !== orgId) {
+      res.status(403).json({ error: "This site URL is already registered to another organization" }); return;
     }
 
-    await db
-      .insert(behaviorSiteTokensTable)
-      .values({ tokenHash, siteUrl, orgId })
-      .onConflictDoUpdate({
-        target: behaviorSiteTokensTable.siteUrl,
-        set: { tokenHash, orgId, createdAt: new Date(), lastUsedAt: null },
-      });
+    await orgDb(req)(
+      `INSERT INTO behavior_site_tokens (token_hash, site_url, org_id, created_at)
+       VALUES ($1,$2,$3,now())
+       ON CONFLICT (site_url) DO UPDATE SET token_hash=$1, org_id=$3, created_at=now(), last_used_at=NULL`,
+      [tokenHash, siteUrl, orgId]
+    );
 
-    // Extend the in-process CORS allowlist so preflights from this origin
-    // pass immediately without a server restart.
     try { behavioralOriginAllowlist.add(new URL(siteUrl).origin); } catch {}
   } catch {
     if (res.headersSent) return;
@@ -366,20 +249,8 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
   const baseUrl = process.env["REPLIT_DEV_DOMAIN"]
     ? `https://${process.env["REPLIT_DEV_DOMAIN"]}`
     : (process.env["PUBLIC_BASE_URL"] ?? "https://app.flowpoint.io");
-
   const apiBase = `${baseUrl}/api`;
 
-  // The snippet flow:
-  //   1. Compute HMAC-SHA256 over "${siteUrl}|${origin}|${ts}|${nonce}" using
-  //      the install token (siteToken) — proves possession of the site credential.
-  //   2. POST /behavioral/token { siteKey, siteToken, ts, nonce, sig }
-  //      → server verifies HMAC + DB lookup → returns short-lived session token.
-  //   3. All events/sessions carry only the session token (not siteToken).
-  //   4. Session token auto-refreshes on expiry.
-  //
-  // The siteToken IS present in page source (as an install credential), but it
-  // is never sent on individual analytics events — only once per page load to
-  // prove possession and obtain the short-lived session token.
   const snippet = `<!-- FlowPoint Behavioral Analytics — paste before </body> -->
 <script>
 (function(w,d,s,u,k){
@@ -442,8 +313,7 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
 </script>`;
 
   res.json({
-    siteUrl,
-    snippet,
+    siteUrl, snippet,
     instructions: [
       "1. Copiez le snippet ci-dessus.",
       "2. Collez-le juste avant la balise </body> sur chaque page de votre site.",
@@ -451,11 +321,11 @@ router.get("/behavioral/snippet", async (req: Request, res: Response) => {
       "4. Pour vérifier l'installation, consultez GET /api/behavioral/status?siteUrl=<votre-site>.",
     ],
     trackedEvents: ["page_view", "click", "rage_click", "scroll_depth", "form_submit", "session_end"],
-    note: "Le snippet intègre un token d'installation qui sert de clé HMAC pour prouver la possession du site lors de l'échange de token. Les événements individuels n'utilisent que le token de session de courte durée (5 min) — jamais le token d'installation.",
+    note: "Le snippet intègre un token d'installation qui sert de clé HMAC pour prouver la possession du site lors de l'échange de token.",
   });
 });
 
-// ── GET /api/behavioral/status — installation check (auth required) ───────────
+// ── GET /api/behavioral/status ────────────────────────────────────────────────
 router.get("/behavioral/status", async (req: Request, res: Response) => {
   const { siteUrl } = req.query as { siteUrl?: string };
   if (!siteUrl) {
@@ -467,33 +337,30 @@ router.get("/behavioral/status", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
 
   try {
-    const [tokenRow] = await db
-      .select({ orgId: behaviorSiteTokensTable.orgId })
-      .from(behaviorSiteTokensTable)
-      .where(
-        and(
-          eq(behaviorSiteTokensTable.siteUrl, siteUrl),
-          eq(behaviorSiteTokensTable.orgId, orgId)
-        )
-      )
-      .limit(1);
+    const tokenRow = await orgDb(req)(
+      `SELECT org_id FROM behavior_site_tokens WHERE site_url=$1 AND org_id=$2 LIMIT 1`,
+      [siteUrl, orgId]
+    );
 
-    if (!tokenRow) {
+    if (!tokenRow.rows[0]) {
       res.status(404).json({
         error: "Site not found for this organization. Generate a snippet first via GET /api/behavioral/snippet.",
       }); return;
     }
 
-    const result = await pool.query<{ total: string; last_event: Date | null }>(
-      `SELECT COUNT(*) AS total, MAX(created_at) AS last_event FROM behavior_events WHERE site_url = $1`,
+    const countRow = await orgDb(req)(
+      `SELECT COUNT(*) AS total, MAX(created_at) AS last_event FROM behavior_events WHERE site_url=$1`,
       [siteUrl]
     );
-    const { total, last_event } = result.rows[0] ?? { total: "0", last_event: null };
-    const installed = Number(total) > 0;
+    const row = countRow.rows[0] as { total: string; last_event: Date | null } | undefined;
+    const total = Number(row?.total ?? 0);
+    const last_event = row?.last_event ?? null;
+    const installed = total > 0;
+
     res.json({
       installed,
-      totalEvents: Number(total),
-      lastEventAt: last_event ?? null,
+      totalEvents: total,
+      lastEventAt: last_event,
       status: installed ? "active" : "snippet_not_installed",
       message: installed
         ? `Snippet actif — ${total} événements reçus.`
@@ -504,10 +371,8 @@ router.get("/behavioral/status", async (req: Request, res: Response) => {
   }
 });
 
-// Insights + generate require the behavioralAI add-on (Pro plan and above)
 router.use(requireFeature("behavioralAI", "Behavioral AI"));
 
-// ── GET /api/behavioral/insights (protected) ──────────────────────────────────
 router.get("/behavioral/insights", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
@@ -518,7 +383,6 @@ router.get("/behavioral/insights", async (req: Request, res: Response) => {
   }
 });
 
-// ── POST /api/behavioral/generate-insights (protected) ────────────────────────
 router.post("/behavioral/generate-insights", async (req: Request, res: Response) => {
   const { siteUrl } = req.body ?? {};
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
