@@ -62,6 +62,7 @@ export async function runRlsMigrationIfNeeded(): Promise<void> {
 
     // ── 2. Add org_id where missing ─────────────────────────────────────────
     const needsOrgId = [
+      // ── Original tables ────────────────────────────────────────────────────
       "ai_credit_purchases", "ai_monthly_usage", "ai_usage_logs",
       "alert_events", "alert_rules", "audit_schedules", "audit_trail",
       "audits", "automation_integrations", "automation_logs", "automation_runs",
@@ -77,6 +78,38 @@ export async function runRlsMigrationIfNeeded(): Promise<void> {
       "seo_forecasts", "sla_reports", "subscriptions", "team_members",
       "team_messages", "tracked_keywords", "usage", "user_prefs",
       "user_sessions", "workflow_runs", "activity_logs",
+      // ── Tables added after initial migration (migration 014 supplement) ───
+      "ai_alerts", "ai_market_reports", "ai_setup_logs",
+      "ai_workspace_profiles", "ai_chat_history", "ai_generated_missions",
+      "billing_events",
+      "bs_monitors", "bs_incidents", "bs_heartbeats", "bs_status_pages",
+      "competitor_map_results",
+      "crm_integrations", "crm_sync_logs", "crm_contacts", "crm_tokens", "crm_webhooks",
+      "cron_history",
+      "custom_domains",
+      "dataforseo_quota",
+      "ga4_properties",
+      "gbp_posts", "gbp_post_queue", "gbp_media_assets",
+      "github_connections", "github_analyses",
+      "google_accounts", "google_locations", "google_oauth_states", "google_reviews",
+      "gsc_sites", "gsc_keyword_data", "gsc_page_data", "gsc_sync_logs",
+      "keywords",
+      "local_heatmaps", "local_opportunities", "local_visibility_scores",
+      "login_audits",
+      "onboarding_sessions",
+      "org_auth_config",
+      "permission_logs",
+      "psi_cache", "psi_history",
+      "report_templates",
+      "reputation_scores",
+      "revenue_leaks",
+      "review_alerts", "review_analysis",
+      "roles",
+      "seo_domain_metrics",
+      "share_tokens",
+      "sso_providers",
+      "webhook_integrations",
+      "worker_failures",
     ];
     for (const t of needsOrgId) {
       if (!exists.has(t)) continue;

@@ -907,7 +907,7 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const { email = "test@flowpoint.pro", orgId = "default", role = "admin" } = req.body as { email?: string; orgId?: string; role?: string };
+  const { email = "test@flowpoint.pro", orgId = "default", role = "admin" } = (req.body as { email?: string; orgId?: string; role?: string }) || {};
   try {
     const token = await createSession({ userId: email, orgId, email, role });
     const isProd = isDeployedProd();
@@ -922,6 +922,30 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
   } catch (err) {
     logger.error({ err }, "[Auth] dev-session creation failed");
     res.status(500).json({ error: "Session creation failed" });
+  }
+});
+
+// ── Dev-only GET login (Playwright / CI) — sets cookie then redirects ──────
+// Usage: GET /api/auth/dev-login?key=ADMIN_KEY&redirect=/api/dashboard/
+router.get("/auth/dev-login", async (req: Request, res: Response) => {
+  if (isDeployedProd()) { res.status(403).send("Not available in production"); return; }
+  const key      = (req.query["key"] as string) ?? "";
+  const expected = process.env["ADMIN_KEY"] ?? "";
+  if (!expected || key !== expected) { res.status(401).send("Unauthorized"); return; }
+  const email    = (req.query["email"]  as string) || "test@flowpoint.pro";
+  const orgId    = (req.query["orgId"]  as string) || "default";
+  const role     = (req.query["role"]   as string) || "admin";
+  const redirect = (req.query["redirect"] as string) || "/api/dashboard/";
+  try {
+    const token = await createSession({ userId: email, orgId, email, role });
+    res.cookie("fp_token", token, {
+      httpOnly: true, secure: false, sameSite: "lax",
+      maxAge: SESSION_TTL_MS, path: "/",
+    });
+    res.redirect(redirect);
+  } catch (err) {
+    logger.error({ err }, "[Auth] dev-login failed");
+    res.status(500).send("Session creation failed");
   }
 });
 

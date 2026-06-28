@@ -782,8 +782,11 @@ async function loadData() {
         if (_cp.monitors)      STATE.monitors      = _cp.monitors;
         if (_cp.reports)       STATE.reports       = _cp.reports;
         if (_cp.team)          STATE.team          = _cp.team;
-        if (_cp.alertRules)    STATE.alertRules    = _cp.alertRules;
-        if (_cp.notifications) STATE.notifications = _cp.notifications;
+        if (_cp.alertRules)      STATE.alertRules      = _cp.alertRules;
+        if (_cp.notifications)   STATE.notifications   = _cp.notifications;
+        if (_cp.ga4Status)     { STATE.ga4Status = _cp.ga4Status; if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.ga4 = _cp.ga4Status; }
+        if (_cp.gsc)             STATE.gsc             = _cp.gsc;
+        if (_cp.googleConnected) STATE.googleConnected = _cp.googleConnected;
         // Cache restores partial STATE — do NOT render yet; wait for full live data
         // (keywords, competitors, missions, connectors, activityEvents are not in cache)
       }
@@ -912,6 +915,21 @@ async function loadData() {
     window.FP_CONNECTORS_API
       ? window.FP_CONNECTORS_API.load().then(r => { if (r) STATE.connectors = r; })
       : Promise.resolve(),
+    // ── Google integrations status (GA4 / GSC / GBP / OAuth) ────────────────
+    apiFetch('/api/ga4/status').then(r => {
+      if (r && typeof r === 'object') {
+        if (!window.FP_DATA || typeof window.FP_DATA !== 'object') window.FP_DATA = {};
+        window.FP_DATA.ga4 = r;
+        STATE.ga4Status = r;
+      }
+    }).catch(() => {}),
+    apiFetch('/api/gsc/status').then(r => {
+      if (r && typeof r === 'object') STATE.gsc = { ...(STATE.gsc || {}), ...r };
+    }).catch(() => {}),
+    apiFetch('/api/google/status').then(r => {
+      if (r && typeof r === 'object') STATE.googleConnected = r;
+    }).catch(() => {}),
+    window.FP_GBP_API ? window.FP_GBP_API.load().catch(() => {}) : Promise.resolve(),
   ]);
 
   // Apply pinned state
@@ -987,6 +1005,8 @@ async function loadData() {
       audits: STATE.audits, monitors: STATE.monitors,
       reports: STATE.reports, team: STATE.team,
       alertRules: STATE.alertRules, notifications: STATE.notifications,
+      ga4Status: STATE.ga4Status, gsc: STATE.gsc,
+      googleConnected: STATE.googleConnected,
     }));
   } catch(_) {}
 
@@ -3306,7 +3326,8 @@ function renderOverview() {
           <span style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,0.1);padding:2px 8px;border-radius:20px">IA Scoring</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${opportunities.map(o => `
+          ${opportunities.length > 0
+            ? opportunities.map(o => `
             <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all 0.15s" onclick="navigate('missions')" title="${o.title}">
               <div style="font-size:18px;flex-shrink:0">${o.icon}</div>
               <div style="flex:1;min-width:0">
@@ -3321,12 +3342,19 @@ function renderOverview() {
                 ${o.score != null ? `<div class="fp-progress-track" style="height:4px"><div class="fp-progress-fill" style="width:${o.score}%;background:${o.color}"></div></div>` : ''}
               </div>
             </div>
-          `).join('')}
+          `).join('')
+            : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint)">
+                <div style="font-size:28px;margin-bottom:8px">💎</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">Aucune opportunité détectée</div>
+                <div style="font-size:11px;margin-bottom:14px">Lancez un audit SEO ou créez des missions pour voir les opportunités de croissance identifiées par l'IA.</div>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('missions')">Créer une mission IA →</button>
+              </div>`
+          }
         </div>
-        <div style="margin-top:12px;padding:10px 12px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:9px;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:11px;color:var(--fp-text-muted)">Potentiel total identifié</span>
-          <span style="font-size:14px;font-weight:800;color:#22c55e">Voir le rapport</span>
-        </div>
+        ${opportunities.length > 0 ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);border-radius:9px;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:11px;color:var(--fp-text-muted)">${opportunities.length} opportunité${opportunities.length > 1 ? 's' : ''} identifiée${opportunities.length > 1 ? 's' : ''}</span>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('missions')" style="font-size:11px">Voir tout →</button>
+        </div>` : ''}
       </div>
 
       <!-- AI PRIORITY ENGINE -->
@@ -3336,7 +3364,8 @@ function renderOverview() {
           ${badge('IA Powered','#8b5cf6')}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${priorities.map((p,i) => `
+          ${priorities.length > 0
+            ? priorities.map((p,i) => `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid ${p.color}22;background:${p.color}06;cursor:pointer" onclick="navigate('${p.route}')">
               <div style="width:22px;height:22px;border-radius:7px;background:${p.color}20;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px">${p.icon}</div>
               <div style="flex:1;min-width:0">
@@ -3349,7 +3378,14 @@ function renderOverview() {
               </div>
               <div style="font-size:18px;font-weight:900;color:${p.color};opacity:0.3;font-family:var(--fp-font-head);flex-shrink:0">${i+1}</div>
             </div>
-          `).join('')}
+          `).join('')
+            : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint)">
+                <div style="font-size:28px;margin-bottom:8px">🧠</div>
+                <div style="font-size:12px;font-weight:600;color:var(--fp-text-muted);margin-bottom:4px">Priorités IA non encore calculées</div>
+                <div style="font-size:11px;margin-bottom:14px">L'IA analyse vos audits, vos keywords et vos monitors pour générer un plan d'action personnalisé.</div>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('missions')">Générer les priorités →</button>
+              </div>`
+          }
         </div>
       </div>
     </div>
