@@ -1,8 +1,9 @@
 import { pool } from "@workspace/db";
 
 export interface Heatmap {
-  id: string; orgId: string; name: string; keyword: string; location: string;
-  gridSize: string; results: unknown; status: string; createdAt: string;
+  id: string; org_id: string; name: string; keyword: string;
+  location_id: string | null; center_lat: number; center_lng: number;
+  radius_km: number; grid_size: number; status: string; created_at: string;
 }
 
 export interface MapsDashboard {
@@ -64,15 +65,18 @@ export async function getHeatmapDetail(id: string): Promise<Heatmap | null> {
 }
 
 export async function createHeatmap(orgId: string, data: {
-  name: string; keyword: string; location: string; gridSize?: string;
+  name: string; keyword: string; locationId?: string;
+  centerLat: number; centerLng: number; radiusKm?: number; gridSize?: number;
 }): Promise<Heatmap> {
   const client = await pool.connect();
   try {
     const id = `hm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await client.query(
-      `INSERT INTO local_heatmaps (id, org_id, name, keyword, location, grid_size, status, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,'processing',NOW())`,
-      [id, orgId, data.name, data.keyword, data.location, data.gridSize ?? "3x3"]
+      `INSERT INTO local_heatmaps
+         (id, org_id, location_id, name, keyword, center_lat, center_lng, radius_km, grid_size, status, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',NOW())`,
+      [id, orgId, data.locationId ?? null, data.name, data.keyword,
+       data.centerLat, data.centerLng, data.radiusKm ?? 5, data.gridSize ?? 7]
     );
     const res = await client.query(`SELECT * FROM local_heatmaps WHERE id=$1`, [id]);
     return res.rows[0];

@@ -14,12 +14,10 @@ const ALLOWED_ALERT_PHONE = process.env["ALERT_PHONE"] ?? "";
 
 // ── Validation helpers ─────────────────────────────────────────────────────────
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function validateAlertEmail(email: string | undefined): string | null {
   if (!email) return null;
-  if (!ALLOWED_ALERT_EMAIL)
-    return "alertEmail cannot be set: no ALERT_EMAIL is configured on this server";
-  if (email !== ALLOWED_ALERT_EMAIL)
-    return "alertEmail must match the account-configured alert address";
+  if (!EMAIL_RE.test(email)) return "alertEmail must be a valid email address";
   return null;
 }
 

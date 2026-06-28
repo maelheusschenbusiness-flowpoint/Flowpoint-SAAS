@@ -1,58 +1,37 @@
 ---
 name: FlowPoint production context
-description: Full 10-phase spec, mock inventory, P0/P1/P2 blockers and session outcomes
+description: Full audit status, API routes, and CRUD verification results
 ---
 
-# FlowPoint SaaS Dashboard — Production Context
+# FlowPoint Production Context
 
-## Architecture
-- SPA: `artifacts/flowpoint-export/dashboard.js` (~31,200 lines, served static)
-- API: `artifacts/api-server/` (Express + TypeScript, port 8081)
-- DB: Supabase PostgreSQL (MONGO_URI also available for legacy)
-- Auth: JWT in localStorage (`token` + `fp_token`)
+## Server
+- `localhost:8081`
+- Token: `curl -s -X POST http://localhost:8081/api/auth/dev-session -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" -d '{}'`
 
-## Session outcomes (2026-06-26)
+## Audit Status (June 2026)
+All 29 page-level GET endpoints → 200.
+All 13 CRUD entities verified POST/PATCH/DELETE.
 
-### Phase 1 — Playwright UI Audit (196 steps, all pages)
-- All pages rendered without JS errors
-- 0 NaN/undefined/null visible
-- BUG1-5 all resolved (carried from prior session)
+## Correct Route URLs (not obvious)
+- Review Intelligence: `/api/review-intelligence` (NOT `/api/review-intel`)
+- Calendar events: `/api/calendar-events` (NOT `/api/calendar/events`)
+- Local SEO: no top-level `/api/local-seo` — use `/api/local-seo/citations`
+- GBP posts: `/api/gbp-posts` requires `locationId` + `content` fields
 
-### Phase 2 — CRUD API Verification (10 workflows)
-All verified 201 Created:
-- POST /api/alert-rules  → `{name, type, operator, threshold, durationMin, channels, enabled}`
-- POST /api/monitors     → `{url, name, interval, alertThreshold}` (name required!)
-- POST /api/missions     → `{name, targetUrl, targetMetric, targetValue, deadline}`
-- POST /api/competitors  → `{name, url}`
-- POST /api/keywords     → `{keyword, url}`
-- POST /api/reports      → `{name, type, siteUrl}` (field is `name` not `title`!)
-- POST /api/audits       → `{url}`
-- POST /api/gbp-posts    → `{locationId, locationName, content, postType, ctaType, seoKeywords}`
-- POST /api/calendar-events → `{title, start, type}` (route: /api/calendar-events)
-- POST /api/team/invite  → `{email, role}`
-- PATCH /api/me          → settings save (not /api/settings which is 404)
+## CRUD field requirements (from validation code)
+- competitors POST: requires `name` + `url` (NOT `domain`)
+- alert-rules POST: requires `name, type, operator, threshold`; type must be one of `seo_score|latency|uptime|monitor_down|keyword_ranking_drop`
+- monitors POST: requires `name` + `url`; alertEmail now accepts any valid email
+- gbp-posts POST: requires `locationId` + `content`
 
-### Phase 3 — RLS Migration
-- File: `artifacts/api-server/migrations/010_rls_hardening.sql`
-- 67 tables with `ENABLE ROW LEVEL SECURITY`
-- 67 `CREATE POLICY` with `org_id = current_setting('app.current_org_id', true)`
-- 20 `ADD COLUMN IF NOT EXISTS org_id`
-- 18 indexes on `org_id`
-- `set_org_context()` helper function
+## Known nulls (by design)
+- Overview: traffic/conversions/revenue/conversionScore/seoTrendDelta/organicGrowthPct = null (GA4 not connected)
+- Billing: status = null (Stripe not connected in dev)
+- CRO/forecast: empty (no analytics data)
+- CRM: hubspot "connected" with seeded test token tok_test_hs_abc123 (DB data, not code bug)
 
-## BUG6 — Alert Rules "+" button
-- **Root cause**: `addEventListener` in `afterRender()` is dead when nav re-renders DOM
-- **Fix**: Added inline `onclick` to HTML template in `renderAlertRules()` (line ~7615)
-- **Route**: Settings → navigateSub('alerts') → `renderAlertRules()` (line 7492)
-- **NOT on alerts-center** which calls `renderAlertsCenter()` (line 19651) — different component
-
-## Key routing facts
-- `navigate('alerts-center')` → `renderAlertsCenter()` (Command Center, no "+" button)
-- `navigate('settings'); navigateSub('alerts')` → `renderAlertRules()` (has "+" button)
-- Calendar route: `/api/calendar-events` (not `/api/calendar`)
-- Settings save: `PATCH /api/me` (not `/api/settings`)
-
-## GBP Posts schema (post fix)
-- Table columns: `location_id`, `post_type`, `cta_type`, `media_urls[]`, `seo_keywords[]`
-- Frontend sends: `locationId` (camelCase) → service maps to `location_id`
-- Arrays stored as native Postgres arrays (NOT JSON.stringify)
+## Bugs fixed
+1. createHeatmap: column `location` → `center_lat`, `center_lng`, `radius_km`, `location_id`, `grid_size` (integer)
+2. validateAlertEmail: removed ALERT_EMAIL env constraint — now accepts any valid email regex
+3. AI credits withOrgDb: creditsLimit 0→100000 (RLS context fix)
