@@ -14,7 +14,7 @@
 - [ACTIVITY_FEED gating pattern](activity-feed-gating.md) — ACTIVITY_FEED used as fallback in 5 places (exportCsv, overview widget, team widget, see-all handler, timeline); all must be (PREVIEW_MODE ? ACTIVITY_FEED : []); real users get STATE.activityEvents or clean empty state
 - [Monitors PostgreSQL migration](monitors-pg-migration.md) — monitors/monitor_checks pre-exist in Supabase with old column names (uptime not uptime_pct etc); use ALTER TABLE ADD COLUMN IF NOT EXISTS; routes use existing column names
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
-- [API server final state](api-server-final-state.md) — 35/35 endpoints 200; upsert org_settings uses 2-query pattern; automation/runs uses raw SQL (Drizzle completedAt≠ended_at)
+- [API server final state](api-server-final-state.md) — 31/31 smoke GET 200; 8/8 CRUD 201; POST /keywords uses /keywords/track (Drizzle schema mismatch target_url vs url); GBP posts need locationId
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [FlowPoint mock audit results](flowpoint-mock-audit-results.md) — T001-T008 already gated; only real violation was enterprise lab workspaces (line ~7187); FP_COMPETITORS_API+FP_CONNECTORS_API added as globals at IIFE end
 - [SSO API normalization](sso-api-normalization.md) — providers_catalog is string[], stats fields mismatch, recentLogins alias; normalize all in renderSettingsSSO() before rendering
@@ -23,6 +23,6 @@
 - [Python template literal escaping pitfall](python-js-template-escaping.md) — Ne jamais écrire \` ou \$ dans des strings Python pour du JS: \` dans fichier = char invalide en expression JS, \$ bloque l'interpolation. Utiliser concaténation string JS ou remplacement ligne-à-ligne.
 - [Stripe live price IDs](stripe-price-ids.md) — 44 price IDs hardcoded in plans.ts; env vars optional override
 - [RLS migration 010 execution notes](rls-migration-notes.md) — Replit PG has no anon/authenticated roles; must create them first; DROP POLICY IF EXISTS produces NOTICEs that kill executeSql; fix: SET client_min_messages=WARNING; crm_field_mappings needed org_id added separately
-- [FlowPoint RLS migration](flowpoint-rls-migration.md) — 145 tables RLS enabled, 481 policies, postgres bypasses RLS
+- [FlowPoint RLS migration](flowpoint-rls-migration.md) — 145 tables RLS enabled, 580 policies, 18 gap-tables fixed with permissive policies; audit 46/48 PASS
 - [RLS local dev setup](rls-local-dev-setup.md) — app_user role missing locally (Supabase-only migration 011); patch via initRlsSetup(); legacy table columns need DROP NOT NULL + SET DEFAULT
 - [FlowPoint Drizzle audit](flowpoint-drizzle-audit.md) — 33 Drizzle tables vs 145 DB tables; 9 tables missing org_id (fixed); monitors columns wrong (fixed); tracked_keywords renamed; 0 warnings, 16/16 endpoints 200

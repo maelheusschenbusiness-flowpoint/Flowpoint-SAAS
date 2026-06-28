@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, connectorsTable } from "@workspace/db";
+import { db, connectorsTable, pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { store } from "../services/store.js";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
@@ -25,11 +25,53 @@ async function ensureSeed() {
 }
 
 // Read-only: any authenticated user may list connectors (status only, no tokens)
-router.get("/connectors", async (_req, res) => {
+// Real-time Google/GA4/GSC status is overlaid from google_tokens / ga4_properties / gsc_sites.
+router.get("/connectors", async (req, res) => {
+  const orgId: string = (req as unknown as Record<string, string>)["orgId"] ?? "default";
   try {
     await ensureSeed();
-    const connectors = await db.select().from(connectorsTable).limit(100);
-    const safe = connectors.map(c => ({ ...c, accessToken: c.connected ? "••••••" : null, refreshToken: null, webhookSecret: null }));
+    const [connectors, googleTok, ga4Prop, gscSite] = await Promise.allSettled([
+      db.select().from(connectorsTable).limit(100),
+      pool.query(`SELECT 1 FROM google_tokens   WHERE org_id=$1 LIMIT 1`, [orgId]),
+      pool.query(`SELECT 1 FROM ga4_properties  WHERE org_id=$1 LIMIT 1`, [orgId]),
+      pool.query(`SELECT 1 FROM gsc_sites       WHERE org_id=$1 AND active=true LIMIT 1`, [orgId]),
+    ]);
+
+    const connList = connectors.status === "fulfilled" ? connectors.value : SEED;
+    const googleOK = googleTok.status === "fulfilled" && googleTok.value.rows.length > 0;
+    const ga4OK    = ga4Prop.status   === "fulfilled" && ga4Prop.value.rows.length   > 0;
+    const gscOK    = gscSite.status   === "fulfilled" && gscSite.value.rows.length   > 0;
+
+    const GOOGLE_PROVIDERS = new Set(["google", "google-business-profile", "gbp"]);
+    const GA4_PROVIDERS    = new Set(["google-analytics", "ga4", "google_analytics"]);
+    const GSC_PROVIDERS    = new Set(["google-search-console", "gsc"]);
+
+    const safe = connList.map(c => {
+      let connected = c.connected ?? false;
+      let status    = c.status    ?? "disconnected";
+
+      if (GOOGLE_PROVIDERS.has(c.provider)) {
+        connected = googleOK;
+        status    = googleOK ? "connected" : "disconnected";
+      } else if (GA4_PROVIDERS.has(c.provider)) {
+        // GA4 uses the same Google OAuth token; mark connected if either token or property exists
+        connected = googleOK || ga4OK;
+        status    = (googleOK || ga4OK) ? "connected" : "disconnected";
+      } else if (GSC_PROVIDERS.has(c.provider)) {
+        connected = googleOK || gscOK;
+        status    = (googleOK || gscOK) ? "connected" : "disconnected";
+      }
+
+      return {
+        ...c,
+        connected,
+        status,
+        accessToken:   connected ? "••••••" : null,
+        refreshToken:  null,
+        webhookSecret: null,
+      };
+    });
+
     res.json(safe);
   } catch {
     res.json(SEED);

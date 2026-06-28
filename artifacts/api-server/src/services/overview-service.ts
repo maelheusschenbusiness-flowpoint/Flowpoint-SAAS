@@ -1,4 +1,6 @@
 import { pool } from "@workspace/db";
+import { getGA4Overview } from "./ga4-service.js";
+import { getImpressionsOverTime } from "./gsc-service.js";
 
 export interface OverviewMetrics {
   seoScore: number;
@@ -56,7 +58,10 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
   try {
-    const [audits, auditsPrev, monitors, keywords, missions, ai, leaks, connectors, gbpPosts, competitorsQ] =
+    const today     = new Date().toISOString().slice(0, 10);
+    const thirtyAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+
+    const [audits, auditsPrev, monitors, keywords, missions, ai, leaks, connectors, gbpPosts, competitorsQ, ga4Data, gscData] =
       await Promise.allSettled([
         // Current 30-day audit avg + count — scoped to this org
         pool.query(
@@ -135,6 +140,10 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
           `SELECT COUNT(*) as count FROM competitors WHERE org_id=$1`,
           [orgId]
         ),
+        // Real GA4 traffic (returns EMPTY_OVERVIEW zeros when GA4 not configured)
+        getGA4Overview(orgId, thirtyAgo, today),
+        // Real GSC impressions time series (empty array when not configured)
+        getImpressionsOverTime(orgId, 30),
       ]);
 
     const auditRow    = audits.status      === "fulfilled" ? audits.value.rows[0]       : null;
@@ -148,6 +157,37 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
       connectors.status === "fulfilled" && connectors.value.rows.length > 0;
     const gbpRow      = gbpPosts.status    === "fulfilled" ? gbpPosts.value.rows[0]     : null;
     const compRow     = competitorsQ.status === "fulfilled" ? competitorsQ.value.rows[0] : null;
+
+    // ── Real GA4 metrics ────────────────────────────────────────────────────────
+    const ga4     = ga4Data.status === "fulfilled"  ? ga4Data.value  : null;
+    const gscRows = gscData.status === "fulfilled"  ? gscData.value  : [];
+
+    // GA4 traffic: null when sessions=0 (means GA4 not connected or no data yet)
+    const realTraffic: number | null =
+      ga4 && ga4.sessions > 0 ? ga4.sessions : null;
+    const realConversions: number | null =
+      ga4 && ga4.conversions > 0 ? ga4.conversions : null;
+    const realRevenue: number | null =
+      ga4 && ga4.revenue > 0 ? ga4.revenue : null;
+    const realConvRate: number | null =
+      ga4 && ga4.conversionRate > 0 ? ga4.conversionRate : null;
+
+    // Traffic delta vs comparison period
+    const ga4TrafficDelta: number | null =
+      ga4 && realTraffic !== null && ga4.comparisonPeriod.sessions > 0
+        ? Math.round(((ga4.sessions - ga4.comparisonPeriod.sessions) / ga4.comparisonPeriod.sessions) * 100)
+        : null;
+
+    // ── GSC organic growth: clicks this period vs previous period ───────────────
+    let organicGrowthPct: number | null = null;
+    if (gscRows.length >= 2) {
+      const half = Math.floor(gscRows.length / 2);
+      const prev = (gscRows as Array<{ clicks: number }>)
+        .slice(0, half).reduce((s, r) => s + Number(r.clicks), 0);
+      const cur  = (gscRows as Array<{ clicks: number }>)
+        .slice(half).reduce((s, r) => s + Number(r.clicks), 0);
+      if (prev > 0) organicGrowthPct = Math.round(((cur - prev) / prev) * 100);
+    }
 
     // ── Core metrics ────────────────────────────────────────────────────────────
     const seoScore    = Math.round(Number(auditRow?.avg_score ?? 0));
@@ -218,17 +258,16 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
       avgScore: seoScore,
       seoScoreDelta: seoTrendDelta ?? (seoScore > 50 ? 3 : -2),
 
-      // ── Analytics metrics: null when GA4 not connected ──────────────────────
-      // Do NOT fabricate traffic/revenue figures. Frontend shows a "Connect GA4"
-      // CTA when these are null.
-      traffic:          null,
-      trafficDelta:     null,
-      conversions:      null,
+      // ── Analytics metrics: real GA4 when connected, null otherwise ──────────
+      // Frontend shows a "Connect GA4" CTA when these are null.
+      traffic:          realTraffic,
+      trafficDelta:     ga4TrafficDelta,
+      conversions:      realConversions,
       conversionsDelta: null,
-      revenue:          null,
+      revenue:          realRevenue,
       revenueDelta:     null,
-      conversionScore:  null,
-      analyticsConnected,
+      conversionScore:  realConvRate,
+      analyticsConnected: analyticsConnected || realTraffic !== null,
       // ────────────────────────────────────────────────────────────────────────
 
       monitorsUp,
@@ -253,7 +292,7 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
       localScore,
       competitorPressure,
       seoTrendDelta,
-      organicGrowthPct: null,  // Reserved for GSC integration
+      organicGrowthPct,
     };
 
     _cache.set(orgId, { data: result, expiresAt: Date.now() + 60_000 });

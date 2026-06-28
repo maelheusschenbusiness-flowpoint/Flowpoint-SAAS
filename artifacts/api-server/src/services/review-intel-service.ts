@@ -1,4 +1,6 @@
 import { pool } from "@workspace/db";
+import { getValidToken } from "./google-service.js";
+import { logger } from "../lib/logger.js";
 
 export interface ReputationDashboard {
   avgRating: number;
@@ -27,13 +29,46 @@ const SAMPLE_REVIEWS: ReviewItem[] = [
 export async function getReputationDashboard(orgId: string): Promise<ReputationDashboard> {
   const client = await pool.connect();
   try {
-    const res = await client.query(
-      `SELECT * FROM reviews WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`,
-      [orgId]
-    );
-    const reviews: ReviewItem[] = res.rows.length > 0 ? res.rows : SAMPLE_REVIEWS;
+    // Try reviews table first, fall back to google_reviews, then sample data
+    const [reviewsRes, googleReviewsRes] = await Promise.allSettled([
+      client.query(`SELECT * FROM reviews WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`, [orgId]),
+      client.query(
+        `SELECT
+           id, reviewer_name AS author, rating,
+           COALESCE(comment, '') AS text,
+           'google' AS platform,
+           COALESCE(owner_reply IS NOT NULL, false) AS replied,
+           create_time AS date
+         FROM google_reviews
+         WHERE org_id=$1
+         ORDER BY create_time DESC
+         LIMIT 100`,
+        [orgId]
+      ),
+    ]);
+
+    let reviews: ReviewItem[] = [];
+
+    if (reviewsRes.status === "fulfilled" && reviewsRes.value.rows.length > 0) {
+      reviews = reviewsRes.value.rows as ReviewItem[];
+    } else if (googleReviewsRes.status === "fulfilled" && googleReviewsRes.value.rows.length > 0) {
+      reviews = (googleReviewsRes.value.rows as Array<Record<string, unknown>>).map(r => ({
+        id:        String(r["id"] ?? ""),
+        author:    String(r["author"] ?? "Anonyme"),
+        rating:    Number(r["rating"] ?? 0),
+        text:      String(r["text"] ?? ""),
+        sentiment: Number(r["rating"] ?? 0) >= 4 ? "positive" : Number(r["rating"] ?? 0) <= 2 ? "negative" : "neutral",
+        platform:  "google",
+        replied:   Boolean(r["replied"]),
+        date:      r["date"] ? new Date(String(r["date"])).toISOString() : new Date().toISOString(),
+      }));
+    } else {
+      reviews = SAMPLE_REVIEWS;
+    }
+
     const avgRating = Math.round(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length * 10) / 10;
     const replied = reviews.filter(r => r.replied).length;
+    const trends = await generateTrendsFromDB(orgId, client);
 
     return {
       avgRating,
@@ -41,7 +76,7 @@ export async function getReputationDashboard(orgId: string): Promise<ReputationD
       responseRate: Math.round((replied / reviews.length) * 100),
       sentimentScore: Math.round(reviews.filter(r => r.sentiment === "positive").length / reviews.length * 100),
       reviews: reviews.slice(0, 20),
-      trends: generateTrends(),
+      trends,
       insights: [
         `Note moyenne de ${avgRating}/5 — au-dessus de la moyenne sectorielle (3.8/5)`,
         `${reviews.filter(r => !r.replied).length} avis sans réponse impactent votre réputation`,
@@ -56,18 +91,73 @@ export async function getReputationDashboard(orgId: string): Promise<ReputationD
   } finally { client.release(); }
 }
 
-function generateTrends(): Array<{ month: string; rating: number; count: number }> {
-  const months = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date();
-    d.setMonth(d.getMonth() - i);
-    months.push({
-      month: d.toLocaleDateString("fr-FR", { month: "short", year: "numeric" }),
-      rating: Math.round((3.8 + Math.random() * 0.8) * 10) / 10,
-      count: Math.floor(3 + Math.random() * 8),
-    });
+/**
+ * Aggregate review ratings per month from real DB data.
+ * Queries google_reviews first (most likely populated), then falls back to reviews table.
+ * Returns 6 months of data with count=0 for months with no reviews (never Math.random).
+ */
+async function generateTrendsFromDB(
+  orgId: string,
+  client: Awaited<ReturnType<typeof pool.connect>>
+): Promise<Array<{ month: string; rating: number; count: number }>> {
+  try {
+    // Attempt google_reviews (GBP sync source)
+    const res = await client.query(
+      `SELECT
+         TO_CHAR(DATE_TRUNC('month', create_time::timestamptz), 'Mon YYYY') AS month,
+         ROUND(AVG(rating)::numeric, 1)                                      AS rating,
+         COUNT(*)::int                                                        AS count
+       FROM google_reviews
+       WHERE org_id=$1
+         AND create_time > NOW() - INTERVAL '6 months'
+       GROUP BY DATE_TRUNC('month', create_time::timestamptz)
+       ORDER BY DATE_TRUNC('month', create_time::timestamptz) ASC`,
+      [orgId]
+    );
+
+    if (res.rows.length > 0) {
+      return res.rows.map(r => ({
+        month:  String(r["month"] ?? ""),
+        rating: Number(r["rating"] ?? 0),
+        count:  Number(r["count"]  ?? 0),
+      }));
+    }
+
+    // Fallback: reviews table (manual imports)
+    const res2 = await client.query(
+      `SELECT
+         TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YYYY') AS month,
+         ROUND(AVG(rating)::numeric, 1)                        AS rating,
+         COUNT(*)::int                                          AS count
+       FROM reviews
+       WHERE org_id=$1
+         AND created_at > NOW() - INTERVAL '6 months'
+       GROUP BY DATE_TRUNC('month', created_at)
+       ORDER BY DATE_TRUNC('month', created_at) ASC`,
+      [orgId]
+    );
+
+    if (res2.rows.length > 0) {
+      return res2.rows.map(r => ({
+        month:  String(r["month"] ?? ""),
+        rating: Number(r["rating"] ?? 0),
+        count:  Number(r["count"]  ?? 0),
+      }));
+    }
+  } catch (e) {
+    logger.debug({ e }, "[review-intel] generateTrendsFromDB failed");
   }
-  return months;
+
+  // No real data available — return 6 months of honest zeros (never fabricate ratings)
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - (5 - i));
+    return {
+      month:  d.toLocaleDateString("fr-FR", { month: "short", year: "numeric" }),
+      rating: 0,
+      count:  0,
+    };
+  });
 }
 
 export async function analyzeReview(reviewText: string): Promise<{ sentiment: string; topics: string[]; urgency: string }> {
@@ -88,6 +178,53 @@ export async function generateReply(review: ReviewItem): Promise<string> {
   return `Merci ${review.author.split(" ")[0]} pour votre retour. Nous prenons note de vos remarques pour améliorer notre service.`;
 }
 
-export async function syncReviewsFromGBP(_orgId: string): Promise<number> {
-  return 0;
+/**
+ * Sync reviews from GBP (google_reviews table) into the reviews table.
+ * The google_reviews table is populated by google-service.ts syncAll() → GBP API.
+ * This function copies new rows into reviews for unified querying.
+ */
+export async function syncReviewsFromGBP(orgId: string): Promise<number> {
+  const token = await getValidToken(orgId).catch(() => null);
+  if (!token) {
+    logger.info({ orgId }, "[review-intel] syncReviewsFromGBP: no Google token, skipping");
+    return 0;
+  }
+
+  const client = await pool.connect();
+  try {
+    // Copy any google_reviews not yet in the reviews table
+    const result = await client.query(
+      `INSERT INTO reviews (id, org_id, author, rating, text, sentiment, platform, replied, created_at)
+       SELECT
+         gr.id,
+         gr.org_id,
+         gr.reviewer_name,
+         gr.rating,
+         COALESCE(gr.comment, ''),
+         CASE
+           WHEN gr.rating >= 4 THEN 'positive'
+           WHEN gr.rating <= 2 THEN 'negative'
+           ELSE 'neutral'
+         END,
+         'google',
+         (gr.owner_reply IS NOT NULL),
+         gr.create_time::timestamptz
+       FROM google_reviews gr
+       WHERE gr.org_id = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM reviews r WHERE r.id = gr.id
+         )
+       ON CONFLICT (id) DO NOTHING`,
+      [orgId]
+    );
+
+    const synced = result.rowCount ?? 0;
+    logger.info({ orgId, synced }, "[review-intel] syncReviewsFromGBP completed");
+    return synced;
+  } catch (e) {
+    logger.warn({ e, orgId }, "[review-intel] syncReviewsFromGBP failed");
+    return 0;
+  } finally {
+    client.release();
+  }
 }

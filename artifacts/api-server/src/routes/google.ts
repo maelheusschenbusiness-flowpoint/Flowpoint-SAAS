@@ -129,6 +129,15 @@ async function handleGoogleCallback(req: Request, res: Response): Promise<void> 
       targetType: "connector",
     });
 
+    // Reflect Google connection in the connectors table (used by the Connectors UI)
+    pool.query(
+      `INSERT INTO connectors (id, org_id, provider, status, connected, last_sync, sync_status, created_at)
+       VALUES ($1, $2, 'google', 'connected', true, NOW(), 'ok', NOW())
+       ON CONFLICT (id) DO UPDATE
+         SET status='connected', connected=true, last_sync=NOW(), sync_status='ok'`,
+      [`conn-google-${orgId}`, orgId]
+    ).catch(e => logger.warn({ e }, "[google] Failed to update connectors table"));
+
     // Kick off background GBP sync (non-blocking)
     syncAll(orgId).catch(e => logger.warn({ e }, "[google] Background sync failed"));
 

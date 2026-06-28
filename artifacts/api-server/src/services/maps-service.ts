@@ -39,7 +39,14 @@ export async function getDistanceMatrix(origins: string[], destinations: string[
   return res.json();
 }
 
+/**
+ * Returns a grid of geo-points around the given location.
+ * rank is always null here — it must be populated by a DataForSEO sync job
+ * (see local-maps-service.ts) stored in the heatmap_data table.
+ * Returning null prevents fabricated rank numbers from misleading users.
+ */
 export async function getHeatmapData(keyword: string, location: string, gridSize = 9): Promise<Array<{ lat: number; lng: number; rank: number | null }>> {
+  void keyword; // reserved for DataForSEO batch job
   const geo = await geocodeAddress(location).catch(() => null);
   if (!geo) return [];
   const step = 0.01;
@@ -47,7 +54,7 @@ export async function getHeatmapData(keyword: string, location: string, gridSize
   const points: Array<{ lat: number; lng: number; rank: number | null }> = [];
   for (let i = -half; i <= half; i++) {
     for (let j = -half; j <= half; j++) {
-      points.push({ lat: geo.lat + i * step, lng: geo.lng + j * step, rank: Math.floor(Math.random() * 20) + 1 });
+      points.push({ lat: geo.lat + i * step, lng: geo.lng + j * step, rank: null });
     }
   }
   return points;
