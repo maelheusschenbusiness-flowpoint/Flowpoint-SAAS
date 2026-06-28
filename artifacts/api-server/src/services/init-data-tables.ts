@@ -172,11 +172,21 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS content     TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS channel     TEXT NOT NULL DEFAULT 'general';`);
     await run(client, `ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS type        TEXT NOT NULL DEFAULT 'text';`);
-    // Patch legacy columns if they exist (old schema used "from"/"text", new uses sender_name/content)
-    await run(client, `ALTER TABLE team_messages ALTER COLUMN "from" DROP NOT NULL;`);
-    await run(client, `ALTER TABLE team_messages ALTER COLUMN "from" SET DEFAULT '';`);
-    await run(client, `ALTER TABLE team_messages ALTER COLUMN "text" DROP NOT NULL;`);
-    await run(client, `ALTER TABLE team_messages ALTER COLUMN "text" SET DEFAULT '';`);
+    // Patch legacy columns only if they exist (old Replit local schema had "from"/"text" NOT NULL)
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='team_messages' AND column_name='from') THEN
+          ALTER TABLE team_messages ALTER COLUMN "from" DROP NOT NULL;
+          ALTER TABLE team_messages ALTER COLUMN "from" SET DEFAULT '';
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='team_messages' AND column_name='text') THEN
+          ALTER TABLE team_messages ALTER COLUMN "text" DROP NOT NULL;
+          ALTER TABLE team_messages ALTER COLUMN "text" SET DEFAULT '';
+        END IF;
+      END $$;
+    `);
     await run(client, `CREATE INDEX IF NOT EXISTS team_messages_org_id_idx  ON team_messages(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS team_messages_channel_idx ON team_messages(channel);`);
 

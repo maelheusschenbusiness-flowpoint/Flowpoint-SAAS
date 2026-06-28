@@ -36,7 +36,7 @@ router.get("/admin/stats", async (req: Request, res: Response): Promise<void> =>
   try {
     const [usersR, sessionsR, auditsR, monitorsR, kwardsR] = await Promise.all([
       client.query("SELECT COUNT(*)::int AS count FROM team_members"),
-      client.query("SELECT COUNT(*)::int AS count FROM sessions WHERE expires_at > now()"),
+      client.query("SELECT COUNT(*)::int AS count FROM user_sessions WHERE expires_at > now()"),
       client.query("SELECT COUNT(*)::int AS count FROM audits"),
       client.query("SELECT COUNT(*)::int AS count FROM monitors"),
       client.query("SELECT COUNT(*)::int AS count FROM keywords"),
@@ -76,7 +76,7 @@ router.get("/admin/users", async (req: Request, res: Response): Promise<void> =>
         MAX(s.last_seen_at)                                   AS last_seen_at,
         (COUNT(s.id) FILTER (WHERE s.expires_at > now()) > 0) AS is_active
       FROM team_members tm
-      LEFT JOIN sessions s ON s.email = tm.email
+      LEFT JOIN user_sessions s ON s.email = tm.email
       GROUP BY tm.id, tm.name, tm.email, tm.role, tm.joined, tm.created_at
       ORDER BY tm.created_at DESC
     `);
@@ -102,7 +102,7 @@ router.post("/admin/user/block", async (req: Request, res: Response): Promise<vo
   const client = await pool.connect();
   try {
     const { rowCount } = await client.query(
-      "DELETE FROM sessions WHERE email = $1",
+      "DELETE FROM user_sessions WHERE email = $1",
       [email.toLowerCase().trim()]
     );
     res.json({ ok: true, email, sessionsRevoked: rowCount ?? 0 });
@@ -302,8 +302,84 @@ router.delete("/admin/sessions/expired", async (req: Request, res: Response): Pr
 
   const client = await pool.connect();
   try {
-    const { rowCount } = await client.query("DELETE FROM sessions WHERE expires_at <= now()");
+    const { rowCount } = await client.query("DELETE FROM user_sessions WHERE expires_at <= now()");
     res.json({ ok: true, deletedCount: rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+// ── GET /api/admin/db-check ───────────────────────────────────────────────────
+// Returns DB host fingerprint, app_user existence, and RLS policy count.
+// Safe read-only diagnostic — never exposes credentials.
+router.get("/admin/db-check", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const client = await pool.connect();
+  try {
+    const [dbR, roleR, rlsR, tableR] = await Promise.all([
+      client.query(`SELECT current_database() AS db, version() AS pg_version,
+                           inet_server_addr()::text AS host, inet_server_port() AS port`),
+      client.query(`SELECT rolname, rolsuper, rolbypassrls
+                    FROM pg_roles WHERE rolname = 'app_user'`),
+      client.query(`SELECT COUNT(*)::int AS policy_count FROM pg_policies WHERE schemaname='public'`),
+      client.query(`SELECT COUNT(*)::int AS rls_tables
+                    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                    WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity=true`),
+    ]);
+    const db = dbR.rows[0];
+    const appUser = roleR.rows[0] ?? null;
+    res.json({
+      ok: true,
+      database: {
+        name:      db.db,
+        host:      db.host ?? "(unix socket)",
+        port:      db.port,
+        pg_version: db.pg_version?.split(" ")[0] + " " + db.pg_version?.split(" ")[1],
+      },
+      rls: {
+        app_user_exists:   !!appUser,
+        app_user_superuser: appUser?.rolsuper ?? null,
+        app_user_bypassrls: appUser?.rolbypassrls ?? null,
+        rls_enabled_tables: tableR.rows[0].rls_tables,
+        total_policies:     rlsR.rows[0].policy_count,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  } finally {
+    client.release();
+  }
+});
+
+// ── POST /api/admin/test-session ──────────────────────────────────────────────
+// Creates a short-lived (1h) test session for org "default" (admin role).
+// Returns the token so automated tests can authenticate against production.
+// Token is revoked automatically when it expires.
+router.post("/admin/test-session", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const { orgId = "default", ttlMinutes = 60 } = req.body as { orgId?: string; ttlMinutes?: number };
+
+  const client = await pool.connect();
+  try {
+    const token = `fp_prodtest_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+    await client.query(
+      `INSERT INTO user_sessions (token, user_id, org_id, email, role, expires_at, created_at)
+       VALUES ($1, 'test-admin', $2, 'test@flowpoint.pro', 'admin', $3, NOW())
+       ON CONFLICT DO NOTHING`,
+      [token, orgId, expiresAt]
+    );
+    res.json({
+      ok: true,
+      token,
+      orgId,
+      expiresAt: expiresAt.toISOString(),
+      note: "Short-lived test token — expires in " + ttlMinutes + " min. Do not store in code.",
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
   } finally {
