@@ -24,7 +24,7 @@ export interface PermissionLog {
 
 export interface PermissionsStats {
   totalRoles: number; totalMembers: number; permissionChecksToday: number;
-  blockedActionsToday: number; mostActiveResource: string; complianceScore: number;
+  blockedActionsToday: number; mostActiveResource: string | null; complianceScore: number | null;
 }
 
 const SYSTEM_ROLES: Role[] = [
@@ -121,19 +121,26 @@ export async function logAccess(opts: { orgId: string; userId: string; resource:
 export async function getPermissionsStats(orgId: string): Promise<PermissionsStats> {
   const client = await pool.connect();
   try {
-    const [rolesRes, logsRes] = await Promise.all([
+    const [rolesRes, logsRes, membersRes, topResourceRes] = await Promise.all([
       client.query(`SELECT COUNT(*) as c FROM roles WHERE org_id=$1`, [orgId]),
       client.query(`SELECT COUNT(*) as total, SUM(CASE WHEN allowed=false THEN 1 ELSE 0 END) as blocked FROM permission_logs WHERE org_id=$1 AND created_at > NOW()-INTERVAL '1 day'`, [orgId]),
+      client.query(`SELECT COUNT(*) as c FROM org_members WHERE org_id=$1`, [orgId]),
+      client.query(`SELECT resource, COUNT(*) as c FROM permission_logs WHERE org_id=$1 AND created_at > NOW()-INTERVAL '7 days' GROUP BY resource ORDER BY c DESC LIMIT 1`, [orgId]),
     ]);
+    const totalChecks = Number(logsRes.rows[0]?.total ?? 0);
+    const blockedToday = Number(logsRes.rows[0]?.blocked ?? 0);
+    const complianceScore = totalChecks > 0
+      ? Math.round(((totalChecks - blockedToday) / totalChecks) * 100)
+      : null;
     return {
-      totalRoles: Number(rolesRes.rows[0]?.c ?? 3),
-      totalMembers: 5,
-      permissionChecksToday: Number(logsRes.rows[0]?.total ?? 0),
-      blockedActionsToday: Number(logsRes.rows[0]?.blocked ?? 0),
-      mostActiveResource: "audits",
-      complianceScore: 95,
+      totalRoles: Number(rolesRes.rows[0]?.c ?? 0),
+      totalMembers: Number(membersRes.rows[0]?.c ?? 0),
+      permissionChecksToday: totalChecks,
+      blockedActionsToday: blockedToday,
+      mostActiveResource: (topResourceRes.rows[0]?.resource as string) ?? null,
+      complianceScore,
     };
   } catch {
-    return { totalRoles:3, totalMembers:5, permissionChecksToday:0, blockedActionsToday:0, mostActiveResource:"audits", complianceScore:95 };
+    return { totalRoles: 0, totalMembers: 0, permissionChecksToday: 0, blockedActionsToday: 0, mostActiveResource: null, complianceScore: null };
   } finally { client.release(); }
 }

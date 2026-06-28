@@ -22,12 +22,7 @@ const TREND_SEEDS = [
   { keyword: "AI Overview référencement", category: "AI & SEO", volume: 2900, growth: 156, opportunityScore: 91 },
 ];
 
-const OPP_SEEDS = [
-  { type: "content_gap", title: "Lacune de contenu détectée", description: "Vos concurrents se positionnent sur 34 mots-clés liés à 'SEO vocal' que vous ne couvrez pas.", score: 87, estimatedImpact: "+2,400 visites/mois" },
-  { type: "local_gap", title: "Zone géographique non couverte", description: "La ville de Bordeaux représente 18% du volume de recherche local mais aucune page n'y est dédiée.", score: 82, estimatedImpact: "+1,800 visites/mois" },
-  { type: "backlink", title: "Opportunité netlinking sectorielle", description: "3 sites d'autorité DR>70 dans votre secteur acceptent les articles invités.", score: 79, estimatedImpact: "+8 DR en 3 mois" },
-  { type: "featured_snippet", title: "Featured Snippets accessibles", description: "12 requêtes à fort volume affichent un featured snippet que vous pourriez conquérir avec peu d'effort.", score: 74, estimatedImpact: "+35% CTR" },
-];
+const OPP_SEEDS: Array<{ type: string; title: string; description: string; score: number; estimatedImpact: string }> = [];
 
 export async function seedMarketData(orgId: string): Promise<void> {
   const client = await pool.connect();
@@ -66,7 +61,7 @@ export async function getMarketDashboard(orgId: string): Promise<MarketDashboard
       trends: trends.rows, opportunities: opps.rows, signals: signals.rows,
       competitorMovements: movements.rows,
       summary: {
-        score: 74,
+        score: trends.rows.length > 0 ? Math.round(trends.rows.reduce((s: number, t: Record<string,unknown>) => s + Number(t["opportunity_score"] ?? 0), 0) / trends.rows.length) : 0,
         trendingUp: trends.rows.filter((t: Record<string, unknown>) => Number(t["growth"]) > 50).length,
         opportunities: opps.rows.length,
         threats: movements.rows.filter((m: Record<string, unknown>) => m["type"] === "ranking_gain").length,

@@ -110,8 +110,9 @@ export async function generateAiPost(orgId: string, data?: { locationId?: string
     "tip":       { content: `💡 Conseil SEO du jour : Saviez-vous que répondre aux avis Google peut augmenter vos conversions de 33% ? Prenez 5 minutes aujourd'hui pour répondre à vos avis récents. #Tips #SEO`, callToAction: "Nous contacter" },
     "event":     { content: `📅 Webinaire gratuit : "Dominer le SEO Local en 2025" — Rejoignez-nous ce jeudi à 14h pour découvrir les stratégies utilisées par les meilleurs. Places limitées ! Inscrivez-vous maintenant.`, callToAction: "S'inscrire" },
   };
-  const type = Object.keys(templates)[Math.floor(Math.random() * Object.keys(templates).length)];
-  return { type, ...templates[type] };
+  const postType = data?.postType ?? "tip";
+  const type = templates[postType] ? postType : "tip";
+  return { type, ...templates[type], isTemplate: true };
 }
 
 export async function publishPost(postId: string): Promise<{ ok: boolean; publishedAt: string }> {

@@ -16,3 +16,4 @@
 - [FlowPoint RLS 100% coverage](flowpoint-rls-migration.md) — 150/150 tables, 600 policies; google_oauth_states patched in init-rls-setup.ts startup hook (migrations/015 SQL for docs)
 - [FlowPoint mailer service](flowpoint-mailer.md) — centralized mailer at services/mailer.ts; 11 email types; all fire-and-forget; RESEND_API_KEY required; never throws
 - [FlowPoint billing production state](flowpoint-billing-prod.md) — NODE_ENV=production, mock=false confirmed; plans.ts has live price IDs with env var overrides; webhook rejects unsigned in prod (correct)
+- [FlowPoint Playwright auth](flowpoint-playwright-auth.md) — HttpOnly cookie blocks testing subagent; use Bearer header for API tests instead

@@ -1,7 +1,8 @@
 export interface LLMVisibilityResult {
   url: string;
-  overallScore: number;
-  models: Array<{ name: string; mentioned: boolean; sentiment: string; context: string }>;
+  overallScore: number | null;
+  dataSource?: string;
+  models: Array<{ name: string; mentioned: boolean | null; sentiment: string; context: string }>;
   recommendations: string[];
   checkedAt: string;
 }
@@ -10,15 +11,16 @@ export async function checkLLMVisibility(url: string, keyword: string): Promise<
   const domain = (() => { try { return new URL(url).hostname; } catch { return url; } })();
 
   const models = [
-    { name: "ChatGPT (GPT-4o)", mentioned: false, sentiment: "neutral", context: "Non mentionné dans les 3 dernières vérifications" },
-    { name: "Claude (Anthropic)", mentioned: false, sentiment: "neutral", context: "Non mentionné dans les 3 dernières vérifications" },
-    { name: "Gemini (Google)", mentioned: false, sentiment: "neutral", context: "Non mentionné dans les 3 dernières vérifications" },
-    { name: "Perplexity AI", mentioned: false, sentiment: "neutral", context: "Non mentionné dans les 3 dernières vérifications" },
+    { name: "ChatGPT (GPT-4o)", mentioned: null, sentiment: "unknown", context: "Vérification non effectuée — intégration LLM requise" },
+    { name: "Claude (Anthropic)", mentioned: null, sentiment: "unknown", context: "Vérification non effectuée — intégration LLM requise" },
+    { name: "Gemini (Google)", mentioned: null, sentiment: "unknown", context: "Vérification non effectuée — intégration LLM requise" },
+    { name: "Perplexity AI", mentioned: null, sentiment: "unknown", context: "Vérification non effectuée — intégration LLM requise" },
   ];
 
   return {
     url,
-    overallScore: 15,
+    overallScore: null,
+    dataSource: "pending",
     models,
     recommendations: [
       `Créer du contenu expert structuré sur ${keyword} pour améliorer votre visibilité IA`,

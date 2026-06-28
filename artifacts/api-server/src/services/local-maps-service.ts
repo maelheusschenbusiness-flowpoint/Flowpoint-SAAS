@@ -10,11 +10,11 @@ export interface MapsDashboard {
   heatmaps: Heatmap[];
   summary: {
     totalHeatmaps: number;
-    avgRank: number;
-    top3GridPoints: number;
-    coverageScore: number;
-    competitorsAnalyzed: number;
-    localVisibilityScore: number;
+    avgRank: number | null;
+    top3GridPoints: number | null;
+    coverageScore: number | null;
+    competitorsAnalyzed: number | null;
+    localVisibilityScore: number | null;
   };
   insights: string[];
   recommendations: Array<{ title: string; description: string; impact: string; effort: string }>;
@@ -22,26 +22,27 @@ export interface MapsDashboard {
 
 export async function getMapsDashboard(orgId: string): Promise<MapsDashboard> {
   const heatmaps = await getHeatmaps(orgId);
+
+  const dominanceScores = heatmaps.map(h => Number((h as Record<string,unknown>)["dominance_score"] ?? 0)).filter(n => n > 0);
+  const avgRank = dominanceScores.length > 0
+    ? Math.round((dominanceScores.reduce((s, n) => s + n, 0) / dominanceScores.length) * 10) / 10
+    : null;
+  const coverageScore = heatmaps.length > 0
+    ? Math.min(100, Math.round((heatmaps.filter(h => Number((h as Record<string,unknown>)["dominance_score"] ?? 0) >= 50).length / heatmaps.length) * 100))
+    : null;
+
   return {
     heatmaps,
     summary: {
       totalHeatmaps: heatmaps.length,
-      avgRank: 4.2,
-      top3GridPoints: 14,
-      coverageScore: 68,
-      competitorsAnalyzed: 5,
-      localVisibilityScore: 72,
+      avgRank,
+      top3GridPoints: null,
+      coverageScore,
+      competitorsAnalyzed: null,
+      localVisibilityScore: null,
     },
-    insights: [
-      "Votre visibilité locale est optimale dans un rayon de 2km autour de votre adresse principale",
-      "3 zones géographiques présentent des opportunités inexploitées (faible concurrence)",
-      "Votre concurrent principal est 2x plus visible dans le secteur Nord-Est",
-    ],
-    recommendations: [
-      { title: "Cibler le quartier Nord-Est", description: "La densité de recherches 'SEO local' dans ce secteur est 40% plus haute sans concurrents bien positionnés.", impact: "high", effort: "medium" },
-      { title: "Créer des pages de destination locales", description: "Une landing page par zone géographique cible améliorera votre visibilité maps de 25-35%.", impact: "high", effort: "medium" },
-      { title: "Optimiser les citations locales", description: "15 annuaires locaux pertinents n'ont pas encore votre fiche. Chaque citation améliore votre Pack 3 local.", impact: "medium", effort: "low" },
-    ],
+    insights: [],
+    recommendations: [],
   };
 }
 
