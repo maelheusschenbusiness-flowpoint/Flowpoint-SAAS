@@ -9,6 +9,15 @@ import { pool } from "@workspace/db";
 
 const router = Router();
 
+// ── Dev/prod detection ────────────────────────────────────────────────────────
+// REPLIT_DEV_DOMAIN is set in all Replit workspaces but NOT in deployments.
+// Using NODE_ENV alone is unreliable because Replit sets NODE_ENV=production
+// even in the interactive workspace. isDeployedProd() is true only in real
+// production deployments (Render, Railway, Replit Deployments, etc.).
+function isDeployedProd(): boolean {
+  return process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"];
+}
+
 function generateToken(): string {
   return randomBytes(32).toString("hex");
 }
@@ -315,13 +324,19 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
 
   // ── Send via Resend ───────────────────────────────────────────────────────────
   const resendKey = process.env["RESEND_API_KEY"];
-  const isProduction = process.env["NODE_ENV"] === "production";
+  const isProduction = isDeployedProd();
+  const isDevWorkspace = !!process.env["REPLIT_DEV_DOMAIN"];
 
   if (resendKey) {
     try {
       await sendMagicEmail(email, verifyPath);
       logger.info({ email }, "[Auth] login-request: magic link sent successfully");
-      res.json({ ok: true, message: "Lien de connexion envoyé par email." });
+      // In dev workspace always include debugLink so Playwright tests can auth
+      if (isDevWorkspace) {
+        res.json({ ok: true, debugLink: verifyPath, message: "Lien de connexion envoyé par email." });
+      } else {
+        res.json({ ok: true, message: "Lien de connexion envoyé par email." });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg, email }, "[Auth] login-request: Resend failed");
@@ -380,12 +395,17 @@ router.post("/auth/register", authRateLimit, async (req: Request, res: Response)
   }
 
   const resendKey = process.env["RESEND_API_KEY"];
-  const isProduction = process.env["NODE_ENV"] === "production";
+  const isProduction = isDeployedProd();
+  const isDevWorkspaceR = !!process.env["REPLIT_DEV_DOMAIN"];
 
   if (resendKey) {
     try {
       await sendMagicEmail(normalizedEmail, verifyPath);
-      res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+      if (isDevWorkspaceR) {
+        res.json({ ok: true, debugLink: verifyPath, message: "Compte créé. Lien envoyé par email." });
+      } else {
+        res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg }, "[Auth] register: Resend failed");
@@ -540,13 +560,18 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   }
 
   const resendKey = process.env["RESEND_API_KEY"];
-  const isProduction = process.env["NODE_ENV"] === "production";
+  const isProduction = isDeployedProd();
+  const isDevWorkspaceS = !!process.env["REPLIT_DEV_DOMAIN"];
 
   if (resendKey) {
     try {
       await sendMagicEmail(normalizedEmail, verifyPath);
       logger.info({ email: normalizedEmail, company, plan: selectedPlan }, "[Auth/Signup] Account created — magic link sent");
-      res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+      if (isDevWorkspaceS) {
+        res.json({ ok: true, debugLink: verifyPath, message: "Compte créé. Lien envoyé par email." });
+      } else {
+        res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+      }
 
       // ── Fire-and-forget: create Stripe customer + start trial ───────────
       const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
@@ -629,7 +654,7 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
 
   logger.info({ email: entry.email }, "[Auth] Magic link verified — session started");
 
-  const isProd = process.env["NODE_ENV"] === "production";
+  const isProd = isDeployedProd();
   res.cookie("fp_token", sessionToken, {
     httpOnly: true,
     secure: isProd,
@@ -731,7 +756,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // In this single-tenant deployment every OAuth login is an owner/admin.
     const sessionToken = await createSession({ userId: resolvedEmail, orgId: "default", email: resolvedEmail, role: "admin" });
-    const isProd = process.env["NODE_ENV"] === "production";
+    const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure: isProd,
@@ -797,7 +822,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // In this single-tenant deployment every OAuth login is an owner/admin.
     const sessionToken = await createSession({ userId: resolvedEmail, orgId: "default", email: resolvedEmail, role: "admin" });
-    const isProd = process.env["NODE_ENV"] === "production";
+    const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
       secure: isProd,
@@ -837,7 +862,7 @@ router.post("/auth/logout", (req: Request, res: Response) => {
     logger.info("[Auth] Session revoked on logout");
   }
 
-  const isProd = process.env["NODE_ENV"] === "production";
+  const isProd = isDeployedProd();
   res.clearCookie("fp_token", {
     httpOnly: true,
     secure: isProd,
@@ -867,6 +892,37 @@ router.get("/auth/apple/login", (req: Request, res: Response) => {
   url.searchParams.set("scope", "name email");
   url.searchParams.set("state", state);
   res.redirect(url.toString());
+});
+
+// ── Dev-only session endpoint (Playwright / CI auth bypass) ──────────────────
+// Blocked in deployed production. Protected by ADMIN_KEY header.
+router.post("/auth/dev-session", async (req: Request, res: Response) => {
+  if (isDeployedProd()) {
+    res.status(403).json({ error: "Not available in production" });
+    return;
+  }
+  const adminKey = (req.headers["x-admin-key"] as string) ?? "";
+  const expectedKey = process.env["ADMIN_KEY"] ?? "";
+  if (!expectedKey || adminKey !== expectedKey) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const { email = "test@flowpoint.pro", orgId = "default", role = "admin" } = req.body as { email?: string; orgId?: string; role?: string };
+  try {
+    const token = await createSession({ userId: email, orgId, email, role });
+    const isProd = isDeployedProd();
+    res.cookie("fp_token", token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge: SESSION_TTL_MS,
+      path: "/",
+    });
+    res.json({ ok: true, token, email, orgId, role });
+  } catch (err) {
+    logger.error({ err }, "[Auth] dev-session creation failed");
+    res.status(500).json({ error: "Session creation failed" });
+  }
 });
 
 router.get("/auth/providers", (_req: Request, res: Response) => {

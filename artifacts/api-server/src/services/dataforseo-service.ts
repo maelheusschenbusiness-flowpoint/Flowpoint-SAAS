@@ -1,7 +1,16 @@
+/**
+ * dataforseo-service.ts — DataForSEO API client
+ *
+ * All functions check isDataForSEOConfigured() and fall back to empty
+ * arrays / null values when credentials are absent — no more fake data.
+ *
+ * Quota system: tracks daily requests per org in dataforseo_quota table.
+ */
+
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-const DFS_BASE = "https://api.dataforseo.com/v3";
+const DFS_BASE           = "https://api.dataforseo.com/v3";
 const MAX_DAILY_REQUESTS = 1000;
 
 export function isDataForSEOConfigured(): boolean {
@@ -14,16 +23,21 @@ function getAuth(): string {
   return `Basic ${Buffer.from(`${login}:${pass}`).toString("base64")}`;
 }
 
-async function dfsRequest<T>(path: string, body: unknown): Promise<T> {
+export async function dfsRequest<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${DFS_BASE}${path}`, {
-    method: "POST",
+    method:  "POST",
     headers: { Authorization: getAuth(), "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20_000),
+    body:    JSON.stringify(body),
+    signal:  AbortSignal.timeout(25_000),
   });
-  if (!res.ok) throw new Error(`DataForSEO ${res.status} — ${path}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`DataForSEO ${res.status} — ${path}: ${text.slice(0, 200)}`);
+  }
   return res.json() as Promise<T>;
 }
+
+// ── Quota management ──────────────────────────────────────────────────────────
 
 export async function checkAndIncrementQuota(orgId = "default", units = 1): Promise<boolean> {
   const client = await pool.connect();
@@ -32,7 +46,8 @@ export async function checkAndIncrementQuota(orgId = "default", units = 1): Prom
     const res = await client.query(
       `INSERT INTO dataforseo_quota (org_id, date, requests_used, created_at)
        VALUES ($1,$2,$3,NOW())
-       ON CONFLICT (org_id, date) DO UPDATE SET requests_used = dataforseo_quota.requests_used + $3
+       ON CONFLICT (org_id, date)
+       DO UPDATE SET requests_used = dataforseo_quota.requests_used + $3
        RETURNING requests_used`,
       [orgId, today, units]
     );
@@ -40,7 +55,9 @@ export async function checkAndIncrementQuota(orgId = "default", units = 1): Prom
   } catch { return true; } finally { client.release(); }
 }
 
-export async function getQuotaUsage(orgId = "default"): Promise<{ used: number; limit: number; resetAt: string }> {
+export async function getQuotaUsage(
+  orgId = "default"
+): Promise<{ used: number; limit: number; resetAt: string }> {
   const client = await pool.connect();
   try {
     const today = new Date().toISOString().slice(0, 10);
@@ -50,118 +67,279 @@ export async function getQuotaUsage(orgId = "default"): Promise<{ used: number; 
     );
     const reset = new Date();
     reset.setHours(24, 0, 0, 0);
-    return { used: Number(res.rows[0]?.requests_used ?? 0), limit: MAX_DAILY_REQUESTS, resetAt: reset.toISOString() };
-  } catch { return { used: 0, limit: MAX_DAILY_REQUESTS, resetAt: new Date().toISOString() }; }
-  finally { client.release(); }
+    return {
+      used:    Number(res.rows[0]?.requests_used ?? 0),
+      limit:   MAX_DAILY_REQUESTS,
+      resetAt: reset.toISOString(),
+    };
+  } catch {
+    return { used: 0, limit: MAX_DAILY_REQUESTS, resetAt: new Date().toISOString() };
+  } finally { client.release(); }
 }
 
-export async function getKeywordSuggestions(keyword: string, location = "France", lang = "fr"): Promise<Array<{ keyword: string; volume: number; difficulty: number; cpc: number }>> {
-  if (!isDataForSEOConfigured()) {
-    return [
-      { keyword: `${keyword} local`, volume: 2400, difficulty: 42, cpc: 1.2 },
-      { keyword: `${keyword} gratuit`, volume: 1800, difficulty: 28, cpc: 0.8 },
-      { keyword: `meilleur ${keyword}`, volume: 3200, difficulty: 58, cpc: 2.1 },
-      { keyword: `${keyword} avis`, volume: 1200, difficulty: 35, cpc: 0.9 },
-      { keyword: `comment ${keyword}`, volume: 2800, difficulty: 22, cpc: 0.5 },
-    ];
-  }
-  const data = await dfsRequest<Record<string, unknown>>("/keywords_data/google/search_volume/live", [
-    { keywords: [keyword, `${keyword} local`, `${keyword} gratuit`], location_name: location, language_code: lang }
-  ]);
-  return ((data as unknown as Array<{ result: Array<{ keyword: string; search_volume: number; keyword_difficulty: number; cpc: number }>}>)[0]?.result ?? []).map(r => ({
-    keyword: r.keyword, volume: r.search_volume, difficulty: r.keyword_difficulty, cpc: r.cpc,
-  }));
-}
+// ── Keywords ──────────────────────────────────────────────────────────────────
 
-export async function getSERP(keyword: string, location = "France", lang = "fr"): Promise<unknown[]> {
+export async function getKeywordSuggestions(
+  keyword: string, location = "France", lang = "fr"
+): Promise<Array<{ keyword: string; volume: number; difficulty: number; cpc: number }>> {
   if (!isDataForSEOConfigured()) return [];
-  const data = await dfsRequest<Record<string, unknown>>("/serp/google/organic/live/regular", [{
-    keyword, location_name: location, language_code: lang, depth: 10,
-  }]);
-  return (data as unknown as Array<{ result: Array<Record<string, unknown>>}>)[0]?.result ?? [];
-}
-
-export async function getCompetitors(domain: string): Promise<Array<{ domain: string; organicTraffic: number; keywords: number; authority: number }>> {
-  if (!isDataForSEOConfigured()) {
-    return [
-      { domain: `competitor1.fr`, organicTraffic: 28400, keywords: 842, authority: 52 },
-      { domain: `competitor2.fr`, organicTraffic: 18900, keywords: 612, authority: 48 },
-      { domain: `competitor3.fr`, organicTraffic: 12200, keywords: 389, authority: 41 },
-    ];
+  try {
+    type DFSKwResult = Array<{
+      result?: Array<{ keyword: string; search_volume: number; keyword_difficulty: number; cpc: number }>;
+    }>;
+    const data = await dfsRequest<DFSKwResult>("/keywords_data/google/search_volume/live", [{
+      keywords:      [keyword, `${keyword} local`, `${keyword} gratuit`, `meilleur ${keyword}`, `${keyword} pas cher`],
+      location_name: location,
+      language_code: lang,
+    }]);
+    return (data[0]?.result ?? []).map(r => ({
+      keyword:    r.keyword,
+      volume:     r.search_volume,
+      difficulty: r.keyword_difficulty,
+      cpc:        r.cpc,
+    }));
+  } catch (e) {
+    logger.warn({ e }, "[dfs] getKeywordSuggestions failed");
+    return [];
   }
-  const data = await dfsRequest<Record<string, unknown>>("/dataforseo_labs/google/competitors_domain/live", [{
-    target: domain, location_name: "France", language_name: "French",
-  }]);
-  return (data as unknown as Array<{ result: Array<{ domain: string; organic_traffic: number; organic_count: number; authority: number }>}>)[0]?.result?.slice(0, 10).map(r => ({
-    domain: r.domain, organicTraffic: r.organic_traffic, keywords: r.organic_count, authority: r.authority,
-  })) ?? [];
 }
 
-export async function getBacklinks(domain: string): Promise<{ referring_domains: number; backlinks: number; domain_rank: number }> {
-  if (!isDataForSEOConfigured()) return { referring_domains: 84, backlinks: 420, domain_rank: 35 };
-  const data = await dfsRequest<Record<string, unknown>>("/backlinks/summary/live", [{ target: domain }]);
-  const r = (data as unknown as Array<{ result: Array<Record<string, number>>}>)[0]?.result?.[0] ?? {};
-  return { referring_domains: r["referring_domains"] ?? 0, backlinks: r["backlinks"] ?? 0, domain_rank: r["rank"] ?? 0 };
+export async function getSERP(
+  keyword: string, location = "France", lang = "fr"
+): Promise<unknown[]> {
+  if (!isDataForSEOConfigured()) return [];
+  try {
+    type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
+    const data = await dfsRequest<DFSResult>("/serp/google/organic/live/regular", [{
+      keyword, location_name: location, language_code: lang, depth: 10,
+    }]);
+    return data[0]?.result?.[0] as unknown[] ?? [];
+  } catch { return []; }
 }
 
-export async function getDomainMetrics(domain: string): Promise<{ traffic: number; keywords: number; rank: number; backlinks: number }> {
-  if (!isDataForSEOConfigured()) return { traffic: 12450, keywords: 284, rank: 35, backlinks: 420 };
-  const data = await dfsRequest<Record<string, unknown>>("/dataforseo_labs/google/domain_metrics/live", [{ target: domain, location_name: "France" }]);
-  const r = (data as unknown as Array<{ result: Array<Record<string, number>>}>)[0]?.result?.[0] ?? {};
-  return { traffic: r["organic_traffic"] ?? 0, keywords: r["organic_count"] ?? 0, rank: r["rank"] ?? 0, backlinks: r["backlinks"] ?? 0 };
+export async function getCompetitors(
+  domain: string
+): Promise<Array<{ domain: string; organicTraffic: number; keywords: number; authority: number }>> {
+  if (!isDataForSEOConfigured()) return [];
+  try {
+    type DFSResult = Array<{
+      result?: Array<{
+        domain: string; organic_traffic: number; organic_count: number; authority: number;
+      }>;
+    }>;
+    const data = await dfsRequest<DFSResult>(
+      "/dataforseo_labs/google/competitors_domain/live",
+      [{ target: domain, location_name: "France", language_name: "French" }]
+    );
+    return (data[0]?.result ?? []).slice(0, 10).map(r => ({
+      domain:         r.domain,
+      organicTraffic: r.organic_traffic,
+      keywords:       r.organic_count,
+      authority:      r.authority,
+    }));
+  } catch { return []; }
+}
+
+export async function getBacklinks(
+  domain: string
+): Promise<{ referring_domains: number; backlinks: number; domain_rank: number }> {
+  if (!isDataForSEOConfigured()) return { referring_domains: 0, backlinks: 0, domain_rank: 0 };
+  try {
+    type DFSResult = Array<{ result?: Array<Record<string, number>> }>;
+    const data = await dfsRequest<DFSResult>("/backlinks/summary/live", [{ target: domain }]);
+    const r = data[0]?.result?.[0] ?? {};
+    return {
+      referring_domains: r["referring_domains"] ?? 0,
+      backlinks:         r["backlinks"]          ?? 0,
+      domain_rank:       r["rank"]               ?? 0,
+    };
+  } catch { return { referring_domains: 0, backlinks: 0, domain_rank: 0 }; }
+}
+
+export async function getDomainMetrics(
+  domain: string
+): Promise<{ traffic: number; keywords: number; rank: number; backlinks: number }> {
+  if (!isDataForSEOConfigured()) return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 };
+  try {
+    type DFSResult = Array<{ result?: Array<Record<string, number>> }>;
+    const data = await dfsRequest<DFSResult>(
+      "/dataforseo_labs/google/domain_metrics/live",
+      [{ target: domain, location_name: "France" }]
+    );
+    const r = data[0]?.result?.[0] ?? {};
+    return {
+      traffic:  r["organic_traffic"] ?? 0,
+      keywords: r["organic_count"]   ?? 0,
+      rank:     r["rank"]            ?? 0,
+      backlinks:r["backlinks"]       ?? 0,
+    };
+  } catch { return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 }; }
 }
 
 export async function getKeywordDifficulty(keyword: string): Promise<number> {
-  if (!isDataForSEOConfigured()) return Math.floor(20 + Math.random() * 60);
-  const data = await dfsRequest<Record<string, unknown>>("/dataforseo_labs/google/keyword_difficulty/live", [{ keywords: [keyword], location_name: "France" }]);
-  return (data as unknown as Array<{ result: Array<{ keyword_difficulty: number }>}>)[0]?.result?.[0]?.keyword_difficulty ?? 50;
+  if (!isDataForSEOConfigured()) return 0;
+  try {
+    type DFSResult = Array<{ result?: Array<{ keyword_difficulty: number }> }>;
+    const data = await dfsRequest<DFSResult>(
+      "/dataforseo_labs/google/keyword_difficulty/live",
+      [{ keywords: [keyword], location_name: "France" }]
+    );
+    return data[0]?.result?.[0]?.keyword_difficulty ?? 0;
+  } catch { return 0; }
 }
 
-export async function getLocalPackRank(keyword: string, location: string): Promise<Array<{ rank: number; title: string; rating: number; reviews: number }>> {
-  return [
-    { rank: 1, title: `${location} - Résultat 1`, rating: 4.8, reviews: 124 },
-    { rank: 2, title: `${location} - Résultat 2`, rating: 4.5, reviews: 87 },
-    { rank: 3, title: `${location} - Résultat 3`, rating: 4.2, reviews: 52 },
-  ];
+// ── Local Pack (Google Maps / Pack 3) ─────────────────────────────────────────
+
+export async function getLocalPackRank(
+  keyword: string, location: string
+): Promise<Array<{ rank: number; title: string; rating: number; reviews: number; address?: string }>> {
+  if (!isDataForSEOConfigured()) return [];
+  try {
+    type DFSResult = Array<{
+      status_code: number;
+      result?: Array<{
+        items?: Array<{
+          type: string;
+          rank_absolute: number;
+          title?: string;
+          rating?: { value: number; votes_count: number };
+          address?: string;
+        }>;
+      }>;
+    }>;
+    const data = await dfsRequest<DFSResult>("/serp/google/local_pack/live/regular", [{
+      keyword,
+      location_name: location,
+      language_code: "fr",
+      depth: 3,
+    }]);
+
+    const items = (data[0]?.result?.[0]?.items ?? [])
+      .filter(i => i.type === "local_pack")
+      .slice(0, 3);
+
+    return items.map((item, idx) => ({
+      rank:     item.rank_absolute ?? idx + 1,
+      title:    item.title ?? `Résultat ${idx + 1}`,
+      rating:   item.rating?.value ?? 0,
+      reviews:  item.rating?.votes_count ?? 0,
+      address:  item.address,
+    }));
+  } catch (e) {
+    logger.warn({ e }, "[dfs] getLocalPackRank failed");
+    return [];
+  }
 }
 
-export async function getGoogleMapsResults(keyword: string, location: string): Promise<Array<{ name: string; rating: number; reviews: number; address: string; category: string }>> {
-  return [
-    { name: "FlowPoint Digital", rating: 4.9, reviews: 48, address: `Paris, France`, category: "Agence SEO" },
-    { name: "Concurrent SEO 1", rating: 4.6, reviews: 112, address: `${location}`, category: "Marketing Digital" },
-    { name: "Concurrent SEO 2", rating: 4.3, reviews: 78, address: `${location}`, category: "Référencement web" },
-  ];
+export async function getGoogleMapsResults(
+  keyword: string, location: string
+): Promise<Array<{ name: string; rating: number; reviews: number; address: string; category: string }>> {
+  if (!isDataForSEOConfigured()) return [];
+  try {
+    type DFSResult = Array<{
+      status_code: number;
+      result?: Array<{
+        items?: Array<{
+          type: string;
+          title?: string;
+          rating?: { value: number; votes_count: number };
+          address?: string;
+          category?: string;
+        }>;
+      }>;
+    }>;
+    const data = await dfsRequest<DFSResult>("/serp/google/maps/live/regular", [{
+      keyword,
+      location_name: location,
+      language_code: "fr",
+      depth: 10,
+    }]);
+
+    const items = (data[0]?.result?.[0]?.items ?? [])
+      .filter(i => i.type === "maps_search")
+      .slice(0, 10);
+
+    return items.map(item => ({
+      name:     item.title    ?? "",
+      rating:   item.rating?.value       ?? 0,
+      reviews:  item.rating?.votes_count ?? 0,
+      address:  item.address  ?? "",
+      category: item.category ?? "",
+    }));
+  } catch (e) {
+    logger.warn({ e }, "[dfs] getGoogleMapsResults failed");
+    return [];
+  }
 }
 
-export async function getAIVisibility(domain: string): Promise<{ score: number; mentions: number; sentiment: string; models: string[] }> {
-  return { score: 15, mentions: 0, sentiment: "neutral", models: ["ChatGPT", "Claude", "Gemini", "Perplexity"] };
+// ── AI Visibility (LLM) ───────────────────────────────────────────────────────
+
+export async function getAIVisibility(
+  domain: string
+): Promise<{ score: number; mentions: number; sentiment: string; models: string[] }> {
+  // DataForSEO does not yet have a standard LLM visibility endpoint.
+  // This will be implemented when the endpoint becomes available.
+  return { score: 0, mentions: 0, sentiment: "neutral", models: ["ChatGPT", "Claude", "Gemini", "Perplexity"] };
 }
 
-export async function getContentOptimization(url: string, keyword: string): Promise<{
-  score: number; wordCount: number; headings: number; recommendations: string[];
-}> {
-  return {
-    score: 68,
-    wordCount: 1240,
-    headings: 8,
-    recommendations: [
-      `Ajouter le mot-clé "${keyword}" dans le titre H1`,
-      "Augmenter la densité de mots-clés sémantiques à 1-2%",
-      "Ajouter 3-5 liens internes vers des pages thématiquement proches",
-      "Inclure des données structurées FAQ pour la page",
-      "Améliorer la lisibilité (score Flesch-Kincaid < 60)",
-    ],
-  };
+// ── Content optimisation ──────────────────────────────────────────────────────
+
+export async function getContentOptimization(
+  url: string, keyword: string
+): Promise<{ score: number; wordCount: number; headings: number; recommendations: string[] }> {
+  if (!isDataForSEOConfigured()) {
+    return { score: 0, wordCount: 0, headings: 0, recommendations: [] };
+  }
+  try {
+    type DFSResult = Array<{
+      result?: Array<{
+        main_keyword?: string;
+        content_quality_score?: number;
+        word_count?: number;
+        meta?: { htags?: Record<string, string[]> };
+        recommendations?: string[];
+      }>;
+    }>;
+    const data = await dfsRequest<DFSResult>("/content_analysis/summary/live", [{
+      url, keyword, location_name: "France", language_code: "fr",
+    }]);
+    const r = data[0]?.result?.[0] ?? {};
+    const htags = r.meta?.htags ?? {};
+    const headings = Object.values(htags).flat().length;
+    return {
+      score:           Math.round((r.content_quality_score ?? 0) * 100),
+      wordCount:       r.word_count ?? 0,
+      headings,
+      recommendations: r.recommendations ?? [],
+    };
+  } catch { return { score: 0, wordCount: 0, headings: 0, recommendations: [] }; }
 }
 
-export async function generateSEOMissions(domain: string, keywords: string[]): Promise<unknown[]> {
-  return keywords.map((kw, i) => ({
-    id: `dfs_mission_${i}`,
-    keyword: kw,
-    currentPosition: Math.floor(Math.random() * 50) + 1,
-    targetPosition: Math.min(3, Math.floor(Math.random() * 10) + 1),
-    difficulty: Math.floor(20 + Math.random() * 60),
-    estimatedClicks: Math.floor(200 + Math.random() * 800),
-    actionPlan: ["Créer du contenu optimisé", "Obtenir des backlinks ciblés", "Améliorer l'UX de la page"],
-  }));
+// ── SEO Missions (generated from competitor gap analysis) ─────────────────────
+
+export async function generateSEOMissions(
+  domain: string, keywords: string[]
+): Promise<unknown[]> {
+  if (!isDataForSEOConfigured() || keywords.length === 0) return [];
+  try {
+    type DFSResult = Array<{
+      result?: Array<{
+        keyword: string;
+        keyword_difficulty: number;
+        search_volume: number;
+      }>;
+    }>;
+    const data = await dfsRequest<DFSResult>(
+      "/dataforseo_labs/google/keyword_difficulty/live",
+      [{ keywords: keywords.slice(0, 20), location_name: "France" }]
+    );
+    return (data[0]?.result ?? []).map((r, i) => ({
+      id:               `dfs_mission_${i}`,
+      keyword:           r.keyword,
+      difficulty:        r.keyword_difficulty,
+      volume:            r.search_volume,
+      estimatedClicks:   Math.round(r.search_volume * 0.08),
+      actionPlan:       ["Créer du contenu optimisé", "Obtenir des backlinks ciblés", "Améliorer l'UX de la page"],
+    }));
+  } catch { return []; }
 }

@@ -1,18 +1,45 @@
-import { pool } from "@workspace/db";
+/**
+ * gsc-service.ts — Google Search Console (Search Analytics API)
+ *
+ * syncGSCData pulls the last 28 days of search analytics and stores them
+ * in gsc_keyword_data.  All read functions query that table — never fake data.
+ */
 
-export async function getGSCStatus(orgId: string): Promise<{ connected: boolean; activeSite: string | null; sitesCount: number }> {
+import { pool } from "@workspace/db";
+import { getValidToken } from "./google-service.js";
+import { logger } from "../lib/logger.js";
+
+const GSC_BASE = "https://searchconsole.googleapis.com/webmasters/v3/sites";
+
+// ── Status & site management ──────────────────────────────────────────────────
+
+export async function getGSCStatus(
+  orgId: string
+): Promise<{ connected: boolean; activeSite: string | null; sitesCount: number }> {
   const client = await pool.connect();
   try {
-    const site = await client.query(`SELECT * FROM gsc_sites WHERE org_id=$1 AND active=true LIMIT 1`, [orgId]);
-    const count = await client.query(`SELECT COUNT(*) as c FROM gsc_sites WHERE org_id=$1`, [orgId]);
-    return { connected: site.rows.length > 0, activeSite: site.rows[0]?.site_url ?? null, sitesCount: Number(count.rows[0]?.c ?? 0) };
-  } catch { return { connected: false, activeSite: null, sitesCount: 0 }; } finally { client.release(); }
+    const [site, count] = await Promise.all([
+      client.query(`SELECT site_url FROM gsc_sites WHERE org_id=$1 AND active=true LIMIT 1`, [orgId]),
+      client.query(`SELECT COUNT(*)::int AS c FROM gsc_sites WHERE org_id=$1`, [orgId]),
+    ]);
+    return {
+      connected:   site.rows.length > 0,
+      activeSite:  (site.rows[0] as Record<string, string> | undefined)?.["site_url"] ?? null,
+      sitesCount:  Number((count.rows[0] as Record<string, number>)?.["c"] ?? 0),
+    };
+  } catch {
+    return { connected: false, activeSite: null, sitesCount: 0 };
+  } finally {
+    client.release();
+  }
 }
 
 export async function listGSCSites(orgId: string): Promise<unknown[]> {
   const client = await pool.connect();
   try {
-    const res = await client.query(`SELECT * FROM gsc_sites WHERE org_id=$1 ORDER BY created_at DESC`, [orgId]);
+    const res = await client.query(
+      `SELECT * FROM gsc_sites WHERE org_id=$1 ORDER BY created_at DESC`, [orgId]
+    );
     return res.rows;
   } catch { return []; } finally { client.release(); }
 }
@@ -20,8 +47,10 @@ export async function listGSCSites(orgId: string): Promise<unknown[]> {
 export async function getActiveSite(orgId: string): Promise<string | null> {
   const client = await pool.connect();
   try {
-    const res = await client.query(`SELECT site_url FROM gsc_sites WHERE org_id=$1 AND active=true LIMIT 1`, [orgId]);
-    return res.rows[0]?.site_url ?? null;
+    const res = await client.query(
+      `SELECT site_url FROM gsc_sites WHERE org_id=$1 AND active=true LIMIT 1`, [orgId]
+    );
+    return (res.rows[0] as Record<string, string> | undefined)?.["site_url"] ?? null;
   } catch { return null; } finally { client.release(); }
 }
 
@@ -30,77 +59,248 @@ export async function setActiveSite(orgId: string, siteUrl: string): Promise<voi
   try {
     await client.query(`UPDATE gsc_sites SET active=false WHERE org_id=$1`, [orgId]);
     await client.query(
-      `INSERT INTO gsc_sites (org_id, site_url, active, created_at) VALUES ($1,$2,true,NOW())
+      `INSERT INTO gsc_sites (org_id, site_url, active, created_at)
+       VALUES ($1,$2,true,NOW())
        ON CONFLICT (org_id, site_url) DO UPDATE SET active=true, updated_at=NOW()`,
       [orgId, siteUrl]
     );
   } finally { client.release(); }
 }
 
-export async function syncGSCData(orgId: string): Promise<number> {
-  return 0;
+// ── Discover sites from Google (called after OAuth) ───────────────────────────
+
+export async function discoverAndStoreSites(orgId: string): Promise<number> {
+  const token = await getValidToken(orgId).catch(() => null);
+  if (!token) return 0;
+  try {
+    const res = await fetch(`${GSC_BASE}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return 0;
+    const data = await res.json() as { siteEntry?: Array<{ siteUrl: string; permissionLevel: string }> };
+    const sites = data.siteEntry ?? [];
+    const client = await pool.connect();
+    try {
+      for (const site of sites) {
+        await client.query(
+          `INSERT INTO gsc_sites (org_id, site_url, active, created_at)
+           VALUES ($1,$2,false,NOW())
+           ON CONFLICT (org_id, site_url) DO NOTHING`,
+          [orgId, site.siteUrl]
+        ).catch(() => {});
+      }
+      // Auto-activate the first verified site
+      const firstVerified = sites.find(s => s.permissionLevel !== "siteUnverifiedUser");
+      if (firstVerified) {
+        await setActiveSite(orgId, firstVerified.siteUrl);
+      }
+    } finally { client.release(); }
+    return sites.length;
+  } catch (e) {
+    logger.warn({ e, orgId }, "[gsc] discoverAndStoreSites failed");
+    return 0;
+  }
 }
+
+// ── Sync (write to gsc_keyword_data) ─────────────────────────────────────────
+
+export async function syncGSCData(orgId: string): Promise<number> {
+  const siteUrl = await getActiveSite(orgId);
+  if (!siteUrl) return 0;
+
+  const token = await getValidToken(orgId).catch(() => null);
+  if (!token) return 0;
+
+  const endDate   = new Date().toISOString().slice(0, 10);
+  const startDate = new Date(Date.now() - 28 * 86400 * 1000).toISOString().slice(0, 10);
+
+  try {
+    const res = await fetch(
+      `${GSC_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+      {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startDate, endDate,
+          dimensions: ["query", "date"],
+          rowLimit:   1000,
+          startRow:   0,
+        }),
+        signal: AbortSignal.timeout(25_000),
+      }
+    );
+
+    if (!res.ok) {
+      logger.warn({ status: res.status, orgId, siteUrl }, "[gsc] searchAnalytics query failed");
+      return 0;
+    }
+
+    const data = await res.json() as {
+      rows?: Array<{ keys: [string, string]; clicks: number; impressions: number; ctr: number; position: number }>;
+    };
+
+    const rows = data.rows ?? [];
+    if (rows.length === 0) return 0;
+
+    const client = await pool.connect();
+    try {
+      let inserted = 0;
+      for (const row of rows) {
+        const [keyword, date] = row.keys;
+        await client.query(
+          `INSERT INTO gsc_keyword_data
+             (org_id, keyword, date, impressions, clicks, ctr, position, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+           ON CONFLICT (org_id, keyword, date) DO UPDATE SET
+             impressions=$4, clicks=$5, ctr=$6, position=$7, updated_at=NOW()`,
+          [orgId, keyword, date, row.impressions, row.clicks, row.ctr, row.position]
+        );
+        inserted++;
+      }
+
+      await client.query(
+        `INSERT INTO gsc_sync_logs (org_id, site_url, rows_synced, synced_at)
+         VALUES ($1,$2,$3,NOW())`,
+        [orgId, siteUrl, inserted]
+      ).catch(() => {});
+
+      logger.info({ orgId, inserted }, "[gsc] syncGSCData complete");
+      return inserted;
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    logger.warn({ e, orgId }, "[gsc] syncGSCData failed");
+    return 0;
+  }
+}
+
+// ── Read functions (from gsc_keyword_data) ────────────────────────────────────
 
 export async function getTopKeywords(orgId: string, limit = 20, days = 28): Promise<unknown[]> {
   const client = await pool.connect();
   try {
     const res = await client.query(
-      `SELECT keyword, SUM(impressions) as impressions, SUM(clicks) as clicks, AVG(position) as avg_position, AVG(ctr) as avg_ctr
-       FROM gsc_keyword_data WHERE org_id=$1 AND date > NOW()-INTERVAL '${days} days'
-       GROUP BY keyword ORDER BY impressions DESC LIMIT $2`,
+      `SELECT keyword,
+              SUM(impressions)::int  AS impressions,
+              SUM(clicks)::int       AS clicks,
+              AVG(position)::numeric AS avg_position,
+              AVG(ctr)::numeric      AS avg_ctr
+       FROM gsc_keyword_data
+       WHERE org_id=$1 AND date > NOW() - INTERVAL '${Math.min(days, 90)} days'
+       GROUP BY keyword
+       ORDER BY impressions DESC
+       LIMIT $2`,
       [orgId, limit]
     );
-    if (res.rows.length > 0) return res.rows;
-    return [
-      { keyword: "seo local france", impressions: 12400, clicks: 890, avg_position: 3.2, avg_ctr: 7.18 },
-      { keyword: "agence référencement", impressions: 8900, clicks: 420, avg_position: 5.8, avg_ctr: 4.72 },
-      { keyword: "audit seo gratuit", impressions: 6800, clicks: 680, avg_position: 2.1, avg_ctr: 10.0 },
-      { keyword: "core web vitals", impressions: 4200, clicks: 190, avg_position: 8.4, avg_ctr: 4.52 },
-      { keyword: "google my business", impressions: 3800, clicks: 310, avg_position: 4.5, avg_ctr: 8.16 },
-    ];
+    return res.rows;
   } catch { return []; } finally { client.release(); }
 }
 
 export async function getTopPages(orgId: string, limit = 20, days = 28): Promise<unknown[]> {
-  return [
-    { page: "/", impressions: 24000, clicks: 2800, avg_position: 2.8, avg_ctr: 11.67 },
-    { page: "/services/seo-local", impressions: 8400, clicks: 680, avg_position: 4.2, avg_ctr: 8.10 },
-    { page: "/blog/core-web-vitals", impressions: 5200, clicks: 420, avg_position: 6.1, avg_ctr: 8.08 },
-  ];
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      `SELECT page,
+              SUM(impressions)::int  AS impressions,
+              SUM(clicks)::int       AS clicks,
+              AVG(position)::numeric AS avg_position,
+              AVG(ctr)::numeric      AS avg_ctr
+       FROM gsc_page_data
+       WHERE org_id=$1 AND date > NOW() - INTERVAL '${Math.min(days, 90)} days'
+       GROUP BY page
+       ORDER BY impressions DESC
+       LIMIT $2`,
+      [orgId, limit]
+    );
+    return res.rows;
+  } catch { return []; } finally { client.release(); }
 }
 
-export async function getImpressionsOverTime(orgId: string, days = 28): Promise<Array<{ date: string; impressions: number; clicks: number; position: number; ctr: number }>> {
-  const result = [];
-  for (let i = days; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    result.push({
-      date: d.toISOString().slice(0, 10),
-      impressions: 800 + Math.floor(Math.random() * 400),
-      clicks: 80 + Math.floor(Math.random() * 40),
-      position: 4 + Math.random() * 2,
-      ctr: 8 + Math.random() * 4,
-    });
-  }
-  return result;
+export async function getImpressionsOverTime(
+  orgId: string, days = 28
+): Promise<Array<{ date: string; impressions: number; clicks: number; position: number; ctr: number }>> {
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      `SELECT date::text,
+              SUM(impressions)::int   AS impressions,
+              SUM(clicks)::int        AS clicks,
+              AVG(position)::numeric  AS position,
+              AVG(ctr)::numeric       AS ctr
+       FROM gsc_keyword_data
+       WHERE org_id=$1 AND date > NOW() - INTERVAL '${Math.min(days, 90)} days'
+       GROUP BY date
+       ORDER BY date ASC`,
+      [orgId]
+    );
+    return res.rows as Array<{ date: string; impressions: number; clicks: number; position: number; ctr: number }>;
+  } catch { return []; } finally { client.release(); }
 }
 
-export async function querySearchAnalytics(orgId: string, query: { dimensions: string[]; startDate: string; endDate: string; rowLimit?: number }): Promise<unknown[]> {
-  return [];
+export async function querySearchAnalytics(
+  orgId: string,
+  query: { dimensions: string[]; startDate: string; endDate: string; rowLimit?: number }
+): Promise<unknown[]> {
+  const siteUrl = await getActiveSite(orgId);
+  if (!siteUrl) return [];
+
+  const token = await getValidToken(orgId).catch(() => null);
+  if (!token) return [];
+
+  try {
+    const res = await fetch(
+      `${GSC_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+      {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startDate:  query.startDate,
+          endDate:    query.endDate,
+          dimensions: query.dimensions,
+          rowLimit:   query.rowLimit ?? 100,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      }
+    );
+    if (!res.ok) return [];
+    const data = await res.json() as { rows?: unknown[] };
+    return data.rows ?? [];
+  } catch { return []; }
 }
 
 export async function getIndexingStatus(orgId: string): Promise<{ indexed: number; notIndexed: number; errors: number }> {
-  return { indexed: 142, notIndexed: 12, errors: 3 };
+  const siteUrl = await getActiveSite(orgId);
+  if (!siteUrl) return { indexed: 0, notIndexed: 0, errors: 0 };
+  return { indexed: 0, notIndexed: 0, errors: 0 }; // requires Index Coverage API (separate quota)
 }
 
 export async function getSitemaps(orgId: string): Promise<unknown[]> {
-  return [];
+  const siteUrl = await getActiveSite(orgId);
+  if (!siteUrl) return [];
+
+  const token = await getValidToken(orgId).catch(() => null);
+  if (!token) return [];
+
+  try {
+    const res = await fetch(
+      `${GSC_BASE}/${encodeURIComponent(siteUrl)}/sitemaps`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json() as { sitemap?: unknown[] };
+    return data.sitemap ?? [];
+  } catch { return []; }
 }
 
 export async function getSyncLogs(orgId: string, limit = 20): Promise<unknown[]> {
   const client = await pool.connect();
   try {
-    const res = await client.query(`SELECT * FROM gsc_sync_logs WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2`, [orgId, limit]);
+    const res = await client.query(
+      `SELECT * FROM gsc_sync_logs WHERE org_id=$1 ORDER BY created_at DESC LIMIT $2`,
+      [orgId, limit]
+    );
     return res.rows;
   } catch { return []; } finally { client.release(); }
 }
