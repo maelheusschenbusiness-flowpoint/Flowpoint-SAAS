@@ -7,7 +7,6 @@ import { initAutomationTables } from "./services/init-automation.js";
 import { initMonitorsTables } from "./services/init-monitors.js";
 import { initDataTables } from "./services/init-data-tables.js";
 import { initRlsSetup } from "./services/init-rls-setup.js";
-import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
 
 const PORT = env.PORT;
 
@@ -23,12 +22,6 @@ async function main() {
     await initRlsSetup();
   } catch (err) {
     logger.warn({ err }, "RLS setup failed — non-fatal, continuing");
-  }
-
-  try {
-    await runRlsMigrationIfNeeded();
-  } catch (err) {
-    logger.warn({ err }, "RLS migration failed — non-fatal, continuing");
   }
 
   try {
