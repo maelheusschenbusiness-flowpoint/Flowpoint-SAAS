@@ -17,7 +17,20 @@ router.get("/cro", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
     const data = await getCROData(siteUrl);
-    res.json(data);
+    // Compute a top-level score from the scores array, or derive from recommendations
+    const recs = data.recommendations;
+    const latestScore = data.scores.length > 0
+      ? Math.round(data.scores.reduce((s, r) => s + Number((r as Record<string, unknown>).score ?? 0), 0) / data.scores.length)
+      : null;
+    const derivedScore = recs.length > 0
+      ? Math.max(20, Math.min(95,
+          100
+          - recs.filter(r => r.priority === "high").length * 12
+          - recs.filter(r => r.priority === "medium").length * 5
+        ))
+      : null;
+    const score = latestScore ?? derivedScore;
+    res.json({ ...data, score, heatmapData: null, funnelData: [], abTests: [] });
   } catch {
     res.json({ score: null, recommendations: [], heatmapData: null, funnelData: [], abTests: [] });
   }

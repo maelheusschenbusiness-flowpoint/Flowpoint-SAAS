@@ -485,4 +485,45 @@ router.post("/google/ai-reply-preview", async (req: Request, res: Response) => {
   }
 });
 
+// Alias: POST /google/posts (plural) — same handler as /google/post
+router.post("/google/posts", async (req: Request, res: Response) => {
+  const orgId = getOrgId(req);
+  const { locationId, text, callToActionType, callToActionUrl, content, summary } = req.body as {
+    locationId?: string; text?: string; content?: string; summary?: string;
+    callToActionType?: string; callToActionUrl?: string;
+  };
+  const postText = text || content || summary || "";
+  if (!postText.trim()) {
+    res.status(400).json({ ok: false, error: "text is required" });
+    return;
+  }
+  let locationName = locationId ?? "";
+  if (!locationName) {
+    const client = await pool.connect();
+    try {
+      const locs = await client.query(
+        `SELECT raw_data FROM google_locations WHERE org_id=$1 LIMIT 1`, [orgId]
+      );
+      locationName = (locs.rows[0]?.raw_data as { name?: string })?.name ?? "";
+    } finally { client.release(); }
+  }
+  if (!locationName) {
+    res.status(400).json({ ok: false, error: "No GBP location found — sync GBP first." });
+    return;
+  }
+  try {
+    const result = await publishGBPPost(orgId, locationName, {
+      summary: postText,
+      callToAction: callToActionType && callToActionUrl
+        ? { actionType: callToActionType, url: callToActionUrl }
+        : undefined,
+    });
+    store.logActivity({ type: "ai", label: `Post GBP : "${postText.slice(0, 60)}"`, targetType: "google_business" });
+    res.json(result);
+  } catch (e: any) {
+    logger.error({ e }, "[GBP] posts alias failed");
+    res.status(500).json({ ok: false, error: e.message ?? "Failed to publish post" });
+  }
+});
+
 export default router;

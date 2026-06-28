@@ -169,8 +169,8 @@ router.post("/keywords/track", async (req, res) => {
   const { keyword, url, device, location, language, tag } = req.body as Record<string,string>;
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
   try {
-    const tracked = await trackKeyword(orgId, keyword, { targetUrl: url, device, location, tag });
-    res.status(201).json(tracked);
+    const id = await trackKeyword(orgId, keyword, { targetUrl: url, device, location, tag });
+    res.status(201).json({ ok: true, id, keyword, location: location ?? "France", device: device ?? "desktop" });
   } catch (err) {
     const msg = safeErrMsg(err);
     res.status(msg.includes("Plan limit") ? 429 : 500).json({ error: msg });

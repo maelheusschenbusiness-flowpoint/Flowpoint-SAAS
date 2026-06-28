@@ -18707,28 +18707,28 @@ function renderCompetitor() {
   ];
   const circ52 = 2 * Math.PI * 46;
 
-  const _wkComps = comps.length > 0 ? comps : (PREVIEW_MODE ? [
-    {name:'Concurrent A'},{name:'Concurrent B'},{name:'Concurrent C'},{name:'Concurrent D'}
-  ] : []);
-  const weaknesses = _wkComps.map((c,i) => {
-    const weakList = ['Vitesse mobile faible','Pas de GBP optimisé','Manque de pages locales','Peu de posts GBP'];
-    const oppList  = ['+8% ranking gain','+15% visibilité locale','+340 rech/mois à capter','Prendre leur Local Pack'];
-    return { comp: c.name, weak: weakList[i]||'Point faible identifié', opp: oppList[i]||'Opportunité détectée' };
-  });
+  const _wkComps = comps.length > 0 ? comps : [];
+  const _threatWeakMap = { critical: 'Menace critique — surveiller de près', high: 'Forte progression détectée', medium: 'En croissance sur vos mots-clés', low: 'Concurrent stable' };
+  const _threatOppMap  = { critical: 'Analyser leurs pages performantes', high: 'Contre-attaquer sur leur zone', medium: 'Capturer leurs lacunes locales', low: 'Maintenir l\'avance actuelle' };
+  const weaknesses = _wkComps.map(c => ({
+    comp: c.name,
+    weak: c.weaknesses?.[0] || _threatWeakMap[c.threat || c.threatLevel] || 'Analyse en cours',
+    opp:  c.opportunities?.[0] || _threatOppMap[c.threat || c.threatLevel] || 'Connectez DataForSEO pour l\'analyse',
+  }));
 
-  const oppHijack = [
+  const oppHijack = PREVIEW_MODE ? [
     { title: 'Zone locale non couverte',       gain: '+340 rech/mois', effort: '2h',    urgency: 'high'   },
     { title: 'Vitesse mobile : avantage +16', gain: 'Ranking supérieur', effort: 'Actif ✓', urgency: 'done' },
     { title: 'Q&A GBP vides chez 2 rivaux',  gain: '+12% engagement', effort: '1h',    urgency: 'medium' },
     { title: 'Schéma markup absent chez eux', gain: '+8% CTR Rich',    effort: '30 min', urgency: 'medium' },
-  ];
+  ] : (comps.length > 0 && comps.some(c => c.opportunities?.length > 0)
+    ? comps.flatMap(c => (c.opportunities||[]).map(o => ({ title: o, gain: 'Opportunité détectée', effort: '—', urgency: 'medium' })))
+    : []);
 
-  const _mv0 = comps.length > 0 ? comps[0].name : (PREVIEW_MODE ? 'Concurrent A' : 'Un concurrent');
-  const _mv1 = comps.length > 1 ? comps[1].name : (PREVIEW_MODE ? 'Concurrent B' : 'Un concurrent');
-  const recentMoves = (PREVIEW_MODE || comps.length > 0) ? [
-    { date: '09/05', icon: '📈', comp: _mv0, msg: "+3 positions sur vos mots-clés cibles",         severity: 'critical' },
-    { date: '08/05', icon: '🔗', comp: _mv1, msg: "Nouveaux backlinks — autorité en hausse",        severity: 'warning'  },
-    { date: '06/05', icon: '📍', comp: _mv0, msg: "GBP renforcé — nouvelles photos + catégorie",   severity: 'warning'  },
+  const recentMoves = PREVIEW_MODE ? [
+    { date: '09/05', icon: '📈', comp: comps[0]?.name||'Concurrent A', msg: "+3 positions sur vos mots-clés cibles",         severity: 'critical' },
+    { date: '08/05', icon: '🔗', comp: comps[1]?.name||'Concurrent B', msg: "Nouveaux backlinks — autorité en hausse",        severity: 'warning'  },
+    { date: '06/05', icon: '📍', comp: comps[0]?.name||'Concurrent A', msg: "GBP renforcé — nouvelles photos + catégorie",   severity: 'warning'  },
     { date: '03/05', icon: '⚡', comp: 'Nouveau concurrent', msg: "Nouveau concurrent détecté dans votre zone", severity: 'info' },
   ] : [];
 
@@ -18913,7 +18913,9 @@ function renderCompetitor() {
             Moteur d\'opportunités à saisir
           </div>
           <div style="display:flex;flex-direction:column;gap:6px">
-            ${oppHijack.map(o => {
+            ${oppHijack.length === 0
+              ? `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Ajoutez vos concurrents et connectez DataForSEO pour détecter les opportunités à saisir.</div>`
+              : oppHijack.map(o => {
               const oc = o.urgency === 'high' ? '#ef4444' : o.urgency === 'medium' ? '#f59e0b' : '#22c55e';
               return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${o.urgency==='done'?'rgba(34,197,94,0.05)':'var(--fp-inner-card)'}">
                 <div style="width:6px;height:6px;border-radius:50%;background:${oc};flex-shrink:0"></div>
@@ -18932,7 +18934,9 @@ function renderCompetitor() {
             ${svgIcon('activity').replace('stroke="currentColor"','stroke="#ef4444"')}
             Mouvements récents
           </div>
-          ${recentMoves.map(m => `
+          ${recentMoves.length === 0
+            ? `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">Activez les alertes concurrentielles pour suivre leurs mouvements en temps réel.</div>`
+            : recentMoves.map(m => `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <span style="font-size:16px;flex-shrink:0">${m.icon}</span>
               <div style="flex:1;min-width:0">
