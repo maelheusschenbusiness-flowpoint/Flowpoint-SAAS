@@ -24,6 +24,7 @@ export const auditsTable = pgTable("audits", {
   date:       text("date").notNull(),
   issues:     integer("issues").notNull().default(0),
   origin:     text("origin").default("manual"),
+  orgId:      text("org_id").notNull().default("default"),
   createdAt:  timestamp("created_at").defaultNow(),
 });
 
@@ -39,21 +40,20 @@ export const auditSchedulesTable = pgTable("audit_schedules", {
 });
 
 export const monitorsTable = pgTable("monitors", {
-  id:            text("id").primaryKey(),
-  orgId:         text("org_id").notNull().default("default"),
-  name:          text("name").notNull(),
-  url:           text("url").notNull(),
-  status:        text("status").notNull().default("up"),
-  uptimePct:     real("uptime_pct").notNull().default(100),
-  latencyMs:     integer("latency_ms").notNull().default(0),
-  checkInterval: text("check_interval").notNull().default("5min"),
-  alertEmail:    text("alert_email").notNull().default(""),
-  alertPhone:    text("alert_phone").notNull().default(""),
-  isCritical:    boolean("is_critical").notNull().default(false),
-  lastCheck:     text("last_check"),
+  id:           text("id").primaryKey(),
+  orgId:        text("org_id").notNull().default("default"),
+  name:         text("name").notNull(),
+  url:          text("url").notNull(),
+  status:       text("status").notNull().default("up"),
+  uptime:       real("uptime").notNull().default(100),
+  latency:      integer("latency").notNull().default(0),
+  frequency:    text("frequency").notNull().default("5min"),
+  alertEmail:   text("alert_email").notNull().default(""),
+  alertPhone:   text("alert_phone").notNull().default(""),
+  isCritical:   boolean("is_critical").notNull().default(false),
+  lastCheck:    text("last_check"),
   lastAlertSent: timestamp("last_alert_sent"),
-  createdAt:     timestamp("created_at").defaultNow(),
-  updatedAt:     timestamp("updated_at").defaultNow(),
+  createdAt:    timestamp("created_at").defaultNow(),
 });
 
 export const monitorChecksTable = pgTable("monitor_checks", {
@@ -79,6 +79,7 @@ export const monitorIncidentsTable = pgTable("monitor_incidents", {
 
 export const reportsTable = pgTable("reports", {
   id:               text("id").primaryKey(),
+  orgId:            text("org_id").notNull().default("default"),
   name:             text("name").notNull(),
   type:             text("type").notNull().default("PDF"),
   date:             text("date").notNull(),
@@ -112,24 +113,32 @@ export const competitorsTable = pgTable("competitors", {
   traffic:     integer("traffic").notNull().default(0),
   threatLevel: text("threat_level").notNull().default("low"),
   delta:       integer("delta").default(0),
+  orgId:       text("org_id").notNull().default("default"),
   createdAt:   timestamp("created_at").defaultNow(),
 });
 
-export const keywordsTable = pgTable("keywords", {
-  id:           text("id").primaryKey(),
-  keyword:      text("keyword").notNull(),
-  position:     integer("position"),
-  prevPosition: integer("prev_position"),
-  volume:       integer("volume").default(0),
-  difficulty:   integer("difficulty").default(0),
-  trend:        text("trend").default("stable"),
-  tag:          text("tag"),
-  intent:       text("intent"),
-  createdAt:    timestamp("created_at").defaultNow(),
+export const trackedKeywordsTable = pgTable("tracked_keywords", {
+  id:              text("id").primaryKey(),
+  orgId:           text("org_id").notNull().default("default"),
+  keyword:         text("keyword").notNull(),
+  targetUrl:       text("target_url"),
+  location:        text("location").notNull().default("France"),
+  device:          text("device").notNull().default("desktop"),
+  intent:          text("intent"),
+  tag:             text("tag"),
+  clusterId:       text("cluster_id"),
+  active:          boolean("active").notNull().default(true),
+  currentPosition: integer("current_position"),
+  prevPosition:    integer("prev_position"),
+  positionChange:  integer("position_change").default(0),
+  searchVolume:    integer("search_volume").default(0),
+  difficulty:      integer("difficulty").default(0),
+  createdAt:       timestamp("created_at").defaultNow(),
 });
 
 export const alertRulesTable = pgTable("alert_rules", {
   id:          text("id").primaryKey(),
+  orgId:       text("org_id").notNull().default("default"),
   name:        text("name").notNull(),
   type:        text("type").notNull(),
   operator:    text("operator").notNull().default("lt"),
@@ -143,6 +152,7 @@ export const alertRulesTable = pgTable("alert_rules", {
 
 export const teamMembersTable = pgTable("team_members", {
   id:        text("id").primaryKey(),
+  orgId:     text("org_id").notNull().default("default"),
   name:      text("name").notNull(),
   email:     text("email").notNull(),
   role:      text("role").notNull().default("viewer"),
@@ -152,6 +162,7 @@ export const teamMembersTable = pgTable("team_members", {
 
 export const teamMessagesTable = pgTable("team_messages", {
   id:         text("id").primaryKey(),
+  orgId:      text("org_id").notNull().default("default"),
   content:    text("content").notNull(),
   senderId:   text("sender_id").notNull(),
   senderName: text("sender_name").notNull(),
@@ -162,6 +173,7 @@ export const teamMessagesTable = pgTable("team_messages", {
 
 export const notificationsTable = pgTable("notifications", {
   id:        text("id").primaryKey(),
+  orgId:     text("org_id").notNull().default("default"),
   type:      text("type").notNull().default("info"),
   title:     text("title").notNull(),
   message:   text("message").notNull(),
@@ -172,6 +184,7 @@ export const notificationsTable = pgTable("notifications", {
 
 export const connectorsTable = pgTable("connectors", {
   id:           text("id").primaryKey(),
+  orgId:        text("org_id").notNull().default("default"),
   provider:     text("provider").notNull(),
   status:       text("status").notNull().default("disconnected"),
   connected:    boolean("connected").notNull().default(false),
@@ -202,6 +215,7 @@ export const automationWorkflowsTable = pgTable("automation_workflows", {
 
 export const workflowRunsTable = pgTable("workflow_runs", {
   id:          text("id").primaryKey(),
+  orgId:       text("org_id").notNull().default("default"),
   workflowId:  text("workflow_id").notNull(),
   status:      text("status").notNull().default("pending"),
   startedAt:   timestamp("started_at").defaultNow(),
@@ -429,7 +443,7 @@ const schema = {
   auditsTable, auditSchedulesTable,
   monitorsTable, monitorChecksTable, monitorIncidentsTable,
   reportsTable, shareTokensTable,
-  competitorsTable, keywordsTable,
+  competitorsTable, trackedKeywordsTable,
   alertRulesTable,
   teamMembersTable, teamMessagesTable,
   notificationsTable, connectorsTable,

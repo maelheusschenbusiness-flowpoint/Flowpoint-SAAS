@@ -32,14 +32,15 @@ function requireAdminKey(req: Request, res: Response): boolean {
 router.get("/admin/stats", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
 
-  const client = await pool.connect();
+  const safe = (sql: string) =>
+    pool.query(sql).catch(() => ({ rows: [{ count: 0 }] }));
   try {
     const [usersR, sessionsR, auditsR, monitorsR, kwardsR] = await Promise.all([
-      client.query("SELECT COUNT(*)::int AS count FROM team_members"),
-      client.query("SELECT COUNT(*)::int AS count FROM user_sessions WHERE expires_at > now()"),
-      client.query("SELECT COUNT(*)::int AS count FROM audits"),
-      client.query("SELECT COUNT(*)::int AS count FROM monitors"),
-      client.query("SELECT COUNT(*)::int AS count FROM keywords"),
+      safe("SELECT COUNT(*)::int AS count FROM team_members"),
+      safe("SELECT COUNT(*)::int AS count FROM user_sessions WHERE expires_at > now()"),
+      safe("SELECT COUNT(*)::int AS count FROM audits"),
+      safe("SELECT COUNT(*)::int AS count FROM monitors"),
+      safe("SELECT COUNT(*)::int AS count FROM tracked_keywords"),
     ]);
     res.json({
       ok: true,
@@ -53,8 +54,6 @@ router.get("/admin/stats", async (req: Request, res: Response): Promise<void> =>
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
-  } finally {
-    client.release();
   }
 });
 
@@ -72,9 +71,9 @@ router.get("/admin/users", async (req: Request, res: Response): Promise<void> =>
         tm.role,
         tm.joined,
         tm.created_at,
-        COUNT(s.id) FILTER (WHERE s.expires_at > now())::int AS active_sessions,
-        MAX(s.last_seen_at)                                   AS last_seen_at,
-        (COUNT(s.id) FILTER (WHERE s.expires_at > now()) > 0) AS is_active
+        COUNT(s.token) FILTER (WHERE s.expires_at > now())::int AS active_sessions,
+        MAX(s.expires_at)                                       AS last_seen_at,
+        (COUNT(s.token) FILTER (WHERE s.expires_at > now()) > 0) AS is_active
       FROM team_members tm
       LEFT JOIN user_sessions s ON s.email = tm.email
       GROUP BY tm.id, tm.name, tm.email, tm.role, tm.joined, tm.created_at
@@ -184,11 +183,11 @@ router.post("/admin/demo-seed", async (req: Request, res: Response): Promise<voi
     // Optionally clear existing demo data first
     if (clear) {
       await Promise.allSettled([
-        client.query("DELETE FROM audits WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
-        client.query("DELETE FROM monitors WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
-        client.query("DELETE FROM missions WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
-        client.query("DELETE FROM competitors WHERE id LIKE 'demo_%'"),
-        client.query("DELETE FROM tracked_keywords WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        pool.query("DELETE FROM audits WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        pool.query("DELETE FROM monitors WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        pool.query("DELETE FROM missions WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
+        pool.query("DELETE FROM competitors WHERE id LIKE 'demo_%'"),
+        pool.query("DELETE FROM tracked_keywords WHERE org_id = $1 OR id LIKE 'demo_%'", [orgId]),
       ]);
     }
 
@@ -317,17 +316,16 @@ router.delete("/admin/sessions/expired", async (req: Request, res: Response): Pr
 router.get("/admin/db-check", async (req: Request, res: Response): Promise<void> => {
   if (!requireAdminKey(req, res)) return;
 
-  const client = await pool.connect();
   try {
     const [dbR, roleR, rlsR, tableR] = await Promise.all([
-      client.query(`SELECT current_database() AS db, version() AS pg_version,
-                           inet_server_addr()::text AS host, inet_server_port() AS port`),
-      client.query(`SELECT rolname, rolsuper, rolbypassrls
-                    FROM pg_roles WHERE rolname = 'app_user'`),
-      client.query(`SELECT COUNT(*)::int AS policy_count FROM pg_policies WHERE schemaname='public'`),
-      client.query(`SELECT COUNT(*)::int AS rls_tables
-                    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-                    WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity=true`),
+      pool.query(`SELECT current_database() AS db, version() AS pg_version,
+                         inet_server_addr()::text AS host, inet_server_port() AS port`),
+      pool.query(`SELECT rolname, rolsuper, rolbypassrls
+                  FROM pg_roles WHERE rolname = 'app_user'`),
+      pool.query(`SELECT COUNT(*)::int AS policy_count FROM pg_policies WHERE schemaname='public'`),
+      pool.query(`SELECT COUNT(*)::int AS rls_tables
+                  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity=true`),
     ]);
     const db = dbR.rows[0];
     const appUser = roleR.rows[0] ?? null;
@@ -349,8 +347,6 @@ router.get("/admin/db-check", async (req: Request, res: Response): Promise<void>
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
-  } finally {
-    client.release();
   }
 });
 

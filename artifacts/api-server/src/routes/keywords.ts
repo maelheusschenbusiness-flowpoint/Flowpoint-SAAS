@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
-import { db, keywordsTable } from "@workspace/db";
+import { db, trackedKeywordsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { store } from "../services/store.js";
 import { isDemoMode } from "../services/mock-data.js";
@@ -22,15 +22,15 @@ function getPlan(req: import("express").Request): string {
   return ((req as unknown as { me?: { plan?: string } }).me?.plan) ?? "Pro";
 }
 
-const SEED: Array<typeof keywordsTable.$inferInsert> = [
-  { id:"kw1", keyword:"agence seo paris",               position:3,  prevPosition:5,  volume:1900, difficulty:62, trend:"up",     tag:"Local",       intent:"commercial" },
-  { id:"kw2", keyword:"audit seo gratuit",               position:7,  prevPosition:6,  volume:4400, difficulty:48, trend:"down",   tag:"Acquisition", intent:"informational" },
-  { id:"kw3", keyword:"référencement naturel entreprise",position:12, prevPosition:14, volume:2200, difficulty:55, trend:"up",     tag:"Notoriété",   intent:"informational" },
-  { id:"kw4", keyword:"consultant seo freelance",         position:4,  prevPosition:4,  volume:880,  difficulty:43, trend:"stable", tag:"Local",       intent:"commercial" },
-  { id:"kw5", keyword:"optimisation google my business",  position:2,  prevPosition:3,  volume:3600, difficulty:38, trend:"up",     tag:"Local SEO",   intent:"transactional" },
-  { id:"kw6", keyword:"backlinks de qualité",             position:18, prevPosition:15, volume:1300, difficulty:71, trend:"down",   tag:"Netlinking",  intent:"commercial" },
-  { id:"kw7", keyword:"core web vitals optimisation",     position:9,  prevPosition:11, volume:720,  difficulty:52, trend:"up",     tag:"Technique",   intent:"informational" },
-  { id:"kw8", keyword:"seo local restaurant paris",       position:1,  prevPosition:1,  volume:590,  difficulty:29, trend:"stable", tag:"Local",       intent:"navigational" },
+const SEED: Array<typeof trackedKeywordsTable.$inferInsert> = [
+  { id:"kw1", orgId:"default", keyword:"agence seo paris",                currentPosition:3,  prevPosition:5,  searchVolume:1900, difficulty:62, tag:"Local",       intent:"commercial" },
+  { id:"kw2", orgId:"default", keyword:"audit seo gratuit",               currentPosition:7,  prevPosition:6,  searchVolume:4400, difficulty:48, tag:"Acquisition", intent:"informational" },
+  { id:"kw3", orgId:"default", keyword:"référencement naturel entreprise", currentPosition:12, prevPosition:14, searchVolume:2200, difficulty:55, tag:"Notoriété",   intent:"informational" },
+  { id:"kw4", orgId:"default", keyword:"consultant seo freelance",         currentPosition:4,  prevPosition:4,  searchVolume:880,  difficulty:43, tag:"Local",       intent:"commercial" },
+  { id:"kw5", orgId:"default", keyword:"optimisation google my business",  currentPosition:2,  prevPosition:3,  searchVolume:3600, difficulty:38, tag:"Local SEO",   intent:"transactional" },
+  { id:"kw6", orgId:"default", keyword:"backlinks de qualité",             currentPosition:18, prevPosition:15, searchVolume:1300, difficulty:71, tag:"Netlinking",  intent:"commercial" },
+  { id:"kw7", orgId:"default", keyword:"core web vitals optimisation",     currentPosition:9,  prevPosition:11, searchVolume:720,  difficulty:52, tag:"Technique",   intent:"informational" },
+  { id:"kw8", orgId:"default", keyword:"seo local restaurant paris",       currentPosition:1,  prevPosition:1,  searchVolume:590,  difficulty:29, tag:"Local",       intent:"navigational" },
 ];
 
 // GET /api/keywords
@@ -60,17 +60,18 @@ router.get("/keywords", withCache(60), async (req, res) => {
         res.json({ keywords: [], total: 0, hasData: false, source: "empty" });
         return;
       }
-      // Demo/dev: seed legacy mock keywords
-      const existing = await db.select().from(keywordsTable).limit(1);
+      // Demo/dev: seed tracked_keywords with sample data
+      const existing = await db.select().from(trackedKeywordsTable).limit(1);
       if (existing.length === 0) {
-        await db.insert(keywordsTable).values(SEED).onConflictDoNothing();
+        await db.insert(trackedKeywordsTable).values(SEED).onConflictDoNothing();
       } else {
         for (const s of SEED) {
-          await db.update(keywordsTable).set({ intent: s.intent }).where(eq(keywordsTable.id, s.id!));
+          await db.update(trackedKeywordsTable).set({ intent: s.intent }).where(eq(trackedKeywordsTable.id, s.id!));
         }
       }
-      const legacy = await db.select().from(keywordsTable).orderBy(keywordsTable.position).limit(500);
-      res.json({ keywords: legacy, total: legacy.length, source: "legacy" });
+      const seeded = await db.select().from(trackedKeywordsTable)
+        .orderBy(trackedKeywordsTable.currentPosition).limit(500);
+      res.json({ keywords: seeded, total: seeded.length, source: "seeded" });
       return;
     }
     res.json({ keywords: kwRes.rows, total: kwRes.rows.length, source: "tracked" });
@@ -212,16 +213,19 @@ router.patch("/keywords/alerts/:id/read", async (req, res) => {
   } catch { res.json({ ok: true }); }
 });
 
-// POST /api/keywords (legacy)
+// POST /api/keywords (legacy — inserts into tracked_keywords)
 router.post("/keywords", async (req, res) => {
-  const { keyword, position = 0, volume = 0, difficulty = 50, tag } = req.body as Partial<typeof keywordsTable.$inferInsert>;
+  const orgId = getOrg(req);
+  const { keyword, position = 0, volume = 0, difficulty = 50, tag } = req.body as {
+    keyword?: string; position?: number; volume?: number; difficulty?: number; tag?: string;
+  };
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
   try {
-    const [kw] = await db.insert(keywordsTable).values({
-      id: "kw" + Date.now(), keyword,
-      position: Number(position), prevPosition: Number(position),
-      volume: Number(volume), difficulty: Number(difficulty),
-      trend: "stable", tag: tag || null,
+    const [kw] = await db.insert(trackedKeywordsTable).values({
+      id: "kw" + Date.now(), orgId, keyword,
+      currentPosition: Number(position), prevPosition: Number(position),
+      searchVolume: Number(volume), difficulty: Number(difficulty),
+      tag: tag || null,
     }).returning();
     store.logActivity({ type:"audit", label:`Keyword ajouté : ${keyword}`, targetId:kw.id, targetType:"keyword" }).catch(() => {});
     res.status(201).json(kw);
@@ -246,9 +250,7 @@ router.patch("/keywords/:id", async (req, res) => {
       const updated = await (req as OrgReq).orgDb(`SELECT * FROM tracked_keywords WHERE id = $1 AND org_id = $2`, [req.params.id, orgId]);
       res.json(updated.rows[0]);
     } else {
-      const [kw] = await db.update(keywordsTable).set(req.body).where(eq(keywordsTable.id, req.params.id)).returning();
-      if (!kw) { res.status(404).json({ error: "not found" }); return; }
-      res.json(kw);
+      res.status(404).json({ error: "not found" });
     }
   } catch (err) {
     res.status(500).json({ error: safeErrMsg(err) });
@@ -265,7 +267,7 @@ router.delete("/keywords/:id", async (req, res) => {
     if (deleted.rows.length > 0) {
       store.logActivity({ type:"audit", label:`Keyword retiré : "${deleted.rows[0].keyword}"`, targetId:req.params.id, targetType:"keyword" }).catch(() => {});
     } else {
-      await db.delete(keywordsTable).where(eq(keywordsTable.id, req.params.id));
+      res.status(404).json({ error: "not found" });
     }
     res.json({ ok: true });
   } catch { res.json({ ok: true }); }

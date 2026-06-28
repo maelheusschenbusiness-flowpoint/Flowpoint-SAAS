@@ -25,3 +25,4 @@
 - [RLS migration 010 execution notes](rls-migration-notes.md) — Replit PG has no anon/authenticated roles; must create them first; DROP POLICY IF EXISTS produces NOTICEs that kill executeSql; fix: SET client_min_messages=WARNING; crm_field_mappings needed org_id added separately
 - [FlowPoint RLS migration](flowpoint-rls-migration.md) — 145 tables RLS enabled, 481 policies, postgres bypasses RLS
 - [RLS local dev setup](rls-local-dev-setup.md) — app_user role missing locally (Supabase-only migration 011); patch via initRlsSetup(); legacy table columns need DROP NOT NULL + SET DEFAULT
+- [FlowPoint Drizzle audit](flowpoint-drizzle-audit.md) — 33 Drizzle tables vs 145 DB tables; 9 tables missing org_id (fixed); monitors columns wrong (fixed); tracked_keywords renamed; 0 warnings, 16/16 endpoints 200

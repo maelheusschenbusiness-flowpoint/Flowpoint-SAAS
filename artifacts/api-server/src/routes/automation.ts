@@ -100,8 +100,9 @@ router.get("/automation/runs", async (req: Request, res: Response) => {
       [org(req)]
     );
     res.json({ runs: r.rows });
-  } catch {
-    res.status(500).json({ error: "Failed to fetch runs" });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: "Failed to fetch runs", detail: msg });
   }
 });
 
