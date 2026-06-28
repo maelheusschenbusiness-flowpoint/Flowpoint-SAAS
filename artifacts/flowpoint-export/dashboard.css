@@ -8812,3 +8812,57 @@ html[data-theme="light"] .fp-gauge-card {
   background: rgba(37,99,235,0.08);
   color: #2563EB;
 }
+
+/* ══ Skeleton shimmer loader (fp-skel-shimmer) ══════════════════════
+   Usage: <div style="position:relative;overflow:hidden">
+            <div class="fp-skel-shimmer" style="position:absolute;inset:0"></div>
+          </div>
+   ═══════════════════════════════════════════════════════════════════ */
+.fp-skel-shimmer {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: fpSkeleton 1.6s infinite linear;
+  border-radius: inherit;
+}
+html[data-theme="light"] .fp-skel-shimmer {
+  background: linear-gradient(90deg,
+    rgba(0,0,0,0.05) 25%,
+    rgba(0,0,0,0.12) 50%,
+    rgba(0,0,0,0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: fpSkeleton 1.6s infinite linear;
+}
+
+/* ══ Section-level skeleton page ═══════════════════════════════════ */
+.fp-skeleton-page { padding: 24px; animation: fp-fade-in 0.3s ease; }
+.fp-skel-block {
+  border-radius: var(--fp-radius-lg);
+  background: var(--fp-card, rgba(255,255,255,0.04));
+  position: relative;
+  overflow: hidden;
+}
+.fp-skel-block::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: fpSkeleton 1.6s infinite linear;
+}
+html[data-theme="light"] .fp-skel-block::after {
+  background: linear-gradient(90deg,
+    rgba(0,0,0,0.04) 25%,
+    rgba(0,0,0,0.10) 50%,
+    rgba(0,0,0,0.04) 75%
+  );
+  background-size: 200% 100%;
+}

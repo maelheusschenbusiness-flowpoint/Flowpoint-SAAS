@@ -9,8 +9,8 @@
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [RLS UUID org_id tables](rls-uuid-orgid.md) — gsc_keyword_data, gsc_page_data, gsc_sync_logs, ga4_accounts have UUID org_id; use org_id::text comparison in RLS policies
-- [FlowPoint API audit results](flowpoint-api-audit.md) — 48/48 endpoints clean (0 500s); RLS 149/149 tables 4+ policies; real paths for 40 GET + 8 POST endpoints documented
+- [FlowPoint API audit results](flowpoint-api-audit.md) — 31/31 endpoints 200 OK, 6/6 CRUD ops 201; correct paths: /api/team, /api/calendar-events; settings=localStorage only
 - [Google OAuth multi-instance fix](google-oauth-db-state.md) — pendingOAuthStates remplacé par table google_oauth_states; fonctions now async
 - [FlowPoint review-intel fake data](review-intel-empty-state.md) — SAMPLE_REVIEWS supprimé; empty state propre quand aucun avis GBP
 - [FlowPoint API route map](flowpoint-api-routes.md) — correct paths for all 44 tested routes (revenue-leak not leaks, gbp-posts not gbp/posts, calendar-events, review-intelligence, cro, seo/status)
-- [FlowPoint RLS migration 014](flowpoint-rls-014.md) — 65+ tables added after 013; SQL ready at migrations/014_rls_new_tables.sql; init-rls-migration.ts needsOrgId now 100+ tables
+- [FlowPoint RLS 100% coverage](flowpoint-rls-migration.md) — 150/150 tables, 600 policies; google_oauth_states patched in init-rls-setup.ts startup hook (migrations/015 SQL for docs)

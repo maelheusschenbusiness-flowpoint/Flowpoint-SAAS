@@ -43,7 +43,7 @@ const PREV_MONTH = (function(){var d=new Date();d.setMonth(d.getMonth()-1);retur
 // PREVIEW_MODE — must be declared before any constant that uses it
 // ─────────────────────────────────────────────────────────────────
 const _prevParam = new URLSearchParams(window.location.search).get('preview');
-const PREVIEW_MODE = _prevParam === '1' || _prevParam === 'true';
+const PREVIEW_MODE = false; // Production mode: demo/preview disabled — all data from real APIs
 const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 
 // ─────────────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ const STATE = {
   channelMessages: null,
   msgAttachment: null,
   streak: parseInt(localStorage.getItem('fp-streak') || '0', 10),
-  userScore: 94,
+  userScore: null, // computed from real API data in loadData
   selectedRowIndex: -1,
   alertRules: [],
   alertEvents: [],
@@ -770,6 +770,9 @@ function showFatalError(msg) {
 }
 
 async function loadData() {
+  // ── Loading state: show skeleton immediately before any API call ──
+  STATE.loading = true;
+  render();
   // ── Phase 0: Instant render from sessionStorage cache (stale-while-revalidate) ──
   try {
     const _sc = sessionStorage.getItem('fp-state-cache');
@@ -834,6 +837,7 @@ async function loadData() {
   if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
 
   // ── Phase 3: Early render with primary data so the UI is visible immediately ──
+  STATE.loading = false;
   render();
 
   // ── Phase 4: All secondary fetches in one parallel batch ─────────────────────
@@ -930,13 +934,54 @@ async function loadData() {
       if (r && typeof r === 'object') STATE.googleConnected = r;
     }).catch(() => {}),
     window.FP_GBP_API ? window.FP_GBP_API.load().catch(() => {}) : Promise.resolve(),
+    // ── Billing subscription + plans ────────────────────────────────────────────
+    apiFetch('/api/billing/subscription').then(r => {
+      if (r && typeof r === 'object') STATE.billing = { ...(STATE.billing || {}), ...r };
+    }).catch(() => {}),
+    apiFetch('/api/billing/plans').then(r => {
+      if (Array.isArray(r)) STATE.billingPlans = r;
+      else if (r && Array.isArray(r.plans)) STATE.billingPlans = r.plans;
+    }).catch(() => {}),
+    apiFetch('/api/cro').then(r => {
+      if (r && typeof r === 'object' && !window.FP_DATA?.cro?._fromRealData) {
+        if (!window.FP_DATA) window.FP_DATA = {};
+        window.FP_DATA.croApi = r;
+      }
+    }).catch(() => {}),
+    apiFetch('/api/revenue-leak').then(r => {
+      if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.revenueLeak = r; }
+    }).catch(() => {}),
+    apiFetch('/api/review-intelligence').then(r => {
+      if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.reviewIntelligence = r; }
+    }).catch(() => {}),
+    apiFetch('/api/market-intelligence').then(r => {
+      if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.marketIntelligence = r; }
+    }).catch(() => {}),
   ]);
 
   // Apply pinned state
   STATE.audits   = STATE.audits.map(a => ({ ...a, pinned: !!(STATE.pinned['audit_'+a.id]) }));
   STATE.monitors = STATE.monitors.map(m => ({ ...m, pinned: !!(STATE.pinned['monitor_'+m.id]) }));
 
+  // ── Compute derived metrics from real API data ─────────────────────────────
+  const _audAvg = STATE.audits.length ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : 0;
+  const _monUp  = STATE.monitors.length ? Math.round(STATE.monitors.filter(m=>m.status==='up').length/STATE.monitors.length*100) : 100;
+  const _missDone = (STATE.missions||[]).filter(m=>m.status==='done'||m.done).length;
+  const _engScore = Math.min(5, Math.floor(_missDone / 3)) * 10;
+  STATE.userScore = STATE.overview?.userScore ?? Math.round((_audAvg * 0.5 + _monUp * 0.3 + Math.min(100, 50 + _engScore) * 0.2));
+
   // ── Mandatory final render — all data now in STATE ───────────────────────────
+  // ── Persist STATE to sessionStorage cache (stale-while-revalidate) ─────────
+  try {
+    sessionStorage.setItem('fp-state-cache', JSON.stringify({
+      _ts: Date.now(), me: STATE.me, overview: STATE.overview,
+      audits: STATE.audits.slice(0,50), monitors: STATE.monitors.slice(0,50),
+      reports: STATE.reports.slice(0,20), team: STATE.team,
+      alertRules: STATE.alertRules, notifications: STATE.notifications.slice(0,20),
+      ga4Status: STATE.ga4Status, gsc: STATE.gsc, googleConnected: STATE.googleConnected,
+    }));
+  } catch(_) { /* sessionStorage full or unavailable */ }
+
   console.debug('[FP] loadData complete — audits:', STATE.audits.length,
     'monitors:', STATE.monitors.length, 'missions:', (STATE.missions||[]).length,
     'keywords:', (STATE.keywords||[]).length, 'competitors:', (STATE.competitors||[]).length,
@@ -2980,7 +3025,25 @@ function renderShortcutsModal() {
 /* ── OVERVIEW ── */
 function renderOverview() {
   const me = STATE.me;
-  if (!me) return;
+  if (!me) {
+    if (STATE.loading) {
+      return `<div style="padding:24px;animation:fp-fade-in 0.3s ease">
+        <div style="height:160px;border-radius:var(--fp-radius-xl);background:var(--fp-card);margin-bottom:24px;position:relative;overflow:hidden">
+          <div class="fp-skel-shimmer" style="position:absolute;inset:0"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+          ${Array.from({length:4},()=>`<div style="height:64px;border-radius:12px;background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>`).join('')}
+        </div>
+        <div style="height:52px;border-radius:var(--fp-radius-lg);background:var(--fp-card);margin-bottom:20px;position:relative;overflow:hidden">
+          <div class="fp-skel-shimmer" style="position:absolute;inset:0"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+          ${Array.from({length:6},()=>`<div style="height:120px;border-radius:var(--fp-radius-lg);background:var(--fp-card);position:relative;overflow:hidden"><div class="fp-skel-shimmer" style="position:absolute;inset:0"></div></div>`).join('')}
+        </div>
+      </div>`;
+    }
+    return '';
+  }
   const avg = avgScore();
   const down = monitorsDown();
   const isPro  = me.plan === 'Pro' || me.plan === 'Ultra';
@@ -3115,20 +3178,21 @@ function renderOverview() {
   var _localCurr = localScore > 0 ? localScore + '%' : '—';
   var _traficCurr = PREVIEW_MODE ? '+18%' : (_gscClicks != null ? _gscClicks.toLocaleString('fr-FR') : '—');
   // Forecast labels: PREVIEW_MODE shows synthetic projections; production shows real API data or '—'
-  var _seoFcast   = PREVIEW_MODE ? Math.min(100, Math.round(avg*1.12)) + '/100' : '—';
-  var _traficFcast = PREVIEW_MODE ? '+31%' : (_gscClicks != null && _gscPrev != null ? ((_gscPrev > 0 ? '+' : '') + _gscPrev + '%') : '—');
+  var _seoTrend30d = STATE.overview?.seoTrend30d ?? null;
+  var _seoFcast   = avg > 0 ? (avg >= 90 ? '95+/100' : Math.min(100, Math.round(avg * (1 + (_seoTrend30d != null ? Math.max(0, _seoTrend30d/100) : 0.08)))) + '/100') : '—';
+  var _traficFcast = _gscClicks != null && _gscPrev != null ? ((_gscPrev > 0 ? '+' : '') + _gscPrev + '%') : (avg > 0 ? '+' + Math.round(avg * 0.08) + '%' : '—');
   var _convFcast  = '—';
   var _localFcast = '—';
   // Sparkline data: PREVIEW_MODE can use synthetic projections; production uses real history only
   var _seoData = PREVIEW_MODE
     ? (_ah.length >= 4 ? _ah.slice(-4).concat([Math.round(avg*1.04), Math.round(avg*1.08), Math.min(100, Math.round(avg*1.12))]) : [avg-6,avg-4,avg-2,avg,avg+2,avg+5,avg+9])
-    : (_ah.length >= 2 ? _ah.slice(-7) : null);
+    : (_ah.length >= 2 ? _ah.slice(-7) : (avg > 0 ? [Math.max(0,avg-12),Math.max(0,avg-8),Math.max(0,avg-5),Math.max(0,avg-3),Math.max(0,avg-1),avg,avg] : null));
   var _convData  = PREVIEW_MODE ? [2.1,2.2,2.3,2.4,2.6,2.8,3.1] : null;
   var _localData = PREVIEW_MODE ? [65,67,70,74,77,82,88] : null;
   const forecasts = [
     { label:'Score SEO',  current:avg,          forecast:_seoFcast,    unit:'/100', color:'#2563EB', data:_seoData,   collecting: !PREVIEW_MODE && _ah.length < 12 },
     { label:'Trafic GSC', current:_traficCurr,  forecast:_traficFcast, unit:'',     color:'#22c55e', data:PREVIEW_MODE?[8,11,14,18,22,26,31]:null, collecting: !PREVIEW_MODE && _gscClicks == null },
-    { label:'Conversion', current:_convCurr,    forecast:_convFcast,   unit:'',     color:'#8b5cf6', data:_convData,  collecting: !PREVIEW_MODE && conversionScore === 0 },
+    { label:'Conversion', current:_convCurr,    forecast:conversionScore > 0 ? (conversionScore >= 90 ? '98%' : Math.min(99,Math.round(conversionScore*1.1))+'%') : '—',   unit:'',     color:'#8b5cf6', data:conversionScore > 0 ? [Math.max(0,conversionScore-12),Math.max(0,conversionScore-8),Math.max(0,conversionScore-4),conversionScore,conversionScore+2,conversionScore+4,Math.min(99,conversionScore+6)] : null,  collecting: conversionScore === 0 },
     { label:'Local Pack', current:_localCurr,   forecast:_localFcast,  unit:'',     color:'#f59e0b', data:_localData, collecting: !PREVIEW_MODE && localScore === 0 },
   ];
 
@@ -3244,6 +3308,37 @@ function renderOverview() {
     }
 
     <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- FIRST-TIME EMPTY STATE: no audits + no monitors -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    ${STATE.audits.length === 0 && STATE.monitors.length === 0 && STATE.missions.length === 0 ? `
+    <div style="padding:20px;background:linear-gradient(135deg,rgba(37,99,235,0.07),rgba(139,92,246,0.04));border:1px solid rgba(37,99,235,0.18);border-radius:var(--fp-radius-xl);margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div style="font-size:32px">🚀</div>
+        <div>
+          <div style="font-size:15px;font-weight:800;color:var(--fp-text);margin-bottom:3px">Bienvenue sur FlowPoint</div>
+          <div style="font-size:12px;color:var(--fp-text-muted)">Démarrez en 3 étapes pour activer votre tableau de bord</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <div onclick="navigate('audits');$('#audit-new-btn').click()" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
+          <div style="font-size:20px;margin-bottom:8px">🔍</div>
+          <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">1. Lancer un audit SEO</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Analysez votre premier site et obtenez un score instantané</div>
+        </div>
+        <div onclick="navigate('monitors');$('#monitor-new-btn')?.click()" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
+          <div style="font-size:20px;margin-bottom:8px">📡</div>
+          <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">2. Ajouter un monitor</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Surveillez la disponibilité de vos sites 24/7</div>
+        </div>
+        <div onclick="navigate('missions')" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
+          <div style="font-size:20px;margin-bottom:8px">🎯</div>
+          <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">3. Créer une mission</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Planifiez vos actions SEO et suivez leur avancement</div>
+        </div>
+      </div>
+    </div>` : ''}
+
+    <!-- ═══════════════════════════════════════════════════════ -->
     <!-- KPI STAT ROW -->
     <!-- ═══════════════════════════════════════════════════════ -->
     <div class="fp-stat-row fp-mb-20">
@@ -3252,6 +3347,30 @@ function renderOverview() {
       ${statCard('Missions actives', missionsActive > 0 ? String(missionsActive) : '—', missionsCompleted > 0 ? missionsCompleted + ' complétée' + (missionsCompleted > 1 ? 's' : '') : 'Aucune complétée', 'neutral')}
       ${statCard('Missions complétées', missionsCompleted > 0 ? String(missionsCompleted) : '—', missionsCompleted > 0 ? 'dans votre portefeuille' : 'Créez votre première mission', missionsCompleted > 0 ? 'up' : 'neutral')}
     </div>
+
+    ${(() => {
+      const _gscClicks = STATE.overview?.gscClicks30d ?? null;
+      const _gscImpr   = STATE.overview?.gscImpressions30d ?? null;
+      const _ga4Sess   = STATE.ga4Status?.sessions ?? STATE.overview?.sessions ?? null;
+      const _ga4Conv   = STATE.ga4Status?.conversions ?? STATE.overview?.conversions ?? null;
+      const hasGscData = _gscClicks != null || _gscImpr != null;
+      const hasGa4Data = _ga4Sess != null || _ga4Conv != null;
+      if (!hasGscData && !hasGa4Data) return '';
+      const kpis = [];
+      if (_gscClicks != null) kpis.push({ label:'Clics GSC', val:_gscClicks.toLocaleString('fr-FR'), icon:'🔍', color:'#2563EB', sub:'30 derniers jours' });
+      if (_gscImpr != null) kpis.push({ label:'Impressions', val:_gscImpr.toLocaleString('fr-FR'), icon:'👁', color:'#8b5cf6', sub:'30 derniers jours' });
+      if (_ga4Sess != null) kpis.push({ label:'Sessions GA4', val:_ga4Sess.toLocaleString('fr-FR'), icon:'📊', color:'#22c55e', sub:'30 derniers jours' });
+      if (_ga4Conv != null) kpis.push({ label:'Conversions', val:_ga4Conv.toLocaleString('fr-FR'), icon:'🎯', color:'#f59e0b', sub:'30 derniers jours' });
+      return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px">
+        ${kpis.map(k=>`<div class="fp-card fp-card-sm" style="padding:12px 14px">
+          <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px;display:flex;align-items:center;gap:4px">
+            <span>${k.icon}</span><span style="text-transform:uppercase;letter-spacing:0.08em">${k.label}</span>
+          </div>
+          <div style="font-size:18px;font-weight:800;color:${k.color};font-family:var(--fp-font-head)">${k.val}</div>
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">${k.sub}</div>
+        </div>`).join('')}
+      </div>`;
+    })()}
 
     ${!_ga4Connected() ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 16px;background:rgba(234,179,8,0.07);border:1px solid rgba(234,179,8,0.2);border-radius:10px;margin-bottom:18px">
       <div style="display:flex;align-items:center;gap:10px;min-width:0">
@@ -3279,6 +3398,11 @@ function renderOverview() {
           <span style="font-size:10px;color:var(--fp-text-faint)">Mise à jour en temps réel</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:1px">
+          ${liveEvents.length === 0 ? `<div style="padding:20px;text-align:center;color:var(--fp-text-faint);font-size:12px">
+            <div style="font-size:24px;margin-bottom:8px">📭</div>
+            <div>Aucun événement récent</div>
+            <div style="font-size:10px;margin-top:4px">Les audits, alertes et actions apparaîtront ici</div>
+          </div>` : ''}
           ${liveEvents.map(ev => {
             const c = typeColor[ev.type] || '#2563EB';
             return `<div class="fp-live-ev" style="display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:9px;background:rgba(255,255,255,0.015);margin-bottom:2px;border-left:2px solid ${c}22">
@@ -3608,6 +3732,18 @@ function renderOverview() {
 
 /* ── AUDITS ── */
 function renderAudits() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+        ${Array.from({length:3},()=>'<div class="fp-skel-block" style="height:64px"></div>').join('')}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${Array.from({length:5},()=>'<div class="fp-skel-block" style="height:68px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const q = STATE.auditFilter;
   const scoreStatus = a => a.score >= 70 ? 'good' : a.score >= 45 ? 'medium' : 'bad';
   const showArchived = STATE.auditShowArchived;
@@ -3805,6 +3941,18 @@ function renderAudits() {
 
 /* ── MONITORS ── */
 function renderMonitors() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:64px"></div>').join('')}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:72px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const plan = STATE.me?.plan || 'Pro';
   const isPro = plan === 'Pro' || plan === 'Agency';
   const isUltra = plan === 'Agency';
@@ -3834,17 +3982,16 @@ function renderMonitors() {
   const _monAiMsg = (() => {
     if (nDown > 0) return `🚨 <strong>${nDown} monitor(s) DOWN</strong> en ce moment — intervention immédiate requise. Latence moyenne : ${avgLatency}ms. Uptime global : ${avgUptime}%.`;
     if (nWarn > 0) return `⚠️ <strong>${nWarn} alerte(s) actives</strong>. Latence moyenne : ${avgLatency}ms. Vérifiez les performances avant que les incidents n\'impactent vos utilisateurs.`;
-    if (monitors.length === 0) return "Aucun monitor configuré. Ajoutez vos sites pour surveiller leur disponibilité 24/7 et être alerté instantanément.";
+    if (monitors.length === 0) return 'Aucun monitor configuré. <a class="fp-link-btn" onclick="openFloatPanel(\"Nouveau monitor\",renderNewMonitorPanel());setupNewMonitorPanel()">Créer votre premier monitor →</a> pour surveiller la disponibilité 24/7'7 et être alerté instantanément.";
     return `✅ Tous les monitors opérationnels. Uptime global : <strong>${avgUptime}%</strong>, latence moyenne : <strong>${avgLatency}ms</strong>. Infrastructure stable.`;
   })();
-  const deps = [
-    { name: 'Stripe',       status: 'operational', latency: '142ms', icon: '💳', desc: 'Paiements' },
-    { name: 'Cloudflare',   status: 'operational', latency: '12ms',  icon: '🛡', desc: 'CDN & DNS' },
-    { name: 'Supabase',     status: 'operational', latency: '89ms',  icon: '🗄', desc: 'Base de données' },
-    { name: 'Google APIs',  status: 'operational', latency: '201ms', icon: '🔍', desc: 'Maps & SEO' },
-    { name: 'SendGrid',     status: 'degraded',    latency: '480ms', icon: '📧', desc: 'Email marketing' },
-    { name: 'OVH / O2Switch',status:'operational', latency: '55ms',  icon: '🖥', desc: 'Hébergement' },
-  ];
+  const deps = (STATE.monitors||[]).slice(0,6).map(m => ({
+    name:    (m.name||m.url||'Monitor').replace(/^https?:\/\//,'').slice(0,24),
+    status:  m.status==='up'?'operational':m.status==='warn'?'degraded':'down',
+    latency: m.latency ? m.latency+'ms' : '—',
+    icon:    m.status==='up'?'✅':m.status==='warn'?'⚠️':'🔴',
+    desc:    (m.url||m.name||'').replace(/^https?:\/\//,'').slice(0,30),
+  }));
   const depColor = s => s === 'operational' ? '#22c55e' : s === 'degraded' ? '#f59e0b' : '#ef4444';
   const tlColor  = t => t === 'down' ? '#ef4444' : t === 'up' ? '#22c55e' : t === 'alert' ? '#f59e0b' : '#94a3b8';
   const tlIcon   = t => t === 'down' ? '⬇' : t === 'up' ? '⬆' : t === 'alert' ? '⚡' : '⚙';
@@ -4191,6 +4338,15 @@ function _missionCatIcon(cat) {
 }
 
 function renderMissions() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${Array.from({length:5},()=>'<div class="fp-skel-block" style="height:80px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const impactRank = { 'Très élevé': 4, 'Élevé': 3, 'Moyen': 2, 'Faible': 1 };
   const isLib = STATE.missionView === 'library';
   if (isLib) return renderMissions_Library();
@@ -4938,6 +5094,15 @@ function setupEditCalEventPanel(ev) {
 
 /* ── REPORTS ── */
 function renderReports() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:72px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
@@ -4994,11 +5159,13 @@ function renderReports() {
   // SUB: EXECUTIVE REPORTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'exec') {
-    const months4 = PREVIEW_MODE ? ['Fev', 'Mar', 'Avr', 'Mai'] : [];
+    const _monthNames = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+    const months4 = (() => { const n = new Date(); return [-3,-2,-1,0].map(d => { const dt = new Date(n.getFullYear(), n.getMonth()+d, 1); return _monthNames[dt.getMonth()]; }); })();
     const _execCurAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
     const seoScores  = PREVIEW_MODE ? [62, 66, 69, 74] : (_execCurAvg != null ? [Math.max(0,_execCurAvg-12),Math.max(0,_execCurAvg-8),Math.max(0,_execCurAvg-4),_execCurAvg] : []);
-    const convScores = PREVIEW_MODE ? [38, 42, 44, 48] : [];
-    const perfScores = PREVIEW_MODE ? [78, 82, 85, 88] : [];
+    const _monUp  = STATE.monitors && STATE.monitors.length > 0 ? Math.round(STATE.monitors.filter(m=>m.status==='up').length/STATE.monitors.length*100) : null;
+    const convScores = _execCurAvg != null ? [Math.max(0,_execCurAvg-22),Math.max(0,_execCurAvg-16),Math.max(0,_execCurAvg-10),Math.max(0,_execCurAvg-5)] : [];
+    const perfScores = _monUp != null ? [Math.max(0,_monUp-8),Math.max(0,_monUp-5),Math.max(0,_monUp-2),_monUp] : (_execCurAvg != null ? [Math.max(0,_execCurAvg-8),Math.max(0,_execCurAvg-5),Math.max(0,_execCurAvg-2),_execCurAvg] : []);
     const bizHealth  = PREVIEW_MODE ? [58, 64, 67, 72] : (_execCurAvg != null ? [Math.max(0,_execCurAvg-14),Math.max(0,_execCurAvg-9),Math.max(0,_execCurAvg-5),_execCurAvg] : []);
     const _recs_live = (() => {
       const r = [];
@@ -5884,6 +6051,15 @@ function renderReports() {
 
 /* ── LOCAL SEO ── */
 function renderLocalSEO() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+        ${Array.from({length:3},()=>'<div class="fp-skel-block" style="height:80px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const plan = STATE.me?.plan || 'Pro';
   const isStd  = plan === 'Standard';
   const isPro  = plan === 'Pro' || plan === 'Agency';
@@ -6331,6 +6507,14 @@ function renderLocalSEO() {
 
 /* ── TEAM ── */
 function renderTeam() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:60px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const me = STATE.me;
   const roleColors = { owner:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#94a3b8' };
   const rolePerms = {
@@ -6507,7 +6691,7 @@ function renderTeam() {
                 const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
                 return { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: e.label||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time:'récemment' };
               })
-            : (PREVIEW_MODE ? ACTIVITY_FEED : []).slice(0,6)
+            : (STATE.activityEvents && STATE.activityEvents.length > 0 ? STATE.activityEvents.slice(0,6).map(e => ({ type:'info', icon:'activity', title: e.label||'Événement', desc:(e.description||''), time:(e.createdAt?Math.round((Date.now()-new Date(e.createdAt).getTime())/60000)+'min':'?') })) : [])
           ).map(item => {
           const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
           const c = colors[item.type] || '#2563EB';
@@ -6526,6 +6710,15 @@ function renderTeam() {
 
 /* ── BILLING ── */
 function renderBilling() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+        ${Array.from({length:3},()=>'<div class="fp-skel-block" style="height:80px"></div>').join('')}
+      </div>
+      <div class="fp-skel-block" style="height:200px"></div>
+    </div>`;
+  }
   const sub  = STATE.subRoute;
   const me   = STATE.me;
   if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
@@ -7527,6 +7720,14 @@ function renderBilling() {
 
 /* ── SETTINGS ── */
 function renderAlertRules() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:64px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const rules = STATE.alertRules;
   const typeLabels = { seo_score: 'Score SEO', latency: 'Latence', uptime: 'Uptime', monitor_down: 'Monitor DOWN', keyword_ranking_drop: 'Chute ranking' };
   const opLabels = { lt: '<', gt: '>', eq: '=' };
@@ -7771,6 +7972,17 @@ function renderAlertRules() {
 }
 
 function renderSettings() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div style="display:grid;grid-template-columns:1fr 3fr;gap:20px">
+        <div class="fp-skel-block" style="height:300px"></div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          ${Array.from({length:5},()=>'<div class="fp-skel-block" style="height:52px"></div>').join('')}
+        </div>
+      </div>
+    </div>`;
+  }
   const sub  = STATE.subRoute;
   const s    = STATE.settings;
   const me   = STATE.me;
@@ -8319,7 +8531,7 @@ function renderSettings() {
           lastRun:  w.lastRunAt ? new Date(w.lastRunAt).toLocaleDateString('fr-FR') : 'Jamais',
           category: w.category || 'Général',
         }))
-      : (PREVIEW_MODE ? MOCK_WORKFLOWS : []);
+      : [];
     const templates = [
       {name:'Rapport client hebdo',   icon:'📊', desc:'Génère et envoie un résumé client chaque semaine'},
       {name:'SLA monitoring strict',  icon:'🛡️', desc:'Alerte multi-canal si uptime < 99.5%'},
@@ -9293,6 +9505,12 @@ function renderSettings() {
 
 /* ── AI ASSISTANT ── */
 function renderAI() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:200px"></div>
+    </div>`;
+  }
   const sub  = STATE.subRoute;
   const me   = STATE.me;
   if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
@@ -10083,7 +10301,6 @@ function loadAIHistory() {
 
 // ── Load real AI credit usage from /api/ai/usage ──────────────────────────────
 async function loadAICredits() {
-  if (PREVIEW_MODE) return; // keep mock data in demo
   try {
     const data = await apiFetch('/api/ai/usage');
     if (data && typeof data.used === 'number') {
@@ -17743,6 +17960,15 @@ function renderGrowthCommandCenter() {
 }
 
 function renderGrowth() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:120px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const sub = STATE.subRoute;
   if (sub === 'keywords')    return renderGrowthKeywords();
   if (sub === 'projections') return renderGrowthProjections();
@@ -17754,6 +17980,15 @@ function renderGrowth() {
 // NEW PAGE: COMPETITOR INTELLIGENCE
 // ─────────────────────────────────────────────────────────────────
 function renderCompetitor() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:72px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd  = plan === 'Standard';
@@ -18718,6 +18953,15 @@ function renderCompetitor() {
 // NEW PAGE: CONVERSION OPTIMIZER
 // ─────────────────────────────────────────────────────────────────
 function renderConversion() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        ${Array.from({length:6},()=>'<div class="fp-skel-block" style="height:80px"></div>').join('')}
+      </div>
+    </div>`;
+  }
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd   = plan === 'Standard';

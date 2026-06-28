@@ -384,4 +384,48 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
 });
 
 
+
+
+// ── GET /api/admin/rls — RLS coverage audit ───────────────────────────────────
+router.get("/admin/rls", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  try {
+    const [coverage, unprotected, policies] = await Promise.all([
+      pool.query(`
+        SELECT 
+          (SELECT COUNT(*)::int FROM pg_tables WHERE schemaname='public') AS total_tables,
+          (SELECT COUNT(*)::int FROM pg_tables WHERE schemaname='public' AND rowsecurity=true) AS rls_tables,
+          (SELECT COUNT(*)::int FROM pg_policies WHERE schemaname='public') AS total_policies,
+          (SELECT COUNT(*)::int FROM information_schema.columns WHERE table_schema='public' AND column_name='org_id') AS org_id_columns
+      `),
+      pool.query(`
+        SELECT tablename FROM pg_tables 
+        WHERE schemaname='public' AND rowsecurity=false 
+        ORDER BY tablename
+      `),
+      pool.query(`
+        SELECT tablename, COUNT(*)::int AS policy_count 
+        FROM pg_policies WHERE schemaname='public' 
+        GROUP BY tablename ORDER BY tablename LIMIT 30
+      `),
+    ]);
+    const c = coverage.rows[0] as Record<string, number>;
+    res.json({
+      ok: true,
+      summary: {
+        totalTables: c.total_tables,
+        rlsEnabled: c.rls_tables,
+        rlsMissing: c.total_tables - c.rls_tables,
+        coveragePct: Math.round(c.rls_tables / Math.max(1, c.total_tables) * 100),
+        totalPolicies: c.total_policies,
+        orgIdColumns: c.org_id_columns,
+      },
+      unprotectedTables: unprotected.rows.map((r: Record<string, unknown>) => r.tablename),
+      samplePolicies: policies.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 export default router;

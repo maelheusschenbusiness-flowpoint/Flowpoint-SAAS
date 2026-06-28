@@ -46,6 +46,20 @@ export async function initRlsSetup(): Promise<void> {
     `);
 
     logger.info("[init-rls-setup] app_user role ready");
+
+    // ── Patch: ensure google_oauth_states has RLS (missed by init-rls-migration) ──
+    await client.query(`ALTER TABLE IF EXISTS google_oauth_states ADD COLUMN IF NOT EXISTS org_id text NOT NULL DEFAULT 'default'`);
+    await client.query(`ALTER TABLE IF EXISTS google_oauth_states ENABLE ROW LEVEL SECURITY`);
+    for (const cmd of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+      const policyName = `tenant_${cmd.toLowerCase()}`;
+      await client.query(`DROP POLICY IF EXISTS "${policyName}" ON google_oauth_states`);
+      const clause = cmd === "INSERT"
+        ? `WITH CHECK (org_id = current_setting('app.current_org_id', true))`
+        : `USING (org_id = current_setting('app.current_org_id', true))`;
+      await client.query(`CREATE POLICY "${policyName}" ON google_oauth_states FOR ${cmd} ${clause}`);
+    }
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_google_oauth_states_org_id ON google_oauth_states (org_id)`);
+    logger.info("[init-rls-setup] google_oauth_states RLS patched (100% coverage)");
   } catch (err) {
     logger.warn({ err }, "[init-rls-setup] Non-fatal: could not provision app_user role");
   } finally {
