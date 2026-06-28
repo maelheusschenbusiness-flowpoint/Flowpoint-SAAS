@@ -383,4 +383,171 @@ router.post("/admin/test-session", async (req: Request, res: Response): Promise<
   }
 });
 
+// ── POST /api/admin/apply-rls-migration ───────────────────────────────────────
+// Applies RLS to every table in the public schema that exists.
+// 1. Adds org_id (DEFAULT 'default') to tables missing it
+// 2. Enables RLS on all public tables
+// 3. Drops all existing policies (idempotent cleanup)
+// 4. Creates 4 tenant isolation policies (SELECT/INSERT/UPDATE/DELETE)
+//    only on tables that actually have an org_id column
+// 5. Grants permissions to Supabase roles if they exist
+// Protected by ADMIN_KEY. Safe to run multiple times.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/admin/apply-rls-migration", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const client = await pool.connect();
+  const steps: { step: string; ok: boolean; detail?: string }[] = [];
+
+  const run = async (label: string, sql: string) => {
+    try {
+      await client.query(sql);
+      steps.push({ step: label, ok: true });
+    } catch (e: any) {
+      steps.push({ step: label, ok: false, detail: e.message?.split("\n")[0] });
+    }
+  };
+
+  try {
+    // ── 1. Discover existing tables ───────────────────────────────────────────
+    const tablesRes = await client.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`
+    );
+    const existingTables = new Set(tablesRes.rows.map((r) => r.tablename));
+
+    // ── 2. Add org_id to tables that are missing it ───────────────────────────
+    const needsOrgId = [
+      "ai_credit_purchases","ai_monthly_usage","ai_usage_logs",
+      "alert_events","alert_rules","audit_schedules","audit_trail",
+      "audits","automation_integrations","automation_logs","automation_runs",
+      "calendar_events","competitor_movements","competitor_rankings",
+      "competitors","connectors","crm_field_mappings","gbp_locations",
+      "google_tokens","incoming_webhooks","keyword_clusters","keyword_history",
+      "keyword_opportunities","mission_ai_logs","mission_history",
+      "monitor_checks","monitor_incidents","monitor_logs","monitors",
+      "notifications","oauth_connections","org_addons","org_settings",
+      "ranking_alerts","report_exports","reports","seo_forecasts",
+      "sla_reports","subscriptions","team_members","team_messages",
+      "tracked_keywords","usage","user_prefs","user_sessions","workflow_runs",
+      "activity_logs","automation_workflows","automation_templates",
+      "cro_experiments","cro_recommendations","cro_scores","revenue_leaks",
+    ];
+    for (const t of needsOrgId) {
+      if (!existingTables.has(t)) continue;
+      await run(
+        `add_org_id:${t}`,
+        `ALTER TABLE "${t}" ADD COLUMN IF NOT EXISTS org_id text NOT NULL DEFAULT 'default'`
+      );
+    }
+
+    // ── 3. Enable RLS on every public table ───────────────────────────────────
+    for (const t of existingTables) {
+      await run(`rls_enable:${t}`, `ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`);
+    }
+
+    // ── 4. Drop all existing policies (idempotent cleanup) ────────────────────
+    await run("drop_all_policies", `
+      DO $$
+      DECLARE r RECORD;
+      BEGIN
+        FOR r IN SELECT tablename, policyname FROM pg_policies WHERE schemaname = 'public' LOOP
+          EXECUTE format('DROP POLICY IF EXISTS %I ON %I', r.policyname, r.tablename);
+        END LOOP;
+      END $$
+    `);
+
+    // ── 5. Discover tables that now have org_id ───────────────────────────────
+    const orgIdRes = await client.query<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND column_name = 'org_id'
+       ORDER BY table_name`
+    );
+    const tenantTables = orgIdRes.rows
+      .map((r) => r.table_name)
+      .filter((t) => existingTables.has(t));
+
+    // ── 6. Create tenant isolation policies ───────────────────────────────────
+    const GUC = `current_setting('app.current_org_id', true)`;
+    for (const t of tenantTables) {
+      await run(`policy_select:${t}`,  `CREATE POLICY "tenant_select"  ON "${t}" FOR SELECT USING (org_id = ${GUC})`);
+      await run(`policy_insert:${t}`,  `CREATE POLICY "tenant_insert"  ON "${t}" FOR INSERT WITH CHECK (org_id = ${GUC})`);
+      await run(`policy_update:${t}`,  `CREATE POLICY "tenant_update"  ON "${t}" FOR UPDATE USING (org_id = ${GUC})`);
+      await run(`policy_delete:${t}`,  `CREATE POLICY "tenant_delete"  ON "${t}" FOR DELETE USING (org_id = ${GUC})`);
+    }
+
+    // ── 7. Grant Supabase role permissions (if roles exist) ───────────────────
+    await run("grant_anon",          `GRANT USAGE ON SCHEMA public TO anon`);
+    await run("grant_authenticated", `GRANT USAGE ON SCHEMA public TO authenticated`);
+    await run("grant_service_role",  `GRANT USAGE ON SCHEMA public TO service_role`);
+    await run("grant_select_anon",   `GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon`);
+    await run("grant_dml_auth",      `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated`);
+    await run("grant_dml_svc",       `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role`);
+
+    // ── 8. Final state ────────────────────────────────────────────────────────
+    const stateRes = await client.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM pg_tables    WHERE schemaname='public' AND rowsecurity=true) AS rls_tables,
+        (SELECT COUNT(*)::int FROM pg_policies  WHERE schemaname='public')                      AS total_policies,
+        (SELECT COUNT(*)::int FROM pg_tables    WHERE schemaname='public')                      AS total_tables
+    `);
+
+    const failures = steps.filter((s) => !s.ok);
+    res.json({
+      ok: failures.length === 0,
+      state: stateRes.rows[0],
+      tenant_tables_processed: tenantTables.length,
+      total_steps: steps.length,
+      failed_steps: failures.length,
+      failures,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err), steps });
+  } finally {
+    client.release();
+  }
+});
+
+// ── GET /api/admin/rls-audit ──────────────────────────────────────────────────
+// Returns: tables without RLS, tables with RLS but no policies, policy count per table.
+// Useful to compare local vs production state.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/admin/rls-audit", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  try {
+    const [noRls, noPolicies, policyCount] = await Promise.all([
+      pool.query(`
+        SELECT tablename FROM pg_tables
+        WHERE schemaname='public' AND rowsecurity=false
+        ORDER BY tablename
+      `),
+      pool.query(`
+        SELECT pt.tablename FROM pg_tables pt
+        LEFT JOIN pg_policies pp ON pp.tablename=pt.tablename AND pp.schemaname='public'
+        WHERE pt.schemaname='public' AND pt.rowsecurity=true AND pp.policyname IS NULL
+        ORDER BY pt.tablename
+      `),
+      pool.query(`
+        SELECT tablename, COUNT(*)::int AS policies
+        FROM pg_policies WHERE schemaname='public'
+        GROUP BY tablename ORDER BY tablename
+      `),
+    ]);
+
+    res.json({
+      ok: true,
+      summary: {
+        tables_without_rls:         noRls.rowCount,
+        tables_with_rls_no_policy:  noPolicies.rowCount,
+        total_policy_entries:       policyCount.rows.reduce((s: number, r: any) => s + r.policies, 0),
+      },
+      tables_without_rls:        noRls.rows.map((r: any) => r.tablename),
+      tables_with_rls_no_policy: noPolicies.rows.map((r: any) => r.tablename),
+      policy_counts:             policyCount.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 export default router;
