@@ -4,6 +4,7 @@ import fs from "node:fs";
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes/index.js";
@@ -20,6 +21,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app: Express = express();
 
 app.set("trust proxy", 1);
+
+// ── 0. Gzip / Brotli response compression ────────────────────────────────────
+// Compresses text (JSON, HTML, JS, CSS, SVG) before sending.
+// Skip already-compressed formats (images, woff2, gzip, etc.).
+app.use(
+  compression({
+    level: 6,          // balanced CPU vs ratio (default 6)
+    threshold: 1024,   // only compress responses ≥ 1 KB
+    filter(req, res) {
+      // Never compress SSE streams or WebSocket upgrades
+      if (req.headers["accept"] === "text/event-stream") return false;
+      return compression.filter(req, res);
+    },
+  }),
+);
 
 // ── 1. Request ID injection — first so every log carries it ──────────────────
 app.use(requestId);
@@ -236,12 +252,24 @@ app.get(["/checkout-return", "/checkout-return.html"], servePage("checkout-retur
 app.get(["/success", "/success.html"], servePage("success.html"));
 app.get(["/cancel", "/cancel.html"], servePage("cancel.html"));
 
-const noCacheStatic = (req: Request, res: Response, next: Function) => {
-  res.setHeader("Cache-Control", "no-store");
+// Smart cache headers for static assets:
+//  - HTML pages       → no-store (always fresh, auth-sensitive)
+//  - JS/CSS/fonts     → 1 year immutable (filenames carry content hashes)
+//  - Images           → 7 days (may change without hash)
+//  - Everything else  → no-store (safe default)
+const staticCache = (req: Request, res: Response, next: Function) => {
+  const url = req.url.split("?")[0] ?? "";
+  if (/\.(js|css|woff2?|ttf|otf)(\?|$)/.test(url)) {
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  } else if (/\.(png|jpg|jpeg|gif|webp|svg|ico)(\?|$)/.test(url)) {
+    res.setHeader("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
+  } else {
+    res.setHeader("Cache-Control", "no-store");
+  }
   next();
 };
-app.use("/", noCacheStatic, express.static(dashboardDir, { index: false }));
-app.use("/api/dashboard", noCacheStatic, express.static(dashboardDir));
+app.use("/", staticCache, express.static(dashboardDir, { index: false }));
+app.use("/api/dashboard", staticCache, express.static(dashboardDir));
 
 // ── 10. All API routes ────────────────────────────────────────────────────────
 app.use("/api", router);
