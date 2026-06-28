@@ -19,7 +19,7 @@ export async function getGSCStatus(
   const client = await pool.connect();
   try {
     const [site, count] = await Promise.all([
-      client.query(`SELECT site_url FROM gsc_sites WHERE org_id=$1 AND active=true LIMIT 1`, [orgId]),
+      client.query(`SELECT site_url FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId]),
       client.query(`SELECT COUNT(*)::int AS c FROM gsc_sites WHERE org_id=$1`, [orgId]),
     ]);
     return {
@@ -48,7 +48,7 @@ export async function getActiveSite(orgId: string): Promise<string | null> {
   const client = await pool.connect();
   try {
     const res = await client.query(
-      `SELECT site_url FROM gsc_sites WHERE org_id=$1 AND active=true LIMIT 1`, [orgId]
+      `SELECT site_url FROM gsc_sites WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId]
     );
     return (res.rows[0] as Record<string, string> | undefined)?.["site_url"] ?? null;
   } catch { return null; } finally { client.release(); }
@@ -57,11 +57,11 @@ export async function getActiveSite(orgId: string): Promise<string | null> {
 export async function setActiveSite(orgId: string, siteUrl: string): Promise<void> {
   const client = await pool.connect();
   try {
-    await client.query(`UPDATE gsc_sites SET active=false WHERE org_id=$1`, [orgId]);
+    await client.query(`UPDATE gsc_sites SET is_active=false WHERE org_id=$1`, [orgId]);
     await client.query(
-      `INSERT INTO gsc_sites (org_id, site_url, active, created_at)
+      `INSERT INTO gsc_sites (org_id, site_url, is_active, created_at)
        VALUES ($1,$2,true,NOW())
-       ON CONFLICT (org_id, site_url) DO UPDATE SET active=true, updated_at=NOW()`,
+       ON CONFLICT (org_id, site_url) DO UPDATE SET is_active=true, updated_at=NOW()`,
       [orgId, siteUrl]
     );
   } finally { client.release(); }
@@ -84,7 +84,7 @@ export async function discoverAndStoreSites(orgId: string): Promise<number> {
     try {
       for (const site of sites) {
         await client.query(
-          `INSERT INTO gsc_sites (org_id, site_url, active, created_at)
+          `INSERT INTO gsc_sites (org_id, site_url, is_active, created_at)
            VALUES ($1,$2,false,NOW())
            ON CONFLICT (org_id, site_url) DO NOTHING`,
           [orgId, site.siteUrl]
@@ -143,6 +143,26 @@ export async function syncGSCData(orgId: string): Promise<number> {
     const rows = data.rows ?? [];
     if (rows.length === 0) return 0;
 
+    // Fetch page-level data in the same sync
+    const pageRes = await fetch(
+      `${GSC_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+      {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startDate, endDate,
+          dimensions: ["page", "date"],
+          rowLimit:   1000,
+          startRow:   0,
+        }),
+        signal: AbortSignal.timeout(25_000),
+      }
+    );
+    const pageData = pageRes.ok
+      ? await pageRes.json() as { rows?: Array<{ keys: [string, string]; clicks: number; impressions: number; ctr: number; position: number }> }
+      : { rows: [] };
+    const pageRows = pageData.rows ?? [];
+
     const client = await pool.connect();
     try {
       let inserted = 0;
@@ -157,6 +177,17 @@ export async function syncGSCData(orgId: string): Promise<number> {
           [orgId, keyword, date, row.impressions, row.clicks, row.ctr, row.position]
         );
         inserted++;
+      }
+      for (const row of pageRows) {
+        const [page, date] = row.keys;
+        await client.query(
+          `INSERT INTO gsc_page_data
+             (org_id, page, date, impressions, clicks, ctr, position, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+           ON CONFLICT (org_id, page, date) DO UPDATE SET
+             impressions=$4, clicks=$5, ctr=$6, position=$7, updated_at=NOW()`,
+          [orgId, page, date, row.impressions, row.clicks, row.ctr, row.position]
+        );
       }
 
       await client.query(

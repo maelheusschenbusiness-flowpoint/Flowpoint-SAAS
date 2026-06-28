@@ -116,7 +116,7 @@ export async function isGA4Connected(orgId: string): Promise<boolean> {
   const client = await pool.connect();
   try {
     const res = await client.query(
-      `SELECT 1 FROM ga4_properties WHERE org_id=$1 AND active=true LIMIT 1`, [orgId]
+      `SELECT 1 FROM ga4_properties WHERE org_id=$1 AND is_active=true LIMIT 1`, [orgId]
     );
     return res.rows.length > 0;
   } catch { return false; } finally { client.release(); }
@@ -126,12 +126,12 @@ export async function getStoredProperty(orgId: string): Promise<{ propertyId: st
   const client = await pool.connect();
   try {
     const res = await client.query(
-      `SELECT property_id, display_name FROM ga4_properties WHERE org_id=$1 AND active=true LIMIT 1`,
+      `SELECT property_id, property_name FROM ga4_properties WHERE org_id=$1 AND is_active=true LIMIT 1`,
       [orgId]
     );
     if (!res.rows[0]) return null;
     const r = res.rows[0] as Record<string, string>;
-    return { propertyId: r["property_id"], displayName: r["display_name"] };
+    return { propertyId: r["property_id"], displayName: r["property_name"] };
   } catch { return null; } finally { client.release(); }
 }
 
@@ -139,9 +139,9 @@ export async function setStoredProperty(orgId: string, propertyId: string, displ
   const client = await pool.connect();
   try {
     await client.query(
-      `INSERT INTO ga4_properties (org_id, property_id, display_name, active, created_at)
+      `INSERT INTO ga4_properties (org_id, property_id, property_name, is_active, created_at)
        VALUES ($1,$2,$3,true,NOW())
-       ON CONFLICT (org_id, property_id) DO UPDATE SET display_name=$3, active=true, updated_at=NOW()`,
+       ON CONFLICT (org_id, property_id) DO UPDATE SET property_name=$3, is_active=true, updated_at=NOW()`,
       [orgId, propertyId, displayName]
     );
   } finally { client.release(); }
@@ -168,9 +168,9 @@ export async function discoverAndStoreProperties(orgId: string): Promise<number>
         for (const prop of (propsData.properties ?? []).slice(0, 20)) {
           const propertyId = prop.name.split("/")[1];
           await client.query(
-            `INSERT INTO ga4_properties (org_id, account_id, property_id, display_name, active, created_at)
+            `INSERT INTO ga4_properties (org_id, account_id, property_id, property_name, is_active, created_at)
              VALUES ($1,$2,$3,$4,false,NOW())
-             ON CONFLICT (org_id, property_id) DO UPDATE SET display_name=$4`,
+             ON CONFLICT (org_id, property_id) DO UPDATE SET property_name=$4`,
             [orgId, accountId, propertyId, prop.displayName]
           ).catch(() => {});
           await client.query(
