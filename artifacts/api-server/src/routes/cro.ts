@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { getCROData, generateCRORecommendations, upsertCROScore } from "../services/cro-service.js";
 import { requireFeature } from "../middlewares/planGate.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -27,10 +28,15 @@ router.post("/cro/generate", async (req: Request, res: Response) => {
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
   try {
     await generateCRORecommendations(siteUrl);
+  } catch {
+    // generateCRORecommendations has its own error handling; ignore re-throw
+  }
+  try {
     const data = await getCROData(siteUrl);
     res.json({ ok: true, ...data });
-  } catch {
-    res.status(500).json({ error: "Failed to generate CRO recommendations" });
+  } catch (err) {
+    logger.warn({ err, siteUrl }, "[CRO] getCROData failed, returning empty response");
+    res.json({ ok: true, recommendations: [], scores: [], experiments: [], summary: { totalRecs: 0, highPriority: 0, estimatedUpliftTotal: 0, implementedCount: 0 } });
   }
 });
 

@@ -129,20 +129,18 @@ export async function saveTokens(orgId: string, tokens: GoogleTokens): Promise<v
   const client = await pool.connect();
   try {
     await client.query(
-      `INSERT INTO google_tokens (org_id, access_token, refresh_token, expires_at, scope, created_at)
-       VALUES ($1,$2,$3,$4,$5,NOW())
-       ON CONFLICT (org_id) DO UPDATE SET
+      `INSERT INTO google_tokens (org_id, account_id, access_token, refresh_token, expires_at, created_at)
+       VALUES ($1, 'primary', $2, $3, $4, NOW())
+       ON CONFLICT (org_id, account_id) DO UPDATE SET
          access_token  = $2,
          refresh_token = COALESCE($3, google_tokens.refresh_token),
          expires_at    = $4,
-         scope         = $5,
          updated_at    = NOW()`,
       [
         orgId,
         encryptToken(tokens.accessToken),
         tokens.refreshToken ? encryptToken(tokens.refreshToken) : null,
         new Date(tokens.expiresAt),
-        tokens.scope,
       ]
     );
   } finally {

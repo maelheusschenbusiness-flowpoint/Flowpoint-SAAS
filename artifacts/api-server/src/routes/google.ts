@@ -30,6 +30,8 @@ import {
   encryptToken,
   syncAll,
 } from "../services/google-service.js";
+import { discoverAndStoreProperties } from "../services/ga4-service.js";
+import { discoverAndStoreSites } from "../services/gsc-service.js";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 
@@ -138,8 +140,10 @@ async function handleGoogleCallback(req: Request, res: Response): Promise<void> 
       [`conn-google-${orgId}`, orgId]
     ).catch(e => logger.warn({ e }, "[google] Failed to update connectors table"));
 
-    // Kick off background GBP sync (non-blocking)
-    syncAll(orgId).catch(e => logger.warn({ e }, "[google] Background sync failed"));
+    // Kick off background syncs (non-blocking)
+    syncAll(orgId).catch(e => logger.warn({ e }, "[google] Background GBP sync failed"));
+    discoverAndStoreProperties(orgId).catch(e => logger.warn({ e }, "[google] GA4 property discovery failed"));
+    discoverAndStoreSites(orgId).catch(e => logger.warn({ e }, "[google] GSC site discovery failed"));
 
     res.redirect(`${frontendUrl}/dashboard?google_connected=1`);
   } catch (e) {

@@ -1,28 +1,12 @@
-- [FlowPoint production context](flowpoint-context.md) — Phases 1+2+3 done: UI audit 18 pages + 6 modals, CRUD 10/10, RLS 66 tables; read before any session
-- [dashboard.js script-tag-in-innerHTML pitfall](dashboard-js-script-tag-pitfall.md) — <script> in innerHTML never executes; all window.* fns must be in IIFE init block; broken onclick fix too
-- [FlowPoint SPA route and sub-route map](dashboard-spa-routes.md) — correct navigate()/navigateSub() routes; heatmap under sub=map not zones; missions calendar via STATE.missionView
-- [Supabase RLS migration 012](supabase-rls-migration.md) — 51 tables, migration file written, apply via Supabase SQL Editor (service role bypasses RLS)
-- [API route name map](api-route-name-map.md) — correct paths for settings/local-seo/conversions/analytics; alert-rules valid types; monitors alertEmail constraint
-- [FlowPoint alert rules routing](flowpoint-alert-rules-routing.md) — renderAlertRules() via settings+navigateSub('alerts'), NOT alerts-center; two separate components
+- [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
 - [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
 - [FlowPoint isDemoMode pattern](flowpoint-demodmode.md) — all Math.random fake data must be isDemoMode()-gated; import from services/mock-data.js
-- [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 30k-line file; use sed -n for large offsets, always get exact context before editing
+- [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 29k-line file; use sed -n for large offsets, always get exact context before editing
 - [FlowPoint dynamic dates](flowpoint-dynamic-dates.md) — CUR_MONTH/PREV_MONTH constants at IIFE top; all section titles use these, never hardcode month strings
 - [Public vs Protected Routes](public-routes-pattern.md) — behavioral snippet/event/session and SSO SAML endpoints must be on publicBehavioralRouter/publicSsoRouter before requireAuth in routes/index.ts
 - [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
-- [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing uses STRIPE_LIVE_API_KEY||STRIPE_SECRET_KEY fallback (T004); SSRF runs after auth; auth rate limit 10/15min per IP; ai-worker returns mock:true on OpenAI failure
-- [ACTIVITY_FEED gating pattern](activity-feed-gating.md) — ACTIVITY_FEED used as fallback in 5 places (exportCsv, overview widget, team widget, see-all handler, timeline); all must be (PREVIEW_MODE ? ACTIVITY_FEED : []); real users get STATE.activityEvents or clean empty state
-- [Monitors PostgreSQL migration](monitors-pg-migration.md) — monitors/monitor_checks pre-exist in Supabase with old column names (uptime not uptime_pct etc); use ALTER TABLE ADD COLUMN IF NOT EXISTS; routes use existing column names
+- [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing-service needs prod guard (throw/503) when Stripe key missing; SSRF runs after auth (401 before URL validation = correct); auth rate limit 10/15min per IP; ai-worker buildFallbackResult returns generic recs tagged mock:true on OpenAI failure
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
-- [API audit results](api-audit-results.md) — 54/54 GET 200; 3 bugs fixed (keywords 500, workers 500, report DELETE 500); Drizzle schema diverges from real DB — always verify with \d; route name map included
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
-- [FlowPoint mock audit results](flowpoint-mock-audit-results.md) — T001-T008 already gated; only real violation was enterprise lab workspaces (line ~7187); FP_COMPETITORS_API+FP_CONNECTORS_API added as globals at IIFE end
-- [SSO API normalization](sso-api-normalization.md) — providers_catalog is string[], stats fields mismatch, recentLogins alias; normalize all in renderSettingsSSO() before rendering
-- [JS IIFE string apostrophe rule](js-iife-apostrophe.md) — dans les IIFEs qui concaténent HTML: toute apostrophe française dans single-quoted JS string doit être escapée \'; tester node --check après chaque lot d'édits
-- [FlowPoint demock final state](flowpoint-demock-final.md) — Phase finale Bloc 3+4 done: 0 mock visible hors PREVIEW_MODE; tables alert_events+calendar_events créées; calendar CRUD câblé sur /api/calendar-events; trafficSources/kpiScores/ROI growth/4.4⭐ tous PREVIEW_MODE-gated
-- [Python template literal escaping pitfall](python-js-template-escaping.md) — Ne jamais écrire \` ou \$ dans des strings Python pour du JS: \` dans fichier = char invalide en expression JS, \$ bloque l'interpolation. Utiliser concaténation string JS ou remplacement ligne-à-ligne.
-- [Stripe live price IDs](stripe-price-ids.md) — 44 price IDs hardcoded in plans.ts; env vars optional override
-- [RLS migration 010 execution notes](rls-migration-notes.md) — Replit PG has no anon/authenticated roles; must create them first; DROP POLICY IF EXISTS produces NOTICEs that kill executeSql; fix: SET client_min_messages=WARNING; crm_field_mappings needed org_id added separately
-- [FlowPoint RLS migration](flowpoint-rls-migration.md) — 145 tables RLS enabled, 580 policies, 18 gap-tables fixed with permissive policies; audit 46/48 PASS
-- [RLS local dev setup](rls-local-dev-setup.md) — app_user role missing locally (Supabase-only migration 011); patch via initRlsSetup(); legacy table columns need DROP NOT NULL + SET DEFAULT
-- [FlowPoint Drizzle audit](flowpoint-drizzle-audit.md) — 33 Drizzle tables vs 145 DB tables; 9 tables missing org_id (fixed); monitors columns wrong (fixed); tracked_keywords renamed; 0 warnings, 16/16 endpoints 200
+- [RLS UUID org_id tables](rls-uuid-orgid.md) — gsc_keyword_data, gsc_page_data, gsc_sync_logs, ga4_accounts have UUID org_id; use org_id::text comparison in RLS policies
+- [FlowPoint API audit results](flowpoint-api-audit.md) — 48/48 endpoints clean (0 500s); RLS 149/149 tables 4+ policies; real paths for 40 GET + 8 POST endpoints documented

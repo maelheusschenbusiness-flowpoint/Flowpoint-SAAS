@@ -17,23 +17,40 @@ import {
 import { logger } from "../lib/logger.js";
 
 const router = Router();
-const ORG_ID = "default";
 
-// ── Helper: resolve property ID ───────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getOrgId(req: Request): string {
+  return (req as unknown as Record<string, string>)["orgId"] ?? "default";
+}
+
+function daysToRange(days: number): { startDate: string; endDate: string } {
+  const end   = new Date();
+  const start = new Date(end.getTime() - days * 86_400_000);
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate:   end.toISOString().slice(0, 10),
+  };
+}
 
 async function resolveProperty(req: Request): Promise<string | null> {
-  const pid = (req.query["propertyId"] ?? (req.body as Record<string, unknown>)?.["propertyId"]) as string | undefined;
-  if (pid) return pid;
-  return getStoredProperty(ORG_ID);
+  const pid = (
+    (req.query["propertyId"] as string | undefined) ??
+    ((req.body as Record<string, unknown>)?.["propertyId"] as string | undefined)
+  );
+  if (pid?.trim()) return pid.trim();
+  const stored = await getStoredProperty(getOrgId(req));
+  return stored?.propertyId ?? null;
 }
 
 // ── GET /api/ga4/status ───────────────────────────────────────────────────────
 
-router.get("/ga4/status", async (_req: Request, res: Response) => {
+router.get("/ga4/status", async (req: Request, res: Response) => {
   try {
-    const connected = await isGA4Connected(ORG_ID);
-    const propertyId = connected ? await getStoredProperty(ORG_ID) : null;
-    res.json({ ok: true, connected, propertyId });
+    const orgId     = getOrgId(req);
+    const connected = await isGA4Connected(orgId);
+    const stored    = connected ? await getStoredProperty(orgId) : null;
+    res.json({ ok: true, connected, propertyId: stored?.propertyId ?? null, propertyName: stored?.displayName ?? null });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
   }
@@ -41,9 +58,9 @@ router.get("/ga4/status", async (_req: Request, res: Response) => {
 
 // ── GET /api/ga4/accounts ─────────────────────────────────────────────────────
 
-router.get("/ga4/accounts", async (_req: Request, res: Response) => {
+router.get("/ga4/accounts", async (req: Request, res: Response) => {
   try {
-    const accounts = await listGA4Accounts(ORG_ID);
+    const accounts = await listGA4Accounts(getOrgId(req));
     res.json({ ok: true, accounts });
   } catch (e) {
     logger.error({ e }, "[GA4] /accounts failed");
@@ -56,7 +73,7 @@ router.get("/ga4/accounts", async (_req: Request, res: Response) => {
 router.get("/ga4/properties", async (req: Request, res: Response) => {
   try {
     const { accountId } = req.query as { accountId?: string };
-    const properties = await listGA4Properties(ORG_ID, accountId);
+    const properties = await listGA4Properties(accountId ?? "", getOrgId(req));
     res.json({ ok: true, properties });
   } catch (e) {
     logger.error({ e }, "[GA4] /properties failed");
@@ -67,13 +84,13 @@ router.get("/ga4/properties", async (req: Request, res: Response) => {
 // ── POST /api/ga4/property ────────────────────────────────────────────────────
 
 router.post("/ga4/property", async (req: Request, res: Response) => {
-  const { propertyId, propertyName } = req.body as { propertyId: string; propertyName?: string };
+  const { propertyId, propertyName } = req.body as { propertyId?: string; propertyName?: string };
   if (!propertyId?.trim()) {
     res.status(400).json({ ok: false, error: "propertyId is required" });
     return;
   }
   try {
-    await setStoredProperty(ORG_ID, propertyId.trim(), propertyName || propertyId.trim());
+    await setStoredProperty(getOrgId(req), propertyId.trim(), propertyName || propertyId.trim());
     res.json({ ok: true, propertyId: propertyId.trim() });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
@@ -90,8 +107,9 @@ router.get("/ga4/overview", async (req: Request, res: Response) => {
       return;
     }
     const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-    const data = await getGA4Overview(ORG_ID, pid, days);
-    res.json({ ok: true, propertyId: pid, data });
+    const { startDate, endDate } = daysToRange(days);
+    const data = await getGA4Overview(getOrgId(req), startDate, endDate);
+    res.json({ ok: true, propertyId: pid, days, startDate, endDate, data });
   } catch (e) {
     logger.error({ e }, "[GA4] /overview failed");
     res.status(500).json({ ok: false, error: String(e) });
@@ -107,7 +125,7 @@ router.get("/ga4/realtime", async (req: Request, res: Response) => {
       res.status(400).json({ ok: false, error: "No GA4 property configured." });
       return;
     }
-    const data = await getGA4Realtime(ORG_ID, pid);
+    const data = await getGA4Realtime(getOrgId(req));
     res.json({ ok: true, propertyId: pid, data, ts: Date.now() });
   } catch (e) {
     logger.error({ e }, "[GA4] /realtime failed");
@@ -115,25 +133,16 @@ router.get("/ga4/realtime", async (req: Request, res: Response) => {
   }
 });
 
-// ── GET /api/ga4/sources ──────────────────────────────────────────────────────
+// ── GET /api/ga4/sources  &  /api/ga4/traffic-sources (alias) ────────────────
 
-router.get("/ga4/traffic-sources", async (req: Request, res: Response) => {
-  try {
-    const pid = await resolveProperty(req);
-    if (!pid) { res.json({ ok: false, data: [] }); return; }
-    const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-    const data = await getGA4Sources(ORG_ID, pid, days);
-    res.json({ ok: true, data });
-  } catch { res.json({ ok: false, data: [] }); }
-});
-
-router.get("/ga4/sources", async (req: Request, res: Response) => {
+router.get(["/ga4/sources", "/ga4/traffic-sources"], async (req: Request, res: Response) => {
   try {
     const pid = await resolveProperty(req);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
     const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-    const data = await getGA4Sources(ORG_ID, pid, days);
-    res.json({ ok: true, data });
+    const { startDate, endDate } = daysToRange(days);
+    const data = await getGA4Sources(getOrgId(req), startDate, endDate);
+    res.json({ ok: true, propertyId: pid, days, data });
   } catch (e) {
     logger.error({ e }, "[GA4] /sources failed");
     res.status(500).json({ ok: false, error: String(e) });
@@ -147,8 +156,9 @@ router.get("/ga4/pages", async (req: Request, res: Response) => {
     const pid = await resolveProperty(req);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
     const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-    const data = await getGA4Pages(ORG_ID, pid, days);
-    res.json({ ok: true, data });
+    const { startDate, endDate } = daysToRange(days);
+    const data = await getGA4Pages(getOrgId(req), startDate, endDate);
+    res.json({ ok: true, propertyId: pid, days, data });
   } catch (e) {
     logger.error({ e }, "[GA4] /pages failed");
     res.status(500).json({ ok: false, error: String(e) });
@@ -161,9 +171,8 @@ router.get("/ga4/funnels", async (req: Request, res: Response) => {
   try {
     const pid = await resolveProperty(req);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
-    const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-    const data = await getGA4Funnels(ORG_ID, pid, days);
-    res.json({ ok: true, data });
+    const data = await getGA4Funnels(getOrgId(req));
+    res.json({ ok: true, propertyId: pid, data });
   } catch (e) {
     logger.error({ e }, "[GA4] /funnels failed");
     res.status(500).json({ ok: false, error: String(e) });
@@ -177,8 +186,9 @@ router.get("/ga4/conversions", async (req: Request, res: Response) => {
     const pid = await resolveProperty(req);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
     const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-    const data = await getGA4Conversions(ORG_ID, pid, days);
-    res.json({ ok: true, data });
+    const { startDate, endDate } = daysToRange(days);
+    const data = await getGA4Conversions(getOrgId(req), startDate, endDate);
+    res.json({ ok: true, propertyId: pid, days, data });
   } catch (e) {
     logger.error({ e }, "[GA4] /conversions failed");
     res.status(500).json({ ok: false, error: String(e) });
@@ -192,8 +202,9 @@ router.get("/ga4/audience", async (req: Request, res: Response) => {
     const pid = await resolveProperty(req);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
     const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-    const data = await getGA4Audience(ORG_ID, pid, days);
-    res.json({ ok: true, data });
+    const { startDate, endDate } = daysToRange(days);
+    const data = await getGA4Audience(getOrgId(req), startDate, endDate);
+    res.json({ ok: true, propertyId: pid, days, data });
   } catch (e) {
     logger.error({ e }, "[GA4] /audience failed");
     res.status(500).json({ ok: false, error: String(e) });
@@ -207,8 +218,9 @@ router.get("/ga4/campaigns", async (req: Request, res: Response) => {
     const pid = await resolveProperty(req);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
     const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
-    const data = await getGA4Campaigns(ORG_ID, pid, days);
-    res.json({ ok: true, data });
+    const { startDate, endDate } = daysToRange(days);
+    const data = await getGA4Campaigns(getOrgId(req), startDate, endDate);
+    res.json({ ok: true, propertyId: pid, days, data });
   } catch (e) {
     logger.error({ e }, "[GA4] /campaigns failed");
     res.status(500).json({ ok: false, error: String(e) });

@@ -1,8 +1,11 @@
 /**
  * ga4-service.ts — Google Analytics 4 (Analytics Data API v1beta)
  *
- * All functions call real Google APIs when a property is configured.
- * Returns empty/zero values when not connected — never Math.random().
+ * All public functions return data in the raw GA4 API format:
+ * { rows: [{dimensionValues, metricValues}], totals: [...] }
+ *
+ * This matches exactly what the FlowPoint dashboard.js rendering code expects.
+ * No Math.random() — empty/zero structures when not connected.
  */
 
 import { pool } from "@workspace/db";
@@ -11,19 +14,17 @@ import { logger } from "../lib/logger.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export interface GA4Overview {
-  sessions: number; users: number; newUsers: number; pageviews: number;
-  bounceRate: number; avgSessionDuration: number; conversions: number; conversionRate: number;
-  revenue: number;
-  comparisonPeriod: { sessions: number; users: number; pageviews: number };
+interface DimValue   { value?: string }
+interface MetricValue { value?: string }
+
+interface GA4Row {
+  dimensionValues?: DimValue[];
+  metricValues?:   MetricValue[];
 }
 
-interface GA4RunReportResponse {
-  rows?: Array<{
-    dimensionValues?: Array<{ value?: string }>;
-    metricValues?:   Array<{ value?: string }>;
-  }>;
-  totals?: Array<{ metricValues?: Array<{ value?: string }> }>;
+interface GA4ReportResponse {
+  rows?:    GA4Row[];
+  totals?:  Array<{ metricValues?: MetricValue[] }>;
   rowCount?: number;
 }
 
@@ -32,12 +33,7 @@ interface GA4RunReportResponse {
 const GA4_DATA_BASE  = "https://analyticsdata.googleapis.com/v1beta/properties";
 const GA4_ADMIN_BASE = "https://analyticsadmin.googleapis.com/v1beta";
 
-async function ga4DataRequest<T>(
-  token: string,
-  propertyId: string,
-  path: string,
-  body: unknown
-): Promise<T> {
+async function ga4Post<T>(token: string, propertyId: string, path: string, body: unknown): Promise<T> {
   const res = await fetch(`${GA4_DATA_BASE}/${propertyId}${path}`, {
     method:  "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -46,7 +42,7 @@ async function ga4DataRequest<T>(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`GA4 Data API ${res.status}: ${text.slice(0, 200)}`);
+    throw new Error(`GA4 Data API ${res.status}: ${text.slice(0, 300)}`);
   }
   return res.json() as Promise<T>;
 }
@@ -58,58 +54,72 @@ async function ga4AdminGet<T>(token: string, path: string): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`GA4 Admin API ${res.status}: ${text.slice(0, 200)}`);
+    throw new Error(`GA4 Admin API ${res.status}: ${text.slice(0, 300)}`);
   }
   return res.json() as Promise<T>;
 }
 
-/** Returns { token, propertyId } or null when not configured. */
 async function getGA4Context(orgId: string): Promise<{ token: string; propertyId: string } | null> {
-  const [prop, token] = await Promise.all([
+  const [stored, token] = await Promise.all([
     getStoredProperty(orgId),
     getValidToken(orgId).catch(() => null),
   ]);
-  if (!prop || !token) return null;
-  return { token, propertyId: prop.propertyId };
+  if (!stored || !token) return null;
+  return { token, propertyId: stored.propertyId };
 }
 
-/** Shift a date range back by the same number of days for comparison. */
 function prevPeriod(startDate: string, endDate: string): { startDate: string; endDate: string } {
   const start = new Date(startDate);
   const end   = new Date(endDate);
-  const days  = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
-  const pEnd   = new Date(start.getTime() - 86400000);
-  const pStart = new Date(pEnd.getTime() - (days - 1) * 86400000);
+  const days  = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  const pEnd   = new Date(start.getTime() - 86_400_000);
+  const pStart = new Date(pEnd.getTime() - (days - 1) * 86_400_000);
   return {
     startDate: pStart.toISOString().slice(0, 10),
     endDate:   pEnd.toISOString().slice(0, 10),
   };
 }
 
-function mv(row: GA4RunReportResponse["rows"] extends Array<infer R> ? R : never, idx: number): number {
-  return Number(row?.metricValues?.[idx]?.value ?? 0);
-}
-
 // ── Stored property management ────────────────────────────────────────────────
 
+/** Lists GA4 accounts live from the Google Admin API (not DB). */
 export async function listGA4Accounts(orgId: string): Promise<unknown[]> {
-  const client = await pool.connect();
+  const token = await getValidToken(orgId).catch(() => null);
+  if (!token) return [];
   try {
-    const res = await client.query(
-      `SELECT * FROM ga4_accounts WHERE org_id=$1 ORDER BY created_at DESC`, [orgId]
-    );
-    return res.rows;
-  } catch { return []; } finally { client.release(); }
+    const data = await ga4AdminGet<{
+      accounts?: Array<{ name: string; displayName: string; createTime: string }>;
+    }>(token, "/accounts");
+    return (data.accounts ?? []).map(a => ({
+      account_id:   a.name.split("/")[1],
+      display_name: a.displayName,
+      created_at:   a.createTime,
+    }));
+  } catch (e) {
+    logger.warn({ e, orgId }, "[ga4] listGA4Accounts failed");
+    return [];
+  }
 }
 
-export async function listGA4Properties(accountId: string): Promise<unknown[]> {
-  const client = await pool.connect();
+/** Lists GA4 properties for an account live from the Google Admin API (not DB). */
+export async function listGA4Properties(accountId: string, orgId?: string): Promise<unknown[]> {
+  const resolvedOrgId = orgId ?? "default";
+  const token = await getValidToken(resolvedOrgId).catch(() => null);
+  if (!token || !accountId) return [];
   try {
-    const res = await client.query(
-      `SELECT * FROM ga4_properties WHERE account_id=$1 ORDER BY display_name ASC`, [accountId]
-    );
-    return res.rows;
-  } catch { return []; } finally { client.release(); }
+    const data = await ga4AdminGet<{
+      properties?: Array<{ name: string; displayName: string; createTime: string; industryCategory?: string }>;
+    }>(token, `/properties?filter=parent:accounts/${accountId}`);
+    return (data.properties ?? []).map(p => ({
+      property_id:   p.name.split("/")[1],
+      name:          p.name,  // "properties/123456"
+      display_name:  p.displayName,
+      created_at:    p.createTime,
+    }));
+  } catch (e) {
+    logger.warn({ e, resolvedOrgId }, "[ga4] listGA4Properties failed");
+    return [];
+  }
 }
 
 export async function isGA4Connected(orgId: string): Promise<boolean> {
@@ -131,353 +141,382 @@ export async function getStoredProperty(orgId: string): Promise<{ propertyId: st
     );
     if (!res.rows[0]) return null;
     const r = res.rows[0] as Record<string, string>;
-    return { propertyId: r["property_id"], displayName: r["property_name"] };
+    return { propertyId: r["property_id"]!, displayName: r["property_name"] ?? "" };
   } catch { return null; } finally { client.release(); }
 }
 
 export async function setStoredProperty(orgId: string, propertyId: string, displayName: string): Promise<void> {
   const client = await pool.connect();
   try {
+    // ga4_properties has UNIQUE(org_id) — one active property per org
     await client.query(
-      `INSERT INTO ga4_properties (org_id, property_id, property_name, is_active, created_at)
-       VALUES ($1,$2,$3,true,NOW())
-       ON CONFLICT (org_id, property_id) DO UPDATE SET property_name=$3, is_active=true, updated_at=NOW()`,
-      [orgId, propertyId, displayName]
+      `INSERT INTO ga4_properties (id, org_id, property_id, property_name, is_active, created_at)
+       VALUES ($1, $2, $3, $4, true, NOW())
+       ON CONFLICT (org_id) DO UPDATE
+         SET property_id=$3, property_name=$4, is_active=true, updated_at=NOW()`,
+      [`ga4prop_${orgId}`, orgId, propertyId, displayName]
     );
   } finally { client.release(); }
 }
 
-// ── Discover properties from Google API (called after OAuth) ──────────────────
+// ── Discover from Google APIs (called after OAuth connect) ───────────────────
 
+/**
+ * Discovers GA4 accounts+properties from the Google Admin API.
+ * Does NOT store to DB (the DB schema only supports one property per org via UNIQUE(org_id)).
+ * Returns the count of properties found — caller can then call setStoredProperty to activate one.
+ */
 export async function discoverAndStoreProperties(orgId: string): Promise<number> {
   const token = await getValidToken(orgId).catch(() => null);
   if (!token) return 0;
   try {
-    const data = await ga4AdminGet<{ accounts?: Array<{ name: string; displayName: string }> }>(
-      token, "/accounts"
-    );
-    let stored = 0;
+    const data = await ga4AdminGet<{ accounts?: Array<{ name: string }> }>(token, "/accounts");
+    let count = 0;
     for (const account of (data.accounts ?? []).slice(0, 5)) {
-      const accountId = account.name.split("/")[1];
       const propsData = await ga4AdminGet<{
-        properties?: Array<{ name: string; displayName: string; createTime: string }>;
+        properties?: Array<{ name: string; displayName: string }>;
       }>(token, `/properties?filter=parent:${account.name}`).catch(() => ({ properties: [] }));
-
-      const client = await pool.connect();
-      try {
-        for (const prop of (propsData.properties ?? []).slice(0, 20)) {
-          const propertyId = prop.name.split("/")[1];
-          await client.query(
-            `INSERT INTO ga4_properties (org_id, account_id, property_id, property_name, is_active, created_at)
-             VALUES ($1,$2,$3,$4,false,NOW())
-             ON CONFLICT (org_id, property_id) DO UPDATE SET property_name=$4`,
-            [orgId, accountId, propertyId, prop.displayName]
-          ).catch(() => {});
-          await client.query(
-            `INSERT INTO ga4_accounts (org_id, account_id, display_name, created_at)
-             VALUES ($1,$2,$3,NOW())
-             ON CONFLICT DO NOTHING`,
-            [orgId, accountId, account.displayName]
-          ).catch(() => {});
-          stored++;
-        }
-      } finally { client.release(); }
+      count += (propsData.properties ?? []).length;
     }
-    return stored;
+    return count;
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] discoverAndStoreProperties failed");
     return 0;
   }
 }
 
-// ── Analytics Data API ────────────────────────────────────────────────────────
+// ── Analytics Data API — raw format responses ─────────────────────────────────
+//
+// Each function returns data in native GA4 API format so dashboard.js can access
+// row.dimensionValues[n].value and row.metricValues[n].value directly.
 
-const EMPTY_OVERVIEW: GA4Overview = {
-  sessions: 0, users: 0, newUsers: 0, pageviews: 0,
-  bounceRate: 0, avgSessionDuration: 0, conversions: 0, conversionRate: 0, revenue: 0,
-  comparisonPeriod: { sessions: 0, users: 0, pageviews: 0 },
-};
-
+/**
+ * Overview: daily rows by date + totals for current and previous period.
+ *
+ * Metrics order (fixed, dashboard.js reads by index):
+ *   0=sessions  1=totalUsers  2=newUsers  3=bounceRate  4=engagementRate
+ *   5=averageSessionDuration  6=screenPageViews  7=conversions
+ */
 export async function getGA4Overview(
   orgId: string, startDate: string, endDate: string
-): Promise<GA4Overview> {
+): Promise<{ rows: GA4Row[]; totals: Array<{ metricValues: MetricValue[] }> }> {
+  const EMPTY = { rows: [], totals: [] };
   const ctx = await getGA4Context(orgId);
-  if (!ctx) return EMPTY_OVERVIEW;
+  if (!ctx) return EMPTY;
+
+  const metrics = [
+    "sessions", "totalUsers", "newUsers", "bounceRate",
+    "engagementRate", "averageSessionDuration", "screenPageViews", "conversions",
+  ].map(n => ({ name: n }));
+
+  const prev = prevPeriod(startDate, endDate);
 
   try {
-    const prev = prevPeriod(startDate, endDate);
-    const metrics = [
-      "sessions", "totalUsers", "newUsers", "screenPageViews",
-      "bounceRate", "averageSessionDuration", "conversions", "totalRevenue",
-    ].map(n => ({ name: n }));
-
-    const [cur, cmp] = await Promise.all([
-      ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+    const [daily, curTotals, prevTotals] = await Promise.all([
+      // Daily breakdown for sparkline chart
+      ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+        dateRanges: [{ startDate, endDate }],
+        dimensions: [{ name: "date" }],
+        metrics,
+        orderBys: [{ dimension: { dimensionName: "date" }, desc: false }],
+      }),
+      // Current period totals
+      ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
         dateRanges: [{ startDate, endDate }],
         metrics,
+        returnPropertyQuota: false,
       }),
-      ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+      // Previous period totals for comparison
+      ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
         dateRanges: [{ startDate: prev.startDate, endDate: prev.endDate }],
-        metrics: ["sessions", "totalUsers", "screenPageViews"].map(n => ({ name: n })),
+        metrics,
+        returnPropertyQuota: false,
       }),
     ]);
 
-    const r    = cur.rows?.[0];
-    const sessions     = mv(r!, 0);
-    const conversions  = mv(r!, 6);
+    // Synthetic totals row (sum across all rows in the period response)
+    const buildTotals = (report: GA4ReportResponse): MetricValue[] => {
+      if (report.totals?.[0]?.metricValues) return report.totals[0].metricValues;
+      if (!report.rows?.length) return metrics.map(() => ({ value: "0" }));
+      const sums = metrics.map(() => 0);
+      for (const row of report.rows) {
+        row.metricValues?.forEach((mv, i) => {
+          sums[i] = (sums[i] ?? 0) + parseFloat(mv.value ?? "0");
+        });
+      }
+      return sums.map(v => ({ value: String(Math.round(v * 10000) / 10000) }));
+    };
 
     return {
-      sessions,
-      users:               mv(r!, 1),
-      newUsers:            mv(r!, 2),
-      pageviews:           mv(r!, 3),
-      bounceRate:          Math.round(mv(r!, 4) * 1000) / 10, // 0-1 → percentage
-      avgSessionDuration:  Math.round(mv(r!, 5)),
-      conversions,
-      conversionRate:      sessions > 0 ? Math.round((conversions / sessions) * 10000) / 100 : 0,
-      revenue:             Math.round(mv(r!, 7) * 100) / 100,
-      comparisonPeriod: {
-        sessions:  mv(cmp.rows?.[0]!, 0),
-        users:     mv(cmp.rows?.[0]!, 1),
-        pageviews: mv(cmp.rows?.[0]!, 2),
-      },
+      rows:   daily.rows ?? [],
+      totals: [
+        { metricValues: buildTotals(curTotals)  },
+        { metricValues: buildTotals(prevTotals) },
+      ],
     };
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] getGA4Overview failed");
-    return EMPTY_OVERVIEW;
+    return EMPTY;
   }
 }
 
+/**
+ * Realtime: returns raw rows so fp-backend.js can sum metricValues[0] for activeUsers.
+ *
+ * Dimension order: [0]=country  [1]=city  [2]=unifiedScreenName(page)  [3]=deviceCategory
+ * Metric  order:   [0]=activeUsers  [1]=screenPageViews
+ */
 export async function getGA4Realtime(
   orgId: string
-): Promise<{ activeUsers: number; topPages: Array<{ page: string; users: number }> }> {
+): Promise<{ rows: GA4Row[]; activeUsers: number }> {
   const ctx = await getGA4Context(orgId);
-  if (!ctx) return { activeUsers: 0, topPages: [] };
+  if (!ctx) return { rows: [], activeUsers: 0 };
 
   try {
-    const data = await ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runRealtimeReport", {
-      dimensions: [{ name: "unifiedScreenName" }],
-      metrics:    [{ name: "activeUsers" }],
-      limit: 10,
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runRealtimeReport", {
+      dimensions: [
+        { name: "country" },
+        { name: "city" },
+        { name: "unifiedScreenName" },
+        { name: "deviceCategory" },
+      ],
+      metrics: [{ name: "activeUsers" }, { name: "screenPageViews" }],
+      limit: 50,
     });
 
-    const topPages = (data.rows ?? []).map(row => ({
-      page:  row.dimensionValues?.[0]?.value ?? "/",
-      users: Number(row.metricValues?.[0]?.value ?? 0),
-    }));
-    const activeUsers = topPages.reduce((s, p) => s + p.users, 0);
-    return { activeUsers, topPages };
+    const rows = data.rows ?? [];
+    const activeUsers = rows.reduce((sum, row) => sum + Number(row.metricValues?.[0]?.value ?? 0), 0);
+    return { rows, activeUsers };
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] getGA4Realtime failed");
-    return { activeUsers: 0, topPages: [] };
+    return { rows: [], activeUsers: 0 };
   }
 }
 
+/**
+ * Traffic sources: raw rows.
+ *
+ * Dimension order: [0]=sessionDefaultChannelGrouping  [1]=sessionSource  [2]=sessionMedium
+ * Metric  order:   [0]=sessions  [1]=totalUsers  [2]=bounceRate  [3]=conversions
+ */
 export async function getGA4Sources(
   orgId: string, startDate: string, endDate: string
-): Promise<unknown[]> {
+): Promise<{ rows: GA4Row[] }> {
   const ctx = await getGA4Context(orgId);
-  if (!ctx) return [];
+  if (!ctx) return { rows: [] };
 
   try {
-    const data = await ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
       dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: "sessionSource" }, { name: "sessionMedium" }],
-      metrics:    ["sessions", "totalUsers", "bounceRate", "conversions"].map(n => ({ name: n })),
-      orderBys:   [{ metric: { metricName: "sessions" }, desc: true }],
-      limit: 20,
-    });
-
-    return (data.rows ?? []).map(row => ({
-      source:      row.dimensionValues?.[0]?.value ?? "(direct)",
-      medium:      row.dimensionValues?.[1]?.value ?? "(none)",
-      sessions:    Number(row.metricValues?.[0]?.value ?? 0),
-      users:       Number(row.metricValues?.[1]?.value ?? 0),
-      bounceRate:  Math.round(Number(row.metricValues?.[2]?.value ?? 0) * 1000) / 10,
-      conversions: Number(row.metricValues?.[3]?.value ?? 0),
-    }));
-  } catch (e) {
-    logger.warn({ e, orgId }, "[ga4] getGA4Sources failed");
-    return [];
-  }
-}
-
-export async function getGA4Pages(
-  orgId: string, startDate: string, endDate: string
-): Promise<unknown[]> {
-  const ctx = await getGA4Context(orgId);
-  if (!ctx) return [];
-
-  try {
-    const data = await ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
-      dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: "pagePath" }],
-      metrics:    ["screenPageViews", "totalUsers", "averageSessionDuration", "bounceRate", "entrances"].map(n => ({ name: n })),
-      orderBys:   [{ metric: { metricName: "screenPageViews" }, desc: true }],
+      dimensions: [
+        { name: "sessionDefaultChannelGrouping" },
+        { name: "sessionSource" },
+        { name: "sessionMedium" },
+      ],
+      metrics: [
+        { name: "sessions" }, { name: "totalUsers" },
+        { name: "bounceRate" }, { name: "conversions" },
+      ],
+      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
       limit: 25,
     });
+    return { rows: data.rows ?? [] };
+  } catch (e) {
+    logger.warn({ e, orgId }, "[ga4] getGA4Sources failed");
+    return { rows: [] };
+  }
+}
 
-    return (data.rows ?? []).map(row => ({
-      page:       row.dimensionValues?.[0]?.value ?? "/",
-      pageviews:  Number(row.metricValues?.[0]?.value ?? 0),
-      users:      Number(row.metricValues?.[1]?.value ?? 0),
-      avgTime:    Math.round(Number(row.metricValues?.[2]?.value ?? 0)),
-      bounceRate: Math.round(Number(row.metricValues?.[3]?.value ?? 0) * 1000) / 10,
-      entrances:  Number(row.metricValues?.[4]?.value ?? 0),
-    }));
+/**
+ * Top pages: raw rows.
+ *
+ * Dimension order: [0]=pagePath  [1]=pageTitle
+ * Metric  order:   [0]=screenPageViews  [1]=totalUsers  [2]=averageSessionDuration  [3]=bounceRate
+ */
+export async function getGA4Pages(
+  orgId: string, startDate: string, endDate: string
+): Promise<{ rows: GA4Row[] }> {
+  const ctx = await getGA4Context(orgId);
+  if (!ctx) return { rows: [] };
+
+  try {
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: "pagePath" }, { name: "pageTitle" }],
+      metrics: [
+        { name: "screenPageViews" }, { name: "totalUsers" },
+        { name: "averageSessionDuration" }, { name: "bounceRate" },
+      ],
+      orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
+      limit: 30,
+    });
+    return { rows: data.rows ?? [] };
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] getGA4Pages failed");
-    return [];
+    return { rows: [] };
   }
 }
 
-export async function getGA4Funnels(orgId: string): Promise<unknown> {
+/**
+ * Funnels: landing pages + conversion paths raw rows.
+ *
+ * landingPages.rows: [0]=landingPage, metrics: [0]=sessions, [1]=bounceRate, [2]=conversions
+ * conversionPaths.rows: [0]=source/medium, [1]=campaign, metrics: [0]=conversions, [1]=totalRevenue
+ */
+export async function getGA4Funnels(
+  orgId: string
+): Promise<{ landingPages: { rows: GA4Row[] }; conversionPaths: { rows: GA4Row[] } }> {
+  const EMPTY = { landingPages: { rows: [] }, conversionPaths: { rows: [] } };
   const ctx = await getGA4Context(orgId);
-  if (!ctx) return { steps: [], conversionRate: 0, dropOffPoints: [] };
+  if (!ctx) return EMPTY;
 
   try {
-    const data = await ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
-      dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
-      dimensions: [{ name: "eventName" }],
-      metrics:    [{ name: "eventCount" }, { name: "totalUsers" }],
-      dimensionFilter: {
-        filter: {
-          fieldName: "eventName",
-          inListFilter: { values: ["session_start", "view_item", "add_to_cart", "begin_checkout", "purchase"] },
-        },
-      },
-      orderBys: [{ metric: { metricName: "eventCount" }, desc: true }],
-    });
-
-    const eventMap = new Map<string, number>();
-    for (const row of data.rows ?? []) {
-      const name = row.dimensionValues?.[0]?.value ?? "";
-      eventMap.set(name, Number(row.metricValues?.[0]?.value ?? 0));
-    }
-
-    const steps = [
-      { name: "Sessions", users: eventMap.get("session_start") ?? 0 },
-      { name: "Product view", users: eventMap.get("view_item") ?? 0 },
-      { name: "Cart", users: eventMap.get("add_to_cart") ?? 0 },
-      { name: "Checkout", users: eventMap.get("begin_checkout") ?? 0 },
-      { name: "Confirmation", users: eventMap.get("purchase") ?? 0 },
-    ].filter(s => s.users > 0);
-
-    const total       = steps[0]?.users ?? 0;
-    const converted   = steps[steps.length - 1]?.users ?? 0;
-    const convRate    = total > 0 ? Math.round((converted / total) * 10000) / 100 : 0;
-
-    return { steps, conversionRate: convRate, dropOffPoints: [] };
+    const [lp, cp] = await Promise.all([
+      ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+        dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+        dimensions: [{ name: "landingPage" }],
+        metrics: [{ name: "sessions" }, { name: "bounceRate" }, { name: "conversions" }],
+        orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+        limit: 20,
+      }),
+      ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+        dateRanges: [{ startDate: "30daysAgo", endDate: "today" }],
+        dimensions: [{ name: "sourceMedium" }, { name: "sessionCampaignName" }],
+        metrics: [{ name: "conversions" }, { name: "totalRevenue" }],
+        orderBys: [{ metric: { metricName: "conversions" }, desc: true }],
+        limit: 20,
+      }),
+    ]);
+    return {
+      landingPages:    { rows: lp.rows ?? [] },
+      conversionPaths: { rows: cp.rows ?? [] },
+    };
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] getGA4Funnels failed");
-    return { steps: [], conversionRate: 0, dropOffPoints: [] };
+    return EMPTY;
   }
 }
 
+/**
+ * Conversions: raw rows.
+ *
+ * Dimension order: [0]=eventName
+ * Metric  order:   [0]=eventCount  [1]=totalRevenue
+ */
 export async function getGA4Conversions(
   orgId: string, startDate: string, endDate: string
-): Promise<unknown[]> {
+): Promise<{ rows: GA4Row[] }> {
   const ctx = await getGA4Context(orgId);
-  if (!ctx) return [];
+  if (!ctx) return { rows: [] };
 
   try {
-    const data = await ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
       dateRanges: [{ startDate, endDate }],
       dimensions: [{ name: "eventName" }],
-      metrics:    [{ name: "eventCount" }, { name: "eventValue" }],
+      metrics: [{ name: "eventCount" }, { name: "totalRevenue" }],
       dimensionFilter: {
         filter: { fieldName: "isConversionEvent", stringFilter: { value: "true" } },
       },
       orderBys: [{ metric: { metricName: "eventCount" }, desc: true }],
-      limit: 20,
+      limit: 30,
     });
-
-    return (data.rows ?? []).map(row => ({
-      eventName: row.dimensionValues?.[0]?.value ?? "",
-      count:     Number(row.metricValues?.[0]?.value ?? 0),
-      value:     Math.round(Number(row.metricValues?.[1]?.value ?? 0) * 100) / 100,
-    }));
+    return { rows: data.rows ?? [] };
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] getGA4Conversions failed");
-    return [];
+    return { rows: [] };
   }
 }
 
+/**
+ * Audience: devices + geo + new vs returning — each as { rows: [...] }.
+ *
+ * devices.rows:     [0]=deviceCategory, metrics: [0]=sessions
+ * geo.rows:         [0]=country, [1]=region, metrics: [0]=sessions, [1]=totalUsers
+ * newVsReturn.rows: [0]=newVsReturning, metrics: [0]=totalUsers
+ */
 export async function getGA4Audience(
   orgId: string, startDate: string, endDate: string
-): Promise<unknown> {
+): Promise<{
+  devices:     { rows: GA4Row[] };
+  geo:         { rows: GA4Row[] };
+  newVsReturn: { rows: GA4Row[] };
+}> {
+  const EMPTY = { devices: { rows: [] }, geo: { rows: [] }, newVsReturn: { rows: [] } };
   const ctx = await getGA4Context(orgId);
-  if (!ctx) return { demographics: { age: [], gender: [] }, devices: [], topCountries: [] };
+  if (!ctx) return EMPTY;
 
   try {
-    const [ages, genders, devices, countries] = await Promise.all([
-      ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
-        dateRanges: [{ startDate, endDate }],
-        dimensions: [{ name: "userAgeBracket" }],
-        metrics:    [{ name: "totalUsers" }],
-      }),
-      ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
-        dateRanges: [{ startDate, endDate }],
-        dimensions: [{ name: "userGender" }],
-        metrics:    [{ name: "totalUsers" }],
-      }),
-      ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+    const [devices, geo, nvr] = await Promise.all([
+      ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
         dateRanges: [{ startDate, endDate }],
         dimensions: [{ name: "deviceCategory" }],
-        metrics:    [{ name: "sessions" }],
+        metrics: [{ name: "sessions" }],
+        orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
       }),
-      ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+      ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
         dateRanges: [{ startDate, endDate }],
-        dimensions: [{ name: "country" }],
-        metrics:    [{ name: "sessions" }],
-        orderBys:   [{ metric: { metricName: "sessions" }, desc: true }],
-        limit: 10,
+        dimensions: [{ name: "country" }, { name: "region" }],
+        metrics: [{ name: "sessions" }, { name: "totalUsers" }],
+        orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+        limit: 20,
+      }),
+      ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+        dateRanges: [{ startDate, endDate }],
+        dimensions: [{ name: "newVsReturning" }],
+        metrics: [{ name: "totalUsers" }],
       }),
     ]);
-
     return {
-      demographics: {
-        age:    (ages.rows ?? []).map(r => ({ range: r.dimensionValues?.[0]?.value ?? "", users: Number(r.metricValues?.[0]?.value ?? 0) })),
-        gender: (genders.rows ?? []).map(r => ({ gender: r.dimensionValues?.[0]?.value ?? "", users: Number(r.metricValues?.[0]?.value ?? 0) })),
-      },
-      devices:     (devices.rows ?? []).map(r => ({ device: r.dimensionValues?.[0]?.value ?? "", sessions: Number(r.metricValues?.[0]?.value ?? 0) })),
-      topCountries:(countries.rows ?? []).map(r => ({ country: r.dimensionValues?.[0]?.value ?? "", sessions: Number(r.metricValues?.[0]?.value ?? 0) })),
+      devices:     { rows: devices.rows ?? [] },
+      geo:         { rows: geo.rows ?? [] },
+      newVsReturn: { rows: nvr.rows ?? [] },
     };
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] getGA4Audience failed");
-    return { demographics: { age: [], gender: [] }, devices: [], topCountries: [] };
+    return EMPTY;
   }
 }
 
+/**
+ * Campaigns: raw rows + totals.
+ *
+ * Dimension order: [0]=sessionCampaignName  [1]=sessionDefaultChannelGrouping
+ *                  [2]=sessionSource/sessionMedium combined as sourceMedium
+ * Metric  order:   [0]=sessions  [1]=totalUsers  [2]=conversions
+ *                  [3]=bounceRate  [4]=averageSessionDuration  [5]=sessionConversionRate
+ */
 export async function getGA4Campaigns(
   orgId: string, startDate: string, endDate: string
-): Promise<unknown[]> {
+): Promise<{ rows: GA4Row[]; totals: Array<{ metricValues: MetricValue[] }> }> {
+  const EMPTY = { rows: [], totals: [] };
   const ctx = await getGA4Context(orgId);
-  if (!ctx) return [];
+  if (!ctx) return EMPTY;
 
   try {
-    const data = await ga4DataRequest<GA4RunReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
       dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: "sessionCampaignName" }],
-      metrics:    ["sessions", "conversions", "totalRevenue"].map(n => ({ name: n })),
-      orderBys:   [{ metric: { metricName: "sessions" }, desc: true }],
-      limit: 20,
+      dimensions: [
+        { name: "sessionCampaignName" },
+        { name: "sessionDefaultChannelGrouping" },
+        { name: "sourceMedium" },
+      ],
+      metrics: [
+        { name: "sessions" }, { name: "totalUsers" }, { name: "conversions" },
+        { name: "bounceRate" }, { name: "averageSessionDuration" }, { name: "sessionConversionRate" },
+      ],
+      dimensionFilter: {
+        notExpression: {
+          filter: { fieldName: "sessionCampaignName", stringFilter: { matchType: "EXACT", value: "(not set)" } },
+        },
+      },
+      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+      limit: 30,
     });
 
-    return (data.rows ?? []).filter(r => r.dimensionValues?.[0]?.value !== "(not set)").map(row => {
-      const sessions    = Number(row.metricValues?.[0]?.value ?? 0);
-      const conversions = Number(row.metricValues?.[1]?.value ?? 0);
-      const revenue     = Number(row.metricValues?.[2]?.value ?? 0);
-      return {
-        campaign:    row.dimensionValues?.[0]?.value ?? "",
-        sessions,
-        conversions,
-        cpa:  conversions > 0 ? Math.round((revenue / conversions) * 100) / 100 : 0,
-        roas: revenue > 0 ? Math.round((revenue / Math.max(revenue * 0.3, 1)) * 10) / 10 : null,
-      };
-    });
+    const totals = data.totals ?? [];
+    return { rows: data.rows ?? [], totals };
   } catch (e) {
     logger.warn({ e, orgId }, "[ga4] getGA4Campaigns failed");
-    return [];
+    return EMPTY;
   }
 }

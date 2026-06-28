@@ -54,15 +54,17 @@ export async function getActiveSite(orgId: string): Promise<string | null> {
   } catch { return null; } finally { client.release(); }
 }
 
-export async function setActiveSite(orgId: string, siteUrl: string): Promise<void> {
+export async function setActiveSite(orgId: string, siteUrl: string, displayName?: string): Promise<void> {
   const client = await pool.connect();
+  const id = `gsc_${orgId}_${Buffer.from(siteUrl).toString("base64url").slice(0, 40)}`;
   try {
     await client.query(`UPDATE gsc_sites SET is_active=false WHERE org_id=$1`, [orgId]);
     await client.query(
-      `INSERT INTO gsc_sites (org_id, site_url, is_active, created_at)
-       VALUES ($1,$2,true,NOW())
-       ON CONFLICT (org_id, site_url) DO UPDATE SET is_active=true, updated_at=NOW()`,
-      [orgId, siteUrl]
+      `INSERT INTO gsc_sites (id, org_id, site_url, display_name, is_active, created_at)
+       VALUES ($1, $2, $3, $4, true, NOW())
+       ON CONFLICT (org_id, site_url) DO UPDATE
+         SET is_active=true, display_name=COALESCE($4, gsc_sites.display_name), updated_at=NOW()`,
+      [id, orgId, siteUrl, displayName ?? null]
     );
   } finally { client.release(); }
 }
@@ -83,11 +85,12 @@ export async function discoverAndStoreSites(orgId: string): Promise<number> {
     const client = await pool.connect();
     try {
       for (const site of sites) {
+        const siteId = `gsc_${orgId}_${Buffer.from(site.siteUrl).toString("base64url").slice(0, 40)}`;
         await client.query(
-          `INSERT INTO gsc_sites (org_id, site_url, is_active, created_at)
-           VALUES ($1,$2,false,NOW())
-           ON CONFLICT (org_id, site_url) DO NOTHING`,
-          [orgId, site.siteUrl]
+          `INSERT INTO gsc_sites (id, org_id, site_url, permission_level, is_active, created_at)
+           VALUES ($1, $2, $3, $4, false, NOW())
+           ON CONFLICT (org_id, site_url) DO UPDATE SET permission_level=$4`,
+          [siteId, orgId, site.siteUrl, site.permissionLevel]
         ).catch(() => {});
       }
       // Auto-activate the first verified site

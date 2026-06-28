@@ -676,8 +676,8 @@ Format:
     await trackAIUsage({ feature: "strategist", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
     res.json({ summary, creditsRemaining: creditCheck.remaining });
   } catch (err) {
-    logger.error({ err }, "[AI] /summary failed");
-    res.status(500).json({ error: "Erreur résumé exécutif" });
+    logger.error({ err }, "[AI] /summary failed — returning fallback");
+    res.json({ summary: "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.", fallback: true });
   }
 });
 
