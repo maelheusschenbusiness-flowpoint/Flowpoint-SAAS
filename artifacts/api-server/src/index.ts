@@ -7,6 +7,7 @@ import { initAutomationTables } from "./services/init-automation.js";
 import { initMonitorsTables } from "./services/init-monitors.js";
 import { initDataTables } from "./services/init-data-tables.js";
 import { initRlsSetup } from "./services/init-rls-setup.js";
+import { startMonitorCron } from "./services/monitor-cron.js";
 
 const PORT = env.PORT;
 
@@ -50,6 +51,7 @@ async function main() {
 
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
+    startMonitorCron();
   });
 
   async function shutdown(signal: string) {

@@ -428,4 +428,16 @@ router.get("/admin/rls", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// ── POST /api/admin/run-trial-cron — trigger trial-ending check immediately ──
+router.post("/admin/run-trial-cron", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+  try {
+    const { checkTrialEndingReminders } = await import("../services/monitor-cron.js");
+    await checkTrialEndingReminders();
+    res.json({ ok: true, msg: "Trial-ending cron executed — check server logs for details" });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
 export default router;
