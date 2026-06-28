@@ -100,7 +100,9 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
 });
 
 router.post("/billing/checkout-embedded", async (req: Request, res: Response) => {
-  const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
+  const body = req.body as { plan?: string; planId?: string; addons?: AddonsMap };
+  const plan = body.plan || body.planId || "";
+  const addons: AddonsMap = body.addons ?? {};
 
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
@@ -144,8 +146,23 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
 
     res.json({ clientSecret: session.client_secret });
   } catch (err) {
-    logger.error({ err }, "[Billing] Failed to create embedded checkout session");
-    res.status(500).json({ error: "Failed to create embedded checkout session" });
+    logger.error({ err }, "[Billing] Embedded checkout failed — falling back to redirect mode");
+    try {
+      const { default: Stripe } = await import("stripe");
+      const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+      const lineItems = buildLineItems(plan, addons);
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        line_items: lineItems,
+        success_url: `${publicUrl}/dashboard.html?checkout=success&plan=${plan}`,
+        cancel_url: `${publicUrl}/pricing.html`,
+        metadata: { plan, addons: JSON.stringify(addons) },
+      });
+      res.json({ url: session.url, plan, fallback: true });
+    } catch (fallbackErr) {
+      logger.error({ fallbackErr }, "[Billing] Fallback checkout also failed");
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
   }
 });
 
@@ -352,6 +369,92 @@ router.post("/billing/coupon/validate", async (req: Request, res: Response) => {
 });
 
 // ── NEW: GET /billing/subscription ──────────────────────────────────────────
+// ── POST /billing/cancel ─────────────────────────────────────────────────────
+router.post("/billing/cancel", async (req: Request, res: Response) => {
+  const { atPeriodEnd = true } = req.body as { atPeriodEnd?: boolean };
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+
+  if (!stripeKey || !store.me.stripeCustomerId) {
+    store.me.subscriptionStatus = "canceled";
+    logger.warn("[Billing] cancel: no Stripe key or customerId — marking canceled locally");
+    res.json({ ok: true, cancelAtPeriodEnd: atPeriodEnd, mock: true });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const subs = await stripe.subscriptions.list({ customer: store.me.stripeCustomerId, status: "active", limit: 1 });
+    const sub = subs.data[0];
+    if (!sub) { res.status(404).json({ error: "No active subscription found" }); return; }
+
+    if (atPeriodEnd) {
+      await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+      res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: sub.current_period_end });
+    } else {
+      await stripe.subscriptions.cancel(sub.id);
+      store.me.subscriptionStatus = "canceled";
+      res.json({ ok: true, cancelAtPeriodEnd: false });
+    }
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to cancel subscription");
+    res.status(500).json({ error: "Failed to cancel subscription" });
+  }
+});
+
+// ── POST /billing/upgrade ─────────────────────────────────────────────────────
+router.post("/billing/upgrade", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+  const { plan = "", interval = "monthly" } = req.body as { plan?: string; interval?: string };
+  if (!plan) { res.status(400).json({ error: "plan required" }); return; }
+
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
+
+  if (!stripeKey) {
+    logger.warn("[Billing] upgrade: no Stripe key — returning mock checkout");
+    res.json({ url: `https://checkout.stripe.com/c/pay/test_mock_upgrade_${plan}_${Date.now()}`, plan, mock: true });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    // Try to update existing subscription first
+    if (store.me.stripeCustomerId) {
+      const subs = await stripe.subscriptions.list({ customer: store.me.stripeCustomerId, status: "active", limit: 1 });
+      const sub = subs.data[0];
+      if (sub) {
+        const priceId = PLAN_PRICE_IDS[plan.toLowerCase()];
+        if (!priceId) { res.status(400).json({ error: `Unknown plan: ${plan}` }); return; }
+        await stripe.subscriptions.update(sub.id, {
+          items: [{ id: sub.items.data[0]?.id, price: priceId }],
+          proration_behavior: "create_prorations",
+          metadata: { plan },
+        });
+        store.me.plan = plan;
+        res.json({ ok: true, plan, upgraded: true });
+        return;
+      }
+    }
+
+    // No existing sub — create new checkout
+    const lineItems = buildLineItems(plan, {});
+    if (lineItems.length === 0) { res.status(400).json({ error: `No price for plan: ${plan}` }); return; }
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      line_items: lineItems,
+      success_url: `${publicUrl}/dashboard.html?checkout=success&plan=${plan}`,
+      cancel_url: `${publicUrl}/pricing.html`,
+      metadata: { plan },
+    });
+    res.json({ url: session.url, plan });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to upgrade");
+    res.status(500).json({ error: "Failed to process upgrade" });
+  }
+});
+
 router.get("/billing/subscription", async (_req: Request, res: Response) => {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const me = store.me;

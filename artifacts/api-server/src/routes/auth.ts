@@ -280,6 +280,10 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
   logger.info({ email, id: result.data?.id, from: fromEmail }, "[Auth] Magic link email delivered");
 }
 
+router.post("/auth/magic-link", authRateLimit, async (req: Request, res: Response) => {
+  res.redirect(307, "/api/auth/login-request");
+});
+
 router.post("/auth/login-request", authRateLimit, async (req: Request, res: Response) => {
   const rawEmail = (req.body as { email?: string } | undefined)?.email;
 

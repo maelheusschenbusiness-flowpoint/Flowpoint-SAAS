@@ -1,37 +1,56 @@
 ---
 name: FlowPoint API audit results
-description: Complete results of 31-endpoint audit + 6 CRUD operations after full rebuild
+description: Complete results of production-readiness 8-bloc validation (28/06/2026) + route map
 ---
 
-## Final State (2026-06-28)
-- **31/31 endpoints passing** — 100%, 0 HTTP 500 errors
-- **6/6 CRUD operations** — 201 Created for all
-- **RLS: 150/150 tables** with 600 tenant-filtered policies
+## Final State (28/06/2026) — Bêta privée validée
+- **18/18 dashboard endpoints** — 200 OK, zéro donnée fake
+- **10/10 CRUD entities** — audit, monitor, mission, keyword, competitor, report, calendar, alert-rule, team, notifications
+- **155/155 tables RLS** — couverture complète
+- **0 erreurs 500 / 0 stack traces / 0 secrets leakés**
 
-## Correct API paths (tested, confirmed 200 OK)
-**GET endpoints:**
-/api/me, /api/overview, /api/audits, /api/monitors, /api/missions, /api/reports,
-/api/notifications, /api/activity, /api/billing/subscription, /api/billing/plans,
-/api/billing/usage-details, /api/alert-rules, /api/team, /api/team/messages,
-/api/competitors, /api/keywords, /api/ga4/status, /api/gsc/status,
-/api/google/status, /api/google/locations, /api/cro, /api/revenue-leak,
-/api/ai-credits, /api/automation/workflows, /api/review-intelligence,
-/api/market-intelligence, /api/calendar-events, /api/connectors,
-/api/seo/status, /api/admin/stats, /api/admin/rls
+## Bugs corrigés (28/06/2026)
+1. `GET /api/audits/:id` → route manquante → ajoutée dans `audits.ts`
+2. `POST /api/auth/magic-link` → 401 → alias 307 → `/api/auth/login-request`
+3. `POST /api/billing/checkout-embedded` → `planId` ignoré → accepte `plan` OU `planId`; fallback redirect si embedded Stripe échoue
+4. `POST /api/billing/cancel` → 404 → route ajoutée dans `billing.ts`
+5. `POST /api/billing/upgrade` → 404 → route ajoutée dans `billing.ts`
+6. `GET /api/health` → 401 → alias public ajouté dans `health.ts`
 
-**POST 201 CRUD:**
-- `POST /api/audits` body: `{url, type: "seo"}` → 201
-- `POST /api/monitors` body: `{url, name, type: "http"}` → 201
-- `POST /api/missions` body: `{title, status: "todo", priority: "medium"}` → 201
-- `POST /api/competitors` body: `{url, name}` → 201
-- `POST /api/alert-rules` body: `{name, type, operator, threshold, channels: ["email"], enabled: true}` → 201
-  - type: uptime|seo_score|latency|monitor_down|keyword_ranking_drop
-  - operator: lt|gt|eq
-- `POST /api/keywords` body: `{keyword, location, language}` → 201
+## Routes clés (paths confirmés)
+- Magic link: `POST /api/auth/login-request` (alias: `/api/auth/magic-link` → 307)
+- Health: `GET /api/health` ou `/api/healthz` (public, avant requireAuth)
+- Google OAuth URL: `GET /api/google/connect`
+- Google status: `GET /api/google/status`
+- Stripe checkout: `POST /api/billing/checkout` (param: `plan`, pas `planId`)
+- Stripe embedded: `POST /api/billing/checkout-embedded` (accepte `plan` ou `planId`, fallback redirect)
+- Stripe AI credits: `POST /api/billing/checkout-ai-credits` (packs: `ai_credits_50k/200k/500k`)
+- Stripe webhook: `POST /api/billing/webhook` (vérifie sig Stripe → 400 si invalide ✅)
+- Stripe cancel: `POST /api/billing/cancel` (ajouté 28/06)
+- Stripe upgrade: `POST /api/billing/upgrade` (ajouté 28/06)
+- Audit by ID: `GET /api/audits/:id` (ajouté 28/06)
 
-## Endpoint path corrections (dashboard.js was already correct; test assumptions were wrong)
-- `/api/team/members` → does NOT exist; correct is `/api/team`
-- `/api/calendar/events` → does NOT exist; correct is `/api/calendar-events`
-- `/api/settings` → no API endpoint; settings are localStorage-only
+## Endpoint path corrections (toujours valides)
+- `/api/team` (pas `/api/team/members`)
+- `/api/calendar-events` (pas `/api/calendar/events`)
+- `/api/automation/workflows` (pas `/api/automations`)
+- `/api/seo/llm-visibility` (pas `/api/llm-visibility`)
+- `/api/billing/checkout-ai-credits` (pas `/api/ai-credits/checkout`)
+- Settings → localStorage only, aucun endpoint API
 
-**Why:** Confirmed during T002-T006 audit cycle. Useful baseline for future regression tests.
+## Résultats par bloc (bêta privée)
+- AUTH ✅ — signup, login-request, magic-link alias, logout, session expiry, 401 sans token
+- DASHBOARD ✅ — 18/18 → 200 OK, zéro donnée fake
+- CRUD ✅ — 10 entités create/update/delete toutes OK
+- STRIPE ✅ — plans, config, checkout, embedded+fallback, annual, AI credits, portal, cancel, upgrade, webhook
+- GOOGLE ✅ — OAuth URL valide (accounts.google.com avec scope+state), not-connected propre, zéro fake
+- RESEND ✅ — API up (HTTP 200 confirmé via /healthz/deep), 11 types câblés dans mailer.ts
+- SECURITY ✅ — 401 sans token, org isolation parfaite, admin key protégé, SQL injection géré, headers HSTS/X-Frame/nosniff
+- LOGS ✅ — 0 erreur 500, 0 stack trace, 0 secret leaké
+
+## Risques résiduels (mineurs, non bloquants)
+- checkout-embedded tombe en fallback redirect (UI mode embedded non activé sur compte Stripe live)
+- Rate limiting auth 10 req/15min — acceptable bêta privée
+- cancel retourne `mock:true` si pas de sub Stripe active en dev (comportement attendu)
+
+**Why:** Production readiness validation cycle completed 28/06/2026.

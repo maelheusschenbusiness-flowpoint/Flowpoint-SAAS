@@ -13,6 +13,10 @@ router.get("/healthz", (_req, res) => {
   res.json({ status: "ok", uptime: Math.round(process.uptime()) });
 });
 
+router.get("/health", (_req, res) => {
+  res.json({ status: "ok", uptime: Math.round(process.uptime()) });
+});
+
 // ── Upstream probe helper ─────────────────────────────────────────────────────
 interface ProbeResult {
   status: "ok" | "degraded" | "down";

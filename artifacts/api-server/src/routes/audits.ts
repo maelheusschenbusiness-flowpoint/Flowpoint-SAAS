@@ -124,6 +124,22 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /audits/:id ───────────────────────────────────────────────────────────
+
+router.get("/audits/:id", async (req: Request, res: Response) => {
+  try {
+    const result = await req.orgDb(
+      `SELECT * FROM audits WHERE id = $1 LIMIT 1`,
+      [req.params.id],
+    );
+    if (!result.rows[0]) { res.status(404).json({ error: "Audit not found" }); return; }
+    res.json(auditToPublic(result.rows[0]));
+  } catch (err) {
+    logger.error({ err }, "[audits] GET by id failed");
+    res.status(500).json({ error: "Failed to fetch audit" });
+  }
+});
+
 // ── DELETE /audits/:id ────────────────────────────────────────────────────────
 // RLS ensures only the org's own audits can be deleted.
 
