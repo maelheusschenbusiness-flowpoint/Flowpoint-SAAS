@@ -216,20 +216,27 @@ router.patch("/keywords/alerts/:id/read", async (req, res) => {
 // POST /api/keywords (legacy — inserts into tracked_keywords)
 router.post("/keywords", async (req, res) => {
   const orgId = getOrg(req);
-  const { keyword, position = 0, volume = 0, difficulty = 50, tag } = req.body as {
-    keyword?: string; position?: number; volume?: number; difficulty?: number; tag?: string;
+  const { keyword, position = 0, volume = 0, difficulty = 50, tag, intent } = req.body as {
+    keyword?: string; position?: number; volume?: number; difficulty?: number; tag?: string; intent?: string;
   };
   if (!keyword) { res.status(400).json({ error: "keyword required" }); return; }
   try {
-    const [kw] = await db.insert(trackedKeywordsTable).values({
-      id: "kw" + Date.now(), orgId, keyword,
-      currentPosition: Number(position), prevPosition: Number(position),
-      searchVolume: Number(volume), difficulty: Number(difficulty),
-      tag: tag || null,
-    }).returning();
-    store.logActivity({ type:"audit", label:`Keyword ajouté : ${keyword}`, targetId:kw.id, targetType:"keyword" }).catch(() => {});
+    const id = "kw" + Date.now();
+    const r = await (req as OrgReq).orgDb(
+      `INSERT INTO tracked_keywords
+         (id, org_id, keyword, current_position, prev_position, search_volume, difficulty,
+          tag, intent, active, device, location, language, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,'desktop','France','fr',NOW(),NOW())
+       ON CONFLICT (org_id, keyword, device, location) DO NOTHING
+       RETURNING *`,
+      [id, orgId, keyword, Number(position), Number(position), Number(volume), Number(difficulty),
+       tag || null, intent || null]
+    );
+    const kw = r.rows[0];
+    if (!kw) { res.status(409).json({ error: "Keyword already tracked", keyword }); return; }
+    store.logActivity({ type:"audit", label:`Keyword ajouté : ${keyword}`, targetId: String(kw["id"]), targetType:"keyword" }).catch(() => {});
     res.status(201).json(kw);
-  } catch { res.status(500).json({ error: "Failed to create keyword" }); }
+  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
 // PATCH /api/keywords/:id

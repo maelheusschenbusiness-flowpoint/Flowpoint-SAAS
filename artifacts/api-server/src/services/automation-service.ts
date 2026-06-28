@@ -2,6 +2,7 @@ import { db, automationWorkflowsTable, workflowRunsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
+import { isDemoMode } from "./mock-data.js";
 
 const SEED_WORKFLOWS = [
   { id: "wf_1", name: "Rapport client hebdo",       icon: "📊", description: "Génère et envoie un résumé client chaque semaine",         triggerType: "schedule", triggerConfig: { cron: "0 9 * * 1" },           actions: [{ type: "generate_report", params: { format: "pdf" } }, { type: "send_email", params: { template: "client_weekly" } }],            enabled: true, runsCount: 0, category: "Rapports" },
@@ -13,6 +14,7 @@ const SEED_WORKFLOWS = [
 ];
 
 export async function ensureDefaultWorkflows(orgId = "default"): Promise<void> {
+  if (!isDemoMode()) return; // never inject seed workflows in production
   try {
     const existing = await db.select().from(automationWorkflowsTable)
       .where(eq(automationWorkflowsTable.orgId, orgId)).limit(1);

@@ -234,7 +234,7 @@ router.delete("/reports/:id/shares/:token", async (req: Request, res: Response) 
 // ── DELETE /reports/:id ────────────────────────────────────────────────────────
 router.delete("/reports/:id", async (req: Request, res: Response) => {
   try {
-    await db(req)(`DELETE FROM share_tokens WHERE report_id=$1 AND org_id=$2`, [req.params.id, org(req)]);
+    await db(req)(`DELETE FROM share_tokens WHERE report_id=$1`, [req.params.id]);
     await db(req)(`DELETE FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     res.json({ ok: true });
   } catch {

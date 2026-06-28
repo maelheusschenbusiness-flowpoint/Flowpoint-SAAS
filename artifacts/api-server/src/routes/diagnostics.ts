@@ -196,7 +196,8 @@ router.get("/diagnostics", async (_req, res) => {
 
 // ── Worker / cron status ─────────────────────────────────────────────────────
 router.get("/diagnostics/workers", async (_req, res) => {
-  const workers = getCronStatus();
+  const cronResult = getCronStatus();
+  const workerList = cronResult.jobs ?? [];
   const now = Date.now();
 
   const [historyResult, failuresResult] = await Promise.allSettled([
@@ -214,14 +215,17 @@ router.get("/diagnostics/workers", async (_req, res) => {
   const recentFails = failuresResult.status === "fulfilled" ? failuresResult.value.rows : [];
 
   res.json({
-    total:   workers.length,
-    enabled: workers.filter(w => w.enabled).length,
-    workers: workers.map(w => ({
+    total:   cronResult.totalJobs,
+    running: cronResult.runningJobs,
+    enabled: workerList.filter(w => w.status !== "error").length,
+    workers: workerList.map(w => ({
       name:        w.name,
-      schedule:    w.schedule,
-      enabled:     w.enabled,
-      lastRun:     w.lastRun ? new Date(w.lastRun).toISOString() : null,
-      lastRunAgoS: w.lastRun ? Math.round((now - w.lastRun) / 1000) : null,
+      schedule:    w.interval,
+      enabled:     w.status !== "error",
+      lastRun:     w.lastRun ?? null,
+      lastRunAgoS: w.lastRun ? Math.round((now - new Date(w.lastRun).getTime()) / 1000) : null,
+      status:      w.status,
+      runCount:    w.runCount,
     })),
     recentRuns:   recentRuns.map(r => ({
       job:        r.job_name,

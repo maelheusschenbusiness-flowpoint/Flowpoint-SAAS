@@ -23,6 +23,20 @@ export interface ForecastPoint {
   scenario: "pessimistic" | "realistic" | "optimistic";
 }
 
+const EMPTY_FORECAST: ForecastData = {
+  siteUrl: "",
+  forecasts: [],
+  summary: {
+    expectedTrafficIn30d: 0,
+    expectedTrafficIn90d: 0,
+    expectedConversionsIn30d: 0,
+    expectedRevenueIn90d: 0,
+    confidenceScore: 0,
+    growthScenarios: { pessimistic: 0, realistic: 0, optimistic: 0 },
+  },
+  generatedAt: new Date().toISOString(),
+};
+
 export async function getForecastData(siteUrl?: string): Promise<ForecastData> {
   const url = siteUrl ?? "default";
   try {
@@ -44,23 +58,36 @@ export async function getForecastData(siteUrl?: string): Promise<ForecastData> {
         const realistic = forecasts.filter(f => f.scenario === "realistic");
         const in30 = realistic.slice(0, 30);
         const in90 = realistic.slice(0, 90);
+        const realTraffic30  = in30.reduce((s, f) => s + f.predictedTraffic, 0);
+        const realTraffic90  = in90.reduce((s, f) => s + f.predictedTraffic, 0);
+        const prev30 = realistic.slice(30, 60).reduce((s, f) => s + f.predictedTraffic, 0);
+        const growthPct = prev30 > 0 ? Math.round(((realTraffic30 - prev30) / prev30) * 100) : 0;
         return {
           siteUrl: url,
           forecasts,
           summary: {
-            expectedTrafficIn30d: in30.reduce((s, f) => s + f.predictedTraffic, 0),
-            expectedTrafficIn90d: in90.reduce((s, f) => s + f.predictedTraffic, 0),
+            expectedTrafficIn30d:     realTraffic30,
+            expectedTrafficIn90d:     realTraffic90,
             expectedConversionsIn30d: in30.reduce((s, f) => s + f.predictedConversions, 0),
-            expectedRevenueIn90d: in90.reduce((s, f) => s + f.predictedRevenue, 0),
-            confidenceScore: 78,
-            growthScenarios: { pessimistic: -5, realistic: 15, optimistic: 35 },
+            expectedRevenueIn90d:     in90.reduce((s, f) => s + f.predictedRevenue, 0),
+            // Confidence derived from average of stored confidence values
+            confidenceScore: Math.round(
+              realistic.slice(0, 30).reduce((s, f) => s + f.confidence, 0) / Math.max(in30.length, 1)
+            ),
+            growthScenarios: { pessimistic: Math.round(growthPct * 0.6), realistic: growthPct, optimistic: Math.round(growthPct * 1.4) },
           },
           generatedAt: new Date().toISOString(),
         };
       }
     } finally { client.release(); }
-  } catch { /* non-fatal — return computed forecast */ }
+  } catch { /* non-fatal */ }
 
+  // In production, never return fabricated numbers — return empty state.
+  if (process.env["NODE_ENV"] === "production") {
+    return { ...EMPTY_FORECAST, siteUrl: url, generatedAt: new Date().toISOString() };
+  }
+
+  // Dev/staging only: return a computed demo forecast.
   return buildComputedForecast(url);
 }
 

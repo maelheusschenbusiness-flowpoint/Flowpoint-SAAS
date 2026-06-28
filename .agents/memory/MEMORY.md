@@ -14,7 +14,7 @@
 - [ACTIVITY_FEED gating pattern](activity-feed-gating.md) — ACTIVITY_FEED used as fallback in 5 places (exportCsv, overview widget, team widget, see-all handler, timeline); all must be (PREVIEW_MODE ? ACTIVITY_FEED : []); real users get STATE.activityEvents or clean empty state
 - [Monitors PostgreSQL migration](monitors-pg-migration.md) — monitors/monitor_checks pre-exist in Supabase with old column names (uptime not uptime_pct etc); use ALTER TABLE ADD COLUMN IF NOT EXISTS; routes use existing column names
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
-- [API server final state](api-server-final-state.md) — 31/31 smoke GET 200; 8/8 CRUD 201; POST /keywords uses /keywords/track (Drizzle schema mismatch target_url vs url); GBP posts need locationId
+- [API audit results](api-audit-results.md) — 54/54 GET 200; 3 bugs fixed (keywords 500, workers 500, report DELETE 500); Drizzle schema diverges from real DB — always verify with \d; route name map included
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [FlowPoint mock audit results](flowpoint-mock-audit-results.md) — T001-T008 already gated; only real violation was enterprise lab workspaces (line ~7187); FP_COMPETITORS_API+FP_CONNECTORS_API added as globals at IIFE end
 - [SSO API normalization](sso-api-normalization.md) — providers_catalog is string[], stats fields mismatch, recentLogins alias; normalize all in renderSettingsSSO() before rendering
