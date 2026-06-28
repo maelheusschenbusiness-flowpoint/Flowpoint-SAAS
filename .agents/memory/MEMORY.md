@@ -10,3 +10,5 @@
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [RLS UUID org_id tables](rls-uuid-orgid.md) — gsc_keyword_data, gsc_page_data, gsc_sync_logs, ga4_accounts have UUID org_id; use org_id::text comparison in RLS policies
 - [FlowPoint API audit results](flowpoint-api-audit.md) — 48/48 endpoints clean (0 500s); RLS 149/149 tables 4+ policies; real paths for 40 GET + 8 POST endpoints documented
+- [Google OAuth multi-instance fix](google-oauth-db-state.md) — pendingOAuthStates remplacé par table google_oauth_states; fonctions now async
+- [FlowPoint review-intel fake data](review-intel-empty-state.md) — SAMPLE_REVIEWS supprimé; empty state propre quand aucun avis GBP

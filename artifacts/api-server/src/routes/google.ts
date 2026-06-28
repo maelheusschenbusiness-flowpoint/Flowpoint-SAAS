@@ -35,26 +35,31 @@ import { discoverAndStoreSites } from "../services/gsc-service.js";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 
-// ── OAuth state store ─────────────────────────────────────────────────────────
-// Maps random state tokens to { orgId, expiry }.  States are single-use and
-// expire after 10 minutes.  orgId is captured from the authenticated session
-// that initiated the flow and cannot be spoofed via the callback.
+// ── OAuth state store (DB-backed — multi-instance safe) ──────────────────────
+// States are persisted in `google_oauth_states` so any server instance can
+// validate the callback even if a different instance handled /google/connect.
+// Each state is single-use and expires after 10 minutes.
 
-const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
-const pendingOAuthStates = new Map<string, { orgId: string; expiry: number }>();
-
-function registerOAuthState(state: string, orgId: string): void {
-  pendingOAuthStates.set(state, { orgId, expiry: Date.now() + OAUTH_STATE_TTL_MS });
-  for (const [s, v] of pendingOAuthStates) {
-    if (Date.now() > v.expiry) pendingOAuthStates.delete(s);
-  }
+async function registerOAuthState(state: string, orgId: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO google_oauth_states (state, org_id, expires_at)
+     VALUES ($1, $2, now() + interval '10 minutes')
+     ON CONFLICT (state) DO NOTHING`,
+    [state, orgId]
+  );
+  // Opportunistically prune expired states (best-effort)
+  pool.query(`DELETE FROM google_oauth_states WHERE expires_at < now()`).catch(() => {});
 }
 
-function consumeOAuthState(state: string): { orgId: string } | null {
-  const entry = pendingOAuthStates.get(state);
-  if (!entry) return null;
-  pendingOAuthStates.delete(state); // one-time use
-  return Date.now() <= entry.expiry ? { orgId: entry.orgId } : null;
+async function consumeOAuthState(state: string): Promise<{ orgId: string } | null> {
+  const r = await pool.query(
+    `DELETE FROM google_oauth_states
+     WHERE state = $1 AND expires_at > now()
+     RETURNING org_id`,
+    [state]
+  );
+  if (!r.rows.length) return null;
+  return { orgId: r.rows[0].org_id as string };
 }
 
 // ── Shared callback handler ───────────────────────────────────────────────────
@@ -79,7 +84,7 @@ async function handleGoogleCallback(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  const stateData = consumeOAuthState(state);
+  const stateData = await consumeOAuthState(state);
   if (!stateData) {
     logger.warn("[google] OAuth callback rejected — invalid or expired state");
     res.status(400).json({ ok: false, error: "Invalid or expired OAuth state" });
@@ -169,7 +174,7 @@ function getOrgId(req: Request): string {
 
 // ── Connect / status ──────────────────────────────────────────────────────────
 
-router.get("/google/connect", (req: Request, res: Response) => {
+router.get("/google/connect", async (req: Request, res: Response) => {
   if (!isGoogleConfigured()) {
     res.status(503).json({
       ok: false,
@@ -179,18 +184,18 @@ router.get("/google/connect", (req: Request, res: Response) => {
   }
   const orgId = getOrgId(req);
   const state = crypto.randomBytes(16).toString("hex");
-  registerOAuthState(state, orgId);
+  await registerOAuthState(state, orgId);
   res.json({ ok: true, url: generateAuthUrl(state), state });
 });
 
-router.get("/google/oauth/start", (req: Request, res: Response) => {
+router.get("/google/oauth/start", async (req: Request, res: Response) => {
   if (!isGoogleConfigured()) {
     res.status(503).json({ ok: false, error: "Google OAuth not configured" });
     return;
   }
   const orgId = getOrgId(req);
   const state = crypto.randomBytes(16).toString("hex");
-  registerOAuthState(state, orgId);
+  await registerOAuthState(state, orgId);
   res.json({ ok: true, url: generateAuthUrl(state), state });
 });
 

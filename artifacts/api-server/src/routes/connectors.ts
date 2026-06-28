@@ -173,13 +173,16 @@ router.post("/connectors/github/webhook", async (req: Request, res: Response) =>
 
 router.get("/connectors/:provider/oauth/start", requireAdmin, async (req: Request, res: Response) => {
   const { provider } = req.params;
+  // For Google providers, delegate to /api/google/connect which uses the full
+  // scope set (GSC + GA4 + GBP + openid) and DB-backed state storage.
+  if (["google", "google-analytics", "google-search-console", "gbp", "ga4", "gsc"].includes(provider)) {
+    res.redirect(307, "/api/google/connect");
+    return;
+  }
   const state = crypto.randomBytes(16).toString("hex");
   const oauthUrls: Record<string, string> = {
     slack: `https://slack.com/oauth/v2/authorize?client_id=YOUR_SLACK_CLIENT_ID&scope=channels:read,chat:write&state=${state}`,
     github: `https://github.com/login/oauth/authorize?client_id=YOUR_GITHUB_CLIENT_ID&scope=repo,read:org&state=${state}`,
-    google: process.env["GOOGLE_CLIENT_ID"]
-      ? `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(process.env["GOOGLE_CLIENT_ID"])}&response_type=code&scope=${encodeURIComponent("openid email profile https://www.googleapis.com/auth/business.manage")}&redirect_uri=${encodeURIComponent(process.env["GOOGLE_REDIRECT_URI"] || "")}&access_type=offline&prompt=consent&state=${state}`
-      : `https://accounts.google.com/o/oauth2/v2/auth?client_id=CONFIGURE_GOOGLE_CLIENT_ID&response_type=code&scope=openid%20email%20profile&state=${state}`,
     notion: `https://api.notion.com/v1/oauth/authorize?client_id=YOUR_NOTION_CLIENT_ID&response_type=code&owner=user&state=${state}`,
   };
   const url = oauthUrls[provider];

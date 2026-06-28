@@ -63,30 +63,37 @@ export async function getReputationDashboard(orgId: string): Promise<ReputationD
         date:      r["date"] ? new Date(String(r["date"])).toISOString() : new Date().toISOString(),
       }));
     } else {
-      reviews = SAMPLE_REVIEWS;
+      reviews = [];
     }
 
-    const avgRating = Math.round(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length * 10) / 10;
+    const count = reviews.length;
+    const avgRating = count > 0 ? Math.round(reviews.reduce((s, r) => s + r.rating, 0) / count * 10) / 10 : 0;
     const replied = reviews.filter(r => r.replied).length;
+    const positiveCount = reviews.filter(r => r.sentiment === "positive").length;
     const trends = await generateTrendsFromDB(orgId, client);
+
+    const insights: string[] = count > 0
+      ? [
+          `Note moyenne de ${avgRating}/5`,
+          `${count - replied} avis sans réponse`,
+        ]
+      : [];
+    const recommendations: string[] = count > 0
+      ? [
+          "Répondre à tous les avis sous 24h pour améliorer la confiance clients",
+          "Solliciter activement des avis de clients satisfaits (email post-achat)",
+        ]
+      : ["Connectez Google Business Profile pour importer vos avis."];
 
     return {
       avgRating,
-      totalReviews: reviews.length,
-      responseRate: Math.round((replied / reviews.length) * 100),
-      sentimentScore: Math.round(reviews.filter(r => r.sentiment === "positive").length / reviews.length * 100),
+      totalReviews: count,
+      responseRate: count > 0 ? Math.round((replied / count) * 100) : 0,
+      sentimentScore: count > 0 ? Math.round((positiveCount / count) * 100) : 0,
       reviews: reviews.slice(0, 20),
       trends,
-      insights: [
-        `Note moyenne de ${avgRating}/5 — au-dessus de la moyenne sectorielle (3.8/5)`,
-        `${reviews.filter(r => !r.replied).length} avis sans réponse impactent votre réputation`,
-        "Les avis négatifs récents réduisent votre taux de conversion de ~12%",
-      ],
-      recommendations: [
-        "Répondre à tous les avis sous 24h pour améliorer la confiance clients",
-        "Solliciter activement des avis de clients satisfaits (email post-achat)",
-        "Utiliser les critiques négatives pour identifier les axes d'amélioration",
-      ],
+      insights,
+      recommendations,
     };
   } finally { client.release(); }
 }
