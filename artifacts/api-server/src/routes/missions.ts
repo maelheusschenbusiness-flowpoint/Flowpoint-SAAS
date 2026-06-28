@@ -174,6 +174,18 @@ router.post("/missions/generate", async (req: Request, res: Response) => {
   try {
     const result = await runMissionEngine(orgId(req), "manual");
     res.json({ ok: true, ...result });
+
+    // Fire-and-forget: new missions email
+    const missions = (result as Record<string, unknown>).missions as Array<{ title: string; priority: string; impact: string }> | undefined;
+    if (missions?.length && store.me.email) {
+      const { mailer } = await import("../services/mailer.js");
+      mailer.sendNewMissions({
+        to: store.me.email as string,
+        name: (store.me.firstName || store.me.name || "Utilisateur") as string,
+        missions,
+        siteUrl: (store.me as Record<string, unknown>)["primarySite"] as string | undefined,
+      }).catch(() => {});
+    }
   } catch (err) {
     logger.error({ err }, "[Missions] generate error");
     res.status(500).json({ error: "Mission engine error" });

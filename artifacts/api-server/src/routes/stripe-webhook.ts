@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { mailer } from "../services/mailer.js";
 
 /** Persist subscription status and Stripe customer ID to org_settings — fire and forget */
 async function persistSubscriptionMeta(opts: {
@@ -270,6 +271,20 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
           }
         }
       } catch { /* non-critical */ }
+      // Email: payment succeeded
+      if (store.me.email) {
+        const amountCents = Number(obj["amount_paid"] || 0);
+        const periodEnd = obj["lines"]
+          ? (() => { try { const l = (obj["lines"] as Record<string, unknown>); const d = (l["data"] as Array<Record<string, unknown>>)?.[0]; return d ? new Date(Number(d["period"]?.["end"] ?? 0) * 1000).toISOString() : undefined; } catch { return undefined; } })()
+          : undefined;
+        mailer.sendPaymentSucceeded({
+          to: store.me.email,
+          name: store.me.firstName || store.me.name || "Utilisateur",
+          plan: store.me.plan || "pro",
+          amountEur: amountCents > 0 ? Math.round(amountCents / 100) : undefined,
+          periodEnd,
+        }).catch(() => {});
+      }
       break;
     }
 
@@ -279,6 +294,19 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       store.me.subscriptionStatus = "past_due";
       await persistSubscriptionMeta({ subscriptionStatus: "past_due" });
       store.broadcast({ type: "payment_failed", attemptCount });
+      // Email: payment failed
+      if (store.me.email) {
+        const nextAttempt = obj["next_payment_attempt"]
+          ? new Date(Number(obj["next_payment_attempt"]) * 1000).toISOString()
+          : undefined;
+        mailer.sendPaymentFailed({
+          to: store.me.email,
+          name: store.me.firstName || store.me.name || "Utilisateur",
+          plan: store.me.plan || "pro",
+          attemptCount,
+          retryDate: nextAttempt,
+        }).catch(() => {});
+      }
       break;
     }
 

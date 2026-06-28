@@ -2,6 +2,8 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { connectMongo } from "../lib/mongo.js";
 import { NotificationModel } from "../models/Notification.js";
+import { mailer } from "./mailer.js";
+import { store } from "./store.js";
 
 export async function evaluateAlertRulesForAudit(url: string, score: number): Promise<void> {
   try {
@@ -30,6 +32,18 @@ export async function evaluateAlertRulesForAudit(url: string, score: number): Pr
             });
           } catch (mongoErr) {
             logger.warn({ err: mongoErr }, "[monitor-cron] Notification write to MongoDB failed");
+          }
+          // Email alert
+          const alertEmail = rule.channels?.email || store.me.email;
+          if (alertEmail) {
+            mailer.sendSeoAlert({
+              to: alertEmail,
+              ruleName: String(rule.name),
+              url,
+              score,
+              threshold: Number(rule.threshold),
+              operator: String(rule.operator),
+            }).catch(() => {});
           }
         }
       }

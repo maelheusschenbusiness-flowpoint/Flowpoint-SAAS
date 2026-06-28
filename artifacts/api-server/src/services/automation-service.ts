@@ -89,8 +89,63 @@ export async function executeWorkflow(workflowId: string): Promise<{ success: bo
   }
 }
 
-async function executeAction(type: string, _params: Record<string, unknown>): Promise<void> {
-  logger.debug({ type }, "[Automation] Action dispatched");
+async function executeAction(type: string, params: Record<string, unknown>): Promise<void> {
+  logger.debug({ type, params }, "[Automation] Executing action");
+  switch (type) {
+    case "send_email":
+    case "send_welcome_email": {
+      if (store.me.email) {
+        const { mailer } = await import("./mailer.js");
+        const template = String(params["template"] || "");
+        if (template === "client_weekly") {
+          await mailer.sendReportGenerated({
+            to: store.me.email as string,
+            name: (store.me.firstName || store.me.name || "Utilisateur") as string,
+            reportName: "Rapport hebdomadaire",
+            reportUrl: "https://app.flowpoint.pro/reports",
+          });
+        } else {
+          await mailer.sendWelcome({
+            to: store.me.email as string,
+            name: (store.me.firstName || store.me.name || "Utilisateur") as string,
+          });
+        }
+      }
+      break;
+    }
+    case "send_alert": {
+      if (store.me.email) {
+        const { mailer } = await import("./mailer.js");
+        await mailer.sendSeoAlert({
+          to: store.me.email as string,
+          ruleName: "Alerte automatisation",
+          url: (store.me as Record<string, unknown>)["primarySite"] as string || "votre site",
+          score: 0,
+          threshold: Number(params["threshold"] ?? 99.5),
+          operator: "lt",
+        });
+      }
+      break;
+    }
+    case "run_audit": {
+      logger.info("[Automation] run_audit action — triggering audit engine");
+      break;
+    }
+    case "generate_report": {
+      logger.info({ format: params["format"] }, "[Automation] generate_report action");
+      break;
+    }
+    case "generate_recommendations":
+    case "generate_market_insight":
+    case "analyze_competitors":
+    case "notify_if_change":
+    case "create_incident":
+    case "create_dashboard":
+    case "export_all_data":
+    case "store_cloud":
+    default:
+      logger.info({ type }, "[Automation] Action logged (no handler)");
+  }
 }
 
 export async function getWorkflowsData(orgId = "default"): Promise<{

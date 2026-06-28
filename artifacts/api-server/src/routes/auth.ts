@@ -594,6 +594,18 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
           }
         })();
       }
+
+      // ── Fire-and-forget: welcome + trial-started emails ─────────────────
+      const { mailer: _mailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+      if (_mailer) {
+        _mailer.sendWelcome({ to: normalizedEmail, name: fn }).catch(() => {});
+        _mailer.sendTrialStarted({
+          to: normalizedEmail,
+          name: fn,
+          plan: selectedPlan,
+          trialEndsAt,
+        }).catch(() => {});
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg }, "[Auth/Signup] Resend failed");

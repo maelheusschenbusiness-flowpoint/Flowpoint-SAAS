@@ -67,6 +67,17 @@ router.post("/reports", reportRateLimit, async (req, res) => {
     const report = r.rows[0] ?? { id, name };
     store.logActivity({ type: "report", label: `Rapport généré : ${name}`, targetId: id, targetType: "report", metadata: { name, format } }).catch(() => {});
     res.status(201).json(report);
+
+    // Fire-and-forget: report generated email
+    if (store.me.email) {
+      const { mailer } = await import("../services/mailer.js");
+      mailer.sendReportGenerated({
+        to: store.me.email,
+        name: store.me.firstName || store.me.name || "Utilisateur",
+        reportName: name,
+        reportUrl: `https://app.flowpoint.pro/reports`,
+      }).catch(() => {});
+    }
   } catch {
     res.status(500).json({ error: "Failed to create report" });
   }

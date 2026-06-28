@@ -42,6 +42,17 @@ router.post("/team/invite", async (req: Request, res: Response) => {
     );
     const m = r.rows[0];
     res.status(201).json({ ok: true, member: { id: m.id, name: m.name, email: m.email, role: m.role, joined: m.joined } });
+
+    // Fire-and-forget: invitation email
+    const { mailer } = await import("../services/mailer.js");
+    const { store } = await import("../services/store.js");
+    mailer.sendTeamInvitation({
+      to: email,
+      inviterName: store.me.firstName || store.me.name || "L'équipe FlowPoint",
+      orgName: store.me.org?.name,
+      role: memberRole,
+      inviteUrl: `https://app.flowpoint.pro/login`,
+    }).catch(() => {});
   } catch (err) {
     res.status(500).json({ error: "Failed to invite member" });
   }

@@ -171,14 +171,54 @@ async function saveCheckResult(
          VALUES ($1, $2, $3, NOW(), $4)`,
         [incId, monitorId, orgId, result.error ?? "Service unreachable"],
       );
+      // Fire-and-forget: monitor DOWN email
+      (async () => {
+        try {
+          const { mailer } = await import("../services/mailer.js");
+          const { store } = await import("../services/store.js");
+          const monRow = await client.query(
+            `SELECT name, url FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
+          );
+          const mon = monRow.rows[0];
+          if (store.me.email && mon) {
+            await mailer.sendMonitorDown({
+              to: store.me.email as string,
+              monitorName: String(mon.name),
+              url: String(mon.url),
+              statusCode: result.statusCode ?? undefined,
+            });
+          }
+        } catch { /* non-fatal */ }
+      })();
     } else if (previousStatus === "down" && newStatus === "up") {
-      await client.query(
+      const incRes = await client.query(
         `UPDATE monitor_incidents
          SET resolved_at = NOW(),
              duration_s  = EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER
-         WHERE monitor_id = $1 AND resolved_at IS NULL`,
+         WHERE monitor_id = $1 AND resolved_at IS NULL
+         RETURNING EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER AS duration_s`,
         [monitorId],
       );
+      // Fire-and-forget: monitor UP email
+      const downDurationMin = incRes.rows[0]?.duration_s ? Math.round(Number(incRes.rows[0].duration_s) / 60) : 0;
+      (async () => {
+        try {
+          const { mailer } = await import("../services/mailer.js");
+          const { store } = await import("../services/store.js");
+          const monRow = await client.query(
+            `SELECT name, url FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
+          );
+          const mon = monRow.rows[0];
+          if (store.me.email && mon) {
+            await mailer.sendMonitorUp({
+              to: store.me.email as string,
+              monitorName: String(mon.name),
+              url: String(mon.url),
+              downDurationMin,
+            });
+          }
+        } catch { /* non-fatal */ }
+      })();
     }
   });
 
