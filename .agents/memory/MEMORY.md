@@ -22,3 +22,4 @@
 - [Render boot errors — org_settings schema gaps](render-boot-errors.md) — 3 startup errors fixed: RLS conditional, trial_ends_at/email/first_name columns, cron catch level
 - [withOrgDb Supabase role degradation](withorgdb-supabase.md) — SET LOCAL ROLE app_user must be try/caught; Supabase DATABASE_URL user may not have the role granted; GUC-only mode still enforces RLS
 - [workflow_runs schema gaps](workflow-runs-schema.md) — ended_at, duration_ms, steps_completed, steps_failed must be ADD COLUMN'd in init-automation.ts; automation-service.ts uses all 4
+- [Express route order — sub-routes vs /:id](express-route-order.md) — specific routes (schedule, upcoming, clients) must be registered BEFORE /:id or Express swallows them as dynamic params

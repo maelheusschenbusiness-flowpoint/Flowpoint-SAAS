@@ -45,6 +45,18 @@ router.get("/reports", async (req, res) => {
   }
 });
 
+// ── GET /reports/clients ──────────────────────────────────────────────────────
+// Must be registered BEFORE /:id so Express doesn't match "clients" as an id.
+router.get("/reports/clients", async (req: Request, res: Response) => {
+  try {
+    const r = await db(req)(
+      `SELECT * FROM reports WHERE org_id=$1 AND type='client' ORDER BY date DESC LIMIT 200`,
+      [org(req)]
+    );
+    res.json(r.rows);
+  } catch { res.json([]); }
+});
+
 // ── GET /reports/:id ──────────────────────────────────────────────────────────
 router.get("/reports/:id", async (req, res) => {
   try {
@@ -90,17 +102,6 @@ router.post("/reports", reportRateLimit, async (req, res) => {
   } catch {
     res.status(500).json({ error: "Failed to create report" });
   }
-});
-
-// ── GET /reports/clients ──────────────────────────────────────────────────────
-router.get("/reports/clients", async (req: Request, res: Response) => {
-  try {
-    const r = await db(req)(
-      `SELECT * FROM reports WHERE org_id=$1 AND type='client' ORDER BY date DESC LIMIT 200`,
-      [org(req)]
-    );
-    res.json(r.rows);
-  } catch { res.json([]); }
 });
 
 // ── POST /reports/clients ─────────────────────────────────────────────────────

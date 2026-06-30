@@ -74,7 +74,9 @@ export interface RateLimits {
 }
 
 export const RATE_LIMITS: Record<PlanTier, RateLimits> = {
-  standard: { globalPerMinute:120,  aiPerMinute:5,  reportsPerHour:10,  exportsPerHour:10,  webhooksPerMinute:10 },
+  // standard: 600/min ≈ 10/sec — dashboard loads ~20 endpoints simultaneously on boot
+  // plus polling (google/status, ga4/status, etc.) every few seconds; 120 was too low.
+  standard: { globalPerMinute:600,  aiPerMinute:10, reportsPerHour:20,  exportsPerHour:20,  webhooksPerMinute:20 },
   pro:      { globalPerMinute:2000, aiPerMinute:60, reportsPerHour:120, exportsPerHour:120, webhooksPerMinute:60 },
   ultra:    { globalPerMinute:5000, aiPerMinute:200,reportsPerHour:600, exportsPerHour:600, webhooksPerMinute:300 },
   agency:   { globalPerMinute:9999, aiPerMinute:999,reportsPerHour:999, exportsPerHour:999, webhooksPerMinute:999 },

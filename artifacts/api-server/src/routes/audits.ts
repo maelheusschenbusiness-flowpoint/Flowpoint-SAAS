@@ -124,6 +124,53 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /audits/history ───────────────────────────────────────────────────────
+// Must be registered BEFORE /:id so Express doesn't match "history" as an id.
+
+router.get("/audits/history", async (req: Request, res: Response) => {
+  const url     = req.query.url as string | undefined;
+  const daysRaw = parseInt((req.query.days as string) || "90", 10);
+  const days    = Number.isFinite(daysRaw) ? Math.max(1, Math.min(365, daysRaw)) : 90;
+  if (!url) { res.status(400).json({ error: "url required" }); return; }
+
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const result = await req.orgDb(
+      `SELECT * FROM audits WHERE url = $1 AND date >= $2 ORDER BY date ASC LIMIT 365`,
+      [url, cutoff],
+    );
+    res.json(result.rows.map(auditToPublic));
+  } catch { res.json([]); }
+});
+
+// ── GET /audits/quick-scan ────────────────────────────────────────────────────
+// Must be registered BEFORE /:id.
+
+router.get("/audits/quick-scan", async (req: Request, res: Response) => {
+  const url = req.query.url as string | undefined;
+  try {
+    const result = url
+      ? await req.orgDb(
+          `SELECT * FROM audits WHERE url = $1 ORDER BY created_at DESC LIMIT 1`,
+          [url],
+        )
+      : await req.orgDb(
+          `SELECT * FROM audits ORDER BY created_at DESC LIMIT 1`,
+        );
+    if (result.rowCount && result.rowCount > 0) {
+      res.json(auditToPublic(result.rows[0]));
+    } else {
+      res.json({ score: 0, status: "no-data", url: url ?? "" });
+    }
+  } catch { res.json({ score: 0, status: "no-data", url: url ?? "" }); }
+});
+
+// ── GET /audits/schedule + /audits/upcoming ───────────────────────────────────
+// Must be registered BEFORE /:id.
+
+router.get("/audits/schedule",  listSchedules);
+router.get("/audits/upcoming",  upcomingSchedules);
+
 // ── GET /audits/:id ───────────────────────────────────────────────────────────
 
 router.get("/audits/:id", async (req: Request, res: Response) => {
@@ -149,49 +196,6 @@ router.delete("/audits/:id", async (req: Request, res: Response) => {
     res.json({ ok: true });
   } catch {
     res.json({ ok: true });
-  }
-});
-
-// ── GET /audits/history ───────────────────────────────────────────────────────
-
-router.get("/audits/history", async (req: Request, res: Response) => {
-  const url     = req.query.url as string | undefined;
-  const daysRaw = parseInt((req.query.days as string) || "90", 10);
-  const days    = Number.isFinite(daysRaw) ? Math.max(1, Math.min(365, daysRaw)) : 90;
-  if (!url) { res.status(400).json({ error: "url required" }); return; }
-
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  try {
-    const result = await req.orgDb(
-      `SELECT * FROM audits WHERE url = $1 AND date >= $2 ORDER BY date ASC LIMIT 365`,
-      [url, cutoff],
-    );
-    res.json(result.rows.map(auditToPublic));
-  } catch {
-    res.json([]);
-  }
-});
-
-// ── GET /audits/quick-scan ────────────────────────────────────────────────────
-
-router.get("/audits/quick-scan", async (req: Request, res: Response) => {
-  const url = req.query.url as string | undefined;
-  try {
-    const result = url
-      ? await req.orgDb(
-          `SELECT * FROM audits WHERE url = $1 ORDER BY created_at DESC LIMIT 1`,
-          [url],
-        )
-      : await req.orgDb(
-          `SELECT * FROM audits ORDER BY created_at DESC LIMIT 1`,
-        );
-    if (result.rowCount && result.rowCount > 0) {
-      res.json(auditToPublic(result.rows[0]));
-    } else {
-      res.json({ score: 0, status: "no-data", url: url ?? "" });
-    }
-  } catch {
-    res.json({ score: 0, status: "no-data", url: url ?? "" });
   }
 });
 
@@ -273,8 +277,7 @@ async function deleteSchedule(req: Request, res: Response) {
   } catch { res.json({ ok: true }); }
 }
 
-router.get("/audits/schedule",         listSchedules);
-router.get("/audits/upcoming",         upcomingSchedules);
+// (schedule + upcoming GET routes registered earlier, before /:id)
 router.post("/audits/schedule",        createSchedule);
 router.patch("/audits/schedule/:id",   patchSchedule);
 router.delete("/audits/schedule/:id",  deleteSchedule);
