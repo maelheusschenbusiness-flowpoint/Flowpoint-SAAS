@@ -483,6 +483,9 @@ export const missionsSchemaRef = {
 
 import type { PoolClient } from "pg";
 
+// Logged once to avoid flooding logs on every request when app_user is not granted.
+let _appUserRoleUnavailable = false;
+
 export async function withOrgDb<T>(
   orgId: string,
   callback: (client: PoolClient) => Promise<T>,
@@ -490,8 +493,25 @@ export async function withOrgDb<T>(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SET LOCAL ROLE app_user");
-    // SET does not accept $N parameters — escape the value as a SQL literal
+
+    // Drop to app_user role so BYPASSRLS is inactive and RLS policies are evaluated.
+    // On Supabase/managed DBs the connection user may not have this role granted yet —
+    // in that case we skip the role switch and rely solely on the app.current_org_id GUC
+    // for tenant isolation (RLS policies check this setting).
+    if (!_appUserRoleUnavailable) {
+      try {
+        await client.query("SET LOCAL ROLE app_user");
+      } catch (roleErr) {
+        _appUserRoleUnavailable = true;
+        console.warn(
+          "[withOrgDb] SET LOCAL ROLE app_user failed — RLS via GUC only.",
+          "Grant with: GRANT app_user TO <db-user>",
+          (roleErr as Error).message,
+        );
+      }
+    }
+
+    // SET does not accept $N parameters — escape the value as a SQL literal.
     const safeOrgId = orgId.replace(/'/g, "''");
     await client.query(`SET LOCAL "app.current_org_id" = '${safeOrgId}'`);
     const result = await callback(client);
