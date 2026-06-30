@@ -129,7 +129,7 @@ export async function checkTrialEndingReminders(): Promise<void> {
       }
     }
   } catch (err) {
-    logger.error({ err }, "[trial-cron] checkTrialEndingReminders query error (non-fatal)");
+    logger.warn({ err }, "[trial-cron] checkTrialEndingReminders query error (non-fatal) — skipping");
   } finally {
     client.release();
   }

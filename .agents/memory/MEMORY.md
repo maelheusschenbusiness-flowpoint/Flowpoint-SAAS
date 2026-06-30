@@ -19,3 +19,4 @@
 - [FlowPoint Playwright auth](flowpoint-playwright-auth.md) — HttpOnly cookie blocks testing subagent; use Bearer header for API tests instead
 - [GET :id routes missing](get-id-routes.md) — monitors/competitors/keywords/reports/alert-rules all lacked GET :id; added in one pass
 - [Billing store.me singleton email bug](billing-email-singleton.md) — store.me.email is always null; use req.orgContext?.email instead
+- [Render boot errors — org_settings schema gaps](render-boot-errors.md) — 3 startup errors fixed: RLS conditional, trial_ends_at/email/first_name columns, cron catch level
