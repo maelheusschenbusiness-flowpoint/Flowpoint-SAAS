@@ -45,6 +45,15 @@ router.get("/reports", async (req, res) => {
   }
 });
 
+// ── GET /reports/:id ──────────────────────────────────────────────────────────
+router.get("/reports/:id", async (req, res) => {
+  try {
+    const r = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2 LIMIT 1`, [req.params.id, org(req)]);
+    if (!r.rows[0]) { res.status(404).json({ error: "Report not found" }); return; }
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ error: "Failed to fetch report" }); }
+});
+
 // ── POST /reports ─────────────────────────────────────────────────────────────
 router.post("/reports", reportRateLimit, async (req, res) => {
   const { name, auditId, format, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body as {

@@ -238,6 +238,22 @@ router.get("/monitors", async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /monitors/:id ────────────────────────────────────────────────────────
+
+router.get("/monitors/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const result = await req.orgDb(
+      `SELECT * FROM monitors WHERE id = $1 LIMIT 1`, [id],
+    );
+    if (!result.rows[0]) { res.status(404).json({ error: "Monitor not found" }); return; }
+    res.json(toPublic(result.rows[0]));
+  } catch (err) {
+    logger.error({ err }, "[monitors] GET :id failed");
+    res.status(503).json({ error: "Monitor database unavailable" });
+  }
+});
+
 // ── GET /monitors/:id/checks-summary ─────────────────────────────────────────
 
 router.get("/monitors/:id/checks-summary", async (req: Request, res: Response) => {

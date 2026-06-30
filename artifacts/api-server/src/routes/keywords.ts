@@ -153,6 +153,19 @@ router.get("/keywords/ai-recommendations", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
+// GET /api/keywords/:id
+router.get("/keywords/:id", async (req, res) => {
+  const orgId = getOrg(req);
+  try {
+    const r = await (req as OrgReq).orgDb(
+      `SELECT * FROM tracked_keywords WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      [req.params.id, orgId]
+    );
+    if (!r.rows[0]) { res.status(404).json({ error: "Keyword not found" }); return; }
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
+});
+
 // GET /api/keywords/:id/history
 router.get("/keywords/:id/history", async (req, res) => {
   const orgId = getOrg(req);

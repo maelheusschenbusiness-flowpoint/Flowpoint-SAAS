@@ -77,7 +77,11 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
 
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
-      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { plan } });
+      const customer = await stripe.customers.create({
+        email: store.me.email || undefined,
+        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { plan, orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+      });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
     }
@@ -130,7 +134,11 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
 
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
-      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { plan } });
+      const customer = await stripe.customers.create({
+        email: store.me.email || undefined,
+        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { plan, orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+      });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
     }
@@ -138,7 +146,7 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
-      ui_mode: "embedded",
+      ui_mode: "embedded_page",
       line_items: lineItems,
       return_url: `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`,
       metadata: { plan, addons: JSON.stringify(addons) },
@@ -265,7 +273,11 @@ router.post("/billing/portal", billingCheckoutRateLimit, async (_req: Request, r
 
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
-      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { plan: store.me.plan } });
+      const customer = await stripe.customers.create({
+        email: store.me.email || undefined,
+        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { plan: store.me.plan ?? "standard", orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+      });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
     }
@@ -524,7 +536,11 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
 
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
-      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { plan } });
+      const customer = await stripe.customers.create({
+        email: store.me.email || undefined,
+        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { plan, orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+      });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
     }
@@ -639,7 +655,11 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req
 
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
-      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { orgId: "default" } });
+      const customer = await stripe.customers.create({
+        email: store.me.email || undefined,
+        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+      });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
     }

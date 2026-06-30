@@ -32,6 +32,15 @@ router.get("/alert-rules", async (req, res) => {
   }
 });
 
+// ── GET /alert-rules/:id ──────────────────────────────────────────────────────
+router.get("/alert-rules/:id", async (req, res) => {
+  try {
+    const r = await db(req)(`SELECT * FROM alert_rules WHERE id=$1 AND org_id=$2 LIMIT 1`, [req.params.id, org(req)]);
+    if (!r.rows[0]) { res.status(404).json({ error: "Alert rule not found" }); return; }
+    res.json(r.rows[0]);
+  } catch { res.status(500).json({ error: "Failed to fetch alert rule" }); }
+});
+
 // ── POST /alert-rules ─────────────────────────────────────────────────────────
 router.post("/alert-rules", async (req, res) => {
   const { name, type, operator, threshold, durationMin, channels, siteUrls, enabled } = req.body as {

@@ -36,6 +36,19 @@ router.get("/competitors", withCache(60), async (req, res) => {
   }
 });
 
+// ── GET /competitors/:id ──────────────────────────────────────────────────────
+
+router.get("/competitors/:id", async (req, res) => {
+  try {
+    const result = await req.orgDb(`SELECT * FROM competitors WHERE id = $1 LIMIT 1`, [req.params.id]);
+    if (!result.rows[0]) { res.status(404).json({ error: "Competitor not found" }); return; }
+    res.json(toPublic(result.rows[0]));
+  } catch (err) {
+    logger.warn({ err }, "[competitors] GET :id failed");
+    res.status(500).json({ error: "Failed to fetch competitor" });
+  }
+});
+
 // ── POST /competitors ─────────────────────────────────────────────────────────
 
 router.post("/competitors", reportRateLimit, async (req, res) => {

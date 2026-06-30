@@ -21,10 +21,16 @@ router.get("/automation/workflows", async (req: Request, res: Response) => {
       res.json({ workflows: r.rows, runs: [], stats: { totalRuns: 0, successRate: 100, avgDuration: 0 } });
       return;
     }
-    const data = await getWorkflowsData();
+    const data = await getWorkflowsData(org(req));
     res.json(data);
   } catch {
-    res.status(500).json({ error: "Failed to fetch workflows" });
+    // Fallback: DB unavailable or table missing — return empty state, never 500
+    try {
+      const data = await getWorkflowsData("default");
+      res.json(data);
+    } catch {
+      res.json({ workflows: [], runs: [], stats: { active: 0, totalRuns: 0, successRate: 0, avgDuration: 0 } });
+    }
   }
 });
 

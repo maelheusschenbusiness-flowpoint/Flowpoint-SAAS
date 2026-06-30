@@ -3982,7 +3982,7 @@ function renderMonitors() {
   const _monAiMsg = (() => {
     if (nDown > 0) return `🚨 <strong>${nDown} monitor(s) DOWN</strong> en ce moment — intervention immédiate requise. Latence moyenne : ${avgLatency}ms. Uptime global : ${avgUptime}%.`;
     if (nWarn > 0) return `⚠️ <strong>${nWarn} alerte(s) actives</strong>. Latence moyenne : ${avgLatency}ms. Vérifiez les performances avant que les incidents n\'impactent vos utilisateurs.`;
-    if (monitors.length === 0) return 'Aucun monitor configuré. <a class="fp-link-btn" onclick="openFloatPanel(\"Nouveau monitor\",renderNewMonitorPanel());setupNewMonitorPanel()">Créer votre premier monitor →</a> pour surveiller la disponibilité 24/7'7 et être alerté instantanément.";
+    if (monitors.length === 0) return `Aucun monitor configuré. <a class="fp-link-btn" onclick="openFloatPanel('Nouveau monitor',renderNewMonitorPanel());setupNewMonitorPanel()">Créer votre premier monitor →</a> pour surveiller la disponibilité 24/7 et être alerté instantanément.`;
     return `✅ Tous les monitors opérationnels. Uptime global : <strong>${avgUptime}%</strong>, latence moyenne : <strong>${avgLatency}ms</strong>. Infrastructure stable.`;
   })();
   const deps = (STATE.monitors||[]).slice(0,6).map(m => ({
