@@ -78,9 +78,9 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: store.me.email || undefined,
-        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { plan, orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+        email: req.orgContext?.email || store.me.email || undefined,
+        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { plan, orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
       });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
@@ -135,9 +135,9 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: store.me.email || undefined,
-        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { plan, orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+        email: req.orgContext?.email || store.me.email || undefined,
+        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { plan, orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
       });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
@@ -274,9 +274,9 @@ router.post("/billing/portal", billingCheckoutRateLimit, async (_req: Request, r
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: store.me.email || undefined,
-        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { plan: store.me.plan ?? "standard", orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+        email: req.orgContext?.email || store.me.email || undefined,
+        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { plan: store.me.plan ?? "standard", orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
       });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
@@ -537,9 +537,9 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: store.me.email || undefined,
-        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { plan, orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+        email: req.orgContext?.email || store.me.email || undefined,
+        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { plan, orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
       });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
@@ -656,9 +656,9 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req
     let customerId = store.me.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: store.me.email || undefined,
-        name: store.me.firstName || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { orgId: store.me.org?.id ?? "default", userId: store.me.id ?? "unknown" },
+        email: req.orgContext?.email || store.me.email || undefined,
+        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
+        metadata: { orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
       });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;

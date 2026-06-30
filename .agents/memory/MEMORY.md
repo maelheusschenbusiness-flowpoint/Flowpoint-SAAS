@@ -18,3 +18,4 @@
 - [FlowPoint billing production state](flowpoint-billing-prod.md) — NODE_ENV=production, mock=false confirmed; plans.ts has live price IDs with env var overrides; webhook rejects unsigned in prod (correct)
 - [FlowPoint Playwright auth](flowpoint-playwright-auth.md) — HttpOnly cookie blocks testing subagent; use Bearer header for API tests instead
 - [GET :id routes missing](get-id-routes.md) — monitors/competitors/keywords/reports/alert-rules all lacked GET :id; added in one pass
+- [Billing store.me singleton email bug](billing-email-singleton.md) — store.me.email is always null; use req.orgContext?.email instead
