@@ -8,6 +8,7 @@
 - [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing-service needs prod guard (throw/503) when Stripe key missing; SSRF runs after auth (401 before URL validation = correct); auth rate limit 10/15min per IP; ai-worker buildFallbackResult returns generic recs tagged mock:true on OpenAI failure
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
+- [innerHTML script extraction pattern](innerhtml-script-extraction.md) — <script> tags inside innerHTML strings do NOT execute; all modal/action functions must be in the global setup block like _showCreateHeatmapModal
 - [RLS UUID org_id tables](rls-uuid-orgid.md) — gsc_keyword_data, gsc_page_data, gsc_sync_logs, ga4_accounts have UUID org_id; use org_id::text comparison in RLS policies
 - [FlowPoint API audit results](flowpoint-api-audit.md) — 31/31 endpoints 200 OK, 6/6 CRUD ops 201; correct paths: /api/team, /api/calendar-events; settings=localStorage only
 - [Google OAuth multi-instance fix](google-oauth-db-state.md) — pendingOAuthStates remplacé par table google_oauth_states; fonctions now async

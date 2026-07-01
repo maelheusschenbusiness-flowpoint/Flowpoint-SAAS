@@ -6262,7 +6262,7 @@ function renderLocalSEO() {
       </div>
       <div class="fp-section-actions">
         ${btn('Rapport local', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
-        ${btn('+ Mission locale', 'fp-btn fp-btn-primary fp-btn-sm', 'plus', "onclick=\"apiAction('POST','/api/missions',{title:'Mission SEO local',source:'local-seo',status:'todo',priority:'high'}).then(r=>{if(r&&r.id){showToast('success','Mission locale créée !');navigate('missions');}else showToast('error','Erreur')}).catch(()=>showToast('error','Erreur'))\"" )}
+        ${btn('Mission locale', 'fp-btn fp-btn-primary fp-btn-sm', 'plus', "onclick=\"apiAction('POST','/api/missions',{title:'Mission SEO local',source:'local-seo',status:'todo',priority:'high'}).then(r=>{if(r&&r.id){showToast('success','Mission locale créée !');navigate('missions');}else showToast('error','Erreur')}).catch(()=>showToast('error','Erreur'))\"" )}
       </div>
     </div>
 
@@ -6275,7 +6275,7 @@ function renderLocalSEO() {
             <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">Stratège IA Local — Plan Ultra requis</div>
             <div style="font-size:12px;color:var(--fp-text-muted)">Accédez aux recommandations IA personnalisées, aux prévisions de croissance et à la détection automatique des opportunités locales non exploitées.</div>
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('ultra'):navigate('billing'))">Passer Ultra</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="flex-shrink:0" onclick="navigate('billing')">Passer Ultra</button>
         </div>`
     }
 
@@ -6299,8 +6299,8 @@ function renderLocalSEO() {
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${STATE.dfsStatus ? `<span style="font-size:10px;color:#64748b">${STATE.dfsStatus.quota?.used||0}/${STATE.dfsStatus.quota?.limit||50} req aujourd\'hui</span>` : ''}
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="(function(){var kw=prompt('Mot-clé local ?','restaurant');var defCity=STATE.me&&STATE.me.location&&STATE.me.location.city?STATE.me.location.city:'';var loc=prompt('Ville ?',defCity);if(kw&&loc&&typeof window.FP_DATAFORSEO_API!=='undefined')window.FP_DATAFORSEO_API.loadLocalRankWidget(kw,loc);})()">🔎 Charger rankings</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="typeof window.FP_DATAFORSEO_API!=='undefined'&&window.FP_DATAFORSEO_API.generateMissions(STATE.me?.domain||'exemple.fr')">⚡ Auto-missions</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:11px" onclick="window._showLoadRankingsModal()">🔎 Charger rankings</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:11px" onclick="window._generateLocalMissions()">⚡ Auto-missions</button>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
@@ -6348,7 +6348,7 @@ function renderLocalSEO() {
             <div style="width:6px;height:6px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite"></div>
             <span style="font-size:10px;color:#22c55e;font-weight:600">En direct</span>
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.open('https://maps.google.com/?t=k&q='+encodeURIComponent(STATE.sites?.[0]?.url||STATE.me?.company||'France'),'_blank')">Satellite</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" id="fp-sat-btn" onclick="window._toggleSatelliteMode(this)">🛰 Satellite</button>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">Voir zones →</button>
         </div>
       </div>
@@ -13939,6 +13939,143 @@ async function init() {
     const m = document.getElementById('fp-heatmap-modal');
     if (m) m.style.display = 'flex';
   };
+  // Heatmap submit — extracted from innerHTML <script> (scripts in innerHTML do NOT execute)
+  window._submitCreateHeatmap = async function() {
+    const name = document.getElementById('hm-name')?.value.trim() || '';
+    const keyword = document.getElementById('hm-keyword')?.value.trim() || '';
+    const lat = parseFloat(document.getElementById('hm-lat')?.value || '');
+    const lng = parseFloat(document.getElementById('hm-lng')?.value || '');
+    const radius = parseFloat(document.getElementById('hm-radius')?.value || '5');
+    const grid = parseInt(document.getElementById('hm-grid')?.value || '7', 10);
+    if (!name || !keyword || isNaN(lat) || isNaN(lng)) { showToast('error','Nom, mot-clé, latitude et longitude requis'); return; }
+    showToast('info','Génération de la heatmap en cours…');
+    const modal = document.getElementById('fp-heatmap-modal');
+    if (modal) modal.style.display = 'none';
+    try {
+      const r = await window.FP_LOCAL_MAPS_API.createHeatmap({ name, keyword, centerLat: lat, centerLng: lng, radiusKm: radius, gridSize: grid });
+      if (r?.ok) {
+        showToast('success','Heatmap générée !');
+        await window.FP_LOCAL_MAPS_API.load();
+        window._mapsTab = 'grid';
+        render(STATE.currentSection);
+      } else showToast('error', r?.error || 'Erreur lors de la création');
+    } catch(e) { showToast('error', 'Erreur : ' + String(e)); }
+  };
+  // Review analyze modal — extracted from innerHTML <script>
+  window._showAnalyzeReviewModal = function() {
+    const m = document.getElementById('fp-review-modal');
+    if (m) m.style.display = 'flex';
+  };
+  window._submitAnalyzeReview = async function() {
+    const author = document.getElementById('rv-author')?.value.trim() || '';
+    const rating = parseInt(document.getElementById('rv-rating')?.value || '5', 10);
+    const text = document.getElementById('rv-text')?.value.trim() || '';
+    const lang = document.getElementById('rv-lang')?.value || 'fr';
+    if (!text) { showToast('error','Texte de l\'avis requis'); return; }
+    showToast('info','Analyse IA en cours…');
+    const modal = document.getElementById('fp-review-modal');
+    if (modal) modal.style.display = 'none';
+    try {
+      const r = await window.FP_REVIEW_INTEL_API.analyzeReview({ authorName: author, rating, reviewText: text, language: lang });
+      if (r?.ok) {
+        showToast('success','Avis analysé — sentiment : ' + (r.analysis?.sentiment || 'détecté'));
+        await window.FP_REVIEW_INTEL_API.load();
+        render(STATE.currentSection);
+      } else showToast('error', r?.error || 'Erreur d\'analyse');
+    } catch(e) { showToast('error', 'Erreur : ' + String(e)); }
+  };
+  // Load rankings modal — replaces native prompt()
+  window._showLoadRankingsModal = function() {
+    const existing = document.getElementById('fp-rankings-modal');
+    if (existing) { existing.style.display = 'flex'; return; }
+    const div = document.createElement('div');
+    div.id = 'fp-rankings-modal';
+    div.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:2000;align-items:center;justify-content:center';
+    div.innerHTML = `
+      <div style="width:400px;max-width:92vw;padding:24px;border-radius:14px;background:var(--fp-bg-card,#1a1f2e);border:1px solid var(--fp-border,rgba(255,255,255,0.08))">
+        <div style="font-size:16px;font-weight:700;margin-bottom:16px">🔎 Charger les rankings locaux</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <input id="rl-keyword" class="fp-input" placeholder="Mot-clé (ex: restaurant paris)" style="width:100%;box-sizing:border-box"/>
+          <input id="rl-city" class="fp-input" placeholder="Ville (ex: Paris)" value="${STATE.me?.location?.city||''}" style="width:100%;box-sizing:border-box"/>
+        </div>
+        <div style="font-size:10px;color:var(--fp-text-faint,#64748b);margin-top:8px;padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
+          ℹ️ Nécessite DataForSEO configuré. En démo, des données simulées sont affichées.
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+          <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('fp-rankings-modal').style.display='none'">Annuler</button>
+          <button class="fp-btn fp-btn-primary" onclick="window._submitLoadRankings()">Charger</button>
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+  };
+  window._submitLoadRankings = async function() {
+    const kw = document.getElementById('rl-keyword')?.value.trim() || '';
+    const city = document.getElementById('rl-city')?.value.trim() || '';
+    if (!kw || !city) { showToast('error','Mot-clé et ville requis'); return; }
+    const modal = document.getElementById('fp-rankings-modal');
+    if (modal) modal.style.display = 'none';
+    showToast('info','Chargement des rankings pour « ' + kw + ' » à ' + city + '…');
+    try {
+      const r = await apiAction('POST', '/api/local-seo/rankings', { keyword: kw, location: city });
+      if (r?.ok || r?.rankings) {
+        showToast('success','Rankings chargés !');
+        render(STATE.currentSection);
+      } else {
+        showToast('info','DataForSEO non configuré — données démo affichées');
+      }
+    } catch(e) { showToast('info','DataForSEO non configuré — données démo affichées'); }
+  };
+  // Auto-missions generator — replaces undefined FP_DATAFORSEO_API.generateMissions()
+  window._generateLocalMissions = async function() {
+    const domain = STATE.me?.domain || STATE.sites?.[0]?.url || 'votre-site.fr';
+    const missions = [
+      { title: 'Optimiser la fiche Google Business Profile', category: 'Local SEO', priority: 'high' },
+      { title: 'Créer des citations locales manquantes', category: 'Local SEO', priority: 'high' },
+      { title: 'Améliorer le score de cohérence NAP', category: 'Local SEO', priority: 'medium' },
+      { title: 'Générer des avis positifs (stratégie de collecte)', category: 'Local SEO', priority: 'medium' },
+      { title: 'Optimiser les mots-clés locaux cibles', category: 'Local SEO', priority: 'medium' },
+    ];
+    showToast('info', 'Génération des missions locales…');
+    let created = 0;
+    for (const m of missions) {
+      try {
+        if (!STATE.missions) STATE.missions = [];
+        const dup = STATE.missions.find(x => x.title.toLowerCase() === m.title.toLowerCase() && x.status !== 'done');
+        if (!dup) {
+          const ms = { id: 'am_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), ...m, status:'todo', createdAt:new Date().toISOString(), steps:[] };
+          STATE.missions.unshift(ms);
+          if (window.FP_MISSIONS_API?.create) { const s = await FP_MISSIONS_API.create(ms).catch(()=>null); if (s?.id) ms.id=s.id; }
+          created++;
+        }
+      } catch(e) {}
+    }
+    if (created > 0) { saveMissions(); showToast('success', created + ' missions locales créées ! Voir Missions →'); }
+    else showToast('warning', 'Toutes les missions existent déjà');
+  };
+  // Satellite map toggle — toggles visual mode on the SVG map
+  window._toggleSatelliteMode = function(btn) {
+    const map = document.getElementById('fp-gmap');
+    if (!map) return;
+    const isSat = map.getAttribute('data-satellite') === '1';
+    if (isSat) {
+      map.removeAttribute('data-satellite');
+      map.style.background = 'linear-gradient(135deg,#050810,#0a1628)';
+      if (btn) { btn.textContent = '🛰 Satellite'; btn.style.background = ''; }
+      const overlay = document.getElementById('fp-sat-overlay');
+      if (overlay) overlay.remove();
+    } else {
+      map.setAttribute('data-satellite', '1');
+      map.style.background = 'linear-gradient(135deg,#1a3a1a,#0d2b0d)';
+      if (btn) { btn.textContent = '🗺 Carte'; btn.style.background = 'rgba(34,197,94,0.15)'; }
+      if (!document.getElementById('fp-sat-overlay')) {
+        const ov = document.createElement('div');
+        ov.id = 'fp-sat-overlay';
+        ov.style.cssText = 'position:absolute;top:8px;right:8px;font-size:10px;padding:3px 8px;background:rgba(34,197,94,0.2);border:1px solid rgba(34,197,94,0.4);border-radius:8px;color:#22c55e;pointer-events:none';
+        ov.textContent = '🛰 Vue satellite simulée';
+        map.appendChild(ov);
+      }
+    }
+  };
   // Competitor add panel — extracted from inline onclick to avoid nested-quote HTML breakage
   window.FP_showAddCompetitor = function() {
     openFloatPanel('Ajouter un concurrent',
@@ -17115,7 +17252,7 @@ function renderLocalSEOOpportunities() {
                 <div style="font-size:10px;color:var(--fp-text-faint)">${c.type} · DA ${c.da}</div>
               </div>
               ${c.status === 'missing'
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="apiAction('POST','/api/local-seo/citations',{name:c&&c.name||''}).then(r=>r&&r.id?showToast('success','Citation ajoutée !'):showToast('info','Configurer DataForSEO pour les citations')).catch(()=>showToast('info','Connectez DataForSEO pour les citations'))">Ajouter</button>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="_fpMQ('Référencer sur '+(c&&c.name?c.name:'annuaire local'),'Local SEO','medium')">Ajouter</button>`
                 : `<span style="font-size:11px;color:#22c55e;font-weight:600">✓ Présent</span>`
               }
             </div>
@@ -31378,7 +31515,7 @@ function renderLocalDominationMaps() {
 
     <!-- CREATE HEATMAP MODAL -->
     <div id="fp-heatmap-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
-      <div class="fp-card" style="width:460px;max-width:92vw;padding:24px">
+      <div class="fp-card" style="width:460px;max-width:92vw;padding:24px;background:var(--fp-bg-card,#1a1f2e);border:1px solid var(--fp-border)">
         <div style="font-size:16px;font-weight:700;margin-bottom:16px">🗺 Nouvelle heatmap de domination</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <input id="hm-name" class="fp-input" placeholder="Nom (ex: Paris Centre — Plomberie)"/>
@@ -31410,30 +31547,6 @@ function renderLocalDominationMaps() {
         </div>
       </div>
     </div>
-    <script>
-    window._mapsTab = window._mapsTab || 'grid';
-    window._showCreateHeatmapModal = function() { document.getElementById('fp-heatmap-modal').style.display='flex'; };
-    window._submitCreateHeatmap = async function() {
-      const name = document.getElementById('hm-name').value.trim();
-      const keyword = document.getElementById('hm-keyword').value.trim();
-      const lat = parseFloat(document.getElementById('hm-lat').value);
-      const lng = parseFloat(document.getElementById('hm-lng').value);
-      const radius = parseFloat(document.getElementById('hm-radius').value);
-      const grid = parseInt(document.getElementById('hm-grid').value, 10);
-      if (!name || !keyword || isNaN(lat) || isNaN(lng)) { showToast('error','Nom, mot-clé, latitude et longitude requis'); return; }
-      showToast('info','Génération de la heatmap en cours…');
-      document.getElementById('fp-heatmap-modal').style.display='none';
-      try {
-        const r = await window.FP_LOCAL_MAPS_API.createHeatmap({ name, keyword, centerLat: lat, centerLng: lng, radiusKm: radius, gridSize: grid });
-        if (r?.ok) {
-          showToast('success','Heatmap générée !');
-          await window.FP_LOCAL_MAPS_API.load();
-          window._mapsTab = 'grid';
-          render(STATE.currentSection);
-        } else showToast('error', r?.error || 'Erreur');
-      } catch(e) { showToast('error', String(e)); }
-    };
-    </script>
   `;
 }
 
@@ -31620,7 +31733,7 @@ function renderLocalSEOReviews() {
 
     <!-- ANALYZE REVIEW MODAL -->
     <div id="fp-review-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center">
-      <div class="fp-card" style="width:460px;max-width:92vw;padding:24px">
+      <div class="fp-card" style="width:460px;max-width:92vw;padding:24px;background:var(--fp-bg-card,#1a1f2e);border:1px solid var(--fp-border)">
         <div style="font-size:16px;font-weight:700;margin-bottom:16px">⭐ Analyser un avis</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <input id="rv-author" class="fp-input" placeholder="Nom de l\'auteur"/>
@@ -31640,26 +31753,6 @@ function renderLocalSEOReviews() {
         </div>
       </div>
     </div>
-    <script>
-    window._showAnalyzeReviewModal = function() { document.getElementById('fp-review-modal').style.display='flex'; };
-    window._submitAnalyzeReview = async function() {
-      const author = document.getElementById('rv-author').value.trim();
-      const rating = parseInt(document.getElementById('rv-rating').value, 10);
-      const text = document.getElementById('rv-text').value.trim();
-      const lang = document.getElementById('rv-lang').value;
-      if (!text) { showToast('error','Texte de l\'avis requis'); return; }
-      showToast('info','Analyse IA en cours…');
-      document.getElementById('fp-review-modal').style.display='none';
-      try {
-        const r = await window.FP_REVIEW_INTEL_API.analyzeReview({ authorName: author, rating, reviewText: text, language: lang });
-        if (r?.ok) {
-          showToast('success','Avis analysé — sentiment: ' + r.analysis?.sentiment);
-          await window.FP_REVIEW_INTEL_API.load();
-          render(STATE.currentSection);
-        } else showToast('error', r?.error || 'Erreur');
-      } catch(e) { showToast('error', String(e)); }
-    };
-    </script>
   `;
 }
 
