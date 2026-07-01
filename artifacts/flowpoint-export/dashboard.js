@@ -654,6 +654,38 @@ async function bindAuditPanelBtns(audit) {
       exportBtn.textContent = '⬇ Exporter PDF';
     });
   }
+  const missionBtn = document.getElementById('audit-panel-mission');
+  if (missionBtn) {
+    missionBtn.addEventListener('click', async () => {
+      const domain = (audit.url || '').replace(/^https?:\/\//, '').split('/')[0];
+      const title = `Optimiser SEO — ${domain}`;
+      const existing = STATE.missions.find(m => m.title.toLowerCase().trim() === title.toLowerCase().trim() && m.status !== 'done');
+      if (existing) {
+        missionBtn.textContent = 'Voir mission →';
+        missionBtn.style.color = '#22c55e';
+        missionBtn.onclick = () => { closeFloatPanel(); navigate('missions'); };
+        showToast('info', 'Mission déjà créée pour cet audit');
+        return;
+      }
+      missionBtn.textContent = 'Création…';
+      missionBtn.disabled = true;
+      try {
+        const m = await apiAction('POST', '/api/missions', { title, category: 'Audits', source: 'audit', auditId: audit.id, status: 'todo', priority: 'high', impact: 'Élevé' });
+        const mission = m || { id: 'ms'+Date.now(), title, category: 'Audits', status: 'todo', priority: 'high' };
+        STATE.missions.unshift(mission);
+        missionBtn.textContent = '✓ Mission créée →';
+        missionBtn.style.color = '#22c55e';
+        missionBtn.style.borderColor = 'rgba(34,197,94,0.3)';
+        missionBtn.disabled = false;
+        missionBtn.onclick = () => { closeFloatPanel(); navigate('missions'); };
+        showToast('success', 'Mission créée depuis l\'audit');
+      } catch(e) {
+        missionBtn.textContent = '+ Mission';
+        missionBtn.disabled = false;
+        showToast('error', 'Erreur lors de la création de la mission');
+      }
+    });
+  }
 }
 
 function markAllAlertsRead() {
@@ -4111,8 +4143,6 @@ function renderMonitors() {
 
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:20px">
       <div style="display:grid;grid-template-columns:repeat(5,minmax(90px,1fr));gap:12px;min-width:430px">
-        ${aiBlock(_monAiMsg, nDown > 0 ? ['Voir les incidents', 'Configurer les alertes'] : nWarn > 0 ? ['Diagnostiquer', 'Configurer alertes'] : monitors.length === 0 ? ['Ajouter un monitor', 'Voir la démo'] : ['Voir les performances', 'Configurer les alertes'])}
-
         ${[
           { l: 'En ligne',       v: `${nUp}/${monitors.length}`, c: '#22c55e',                                        sub: nWarn + ' en alerte' },
           { l: 'DOWN',           v: String(nDown),                  c: nDown > 0 ? '#ef4444' : '#22c55e',             sub: nDown > 0 ? 'Action requise' : 'Tout OK' },
@@ -4300,7 +4330,7 @@ function renderMonitors() {
           <div class="fp-card-title" style="margin-bottom:0">🔌 API & Endpoints</div>
           <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Surveillance des endpoints critiques et webhooks</div>
         </div>
-        ${btn('Ajouter endpoint', 'fp-btn fp-btn-ghost fp-btn-sm', 'plus', 'onclick="showToast(\'info\',\'Ajouter un endpoint API…\')"')}
+        ${btn('Ajouter endpoint', 'fp-btn fp-btn-ghost fp-btn-sm', 'plus', 'id="monitor-add-endpoint-btn"')}
       </div>
       <div style="overflow-x:auto">
         <table class="fp-data-table">
@@ -10696,7 +10726,7 @@ function renderAuditDetailPanel(audit) {
       <div style="display:flex;flex-direction:column;gap:6px">
         ${btn('🔄 Relancer l\'audit','fp-btn fp-btn-primary fp-btn-sm','','id="audit-panel-rerun" style="width:100%"')}
         <div style="display:flex;gap:6px">
-          ${btn('+ Mission','fp-btn fp-btn-ghost fp-btn-sm','','onclick="_fpMQ(\'Optimiser \'+(audit.url||\'\').replace(/^https?:\/\//,\'\'),\'SEO\',\'medium\')" style="flex:1"')}
+          ${btn('+ Mission','fp-btn fp-btn-ghost fp-btn-sm','','id="audit-panel-mission" style="flex:1"')}
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex:1;${isPro?'':'opacity:0.55;cursor:not-allowed'}" onclick="${isPro?"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()":`navigate('billing')`}">
             📄 PDF${isPro?'':' 🔒'}
           </button>
@@ -10769,7 +10799,18 @@ function openMonitorPanel(monitor) {
   `;
   openFloatPanel('Monitor : ' + escHtml(monitor.name), content);
   setTimeout(() => {
-    $('#monitor-panel-test')?.addEventListener('click', () => { if(typeof window.FP_MONITORS_API!=='undefined'){ window.FP_MONITORS_API.ping(monitor.id); } else { showToast('info', 'Test indisponible — rechargez la page pour charger le module monitors'); } });
+    $('#monitor-panel-test')?.addEventListener('click', async () => {
+      showToast('info', 'Ping en cours…');
+      try {
+        const r = await apiAction('POST', `/api/monitors/${monitor.id}/ping`);
+        if (r && r.ok) {
+          const idx = STATE.monitors.findIndex(x => x.id === monitor.id);
+          if (idx >= 0 && r.monitor) STATE.monitors[idx] = { ...STATE.monitors[idx], ...r.monitor };
+          showToast('success', `Ping OK — ${r.responseTime}ms · Statut : ${r.status}`);
+          render();
+        } else { showToast('error', 'Ping échoué — site inaccessible'); }
+      } catch(e) { showToast('error', 'Ping échoué — ' + (e?.message || 'Erreur réseau')); }
+    });
     $('#monitor-panel-delete')?.addEventListener('click', () => {
       STATE.monitors = STATE.monitors.filter(m => m.id !== monitor.id);
       closeFloatPanel();
@@ -10847,7 +10888,15 @@ function setupNewAuditPanel() {
         showToast('success', `Audit lancé pour ${escHtml(url)}`);
         closeFloatPanel();
         if (STATE.route === 'audits') render(); else navigate('audits');
-      } catch(e) { showToast('error', 'Erreur lors du lancement de l\'audit'); }
+      } catch(e) {
+        const msg = e?.message || e?.toString() || '';
+        const detail = msg.includes('rate') ? 'Limite de lancement atteinte — réessayez dans quelques minutes'
+          : msg.includes('url') || msg.includes('URL') ? 'URL invalide — vérifiez le format'
+          : msg.includes('quota') || msg.includes('Quota') ? 'Quota d\'audits atteint pour ce mois'
+          : msg.includes('400') ? 'URL requise — entrez une adresse valide'
+          : 'Erreur lors du lancement de l\'audit — ' + (msg || 'vérifiez la connexion');
+        showToast('error', detail);
+      }
     });
   }, 50);
 }
@@ -11014,6 +11063,47 @@ function setupNewObjectivePanel() {
     });
   }, 50);
 }
+function renderNewEndpointPanel() {
+  return `
+    <div class="fp-form-group">
+      <label class="fp-form-label">Nom de l'endpoint</label>
+      <input class="fp-input" id="nep-name" placeholder="API Contact Form"/>
+    </div>
+    <div class="fp-form-group">
+      <label class="fp-form-label">URL de l'endpoint</label>
+      <input class="fp-input" id="nep-url" placeholder="https://monsite.fr/api/contact"/>
+    </div>
+    <div class="fp-form-group">
+      <label class="fp-form-label">Méthode</label>
+      <select class="fp-select" style="width:100%" id="nep-method">
+        ${['GET','POST','PUT','DELETE','HEAD'].map(m=>`<option>${m}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fp-form-group">
+      <label class="fp-form-label">Email d'alerte</label>
+      <input class="fp-input" id="nep-email" placeholder="alerte@email.com" value="${STATE.me?.email||''}"/>
+    </div>
+    ${btn('Ajouter et surveiller','fp-btn fp-btn-primary','','id="nep-create"')}
+  `;
+}
+function setupNewEndpointPanel() {
+  setTimeout(() => {
+    $('#nep-create')?.addEventListener('click', async () => {
+      const url = $('#nep-url')?.value.trim();
+      const name = $('#nep-name')?.value.trim() || url;
+      if (!url) { showToast('warning', 'Entrez une URL'); return; }
+      try {
+        const res = await apiAction('POST', '/api/monitors', { url, name, alertEmail: $('#nep-email')?.value, type: 'api', method: $('#nep-method')?.value });
+        const m = res || { id: 'm'+Date.now(), name, url, status:'up', uptime:100, latency:0, lastCheck:'À l\'instant', type:'api' };
+        STATE.monitors.push(m);
+        showToast('success', `Endpoint ajouté : ${escHtml(name)}`);
+        closeFloatPanel();
+        if (STATE.route === 'monitors') render();
+      } catch(e) { showToast('error', 'Erreur lors de l\'ajout — ' + (e?.message || '')); }
+    });
+  }, 50);
+}
+
 function renderNewMonitorPanel() {
   return `
     ${[{l:'URL du site',p:'https://monsite.fr',id:'nm-url'},{l:'Nom du monitor',p:'Mon site',id:'nm-name'},{l:'Email d\'alerte',p:'alerte@email.com',id:'nm-email'}].map(f=>`
@@ -12185,13 +12275,26 @@ function bindSectionEvents() {
 
   if (route === 'monitors') {
     $('#monitor-check-all')?.addEventListener('click', async () => {
-      showToast('info', 'Vérification de tous les monitors…');
-      const mons = STATE.monitors || [];
-      if (typeof window.FP_MONITORS_API !== 'undefined') {
-        for (const m of mons) { try { await window.FP_MONITORS_API.ping(m.id); } catch(e) {} }
+      const mons = (STATE.monitors || []).filter(m => m.id);
+      if (!mons.length) { showToast('info', 'Aucun monitor à vérifier'); return; }
+      showToast('info', `Vérification de ${mons.length} monitor${mons.length > 1 ? 's' : ''}…`);
+      let ok = 0, fail = 0;
+      for (const m of mons) {
+        try {
+          const r = await apiAction('POST', `/api/monitors/${m.id}/ping`);
+          if (r && r.ok) {
+            ok++;
+            const idx = STATE.monitors.findIndex(x => x.id === m.id);
+            if (idx >= 0 && r.monitor) STATE.monitors[idx] = { ...STATE.monitors[idx], ...r.monitor };
+          } else { fail++; }
+        } catch(e) { fail++; }
       }
+      showToast(fail === 0 ? 'success' : ok > 0 ? 'warning' : 'error',
+        `Vérification terminée — ${ok} OK${fail > 0 ? ', ' + fail + ' échoué(s)' : ''}`);
+      render();
     });
     $('#monitor-new-btn')?.addEventListener('click', () => { openFloatPanel('Nouveau monitor', renderNewMonitorPanel()); setupNewMonitorPanel(); });
+    $('#monitor-add-endpoint-btn')?.addEventListener('click', () => { openFloatPanel('Ajouter un endpoint API', renderNewEndpointPanel()); setupNewEndpointPanel(); });
 
     // ── Monitor bulk checkboxes ──
     $$('.fp-monitor-cb').forEach(cb => {
@@ -12217,8 +12320,22 @@ function bindSectionEvents() {
         if (e.target.closest('.monitor-ping')) {
           e.stopPropagation();
           const pingId = (e.target.closest('.monitor-ping').dataset.id) || monitor.id;
-          if (typeof window.FP_MONITORS_API !== 'undefined') { window.FP_MONITORS_API.ping(pingId); }
-          else { showToast('success', 'Ping envoyé pour ' + escHtml(monitor.name)); }
+          (async () => {
+            showToast('info', 'Ping en cours…');
+            try {
+              const r = await apiAction('POST', `/api/monitors/${pingId}/ping`);
+              if (r && r.ok) {
+                const idx = STATE.monitors.findIndex(x => x.id === pingId);
+                if (idx >= 0 && r.monitor) STATE.monitors[idx] = { ...STATE.monitors[idx], ...r.monitor };
+                showToast('success', `Ping OK — ${r.responseTime}ms`);
+                render();
+              } else {
+                showToast('error', 'Ping échoué — site inaccessible');
+              }
+            } catch(err) {
+              showToast('error', 'Ping échoué — ' + (err?.message || 'Erreur réseau'));
+            }
+          })();
           return;
         }
         // Delete button
@@ -12235,12 +12352,56 @@ function bindSectionEvents() {
       });
       card.addEventListener('contextmenu', e => {
         showCtxMenu(e, [
-          { key:'test', icon:'refresh', label:'Tester maintenant', action:()=>{ if(typeof window.FP_MONITORS_API!=='undefined'){ window.FP_MONITORS_API.ping(monitor.id); } else { showToast('success', 'Test lancé pour ' + escHtml(monitor.name)); } } },
+          { key:'test', icon:'refresh', label:'Tester maintenant', action:()=>{
+            (async () => {
+              showToast('info', 'Ping en cours…');
+              try {
+                const r = await apiAction('POST', `/api/monitors/${monitor.id}/ping`);
+                if (r && r.ok) {
+                  const idx = STATE.monitors.findIndex(x => x.id === monitor.id);
+                  if (idx >= 0 && r.monitor) STATE.monitors[idx] = { ...STATE.monitors[idx], ...r.monitor };
+                  showToast('success', `Ping OK — ${r.responseTime}ms`);
+                  render();
+                } else { showToast('error', 'Ping échoué'); }
+              } catch(e) { showToast('error', 'Ping échoué — ' + (e?.message || 'Erreur réseau')); }
+            })();
+          } },
           { key:'copy', icon:'copy',    label:'Copier l\'URL',     action:()=>{ navigator.clipboard?.writeText(monitor.url); showToast('success','URL copiée'); } },
           { divider:true, key:'div' },
           { key:'del',  icon:'trash',   label:'Supprimer',          action:async()=>{ try { await apiAction('DELETE',`/api/monitors/${monitor.id}`); } catch(e){} STATE.monitors=STATE.monitors.filter(m=>m.id!==monitor.id); showToast('error','Monitor supprimé'); render(); }, danger:true },
         ]);
       });
+    });
+    $('#maint-new-btn')?.addEventListener('click', () => {
+      openFloatPanel('Nouvelle fenêtre de maintenance', `
+        <div style="padding:4px">
+          <div class="fp-form-group">
+            <label class="fp-form-label">Nom</label>
+            <input class="fp-input" id="mw-name" placeholder="Déploiement hebdo"/>
+          </div>
+          <div class="fp-form-group">
+            <label class="fp-form-label">Planification (ex: Dimanche 02:00–04:00)</label>
+            <input class="fp-input" id="mw-sched" placeholder="Dimanche 02:00–04:00"/>
+          </div>
+          <div class="fp-form-group">
+            <label class="fp-form-label">Sites concernés</label>
+            <select class="fp-select" id="mw-sites" style="width:100%">
+              <option value="all">Tous les sites</option>
+              ${(STATE.monitors||[]).map(m=>`<option value="${escHtml(m.id)}">${escHtml(m.name||m.url||'Monitor')}</option>`).join('')}
+            </select>
+          </div>
+          <button class="fp-btn fp-btn-primary" id="mw-create-save" style="width:100%">Créer la fenêtre</button>
+        </div>
+      `);
+      setTimeout(() => {
+        document.getElementById('mw-create-save')?.addEventListener('click', () => {
+          const nm = document.getElementById('mw-name')?.value?.trim();
+          const sc = document.getElementById('mw-sched')?.value?.trim();
+          if (!nm || !sc) { showToast('warning', 'Remplissez tous les champs'); return; }
+          showToast('success', `Fenêtre «${nm}» créée`);
+          closeFloatPanel();
+        });
+      }, 50);
     });
     $$('.monitor-cfg-save').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -16049,7 +16210,7 @@ function renderMonitorsPerformance() {
                 <td style="text-align:center">
                   <span style="font-size:16px;font-weight:800;color:${c.score >= 80 ? '#22c55e' : c.score >= 50 ? '#f59e0b' : '#ef4444'}">${c.score}</span>
                 </td>
-                <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('audits')">Optimiser</button></td>
+                <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(b){var site=b.closest('tr')?.querySelector('td')?.textContent?.trim()||'Site';var title='Optimiser CWV — '+site;var dup=STATE.missions.find(function(m){return m.title.toLowerCase()===title.toLowerCase()&&m.status!=='done';});if(dup){showToast('info','Mission déjà créée');b.textContent='Voir →';b.onclick=function(){navigate('missions');};return;}b.textContent='Création…';b.disabled=true;apiAction('POST','/api/missions',{title:title,category:'Performance',status:'todo',priority:'high',impact:'Élevé'}).then(function(r){var m=r||{id:'ms'+Date.now(),title:title,category:'Performance',status:'todo'};STATE.missions.unshift(m);b.textContent='✓ Créée';b.style.color='#22c55e';b.disabled=false;b.onclick=function(){navigate('missions');};showToast('success','Mission créée');}).catch(function(){b.textContent='Optimiser';b.disabled=false;});})(this)">Optimiser</button></td>
               </tr>
             `).join('')}
           </tbody>
@@ -16120,9 +16281,14 @@ function renderMonitorsPerformance() {
             `;
           }).join('')}
         </div>
+        ${cwv.length > 0 ? `
         <div style="margin-top:14px;padding:8px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:8px;font-size:11px;color:var(--fp-text-soft)">
-          ⚠ Tous les sites ont un score mobile inférieur au desktop. Le mobile représente 63% du trafic Google.
-        </div>
+          ⚠ Scores mobiles estimés (basés sur la latence monitors + score audit). Le mobile représente généralement 60–70% du trafic Google.
+          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">Valeur <em>estimée</em> — connectez PageSpeed Insights pour les données réelles.</div>
+        </div>` : `
+        <div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:12px">
+          Ajoutez des monitors et lancez des audits pour voir la comparaison Mobile / Desktop.
+        </div>`}
       </div>
     </div>
   `;
@@ -16318,10 +16484,10 @@ function renderMonitorsConfig() {
   ];
   const channels = [
     { icon: '📧', name: 'Email',    active: true,    detail: `${STATE.monitors.filter(m => m.alertEmail).length} monitors configurés`, color: '#22c55e', gate: null },
-    { icon: '💬', name: 'Slack',    active: isPro,   detail: isPro ? '#flowpoint-alerts actif' : 'Disponible Pro+', color: isPro ? '#22c55e' : '#64748b', gate: 'Pro' },
-    { icon: '🎮', name: 'Discord',  active: isPro,   detail: isPro ? 'Bot Flowpoint connecté' : 'Disponible Pro+', color: isPro ? '#8b5cf6' : '#64748b', gate: 'Pro' },
+    { icon: '💬', name: 'Slack',    active: isPro,   detail: isPro ? '#flowpoint-alerts actif' : 'Disponible à partir de Pro', color: isPro ? '#22c55e' : '#64748b', gate: 'Pro' },
+    { icon: '🎮', name: 'Discord',  active: isPro,   detail: isPro ? 'Bot Flowpoint connecté' : 'Disponible à partir de Pro', color: isPro ? '#8b5cf6' : '#64748b', gate: 'Pro' },
     { icon: '📱', name: 'SMS',      active: isUltra, detail: isUltra ? ((STATE.settings&&STATE.settings.smsPhone)||'Non configuré') : 'Disponible Ultra', color: isUltra ? '#22c55e' : '#64748b', gate: 'Ultra' },
-    { icon: '🔗', name: 'Webhook',  active: isPro,   detail: isPro ? ((STATE.settings&&STATE.settings.webhookUrl)||'URL non configurée') : 'Disponible Pro+', color: isPro ? '#2563EB' : '#64748b', gate: 'Pro' },
+    { icon: '🔗', name: 'Webhook',  active: isPro,   detail: isPro ? ((STATE.settings&&STATE.settings.webhookUrl)||'URL non configurée') : 'Disponible à partir de Pro', color: isPro ? '#2563EB' : '#64748b', gate: 'Pro' },
     { icon: '📢', name: 'PagerDuty',active: isUltra, detail: isUltra ? 'Intégration active' : 'Disponible Ultra', color: isUltra ? '#f59e0b' : '#64748b', gate: 'Ultra' },
   ];
   const windows = [
@@ -16349,7 +16515,7 @@ function renderMonitorsConfig() {
             <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">
               ${p.checks.map(c => `<span style="font-size:9.5px;background:${p.color}15;color:${p.color};border-radius:4px;padding:1px 6px">${c}</span>`).join('')}
             </div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;${p.pro && !isPro ? 'opacity:0.5;cursor:not-allowed' : ''}" onclick="${p.pro && !isPro ? "navigate('billing')" : `showToast('success','Preset «${p.name}» appliqué !')`}">
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;${p.pro && !isPro ? 'opacity:0.5;cursor:not-allowed' : ''}" onclick="${p.pro && !isPro ? "navigate('billing')" : `(async function(btn){btn.disabled=true;btn.textContent='Application…';var pname=${JSON.stringify(p.name)};var pchecks=${JSON.stringify(p.checks)};var created=0;for(var ci=0;ci<pchecks.length;ci++){var ck=pchecks[ci];var mons=STATE.monitors||[];var baseUrl=(mons.length>0?mons[0].url:'https://monsite.fr');var monUrl=baseUrl;var monName=pname+' — '+ck;var dup=mons.find(function(m){return m.name===monName;});if(dup)continue;try{var r=await apiAction('POST','/api/monitors',{url:monUrl,name:monName,alertEmail:STATE.me?.email||''});var m=r||{id:'m'+Date.now()+ci,name:monName,url:monUrl,status:'up',uptime:100,latency:0,lastCheck:'À l instant'};STATE.monitors.push(m);created++;}catch(e){}}if(created>0){showToast('success','Preset «'+pname+'» appliqué — '+created+' monitor(s) créé(s)');render();}else{showToast('info','Preset «'+pname+'» — monitors déjà configurés');}btn.textContent='Appliqué ✓';btn.disabled=false;})(this)`}">
               ${p.pro && !isPro ? '🔒 Activer Pro' : 'Appliquer →'}
             </button>
           </div>
@@ -16372,7 +16538,7 @@ function renderMonitorsConfig() {
               <div style="width:8px;height:8px;border-radius:50%;background:${ch.active ? ch.color : '#64748b'};${ch.active ? 'box-shadow:0 0 6px ' + ch.color + '60' : ''}"></div>
             </div>
             <div style="font-size:10.5px;color:var(--fp-text-muted);margin-bottom:10px">${ch.detail}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px" onclick="${!ch.active ? "navigate('billing')" : `showToast('info','Configuration ${ch.name}…')`}">
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px" onclick="${!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning','Email invalide');return;}try{await apiAction('PATCH','/api/me/prefs',{alertEmail:v});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error','Erreur lors de la sauvegarde');}});},50)" : `showToast('info','Configuration ${ch.name} disponible selon votre plan')`}">
               ${!ch.active ? `🔒 ${ch.gate} requis` : 'Configurer'}
             </button>
           </div>
@@ -16415,7 +16581,7 @@ function renderMonitorsConfig() {
           <div class="fp-card-title" style="margin-bottom:0">🛠 Fenêtres de maintenance</div>
           <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Silencez les alertes pendant les déploiements planifiés</div>
         </div>
-        ${btn('+ Nouvelle fenêtre', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="showToast(\'info\',\'Configurer une fenêtre de maintenance…\')"')}
+        ${btn('+ Nouvelle fenêtre', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'id="maint-new-btn"')}
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
         ${windows.map(w => `
@@ -16429,7 +16595,7 @@ function renderMonitorsConfig() {
               <div style="font-size:11px;font-weight:600;color:var(--fp-accent)">${w.next}</div>
             </div>
             ${badge('Actif', '#22c55e')}
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" data-wname="${escHtml(w.name)}" data-wsched="${escHtml(w.schedule)}" onclick="openFloatPanel('Modifier la fenêtre de maintenance','<div style=\'padding:8px\'><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Nom</label><input class=\'fp-input\' value=\''+escHtml(w.name)+'\'/></div><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Planification</label><input class=\'fp-input\' value=\''+escHtml(w.schedule)+'\'/></div></div>')">Modifier</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" data-wname="${escHtml(w.name)}" data-wsched="${escHtml(w.schedule)}" onclick="(function(){var wn=${JSON.stringify(w.name)};var ws=${JSON.stringify(w.schedule)};openFloatPanel('Modifier la fenêtre de maintenance','<div style=\'padding:4px\'><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Nom</label><input class=\'fp-input\' id=\'mw-edit-name\' value=\''+escHtml(wn)+'\'/></div><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Planification (ex: Dimanche 02:00–04:00)</label><input class=\'fp-input\' id=\'mw-edit-sched\' value=\''+escHtml(ws)+'\'/></div><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Sites concernés</label><select class=\'fp-select\' id=\'mw-edit-sites\' style=\'width:100%\'><option value=\'all\' selected>Tous les sites</option>'+STATE.monitors.map(function(m){return\'<option value=\\\'\'+escHtml(m.id)+\'\\\'>\'+ escHtml(m.name||m.url||\'Monitor\')+\'</option>\';}).join(\'\')+'</select></div><button class=\'fp-btn fp-btn-primary\' id=\'mw-edit-save\' style=\'width:100%\'>Sauvegarder</button></div>');setTimeout(function(){document.getElementById(\'mw-edit-save\')?.addEventListener(\'click\',function(){var nm=document.getElementById(\'mw-edit-name\')?.value?.trim();var sc=document.getElementById(\'mw-edit-sched\')?.value?.trim();if(!nm||!sc){showToast(\'warning\',\'Remplissez tous les champs\');return;}showToast(\'success\',\'Fenêtre de maintenance mise à jour\');closeFloatPanel();});},50);})()">Modifier</button>
           </div>
         `).join('')}
       </div>
@@ -19637,7 +19803,7 @@ function renderConversion() {
                   <td style="text-align:center;font-weight:700;color:${c.mob >= 1.5 ? "#22c55e" : c.mob >= 0.8 ? "#f59e0b" : "#ef4444"}">${c.mob}%</td>
                   <td style="text-align:center;font-size:11px;color:var(--fp-text-muted)">${escHtml(c.pos)}</td>
                   <td style="text-align:center">${badge(c.impact, ic)}</td>
-                  <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('audits')">Optimiser</button></td>
+                  <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(b){var site=b.closest('tr')?.querySelector('td')?.textContent?.trim()||'Page';var title='Optimiser CRO — '+site;var dup=STATE.missions.find(function(m){return m.title.toLowerCase()===title.toLowerCase()&&m.status!=='done';});if(dup){showToast('info','Mission déjà créée');b.textContent='Voir →';b.onclick=function(){navigate('missions');};return;}b.textContent='Création…';b.disabled=true;apiAction('POST','/api/missions',{title:title,category:'Performance',status:'todo',priority:'high',impact:'Élevé'}).then(function(r){var m=r||{id:'ms'+Date.now(),title:title,category:'Performance',status:'todo'};STATE.missions.unshift(m);b.textContent='✓ Créée';b.style.color='#22c55e';b.disabled=false;b.onclick=function(){navigate('missions');};showToast('success','Mission créée');}).catch(function(){b.textContent='Optimiser';b.disabled=false;});})(this)">Optimiser</button></td>
                 </tr>`;
               }).join("")}
             </tbody>
@@ -23775,7 +23941,7 @@ function renderMonitorsSLA() {
         </div>
         <div style="display:flex;gap:8px">
           ${btn('Copier lien', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="showToast(\'success\',\'Lien copié !\')"')}
-          ${btn('Voir la page', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', 'onclick="showToast(\'info\',\'Ouverture de la page statut…\')"')}
+          ${btn('Voir la page', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', 'onclick="(function(){var u=(STATE.settings&&STATE.settings.statusPageUrl)||\'\';;if(u){window.open(u,\'_blank\');}else{openFloatPanel(\'Activer la page statut publique\',\'<div style=\\\"padding:4px\\\"><div class=\\\"fp-form-group\\\"><label class=\\\"fp-form-label\\\">URL de votre page de statut</label><input class=\\\"fp-input\\\" id=\\\"status-page-url-input\\\" placeholder=\\\"https://status.monsite.fr\\\"/></div><p style=\\\"font-size:11px;color:var(--fp-text-muted)\\\">Renseignez l\\\'URL où vos visiteurs pourront consulter le statut de vos services en temps réel.</p><button class=\\\"fp-btn fp-btn-primary\\\" id=\\\"status-page-save-btn\\\" style=\\\"width:100%\\\">Activer la page statut</button></div>\');setTimeout(function(){document.getElementById(\\\"status-page-save-btn\\\")?.addEventListener(\\\"click\\\",function(){var v=document.getElementById(\\\"status-page-url-input\\\")?.value?.trim();if(!v){showToast(\\\"warning\\\",\\\"Entrez une URL\\\");return;}STATE.settings=STATE.settings||{};STATE.settings.statusPageUrl=v;localStorage.setItem(\\\"fp-settings\\\",JSON.stringify(STATE.settings));apiAction(\\\"PATCH\\\",\\\"/api/me/prefs\\\",{statusPageUrl:v}).catch(function(){});showToast(\\\"success\\\",\\\"Page statut configurée\\\");closeFloatPanel();render();});},50);}})();"')}
         </div>
       </div>
     </div>
