@@ -407,6 +407,28 @@ function downloadReportPdf(reportId, name) {
   document.body.removeChild(link);
 }
 
+// ── Action navigation helper — maps insight action text → correct page ────────
+function fpInsightAction(action) {
+  const a = (action || '').toLowerCase();
+  if (a.includes('corriger') || a.includes('formulaire') || a.includes('audit'))          { navigate('audits'); }
+  else if (a.includes('avis') || a.includes('réputation') || a.includes('note') || a.includes('répondre')) { navigate('local-seo'); setTimeout(() => navigateSub('reviews'), 50); }
+  else if (a.includes('local seo') || a.includes('pages locales') || a.includes('gbp') || a.includes('renforcer') || a.includes('fiche')) { navigate('local-seo'); }
+  else if (a.includes('mission'))                                                           { navigate('missions'); }
+  else if (a.includes('monitor') || a.includes('ssl') || a.includes('renouveler') || a.includes('sla') || a.includes('uptime') || a.includes('certificat')) { navigate('monitors'); }
+  else if (a.includes('rapport') || a.includes('partager') || a.includes('sla'))           { navigate('reports'); }
+  else if (a.includes('concurrent') || a.includes('analyser le concurrent'))               { navigate('competitor'); }
+  else if (a.includes('mots-clés') || a.includes('croissance') || a.includes('référents') || a.includes('backlink') || a.includes('backlinks')) { navigate('growth'); }
+  else if (a.includes('conversion') || a.includes('funnel') || a.includes('rebond'))       { navigate('conversion'); }
+  else if (a.includes('trafic') || a.includes('analytics') || a.includes('ga4'))           { navigate('analytics'); }
+  else {
+    navigate('ai');
+    setTimeout(() => {
+      const inp = document.getElementById('fp-ai-input');
+      if (inp) { inp.value = action; inp.dispatchEvent(new Event('input')); document.getElementById('ai-send')?.click(); }
+    }, 200);
+  }
+}
+
 function exportActivityCsv() {
   const rows = (STATE.activity || (PREVIEW_MODE ? ACTIVITY_FEED : []) || []).map(item =>
     `"${(item.label || item.title || '').replace(/"/g,'""')}","${(item.type||'')}","${(item.time||item.date||'')}"`
@@ -2857,11 +2879,25 @@ function bindMsgPanel(dd) {
   const fileInput = dd.querySelector('#fp-msg-file');
   dd.querySelector('#fp-msg-upload')?.addEventListener('click', e => { e.stopPropagation(); fileInput?.click(); });
   fileInput?.addEventListener('change', e => {
-    const f = e.target.files[0]; if (f) { STATE.msgAttachment = f.name; dd.innerHTML = renderMsgDropdown(); bindMsgPanel(dd); }
+    const f = e.target.files[0];
+    if (f) {
+      const prevText = dd.querySelector('#fp-msg-input')?.value || '';
+      STATE.msgAttachment = f.name;
+      dd.innerHTML = renderMsgDropdown();
+      bindMsgPanel(dd);
+      const newInp = dd.querySelector('#fp-msg-input');
+      if (newInp && prevText) newInp.value = prevText;
+    }
   });
 
   dd.querySelector('#fp-msg-rm-attach')?.addEventListener('click', e => {
-    e.stopPropagation(); STATE.msgAttachment = null; dd.innerHTML = renderMsgDropdown(); bindMsgPanel(dd);
+    e.stopPropagation();
+    const prevText = dd.querySelector('#fp-msg-input')?.value || '';
+    STATE.msgAttachment = null;
+    dd.innerHTML = renderMsgDropdown();
+    bindMsgPanel(dd);
+    const newInp = dd.querySelector('#fp-msg-input');
+    if (newInp && prevText) newInp.value = prevText;
   });
 
   const input = dd.querySelector('#fp-msg-input');
@@ -3274,10 +3310,10 @@ function renderOverview() {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <div class="fp-view-toggle" id="chart-range-toggle">
-            <button class="fp-view-toggle-btn" data-range="1">Auj.</button>
-            <button class="fp-view-toggle-btn" data-range="3">3j</button>
-            <button class="fp-view-toggle-btn active" data-range="7">7j</button>
-            <button class="fp-view-toggle-btn" data-range="30">30j</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||7)===1?' active':''}" data-range="1">Auj.</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||7)===3?' active':''}" data-range="3">3j</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||7)===7?' active':''}" data-range="7">7j</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||7)===30?' active':''}" data-range="30">30j</button>
           </div>
           ${btn('Actualiser','fp-btn fp-btn-ghost fp-btn-sm','refresh','id="refresh-btn"')}
           ${btn('Exporter','fp-btn fp-btn-ghost fp-btn-sm','download','id="export-btn"')}
@@ -3347,7 +3383,7 @@ function renderOverview() {
           <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">1. Lancer un audit SEO</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Analysez votre premier site et obtenez un score instantané</div>
         </div>
-        <div onclick="navigate('monitors');$('#monitor-new-btn')?.click()" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
+        <div onclick="navigate('monitors');setTimeout(function(){var b=$('#monitor-new-btn');if(b)b.click();else{openFloatPanel('Nouveau monitor',renderNewMonitorPanel());setupNewMonitorPanel();}},350)" style="padding:14px;background:var(--fp-inner-card);border-radius:12px;cursor:pointer;border:1px solid var(--fp-border);transition:border 0.15s" onmouseover="this.style.borderColor='rgba(37,99,235,0.4)'" onmouseout="this.style.borderColor='var(--fp-border)'">
           <div style="font-size:20px;margin-bottom:8px">📡</div>
           <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">2. Ajouter un monitor</div>
           <div style="font-size:11px;color:var(--fp-text-muted)">Surveillez la disponibilité de vos sites 24/7</div>
@@ -5859,7 +5895,7 @@ function renderReports() {
                   ${badge(priL[ins.pri], priC[ins.pri])}
                   ${badge(ins.cat, '#475569')}
                 </div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0" onclick="showToast('info','${escHtml(ins.action)}…')">${escHtml(ins.action)}</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0" onclick="fpInsightAction('${escHtml(ins.action)}')">${escHtml(ins.action)}</button>
               </div>
               <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(ins.title)}</div>
               <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(ins.body)}</div>
@@ -7110,12 +7146,16 @@ function renderBilling() {
 
       <!-- CATEGORY FILTER -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-        ${cats.map(c => `<button onclick="showToast('info','Filtre: ${c}')" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:20px;border:1px solid var(--fp-border);background:transparent;color:var(--fp-text-muted);cursor:pointer">${escHtml(c)}</button>`).join('')}
+        ${cats.map(c => `<button onclick="STATE.addonsFilter='${c}';render()" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:20px;border:1px solid ${(STATE.addonsFilter||'Tous')===c?'var(--fp-accent)':'var(--fp-border)'};background:${(STATE.addonsFilter||'Tous')===c?'rgba(37,99,235,0.12)':'transparent'};color:${(STATE.addonsFilter||'Tous')===c?'var(--fp-accent)':'var(--fp-text-muted)'};cursor:pointer">${escHtml(c)}</button>`).join('')}
       </div>
 
       <!-- ADD-ONS GRID -->
-      <div class="fp-addon-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
-        ${allAddons.map((a, _i) => {
+      ${(()=>{
+        const _af = STATE.addonsFilter || 'Tous';
+        const _visibleAddons = _af === 'Tous' ? allAddons : allAddons.filter(a => a.cat === _af);
+        if (!_visibleAddons.length) return `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucun add-on dans cette catégorie.</div>`;
+        return `<div class="fp-addon-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+        ${_visibleAddons.map((a, _i) => {
           const _rc = ['#f59e0b','#2563EB','#22c55e','#ef4444'][Math.floor(_i / 4) % 4];
           const inc = isIncluded(a);
           const cardAccent = _rc;
@@ -7151,7 +7191,8 @@ function renderBilling() {
             </div>
           </div>`;
         }).join('')}
-      </div>
+      </div>`;
+      })()}
     `;
   }
 
@@ -10790,6 +10831,13 @@ function setupNewMissionPanel() {
     $('#nm2-create')?.addEventListener('click', async () => {
       const title = $('#nm2-title')?.value.trim();
       if (!title) { showToast('warning','Entrez un titre'); return; }
+      const dupli = STATE.missions.find(m => m.title.toLowerCase().trim() === title.toLowerCase().trim() && m.status !== 'done');
+      if (dupli) {
+        showToast('warning', 'Une mission avec ce titre existe déjà');
+        closeFloatPanel();
+        navigate('missions');
+        return;
+      }
       const m = { id:'ms'+Date.now(), title, category:$('#nm2-cat')?.value||'Audits', impact:$('#nm2-impact')?.value||'Élevé', status:'todo', date:$('#nm2-date')?.value||new Date().toISOString().slice(0,10) };
       STATE.missions.unshift(m);
       saveMissions();
@@ -11029,7 +11077,6 @@ function setupNewReportPanel() {
       const auditId = $('#nr-audit')?.value;
       const format = document.querySelector('input[name="nr-format"]:checked')?.value || 'PDF';
       if (!name) { showToast('warning','Entrez un nom pour le rapport'); return; }
-      if (!auditId) { showToast('warning','Sélectionnez un audit'); return; }
       try {
         const whiteLabel    = wlOn();
         const includeNotes  = notesOn();
@@ -11727,9 +11774,8 @@ function bindSectionEvents() {
       else showToast('warning', 'Aucune mission à reporter');
     });
     $$('#chart-range-toggle .fp-view-toggle-btn').forEach(b => b.addEventListener('click', function() {
-      $$('#chart-range-toggle .fp-view-toggle-btn').forEach(x => x.classList.remove('active'));
-      this.classList.add('active');
-      showToast('info',`Données sur ${this.dataset.range} jours`);
+      STATE.overviewRange = parseInt(this.dataset.range) || 7;
+      render();
     }));
   }
 
@@ -14542,23 +14588,30 @@ function renderOverviewInsights() {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <div style="font-size:13px;font-weight:700;color:var(--fp-text)">${insights.length} insights détectés ce mois</div>
       <div style="display:flex;gap:6px">
-        ${['Tous','Critiques','Opportunités'].map((f,i) => `<button class="fp-filter-tab${i===0?' active':''}" onclick="showToast('info','Filtre : ${f}')">${f}</button>`).join('')}
+        ${['Tous','Critiques','Opportunités'].map(f => `<button class="fp-filter-tab${(STATE.overviewInsightFilter||'Tous')===f?' active':''}" onclick="STATE.overviewInsightFilter='${f}';render()">${f}</button>`).join('')}
       </div>
     </div>
     <div class="fp-grid-2">
-      ${insights.map(i => {
-        const typeColor = i.type==='success'?'var(--fp-success)':i.type==='warning'?'var(--fp-danger)':i.type==='purple'?'#8b5cf6':'var(--fp-accent)';
-        const typeBg = i.type==='success'?'rgba(34,197,94,0.1)':i.type==='warning'?'rgba(239,68,68,0.08)':i.type==='purple'?'rgba(139,92,246,0.08)':'rgba(37,99,235,0.08)';
-        return `<div class="fp-insight-card">
-          <div class="fp-insight-card-head">
-            ${insightIcon(i.type)}
-            <span style="color:${typeColor};background:${typeBg};padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700">${i.impact}</span>
-          </div>
-          <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:6px">${i.title}</div>
-          <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px">${i.desc}</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','${i.action}…')" style="font-size:11px">${i.action} →</button>
-        </div>`;
-      }).join('')}
+      ${(()=>{
+        const f = STATE.overviewInsightFilter || 'Tous';
+        const filtered = f === 'Critiques'    ? insights.filter(i => i.type === 'warning' || i.impact === 'Critique')
+                        : f === 'Opportunités' ? insights.filter(i => i.type !== 'warning' && i.impact !== 'Critique')
+                        : insights;
+        if (!filtered.length) return `<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucun insight dans cette catégorie.</div>`;
+        return filtered.map(i => {
+          const typeColor = i.type==='success'?'var(--fp-success)':i.type==='warning'?'var(--fp-danger)':i.type==='purple'?'#8b5cf6':'var(--fp-accent)';
+          const typeBg = i.type==='success'?'rgba(34,197,94,0.1)':i.type==='warning'?'rgba(239,68,68,0.08)':i.type==='purple'?'rgba(139,92,246,0.08)':'rgba(37,99,235,0.08)';
+          return `<div class="fp-insight-card">
+            <div class="fp-insight-card-head">
+              ${insightIcon(i.type)}
+              <span style="color:${typeColor};background:${typeBg};padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700">${i.impact}</span>
+            </div>
+            <div style="font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:6px">${i.title}</div>
+            <div style="font-size:12px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:10px">${i.desc}</div>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpInsightAction('${escHtml(i.action)}')" style="font-size:11px">${i.action} →</button>
+          </div>`;
+        }).join('');
+      })()}
     </div>
   `;
 }
@@ -14763,7 +14816,7 @@ function renderOverviewChecklist() {
           <div class="fp-progress-track" style="height:3px;margin-bottom:12px"><div class="fp-progress-fill" style="width:${catPct}%;background:${cat.color}"></div></div>
           <div style="display:flex;flex-direction:column;gap:5px">
             ${cat.items.map(item => `
-              <div style="display:flex;align-items:center;gap:8px;padding:6px 0">
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;border-radius:6px;transition:background 0.1s" onclick="(function(id,done){try{var s=JSON.parse(localStorage.getItem('fp_checklist_extra')||'{}');s[id]=!done;localStorage.setItem('fp_checklist_extra',JSON.stringify(s));}catch(e){}render()})(${JSON.stringify(item.id)},${item.done})" title="${item.done?'Coché — cliquer pour décocher':'Cliquer pour cocher'}">
                 <div style="width:16px;height:16px;border-radius:4px;border:2px solid ${item.done?cat.color:'var(--fp-border)'};background:${item.done?cat.color+'20':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   ${item.done?`<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${cat.color}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`:''}
                 </div>
@@ -14897,16 +14950,22 @@ function renderMissionsAI() {
     )}
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      ${cats.map((c,i) => `<button class="fp-filter-tab${i===0?' active':''}" onclick="showToast('info','Filtre : ${c}')">${c}</button>`).join('')}
+      ${cats.map(c => `<button class="fp-filter-tab${(STATE.aiMissionsFilter||'Tous')===c?' active':''}" onclick="STATE.aiMissionsFilter='${c}';render()">${c}</button>`).join('')}
       <div style="margin-left:auto;display:flex;gap:8px">
-        ${btn('Tout créer','fp-btn fp-btn-primary fp-btn-sm','zap','onclick="showToast(\'success\',\'12 missions créées !\')"')}
+        ${btn('Tout créer','fp-btn fp-btn-primary fp-btn-sm','zap','onclick="(function(){var toCreate=window._aiMissionsFiltered||[];var created=0;(function next(){if(!toCreate.length){if(created>0){showToast(\'success\',created+\' missions créées !\');navigate(\'missions\');}else showToast(\'warning\',\'Aucune mission à créer\');return;}var m=toCreate.shift();var isDup=STATE.missions.find(x=>x.title.toLowerCase()===m.title.toLowerCase()&&x.status!==\'done\');if(isDup){next();return;}apiAction(\'POST\',\'/api/missions\',{title:m.title,source:\'ai\',status:\'todo\',priority:\'high\',category:m.cat}).then(r=>{if(r&&r.id)STATE.missions.unshift(r);else STATE.missions.unshift({id:\'ms\'+Date.now(),title:m.title,source:\'ai\',status:\'todo\',category:m.cat});created++;next();}).catch(()=>{created++;next();});})(  );})(  )"')}
+
         ${btn('Regénérer','fp-btn fp-btn-ghost fp-btn-sm','refresh-cw','onclick="navigate(\'audits\')"')}
       </div>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:10px">
-      ${aiMissions.map((m, i) => `
-        <div class="fp-opp-card">
+    ${(()=>{
+      const _catF = STATE.aiMissionsFilter || 'Tous';
+      const _visibleMissions = _catF === 'Tous' ? aiMissions : aiMissions.filter(m => m.cat === _catF);
+      window._aiMissionsFiltered = _visibleMissions;
+      if (!_visibleMissions.length) return `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucune mission pour cette catégorie.</div>`;
+      return `<div style="display:flex;flex-direction:column;gap:10px">
+      ${_visibleMissions.map((m, i) => `
+        <div class="fp-opp-card" data-mission-title="${escHtml(m.title)}">
           <div class="fp-opp-icon" style="background:${m.color}18;border:1px solid ${m.color}28">
             <span style="font-size:13px;font-weight:800;color:${m.color}">${i+1}</span>
           </div>
@@ -14922,11 +14981,12 @@ function renderMissionsAI() {
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="font-size:12px;font-weight:700;color:#22c55e;white-space:nowrap">${escHtml(m.gain)}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(btn){var t=btn.closest('[data-mission-title]');var title=t?t.dataset.missionTitle:'Mission IA';apiAction('POST','/api/missions',{title:title,source:'ai',status:'todo',priority:'high'}).then(r=>{if(r&&r.id){showToast('success','Mission créée !');navigate('missions');}else showToast('error','Erreur création mission');}).catch(()=>showToast('error','Erreur création mission'));})(this)">+ Créer</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(btn){var t=btn.closest('[data-mission-title]');var title=t?t.dataset.missionTitle:'Mission IA';var isDup=STATE.missions.find(function(x){return x.title.toLowerCase()===title.toLowerCase()&&x.status!=='done';});if(isDup){showToast('warning','Mission déjà existante');navigate('missions');return;}apiAction('POST','/api/missions',{title:title,source:'ai',status:'todo',priority:'high'}).then(function(r){if(r&&r.id){STATE.missions.unshift(r);showToast('success','Mission créée !');navigate('missions');}else showToast('error','Erreur création mission');}).catch(function(){showToast('error','Erreur création mission');});})(this)">+ Créer</button>
           </div>
         </div>
       `).join('')}
-    </div>
+      </div>`;
+    })()}
 
     <div class="fp-card" style="margin-top:16px;background:rgba(37,99,235,0.04);border-color:rgba(37,99,235,0.18)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
@@ -22176,9 +22236,9 @@ function renderDataExplorer() {
                 </div>
                 <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(ins.title)}</div>
                 <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(ins.body)}</div>
-                <button class="fp-insight-row-btn fp-btn fp-btn-ghost fp-btn-sm" style="white-space:nowrap;margin-top:8px" onclick="showToast('info','${escHtml(ins.action)}…')">${escHtml(ins.action)}</button>
+                <button class="fp-insight-row-btn fp-btn fp-btn-ghost fp-btn-sm" style="white-space:nowrap;margin-top:8px" onclick="fpInsightAction('${escHtml(ins.action)}')">${escHtml(ins.action)}</button>
               </div>
-              <button class="fp-insight-row-btn-desk fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0;white-space:nowrap" onclick="showToast('info','${escHtml(ins.action)}…')">${escHtml(ins.action)}</button>
+              <button class="fp-insight-row-btn-desk fp-btn fp-btn-ghost fp-btn-sm" style="flex-shrink:0;white-space:nowrap" onclick="fpInsightAction('${escHtml(ins.action)}')">${escHtml(ins.action)}</button>
             </div>
           `).join('')}
         </div>
@@ -28608,7 +28668,7 @@ if (typeof window.FP_BILLING_API !== 'undefined' && window.FP_BILLING_API) {
 window.FP_AUTH = {
   async loginWithGoogle() {
     try {
-      const d = await apiFetch('/api/auth/google/login');
+      const d = await apiFetch('/api/google/connect');
       if (d?.url) window.location.href = d.url;
     } catch(e) { showToast('error','Google OAuth non configuré'); }
   },
@@ -29047,7 +29107,7 @@ window.FP_GBP_API = {
 
   async openConnect() {
     try {
-      const d = await apiFetch('/api/auth/google/login');
+      const d = await apiFetch('/api/google/connect');
       if (d?.url) window.location.href = d.url;
       else showToast('error', 'Google OAuth non configuré');
     } catch(e) { showToast('error', 'Impossible de démarrer Google OAuth'); }
@@ -29137,7 +29197,7 @@ window.FP_GA4_API = (function() {
 
     async connectGoogle() {
       try {
-        const d = await apiFetch('/api/auth/google/login');
+        const d = await apiFetch('/api/google/connect');
         if (d?.url) window.location.href = d.url;
         else showToast('error', 'Google OAuth non configuré — vérifiez les variables d\'environnement');
       } catch(e) { showToast('error', 'Impossible de démarrer Google OAuth'); }
@@ -29292,7 +29352,7 @@ window.FP_GSC_API = {
 
   async openConnect() {
     try {
-      const d = await apiFetch('/api/auth/google/login');
+      const d = await apiFetch('/api/google/connect');
       if (d?.url) {
         showToast('info', 'Redirection vers Google OAuth…');
         window.location.href = d.url;
