@@ -51,6 +51,7 @@ import diagnosticsRouter from "./diagnostics.js";
 import adminRouter from "./admin.js";
 import locationRouter from "./location.js";
 import publicBillingRouter from "./public-billing.js";
+import growthObjectivesRouter from "./growth-objectives.js";
 
 const router: IRouter = Router();
 
@@ -146,5 +147,6 @@ router.use(gscRouter);
 router.use(betterstackRouter);
 router.use(diagnosticsRouter);
 router.use(locationRouter);
+router.use(growthObjectivesRouter);
 
 export default router;

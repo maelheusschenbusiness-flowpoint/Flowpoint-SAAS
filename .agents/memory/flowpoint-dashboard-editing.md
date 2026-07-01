@@ -1,35 +1,22 @@
 ---
 name: FlowPoint dashboard.js editing
-description: Techniques pour éditer le fichier 31k-lignes dashboard.js correctement
+description: Tips for editing the 29k-line dashboard.js safely
 ---
 
-# FlowPoint dashboard.js — techniques d'édition
+## Rule
+Use `sed -n 'X,Yp'` for large line offsets. Always get exact surrounding context (5-10 lines) before any edit. Never batch-fix expression-body arrow functions (`=> \`...\``).
 
-**Règle #1 — Ne jamais éditer sans lire le contexte exact**
-- Utiliser `sed -n 'START,ENDp'` pour lire exactement les lignes autour de la cible
-- Les `grep -n` donnent un numéro de ligne mais le contenu peut avoir bougé après d'autres édits
+**Why:** File is 29k+ lines; reading wrong offset causes wrong edits.
 
-**Règle #2 — Validation syntaxe après chaque batch**
-- `node --check artifacts/flowpoint-export/dashboard.js 2>&1`
-- À faire après chaque modification, jamais grouper sans valider
+**How to apply:** Before any edit, grep for the unique string and verify line number. Read ±5 lines before applying the change.
 
-**Règle #3 — Patterns de données fake**
-- `displayStat(liveVal, previewFallback)` → null + PREVIEW_MODE → '—'
-- `STATE.xxx ?? (PREVIEW_MODE ? fakeVal : null)` pour computed values
-- `PREVIEW_MODE ? [...fakeData] : []` pour arrays complets
-- Pour `?? N` avec N > 0 : vérifier que N n'est pas une usage metric (ex: `?? 87` pour usage.audit.used → corriger en `?? 0`)
+## onclick in template literals — safe patterns
 
-**Règle #4 — Scan patterns critiques**
-```bash
-grep -n "Math\.random()" file.js | grep -v "PREVIEW_MODE\|isDemoMode\|sort.*random\|token"
-grep -n "?? [1-9][0-9]\+\b" file.js | grep -v "PREVIEW_MODE\|aLimit\|mLimit\|?? 100\b\|?? 999\b"
-grep -n "statCard\b" file.js | grep "'[0-9]\+%'\|'[0-9]\+/[0-9]\+'" | grep -v "STATE\.\|displayStat\|PREVIEW_MODE"
-```
+- **Problem:** `onclick="...'${varName}'..."` — varName with double-quotes inside HTML attr breaks parsing.
+- **Solution A:** `data-x="${escHtml(varName)}" onclick="...this.dataset.x..."` — safest.
+- **Solution B:** `${JSON.stringify(varName)}` inside template lit — works when onclick uses single-quote outer HTML attr delimiters... but avoid if varName contains double quotes.
+- **Problem 2:** `onclick="_fpMQ(q.title||..."` — `q` is loop variable, undefined at click time.
+- **Solution:** Always serialize loop-scope vars at render time: `${JSON.stringify(q.title||'default')}` for non-double-quote-containing strings, or data attribute otherwise.
 
-**Règle #5 — Taille**
-- Le fichier fait ~31 000 lignes (après audit complet)
-- Utilisez `sed -n 'X,Yp'` avec des offsets précis pour les lectures profondes
-- Jamais lire plus de 100 lignes à la fois sauf pour la section entière d'une fonction
-
-**Why:**
-File size caused multiple missed contexts and syntax errors when editing without reading first. Incremental fix + validate is the only safe workflow.
+## Backtick count
+As of session 3 end: 2875 (node --check passes = valid JS even though odd count; escaped backticks or regex can cause odd counts).

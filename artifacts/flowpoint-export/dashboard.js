@@ -1147,6 +1147,15 @@ function saveMissions() {
 // ── Quick mission creator — used by inline buttons throughout the dashboard ──
 window._fpMQ = async function(title, category, priority, navAfter) {
   if (!title) return;
+  if (!STATE.missions) STATE.missions = [];
+  const dup = STATE.missions.find(function(m) {
+    return m.title.toLowerCase().trim() === title.toLowerCase().trim() && m.status !== 'done';
+  });
+  if (dup) {
+    showToast('warning', 'Mission déjà existante — ouverture…');
+    setTimeout(function() { navigate('missions'); }, 400);
+    return;
+  }
   const ms = {
     id: 'qm_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
     title: title,
@@ -1156,16 +1165,17 @@ window._fpMQ = async function(title, category, priority, navAfter) {
     createdAt: new Date().toISOString(),
     steps: [],
   };
-  if (!STATE.missions) STATE.missions = [];
   STATE.missions.unshift(ms);
   try {
     if (window.FP_MISSIONS_API && typeof FP_MISSIONS_API.create === 'function') {
-      await FP_MISSIONS_API.create(ms);
+      const saved = await FP_MISSIONS_API.create(ms);
+      if (saved && saved.id) ms.id = saved.id;
     }
   } catch(e) {}
+  saveMissions();
   showToast('success', 'Mission créée · ' + title.slice(0, 40));
   logActivityEvent('success', 'Mission créée : ' + title.slice(0, 60));
-  if (navAfter) setTimeout(() => navigate('missions'), 600);
+  if (navAfter) setTimeout(function() { navigate('missions'); }, 600);
 };
 function logActivityEvent(type, label, metadata = {}) {
   fetch('/api/activity', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type, label, metadata }) }).catch(() => {});
@@ -6017,7 +6027,7 @@ function renderReports() {
                 <div style="font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.name)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(r.date)} · ${escHtml(r.size)}${r.shared ? ' · <span style="color:#22c55e">Partage</span>' : ''}</div>
               </div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('info','Telechargement…')">↓</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(function(b){const link=document.createElement('a');link.href='/api/reports/'+b.dataset.rid+'/download';link.download=b.dataset.rname+'.pdf';document.body.appendChild(link);link.click();document.body.removeChild(link)})(this)">↓</button>
             </div>
           `).join('')}
         </div>
@@ -6266,7 +6276,7 @@ function renderLocalSEO() {
             <div style="width:6px;height:6px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite"></div>
             <span style="font-size:10px;color:#22c55e;font-weight:600">En direct</span>
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Vue satellite…')">Satellite</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.open('https://maps.google.com/?t=k&q='+encodeURIComponent(STATE.sites?.[0]?.url||STATE.me?.company||'France'),'_blank')">Satellite</button>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">Voir zones →</button>
         </div>
       </div>
@@ -6555,7 +6565,7 @@ function renderLocalSEO() {
             <div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></div>
             <div style="flex:1;font-size:12px;color:var(--fp-text-soft)"><strong>${p.city}</strong> — "${p.kw}"</div>
             <div style="font-size:11px;font-weight:700;color:#22c55e">+${p.vol} rech./mois</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" onclick="showToast('info','Création de page locale en cours…')">Créer</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:3px 8px" data-kw="${escHtml(p.kw||p.city||'Local')}" onclick="window._fpMQ('Créer page locale : '+this.dataset.kw,'Local SEO','high')">Créer</button>
           </div>
         `).join('')}
       </div>
@@ -10912,6 +10922,56 @@ function setupExportPanel() {
   }, 50);
 }
 
+function renderNewObjectivePanel() {
+  return `
+    <div class="fp-form-group">
+      <label class="fp-form-label">Libellé de l'objectif</label>
+      <input class="fp-input" id="nobj-label" placeholder="Ex : Score moyen ≥ 85/100" required/>
+    </div>
+    <div class="fp-form-group">
+      <label class="fp-form-label">Valeur cible</label>
+      <div style="display:flex;gap:8px">
+        <input class="fp-input" id="nobj-target" type="number" placeholder="80" style="flex:1"/>
+        <input class="fp-input" id="nobj-unit" placeholder="pts / % / sites…" style="flex:1"/>
+      </div>
+    </div>
+    <div class="fp-form-group">
+      <label class="fp-form-label">Échéance</label>
+      <input class="fp-input" id="nobj-deadline" placeholder="30 sept. 2026"/>
+    </div>
+    <div class="fp-form-group">
+      <label class="fp-form-label">Prochaine action</label>
+      <input class="fp-input" id="nobj-next" placeholder="Ex : Optimiser 3 pages à fort potentiel"/>
+    </div>
+    ${btn('Enregistrer l\'objectif','fp-btn fp-btn-primary','check','id="nobj-save"')}
+  `;
+}
+function setupNewObjectivePanel() {
+  setTimeout(() => {
+    $('#nobj-save')?.addEventListener('click', async () => {
+      const label    = $('#nobj-label')?.value.trim();
+      const target   = parseFloat($('#nobj-target')?.value) || 0;
+      const unit     = $('#nobj-unit')?.value.trim() || '';
+      const deadline = $('#nobj-deadline')?.value.trim() || '';
+      const next     = $('#nobj-next')?.value.trim() || '';
+      if (!label) { showToast('warning','Entrez un libellé'); return; }
+      try {
+        const r = await apiAction('POST', '/api/growth/objectives', { label, target, unit, deadline, next });
+        if (r && r.id) {
+          if (!STATE.growthObjectives) STATE.growthObjectives = [];
+          STATE.growthObjectives.unshift(r);
+          showToast('success', 'Objectif créé !');
+        } else {
+          showToast('success', 'Objectif enregistré localement.');
+        }
+      } catch(e) {
+        showToast('info', 'Objectif noté — connectez le backend pour la persistance.');
+      }
+      closeFloatPanel();
+      if (STATE.route === 'growth' && STATE.subRoute === 'objectives') render();
+    });
+  }, 50);
+}
 function renderNewMonitorPanel() {
   return `
     ${[{l:'URL du site',p:'https://monsite.fr',id:'nm-url'},{l:'Nom du monitor',p:'Mon site',id:'nm-name'},{l:'Email d\'alerte',p:'alerte@email.com',id:'nm-email'}].map(f=>`
@@ -11718,7 +11778,15 @@ function bindSectionEvents() {
   // Universal: hover toolbars btn text
   $$('.quick-win-btn').forEach(btn => btn.addEventListener('click', async () => {
     const label = btn.dataset.label || btn.closest('[data-win-label]')?.dataset.winLabel || btn.textContent?.trim() || 'Quick Win';
-    const m = { id:'ms'+Date.now(), title: 'Quick Win : ' + label.slice(0,80), category:'Audits', impact:'Élevé', status:'todo', date: new Date(Date.now()+7*86400000).toISOString().slice(0,10), steps:[] };
+    const title = 'Quick Win : ' + label.slice(0,80);
+    if (!STATE.missions) STATE.missions = [];
+    const dup = STATE.missions.find(m => m.title.toLowerCase().trim() === title.toLowerCase().trim() && m.status !== 'done');
+    if (dup) {
+      showToast('warning', 'Quick Win déjà en mission — ouverture Missions…');
+      navigate('missions');
+      return;
+    }
+    const m = { id:'ms'+Date.now(), title, category:'Audits', impact:'Élevé', status:'todo', date: new Date(Date.now()+7*86400000).toISOString().slice(0,10), steps:[] };
     STATE.missions.push(m);
     saveMissions();
     showToast('success','Mission créée depuis Quick Win !');
@@ -14683,7 +14751,7 @@ function renderOverviewQuickWins() {
             <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(q.effort)}</div>
           </div>
           ${!q.done
-            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ(q.title||'Mission Quick Win','Optimisation','medium')">+ Mission</button>`
+            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ(${JSON.stringify(q.title||'Mission Quick Win')},'Optimisation','medium')">+ Mission</button>`
             : `<span style="font-size:10px;font-weight:700;color:#22c55e">✓ Fait</span>`}
         </div>
       `).join('')}
@@ -16116,7 +16184,7 @@ function renderMonitorsIncidents() {
               </div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
-              ${btn('Plan d\'action', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="showToast(\'info\',\'Plan d\'action généré…\')"')}
+              ${btn('Plan d\'action', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="navigate(\'missions\')"')}
               ${btn('Rapport PDF', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', 'onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}
             </div>
           </div>
@@ -16250,7 +16318,7 @@ function renderMonitorsConfig() {
               <div style="font-size:11px;font-weight:600;color:var(--fp-accent)">${w.next}</div>
             </div>
             ${badge('Actif', '#22c55e')}
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Fenêtre modifiée…')">Modifier</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" data-wname="${escHtml(w.name)}" data-wsched="${escHtml(w.schedule)}" onclick="openFloatPanel('Modifier la fenêtre de maintenance','<div style=\'padding:8px\'><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Nom</label><input class=\'fp-input\' value=\''+escHtml(w.name)+'\'/></div><div class=\'fp-form-group\'><label class=\'fp-form-label\'>Planification</label><input class=\'fp-input\' value=\''+escHtml(w.schedule)+'\'/></div></div>')">Modifier</button>
           </div>
         `).join('')}
       </div>
@@ -17157,7 +17225,7 @@ function renderGrowthProjections() {
   return `<div style="display:flex;flex-direction:column;gap:16px">
     <div class="fp-section-header">
       <div><h1>Projections IA</h1><div class="fp-section-sub">Modèles prédictifs · Scénarios Mai–Nov. 2026</div></div>
-      <div class="fp-section-actions">${btn('Exporter PDF','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="showToast(\'info\',\'Export PDF…\')"')}</div>
+      <div class="fp-section-actions">${btn('Exporter PDF','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}</div>
     </div>
 
     ${aiBlock('Sur la base de votre croissance de <strong>+7 pts/mois</strong>, vous pouvez atteindre <strong>${avgSc+14}/100</strong> en 60 jours. L\'exécution des 4 Quick Wins actives pourrait accélérer à <strong>+17 pts en 60 jours</strong>.',['Voir Quick Wins','Définir objectifs'])}
@@ -17296,8 +17364,7 @@ function renderGrowthObjectives() {
     <div class="fp-section-header">
       <div><h1>Objectifs Q2 2026</h1><div class="fp-section-sub">Semaine 19 · ${objectives.length} objectifs · 42 jours restants</div></div>
       <div class="fp-section-actions">
-        ${btn('Modifier','fp-btn fp-btn-ghost fp-btn-sm','settings','onclick="showToast(\'info\',\'Éditeur d\\\'objectifs…\')"')}
-        ${btn('+ Ajouter','fp-btn fp-btn-primary fp-btn-sm','plus','onclick="showToast(\'info\',\'Nouvel objectif…\')"')}
+        ${btn('+ Ajouter','fp-btn fp-btn-primary fp-btn-sm','plus','onclick="openFloatPanel(\'Nouvel objectif\',renderNewObjectivePanel());setupNewObjectivePanel()"')}
       </div>
     </div>
 
@@ -18034,7 +18101,7 @@ function renderGrowthCommandCenter() {
         <div class="fp-growth-strategy-actions">
           ${btn('Voir le plan complet','fp-btn fp-btn-primary fp-btn-sm','','onclick="STATE.subRoute=\'projections\';render()"')}
           ${btn('Chat avec l\'IA','fp-btn fp-btn-ghost fp-btn-sm','','onclick="navigate(\'ai\')"')}
-          ${btn('Exporter la stratégie','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="showToast(\'info\',\'Export PDF…\')"')}
+          ${btn('Exporter la stratégie','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}
         </div>
       </div>
     </div>
@@ -21698,7 +21765,7 @@ function renderActivityFeed() {
       </div>
       <div class="fp-section-actions">
         ${btn('Exporter', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"exportActivityCsv()\"")}
-        ${btn('Filtrer',  'fp-btn fp-btn-ghost fp-btn-sm', 'filter',   "onclick=\"showToast('info','Filtres bientôt disponibles')\"")}
+        ${btn('Filtrer',  'fp-btn fp-btn-ghost fp-btn-sm', 'filter',   "onclick=\"openFloatPanel('Filtrer l\\'activité','<div style=\\'padding:16px\\'><div style=\\'font-size:13px;font-weight:600;color:var(--fp-text);margin-bottom:10px\\'>Filtrer par type</div><div style=\\'display:flex;flex-direction:column;gap:6px\\'>' + ['Tous','Audits','Monitors','Alertes','Rapports','Équipe'].map(t=>'<label style=\\'display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fp-text-soft);cursor:pointer\\'><input type=\\'checkbox\\' checked/> '+t+'</label>').join('') + '</div></div>')\"")}
       </div>
     </div>
 
@@ -24360,8 +24427,8 @@ function renderGrowthKeywords() {
 
     ${renderTab(activeTab)}
 
-    <div id="fp-kw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
-      <div class="fp-card" style="width:420px;max-width:90vw;padding:24px">
+    <div id="fp-kw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center">
+      <div class="fp-card" style="width:440px;max-width:92vw;padding:24px;background:var(--fp-bg, #0f1117);border:1px solid var(--fp-border);box-shadow:0 24px 64px rgba(0,0,0,0.6);border-radius:16px;position:relative;z-index:10000">
         <div style="font-size:16px;font-weight:700;margin-bottom:16px">+ Ajouter un mot-clé</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <input id="kw-add-keyword" class="fp-input" placeholder="Mot-clé (ex: agence seo paris)" required/>
