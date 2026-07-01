@@ -53,7 +53,14 @@ function getCurrentPlan(): string {
 
 /** General API rate limiter (global per org) */
 export function globalRateLimit(req: Request, res: Response, next: NextFunction): void {
+  // Authenticated GET requests are read-only dashboard loads — never rate-limited
+  // globally. Rate limiting is reserved for writes and unauthenticated requests.
   const orgId = getOrgId(req);
+  if (req.method === 'GET' && orgId !== 'default') {
+    next();
+    return;
+  }
+
   const plan = getCurrentPlan();
   const limit = getRateLimit(plan, 'globalPerMinute');
   const key = `global:${orgId}`;

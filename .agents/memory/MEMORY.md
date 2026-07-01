@@ -23,3 +23,5 @@
 - [withOrgDb Supabase role degradation](withorgdb-supabase.md) — SET LOCAL ROLE app_user must be try/caught; Supabase DATABASE_URL user may not have the role granted; GUC-only mode still enforces RLS
 - [workflow_runs schema gaps](workflow-runs-schema.md) — ended_at, duration_ms, steps_completed, steps_failed must be ADD COLUMN'd in init-automation.ts; automation-service.ts uses all 4
 - [Express route order — sub-routes vs /:id](express-route-order.md) — specific routes (schedule, upcoming, clients) must be registered BEFORE /:id or Express swallows them as dynamic params
+- [Rate limit 429 structural fix](rate-limit-GET-exemption.md) — authenticated GET requests must bypass globalRateLimit; only writes + anonymous are counted; dashboard loads ~60 GETs per session
+- [RLS sentinel bug — org_id vs rowsecurity](rls-sentinel-fix.md) — sentinel must check pg_tables.rowsecurity=true not audits.org_id; org_id exists from table creation, causing migration to always skip

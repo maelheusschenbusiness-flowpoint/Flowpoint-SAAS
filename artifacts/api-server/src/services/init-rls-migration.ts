@@ -23,16 +23,19 @@ const LOG = "[rls-migration]";
 
 export async function runRlsMigrationIfNeeded(): Promise<void> {
   // ── Sentinel check ─────────────────────────────────────────────────────────
-  // audits.org_id is added by this migration; its presence means we already ran.
+  // Check whether RLS is actually enabled on the audits table.
+  // We do NOT use "audits.org_id exists" as the sentinel because tables are
+  // created with org_id from the start — that check would always skip the
+  // migration and leave RLS permanently disabled.
   const sentinel = await pool.query(`
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name   = 'audits'
-      AND column_name  = 'org_id'
+    SELECT 1 FROM pg_tables
+    WHERE schemaname = 'public'
+      AND tablename  = 'audits'
+      AND rowsecurity = true
     LIMIT 1
   `);
   if ((sentinel.rowCount ?? 0) > 0) {
-    logger.info(`${LOG} Already applied — skipping`);
+    logger.info(`${LOG} Already applied — RLS already enabled on audits`);
     return;
   }
 

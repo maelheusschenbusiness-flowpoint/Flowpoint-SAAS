@@ -315,24 +315,46 @@ function displayStat(liveVal, previewFallback, emptyFallback) {
   return PREVIEW_MODE ? String(previewFallback) : _empty;
 }
 
+const _apiFetchInFlight = new Map();
+const _apiFetchCache    = new Map();
+const _API_CACHE_TTL    = 30_000;
 async function apiFetch(path, opts = {}) {
-  const token = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
-  const res = await fetch(path, {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(opts.headers || {}),
-    },
-    credentials: 'include',
-  });
-  if (res.status === 401) {
-    ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
-    window.location.href = '/login.html';
-    return null;
+  const isGet = !opts.method || opts.method === 'GET';
+  if (isGet) {
+    const cached = _apiFetchCache.get(path);
+    if (cached && (Date.now() - cached.ts < _API_CACHE_TTL)) return cached.data;
+    const inflight = _apiFetchInFlight.get(path);
+    if (inflight) return inflight;
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const _promise = (async () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+    const res = await fetch(path, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.headers || {}),
+      },
+      credentials: 'include',
+    });
+    if (res.status === 401) {
+      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
+      window.location.href = '/login.html';
+      return null;
+    }
+    if (!res.ok) {
+      if (isGet) _apiFetchInFlight.delete(path);
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (isGet) {
+      _apiFetchCache.set(path, { data, ts: Date.now() });
+      _apiFetchInFlight.delete(path);
+    }
+    return data;
+  })();
+  if (isGet) _apiFetchInFlight.set(path, _promise);
+  return _promise;
 }
 
 // Normalize API responses that may be plain arrays or wrapped objects.
