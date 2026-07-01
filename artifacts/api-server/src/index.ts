@@ -1,7 +1,7 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import app from "./app.js";
-import { pool } from "@workspace/db";
+import { pool, probeAppUserRole } from "@workspace/db";
 import { initMissionsTables } from "./services/init-missions.js";
 import { initAutomationTables } from "./services/init-automation.js";
 import { initMonitorsTables } from "./services/init-monitors.js";
@@ -17,6 +17,15 @@ async function main() {
     logger.info("Database connection OK");
   } catch (err) {
     logger.warn({ err }, "Database connection check failed — continuing startup");
+  }
+
+  // Probe once (outside any transaction) whether SET ROLE app_user is allowed.
+  // This sets the global flag that prevents withOrgDb() from attempting the role
+  // switch when it would fail and abort the transaction (Supabase / managed DBs).
+  try {
+    await probeAppUserRole();
+  } catch (err) {
+    logger.warn({ err }, "app_user role probe failed — GUC-only RLS mode");
   }
 
   try {

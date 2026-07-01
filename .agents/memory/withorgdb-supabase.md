@@ -1,10 +1,17 @@
 ---
 name: withOrgDb Supabase role degradation
-description: SET LOCAL ROLE app_user fails on Supabase unless explicitly granted; safe fallback via GUC only
+description: SET LOCAL ROLE app_user fails on Supabase unless explicitly granted; must probe at startup or transaction aborts
+updated: 2026-07-01
 ---
 
-**Rule:** Wrap `SET LOCAL ROLE app_user` in try/catch; log warn once (flag prevents log flooding); never let it throw.
+**Rule:** Call `probeAppUserRole()` at server startup (before any request). This tests `SET ROLE app_user` at session level (no transaction) — failure is a normal exception, not a transaction abort. The `_appUserRoleUnavailable` flag is set before the first request arrives.
 
-**Why:** Supabase-managed DBs (and Render Postgres) — the DATABASE_URL connection user (e.g. `postgres`) may not have the `app_user` role granted. When withOrgDb() is called it throws "permission denied to set role app_user", propagating as 503 on every RLS-scoped endpoint (/api/missions, /api/audits, /api/monitors, /api/ai-credits, etc.).
+**Why:** Supabase / Render managed DBs — the `DATABASE_URL` connection user (e.g. `postgres`) typically doesn't have `app_user` granted. The original fix wrapped `SET LOCAL ROLE app_user` in try/catch inside a `BEGIN` transaction. But in PostgreSQL, ANY failing command inside a transaction puts it in "aborted" state — the catch rescues Node.js but the transaction is still dead. Subsequent `SET LOCAL "app.current_org_id"` and all query callbacks then fail with "current transaction is aborted", causing 500s on every RLS-scoped endpoint.
 
-**How to apply:** The `_appUserRoleUnavailable` flag pattern (set once, skips subsequent attempts) is already in lib/db/src/index.ts. Tenant isolation still holds via `SET LOCAL "app.current_org_id"` GUC — all RLS policies check `current_setting('app.current_org_id', true)`. To restore full role isolation on prod: run `GRANT app_user TO <db-user>` in Supabase SQL editor.
+**How to apply:**
+1. `probeAppUserRole()` is exported from `lib/db/src/index.ts`. Call it at startup in `artifacts/api-server/src/index.ts` right after `pool.query("SELECT 1")`, wrapped in try/catch (non-fatal).
+2. In `withOrgDb()`, check `_appUserRoleUnavailable` BEFORE `BEGIN`. If true, skip the SET ROLE entirely.
+3. Defensive fallback in `withOrgDb()`: if SET ROLE somehow fails inside a transaction (edge case), do `ROLLBACK` + fresh `BEGIN` before continuing — never leave an aborted transaction open.
+4. Tenant isolation still holds via `SET LOCAL "app.current_org_id"` GUC — all RLS policies check `current_setting('app.current_org_id', true)`.
+
+**To restore full role isolation on prod:** `GRANT app_user TO <db-connection-user>;` in Supabase SQL editor.

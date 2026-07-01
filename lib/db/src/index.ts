@@ -483,8 +483,36 @@ export const missionsSchemaRef = {
 
 import type { PoolClient } from "pg";
 
-// Logged once to avoid flooding logs on every request when app_user is not granted.
+// Populated once at server startup by probeAppUserRole().
+// When true, withOrgDb() never attempts SET LOCAL ROLE — it only sets the GUC.
 let _appUserRoleUnavailable = false;
+
+/**
+ * Run ONCE at server startup (outside any transaction) to test whether the
+ * database connection user has permission to SET ROLE app_user.
+ *
+ * Using a plain session-level SET ROLE (no BEGIN) means a failure throws a
+ * normal exception with no transaction to abort — safe to catch and ignore.
+ *
+ * After this runs, withOrgDb() will never attempt the role switch when it
+ * would fail, preventing "current transaction is aborted" errors.
+ */
+export async function probeAppUserRole(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("SET ROLE app_user");
+    await client.query("RESET ROLE");
+    // Role is available — _appUserRoleUnavailable stays false.
+  } catch {
+    _appUserRoleUnavailable = true;
+    console.warn(
+      "[withOrgDb] app_user role not available — GUC-only RLS mode.",
+      "Fix: GRANT app_user TO <db-connection-user>;",
+    );
+  } finally {
+    client.release();
+  }
+}
 
 export async function withOrgDb<T>(
   orgId: string,
@@ -495,19 +523,22 @@ export async function withOrgDb<T>(
     await client.query("BEGIN");
 
     // Drop to app_user role so BYPASSRLS is inactive and RLS policies are evaluated.
-    // On Supabase/managed DBs the connection user may not have this role granted yet —
-    // in that case we skip the role switch and rely solely on the app.current_org_id GUC
-    // for tenant isolation (RLS policies check this setting).
+    // Skipped when probeAppUserRole() determined the role is not grantable (Supabase,
+    // managed DBs). In that case tenant isolation relies solely on the GUC below.
     if (!_appUserRoleUnavailable) {
       try {
         await client.query("SET LOCAL ROLE app_user");
       } catch (roleErr) {
         _appUserRoleUnavailable = true;
         console.warn(
-          "[withOrgDb] SET LOCAL ROLE app_user failed — RLS via GUC only.",
-          "Grant with: GRANT app_user TO <db-user>",
+          "[withOrgDb] SET LOCAL ROLE app_user failed — recovering transaction, GUC-only RLS mode.",
+          "Fix: GRANT app_user TO <db-connection-user>;",
           (roleErr as Error).message,
         );
+        // A failed command inside a transaction puts it in aborted state.
+        // ROLLBACK + fresh BEGIN so the GUC and callback queries can proceed.
+        await client.query("ROLLBACK");
+        await client.query("BEGIN");
       }
     }
 
