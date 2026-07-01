@@ -228,6 +228,36 @@ router.get("/local-seo/citations", async (req, res) => {
   }
 });
 
+// ── POST /local-seo/rankings ──────────────────────────────────────────────────
+// Frontend (_submitLoadRankings) calls this with { keyword, location }.
+// Returns grid-pack positions when DataForSEO is configured, empty array otherwise.
+router.post("/local-seo/rankings", async (req, res) => {
+  const { keyword, location } = req.body as { keyword?: string; location?: string };
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
+  if (!keyword || !location) {
+    res.status(400).json({ ok: false, error: "keyword and location are required" });
+    return;
+  }
+  try {
+    if (isDataForSEOConfigured()) {
+      const allowed = await checkAndIncrementQuota(orgId, "rankings", 1).catch(() => false);
+      if (allowed) {
+        // DataForSEO local pack search — delegate to existing service if available
+        const { getLocalPackResults } = await import("../services/dataforseo-service.js").catch(() => ({ getLocalPackResults: null })) as Record<string, unknown>;
+        if (typeof getLocalPackResults === "function") {
+          const results = await (getLocalPackResults as Function)(keyword, location, orgId);
+          res.json({ ok: true, keyword, location, rankings: results || [] });
+          return;
+        }
+      }
+    }
+    // Graceful fallback — frontend shows demo data when rankings is empty
+    res.json({ ok: false, rankings: [], message: "DataForSEO non configuré" });
+  } catch (e) {
+    res.json({ ok: false, rankings: [], error: String(e) });
+  }
+});
+
 router.get("/seo/llm-visibility", withQuota(async (req, res) => {
   const { domain = "exemple.fr", sector } = req.query as Record<string,string>;
   const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";

@@ -24,6 +24,12 @@ When adding interactive modal functions or action handlers in dashboard.js rende
 - `window._submitLoadRankings` — rankings POST to /api/local-seo/rankings
 - `window._generateLocalMissions` — create 5 standard local SEO missions via _fpMQ
 - `window._toggleSatelliteMode` — visual satellite/map toggle on #fp-gmap SVG
+- `window._reloadIntgData`, `_showConnectModal`, `_showNewWebhookModal`, `_submitConnect`, `_testWebhook`, `_toggleWebhook`, `_deleteWebhook`, `_retryRun`, `_useTemplate`, `_createIncomingWebhook` — integrations section (deleted 115-line innerHTML block)
+
+## Remaining innerHTML script block (known)
+Line ~28769: GitHub repos section IIFE — runs `FP_GITHUB_API.getRepos()` and populates `gh-repos-container`. Not one of the 6 core sections. Extract if GitHub is prioritized.
 
 ## Detection
-Search for `<script>` inside render function return strings — any `window.` assignment there is broken.
+```bash
+grep -n "^      <script>" dashboard.js
+```

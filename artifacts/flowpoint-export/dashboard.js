@@ -7099,7 +7099,7 @@ function renderBilling() {
       { cat:'Équipe',     name:'Enterprise Permissions',  price:'19€/mois', icon:'🔐', color:'#06b6d4', active:false, tag:'Sécurité',        roi:'RBAC complet',                    includedFrom:null,    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
       // ── Storage ──
       { cat:'Storage',    name:'Rétention 90 jours',      price:'9€/mois',  icon:'🗄️', color:'#ef4444', active:false, tag:'Standard+',       roi:'3 mois d\'historique',            includedFrom:null,    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
-      { cat:'Storage',    name:'Rétention 365 jours',     price:'19€/mois', icon:'🗄️', color:'#ef4444', active:false, tag:'Pro+',            roi:'1 an d\'historique complet',      includedFrom:null,    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
+      { cat:'Storage',    name:'Rétention 365 jours',     price:'19€/mois', icon:'🗄️', color:'#ef4444', active:false, tag:'Ultra',           roi:'1 an d\'historique complet',      includedFrom:null,    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
       // ── API ──
       { cat:'API',        name:'Webhooks Avancés',        price:'14€/mois', icon:'🔔', color:'#14b8a6', active:false, tag:'Dev',             roi:'Alertes temps réel',              includedFrom:null,    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
       { cat:'API',        name:'Zapier/Make Integration', price:'19€/mois', icon:'⚙️', color:'#14b8a6', active:false, tag:'No-code',         roi:'1000+ intégrations',              includedFrom:null,    desc:'Connectez FlowPoint à 1000+ applications. CRM, Slack, Notion, HubSpot, et plus.', features:['1000+ apps disponibles (Zapier + Make)','Triggers sur audits, alertes, rapports','Actions : créer tâche, envoyer email, notifier','Templates de zaps prêts à l\'emploi','Support no-code dédié'] },
@@ -9215,121 +9215,6 @@ function renderSettings() {
         </div>
       </div>
 
-      <script>
-      window._intgTab = window._intgTab || 'hub';
-      window._intgTemplCat = window._intgTemplCat || 'Tous';
-      window._currentPlatform = window._currentPlatform || 'custom';
-
-      window._reloadIntgData = async function() {
-        if (typeof window.FP_INTEGRATIONS_API !== 'undefined') {
-          await window.FP_INTEGRATIONS_API.load();
-        }
-      };
-
-      window._showConnectModal = function(platformId, platformName, platformIcon) {
-        window._currentPlatform = platformId;
-        document.getElementById('fp-intg-modal-title').textContent = platformIcon + ' Connecter ' + platformName;
-        document.getElementById('intg-name').value = platformName + ' Integration';
-        document.getElementById('fp-intg-modal').style.display = 'flex';
-      };
-
-      window._showNewWebhookModal = function() {
-        window._currentPlatform = 'custom';
-        document.getElementById('fp-intg-modal-title').textContent = '🔌 Nouveau webhook sortant';
-        document.getElementById('intg-name').value = '';
-        document.getElementById('fp-intg-modal').style.display = 'flex';
-      };
-
-      window._submitConnect = async function() {
-        const name = document.getElementById('intg-name').value.trim();
-        const url  = document.getElementById('intg-url').value.trim();
-        if (!name) { showToast('error','Nom requis'); return; }
-        if (!url)  { showToast('error','URL webhook requise'); return; }
-        const events = [...document.querySelectorAll('input[name="intg-event"]:checked')].map(el => el.value);
-        showToast('info','Connexion en cours…');
-        try {
-          const r = await window.FP_INTEGRATIONS_API.connect(window._currentPlatform||'custom', { name, endpointUrl: url, events, webhookUrl: url });
-          if (r?.ok || r?.integration) {
-            document.getElementById('fp-intg-modal').style.display = 'none';
-            showToast('success','Intégration créée ! Test de livraison en cours…');
-            if (r?.integration?.id) {
-              const testR = await window.FP_INTEGRATIONS_API.test(r.integration.id);
-              if (testR?.success) showToast('success','✅ Test réussi ! Webhook opérationnel.');
-              else showToast('warning','⚠️ Webhook créé mais test échoué. Vérifiez l\'URL.');
-            }
-            await window._reloadIntgData();
-            render(STATE.currentSection);
-          } else {
-            const msg = r?.error || 'Erreur de connexion';
-            if (msg.includes('Limite')) showToast('error','Limite du plan atteinte. Passez à un plan supérieur.');
-            else showToast('error', msg);
-          }
-        } catch(e) { showToast('error', String(e)); }
-      };
-
-      window._testWebhook = async function(id, name) {
-        showToast('info', 'Test de "' + name + '" en cours…');
-        try {
-          const r = await window.FP_INTEGRATIONS_API.test(id);
-          if (r?.success) showToast('success', '✅ Test réussi (' + r.statusCode + ') en ' + r.durationMs + 'ms');
-          else showToast('error', '✗ Test échoué : ' + (r?.error || r?.statusCode || 'timeout'));
-          await window._reloadIntgData();
-          render(STATE.currentSection);
-        } catch(e) { showToast('error', String(e)); }
-      };
-
-      window._toggleWebhook = async function(id, active) {
-        try {
-          await window.FP_INTEGRATIONS_API.toggle(id, active);
-          showToast('success', active ? 'Webhook activé' : 'Webhook désactivé');
-          await window._reloadIntgData();
-          render(STATE.currentSection);
-        } catch(e) { showToast('error', String(e)); }
-      };
-
-      window._deleteWebhook = async function(id) {
-        if (!confirm('Supprimer ce webhook ?')) return;
-        try {
-          await window.FP_INTEGRATIONS_API.delete(id);
-          showToast('success', 'Webhook supprimé');
-          await window._reloadIntgData();
-          render(STATE.currentSection);
-        } catch(e) { showToast('error', String(e)); }
-      };
-
-      window._retryRun = async function(runId) {
-        showToast('info', 'Nouvelle tentative en cours…');
-        try {
-          await window.FP_INTEGRATIONS_API.retry(runId);
-          showToast('success', 'Nouvelle tentative planifiée');
-          await window._reloadIntgData();
-          render(STATE.currentSection);
-        } catch(e) { showToast('error', String(e)); }
-      };
-
-      window._useTemplate = async function(tplId, platform, name) {
-        window._currentPlatform = platform;
-        document.getElementById('fp-intg-modal-title').textContent = '📦 Utiliser : ' + name;
-        document.getElementById('intg-name').value = name;
-        document.getElementById('fp-intg-modal').style.display = 'flex';
-        window._intgTab = 'webhooks';
-      };
-
-      window._createIncomingWebhook = async function() {
-        const name = prompt('Nom du webhook entrant :');
-        if (!name) return;
-        showToast('info', 'Création du endpoint…');
-        try {
-          const r = await window.FP_INTEGRATIONS_API.createIncoming(name, 'create_mission', 'custom');
-          if (r?.ok) {
-            showToast('success', 'Endpoint créé ! URL copiée.');
-            if (navigator.clipboard) navigator.clipboard.writeText(window.location.origin + r.url);
-          }
-          await window._reloadIntgData();
-          render(STATE.currentSection);
-        } catch(e) { showToast('error', String(e)); }
-      };
-      </script>
     `;
   }
 
@@ -10079,7 +9964,7 @@ function renderAI() {
     const creditPackages = [
       { label:'+50k',  price:'4€',  pack:'ai_credits_50k',  credits:50000,  badge:null,          tag:'Économique' },
       { label:'+200k', price:'9€',  pack:'ai_credits_200k', credits:200000, badge:'⭐ Best value',tag:'Populaire'  },
-      { label:'+500k', price:'19€', pack:'ai_credits_500k', credits:500000, badge:null,          tag:'Pro+'        },
+      { label:'+500k', price:'19€', pack:'ai_credits_500k', credits:500000, badge:null,          tag:'Pro'         },
     ];
 
     // Real per-feature breakdown from DB; fallback to empty array when collecting
@@ -10701,7 +10586,7 @@ function renderAuditDetailPanel(audit) {
                 <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.5;margin-bottom:7px">${issue.insight}</div>
                 ${isPro
                   ? `<div class="fp-audit-fix-box" style="margin-bottom:7px"><div style="font-size:10px;font-weight:700;color:#2563EB;margin-bottom:2px">✦ Fix IA</div><div style="font-size:11px;color:var(--fp-text-soft)">${issue.fix}</div></div>`
-                  : `<div style="padding:6px 8px;background:rgba(139,92,246,0.08);border:1px dashed rgba(139,92,246,0.3);border-radius:6px;font-size:10.5px;color:var(--fp-text-muted);margin-bottom:7px;cursor:pointer" onclick="navigate('billing')">🔒 Fix IA — plan Pro+</div>`}
+                  : `<div style="padding:6px 8px;background:rgba(139,92,246,0.08);border:1px dashed rgba(139,92,246,0.3);border-radius:6px;font-size:10.5px;color:var(--fp-text-muted);margin-bottom:7px;cursor:pointer" onclick="navigate('billing')">🔒 Fix IA — plan Pro</div>`}
                 <div style="display:flex;gap:5px;flex-wrap:wrap">
                   <span class="fp-audit-meta-chip">📊 ${issue.impact}</span>
                   <span class="fp-audit-meta-chip">⏱ ${issue.time}</span>
@@ -13990,6 +13875,152 @@ async function init() {
       } else showToast('error', r?.error || 'Erreur d\'analyse');
     } catch(e) { showToast('error', 'Erreur : ' + String(e)); }
   };
+  // ── Intégrations window functions (extracted from non-executing innerHTML script) ──
+  window._intgTab = window._intgTab || 'hub';
+  window._intgTemplCat = window._intgTemplCat || 'Tous';
+  window._currentPlatform = window._currentPlatform || 'custom';
+
+  window._reloadIntgData = async function() {
+    if (typeof window.FP_INTEGRATIONS_API !== 'undefined') {
+      await window.FP_INTEGRATIONS_API.load();
+    }
+  };
+
+  window._showConnectModal = function(platformId, platformName, platformIcon) {
+    window._currentPlatform = platformId;
+    const titleEl = document.getElementById('fp-intg-modal-title');
+    const nameEl  = document.getElementById('intg-name');
+    if (titleEl) titleEl.textContent = (platformIcon || '') + ' Connecter ' + platformName;
+    if (nameEl)  nameEl.value = platformName + ' Integration';
+    const modal = document.getElementById('fp-intg-modal');
+    if (modal) modal.style.display = 'flex';
+  };
+
+  window._showNewWebhookModal = function() {
+    window._currentPlatform = 'custom';
+    const titleEl = document.getElementById('fp-intg-modal-title');
+    const nameEl  = document.getElementById('intg-name');
+    if (titleEl) titleEl.textContent = '🔌 Nouveau webhook sortant';
+    if (nameEl)  nameEl.value = '';
+    const modal = document.getElementById('fp-intg-modal');
+    if (modal) modal.style.display = 'flex';
+  };
+
+  window._submitConnect = async function() {
+    const name   = document.getElementById('intg-name')?.value.trim();
+    const url    = document.getElementById('intg-url')?.value.trim();
+    if (!name) { showToast('error','Nom requis'); return; }
+    if (!url)  { showToast('error','URL webhook requise'); return; }
+    const events = [...document.querySelectorAll('input[name="intg-event"]:checked')].map(el => el.value);
+    showToast('info','Connexion en cours…');
+    try {
+      const r = await window.FP_INTEGRATIONS_API.connect(window._currentPlatform||'custom', { name, endpointUrl: url, events, webhookUrl: url });
+      if (r?.ok || r?.integration) {
+        const modal = document.getElementById('fp-intg-modal');
+        if (modal) modal.style.display = 'none';
+        showToast('success','Intégration créée ! Test de livraison en cours…');
+        if (r?.integration?.id) {
+          const testR = await window.FP_INTEGRATIONS_API.test(r.integration.id);
+          if (testR?.success) showToast('success','✅ Test réussi ! Webhook opérationnel.');
+          else showToast('warning','⚠️ Webhook créé mais test échoué. Vérifiez l\'URL.');
+        }
+        await window._reloadIntgData();
+        render(STATE.currentSection);
+      } else {
+        const msg = r?.error || 'Erreur de connexion';
+        if (msg.includes('Limite')) showToast('error','Limite du plan atteinte. Passez à un plan supérieur.');
+        else showToast('error', msg);
+      }
+    } catch(e) { showToast('error', String(e)); }
+  };
+
+  window._testWebhook = async function(id, name) {
+    showToast('info', 'Test de "' + name + '" en cours…');
+    try {
+      const r = await window.FP_INTEGRATIONS_API.test(id);
+      if (r?.success) showToast('success', '✅ Test réussi (' + r.statusCode + ') en ' + r.durationMs + 'ms');
+      else showToast('error', '✗ Test échoué : ' + (r?.error || r?.statusCode || 'timeout'));
+      await window._reloadIntgData();
+      render(STATE.currentSection);
+    } catch(e) { showToast('error', String(e)); }
+  };
+
+  window._toggleWebhook = async function(id, active) {
+    try {
+      await window.FP_INTEGRATIONS_API.toggle(id, active);
+      showToast('success', active ? 'Webhook activé' : 'Webhook désactivé');
+      await window._reloadIntgData();
+      render(STATE.currentSection);
+    } catch(e) { showToast('error', String(e)); }
+  };
+
+  window._deleteWebhook = async function(id) {
+    if (!confirm('Supprimer ce webhook ?')) return;
+    try {
+      await window.FP_INTEGRATIONS_API.delete(id);
+      showToast('success', 'Webhook supprimé');
+      await window._reloadIntgData();
+      render(STATE.currentSection);
+    } catch(e) { showToast('error', String(e)); }
+  };
+
+  window._retryRun = async function(runId) {
+    showToast('info', 'Nouvelle tentative en cours…');
+    try {
+      await window.FP_INTEGRATIONS_API.retry(runId);
+      showToast('success', 'Nouvelle tentative planifiée');
+      await window._reloadIntgData();
+      render(STATE.currentSection);
+    } catch(e) { showToast('error', String(e)); }
+  };
+
+  window._useTemplate = async function(tplId, platform, name) {
+    window._currentPlatform = platform;
+    const titleEl = document.getElementById('fp-intg-modal-title');
+    const nameEl  = document.getElementById('intg-name');
+    if (titleEl) titleEl.textContent = '📦 Utiliser : ' + name;
+    if (nameEl)  nameEl.value = name;
+    const modal = document.getElementById('fp-intg-modal');
+    if (modal) modal.style.display = 'flex';
+    window._intgTab = 'webhooks';
+  };
+
+  // _createIncomingWebhook — uses proper modal instead of prompt()
+  window._createIncomingWebhook = async function() {
+    const existingModal = document.getElementById('fp-webhook-name-modal');
+    if (existingModal) { existingModal.remove(); }
+    const div = document.createElement('div');
+    div.id = 'fp-webhook-name-modal';
+    div.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:2001;align-items:center;justify-content:center';
+    div.innerHTML = '<div style="width:380px;max-width:92vw;padding:24px;border-radius:14px;background:var(--fp-bg-card,#1a1f2e);border:1px solid var(--fp-border,rgba(255,255,255,0.08))">' +
+      '<div style="font-size:15px;font-weight:700;margin-bottom:14px">📥 Créer un endpoint entrant</div>' +
+      '<input id="fp-webhook-name-inp" class="fp-input" placeholder="Nom du webhook entrant…" style="width:100%;box-sizing:border-box;margin-bottom:14px"/>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+      '<button class="fp-btn fp-btn-ghost" onclick="document.getElementById(\'fp-webhook-name-modal\').remove()">Annuler</button>' +
+      '<button class="fp-btn fp-btn-primary" id="fp-webhook-name-ok">Créer</button>' +
+      '</div></div>';
+    document.body.appendChild(div);
+    setTimeout(function() { document.getElementById('fp-webhook-name-inp')?.focus(); }, 50);
+    document.getElementById('fp-webhook-name-ok').addEventListener('click', async function() {
+      const name = document.getElementById('fp-webhook-name-inp')?.value.trim();
+      if (!name) { showToast('warning','Entrez un nom'); return; }
+      div.remove();
+      showToast('info','Création du endpoint…');
+      try {
+        const r = await window.FP_INTEGRATIONS_API.createIncoming(name, 'create_mission', 'custom');
+        if (r?.ok) {
+          showToast('success','Endpoint créé ! URL copiée.');
+          if (navigator.clipboard) navigator.clipboard.writeText(window.location.origin + r.url);
+        }
+        await window._reloadIntgData();
+        render(STATE.currentSection);
+      } catch(e) { showToast('error', String(e)); }
+    });
+    document.getElementById('fp-webhook-name-inp').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') document.getElementById('fp-webhook-name-ok').click();
+    });
+  };
+
   // Load rankings modal — replaces native prompt()
   window._showLoadRankingsModal = function() {
     const existing = document.getElementById('fp-rankings-modal');
@@ -16369,7 +16400,7 @@ function renderMonitorsPerformance() {
     <div class="fp-grid-2">
       <!-- Regional perf -->
       <div class="fp-card" style="${isPro ? '' : 'opacity:0.75'}">
-        <div class="fp-card-title" style="margin-bottom:4px">🌍 Performance Géographique${isPro ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Pro+</span>'}</div>
+        <div class="fp-card-title" style="margin-bottom:4px">🌍 Performance Géographique${isPro ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Pro</span>'}</div>
         <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Latence depuis 6 régions mondiales</div>
         ${isPro ? `
           <div style="display:flex;flex-direction:column;gap:8px">
@@ -16694,7 +16725,7 @@ function renderMonitorsConfig() {
           <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:7px">Intervalle de check</div>
           <select class="fp-select" style="width:100%">
             <option>Toutes les 30s (Ultra)</option>
-            <option>Toutes les 1 min (Pro+)</option>
+            <option>Toutes les 1 min (Pro)</option>
             <option selected>Toutes les 5 min</option>
             <option>Toutes les 10 min</option>
           </select>
@@ -18064,7 +18095,7 @@ function renderGrowthCommandCenter() {
         <div class="fp-section-sub">Intelligence stratégique · Actif · ${CUR_MONTH}</div>
       </div>
       <div class="fp-section-actions">
-        ${btn('Exporter','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="showToast(\'info\',\'Export en cours…\')"')}
+        ${btn('Exporter','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="(function(){var hdr=\'URL,Score SEO,Date,Statut\';var rows=(STATE.audits||[]).map(function(a){return [JSON.stringify(a.url||\'—\'),a.score||0,a.date?a.date.slice(0,10):\'—\',a.status||\'—\'].join(\',\')});if(!rows.length){showToast(\'warning\',\'Aucun audit à exporter\');return;}exportCsv(hdr,rows,\'croissance-flowpoint-\'+new Date().toISOString().slice(0,10)+\'.csv\');showToast(\'success\',rows.length+\' audit(s) exporté(s)\');})()"')}
         ${btn('Rapport complet','fp-btn fp-btn-primary fp-btn-sm','file','onclick="navigate(\'reports\')"')}
       </div>
     </div>
@@ -24460,7 +24491,7 @@ function renderLocalSEOGBP() {
         <div class="fp-card-title" style="margin-bottom:14px">
           ${svgIcon('bar-chart-2').replace('stroke="currentColor"','stroke="#8b5cf6"')}
           Intelligence des avis
-          ${!isPro ? `<span style="font-size:10px;padding:2px 7px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;color:#f59e0b;margin-left:8px">Pro+</span>` : ''}
+          ${!isPro ? `<span style="font-size:10px;padding:2px 7px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;color:#f59e0b;margin-left:8px">Pro</span>` : ''}
         </div>
         ${isPro ? `
         <!-- Sentiment bars -->
