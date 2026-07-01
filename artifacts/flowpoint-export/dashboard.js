@@ -396,10 +396,16 @@ function normArr(raw, key) {
 }
 
 async function apiAction(method, path, body) {
+  const _t0 = performance.now();
   try {
-    return await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
+    const result = await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
+    const ms = Math.round(performance.now() - _t0);
+    console.log(`[FP_ACTION] bouton=${method} route=${path} status=ok ms=${ms}`);
+    return result;
   } catch (e) {
-    if (PREVIEW_MODE) { console.warn('[FP] Preview: skipping', method, path); return null; }
+    const ms = Math.round(performance.now() - _t0);
+    console.warn(`[FP_ACTION] bouton=${method} route=${path} status=error ms=${ms}`, e.message);
+    if (PREVIEW_MODE) { return null; }
     throw e;
   }
 }

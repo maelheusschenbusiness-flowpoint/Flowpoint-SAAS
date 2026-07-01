@@ -8866,3 +8866,29 @@ html[data-theme="light"] .fp-skel-block::after {
   );
   background-size: 200% 100%;
 }
+
+/* ── FIX: Cards inside inline-styled modal overlays need an opaque background ──
+ * Dynamic modals in dashboard.js use position:fixed + z-index overlay divs
+ * whose child .fp-card inherits --fp-bg-card = rgba(255,255,255,0.028) in dark
+ * mode — virtually invisible against the dark overlay.  Force an opaque panel
+ * background for any .fp-card that is a direct child of such an overlay.
+ * Uses z-index attribute values that match dashboard.js modal patterns.
+ * v20260701b
+ */
+[data-theme="dark"] [style*="z-index:1000"] > .fp-card,
+[data-theme="dark"] [style*="z-index:2000"] > .fp-card,
+[data-theme="dark"] [style*="z-index:9999"] > .fp-card {
+  background: #0b1120 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+[data-theme="light"] [style*="z-index:1000"] > .fp-card,
+[data-theme="light"] [style*="z-index:2000"] > .fp-card,
+[data-theme="light"] [style*="z-index:9999"] > .fp-card {
+  background: #ffffff !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(0,0,0,0.09) !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15) !important;
+}

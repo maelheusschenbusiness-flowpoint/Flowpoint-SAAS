@@ -18,6 +18,12 @@ const MISSING_KEY_WARNING_SHOWN = { shown: false };
  *   Authorization: Bearer <token>
  *   X-Api-Key: <token>
  *   fp_token cookie (HttpOnly)
+ *
+ * Log levels:
+ *   debug  — normal unauthenticated request (no credentials sent)
+ *   info   — bad/expired token sent (invalid credentials)
+ *   warn   — genuine security or config anomaly
+ *   error  — server misconfiguration preventing all auth
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   _requireAuth(req, res, next).catch(next);
@@ -50,7 +56,8 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
       next();
       return;
     }
-    logger.warn({ method: req.method, url: req.url }, "[Auth] Request rejected: no credentials");
+    // Normal unauthenticated browser request — not a security event
+    logger.debug({ method: req.method, url: req.url }, "[Auth] 401 no credentials");
     res.status(401).json({ error: "Unauthorized: missing credentials" });
     return;
   }
@@ -82,6 +89,7 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
     return;
   }
 
-  logger.warn({ method: req.method, url: req.url }, "[Auth] Request rejected: invalid credentials");
+  // Bad or expired token — informational, not alarming
+  logger.info({ method: req.method, url: req.url }, "[Auth] 401 invalid credentials");
   res.status(401).json({ error: "Unauthorized: invalid credentials" });
 }
