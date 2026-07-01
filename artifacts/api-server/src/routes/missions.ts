@@ -353,4 +353,119 @@ router.patch("/missions/:id/steps/:stepId", async (req: Request, res: Response) 
   }
 });
 
+// GET /missions/templates — return MISSION_LIBRARY-style templates
+router.get("/missions/templates", (_req: Request, res: Response) => {
+  const templates = [
+    { category: "SEO Technique", title: "Corriger les redirections 301/302 cassées", impact: "Très élevé", effort: "1h", steps: ["Lister toutes les redirections avec Screaming Frog", "Identifier les chaînes de redirections (> 2 sauts)", "Mettre à jour les URLs directement dans le CMS", "Vérifier l'absence d'erreurs 404 résiduelles"] },
+    { category: "SEO Technique", title: "Implémenter le balisage Schema.org LocalBusiness", impact: "Élevé", effort: "45 min", steps: ["Générer le JSON-LD Schema.org sur schema.org/LocalBusiness", "Ajouter le nom, adresse, téléphone, horaires et coordonnées GPS", "Injecter le script dans le <head> de chaque page", "Valider avec l'outil Rich Results Test de Google"] },
+    { category: "SEO Technique", title: "Créer et soumettre un sitemap XML complet", impact: "Élevé", effort: "45 min", steps: ["Générer un sitemap XML avec toutes les URLs prioritaires", "Exclure les pages doublons", "Soumettre le sitemap dans Google Search Console", "Planifier une mise à jour automatique mensuelle"] },
+    { category: "Local SEO", title: "Optimiser la fiche Google Business Profile", impact: "Très élevé", effort: "1h", steps: ["Vérifier et compléter toutes les informations NAP", "Ajouter 10+ photos professionnelles récentes", "Rédiger une description de 750 caractères avec mots-clés", "Activer les messages et Questions/Réponses"] },
+    { category: "Local SEO", title: "Lancer une campagne de demande d'avis Google", impact: "Élevé", effort: "2h", steps: ["Créer un lien court vers la page d'avis Google", "Rédiger un SMS/email de demande d'avis (max 3 lignes)", "Sélectionner 20 clients récents satisfaits", "Envoyer et suivre les taux de conversion"] },
+    { category: "Performance", title: "Améliorer le score Core Web Vitals (LCP)", impact: "Très élevé", effort: "3h", steps: ["Analyser le LCP actuel via PageSpeed Insights", "Identifier les images non optimisées (convertir en WebP)", "Activer la compression gzip/Brotli côté serveur", "Implémenter le lazy loading sur les images hors-écran"] },
+    { category: "Monitoring", title: "Configurer des alertes de temps de réponse avancées", impact: "Élevé", effort: "30 min", steps: ["Identifier les seuils critiques pour chaque service", "Configurer des alertes palier : warn à 500ms, crit à 2s", "Tester chaque alerte avec une simulation de charge", "Documenter les procédures de réponse aux incidents"] },
+    { category: "Croissance", title: "Analyser et optimiser le tunnel de conversion", impact: "Très élevé", effort: "4h", steps: ["Installer Google Tag Manager + suivi d'objectifs Analytics", "Mapper le parcours utilisateur étape par étape", "Identifier les pages avec fort taux d'abandon", "A/B tester les 2 pages les plus critiques"] },
+  ];
+  res.json({ ok: true, templates, total: templates.length });
+});
+
+// POST /missions/from-template — create a mission from a template definition
+router.post("/missions/from-template", async (req: Request, res: Response) => {
+  try {
+    const db = orgDb(req);
+    const org = orgId(req);
+    const { templateTitle, category, impact, effort, steps, priority = "medium" } = req.body as Record<string, unknown>;
+    if (!templateTitle) { res.status(400).json({ error: "templateTitle required" }); return; }
+
+    const existing = await db(
+      `SELECT id FROM missions WHERE org_id = $1 AND LOWER(title) = LOWER($2) AND status != 'done'`,
+      [org, templateTitle]
+    );
+    if (existing.rows[0]) {
+      res.status(409).json({ error: "Mission already exists", id: existing.rows[0].id });
+      return;
+    }
+
+    const id = uid();
+    const pScore = Number(({ critical: 90, high: 75, medium: 50, low: 25 } as Record<string, number>)[(priority as string)] ?? 50);
+    const stepsArr = Array.isArray(steps)
+      ? (steps as string[]).map((text, i) => ({ id: `s${Date.now()}${i}`, text, done: false, tag: `Étape ${i + 1}` }))
+      : [];
+
+    await db(`
+      INSERT INTO missions (
+        id, org_id, title, category, priority, priority_score,
+        status, impact, effort, steps, source_type, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,'todo',$7,$8,$9,'template',NOW(),NOW(),NOW())
+    `, [id, org, templateTitle, category || "SEO Technique", priority, pScore,
+        impact || "Moyen", effort || "Moyen", JSON.stringify(stepsArr)]);
+
+    const row = await db(`SELECT * FROM missions WHERE id = $1`, [id]);
+    res.json(rowToMission(row.rows[0]));
+  } catch (err) {
+    logger.error({ err }, "[Missions] from-template error");
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// POST /missions/bulk-create — create multiple missions at once, skip duplicates
+router.post("/missions/bulk-create", async (req: Request, res: Response) => {
+  try {
+    const db = orgDb(req);
+    const org = orgId(req);
+    const { missions: missionList } = req.body as { missions?: Array<Record<string, unknown>> };
+    if (!Array.isArray(missionList) || missionList.length === 0) {
+      res.status(400).json({ error: "missions array required" });
+      return;
+    }
+
+    const created: object[] = [];
+    const skipped: string[] = [];
+
+    for (const m of missionList) {
+      const title = (m.title as string)?.trim();
+      if (!title) continue;
+
+      const existing = await db(
+        `SELECT id FROM missions WHERE org_id = $1 AND LOWER(title) = LOWER($2) AND status != 'done'`,
+        [org, title]
+      );
+      if (existing.rows[0]) { skipped.push(title); continue; }
+
+      const id = uid();
+      const priority = (m.priority as string) || "medium";
+      const pScore = Number(({ critical: 90, high: 75, medium: 50, low: 25 } as Record<string, number>)[priority] ?? 50);
+      const stepsRaw = m.steps as string[] | Array<{ text: string }> | undefined;
+      const stepsArr = Array.isArray(stepsRaw)
+        ? stepsRaw.map((s, i) => ({
+            id: `s${Date.now()}${i}`,
+            text: typeof s === "string" ? s : (s as { text: string }).text,
+            done: false, tag: `Étape ${i + 1}`,
+          }))
+        : [];
+
+      await db(`
+        INSERT INTO missions (
+          id, org_id, title, category, priority, priority_score,
+          status, impact, effort, steps, source_type, created_at, updated_at, last_refreshed_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW(),NOW())
+      `, [id, org, title,
+          (m.category as string) || "SEO",
+          priority, pScore,
+          (m.status as string) || "todo",
+          (m.impact as string) || "Moyen",
+          (m.effort as string) || "Moyen",
+          JSON.stringify(stepsArr),
+          (m.source as string) || "manual"]);
+
+      const row = await db(`SELECT * FROM missions WHERE id = $1`, [id]);
+      created.push(rowToMission(row.rows[0]));
+    }
+
+    res.json({ ok: true, created: created.length, skipped: skipped.length, missions: created });
+  } catch (err) {
+    logger.error({ err }, "[Missions] bulk-create error");
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 export default router;

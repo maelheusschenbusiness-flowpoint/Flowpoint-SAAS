@@ -71,6 +71,7 @@ const STATE = {
   missionView: 'list',
   missionFilter: 'all',
   missionSearch: '',
+  missionCatFilter: '',
   missionSort: 'date',
   auditFilter: '',
   auditSort: 'date',
@@ -264,8 +265,25 @@ function getMissionLibrarySuggested() {
   const all = Object.entries(MISSION_LIBRARY).flatMap(([cat, items]) =>
     items.map(t => ({ ...t, category: cat }))
   );
-  const shuffled = all.sort(() => 0.5 - Math.random());
-  return shuffled.slice(0, 12);
+  const notAdded = all.filter(t => !STATE.missions.some(
+    m => m.title.toLowerCase().trim() === t.title.toLowerCase().trim() && m.status !== 'done'
+  ));
+  if (!notAdded.length) return [];
+  const hasAudits = STATE.audits && STATE.audits.length > 0;
+  const avgSc = avgScore ? avgScore() : 0;
+  const hasMonitors = STATE.monitors && STATE.monitors.length > 0;
+  const hasGbp = !!(STATE.gbp && (STATE.gbp.connected || (STATE.gbp.listings && STATE.gbp.listings.length > 0)));
+  const scored = notAdded.map(t => {
+    let score = t.impact === 'Très élevé' ? 40 : t.impact === 'Élevé' ? 30 : t.impact === 'Moyen' ? 20 : 10;
+    if (t.category === 'SEO Technique' && hasAudits && avgSc < 75) score += 30;
+    if (t.category === 'SEO Technique' && hasAudits && avgSc < 60) score += 20;
+    if (t.category === 'Local SEO' && hasAudits) score += 20;
+    if (t.category === 'GBP' && hasGbp) score += 25;
+    if (t.category === 'Monitoring' && hasMonitors) score += 15;
+    score += Math.random() * 3;
+    return { ...t, _score: score };
+  });
+  return scored.sort((a, b) => b._score - a._score).slice(0, 12);
 }
 
 const MOCK_REPORTS = [
@@ -4431,9 +4449,14 @@ function renderMissions() {
     .filter(m => {
       if (m.status === 'dismissed' || m.status === 'stale') return false;
       if (STATE.missionFilter !== 'all' && m.status !== STATE.missionFilter) return false;
+      if (STATE.missionCatFilter) {
+        const _mcat = (m.category || '').toLowerCase();
+        const _fcat = STATE.missionCatFilter.toLowerCase();
+        if (!_mcat.includes(_fcat)) return false;
+      }
       if (STATE.missionSearch) {
         const q = STATE.missionSearch.toLowerCase();
-        if (!fuzzyMatch(m.title.toLowerCase(), q)) return false;
+        if (!fuzzyMatch(m.title.toLowerCase(), q) && !(m.aiExplanation||m.description||'').toLowerCase().includes(q)) return false;
       }
       return true;
     })
@@ -4559,13 +4582,18 @@ function renderMissions() {
       `).join('')}
       <div class="fp-search-input-wrap" style="margin-left:auto">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input class="fp-search-input" id="mission-search" placeholder="Rechercher…" value="${escHtml(STATE.missionSearch)}"/>
+        <input class="fp-search-input" id="mission-search" placeholder="Rechercher…" value="${escHtml(STATE.missionSearch)}" autocomplete="off"/>
       </div>
       <select class="fp-select" id="mission-sort" style="min-width:140px">
         <option value="date" ${STATE.missionSort==='date'?'selected':''}>Trier : Échéance</option>
         <option value="impact" ${STATE.missionSort==='impact'?'selected':''}>Trier : Impact</option>
         <option value="priority" ${STATE.missionSort==='priority'?'selected':''}>Trier : Priorité</option>
       </select>
+    </div>
+    <div class="fp-filter-bar fp-mb-12" style="gap:5px;flex-wrap:wrap">
+      ${['','Local SEO','Technique','GBP','Réputation','Performance','Backlinks','Monitoring','Contenu'].map(cat=>`
+        <button class="fp-filter-tab${(STATE.missionCatFilter||'')===(cat)?' active':''}" data-mission-cat="${escHtml(cat)}" style="font-size:11px">${cat||'Toutes catégories'}</button>
+      `).join('')}
     </div>
 
     ${STATE.missionView === 'list' ? `
@@ -4698,7 +4726,21 @@ function renderMissions_Library() {
 }
 
 function renderLibCard(t) {
+  const alreadyAdded = STATE.missions.some(function(m) {
+    return m.title.toLowerCase().trim() === (t.title||'').toLowerCase().trim() && m.status !== 'done';
+  });
   const impactCls = t.impact==='Très élevé'?'high':t.impact==='Élevé'?'medium':'low';
+  if (alreadyAdded) {
+    return `
+      <div class="fp-lib-card" style="opacity:0.5;cursor:default">
+        <button class="fp-lib-add-btn" disabled style="background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.3);cursor:default">✓</button>
+        <div class="fp-lib-card-title" style="text-decoration:line-through;opacity:0.7">${escHtml(t.title)}</div>
+        <div class="fp-lib-card-meta">
+          <span style="font-size:11px;color:#22c55e;font-weight:600">Déjà ajoutée</span>
+        </div>
+      </div>
+    `;
+  }
   return `
     <div class="fp-lib-card lib-add-mission" data-lib-title="${escHtml(t.title)}" data-lib-cat="${escHtml(t.category)}" data-lib-impact="${escHtml(t.impact)}" data-lib-steps="${escHtml(JSON.stringify(t.steps||[]))}">
       <button class="fp-lib-add-btn" title="Ajouter">
@@ -12256,12 +12298,35 @@ function bindSectionEvents() {
 
   if (route === 'missions') {
     $$('[data-mission-filter]').forEach(btn => btn.addEventListener('click', () => { STATE.missionFilter = btn.dataset.missionFilter; render(); }));
-    $('#mission-search')?.addEventListener('input', e => { STATE.missionSearch = e.target.value; render(); });
+    $$('[data-mission-cat]').forEach(btn => btn.addEventListener('click', () => { STATE.missionCatFilter = btn.dataset.missionCat; render(); }));
+    $('#mission-search')?.addEventListener('input', e => { STATE.missionSearch = e.target.value; applyMissionFilterInPlace(); });
+    function applyMissionFilterInPlace() {
+      const q = (STATE.missionSearch || '').toLowerCase().trim();
+      const catF = (STATE.missionCatFilter || '').toLowerCase();
+      const statusF = STATE.missionFilter || 'all';
+      Array.from(document.querySelectorAll('.fp-mission-row[data-mission-id]')).forEach(function(row) {
+        const m = STATE.missions.find(function(x){ return x.id === row.dataset.missionId; });
+        if (!m) { row.style.display = 'none'; return; }
+        let show = true;
+        if (statusF !== 'all' && m.status !== statusF) show = false;
+        if (catF && !(m.category||'').toLowerCase().includes(catF)) show = false;
+        if (q && !fuzzyMatch((m.title||'').toLowerCase(), q) && !(m.aiExplanation||m.description||'').toLowerCase().includes(q)) show = false;
+        row.style.display = show ? '' : 'none';
+      });
+      Array.from(document.querySelectorAll('.fp-kanban-card[data-mission-id]')).forEach(function(card) {
+        const m = STATE.missions.find(function(x){ return x.id === card.dataset.missionId; });
+        if (!m) { card.style.display = 'none'; return; }
+        let show = true;
+        if (catF && !(m.category||'').toLowerCase().includes(catF)) show = false;
+        if (q && !fuzzyMatch((m.title||'').toLowerCase(), q)) show = false;
+        card.style.display = show ? '' : 'none';
+      });
+    }
     $('#mission-sort')?.addEventListener('change', e => { STATE.missionSort = e.target.value; render(); });
     $('#mission-quick-add-btn')?.addEventListener('click', () => { openFloatPanel('Nouvelle mission', renderNewMissionPanel()); setupNewMissionPanel(); });
 
     // AI Scan handler
-    const _doAiScan = async () => {
+    window._doAiScan = async () => {
       if (typeof window.FP_MISSIONS_API === 'undefined') { showToast('warning','API non disponible'); return; }
       const btn = $('#mission-ai-scan') || $('#mission-ai-scan-empty');
       if (btn) { btn.disabled = true; btn.textContent = 'Scan en cours…'; }
@@ -12276,8 +12341,30 @@ function bindSectionEvents() {
         } else { showToast('error','Erreur lors du scan IA'); }
       } catch(e) { showToast('error','Erreur lors du scan IA'); }
     };
-    $('#mission-ai-scan')?.addEventListener('click', _doAiScan);
-    $('#mission-ai-scan-empty')?.addEventListener('click', _doAiScan);
+    $('#mission-ai-scan')?.addEventListener('click', window._doAiScan);
+    $('#mission-ai-scan-empty')?.addEventListener('click', window._doAiScan);
+    $('#mission-regen-btn')?.addEventListener('click', () => window._doAiScan && window._doAiScan());
+    $('#ai-bulk-create-btn')?.addEventListener('click', () => {
+      const toCreate = (window._aiMissionsFiltered || []).slice();
+      let created = 0;
+      (function next() {
+        if (!toCreate.length) {
+          if (created > 0) { showToast('success', created + ' mission' + (created>1?'s':'') + ' créée' + (created>1?'s':'') + ' !'); navigate('missions'); }
+          else showToast('warning', 'Toutes les missions sont déjà créées.');
+          return;
+        }
+        const m = toCreate.shift();
+        const isDup = STATE.missions.find(function(x){ return x.title.toLowerCase().trim() === m.title.toLowerCase().trim() && x.status !== 'done'; });
+        if (isDup) { next(); return; }
+        apiAction('POST', '/api/missions', { title: m.title, source: 'ai', status: 'todo', priority: 'high', category: m.cat })
+          .then(function(r) {
+            if (r && r.id) STATE.missions.unshift(r);
+            else STATE.missions.unshift({ id: 'ms'+Date.now(), title: m.title, source: 'ai', status: 'todo', category: m.cat });
+            created++;
+            next();
+          }).catch(function() { created++; next(); });
+      })();
+    });
     $$('#mission-view-toggle .fp-view-toggle-btn').forEach(btn => btn.addEventListener('click', () => {
       STATE.missionView = btn.dataset.view;
       if (['kanban','calendar','library'].includes(btn.dataset.view)) STATE.missionFilter = 'all';
@@ -14988,87 +15075,111 @@ function renderMissionsFiltered(status) {
 }
 
 function renderMissionsAI() {
-  const aiMissions = [
-    { title: (()=>{ const _city=STATE.me&&STATE.me.location&&STATE.me.location.city?STATE.me.location.city:null; return 'Créer des pages locales '+(STATE.audits&&STATE.audits.length>0?'pour '+escHtml(STATE.audits[0].url.replace(/^https?:\/\//,'').split('/')[0]):(_city?'à '+escHtml(_city):'par zone géographique')); })(), impact:'Très élevé', effort:'2h', gain:'+25 leads/mois', cat:'Local SEO', color:'#ef4444' },
-    { title:'Optimiser les balises title manquantes (site prioritaire)', impact:'Élevé', effort:'45 min', gain:'+15 pts score', cat:'Technique', color:'#f59e0b' },
-    { title:'Configurer Google Posts hebdomadaires automatisés', impact:'Élevé', effort:'30 min', gain:'+12% engagement', cat:'GBP', color:'#2563EB' },
-    { title:'Ajouter schema markup FAQ sur 3 sites', impact:'Moyen', effort:'1h', gain:'+8% CTR', cat:'Technique', color:'#8b5cf6' },
-    { title:'Auditer et corriger les citations NAP incohérentes', impact:'Élevé', effort:'2h', gain:'+10 pts local', cat:'Local SEO', color:'#f59e0b' },
-    { title:(()=>{ const _ua=STATE.gbp?.unansweredReviews; return 'Répondre aux '+(_ua!=null?_ua:'avis')+' Google sans réponse'; })(), impact:'Très élevé', effort:'45 min', gain:'+9% ranking local', cat:'Réputation', color:'#ef4444' },
-    { title:'Créer une vidéo Google Business pour votre site prioritaire', impact:'Élevé', effort:'1h', gain:'+22% visibilité', cat:'GBP', color:'#22c55e' },
-    { title:'Corriger les images non optimisées (WebP) sur 4 sites', impact:'Moyen', effort:'1h30', gain:'+6 pts vitesse', cat:'Performance', color:'#2563EB' },
-    { title:'Ajouter Questions/Réponses GBP sur 3 fiches vides', impact:'Moyen', effort:'30 min', gain:'+12% engagement', cat:'GBP', color:'#06b6d4' },
-    { title:'Mettre en place un programme de collecte d\'avis automatisé', impact:'Très élevé', effort:'2h', gain:'+3 avis/mois', cat:'Réputation', color:'#ef4444' },
-    { title:'Créer des backlinks locaux via annuaires sectoriels'+(STATE.me&&STATE.me.location&&STATE.me.location.city?' ('+STATE.me.location.city+')':''), impact:'Élevé', effort:'3h', gain:'+8 pts autorité', cat:'Backlinks', color:'#8b5cf6' },
-    { title:'Optimiser la vitesse mobile du site le plus lent (score <65)', impact:'Très élevé', effort:'2h', gain:'+18 pts vitesse', cat:'Performance', color:'#ef4444' },
-  ];
-  const cats = ['Tous',...new Set(aiMissions.map(m=>m.cat))];
+  const hasAudits = STATE.audits && STATE.audits.length > 0;
+  const _avgSc = (typeof avgScore === 'function') ? avgScore() : 0;
+  const hasMonitors = STATE.monitors && STATE.monitors.length > 0;
+  const hasKeywords = STATE.keywords && STATE.keywords.length > 0;
+  const hasGbp = !!(STATE.gbp && (STATE.gbp.connected || (STATE.gbp.listings && STATE.gbp.listings.length > 0)));
+  const hasCompetitors = STATE.competitors && STATE.competitors.length > 0;
+  const hasSlow = hasAudits && STATE.audits.some(function(a){ return (a.speed || a.performanceScore || 100) < 65; });
+  const unansweredReviews = (STATE.gbp && STATE.gbp.unansweredReviews > 0) ? STATE.gbp.unansweredReviews : null;
+  const city = STATE.me && STATE.me.location && STATE.me.location.city ? STATE.me.location.city : null;
+  const primaryDomain = hasAudits ? (STATE.audits[0].url||'').replace(/^https?:\/\//,'').split('/')[0] : (city || null);
+
+  const allSuggestions = [
+    hasAudits && { title: 'Corriger les balises title manquantes' + (primaryDomain ? ' — ' + primaryDomain : ''), impact:'Élevé', effort:'45 min', gain: _avgSc > 0 && _avgSc < 80 ? '+' + Math.min(15, Math.round((80 - _avgSc) * 0.4)) + ' pts (estimé)' : 'Impact non estimé', cat:'Technique', color:'#f59e0b', source:'Audit SEO · Score actuel : ' + _avgSc + '/100' },
+    hasAudits && { title: 'Ajouter schema markup FAQ sur vos sites prioritaires', impact:'Moyen', effort:'1h', gain:'Impact non estimé', cat:'Technique', color:'#8b5cf6', source:'Audit SEO · ' + STATE.audits.length + ' site(s) analysé(s)' },
+    (hasAudits || city) && { title: 'Créer des pages locales géociblées' + (primaryDomain ? ' — ' + primaryDomain : city ? ' à ' + city : ''), impact:'Très élevé', effort:'2h', gain:'Impact non estimé', cat:'Local SEO', color:'#ef4444', source: hasAudits ? 'Audit · ' + STATE.audits.length + ' site(s)' : 'Profil compte' },
+    (hasGbp || hasAudits) && { title: 'Auditer et corriger les citations NAP incohérentes', impact:'Élevé', effort:'2h', gain:'Impact non estimé', cat:'Local SEO', color:'#f59e0b', source: hasGbp ? 'Google Business Profile connecté' : 'Audit SEO — référencement local' },
+    hasGbp && { title: 'Configurer Google Posts hebdomadaires automatisés', impact:'Élevé', effort:'30 min', gain:'Impact non estimé', cat:'GBP', color:'#2563EB', source:'Google Business Profile connecté' },
+    (hasGbp && unansweredReviews) && { title: 'Répondre aux ' + unansweredReviews + ' avis Google sans réponse', impact:'Très élevé', effort:'45 min', gain:'Impact non estimé', cat:'Réputation', color:'#ef4444', source:'GBP · ' + unansweredReviews + ' avis en attente' },
+    hasGbp && { title: 'Audit et optimisation des photos Google Business', impact:'Moyen', effort:'1h', gain:'Impact non estimé', cat:'GBP', color:'#22c55e', source:'Google Business Profile connecté' },
+    hasSlow && { title: 'Optimiser la vitesse mobile — site le plus lent (score <65)', impact:'Très élevé', effort:'2h', gain:'Impact non estimé', cat:'Performance', color:'#ef4444', source:'Audit performance · score faible détecté' },
+    hasAudits && { title: 'Corriger les images non optimisées (WebP) sur vos sites', impact:'Moyen', effort:'1h30', gain:'Impact non estimé', cat:'Performance', color:'#2563EB', source:'Audit SEO · ' + STATE.audits.length + ' site(s) analysé(s)' },
+    hasMonitors && { title: 'Configurer des alertes de temps de réponse avancées', impact:'Élevé', effort:'30 min', gain:'MTTR réduit', cat:'Monitoring', color:'#2563EB', source:STATE.monitors.length + ' monitor(s) actif(s)' },
+    { title: "Mettre en place un programme de collecte d'avis automatisé", impact:'Très élevé', effort:'2h', gain:'Impact non estimé', cat:'Réputation', color:'#ef4444', source:'Stratégie réputation' },
+    { title: 'Créer des backlinks locaux via annuaires sectoriels' + (city ? ' (' + city + ')' : ''), impact:'Élevé', effort:'3h', gain:'Impact non estimé', cat:'Backlinks', color:'#8b5cf6', source:'Stratégie netlinking' },
+    hasKeywords && { title: 'Optimiser le suivi de positions — ' + STATE.keywords.length + ' mot(s)-clé(s)', impact:'Élevé', effort:'1h', gain:'Impact non estimé', cat:'Technique', color:'#2563EB', source:STATE.keywords.length + ' mot(s)-clé(s) suivi(s)' },
+    hasCompetitors && { title: 'Analyser et contrer les ' + STATE.competitors.length + ' concurrent(s) détectés', impact:'Élevé', effort:'2h', gain:'Impact non estimé', cat:'Technique', color:'#f59e0b', source:'Analyse concurrentielle · ' + STATE.competitors.length + ' concurrent(s)' },
+  ].filter(Boolean);
+
+  const cats = ['Tous', ...new Set(allSuggestions.map(function(m){ return m.cat; }))];
+  const _catF = STATE.aiMissionsFilter || 'Tous';
+  const visibleMissions = _catF === 'Tous' ? allSuggestions : allSuggestions.filter(function(m){ return m.cat === _catF; });
+  window._aiMissionsFiltered = visibleMissions;
+
+  const nAudits = STATE.audits ? STATE.audits.length : 0;
+  const nComp = STATE.competitors ? STATE.competitors.length : 0;
+  const nCreated = allSuggestions.filter(function(m){ return STATE.missions.some(function(x){ return x.title.toLowerCase().trim() === m.title.toLowerCase().trim() && x.status !== 'done'; }); }).length;
+
   return `
     ${aiBlock(
-      (() => {
-        const _nAudits   = STATE.audits ? STATE.audits.length : 0;
-        const _nComp     = STATE.competitors ? STATE.competitors.length : 0;
-        const _nMissions = aiMissions.length;
-        if (_nAudits > 0 || _nComp > 0) {
-          return `J'ai analysé <strong>${_nAudits} site${_nAudits!==1?'s':''}</strong>${_nComp>0?', <strong>'+_nComp+' concurrent'+(_nComp>1?'s':'')+'</strong>':''} et détecté des signaux prioritaires. Ces <strong>${_nMissions} missions IA</strong> sont générées à partir de vos données réelles. Les exécuter peut générer <strong>+${Math.max(10,_nAudits*15)} leads/mois</strong> selon votre secteur.`;
-        }
-        return 'Ajoutez des audits et des concurrents pour recevoir des missions IA personnalisées sur votre activité réelle.';
-      })(),
-      ['Tout créer en missions', 'Expliquer la stratégie', 'Plan 30 jours']
+      (nAudits > 0 || nComp > 0 || hasGbp)
+        ? '<strong>' + allSuggestions.length + ' recommandation' + (allSuggestions.length > 1 ? 's' : '') + '</strong> générées depuis vos données réelles' +
+          (nAudits > 0 ? ' · ' + nAudits + ' audit(s)' : '') +
+          (nComp > 0 ? ' · ' + nComp + ' concurrent(s)' : '') +
+          (hasGbp ? ' · GBP connecté' : '') +
+          (nCreated > 0 ? ' · <strong>' + nCreated + ' déjà créées</strong>' : '') + '.'
+        : 'Lancez un audit SEO ou connectez Google Business Profile pour des recommandations personnalisées.',
+      ['Tout créer en missions', 'Voir les missions existantes']
     )}
 
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      ${cats.map(c => `<button class="fp-filter-tab${(STATE.aiMissionsFilter||'Tous')===c?' active':''}" onclick="STATE.aiMissionsFilter='${c}';render()">${c}</button>`).join('')}
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      ${cats.map(function(c){ return '<button class="fp-filter-tab' + ((STATE.aiMissionsFilter||'Tous')===c?' active':'') + '" onclick="STATE.aiMissionsFilter=\'' + escHtml(c) + '\';render()">' + escHtml(c) + '</button>'; }).join('')}
       <div style="margin-left:auto;display:flex;gap:8px">
-        ${btn('Tout créer','fp-btn fp-btn-primary fp-btn-sm','zap','onclick="(function(){var toCreate=window._aiMissionsFiltered||[];var created=0;(function next(){if(!toCreate.length){if(created>0){showToast(\'success\',created+\' missions créées !\');navigate(\'missions\');}else showToast(\'warning\',\'Aucune mission à créer\');return;}var m=toCreate.shift();var isDup=STATE.missions.find(x=>x.title.toLowerCase()===m.title.toLowerCase()&&x.status!==\'done\');if(isDup){next();return;}apiAction(\'POST\',\'/api/missions\',{title:m.title,source:\'ai\',status:\'todo\',priority:\'high\',category:m.cat}).then(r=>{if(r&&r.id)STATE.missions.unshift(r);else STATE.missions.unshift({id:\'ms\'+Date.now(),title:m.title,source:\'ai\',status:\'todo\',category:m.cat});created++;next();}).catch(()=>{created++;next();});})(  );})(  )"')}
-
-        ${btn('Regénérer','fp-btn fp-btn-ghost fp-btn-sm','refresh-cw','onclick="navigate(\'audits\')"')}
+        ${btn('Tout créer','fp-btn fp-btn-primary fp-btn-sm','zap','id="ai-bulk-create-btn"')}
+        ${btn('Régénérer','fp-btn fp-btn-ghost fp-btn-sm','refresh-cw','id="mission-regen-btn"')}
       </div>
     </div>
 
-    ${(()=>{
-      const _catF = STATE.aiMissionsFilter || 'Tous';
-      const _visibleMissions = _catF === 'Tous' ? aiMissions : aiMissions.filter(m => m.cat === _catF);
-      window._aiMissionsFiltered = _visibleMissions;
-      if (!_visibleMissions.length) return `<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucune mission pour cette catégorie.</div>`;
-      return `<div style="display:flex;flex-direction:column;gap:10px">
-      ${_visibleMissions.map((m, i) => `
-        <div class="fp-opp-card" data-mission-title="${escHtml(m.title)}">
-          <div class="fp-opp-icon" style="background:${m.color}18;border:1px solid ${m.color}28">
-            <span style="font-size:13px;font-weight:800;color:${m.color}">${i+1}</span>
-          </div>
-          <div class="fp-opp-body">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-              <div class="fp-opp-title">${escHtml(m.title)}</div>
-            </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              ${badge(m.cat, m.color)}
-              ${badge(m.impact, impactColor(m.impact))}
-              <span style="font-size:10px;color:var(--fp-text-faint)">⏱ ${escHtml(m.effort)}</span>
-            </div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:12px;font-weight:700;color:#22c55e;white-space:nowrap">${escHtml(m.gain)}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(btn){var t=btn.closest('[data-mission-title]');var title=t?t.dataset.missionTitle:'Mission IA';var isDup=STATE.missions.find(function(x){return x.title.toLowerCase()===title.toLowerCase()&&x.status!=='done';});if(isDup){showToast('warning','Mission déjà existante');navigate('missions');return;}apiAction('POST','/api/missions',{title:title,source:'ai',status:'todo',priority:'high'}).then(function(r){if(r&&r.id){STATE.missions.unshift(r);showToast('success','Mission créée !');navigate('missions');}else showToast('error','Erreur création mission');}).catch(function(){showToast('error','Erreur création mission');});})(this)">+ Créer</button>
-          </div>
-        </div>
-      `).join('')}
-      </div>`;
-    })()}
+    ${allSuggestions.length === 0
+      ? `<div class="fp-empty-state" style="padding:40px 20px;text-align:center">
+          <div style="font-size:40px;margin-bottom:12px">🤖</div>
+          <h3 style="margin:0 0 8px">Aucune suggestion disponible</h3>
+          <p style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">Lancez un audit SEO ou connectez Google Business Profile pour recevoir des missions IA personnalisées.</p>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('audits')">Lancer un audit</button>
+        </div>`
+      : visibleMissions.length === 0
+        ? '<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:13px">Aucune mission pour cette catégorie.</div>'
+        : '<div style="display:flex;flex-direction:column;gap:10px">' +
+          visibleMissions.map(function(m, i) {
+            const alreadyCreated = STATE.missions.some(function(x){ return x.title.toLowerCase().trim() === m.title.toLowerCase().trim() && x.status !== 'done'; });
+            return '<div class="fp-opp-card" data-mission-title="' + escHtml(m.title) + '" data-mission-cat="' + escHtml(m.cat) + '">' +
+              '<div class="fp-opp-icon" style="background:' + m.color + '18;border:1px solid ' + m.color + '28"><span style="font-size:13px;font-weight:800;color:' + m.color + '">' + (i+1) + '</span></div>' +
+              '<div class="fp-opp-body">' +
+                '<div class="fp-opp-title" style="margin-bottom:4px">' + escHtml(m.title) + '</div>' +
+                '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">' +
+                  badge(m.cat, m.color) +
+                  badge(m.impact, impactColor(m.impact)) +
+                  '<span style="font-size:10px;color:var(--fp-text-faint)">⏱ ' + escHtml(m.effort) + '</span>' +
+                '</div>' +
+                '<div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">📊 ' + escHtml(m.source) + '</div>' +
+              '</div>' +
+              '<div style="text-align:right;flex-shrink:0">' +
+                '<div style="font-size:11px;color:var(--fp-text-muted);white-space:nowrap">' + escHtml(m.gain) + '</div>' +
+                (alreadyCreated
+                  ? '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;color:#22c55e;border-color:rgba(34,197,94,0.3)" onclick="navigate(\'missions\')">✓ Créée →</button>'
+                  : '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px" onclick="(function(b){var t=b.closest(\'[data-mission-title]\');var title=t?t.dataset.missionTitle:\'Mission IA\';var cat=t?t.dataset.missionCat:\'SEO\';if(STATE.missions.find(function(x){return x.title.toLowerCase().trim()===title.toLowerCase().trim()&&x.status!==\'done\';})){b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};return;}b.textContent=\'Création…\';b.disabled=true;apiAction(\'POST\',\'/api/missions\',{title:title,source:\'ai\',status:\'todo\',priority:\'high\',category:cat}).then(function(r){if(r&&r.id){STATE.missions.unshift(r);b.textContent=\'✓ Créée\';b.style.color=\'#22c55e\';b.style.borderColor=\'rgba(34,197,94,0.3)\';b.onclick=function(){navigate(\'missions\');};showToast(\'success\',\'Mission créée !\');}else{b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');}}).catch(function(){b.textContent=\'+Créer\';b.disabled=false;showToast(\'error\',\'Erreur\');});})(this)">+ Créer</button>'
+                ) +
+              '</div>' +
+            '</div>';
+          }).join('') +
+          '</div>'
+    }
 
     <div class="fp-card" style="margin-top:16px;background:rgba(37,99,235,0.04);border-color:rgba(37,99,235,0.18)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
-          <div style="font-size:13px;font-weight:700;color:var(--fp-text)">Impact total estimé</div>
-          <div style="font-size:11px;color:var(--fp-text-muted)">Si toutes les missions sont complétées ce mois</div>
+          <div style="font-size:13px;font-weight:700;color:var(--fp-text)">Résumé de vos missions</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Calculé depuis vos données réelles</div>
         </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap">
-          ${(PREVIEW_MODE ? [{l:'Leads/mois',v:'+97'},{l:'Score moyen',v:'+18 pts'},{l:'Temps total',v:'~18h'},{l:'Retour ROI',v:'~3 200€'}] : [{l:'Missions actives',v:String(STATE.missions?.filter(m=>m.status==='active'||m.status==='todo').length||0)},{l:'Score moyen',v:(STATE.audits&&STATE.audits.length>0?Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length)+'/100':'—')},{l:'Complétées',v:String(STATE.missions?.filter(m=>m.status==='done').length||0)},{l:'ROI estimé',v:'—'}]).map(s=>`
-            <div style="text-align:center">
-              <div style="font-size:18px;font-weight:800;color:#2563EB;font-family:var(--fp-font-head)">${s.v}</div>
-              <div style="font-size:10px;color:var(--fp-text-faint)">${s.l}</div>
-            </div>
-          `).join('')}
+          ${[
+            { l:'Suggestions IA', v:String(allSuggestions.length) },
+            { l:'Déjà créées', v:String(nCreated) },
+            { l:'Score moyen', v:(STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce(function(s,a){return s+(a.score||0);},0)/STATE.audits.length)+'/100' : '—') },
+            { l:'Complétées', v:String(STATE.missions ? STATE.missions.filter(function(m){return m.status==='done';}).length : 0) },
+          ].map(function(s){ return '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#2563EB;font-family:var(--fp-font-head)">' + s.v + '</div><div style="font-size:10px;color:var(--fp-text-faint)">' + s.l + '</div></div>'; }).join('')}
         </div>
       </div>
     </div>
