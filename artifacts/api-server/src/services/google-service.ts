@@ -335,13 +335,16 @@ export async function generateAIReply(
   rating: number,
   comment: string
 ): Promise<string> {
-  if (rating >= 4) {
-    return `Bonjour ${reviewerName}, merci beaucoup pour votre avis positif ! Nous sommes ravis que vous soyez satisfait de nos services. N'hésitez pas à nous recommander. 🙏`;
-  }
-  if (rating <= 2) {
-    return `Bonjour ${reviewerName}, nous sommes sincèrement désolés que votre expérience n'ait pas été à la hauteur. Votre retour est précieux — n'hésitez pas à nous contacter directement pour que nous puissions corriger la situation. 🤝`;
-  }
-  return `Bonjour ${reviewerName}, merci pour votre retour ! Nous prenons note de vos commentaires pour améliorer continuellement notre service. 😊`;
+  const { aiChatCompletion } = await import("../lib/openai-client.js");
+  const reply = await aiChatCompletion({
+    systemPrompt: `Tu es le gérant d'un commerce local français. Tu réponds aux avis Google de manière personnalisée, professionnelle et chaleureuse (2-4 phrases max). Adapte le ton à la note : remerciement sincère si positif, excuse et proposition de solution si négatif. Ne mets jamais de guillemets autour de la réponse.`,
+    userPrompt: `Avis de ${reviewerName} (${rating}/5 étoiles) : "${comment || "(sans commentaire)"}". Rédige la réponse du gérant.`,
+    maxTokens: 220,
+    temperature: 0.8,
+  });
+  const trimmed = reply.trim();
+  if (!trimmed) throw new Error("AI_GENERATION_FAILED");
+  return trimmed;
 }
 
 export async function syncAll(orgId: string): Promise<{ accounts: number; locations: number; reviews: number }> {

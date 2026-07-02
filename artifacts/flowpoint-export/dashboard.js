@@ -14323,7 +14323,7 @@ function renderSubPageContent(route, sub) {
       <div class="fp-grid-2">
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:12px">📈 Optimisations recommandées</div>
-          ${[
+          ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez GA4 et Search Console pour obtenir des recommandations basées sur vos données réelles.</div>` : [
             {icon:'✅',c:'#22c55e',t:'Titles & meta-descriptions',d:'23 pages optimisées ce mois. Score moyen +7 pts.'},
             {icon:'⚠️',c:'#f59e0b',t:'Contenu thin content détecté',d:'8 pages avec moins de 300 mots — risque de pénalité.'},
             {icon:'🔗',c:'#2563EB',t:'3 opportunités de backlinks',d:'Sites partenaires identifiés pour link building.'},
@@ -14335,7 +14335,7 @@ function renderSubPageContent(route, sub) {
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:12px">🎯 Performance SEO</div>
-          ${[['Position moy. Google','14.3','↓ -2.1'],['CTR SERP','4.8%','↑ +0.6%'],['Impressions','48 200','↑ +12%'],['Clics organiques', fmtN(filtered.reduce((a,r)=>a+parseFloat(r.metricValues?.[0]?.value||0),0)||5234),'↑ +8%']].map(([l,v,d])=>`
+          ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Les indicateurs SEO s'afficheront avec vos données Search Console réelles.</div>` : [['Position moy. Google','14.3','↓ -2.1'],['CTR SERP','4.8%','↑ +0.6%'],['Impressions','48 200','↑ +12%'],['Clics organiques', fmtN(filtered.reduce((a,r)=>a+parseFloat(r.metricValues?.[0]?.value||0),0)||5234),'↑ +8%']].map(([l,v,d])=>`
             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <span style="font-size:11px;color:var(--fp-text-muted)">${l}</span>
               <div style="text-align:right"><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${v}</span>
@@ -14354,7 +14354,7 @@ function renderSubPageContent(route, sub) {
       <div class="fp-grid-2">
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:12px">💸 Budget & ROI estimé</div>
-          ${[['Budget mensuel estimé','1 200€','—'],['Coût par clic moy.','0.87€','↓ -5%'],['Conversions payantes','23','↑ +3'],['ROAS estimé','3.2×','↑ +0.4']].map(([l,v,d])=>`
+          ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez Google Ads pour voir votre budget et votre ROI réels.</div>` : [['Budget mensuel estimé','1 200€','—'],['Coût par clic moy.','0.87€','↓ -5%'],['Conversions payantes','23','↑ +3'],['ROAS estimé','3.2×','↑ +0.4']].map(([l,v,d])=>`
             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <span style="font-size:11px;color:var(--fp-text-muted)">${l}</span>
               <div style="text-align:right"><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${v}</span>
@@ -14363,7 +14363,7 @@ function renderSubPageContent(route, sub) {
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:12px">⚡ Recommandations IA</div>
-          ${[
+          ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Les recommandations IA s'afficheront dès que des données de campagnes réelles seront disponibles.</div>` : [
             {icon:'🎯',c:'#22c55e',t:'Augmenter budget Email retargeting',d:'ROI 8.4× — canal le plus rentable'},
             {icon:'⚠️',c:'#f59e0b',t:'CPC trop élevé sur Brand',d:'Réduire enchères sur mots-clés de marque'},
             {icon:'🔧',c:'#2563EB',t:'A/B test landing page Paid',d:'Potentiel +18% taux de conv. estimé'},
@@ -14384,7 +14384,7 @@ function renderSubPageContent(route, sub) {
       ${renderChannelTable(filtered, _ga4Connected()?'Actualisez pour voir les données sociales':'Connectez GA4 pour voir le trafic social')}
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:12px">📊 Analyse par réseau</div>
-        ${[
+        ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">${_ga4Connected()?'L\'analyse par réseau s\'affichera dès que du trafic social sera détecté.':'Connectez GA4 pour voir l\'analyse par réseau social.'}</div>` : [
           {n:'LinkedIn',   s:780, c:42, color:'#0077b5', svg:`<svg viewBox="0 0 24 24" width="20" height="20" style="display:block"><rect width="24" height="24" rx="5" fill="#0077b5"/><path d="M7.2 9.6H5V17h2.2V9.6zm-1.1-3.5a1.3 1.3 0 100 2.6 1.3 1.3 0 000-2.6zM19 13.1c0-2.1-1.1-3.6-3-3.6-1.3 0-2.1.7-2.5 1.5V9.6H11V17h2.4v-4c0-1.1.5-1.9 1.6-1.9 1 0 1.5.8 1.5 1.9V17H19v-3.9z" fill="white"/></svg>`},
           {n:'Instagram',  s:560, c:31, color:'#e1306c', svg:`<svg viewBox="0 0 24 24" width="20" height="20" style="display:block"><defs><linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#f09433"/><stop offset="25%" stop-color="#e6683c"/><stop offset="50%" stop-color="#dc2743"/><stop offset="75%" stop-color="#cc2366"/><stop offset="100%" stop-color="#bc1888"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="url(#ig)"/><rect x="7" y="7" width="10" height="10" rx="3" fill="none" stroke="white" stroke-width="1.5"/><circle cx="12" cy="12" r="2.5" fill="none" stroke="white" stroke-width="1.5"/><circle cx="16.5" cy="7.5" r="1" fill="white"/></svg>`},
           {n:'Facebook',   s:340, c:19, color:'#1877f2', svg:`<svg viewBox="0 0 24 24" width="20" height="20" style="display:block"><rect width="24" height="24" rx="5" fill="#1877f2"/><path d="M15.5 8H13V6.5c0-.6.4-.6.8-.6h1.7V3.5l-2.4-.1c-2.4 0-3 1.6-3 3.1V8H8v3h2.1v7h2.9v-7h2l.4-3h-2.5z" fill="white"/></svg>`},
@@ -14407,7 +14407,7 @@ function renderSubPageContent(route, sub) {
       ${renderChannelTable(filtered, _ga4Connected()?'Actualisez pour voir le trafic direct':'Connectez GA4 pour voir le trafic direct')}
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:12px">💡 Analyse fidélité</div>
-        ${[
+        ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">${_ga4Connected()?'L\'analyse de fidélité s\'affichera avec un historique de trafic suffisant.':'Connectez GA4 pour voir l\'analyse de fidélité.'}</div>` : [
           {icon:'🔁',c:'#22c55e',t:'37% visiteurs récurrents',d:'Taux de retour stable — audience fidèle identifiée.'},
           {icon:'📧',c:'#2563EB',t:'Email probable non tracké',d:'Partie du direct vient probablement d\'emails sans UTM.'},
           {icon:'🔖',c:'#f59e0b',t:'Forte proportion bookmarks',d:'Marque mémorisée — opportunité d\'app ou PWA.'},
@@ -14421,32 +14421,11 @@ function renderSubPageContent(route, sub) {
     if (sub === 'anomalies') {
       return `<div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">⚠️ Détection d'anomalies de trafic</div>
-        ${[
-          {type:'danger',icon:'📉',title:'Chute trafic organique -23%',desc:'Organic Search -23% lundi vs moyenne 30j. Possible mise à jour algo Google. Vérifiez Search Console.',action:'Voir Search Console',color:'#ef4444'},
-          {type:'warn',icon:'📈',title:'Pic trafic referral +156%',desc:'Referral +156% hier. Probable mention dans article ou forum populaire. Identifiez la source.',action:'Voir la source',color:'#f59e0b'},
-          {type:'danger',icon:'🚨',title:'Taux rebond mobile anormal',desc:'Bounce mobile 78% cette semaine vs 45% normale. Problème UX probable sur mobile — à investiguer.',action:'Analyser mobile',color:'#ef4444'},
-          {type:'info',icon:'🔵',title:'Nouveau pic trafic direct',desc:'Direct +45% mercredi. Possible campagne offline (radio, affichage, presse) ou partage viral.',action:'Explorer',color:'#2563EB'},
-          {type:'warn',icon:'📊',title:'Session duration -28%',desc:'Temps moyen de session en baisse sur les pages blog. Contenu peut-être moins pertinent qu\'avant.',action:'Voir pages',color:'#f59e0b'},
-        ].map(x=>`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;background:${x.color}08;border-left:3px solid ${x.color};margin-bottom:8px">
-          <span style="font-size:18px;flex-shrink:0">${x.icon}</span>
-          <div style="flex:1">
-            <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${x.title}</div>
-            <div style="font-size:11px;color:var(--fp-text-muted)">${x.desc}</div>
-          </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('info','Ouverture...')">${x.action}</button>
-        </div>`).join('')}
-      </div>
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:12px">🤖 IA — Recommandations correctives</div>
-        ${[
-          {t:'Vérifier Core Update Google',d:'Positionnement de 14 pages impactées — plan de contenu requis.',btn:'Créer plan'},
-          {t:'Ajouter UTMs sur emails',d:'30% du trafic direct est probablement de l\'email non tracké.',btn:'Guide UTM'},
-          {t:'Tester vitesse mobile',d:'LCP mobile > 4s détecté — impact direct sur le taux de rebond.',btn:'Voir LCP'},
-        ].map(x=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-          <div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--fp-text)">${x.t}</div>
-          <div style="font-size:10px;color:var(--fp-text-muted)">${x.d}</div></div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="_fpMQ(x.t||'Mission contenu','Contenu','medium')">${x.btn}</button>
-        </div>`).join('')}
+        <div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
+          <div style="font-size:24px;margin-bottom:8px">📡</div>
+          <div style="font-weight:600;margin-bottom:4px">${_ga4Connected()?'Détection d\'anomalies en cours de collecte':'Connectez GA4 pour activer la détection d\'anomalies'}</div>
+          <div style="font-size:11px">${_ga4Connected()?'La détection compare votre trafic quotidien à votre moyenne sur 30 jours. Elle s\'activera dès qu\'un historique suffisant sera disponible.':'L\'analyse des anomalies nécessite vos données de trafic réelles.'}</div>
+        </div>
       </div>`;
     }
   }
@@ -14503,63 +14482,36 @@ function renderSubPageContent(route, sub) {
       </div>`;
     }
     if (sub === 'paths') {
+      const _cpRows = cp.slice(0,8);
       return `<div class="fp-card fp-mb-20">
-        <div class="fp-card-title" style="margin-bottom:14px">🗺️ Parcours utilisateurs les plus fréquents</div>
-        ${[
-          {path:['Accueil','/produits','/produit-detail','/panier','Checkout'],pct:28,conv:true},
-          {path:['Blog','/article','/accueil','/contact'],pct:19,conv:true},
-          {path:['Google Ads','/landing-page','/checkout'],pct:14,conv:true},
-          {path:['Accueil','/pricing','/contact'],pct:11,conv:false},
-          {path:['Social','/blog-post','/quitter'],pct:9,conv:false},
-        ].map((x,i)=>`<div style="padding:12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border);margin-bottom:8px">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            ${x.path.map((p,j)=>`<span style="font-size:11px;padding:3px 8px;border-radius:5px;background:${j===0?'rgba(37,99,235,0.12)':j===x.path.length-1?x.conv?'rgba(34,197,94,0.12)':'rgba(239,68,68,0.12)':'rgba(255,255,255,0.05)'};color:${j===0?'#2563EB':j===x.path.length-1?x.conv?'#22c55e':'#ef4444':'var(--fp-text)'};font-weight:${j===0||j===x.path.length-1?'700':'400'}">${p}</span>${j<x.path.length-1?'<span style="color:var(--fp-text-faint);font-size:10px">→</span>':''}`).join('')}
-          </div>
-          <div style="display:flex;align-items:center;gap:12px">
-            <div class="fp-progress-track" style="flex:1;height:5px"><div class="fp-progress-fill" style="width:${x.pct*3}%;background:${x.conv?'#22c55e':'#64748b'}"></div></div>
-            <span style="font-size:11px;font-weight:700;color:var(--fp-text)">${x.pct}% du trafic</span>
-            <span style="font-size:10px;padding:2px 7px;border-radius:5px;background:${x.conv?'rgba(34,197,94,0.12)':'rgba(100,116,139,0.15)'};color:${x.conv?'#22c55e':'#64748b'}">${x.conv?'Converti':'Non converti'}</span>
-          </div>
-        </div>`).join('')}
-      </div>
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:12px">🤖 Insights IA — Parcours à optimiser</div>
-        <div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:3px solid #2563EB">
-          Le parcours Blog → Article → Contact représente 19% du trafic mais n'a que 4% de taux de conversion. 
-          Ajouter un <strong>CTA contextuel</strong> sur les articles de blog pourrait générer +34 leads/mois supplémentaires.
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:8px;width:100%" onclick="_fpMQ('Créer CTA Blog contextuel','Contenu','high',true)">Créer mission CTA Blog</button>
-        </div>
+        <div class="fp-card-title" style="margin-bottom:14px">🗺️ Chemins de conversion (canal → événement)</div>
+        ${_cpRows.length ? _cpRows.map(r=>{
+          const ev = r.dimensionValues?.[0]?.value||'event';
+          const ch = r.dimensionValues?.[1]?.value||'—';
+          const c  = Math.round(parseFloat(r.metricValues?.[0]?.value||0));
+          const color = GA4_CHANNEL_COLORS[ch]||'#64748b';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border);margin-bottom:8px">
+            <span style="font-size:11px;padding:3px 8px;border-radius:5px;background:${color}18;color:${color};font-weight:700">${escHtml(ch)}</span>
+            <span style="color:var(--fp-text-faint);font-size:10px">→</span>
+            <code style="font-size:11px;color:#2563EB;font-family:var(--fp-font-mono);flex:1;overflow:hidden;text-overflow:ellipsis">${escHtml(ev)}</code>
+            <span style="font-size:12px;font-weight:800;color:#22c55e">${c.toLocaleString('fr-FR')} conv.</span>
+          </div>`;
+        }).join('') : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
+            <div style="font-size:24px;margin-bottom:8px">🗺️</div>
+            <div style="font-weight:600;margin-bottom:4px">${_ga4Connected()?'Aucun chemin de conversion mesuré sur la période':'Connectez GA4 pour analyser vos parcours'}</div>
+            <div style="font-size:11px">${_ga4Connected()?'Les parcours apparaîtront dès que des conversions seront enregistrées.':'Les parcours utilisateurs sont calculés à partir de vos données GA4 réelles.'}</div>
+          </div>`}
       </div>`;
     }
     if (sub === 'dropoff') {
       return `<div class="fp-card fp-mb-20">
         <div class="fp-card-title" style="margin-bottom:14px">💡 Analyse drop-off & points de friction</div>
-        ${[
-          {step:'Accueil → Produit',   drop:26, fix:'Améliorer le CTA principal — test A/B couleur/texte', gain:'+142 conv./mois', priority:'Élevé'},
-          {step:'Produit → Panier',    drop:34, fix:'Ajouter preuves sociales et garanties produit',      gain:'+89 conv./mois',  priority:'Critique'},
-          {step:'Panier → Checkout',   drop:48, fix:'Réduire les champs — checkout en 1 étape',           gain:'+203 conv./mois', priority:'Critique'},
-          {step:'Checkout → Paiement', drop:19, fix:'Ajouter PayPal & Apple Pay — friction réduite',      gain:'+61 conv./mois',  priority:'Élevé'},
-          {step:'Paiement → Merci',    drop:7,  fix:'Page de confirmation optimisée + upsell post-achat', gain:'+28 conv./mois',  priority:'Moyen'},
-        ].map(x => {
-          const c = x.priority==='Critique'?'#ef4444':x.priority==='Élevé'?'#f59e0b':'#22c55e';
-          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:rgba(239,68,68,0.04);border-left:3px solid ${c};margin-bottom:8px;flex-wrap:wrap">
-            <div style="flex:1;min-width:200px">
-              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${x.step} — <span style="color:#ef4444">-${x.drop}%</span> drop-off</div>
-              <div style="font-size:11px;color:var(--fp-text-muted)">${x.fix}</div>
-              <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${c}15;color:${c};font-weight:600;margin-top:4px;display:inline-block">${x.priority}</span>
-            </div>
-            <div style="text-align:right;flex-shrink:0">
-              <div style="font-size:12px;font-weight:700;color:#22c55e">${x.gain}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:4px" onclick="_fpMQ(x?.fix||'Optimiser le funnel de conversion','Conversion','high')">Créer mission</button>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-      <div class="fp-card">
-        <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:8px">🏆 Potentiel total récupérable</div>
-        <div style="font-size:32px;font-weight:900;color:#22c55e;font-family:var(--fp-font-head)">+523 conversions/mois</div>
-        <div style="font-size:11px;color:var(--fp-text-muted);margin-top:4px">En corrigeant tous les points de friction identifiés — consultez le rapport pour le potentiel estimé.</div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:12px" onclick="navigate('conversion')">Ouvrir Conversion Lab →</button>
+        <div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
+          <div style="font-size:24px;margin-bottom:8px">📉</div>
+          <div style="font-weight:600;margin-bottom:4px">${_ga4Connected()?'Aucun funnel configuré pour l\'analyse de drop-off':'Connectez GA4 pour analyser vos points de friction'}</div>
+          <div style="font-size:11px">${_ga4Connected()?'Configurez des événements de funnel (view_item, add_to_cart, begin_checkout, purchase) dans GA4 pour mesurer les abandons à chaque étape.':'L\'analyse de drop-off est calculée à partir de vos événements GA4 réels.'}</div>
+        </div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin:0 auto;display:block" onclick="navigate('conversion')">Ouvrir Conversion Lab →</button>
       </div>`;
     }
   }
@@ -14625,8 +14577,9 @@ function renderSubPageContent(route, sub) {
         const s   = parseFloat(r.metricValues?.[0]?.value||0);
         devMap[dev]=(devMap[dev]||0)+s; osMap[os]=(osMap[os]||0)+s; brMap[br]=(brMap[br]||0)+s;
       });
-      const totalSess = Object.values(devMap).reduce((a,b)=>a+(b),0) || 12847;
-      const devDisplay = Object.keys(devMap).length ? devMap : {'mobile':7209,'desktop':4327,'tablet':1311};
+      const totalSess = Object.values(devMap).reduce((a,b)=>a+(b),0) || 1;
+      const devDisplay = Object.keys(devMap).length ? devMap : {};
+      const _hasDevData = Object.keys(devMap).length > 0;
       const devColors  = {'mobile':'#8b5cf6','desktop':'#2563EB','tablet':'#f59e0b'};
       return `<div class="fp-grid-2 fp-mb-20">
         <div class="fp-card">
@@ -14676,59 +14629,25 @@ function renderSubPageContent(route, sub) {
       </div>
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:10px">⚡ Impact UX mobile</div>
-        <div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:rgba(239,68,68,0.06);border-radius:8px;border-left:3px solid #ef4444">
-          Mobile représente <strong>${Math.round((devDisplay['mobile']||7209)/totalSess*100)}% du trafic</strong> mais le taux de conversion mobile est 2.3× inférieur au desktop. 
-          Corriger le checkout mobile peut générer <strong>+203 conv./mois</strong>.
-        </div>
+        ${_hasDevData && devDisplay['mobile'] ? `<div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:3px solid #2563EB">
+          Mobile représente <strong>${Math.round((devDisplay['mobile']||0)/totalSess*100)}% de votre trafic</strong>. Vérifiez les Core Web Vitals mobiles pour vous assurer que l'expérience mobile ne freine pas vos conversions.
+        </div>` : `<div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:var(--fp-inner-card);border-radius:8px">
+          ${_ga4Connected()?'Actualisez les données GA4 pour voir la répartition mobile/desktop.':'Connectez GA4 pour mesurer l\'impact de l\'expérience mobile sur vos conversions.'}
+        </div>`}
         <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="navigate('core-web-vitals')">Voir Core Web Vitals →</button>
       </div>`;
     }
     if (sub === 'demographics') {
-      return `<div class="fp-grid-2 fp-mb-20">
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">🎂 Tranches d'âge</div>
-          ${[
-            {label:'18-24',pct:12,color:'#8b5cf6'},
-            {label:'25-34',pct:31,color:'#2563EB'},
-            {label:'35-44',pct:28,color:'#06b6d4'},
-            {label:'45-54',pct:17,color:'#22c55e'},
-            {label:'55-64',pct:8, color:'#f59e0b'},
-            {label:'65+',  pct:4, color:'#64748b'},
-          ].map(x=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <div style="width:42px;font-size:11px;font-weight:600;color:var(--fp-text);flex-shrink:0">${x.label}</div>
-            <div class="fp-progress-track" style="flex:1;height:8px"><div class="fp-progress-fill" style="width:${x.pct*3}%;background:${x.color}"></div></div>
-            <span style="font-size:12px;font-weight:700;color:${x.color};width:36px;text-align:right">${x.pct}%</span>
-          </div>`).join('')}
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:8px">Source : Google Signals — activation requise dans GA4</div>
+      return `<div class="fp-card fp-mb-20">
+        <div class="fp-card-title" style="margin-bottom:14px">🎂 Données démographiques</div>
+        <div style="text-align:center;padding:32px 16px;color:var(--fp-text-faint);font-size:12px">
+          <div style="font-size:24px;margin-bottom:8px">👥</div>
+          <div style="font-weight:600;margin-bottom:4px">${_ga4Connected()?'Google Signals requis pour les données démographiques':'Connectez GA4 pour voir vos données démographiques'}</div>
+          <div style="font-size:11px;max-width:420px;margin:0 auto">${_ga4Connected()
+            ? 'Les tranches d\'âge et le genre nécessitent l\'activation de <strong>Google Signals</strong> dans votre propriété GA4 (Administration → Paramètres des données → Collecte des données), puis un délai de collecte de 24-48h.'
+            : 'Les données d\'âge et de genre proviennent de Google Signals, disponible après connexion de votre compte Google Analytics.'}</div>
+          ${_ga4Connected() ? '' : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:14px" onclick="navigate('settings');setTimeout(()=>navigateSub('integrations'),50)">Connecter GA4 →</button>`}
         </div>
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:14px">⚧ Genre</div>
-          <div style="display:flex;gap:16px;margin-bottom:20px">
-            ${[{l:'Femme',pct:54,c:'#ec4899'},{l:'Homme',pct:42,c:'#2563EB'},{l:'Autre',pct:4,c:'#64748b'}].map(x=>`
-              <div style="text-align:center;flex:1">
-                <div style="font-size:28px;font-weight:900;color:${x.c};font-family:var(--fp-font-head)">${x.pct}%</div>
-                <div style="font-size:11px;color:var(--fp-text-muted)">${x.l}</div>
-              </div>`).join('')}
-          </div>
-          <div style="height:8px;border-radius:4px;overflow:hidden;display:flex">
-            <div style="width:54%;background:#ec4899"></div>
-            <div style="width:42%;background:#2563EB"></div>
-            <div style="width:4%;background:#64748b"></div>
-          </div>
-          <div style="font-size:10px;color:var(--fp-text-faint);margin-top:8px">Source : Google Signals</div>
-        </div>
-      </div>
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:10px">🤖 Segments d'audience IA recommandés</div>
-        ${[
-          {icon:'🎯',t:'25-34 ans femmes — top convertisseurs',d:'Ce segment convertit 3.2× mieux que la moyenne. Créez une campagne ciblée.',c:'#22c55e'},
-          {icon:'⚠️',t:'55+ — taux rebond élevé',d:'Taux rebond 68% sur mobile pour 55+. Accessibilité et taille de police à revoir.',c:'#f59e0b'},
-          {icon:'💡',t:'18-24 — fort engagement, faible conversion',d:'Très actifs mais faible pouvoir d\'achat apparent. Contenu d\'éducation recommandé.',c:'#2563EB'},
-        ].map(x=>`<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-          <span style="font-size:14px">${x.icon}</span>
-          <div><div style="font-size:11px;font-weight:600;color:${x.c}">${x.t}</div>
-          <div style="font-size:10px;color:var(--fp-text-muted)">${x.d}</div></div>
-        </div>`).join('')}
       </div>`;
     }
   }
@@ -14744,18 +14663,7 @@ function renderSubPageContent(route, sub) {
               ${['Paramètre','Valeur la plus fréquente','Sessions','Exemples'].map((h,i)=>`<th style="padding:6px 10px;text-align:${i===0?'left':'center'};font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
             </tr></thead>
             <tbody>
-              ${[
-                {p:'utm_source',   v:'google',      s:4210, ex:'newsletter, linkedin, bing'},
-                {p:'utm_medium',   v:'cpc',         s:1420, ex:'email, social, organic'},
-                {p:'utm_campaign', v:'promo_printemps',s:780,ex:'lancement_v3, retargeting_mai'},
-                {p:'utm_content',  v:'banner_blue', s:340, ex:'cta_top, hero_image, sidebar'},
-                {p:'utm_term',     v:'seo dashboard',s:210,ex:'analytics tool, google rankings'},
-              ].map(x=>`<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
-                <td style="padding:7px 10px"><code style="font-size:11px;color:#2563EB;font-family:var(--fp-font-mono)">${x.p}</code></td>
-                <td style="padding:7px 10px;font-weight:600;color:var(--fp-text);text-align:center">${x.v}</td>
-                <td style="padding:7px 10px;font-weight:700;text-align:center">${x.s.toLocaleString('fr-FR')}</td>
-                <td style="padding:7px 10px;font-size:10px;color:var(--fp-text-muted);text-align:center">${x.ex}</td>
-              </tr>`).join('')}
+              <tr><td colspan="4" style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">${_ga4Connected()?'Aucun paramètre UTM détecté sur la période — taguez vos campagnes avec le générateur ci-dessous.':'Connectez GA4 pour analyser les paramètres UTM de vos campagnes.'}</td></tr>
             </tbody>
           </table>
         </div>
@@ -14800,54 +14708,10 @@ function renderSubPageContent(route, sub) {
              ${['Dépenses','Conversions','Revenu estimé','ROI','CPA'].map(h=>`<th style="padding:6px 12px;text-align:center;font-size:10px;color:var(--fp-text-faint);font-weight:600;white-space:nowrap">${h}</th>`).join('')}
           </tr></thead>
           <tbody>
-            ${(()=>{
-              const rows=[
-                {ch:'Email',          spend:0,    conv:71,  rev:2982, roi:8.4, cpa:0,    color:'#ec4899'},
-                {ch:'Organic Search', spend:0,    conv:312, rev:5040, roi:6.1, cpa:0,    color:'#22c55e'},
-                {ch:'Referral',       spend:0,    conv:156, rev:2418, roi:5.9, cpa:0,    color:'#06b6d4'},
-                {ch:'Paid Search',    spend:1200, conv:23,  rev:3864, roi:3.2, cpa:52.2, color:'#2563EB'},
-                {ch:'Organic Social', spend:0,    conv:98,  rev:1470, roi:2.8, cpa:0,    color:'#f59e0b'},
-                {ch:'Display',        spend:400,  conv:8,   rev:840,  roi:2.1, cpa:50.0, color:'#8b5cf6'},
-              ];
-              const maxConv=Math.max(...rows.map(r=>r.conv));
-              const maxRev=Math.max(...rows.map(r=>r.rev));
-              return rows.map(x=>`<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
-              <td style="padding:7px 12px"><div style="display:flex;align-items:center;gap:6px">
-                <div style="width:8px;height:8px;border-radius:2px;background:${x.color};flex-shrink:0"></div>
-                <span style="font-size:11px;font-weight:600;color:var(--fp-text)">${x.ch}</span></div>
-              </td>
-              <td style="padding:7px 12px;text-align:center;color:var(--fp-text-muted);font-weight:600">${x.spend?x.spend.toLocaleString('fr-FR')+'€':'—'}</td>
-              <td style="padding:7px 12px">
-                <div style="display:flex;align-items:center;justify-content:center;gap:7px">
-                  <div style="width:44px;height:4px;background:var(--fp-track);border-radius:2px;flex-shrink:0"><div style="height:100%;width:${Math.round(x.conv/maxConv*100)}%;background:#22c55e;border-radius:2px"></div></div>
-                  <span style="font-size:11px;font-weight:700;color:#22c55e;min-width:24px;text-align:right">${x.conv}</span>
-                </div>
-              </td>
-              <td style="padding:7px 12px">
-                <div style="display:flex;align-items:center;justify-content:center;gap:7px">
-                  <div style="width:44px;height:4px;background:var(--fp-track);border-radius:2px;flex-shrink:0"><div style="height:100%;width:${Math.round(x.rev/maxRev*100)}%;background:#2563EB;border-radius:2px"></div></div>
-                  <span style="font-size:11px;font-weight:700;min-width:46px;text-align:right">${x.rev.toLocaleString('fr-FR')}€</span>
-                </div>
-              </td>
-              <td style="padding:7px 12px;text-align:center"><span style="font-weight:800;color:${x.roi>5?'#22c55e':x.roi>3?'#f59e0b':'#ef4444'};font-size:13px">${x.roi}×</span></td>
-              <td style="padding:7px 12px;text-align:center;color:${x.cpa?'var(--fp-text-muted)':'#22c55e'};font-weight:600">${x.cpa?x.cpa+'€':'Gratuit'}</td>
-            </tr>`).join('');
-            })()}
+            <tr><td colspan="6" style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">${_ga4Connected()?'Le calcul du ROI nécessite vos dépenses publicitaires — liez Google Ads à votre propriété GA4 pour l\'activer.':'Connectez GA4 pour calculer le ROI de vos canaux marketing.'}</td></tr>
           </tbody>
         </table>
         </div>
-      </div>
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:10px">🤖 Recommandations budget IA</div>
-        ${[
-          {icon:'📧',c:'#22c55e',t:'Email — ROI 8.4×',d:'Investir dans l\'automation email. Coût quasi nul, retour maximal.'},
-          {icon:'💰',c:'#f59e0b',t:'Réallouer budget Display',d:'ROI 2.1× — réduire et rediriger vers Email/SEO.'},
-          {icon:'🔍',c:'#2563EB',t:'Paid Search — optimiser CPA',d:'CPA 52€ — tester des landing pages dédiées pour baisser à 35€.'},
-        ].map(x=>`<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-          <span style="font-size:14px">${x.icon}</span>
-          <div><div style="font-size:11px;font-weight:600;color:${x.c}">${x.t}</div>
-          <div style="font-size:10px;color:var(--fp-text-muted)">${x.d}</div></div>
-        </div>`).join('')}
       </div>`;
     }
     if (sub === 'compare') {
@@ -14868,27 +14732,9 @@ function renderSubPageContent(route, sub) {
             ${['Métrique','Période A','Période B','Évolution'].map((h,i)=>`<th style="padding:6px 10px;text-align:${i===0?'left':'center'};font-size:10px;color:var(--fp-text-faint);font-weight:600;white-space:nowrap">${h}</th>`).join('')}
           </tr></thead>
           <tbody>
-            ${[
-              {m:'Sessions',         a:'12 847', b:'10 234', delta:'+25.5%', up:true},
-              {m:'Utilisateurs',     a:'9 612',  b:'7 891',  delta:'+21.8%', up:true},
-              {m:'Conversions',      a:'668',    b:'521',    delta:'+28.2%', up:true},
-              {m:'Taux de conv.',    a:'5.2%',   b:'5.1%',   delta:'+0.1pt', up:true},
-              {m:'Durée moy. session',a:'2m 34s',b:'2m 12s', delta:'+16.7%', up:true},
-              {m:'Taux de rebond',   a:'42%',    b:'48%',    delta:'-6pt',   up:true},
-              {m:'Revenu estimé',    a:'15 762€',b:'11 840€',delta:'+33.1%', up:true},
-            ].map(x=>`<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
-              <td style="padding:7px 10px;font-weight:600;color:var(--fp-text);white-space:nowrap">${x.m}</td>
-              <td style="padding:7px 10px;font-weight:700;white-space:nowrap;text-align:center">${x.a}</td>
-              <td style="padding:7px 10px;color:var(--fp-text-muted);white-space:nowrap;text-align:center">${x.b}</td>
-              <td style="padding:7px 10px;white-space:nowrap;text-align:center"><span style="color:${x.up?'#22c55e':'#ef4444'};font-weight:700">${x.delta}</span></td>
-            </tr>`).join('')}
+            <tr><td colspan="4" style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">${_ga4Connected()?'La comparaison de périodes sera disponible dès qu\'un historique suffisant aura été collecté.':'Connectez GA4 pour comparer vos périodes de trafic.'}</td></tr>
           </tbody>
         </table>
-        </div>
-      </div>
-      <div class="fp-card">
-        <div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:rgba(34,197,94,0.06);border-radius:8px;border-left:3px solid #22c55e">
-          <strong>Toutes les métriques sont en hausse</strong> vs la même période en 2025. La campagne "promo_printemps" a eu l'impact le plus significatif (+28% de conversions). Reproduire ce format pour la campagne estivale.
         </div>
       </div>`;
     }
@@ -14910,58 +14756,35 @@ function renderSubPageContent(route, sub) {
     const topCities = Object.entries(cityMap).sort((a,b)=>(b[1])-(a[1])).slice(0,8);
 
     if (sub === 'events') {
-      const liveEvents = ['page_view','scroll','click','session_start','conversion','user_engagement','purchase','form_submit','video_start','search'];
-      const livePages  = ['/','/produits','/contact','/blog','/pricing','/about','/blog/seo-guide'];
-      const liveCities = topCities.length > 0 ? topCities.slice(0,7).map(([c])=>c) : (PREVIEW_MODE ? ['Paris','Lyon','Marseille','Bordeaux','Nice','Bruxelles','Genève'] : ['Ville A','Ville B','Ville C','Ville D','Ville E']);
+      const _activeU = rt.activeUsers || 0;
       return `<div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">⚡ Flux d'événements en temps réel</div>
+          <div class="fp-card-title" style="margin-bottom:0">⚡ Activité en temps réel</div>
           <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:#ef4444">
             <div style="width:6px;height:6px;border-radius:50%;background:#ef4444;animation:pulse 1s infinite"></div> LIVE
           </div>
         </div>
+        ${rows.length ? `
+        <div style="display:flex;gap:20px;margin-bottom:14px">
+          <div><div style="font-size:26px;font-weight:900;color:#ef4444;font-family:var(--fp-font-head)">${_activeU||rows.length}</div><div style="font-size:10px;color:var(--fp-text-muted)">visiteurs actifs / 30 min</div></div>
+        </div>
         <div style="font-family:var(--fp-font-mono);font-size:11px;color:var(--fp-text-muted)">
-          ${[...Array(12)].map((_,i)=>{
-            const ev=liveEvents[i%liveEvents.length];
-            const pg=livePages[i%livePages.length];
-            const ci=liveCities[i%liveCities.length];
-            const sec=i*5;
-            const isConv=ev==='conversion'||ev==='purchase';
+          ${rows.slice(0,12).map(r=>{
+            const ci = r.dimensionValues?.[1]?.value||'Inconnu';
+            const pg = r.dimensionValues?.[2]?.value||'/';
+            const u  = parseInt(r.metricValues?.[0]?.value||1);
             return `<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:10px">
-              <span style="color:var(--fp-text-faint);min-width:60px">il y a ${sec}s</span>
-              <span style="padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;background:${isConv?'rgba(34,197,94,0.15)':ev==='session_start'?'rgba(37,99,235,0.12)':'rgba(255,255,255,0.05)'};color:${isConv?'#22c55e':ev==='session_start'?'#2563EB':'var(--fp-text-muted)'}">${ev}</span>
+              <span style="padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(239,68,68,0.1);color:#ef4444">${u} actif${u>1?'s':''}</span>
               <span style="color:var(--fp-text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(pg)}</span>
-              <span style="color:var(--fp-text-faint);font-size:10px">${ci}</span>
+              <span style="color:var(--fp-text-faint);font-size:10px">${escHtml(ci)}</span>
             </div>`;
           }).join('')}
-        </div>
+        </div>` : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
+          <div style="font-size:24px;margin-bottom:8px">⚡</div>
+          <div style="font-weight:600;margin-bottom:4px">${_ga4Connected()?'Aucun visiteur actif en ce moment':'Connectez GA4 pour voir l\'activité en temps réel'}</div>
+          <div style="font-size:11px">${_ga4Connected()?'Le flux se remplit dès qu\'un visiteur navigue sur votre site.':'Le flux temps réel affiche les visiteurs actifs de vos données GA4.'}</div>
+        </div>`}
         <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:12px;width:100%" onclick="window.FP_GA4_API&&window.FP_GA4_API.refreshRealtime()">🔄 Actualiser le flux</button>
-      </div>
-      <div class="fp-grid-2">
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:12px">📊 Top événements / 30 min</div>
-          ${liveEvents.slice(0,6).map((ev,i)=>{
-            const c=ev==='conversion'||ev==='purchase'?'#22c55e':ev==='session_start'?'#2563EB':'#64748b';
-            const n=Math.max(1,Math.round(42*(1-i*0.12)));
-            return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <span style="font-size:10px;font-family:var(--fp-font-mono);color:${c};flex:1">${ev}</span>
-              <div class="fp-progress-track" style="width:60px;height:4px"><div class="fp-progress-fill" style="width:${100-i*12}%;background:${c}"></div></div>
-              <span style="font-size:11px;font-weight:700;color:${c};min-width:24px;text-align:right">${n}</span>
-            </div>`;
-          }).join('')}
-        </div>
-        <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:12px">🎯 Conversions live</div>
-          ${rt.activeUsers||rows.length ? `<div style="font-size:28px;font-weight:900;color:#22c55e;font-family:var(--fp-font-head)">3</div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">conversions ces 30 dernières minutes</div>` : `<div style="font-size:11px;color:var(--fp-text-muted)">${_ga4Connected()?'Actualisez pour voir les conversions live':'Connectez GA4'}</div>`}
-          ${(PREVIEW_MODE ? [{t:'purchase',v:'127€',ci:'Paris'},{t:'generate_lead',v:'+1 lead',ci:'Lyon'},{t:'sign_up',v:'+1 user',ci:'Bordeaux'}] : topCities.slice(0,3).map(([c],i)=>({t:['purchase','generate_lead','sign_up'][i],v:['+1 vente','+1 lead','+1 user'][i],ci:c}))).map(x=>`
-            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.04)">
-              <div style="width:6px;height:6px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite"></div>
-              <span style="font-size:10px;font-family:var(--fp-font-mono);color:var(--fp-text);flex:1">${x.t}</span>
-              <span style="font-size:11px;font-weight:700;color:#22c55e">${x.v}</span>
-              <span style="font-size:10px;color:var(--fp-text-faint)">${x.ci}</span>
-            </div>`).join('')}
-        </div>
       </div>`;
     }
     if (sub === 'pages') {
@@ -14984,16 +14807,11 @@ function renderSubPageContent(route, sub) {
               <span style="font-size:13px;font-weight:800;color:#ef4444">${u}</span>
             </div>
           </div>`;
-        }).join('') : [['/',28],['/produits',15],['/blog/seo-guide',9],['/pricing',7],['/contact',5]].map(([p,u],i)=>{
-          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-            <div style="font-size:11px;font-weight:800;color:var(--fp-text-faint);width:18px;text-align:center">${i+1}</div>
-            <div style="flex:1;font-size:11px;color:var(--fp-text)">${p}</div>
-            <div style="display:flex;align-items:center;gap:4px">
-              <div style="width:6px;height:6px;border-radius:50%;background:#ef4444;animation:pulse 1.5s infinite"></div>
-              <span style="font-size:13px;font-weight:800;color:#ef4444">${u}</span>
-            </div>
-          </div>`;
-        }).join('')}
+        }).join('') : `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
+          <div style="font-size:24px;margin-bottom:8px">📄</div>
+          <div style="font-weight:600;margin-bottom:4px">${_ga4Connected()?'Aucune page active en ce moment':'Connectez GA4 pour voir les pages actives'}</div>
+          <div style="font-size:11px">${_ga4Connected()?'Les pages consultées apparaîtront dès qu\'un visiteur sera actif.':'Les pages actives proviennent du flux temps réel GA4.'}</div>
+        </div>`}
       </div>`;
     }
     if (sub === 'geo') {
@@ -15018,13 +14836,9 @@ function renderSubPageContent(route, sub) {
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">📊 Répartition pays live</div>
-          ${[['🇫🇷','France',72],['🇧🇪','Belgique',11],['🇨🇭','Suisse',8],['🇨🇦','Canada',5],['🇺🇸','États-Unis',4]].map(([flag,c,pct])=>`
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-              <span style="font-size:16px;flex-shrink:0">${flag}</span>
-              <div style="flex:1;font-size:11px;color:var(--fp-text)">${c}</div>
-              <div class="fp-progress-track" style="width:80px;height:5px"><div class="fp-progress-fill" style="width:${pct}%;background:#ef4444"></div></div>
-              <span style="font-size:11px;font-weight:700;color:var(--fp-text)">${pct}%</span>
-            </div>`).join('')}
+          ${topCities.length
+            ? `<div style="font-size:11px;color:var(--fp-text-muted);padding:10px;background:var(--fp-inner-card);border-radius:8px">La répartition par pays sera disponible prochainement — le flux temps réel remonte actuellement les villes ci-contre.</div>`
+            : `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:12px">${_ga4Connected()?'Aucun visiteur actif en ce moment.':'Connectez GA4 pour voir la répartition géographique live.'}</div>`}
         </div>
       </div>`;
     }
@@ -15048,11 +14862,11 @@ function renderOverviewInsights() {
     ...(()=>{ const _upMons=(STATE.monitors||[]).filter(m=>m.uptime>=99).length; const _total=(STATE.monitors||[]).length; return _total>0?[{type:'success',title:'Monitors uptime > 99%',desc:_upMons+' monitor'+((_upMons>1)?'s':'')+' sur '+_total+' ont un uptime supérieur à 99% ce mois. La stabilité de vos sites est excellente.',impact:'Moyen',action:'Voir le rapport SLA'}]:[];})(),
     ...(()=>{ const _noShare=(STATE.reports||[]).filter(r=>!r.shared).length; return _noShare>0?[{type:'info',title:_noShare+' rapport'+((_noShare>1)?'s':'')+' non partagé'+(_noShare>1?'s':''),desc:'Vous avez '+_noShare+' rapport'+(_noShare>1?'s':'')+' ce mois qui n\'ont pas encore été envoyé'+(_noShare>1?'s':'')+" à vos clients. Partagez-les pour montrer votre valeur.",impact:'Moyen',action:'Partager les rapports'}]:[];})(),
     // Gate: only if real competitors exist
-    ...(STATE.competitors && STATE.competitors.length > 0 ? [{ type:'purple', title:'Concurrent en progression', desc:escHtml(STATE.competitors[0].name||'Votre concurrent principal') + ' a amélioré son score cette semaine. Surveillez ses actions et réagissez rapidement.', impact:'Élevé', action:'Analyser le concurrent' }] : []),
+    ...(STATE.competitors && STATE.competitors.length > 0 ? [{ type:'purple', title:'Concurrent suivi', desc:escHtml(STATE.competitors[0].name||STATE.competitors[0].domain||'Votre concurrent principal') + ' est dans votre liste de veille. Consultez son évolution pour anticiper ses actions.', impact:'Élevé', action:'Analyser le concurrent' }] : []),
     { type:'success', title:'Missions du mois', desc:'Consultez votre tableau de missions pour voir votre progression et vos records.', impact:'Moyen', action:'Voir mes missions' },
     // Gate: only if real keywords are tracked
     ...(STATE.keywords && STATE.keywords.length > 0 ? [{ type:'info', title:STATE.keywords.length + ' mots-clés suivis', desc:STATE.keywords.length + ' mots-clés actifs dans votre portefeuille. Consultez la section Croissance pour les opportunités de contenu.', impact:'Élevé', action:'Voir les mots-clés' }] : []),
-    { type:'warning', title:'SSL expire dans 28 jours', desc:'Le certificat SSL de ' + (STATE.monitors&&STATE.monitors.length>0?(STATE.monitors[0].url||STATE.monitors[0].name||'').replace(/^https?:\/\//,''):'votre site') + ' expire bientôt. Renouvelez-le pour éviter une interruption de service.', impact:'Critique', action:'Renouveler maintenant' },
+    ...(()=>{ const _sslM=(STATE.monitors||[]).find(m=>m.sslDaysLeft!=null&&m.sslDaysLeft<30); return _sslM?[{ type:'warning', title:'SSL expire dans '+_sslM.sslDaysLeft+' jours', desc:'Le certificat SSL de ' + ((_sslM.url||_sslM.name||'').replace(/^https?:\/\//,'')||'votre site') + ' expire bientôt. Renouvelez-le pour éviter une interruption de service.', impact:'Critique', action:'Renouveler maintenant' }]:[]; })(),
   ];
 
   const _wDays=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
@@ -15065,7 +14879,7 @@ function renderOverviewInsights() {
         : []);  // No fabricated days in production
 
   return `
-    ${aiBlock('Vos données révèlent <strong>3 axes d\'amélioration prioritaires</strong> ce mois : réponses aux avis Google, optimisation des sites sous 65/100, et création de pages locales. Agir sur ces points peut booster votre score moyen de <strong>+12 points en 30 jours</strong>.',
+    ${aiBlock('Axes d\'amélioration classiques à vérifier ce mois : réponses aux avis Google, optimisation des sites sous 65/100, et création de pages locales. Lancez un audit pour obtenir des recommandations personnalisées basées sur vos données.',
       [(()=>{const _w=(STATE.audits||[]).sort((a,b)=>(a.score||99)-(b.score||99))[0];return _w?'Corriger '+(((_w.url||_w.name||'').replace(/^https?:\/\//,'')).split('/')[0]||'le site'):'Optimiser les audits';})(), 'Répondre aux avis', 'Créer pages locales', 'Plan d\'action complet'])}
 
     <!-- TENDANCES SEMAINE -->
@@ -17679,23 +17493,40 @@ function radarChartSvg(dims, sz) {
 // ─────────────────────────────────────────────────────────────────
 function renderGrowthProjections() {
   const avgSc = avgScore();
-  const _pBase = avgSc > 0 ? avgSc : 50;
-  const past   = [Math.max(0,_pBase-12),Math.max(0,_pBase-10),Math.max(0,_pBase-8),Math.max(0,_pBase-5),Math.max(0,_pBase-3),Math.max(0,_pBase-1),_pBase];
-  const future = [avgSc, avgSc+4, avgSc+7, avgSc+10, avgSc+13, avgSc+15, avgSc+18];
-  const months = ['Juin','Juil.','Août','Sept.','Oct.','Nov.'];
+  if (!avgSc) return `<div style="display:flex;flex-direction:column;gap:16px">
+    <div class="fp-section-header">
+      <div><h1>Projections IA</h1><div class="fp-section-sub">Modèles prédictifs · Scénarios sur 6 mois</div></div>
+    </div>
+    <div class="fp-card">
+      <div style="text-align:center;padding:32px 16px;color:var(--fp-text-faint);font-size:12px">
+        <div style="font-size:28px;margin-bottom:8px">📈</div>
+        <div style="font-weight:600;margin-bottom:4px">Aucune donnée d'audit</div>
+        <div style="font-size:11px">Lancez votre premier audit SEO pour générer des projections basées sur vos données réelles.</div>
+      </div>
+    </div>
+  </div>`;
+  const _auditHP = ((STATE.overview && STATE.overview.auditHistory) || []).map(function(h){ return Number(h.avg || h.score || 0); });
+  const past   = _auditHP.length >= 2 ? _auditHP.slice(-7) : Array(7).fill(avgSc);
+  const _stepRaw = past.length > 1 ? (past[past.length-1] - past[0]) / Math.max(1, past.length-1) : 0;
+  const _stepP = Math.max(0.5, Math.min(4, _stepRaw || 1.5));
+  const _p30 = Math.round(_stepP*4), _p60 = Math.round(_stepP*8), _p90 = Math.round(_stepP*12);
+  const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.min(99, avgSc + _stepP * i)); });
+  const months = (function(){ const arr=[]; const now=new Date(); for(let i=1;i<=6;i++){ const d=new Date(now.getFullYear(), now.getMonth()+i, 1); const m=d.toLocaleDateString('fr-FR',{month:'short'}); arr.push(m.charAt(0).toUpperCase()+m.slice(1)+' '+d.getFullYear()); } return arr; })();
+  const _hasTrend = _auditHP.length >= 2 && _stepRaw > 0;
   const scenarios = [
     { label:'🚀 Optimiste',  color:'#22c55e',          bg:'rgba(34,197,94,.07)',  border:'rgba(34,197,94,.2)',
       desc:'Toutes les Quick Wins exécutées + 2 audits/mois',
-      s30:avgSc+9, s60:avgSc+17, s90:avgSc+23, traffic:PREVIEW_MODE?'+28%':'—', leads:PREVIEW_MODE?'+35%':'—', roi:PREVIEW_MODE?'+1 840€':'—' },
+      s30:Math.min(99,avgSc+Math.round(_stepP*6)), s60:Math.min(99,avgSc+Math.round(_stepP*12)), s90:Math.min(99,avgSc+Math.round(_stepP*18)), traffic:PREVIEW_MODE?'+28%':'—', leads:PREVIEW_MODE?'+35%':'—', roi:PREVIEW_MODE?'+1 840€':'—' },
     { label:'📈 Réaliste',   color:'var(--fp-accent)',  bg:'rgba(37,99,235,.07)', border:'rgba(37,99,235,.2)',
       desc:'Rythme actuel maintenu, corrections critiques faites',
-      s30:avgSc+7, s60:avgSc+14, s90:avgSc+19, traffic:PREVIEW_MODE?'+18%':'—', leads:PREVIEW_MODE?'+22%':'—', roi:PREVIEW_MODE?'+1 240€':'—' },
+      s30:Math.min(99,avgSc+_p30), s60:Math.min(99,avgSc+_p60), s90:Math.min(99,avgSc+_p90), traffic:PREVIEW_MODE?'+18%':'—', leads:PREVIEW_MODE?'+22%':'—', roi:PREVIEW_MODE?'+1 240€':'—' },
     { label:'⚠️ Prudent',   color:'#f59e0b',           bg:'rgba(245,158,11,.06)', border:'rgba(245,158,11,.2)',
       desc:'Sans action supplémentaire, croissance organique seule',
-      s30:avgSc+3, s60:avgSc+6,  s90:avgSc+9,  traffic:PREVIEW_MODE?'+6%':'—',  leads:PREVIEW_MODE?'+8%':'—',  roi:PREVIEW_MODE?'+380€':'—' },
+      s30:Math.min(99,avgSc+Math.round(_stepP*2)), s60:Math.min(99,avgSc+Math.round(_stepP*4)),  s90:Math.min(99,avgSc+Math.round(_stepP*6)),  traffic:PREVIEW_MODE?'+6%':'—',  leads:PREVIEW_MODE?'+8%':'—',  roi:PREVIEW_MODE?'+380€':'—' },
   ];
   const monthData = months.map(function(m, i) {
-    return { month:m, score:Math.min(100,avgSc+(i+1)*3), delta:'+'+(i+1)*3+' pts' };
+    const sc = Math.min(99, Math.round(avgSc + _stepP*4*(i+1)));
+    return { month:m, score:sc, delta:'+'+Math.max(0,sc-avgSc)+' pts' };
   });
   const channels = PREVIEW_MODE ? [
     {ch:'Recherche organique',    now:68, p30:78, p90:88, color:'var(--fp-accent)'},
@@ -17705,16 +17536,16 @@ function renderGrowthProjections() {
   ] : [];
   return `<div style="display:flex;flex-direction:column;gap:16px">
     <div class="fp-section-header">
-      <div><h1>Projections IA</h1><div class="fp-section-sub">Modèles prédictifs · Scénarios Mai–Nov. 2026</div></div>
+      <div><h1>Projections IA</h1><div class="fp-section-sub">Modèles prédictifs · Scénarios sur 6 mois</div></div>
       <div class="fp-section-actions">${btn('Exporter PDF','fp-btn fp-btn-ghost fp-btn-sm','download','onclick="openFloatPanel(\'Nouveau rapport\',renderNewReportPanel());setupNewReportPanel()"')}</div>
     </div>
 
-    ${aiBlock('Sur la base de votre croissance de <strong>+7 pts/mois</strong>, vous pouvez atteindre <strong>${avgSc+14}/100</strong> en 60 jours. L\'exécution des 4 Quick Wins actives pourrait accélérer à <strong>+17 pts en 60 jours</strong>.',['Voir Quick Wins','Définir objectifs'])}
+    ${aiBlock((_hasTrend ? 'Sur la base de votre tendance mesurée de <strong>+' + _p30 + ' pts/mois</strong>' : 'Sur la base d\'une estimation par défaut de <strong>+' + _p30 + ' pts/mois</strong> (historique d\'audits insuffisant)') + ', vous pouvez atteindre <strong>' + Math.min(99, avgSc+_p60) + '/100</strong> en 60 jours. L\'exécution des Quick Wins actives pourrait accélérer jusqu\'à <strong>+' + Math.round(_stepP*12) + ' pts en 60 jours</strong>.',['Voir Quick Wins','Définir objectifs'])}
 
     <div class="fp-stat-row">
-      ${statCard('Score dans 30j',  (avgSc+7)+'/100',  '+7 pts estimés',  'up', 'Scénario réaliste')}
-      ${statCard('Score dans 60j',  (avgSc+14)+'/100', '+14 pts estimés', 'up', 'Scénario réaliste')}
-      ${statCard('Score dans 90j',  (avgSc+19)+'/100', '+19 pts estimés', 'up', 'Scénario réaliste')}
+      ${statCard('Score dans 30j',  Math.min(99,avgSc+_p30)+'/100',  '+'+_p30+' pts estimés',  'up', _hasTrend ? 'Scénario réaliste' : 'Estimation par défaut')}
+      ${statCard('Score dans 60j',  Math.min(99,avgSc+_p60)+'/100', '+'+_p60+' pts estimés', 'up', _hasTrend ? 'Scénario réaliste' : 'Estimation par défaut')}
+      ${statCard('Score dans 90j',  Math.min(99,avgSc+_p90)+'/100', '+'+_p90+' pts estimés', 'up', _hasTrend ? 'Scénario réaliste' : 'Estimation par défaut')}
       ${statCard('ROI cumulé 90j', displayStat(null, PREVIEW_MODE ? '+3 720€' : '—'), PREVIEW_MODE ? 'leads estimés' : 'Connectez analytics', 'neutral')}
     </div>
 
@@ -17764,7 +17595,7 @@ function renderGrowthProjections() {
           <tbody>
             ${monthData.map((r, i) => `
               <tr style="${i===0?'background:rgba(37,99,235,.06)':''}">
-                <td style="font-weight:600;white-space:nowrap">${r.month} 2026</td>
+                <td style="font-weight:600;white-space:nowrap">${r.month}</td>
                 <td style="text-align:center;color:var(--fp-accent);font-weight:700;white-space:nowrap">${r.score}/100</td>
                 <td style="text-align:center;color:#22c55e;white-space:nowrap">${r.delta}</td>
               </tr>
@@ -17778,7 +17609,7 @@ function renderGrowthProjections() {
     <div class="fp-card">
       <div class="fp-card-title" style="margin-bottom:16px">📡 Projection par canal d\'acquisition</div>
       <div style="display:flex;flex-direction:column;gap:14px">
-        ${channels.map(ch => `
+        ${channels.length === 0 ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez GA4 pour voir la projection par canal d'acquisition.</div>` : channels.map(ch => `
           <div>
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px">
               <div style="font-size:12px;font-weight:600">${ch.ch}</div>
@@ -17827,13 +17658,20 @@ function renderGrowthProjections() {
 
 function renderGrowthObjectives() {
   const avgSc = avgScore();
-  const nbSites = Math.min(STATE.audits.length || 6, 8);
+  const nbSites = Math.min(STATE.audits.length, 8);
+  const _histRaw = ((STATE.overview && STATE.overview.auditHistory) || []).map(function(h){ return Number(h.avg || h.score || 0); });
+  const _scoreHist = _histRaw.length >= 2 ? _histRaw.slice(-7) : Array(7).fill(avgSc);
+  const _scoreTrend = _histRaw.length >= 2 ? (((_histRaw[_histRaw.length-1]-_histRaw[0]) >= 0 ? '+' : '') + Math.round(_histRaw[_histRaw.length-1]-_histRaw[0]) + ' pts') : '—';
+  const _qNum = Math.floor(new Date().getMonth()/3)+1;
+  const _qEndD = new Date(new Date().getFullYear(), _qNum*3, 0);
+  const _qEnd = _qEndD.toLocaleDateString('fr-FR', { day:'numeric', month:'short', year:'numeric' });
+  const _daysLeft = Math.max(0, Math.ceil((_qEndD - new Date()) / 86400000));
   const objectives = [
-    { icon:'📊', label:'Score moyen ≥ 80/100',         progress:avgSc, target:80,   unit:'pts',   inverse:false, status:'on-track', deadline:'30 juin 2026',    trend:'+7 pts/mois',      next:'Optimiser 3 pages à fort potentiel',    detail:'Score actuel portefeuille', history:[58,62,65,67,70,73,avgSc] },
-    ...(()=>{ const _mu=(STATE.monitors&&STATE.monitors.length>0?(STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length):null); const _mp=_mu!=null?parseFloat(_mu.toFixed(1)):(PREVIEW_MODE?97.2:null); return _mp!=null?[{ icon:'✅', label:'Monitors UP ≥ 99.5%', progress:_mp, target:99.5, unit:'%', inverse:false, status:_mp>=99.5?'done':'at-risk', deadline:'15 juin 2026', trend:'+0.8%/semaine', next:'Investiguer les monitors DOWN', detail:'Disponibilité moyenne portefeuille', history:[94,95,96,95,97,97,_mp] }]:[];})(),
-    { icon:'🌐', label:'8 sites en portefeuille',       progress:nbSites,target:8,   unit:'sites', inverse:false, status:nbSites>=8?'done':'on-track', deadline:'30 sept. 2026', trend:'+1 site/mois', next:'Prospecter 2 nouveaux clients locaux', detail:'Sites actifs sous gestion', history:[3,4,4,5,5,6,nbSites] },
-    ...(()=>{ const _gbpR=STATE.gbp?.averageRating; const _rp=_gbpR!=null?parseFloat(parseFloat(_gbpR).toFixed(1)):(PREVIEW_MODE?4.2:null); const _ua=STATE.gbp?.unansweredReviews; return _rp!=null?[{ icon:'⭐', label:'Note Google ≥ 4.5★', progress:_rp, target:4.5, unit:'★', inverse:false, status:_rp>=4.5?'done':'at-risk', deadline:'30 juin 2026', trend:'+0.1★/mois', next:'Répondre aux '+(_ua!=null?_ua+' ':'')+'avis en attente', detail:'Moyenne avis Google portefeuille', history:[3.9,4.0,4.1,4.1,4.2,_rp,_rp] }]:[];})(),
-    ...(()=>{ const _cwv=STATE.overview?.coreWebVitals||(PREVIEW_MODE?72:null); return _cwv!=null?[{ icon:'📱', label:'Core Web Vitals ≥ 85/100', progress:_cwv, target:85, unit:'/100', inverse:false, status:_cwv>=85?'done':'on-track', deadline:'31 juil. 2026', trend:'+4 pts/mois', next:'Optimiser CLS sur les sites prioritaires', detail:'Score CWV mobile moyen', history:[55,58,62,65,68,70,_cwv] }]:[];})(),
+    { icon:'📊', label:'Score moyen ≥ 80/100',         progress:avgSc, target:80,   unit:'pts',   inverse:false, status:'on-track', deadline:_qEnd,    trend:_scoreTrend,      next:'Optimiser 3 pages à fort potentiel',    detail:'Score actuel portefeuille', history:_scoreHist },
+    ...(()=>{ const _mu=(STATE.monitors&&STATE.monitors.length>0?(STATE.monitors.reduce((s,m)=>s+(typeof m.uptime==='number'?m.uptime:100),0)/STATE.monitors.length):null); const _mp=_mu!=null?parseFloat(_mu.toFixed(1)):(PREVIEW_MODE?97.2:null); return _mp!=null?[{ icon:'✅', label:'Monitors UP ≥ 99.5%', progress:_mp, target:99.5, unit:'%', inverse:false, status:_mp>=99.5?'done':'at-risk', deadline:_qEnd, trend:'—', next:'Investiguer les monitors DOWN', detail:'Disponibilité moyenne portefeuille', history:Array(7).fill(_mp) }]:[];})(),
+    { icon:'🌐', label:'8 sites en portefeuille',       progress:nbSites,target:8,   unit:'sites', inverse:false, status:nbSites>=8?'done':'on-track', deadline:_qEnd, trend:'—', next:'Prospecter 2 nouveaux clients locaux', detail:'Sites actifs sous gestion', history:Array(7).fill(nbSites) },
+    ...(()=>{ const _gbpR=STATE.gbp?.averageRating; const _rp=_gbpR!=null?parseFloat(parseFloat(_gbpR).toFixed(1)):(PREVIEW_MODE?4.2:null); const _ua=STATE.gbp?.unansweredReviews; return _rp!=null?[{ icon:'⭐', label:'Note Google ≥ 4.5★', progress:_rp, target:4.5, unit:'★', inverse:false, status:_rp>=4.5?'done':'at-risk', deadline:_qEnd, trend:'—', next:'Répondre aux '+(_ua!=null?_ua+' ':'')+'avis en attente', detail:'Moyenne avis Google portefeuille', history:Array(7).fill(_rp) }]:[];})(),
+    ...(()=>{ const _cwv=STATE.overview?.coreWebVitals||(PREVIEW_MODE?72:null); return _cwv!=null?[{ icon:'📱', label:'Core Web Vitals ≥ 85/100', progress:_cwv, target:85, unit:'/100', inverse:false, status:_cwv>=85?'done':'on-track', deadline:_qEnd, trend:'—', next:'Optimiser CLS sur les sites prioritaires', detail:'Score CWV mobile moyen', history:Array(7).fill(_cwv) }]:[];})(),
   ];
   const statusLabel = {done:'Atteint', 'on-track':'En bonne voie', 'at-risk':'À risque'};
   const statusBdg   = {done:'success', 'on-track':'primary',       'at-risk':'warning'};
@@ -17843,7 +17681,7 @@ function renderGrowthObjectives() {
 
   return `
     <div class="fp-section-header">
-      <div><h1>Objectifs Q2 2026</h1><div class="fp-section-sub">Semaine 19 · ${objectives.length} objectifs · 42 jours restants</div></div>
+      <div><h1>Objectifs T${_qNum} ${new Date().getFullYear()}</h1><div class="fp-section-sub">${objectives.length} objectifs · ${_daysLeft} jours restants</div></div>
       <div class="fp-section-actions">
         ${btn('+ Ajouter','fp-btn fp-btn-primary fp-btn-sm','plus','onclick="openFloatPanel(\'Nouvel objectif\',renderNewObjectivePanel());setupNewObjectivePanel()"')}
       </div>
@@ -18325,7 +18163,7 @@ function renderGrowthCommandCenter() {
           <span style="font-size:11px;color:var(--fp-text-faint);display:flex;align-items:center;gap:5px"><span style="width:14px;height:2px;background:#22c55e;display:inline-block"></span>Projection IA</span>
         </div>
         <div class="fp-growth-fcast-stats">
-          ${[['30 jours',avgSc+7,'var(--fp-accent)','+7 pts'],['60 jours',avgSc+14,'#22c55e','+14 pts'],['90 jours',avgSc+17,'#8b5cf6','+17 pts']].map(([l,v,c,d])=>`
+          ${[['30 jours',Math.min(99,avgSc+Math.round(_projStep*4)),'var(--fp-accent)','+'+Math.round(_projStep*4)+' pts'],['60 jours',Math.min(99,avgSc+Math.round(_projStep*8)),'#22c55e','+'+Math.round(_projStep*8)+' pts'],['90 jours',Math.min(99,avgSc+Math.round(_projStep*12)),'#8b5cf6','+'+Math.round(_projStep*12)+' pts']].map(([l,v,c,d])=>`
             <div class="fp-growth-fcast-stat">
               <div style="font-size:10px;color:var(--fp-text-faint)">Dans ${l}</div>
               <div style="font-size:18px;font-weight:800;color:${c};font-family:var(--fp-font-head);line-height:1.1">${v}<span style="font-size:11px">/100</span></div>
@@ -19110,12 +18948,12 @@ function renderCompetitor() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'local') {
     const _lseoZonesForComp = STATE.localSeo?.zones && STATE.localSeo.zones.length > 0 ? STATE.localSeo.zones : null;
-    const _comp1Nm = STATE.competitors&&STATE.competitors.length>0 ? (STATE.competitors[0].name||'Concurrent 1') : null;
-    const _comp2Nm = STATE.competitors&&STATE.competitors.length>1 ? (STATE.competitors[1].name||'Concurrent 2') : null;
+    const _comp1Nm = STATE.competitors&&STATE.competitors.length>0 ? (STATE.competitors[0].name||STATE.competitors[0].domain||STATE.competitors[0].url||'Concurrent suivi') : null;
+    const _comp2Nm = STATE.competitors&&STATE.competitors.length>1 ? (STATE.competitors[1].name||STATE.competitors[1].domain||STATE.competitors[1].url||'Concurrent suivi') : null;
     const localComp = _lseoZonesForComp
       ? _lseoZonesForComp.map(z=>({
-          city:z.name, yours:z.pos||0, comp1:z.comp1Pos||Math.max(1,z.pos-1)||1, comp2:z.comp2Pos||Math.max(1,z.pos+2)||3,
-          gbp:STATE.localSeo?.avgRating||null, compGbp:STATE.localSeo?.avgRating?STATE.localSeo.avgRating+0.2:null,
+          city:z.name, yours:z.pos||0, comp1:z.comp1Pos||null, comp2:z.comp2Pos||null,
+          gbp:STATE.localSeo?.avgRating||null, compGbp:null,
           reviews:STATE.localSeo?.reviewCount||null, compReviews:null, cov:z.cov||0
         }))
       : (PREVIEW_MODE ? [
@@ -19132,13 +18970,13 @@ function renderCompetitor() {
       ${aiBlock(_lcAiMsg, ['Plan domination locale', 'Renforcer GBP', 'Comparer les zones'])}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Zones où vous gagnez', localComp.filter(z => z.yours <= z.comp1).length + '/' + localComp.length, 'vs meilleur concurrent', 'up')}
+        ${statCard('Zones où vous gagnez', localComp.filter(z => z.comp1!=null && z.yours <= z.comp1).length + '/' + localComp.length, 'vs meilleur concurrent', 'up')}
         ${statCard('Note GBP moy.', displayStat(null, '4.4★'), PREVIEW_MODE ? 'vs 4.6 concurrents' : 'Connectez GBP', 'neutral')}
         ${statCard('Avis total', displayStat(null, '47'), PREVIEW_MODE ? 'vs 116 moy. concurrents' : 'Connectez GBP', 'neutral')}
-        ${statCard('Avantage zones', localComp.filter(z => z.yours < z.comp1).length, 'territoires dominés', 'up')}
+        ${statCard('Avantage zones', localComp.filter(z => z.comp1!=null && z.yours < z.comp1).length, 'territoires dominés', 'up')}
       </div>
 
-      <!-- LOCAL MAP SVG -->
+      ${!PREVIEW_MODE ? '' : `<!-- LOCAL MAP SVG (démo uniquement) -->
       <div class="fp-card fp-mb-20" style="padding:18px 20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">
@@ -19202,7 +19040,7 @@ function renderCompetitor() {
             <span style="font-size:10px;color:rgba(255,255,255,0.4);display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:#f59e0b;display:inline-block"></span>\u00c0 surveiller</span>
           </div>
         </div>
-      </div>
+      </div>`}
 
       <!-- CITY BY CITY TABLE -->
       <div class="fp-card fp-mb-20">
@@ -19219,23 +19057,24 @@ function renderCompetitor() {
               <th style="text-align:center">Statut</th>
             </tr></thead>
             <tbody>
-              ${localComp.map(z => {
-                const winning = z.yours < z.comp1;
+              ${localComp.length ? localComp.map(z => {
+                const hasComp = z.comp1 != null;
+                const winning = hasComp && z.yours < z.comp1;
                 return `<tr>
                   <td style="font-weight:600">${escHtml(z.city)}</td>
                   <td style="text-align:center;font-weight:700;color:${z.yours<=3?'#22c55e':z.yours<=7?'#f59e0b':'#ef4444'}">#${z.yours}</td>
-                  <td style="text-align:center;color:var(--fp-text-muted)">#${z.comp1} / #${z.comp2}</td>
-                  <td style="text-align:center"><span style="color:#f59e0b">${z.gbp}★</span> <span style="color:var(--fp-text-faint);font-size:10px">vs ${z.compGbp}★</span></td>
-                  <td style="text-align:center;font-size:11px">${z.reviews} <span style="color:var(--fp-text-faint)">/ ${z.compReviews}</span></td>
+                  <td style="text-align:center;color:var(--fp-text-muted)">${hasComp?'#'+z.comp1+(z.comp2!=null?' / #'+z.comp2:''):'—'}</td>
+                  <td style="text-align:center">${z.gbp?`<span style="color:#f59e0b">${z.gbp}★</span>`:'—'}${z.compGbp?` <span style="color:var(--fp-text-faint);font-size:10px">vs ${z.compGbp}★</span>`:''}</td>
+                  <td style="text-align:center;font-size:11px">${z.reviews!=null?z.reviews:'—'}${z.compReviews!=null?` <span style="color:var(--fp-text-faint)">/ ${z.compReviews}</span>`:''}</td>
                   <td style="text-align:center">
                     <div style="display:inline-flex;align-items:center;gap:5px">
                       <div class="fp-progress-track" style="height:5px;width:50px"><div class="fp-progress-fill" style="width:${z.cov}%;background:${z.cov>=70?'#22c55e':z.cov>=40?'#f59e0b':'#ef4444'}"></div></div>
                       <span style="font-size:10px;color:var(--fp-text-faint)">${z.cov}%</span>
                     </div>
                   </td>
-                  <td style="text-align:center">${badge(winning?'Vous gagnez':'Concurrent devant', winning?'#22c55e':'#ef4444')}</td>
+                  <td style="text-align:center">${hasComp?badge(winning?'Vous gagnez':'Concurrent devant', winning?'#22c55e':'#ef4444'):'<span style="font-size:10px;color:var(--fp-text-faint)">Données concurrent indisponibles</span>'}</td>
                 </tr>`;
-              }).join('')}
+              }).join('') : `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">Connectez DataForSEO et configurez vos zones Local SEO pour lancer l'analyse concurrentielle par ville.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -19249,7 +19088,7 @@ function renderCompetitor() {
   if (sub === 'alerts') {
     const _compName0 = comps.length > 0 ? comps[0].name : (PREVIEW_MODE ? 'Concurrent A' : 'Un concurrent');
     const _compName1 = comps.length > 1 ? comps[1].name : (PREVIEW_MODE ? 'Concurrent B' : 'Un concurrent');
-    const alerts = PREVIEW_MODE || comps.length === 0 ? [
+    const alerts = PREVIEW_MODE ? [
       { type: 'threat',   severity: 'critical', icon: '🚨', comp: _compName0, msg: "Gain de 3 positions sur vos mots-clés cibles — menace directe sur votre top 3",        date: '09/05', read: false },
       { type: 'backlink', severity: 'warning',  icon: '🔗', comp: _compName1, msg: "Nouveaux backlinks depuis sites locaux à forte autorité — hausse autorité prévisible",  date: '08/05', read: false },
       { type: 'content',  severity: 'info',     icon: '📝', comp: _compName0, msg: "Nouvelles pages locales créées — extension de couverture initiée",                      date: '07/05', read: true  },
@@ -19262,7 +19101,9 @@ function renderCompetitor() {
     const typeIcon = { threat: 'alert-triangle', backlink: 'link', content: 'file-text', local: 'map-pin', ranking: 'trending-up' };
     return `
       ${isUltra
-        ? aiBlock("Détection IA de <strong>" + alerts.filter(a=>a.severity==='critical').length + " menaces critiques</strong> ce mois. " + (comps.length > 0 ? "<strong>" + escHtml(comps[0].name) + "</strong> accélère l'acquisition de backlinks locaux." : "Des concurrents accélèrent leur acquisition de backlinks locaux.") + " Risque d'entrée en Local Pack sur vos mots-clés principaux dans <strong>4-6 semaines</strong> si aucune action.", ['Plan de défense IA', 'Contre-attaque contenu', 'Renforcer GBP'])
+        ? (alerts.length > 0
+          ? aiBlock("Détection IA de <strong>" + alerts.filter(a=>a.severity==='critical').length + " menaces critiques</strong> ce mois. " + (comps.length > 0 ? "<strong>" + escHtml(comps[0].name) + "</strong> accélère l'acquisition de backlinks locaux." : "Des concurrents accélèrent leur acquisition de backlinks locaux.") + " Risque d'entrée en Local Pack sur vos mots-clés principaux dans <strong>4-6 semaines</strong> si aucune action.", ['Plan de défense IA', 'Contre-attaque contenu', 'Renforcer GBP'])
+          : aiBlock(comps.length > 0 ? "Aucune menace détectée pour l'instant sur vos " + comps.length + " concurrent(s) suivi(s). La veille concurrentielle analyse leurs mouvements en continu." : "Ajoutez des concurrents à votre liste de veille pour activer la détection automatique des menaces.", ['Ajouter un concurrent', 'Configurer la veille']))
         : `<div style="padding:14px 16px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">🤖</div>
             <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Analyse IA des menaces — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Détection automatique des menaces, forecasting et recommandations stratégiques.</div></div>
@@ -19303,7 +19144,11 @@ function renderCompetitor() {
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="(async()=>{const r=await apiAction('POST','/api/ai/chat',{message:'Génère un plan de réponse concurrentielle court et actionnable en 3 points.'}).catch(()=>null);openFloatPanel('Plan de réponse IA',\`<div style='font-size:13px;line-height:1.7;color:var(--fp-text)'>\${r?.reply||'1. Auditer la page concurrente ciblée.\\n2. Créer du contenu différenciant sur vos points forts.\\n3. Surveiller les backlinks et renforcer votre maillage interne.'}</div>\`);})()">Répondre</button>
               </div>
             </div>
-          `).join('')}
+          `).join('') || `<div style="text-align:center;padding:28px 16px;color:var(--fp-text-faint);font-size:12px">
+            <div style="font-size:24px;margin-bottom:8px">🔔</div>
+            <div style="font-weight:600;margin-bottom:4px">${comps.length>0?'Aucune alerte concurrentielle pour le moment':'Ajoutez des concurrents pour activer les alertes'}</div>
+            <div style="font-size:11px">${comps.length>0?'Les mouvements de vos concurrents apparaîtront ici dès qu\'ils seront détectés.':'Le fil d\'alertes surveille les positions, backlinks et fiches GBP de vos concurrents.'}</div>
+          </div>`}
         </div>
       </div>
 
@@ -24159,21 +24004,20 @@ function renderMonitorsSLA() {
         </div>
         ${isUltra ? btn('Relancer tous les tests', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="showToast(\'info\',\'Journeys lancés…\')"') : ''}
       </div>
-      ${isUltra ? `
+      ${isUltra ? (monitors.length === 0 ? `
+        <div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px">
+          <div style="font-size:24px;margin-bottom:8px">🤖</div>
+          <div style="font-weight:600;margin-bottom:4px">Aucun monitor configuré</div>
+          <div style="font-size:11px">Ajoutez des monitors pour activer les simulations de parcours utilisateurs.</div>
+        </div>` : `
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-          ${(monitors.slice(0,3).length ? monitors.slice(0,3) : [{name:'Site 1',url:''},{name:'Site 2',url:''},{name:'Site 3',url:''}]).map((mon, ji) => {
-            const jTypes = [
-              { icon: '🔐', name: 'Simulation login',      steps: 3 },
-              { icon: '🛒', name: 'Simulation checkout',   steps: 5 },
-              { icon: '📋', name: 'Simulation formulaire', steps: 2 },
-            ];
-            const jt = jTypes[ji] || jTypes[0];
-            const j = { icon: jt.icon, name: jt.name, status: mon.status === 'down' ? 'FAIL' : 'OK', time: mon.status === 'down' ? '—' : (1.2 + ji * 0.6).toFixed(1) + 's', site: (mon.url||mon.name||'').replace(/^https?:\/\//,''), steps: jt.steps };
+          ${monitors.slice(0,3).map((mon, ji) => {
+            const j = { icon: '🌐', name: mon.name || 'Test de disponibilité', status: mon.status === 'down' ? 'FAIL' : 'OK', time: mon.status === 'down' ? '—' : (mon.latency ? (mon.latency/1000).toFixed(1) + 's' : '—'), site: (mon.url||mon.name||'').replace(/^https?:\/\//,'') };
             return `
             <div style="padding:12px;background:var(--fp-inner-card);border:1px solid ${j.status === 'OK' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'};border-radius:9px">
               <div style="font-size:22px;margin-bottom:8px">${j.icon}</div>
               <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${j.name}</div>
-              <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">${j.site} · ${j.steps} étapes</div>
+              <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">${j.site} · check HTTP</div>
               <div style="display:flex;align-items:center;justify-content:space-between">
                 ${badge(j.status, j.status === 'OK' ? '#22c55e' : '#ef4444')}
                 <span style="font-size:11px;font-weight:600;color:var(--fp-text-muted)">${j.time}</span>
@@ -24181,7 +24025,7 @@ function renderMonitorsSLA() {
             </div>
           `}).join('')}
         </div>
-      ` : `
+      `) : `
         <div style="text-align:center;padding:20px">
           <div style="font-size:32px;margin-bottom:10px">🤖</div>
           <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Testez automatiquement login, checkout, formulaires — 24/7</div>

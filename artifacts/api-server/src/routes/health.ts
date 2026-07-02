@@ -6,6 +6,7 @@ import { getCronStatus } from "../workers/cron-scheduler.js";
 import { getRateLimiterStats } from "../middlewares/rateLimiter.js";
 import { getPlanConfig } from "../lib/config.js";
 import { store } from "../services/store.js";
+import { resolveOpenAIConnection } from "../lib/openai-client.js";
 
 const router: IRouter = Router();
 
@@ -84,16 +85,20 @@ router.get("/healthz/deep", async (_req, res) => {
     checks.stripe = { status: "degraded", latencyMs: 0, detail: "STRIPE_SECRET_KEY not set — checkout disabled in production" };
   }
 
-  // ── OpenAI — live /v1/models probe ───────────────────────────────────────
-  const openaiKey = process.env["OPENAI_API_KEY"];
-  if (openaiKey) {
+  // ── OpenAI — live /v1/models probe (Replit AI proxy prioritaire) ─────────
+  const aiConn = resolveOpenAIConnection();
+  if (aiConn) {
+    const base = aiConn.baseURL ? aiConn.baseURL.replace(/\/$/, "") : "https://api.openai.com/v1";
     checks.openai = await probeUrl(
-      "https://api.openai.com/v1/models?limit=1",
-      { headers: { Authorization: `Bearer ${openaiKey}` } },
+      `${base}/models?limit=1`,
+      { headers: { Authorization: `Bearer ${aiConn.apiKey}` } },
       3000
     );
+    if (checks.openai.status === "ok" && aiConn.provider === "replit-proxy") {
+      checks.openai.detail = "Replit AI proxy connected";
+    }
   } else {
-    checks.openai = { status: "degraded", latencyMs: 0, detail: "OPENAI_API_KEY not set — AI features disabled" };
+    checks.openai = { status: "degraded", latencyMs: 0, detail: "No AI provider configured — AI features disabled" };
   }
 
   // ── BetterStack — live /api/v2/monitors probe ─────────────────────────────

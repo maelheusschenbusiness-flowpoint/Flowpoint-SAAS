@@ -268,6 +268,15 @@ const staticCache = (req: Request, res: Response, next: Function) => {
   }
   next();
 };
+// Dev-only auth helper: never serve in real production deployments
+app.get("/dev-login.html", (req: Request, res: Response, next: NextFunction) => {
+  if (process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"]) {
+    res.status(404).json({ ok: false, error: "Not found", code: "NOT_FOUND" });
+    return;
+  }
+  next();
+});
+
 app.use("/", staticCache, express.static(dashboardDir, { index: false }));
 app.use("/api/dashboard", staticCache, express.static(dashboardDir));
 

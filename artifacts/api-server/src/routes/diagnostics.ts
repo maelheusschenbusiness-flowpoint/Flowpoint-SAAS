@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { getCronStatus } from "../workers/cron-scheduler.js";
 import { store } from "../services/store.js";
+import { resolveOpenAIConnection } from "../lib/openai-client.js";
 
 const router = Router();
 
@@ -300,12 +301,13 @@ router.get("/diagnostics/integrations", async (_req, res) => {
     integrations.push({ name: "stripe", status: "setup_required", latencyMs: 0, detail: "STRIPE_SECRET_KEY not configured", liveProbe: false } as ProbeResult & { name: string });
   }
 
-  // ── OpenAI (API key → live probe) ─────────────────────────────────────────
-  const openaiKey = process.env["OPENAI_API_KEY"];
-  if (openaiKey) {
+  // ── OpenAI (Replit AI proxy prioritaire → live probe) ─────────────────────
+  const aiConn2 = resolveOpenAIConnection();
+  if (aiConn2) {
+    const base = aiConn2.baseURL ? aiConn2.baseURL.replace(/\/$/, "") : "https://api.openai.com/v1";
     const p = await probeApi(
-      "https://api.openai.com/v1/models?limit=1",
-      { Authorization: `Bearer ${openaiKey}` },
+      `${base}/models?limit=1`,
+      { Authorization: `Bearer ${aiConn2.apiKey}` },
       3000
     );
     integrations.push({
@@ -313,11 +315,11 @@ router.get("/diagnostics/integrations", async (_req, res) => {
       status: p.ok ? "connected" : "error",
       latencyMs: p.latencyMs,
       httpStatus: p.httpStatus ?? undefined,
-      detail: p.ok ? `Models endpoint OK (${p.detail})` : `OpenAI API error: ${p.detail}`,
+      detail: p.ok ? `Models endpoint OK via ${aiConn2.provider} (${p.detail})` : `OpenAI API error: ${p.detail}`,
       liveProbe: true,
     } as ProbeResult & { name: string });
   } else {
-    integrations.push({ name: "openai", status: "setup_required", latencyMs: 0, detail: "OPENAI_API_KEY not configured", liveProbe: false } as ProbeResult & { name: string });
+    integrations.push({ name: "openai", status: "setup_required", latencyMs: 0, detail: "No AI provider configured", liveProbe: false } as ProbeResult & { name: string });
   }
 
   // ── DataForSEO (Basic auth → live probe) ──────────────────────────────────

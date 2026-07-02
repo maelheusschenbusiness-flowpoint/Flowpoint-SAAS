@@ -43,10 +43,11 @@ function checkRateLimit(ip: string): boolean {
 
 // ── OpenAI client factory ─────────────────────────────────────────────────────
 async function getOpenAI() {
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (!apiKey) return null;
+  const { resolveOpenAIConnection } = await import("../lib/openai-client.js");
+  const conn = resolveOpenAIConnection();
+  if (!conn) return null;
   const { default: OpenAI } = await import("openai");
-  return new OpenAI({ apiKey });
+  return new OpenAI({ apiKey: conn.apiKey, ...(conn.baseURL ? { baseURL: conn.baseURL } : {}) });
 }
 
 // ── Shared context builder ────────────────────────────────────────────────────

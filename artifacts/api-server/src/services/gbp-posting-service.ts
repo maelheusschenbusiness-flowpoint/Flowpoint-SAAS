@@ -103,16 +103,20 @@ export async function createPost(orgId: string, data: {
 }
 
 export async function generateAiPost(orgId: string, data?: { locationId?: string; locationName?: string; postType?: PostType; industry?: string; keywords?: string[]; tone?: string; objective?: string; }): Promise<{ content: string; callToAction: string; type: string }> {
-  void orgId; void data;
-  const templates: Record<string, { content: string; callToAction: string }> = {
-    "promo":     { content: `🎉 Offre spéciale cette semaine ! Profitez de notre service premium avec une consultation gratuite de 30 minutes. Réservez maintenant et transformez votre présence en ligne. 📈 #SEO #LocalSEO #Digital`, callToAction: "Réserver" },
-    "news":      { content: `📢 Nouvelle mise à jour Google Algorithm ! Suite au récent update, voici les 3 ajustements clés à faire sur votre site pour maintenir votre positionnement. Contactez-nous pour un audit gratuit. 🔍`, callToAction: "En savoir plus" },
-    "tip":       { content: `💡 Conseil SEO du jour : Saviez-vous que répondre aux avis Google peut augmenter vos conversions de 33% ? Prenez 5 minutes aujourd'hui pour répondre à vos avis récents. #Tips #SEO`, callToAction: "Nous contacter" },
-    "event":     { content: `📅 Webinaire gratuit : "Dominer le SEO Local en 2025" — Rejoignez-nous ce jeudi à 14h pour découvrir les stratégies utilisées par les meilleurs. Places limitées ! Inscrivez-vous maintenant.`, callToAction: "S'inscrire" },
-  };
+  void orgId;
+  const { aiChatCompletion } = await import("../lib/openai-client.js");
   const postType = data?.postType ?? "tip";
-  const type = templates[postType] ? postType : "tip";
-  return { type, ...templates[type], isTemplate: true };
+  const ctaByType: Record<string, string> = { promo: "Réserver", news: "En savoir plus", tip: "Nous contacter", event: "S'inscrire" };
+  const raw = await aiChatCompletion({
+    systemPrompt: `Tu es un expert en marketing local français. Tu rédiges des posts Google Business Profile courts (300-500 caractères), engageants, avec 1-2 émojis pertinents et des hashtags. Réponds UNIQUEMENT en JSON: {"content": "...", "callToAction": "..."}`,
+    userPrompt: `Rédige un post GBP de type "${postType}"${data?.locationName ? ` pour l'établissement "${data.locationName}"` : ""}${data?.industry ? ` (secteur: ${data.industry})` : ""}${data?.keywords?.length ? `. Mots-clés à intégrer: ${data.keywords.join(", ")}` : ""}${data?.tone ? `. Ton: ${data.tone}` : ""}${data?.objective ? `. Objectif: ${data.objective}` : ""}.`,
+    json: true,
+    maxTokens: 400,
+  });
+  let parsed: { content?: string; callToAction?: string } = {};
+  try { parsed = JSON.parse(raw); } catch { /* handled below */ }
+  if (!parsed.content) throw new Error("AI_GENERATION_FAILED");
+  return { type: postType, content: parsed.content, callToAction: parsed.callToAction || ctaByType[postType] || "En savoir plus" };
 }
 
 export async function publishPost(postId: string): Promise<{ ok: boolean; publishedAt: string }> {

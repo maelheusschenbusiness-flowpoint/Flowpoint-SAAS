@@ -7,16 +7,21 @@ import OpenAI from "openai";
 import { logger } from "../logger.js";
 import { TIMEOUTS, RETRY_CONFIG, AI_LIMITS, normalizePlan } from "../config.js";
 import { store } from "../../services/store.js";
+import { resolveOpenAIConnection, aiConfigured } from "../lib/openai-client.js";
 
 let _client: OpenAI | null = null;
+let _clientProvider: string | null = null;
 
 export function getOpenAIClient(): OpenAI {
-  if (!_client) {
+  const conn = resolveOpenAIConnection();
+  if (!_client || _clientProvider !== (conn?.provider ?? null)) {
     _client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY ?? '',
+      apiKey: conn?.apiKey ?? '',
+      ...(conn?.baseURL ? { baseURL: conn.baseURL } : {}),
       timeout: TIMEOUTS.openai,
       maxRetries: RETRY_CONFIG.openai.maxAttempts,
     });
+    _clientProvider = conn?.provider ?? null;
   }
   return _client;
 }
@@ -36,8 +41,8 @@ export interface CompletionOptions {
 }
 
 export async function completion(opts: CompletionOptions): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) {
-    logger.warn('[OpenAI] No API key configured — returning fallback');
+  if (!aiConfigured()) {
+    logger.warn('[OpenAI] No AI provider configured — returning fallback');
     return opts.json ? '{}' : 'AI non disponible — clé API manquante.';
   }
 
@@ -85,7 +90,7 @@ export async function streamCompletion(opts: CompletionOptions): Promise<string>
 
 /** Embed text (for future semantic search) */
 export async function embed(text: string): Promise<number[]> {
-  if (!process.env.OPENAI_API_KEY) return [];
+  if (!aiConfigured()) return [];
   const client = getOpenAIClient();
   try {
     const res = await client.embeddings.create({ model: 'text-embedding-3-small', input: text });
