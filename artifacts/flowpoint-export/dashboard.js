@@ -127,11 +127,11 @@ const STATE = {
 // Default checklist
 if (!STATE.checklist) {
   STATE.checklist = [
-    { id:'c1', label:'Fiche Google Business Profile complète', done:true },
-    { id:'c2', label:'Photos récentes ajoutées (< 3 mois)', done:true },
+    { id:'c1', label:'Fiche Google Business Profile complète', done:false },
+    { id:'c2', label:'Photos récentes ajoutées (< 3 mois)', done:false },
     { id:'c3', label:'Réponses aux avis Google', done:false },
     { id:'c4', label:'Posts hebdomadaires sur GBP', done:false },
-    { id:'c5', label:'Catégories secondaires configurées', done:true },
+    { id:'c5', label:'Catégories secondaires configurées', done:false },
     { id:'c6', label:'NAP cohérent sur tous les annuaires', done:false },
   ];
 }
@@ -1838,7 +1838,7 @@ const CMD_ITEMS = [
   { cat:'Équipe & Admin', label:'CRM Hub',                     icon:'users',        route:'crm',                shortcut:'' },
   { cat:'Équipe & Admin', label:'Mode client',                 icon:'users',        route:'client-mode',        shortcut:'' },
   { cat:'Équipe & Admin', label:'Permissions',                 icon:'shield',       route:'permissions',        shortcut:'' },
-  { cat:'Équipe & Admin', label:'SSO Enterprise',             icon:'shield',       route:'settings',           shortcut:'',
+  { cat:'Équipe & Admin', label:'SSO SAML',             icon:'shield',       route:'settings',           shortcut:'',
     fn: () => { navigate('settings'); setTimeout(() => { window._ssoTab='providers'; render(STATE.currentSection); }, 150); } },
   { cat:'Équipe & Admin', label:'Authentification SSO',       icon:'shield',       route:'settings',           shortcut:'',
     fn: () => { navigate('settings'); setTimeout(() => { window._ssoTab='providers'; render(STATE.currentSection); }, 150); } },
@@ -2832,7 +2832,8 @@ function initLocalSEOMap() {
       position:center, map, zIndex:10, title:'Votre établissement',
       icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#2563EB', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 }
     });
-    const bIW = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:160px"><strong>📍 Votre établissement</strong><div style="margin-top:6px;font-size:12px;color:#475569">Score SEO&nbsp;<strong style="color:#2563EB">74/100</strong></div><div style="font-size:12px;color:#22c55e">↑ +8% ce mois · Top 5 Google</div></div>` });
+    const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
+    const bIW = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:160px"><strong>📍 Votre établissement</strong>${_bizAvg != null ? `<div style="margin-top:6px;font-size:12px;color:#475569">Score SEO&nbsp;<strong style="color:#2563EB">${_bizAvg}/100</strong></div>` : ''}</div>` });
     bm.addListener('click', () => bIW.open(map, bm));
     new google.maps.Circle({ map, center, radius:1200, fillColor:'#2563EB', fillOpacity:0.06, strokeColor:'#2563EB', strokeOpacity:0.3, strokeWeight:2 });
     // Competitors
@@ -3949,7 +3950,7 @@ function renderAudits() {
       const aPct = Math.round((aUsed/Math.max(1,aLimit))*100);
       const mPct = Math.round((mUsed/Math.max(1,mLimit))*100);
       const aColor = aPct>=90?'#ef4444':aPct>=70?'#f59e0b':'#22c55e';
-      const isStarter = plan === 'Starter';
+      const isStarter = plan === 'Starter' || plan === 'Standard';
       return `<div class="fp-quota-bar">
         <div class="fp-quota-item">
           <div class="fp-quota-label">Audits ce mois · ${escHtml(plan)}</div>
@@ -4108,8 +4109,8 @@ function renderMonitors() {
     </div>`;
   }
   const plan = STATE.me?.plan || 'Pro';
-  const isPro = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
   const monitors = STATE.monitors;
   const nUp   = monitors.filter(m => m.status === 'up').length;
   const nDown = monitors.filter(m => m.status === 'down').length;
@@ -4291,16 +4292,16 @@ function renderMonitors() {
         <div class="fp-card-title" style="margin-bottom:12px">🔒 Certificats SSL</div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${monitors.slice(0, 5).map((m, idx) => {
-            const days = [312, 87, 42, 198, 156][idx % 5];
-            const c = days < 30 ? '#ef4444' : days < 60 ? '#f59e0b' : '#22c55e';
+            const days = PREVIEW_MODE ? [312, 87, 42, 198, 156][idx % 5] : (m.sslDaysLeft ?? m.ssl?.daysRemaining ?? null);
+            const c = days == null ? '#94a3b8' : days < 30 ? '#ef4444' : days < 60 ? '#f59e0b' : '#22c55e';
             return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
               <div style="width:6px;height:6px;border-radius:50%;background:${c};flex-shrink:0"></div>
               <span style="flex:1;font-size:11px;color:var(--fp-text-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</span>
-              <span style="font-size:11px;font-weight:700;color:${c}">${days}j</span>
+              <span style="font-size:11px;font-weight:700;color:${c}">${days == null ? '—' : days + 'j'}</span>
             </div>`;
           }).join('')}
         </div>
-        <div style="font-size:10px;color:var(--fp-text-faint);margin-top:8px">Auto-renouvellement Let\'s Encrypt actif</div>
+        <div style="font-size:10px;color:var(--fp-text-faint);margin-top:8px">${PREVIEW_MODE ? 'Auto-renouvellement Let\'s Encrypt actif' : 'L\'expiration SSL sera affichée dès la prochaine vérification des monitors HTTPS'}</div>
       </div>
 
       <!-- Alert channels summary -->
@@ -4394,7 +4395,7 @@ function renderMonitors() {
                 const mc = ep.method === 'GET' ? '#2563EB' : '#8b5cf6';
                 const pingAction = ep.id
                   ? `apiAction('POST','/api/monitors/${ep.id}/check').then(r=>showToast(r?.ok?'success':'error',r?.ok?'Ping OK — '+r.responseTime+'ms':'Ping échoué')).catch(()=>showToast('error','Ping échoué'))`
-                  : `showToast('info','Ping envoyé…')`;
+                  : `showToast('error','Monitor sans identifiant — test impossible')`;
                 return `<tr>
                   <td>
                     <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(ep.name)}</div>
@@ -5282,8 +5283,8 @@ function renderReports() {
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
   const circ52  = 2 * Math.PI * 52;
 
   // ── Shared data ────────────────────────────────────────────
@@ -6238,8 +6239,8 @@ function renderLocalSEO() {
   }
   const plan = STATE.me?.plan || 'Pro';
   const isStd  = plan === 'Standard';
-  const isPro  = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   const _lseo = STATE.localSeo || {};
   const domScore = _lseo.domScore ?? (PREVIEW_MODE ? 72 : null);
@@ -6456,7 +6457,7 @@ function renderLocalSEO() {
         <div style="position:absolute;bottom:14px;right:14px;background:${STATE.theme==='light'?'rgba(255,255,255,0.95)':'rgba(0,0,0,0.72)'};border:1px solid ${STATE.theme==='light'?'rgba(0,0,0,0.10)':'rgba(255,255,255,0.1)'};border-radius:10px;padding:10px 14px;backdrop-filter:blur(10px)">
           <div style="font-size:10px;color:${STATE.theme==='light'?'#475569':'rgba(255,255,255,0.4)'};margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em">L\u00e9gende</div>
           <div style="display:flex;flex-direction:column;gap:5px">
-            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#2563EB;display:inline-block"></span>Vous (74/100)</div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#2563EB;display:inline-block"></span>Vous</div>
             <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>Menace \u00e9lev\u00e9e</div>
             <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Menace mod\u00e9r\u00e9e</div>
             <div style="display:flex;align-items:center;gap:7px;font-size:10px;color:${STATE.theme==='light'?'#334155':'rgba(255,255,255,0.5)'}"><span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block"></span>Faible</div>
@@ -6608,7 +6609,7 @@ function renderLocalSEO() {
           </div>
           ${!isUltra ? `<span style="font-size:10px;padding:2px 8px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-radius:10px;color:#8b5cf6">Ultra</span>` : ''}
         </div>
-        ${isUltra ? `
+        ${isUltra && forecasts.length > 0 ? `
         <div style="display:flex;gap:4px;align-items:flex-end;height:100px;padding:0 4px">
           ${forecasts.map(f => `
             <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
@@ -6624,10 +6625,13 @@ function renderLocalSEO() {
           <span>▬ <span style="color:#22c55e">Prévu</span></span>
           <span>▬ <span style="color:#2563EB">Actuel</span></span>
         </div>
-        <div style="margin-top:12px;padding:10px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15);border-radius:8px;font-size:12px;color:#22c55e">
+        ${PREVIEW_MODE ? `<div style="margin-top:12px;padding:10px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15);border-radius:8px;font-size:12px;color:#22c55e">
           📈 <strong>+62% de trafic local estimé</strong> en 4 mois si les 12 opportunités sont activées
-        </div>
-        ` : `<div style="height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.5">
+        </div>` : ''}
+        ` : isUltra ? `<div style="height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.5">
+          <div style="font-size:28px">📈</div>
+          <div style="font-size:12px;color:var(--fp-text-muted)">Les prévisions s'afficheront quand suffisamment de données locales seront collectées</div>
+        </div>` : `<div style="height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.5">
           <div style="font-size:28px">📈</div>
           <div style="font-size:12px;color:var(--fp-text-muted)">Prévisions IA disponibles en Ultra</div>
         </div>`}
@@ -6903,8 +6907,8 @@ function renderBilling() {
   const _ud    = STATE.usageDetails || {};
   const plan = me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   // ── Shared plan data ─────────────────────────────────────
   const PLANS = [
@@ -6915,7 +6919,7 @@ function renderBilling() {
         'Jusqu\'à 50 audits/mois','10 monitors','5 rapports PDF','1 utilisateur',
         'Local SEO basique','Support email 48h','Rétention 30 jours','Export CSV','White-label',
       ],
-      locked:['IA Insights','Multi-sièges','API Access','Custom domain','Analytics concurrents','Rapports illimités','SSO Enterprise','SLA garanti','Support prioritaire','Monitors illimités','Onboarding dédié','Facturation client'],
+      locked:['IA Insights','Multi-sièges','API Access','Custom domain','Analytics concurrents','Rapports illimités','SSO SAML','SLA garanti','Support prioritaire','Monitors illimités','Onboarding dédié','Facturation client'],
     },
     {
       id:'pro', name:'Pro', price:79, color:'#2563EB', current:true,
@@ -6925,14 +6929,14 @@ function renderBilling() {
         'IA Insights Pro','Local SEO avancé','White-label rapports','API Access',
         'Support prioritaire 4h','Rétention 90 jours','Analytics concurrents',
       ],
-      locked:['Multi-workspace','SSO Enterprise','Dedicated onboarding','SLA garanti 99.9%'],
+      locked:['Multi-workspace','SSO SAML','Dedicated onboarding','SLA garanti 99.9%'],
     },
     {
       id:'ultra', name:'Ultra', price:149, color:'#2563EB',
-      badge:'Enterprise', tagline:'Pour les grandes agences et entreprises',
+      badge:'Ultra', tagline:'Pour les grandes agences et entreprises',
       features:[
         'Audits illimités','Monitors illimités','Multi-workspace','Sièges illimités',
-        'IA Stratégiste complet','White-label portail','SSO Enterprise','API illimitée',
+        'IA Stratégiste complet','White-label portail','SSO SAML','API illimitée',
         'Custom domain','SLA 99.9% garanti','Support dédié < 1h','Rétention 365 jours',
         'Onboarding dédié','Agency Lab complet','Facturation client',
       ],
@@ -6966,9 +6970,9 @@ function renderBilling() {
     return `
       ${aiBlock(
         isPro
-          ? "Plan <strong>Pro</strong> actif — parfaitement adapté à votre usage actuel. Prévision : si votre équipe dépasse 5 sièges ou vos audits approchent 250/mois, l\'Ultra s\'imposera. ROI estimé du passage Ultra : <strong>+34% efficacité agence</strong>."
-          : "Plan <strong>Standard</strong> actif. Votre utilisation des audits est à 76% — passage Pro recommandé dans 3 semaines. ROI estimé passage Pro : économie de 4h/semaine sur les rapports manuels.",
-        ['Simuler le passage Pro', 'Estimer le ROI', 'Voir les fonctionnalités']
+          ? "Plan <strong>Pro</strong> actif. Si votre équipe dépasse 5 sièges ou si vos audits approchent la limite mensuelle, le plan Ultra devient pertinent — comparez les fonctionnalités ci-dessous."
+          : "Plan <strong>Standard</strong> actif. Le passage à Pro débloque davantage d\'audits, l\'IA avancée et les rapports client — comparez les plans ci-dessous.",
+        ['Voir les fonctionnalités', 'Comparer les plans']
       )}
 
       <div class="fp-stat-row fp-mb-20">
@@ -6976,8 +6980,8 @@ function renderBilling() {
       (() => {
         const _usedPct = _usage.audit?.used && _usage.audit?.limit ? Math.round(_usage.audit.used/_usage.audit.limit*100) : 0;
         if (_usedPct >= 90) return `⚠️ Vous avez utilisé <strong>${_usedPct}%</strong> de votre quota d\'audits. Envisagez un upgrade vers ${plan==='Standard'?'Pro':'Ultra'} pour éviter les interruptions.`;
-        if (plan === 'Standard') return `Plan Standard actif. Passage à Pro : accès aux audits illimités, IA Insights, et rapports client avancés. ROI estimé : <strong>+340% productivité</strong>.`;
-        if (plan === 'Pro' || plan === 'Agency') return `Plan ${plan} actif. Consommation actuelle : <strong>${_usage.audit?.used??0}/${_usage.audit?.limit??50} audits</strong>. Toutes vos fonctionnalités sont disponibles.`;
+        if (plan === 'Standard') return `Plan Standard actif. Passage à Pro : davantage d\'audits, IA Insights et rapports client avancés.`;
+        if (plan === 'Pro' || plan === 'Agency' || plan === 'Ultra') return `Plan ${plan} actif. Consommation actuelle : <strong>${_usage.audit?.used??0}/${_usage.audit?.limit??50} audits</strong>. Toutes vos fonctionnalités sont disponibles.`;
         return `Abonnement actif — accès complet à toutes les fonctionnalités FlowPoint.`;
       })(),
       plan === 'Standard' ? ['Passer à Pro', 'Voir les avantages', 'Comparer les plans'] : ['Gérer l\'abonnement', 'Voir mes usages', 'Ajouter des modules']
@@ -7052,9 +7056,9 @@ function renderBilling() {
                   ['API Access', '—', '✓', '✓ Illimitée'],
                   ['Analytics concurrents', '—', '✓', '✓'],
                 ]},
-                { group:'Enterprise', rows:[
+                { group:'Ultra', rows:[
                   ['Multi-workspace', '—', '—', '✓'],
-                  ['SSO Enterprise', '—', '—', '✓'],
+                  ['SSO SAML', '—', '—', '✓'],
                   ['Custom domain', '—', '—', '✓'],
                   ['Facturation client', '—', '—', '✓'],
                   ['Onboarding dédié', '—', '—', '✓'],
@@ -7099,7 +7103,7 @@ function renderBilling() {
       // ── Monitoring ──
       { cat:'Monitoring', name:'+10 Monitors',             price:'9€/mois',  icon:'📡', color:'#f59e0b', active:false, tag:'Populaire',      roi:'99.9% uptime garanti',           includedFrom:null,    desc:'Surveillez 10 sites supplémentaires en temps réel avec alertes SMS/email instantanées.', features:['10 monitors additionnels activés immédiatement','Alertes SMS + email en moins d\'1 min','Rapports de disponibilité hebdomadaires','Intégration Slack & Discord incluse','Historique uptime 30 jours'] },
       { cat:'Monitoring', name:'+50 Monitors',             price:'29€/mois', icon:'📡', color:'#f59e0b', active:true,  tag:'Best value',      roi:'50 sites couverts',               includedFrom:null,    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
-      { cat:'Monitoring', name:'Global Monitoring',        price:'49€/mois', icon:'🌍', color:'#f59e0b', active:false, tag:'Enterprise',      roi:'Monitoring 15 régions',           includedFrom:null,    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
+      { cat:'Monitoring', name:'Global Monitoring',        price:'49€/mois', icon:'🌍', color:'#f59e0b', active:false, tag:'Ultra',      roi:'Monitoring 15 régions',           includedFrom:null,    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
       { cat:'Monitoring', name:'SLA Monitoring Avancé',    price:'19€/mois', icon:'🛡️', color:'#f59e0b', active:false, tag:'Pro',             roi:'SLA 99.9% garanti',               includedFrom:null,    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
       // ── SEO ──
       { cat:'SEO',        name:'Advanced SEO Lab',         price:'29€/mois', icon:'🔬', color:'#2563EB', active:false, tag:'IA Powered',      roi:'+40% couverture sémantique',      includedFrom:null,    desc:'Lab SEO IA complet : analyse sémantique, gap analysis, et topical authority.', features:['Analyse sémantique IA par page','Gap analysis vs top 10 SERP','Score topical authority automatique','Suggestions de silos thématiques','Rapport couverture sémantique mensuel'] },
@@ -7126,18 +7130,18 @@ function renderBilling() {
       { cat:'IA',         name:'AI Automation Workflows', price:'34€/mois', icon:'⚡', color:'#8b5cf6', active:false, tag:'Automation',      roi:'Économise 6h/semaine',            includedFrom:null,    desc:'Workflows d\'automatisation IA. Audits, rapports, et alertes entièrement automatisés.', features:['Workflows no-code drag-and-drop','Audits automatiques planifiés','Rapports envoyés sans intervention','Alertes conditionnelles avancées','Économie estimée 6h/semaine par agence'] },
       // ── Team ──
       { cat:'Équipe',     name:'+5 Sièges',               price:'35€/mois', icon:'👥', color:'#06b6d4', active:me.addons?.extraSeats > 0, tag:'Collaboration', roi:'5 utilisateurs suppl.', includedFrom:null, desc:'Ajoutez 5 membres d\'équipe avec rôles et permissions granulaires.', features:['5 sièges supplémentaires immédiats','Rôles Admin / Editor / Viewer','Invitations par email en 1 clic','Permissions granulaires par workspace','Historique d\'activité par membre'] },
-      { cat:'Équipe',     name:'Enterprise Permissions',  price:'19€/mois', icon:'🔐', color:'#06b6d4', active:false, tag:'Sécurité',        roi:'RBAC complet',                    includedFrom:null,    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
+      { cat:'Équipe',     name:'Permissions Avancées',  price:'19€/mois', icon:'🔐', color:'#06b6d4', active:false, tag:'Sécurité',        roi:'RBAC complet',                    includedFrom:null,    desc:'Contrôle d\'accès granulaire. Rôles custom, audit log, et permissions par workspace.', features:['Rôles personnalisés créés sur mesure','Audit log complet des actions','Permissions par section et par client','SSO compatible (Google Workspace)','Rapport accès mensuel pour conformité'] },
       // ── Storage ──
       { cat:'Storage',    name:'Rétention 90 jours',      price:'9€/mois',  icon:'🗄️', color:'#ef4444', active:false, tag:'Standard+',       roi:'3 mois d\'historique',            includedFrom:null,    desc:'Conservez 90 jours d\'historique pour tous vos audits, monitors, et rapports.', features:['90 jours d\'historique audits','Historique monitors et alertes','Export CSV de toutes les données','Comparaisons temporelles dans le dashboard','Aucune perte de données garantie'] },
       { cat:'Storage',    name:'Rétention 365 jours',     price:'19€/mois', icon:'🗄️', color:'#ef4444', active:false, tag:'Ultra',           roi:'1 an d\'historique complet',      includedFrom:null,    desc:'365 jours d\'historique. Analyses long-terme et tendances annuelles.', features:['1 an d\'historique complet','Analyses de tendances annuelles','Rapport d\'évolution YoY automatique','Export illimité CSV / JSON','Archivage automatique certifié'] },
       // ── API ──
       { cat:'API',        name:'Webhooks Avancés',        price:'14€/mois', icon:'🔔', color:'#14b8a6', active:false, tag:'Dev',             roi:'Alertes temps réel',              includedFrom:null,    desc:'Webhooks personnalisables pour Slack, Discord, et systèmes tiers. Templates inclus.', features:['Webhooks illimités vers n\'importe quel endpoint','Templates Slack, Discord, Teams','Retry automatique en cas d\'échec','Logs de delivery en temps réel','Signatures HMAC pour la sécurité'] },
       { cat:'API',        name:'Zapier/Make Integration', price:'19€/mois', icon:'⚙️', color:'#14b8a6', active:false, tag:'No-code',         roi:'1000+ intégrations',              includedFrom:null,    desc:'Connectez FlowPoint à 1000+ applications. CRM, Slack, Notion, HubSpot, et plus.', features:['1000+ apps disponibles (Zapier + Make)','Triggers sur audits, alertes, rapports','Actions : créer tâche, envoyer email, notifier','Templates de zaps prêts à l\'emploi','Support no-code dédié'] },
-      { cat:'API',        name:'CRM Intégrations',        price:'29€/mois', icon:'🏢', color:'#14b8a6', active:false, tag:'Enterprise',      roi:'HubSpot, Salesforce, Pipedrive',  includedFrom:null,    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
+      { cat:'API',        name:'CRM Intégrations',        price:'29€/mois', icon:'🏢', color:'#14b8a6', active:false, tag:'Ultra',      roi:'HubSpot, Salesforce, Pipedrive',  includedFrom:null,    desc:'Synchronisez vos données SEO avec votre CRM. Leads, opportunités, et reporting.', features:['Sync HubSpot, Salesforce, Pipedrive','Création de deals depuis les opportunités SEO','Enrichissement contacts avec data SEO','Mapping de champs personnalisable','Synchronisation bi-directionnelle en temps réel'] },
       // ── Enterprise ──
-      { cat:'Enterprise', name:'Custom Domain',           price:'9€/mois',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Branding', roi:'portal.votreagence.fr', includedFrom:null, desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
-      { cat:'Enterprise', name:'SSO Enterprise',          price:'49€/mois', icon:'🔑', color:'#6366f1', active:false, tag:'Ultra',           roi:'SAML 2.0 / OIDC',                includedFrom:'ultra', desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'] },
-      { cat:'Enterprise', name:'AI Workspace Launch',     price:'49€/mois', icon:'🤖', color:'#6366f1', active:false, tag:'IA Setup',        roi:'Workspace auto en 2 min',         includedFrom:null,    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch' },
+      { cat:'Ultra', name:'Custom Domain',           price:'9€/mois',  icon:'🌐', color:'#6366f1', active:me.addons?.customDomain, tag:'Branding', roi:'portal.votreagence.fr', includedFrom:null, desc:'Portail client sur votre propre domaine. SSL via votre hébergeur/proxy (Cloudflare, Caddy, Nginx).', features:['Sous-domaine personnalisé (portal.votreagence.fr)','Vérification DNS TXT incluse','Page de connexion aux couleurs de votre agence','URL partageable pour vos clients','SSL via Cloudflare, Caddy ou Let\'s Encrypt (configuration manuelle)'] },
+      { cat:'Ultra', name:'SSO SAML',          price:'49€/mois', icon:'🔑', color:'#6366f1', active:false, tag:'Ultra',           roi:'SAML 2.0 / OIDC',                includedFrom:'ultra', desc:'Single Sign-On enterprise. Compatible SAML 2.0, OIDC, Azure AD, et Okta.', features:['SSO SAML 2.0 et OIDC natif','Compatible Azure AD, Okta, Google Workspace','Provisioning/déprovisioning automatique (SCIM)','Logs de connexion centralisés','Support dédié configuration SSO'] },
+      { cat:'Ultra', name:'AI Workspace Launch',     price:'49€/mois', icon:'🤖', color:'#6366f1', active:false, tag:'IA Setup',        roi:'Workspace auto en 2 min',         includedFrom:null,    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch' },
     ];
 
     const currentPlan = (me.plan || 'Pro');
@@ -7161,11 +7165,11 @@ function renderBilling() {
       'White-Label Exports':'whiteLabel', 'Agency Reporting Packs':'agencyPacks',
       'AI Executive Reporting':'aiExecutiveReport', 'AI Forecasting Engine':'aiForecasting',
       'AI Market Intelligence':'marketIntelligence', 'AI Automation Workflows':'aiWorkflows',
-      '+5 Sièges':'extraSeats', 'Enterprise Permissions':'enterprisePermissions',
+      '+5 Sièges':'extraSeats', 'Permissions Avancées':'enterprisePermissions',
       'Rétention 90 jours':'retention90d', 'Rétention 365 jours':'retention365d',
       'Webhooks Avancés':'advancedWebhooks', 'Zapier/Make Integration':'zapierIntegration',
       'CRM Intégrations':'crmIntegration', 'Custom Domain':'customDomain',
-      'SSO Enterprise':'ssoEnterprise', 'AI Workspace Launch':'aiWorkspaceLaunch',
+      'SSO SAML':'ssoEnterprise', 'AI Workspace Launch':'aiWorkspaceLaunch',
     };
     window._fpAddonStripeKeys = _ADDON_STRIPE_KEYS;
     window.fpActivateAddon = async function(addonIdx) {
@@ -7236,7 +7240,7 @@ function renderBilling() {
             ${isInc
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">✓ Déjà inclus</button>`
               : a.active
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" onclick="showToast('info','Désactivation en cours…');closeFloatPanel&&closeFloatPanel()">Désactiver</button>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" onclick="closeFloatPanel&&closeFloatPanel();apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Gérez vos add-ons via le portail Stripe')}).catch(()=>showToast('info','Portail Stripe'))">Désactiver</button>`
                 : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
                   : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>`
@@ -7246,7 +7250,7 @@ function renderBilling() {
       );
     };
 
-    const cats = ['Tous', 'Monitoring', 'SEO', 'Local SEO', 'Conversion', 'Reporting', 'IA', 'Équipe', 'Storage', 'API', 'Enterprise'];
+    const cats = ['Tous', 'Monitoring', 'SEO', 'Local SEO', 'Conversion', 'Reporting', 'IA', 'Équipe', 'Storage', 'API', 'Ultra'];
     const activeCount = allAddons.filter(a => a.active || isIncluded(a)).length;
 
     return `
@@ -7301,7 +7305,7 @@ function renderBilling() {
               ${inc
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">✓ Inclus</button>`
                 : a.active
-                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="showToast('info','Désactivation en cours…')">Désactiver</button>`
+                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Gérez vos add-ons via le portail Stripe')}).catch(()=>showToast('info','Portail Stripe'))">Désactiver</button>`
                   : a.wizardFn
                     ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
                     : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">Activer →</button>`
@@ -7405,7 +7409,7 @@ function renderBilling() {
                 <td style="text-align:center;vertical-align:middle">
                   <div style="display:inline-flex;gap:4px;justify-content:center">
                     <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Facture ${escHtml(inv.id)} — portail Stripe')}).catch(()=>showToast('info','Facture ${escHtml(inv.id)}'))">PDF</button>
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('info','La facture sera envoyée par email — vérifiez votre adresse dans les paramètres')">Email</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Retrouvez vos factures dans le portail Stripe')}).catch(()=>showToast('info','Portail Stripe'))">Email</button>
                   </div>
                 </td>
               </tr>`).join('')}
@@ -7523,10 +7527,9 @@ function renderBilling() {
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">📈 Adoption des fonctionnalités — Ce mois</div>
-          <button onclick="showToast('info','Export adoption…')" style="background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.08);border-radius:7px;padding:4px 8px;cursor:pointer;color:var(--fp-text-faint);display:flex;align-items:center;gap:4px;font-size:10px">${svgIcon('download').replace('width="14"','width="11"').replace('height="14"','height="11"')} Export</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
-          ${[
+          ${(()=>{ const _adopt = PREVIEW_MODE ? [
             { feat:'Audits SEO',         rate:94, trend:'+8%'  },
             { feat:'Monitors',           rate:88, trend:'+3%'  },
             { feat:'Rapports PDF',       rate:72, trend:'+12%' },
@@ -7537,7 +7540,9 @@ function renderBilling() {
             { feat:'Data Explorer',      rate:38, trend:'+9%'  },
             { feat:'API & Webhooks',     rate:29, trend:'+14%' },
             { feat:'White-Label',        rate:73, trend:'+6%'  },
-          ].map(f => {
+          ] : [];
+          if (_adopt.length === 0) return `<div style="grid-column:1/-1;padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Les statistiques d\'adoption s\'afficheront avec l\'activité de votre équipe.</div>`;
+          return _adopt.map(f => {
             const c = f.rate > 75 ? '#22c55e' : f.rate > 50 ? '#f59e0b' : '#ef4444';
             return `<div style="padding:12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.05)">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -7547,7 +7552,7 @@ function renderBilling() {
               <div class="fp-progress-track" style="height:5px;margin-bottom:4px"><div class="fp-progress-fill" style="width:${f.rate}%;background:${c}"></div></div>
               <div style="font-size:10px;font-weight:700;color:${c}">${f.rate}%</div>
             </div>`;
-          }).join('')}
+          }).join(''); })()}
         </div>
       </div>
     `;
@@ -7557,7 +7562,7 @@ function renderBilling() {
   // SUB: IA STRATÉGISTE
   // ══════════════════════════════════════════════════════════
   if (sub === 'ai-strategist') {
-    const strategies = [
+    const strategies = PREVIEW_MODE ? [
       {
         title:'Passage Ultra recommandé dans 6 semaines',
         body:'Au rythme actuel, vos audits dépasseront 250/mois le 22 juin. Le passage Ultra (149€/mois) coûte +70€ mais génère 4h/semaine d\'économie d\'automatisation = 200€ de valeur temps. ROI positif en 1 mois.',
@@ -7566,9 +7571,9 @@ function renderBilling() {
       },
       {
         title:'Review Intelligence — Quick Win immédiat',
-        body:(STATE.gbp?.unansweredReviews != null ? STATE.gbp.unansweredReviews : (PREVIEW_MODE ? 14 : 'Des')) + ' avis Google sans réponse détectés. Review Intelligence (19€/mois) automatise les réponses IA et améliore la note moyenne de +0.4 points — impact direct sur le Local Pack.',
+        body:'14 avis Google sans réponse détectés. Review Intelligence (19€/mois) automatise les réponses IA et améliore la note moyenne de +0.4 points — impact direct sur le Local Pack.',
         priority:'Urgente', color:'#ef4444', action:'Activer Review Intelligence',
-        metrics:[(STATE.gbp?.unansweredReviews != null ? STATE.gbp.unansweredReviews : (PREVIEW_MODE ? 14 : 'Avis'))+' sans réponse', '+0.4 note Google estimée', 'ROI < 1 semaine'],
+        metrics:['14 sans réponse', '+0.4 note Google estimée', 'ROI < 1 semaine'],
       },
       {
         title:'AI CRO Strategist — Conversion non exploitée',
@@ -7582,23 +7587,41 @@ function renderBilling() {
         priority:'Faible', color:'#22c55e', action:'Configurer White-Label',
         metrics:['Logo & couleurs personnalisés', 'Pied de page custom', 'Domaine portail inclus'],
       },
-    ];
-    const churnRisks = [
+    ] : (() => {
+      const arr = [];
+      const _ua = STATE.gbp?.unansweredReviews;
+      if (_ua > 0) arr.push({
+        title:'Review Intelligence — Quick Win immédiat',
+        body:_ua + ' avis Google sans réponse détecté' + (_ua > 1 ? 's' : '') + '. Review Intelligence (19€/mois) automatise les réponses IA — impact direct sur votre visibilité locale.',
+        priority:'Urgente', color:'#ef4444', action:'Activer Review Intelligence',
+        metrics:[_ua + ' sans réponse', 'Réponses IA automatisées'],
+      });
+      arr.push({
+        title:'White-Label — Personnaliser le portail client',
+        body:'Personnalisez le portail client avec votre logo et vos couleurs pour offrir une expérience premium à vos clients. Temps de setup : moins de 10 minutes.',
+        priority:'Faible', color:'#22c55e', action:'Configurer White-Label',
+        metrics:['Logo & couleurs personnalisés', 'Pied de page custom', 'Domaine portail inclus'],
+      });
+      return arr;
+    })();
+    const churnRisks = PREVIEW_MODE ? [
       { risk:'Usage en baisse — Rapports PDF', score:12, desc:'Usage PDF réduit de 40% vs M-1 — possible désengagement feature', color:'#f59e0b' },
       { risk:'Pas de connexion Manager 7 jours', score:8, desc:'L\'utilisateur secondaire n\'a pas ouvert la session depuis 7 jours', color:'#f59e0b' },
-    ];
+    ] : [];
     return `
       ${isUltra
-        ? aiBlock("IA Stratégiste activé — analyse complète du compte. <strong>3 opportunités d\'optimisation détectées</strong>. Priorité : activer Review Intelligence (ROI < 1 semaine). Prévision : dépassement plan dans 8 jours. White-Label non configuré — setup en 10 minutes.",
+        ? aiBlock(PREVIEW_MODE
+            ? "IA Stratégiste activé — analyse complète du compte. <strong>3 opportunités d\'optimisation détectées</strong>. Priorité : activer Review Intelligence (ROI < 1 semaine). Prévision : dépassement plan dans 8 jours. White-Label non configuré — setup en 10 minutes."
+            : "IA Stratégiste activé. <strong>" + strategies.length + " opportunité" + (strategies.length > 1 ? "s" : "") + " d\'optimisation identifiée" + (strategies.length > 1 ? "s" : "") + "</strong> à partir de vos données réelles.",
             ['Appliquer toutes les recommandations', 'Rapport ROI complet', 'Prévision 6 mois'])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Stratégiste complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('ultra'):navigate('billing'))">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Score optimisation', displayStat(upgradeScore!=null?upgradeScore+'/100':null, '62/100'), PREVIEW_MODE ? '+15 pts ce mois' : upgradeScore!=null?'+'+upgradeScore+'pts':'Analyse en cours', 'neutral')}
-        ${statCard('Actions identifiées', displayStat(null, '3'), PREVIEW_MODE ? 'opportunités prioritaires' : 'Aucune action', 'neutral')}
+        ${statCard('Actions identifiées', displayStat(strategies.length > 0 ? String(strategies.length) : null, '3'), PREVIEW_MODE ? 'opportunités prioritaires' : (strategies.length > 0 ? 'opportunités identifiées' : 'Aucune action'), 'neutral')}
         ${statCard('ROI add-ons estimé', displayStat(null, '+42%'), PREVIEW_MODE ? 'efficacité agence' : 'Activez des add-ons', 'neutral')}
-        ${statCard('Alertes churn', isUltra ? String(churnRisks.length) : '—', 'signaux faibles détectés', 'neutral')}
+        ${statCard('Alertes churn', isUltra ? String(churnRisks.length) : '—', churnRisks.length > 0 ? 'signaux faibles détectés' : 'aucun signal faible', 'neutral')}
       </div>
 
       ${isUltra ? `
@@ -7616,7 +7639,7 @@ function renderBilling() {
                 </div>
                 <div style="display:flex;align-items:center;gap:10px">
                   ${badge('Priorité ' + s.priority, s.color)}
-                  <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${s.color};border-color:${s.color}" onclick="showToast('info','Gérez vos options depuis le portail de facturation')">${escHtml(s.action)} →</button>
+                  <button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${s.color};border-color:${s.color}" onclick="navigate('billing')">${escHtml(s.action)} →</button>
                 </div>
               </div>
             </div>
@@ -7628,7 +7651,7 @@ function renderBilling() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🛡️ Prévention churn — Signaux faibles</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${churnRisks.map(r => `
+          ${churnRisks.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Aucun signal de churn détecté</div>` : ''}${churnRisks.map(r => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:${r.color}07;border:1px solid ${r.color}28">
               <div style="flex:1">
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(r.risk)}</div>
@@ -7668,27 +7691,27 @@ function renderBilling() {
     ];
     return `
       ${isUltra
-        ? aiBlock(`Enterprise Lab actif. <strong>${workspaces.length} workspace${workspaces.length!==1?'s':''} géré${workspaces.length!==1?'s':''}</strong> — ${workspaces.reduce((s,w)=>s+(w.clients||0),0)} client${workspaces.reduce((s,w)=>s+(w.clients||0),0)!==1?'s':''}. MRR agence : ${displayStat(null, PREVIEW_MODE?'316€':'—')}. White-label et custom domain disponibles — activez le portail client personnalisé pour une expérience premium maximale.`,
+        ? aiBlock(`Agency Lab actif. <strong>${workspaces.length} workspace${workspaces.length!==1?'s':''} géré${workspaces.length!==1?'s':''}</strong> — ${workspaces.reduce((s,w)=>s+(w.clients||0),0)} client${workspaces.reduce((s,w)=>s+(w.clients||0),0)!==1?'s':''}. MRR agence : ${displayStat(null, PREVIEW_MODE?'316€':'—')}. White-label et custom domain disponibles — activez le portail client personnalisé pour une expérience premium maximale.`,
             ['Configurer portail client', 'Ajouter un workspace', 'Générer rapport agence'])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:20px 24px;margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
               <div style="font-size:28px">🏢</div>
               <div>
-                <div style="font-size:14px;font-weight:800;margin-bottom:3px">Enterprise Lab — Ultra requis</div>
+                <div style="font-size:14px;font-weight:800;margin-bottom:3px">Agency Lab — Ultra requis</div>
                 <div style="font-size:12px;color:var(--fp-text-muted)">Multi-workspace, SSO, white-label portail, facturation client et analytics agence avancés.</div>
               </div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px">
-              ${['🏢 Multi-workspace','🔑 SSO Enterprise','🌐 Custom domain','🎨 Portail white-label','🧾 Facturation client','📋 Audit log RGPD','🚀 Onboarding dédié','🛡️ SLA 99.9% garanti'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${f}</div>`).join('')}
+              ${['🏢 Multi-workspace','🔑 SSO SAML','🌐 Custom domain','🎨 Portail white-label','🧾 Facturation client','📋 Audit log RGPD','🚀 Onboarding dédié','🛡️ SLA 99.9% garanti'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${f}</div>`).join('')}
             </div>
-            <button class="fp-btn fp-btn-primary" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('ultra'):navigate('billing'))" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Débloquer Enterprise Lab → Passer Ultra (149€/mois)</button>
+            <button class="fp-btn fp-btn-primary" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('ultra'):navigate('billing'))" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Débloquer Agency Lab → Passer Ultra (149€/mois)</button>
           </div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Workspaces', String(workspaces.length), 'agence + clients', 'up')}
         ${statCard('MRR Agence', displayStat(null, '316€'), PREVIEW_MODE ? 'revenus récurrents' : 'Connectez facturation', 'neutral')}
-        ${statCard('Fonctions actives', String(features.filter(f => f.active).length) + '/' + features.length, 'Enterprise actives', 'up')}
+        ${statCard('Fonctions actives', String(features.filter(f => f.active).length) + '/' + features.length, 'Ultra actives', 'up')}
         ${statCard('Conformité RGPD', 'En cours', 'audit log à activer', 'neutral')}
       </div>
 
@@ -7696,7 +7719,7 @@ function renderBilling() {
       <div class="fp-card fp-mb-20">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">🏢 Gestion des workspaces</div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('info','Nouveau workspace…')">+ Workspace</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="Gestion multi-workspace bientôt disponible">+ Workspace (bientôt)</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${workspaces.map(ws => `
@@ -7710,7 +7733,7 @@ function renderBilling() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${ws.mrr}</div>
                 ${badge(ws.status, ws.status === 'Actif' ? '#22c55e' : '#2563EB')}
               </div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('info','Gestion workspace…')">Gérer</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings')">Gérer</button>
             </div>
           `).join('')}
         </div>
@@ -7718,7 +7741,7 @@ function renderBilling() {
 
       <!-- FEATURE STATUS -->
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">⚡ Fonctionnalités Enterprise</div>
+        <div class="fp-card-title" style="margin-bottom:14px">⚡ Fonctionnalités Ultra</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px">
           ${features.map(f => `
             <div style="padding:14px;border-radius:10px;border:1px solid ${f.active ? f.color + '33' : 'rgba(255,255,255,0.05)'};background:${f.active ? f.color + '07' : 'rgba(255,255,255,0.01)'};${f.locked ? 'opacity:0.55' : ''}">
@@ -7728,7 +7751,7 @@ function renderBilling() {
                 <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${f.active ? '#22c55e' : 'rgba(255,255,255,0.12)'};${f.active ? 'box-shadow:0 0 6px rgba(34,197,94,0.4)' : ''}"></div>
               </div>
               <div style="font-size:10px;color:var(--fp-text-muted);line-height:1.4;margin-bottom:8px">${escHtml(f.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="showToast('info','${f.locked ? 'Ultra requis' : f.active ? 'Configuré' : 'Activation…'}')">
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="${f.locked ? `(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('ultra'):navigate('billing'))` : f.active ? `navigate('settings')` : `navigateSub('addons')`}">
                 ${f.locked ? '🔒 Ultra requis' : f.active ? '✓ Configurer' : 'Activer →'}
               </button>
             </div>
@@ -7773,7 +7796,7 @@ function renderBilling() {
 
     <!-- HERO KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Plan actuel', plan, 'actif · ' + (plan === 'Standard' ? '29€' : plan === 'Agency' ? '149€' : '79€') + '/mois', 'up')}
+      ${statCard('Plan actuel', plan, 'actif · ' + (plan === 'Standard' ? '29€' : (plan === 'Agency' || plan === 'Ultra') ? '149€' : '79€') + '/mois', 'up')}
       ${statCard('Usage Health', displayStat(healthScore!=null?healthScore+'/100':null,'78/100'), healthScore!=null?(healthScore > 70 ? 'Sain — sous contrôle' : 'Attention requise'):PREVIEW_MODE?'Sain — sous contrôle':'Calcul en cours', healthScore!=null?(healthScore > 70 ? 'up' : 'down'):'neutral')}
       ${statCard('Potentiel upgrade', displayStat(upgradeScore!=null&&upgradeScore>0?upgradeScore+'%':null,'62%'), isUltra ? 'Plan optimal atteint' : 'Score upgrade détecté', isUltra ? 'up' : 'neutral')}
       ${statCard('Prochain débit', displayStat(STATE.billing?.nextAmount ? STATE.billing.nextAmount + '€' : null, '79€'), PREVIEW_MODE ? '01/06/2026 · dans 23j' : 'Voir Stripe', 'neutral')}
@@ -7857,18 +7880,22 @@ function renderBilling() {
         </div>
         <div style="position:relative;padding-left:20px">
           <div style="position:absolute;left:6px;top:0;bottom:0;width:1px;background:linear-gradient(to bottom,#2563EB,transparent)"></div>
-          ${[
-            { d:'01/05/2026', ev:'Facture payée — 79€',                     c:'#22c55e', ic:'check-circle' },
-            { d:'28/04/2026', ev:'Usage AI Crédits > 40% — seuil atteint',  c:'#f59e0b', ic:'alert-triangle' },
-            { d:'15/04/2026', ev:'Add-on Monitors +50 — activé',            c:'#2563EB', ic:'plus-circle' },
-            { d:'01/04/2026', ev:'Facture payée — 79€',                     c:'#22c55e', ic:'check-circle' },
-            { d:'01/03/2026', ev:'Passage Plan Pro — upgrade',              c:'#8b5cf6', ic:'zap' },
-            { d:'01/02/2026', ev:'Facture payée — 49€ (Standard)',          c:'#22c55e', ic:'check-circle' },
-          ].map(ev => `<div style="position:relative;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.04)">
+          ${(()=>{ const _tlEvents = STATE.billing?.invoices?.length > 0
+            ? STATE.billing.invoices.slice(0,6).map(inv => ({ d:String(inv.date||inv.created||'—'), ev:'Facture '+(inv.status==='failed'?'échouée':'payée')+' — '+(inv.amount||inv.total||'—')+'€', c:inv.status==='failed'?'#ef4444':'#22c55e' }))
+            : (PREVIEW_MODE ? [
+            { d:'01/05/2026', ev:'Facture payée — 79€',                     c:'#22c55e' },
+            { d:'28/04/2026', ev:'Usage AI Crédits > 40% — seuil atteint',  c:'#f59e0b' },
+            { d:'15/04/2026', ev:'Add-on Monitors +50 — activé',            c:'#2563EB' },
+            { d:'01/04/2026', ev:'Facture payée — 79€',                     c:'#22c55e' },
+            { d:'01/03/2026', ev:'Passage Plan Pro — upgrade',              c:'#8b5cf6' },
+            { d:'01/02/2026', ev:'Facture payée — 49€ (Standard)',          c:'#22c55e' },
+          ] : []);
+          if (_tlEvents.length === 0) return `<div style="padding:14px;text-align:center;color:var(--fp-text-faint);font-size:11px">Vos événements de facturation apparaîtront ici après votre première facture.</div>`;
+          return _tlEvents.map(ev => `<div style="position:relative;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.04)">
             <div style="position:absolute;left:-17px;top:2px;width:8px;height:8px;border-radius:50%;background:${ev.c};box-shadow:0 0 6px ${ev.c}44"></div>
             <div style="font-size:9px;color:var(--fp-text-faint);margin-bottom:2px">${escHtml(ev.d)}</div>
             <div style="font-size:11px;font-weight:600;color:var(--fp-text)">${escHtml(ev.ev)}</div>
-          </div>`).join('')}
+          </div>`).join(''); })()}
         </div>
       </div>
 
@@ -7878,11 +7905,11 @@ function renderBilling() {
         <div style="display:flex;flex-direction:column;gap:7px">
           ${[
             { label:'Plans & Abonnements',  sub:'plans',          icon:'💎', desc:'Comparer les plans · Upgrade · ROI' },
-            { label:'Add-ons Marketplace',  sub:'addons',         icon:'🛒', desc:'3 actifs sur 29 disponibles · Marketplace' },
-            { label:'Factures & Paiements', sub:'invoices',       icon:'🧾', desc:'6 factures · 286€ payés 2026' },
+            { label:'Add-ons Marketplace',  sub:'addons',         icon:'🛒', desc:PREVIEW_MODE ? '3 actifs sur 29 disponibles · Marketplace' : 'Étendre les capacités · Marketplace' },
+            { label:'Factures & Paiements', sub:'invoices',       icon:'🧾', desc:PREVIEW_MODE ? '6 factures · 286€ payés 2026' : 'Historique de facturation · Portail Stripe' },
             { label:'Usage Analytics',      sub:'usage',          icon:'📊', desc:criticalUsages.length > 0 ? criticalUsages.length + ' ressource(s) à surveiller' : 'Toutes ressources saines' },
-            { label:'IA Stratégiste',       sub:'ai-strategist',  icon:'🧠', desc:'4 recommandations · 192€ économies' },
-            { label:'Enterprise Lab',       sub:'enterprise',     icon:'🏢', desc:isUltra ? '3 workspaces actifs' : 'Ultra requis — portail agence complet' },
+            { label:'IA Stratégiste',       sub:'ai-strategist',  icon:'🧠', desc:PREVIEW_MODE ? '4 recommandations · 192€ économies' : 'Recommandations d\'optimisation des coûts' },
+            { label:'Agency Lab',       sub:'enterprise',     icon:'🏢', desc:isUltra ? ((STATE.workspaces||[]).length > 0 ? (STATE.workspaces||[]).length + ' workspace(s) actif(s)' : 'Gérez vos workspaces clients') : 'Ultra requis — portail agence complet' },
           ].map(n => `
             <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
               <span style="font-size:16px">${n.icon}</span>
@@ -8169,8 +8196,8 @@ function renderSettings() {
   const me   = STATE.me;
   const plan = me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
   const wlBranding = JSON.parse(localStorage.getItem('fp-wl-branding') || '{}');
 
   // ── Shared Toggle helper ──────────────────────────────────
@@ -8208,7 +8235,7 @@ function renderSettings() {
               <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${escHtml(me.firstName)} ${escHtml(me.lastName||'')}</div>
               <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(me.email||'')} · Plan ${plan}</div>
             </div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Modification avatar…')">Changer</button>
+            <span style="font-size:10px;color:var(--fp-text-faint);font-weight:600">Avatar — bientôt disponible</span>
           </div>
           ${[
             {l:'Prénom',       id:'prof-fname',   v:me.firstName,                                                                           t:'text'},
@@ -8375,7 +8402,7 @@ function renderSettings() {
           ${[
             {
               key:'secLevel', label:'Niveau sécurité', icon:'shield',
-              options:[ {val:'standard', label:'Standard', active:true}, {val:'enterprise', label:'Enterprise', active:false} ]
+              options:[ {val:'standard', label:'Standard', active:true}, {val:'enterprise', label:'Avancé', active:false} ]
             },
             {
               key:'iaSuggestions', label:'Suggestions IA', icon:'sparkles',
@@ -8383,7 +8410,7 @@ function renderSettings() {
             },
             {
               key:'reportType', label:'Type de rapport', icon:'file-text',
-              options:[ {val:'simple', label:'Simple', active:true}, {val:'client', label:'Client', active:false}, {val:'enterprise', label:'Enterprise', active:false} ]
+              options:[ {val:'simple', label:'Simple', active:true}, {val:'client', label:'Client', active:false}, {val:'enterprise', label:'Avancé', active:false} ]
             },
             {
               key:'localPriority', label:'Priorité locale', icon:'globe',
@@ -8516,7 +8543,7 @@ function renderSettings() {
       <div class="fp-card" style="${isUltra ? '' : 'opacity:0.65'}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div class="fp-card-title" style="margin-bottom:0">🔐 Rôles personnalisés ${!isUltra ? '<span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:2px 7px;border-radius:8px;margin-left:6px">Ultra</span>' : ''}</div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','${isUltra ? 'Nouveau rôle…' : 'Ultra requis'}')">+ Créer un rôle</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${isUltra ? `navigate('permissions')` : `navigate('billing')`}">+ Créer un rôle</button>
         </div>
         <div style="font-size:12px;color:var(--fp-text-muted)">Créez des rôles sur mesure avec des permissions granulaires par module, par client et par workspace.</div>
       </div>
@@ -8600,7 +8627,7 @@ function renderSettings() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(item.label)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(item.desc)} · +${item.weight} pts</div>
               </div>
-              ${!item.done ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('info','Configuration…')">Activer</button>` : `<span style="font-size:10px;color:#22c55e;font-weight:700;flex-shrink:0">✓ OK</span>`}
+              ${!item.done ? `<span style="font-size:10px;color:var(--fp-text-faint);font-weight:600;flex-shrink:0">Bientôt disponible</span>` : `<span style="font-size:10px;color:#22c55e;font-weight:700;flex-shrink:0">✓ OK</span>`}
             </div>
           `).join('')}
         </div>
@@ -8611,7 +8638,7 @@ function renderSettings() {
         <div class="fp-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
             <div class="fp-card-title" style="margin-bottom:0">💻 Sessions actives</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="showToast('warning','Toutes sessions fermées')">Tout déconnecter</button>
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k=>localStorage.removeItem(k));sessionStorage.clear();showToast('success','Toutes les sessions fermées');setTimeout(()=>{window.location.href='/login.html'},1200)">Tout déconnecter</button>
           </div>
           ${sessions.map(sess => `
             <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${sess.current ? 'rgba(37,99,235,0.25)' : 'var(--fp-border)'};margin-bottom:6px">
@@ -8651,7 +8678,7 @@ function renderSettings() {
             <div style="font-size:13px;font-weight:700;color:#ef4444">Double authentification (2FA) — Non configurée</div>
             <div style="font-size:11px;color:var(--fp-text-muted)">Sans 2FA, votre compte est vulnérable aux accès non autorisés.</div>
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-left:auto;flex-shrink:0;background:#ef4444;border-color:#ef4444" onclick="showToast('info','Configuration 2FA…')">Activer le 2FA →</button>
+          <span style="margin-left:auto;flex-shrink:0;font-size:11px;font-weight:600;padding:6px 12px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#ef4444">Bientôt disponible</span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
           ${['📱 App Authenticator (TOTP)','📧 Email OTP','💬 SMS (Ultra)'].map(m => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${m}</div>`).join('')}
@@ -8723,8 +8750,8 @@ function renderSettings() {
     return `
       ${isPro
         ? aiBlock(
-            "4 automations actives. <strong>Recommandation : activer le workflow «Audit post-déploiement»</strong> — votre GitHub est déjà connecté. Impact : zéro régression SEO après vos mises à jour. Économie estimée : 45 min/déploiement.",
-            ['Activer audit post-deploy', 'Créer un workflow', 'Voir les statistiques']
+            (()=>{ const _act=workflows.filter(w=>w.active).length; return _act>0 ? `${_act} automation${_act>1?'s':''} active${_act>1?'s':''}. Consultez les statistiques d'exécution ci-dessous ou créez un nouveau workflow à partir d'un template.` : 'Aucune automation active pour le moment. Créez votre premier workflow à partir d\'un template pour automatiser rapports, alertes et audits.'; })(),
+            ['Créer un workflow', 'Voir les templates']
           )
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Automatisations avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Workflows multi-étapes, IA automation et triggers intelligents.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('pro'):navigate('billing'))">Passer Pro</button></div>`
       }
@@ -8775,7 +8802,7 @@ function renderSettings() {
               <div style="font-size:20px;margin-bottom:6px">${t.icon}</div>
               <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:4px">${escHtml(t.name)}</div>
               <div style="font-size:10px;color:var(--fp-text-muted);margin-bottom:10px;flex:1">${escHtml(t.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="showToast('info','Sélectionnez ce template et configurez-le dans les Automatisations')">Utiliser ce template</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px;margin-top:auto" onclick="navigate('settings');setTimeout(()=>navigateSub('automations'),50)">Utiliser ce template</button>
             </div>
           `).join('')}
         </div>
@@ -9406,13 +9433,13 @@ function renderSettings() {
           </div>
           <div style="display:flex;flex-direction:column;gap:7px">
             ${[
-              {label:'Exporter toutes mes données',      icon:'download',  action:'export-data'},
-              {label:'Historique des audits (CSV)',       icon:'file',      action:'export-audits'},
-              {label:'Importer une liste de sites',      icon:'upload',    action:'import-sites'},
-              {label:'Synchroniser GBP maintenant',      icon:'refresh',   action:'sync-gbp'},
-              {label:'Demander une archive RGPD',        icon:'shield',    action:'rgpd'},
+              {label:'Exporter toutes mes données',      icon:'download',  onclick:"(function(){const d={audits:STATE.audits||[],monitors:STATE.monitors||[],missions:STATE.missions||[]};const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(d,null,2));a.download='flowpoint-export-'+new Date().toISOString().slice(0,10)+'.json';a.click();showToast('success','Export JSON téléchargé')})()"},
+              {label:'Historique des audits (CSV)',       icon:'file',      onclick:"(function(){const rows=STATE.audits||[];if(!rows.length){showToast('info','Aucun audit à exporter');return;}const csv='URL,Score,Date\\n'+rows.map(x=>(x.url||'')+','+(x.score!=null?x.score:'')+','+(x.date||'')).join('\\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='audits-'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('success','CSV exporté — '+rows.length+' audit'+(rows.length>1?'s':''))})()"},
+              {label:'Importer une liste de sites',      icon:'upload',    onclick:"navigate('audits');setTimeout(()=>{document.getElementById('audit-url-input')&&document.getElementById('audit-url-input').focus()},300)"},
+              {label:'Synchroniser GBP maintenant',      icon:'refresh',   onclick:"window.FP_GBP_API?(STATE.gbp&&STATE.gbp.connected?window.FP_GBP_API.load().then(()=>{showToast('success','GBP synchronisé');render(STATE.currentSection)}):window.FP_GBP_API.openConnect()):navigate('local-seo')"},
+              {label:'Demander une archive RGPD',        icon:'shield',    onclick:"window.location.href='mailto:support@flowpoint.app?subject='+encodeURIComponent('Demande archive RGPD')"},
             ].map(a => `
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="justify-content:flex-start;gap:8px;width:100%;padding:9px 12px" onclick="showToast('info','${escHtml(a.label)}…')">
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="justify-content:flex-start;gap:8px;width:100%;padding:9px 12px" onclick="${a.onclick.replace(/"/g,'&quot;')}">
                 ${svgIcon(a.icon).replace('stroke="currentColor"','stroke="var(--fp-text-muted)"')}
                 ${escHtml(a.label)}
               </button>
@@ -9475,7 +9502,7 @@ function renderSettings() {
           Settings Command Center
           <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.35);border-radius:20px;color:#2563EB">✦ INTELLIGENT</span>
         </h1>
-        <div class="fp-section-sub">Workspace health ${workspaceHealth}/100 · 4 intégrations actives · 4 workflows actifs</div>
+        <div class="fp-section-sub">Workspace health ${workspaceHealth}/100 · ${_intAct} intégration${_intAct===1?'':'s'} active${_intAct===1?'':'s'} · ${_wfAct} workflow${_wfAct===1?'':'s'} actif${_wfAct===1?'':'s'}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Sauvegarder','fp-btn fp-btn-primary fp-btn-sm','','id="settings-save" onclick="(()=>{const pb=document.getElementById(\'profile-save-btn\');if(pb){pb.click();return;}const prefs=Object.fromEntries([...document.querySelectorAll(\'[data-toggle]\')].map(el=>[el.dataset.toggle,el.classList.contains(\'on\')]));apiAction(\'PATCH\',\'/api/me/prefs\',{settings:prefs}).then(r=>showToast(r&&r.ok?\'success\':\'error\',r&&r.ok?\'Param\\u00e8tres sauvegard\\u00e9s\':\'Erreur\')).catch(()=>showToast(\'error\',\'Erreur\'));})();"')}
@@ -9485,7 +9512,7 @@ function renderSettings() {
     <!-- AI INTELLIGENCE -->
     ${isPro
       ? aiBlock(
-          "Workspace en bonne santé (${workspaceHealth}/100). <strong>2 actions prioritaires</strong> : activer le 2FA (risque sécurité critique) et connecter Google Search Console (données de position manquantes). 4 workflows actifs — système automatisé stable.",
+          (()=>{ const _todo=[]; if(!_has2fa)_todo.push('activer le 2FA'); if(_intAct===0)_todo.push('connecter vos intégrations (GA4, GSC)'); return `Workspace health <strong>${workspaceHealth}/100</strong>. `+(_todo.length?`<strong>${_todo.length} action${_todo.length>1?'s':''} prioritaire${_todo.length>1?'s':''}</strong> : ${_todo.join(' et ')}. `:'')+`${_wfAct} workflow${_wfAct===1?'':'s'} actif${_wfAct===1?'':'s'}.`; })(),
           ['Activer le 2FA', 'Connecter GSC', 'Rapport workspace complet']
         )
       : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔧</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Workspace Intelligence IA — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse de santé workspace, recommandations de configuration et audit de sécurité IA.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('pro'):navigate('billing'))">Passer Pro</button></div>`
@@ -9504,16 +9531,16 @@ function renderSettings() {
           </svg>
           <div>
             <div style="font-size:16px;font-weight:800;color:var(--fp-text)">Workspace Health</div>
-            <div style="font-size:11px;color:#22c55e;font-weight:600">✓ Bon état général</div>
-            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">2 actions requises pour atteindre 100</div>
+            <div style="font-size:11px;color:${workspaceHealth>80?'#22c55e':'#f59e0b'};font-weight:600">${workspaceHealth>80?'✓ Bon état général':'⚠ Optimisations possibles'}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-top:4px">${(()=>{const _miss=[_wfAct>0,_intAct>0,_monOkS,_billOkS,_hasAudits,_has2fa,_hasReports].filter(x=>!x).length;return _miss>0?_miss+' action'+(_miss>1?'s':'')+' requise'+(_miss>1?'s':'')+' pour atteindre 100':'Toutes les optimisations sont actives';})()}</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           ${[
-            {l:'Sécurité',      v:'72/100',   ic:'⚠',  c:'#f59e0b'},
-            {l:'Intégrations',  v:'4 actives', ic:'✓', c:'#22c55e'},
-            {l:'Automatisations',v:'4 actives',ic:'✓', c:'#22c55e'},
-            {l:'IA Config',     v:'5 modules', ic:'✓', c:'#22c55e'},
+            {l:'Sécurité',      v:_has2fa?'2FA actif':'2FA requis', ic:_has2fa?'✓':'⚠', c:_has2fa?'#22c55e':'#f59e0b'},
+            {l:'Intégrations',  v:_intAct+' active'+(_intAct===1?'':'s'), ic:_intAct>0?'✓':'○', c:_intAct>0?'#22c55e':'#94a3b8'},
+            {l:'Automatisations',v:_wfAct+' active'+(_wfAct===1?'':'s'), ic:_wfAct>0?'✓':'○', c:_wfAct>0?'#22c55e':'#94a3b8'},
+            {l:'Audits',        v:String((STATE.audits||[]).length), ic:_hasAudits?'✓':'○', c:_hasAudits?'#22c55e':'#94a3b8'},
           ].map(it => `<div style="padding:14px 16px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.07)">
             <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">${escHtml(it.l)}</div>
             <div style="font-size:14px;font-weight:800;color:${it.c}">${it.ic} ${escHtml(it.v)}</div>
@@ -9543,16 +9570,16 @@ function renderSettings() {
       <div class="fp-card-title" style="margin-bottom:14px">🧭 Centre de configuration — Navigation rapide</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
         ${[
-          {label:'Workspace',         sub:'workspace',    icon:'🏢', desc:'Profil, branding, apparence, préréglages',     status:'✓ Configuré',  sc:'#22c55e'},
-          {label:'Équipe & Permissions',sub:'team',       icon:'👥', desc:'3 membres · 4 rôles · Matrice accès',           status:'✓ OK',         sc:'#22c55e'},
-          {label:'Centre Sécurité',   sub:'security',     icon:'🛡️', desc:'Score 72/100 · 2FA requis',                    status:'⚠ Action',     sc:'#f59e0b'},
-          {label:'Notifications',     sub:'alerts',       icon:'🔔', desc:'Alertes email, push, seuils configurés',        status:'✓ Actif',       sc:'#22c55e'},
-          {label:'Automatisations',   sub:'automations',  icon:'⚡', desc:'4 workflows actifs · 25 exécutions',           status:'✓ Actif',       sc:'#22c55e'},
-          {label:'Intégrations',      sub:'integrations', icon:'🔌', desc:'4 actives · GSC non connectée',                status:'⚠ À compléter',sc:'#f59e0b'},
-          {label:'API & Développeurs',sub:'api',          icon:'💻', desc:'2 clés actives · Webhooks configurés',          status:'✓ Actif',       sc:'#22c55e'},
-          {label:'IA Config Lab',     sub:'ai-config',    icon:'🤖', desc:'5 modules IA actifs · Équilibré',              status:'✓ Optimisé',   sc:'#22c55e'},
-          {label:'Données & Rétention',sub:'data',        icon:'💾', desc:'Stockage monitored · Rétention active',            status:'✓ Sain',        sc:'#22c55e'},
-          {label:'Rapports & Exports', sub:'reports',    icon:'📄', desc:'17 rapports · Partage client · Planification',   status:'✓ Actif',       sc:'#22c55e'},
+          {label:'Workspace',         sub:'workspace',    icon:'🏢', desc:'Profil, branding, apparence, préréglages',     status:'→',  sc:'#94a3b8'},
+          {label:'Équipe & Permissions',sub:'team',       icon:'👥', desc:'Membres, rôles, matrice accès',                 status:'→',  sc:'#94a3b8'},
+          {label:'Centre Sécurité',   sub:'security',     icon:'🛡️', desc:_has2fa?'2FA actif · Sessions':'2FA non activé', status:_has2fa?'✓ OK':'⚠ Action', sc:_has2fa?'#22c55e':'#f59e0b'},
+          {label:'Notifications',     sub:'alerts',       icon:'🔔', desc:'Alertes email, push, seuils',                   status:'→',  sc:'#94a3b8'},
+          {label:'Automatisations',   sub:'automations',  icon:'⚡', desc:_wfAct>0?_wfAct+' workflow'+(_wfAct===1?'':'s')+' actif'+(_wfAct===1?'':'s'):'Aucun workflow actif', status:_wfAct>0?'✓ Actif':'→', sc:_wfAct>0?'#22c55e':'#94a3b8'},
+          {label:'Intégrations',      sub:'integrations', icon:'🔌', desc:_intAct>0?_intAct+' active'+(_intAct===1?'':'s'):'Aucune connectée', status:_intAct>0?'✓ Actif':'⚠ À compléter', sc:_intAct>0?'#22c55e':'#f59e0b'},
+          {label:'API & Développeurs',sub:'api',          icon:'💻', desc:'Clés API et webhooks',                          status:'→',  sc:'#94a3b8'},
+          {label:'IA Config Lab',     sub:'ai-config',    icon:'🤖', desc:'Modules IA et préférences',                     status:'→',  sc:'#94a3b8'},
+          {label:'Données & Rétention',sub:'data',        icon:'💾', desc:'Stockage et rétention',                         status:'→',  sc:'#94a3b8'},
+          {label:'Rapports & Exports', sub:'reports',    icon:'📄', desc:_hasReports?(STATE.reports||[]).length+' rapport'+((STATE.reports||[]).length===1?'':'s')+' · Partage client':'Partage client · Planification', status:_hasReports?'✓ Actif':'→', sc:_hasReports?'#22c55e':'#94a3b8'},
         ].map(n => `
           <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border);cursor:pointer" onclick="navigateSub('${n.sub}')">
             <span style="font-size:16px;flex-shrink:0">${n.icon}</span>
@@ -9584,8 +9611,8 @@ function renderAI() {
   const _usage = me?.usage || {};
   const plan = me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   // ── Action chip helper ─────────────────────────────────────
   const chip = (label, route, sub_) => {
@@ -9831,7 +9858,7 @@ function renderAI() {
         label:'📡 Monitoring & Alertes', color:'#f59e0b',
         actions:[
           {label:'Voir les incidents actifs',   icon:'🚨', onclick:"navigate('alerts-center')",                              desc:(STATE.monitors&&STATE.monitors.filter(m=>m.status==='down').length>0?STATE.monitors.filter(m=>m.status==='down').length+' monitor'+(STATE.monitors.filter(m=>m.status==='down').length>1?'s':'')+' DOWN':'Incidents actifs')},
-          {label:'Status monitors',             icon:'📊', onclick:"navigate('monitors')",                                  desc:'18 monitors · 3 DOWN'},
+          {label:'Status monitors',             icon:'📊', onclick:"navigate('monitors')",                                  desc:(STATE.monitors&&STATE.monitors.length>0?STATE.monitors.length+' monitor'+(STATE.monitors.length>1?'s':'')+' configuré'+(STATE.monitors.length>1?'s':''):'Uptime et disponibilité')},
           {label:'Créer une règle d\'alerte',   icon:'🔔', onclick:"navigate('settings');setTimeout(()=>navigateSub('automations'),50)", desc:'Automatisations et workflows'},
           {label:'Rapport SLA',                 icon:'📄', onclick:"navigate('monitors');setTimeout(()=>navigateSub('sla'),50)", desc:'Uptime et disponibilité'},
           {label:'Configurer les monitors',     icon:'⚙️', onclick:"navigate('settings');setTimeout(()=>navigateSub('monitors-config'),50)", desc:'Seuils, fréquences et canaux'},
@@ -9897,7 +9924,10 @@ function renderAI() {
   // SUB: IA STRATÉGISTE (Ultra)
   // ══════════════════════════════════════════════════════════
   if (sub === 'strategist') {
-    const strategies = [
+    const _stgWeak = STATE.audits ? STATE.audits.filter(a=>a.score<60) : [];
+    const _stgLoc  = STATE.localSeo?.domScore ?? null;
+    const _stgConv = STATE.overview?.conversionRate ?? null;
+    const strategies = PREVIEW_MODE ? [
       {
         n:1, color:'#ef4444',
         title:'Domination Local SEO — 60 jours',
@@ -9908,7 +9938,7 @@ function renderAI() {
       {
         n:2, color:'#f59e0b',
         title:'Recovery SEO — 3 sites critiques',
-        body:(()=>{ const _weak=STATE.audits?STATE.audits.filter(a=>a.score<60):[];  if(_weak.length===0)return PREVIEW_MODE?'Plombier Paris (38/100), Restaurant Le Soleil (61/100) et 1 autre site sont sous le seuil de rentabilité SEO.':'Aucun site sous le seuil de rentabilité détecté.'; const _top2=_weak.slice(0,2).map(a=>a.url.replace(/^https?:\/\//,'')+'('+a.score+'/100)').join(', '); return _top2+(_weak.length>2?' et '+(_weak.length-2)+' autre'+ (_weak.length>3?'s':'')+' site'+((_weak.length-2)>1?'s':'')+' sont':' est')+' sous le seuil de rentabilité SEO. ROI estimé : +35% leads organiques en 45 jours.'; })(),
+        body:'Plombier Paris (38/100), Restaurant Le Soleil (61/100) et 1 autre site sont sous le seuil de rentabilité SEO.',
         metrics:[{l:'ROI estimé',v:'+35% leads'},{l:'Corrections',v:'47 issues'},{l:'Durée',v:'45 jours'}],
         chips:[chip('Voir les audits','audits',null), chip('Quick Wins','overview','quick-wins')],
       },
@@ -9926,7 +9956,29 @@ function renderAI() {
         metrics:[{l:'Capacité disponible',v:'5 clients'},{l:'MRR potentiel',v:'+2 000€'},{l:'Setup',v:'2 jours'}],
         chips:[chip('Mode Client','client-mode','agency'), chip('Facturation','billing','enterprise')],
       },
-    ];
+    ] : [
+      ...(_stgWeak.length > 0 ? [{
+        color:'#f59e0b',
+        title:`Recovery SEO — ${_stgWeak.length} site${_stgWeak.length>1?'s':''} critique${_stgWeak.length>1?'s':''}`,
+        body:(()=>{ const _top2=_stgWeak.slice(0,2).map(a=>a.url.replace(/^https?:\/\//,'')+' ('+a.score+'/100)').join(', '); return _top2+(_stgWeak.length>2?' et '+(_stgWeak.length-2)+' autre'+((_stgWeak.length-2)>1?'s':'')+' site'+((_stgWeak.length-2)>1?'s':'')+' sont':(_stgWeak.length>1?' sont':' est'))+' sous le seuil de rentabilité SEO. Priorisez les corrections via les Quick Wins de vos audits.'; })(),
+        metrics:[{l:'Sites concernés',v:String(_stgWeak.length)},{l:'Score moyen',v:Math.round(_stgWeak.reduce((s,a)=>s+(a.score||0),0)/_stgWeak.length)+'/100'},{l:'Pire score',v:Math.min(..._stgWeak.map(a=>a.score||0))+'/100'}],
+        chips:[chip('Voir les audits','audits',null), chip('Quick Wins','overview','quick-wins')],
+      }] : []),
+      ...(_stgLoc != null ? [{
+        color:'#ef4444',
+        title:'Renforcer le Local SEO',
+        body:`Votre score de visibilité locale est de ${_stgLoc}%. Plan d'action : compléter vos fiches Google Business Profile, répondre aux avis en attente et publier régulièrement des posts locaux.`,
+        metrics:[{l:'Score local actuel',v:_stgLoc+'%'},{l:'Objectif',v:Math.min(95,Math.round(_stgLoc)+15)+'%'}],
+        chips:[chip('Lancer le plan Local SEO','local-seo',null), chip('Analyser les zones','local-seo','zones')],
+      }] : []),
+      ...(_stgConv != null ? [{
+        color:'#8b5cf6',
+        title:'Optimiser la conversion',
+        body:`Votre taux de conversion mesuré est de ${_stgConv}%. Plan : améliorer les Core Web Vitals mobile, optimiser les CTA principaux et réduire la friction des formulaires.`,
+        metrics:[{l:'Conversion actuelle',v:_stgConv+'%'}],
+        chips:[chip('Analyse conversion','conversion','cro'), chip('UX & Friction','conversion','ux-lab')],
+      }] : []),
+    ].map((s,i)=>({ ...s, n:i+1 }));
     return `
       <div class="fp-section-header">
         <div><h1 style="display:flex;align-items:center;gap:10px">IA Stratégiste
@@ -9946,9 +9998,15 @@ function renderAI() {
         <div class="fp-stat-row fp-mb-20">
           ${statCard('Score optimisation', displayStat(null, '61/100'), PREVIEW_MODE ? '4 plans d\'action disponibles' : 'Analyse en cours', 'neutral')}
           ${statCard('ROI total estimé', displayStat(null, '+4 400€/mois'), PREVIEW_MODE ? 'si tous les plans appliqués' : 'Connectez vos sources', 'neutral')}
-          ${statCard('Priorité n°1', 'Local SEO', 'impact le plus rapide', 'up')}
-          ${statCard('Horizon stratégique', '60 jours', 'plan complet', 'neutral')}
+          ${statCard('Priorité n°1', PREVIEW_MODE ? 'Local SEO' : (strategies.length ? escHtml(strategies[0].title.split('—')[0].trim()) : '—'), PREVIEW_MODE ? 'impact le plus rapide' : (strategies.length ? 'basé sur vos données' : 'en attente de données'), strategies.length ? 'up' : 'neutral')}
+          ${statCard('Plans d\'action', PREVIEW_MODE ? '4' : String(strategies.length), PREVIEW_MODE ? 'plan complet 60 jours' : (strategies.length ? 'générés depuis vos données' : 'aucun plan disponible'), 'neutral')}
         </div>
+        ${!PREVIEW_MODE && strategies.length === 0 ? `<div class="fp-card" style="text-align:center;padding:36px 20px">
+          <div style="font-size:26px;margin-bottom:8px">🧠</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">Pas encore assez de données pour générer des plans stratégiques</div>
+          <div style="font-size:11.5px;color:var(--fp-text-muted);max-width:440px;margin:0 auto 14px">Lancez des audits SEO et connectez vos intégrations (GA4, Google Business Profile) — l'IA Stratégiste construira des plans d'action à partir de vos données réelles.</div>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('audits')">Lancer un audit →</button>
+        </div>` : ''}
         ${strategies.map(s => `
           <div style="padding:18px 20px;border-radius:14px;background:${s.color}07;border:1px solid ${s.color}22;margin-bottom:12px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
@@ -10522,7 +10580,7 @@ function updateAIUI() {
 function renderAuditDetailPanel(audit) {
   if (!audit) return '<div class="fp-empty">Audit introuvable</div>';
   const plan = STATE.me?.plan || 'Pro';
-  const isPro = plan === 'Pro' || plan === 'Agency';
+  const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const clamp = v => Math.min(100, Math.max(12, Math.round(v)));
   const h = audit.score;
   const categories = [
@@ -10977,7 +11035,8 @@ function setupNewObjectivePanel() {
           showToast('success', 'Objectif enregistré localement.');
         }
       } catch(e) {
-        showToast('info', 'Objectif noté — connectez le backend pour la persistance.');
+        showToast('error', 'Échec de l\'enregistrement de l\'objectif — réessayez.');
+        return;
       }
       closeFloatPanel();
       if (STATE.route === 'growth' && STATE.subRoute === 'objectives') render();
@@ -11299,8 +11358,8 @@ const SUB_NAVS = {
   'competitor': [{id:null,label:'Command Center'},{id:'overview',label:'Aperçu'},{id:'keywords',label:'Mots-clés'},{id:'content',label:'Contenu'},{id:'backlinks',label:'Backlinks'},{id:'local',label:'Local'},{id:'alerts',label:'Alertes'}],
   'conversion': [{id:null,label:'Command Center'},{id:'funnel',label:'Funnel Analytics'},{id:'ux-lab',label:'UX & Friction'},{id:'cta',label:'CTA Intelligence'},{id:'revenue-leak',label:'Revenue Leak'},{id:'cro',label:'CRO IA'}],
   'alerts-center': [{id:null,label:'Command Center'},{id:'incidents',label:'Incidents'},{id:'seo',label:'SEO'},{id:'performance',label:'Performance'},{id:'conversion',label:'Conversion'},{id:'local',label:'Local SEO'},{id:'competitor',label:'Concurrents'},{id:'ai',label:'IA Threat Lab'}],
-  'billing':       [{id:null,label:'Command Center'},{id:'plans',label:'Plans'},{id:'addons',label:'Add-ons'},{id:'usage',label:'Usage'},{id:'invoices',label:'Factures'},{id:'ai-strategist',label:'IA Stratégiste'},{id:'enterprise',label:'Enterprise'}],
-  'settings': [{id:null,label:'Command Center'},{id:'workspace',label:'Workspace'},{id:'team',label:'Équipe'},{id:'security',label:'Sécurité'},{id:'alerts',label:'Notifications'},{id:'automations',label:'Automatisations'},{id:'integrations',label:'Intégrations'},{id:'api',label:'API & Dev'},{id:'ai-config',label:'IA Config'},{id:'data',label:'Données'},{id:'localisation',label:'📍 Localisation'},{id:'sso',label:'🔐 SSO Enterprise'}],
+  'billing':       [{id:null,label:'Command Center'},{id:'plans',label:'Plans'},{id:'addons',label:'Add-ons'},{id:'usage',label:'Usage'},{id:'invoices',label:'Factures'},{id:'ai-strategist',label:'IA Stratégiste'},{id:'enterprise',label:'Agency Lab'}],
+  'settings': [{id:null,label:'Command Center'},{id:'workspace',label:'Workspace'},{id:'team',label:'Équipe'},{id:'security',label:'Sécurité'},{id:'alerts',label:'Notifications'},{id:'automations',label:'Automatisations'},{id:'integrations',label:'Intégrations'},{id:'api',label:'API & Dev'},{id:'ai-config',label:'IA Config'},{id:'data',label:'Données'},{id:'localisation',label:'📍 Localisation'},{id:'sso',label:'🔐 SSO SAML'}],
   'ai':        [{id:null,label:'Chat'},{id:'usage',label:'AI Credits'},{id:'intelligence',label:'Intelligence'},{id:'insights',label:'Insights'},{id:'actions',label:'Actions Rapides'},{id:'strategist',label:'IA Stratégiste'}],
   'activity-feed': [{id:null,label:'Command Center'},{id:'team',label:'Équipe'},{id:'seo',label:'SEO & Growth'},{id:'monitoring',label:'Monitoring'},{id:'ai',label:'IA & Auto'},{id:'reports',label:'Rapports'},{id:'competitor',label:'Concurrents'},{id:'ops',label:'Ops Lab'}],
   'analytics':  [{id:null,label:'Aperçu'},{id:'realtime',label:'Temps réel'},{id:'pages',label:'Top Pages'},{id:'conversions',label:'Conversions'},{id:'connect',label:'⚙ Configurer'}],
@@ -11425,9 +11484,11 @@ function fpToggleIssue(rid, el) {
 }
 
 const FP_PLAN_LIMITS = {
-  Starter: { audit: 50,  monitor: 5,   pdf: 50  },
-  Pro:     { audit: 300, monitor: 50,  pdf: 300 },
-  Agency:  { audit: 999, monitor: 200, pdf: 999 },
+  Standard: { audit: 50,  monitor: 5,   pdf: 50  },
+  Pro:      { audit: 300, monitor: 50,  pdf: 300 },
+  Ultra:    { audit: 999, monitor: 200, pdf: 999 },
+  Starter:  { audit: 50,  monitor: 5,   pdf: 50  },
+  Agency:   { audit: 999, monitor: 200, pdf: 999 },
 };
 
 function changePlan(newPlan) {
@@ -11450,9 +11511,9 @@ function togglePlanDropdown() {
   }
   const cur = STATE.me?.plan || 'Pro';
   const plans = [
-    { n:'Starter', p:'29€/mois',  color:'#94a3b8', desc:'50 audits · 5 monitors' },
-    { n:'Pro',     p:'79€/mois',  color:'#2563EB', desc:'300 audits · IA Insights · PDF' },
-    { n:'Agency',  p:'149€/mois', color:'#8b5cf6', desc:'Illimité · Tout débridé · API' },
+    { n:'Standard', p:'29€/mois',  color:'#94a3b8', desc:'50 audits · 5 monitors' },
+    { n:'Pro',      p:'79€/mois',  color:'#2563EB', desc:'300 audits · IA Insights · PDF' },
+    { n:'Ultra',    p:'149€/mois', color:'#8b5cf6', desc:'Illimité · Tout débridé · API' },
   ];
   const sw = document.getElementById('fp-plan-switcher');
   if (!sw) return;
@@ -11490,7 +11551,7 @@ function updatePlanSwitcher() {
   const el = document.getElementById('fp-plan-switcher');
   if (!el) return;
   const plan = STATE.me?.plan || 'Pro';
-  const colors = { Starter:'#94a3b8', Pro:'#2563EB', Agency:'#8b5cf6' };
+  const colors = { Standard:'#94a3b8', Pro:'#2563EB', Ultra:'#8b5cf6', Starter:'#94a3b8', Agency:'#8b5cf6' };
   el.innerHTML = `<button class="fp-plan-pill" onclick="togglePlanDropdown()" title="Changer de plan (démo)">
     <div class="fp-ps-dot" style="background:${colors[plan]||'#2563EB'}"></div>
     <span>${plan}</span>
@@ -12872,9 +12933,9 @@ function bindSectionEvents() {
     }));
     $('#billing-change-plan')?.addEventListener('click', () => {
       const plans = [
-        {name:'Starter', price:'29€', features:['50 audits/mois','5 monitors','1 utilisateur']},
-        {name:'Pro',     price:'79€', features:['300 audits/mois','50 monitors','5 utilisateurs','White Label']},
-        {name:'Agency',  price:'149€',features:['Illimité','200 monitors','15 utilisateurs','API accès','SLA 99.9%']},
+        {name:'Standard', price:'29€', features:['50 audits/mois','5 monitors','1 utilisateur']},
+        {name:'Pro',      price:'79€', features:['300 audits/mois','50 monitors','5 utilisateurs','White Label']},
+        {name:'Ultra',    price:'149€',features:['Illimité','200 monitors','15 utilisateurs','API accès','SLA 99.9%']},
       ];
       openFloatPanel('Changer de plan', `
         <div style="display:flex;flex-direction:column;gap:12px">
@@ -14477,7 +14538,7 @@ function renderSubPageContent(route, sub) {
             <code style="font-size:11px;color:#2563EB;font-family:var(--fp-font-mono);font-weight:600">${x.ev}</code>
             <div style="font-size:10px;color:var(--fp-text-muted);margin-top:1px">${x.d}</div>
           </div>
-          ${!x.done?`<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('info','Guide de configuration ouvert')">Configurer</button>`:''}
+          ${!x.done?`<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('analytics');setTimeout(()=>navigateSub('connect'),50)">Configurer</button>`:''}
         </div>`).join('')}
       </div>`;
     }
@@ -14683,9 +14744,9 @@ function renderSubPageContent(route, sub) {
           <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:4px" onclick="(function(){var p=document.querySelectorAll('.fp-utm-form input');var b=window.location.origin+'?';var params=[];var labels=['utm_source','utm_medium','utm_campaign'];p.forEach(function(i,n){if(i.value)params.push(labels[n]+'='+encodeURIComponent(i.value));});var url=b+params.join('&');if(navigator.clipboard){navigator.clipboard.writeText(url).then(function(){showToast('success','URL UTM copiée !')}).catch(function(){showToast('info','URL : '+url)})}else{showToast('info','URL : '+url)}})()" >🔗 Générer & Copier</button>
         </div>
         <div class="fp-card">
-          <div class="fp-card-title" style="margin-bottom:12px">⚠️ Trafic sans UTM détecté</div>
-          <div style="font-size:32px;font-weight:900;color:#f59e0b;font-family:var(--fp-font-head);margin-bottom:4px">34%</div>
-          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px">du trafic externe n'a pas d'UTM — attribution impossible</div>
+          <div class="fp-card-title" style="margin-bottom:12px">⚠️ Trafic sans UTM</div>
+          ${PREVIEW_MODE ? `<div style="font-size:32px;font-weight:900;color:#f59e0b;font-family:var(--fp-font-head);margin-bottom:4px">34%</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px">du trafic externe n'a pas d'UTM — attribution impossible</div>` : `<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:12px">${_ga4Connected()?'La part de trafic sans UTM sera calculée dès que des campagnes taguées seront détectées dans vos données GA4.':'Connectez GA4 pour mesurer la part de votre trafic sans attribution UTM.'}</div>`}
           ${[
             {icon:'📧',t:'Emails non trackés',d:'Ajoutez des UTM à tous vos envois email'},
             {icon:'📱',t:'Posts sociaux sans UTM',d:'Chaque lien dans les bio et posts doit avoir des UTM'},
@@ -15932,7 +15993,7 @@ function renderAuditsHistory() {
 // ── AUDITS OPPORTUNITÉS ──
 function renderAuditsOpportunites() {
   const plan = STATE.me?.plan || 'Pro';
-  const isPro = plan === 'Pro' || plan === 'Agency';
+  const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const _cSites = STATE.audits && STATE.audits.length > 0
     ? STATE.audits.slice(0,4).map(a => (a.url||'').replace(/^https?:\/\//,''))
     : ['votre-site.fr'];
@@ -15949,18 +16010,18 @@ function renderAuditsOpportunites() {
     { kw:'[service] anniversaire [ville]',     vol:'2 200/mois', diff:'Moyen',  gain:'+21%', site:_cs(0), missionTitle:'Landing événementielle + formulaire devis',                             missionDesc:'Page événementielle avec galerie salle privée, formulaire réservation groupe et données structurées Event.' },
     { kw:'[service] pas cher [ville]',         vol:'1 600/mois', diff:'Moyen',  gain:'+19%', site:_cs(1), missionTitle:'Article blog SEO + CTA devis',                                          missionDesc:'Article SEO avec guide complet, comparatif tarifs et appel à l\'action devis en ligne.' },
   ] : [];
-  const contentOpps = [
+  const contentOpps = PREVIEW_MODE ? [
     { title:'FAQ schema.org structurée', site:_cs(0), impact:'SEO +12 pts',    icon:'📄', desc:'Ajouter des données structurées FAQ sur les pages produits pour décrocher des rich snippets Google.' },
     { title:'Page "Avis clients" dédiée', site:_cs(1), impact:'Conversion +18%', icon:'⭐', desc:'Une page review avec données structurées améliore la preuve sociale et le positionnement local.' },
     { title:'Blog local à fort trafic',   site:_cs(2), impact:'Trafic +35%',    icon:'✍️', desc:'1 article/semaine sur les problèmes courants peut tripler le trafic informationnel sur 6 mois.' },
     { title:'Galerie photos optimisée',   site:_cs(3), impact:'Engagement +24%',icon:'📸', desc:'Les pages galeries optimisées en WebP+lazy-load génèrent 2× plus de temps passé.' },
-  ];
-  const localOpps = [
+  ] : [];
+  const localOpps = PREVIEW_MODE ? [
     { title:'Citations NAP manquantes',     site:_cs(0), places:['Pages Jaunes','Yelp','Tripadvisor'], impact:'Local +15 pts', color:'#ef4444' },
     { title:'Posts GBP non publiés',        site:_cs(1), places:['Google Business Profile'],          impact:'Local +8 pts',  color:'#f59e0b' },
     { title:'Zones de service non définies',site:_cs(2), places:['GMB','Bing Places'],                impact:'Local +20 pts', color:'#f59e0b' },
     { title:'Avis GBP sans réponse',        site:_cs(3), places:['Google Business Profile'],          impact:'Local +11 pts', color:'#8b5cf6' },
-  ];
+  ] : [];
   const weakPages = STATE.audits.filter(a=>a.score<60).map(a=>({
     url:a.url, score:a.score, speed:a.speed, issues:a.issues, id:a.id,
     topIssue: a.score<40 ? 'Meta tags absents + vitesse critique' : 'Contenu insuffisant + maillage faible',
@@ -15969,7 +16030,11 @@ function renderAuditsOpportunites() {
   const diffTxt  = d => d==='Faible'?'#22c55e':d==='Moyen'?'#f59e0b':'#ef4444';
   window._fpKwOpps = kwOpps.map(k=>({title:k.missionTitle||k.kw,desc:k.missionDesc||'',site:k.site}));
   return `
-    ${aiBlock(`${kwOpps.length} opportunités mots-clés identifiées. ${weakPages.length} site(s) en zone critique. ${contentOpps.length} contenus à fort impact manquants. Priorité : contenus structurés + SEO local.`,
+    ${aiBlock(kwOpps.length > 0 || contentOpps.length > 0
+      ? `${kwOpps.length} opportunités mots-clés identifiées. ${weakPages.length} site(s) en zone critique. ${contentOpps.length} contenus à fort impact manquants. Priorité : contenus structurés + SEO local.`
+      : weakPages.length > 0
+        ? `${weakPages.length} site(s) en zone critique — corrigez les problèmes d'audit avant de viser de nouveaux mots-clés.`
+        : `Lancez des audits et connectez vos sources de données (GSC, GBP) pour identifier des opportunités de croissance.`,
       ['Créer plan de contenu IA','Générer toutes les missions','Rapport opportunités PDF'])}
 
     <div class="fp-card fp-mb-16">
@@ -16016,7 +16081,7 @@ function renderAuditsOpportunites() {
         <div class="fp-card-title" style="margin-bottom:4px">✍️ Contenu Manquant</div>
         <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">Contenu à fort impact SEO non créé</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${contentOpps.map(co=>`
+          ${contentOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Les recommandations de contenu apparaîtront après vos premiers audits SEO</div>` : ''}${contentOpps.map(co=>`
             <div class="fp-opp-card">
               <div style="font-size:22px;flex-shrink:0">${co.icon}</div>
               <div style="flex:1;min-width:0">
@@ -16034,9 +16099,9 @@ function renderAuditsOpportunites() {
 
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:4px">📍 SEO Local</div>
-        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${localOpps.length} opportunités locales non exploitées</div>
+        <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:14px">${localOpps.length > 0 ? localOpps.length + ' opportunités locales non exploitées' : 'Opportunités locales'}</div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
-          ${localOpps.map(lo=>`
+          ${localOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez Google Business Profile pour détecter les opportunités locales</div>` : ''}${localOpps.map(lo=>`
             <div style="padding:10px;background:var(--fp-inner-card);border:1px solid ${lo.color}22;border-radius:9px">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;flex-wrap:wrap;gap:4px">
                 <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${lo.title}</span>
@@ -16087,8 +16152,8 @@ function renderAuditsOpportunites() {
 // ── MONITORS SUB-PAGES ──
 function renderMonitorsPerformance() {
   const plan = STATE.me?.plan || 'Pro';
-  const isPro = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   const cwv = (STATE.monitors || []).slice(0, 5).map(m => {
     const lat = m.latency || 200;
@@ -16491,8 +16556,8 @@ function renderMonitorsIncidents() {
 
 function renderMonitorsConfig() {
   const plan = STATE.me?.plan || 'Pro';
-  const isPro = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   const presets = [
     { icon: '🛒', name: 'E-commerce',  desc: 'Vérif. panier + paiement · LCP <2s · SSL', checks: ['Uptime', 'Checkout', 'Stripe', 'SSL', 'CWV'], color: '#22c55e', pro: false },
@@ -16667,8 +16732,8 @@ function renderMonitorsConfig() {
 // ── LOCAL SEO SUB-PAGES ──
 function renderLocalSEOZones() {
   const plan = STATE.me?.plan || 'Pro';
-  const isPro  = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   const _lseoZ = STATE.localSeo?.zones && STATE.localSeo.zones.length > 0 ? STATE.localSeo.zones : null;
   const zones = _lseoZ || (PREVIEW_MODE ? [
@@ -16798,8 +16863,8 @@ function renderLocalSEOZones() {
 
 function renderLocalSEOCompetitors() {
   const plan = STATE.me?.plan || 'Pro';
-  const isPro  = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
   const myScore = STATE.audits?.[0]?.score ?? STATE.overview?.avgScore ?? (PREVIEW_MODE ? 82 : null);
   const myAuth  = STATE.overview?.domainRating ?? 0;
 
@@ -17042,8 +17107,8 @@ function renderLocalSEOCompetitors() {
 function renderLocalSEOOpportunities() {
   const plan = STATE.me?.plan || 'Pro';
   const isStd  = plan === 'Standard';
-  const isPro  = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   const opps = PREVIEW_MODE ? [
     { id: 'o1', title: 'Page locale — zone à fort potentiel',           type: 'Page locale',   effort: '1h30', potential: '+340 rech/mois', difficulty: 'Facile',  impact: 'Élevé',   icon: '📄', cat: 'pages'    },
@@ -17269,14 +17334,14 @@ function renderTeamActivity() {
 function renderTeamFiles() {
   const _tf = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const _fn = i => _tf.length > 0 ? (_tf[i % _tf.length].name || _tf[i % _tf.length].email || 'Membre') : '—';
-  const files = [
+  const files = PREVIEW_MODE ? [
     { name:'Rapport_' + new Date().toLocaleString('fr-FR',{month:'long',year:'numeric'}).replace(' ','_') + '.pdf', size:'2.4 MB', shared:_fn(0), date:new Date(Date.now()-3*86400000).toLocaleDateString('fr-FR'), type:'pdf', color:'#2563EB' },
     { name:'Audit_SEO_' + (STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'').split('.')[0]||'site'):'site') + '.xlsx', size:'890 KB', shared:_fn(1), date:new Date(Date.now()-4*86400000).toLocaleDateString('fr-FR'), type:'xlsx', color:'#22c55e' },
     { name:'Photos_GBP.zip', size:'14.2 MB', shared:_fn(0), date:new Date(Date.now()-5*86400000).toLocaleDateString('fr-FR'), type:'zip', color:'#f59e0b' },
     { name:'Plan_action_Q3_' + new Date().getFullYear() + '.docx', size:'320 KB', shared:_fn(1), date:new Date(Date.now()-8*86400000).toLocaleDateString('fr-FR'), type:'docx', color:'#8b5cf6' },
     { name:'Checklist_SEO_Template.pdf', size:'180 KB', shared:_fn(2), date:new Date(Date.now()-21*86400000).toLocaleDateString('fr-FR'), type:'pdf', color:'#2563EB' },
     { name:'Données_Analytics_Q1.csv', size:'440 KB', shared:_fn(0), date:new Date(Date.now()-25*86400000).toLocaleDateString('fr-FR'), type:'csv', color:'#22c55e' },
-  ];
+  ] : [];
   const fileIcon = (type, color) => {
     const paths = {
       pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>',
@@ -18460,8 +18525,8 @@ function renderCompetitor() {
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd  = plan === 'Standard';
-  const isPro  = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   // ── Shared data ────────────────────────────────────────────
   const tc = { critical: '#dc2626', high: '#ef4444', medium: '#f59e0b', low: '#22c55e' };
@@ -18652,7 +18717,7 @@ function renderCompetitor() {
                       `}
                     </div>
                   </td>
-                  <td style="text-align:center">${k.gap !== null && k.gap < 0 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Optimisation de ${escHtml(k.kw)}…')">Optimiser</button>` : k.gap === null ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="_fpMQ('Cibler mot-clé','SEO Keywords','high')">Cibler</button>` : '<span style="font-size:11px;color:#22c55e">✓ Bonne position</span>'}</td>
+                  <td style="text-align:center">${k.gap !== null && k.gap < 0 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ('Optimiser la page — mot-clé en retard','SEO Keywords','high')">Optimiser</button>` : k.gap === null ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="_fpMQ('Cibler mot-clé','SEO Keywords','high')">Cibler</button>` : '<span style="font-size:11px;color:#22c55e">✓ Bonne position</span>'}</td>
                 </tr>`;
               }).join('');})()}
             </tbody>
@@ -18843,12 +18908,12 @@ function renderCompetitor() {
           ] : []
       ),
     ];
-    const linkOpps = [
+    const linkOpps = PREVIEW_MODE ? [
       { site: 'pagesjaunes.fr',         da: 72, type: 'Annuaire', effort: '10 min', gained: false },
       { site: 'mairie-paris.fr',         da: 88, type: 'Local public', effort: '1h', gained: false },
       { site: 'chambre-commerce-idf.fr', da: 61, type: 'Pro',   effort: '30 min', gained: false },
       { site: 'yelp.fr',                 da: 68, type: 'Avis',   effort: '15 min', gained: true  },
-    ];
+    ] : [];
     return `
       ${_blPlanRequired ? `<div style="padding:14px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔒</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">DataForSEO Advanced requis pour Backlink Intelligence</div><div style="font-size:12px;color:var(--fp-text-muted)">L\'endpoint backlinks n\'est pas disponible sur votre plan DataForSEO actuel. Mettez à niveau vers le plan Advanced pour accéder aux données de backlinks réelles.</div></div></div>` : ''}
       ${aiBlock((blData.length > 1 ? "L'autorité de <strong>" + escHtml(blData[1].name) + "</strong> croît via des domaines locaux à fort DA." : "Analysez les backlinks de vos concurrents pour identifier des opportunités.") + (PREVIEW_MODE ? " Vous avez <strong>4 opportunités faciles de backlinks</strong> non exploitées (+14 DA potentiel). 2 backlinks perdus ce mois à récupérer en priorité." : (_blAvailable ? " Les données de backlinks sont chargées depuis DataForSEO." : " Connectez DataForSEO Advanced pour accéder aux données de backlinks réelles.")),
@@ -18894,7 +18959,7 @@ function renderCompetitor() {
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">🔗 Opportunités de liens détectées</div>
           <div style="display:flex;flex-direction:column;gap:8px">
-            ${linkOpps.map(l => `
+            ${linkOpps.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez DataForSEO Advanced pour détecter des opportunités de liens</div>` : ''}${linkOpps.map(l => `
               <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;background:${l.gained?'rgba(34,197,94,0.05)':'rgba(37,99,235,0.05)'};border:1px solid ${l.gained?'rgba(34,197,94,0.15)':'rgba(37,99,235,0.15)'}">
                 <div style="flex:1">
                   <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(l.site)}</div>
@@ -18902,7 +18967,7 @@ function renderCompetitor() {
                 </div>
                 ${l.gained
                   ? `<span style="font-size:11px;color:#22c55e;font-weight:600">✓ Obtenu</span>`
-                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Demande de lien envoyée…')">Obtenir</button>`
+                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ('Obtenir un backlink','SEO Backlinks','medium')">Obtenir</button>`
                 }
               </div>
             `).join('')}
@@ -19444,8 +19509,8 @@ function renderConversion() {
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   // ── Shared data ────────────────────────────────────────────
   const _ga4Funnel = STATE.ga4?.funnelSteps || STATE.analytics?.funnelSteps || null;
@@ -20103,7 +20168,7 @@ function renderConversion() {
                     <span style="font-size:11px;font-weight:700;color:#22c55e">${escHtml(ex.est)}</span>
                     <span style="font-size:10px;color:var(--fp-text-faint)"> · Durée : ${escHtml(ex.dur)}</span>
                   </div>
-                  <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="showToast('info','Configurez votre test depuis le panel UX Lab')">Lancer</button>
+                  <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('ux-lab')">Configurer →</button>
                 </div>
               </div>
             `).join("")}
@@ -20419,13 +20484,13 @@ function renderConversion() {
           if (_monitorsWarn > 0 && _monitorsDown === 0)
             _qw.push({ t: _monitorsWarn + ' monitor' + (_monitorsWarn>1?'s':'') + ' en alerte latence', impact: 'UX dégradée', effort: '1h', priority: 'Élevé' });
           if (_avgSc >= 60 && _avgSc < 75)
-            _qw.push({ t: 'Optimiser les pages à score 60-74 (vitesse mobile)', impact: '+15% trafic', effort: '2h', priority: 'Élevé' });
+            _qw.push({ t: 'Optimiser les pages à score 60-74 (vitesse mobile)', impact: 'Gain de trafic', effort: '2h', priority: 'Élevé' });
           if (!_hasMonitors)
             _qw.push({ t: 'Configurer un monitor de disponibilité', impact: 'Prévenir les pertes', effort: '5 min', priority: 'Élevé' });
           if (!_hasKw)
             _qw.push({ t: 'Ajouter des mots-clés à surveiller', impact: 'Suivi de position', effort: '10 min', priority: 'Moyen' });
           if (_avgSc >= 75)
-            _qw.push({ t: 'Score solide — ajouter Schema Markup FAQ sur les pages clés', impact: '+8 pts SEO', effort: '1h', priority: 'Moyen' });
+            _qw.push({ t: 'Score solide — ajouter Schema Markup FAQ sur les pages clés', impact: 'Rich snippets', effort: '1h', priority: 'Moyen' });
           if (_qw.length === 0)
             _qw.push({ t: 'Portfolio optimisé — planifier la revue mensuelle', impact: 'Maintenir', effort: 'Récurrent', priority: 'Moyen' });
           return _qw.slice(0,4).map(r => {
@@ -20455,8 +20520,8 @@ function renderAlertsCenter() {
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   // ── Rule-based alerts from STATE ────────────────────────────
   const ruleAlerts = (STATE.alertEvents || []).map(ev => ({
@@ -20493,13 +20558,13 @@ function renderAlertsCenter() {
       time:'En cours', color:'#ef4444', impact:'Moyen — UX mobile impactée' }] : []),
     ...((()=>{ const _ua=STATE.gbp?.unansweredReviews; return (_ua>0||PREVIEW_MODE)?[{ id:'al4', sev:'critical', cat:'Local SEO', icon:'message-circle', title:(_ua!=null?_ua:'14')+' avis Google sans réponse', desc:(_ua!=null?_ua+' avis':'Avis')+' sur fiches GBP — impact note moyenne et confiance client', time:'1j', color:'#ef4444', impact:'Élevé — note en baisse' }]:[];})()),
     ...((()=>{ const _nA=(STATE.audits||[]).length; const _plan=STATE.me?.plan||'Pro'; const _lim=_plan==='Standard'?50:_plan==='Pro'?150:300; if(_nA===0&&!PREVIEW_MODE)return[]; const _pct=Math.round(_nA/_lim*100); return (_pct>=70||PREVIEW_MODE)?[{ id:'al5', sev:'warning', cat:'Quota', icon:'alert-circle', title:'Quota audits à '+(_pct||80)+'% — '+(_nA||240)+'/'+(_lim||300)+' utilisés', desc:(_lim-_nA||60)+' audits restants ce mois — penser à optimiser les planifications', time:'2j', color:'#f59e0b', impact:'Faible — risque dépassement' }]:[];})()),
-    { id:'al6',  sev:'warning',   cat:'Concurrent', icon:'users',         title:(STATE.competitors&&STATE.competitors.length>0?escHtml(STATE.competitors[0].name||'Un concurrent'):'Un concurrent') + " +12 positions ce mois",      desc:"Concurrent en accélération locale — risque perte Local Pack",                time:"2j",      color:'#f59e0b', impact:"Moyen — pression concurrence" },
+    ...(PREVIEW_MODE?[{ id:'al6',  sev:'warning',   cat:'Concurrent', icon:'users',         title:"Concurrent principal +12 positions ce mois",      desc:"Concurrent en accélération locale — risque perte Local Pack",                time:"2j",      color:'#f59e0b', impact:"Moyen — pression concurrence" }]:[]),
     ...(PREVIEW_MODE?[{ id:'al7', sev:'warning', cat:'Conversion', icon:'trending-down', title:"Conversion weekend à 0%", desc:"Aucun client détecté sur 1200 sessions — vérifiez les formulaires", time:"3j", color:'#f59e0b', impact:"Critique — revenue manqué" }]:[]),
     ...(_alMonUp.length > 0 ? [{ id:'al8', sev:'info', cat:'Monitor', icon:'check-circle',
       title: 'Monitor OK — ' + (_alMonUp[0].url||_alMonUp[0].name||'').replace(/^https?:\/\//,''),
       desc: `Uptime ${typeof _alMonUp[0].uptime === 'number' ? _alMonUp[0].uptime + '%' : 'ok'} · Latence ${_alMonUp[0].latency||'—'}ms`,
       time:'Récent', color:'#22c55e', impact:'OK' }] : []),
-    { id:'al9',  sev:'info',      cat:'Rapport',    icon:'file-text',     title:"Rapport mensuel prêt",                          desc:"Rapport SEO Executive " + CUR_MONTH + " — disponible",                       time:"Hier",    color:'#2563EB', impact:"Info — aucun risque"           },
+    ...(PREVIEW_MODE?[{ id:'al9',  sev:'info',      cat:'Rapport',    icon:'file-text',     title:"Rapport mensuel prêt",                          desc:"Rapport SEO Executive " + CUR_MONTH + " — disponible",                       time:"Hier",    color:'#2563EB', impact:"Info — aucun risque"           }]:[]),
     ...(_alGoodAudit && (_alGoodAudit.score||0) >= 70 ? [{ id:'al10', sev:'info', cat:'SEO', icon:'trending-up',
       title: 'Score élevé — ' + (_alGoodAudit.url||'').replace(/^https?:\/\//,''),
       desc: `${_alGoodAudit.score}/100 — audit complet réussi`,
@@ -20543,11 +20608,11 @@ function renderAlertsCenter() {
         color: '#f59e0b',
       })),
     ];
-    const rootCauses = [
+    const rootCauses = PREVIEW_MODE ? [
       { icon: '🖥️', title: "Surcharge hébergeur",          prob: 78, color: '#ef4444', desc: "Le pic de trafic Maps (+21% ce mois) dépasse la capacité configurée" },
       { icon: '📱', title: "Régression mobile non détectée", prob: 64, color: '#f59e0b', desc: "Mise à jour CSS semaine 18 a cassé le formulaire sur iOS Safari" },
       { icon: '⚡', title: "Images non optimisées",          prob: 91, color: '#ef4444', desc: "6 images > 500KB chargées sans lazy loading ni compression WebP" },
-    ];
+    ] : [];
     return `
       ${isUltra
         ? aiBlock(incidents.length > 0
@@ -20600,7 +20665,7 @@ function renderAlertsCenter() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">🔬 Analyse Root Cause — IA</div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${rootCauses.map(r => `
+          ${rootCauses.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">L'analyse root cause s'affichera lors d'un incident actif</div>` : ''}${rootCauses.map(r => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${r.color}22">
               <span style="font-size:22px;flex-shrink:0">${r.icon}</span>
               <div style="flex:1">
@@ -20857,7 +20922,7 @@ function renderAlertsCenter() {
               </div>
               <div style="text-align:right;flex-shrink:0;min-width:80px">
                 <div style="font-size:12px;font-weight:800;color:${ac}">${escHtml(a.impact)}</div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:6px" onclick="showToast('info','${escHtml(a.action)}…')">${escHtml(a.action)}</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:6px" onclick="_fpMQ('Corriger : fuite de revenus','Conversion','high')">${escHtml(a.action)}</button>
               </div>
             </div>`;
           }).join('')}
@@ -20986,7 +21051,7 @@ function renderAlertsCenter() {
               </div>
             `).join('')}
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:14px" onclick="showToast('info','Gestion des avis…')">Répondre aux ${_unanswered != null ? _unanswered : ''} avis →</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:14px" onclick="navigate('local-seo')">Répondre aux ${_unanswered != null ? _unanswered : ''} avis →</button>
         </div>
       </div>
     `;
@@ -21061,7 +21126,7 @@ function renderAlertsCenter() {
             <div style="padding:14px 16px;border-radius:10px;background:${t.urg ? 'rgba(239,68,68,0.07)' : 'rgba(245,158,11,0.07)'};border:1px solid ${t.urg ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}">
               <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:5px">${escHtml(t.title)}</div>
               <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.55">${escHtml(t.desc)}</div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:10px" onclick="showToast('info','Plan contre-offensive…')">Plan contre-offensive →</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;margin-top:10px" onclick="_fpMQ('Plan contre-offensive concurrent','Concurrents','high')">Plan contre-offensive →</button>
             </div>
           `).join('')}
         </div>
@@ -21310,8 +21375,8 @@ function renderActivityFeed() {
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   const colors = { success:'#22c55e', error:'#ef4444', info:'#2563EB', warning:'#f59e0b', purple:'#8b5cf6', cyan:'#06b6d4' };
   const _fAS = i => { const s = STATE.audits||[]; const u = (s.length>0?(s[i%s.length]?.url||''):'').replace(/^https?:\/\//,''); return u||'votre-site.fr'; };
@@ -21521,7 +21586,7 @@ function renderActivityFeed() {
                   <td style="text-align:center;font-weight:800">#${k.pos}</td>
                   <td style="text-align:center;font-weight:800;color:${dc}">${k.delta > 0 ? '+' : ''}${k.delta}</td>
                   <td style="text-align:center;color:var(--fp-text-faint)">${k.vol}</td>
-                  <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('info','${escHtml(k.action)}…')">${escHtml(k.action)}</button></td>
+                  <td style="text-align:center"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="_fpMQ('${k.action} — mot-clé suivi','SEO Keywords','medium')">${escHtml(k.action)}</button></td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -21865,9 +21930,7 @@ function renderActivityFeed() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'competitor') {
     const compActs = liveFeed.filter(a => a.cat === 'competitor');
-    const _afComps = STATE.competitors && STATE.competitors.length > 0
-      ? STATE.competitors.slice(0,5)
-      : (PREVIEW_MODE ? [{name:'Concurrent A'},{name:'Concurrent B'},{name:'Concurrent C'},{name:'Concurrent D'},{name:'Concurrent E'}] : []);
+    const _afComps = PREVIEW_MODE ? [{name:'Concurrent A'},{name:'Concurrent B'},{name:'Concurrent C'},{name:'Concurrent D'},{name:'Concurrent E'}] : [];
     const marketMoves = _afComps.length > 0 ? _afComps.slice(0,5).map((c,i) => {
       const evts   = ["Ranking +" + (12-i*2) + " positions", "+180% backlinks ce mois", "Contenu publié — mots-clés ciblés", "GBP renforcé +6 avis", "Recul ranking — opportunité"];
       const sevs   = ['critical','warning','warning','info','positive'];
@@ -21881,7 +21944,9 @@ function renderActivityFeed() {
       ${isPro
         ? aiBlock((marketMoves.length > 0
             ? "Semaine concurrentielle intense. <strong>" + escHtml(_afLead?.comp||'Un concurrent') + " représente la menace principale</strong> — fenêtre d'action : 3 semaines." + (_afOpp ? " Opportunité : " + escHtml(_afOpp.comp) + " recule sur vos mots-clés." : "") + " <strong>Action prioritaire : renforcer GBP + publier contenu local.</strong>"
-            : "Aucun concurrent configuré. Ajoutez des concurrents pour activer la veille concurrentielle."),
+            : (STATE.competitors && STATE.competitors.length > 0
+                ? STATE.competitors.length + " concurrent" + (STATE.competitors.length > 1 ? "s" : "") + " suivi" + (STATE.competitors.length > 1 ? "s" : "") + " — les mouvements détectés apparaîtront ici au fil de la veille."
+                : "Aucun concurrent configuré. Ajoutez des concurrents pour activer la veille concurrentielle.")),
             ['Plan contre-offensive', 'Surveiller les backlinks', 'Rapport concurrent'])
         : `<div style="padding:14px 16px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🎯</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Veille concurrentielle — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Timeline des mouvements concurrents, alertes backlinks et opportunités marché.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('pro'):navigate('billing'))">Passer Pro</button></div>`
       }
@@ -21900,7 +21965,7 @@ function renderActivityFeed() {
           Mouvements marché — Timeline mai 2026
         </div>
         <div class="fp-timeline">
-          ${marketMoves.map(m => {
+          ${marketMoves.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Les mouvements concurrents détectés apparaîtront ici</div>` : ''}${marketMoves.map(m => {
             const c = m.color;
             return `<div class="fp-timeline-item">
               <div class="fp-timeline-dot" style="background:${c}12;border-color:${c}25;font-size:16px;justify-content:center;align-items:center;display:flex">${m.icon}</div>
@@ -21944,7 +22009,7 @@ function renderActivityFeed() {
   // SUB: OPS LAB (Operational Analytics)
   // ══════════════════════════════════════════════════════════
   if (sub === 'ops') {
-    const opsScores = [
+    const opsScores = PREVIEW_MODE ? [
       { label:'Momentum global',   val:74, color:'#22c55e', icon:'🚀' },
       { label:'Productivité équipe',val:68, color:'#2563EB', icon:'👥' },
       { label:'Vélocité SEO',      val:71, color:'#f59e0b', icon:'🔍' },
@@ -21953,20 +22018,22 @@ function renderActivityFeed() {
       { label:'Growth Score',      val:64, color:'#06b6d4', icon:'📈' },
       { label:'Qualité contenu',   val:77, color:'#f97316', icon:'✏️' },
       { label:'Score Client',      val:83, color:'#ec4899', icon:'💼' },
-    ];
-    const forecasts = [
+    ] : [];
+    const forecasts = PREVIEW_MODE ? [
       { metric:'Activité SEO M+1',   current:'+12%',  pred:'+18%', conf:72, color:'#22c55e' },
       { metric:'Incidents M+1',       current:'3',     pred:'1-2',  conf:65, color:'#22c55e' },
       { metric:'Productivité équipe', current:'82',    pred:'86',   conf:58, color:'#2563EB' },
       { metric:'Actions IA M+1',      current:'14',    pred:'22',   conf:81, color:'#8b5cf6' },
-    ];
+    ] : [];
     const circ46 = 2 * Math.PI * 46;
-    const weeks = ['S18','S19','S20','S21','S22'];
-    const momentum = [61, 68, 65, 71, 74];
-    const maxM = Math.max(...momentum);
+    const weeks = PREVIEW_MODE ? ['S18','S19','S20','S21','S22'] : [];
+    const momentum = PREVIEW_MODE ? [61, 68, 65, 71, 74] : [];
+    const maxM = Math.max(...momentum, 1);
     return `
       ${isUltra
-        ? aiBlock("Performance opérationnelle solide — score global 71/100. <strong>Momentum en hausse</strong> depuis 3 semaines consécutives (+13 pts). Productivité équipe : " + (STATE.team&&STATE.team.length>0?escHtml(STATE.team[0].name||'Équipe')+' en tête':'activité en hausse') + ". Prévision : activité SEO +18% M+1.",
+        ? aiBlock(PREVIEW_MODE
+            ? "Performance opérationnelle solide — score global 71/100. <strong>Momentum en hausse</strong> depuis 3 semaines consécutives (+13 pts). Productivité équipe : " + (STATE.team&&STATE.team.length>0?escHtml(STATE.team[0].name||'Équipe')+' en tête':'activité en hausse') + ". Prévision : activité SEO +18% M+1."
+            : "Les scores opérationnels et les prévisions seront calculés à partir de votre activité réelle (audits, monitors, missions).",
             ['Rapport ops complet', 'Optimiser la productivité', 'Voir les prévisions'])
         : `<div style="background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(37,99,235,0.06));border:1px solid rgba(6,182,212,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🔬</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:3px">Ops Lab — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Prévisions opérationnelles, scoring de productivité et intelligence stratégique.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('ultra'):navigate('billing'))">Passer Ultra</button></div>`
       }
@@ -21985,7 +22052,7 @@ function renderActivityFeed() {
           Scores opérationnels — Analyse IA
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
-          ${opsScores.map(k => {
+          ${opsScores.length === 0 ? `<div style="grid-column:1/-1;padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Les scores opérationnels apparaîtront avec votre activité réelle</div>` : ''}${opsScores.map(k => {
             const filled = k.val / 100 * circ46;
             const dash   = circ46 - filled;
             return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;text-align:center">
@@ -22009,7 +22076,7 @@ function renderActivityFeed() {
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">📈 Évolution momentum — 5 semaines</div>
           <div style="display:flex;gap:6px;align-items:flex-end;height:100px;margin-bottom:10px">
-            ${weeks.map((w, i) => {
+            ${weeks.length === 0 ? `<div style="width:100%;align-self:center;text-align:center;font-size:12px;color:var(--fp-text-faint)">Le momentum sera calculé à partir de votre activité hebdomadaire</div>` : ''}${weeks.map((w, i) => {
               const h = Math.round(momentum[i] / maxM * 90);
               const isLast = i === weeks.length - 1;
               return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:0">
@@ -22037,7 +22104,7 @@ function renderActivityFeed() {
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">🔮 Prévisions opérationnelles M+1</div>
           <div style="display:flex;flex-direction:column;gap:8px">
-            ${forecasts.map(f => `
+            ${forecasts.length === 0 ? `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Les prévisions s'afficheront quand suffisamment de données seront collectées</div>` : ''}${forecasts.map(f => `
               <div style="padding:12px 14px;border-radius:9px;background:${f.color}07;border:1px solid ${f.color}28">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
                   <span style="font-size:11px;font-weight:600;color:var(--fp-text)">${escHtml(f.metric)}</span>
@@ -22059,7 +22126,7 @@ function renderActivityFeed() {
   // ══════════════════════════════════════════════════════════
   // DEFAULT (null) — Activity Command Center
   // ══════════════════════════════════════════════════════════
-  const cmdScores = [
+  const cmdScores = PREVIEW_MODE ? [
     { label:'Momentum global',    val:74, color:'#22c55e', icon:'🚀' },
     { label:'Score équipe',       val:68, color:'#2563EB', icon:'👥' },
     { label:'SEO Progress',       val:71, color:'#f59e0b', icon:'🔍' },
@@ -22068,7 +22135,7 @@ function renderActivityFeed() {
     { label:'Growth Score',       val:64, color:'#06b6d4', icon:'📈' },
     { label:'Stabilité ops',      val:88, color:'#22c55e', icon:'🛡️' },
     { label:'Conversion',         val:61, color:'#f59e0b', icon:'🎯' },
-  ];
+  ] : [];
   const circ46w = 2 * Math.PI * 46;
 
   const catCounts = {
@@ -22097,7 +22164,7 @@ function renderActivityFeed() {
 
     <!-- AI INTELLIGENCE -->
     ${isPro
-      ? aiBlock("Activité opérationnelle soutenue cette semaine — <strong>momentum en hausse +13 pts</strong>. " + (STATE.audits&&STATE.audits.length>0?'Meilleur score portfolio : <strong>' + Math.max(...STATE.audits.map(a=>a.score||0)) + '/100</strong> sur ' + ((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')) + '. ':'') + "Alerte concurrentielle active. <strong>38% des actions automatisées</strong> — objectif 60%.",
+      ? aiBlock((PREVIEW_MODE ? "Activité opérationnelle soutenue cette semaine — <strong>momentum en hausse +13 pts</strong>. " : "") + (STATE.audits&&STATE.audits.length>0?'Meilleur score portfolio : <strong>' + Math.max(...STATE.audits.map(a=>a.score||0)) + '/100</strong> sur ' + ((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')) + '. ':(PREVIEW_MODE ? '' : 'Lancez vos premiers audits pour alimenter le fil d\'activité. ')) + (PREVIEW_MODE ? "Alerte concurrentielle active. <strong>38% des actions automatisées</strong> — objectif 60%." : liveFeed.length + " événement" + (liveFeed.length > 1 ? "s" : "") + " enregistré" + (liveFeed.length > 1 ? "s" : "") + " dans le workspace."),
           ['Rapport activité complet', 'Analyser la productivité', 'Voir les tendances'])
       : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">⚡</div><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">IA Activité Intelligence — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse IA de l\'activité, insights productivité et corrélations opérationnelles.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(typeof FP_BILLING_API!=='undefined'?FP_BILLING_API.checkout('pro'):navigate('billing'))">Passer Pro</button></div>`
     }
@@ -22117,10 +22184,10 @@ function renderActivityFeed() {
           ${svgIcon('activity').replace('stroke="currentColor"','stroke="#22c55e"')}
           Scores opérationnels — Intelligence workspace
         </div>
-        <span style="font-size:11px;color:var(--fp-text-faint)">Momentum : <strong style="color:#22c55e">74/100</strong> ↑</span>
+        ${PREVIEW_MODE ? `<span style="font-size:11px;color:var(--fp-text-faint)">Momentum : <strong style="color:#22c55e">74/100</strong> ↑</span>` : ''}
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
-        ${cmdScores.map(k => {
+        ${cmdScores.length === 0 ? `<div style="grid-column:1/-1;padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Les scores opérationnels apparaîtront avec votre activité réelle</div>` : ''}${cmdScores.map(k => {
           const filled = k.val / 100 * circ46w;
           const dash   = circ46w - filled;
           return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;text-align:center">
@@ -22170,12 +22237,12 @@ function renderActivityFeed() {
         <div class="fp-card-title" style="margin-bottom:14px">🧭 Centres d\'activité spécialisés</div>
         <div style="display:flex;flex-direction:column;gap:7px">
           ${[
-            { label:'Équipe & Collaboration', sub:'team',       icon:'👥', count:catCounts.team,       desc:members => '3 membres actifs' },
+            { label:'Équipe & Collaboration', sub:'team',       icon:'👥', count:catCounts.team,       desc:members => 'Activité et rôles équipe' },
             { label:'SEO & Croissance',        sub:'seo',        icon:'🔍', count:catCounts.seo,        desc:members => String(catCounts.seo) + ' actions SEO ce mois' },
-            { label:'Monitoring & Incidents', sub:'monitoring', icon:'📡', count:catCounts.monitoring, desc:members => '1 incident actif · SLA OK' },
+            { label:'Monitoring & Incidents', sub:'monitoring', icon:'📡', count:catCounts.monitoring, desc:members => { const _d=(STATE.monitors||[]).filter(m=>m.status==='down').length; return _d>0 ? _d+' incident'+(_d>1?'s':'')+' actif'+(_d>1?'s':'') : 'Aucun incident actif'; } },
             { label:'IA & Automations',        sub:'ai',         icon:'🤖', count:catCounts.ai,         desc:members => String(catCounts.ai) + ' plans IA exécutés' },
             { label:'Rapports & Exports',      sub:'reports',    icon:'📄', count:catCounts.reports,    desc:members => String(catCounts.reports) + ' rapports générés' },
-            { label:'Concurrents & Marché',   sub:'competitor', icon:'🎯', count:catCounts.competitor, desc:members => '1 menace critique détectée' },
+            { label:'Concurrents & Marché',   sub:'competitor', icon:'🎯', count:catCounts.competitor, desc:members => 'Veille concurrentielle' },
             { label:'Ops Lab',                 sub:'ops',        icon:'🔬', count:0,                    desc:members => 'Scores et prévisions ops' },
             { label:'Local SEO & Zones',         sub:'local',      icon:'📍', count:0,                    desc:members => 'Couverture géographique et GBP' },
             { label:'Conversion & CRO',          sub:'conversion', icon:'🎯', count:0,                    desc:members => 'Funnel, CTAs et optimisation' },
@@ -22205,8 +22272,8 @@ function renderDataExplorer() {
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   // ── Shared data ────────────────────────────────────────────
   const trafficSources = PREVIEW_MODE ? [
@@ -22334,13 +22401,13 @@ function renderDataExplorer() {
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">📱 Mobile vs 💻 Desktop — Qualité par segment</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
-          ${[
+          ${!PREVIEW_MODE ? `<div style="grid-column:1/-1;padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Connectez vos analytics pour comparer les segments mobile et desktop</div>` : ''}${(PREVIEW_MODE ? [
             { label: 'Sessions',      mob: 58, desk: 42, unit: '%', higher: 'Mobile' },
             { label: 'Taux de conv.', mob: 0.12, desk: 0.34, unit: '%', higher: 'Desktop' },
             { label: 'Score qualité', mob: 61, desk: 78, unit: '/100', higher: 'Desktop' },
             { label: 'Taux rebond',   mob: 64, desk: 42, unit: '%', higher: 'Desktop (moins rebond)' },
             { label: 'Durée moy. session', mob: '1:24', desk: '2:47', unit: '', higher: 'Desktop' },
-          ].map(m => `
+          ] : []).map(m => `
             <div style="padding:14px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card)">
               <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:8px">${m.label}</div>
               <div style="display:flex;justify-content:space-between;margin-bottom:8px">
@@ -22561,7 +22628,7 @@ function renderDataExplorer() {
               <div style="font-size:24px;margin-bottom:6px">${w.icon}</div>
               <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:6px">${escHtml(w.name)}</div>
               <div style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;display:inline-block;background:${pc}20;color:${pc}">${w.plan}</div>
-              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="showToast('info','Personnalisez votre dashboard depuis les Paramètres > Analytique')">Ajouter</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
+              ${!locked ? `<div style="margin-top:8px"><button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="navigate('settings')">Ajouter</button></div>` : `<div style="margin-top:8px;font-size:10px;color:var(--fp-text-faint)">🔒 ${w.plan}</div>`}
             </div>`;
           }).join('')}
         </div>
@@ -22747,7 +22814,7 @@ function renderDataExplorer() {
                     </div>
                   `).join('')}
                 </div>
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','La simulation de scénarios est disponible dans le plan Ultra')">Simuler</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="Simulation de scénarios — bientôt disponible">Simuler (bientôt)</button>
               </div>
             </div>
           `).join('')}
@@ -22760,14 +22827,14 @@ function renderDataExplorer() {
   // SUB: DATA EXPORT & REPORTING CENTER
   // ══════════════════════════════════════════════════════════
   if (sub === 'export') {
-    const reports = [
+    const reports = PREVIEW_MODE ? [
       { name: 'Rapport SEO Executive — Mai 2026',       type: 'PDF',  size: '2.4 MB', date: 'Aujourd\'hui', brand: true,  auto: true  },
       { name: 'Audits SEO — Données complètes',          type: 'CSV',  size: '34 KB',  date: 'Aujourd\'hui', brand: false, auto: false },
       { name: 'Monitors — Historique uptime Q2',         type: 'CSV',  size: '18 KB',  date: 'Hier',         brand: false, auto: false },
-      ...(PREVIEW_MODE ? [{ name: 'Rapport client — '+CUR_MONTH, type: 'PDF', size: '1.8 MB', date: '05/05', brand: true, auto: false }] : []),
+      { name: 'Rapport client — '+CUR_MONTH,             type: 'PDF',  size: '1.8 MB', date: '05/05',        brand: true,  auto: false },
       { name: 'Dashboard Data — Export JSON',            type: 'JSON', size: '88 KB',  date: '03/05',        brand: false, auto: false },
       { name: 'Rapport mensuel — Avril 2026',            type: 'PDF',  size: '3.1 MB', date: '01/05',        brand: true,  auto: true  },
-    ];
+    ] : (STATE.reports || []).map(r => ({ name: r.name || r.title || 'Rapport', type: r.type || 'PDF', size: r.size || '—', date: r.date || r.createdAt || '—', brand: !!(r.brand || r.branded || r.whiteLabel), auto: !!r.auto }));
     const scheduled = PREVIEW_MODE ? [
       { name: 'Rapport SEO mensuel',    freq: 'Mensuel · 1er du mois',   dest: 'email',   next: '01/06', active: true  },
       { name: 'Rapport client exemple', freq: 'Hebdomadaire · Lundi',    dest: 'email',   next: '13/05', active: true  },
@@ -22775,7 +22842,11 @@ function renderDataExplorer() {
     ] : [];
     return `
       ${isPro
-        ? aiBlock("2 rapports automatisés actifs ce mois. Votre <strong>rapport SEO Executive de mai</strong> est le plus téléchargé. Suggestion : activer l\'export automatique CSV quotidien pour intégrer les données dans votre CRM.",
+        ? aiBlock(PREVIEW_MODE
+            ? "2 rapports automatisés actifs ce mois. Votre <strong>rapport SEO Executive de mai</strong> est le plus téléchargé. Suggestion : activer l\'export automatique CSV quotidien pour intégrer les données dans votre CRM."
+            : (reports.length > 0
+              ? `<strong>${reports.length} rapport${reports.length>1?'s':''}</strong> disponible${reports.length>1?'s':''} à l\'export.`
+              : "Aucun rapport généré pour le moment. Créez votre premier rapport depuis la section Rapports."),
             ['Créer un rapport', 'Planifier un export', 'Rapport white-label'])
         : `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
             <div style="font-size:22px">📋</div>
@@ -22785,7 +22856,7 @@ function renderDataExplorer() {
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Rapports disponibles', String(reports.length), 'dont 3 PDF brandés', 'neutral')}
+        ${statCard('Rapports disponibles', String(reports.length), reports.length > 0 ? 'dont ' + reports.filter(r=>r.brand).length + ' PDF brandé' + (reports.filter(r=>r.brand).length>1?'s':'') : 'Aucun rapport', 'neutral')}
         ${statCard('Exports planifiés', String(scheduled.filter(s => s.active).length), 'actifs ce mois', 'up')}
         ${statCard('Volume exporté', displayStat(null, '6.3 MB'), 'ce mois', 'neutral')}
         ${statCard('Rapports white-label', String((STATE.reports||[]).filter(r=>r.whiteLabel||r.branded||r.isWhiteLabel).length), isUltra ? 'actifs' : 'Ultra requis', isUltra ? 'up' : 'neutral')}
@@ -22801,6 +22872,7 @@ function renderDataExplorer() {
           ${isPro ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('reports')" class="fp-btn fp-btn-primary fp-btn-sm">+ Générer</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
+          ${reports.length === 0 ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint)">Aucun rapport généré pour le moment.</div>` : ''}
           ${reports.map(r => {
             const tc = r.type === 'PDF' ? '#ef4444' : r.type === 'CSV' ? '#22c55e' : '#8b5cf6';
             return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:9px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
@@ -22812,7 +22884,7 @@ function renderDataExplorer() {
                 <div style="font-size:10px;color:var(--fp-text-faint)">${r.size} · ${escHtml(r.date)}${r.brand ? ' · <span style="color:#8b5cf6">White-label</span>' : ''}${r.auto ? ' · <span style="color:#22c55e">Auto</span>' : ''}</div>
               </div>
               <div style="display:flex;gap:6px;flex-shrink:0">
-                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="showToast('info','Téléchargement…')">↓ Télécharger</button>
+                <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigate('reports')">↓ Télécharger</button>
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))">Partager</button>
               </div>
             </div>`;
@@ -22857,7 +22929,7 @@ function renderDataExplorer() {
     { icon: '⚠',  title: 'Taux rebond mobile en hausse +8%',sev: 'warning',  desc: 'Dégradation UX mobile corrélée avec chute conversion mobile' },
     { icon: '🔗', title: 'Corrélation vitesse/conversion : 91%',  sev: 'warning',  desc: 'Pages lentes < 70/100 convertissent 2.4x moins bien — priorité optimisation' },
     { icon: '🏆', title: 'Local Pack #1 — 4 mots-clés gagnés',    sev: 'positive', desc: (STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.score||0)>(b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')):'votre site') + ' domine — renforcement GBP confirmé' },
-    ...(STATE.competitors && STATE.competitors.length > 0 ? [{ icon: '🎯', title: (escHtml(STATE.competitors[0].name||'Concurrent principal')) + ' accélère fortement', sev: 'critical', desc: '+12 positions ce mois — fenêtre d’action : 3 semaines' }] : PREVIEW_MODE ? [{ icon: '🎯', title: 'Concurrent principal accélère fortement', sev: 'critical', desc: '+12 positions + 180% backlinks ce mois — fenêtre d’action : 3 semaines' }] : []),
+    ...(STATE.competitors && STATE.competitors.length > 0 ? [{ icon: '🎯', title: (escHtml(STATE.competitors[0].name||'Concurrent principal')) + ' — concurrent principal à surveiller', sev: 'warning', desc: 'Consultez la section Concurrents pour analyser ses mouvements récents' }] : PREVIEW_MODE ? [{ icon: '🎯', title: 'Concurrent principal accélère fortement', sev: 'critical', desc: '+12 positions + 180% backlinks ce mois — fenêtre d’action : 3 semaines' }] : []),
   ];
 
   return `
@@ -23025,8 +23097,8 @@ function renderClientMode() {
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
   const avg = avgScore();
   const me  = STATE.me;
 
@@ -23631,9 +23703,9 @@ function renderClientMode() {
           ].map(f => `<div style="padding:14px;border-radius:10px;border:1px solid ${f.locked ? 'rgba(255,255,255,0.05)' : 'rgba(37,99,235,0.2)'};background:${f.locked ? 'rgba(255,255,255,0.01)' : 'rgba(37,99,235,0.05)'};${f.locked ? 'opacity:0.6' : ''}">
             <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">${f.icon} ${escHtml(f.label)}</div>
             <div style="font-size:12px;font-weight:600;color:var(--fp-text);margin-bottom:6px">${escHtml(f.val)}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="showToast('info','${f.locked ? 'Ultra requis' : 'Modification…'}')">
-              ${f.locked ? '🔒 Ultra' : 'Modifier'}
-            </button>
+            ${f.locked
+              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;width:100%" onclick="navigate('billing')">🔒 Ultra</button>`
+              : `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;width:100%;opacity:0.55;cursor:not-allowed" title="Personnalisation bientôt disponible">Modifier (bientôt)</button>`}
           </div>`).join('')}
         </div>
       </div>
@@ -23665,7 +23737,7 @@ function renderClientMode() {
   // ══════════════════════════════════════════════════════════
   // DEFAULT (null) — Client Command Center
   // ══════════════════════════════════════════════════════════
-  const cmdScores = [
+  const cmdScores = PREVIEW_MODE ? [
     { label:'Satisfaction',  val:84, color:'#22c55e', icon:'😊' },
     { label:'Engagement',    val:72, color:'#2563EB', icon:'⚡' },
     { label:'Reporting',     val:88, color:'#22c55e', icon:'📄' },
@@ -23676,7 +23748,7 @@ function renderClientMode() {
     { label:'Fidélisation',  val:91, color:'#22c55e', icon:'💎' },
     { label:'Réactivité',    val:63, color:'#f59e0b', icon:'⚡' },
     { label:'Croissance',    val:79, color:'#2563EB', icon:'📊' },
-  ];
+  ] : [];
   const circ36 = 2 * Math.PI * 36;
 
   return `
@@ -23686,7 +23758,7 @@ function renderClientMode() {
           Client Command Center
           <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.35);border-radius:20px;color:#2563EB">✦ PREMIUM</span>
         </h1>
-        <div class="fp-section-sub">${clients.length} clients actifs · Score satisfaction 84/100 · Mis à jour à l\'instant</div>
+        <div class="fp-section-sub">${clients.length} client${clients.length > 1 ? 's' : ''} actif${clients.length > 1 ? 's' : ''}${PREVIEW_MODE ? ' · Score satisfaction 84/100' : ''} · Mis à jour à l\'instant</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Partager', 'fp-btn fp-btn-ghost fp-btn-sm', 'link',    "onclick=\"navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))\"" )}
@@ -23716,10 +23788,10 @@ function renderClientMode() {
           ${svgIcon('users').replace('stroke="currentColor"','stroke="#2563EB"')}
           Intelligence client — Scores clés
         </div>
-        <span style="font-size:11px;color:var(--fp-text-faint)">Score global : <strong style="color:#22c55e">78/100</strong></span>
+        ${PREVIEW_MODE ? `<span style="font-size:11px;color:var(--fp-text-faint)">Score global : <strong style="color:#22c55e">78/100</strong></span>` : ''}
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:8px">
-        ${cmdScores.map(k => {
+        ${cmdScores.length === 0 ? `<div style="grid-column:1/-1;padding:16px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Les scores clients seront calculés à partir de votre activité réelle</div>` : ''}${cmdScores.map(k => {
           const filled = k.val / 100 * circ36;
           const dash   = circ36 - filled;
           return `<div style="padding:12px;border-radius:11px;border:1px solid ${k.color}28;background:${k.color}07;text-align:center">
@@ -23795,8 +23867,8 @@ function renderClientMode() {
 
 function renderMonitorsSLA() {
   const plan = STATE.me?.plan || 'Pro';
-  const isPro = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
   const monitors = STATE.monitors;
   const globalUptime = (monitors.reduce((s, m) => s + parseFloat(computeRealUptime(m)), 0) / Math.max(1, monitors.length)).toFixed(2);
   const slaOK = parseFloat(globalUptime) >= 99.0;
@@ -24002,7 +24074,7 @@ function renderMonitorsSLA() {
           <div class="fp-card-title" style="margin-bottom:0">🤖 Journeys Synthétiques${isUltra ? '' : ' <span style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.1);padding:1px 6px;border-radius:4px;font-weight:600">Ultra</span>'}</div>
           <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Simulation automatique des parcours utilisateurs critiques</div>
         </div>
-        ${isUltra ? btn('Relancer tous les tests', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="showToast(\'info\',\'Journeys lancés…\')"') : ''}
+        ${isUltra ? btn('Actualiser les statuts', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="render(STATE.currentSection);showToast(\'success\',\'Statuts actualisés\')"') : ''}
       </div>
       ${isUltra ? (monitors.length === 0 ? `
         <div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px">
@@ -24038,8 +24110,8 @@ function renderMonitorsSLA() {
 
 function renderLocalSEOGBP() {
   const plan = STATE.me?.plan || 'Pro';
-  const isPro  = plan === 'Pro' || plan === 'Agency';
-  const isUltra = plan === 'Agency';
+  const isPro  = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+  const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   // ── Real data from API (STATE.gbp loaded by FP_GBP_API.load()) ──
   const gbpConnected   = STATE.gbp?.connected ?? false;
@@ -24349,7 +24421,7 @@ function renderLocalSEOGBP() {
                 ? `<span style="font-size:10px;color:#22c55e">✓ Répondu</span>`
                 : gbpConnected
                   ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openReplyModal('${escHtml(r.reviewId)}','${escHtml(r.author)}',${r.stars}):showToast('info','Chargement...')">🤖 Répondre avec IA</button>`
-                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Connectez GBP pour répondre aux avis')">Répondre avec IA</button>`
+                  : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="typeof window.FP_GBP_API!=='undefined'?window.FP_GBP_API.openConnect():navigate('local-seo')">Répondre avec IA</button>`
               }
             </div>
           `).join('')}
@@ -24402,11 +24474,11 @@ function renderLocalSEOGBP() {
         <!-- Photo analytics -->
         <div style="margin-top:14px;padding:10px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:8px">
           <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft);margin-bottom:6px">📸 Performance des photos</div>
-          ${[
+          ${PREVIEW_MODE ? [
             { label: 'Vues photos ce mois', val: '1 240' },
             { label: 'Engagement moyen',    val: '+32%'  },
             { label: 'Photos manquantes',   val: '6'     },
-          ].map(p => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0"><span style="color:var(--fp-text-muted)">${p.label}</span><span style="font-weight:700;color:var(--fp-text-soft)">${p.val}</span></div>`).join('')}
+          ].map(p => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0"><span style="color:var(--fp-text-muted)">${p.label}</span><span style="font-weight:700;color:var(--fp-text-soft)">${p.val}</span></div>`).join('') : `<div style="padding:8px;text-align:center;font-size:11px;color:var(--fp-text-faint)">Connectez Google Business Profile pour suivre la performance des photos</div>`}
         </div>
         ` : `<div style="height:160px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.5">
           <div style="font-size:28px">📊</div>
@@ -24454,11 +24526,11 @@ function renderLocalSEOGBP() {
         <!-- Q&A MONITORING -->
         <div class="fp-card-title" style="font-size:12px;margin-bottom:10px">❓ Questions & réponses (Q&A)</div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          ${[
+          ${!PREVIEW_MODE ? `<div style="padding:12px;text-align:center;font-size:11px;color:var(--fp-text-faint)">Connectez Google Business Profile pour synchroniser les questions & réponses</div>` : ''}${(PREVIEW_MODE ? [
             { q: 'Êtes-vous ouvert le dimanche ?',           answered: false, date: 'il y a 3 jours' },
             { q: 'Proposez-vous des devis gratuits ?',        answered: true,  date: 'il y a 1 sem.'  },
             { q: 'Livraison disponible dans tout Paris ?',    answered: false, date: 'il y a 2 sem.'  },
-          ].map(qa => `
+          ] : []).map(qa => `
             <div style="padding:8px 10px;border-radius:8px;background:${qa.answered?'rgba(34,197,94,0.04)':'rgba(239,68,68,0.04)'};border:1px solid ${qa.answered?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.15)'}">
               <div style="font-size:11px;color:var(--fp-text-soft);margin-bottom:4px">${escHtml(qa.q)}</div>
               <div style="display:flex;align-items:center;justify-content:space-between">
@@ -25009,7 +25081,7 @@ function renderLocalSEOMap() {
           ${defAddr ? `<div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:8px">${escHtml(defAddr)}</div>` : ''}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
             ${[
-              {l:'Score local',  v:'72/100', c:'#22c55e'},
+              {l:'Score local',  v: PREVIEW_MODE ? '72/100' : (STATE.localSeo?.domScore != null ? STATE.localSeo.domScore + '/100' : '—'), c:'#22c55e'},
               {l:'Avis Google',  v: firstLoc?.reviewCount || locs.length ? String(firstLoc?.reviewCount || 0) : '—', c:'#f59e0b'},
               {l:'Note',         v: firstLoc?.rating ? firstLoc.rating.toFixed(1)+'★' : '—', c:'#f59e0b'},
               {l:'Concurrents',  v: competitors.length ? String(competitors.length) : '…', c:'#ef4444'},
@@ -25372,7 +25444,7 @@ function renderConversionHeatmap() {
         <button class="fp-upgrade-btn ultra" onclick="navigate('billing')">Ultra : Heatmap live</button>
       </div>
     </div>
-    ${aiBlock('<strong>68% des visiteurs quittent la page avant le CTA</strong>. La zone la plus cliquée : votre numéro de téléphone. Recommandation : remonter le CTA d\'appel au-dessus de la ligne de flottaison.',['Créer la mission CTA','Analyser le parcours'])}
+    ${aiBlock(PREVIEW_MODE ? '<strong>68% des visiteurs quittent la page avant le CTA</strong>. La zone la plus cliquée : votre numéro de téléphone. Recommandation : remonter le CTA d\'appel au-dessus de la ligne de flottaison.' : 'Connectez vos analytics et vos heatmaps pour analyser le comportement visiteurs et détecter les zones de friction.',['Créer la mission CTA','Analyser le parcours'])}
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Sessions enregistrées', displayStat(STATE.overview?.sessions ? String(STATE.overview.sessions) : null, '842'), PREVIEW_MODE ? 'ce mois' : 'Connectez analytics', 'neutral')}
       ${statCard('Taux de rebond', displayStat(null, '62%'), PREVIEW_MODE ? '-4% vs mois passé' : 'Connectez analytics', 'neutral')}
@@ -25432,7 +25504,7 @@ function renderConversionHeatmap() {
       </div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing')">Passer à Ultra</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Notification activée')">Me notifier</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="localStorage.setItem('fp-notify-heatmap','1');this.disabled=true;this.style.opacity='0.6';this.textContent='✓ Vous serez notifié'">Me notifier</button>
       </div>
     </div>
   `;
@@ -25758,28 +25830,24 @@ function renderSettingsAPI() {
             </div>
             <input class="fp-input" placeholder="https://votre-endpoint.com/webhook" value="${escHtml(w.url)}" style="font-family:var(--fp-font-mono);font-size:11px;margin-bottom:8px"/>
             <div style="display:flex;gap:8px">
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Ping de test envoyé !')">Tester</button>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var form=btn.closest('.fp-card');var urlEl=form?form.querySelector('input[type=url],input[type=text]'):null;var url=urlEl?urlEl.value.trim():'';if(!url){showToast('error','Entrez une URL webhook');return;}apiAction('POST','/api/integrations/webhooks',{url:url}).then(r=>{if(r&&r.id)showToast('success','Webhook sauvegardé !');else showToast('error','Erreur sauvegarde');}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)">Sauver</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(btn){var el=btn.parentElement.parentElement.querySelector('input.fp-input');var url=el?el.value.trim():'';if(!url){showToast('error','Entrez une URL webhook');return;}apiAction('POST','/api/integrations/webhooks/test',{url:url}).then(r=>{if(r&&(r.ok||r.success)){showToast('success','Ping de test envoyé !')}else{showToast('info','Test indisponible — enregistrez le webhook')}}).catch(()=>showToast('info','Test indisponible — enregistrez le webhook'))})(this)">Tester</button>
+              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="(function(btn){var urlEl=btn.parentElement.parentElement.querySelector('input.fp-input');var url=urlEl?urlEl.value.trim():'';if(!url){showToast('error','Entrez une URL webhook');return;}apiAction('POST','/api/integrations/webhooks',{url:url}).then(r=>{if(r&&r.id)showToast('success','Webhook sauvegardé !');else showToast('error','Erreur sauvegarde');}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)">Sauver</button>
             </div>
           </div>
         `).join('')}
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Nouveau webhook…')">+ Ajouter un webhook</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="(function(){var u=prompt('URL du webhook (https://…)');if(!u||!u.trim())return;apiAction('POST','/api/integrations/webhooks',{url:u.trim()}).then(r=>{if(r&&r.id){showToast('success','Webhook ajouté !');render(STATE.currentSection)}else{showToast('error','Erreur lors de la création')}}).catch(()=>showToast('error','Erreur lors de la création'))})()">+ Ajouter un webhook</button>
       </div>
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:14px">Authentification à deux facteurs (2FA)</div>
-        <div style="display:flex;align-items:center;gap:14px;padding:14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:10px;margin-bottom:14px">
-          <div style="width:36px;height:36px;border-radius:10px;background:rgba(34,197,94,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            ${svgIcon('shield').replace('stroke="currentColor"','stroke="var(--fp-success)"')}
+        <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:10px;margin-bottom:14px">
+          <div style="width:36px;height:36px;border-radius:10px;background:rgba(100,116,139,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${svgIcon('shield').replace('stroke="currentColor"','stroke="var(--fp-text-faint)"')}
           </div>
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:700;color:var(--fp-success)">2FA activé ✓</div>
+            <div style="font-size:13px;font-weight:700;color:var(--fp-text)">2FA — bientôt disponible</div>
             <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">Authentification via application TOTP (Google Authenticator, Authy)</div>
           </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('warning','2FA désactivé — votre compte est moins sécurisé')">Désactiver</button>
-        </div>
-        <div class="fp-2fa-btns" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Codes de secours affichés')">Voir les codes de secours</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('info','Application 2FA reconfigurée')">Reconfigurer l\'application</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.55;cursor:not-allowed" title="Bientôt disponible">Activer (bientôt)</button>
         </div>
       </div>
     </div>
@@ -27191,7 +27259,7 @@ function renderGA4Campaigns() {
           </div>
           <div style="font-size:10px;color:var(--fp-text-faint);font-style:italic">ex: ${u.ex}</div>
         </div>`).join('')}
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:4px;width:100%" onclick="showToast('info','UTM Builder ouvert !')">🔗 Générateur d\'UTM</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="margin-top:4px;width:100%;opacity:0.55;cursor:not-allowed" title="Générateur UTM — bientôt disponible">🔗 Générateur UTM (bientôt)</button>
       </div>
 
       <div class="fp-card">
@@ -28797,9 +28865,9 @@ function renderCodeAnalysis() {
     ],
   };
 
-  const issuesByType = sub === 'performance' ? MOCK_ISSUES.performance
+  const issuesByType = PREVIEW_MODE ? (sub === 'performance' ? MOCK_ISSUES.performance
     : sub === 'security' ? MOCK_ISSUES.security
-    : MOCK_ISSUES.seo;
+    : MOCK_ISSUES.seo) : [];
 
   const issueTitle = sub === 'performance' ? '⚡ Issues de Performance' : sub === 'security' ? '🔒 Issues de Sécurité' : '🔍 Issues SEO détectées';
 
@@ -28839,7 +28907,7 @@ function renderCodeAnalysis() {
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px">
-        ${issuesByType.map(issue => {
+        ${issuesByType.length === 0 ? `<div style="padding:24px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Aucune analyse disponible — connectez GitHub et lancez un scan pour analyser votre code</div>` : ''}${issuesByType.map(issue => {
           const sc = issue.sev === 'error' ? '#ef4444' : issue.sev === 'warning' ? '#f59e0b' : '#3b82f6';
           const sl = issue.sev === 'error' ? 'Critique' : issue.sev === 'warning' ? 'Warning' : 'Info';
           return `<div style="padding:14px;border-radius:10px;border:1px solid ${sc}22;background:${sc}08">
@@ -28872,13 +28940,13 @@ function renderDeployments() {
 
   const _depTeam = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const _da = i => _depTeam.length > 0 ? (_depTeam[i % _depTeam.length].name || _depTeam[i % _depTeam.length].email || STATE.me?.name || '—') : (STATE.me?.name || '—');
-  const DEPLOYS = [
+  const DEPLOYS = PREVIEW_MODE ? [
     { repo:'flowpoint-app', env:'production', ref:'v2.8.1', status:'success', author:_da(0), duration:'3m 24s', time:new Date(Date.now()-1*86400000).toISOString(), commit:'feat: billing engine + GitHub OAuth' },
     { repo:'api-server',    env:'staging',    ref:'feat/billing-v2', status:'success', author:_da(1), duration:'2m 11s', time:new Date(Date.now()-2*86400000).toISOString(), commit:'chore: add v8 migrations + billing endpoints' },
     { repo:'marketing-site',env:'production', ref:'hotfix/meta-desc', status:'running', author:_da(2), duration:'—', time:new Date(Date.now()-3600000).toISOString(), commit:'fix: missing meta descriptions on 5 pages' },
     { repo:'api-server',    env:'production', ref:'v1.4.0', status:'failed', author:_da(0), duration:'1m 02s', time:new Date(Date.now()-2*86400000-3600000).toISOString(), commit:'fix: stripe webhook signature' },
     { repo:'flowpoint-app', env:'staging',    ref:'chore/deps', status:'success', author:_da(1), duration:'4m 38s', time:new Date(Date.now()-4*86400000).toISOString(), commit:'chore: update lodash, axios, moment' },
-  ];
+  ] : [];
 
   return `
     <div class="fp-section-header">
@@ -28911,7 +28979,7 @@ function renderDeployments() {
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        ${DEPLOYS.map(d => {
+        ${DEPLOYS.length === 0 ? `<div style="padding:24px;text-align:center;font-size:12px;color:var(--fp-text-faint)">Aucun déploiement synchronisé — connectez GitHub Actions pour voir l'historique</div>` : ''}${DEPLOYS.map(d => {
           const sc = d.status === 'success' ? '#22c55e' : d.status === 'running' ? '#3b82f6' : '#ef4444';
           const icon = d.status === 'success' ? '✓' : d.status === 'running' ? '↻' : '✕';
           const dt = new Date(d.time);
@@ -30957,13 +31025,13 @@ function renderPermissions() {
   return `
     <div class="fp-section-header">
       <div>
-        <h1>🔐 Permissions & Accès Enterprise</h1>
+        <h1>🔐 Permissions & Accès avancés</h1>
         <div class="fp-section-sub">RBAC · Rôles · Matrice de permissions · Audit de sécurité</div>
       </div>
       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showCreateRoleModal()">+ Créer un rôle</button>` : ''}
     </div>
 
-    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Permissions Enterprise — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rôles personnalisés, matrice de permissions et audit de sécurité.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing')">Passer Pro</button></div>` : ''}
+    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">Permissions avancées — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rôles personnalisés, matrice de permissions et audit de sécurité.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing')">Passer Pro</button></div>` : ''}
 
     ${aiBlock(
       `${stats.totalRoles||0} rôles configurés dont ${stats.customRoles||0} personnalisés. ${stats.securityAlerts>0?`<strong>${stats.securityAlerts} alerte${stats.securityAlerts>1?'s':''} sécurité</strong> dans les 24h.`:' Aucune alerte sécurité. Accès nominal.'}`,
@@ -31554,7 +31622,7 @@ function renderLocalSEOReviews() {
   const stats = reviewData.stats || {};
   const alerts = reviewData.alerts || [];
   const plan = STATE.me?.plan || 'Pro';
-  const isPro = plan === 'Pro' || plan === 'Agency';
+  const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const sentimentColor = (s) => s === 'positive' ? 'var(--fp-success)' : s === 'negative' ? 'var(--fp-danger)' : 'var(--fp-text-faint)';
   const sentimentEmoji = (s) => s === 'positive' ? '😊' : s === 'negative' ? '😟' : '😐';
 
@@ -31631,7 +31699,7 @@ function renderLocalSEOReviews() {
                 <div style="margin-top:8px;padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border-left:2px solid rgba(37,99,235,0.3)">
                   <div style="font-size:9px;color:var(--fp-accent);font-weight:700;margin-bottom:4px">🤖 RÉPONSE IA SUGGÉRÉE</div>
                   <div style="font-size:11px;color:var(--fp-text-muted);line-height:1.4">${escHtml((r.ai_reply || '').slice(0, 150))}${r.ai_reply?.length > 150 ? '…' : ''}</div>
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;font-size:9px" onclick="showToast('info','Publiez votre réponse depuis la plateforme d\'avis (Google, Trustpilot…)')">✓ Marquer publiée</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;font-size:9px" title="Copiez la réponse puis publiez-la sur la plateforme d'avis" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.closest('div').querySelector('div:nth-child(2)')?.textContent||'').then(()=>showToast('success','Réponse copiée — publiez-la sur la plateforme d\'avis'))">📋 Copier la réponse</button>
                 </div>
               ` : isPro ? `
                 <button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:6px;font-size:10px" onclick="showToast('info','Génération réponse IA…');window.FP_REVIEW_INTEL_API?.generateReply('${r.id}','professional','fr').then(reply=>{showToast('success','Réponse générée !');window.FP_REVIEW_INTEL_API.load();render(STATE.currentSection)})">🤖 Générer réponse IA</button>
@@ -31723,13 +31791,13 @@ function renderSettingsSSO() {
   return `
     <div class="fp-section-header">
       <div>
-        <h1>🔐 SSO Enterprise</h1>
+        <h1>🔐 SSO SAML</h1>
         <div class="fp-section-sub">Google Workspace · Azure AD · Okta · Auth0 · SAML générique</div>
       </div>
       ${isUltra ? `<button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._showSSOProviderModal()">+ Configurer SSO</button>` : ''}
     </div>
 
-    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">SSO Enterprise — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Authentification Google Workspace (Pro) et SAML/Okta/Azure (Ultra).</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing')">Passer Pro</button></div>` : ''}
+    ${isStd ? `<div style="padding:14px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px"><div style="font-size:22px">🔐</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">SSO SAML — Pro requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Authentification Google Workspace (Pro) et SAML/Okta/Azure (Ultra).</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing')">Passer Pro</button></div>` : ''}
 
     ${aiBlock(
       `${stats.activeProviders || 0} provider${(stats.activeProviders || 0) > 1 ? 's' : ''} SSO actif${(stats.activeProviders || 0) > 1 ? 's' : ''}. ${stats.failedLogins || 0} tentative${(stats.failedLogins || 0) > 1 ? 's' : ''} échouée${(stats.failedLogins || 0) > 1 ? 's' : ''} détectée${(stats.failedLogins || 0) > 1 ? 's' : ''} (dernière heure). ${stats.suspiciousLogins > 0 ? '<strong>⚠️ ' + stats.suspiciousLogins + ' connexion(s) suspecte(s)</strong>' : 'Aucune activité suspecte.'}`,
@@ -31817,7 +31885,7 @@ function renderSettingsSSO() {
                     </div>
                   </div>
                   ${isRoadmap
-                    ? '<div style="font-size:10px;color:var(--fp-text-faint);text-align:center;padding:4px 0">SAML 2.0 Enterprise — Q3 2026</div>'
+                    ? '<div style="font-size:10px;color:var(--fp-text-faint);text-align:center;padding:4px 0">SAML 2.0 — Q3 2026</div>'
                     : locked
                       ? '<div style="font-size:10px;color:var(--fp-text-faint);text-align:center">'+p.plan+' requis</div>'
                       : '<button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;font-size:10px" onclick="window._showSSOProviderModal(\''+p.id+'\',\''+p.name+'\')">Configurer</button>'
