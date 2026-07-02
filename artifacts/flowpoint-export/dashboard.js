@@ -2747,23 +2747,53 @@ async function _fetchGmapsKey() {
   return _gmapsKey;
 }
 
+function _showMapsBlockedFallback() {
+  const el = document.getElementById('fp-gmap');
+  if (!el || el._mapInited || el._mapBlocked) return;
+  el._mapBlocked = true;
+  el.style.display = 'flex';
+  el.style.alignItems = 'center';
+  el.style.justifyContent = 'center';
+  el.style.flexDirection = 'column';
+  el.style.gap = '10px';
+  el.style.background = 'rgba(10,14,27,0.95)';
+  el.innerHTML = '<div style="font-size:28px">🗺️</div>' +
+    '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte Google Maps bloquée</div>' +
+    '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:280px;line-height:1.5">' +
+      'Votre bloqueur de publicités (Brave Shield, uBlock…) bloque <code>maps.googleapis.com</code>.<br>' +
+      'Désactivez-le sur cette page pour afficher la carte interactive.' +
+    '</div>';
+}
+
 function loadGoogleMaps(cb) {
   if (typeof google !== 'undefined' && google.maps) { cb(); return; }
   if (_gmapsLoading) {
-    const t = setInterval(() => { if (typeof google !== 'undefined' && google.maps) { clearInterval(t); cb(); } }, 150);
+    let _waited = 0;
+    const t = setInterval(() => {
+      _waited += 150;
+      if (typeof google !== 'undefined' && google.maps) { clearInterval(t); cb(); return; }
+      if (_waited > 10000) { clearInterval(t); _showMapsBlockedFallback(); } // timeout after 10s
+    }, 150);
     return;
   }
   _gmapsLoading = true;
   _fetchGmapsKey().then(key => {
     if (!key) {
       _gmapsLoading = false;
-      console.warn('[FlowPoint] Google Maps API key not configured — add GOOGLE_MAPS_API_KEY to environment secrets');
+      console.debug('[FlowPoint] Google Maps API key not configured');
+      _showMapsBlockedFallback();
       return;
     }
     window.__gmapsCb = () => { _gmapsLoading = false; cb(); };
     const s = document.createElement('script');
     s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsCb`;
     s.async = true;
+    // ERR_BLOCKED_BY_CLIENT: Brave Shield / uBlock blocks maps.googleapis.com
+    s.onerror = () => {
+      _gmapsLoading = false;
+      console.debug('[FlowPoint] Google Maps script blocked by browser extension (ERR_BLOCKED_BY_CLIENT)');
+      _showMapsBlockedFallback();
+    };
     document.head.appendChild(s);
   });
 }

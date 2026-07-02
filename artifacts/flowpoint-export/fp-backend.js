@@ -2149,8 +2149,10 @@
           _sse = null;
           if (_retries < _maxRetries) {
             _retries++;
-            var delay = Math.min(1000 * Math.pow(2, _retries), 30000);
-            showStaleBanner();
+            // First disconnect is usually a normal QUIC/proxy idle timeout (status 200),
+            // not a real error. Show the stale banner only after repeated failures.
+            var delay = _retries === 1 ? 2000 : Math.min(1000 * Math.pow(2, _retries), 30000);
+            if (_retries >= 2) showStaleBanner();
             setTimeout(connect, delay);
           }
         };
@@ -2402,7 +2404,7 @@
       var hasRealContent = !!page.querySelector('.fp-hero-cmd, .fp-stat-card, .fp-card, .fp-gauge-card, .fp-stat-row, .fp-page-section, .fp-overview-grid');
       var stateReady = window.STATE && window.STATE.me;
       if ((hasSkeleton || !hasRealContent) && stateReady && window.render) {
-        console.warn('[FP] ' + label + ': skeleton/blank detected — forcing re-render');
+        console.debug('[FP] ' + label + ': skeleton/blank detected — forcing re-render');
         try { window.render(); } catch(e) {
           console.error('[FP] Force render failed:', e.message || e);
           // Show error inline
@@ -2558,9 +2560,10 @@
         // Vrai contenu présent → OK
         if (hasContent && !hasSkeleton) { clearInterval(_id); return; }
 
-        // STATE prêt mais skeleton encore là → forcer le rendu
+        // STATE prêt mais skeleton encore là → forcer le rendu une fois puis arrêter
         if (window.STATE && window.STATE.me && typeof window.render === 'function') {
-          console.log('[FP v8d] Forçage render() à t=' + _t + 'ms');
+          clearInterval(_id);
+          console.debug('[FP v8d] Forçage render() à t=' + _t + 'ms');
           try { window.render(); } catch(e) { console.error('[FP v8d] render() échoué:', e); }
         }
       }, 300);

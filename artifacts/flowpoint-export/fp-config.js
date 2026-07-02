@@ -102,51 +102,55 @@
     loadSocketIO();
   }
 
-  // ─── SSE FALLBACK ────────────────────────────────────────────────────────────
-  // Si Socket.IO est indisponible, utilise les Server-Sent Events comme fallback.
+  // ─── SSE ACTIVITY ─────────────────────────────────────────────────────────────
+  // Single SSE connection for activity events. Billing SSE is handled exclusively
+  // by dashboard.js (subscribeBillingEvents) to avoid duplicate connections.
 
   window.FP_SSE_ACTIVITY = null;
-  window.FP_SSE_BILLING  = null;
+  window.FP_SSE_BILLING  = null; // managed by dashboard.js
 
-  function connectSSE() {
-    if (window.FP_SOCKET_READY) return;  // Socket.IO a priorité
+  var _actSseRetries = 0;
+  var _actSseMaxRetries = 8;
 
-    const base = FP_BACKEND_URL;
+  function connectActivitySSE() {
+    if (window.FP_SOCKET_READY) return;
     if (typeof EventSource === 'undefined') return;
-    if (window.location.protocol === 'file:' && !base) return;
+    if (window.location.protocol === 'file:') return;
 
     try {
-      const actUrl = (base || '') + '/api/activity/events';
-      window.FP_SSE_ACTIVITY = new EventSource(actUrl, { withCredentials: true });
-      window.FP_SSE_ACTIVITY.addEventListener('activity', function (e) {
+      if (window.FP_SSE_ACTIVITY) {
+        try { window.FP_SSE_ACTIVITY.close(); } catch(_) {}
+        window.FP_SSE_ACTIVITY = null;
+      }
+      const actUrl = (FP_BACKEND_URL || '') + '/api/activity/events';
+      const es = new EventSource(actUrl, { withCredentials: true });
+      window.FP_SSE_ACTIVITY = es;
+
+      es.onopen = function() { _actSseRetries = 0; };
+      es.addEventListener('activity', function (e) {
         try {
           const data = JSON.parse(e.data);
           document.dispatchEvent(new CustomEvent('fp:activity:new', { detail: data }));
         } catch (_) {}
       });
-      window.FP_SSE_ACTIVITY.onerror = function () {
-        window.FP_SSE_ACTIVITY?.close();
-      };
-
-      const bilUrl = (base || '') + '/api/billing/events';
-      window.FP_SSE_BILLING = new EventSource(bilUrl, { withCredentials: true });
-      window.FP_SSE_BILLING.addEventListener('plan_updated', function (e) {
-        try {
-          const data = JSON.parse(e.data);
-          document.dispatchEvent(new CustomEvent('fp:billing:updated', { detail: data }));
-        } catch (_) {}
-      });
-      window.FP_SSE_BILLING.onerror = function () {
-        window.FP_SSE_BILLING?.close();
+      // Silent reconnect — QUIC idle timeouts (status 200 + ERR_QUIC_PROTOCOL_ERROR)
+      // are normal and not displayed as errors.
+      es.onerror = function () {
+        es.close();
+        window.FP_SSE_ACTIVITY = null;
+        if (_actSseRetries < _actSseMaxRetries) {
+          _actSseRetries++;
+          var delay = _actSseRetries === 1 ? 3000 : Math.min(5000 * _actSseRetries, 60000);
+          setTimeout(connectActivitySSE, delay);
+        }
       };
     } catch (err) {
-      console.warn('[FP] SSE non disponible :', err.message);
+      // EventSource not supported or blocked — degrade silently
     }
   }
 
-  // Démarre SSE 3 secondes après le chargement
-  // (si Socket.IO se connecte d'ici là, connectSSE() n'ouvrira rien)
-  setTimeout(connectSSE, 3000);
+  // Start activity SSE 4s after load to let the dashboard initialise first
+  setTimeout(connectActivitySSE, 4000);
 
   console.log('[FP] Config chargée — backend:', FP_BACKEND_URL || '(même origine)', '| socket:', FP_SOCKET_URL);
 })();
