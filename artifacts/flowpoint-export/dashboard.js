@@ -2740,7 +2740,8 @@ let _gmapsLoading = false;
 async function _fetchGmapsKey() {
   if (_gmapsKey !== null) return _gmapsKey;
   try {
-    const r = await fetch('/api/maps/config', { credentials: 'include' });
+    const _tk = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+    const r = await fetch('/api/maps/config', { credentials: 'include', headers: _tk ? { 'Authorization': 'Bearer ' + _tk } : {} });
     if (r.ok) { const d = await r.json(); _gmapsKey = d.apiKey || ''; }
     else { _gmapsKey = ''; }
   } catch (_) { _gmapsKey = ''; }
@@ -2764,6 +2765,29 @@ function _showMapsBlockedFallback() {
       'Désactivez-le sur cette page pour afficher la carte interactive.' +
     '</div>';
 }
+
+// Google Maps appelle window.gm_authFailure quand la clé est invalide/non autorisée
+// pour ce domaine (RefererNotAllowedMapError) — on affiche un état honnête.
+window.gm_authFailure = function() {
+  const el = document.getElementById('fp-gmap');
+  if (!el) return;
+  el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;background:rgba(10,14,27,0.95)">' +
+    '<div style="font-size:28px">🗺️</div>' +
+    '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte indisponible sur ce domaine</div>' +
+    '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">La clé Google Maps n\'autorise pas ce domaine. Ajoutez-le dans les restrictions de la clé (Google Cloud Console).</div>' +
+    '</div>';
+};
+
+// Le code interne de Google Maps peut appeler IntersectionObserver.observe avec un
+// nœud détaché après un re-render SPA — on neutralise uniquement l'appel invalide.
+(function() {
+  if (typeof IntersectionObserver === 'undefined') return;
+  const _origObserve = IntersectionObserver.prototype.observe;
+  IntersectionObserver.prototype.observe = function(target) {
+    if (!(target instanceof Element)) return;
+    return _origObserve.call(this, target);
+  };
+})();
 
 function loadGoogleMaps(cb) {
   if (typeof google !== 'undefined' && google.maps) { cb(); return; }
@@ -5643,6 +5667,7 @@ function renderReports() {
   // SUB: LOCAL SEO REPORTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'local') {
+    const _lseo = STATE.localSeo || {};
     const zones = (_lseo.zones && _lseo.zones.length > 0) ? _lseo.zones : (PREVIEW_MODE ? [
       { name: '15e arrondissement', vis: 78, prev: 71, kw: 14, reviews: 4.4, comp: 'Moyen',   trend: +7,  dominant: true  },
       { name: '16e arrondissement', vis: 62, prev: 58, kw: 9,  reviews: 4.1, comp: 'Fort',    trend: +4,  dominant: false },
@@ -7429,7 +7454,8 @@ function renderBilling() {
         ? aiBlock((()=>{
             if(!usages||!usages.length)return 'Aucune donnée d\'usage disponible. Connectez votre compte pour voir vos métriques en temps réel.';
             const _crit=usages.filter(u=>(u.forecast||0)>80);
-            const _top=usages.sort((a,b)=>Math.round(b.v/b.max*100)-Math.round(a.v/a.max*100))[0];
+            const _live=usages.filter(u=>!u.na&&Number.isFinite(u.v)&&Number.isFinite(u.max)&&u.max>0);
+            const _top=_live.slice().sort((a,b)=>Math.round(b.v/b.max*100)-Math.round(a.v/a.max*100))[0];
             const _topPct=_top?Math.round(_top.v/_top.max*100):null;
             return 'Analyse usage '+CUR_MONTH+'. '+(_crit.length?'<strong>'+_crit.length+' ressource(s) en alerte prévision (&gt;80%)</strong> — action recommandée dans les 8 prochains jours. ':'')+(_top&&_topPct!=null?escHtml(_top.label||'Usage')+' à <strong>'+_topPct+'%</strong> — ressource la plus sollicitée. ':'')+(_crit.length===0?'Consommation stable sur toutes les ressources.':'');
           })(),
@@ -7439,9 +7465,9 @@ function renderBilling() {
       }
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Usage moyen', (()=>{ const _u = usages.length > 0 ? Math.round(usages.reduce((s,u)=>s+Math.round(u.v/u.max*100),0)/usages.length) : null; return displayStat(_u !== null ? _u + '%' : null, '58%'); })(), 'des ressources utilisées', 'up')}
+        ${statCard('Usage moyen', (()=>{ const _live = usages.filter(u => !u.na && Number.isFinite(u.v) && Number.isFinite(u.max) && u.max > 0); const _u = _live.length > 0 ? Math.round(_live.reduce((s,u)=>s+Math.round(u.v/u.max*100),0)/_live.length) : null; return displayStat(_u !== null ? _u + '%' : null, '58%'); })(), 'des ressources utilisées', 'up')}
         ${statCard('Ressources critiques', String(usages.filter(u => u.forecast > 80).length), 'seuil d\'alerte 80%', 'down')}
-        ${statCard('Prévision 30j', (()=>{ const _f = usages.length > 0 ? Math.round(usages.reduce((s,u)=>s+(u.forecast||0),0)/usages.length) : null; return displayStat(_f !== null ? _f + '%' : null, '82%'); })(), 'usage moyen prévu', 'neutral')}
+        ${statCard('Prévision 30j', (()=>{ const _fl = usages.filter(u => Number.isFinite(u.forecast)); const _f = _fl.length > 0 ? Math.round(_fl.reduce((s,u)=>s+u.forecast,0)/_fl.length) : null; return displayStat(_f !== null ? _f + '%' : null, '82%'); })(), 'usage moyen prévu', 'neutral')}
         ${statCard('Plan capacity', plan, 'adapté à votre usage actuel', 'up')}
       </div>
 
@@ -7956,7 +7982,7 @@ function renderAlertRules() {
 
   const ruleRow = (r) => {
     const unit = unitMap[r.type] || '';
-    const channels = (() => { try { return JSON.parse(r.channels); } catch { return ['email']; } })();
+    const channels = (() => { try { const v = typeof r.channels === 'string' ? JSON.parse(r.channels) : r.channels; return Array.isArray(v) ? v : (typeof v === 'string' && v ? v.split(',') : ['email']); } catch { return typeof r.channels === 'string' && r.channels ? r.channels.split(',') : ['email']; } })();
     const sites = (() => { try { return JSON.parse(r.siteUrls); } catch { return []; } })();
     const siteCheckboxes = availableSiteUrls.map(u => `
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;padding:3px 0">
@@ -8959,7 +8985,7 @@ function renderSettings() {
                 {name:'Google Search Console',   icon:'🔍', connected:gscConn, btn:"navigate('search-console')",desc:'Positions, impressions, CTR'},
                 {name:'GitHub',                  icon:'🐙', connected:ghConn,  btn:"navigate('github-integration')",desc:'Déploiements, commits, audits auto'},
                 {name:'Stripe',                  icon:'💳', connected:false,   btn:"navigate('billing')",         desc:'Paiements, abonnements, facturation clients'},
-                {name:'Meta Ads',                icon:'📊', connected:false,   btn:"navigate('settings')",        desc:'Campagnes Facebook & Instagram Ads'},
+                {name:'Meta Ads',                icon:'📊', connected:false,   btn:"", comingSoon:true,           desc:'Campagnes Facebook & Instagram Ads'},
               ].map(n => `
                 <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
                   ${nativeSvgIcon(n.name)}
@@ -8969,8 +8995,8 @@ function renderSettings() {
                   </div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <span style="font-size:11px;color:${n.connected?'var(--fp-success)':'var(--fp-text-faint)'};${n.connected?'':'opacity:0.5'}">${n.connected?'● Connecté':'○ Non connecté'}</span>
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="${n.connected?n.btn:"showToast('info','Allez dans Paramètres > Intégrations')"}">
-                      ${n.connected?'Gérer':'Connecter'}
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px"${n.comingSoon ? ' disabled title="Bientôt disponible"' : ''} onclick="${n.comingSoon ? '' : n.btn}">
+                      ${n.connected?'Gérer':n.comingSoon?'Bientôt':'Connecter'}
                     </button>
                   </div>
                 </div>
@@ -9453,8 +9479,8 @@ function renderSettings() {
         <div class="fp-card-title" style="color:#ef4444;margin-bottom:8px">⚠ Zone de danger</div>
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Ces actions sont irréversibles. Agissez avec précaution.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="showToast('error','Veuillez confirmer dans le modal de sécurité')">Supprimer toutes les données</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="showToast('error','Demande de suppression enregistrée')">Supprimer mon compte</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="openDataDeletionPanel('data')">Supprimer toutes les données</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="openDataDeletionPanel('account')">Supprimer mon compte</button>
         </div>
       </div>
     `;
@@ -11454,7 +11480,7 @@ function aiBlock(text, chips = []) {
     <div class="fp-ai-block-content">
       <div class="fp-ai-block-label">Analyse IA · Flowpoint</div>
       <div class="fp-ai-block-text">${text}</div>
-      ${chips.length ? `<div class="fp-ai-block-actions">${chips.map(c=>`<button class="fp-ai-chip" onclick="navigate('ai');setTimeout(()=>{const inp=document.getElementById('fp-ai-input');if(inp){inp.value=${JSON.stringify(c)};inp.dispatchEvent(new Event('input'));}},120)">${escHtml(c)}</button>`).join('')}</div>` : ''}
+      ${chips.length ? `<div class="fp-ai-block-actions">${chips.map(c=>`<button class="fp-ai-chip" data-q="${escHtml(c)}" onclick="var q=this.dataset.q;navigate('ai');setTimeout(function(){var inp=document.getElementById('ai-input');if(inp){inp.value=q;inp.dispatchEvent(new Event('input'));}},120)">${escHtml(c)}</button>`).join('')}</div>` : ''}
     </div>
   </div>`;
 }
@@ -13899,6 +13925,24 @@ async function init() {
   window.closeFloatPanel = closeFloatPanel;
   window.navigate = navigate;
   window.navigateSub = navigateSub;
+  window.openDataDeletionPanel = function(kind) {
+    const isAccount = kind === 'account';
+    const title = isAccount ? 'Supprimer mon compte' : 'Supprimer toutes les données';
+    const subject = encodeURIComponent(isAccount ? 'Demande de suppression de compte (RGPD)' : 'Demande de suppression des données (RGPD)');
+    const email = (STATE.me && STATE.me.email) ? STATE.me.email : '';
+    openFloatPanel(title, `
+      <div style="padding:4px">
+        <p style="font-size:12px;color:var(--fp-text-muted);line-height:1.5">
+          ${isAccount
+            ? 'La suppression de compte est définitive : votre workspace, vos sites, missions, audits et rapports seront effacés.'
+            : 'Cette action efface définitivement toutes les données de votre workspace (sites, missions, audits, monitors, rapports).'}
+          Conformément au RGPD, la demande est traitée par notre équipe sous 30 jours, depuis l'adresse email du compte${email ? ` (<strong>${escHtml(email)}</strong>)` : ''}.
+        </p>
+        <a class="fp-btn fp-btn-primary" style="width:100%;margin-top:10px;text-align:center;box-sizing:border-box" href="mailto:support@flowpoint.app?subject=${subject}">Envoyer la demande par email</a>
+        <button class="fp-btn fp-btn-ghost" style="width:100%;margin-top:8px" onclick="closeFloatPanel()">Annuler</button>
+      </div>
+    `);
+  };
   window.apiAction = apiAction;
   window.togglePushNotifications = togglePushNotifications;
   window.openFloatPanel = openFloatPanel;
@@ -16621,8 +16665,8 @@ function renderMonitorsConfig() {
               <div style="width:8px;height:8px;border-radius:50%;background:${ch.active ? ch.color : '#64748b'};${ch.active ? 'box-shadow:0 0 6px ' + ch.color + '60' : ''}"></div>
             </div>
             <div style="font-size:10.5px;color:var(--fp-text-muted);margin-bottom:10px">${ch.detail}</div>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px" onclick="${!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning','Email invalide');return;}try{await apiAction('PATCH','/api/me/prefs',{alertEmail:v});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error','Erreur lors de la sauvegarde');}});},50)" : `showToast('info','Configuration ${ch.name} disponible selon votre plan')`}">
-              ${!ch.active ? `🔒 ${ch.gate} requis` : 'Configurer'}
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;font-size:10px"${ch.active && ch.name !== 'Email' ? ' disabled title="Configuration en libre-service bientôt disponible — les alertes sont envoyées par email en attendant"' : ''} onclick="${!ch.active ? "navigate('billing')" : ch.name === 'Email' ? "openFloatPanel('Configurer les alertes Email',`<div style='padding:4px'><div class='fp-form-group'><label class='fp-form-label'>Email de réception des alertes</label><input class='fp-input' id='ch-email-input' placeholder='alerte@email.com' value='${escHtml(STATE.me?.email||'')}'/></div><div class='fp-form-group'><label class='fp-form-label'>Alertes à recevoir</label><div style='display:flex;flex-direction:column;gap:6px'><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Site DOWN</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox' checked/> Latence élevée</label><label style='display:flex;align-items:center;gap:8px;font-size:12px'><input type='checkbox'/> Reprise (site UP)</label></div></div><button class='fp-btn fp-btn-primary' style='width:100%' id='ch-email-save'>Sauvegarder</button></div>`);setTimeout(()=>{document.getElementById('ch-email-save')?.addEventListener('click',async()=>{const v=document.getElementById('ch-email-input')?.value?.trim();if(!v||!/^[^@]+@[^@]+\.[^@]+$/.test(v)){showToast('warning','Email invalide');return;}try{await apiAction('PATCH','/api/me/prefs',{alertEmail:v});showToast('success','Email d\\'alerte sauvegardé');closeFloatPanel();}catch(e){showToast('error','Erreur lors de la sauvegarde');}});},50)" : ''}">
+              ${!ch.active ? `🔒 ${ch.gate} requis` : ch.name === 'Email' ? 'Configurer' : 'Bientôt disponible'}
             </button>
           </div>
         `).join('')}
@@ -16828,7 +16872,7 @@ function renderLocalSEOZones() {
             </div>
 
             ${z.status !== 'fort'
-              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%" onclick="_fpMQ('Développer la zone '+(z.name||'locale'),'Local SEO','medium')">+ Mission pour cette zone</button>`
+              ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%" data-zn="${escHtml(z.name||'locale')}" onclick="_fpMQ('Développer la zone '+this.dataset.zn,'Local SEO','medium')">+ Mission pour cette zone</button>`
               : `<div style="font-size:11px;color:#22c55e;text-align:center;padding:6px">✓ Zone bien couverte</div>`
             }
           </div>
@@ -17172,7 +17216,7 @@ function renderLocalSEOOpportunities() {
               </div>
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
                 ${badge('Impact ' + o.impact, ic)}
-                <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="_fpMQ(o.title,'Local SEO',o.impact==='Critique'||o.impact==='Élevé'?'high':'medium')">Créer</button>
+                <button class="fp-btn fp-btn-primary fp-btn-sm" data-t="${escHtml(o.title)}" data-p="${(o.impact==='Critique'||o.impact==='Élevé')?'high':'medium'}" onclick="_fpMQ(this.dataset.t,'Local SEO',this.dataset.p)">Créer</button>
               </div>
             </div>
           `;
@@ -24061,7 +24105,7 @@ function renderMonitorsSLA() {
           `).join('')}
         </div>
         <div style="display:flex;gap:8px">
-          ${btn('Copier lien', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="showToast(\'success\',\'Lien copié !\')"')}
+          ${btn('Copier lien', 'fp-btn fp-btn-ghost fp-btn-sm', '', 'onclick="(function(){var u=(STATE.settings&&STATE.settings.statusPageUrl)||window.location.href;if(navigator.clipboard){navigator.clipboard.writeText(u).then(function(){showToast(\'success\',\'Lien copié !\')}).catch(function(){showToast(\'info\',u)});}else{showToast(\'info\',u);}})();"')}
           ${btn('Voir la page', 'fp-btn fp-btn-primary fp-btn-sm', 'globe', 'onclick="(function(){var u=(STATE.settings&&STATE.settings.statusPageUrl)||\'\';;if(u){window.open(u,\'_blank\');}else{openFloatPanel(\'Activer la page statut publique\',\'<div style=\\\"padding:4px\\\"><div class=\\\"fp-form-group\\\"><label class=\\\"fp-form-label\\\">URL de votre page de statut</label><input class=\\\"fp-input\\\" id=\\\"status-page-url-input\\\" placeholder=\\\"https://status.monsite.fr\\\"/></div><p style=\\\"font-size:11px;color:var(--fp-text-muted)\\\">Renseignez l\\\'URL où vos visiteurs pourront consulter le statut de vos services en temps réel.</p><button class=\\\"fp-btn fp-btn-primary\\\" id=\\\"status-page-save-btn\\\" style=\\\"width:100%\\\">Activer la page statut</button></div>\');setTimeout(function(){document.getElementById(\\\"status-page-save-btn\\\")?.addEventListener(\\\"click\\\",function(){var v=document.getElementById(\\\"status-page-url-input\\\")?.value?.trim();if(!v){showToast(\\\"warning\\\",\\\"Entrez une URL\\\");return;}STATE.settings=STATE.settings||{};STATE.settings.statusPageUrl=v;localStorage.setItem(\\\"fp-settings\\\",JSON.stringify(STATE.settings));apiAction(\\\"PATCH\\\",\\\"/api/me/prefs\\\",{statusPageUrl:v}).catch(function(){});showToast(\\\"success\\\",\\\"Page statut configurée\\\");closeFloatPanel();render();});},50);}})();"')}
         </div>
       </div>
@@ -25789,7 +25833,7 @@ function renderSettingsAPI() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${k.label}</div>
                 <div style="display:flex;gap:6px">
                   ${badge('Actif','success')}
-                  <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('warning','Clé régénérée — mettez à jour vos intégrations')">Régénérer</button>
+                  <button class="fp-btn fp-btn-ghost fp-btn-sm" disabled title="Rotation de clé en libre-service bientôt disponible — contactez le support pour régénérer votre clé">Régénérer</button>
                 </div>
               </div>
               <div class="fp-mono" style="font-size:11px;color:var(--fp-accent);background:rgba(37,99,235,0.08);border-radius:6px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
@@ -31396,9 +31440,9 @@ function renderLocalDominationMaps() {
             const top10 = cells.filter(c => c.rank <= 10).length;
             const out   = cells.filter(c => c.rank > 20).length;
             const stats = [
-              { label:'Top 3',      count:top3,  color:'#22c55e', pct:Math.round(top3/total*100)  },
-              { label:'Top 10',     count:top10, color:'#f59e0b', pct:Math.round(top10/total*100) },
-              { label:'Hors top 20',count:out,   color:'#ef4444', pct:Math.round(out/total*100)   },
+              { label:'Top 3',      count:top3,  color:'#22c55e', pct:total ? Math.round(top3/total*100)  : 0 },
+              { label:'Top 10',     count:top10, color:'#f59e0b', pct:total ? Math.round(top10/total*100) : 0 },
+              { label:'Hors top 20',count:out,   color:'#ef4444', pct:total ? Math.round(out/total*100)   : 0 },
             ];
             return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
               ${stats.map(s=>`

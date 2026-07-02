@@ -122,7 +122,8 @@
         try { window.FP_SSE_ACTIVITY.close(); } catch(_) {}
         window.FP_SSE_ACTIVITY = null;
       }
-      const actUrl = (FP_BACKEND_URL || '') + '/api/activity/events';
+      const _actTk = (function(){ try { return localStorage.getItem('token') || localStorage.getItem('fp_token') || ''; } catch(_) { return ''; } })();
+      const actUrl = (FP_BACKEND_URL || '') + '/api/activity/events' + (_actTk ? '?token=' + encodeURIComponent(_actTk) : '');
       const es = new EventSource(actUrl, { withCredentials: true });
       window.FP_SSE_ACTIVITY = es;
 

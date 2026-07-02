@@ -45,6 +45,13 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
     provided = apiKeyHeader.trim();
   } else if (typeof cookieToken === "string") {
     provided = cookieToken.trim();
+  } else if (
+    // EventSource cannot set headers — allow a query token for SSE streams only
+    req.method === "GET" &&
+    typeof req.query["token"] === "string" &&
+    (req.headers["accept"] ?? "").includes("text/event-stream")
+  ) {
+    provided = (req.query["token"] as string).trim();
   }
 
   if (!provided) {
@@ -57,7 +64,7 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
       return;
     }
     // Normal unauthenticated browser request — not a security event
-    logger.debug({ method: req.method, url: req.url }, "[Auth] 401 no credentials");
+    logger.debug({ method: req.method, url: req.url?.split("?")[0] }, "[Auth] 401 no credentials");
     res.status(401).json({ error: "Unauthorized: missing credentials" });
     return;
   }
@@ -90,6 +97,6 @@ async function _requireAuth(req: Request, res: Response, next: NextFunction): Pr
   }
 
   // Bad or expired token — informational, not alarming
-  logger.info({ method: req.method, url: req.url }, "[Auth] 401 invalid credentials");
+  logger.info({ method: req.method, url: req.url?.split("?")[0] }, "[Auth] 401 invalid credentials");
   res.status(401).json({ error: "Unauthorized: invalid credentials" });
 }

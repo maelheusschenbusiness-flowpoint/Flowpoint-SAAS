@@ -20,8 +20,17 @@
 
   // ─── UTILITAIRES PARTAGÉS ────────────────────────────────────────────────────
 
+  function _authHeaders() {
+    try {
+      var t = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+      return t ? { 'Authorization': 'Bearer ' + t } : {};
+    } catch (_) { return {}; }
+  }
+
   function apiFetch(path, opts) {
-    return fetch(path, Object.assign({ credentials: 'include' }, opts || {}))
+    var o = Object.assign({ credentials: 'include' }, opts || {});
+    o.headers = Object.assign({}, _authHeaders(), o.headers || {});
+    return fetch(path, o)
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
         return res.json();
@@ -32,7 +41,7 @@
     return fetch(path, {
       method: method,
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }).then(function (res) {
       if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
