@@ -31,8 +31,128 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS speed INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS date TEXT NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS issues INTEGER NOT NULL DEFAULT 0;`);
+    // BUGFIX: audits.org_id was never added outside of the RLS migration
+    // (pnpm run migrate), which had never been executed against production —
+    // POST /api/audits INSERTs an org_id column that did not exist there,
+    // causing a 500 (Postgres 42703 "column audits.org_id does not exist").
+    await run(client, `ALTER TABLE audits ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_url_idx ON audits(url);`);
     await run(client, `CREATE INDEX IF NOT EXISTS audits_created_at_idx ON audits(created_at);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS audits_org_id_idx ON audits(org_id);`);
+
+    // ── reports + share_tokens ───────────────────────────────────────────────
+    // BUGFIX: the `reports` table was never created on production — it only
+    // existed in migrations/002_dashboard_tables.sql, which is not wired into
+    // any automatic runner. POST /api/reports failed with Postgres 42P01
+    // ("relation reports does not exist") -> 500. Columns below match exactly
+    // what routes/reports.ts inserts/selects today.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS reports (
+        id                 TEXT PRIMARY KEY,
+        org_id             TEXT NOT NULL DEFAULT 'default',
+        name               TEXT NOT NULL,
+        type               TEXT NOT NULL DEFAULT 'PDF',
+        date               TEXT NOT NULL DEFAULT '',
+        pages              INTEGER NOT NULL DEFAULT 0,
+        shared             BOOLEAN NOT NULL DEFAULT false,
+        audit_id           TEXT DEFAULT '',
+        white_label        BOOLEAN NOT NULL DEFAULT false,
+        pdf_ready          BOOLEAN NOT NULL DEFAULT false,
+        meeting_notes_json TEXT DEFAULT '[]',
+        date_start         TEXT DEFAULT '',
+        date_end           TEXT DEFAULT '',
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'PDF';`);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS pages INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS shared BOOLEAN NOT NULL DEFAULT false;`);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS pdf_ready BOOLEAN NOT NULL DEFAULT false;`);
+    await run(client, `ALTER TABLE reports ADD COLUMN IF NOT EXISTS meeting_notes_json TEXT DEFAULT '[]';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS reports_org_id_idx ON reports(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS reports_date_idx ON reports(date DESC);`);
+
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS share_tokens (
+        token              TEXT PRIMARY KEY,
+        report_id          TEXT NOT NULL,
+        org_id             TEXT NOT NULL DEFAULT 'default',
+        report_json        TEXT DEFAULT '{}',
+        branding_json      TEXT DEFAULT '{}',
+        audits_json        TEXT DEFAULT '[]',
+        meeting_notes_json TEXT DEFAULT '[]',
+        views              INTEGER NOT NULL DEFAULT 0,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at         TIMESTAMPTZ
+      );
+    `);
+    await run(client, `ALTER TABLE share_tokens ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS share_tokens_report_id_idx ON share_tokens(report_id);`);
+
+    // ── tracked_keywords ─────────────────────────────────────────────────────
+    // BUGFIX: production's tracked_keywords table existed but was missing the
+    // `url` column (and several others) that keyword-engine.ts's trackKeyword()
+    // reads/writes — POST /api/keywords/track failed with Postgres 42703
+    // ("column tracked_keywords.url does not exist") -> 500.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS tracked_keywords (
+        id               TEXT PRIMARY KEY,
+        org_id           TEXT NOT NULL DEFAULT 'default',
+        keyword          TEXT NOT NULL,
+        url              TEXT,
+        location         TEXT NOT NULL DEFAULT 'France',
+        device           TEXT NOT NULL DEFAULT 'desktop',
+        intent           TEXT,
+        tag              TEXT,
+        cluster_id       TEXT,
+        active           BOOLEAN NOT NULL DEFAULT true,
+        current_position INTEGER,
+        prev_position    INTEGER,
+        position_change  INTEGER DEFAULT 0,
+        search_volume    INTEGER DEFAULT 0,
+        difficulty       INTEGER DEFAULT 0,
+        trend            TEXT DEFAULT 'stable',
+        volatility       REAL DEFAULT 0,
+        last_sync_at     TIMESTAMPTZ,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS url TEXT;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS intent TEXT;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS tag TEXT;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS cluster_id TEXT;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS current_position INTEGER;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS prev_position INTEGER;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS position_change INTEGER DEFAULT 0;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS search_volume INTEGER DEFAULT 0;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS difficulty INTEGER DEFAULT 0;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS trend TEXT DEFAULT 'stable';`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS volatility REAL DEFAULT 0;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    // Matches the ON CONFLICT (org_id, keyword, device, location) target used by trackKeyword().
+    await run(client, `ALTER TABLE tracked_keywords ADD CONSTRAINT tracked_keywords_org_kw_dev_loc_key UNIQUE (org_id, keyword, device, location);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS tracked_keywords_org_active_idx ON tracked_keywords(org_id, active);`);
+
+    // ── google_oauth_states ──────────────────────────────────────────────────
+    // BUGFIX: table was never created anywhere — migrations 014/015 only add
+    // RLS policies to it, assuming it already exists. registerOAuthState()
+    // in routes/google.ts failed with Postgres 42P01 ("relation
+    // google_oauth_states does not exist"), which was unhandled (no try/catch)
+    // -> raw 500 on GET /api/google/connect.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS google_oauth_states (
+        state      TEXT PRIMARY KEY,
+        org_id     TEXT NOT NULL DEFAULT 'default',
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `ALTER TABLE google_oauth_states ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS google_oauth_states_expires_idx ON google_oauth_states(expires_at);`);
 
     // ── audit_schedules ───────────────────────────────────────────────────────
     await run(client, `

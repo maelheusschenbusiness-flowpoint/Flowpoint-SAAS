@@ -182,10 +182,19 @@ router.get("/google/connect", async (req: Request, res: Response) => {
     });
     return;
   }
-  const orgId = getOrgId(req);
-  const state = crypto.randomBytes(16).toString("hex");
-  await registerOAuthState(state, orgId);
-  res.json({ ok: true, url: generateAuthUrl(state), state });
+  try {
+    const orgId = getOrgId(req);
+    const state = crypto.randomBytes(16).toString("hex");
+    await registerOAuthState(state, orgId);
+    res.json({ ok: true, url: generateAuthUrl(state), state });
+  } catch (err) {
+    // BUGFIX: this call previously had no try/catch — a DB error (e.g. the
+    // google_oauth_states table missing) crashed to an unhandled raw 500
+    // with no message. Now logged with the exact SQL error and reported as
+    // a 503 (temporarily unavailable due to backend issue), never a bare 500.
+    logger.error({ err }, "[google] GET /connect failed — could not register OAuth state");
+    res.status(503).json({ ok: false, error: "Google OAuth temporarily unavailable — please retry" });
+  }
 });
 
 router.get("/google/oauth/start", async (req: Request, res: Response) => {
@@ -193,10 +202,15 @@ router.get("/google/oauth/start", async (req: Request, res: Response) => {
     res.status(503).json({ ok: false, error: "Google OAuth not configured" });
     return;
   }
-  const orgId = getOrgId(req);
-  const state = crypto.randomBytes(16).toString("hex");
-  await registerOAuthState(state, orgId);
-  res.json({ ok: true, url: generateAuthUrl(state), state });
+  try {
+    const orgId = getOrgId(req);
+    const state = crypto.randomBytes(16).toString("hex");
+    await registerOAuthState(state, orgId);
+    res.json({ ok: true, url: generateAuthUrl(state), state });
+  } catch (err) {
+    logger.error({ err }, "[google] GET /oauth/start failed — could not register OAuth state");
+    res.status(503).json({ ok: false, error: "Google OAuth temporarily unavailable — please retry" });
+  }
 });
 
 router.get("/google/status", async (req: Request, res: Response) => {

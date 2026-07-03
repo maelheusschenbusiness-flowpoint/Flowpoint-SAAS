@@ -15240,6 +15240,10 @@ function renderOverviewChecklist() {
     </div>
 
     <!-- ADDITIONAL CHECKLISTS -->
+    <div style="display:flex;align-items:center;gap:6px;margin:20px 0 10px;font-size:11px;color:var(--fp-text-faint)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span>Ces listes sont enregistrées uniquement dans ce navigateur (pas synchronisées entre appareils ni sauvegardées côté serveur).</span>
+    </div>
     <div class="fp-grid-2">
       ${extraCategories.map(cat => {
         const catDone = cat.items.filter(i=>i.done).length;
