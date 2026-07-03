@@ -31,8 +31,18 @@ function getClientIp(req: Request): string {
 
 // gpt-5+ models don't support `max_tokens`/custom `temperature` — they require
 // `max_completion_tokens` and always run at temperature 1.
+// Every gpt-5 family model (including gpt-5-mini) can spend part of that
+// budget on internal reasoning tokens before writing visible output —
+// observed intermittently even on short prompts — which can silently return
+// an empty response. Force low reasoning effort and pad the budget so
+// there's always room left for the actual answer.
 function completionParams(model: string, maxTokens: number, temperature?: number): Record<string, unknown> {
-  if (/^gpt-5/.test(model)) return { max_completion_tokens: maxTokens };
+  if (/^gpt-5/.test(model)) {
+    return {
+      max_completion_tokens: maxTokens + 500,
+      reasoning_effort: "low",
+    };
+  }
   return { max_tokens: maxTokens, ...(temperature !== undefined ? { temperature } : {}) };
 }
 
@@ -261,7 +271,7 @@ Contexte de la plateforme:\n${fpContext}`;
         stream: true,
         // Request real token counts in the final chunk's usage field
         stream_options: { include_usage: true },
-        max_completion_tokens: 800,
+        ...completionParams("gpt-5-mini", 800),
       });
 
       for await (const chunk of streamResp) {
@@ -297,7 +307,7 @@ Contexte de la plateforme:\n${fpContext}`;
       const resp = await openai.chat.completions.create({
         model: "gpt-5-mini",
         messages,
-        max_completion_tokens: 800,
+        ...completionParams("gpt-5-mini", 800),
       });
       const reply = resp.choices[0]?.message?.content ?? "Je ne peux pas répondre pour le moment.";
       const latencyMs = Date.now() - t0;

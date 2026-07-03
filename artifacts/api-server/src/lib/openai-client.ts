@@ -59,8 +59,13 @@ export async function aiChatCompletion(opts: {
   const tokenLimit = opts.maxTokens ?? 512;
   const resp = await client.chat.completions.create({
     model,
+    // Every gpt-5 family model (including gpt-5-mini) can spend part of its
+    // completion budget on internal reasoning tokens before writing visible
+    // output — observed intermittently even on short prompts — which can
+    // silently return an empty response. Force low reasoning effort and pad
+    // the budget so there's always room left for the actual answer.
     ...(isGpt5Family(model)
-      ? { max_completion_tokens: tokenLimit }
+      ? { max_completion_tokens: tokenLimit + 500, reasoning_effort: "low" as const }
       : { max_tokens: tokenLimit, temperature: opts.temperature ?? 0.7 }),
     ...(opts.json ? { response_format: { type: "json_object" as const } } : {}),
     messages: [
