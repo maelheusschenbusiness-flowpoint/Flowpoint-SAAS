@@ -4,7 +4,7 @@
  *
  * Features: Hash routing, 5 Flow UI Kit components (Command Palette ⌘K,
  * Context Menu, Hover Toolbar, Floating Sidebar, FAB Menu),
- * AI Assistant (GPT-4o-mini via POST /api/ai/chat), real API integration,
+ * AI Assistant (GPT-5-mini via POST /api/ai/chat), real API integration,
  * Toast system, Keyboard shortcuts, Pinned items, Dark/Light theme,
  * Responsive mobile, Missions calendar view, Reports generator form.
  *
@@ -17,7 +17,7 @@
  *     const { message, context } = req.body;
  *     if (!message) return res.status(400).json({ error: 'No message' });
  *     const chat = await openai.chat.completions.create({
- *       model: 'gpt-4o-mini',
+ *       model: 'gpt-5-mini',
  *       messages: [
  *         { role:'system', content:`Tu es l\'assistant IA de Flowpoint, expert SEO local. Plan ${context?.plan}, score ${context?.avgScore}/100. Réponds en français, concis, avec ** pour le gras.` },
  *         { role:'user', content: message }

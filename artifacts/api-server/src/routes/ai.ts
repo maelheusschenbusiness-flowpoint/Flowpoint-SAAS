@@ -29,6 +29,13 @@ function getClientIp(req: Request): string {
     ?? "unknown";
 }
 
+// gpt-5+ models don't support `max_tokens`/custom `temperature` — they require
+// `max_completion_tokens` and always run at temperature 1.
+function completionParams(model: string, maxTokens: number, temperature?: number): Record<string, unknown> {
+  if (/^gpt-5/.test(model)) return { max_completion_tokens: maxTokens };
+  return { max_tokens: maxTokens, ...(temperature !== undefined ? { temperature } : {}) };
+}
+
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
   const entry = rateLimitMap.get(ip);
@@ -146,7 +153,7 @@ async function persistChatMessage(opts: {
       await client.query(`
         INSERT INTO ai_chat_history (id, org_id, user_id, role, content, feature, model, tokens_used)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, [id, opts.orgId, opts.userId, opts.role, opts.content, opts.feature, opts.model ?? "gpt-4o-mini", opts.tokensUsed ?? 0]);
+      `, [id, opts.orgId, opts.userId, opts.role, opts.content, opts.feature, opts.model ?? "gpt-5-mini", opts.tokensUsed ?? 0]);
     } finally {
       client.release();
     }
@@ -249,13 +256,12 @@ Contexte de la plateforme:\n${fpContext}`;
 
     try {
       const streamResp = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-5-mini",
         messages,
         stream: true,
         // Request real token counts in the final chunk's usage field
         stream_options: { include_usage: true },
-        max_tokens: 800,
-        temperature: 0.7,
+        max_completion_tokens: 800,
       });
 
       for await (const chunk of streamResp) {
@@ -275,9 +281,9 @@ Contexte de la plateforme:\n${fpContext}`;
 
       const latencyMs = Date.now() - t0;
       // 3. Atomic increment with REAL token counts AFTER completion — fire-and-forget, never blocks response
-      persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: "gpt-4o-mini", tokensUsed: tokensOut })
+      persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: "gpt-5-mini", tokensUsed: tokensOut })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: "gpt-4o-mini", tokensIn, tokensOut, latencyMs, success: true })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: "gpt-5-mini", tokensIn, tokensOut, latencyMs, success: true })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage failed"));
     } catch (err) {
       logger.error({ err }, "[AI] Streaming chat failed");
@@ -289,19 +295,18 @@ Contexte de la plateforme:\n${fpContext}`;
     try {
       const t0 = Date.now();
       const resp = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-5-mini",
         messages,
-        max_tokens: 800,
-        temperature: 0.7,
+        max_completion_tokens: 800,
       });
       const reply = resp.choices[0]?.message?.content ?? "Je ne peux pas répondre pour le moment.";
       const latencyMs = Date.now() - t0;
       const tokensIn = resp.usage?.prompt_tokens ?? 0;
       const tokensOut = resp.usage?.completion_tokens ?? 0;
 
-      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: "gpt-4o-mini", tokensUsed: tokensOut })
+      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: "gpt-5-mini", tokensUsed: tokensOut })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant non-stream) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: "gpt-4o-mini", tokensIn, tokensOut, latencyMs, success: true })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: "gpt-5-mini", tokensIn, tokensOut, latencyMs, success: true })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage (non-stream) failed"));
       res.json({ reply, streaming: false });
     } catch (err) {
@@ -354,8 +359,7 @@ Fournis une analyse structurée en français avec:
         { role: "system", content: "Tu es un expert SEO technique senior. Réponds en markdown structuré." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1200,
-      temperature: 0.5,
+      ...completionParams(model, 1200, 0.5),
     });
     const analysis = resp.choices[0]?.message?.content ?? "";
     const latencyMs = Date.now() - t0;
@@ -408,8 +412,7 @@ Chaque section : 3-4 recommandations avec priorité (🔴 critique / 🟡 import
         { role: "system", content: "Tu es un consultant SEO expert. Réponses en markdown, français." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1000,
-      temperature: 0.6,
+      ...completionParams(model, 1000, 0.6),
     });
     const recommendations = resp.choices[0]?.message?.content ?? "";
     const latencyMs = Date.now() - t0;
@@ -461,7 +464,7 @@ Analyse en 4 sections:
         { role: "system", content: "Tu es un expert CRO et UX. Réponds en français avec des recommandations concrètes." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1000,
+      ...completionParams(model, 1000),
     });
     const analysis = resp.choices[0]?.message?.content ?? "";
     await trackAIUsage({ feature: "cro_analysis", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
@@ -513,7 +516,7 @@ Génère une stratégie Local SEO complète:
         { role: "system", content: "Tu es un expert Local SEO et Google Business Profile. Réponds en français." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1200,
+      ...completionParams(model, 1200),
     });
     const recommendations = resp.choices[0]?.message?.content ?? "";
     await trackAIUsage({ feature: "market_intel", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
@@ -562,7 +565,7 @@ Fournis:
         { role: "system", content: "Tu es un analyste stratégique SEO. Réponds en français avec des insights actionnables." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1200,
+      ...completionParams(model, 1200),
     });
     const analysis = resp.choices[0]?.message?.content ?? "";
     await trackAIUsage({ feature: "market_intel", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
@@ -625,7 +628,7 @@ Rapport structuré:
         { role: "system", content: "Tu es un consultant SEO senior générant des rapports clients professionnels. Français formel, structuré en markdown." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1500,
+      ...completionParams(model, 1500),
     });
     const report = resp.choices[0]?.message?.content ?? "";
     await trackAIUsage({ feature: "report_gen", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
@@ -671,7 +674,7 @@ Format:
         { role: "system", content: "Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. Français." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 800,
+      ...completionParams(model, 800),
     });
     const summary = resp.choices[0]?.message?.content ?? "";
     await trackAIUsage({ feature: "strategist", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
@@ -729,7 +732,7 @@ Réponds uniquement avec le JSON array.`;
         { role: "system", content: "Tu génères des missions SEO JSON structurées. Réponds UNIQUEMENT avec du JSON valide, aucun autre texte." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1000,
+      ...completionParams(model, 1000),
       response_format: { type: "json_object" },
     });
     const raw = resp.choices[0]?.message?.content ?? "{}";
@@ -793,7 +796,7 @@ Génère:
         { role: "system", content: "Tu es un expert performance web (Core Web Vitals, PageSpeed). Réponds en français avec des actions concrètes et du code si nécessaire." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 1200,
+      ...completionParams(model, 1200),
     });
     const recommendations = resp.choices[0]?.message?.content ?? "";
     await trackAIUsage({ feature: "audit_summary", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
@@ -919,12 +922,12 @@ router.post("/ai/generate", async (req: Request, res: Response) => {
       });
     }
     const resp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini",
       messages: [
         { role: "system", content: `Tu es un assistant marketing expert. Type de contenu: ${type}.` },
         { role: "user", content: prompt },
       ],
-      max_tokens: 800,
+      max_completion_tokens: 800,
     });
     res.json({ content: resp.choices[0]?.message?.content ?? "", mock: false });
   } catch {

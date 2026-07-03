@@ -53,12 +53,15 @@ export async function completion(opts: CompletionOptions): Promise<string> {
   let lastErr: unknown;
   const { maxAttempts, baseDelayMs, maxDelayMs } = RETRY_CONFIG.openai;
 
+  // gpt-5+ models don't support `max_tokens`/custom `temperature` — they require
+  // `max_completion_tokens` and always run at temperature 1.
+  const isGpt5 = /^gpt-5/.test(model);
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await client.chat.completions.create({
         model,
-        max_tokens: maxTokens,
-        temperature: opts.temperature ?? 0.7,
+        ...(isGpt5 ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens, temperature: opts.temperature ?? 0.7 }),
         ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
         messages: [
           { role: 'system', content: opts.systemPrompt },

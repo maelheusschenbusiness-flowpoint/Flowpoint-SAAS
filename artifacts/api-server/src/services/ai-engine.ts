@@ -3,7 +3,7 @@ import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
 import { PLAN_AI_CREDITS, PLAN_AI_TOKENS } from "../lib/plans.js";
 
-export type AIModel = "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo";
+export type AIModel = "gpt-4o" | "gpt-5-mini" | "gpt-3.5-turbo";
 export type AIFeature =
   | "chat"
   | "strategist"
@@ -31,7 +31,7 @@ const CREDITS_PER_FEATURE: Record<AIFeature, number> = {
 
 const MODEL_COST_EUR_PER_1K_TOKENS: Record<AIModel, number> = {
   "gpt-4o":       0.005,
-  "gpt-4o-mini":  0.0002,
+  "gpt-5-mini":   0.0002,
   "gpt-3.5-turbo":0.0003,
 };
 
@@ -103,15 +103,15 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
 }
 
 export function selectOptimalModel(feature: AIFeature, quality: "fast" | "balanced" | "max" = "balanced"): AIModel {
-  if (quality === "fast") return "gpt-4o-mini";
+  if (quality === "fast") return "gpt-5-mini";
   if (quality === "max")  return "gpt-4o";
 
   const highQuality: AIFeature[] = ["strategist", "forecast", "market_intel"];
   const fast: AIFeature[]        = ["audit_summary", "mission_auto"];
 
   if (highQuality.includes(feature)) return "gpt-4o";
-  if (fast.includes(feature))        return "gpt-4o-mini";
-  return "gpt-4o-mini";
+  if (fast.includes(feature))        return "gpt-5-mini";
+  return "gpt-5-mini";
 }
 
 export async function consumeAICredits(opts: {

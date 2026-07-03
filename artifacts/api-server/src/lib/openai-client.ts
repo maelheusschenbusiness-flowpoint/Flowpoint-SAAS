@@ -37,6 +37,12 @@ export function aiConfigured(): boolean {
  * One-shot chat completion through the resolved provider.
  * Throws if no AI provider is configured or the call fails.
  */
+// gpt-5+ models don't support `max_tokens`/`temperature` — they require
+// `max_completion_tokens` and always run at temperature 1.
+function isGpt5Family(model: string): boolean {
+  return /^gpt-5/.test(model);
+}
+
 export async function aiChatCompletion(opts: {
   systemPrompt: string;
   userPrompt: string;
@@ -49,10 +55,13 @@ export async function aiChatCompletion(opts: {
   if (!conn) throw new Error("AI_NOT_CONFIGURED");
   const { default: OpenAI } = await import("openai");
   const client = new OpenAI({ apiKey: conn.apiKey, ...(conn.baseURL ? { baseURL: conn.baseURL } : {}) });
+  const model = opts.model ?? "gpt-5-mini";
+  const tokenLimit = opts.maxTokens ?? 512;
   const resp = await client.chat.completions.create({
-    model: opts.model ?? "gpt-4o-mini",
-    max_tokens: opts.maxTokens ?? 512,
-    temperature: opts.temperature ?? 0.7,
+    model,
+    ...(isGpt5Family(model)
+      ? { max_completion_tokens: tokenLimit }
+      : { max_tokens: tokenLimit, temperature: opts.temperature ?? 0.7 }),
     ...(opts.json ? { response_format: { type: "json_object" as const } } : {}),
     messages: [
       { role: "system", content: opts.systemPrompt },

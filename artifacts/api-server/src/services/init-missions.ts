@@ -56,7 +56,7 @@ export async function initMissionsTables(): Promise<void> {
         org_id        TEXT NOT NULL DEFAULT 'default',
         mission_id    TEXT,
         prompt_type   TEXT NOT NULL DEFAULT 'generate',
-        model         TEXT DEFAULT 'gpt-4o-mini',
+        model         TEXT DEFAULT 'gpt-5-mini',
         tokens_used   INTEGER DEFAULT 0,
         credits_used  INTEGER DEFAULT 0,
         response_ok   BOOLEAN DEFAULT true,

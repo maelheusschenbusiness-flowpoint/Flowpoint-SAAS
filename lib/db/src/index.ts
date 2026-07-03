@@ -386,7 +386,7 @@ export const aiUsageLogsTable = pgTable("ai_usage_logs", {
   orgId:       text("org_id").notNull().default("default"),
   userId:      text("user_id"),
   feature:     text("feature").notNull(),
-  model:       text("model").notNull().default("gpt-4o-mini"),
+  model:       text("model").notNull().default("gpt-5-mini"),
   tokensUsed:  integer("tokens_used").notNull().default(0),
   creditsUsed: integer("credits_used").notNull().default(0),
   costEur:     real("cost_eur").notNull().default(0),

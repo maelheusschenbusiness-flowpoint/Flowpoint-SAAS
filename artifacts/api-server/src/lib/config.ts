@@ -58,8 +58,8 @@ export interface AILimits {
 }
 
 export const AI_LIMITS: Record<PlanTier, AILimits> = {
-  standard: { creditsMonthly:30000,  reportsPerMonth:5,   summariesPerDay:10,  imageGenPerMonth:0,   maxPromptTokens:2000,  model:'gpt-4o-mini' },
-  pro:      { creditsMonthly:100000, reportsPerMonth:50,  summariesPerDay:100, imageGenPerMonth:20,  maxPromptTokens:8000,  model:'gpt-4o-mini' },
+  standard: { creditsMonthly:30000,  reportsPerMonth:5,   summariesPerDay:10,  imageGenPerMonth:0,   maxPromptTokens:2000,  model:'gpt-5-mini' },
+  pro:      { creditsMonthly:100000, reportsPerMonth:50,  summariesPerDay:100, imageGenPerMonth:20,  maxPromptTokens:8000,  model:'gpt-5-mini' },
   ultra:    { creditsMonthly:500000, reportsPerMonth:500, summariesPerDay:999, imageGenPerMonth:200, maxPromptTokens:32000, model:'gpt-4o' },
   agency:   { creditsMonthly:999999, reportsPerMonth:999, summariesPerDay:999, imageGenPerMonth:999, maxPromptTokens:32000, model:'gpt-4o' },
 };

@@ -31,3 +31,4 @@
 - [Rate limit 429 structural fix](rate-limit-GET-exemption.md) — authenticated GET requests must bypass globalRateLimit; only writes + anonymous are counted; dashboard loads ~60 GETs per session
 - [RLS sentinel bug — org_id vs rowsecurity](rls-sentinel-fix.md) — sentinel must check pg_tables.rowsecurity=true not audits.org_id; org_id exists from table creation, causing migration to always skip
 - [init-data-tables.ts self-healing schema](init-data-tables-self-healing.md) — only init-*.ts files auto-run in prod; raw migrations/*.sql never do; fix prod schema drift there, not in migration files
+- [gpt-5 family API param compatibility](gpt5-migration-params.md) — gpt-5+ needs max_completion_tokens (not max_tokens) and no custom temperature; model-string swaps alone break silently at runtime
