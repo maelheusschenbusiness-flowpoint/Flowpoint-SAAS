@@ -97,6 +97,44 @@ export async function initMonitorsTables(): Promise<void> {
       );
     `);
 
+    // Production schema drift fix: monitor_incidents.org_id was somehow created
+    // as a UUID column with an FK to organizations(id), while every other
+    // tenant table (monitors, monitor_checks, etc.) uses TEXT org ids like
+    // "default". Inserting a text org id into a UUID column throws 22P02
+    // ("invalid input syntax for type uuid"), which aborts the enclosing
+    // Postgres transaction — and since COMMIT on an aborted transaction is
+    // silently converted to ROLLBACK (no JS exception thrown), the entire
+    // check-result write (including monitor_checks insert + monitors update
+    // that already succeeded earlier in the same transaction) was being
+    // silently discarded. Force org_id back to TEXT and drop the stray FK.
+    await client.query(`
+      DO $$
+      DECLARE
+        col_type text;
+      BEGIN
+        SELECT data_type INTO col_type
+        FROM information_schema.columns
+        WHERE table_name = 'monitor_incidents' AND column_name = 'org_id';
+
+        IF col_type = 'uuid' THEN
+          -- Drop any FK constraint referencing organizations before retyping.
+          EXECUTE COALESCE((
+            SELECT string_agg(format('ALTER TABLE monitor_incidents DROP CONSTRAINT %I', tc.constraint_name), '; ')
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_name = 'monitor_incidents'
+              AND tc.constraint_type = 'FOREIGN KEY'
+              AND kcu.column_name = 'org_id'
+          ), 'SELECT 1');
+
+          ALTER TABLE monitor_incidents ALTER COLUMN org_id DROP DEFAULT;
+          ALTER TABLE monitor_incidents ALTER COLUMN org_id TYPE TEXT USING org_id::text;
+          ALTER TABLE monitor_incidents ALTER COLUMN org_id SET DEFAULT 'default';
+        END IF;
+      END $$;
+    `);
+
     await client.query(`ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS monitor_id  TEXT NOT NULL DEFAULT '';`);
     await client.query(`ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS org_id      TEXT NOT NULL DEFAULT 'default';`);
     await client.query(`ALTER TABLE monitor_incidents ADD COLUMN IF NOT EXISTS started_at  TIMESTAMP NOT NULL DEFAULT NOW();`);
