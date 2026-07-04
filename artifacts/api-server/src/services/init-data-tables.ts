@@ -134,7 +134,19 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ;`);
     await run(client, `ALTER TABLE tracked_keywords ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     // Matches the ON CONFLICT (org_id, keyword, device, location) target used by trackKeyword().
-    await run(client, `ALTER TABLE tracked_keywords ADD CONSTRAINT tracked_keywords_org_kw_dev_loc_key UNIQUE (org_id, keyword, device, location);`);
+    // Idempotent: skips silently if the constraint already exists instead of
+    // logging a "Non-fatal SQL warn" on every restart.
+    await run(client, `
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'tracked_keywords_org_kw_dev_loc_key'
+        ) THEN
+          ALTER TABLE tracked_keywords
+            ADD CONSTRAINT tracked_keywords_org_kw_dev_loc_key UNIQUE (org_id, keyword, device, location);
+        END IF;
+      END $$;
+    `);
     await run(client, `CREATE INDEX IF NOT EXISTS tracked_keywords_org_active_idx ON tracked_keywords(org_id, active);`);
 
     // ── google_oauth_states ──────────────────────────────────────────────────
