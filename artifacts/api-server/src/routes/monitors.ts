@@ -482,9 +482,12 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
     const orgId          = (monitor["org_id"] as string) ?? "default";
 
     const result    = await performCheck(monitor["url"] as string);
+    logger.info({ monitorId: id, previousStatus, result }, "[DEBUG handleCheck] performCheck result");
     const newStatus = await saveCheckResult(id, orgId, previousStatus, result);
+    logger.info({ monitorId: id, newStatus }, "[DEBUG handleCheck] saveCheckResult returned");
 
     const updated = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
+    logger.info({ monitorId: id, updatedRow: updated.rows[0] }, "[DEBUG handleCheck] post-save re-select");
 
     store.logActivity({
       type: "monitor",
@@ -501,10 +504,16 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       responseTime: result.latencyMs,
       statusCode:   result.statusCode,
       monitor:      updated.rowCount ? toPublic(updated.rows[0]) : null,
+      _debug: {
+        previousStatus,
+        performCheckResult: result,
+        updatedRowCount: updated.rowCount,
+        updatedRowRaw: updated.rows[0] ?? null,
+      },
     });
   } catch (err) {
     logger.error({ err }, "[monitors] CHECK failed");
-    res.status(500).json({ error: "Check failed" });
+    res.status(500).json({ error: "Check failed", _debug: { message: (err as Error)?.message, stack: (err as Error)?.stack } });
   }
 }
 
