@@ -297,8 +297,7 @@ Contexte de la plateforme:\n${fpContext}`;
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage failed"));
     } catch (err) {
       logger.error({ err }, "[AI] Streaming chat failed");
-      const _dbg = err instanceof Error ? err.message : String(err);
-      res.write(`data: ${JSON.stringify({ error: "Erreur de génération IA", _dbg })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: "Erreur de génération IA" })}\n\n`);
       res.end();
     }
   } else {
@@ -322,8 +321,7 @@ Contexte de la plateforme:\n${fpContext}`;
       res.json({ reply, streaming: false });
     } catch (err) {
       logger.error({ err }, "[AI] Chat failed");
-      const _dbg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: "Erreur IA — réessayez", _dbg });
+      res.status(500).json({ error: "Erreur IA — réessayez" });
     }
   }
 });
@@ -693,8 +691,7 @@ Format:
     res.json({ summary, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /summary failed — returning fallback");
-    const _dbg = err instanceof Error ? err.message : String(err);
-    res.json({ summary: "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.", fallback: true, _dbg });
+    res.json({ summary: "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.", fallback: true });
   }
 });
 
