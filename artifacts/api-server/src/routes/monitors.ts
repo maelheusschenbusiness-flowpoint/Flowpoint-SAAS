@@ -128,10 +128,11 @@ async function saveCheckResult(
   orgId: string,
   previousStatus: string,
   result: CheckResult,
-): Promise<string> {
+): Promise<{ newStatus: string; debug: Record<string, unknown> }> {
   const checkId   = `chk${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
   const checkedAt = Date.now();
   const newStatus = result.ok ? "up" : "down";
+  const debug: Record<string, unknown> = { orgId, checkId };
 
   let notifyAfterCommit:
     | { kind: "down"; mon: Record<string, unknown> | undefined }
@@ -145,6 +146,7 @@ async function saveCheckResult(
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [checkId, monitorId, orgId, checkedAt, result.ok, result.latencyMs, result.statusCode || null, result.error],
     );
+    debug["step1_insertCheck_rowCount"] = r1.rowCount;
     logger.info({ monitorId, checkId, rowCount: r1.rowCount }, "[DEBUG saveCheckResult] step1 insert check done");
 
     // 2. Compute rolling uptime % (last 30 days)
@@ -159,6 +161,9 @@ async function saveCheckResult(
     const okCount   = Number(uptimeRes.rows[0]?.ok_count ?? 0);
     const total     = Number(uptimeRes.rows[0]?.total    ?? 1);
     const uptimePct = total > 0 ? Math.round((okCount / total) * 1000) / 10 : 100;
+    debug["step2_okCount"] = okCount;
+    debug["step2_total"] = total;
+    debug["step2_uptimePct"] = uptimePct;
     logger.info({ monitorId, okCount, total, uptimePct }, "[DEBUG saveCheckResult] step2 uptime computed");
 
     // 3. Update monitor row
@@ -168,6 +173,9 @@ async function saveCheckResult(
        WHERE id = $5`,
       [newStatus, result.latencyMs, uptimePct, new Date().toISOString(), monitorId],
     );
+    debug["step3_updateMonitor_rowCount"] = r3.rowCount;
+    debug["step3_newStatus"] = newStatus;
+    debug["step3_monitorId"] = monitorId;
     logger.info({ monitorId, newStatus, rowCount: r3.rowCount }, "[DEBUG saveCheckResult] step3 update monitor done");
 
     // 4. Incident transitions
@@ -260,7 +268,7 @@ async function saveCheckResult(
     })();
   }
 
-  return newStatus;
+  return { newStatus, debug };
 }
 
 // ── GET /monitors ─────────────────────────────────────────────────────────────
@@ -483,8 +491,8 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
 
     const result    = await performCheck(monitor["url"] as string);
     logger.info({ monitorId: id, previousStatus, result }, "[DEBUG handleCheck] performCheck result");
-    const newStatus = await saveCheckResult(id, orgId, previousStatus, result);
-    logger.info({ monitorId: id, newStatus }, "[DEBUG handleCheck] saveCheckResult returned");
+    const { newStatus, debug: saveDebug } = await saveCheckResult(id, orgId, previousStatus, result);
+    logger.info({ monitorId: id, newStatus, saveDebug }, "[DEBUG handleCheck] saveCheckResult returned");
 
     const updated = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
     logger.info({ monitorId: id, updatedRow: updated.rows[0] }, "[DEBUG handleCheck] post-save re-select");
@@ -507,6 +515,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       _debug: {
         previousStatus,
         performCheckResult: result,
+        saveDebug,
         updatedRowCount: updated.rowCount,
         updatedRowRaw: updated.rows[0] ?? null,
       },
