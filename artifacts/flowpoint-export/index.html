@@ -444,6 +444,13 @@
     lastEmail = email;
     setLoading(signupBtn, true);
 
+    try {
+      localStorage.setItem('fp_cart', JSON.stringify({ plan: _selectedPlan || 'pro', addons: {} }));
+    } catch (e) {}
+    try {
+      sessionStorage.setItem('fp_next', '/checkout.html');
+    } catch (e) {}
+
     fetch('/api/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
