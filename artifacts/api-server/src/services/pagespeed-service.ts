@@ -33,7 +33,7 @@ export async function analyzePSI(url: string, strategy: "mobile" | "desktop", _o
   const endpoint = `${PSI_ENDPOINT}?url=${encodeURIComponent(url)}&strategy=${strategy}${apiKey ? `&key=${apiKey}` : ""}`;
 
   const res = await fetch(endpoint, { signal: AbortSignal.timeout(25_000) });
-  if (!res.ok) throw new Error(`PSI API ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`PSI API ${res.status} [_dbgKeyLen=${apiKey.length},_dbgKeyLast4=${apiKey.slice(-4)},_dbgKeyFirst4=${apiKey.slice(0,4)}]: ${await res.text()}`);
 
   const data = await res.json() as Record<string, unknown>;
   const cats = (data["lighthouseResult"] as Record<string, unknown>)?.["categories"] as Record<string, { score: number }>;
