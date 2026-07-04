@@ -678,15 +678,37 @@ Format:
   try {
     const t0 = Date.now();
     const model = selectOptimalModel("strategist", "max");
-    const resp = await openai.chat.completions.create({
+    const chatMessages = [
+      { role: "system" as const, content: "Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. Français." },
+      { role: "user" as const, content: prompt },
+    ];
+
+    // gpt-5 reasoning models can occasionally spend the entire token budget on
+    // hidden reasoning and return empty visible content. Retry once with a
+    // larger budget before falling back.
+    let summary = "";
+    let resp = await openai.chat.completions.create({
       model,
-      messages: [
-        { role: "system", content: "Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. Français." },
-        { role: "user", content: prompt },
-      ],
+      messages: chatMessages,
       ...completionParams(model, 800),
     });
-    const summary = resp.choices[0]?.message?.content ?? "";
+    summary = resp.choices[0]?.message?.content ?? "";
+
+    if (!summary.trim()) {
+      logger.warn({ finishReason: resp.choices[0]?.finish_reason }, "[AI] /summary empty content — retrying with larger budget");
+      resp = await openai.chat.completions.create({
+        model,
+        messages: chatMessages,
+        ...completionParams(model, 1600),
+      });
+      summary = resp.choices[0]?.message?.content ?? "";
+    }
+
+    if (!summary.trim()) {
+      res.json({ summary: "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.", fallback: true });
+      return;
+    }
+
     await trackAIUsage({ feature: "strategist", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
     res.json({ summary, creditsRemaining: creditCheck.remaining });
   } catch (err) {
