@@ -192,6 +192,15 @@ async function saveCheckResult(
     // gathered here (still inside the transaction, awaited), and any actual
     // email/SMS send must happen AFTER withOrgDb resolves, using data only —
     // never the transaction's client.
+    // SAVEPOINT guard: any SQL error inside this block (e.g. a schema
+    // mismatch on monitor_incidents) would otherwise abort the ENTIRE
+    // enclosing transaction. Postgres silently converts a COMMIT on an
+    // aborted transaction into a ROLLBACK (no JS exception thrown), which
+    // previously discarded the already-succeeded monitor_checks insert and
+    // monitors update from sections 1-3 above without any visible error.
+    // Wrapping this block in its own SAVEPOINT means a failure here can be
+    // rolled back in isolation, leaving the rest of the transaction intact.
+    await client.query("SAVEPOINT incident_txn");
     try {
       if (previousStatus === "up" && newStatus === "down") {
         // monitor_incidents.id is a UUID column — must use crypto.randomUUID(),
@@ -222,7 +231,9 @@ async function saveCheckResult(
         );
         notifyAfterCommit = { kind: "up", mon: monRow.rows[0], downDurationMin };
       }
+      await client.query("RELEASE SAVEPOINT incident_txn");
     } catch (err) {
+      await client.query("ROLLBACK TO SAVEPOINT incident_txn").catch(() => {});
       logger.error({ err, monitorId, previousStatus, newStatus }, "[monitors] incident transition failed — check result was still saved");
     }
   });
