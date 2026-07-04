@@ -133,13 +133,19 @@ async function saveCheckResult(
   const checkedAt = Date.now();
   const newStatus = result.ok ? "up" : "down";
 
+  let notifyAfterCommit:
+    | { kind: "down"; mon: Record<string, unknown> | undefined }
+    | { kind: "up"; mon: Record<string, unknown> | undefined; downDurationMin: number }
+    | null = null;
+
   await withOrgDb(orgId, async (client) => {
     // 1. Insert check record
-    await client.query(
+    const r1 = await client.query(
       `INSERT INTO monitor_checks (id, monitor_id, org_id, checked_at, ok, latency, status_code, error)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [checkId, monitorId, orgId, checkedAt, result.ok, result.latencyMs, result.statusCode || null, result.error],
     );
+    logger.info({ monitorId, checkId, rowCount: r1.rowCount }, "[DEBUG saveCheckResult] step1 insert check done");
 
     // 2. Compute rolling uptime % (last 30 days)
     const uptimeRes = await client.query(
@@ -153,18 +159,31 @@ async function saveCheckResult(
     const okCount   = Number(uptimeRes.rows[0]?.ok_count ?? 0);
     const total     = Number(uptimeRes.rows[0]?.total    ?? 1);
     const uptimePct = total > 0 ? Math.round((okCount / total) * 1000) / 10 : 100;
+    logger.info({ monitorId, okCount, total, uptimePct }, "[DEBUG saveCheckResult] step2 uptime computed");
 
     // 3. Update monitor row
-    await client.query(
+    const r3 = await client.query(
       `UPDATE monitors
        SET status = $1, latency = $2, uptime = $3, last_check = $4, updated_at = NOW()
        WHERE id = $5`,
       [newStatus, result.latencyMs, uptimePct, new Date().toISOString(), monitorId],
     );
+    logger.info({ monitorId, newStatus, rowCount: r3.rowCount }, "[DEBUG saveCheckResult] step3 update monitor done");
 
     // 4. Incident transitions
     // Wrapped in try/catch: an incident insert/update failure (e.g. schema
     // drift) must never abort the check-result write or crash the cron loop.
+    // IMPORTANT: do NOT fire-and-forget any client.query() calls here — this
+    // `client` belongs to the withOrgDb transaction and gets COMMIT'd and
+    // released back to the pool the moment this callback returns. An
+    // un-awaited query on it can execute after release, against a connection
+    // that's since been handed to a completely different request's
+    // transaction (wrong org context) or silently dropped — and previously
+    // caused the entire check-result write to appear to succeed while
+    // nothing was actually persisted. All notification data must be
+    // gathered here (still inside the transaction, awaited), and any actual
+    // email/SMS send must happen AFTER withOrgDb resolves, using data only —
+    // never the transaction's client.
     try {
       if (previousStatus === "up" && newStatus === "down") {
         // monitor_incidents.id is a UUID column — must use crypto.randomUUID(),
@@ -176,33 +195,10 @@ async function saveCheckResult(
            VALUES ($1, $2, $3, NOW(), $4)`,
           [incId, monitorId, orgId, result.error ?? "Service unreachable"],
         );
-        // Fire-and-forget: monitor DOWN email + SMS
-        (async () => {
-          try {
-            const { mailer } = await import("../services/mailer.js");
-            const { store } = await import("../services/store.js");
-            const monRow = await client.query(
-              `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
-            );
-            const mon = monRow.rows[0];
-            const recipient = (mon?.alert_email as string | undefined)?.trim() || store.me.email;
-            if (recipient && mon) {
-              await mailer.sendMonitorDown({
-                to: recipient,
-                monitorName: String(mon.name),
-                url: String(mon.url),
-                statusCode: result.statusCode ?? undefined,
-              });
-            }
-            const phone = (mon?.alert_phone as string | undefined)?.trim();
-            if (phone && mon) {
-              const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
-              if (twilioConfigured()) {
-                await sendSms(phone, `Flowpoint ALERTE : ${String(mon.name)} (${String(mon.url)}) est DOWN.`);
-              }
-            }
-          } catch { /* non-fatal */ }
-        })();
+        const monRow = await client.query(
+          `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
+        );
+        notifyAfterCommit = { kind: "down", mon: monRow.rows[0] };
       } else if (previousStatus === "down" && newStatus === "up") {
         const incRes = await client.query(
           `UPDATE monitor_incidents
@@ -212,39 +208,57 @@ async function saveCheckResult(
            RETURNING EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER AS duration_s`,
           [monitorId],
         );
-        // Fire-and-forget: monitor UP email + SMS
         const downDurationMin = incRes.rows[0]?.duration_s ? Math.round(Number(incRes.rows[0].duration_s) / 60) : 0;
-        (async () => {
-          try {
-            const { mailer } = await import("../services/mailer.js");
-            const { store } = await import("../services/store.js");
-            const monRow = await client.query(
-              `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
-            );
-            const mon = monRow.rows[0];
-            const recipient = (mon?.alert_email as string | undefined)?.trim() || store.me.email;
-            if (recipient && mon) {
-              await mailer.sendMonitorUp({
-                to: recipient,
-                monitorName: String(mon.name),
-                url: String(mon.url),
-                downDurationMin,
-              });
-            }
-            const phone = (mon?.alert_phone as string | undefined)?.trim();
-            if (phone && mon) {
-              const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
-              if (twilioConfigured()) {
-                await sendSms(phone, `Flowpoint : ${String(mon.name)} (${String(mon.url)}) est de nouveau UP.`);
-              }
-            }
-          } catch { /* non-fatal */ }
-        })();
+        const monRow = await client.query(
+          `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
+        );
+        notifyAfterCommit = { kind: "up", mon: monRow.rows[0], downDurationMin };
       }
     } catch (err) {
       logger.error({ err, monitorId, previousStatus, newStatus }, "[monitors] incident transition failed — check result was still saved");
     }
   });
+
+  // Fire-and-forget notifications AFTER the transaction has committed and
+  // its client has been released — never touch the transaction's client here.
+  if (notifyAfterCommit) {
+    (async () => {
+      try {
+        const { mailer } = await import("../services/mailer.js");
+        const { store } = await import("../services/store.js");
+        const mon = notifyAfterCommit!.mon;
+        if (!mon) return;
+        const recipient = (mon.alert_email as string | undefined)?.trim() || store.me.email;
+        if (recipient) {
+          if (notifyAfterCommit!.kind === "down") {
+            await mailer.sendMonitorDown({
+              to: recipient,
+              monitorName: String(mon.name),
+              url: String(mon.url),
+              statusCode: result.statusCode ?? undefined,
+            });
+          } else {
+            await mailer.sendMonitorUp({
+              to: recipient,
+              monitorName: String(mon.name),
+              url: String(mon.url),
+              downDurationMin: notifyAfterCommit!.downDurationMin ?? 0,
+            });
+          }
+        }
+        const phone = (mon.alert_phone as string | undefined)?.trim();
+        if (phone) {
+          const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
+          if (twilioConfigured()) {
+            const msg = notifyAfterCommit!.kind === "down"
+              ? `Flowpoint ALERTE : ${String(mon.name)} (${String(mon.url)}) est DOWN.`
+              : `Flowpoint : ${String(mon.name)} (${String(mon.url)}) est de nouveau UP.`;
+            await sendSms(phone, msg);
+          }
+        }
+      } catch { /* non-fatal */ }
+    })();
+  }
 
   return newStatus;
 }
