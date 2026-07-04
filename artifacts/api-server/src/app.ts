@@ -254,13 +254,25 @@ app.get(["/cancel", "/cancel.html"], servePage("cancel.html"));
 
 // Smart cache headers for static assets:
 //  - HTML pages       → no-store (always fresh, auth-sensitive)
-//  - JS/CSS/fonts     → 1 year immutable (filenames carry content hashes)
+//  - Fonts            → 1 year immutable (never change, no hash needed)
+//  - Hashed JS/CSS    → 1 year immutable (filename carries a content hash,
+//                       e.g. app.a1b2c3.js — safe to cache forever)
+//  - Un-hashed JS/CSS → must-revalidate (dashboard.js/dashboard.css etc ship
+//                       under a fixed filename and change on every deploy;
+//                       caching these as "immutable" silently served stale
+//                       code to returning users for up to a year after any
+//                       fix — always revalidate with the server via ETag)
 //  - Images           → 7 days (may change without hash)
 //  - Everything else  → no-store (safe default)
+const HASHED_ASSET_RE = /-[a-f0-9]{8,}\.(js|css)(\?|$)/i;
 const staticCache = (req: Request, res: Response, next: Function) => {
   const url = req.url.split("?")[0] ?? "";
-  if (/\.(js|css|woff2?|ttf|otf)(\?|$)/.test(url)) {
+  if (/\.(woff2?|ttf|otf)(\?|$)/.test(url)) {
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  } else if (HASHED_ASSET_RE.test(url)) {
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  } else if (/\.(js|css)(\?|$)/.test(url)) {
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
   } else if (/\.(png|jpg|jpeg|gif|webp|svg|ico)(\?|$)/.test(url)) {
     res.setHeader("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
   } else {

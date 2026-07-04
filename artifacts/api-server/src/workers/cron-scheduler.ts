@@ -14,6 +14,14 @@ const jobs: Map<string, CronJob> = new Map([
   ["forecast-refresh", { name: "forecast-refresh", interval: "24h", lastRun: null, status: "idle", runCount: 0 }],
 ]);
 
+export function markCronRun(name: string, status: "idle" | "running" | "error" = "idle"): void {
+  const job = jobs.get(name);
+  if (!job) return;
+  job.lastRun = new Date();
+  job.status = status;
+  job.runCount += 1;
+}
+
 export function getCronStatus(): {
   jobs: Array<{ name: string; interval: string; lastRun: string | null; status: string; runCount: number }>;
   totalJobs: number;

@@ -10262,7 +10262,7 @@ function renderAI() {
         <div class="fp-section-sub"><span style="color:#2563EB;font-weight:700">IA Performante</span> · Contexte complet workspace · Réponses &lt; 3s</div>
       </div>
       <div class="fp-section-actions">
-        <select class="fp-select" style="font-size:11px;color:#2563EB;font-weight:700;border-color:rgba(37,99,235,0.4);background:rgba(37,99,235,0.06)" onchange="(function(sel){const v=sel.options[sel.selectedIndex].text;const labels={'ChatGPT':'GPT-4o','Claude (Anthropic)':'Claude','Gemini (Google)':'Gemini','Mistral':'Mistral'};const badge=labels[v]||v;STATE.aiModel=badge;const b=document.getElementById('fp-ai-badge');if(b)b.textContent=badge;const s=document.getElementById('fp-ai-chat-model-label');if(s)s.textContent=badge+' · Flowpoint Expert';showToast('success','Modèle IA : '+v)})(this)">
+        <select class="fp-select" style="font-size:11px;color:#2563EB;font-weight:700;border-color:rgba(37,99,235,0.4);background:rgba(37,99,235,0.06)" onchange="(function(sel){const v=sel.options[sel.selectedIndex].text;const labels={'ChatGPT':'GPT-5','Claude (Anthropic)':'Claude','Gemini (Google)':'Gemini','Mistral':'Mistral'};const badge=labels[v]||v;STATE.aiModel=badge;const b=document.getElementById('fp-ai-badge');if(b)b.textContent=badge;const s=document.getElementById('fp-ai-chat-model-label');if(s)s.textContent=badge+' · Flowpoint Expert';showToast('success','Modèle IA : '+v)})(this)">
           <option selected>ChatGPT</option>
           <option>Claude (Anthropic)</option>
           <option>Gemini (Google)</option>

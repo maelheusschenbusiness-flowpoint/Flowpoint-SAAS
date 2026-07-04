@@ -138,6 +138,22 @@ export async function checkTrialEndingReminders(): Promise<void> {
 // ── Cron scheduler ────────────────────────────────────────────────────────────
 
 const TRIAL_CRON_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 h
+const MONITOR_HEALTH_INTERVAL_MS = 60 * 1000; // check every 1 min which monitors are due
+
+async function runMonitorHealthTick(): Promise<void> {
+  const { markCronRun } = await import("../workers/cron-scheduler.js");
+  try {
+    const { checkAllMonitorsDue } = await import("../routes/monitors.js");
+    const { checked, errors } = await checkAllMonitorsDue();
+    if (checked > 0) {
+      logger.info({ checked, errors }, "[monitor-cron] Background monitor health tick");
+    }
+    markCronRun("monitor-health", errors > 0 && checked === errors ? "error" : "idle");
+  } catch (err) {
+    logger.warn({ err }, "[monitor-cron] runMonitorHealthTick failed (non-fatal)");
+    markCronRun("monitor-health", "error");
+  }
+}
 
 export function startMonitorCron(): void {
   logger.info("[monitor-cron] Monitor cron started");
@@ -145,4 +161,9 @@ export function startMonitorCron(): void {
   // Trial-ending check: run immediately, then every 24 h
   void checkTrialEndingReminders();
   setInterval(() => void checkTrialEndingReminders(), TRIAL_CRON_INTERVAL_MS);
+
+  // Monitor health: run immediately, then every minute (each monitor is only
+  // actually re-checked once its own `frequency` window has elapsed).
+  void runMonitorHealthTick();
+  setInterval(() => void runMonitorHealthTick(), MONITOR_HEALTH_INTERVAL_MS);
 }

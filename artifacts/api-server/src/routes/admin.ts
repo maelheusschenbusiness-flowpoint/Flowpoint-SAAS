@@ -223,7 +223,7 @@ router.post("/admin/demo-seed", async (req: Request, res: Response): Promise<voi
         await client.query(
           `INSERT INTO monitors (id, name, url, status, uptime, latency, last_check, org_id, created_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) ON CONFLICT (id) DO NOTHING`,
-          [m.id, m.name, m.url, m.status, m.uptime, m.latency, "2 min", orgId]
+          [m.id, m.name, m.url, m.status, m.uptime, m.latency, new Date().toISOString(), orgId]
         );
       } catch { /* skip */ }
     }

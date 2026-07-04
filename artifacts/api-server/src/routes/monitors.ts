@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { pool, withOrgDb } from "@workspace/db";
-import { validateMonitorUrl, isPrivateHost, checkDnsResolution } from "../lib/validateMonitorUrl.js";
+import { validateMonitorUrl, isPrivateHost, checkDnsResolution } from "../middlewares/validateMonitorUrl.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
@@ -169,22 +169,30 @@ async function saveCheckResult(
          VALUES ($1, $2, $3, NOW(), $4)`,
         [incId, monitorId, orgId, result.error ?? "Service unreachable"],
       );
-      // Fire-and-forget: monitor DOWN email
+      // Fire-and-forget: monitor DOWN email + SMS
       (async () => {
         try {
           const { mailer } = await import("../services/mailer.js");
           const { store } = await import("../services/store.js");
           const monRow = await client.query(
-            `SELECT name, url FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
+            `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
           );
           const mon = monRow.rows[0];
-          if (store.me.email && mon) {
+          const recipient = (mon?.alert_email as string | undefined)?.trim() || store.me.email;
+          if (recipient && mon) {
             await mailer.sendMonitorDown({
-              to: store.me.email as string,
+              to: recipient,
               monitorName: String(mon.name),
               url: String(mon.url),
               statusCode: result.statusCode ?? undefined,
             });
+          }
+          const phone = (mon?.alert_phone as string | undefined)?.trim();
+          if (phone && mon) {
+            const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
+            if (twilioConfigured()) {
+              await sendSms(phone, `Flowpoint ALERTE : ${String(mon.name)} (${String(mon.url)}) est DOWN.`);
+            }
           }
         } catch { /* non-fatal */ }
       })();
@@ -197,23 +205,31 @@ async function saveCheckResult(
          RETURNING EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER AS duration_s`,
         [monitorId],
       );
-      // Fire-and-forget: monitor UP email
+      // Fire-and-forget: monitor UP email + SMS
       const downDurationMin = incRes.rows[0]?.duration_s ? Math.round(Number(incRes.rows[0].duration_s) / 60) : 0;
       (async () => {
         try {
           const { mailer } = await import("../services/mailer.js");
           const { store } = await import("../services/store.js");
           const monRow = await client.query(
-            `SELECT name, url FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
+            `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
           );
           const mon = monRow.rows[0];
-          if (store.me.email && mon) {
+          const recipient = (mon?.alert_email as string | undefined)?.trim() || store.me.email;
+          if (recipient && mon) {
             await mailer.sendMonitorUp({
-              to: store.me.email as string,
+              to: recipient,
               monitorName: String(mon.name),
               url: String(mon.url),
               downDurationMin,
             });
+          }
+          const phone = (mon?.alert_phone as string | undefined)?.trim();
+          if (phone && mon) {
+            const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
+            if (twilioConfigured()) {
+              await sendSms(phone, `Flowpoint : ${String(mon.name)} (${String(mon.url)}) est de nouveau UP.`);
+            }
           }
         } catch { /* non-fatal */ }
       })();
@@ -471,12 +487,67 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
 router.post("/monitors/:id/check", handleCheck);
 router.post("/monitors/:id/ping",  handleCheck);
 
+// ── Periodic background checks (called by monitor-cron every few minutes) ────
+// Runs a real HTTP check for every monitor across all orgs, respecting each
+// monitor's own `frequency` (in minutes) so we don't over-check.
+
+export async function checkAllMonitorsDue(): Promise<{ checked: number; errors: number }> {
+  let checked = 0;
+  let errors = 0;
+  const client = await pool.connect();
+  try {
+    // Legacy/demo rows sometimes have a non-timestamp string in last_check
+    // (e.g. a display placeholder like "2 min") — normalize those first so
+    // the due-check query below never crashes on a bad cast.
+    await client.query(
+      `UPDATE monitors
+       SET last_check = (NOW() - INTERVAL '1 hour')::text
+       WHERE last_check IS NULL
+          OR last_check = ''
+          OR last_check !~ '^\\d{4}-\\d{2}-\\d{2}'`
+    );
+    const { rows } = await client.query(
+      `SELECT id, org_id, url, status, frequency, last_check
+       FROM monitors
+       WHERE last_check::timestamptz < NOW() - (GREATEST(COALESCE(NULLIF(regexp_replace(frequency, '[^0-9]', '', 'g'), '')::int, 5), 1) || ' minutes')::interval`
+    );
+    for (const monitor of rows) {
+      try {
+        const result = await performCheck(monitor["url"] as string);
+        await saveCheckResult(
+          monitor["id"] as string,
+          (monitor["org_id"] as string) ?? "default",
+          monitor["status"] as string,
+          result,
+        );
+        checked++;
+      } catch (err) {
+        errors++;
+        logger.warn({ err, monitorId: monitor["id"] }, "[monitor-cron] background check failed");
+      }
+    }
+  } finally {
+    client.release();
+  }
+  return { checked, errors };
+}
+
 // ── POST /monitors/:id/test-sms ───────────────────────────────────────────────
 
 router.post("/monitors/:id/test-sms", async (req: Request, res: Response) => {
   const { phone } = req.body as { phone?: string };
   if (!phone) { res.status(400).json({ error: "phone required" }); return; }
-  res.json({ ok: true, message: `Test SMS would be sent to ${phone}` });
+  const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
+  if (!twilioConfigured()) {
+    res.status(503).json({ ok: false, error: "SMS non configuré : ajoutez TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN et TWILIO_FROM_NUMBER." });
+    return;
+  }
+  const result = await sendSms(phone, "Flowpoint : ceci est un SMS de test pour vos alertes de monitoring.");
+  if (!result.ok) {
+    res.status(502).json({ ok: false, error: result.error ?? "Envoi SMS échoué" });
+    return;
+  }
+  res.json({ ok: true, message: `SMS de test envoyé à ${phone}`, sid: result.sid });
 });
 
 // ── DELETE /monitors/:id ──────────────────────────────────────────────────────
