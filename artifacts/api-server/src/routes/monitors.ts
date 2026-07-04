@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { Router, Request, Response } from "express";
 import { pool, withOrgDb } from "@workspace/db";
 import { validateMonitorUrl, isPrivateHost, checkDnsResolution } from "../middlewares/validateMonitorUrl.js";
@@ -162,77 +163,86 @@ async function saveCheckResult(
     );
 
     // 4. Incident transitions
-    if (previousStatus === "up" && newStatus === "down") {
-      const incId = `inc${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
-      await client.query(
-        `INSERT INTO monitor_incidents (id, monitor_id, org_id, started_at, error)
-         VALUES ($1, $2, $3, NOW(), $4)`,
-        [incId, monitorId, orgId, result.error ?? "Service unreachable"],
-      );
-      // Fire-and-forget: monitor DOWN email + SMS
-      (async () => {
-        try {
-          const { mailer } = await import("../services/mailer.js");
-          const { store } = await import("../services/store.js");
-          const monRow = await client.query(
-            `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
-          );
-          const mon = monRow.rows[0];
-          const recipient = (mon?.alert_email as string | undefined)?.trim() || store.me.email;
-          if (recipient && mon) {
-            await mailer.sendMonitorDown({
-              to: recipient,
-              monitorName: String(mon.name),
-              url: String(mon.url),
-              statusCode: result.statusCode ?? undefined,
-            });
-          }
-          const phone = (mon?.alert_phone as string | undefined)?.trim();
-          if (phone && mon) {
-            const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
-            if (twilioConfigured()) {
-              await sendSms(phone, `Flowpoint ALERTE : ${String(mon.name)} (${String(mon.url)}) est DOWN.`);
+    // Wrapped in try/catch: an incident insert/update failure (e.g. schema
+    // drift) must never abort the check-result write or crash the cron loop.
+    try {
+      if (previousStatus === "up" && newStatus === "down") {
+        // monitor_incidents.id is a UUID column — must use crypto.randomUUID(),
+        // never a custom "inc"+timestamp string (causes 22P02 invalid input
+        // syntax for type uuid).
+        const incId = crypto.randomUUID();
+        await client.query(
+          `INSERT INTO monitor_incidents (id, monitor_id, org_id, started_at, error)
+           VALUES ($1, $2, $3, NOW(), $4)`,
+          [incId, monitorId, orgId, result.error ?? "Service unreachable"],
+        );
+        // Fire-and-forget: monitor DOWN email + SMS
+        (async () => {
+          try {
+            const { mailer } = await import("../services/mailer.js");
+            const { store } = await import("../services/store.js");
+            const monRow = await client.query(
+              `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
+            );
+            const mon = monRow.rows[0];
+            const recipient = (mon?.alert_email as string | undefined)?.trim() || store.me.email;
+            if (recipient && mon) {
+              await mailer.sendMonitorDown({
+                to: recipient,
+                monitorName: String(mon.name),
+                url: String(mon.url),
+                statusCode: result.statusCode ?? undefined,
+              });
             }
-          }
-        } catch { /* non-fatal */ }
-      })();
-    } else if (previousStatus === "down" && newStatus === "up") {
-      const incRes = await client.query(
-        `UPDATE monitor_incidents
-         SET resolved_at = NOW(),
-             duration_s  = EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER
-         WHERE monitor_id = $1 AND resolved_at IS NULL
-         RETURNING EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER AS duration_s`,
-        [monitorId],
-      );
-      // Fire-and-forget: monitor UP email + SMS
-      const downDurationMin = incRes.rows[0]?.duration_s ? Math.round(Number(incRes.rows[0].duration_s) / 60) : 0;
-      (async () => {
-        try {
-          const { mailer } = await import("../services/mailer.js");
-          const { store } = await import("../services/store.js");
-          const monRow = await client.query(
-            `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
-          );
-          const mon = monRow.rows[0];
-          const recipient = (mon?.alert_email as string | undefined)?.trim() || store.me.email;
-          if (recipient && mon) {
-            await mailer.sendMonitorUp({
-              to: recipient,
-              monitorName: String(mon.name),
-              url: String(mon.url),
-              downDurationMin,
-            });
-          }
-          const phone = (mon?.alert_phone as string | undefined)?.trim();
-          if (phone && mon) {
-            const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
-            if (twilioConfigured()) {
-              await sendSms(phone, `Flowpoint : ${String(mon.name)} (${String(mon.url)}) est de nouveau UP.`);
+            const phone = (mon?.alert_phone as string | undefined)?.trim();
+            if (phone && mon) {
+              const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
+              if (twilioConfigured()) {
+                await sendSms(phone, `Flowpoint ALERTE : ${String(mon.name)} (${String(mon.url)}) est DOWN.`);
+              }
             }
-          }
-        } catch { /* non-fatal */ }
-      })();
+          } catch { /* non-fatal */ }
+        })();
+      } else if (previousStatus === "down" && newStatus === "up") {
+        const incRes = await client.query(
+          `UPDATE monitor_incidents
+           SET resolved_at = NOW(),
+               duration_s  = EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER
+           WHERE monitor_id = $1 AND resolved_at IS NULL
+           RETURNING EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER AS duration_s`,
+          [monitorId],
+        );
+        // Fire-and-forget: monitor UP email + SMS
+        const downDurationMin = incRes.rows[0]?.duration_s ? Math.round(Number(incRes.rows[0].duration_s) / 60) : 0;
+        (async () => {
+          try {
+            const { mailer } = await import("../services/mailer.js");
+            const { store } = await import("../services/store.js");
+            const monRow = await client.query(
+              `SELECT name, url, alert_email, alert_phone FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]
+            );
+            const mon = monRow.rows[0];
+            const recipient = (mon?.alert_email as string | undefined)?.trim() || store.me.email;
+            if (recipient && mon) {
+              await mailer.sendMonitorUp({
+                to: recipient,
+                monitorName: String(mon.name),
+                url: String(mon.url),
+                downDurationMin,
+              });
+            }
+            const phone = (mon?.alert_phone as string | undefined)?.trim();
+            if (phone && mon) {
+              const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
+              if (twilioConfigured()) {
+                await sendSms(phone, `Flowpoint : ${String(mon.name)} (${String(mon.url)}) est de nouveau UP.`);
+              }
+            }
+          } catch { /* non-fatal */ }
+        })();
+      }
+    } catch (err) {
+      logger.error({ err, monitorId, previousStatus, newStatus }, "[monitors] incident transition failed — check result was still saved");
     }
   });
 
