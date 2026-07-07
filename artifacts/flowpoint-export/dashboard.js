@@ -1073,6 +1073,9 @@ async function loadData() {
       if (Array.isArray(r)) STATE.billingPlans = r;
       else if (r && Array.isArray(r.plans)) STATE.billingPlans = r.plans;
     }).catch(() => {}),
+    apiFetch('/api/billing/invoices').then(r => {
+      if (r && Array.isArray(r.invoices)) STATE.billing = { ...(STATE.billing || {}), invoices: r.invoices };
+    }).catch(() => {}),
     apiFetch('/api/cro').then(r => {
       if (r && typeof r === 'object' && !window.FP_DATA?.cro?._fromRealData) {
         if (!window.FP_DATA) window.FP_DATA = {};
@@ -2928,9 +2931,12 @@ function initLocalSEOMap() {
     ];
     const _wLoc = STATE.me?.location;
     const _hasCoords = _wLoc?.latitude != null && _wLoc?.longitude != null;
+    const _fallbackCity = (_wLoc?.city || _wLoc?.address || '');
     const center = _hasCoords
       ? { lat: Number(_wLoc.latitude), lng: Number(_wLoc.longitude) }
-      : { lat:48.8566, lng:2.3522 };
+      : _fallbackCity
+        ? null
+        : { lat:48.8566, lng:2.3522 };
     const map = new google.maps.Map(mapEl, {
       zoom:14, center,
       styles: isLight ? [] : darkStyles,
@@ -2939,15 +2945,18 @@ function initLocalSEOMap() {
     });
     STATE._gmap = map;
     STATE._gmapDark = darkStyles;
-    // Business marker
-    const bm = new google.maps.Marker({
-      position:center, map, zIndex:10, title:'Votre établissement',
-      icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#2563EB', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 }
-    });
-    const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
-    const bIW = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:160px"><strong>📍 Votre établissement</strong>${_bizAvg != null ? `<div style="margin-top:6px;font-size:12px;color:#475569">Score SEO&nbsp;<strong style="color:#2563EB">${_bizAvg}/100</strong></div>` : ''}</div>` });
-    bm.addListener('click', () => bIW.open(map, bm));
-    const _bCircle = new google.maps.Circle({ map, center, radius:1200, fillColor:'#2563EB', fillOpacity:0.06, strokeColor:'#2563EB', strokeOpacity:0.3, strokeWeight:2 });
+    // Business marker (only if we have a center)
+    let bm = null;
+    if (center) {
+      bm = new google.maps.Marker({
+        position:center, map, zIndex:10, title:'Votre établissement',
+        icon:{ path:google.maps.SymbolPath.CIRCLE, scale:13, fillColor:'#2563EB', fillOpacity:1, strokeColor:'#fff', strokeWeight:3 }
+      });
+      const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
+      const bIW = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:160px"><strong>📍 Votre établissement</strong>${_bizAvg != null ? `<div style="margin-top:6px;font-size:12px;color:#475569">Score SEO&nbsp;<strong style="color:#2563EB">${_bizAvg}/100</strong></div>` : ''}</div>` });
+      bm.addListener('click', () => bIW.open(map, bm));
+    }
+    const _bCircle = center ? new google.maps.Circle({ map, center, radius:1200, fillColor:'#2563EB', fillOpacity:0.06, strokeColor:'#2563EB', strokeOpacity:0.3, strokeWeight:2 }) : null;
     // Geocode workspace address if no stored coordinates
     if (!_hasCoords && _wLoc && (_wLoc.city || _wLoc.address)) {
       const _geoQuery = [_wLoc.address, _wLoc.city, _wLoc.postalCode, _wLoc.country].filter(Boolean).join(', ');
@@ -2956,8 +2965,8 @@ function initLocalSEOMap() {
         if (status === 'OK' && results[0]) {
           const pos = results[0].geometry.location;
           map.setCenter(pos);
-          bm.setPosition(pos);
-          _bCircle.setCenter(pos);
+          if (bm) bm.setPosition(pos);
+          if (_bCircle) _bCircle.setCenter(pos);
         }
       });
     }
@@ -2965,8 +2974,8 @@ function initLocalSEOMap() {
     (STATE.competitors && STATE.competitors.length > 0
       ? STATE.competitors.slice(0,5).map((c,i) => ({
           name: c.name || `Concurrent ${String.fromCharCode(65+i)}`,
-          lat: center.lat + (i%2===0?1:-1)*0.005*(Math.floor(i/2)+1),
-          lng: center.lng + (i%2===0?-1:1)*0.007*(Math.floor(i/2)+1),
+          lat: (center?.lat ?? 48.8566) + (i%2===0?1:-1)*0.005*(Math.floor(i/2)+1),
+          lng: (center?.lng ?? 2.3522) + (i%2===0?-1:1)*0.007*(Math.floor(i/2)+1),
           score: Math.min(100,Math.round((c.domainRating||0)*1.5)),
           reviews: c.reviews||0,
           threat: (c.domainRating||0)>50?'Élevée':(c.domainRating||0)>30?'Modérée':'Faible',
@@ -3768,7 +3777,7 @@ function renderOverview() {
       </div>
 
       <!-- AI PRIORITY ENGINE -->
-      <div class="fp-card" style="background:linear-gradient(135deg,rgba(139,92,246,0.05),rgba(5,8,16,0.8));border:1px solid rgba(139,92,246,0.15)">
+      <div class="fp-card" style="background:linear-gradient(135deg,rgba(139,92,246,0.05),var(--fp-bg-card, rgba(5,8,16,0.8)));border:1px solid rgba(139,92,246,0.15)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div class="fp-card-title" style="margin-bottom:0">🧠 AI Priority Engine</div>
           ${badge('IA Powered','#8b5cf6')}
@@ -3893,7 +3902,7 @@ function renderOverview() {
       </div>
 
       <!-- DAILY DIGEST -->
-      <div class="fp-card" style="background:linear-gradient(135deg,rgba(37,99,235,0.06),rgba(5,8,16,0.9));border:1px solid rgba(37,99,235,0.15);display:flex;flex-direction:column">
+      <div class="fp-card" style="background:linear-gradient(135deg,rgba(37,99,235,0.06),var(--fp-bg-card, rgba(5,8,16,0.9)));border:1px solid rgba(37,99,235,0.15);display:flex;flex-direction:column">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
           <div style="font-size:18px">📋</div>
           <div class="fp-card-title" style="margin-bottom:0">Daily Digest — ${new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</div>
@@ -6425,7 +6434,6 @@ function renderLocalSEO() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           Domination Locale
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:var(--fp-accent)">IA</span>
         </h1>
         <div class="fp-section-sub">Plateforme de visibilité locale — Intelligence géographique en temps réel</div>
       </div>
@@ -6521,7 +6529,7 @@ function renderLocalSEO() {
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigateSub('zones')">Voir zones →</button>
         </div>
       </div>
-      <div id="fp-gmap" style="width:100%;height:680px;background:linear-gradient(135deg,#050810,#0a1628);position:relative;overflow:hidden">
+      <div id="fp-gmap" style="width:100%;height:680px;background:linear-gradient(135deg,var(--fp-bg-page, #050810),var(--fp-bg-card, #0a1628));position:relative;overflow:hidden">
         <svg width="100%" height="100%" viewBox="0 0 800 680" style="position:absolute;inset:0">
           <defs>
             <pattern id="mgrid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M 32 0 L 0 0 0 32" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.8"/></pattern>
@@ -7031,7 +7039,7 @@ function renderBilling() {
       <div class="fp-skel-block" style="height:200px"></div>
     </div>`;
   }
-  const sub  = STATE.subRoute;
+  const sub  = STATE.subRoute || 'plans';
   const me   = STATE.me;
   if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
   const user   = STATE?.me?.user || STATE?.user || null;
@@ -7442,7 +7450,7 @@ function renderBilling() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'invoices') {
     const invoices = STATE.billing?.invoices?.length > 0
-      ? STATE.billing.invoices.map(inv => ({ id:inv.id||inv.number||'—', date:inv.date||inv.created||'—', amount:String(inv.amount||inv.total||0), plan:inv.plan||plan, addons:inv.addons||inv.description||'—', status:inv.status||'—', color:inv.status==='failed'?'#ef4444':'#22c55e' }))
+      ? STATE.billing.invoices.map(inv => ({ id:inv.id||inv.number||'—', date:inv.date||inv.created||'—', amount:String(inv.amount||inv.total||0), plan:inv.plan||plan, addons:inv.addons||inv.description||'—', status:inv.status||'—', color:inv.status==='failed'?'#ef4444':'#22c55e', pdfUrl:inv.pdfUrl||null, hostedUrl:inv.hostedUrl||inv.hosted_invoice_url||null }))
       : (PREVIEW_MODE ? [
           { id:'FP-2026-051', date:'01/05/2026', amount:'79.00', plan:'Pro', addons:'29€ Priority Support + 19€ Monitors Pack', status:'Payée',   color:'#22c55e' },
           { id:'FP-2026-041', date:'01/04/2026', amount:'79.00', plan:'Pro', addons:'29€ Priority Support + 19€ Monitors Pack', status:'Payée',   color:'#22c55e' },
@@ -7527,8 +7535,8 @@ function renderBilling() {
                 <td style="text-align:center">${badge(inv.status, inv.status === 'Payée' ? '#22c55e' : '#ef4444')}</td>
                 <td style="text-align:center;vertical-align:middle">
                   <div style="display:inline-flex;gap:4px;justify-content:center">
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Facture ${escHtml(inv.id)} — portail Stripe')}).catch(()=>showToast('info','Facture ${escHtml(inv.id)}'))">PDF</button>
-                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Retrouvez vos factures dans le portail Stripe')}).catch(()=>showToast('info','Portail Stripe'))">Email</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="(function(inv){if(inv.pdfUrl){window.open(inv.pdfUrl,'_blank');}else if(inv.hostedUrl){window.open(inv.hostedUrl,'_blank');}else{apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Facture '+escHtml(inv.id)+' — portail Stripe');}).catch(()=>showToast('info','Facture '+escHtml(inv.id)));}})({pdfUrl:'${escHtml(inv.pdfUrl||'')}',hostedUrl:'${escHtml(inv.hostedUrl||'')}',id:'${escHtml(inv.id)}'})">PDF</button>
+                    <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="(function(inv){if(inv.hostedUrl){window.open(inv.hostedUrl,'_blank');}else{apiAction('POST','/api/billing/portal').then(r=>{if(r?.url)window.open(r.url,'_blank');else showToast('info','Retrouvez vos factures dans le portail Stripe');}).catch(()=>showToast('info','Portail Stripe'));}})({hostedUrl:'${escHtml(inv.hostedUrl||'')}'})">Email</button>
                   </div>
                 </td>
               </tr>`).join('')}
@@ -7895,7 +7903,6 @@ function renderBilling() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           Billing Command Center
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.35);border-radius:20px;color:#2563EB">✦ SMART</span>
         </h1>
         <div class="fp-section-sub">Plan ${plan} actif · ${healthScore!=null?'Usage health '+healthScore+'/100':'Calcul usage en cours'}</div>
       </div>
@@ -8313,6 +8320,7 @@ function renderSettings() {
       </div>
     </div>`;
   }
+  if (!STATE.subRoute) { STATE.subRoute = 'workspace'; }
   const sub  = STATE.subRoute;
   const s    = STATE.settings;
   const me   = STATE.me;
@@ -8387,7 +8395,6 @@ function renderSettings() {
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
             <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const body={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim(),timezone:(document.getElementById('prof-tz')?.value||'').trim(),address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim()};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me){if(body.firstName)STATE.me.firstName=body.firstName;STATE.me.lastName=body.lastName;if(STATE.me.org){STATE.me.org.name=body.orgName||STATE.me.org.name;STATE.me.org.website=body.website;if(body.timezone)STATE.me.org.timezone=body.timezone;}STATE.me.location=STATE.me.location||{};STATE.me.location.address=body.address;STATE.me.location.city=body.city;STATE.me.location.postalCode=body.postalCode;STATE.me.location.country=body.country;if(body.city||body.address)STATE.me.location.locationConfigured=true;}showToast('success','Profil sauvegard\u00e9 !');render();}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openPasswordChangePanel()">Changer le mot de passe</button>
           </div>
         </div>
 
@@ -8456,7 +8463,7 @@ function renderSettings() {
       </div>
 
       <!-- BRANDING WHITE LABEL -->
-      <div class="fp-card fp-mb-20" id="wl-branding-card">
+      <div class="fp-card fp-mb-20" id="wl-branding-card" style="${!me.addons.whiteLabel ? 'opacity:0.55;pointer-events:none' : ''}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div class="fp-card-title" style="margin-bottom:0">
             ${svgIcon('tag').replace('stroke="currentColor"','stroke="#2563EB"')}
@@ -8471,15 +8478,15 @@ function renderSettings() {
           <div>
             <div class="fp-form-group">
               <label class="fp-form-label">URL du logo</label>
-              <input class="fp-input" id="wl-logo-url" type="url" placeholder="https://monagence.fr/logo.png" value="${escHtml(wlBranding.logoUrl || '')}" style="width:100%"/>
+              <input class="fp-input" id="wl-logo-url" type="url" placeholder="https://monagence.fr/logo.png" value="${escHtml(wlBranding.logoUrl || '')}" style="width:100%" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
             </div>
             <div class="fp-form-group">
               <label class="fp-form-label">Nom de l\'agence</label>
-              <input class="fp-input" id="wl-agency-name" type="text" placeholder="Mon Agence SEO" value="${escHtml(wlBranding.agencyName || me?.org?.name || '')}" style="width:100%"/>
+              <input class="fp-input" id="wl-agency-name" type="text" placeholder="Mon Agence SEO" value="${escHtml(wlBranding.agencyName || me?.org?.name || '')}" style="width:100%" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
             </div>
             <div class="fp-form-group">
               <label class="fp-form-label">Pied de page</label>
-              <input class="fp-input" id="wl-footer-msg" type="text" placeholder="Rapport confidentiel — © Mon Agence SEO 2026" value="${escHtml(wlBranding.footerMsg || '')}" style="width:100%"/>
+              <input class="fp-input" id="wl-footer-msg" type="text" placeholder="Rapport confidentiel — © Mon Agence SEO 2026" value="${escHtml(wlBranding.footerMsg || '')}" style="width:100%" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
             </div>
           </div>
           <div>
@@ -8487,15 +8494,15 @@ function renderSettings() {
               <div class="fp-form-group" style="flex:1">
                 <label class="fp-form-label">Couleur principale</label>
                 <div style="display:flex;align-items:center;gap:8px">
-                  <input type="color" id="wl-primary-color" value="${wlBranding.primaryColor || '#2563EB'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px"/>
-                  <input class="fp-input" id="wl-primary-color-hex" type="text" value="${wlBranding.primaryColor || '#2563EB'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px"/>
+                  <input type="color" id="wl-primary-color" value="${wlBranding.primaryColor || '#2563EB'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
+                  <input class="fp-input" id="wl-primary-color-hex" type="text" value="${wlBranding.primaryColor || '#2563EB'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
                 </div>
               </div>
               <div class="fp-form-group" style="flex:1">
                 <label class="fp-form-label">Couleur secondaire</label>
                 <div style="display:flex;align-items:center;gap:8px">
-                  <input type="color" id="wl-secondary-color" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px"/>
-                  <input class="fp-input" id="wl-secondary-color-hex" type="text" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px"/>
+                  <input type="color" id="wl-secondary-color" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--fp-border);background:none;cursor:pointer;padding:2px" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
+                  <input class="fp-input" id="wl-secondary-color-hex" type="text" value="${wlBranding.secondaryColor || '#1d4ed8'}" style="flex:1;font-family:var(--fp-font-mono);font-size:12px" ${!me.addons.whiteLabel ? 'disabled' : ''}/>
                 </div>
               </div>
             </div>
@@ -8509,7 +8516,7 @@ function renderSettings() {
                 </div>
               </div>
             </div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="wl-save-branding" style="width:100%">Sauvegarder le branding</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="wl-save-branding" style="width:100%" ${!me.addons.whiteLabel ? 'disabled' : ''}>Sauvegarder le branding</button>
           </div>
         </div>
       </div>
@@ -8524,21 +8531,23 @@ function renderSettings() {
           ${[
             {
               key:'secLevel', label:'Niveau sécurité', icon:'shield',
-              options:[ {val:'standard', label:'Standard', active:true}, {val:'enterprise', label:'Avancé', active:false} ]
+              options:[ {val:'standard', label:'Standard'}, {val:'enterprise', label:'Avancé'} ]
             },
             {
               key:'iaSuggestions', label:'Suggestions IA', icon:'sparkles',
-              options:[ {val:'low', label:'Faible', active:false}, {val:'normal', label:'Normale', active:true}, {val:'proactive', label:'Proactive', active:false} ]
+              options:[ {val:'low', label:'Faible'}, {val:'normal', label:'Normale'}, {val:'proactive', label:'Proactive'} ]
             },
             {
               key:'reportType', label:'Type de rapport', icon:'file-text',
-              options:[ {val:'simple', label:'Simple', active:true}, {val:'client', label:'Client', active:false}, {val:'enterprise', label:'Avancé', active:false} ]
+              options:[ {val:'simple', label:'Simple'}, {val:'client', label:'Client'}, {val:'enterprise', label:'Avancé'} ]
             },
             {
               key:'localPriority', label:'Priorité locale', icon:'globe',
-              options:[ {val:'off', label:'Désactivée', active:false}, {val:'standard', label:'Standard', active:true}, {val:'aggressive', label:'Agressive', active:false} ]
+              options:[ {val:'off', label:'Désactivée'}, {val:'standard', label:'Standard'}, {val:'aggressive', label:'Agressive'} ]
             },
-          ].map(g => `
+          ].map(g => {
+            const currentVal = (s && s[g.key]) || g.options[0].val;
+            return `
             <div style="padding:14px 16px;border-radius:10px;border:1px solid var(--fp-border);background:var(--fp-inner-card)">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                 <div style="width:26px;height:26px;border-radius:7px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);display:flex;align-items:center;justify-content:center">
@@ -8547,15 +8556,17 @@ function renderSettings() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(g.label)}</div>
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
-                ${g.options.map(o => `
-                  <button data-pref-key="${g.key}" data-pref-val="${escHtml(o.val||o.label)}" data-pref-lbl="${escHtml(g.label+' : '+(o.val||o.label))}" onclick="(function(btn){var k=btn.dataset.prefKey;var v=btn.dataset.prefVal;var lbl=btn.dataset.prefLbl;var s={};s[k]=v;apiAction('PATCH','/api/me/prefs',{settings:s}).then(()=>{showToast('success',lbl);btn.parentElement.querySelectorAll('button').forEach(b=>b.style.border='1.5px solid var(--fp-border)');btn.style.border='1.5px solid #2563EB';}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)"
-                    style="padding:5px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid ${o.active ? '#2563EB' : 'var(--fp-border)'};background:${o.active ? 'rgba(37,99,235,0.12)' : 'transparent'};color:${o.active ? '#2563EB' : 'var(--fp-text-muted)'};transition:all 0.15s">
-                    ${o.active ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="3" style="margin-right:4px;vertical-align:middle" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>` : ''}${escHtml(o.label)}
-                  </button>
-                `).join('')}
+                ${g.options.map(o => {
+                  const isActive = currentVal === o.val;
+                  return `
+                  <button data-pref-key="${g.key}" data-pref-val="${escHtml(o.val||o.label)}" data-pref-lbl="${escHtml(g.label+' : '+(o.val||o.label))}" onclick="(function(btn){var k=btn.dataset.prefKey;var v=btn.dataset.prefVal;var lbl=btn.dataset.prefLbl;var s={};s[k]=v;apiAction('PATCH','/api/me/prefs',{settings:s}).then(()=>{showToast('success',lbl);btn.parentElement.querySelectorAll('button').forEach(b=>{b.style.border='1.5px solid var(--fp-border)';b.style.background='transparent';b.style.color='var(--fp-text-muted)';b.innerHTML=b.dataset.prefVal||b.textContent.trim();});btn.style.border='1.5px solid #2563EB';btn.style.background='rgba(37,99,235,0.12)';btn.style.color='#2563EB';btn.innerHTML='<svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#2563EB\" stroke-width=\"3\" style=\"margin-right:4px;vertical-align:middle\" pointer-events=\"none\"><polyline points=\"20 6 9 17 4 12\"/></svg>'+escHtml(btn.dataset.prefVal);}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)"
+                    style="padding:5px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid ${isActive ? '#2563EB' : 'var(--fp-border)'};background:${isActive ? 'rgba(37,99,235,0.12)' : 'transparent'};color:${isActive ? '#2563EB' : 'var(--fp-text-muted)'};transition:all 0.15s">
+                    ${isActive ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="3" style="margin-right:4px;vertical-align:middle" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>` : ''}${escHtml(o.label)}
+                  </button>`;
+                }).join('')}
               </div>
-            </div>
-          `).join('')}
+            </div>`;
+          }).join('')}
         </div>
       </div>
     `;
@@ -9621,7 +9632,6 @@ function renderSettings() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           Settings Command Center
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.35);border-radius:20px;color:#2563EB">✦ INTELLIGENT</span>
         </h1>
         <div class="fp-section-sub">Workspace health ${workspaceHealth}/100 · ${_intAct} intégration${_intAct===1?'':'s'} active${_intAct===1?'':'s'} · ${_wfAct} workflow${_wfAct===1?'':'s'} actif${_wfAct===1?'':'s'}</div>
       </div>
@@ -9829,7 +9839,7 @@ function renderAI() {
     ];
     return `
       <div class="fp-section-header">
-        <div><h1 style="display:flex;align-items:center;gap:10px">Workspace Intelligence <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);border-radius:20px;color:#8b5cf6">✦ IA</span></h1>
+        <div><h1 style="display:flex;align-items:center;gap:10px">Workspace Intelligence</h1>
         <div class="fp-section-sub">État en temps réel de tous vos systèmes · Corrélations inter-modules détectées</div></div>
       </div>
 
@@ -10103,7 +10113,6 @@ function renderAI() {
     return `
       <div class="fp-section-header">
         <div><h1 style="display:flex;align-items:center;gap:10px">IA Stratégiste
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);border-radius:20px;color:#8b5cf6">✦ Ultra</span>
         </h1>
         <div class="fp-section-sub">Analyse stratégique complète · Plans d\'action priorisés · ROI calculé</div></div>
       </div>
@@ -10207,7 +10216,6 @@ function renderAI() {
       <div class="fp-section-header">
         <div><h1 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           🤖 AI Credits — Usage
-          <span style="font-size:10px;font-weight:700;padding:2px 10px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">IA Performante</span>
           ${isUnlimited ? `<span style="font-size:10px;font-weight:700;padding:2px 10px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:20px;color:#8b5cf6">Ultra · Usage prioritaire</span>` : ''}
         </h1>
         <div class="fp-section-sub">Plan ${plan} · Réinitialisation le ${resetDate} · ${isUnlimited ? 'Usage illimité (prioritaire)' : fmtNum(remaining) + ' AI Credits restants'}</div></div>
@@ -24039,7 +24047,6 @@ function renderClientMode() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           Client Command Center
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.35);border-radius:20px;color:#2563EB">✦ PREMIUM</span>
         </h1>
         <div class="fp-section-sub">${clients.length} client${clients.length > 1 ? 's' : ''} actif${clients.length > 1 ? 's' : ''}${PREVIEW_MODE ? ' · Score satisfaction 84/100' : ''} · Mis à jour à l\'instant</div>
       </div>
@@ -24487,7 +24494,6 @@ function renderLocalSEOGBP() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           GBP Intelligence
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:var(--fp-accent)">Centre de contrôle</span>
           ${STATE.gbp?.connected ? `<span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:#22c55e">● Connecté</span>` : ''}
         </h1>
         <div class="fp-section-sub">Google Business Profile — Analytique, avis et contenu IA</div>
