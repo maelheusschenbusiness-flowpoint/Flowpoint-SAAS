@@ -432,22 +432,25 @@ function downloadReportPdf(reportId, name) {
 }
 
 // ── Action navigation helper — maps insight action text → correct page ────────
+window._openNewMonitor = function() { openFloatPanel('Nouveau monitor', renderNewMonitorPanel()); setupNewMonitorPanel(); };
+
 function fpInsightAction(action) {
   const a = (action || '').toLowerCase();
-  if (a.includes('corriger') || a.includes('formulaire') || a.includes('audit'))          { navigate('audits'); }
+  if (a.includes('corriger') || a.includes('formulaire') || a.includes('audit') || a.includes('technique') || a.includes('balise')) { navigate('audits'); }
   else if (a.includes('avis') || a.includes('réputation') || a.includes('note') || a.includes('répondre')) { navigate('local-seo'); setTimeout(() => navigateSub('reviews'), 50); }
-  else if (a.includes('local seo') || a.includes('pages locales') || a.includes('gbp') || a.includes('renforcer') || a.includes('fiche')) { navigate('local-seo'); }
-  else if (a.includes('mission'))                                                           { navigate('missions'); }
-  else if (a.includes('monitor') || a.includes('ssl') || a.includes('renouveler') || a.includes('sla') || a.includes('uptime') || a.includes('certificat')) { navigate('monitors'); }
-  else if (a.includes('rapport') || a.includes('partager') || a.includes('sla'))           { navigate('reports'); }
-  else if (a.includes('concurrent') || a.includes('analyser le concurrent'))               { navigate('competitor'); }
-  else if (a.includes('mots-clés') || a.includes('croissance') || a.includes('référents') || a.includes('backlink') || a.includes('backlinks')) { navigate('growth'); }
-  else if (a.includes('conversion') || a.includes('funnel') || a.includes('rebond'))       { navigate('conversion'); }
-  else if (a.includes('trafic') || a.includes('analytics') || a.includes('ga4'))           { navigate('analytics'); }
+  else if (a.includes('local seo') || a.includes('pages locales') || a.includes('gbp') || a.includes('renforcer') || a.includes('fiche') || a.includes('local') || a.includes('zone')) { navigate('local-seo'); }
+  else if (a.includes('mission') || a.includes('plan d\'action') || a.includes('priorit'))  { navigate('missions'); }
+  else if (a.includes('monitor') || a.includes('ssl') || a.includes('renouveler') || a.includes('sla') || a.includes('uptime') || a.includes('certificat') || a.includes('rapport sla')) { navigate('monitors'); }
+  else if (a.includes('rapport') || a.includes('partager'))                                 { navigate('reports'); }
+  else if (a.includes('concurrent') || a.includes('analyser le concurrent') || a.includes('compétit')) { navigate('competitor'); }
+  else if (a.includes('mots-clés') || a.includes('mot-clé') || a.includes('croissance') || a.includes('référents') || a.includes('backlink') || a.includes('stratégie') || a.includes('amplifier') || a.includes('contenu')) { navigate('growth'); }
+  else if (a.includes('conversion') || a.includes('funnel') || a.includes('rebond') || a.includes('ux') || a.includes('cro') || a.includes('cta') || a.includes('mobile')) { navigate('conversion'); }
+  else if (a.includes('trafic') || a.includes('analytics') || a.includes('ga4') || a.includes('session') || a.includes('audience')) { navigate('analytics'); }
+  else if (a.includes('détails') || a.includes('details') || a.includes('aperçu') || a.includes('tendance') || a.includes('score') || a.includes('performance')) { navigate('overview'); }
   else {
     navigate('ai');
     setTimeout(() => {
-      const inp = document.getElementById('fp-ai-input');
+      const inp = document.getElementById('ai-input') || document.getElementById('fp-ai-input');
       if (inp) { inp.value = action; inp.dispatchEvent(new Event('input')); document.getElementById('ai-send')?.click(); }
     }, 200);
   }
@@ -2592,7 +2595,7 @@ function handleFABAction(action) {
   if (action === 'new-report')  { openFloatPanel('Générer un rapport PDF', renderNewReportPanel()); setupNewReportPanel(); }
   if (action === 'export-data') { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); }
   if (action === 'new-geo')     { navigate('local-seo'); setTimeout(()=>{ window._mapsTab='grid'; render(STATE.currentSection); window._showCreateHeatmapModal?.(); }, 300); }
-  if (action === 'open-chat')   { document.querySelector('#fp-ai-chat-toggle, .fp-chat-fab')?.click(); showToast('info','Chat IA ouvert'); }
+  if (action === 'open-chat')   { var _cp=document.getElementById('fp-ai-chat-panel'),_co=document.getElementById('fp-ai-chat-overlay'); if(_cp){_cp.removeAttribute('hidden');if(_co)_co.removeAttribute('hidden');setTimeout(function(){document.getElementById('fp-ai-chat-input')?.focus();},100);showToast('info','Chat IA ouvert');} }
   if (action === 'layout-edit') { toggleLayoutEditMode(); }
 }
 
@@ -3340,14 +3343,17 @@ function renderOverview() {
     { name:'IA Copilot',      score: (STATE.aiCredits != null && STATE.aiCredits > 0) ? Math.min(98, 65 + Math.round(Math.min(33, STATE.aiCredits / 3))) : (STATE.reports.length > 0 ? 78 : 65), status:'ok', icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
   ];
 
+  var _liveRangeMs = (STATE.overviewRange || 7) * 86400000;
   const liveEvents = (STATE.activityEvents && STATE.activityEvents.length > 0)
-    ? STATE.activityEvents.slice(0, 4).map(function(e) {
-        var mins = Math.round((Date.now() - new Date(e.createdAt).getTime()) / 60000);
-        var time = mins < 1 ? 'À l\'instant' : mins < 60 ? 'Il y a ' + mins + ' min' : mins < 1440 ? 'Il y a ' + Math.round(mins/60) + 'h' : 'Il y a ' + Math.round(mins/1440) + 'j';
-        var typeMap = { audit:'info', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'info' };
-        var iconMap = { audit:'🔍', monitor:'📡', alert:'⚠️', report:'📄', team:'👥' };
-        return { time: time, type: typeMap[e.type] || 'info', msg: e.label || '', icon: iconMap[e.type] || '📌' };
-      })
+    ? STATE.activityEvents
+        .filter(function(e) { return (Date.now() - new Date(e.createdAt).getTime()) < _liveRangeMs; })
+        .slice(0, 4).map(function(e) {
+          var mins = Math.round((Date.now() - new Date(e.createdAt).getTime()) / 60000);
+          var time = mins < 1 ? 'À l\'instant' : mins < 60 ? 'Il y a ' + mins + ' min' : mins < 1440 ? 'Il y a ' + Math.round(mins/60) + 'h' : 'Il y a ' + Math.round(mins/1440) + 'j';
+          var typeMap = { audit:'info', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'info' };
+          var iconMap = { audit:'🔍', monitor:'📡', alert:'⚠️', report:'📄', team:'👥' };
+          return { time: time, type: typeMap[e.type] || 'info', msg: e.label || '', icon: iconMap[e.type] || '📌' };
+        })
     : [];
 
   var _ah = (Array.isArray(STATE.overview?.auditHistory) ? STATE.overview.auditHistory : []).map(function(h){ return Number(h.avg || h.score || 0); }).filter(function(v){ return !isNaN(v); });
@@ -3387,7 +3393,7 @@ function renderOverview() {
     { label:'Audit SEO',         icon:'🔍', color:'#2563EB', action:"navigate('audits')" },
     { label:'Rapport Exécutif',  icon:'📄', color:'#22c55e', action:"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()" },
     { label:'Analyser Concurrents', icon:'⚔️', color:'#ef4444', action:"navigate('competitor')" },
-    { label:'Nouveau Monitor',   icon:'📡', color:'#f59e0b', action:"openFloatPanel('Nouveau monitor',renderNewMonitorPanel());setupNewMonitorPanel()" },
+    { label:'Nouveau Monitor',   icon:'📡', color:'#f59e0b', action:"window._openNewMonitor()" },
     { label:'Créer Mission',     icon:'🎯', color:'#8b5cf6', action:"navigate('missions')" },
     { label:'Conversion IA',     icon:'⚡', color:'#06b6d4', action:"navigate('conversion')" },
     { label:'Local SEO',         icon:'📍', color:'#22c55e', action:"navigate('local-seo')" },
@@ -4446,8 +4452,8 @@ function renderMissionDetail(m) {
   const steps = m.steps || [];
   const done = steps.filter(s => s.done).length;
   const pct = steps.length ? Math.round((done / steps.length) * 100) : 0;
-  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e' };
-  const statusLabels = { todo:'À faire', inprogress:'En cours', done:'Terminé' };
+  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', open:'#6366f1' };
+  const statusLabels = { todo:'À faire', inprogress:'En cours', done:'Terminé', open:'Ouverte' };
   return `
     <div class="fp-mission-detail-header">
       <div class="fp-mission-detail-icon">${svgIcon('target').replace('stroke="currentColor"','stroke="#2563EB"')}</div>
@@ -4557,8 +4563,8 @@ function renderMissions() {
       return new Date(a.dueDate||a.date||0) - new Date(b.dueDate||b.date||0);
     });
 
-  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées' };
-  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e' };
+  const statusLabels = { todo:'À démarrer', inprogress:'En cours', done:'Complétées', open:'Ouverte' };
+  const statusColors = { todo:'#94a3b8', inprogress:'#2563EB', done:'#22c55e', open:'#6366f1' };
   const cats = ['SEO','Performance','Conversion','Local SEO','Concurrent'];
 
   const quickWins = STATE.missions.filter(m => m.aiQuickWin && m.status === 'todo').slice(0, 4);
@@ -26353,18 +26359,6 @@ function renderGA4Analytics() {
   if (sub === 'conversions') return _renderGA4Conversions();
 
   return `
-    ${aiBlock(_ga4Connected()
-      ? (()=>{
-          const _sess=sessions?fmtNum(sessions)+' sessions':null;
-          const _conv=conversions?fmtNum(conversions)+' conversion(s)':null;
-          const _delta=prevSess>0?Math.round((sessions-prevSess)/prevSess*100):null;
-          return 'GA4 connecté — '+(_sess||'données en cours de chargement')+(conversions?' · <strong>'+_conv+'</strong>':'')+((_delta!=null)?(_delta>=0?' · <strong style="color:#22c55e">+'+_delta+'%</strong> sessions vs période précédente':' · <strong style="color:#ef4444">'+_delta+'%</strong> sessions vs période précédente'):'')+'.'
-        })()
-      : 'Google Analytics 4 n\'est pas encore connecté. Connectez votre propriété GA4 pour accéder aux données de trafic, sessions et conversions en temps réel.',
-      _ga4Connected()
-        ? ['Voir les pages', 'Analyser conversions', 'Rapport trafic']
-        : ['Connecter GA4', 'Voir la démo']
-    )}
     <div class="fp-section-header">
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
@@ -26387,6 +26381,19 @@ function renderGA4Analytics() {
     </div>
 
     ${_ga4NotConnectedBanner()}
+
+    ${aiBlock(_ga4Connected()
+      ? (()=>{
+          const _sess=sessions?fmtNum(sessions)+' sessions':null;
+          const _conv=conversions?fmtNum(conversions)+' conversion(s)':null;
+          const _delta=prevSess>0?Math.round((sessions-prevSess)/prevSess*100):null;
+          return 'GA4 connecté — '+(_sess||'données en cours de chargement')+(conversions?' · <strong>'+_conv+'</strong>':'')+((_delta!=null)?(_delta>=0?' · <strong style="color:#22c55e">+'+_delta+'%</strong> sessions vs période précédente':' · <strong style="color:#ef4444">'+_delta+'%</strong> sessions vs période précédente'):'')+'.'
+        })()
+      : 'Google Analytics 4 n\'est pas encore connecté. Connectez votre propriété GA4 pour accéder aux données de trafic, sessions et conversions en temps réel.',
+      _ga4Connected()
+        ? ['Voir les pages', 'Analyser conversions', 'Rapport trafic']
+        : ['Connecter GA4', 'Voir la démo']
+    )}
 
     ${aiBlock(
       _ga4Connected()
