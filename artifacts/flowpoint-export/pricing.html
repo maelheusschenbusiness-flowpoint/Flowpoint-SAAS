@@ -1210,6 +1210,50 @@
   })();
 
 })();
+
+/* ── Dashboard state integration — pre-fill plan & active add-ons ── */
+(function() {
+  var state = null;
+  try { state = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null'); } catch(e) {}
+  if (!state || !state.fromDashboard) return;
+
+  /* Banner */
+  var navEl = document.querySelector('.fp-nav');
+  if (navEl) {
+    var planName = (state.planLabel || state.plan || '').replace(/\b\w/g, function(l){ return l.toUpperCase(); });
+    var banner = document.createElement('div');
+    banner.id = 'fp-db-banner';
+    banner.style.cssText = 'background:rgba(37,99,235,0.07);border-bottom:1px solid rgba(37,99,235,0.15);padding:8px 28px;font-size:12px;color:var(--text-soft);display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    banner.innerHTML = '<span style="font-size:16px">📊</span>'
+      + '<span>Tableau de bord · Plan actuel\u00a0: <strong>' + planName + '</strong>'
+      + (state.nextDate ? ' · Renouvellement\u00a0: ' + state.nextDate : '') + '</span>'
+      + '<a href="/dashboard.html" style="margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap">\u2190 Retour au tableau de bord</a>';
+    navEl.insertAdjacentElement('afterend', banner);
+  }
+
+  /* Mark current plan button */
+  if (state.plan) {
+    document.querySelectorAll('.fp-card-btn[data-plan]').forEach(function(btn) {
+      if (btn.getAttribute('data-plan') !== state.plan) return;
+      btn.textContent = '\u2713 Votre plan actuel';
+      btn.disabled = true;
+      btn.style.cssText += ';background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.35);color:#34d399;cursor:default;opacity:1';
+      var card = btn.closest('.fp-card');
+      if (card) { card.style.borderColor = 'rgba(16,185,129,0.4)'; card.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.1)'; }
+    });
+  }
+
+  /* Mark active add-ons */
+  var active = state.addons || {};
+  Object.keys(active).forEach(function(key) {
+    if (!active[key]) return;
+    var btn = document.querySelector('button[onclick*="addToCart"][onclick*="\'' + key + '\'"]');
+    if (!btn) return;
+    btn.textContent = '\u2713 Actif';
+    btn.disabled = true;
+    btn.style.cssText += ';background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.3);color:#34d399;cursor:default';
+  });
+})();
 </script>
 </body>
 </html>

@@ -1039,7 +1039,13 @@ async function loadData() {
     window.FP_GBP_API ? window.FP_GBP_API.load().catch(() => {}) : Promise.resolve(),
     // ── Billing subscription + plans ────────────────────────────────────────────
     apiFetch('/api/billing/subscription').then(r => {
-      if (r && typeof r === 'object') STATE.billing = { ...(STATE.billing || {}), ...r };
+      if (r && typeof r === 'object') {
+        const _rawDate = r.currentPeriodEnd || r.trialEndsAt || null;
+        const _nextDate = _rawDate ? new Date(_rawDate).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+        const _planAmtMap = { standard:29, pro:79, ultra:149, agency:149 };
+        const _nextAmount = r.nextAmount ?? _planAmtMap[(r.plan||'').toLowerCase()] ?? null;
+        STATE.billing = { ...(STATE.billing || {}), ...r, nextDate: _nextDate, nextAmount: _nextAmount };
+      }
     }).catch(() => {}),
     apiFetch('/api/billing/plans').then(r => {
       if (Array.isArray(r)) STATE.billingPlans = r;
@@ -6960,9 +6966,19 @@ function renderBilling() {
   const me   = STATE.me;
   if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
   const user   = STATE?.me?.user || STATE?.user || null;
-  const _usage = me?.usage || {};
-  const _ud    = STATE.usageDetails || {};
   const plan = me?.plan || 'Pro';
+  const _ud    = STATE.usageDetails || {};
+  const _planKey2 = plan.toLowerCase();
+  const _aLim = { standard:30,  pro:300,  ultra:2000, agency:2000 };
+  const _mLim = { standard:3,   pro:50,   ultra:300,  agency:300  };
+  const _rLim = { standard:30,  pro:300,  ultra:2000, agency:2000 };
+  const _usage = {
+    ...(me?.usage || {}),
+    audit:   { used: me?.usage?.audit?.used   ?? STATE.audits?.length   ?? 0, limit: me?.usage?.audit?.limit   ?? _aLim[_planKey2]  ?? 30 },
+    monitor: { used: me?.usage?.monitor?.used ?? STATE.monitors?.length ?? 0, limit: me?.usage?.monitor?.limit ?? _mLim[_planKey2]  ?? 3  },
+    pdf:     { used: me?.usage?.pdf?.used     ?? 0,                           limit: me?.usage?.pdf?.limit     ?? _rLim[_planKey2]  ?? 30 },
+    exports: { used: me?.usage?.exports?.used ?? 0,                           limit: me?.usage?.exports?.limit ?? _rLim[_planKey2]  ?? 30 },
+  };
   const isStd   = plan === 'Standard';
   const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
@@ -7067,7 +7083,7 @@ function renderBilling() {
                 ${escHtml(f)}
               </div>`).join('')}
             </div>
-            <button class="fp-btn ${isCurrent ? 'fp-btn-ghost' : 'fp-btn-primary'} fp-btn-sm" style="width:100%;margin-top:auto;${isCurrent ? 'opacity:0.5;cursor:default' : `background:${p.color};border-color:${p.color}`}" ${isCurrent ? '' : `onclick="window.location.href='https://app.flowpoint.pro/pricing.html'"`}>
+            <button class="fp-btn ${isCurrent ? 'fp-btn-ghost' : 'fp-btn-primary'} fp-btn-sm" style="width:100%;margin-top:auto;${isCurrent ? 'opacity:0.5;cursor:default' : `background:${p.color};border-color:${p.color}`}" ${isCurrent ? '' : `onclick="fpGoToPricing()"`}>
               ${isCurrent ? 'Plan actuel' : `Passer ${p.name} →`}
             </button>
           </div>`;
@@ -7150,7 +7166,7 @@ function renderBilling() {
     const allAddons = [
       // ── Monitoring ──
       { cat:'Monitoring', name:'+10 Monitors',             price:'9€/mois',  icon:'📡', color:'#f59e0b', active:false, tag:'Populaire',      roi:'99.9% uptime garanti',           includedFrom:null,    desc:'Surveillez 10 sites supplémentaires en temps réel avec alertes SMS/email instantanées.', features:['10 monitors additionnels activés immédiatement','Alertes SMS + email en moins d\'1 min','Rapports de disponibilité hebdomadaires','Intégration Slack & Discord incluse','Historique uptime 30 jours'] },
-      { cat:'Monitoring', name:'+50 Monitors',             price:'29€/mois', icon:'📡', color:'#f59e0b', active:true,  tag:'Best value',      roi:'50 sites couverts',               includedFrom:null,    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
+      { cat:'Monitoring', name:'+50 Monitors',             price:'29€/mois', icon:'📡', color:'#f59e0b', active: !!(me.addons?.monitorsPack50),  tag:'Best value',      roi:'50 sites couverts',               includedFrom:null,    desc:'Pack monitoring massif pour agences. Alertes avancées, SLA, et rapport disponibilité.', features:['50 monitors simultanés','Alertes SMS prioritaires < 30 sec','Tableau de bord SLA automatique','Rapport PDF disponibilité mensuel','Escalade automatique par équipe'] },
       { cat:'Monitoring', name:'Global Monitoring',        price:'49€/mois', icon:'🌍', color:'#f59e0b', active:false, tag:'Ultra',      roi:'Monitoring 15 régions',           includedFrom:null,    desc:'Surveillez depuis 15 régions mondiales. Latence, CDN, et géo-disponibilité.', features:['15 régions de monitoring (EU, US, APAC…)','Latence par région en temps réel','Détection CDN et cache edge','Alertes géo-localisées','Rapport géo-disponibilité PDF'] },
       { cat:'Monitoring', name:'SLA Monitoring Avancé',    price:'19€/mois', icon:'🛡️', color:'#f59e0b', active:false, tag:'Pro',             roi:'SLA 99.9% garanti',               includedFrom:null,    desc:'Rapports SLA automatiques, incidents, et analytics disponibilité avancés.', features:['SLA tracking automatique par client','Rapport incidents horodaté','Score disponibilité mensuel','Alertes seuils SLA personnalisables','Export PDF pour vos clients'] },
       // ── SEO ──
@@ -7223,7 +7239,7 @@ function renderBilling() {
     window.fpActivateAddon = function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
       showToast('info', 'Redirection vers la boutique FlowPoint…');
-      window.location.href = 'https://app.flowpoint.pro/pricing.html';
+      fpGoToPricing();
     };
     window._fpAllAddons = allAddons;
     window.fpShowAddonDetail = function(idx) {
@@ -7274,7 +7290,7 @@ function renderBilling() {
             ${isInc
               ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="opacity:0.5;cursor:not-allowed">✓ Déjà inclus</button>`
               : a.active
-                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" onclick="closeFloatPanel&&closeFloatPanel();window.location.href='https://app.flowpoint.pro/pricing.html'">Désactiver</button>`
+                ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" onclick="closeFloatPanel&&closeFloatPanel();fpGoToPricing()">Désactiver</button>`
                 : a.wizardFn
                   ? `<button class="fp-btn fp-btn-primary" onclick="window.${a.wizardFn}?.();closeFloatPanel&&closeFloatPanel()">🚀 Lancer →</button>`
                   : `<button class="fp-btn fp-btn-primary" style="background:${accentColor};border-color:${accentColor}" onclick="window.fpActivateAddon&&window.fpActivateAddon(${idx})">Activer — ${escHtml(a.price)}</button>`
@@ -7339,7 +7355,7 @@ function renderBilling() {
               ${inc
                 ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" disabled style="font-size:10px;opacity:0.55;cursor:not-allowed;border-color:${cardAccent}44;color:${cardAccent}">✓ Inclus</button>`
                 : a.active
-                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="window.location.href='https://app.flowpoint.pro/pricing.html'">Désactiver</button>`
+                  ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="fpGoToPricing()">Désactiver</button>`
                   : a.wizardFn
                     ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.${a.wizardFn}?.()">🚀 Lancer →</button>`
                     : `<button class="fp-btn fp-btn-primary fp-btn-sm" style="font-size:10px;background:${cardAccent};border-color:${cardAccent}" onclick="window.fpShowAddonDetail(${_i})">Activer →</button>`
@@ -7547,7 +7563,7 @@ function renderBilling() {
               { label:'+200k', price:'9€',  pack:'ai_credits_200k', credits:200000, badge:'Best value' },
               { label:'+500k', price:'19€', pack:'ai_credits_500k', credits:500000, badge:null         },
             ].map(p => `
-              <button onclick="window.location.href='https://app.flowpoint.pro/pricing.html'" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;border:${p.badge?'2px':'1px'} solid rgba(37,99,235,${p.badge?'0.5':'0.3'});background:rgba(37,99,235,${p.badge?'0.15':'0.08'});cursor:pointer;position:relative;flex-shrink:0">
+              <button onclick="fpGoToPricing()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;border:${p.badge?'2px':'1px'} solid rgba(37,99,235,${p.badge?'0.5':'0.3'});background:rgba(37,99,235,${p.badge?'0.15':'0.08'});cursor:pointer;position:relative;flex-shrink:0">
                 ${p.badge ? `<span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#2563EB;color:#fff;font-size:7px;font-weight:800;padding:1px 6px;border-radius:10px;white-space:nowrap">${p.badge}</span>` : ''}
                 <span style="font-size:11px;font-weight:700;color:#2563EB">${p.label}</span>
                 <span style="font-size:10px;color:var(--fp-text-faint)">·</span>
@@ -7868,7 +7884,7 @@ function renderBilling() {
           </div>`).join('')}
         </div>
         <div style="display:flex;gap:8px">
-          ${btn('Changer de plan','fp-btn fp-btn-primary fp-btn-sm','','onclick="window.location.href=\'https://app.flowpoint.pro/pricing.html\'"')}
+          ${btn('Changer de plan','fp-btn fp-btn-primary fp-btn-sm','','onclick="fpGoToPricing()"')}
           ${btn('Add-ons','fp-btn fp-btn-ghost fp-btn-sm','','onclick="navigateSub(\'addons\')"')}
         </div>
       </div>
@@ -10127,7 +10143,7 @@ function renderAI() {
         </h1>
         <div class="fp-section-sub">Plan ${plan} · Réinitialisation le ${resetDate} · ${isUnlimited ? 'Usage illimité (prioritaire)' : fmtNum(remaining) + ' AI Credits restants'}</div></div>
         <div class="fp-section-actions">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.location.href='https://app.flowpoint.pro/pricing.html'">Upgrader le plan →</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToPricing()">Upgrader le plan →</button>
         </div>
       </div>
 
@@ -10198,7 +10214,7 @@ function renderAI() {
           <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:12px">Disponibles immédiatement · Valables jusqu\'au prochain rechargement</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             ${creditPackages.map(p => `
-              <button onclick="window.location.href='https://app.flowpoint.pro/pricing.html'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:10px;border:${p.badge?'2px solid rgba(37,99,235,0.5)':'1px solid rgba(255,255,255,0.08)'};background:${p.badge?'rgba(37,99,235,0.1)':'var(--fp-inner-card)'};cursor:pointer;width:100%;position:relative;overflow:hidden;transition:all 0.15s">
+              <button onclick="fpGoToPricing()" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:10px;border:${p.badge?'2px solid rgba(37,99,235,0.5)':'1px solid rgba(255,255,255,0.08)'};background:${p.badge?'rgba(37,99,235,0.1)':'var(--fp-inner-card)'};cursor:pointer;width:100%;position:relative;overflow:hidden;transition:all 0.15s">
                 ${p.badge ? `<div style="position:absolute;top:0;right:0;background:#2563EB;color:#fff;font-size:8px;font-weight:800;padding:2px 9px;border-radius:0 8px 0 7px;letter-spacing:0.04em">${p.badge}</div>` : ''}
                 <div style="text-align:left">
                   <div style="font-size:12px;font-weight:700;color:${p.badge?'#2563EB':'var(--fp-text)'}">${p.label} AI Credits</div>
@@ -10210,7 +10226,7 @@ function renderAI() {
           </div>
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);text-align:center">
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">Ou passer au plan supérieur pour plus d\'AI Credits inclus</div>
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="window.location.href='https://app.flowpoint.pro/pricing.html'" ${isUltra ? 'disabled' : ''}>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="fpGoToPricing()" ${isUltra ? 'disabled' : ''}>
               ${isUltra ? '✓ Ultra — AI Credits illimités (usage prioritaire)' : plan === 'Pro' ? 'Passer Ultra — AI Credits illimités →' : 'Passer Pro — 500k AI Credits/mois →'}
             </button>
           </div>
@@ -11460,8 +11476,30 @@ function normalizeRoute(route, subRoute) {
   return { route, subRoute: subRoute || null };
 }
 
+function fpGoToPricing() {
+  try {
+    const _me = STATE.me;
+    const _activeAddons = {};
+    if (_me?.addons && typeof _me.addons === 'object') {
+      Object.entries(_me.addons).forEach(([k, v]) => { if (v) _activeAddons[k] = v; });
+    }
+    localStorage.setItem('fp_dashboard_state', JSON.stringify({
+      fromDashboard: true,
+      plan: (_me?.plan || '').toLowerCase(),
+      planLabel: _me?.plan || 'Pro',
+      status: STATE.billing?.status || _me?.subscriptionStatus || 'trial',
+      addons: _activeAddons,
+      trialEndsAt: STATE.billing?.trialEndsAt || _me?.trialEndsAt || null,
+      nextDate: STATE.billing?.nextDate || null,
+    }));
+  } catch(e) {}
+  window.location.href = 'https://app.flowpoint.pro/pricing.html';
+}
+window.fpGoToPricing = fpGoToPricing;
+
 function navigate(route, subRoute) {
   const _n = normalizeRoute(route, subRoute || null);
+  if (_n.route === STATE.route && subRoute == null && _n.subRoute == null && STATE.subRoute) _n.subRoute = STATE.subRoute;
   STATE.route    = _n.route;
   STATE.subRoute = _n.subRoute;
   try { history.replaceState(null, '', '#' + STATE.route + (STATE.subRoute ? '/' + STATE.subRoute : '')); } catch(e) { /* sandboxed */ }
