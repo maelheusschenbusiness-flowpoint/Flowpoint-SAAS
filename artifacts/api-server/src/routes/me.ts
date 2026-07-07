@@ -27,6 +27,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       const firstName = dbData.firstName ||
         (req.orgContext?.email?.split("@")[0] ?? store.me.firstName);
 
+      const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
       res.json({
         firstName,
         lastName:           dbData.lastName ?? "",
@@ -40,6 +41,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         usage:              dbData.usage,
         addons:             dbData.addons,
         limits,
+        publicApiKey:       `fp_pub_${_pkHash}`,
         location: {
           address:            dbData.address            ?? null,
           city:               dbData.city               ?? null,
@@ -81,6 +83,17 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   if (typeof timezone  === "string" && timezone.trim()) {
     store.me.org = { ...store.me.org, timezone: timezone.trim() };
     if (store.settings) store.settings.timezone = timezone.trim();
+    // Persist timezone to user_prefs so it survives server restarts
+    try {
+      await orgDb(req)(
+        `INSERT INTO user_prefs (org_id, settings, updated_at)
+         VALUES ($1, $2::jsonb, now())
+         ON CONFLICT (org_id) DO UPDATE
+           SET settings = COALESCE(user_prefs.settings, '{}'::jsonb) || $2::jsonb,
+               updated_at = now()`,
+        [orgId, JSON.stringify({ timezone: timezone.trim() })]
+      );
+    } catch { /* non-fatal */ }
   }
   if (typeof plan === "string" && ["standard", "pro", "ultra"].includes(plan.toLowerCase())) {
     store.broadcastPlanUpdate(plan.toLowerCase());

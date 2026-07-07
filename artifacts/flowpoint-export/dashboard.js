@@ -2810,7 +2810,14 @@ function loadGoogleMaps(cb) {
     if (!key) {
       _gmapsLoading = false;
       console.debug('[FlowPoint] Google Maps API key not configured');
-      _showMapsBlockedFallback();
+      const el = document.getElementById('fp-gmap');
+      if (el && !el._mapInited) {
+        el._mapBlocked = true;
+        el.style.cssText = 'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:rgba(10,14,27,0.95)';
+        el.innerHTML = '<div style="font-size:28px">🗺️</div>' +
+          '<div style="font-size:13px;font-weight:600;color:var(--fp-text,#e2e8f0)">Carte non configurée</div>' +
+          '<div style="font-size:12px;color:var(--fp-text-muted,#94a3b8);text-align:center;max-width:300px;line-height:1.5">La clé Google Maps n\'est pas encore configurée. Contactez votre administrateur.</div>';
+      }
       return;
     }
     window.__gmapsCb = () => { _gmapsLoading = false; cb(); };
@@ -2847,7 +2854,11 @@ function initLocalSEOMap() {
       { featureType:'landscape', elementType:'geometry', stylers:[{color:'#0a1525'}] },
       { featureType:'administrative', elementType:'geometry.stroke', stylers:[{color:'#1d3055'}] },
     ];
-    const center = { lat:48.8566, lng:2.3522 };
+    const _wLoc = STATE.me?.location;
+    const _hasCoords = _wLoc?.latitude != null && _wLoc?.longitude != null;
+    const center = _hasCoords
+      ? { lat: Number(_wLoc.latitude), lng: Number(_wLoc.longitude) }
+      : { lat:48.8566, lng:2.3522 };
     const map = new google.maps.Map(mapEl, {
       zoom:14, center,
       styles: isLight ? [] : darkStyles,
@@ -2864,7 +2875,20 @@ function initLocalSEOMap() {
     const _bizAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
     const bIW = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:160px"><strong>📍 Votre établissement</strong>${_bizAvg != null ? `<div style="margin-top:6px;font-size:12px;color:#475569">Score SEO&nbsp;<strong style="color:#2563EB">${_bizAvg}/100</strong></div>` : ''}</div>` });
     bm.addListener('click', () => bIW.open(map, bm));
-    new google.maps.Circle({ map, center, radius:1200, fillColor:'#2563EB', fillOpacity:0.06, strokeColor:'#2563EB', strokeOpacity:0.3, strokeWeight:2 });
+    const _bCircle = new google.maps.Circle({ map, center, radius:1200, fillColor:'#2563EB', fillOpacity:0.06, strokeColor:'#2563EB', strokeOpacity:0.3, strokeWeight:2 });
+    // Geocode workspace address if no stored coordinates
+    if (!_hasCoords && _wLoc && (_wLoc.city || _wLoc.address)) {
+      const _geoQuery = [_wLoc.address, _wLoc.city, _wLoc.postalCode, _wLoc.country].filter(Boolean).join(', ');
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ address: _geoQuery }, (results, status) => {
+        if (status === 'OK' && results[0]) {
+          const pos = results[0].geometry.location;
+          map.setCenter(pos);
+          bm.setPosition(pos);
+          _bCircle.setCenter(pos);
+        }
+      });
+    }
     // Competitors
     (STATE.competitors && STATE.competitors.length > 0
       ? STATE.competitors.slice(0,5).map((c,i) => ({
@@ -3230,8 +3254,8 @@ function renderOverview() {
   }
   const avg = avgScore();
   const down = monitorsDown();
-  const isPro  = me.plan === 'Pro' || me.plan === 'Ultra';
-  const isUltra = me.plan === 'Ultra';
+  const isPro  = me.plan === 'Pro' || me.plan === 'Agency' || me.plan === 'Ultra';
+  const isUltra = me.plan === 'Agency' || me.plan === 'Ultra';
   const isStd  = !isPro && !isUltra;
 
   const activeMonitors = (STATE.monitors||[]).filter(m => m.status !== 'down').length;
@@ -6083,7 +6107,6 @@ function renderReports() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           Executive Reporting Hub
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:#22c55e">AI-POWERED</span>
         </h1>
         <div class="fp-section-sub">Plateforme de reporting business · ${allReports.length} rapports disponibles · Prochain envoi auto : 01/06</div>
       </div>
@@ -6401,7 +6424,7 @@ function renderLocalSEO() {
           </div>`).join('')}
           ${!STATE.dfsStatus?.configured ? `
           <div style="margin-top:12px;padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:#f59e0b">
-            💡 Activez DataForSEO en ajoutant <code style="font-size:10px;background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px">DATAFORSEO_LOGIN</code> et <code style="font-size:10px;background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px">DATAFORSEO_PASSWORD</code> dans vos variables d\'environnement
+            💡 Mode démo actif — connectez DataForSEO pour obtenir les rankings locaux en temps réel
           </div>` : ''}
         </div>
       </div>
@@ -8936,7 +8959,6 @@ function renderSettings() {
           <div class="fp-card fp-mb-20">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
               <div class="fp-card-title" style="margin-bottom:0">⚡ Plateformes d\'automatisation</div>
-              <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._intgTab='webhooks';render(STATE.currentSection)">+ Créer un webhook</button>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
               ${platformCards.map(p => `
@@ -14021,13 +14043,47 @@ async function init() {
   };
 
   window._showConnectModal = function(platformId, platformName, platformIcon) {
-    window._currentPlatform = platformId;
-    const titleEl = document.getElementById('fp-intg-modal-title');
-    const nameEl  = document.getElementById('intg-name');
-    if (titleEl) titleEl.textContent = (platformIcon || '') + ' Connecter ' + platformName;
-    if (nameEl)  nameEl.value = platformName + ' Integration';
-    const modal = document.getElementById('fp-intg-modal');
-    if (modal) modal.style.display = 'flex';
+    const _webhookNative = ['zapier','make','slack','discord','n8n','hubspot','mailchimp','airtable','pipedrive','notion'];
+    if (_webhookNative.includes(platformId)) {
+      window._currentPlatform = platformId;
+      const titleEl = document.getElementById('fp-intg-modal-title');
+      const nameEl  = document.getElementById('intg-name');
+      const urlEl   = document.getElementById('intg-url');
+      if (titleEl) titleEl.textContent = (platformIcon || '') + ' Connecter ' + platformName;
+      if (nameEl)  nameEl.value = platformName + ' Integration';
+      if (urlEl) {
+        const _hints = {
+          zapier: 'https://hooks.zapier.com/hooks/catch/…',
+          make:   'https://hook.eu1.make.com/…',
+          slack:  'https://hooks.slack.com/services/…',
+          discord:'https://discord.com/api/webhooks/…',
+          n8n:    'https://votre-instance.n8n.io/webhook/…',
+          hubspot:'https://api.hubspot.com/automation/…',
+          mailchimp:'https://us1.api.mailchimp.com/…',
+          notion: 'https://api.notion.com/v1/…',
+          airtable:'https://api.airtable.com/…',
+          pipedrive:'https://companyname.pipedrive.com/api/…',
+        };
+        urlEl.placeholder = _hints[platformId] || 'https://…';
+      }
+      const modal = document.getElementById('fp-intg-modal');
+      if (modal) modal.style.display = 'flex';
+    } else {
+      openFloatPanel(
+        (platformIcon || '') + ' Connexion ' + platformName,
+        `<div style="padding:8px 0">
+          <p style="font-size:13px;color:var(--fp-text);margin-bottom:14px;line-height:1.6">
+            La connexion directe à <strong>${platformName}</strong> via OAuth ou clé API est disponible dans la prochaine mise à jour.
+          </p>
+          <p style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px;line-height:1.6">
+            En attendant, vous pouvez utiliser Zapier ou Make pour connecter FlowPoint à ${platformName} en moins de 5 minutes.
+          </p>
+          <button class="fp-btn fp-btn-primary" style="width:100%" onclick="closeFloatPanel();window._intgTab='webhooks';render(STATE.currentSection)">
+            Configurer via Webhooks →
+          </button>
+        </div>`
+      );
+    }
   };
 
   window._showNewWebhookModal = function() {
@@ -20332,7 +20388,6 @@ function renderConversion() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           Conversion Command Center
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;color:#2563EB">AI-POWERED</span>
         </h1>
         <div class="fp-section-sub">Plateforme de CRO, intelligence comportementale et optimisation revenue</div>
       </div>
@@ -23017,7 +23072,6 @@ function renderDataExplorer() {
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
           Business Intelligence Hub
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(6,182,212,0.12);border:1px solid rgba(6,182,212,0.3);border-radius:20px;color:#06b6d4">AI-POWERED</span>
         </h1>
         <div class="fp-section-sub">Plateforme d\'intelligence business · ${totalEntries} entrées de données · ${trafficSources.reduce((s,t)=>s+t.sessions,0).toLocaleString('fr-FR')} sessions analysées</div>
       </div>
@@ -25813,17 +25867,6 @@ function renderSettingsLocation() {
         </div>
       </div>
 
-      <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Coordonnées GPS</div>
-      <div class="fp-grid-2" style="gap:14px;margin-bottom:14px">
-        <div class="fp-form-group">
-          <label class="fp-form-label">Latitude</label>
-          <input class="fp-input" id="fp-loc-lat" type="number" step="0.000001" placeholder="48.856614" value="${loc.latitude!=null?loc.latitude:''}"/>
-        </div>
-        <div class="fp-form-group">
-          <label class="fp-form-label">Longitude</label>
-          <input class="fp-input" id="fp-loc-lng" type="number" step="0.000001" placeholder="2.352222" value="${loc.longitude!=null?loc.longitude:''}"/>
-        </div>
-      </div>
 
       <div class="fp-form-group" style="margin-bottom:18px">
         <label class="fp-form-label">Zone desservie <span style="font-weight:400;color:var(--fp-text-faint)">(zones séparées par des virgules)</span></label>
@@ -25842,7 +25885,6 @@ function renderSettingsLocation() {
       <div style="display:flex;flex-wrap:wrap;gap:10px">
         ${loc.city ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Ville</div><div style="font-weight:600;color:var(--fp-text)">${escHtml(loc.city)}</div></div>` : ''}
         ${loc.country ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Pays</div><div style="font-weight:600;color:var(--fp-text)">${escHtml(loc.country)}</div></div>` : ''}
-        ${loc.latitude!=null ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Coordonnées GPS</div><div style="font-weight:600;color:var(--fp-text);font-family:monospace">${loc.latitude.toFixed(4)}, ${loc.longitude!=null?loc.longitude.toFixed(4):''}</div></div>` : ''}
         ${serviceAreas.length > 0 ? `<div style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:10px 14px;font-size:12px"><div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:2px">Zones desservies</div><div style="font-weight:600;color:var(--fp-text)">${serviceAreas.slice(0,3).map(z=>escHtml(z)).join(' · ')}${serviceAreas.length>3?' + '+(serviceAreas.length-3):''}</div></div>` : ''}
       </div>
     </div>` : ''}
@@ -31581,8 +31623,8 @@ function renderLocalDominationMaps() {
           <input id="hm-name" class="fp-input" placeholder="Nom (ex: Paris Centre — Plomberie)"/>
           <input id="hm-keyword" class="fp-input" placeholder="Mot-clé cible (ex: plombier urgence)"/>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <input id="hm-lat" class="fp-input" placeholder="Latitude (ex: 48.8566)"/>
-            <input id="hm-lng" class="fp-input" placeholder="Longitude (ex: 2.3522)"/>
+            <input id="hm-lat" class="fp-input" placeholder="Latitude (ex: 48.8566)" value="${STATE.me?.location?.latitude != null ? Number(STATE.me.location.latitude).toFixed(4) : ''}"/>
+            <input id="hm-lng" class="fp-input" placeholder="Longitude (ex: 2.3522)" value="${STATE.me?.location?.longitude != null ? Number(STATE.me.location.longitude).toFixed(4) : ''}"/>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <select id="hm-radius" class="fp-input">
