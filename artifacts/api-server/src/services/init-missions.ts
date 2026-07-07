@@ -34,6 +34,7 @@ export async function initMissionsTables(): Promise<void> {
         due_date                  TEXT,
         completed_at              TIMESTAMP,
         dismissed_at              TIMESTAMP,
+        assigned_to               TEXT,
         last_refreshed_at         TIMESTAMP,
         history                   JSONB DEFAULT '[]',
         created_at                TIMESTAMP DEFAULT NOW(),

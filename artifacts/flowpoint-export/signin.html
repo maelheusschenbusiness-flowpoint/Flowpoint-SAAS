@@ -486,6 +486,10 @@
       if (planEl) planEl.textContent = planNames[_selectedPlan] || _selectedPlan;
       document.getElementById('signup-screen').style.display = 'none';
       document.getElementById('success-screen').style.display = 'block';
+      // Redirect to checkout after short delay so user sees confirmation
+      setTimeout(function () {
+        window.location.href = '/checkout.html';
+      }, 2500);
     })
     .catch(function () {
       setLoading(signupBtn, false);

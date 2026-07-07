@@ -49,6 +49,7 @@ function rowToMission(row: Record<string, unknown>) {
     date: row.due_date,
     completedAt: row.completed_at,
     dismissedAt: row.dismissed_at,
+    assignedTo: row.assigned_to,
     lastRefreshedAt: row.last_refreshed_at,
     history: row.history || [],
     createdAt: row.created_at,
@@ -315,7 +316,7 @@ router.post("/missions", async (req: Request, res: Response) => {
     const {
       title, description, category = "seo", type = "seo", status = "todo",
       impact = "Moyen", effort = "Moyen", priority = "medium",
-      dueDate, steps, priorityScore,
+      dueDate, steps, priorityScore, assignedTo,
     } = req.body as Record<string, unknown>;
 
     if (!title) { res.status(400).json({ error: "title required" }); return; }
@@ -326,10 +327,10 @@ router.post("/missions", async (req: Request, res: Response) => {
     await db(`
       INSERT INTO missions (
         id, org_id, title, description, category, type, priority, priority_score,
-        status, impact, effort, steps, due_date, source_type, created_at, updated_at, last_refreshed_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'manual',NOW(),NOW(),NOW())
+        status, impact, effort, steps, due_date, assigned_to, source_type, created_at, updated_at, last_refreshed_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'manual',NOW(),NOW(),NOW())
     `, [id, org, title, description || null, category, type, priority, pScore, status, impact, effort,
-        JSON.stringify(steps || []), (dueDate as string) || null]);
+        JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null]);
 
     const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
     const mission = rowToMission(row.rows[0]);
@@ -361,7 +362,7 @@ router.patch("/missions/:id", async (req: Request, res: Response) => {
 
     const {
       title, description, status, impact, effort, category, priority,
-      steps, dueDate, priorityScore,
+      steps, dueDate, priorityScore, assignedTo,
     } = req.body as Record<string, unknown>;
 
     const newStatus = (status as string) || (prev.status as string);
@@ -380,16 +381,18 @@ router.patch("/missions/:id", async (req: Request, res: Response) => {
         steps        = COALESCE($8::jsonb, steps),
         due_date     = COALESCE($9, due_date),
         priority_score = COALESCE($10, priority_score),
-        completed_at = CASE WHEN $11 THEN NOW() ELSE completed_at END,
-        dismissed_at = CASE WHEN $12 THEN NOW() ELSE dismissed_at END,
+        assigned_to  = COALESCE($11, assigned_to),
+        completed_at = CASE WHEN $12 THEN NOW() ELSE completed_at END,
+        dismissed_at = CASE WHEN $13 THEN NOW() ELSE dismissed_at END,
         updated_at   = NOW()
-      WHERE id = $13 AND org_id = $14
+      WHERE id = $14 AND org_id = $15
     `, [
       title || null, description || null, newStatus,
       impact || null, effort || null, category || null, priority || null,
       steps ? JSON.stringify(steps) : null,
       (dueDate as string) || null,
       priorityScore ? Number(priorityScore) : null,
+      (assignedTo as string) || null,
       isNowDone, isNowDismissed,
       id, org,
     ]);

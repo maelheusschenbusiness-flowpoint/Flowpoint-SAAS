@@ -840,13 +840,35 @@ function useReportTemplate(templateName) {
 function openFileImport() {
   const inp = document.createElement('input');
   inp.type = 'file';
-  inp.accept = '.csv,.pdf,.docx,.xlsx,.json,.txt';
+  inp.accept = '.csv,.pdf,.docx,.xlsx,.json,.txt,.zip';
   inp.multiple = true;
-  inp.addEventListener('change', () => {
+  inp.addEventListener('change', async () => {
     const files = [...inp.files];
     if (!files.length) return;
-    const names = files.map(f => f.name).join(', ');
-    showToast('success', `${files.length} fichier${files.length > 1 ? 's' : ''} importé${files.length > 1 ? 's' : ''} : ${names.slice(0, 50)}`);
+    const from = STATE?.me?.firstName || STATE?.me?.name?.split(' ')[0] || 'Vous';
+    for (const file of files) {
+      try {
+        const reader = new FileReader();
+        const content = await new Promise((resolve, reject) => {
+          reader.onload = () => resolve(String(reader.result).split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const r = await apiAction('POST', '/api/team/files', {
+          name: file.name,
+          type: file.type || file.name.split('.').pop(),
+          size: file.size,
+          content: content,
+          sharedBy: from,
+        }).catch(() => null);
+        if (r && r.ok) {
+          STATE.teamFiles = STATE.teamFiles || [];
+          STATE.teamFiles.unshift(r.file || { id: r.file?.id, name: file.name, type: file.type, size: file.size, sharedBy: from, createdAt: new Date().toISOString() });
+        } else { showToast('error', `Erreur import ${file.name}`); }
+      } catch(e) { showToast('error', `Erreur import ${file.name}`); }
+    }
+    showToast('success', `${files.length} fichier${files.length > 1 ? 's' : ''} importé${files.length > 1 ? 's' : ''}`);
+    if (STATE.subRoute === 'files') render();
   });
   inp.click();
 }
@@ -1065,6 +1087,10 @@ async function loadData() {
     }).catch(() => {}),
     apiFetch('/api/market-intelligence').then(r => {
       if (r && typeof r === 'object') { if (!window.FP_DATA) window.FP_DATA = {}; window.FP_DATA.marketIntelligence = r; }
+    }).catch(() => {}),
+    apiFetch('/api/team/files').then(r => {
+      if (Array.isArray(r)) STATE.teamFiles = r;
+      else if (r && Array.isArray(r.files)) STATE.teamFiles = r.files;
     }).catch(() => {}),
   ]);
 
@@ -2163,17 +2189,57 @@ function openNewChannelPanel() {
   openFloatPanel('Nouveau canal', html);
 }
 
+function openAssignTaskModal() {
+  const members = (STATE.team || []).filter(t => t.id !== STATE.me?.id).map(t => `<option value="${escHtml(t.id)}">${escHtml(t.name || t.email || 'Membre')}</option>`).join('');
+  const html = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">Membre</label>
+        <select class="fp-select" id="assign-member" style="width:100%">${members || '<option disabled>Aucun membre</option>'}</select>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">Titre</label>
+        <input class="fp-input" id="assign-title" placeholder="Titre de la tâche…" style="width:100%"/>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--fp-text-muted);margin-bottom:4px;display:block">Priorité</label>
+        <select class="fp-select" id="assign-priority" style="width:100%"><option value="low">Faible</option><option value="medium" selected>Moyenne</option><option value="high">Haute</option><option value="critical">Critique</option></select>
+      </div>
+      <button class="fp-btn fp-btn-primary" style="width:100%;margin-top:4px" onclick="(async()=>{const mid=document.getElementById('assign-member')?.value;const ti=document.getElementById('assign-title')?.value?.trim();const pr=document.getElementById('assign-priority')?.value;if(!mid||!ti){showToast('warning','Remplissez tous les champs');return;}const r=await apiAction('POST','/api/missions',{title:ti,source:'team',status:'todo',priority:pr,assignedTo:mid}).catch(()=>null);if(r&&r.id){showToast('success','Tâche assignée !');closeFloatPanel();navigate('missions');}else showToast('error','Erreur');})()">Assigner</button>
+    </div>
+  `;
+  openFloatPanel('Assigner une tâche', html);
+}
+
 async function handleChatAttach(input) {
   const files = Array.from(input.files || []);
   if (!files.length) return;
-  const names = files.map(f => f.name).join(', ');
+  const from = STATE?.me?.firstName || STATE?.me?.name?.split(' ')[0] || 'Vous';
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  const msg = `📎 ${names}`;
-  const from = STATE?.me?.firstName || STATE?.me?.name?.split(' ')[0] || 'Vous';
-  STATE.teamChatHistory.push({ from, msg, time });
+  for (const file of files) {
+    try {
+      const reader = new FileReader();
+      const content = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(String(reader.result).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const r = await apiAction('POST', '/api/team/files', {
+        name: file.name,
+        type: file.type || file.name.split('.').pop(),
+        size: file.size,
+        content: content,
+        sharedBy: from,
+      }).catch(() => null);
+      if (r && r.ok) {
+        const msg = `📎 ${file.name}`;
+        STATE.teamChatHistory.push({ from, msg, time, fileId: r.file?.id });
+        try { await apiAction('POST', '/api/team/messages', { channel: 'general', from, text: msg, self: true }); } catch(_) {}
+      }
+    } catch(e) { showToast('error', `Erreur envoi ${file.name}`); }
+  }
   input.value = '';
-  try { await apiAction('POST', '/api/team/messages', { channel: 'general', from, text: msg, self: true }); } catch(_) {}
   if (STATE.subRoute === 'chat') {
     navigateSub('chat');
     setTimeout(() => { const msgs = document.getElementById('team-chat-msgs'); if (msgs) msgs.scrollTop = msgs.scrollHeight; }, 60);
@@ -3494,7 +3560,10 @@ function renderOverview() {
               <div style="font-size:10px;font-weight:700;color:${isNeg?'#ef4444':isUp?'#22c55e':'#94a3b8'};flex-shrink:0">${h.trend}</div>
             </div>
             ${scoreGauge(h.val, h.max, h.color, 62, 24)}
-            <div style="margin-top:6px">
+            <div style="margin-top:6px;text-align:center">
+              <div style="font-size:11px;font-weight:700;color:${col};display:inline-block;padding:2px 8px;border-radius:99px;background:${col}18">${h.val >= 70 ? 'Bon' : h.val >= 50 ? 'Attention' : 'Faible'}</div>
+            </div>
+            <div style="margin-top:4px">
               <div class="fp-progress-track" style="height:3px;border-radius:99px"><div class="fp-progress-fill" style="width:${Math.round(h.val/h.max*100)}%;background:${h.color};border-radius:99px"></div></div>
             </div>
           </div>`;
@@ -17484,14 +17553,23 @@ function renderTeamActivity() {
 function renderTeamFiles() {
   const _tf = STATE.team && STATE.team.length > 0 ? STATE.team : [];
   const _fn = i => _tf.length > 0 ? (_tf[i % _tf.length].name || _tf[i % _tf.length].email || 'Membre') : '—';
-  const files = PREVIEW_MODE ? [
-    { name:'Rapport_' + new Date().toLocaleString('fr-FR',{month:'long',year:'numeric'}).replace(' ','_') + '.pdf', size:'2.4 MB', shared:_fn(0), date:new Date(Date.now()-3*86400000).toLocaleDateString('fr-FR'), type:'pdf', color:'#2563EB' },
-    { name:'Audit_SEO_' + (STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'').split('.')[0]||'site'):'site') + '.xlsx', size:'890 KB', shared:_fn(1), date:new Date(Date.now()-4*86400000).toLocaleDateString('fr-FR'), type:'xlsx', color:'#22c55e' },
-    { name:'Photos_GBP.zip', size:'14.2 MB', shared:_fn(0), date:new Date(Date.now()-5*86400000).toLocaleDateString('fr-FR'), type:'zip', color:'#f59e0b' },
-    { name:'Plan_action_Q3_' + new Date().getFullYear() + '.docx', size:'320 KB', shared:_fn(1), date:new Date(Date.now()-8*86400000).toLocaleDateString('fr-FR'), type:'docx', color:'#8b5cf6' },
-    { name:'Checklist_SEO_Template.pdf', size:'180 KB', shared:_fn(2), date:new Date(Date.now()-21*86400000).toLocaleDateString('fr-FR'), type:'pdf', color:'#2563EB' },
-    { name:'Données_Analytics_Q1.csv', size:'440 KB', shared:_fn(0), date:new Date(Date.now()-25*86400000).toLocaleDateString('fr-FR'), type:'csv', color:'#22c55e' },
-  ] : [];
+  const _realFiles = STATE.teamFiles || [];
+  const files = _realFiles.length > 0 ? _realFiles.map(f => ({
+    id: f.id,
+    name: f.name || 'Fichier',
+    size: f.size ? (f.size > 1024*1024 ? (f.size/(1024*1024)).toFixed(1)+' MB' : Math.round(f.size/1024)+' KB') : '—',
+    shared: f.sharedBy || _fn(0),
+    date: f.createdAt ? new Date(f.createdAt).toLocaleDateString('fr-FR') : new Date().toLocaleDateString('fr-FR'),
+    type: String(f.type||'pdf').split('/')[0].replace('application','pdf').replace('text','csv').replace('image','pdf'),
+    color: {pdf:'#2563EB',xlsx:'#22c55e',zip:'#f59e0b',docx:'#8b5cf6',csv:'#22c55e'}[String(f.type||'pdf').split('/')[0].replace('application','pdf').replace('text','csv').replace('image','pdf')] || '#2563EB'
+  })) : (PREVIEW_MODE ? [
+    { id:null, name:'Rapport_' + new Date().toLocaleString('fr-FR',{month:'long',year:'numeric'}).replace(' ','_') + '.pdf', size:'2.4 MB', shared:_fn(0), date:new Date(Date.now()-3*86400000).toLocaleDateString('fr-FR'), type:'pdf', color:'#2563EB' },
+    { id:null, name:'Audit_SEO_' + (STATE.audits&&STATE.audits.length>0?((STATE.audits[0].url||'').replace(/^https?:\/\//,'').split('.')[0]||'site'):'site') + '.xlsx', size:'890 KB', shared:_fn(1), date:new Date(Date.now()-4*86400000).toLocaleDateString('fr-FR'), type:'xlsx', color:'#22c55e' },
+    { id:null, name:'Photos_GBP.zip', size:'14.2 MB', shared:_fn(0), date:new Date(Date.now()-5*86400000).toLocaleDateString('fr-FR'), type:'zip', color:'#f59e0b' },
+    { id:null, name:'Plan_action_Q3_' + new Date().getFullYear() + '.docx', size:'320 KB', shared:_fn(1), date:new Date(Date.now()-8*86400000).toLocaleDateString('fr-FR'), type:'docx', color:'#8b5cf6' },
+    { id:null, name:'Checklist_SEO_Template.pdf', size:'180 KB', shared:_fn(2), date:new Date(Date.now()-21*86400000).toLocaleDateString('fr-FR'), type:'pdf', color:'#2563EB' },
+    { id:null, name:'Données_Analytics_Q1.csv', size:'440 KB', shared:_fn(0), date:new Date(Date.now()-25*86400000).toLocaleDateString('fr-FR'), type:'csv', color:'#22c55e' },
+  ] : []);
   const fileIcon = (type, color) => {
     const paths = {
       pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>',
@@ -17502,29 +17580,30 @@ function renderTeamFiles() {
     };
     return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths[type]||paths.pdf}</svg>`;
   };
-  const usedMB = 17.8;
+  const usedMB = _realFiles.reduce((s,f)=>s+(Number(f.size)||0),0) / (1024*1024);
   const totalGB = 5;
-  const pct = (usedMB / (totalGB * 1024) * 100).toFixed(2);
+  const pct = Math.min(100, (usedMB / totalGB * 100)).toFixed(2);
+  const fileCount = files.length;
   return `
-    ${aiBlock('6 fichiers partagés ce mois. Espace utilisé : <strong>17.8 MB sur 5 GB</strong> alloués. Conseil : compressez les archives ZIP pour économiser de l\'espace.',[])}
+    ${aiBlock((fileCount > 0 ? String(fileCount) : 'Aucun') + ' fichier' + (fileCount > 1 ? 's' : '') + ' partagé' + (fileCount > 1 ? 's' : '') + ' ce mois. Espace utilisé : <strong>' + usedMB.toFixed(1) + ' MB sur ' + totalGB + ' GB</strong> alloués.',[])}
     <div class="fp-card fp-mb-16" style="padding:12px 16px">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:180px">
           <div style="display:flex;justify-content:space-between;margin-bottom:6px">
             <span style="font-size:12px;color:var(--fp-text-muted)">Stockage utilisé</span>
-            <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${usedMB} MB / ${totalGB} GB</span>
+            <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${usedMB.toFixed(1)} MB / ${totalGB} GB</span>
           </div>
           <div class="fp-progress-track" style="height:6px"><div class="fp-progress-fill" style="width:${pct}%;background:var(--fp-accent)"></div></div>
         </div>
         <div style="display:flex;gap:8px">
-          <input class="fp-input" placeholder="Rechercher…" style="width:160px"/>
+          <input class="fp-input" id="team-files-search" placeholder="Rechercher…" style="width:160px" oninput="renderTeamFilesSearch(this.value)"/>
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFileImport()">+ Importer</button>
         </div>
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:8px">
+    <div id="team-files-list" style="display:flex;flex-direction:column;gap:8px">
       ${files.map(f => `
-        <div class="fp-opp-card fp-hover-toolbar-wrap" style="position:relative">
+        <div class="fp-opp-card fp-hover-toolbar-wrap team-file-row" style="position:relative" data-file-name="${escHtml(f.name).toLowerCase()}">
           <div class="fp-opp-icon" style="background:${f.color}18;flex-shrink:0">${fileIcon(f.type, f.color)}</div>
           <div class="fp-opp-body">
             <div class="fp-opp-title">${escHtml(f.name)}</div>
@@ -17534,10 +17613,10 @@ function renderTeamFiles() {
             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText(window.location.href).then(()=>showToast('success','Lien copié !')).catch(()=>showToast('info',window.location.href))" title="Copier le lien" style="gap:4px;font-size:11px">
               ${svgIcon('copy').replace('width="14"','width="11"').replace('height="14"','height="11"')} Copier
             </button>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="downloadFileAsset(f.name)" title="Télécharger" style="gap:4px;font-size:11px">
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${f.id ? `downloadFileAssetById('${f.id}')` : `downloadFileAsset('${escHtml(f.name)}')`}" title="Télécharger" style="gap:4px;font-size:11px">
               ${svgIcon('download').replace('width="14"','width="11"').replace('height="14"','height="11"')}
             </button>
-            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="showToast('warning','Fichier supprimé')" title="Supprimer" style="color:var(--fp-danger);font-size:11px">
+            <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="${f.id ? `deleteTeamFile('${f.id}')` : `showToast('warning','Fichier supprimé')`}" title="Supprimer" style="color:var(--fp-danger);font-size:11px">
               ${svgIcon('trash').replace('width="14"','width="11"').replace('height="14"','height="11"')}
             </button>
           </div>
@@ -17545,6 +17624,29 @@ function renderTeamFiles() {
       `).join('')}
     </div>
   `;
+}
+function renderTeamFilesSearch(q) {
+  const rows = document.querySelectorAll('.team-file-row');
+  const term = (q || '').toLowerCase();
+  rows.forEach(r => { r.style.display = (!term || r.dataset.fileName.includes(term)) ? '' : 'none'; });
+}
+async function deleteTeamFile(id) {
+  if (!confirm('Supprimer ce fichier ?')) return;
+  const r = await apiAction('DELETE', `/api/team/files/${id}`).catch(() => null);
+  if (r && r.ok) { showToast('success','Fichier supprimé'); STATE.teamFiles = (STATE.teamFiles||[]).filter(f=>f.id!==id); render(); }
+  else showToast('error','Erreur suppression');
+}
+async function downloadFileAssetById(id) {
+  try {
+    const res = await fetch(`/api/team/files/${id}/content`, { credentials: 'include' });
+    if (!res.ok) throw new Error('Not found');
+    const blob = await res.blob();
+    const fn = res.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] || 'fichier';
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: fn });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    showToast('success', `${fn} téléchargé`);
+  } catch(e) { showToast('error', 'Erreur téléchargement'); }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -25778,7 +25880,7 @@ function renderTeamPerformance() {
             ${badge(t.status, t.status==='Terminé'?'success':t.status==='En cours'?'warning':'#64748b')}
           </div>
         `).join('')}
-        <button class="fp-btn fp-btn-primary fp-btn-sm" style="align-self:flex-start;margin-top:4px" onclick="apiAction('POST','/api/missions',{title:'Tâche équipe',source:'team',status:'todo',priority:'medium'}).then(r=>{if(r&&r.id){showToast('success','Tâche créée !');navigate('missions');}else showToast('error','Erreur')}).catch(()=>showToast('error','Erreur'))">+ Assigner une tâche</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="align-self:flex-start;margin-top:4px" onclick="openAssignTaskModal()">+ Assigner une tâche</button>
       </div>
     </div>
   `;

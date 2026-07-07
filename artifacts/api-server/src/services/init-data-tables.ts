@@ -307,6 +307,21 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS team_messages_org_id_idx  ON team_messages(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS team_messages_channel_idx ON team_messages(channel);`);
 
+    // ── team_files ──────────────────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS team_files (
+        id          TEXT PRIMARY KEY,
+        org_id      TEXT NOT NULL DEFAULT 'default',
+        name        TEXT NOT NULL,
+        type        TEXT NOT NULL DEFAULT 'file',
+        size        INTEGER DEFAULT 0,
+        content     TEXT,
+        shared_by   TEXT DEFAULT '',
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_files_org_id_idx ON team_files(org_id);`);
+
     // ── org_settings — ensure all expected columns exist ─────────────────────
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_ends_at            TIMESTAMPTZ;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_ending_notified_at  TIMESTAMPTZ;`);
