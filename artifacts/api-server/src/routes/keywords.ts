@@ -193,9 +193,15 @@ router.post("/keywords/track", async (req, res) => {
 // POST /api/keywords/sync
 router.post("/keywords/sync", async (req, res) => {
   const orgId = getOrg(req);
+  const t0 = Date.now();
   try {
-    const result = await syncOrgRankings(orgId);
-    res.json({ ok: true, ...result });
+    await syncOrgRankings(orgId);
+    const cr = await (req as OrgReq).orgDb(
+      `SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1 AND active=true`,
+      [orgId]
+    );
+    const synced = Number((cr.rows[0] as { n: number } | undefined)?.n ?? 0);
+    res.json({ ok: true, synced, durationMs: Date.now() - t0 });
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 

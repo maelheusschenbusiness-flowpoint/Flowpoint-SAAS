@@ -1062,6 +1062,8 @@ async function loadData() {
     }).catch(() => {}),
   ]);
 
+  STATE.growthObjectives = await apiFetch('/api/growth/objectives').then(r => Array.isArray(r) ? r : []).catch(() => []);
+
   // Apply pinned state
   STATE.audits   = STATE.audits.map(a => ({ ...a, pinned: !!(STATE.pinned['audit_'+a.id]) }));
   STATE.monitors = STATE.monitors.map(m => ({ ...m, pinned: !!(STATE.pinned['monitor_'+m.id]) }));
@@ -17864,23 +17866,56 @@ function renderGrowthObjectives() {
       }).join('')}
     </div>
 
+    ${(function(){
+      const _now = new Date();
+      const _curQ = Math.floor(_now.getMonth()/3)+1;
+      const _prevQ = _curQ === 1 ? 4 : _curQ-1;
+      const _prevQYear = _curQ === 1 ? _now.getFullYear()-1 : _now.getFullYear();
+      const _avgSc = avgScore();
+      const _nb = STATE.audits.length;
+      const _monDn = STATE.monitors.filter(function(m){return m.status==='down';}).length;
+      const _bilanItems = [
+        { icon: _avgSc >= 65 ? '✅' : '⚠️', label:'Score moyen ≥ 65/100',
+          result: _avgSc > 0 ? _avgSc + '/100 — ' + (_avgSc >= 65 ? 'Atteint' : 'Non atteint') : 'Aucun audit effectué',
+          col: _avgSc >= 65 ? 'var(--fp-success)' : 'var(--fp-warning)' },
+        { icon: _nb >= 3 ? '✅' : '⚠️', label:'3 sites configurés',
+          result: _nb + ' site' + (_nb > 1 ? 's' : '') + ' — ' + (_nb >= 3 ? 'Objectif atteint' : 'En cours'),
+          col: _nb >= 3 ? 'var(--fp-success)' : 'var(--fp-warning)' },
+        { icon: _monDn === 0 ? '✅' : '⚠️', label:'0 monitor DOWN sur 30j',
+          result: _monDn === 0 ? (STATE.monitors.length ? 'Aucun incident' : 'Aucun monitor actif') : _monDn + ' monitor' + (_monDn>1?'s':'') + ' DOWN — Non atteint',
+          col: _monDn === 0 ? 'var(--fp-success)' : 'var(--fp-warning)' },
+      ];
+      return '<div class="fp-card" style="margin-top:14px">' +
+        '<div class="fp-card-title" style="margin-bottom:14px">🏅 Bilan Q' + _prevQ + ' ' + _prevQYear + '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' +
+        _bilanItems.map(function(h){ return '<div class="fp-bilan-item" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.03)">' +
+          '<span style="font-size:16px">'+h.icon+'</span>' +
+          '<div style="flex:1;font-size:12px;font-weight:600">'+h.label+'</div>' +
+          '<div style="font-size:11px;font-weight:700;color:'+h.col+'">'+h.result+'</div>' +
+          '</div>';}).join('') +
+        '</div></div>';
+    })()}
+
+    ${(STATE.growthObjectives && STATE.growthObjectives.length > 0) ? `
     <div class="fp-card" style="margin-top:14px">
-      <div class="fp-card-title" style="margin-bottom:14px">🏅 Bilan Q1 2026</div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${[
-          {icon:'✅',label:'Score moyen ≥ 65/100',    result:'67/100 — Atteint',              col:'var(--fp-success)'},
-          {icon:'✅',label:'3 sites configurés',       result:'6 sites — Objectif dépassé',    col:'var(--fp-success)'},
-          {icon:'✅',label:'1 audit/semaine',          result:'1.4 audit/semaine — Atteint',   col:'var(--fp-success)'},
-          {icon:'⚠️',label:'0 monitor DOWN sur 30j',  result:'4 incidents — Non atteint',     col:'var(--fp-warning)'},
-        ].map(h=>`
-          <div class="fp-bilan-item" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.03)">
-            <span style="font-size:16px">${h.icon}</span>
-            <div style="flex:1;font-size:12px;font-weight:600">${h.label}</div>
-            <div style="font-size:11px;font-weight:700;color:${h.col}">${h.result}</div>
-          </div>
-        `).join('')}
+      <div class="fp-card-title" style="margin-bottom:14px">🎯 Objectifs personnalisés</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${STATE.growthObjectives.map(function(o) {
+          const dl = o.deadline ? new Date(o.deadline).toLocaleDateString('fr-FR', { day:'numeric', month:'short', year:'numeric' }) : '—';
+          return '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">' +
+            '<div style="flex:1">' +
+              '<div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">'+escHtml(o.label||'Objectif')+'</div>' +
+              '<div style="font-size:11px;color:var(--fp-text-faint)">Cible : '+escHtml(String(o.target||'—'))+' '+escHtml(o.unit||'')+'</div>' +
+            '</div>' +
+            '<div style="text-align:right;flex-shrink:0">' +
+              '<div style="font-size:11px;color:var(--fp-text-faint)">📅 '+dl+'</div>' +
+              (o.next ? '<div style="font-size:10px;color:var(--fp-text-muted);margin-top:2px">→ '+escHtml(o.next)+'</div>' : '') +
+            '</div>' +
+            '<button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" onclick="(function(){if(!confirm(\'Supprimer cet objectif ?\'))return;apiFetch(\'/api/growth/objectives/\'+'+JSON.stringify(o.id)+',{method:\'DELETE\'}).then(function(){if(!STATE.growthObjectives)return;STATE.growthObjectives=STATE.growthObjectives.filter(function(x){return x.id!=='+JSON.stringify(o.id)+'});render(STATE.currentSection);showToast(\'success\',\'Objectif supprimé\')}).catch(function(){showToast(\'error\',\'Erreur\')})})()">✕</button>' +
+          '</div>';
+        }).join('')}
       </div>
-    </div>
+    </div>` : ''}
   `;
 }
 
@@ -20549,7 +20584,7 @@ function renderConversion() {
                 <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(r.effort)}</div>
               </div>
               ${badge(r.priority, pc)}
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ('Créer opportunité de conversion','Conversion','medium')">Créer</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm quick-win-btn" data-label="${escHtml(r.t)}">Commencer</button>
             </div>`;
           }).join('');
         })()}
