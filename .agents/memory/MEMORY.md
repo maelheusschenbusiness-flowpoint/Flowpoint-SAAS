@@ -35,3 +35,5 @@
 - [gpt-5 family API param compatibility](gpt5-migration-params.md) — gpt-5+ needs max_completion_tokens (not max_tokens) and no custom temperature; model-string swaps alone break silently at runtime
 - [FlowPoint post-verification checkout redirect](flowpoint-checkout-redirect.md) — use sessionStorage `fp_next` + localStorage `fp_cart` to route a new signup into checkout.html instead of the dashboard after magic-link verify
 - [Postgres silent rollback on abort](postgres-silent-rollback-abort.md) — a failing statement mid-transaction poisons it; COMMIT then silently becomes ROLLBACK with no error; guard secondary logic with SAVEPOINT
+- [integrations-service signatures](integrations-service-pattern.md) — correct fn sigs + table (automation_integrations); Slack/Discord no HMAC; missions use source_type not source
+- [AI context enrichment](ai-context-enrichment.md) — buildFlowpointContext(extra, orgId) queries keywords/competitors/GBP; STRICT_AI_RULE constant in every chat system prompt; competitors has domain_rating not rating

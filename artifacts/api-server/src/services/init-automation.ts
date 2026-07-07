@@ -91,6 +91,55 @@ export async function initAutomationTables(): Promise<void> {
     await client.query(`ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS error           TEXT`);
     await client.query(`ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS output          JSONB`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_workflow_runs_org ON workflow_runs(org_id)`);
+
+    // ── automation_integrations — columns added at runtime ────────────────────
+    const aiCols: Array<[string, string]> = [
+      ["name",          "TEXT NOT NULL DEFAULT 'Integration'"],
+      ["platform",      "TEXT NOT NULL DEFAULT 'custom'"],
+      ["endpoint_url",  "TEXT NOT NULL DEFAULT ''"],
+      ["secret_key",    "TEXT"],
+      ["events",        "JSONB DEFAULT '[]'"],
+      ["headers",       "JSONB DEFAULT '{}'"],
+      ["timeout_ms",    "INTEGER DEFAULT 10000"],
+      ["max_retries",   "INTEGER DEFAULT 3"],
+      ["retry_enabled", "BOOLEAN DEFAULT true"],
+      ["active",        "BOOLEAN NOT NULL DEFAULT true"],
+      ["success_count", "INTEGER DEFAULT 0"],
+      ["failure_count", "INTEGER DEFAULT 0"],
+      ["last_triggered","TIMESTAMP"],
+      ["metadata",      "JSONB DEFAULT '{}'"],
+      ["updated_at",    "TIMESTAMP DEFAULT NOW()"],
+    ];
+    for (const [col, def] of aiCols) {
+      await client.query(`ALTER TABLE automation_integrations ADD COLUMN IF NOT EXISTS ${col} ${def}`);
+    }
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_auto_intg_org_active ON automation_integrations(org_id, active)`);
+
+    // ── automation_runs — add integration/event columns ───────────────────────
+    const arCols: Array<[string, string]> = [
+      ["integration_id", "TEXT"],
+      ["event_type",     "TEXT"],
+      ["payload",        "JSONB DEFAULT '{}'"],
+      ["attempt",        "INTEGER DEFAULT 1"],
+    ];
+    for (const [col, def] of arCols) {
+      await client.query(`ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS ${col} ${def}`);
+    }
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_auto_runs_intg ON automation_runs(integration_id) WHERE integration_id IS NOT NULL`);
+
+    // ── incoming_webhooks — add token/action columns ──────────────────────────
+    const iwCols: Array<[string, string]> = [
+      ["token",         "TEXT"],
+      ["source",        "TEXT DEFAULT 'custom'"],
+      ["action",        "TEXT DEFAULT 'log'"],
+      ["action_config", "JSONB DEFAULT '{}'"],
+      ["active",        "BOOLEAN NOT NULL DEFAULT true"],
+    ];
+    for (const [col, def] of iwCols) {
+      await client.query(`ALTER TABLE incoming_webhooks ADD COLUMN IF NOT EXISTS ${col} ${def}`);
+    }
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_incoming_wh_token ON incoming_webhooks(token) WHERE token IS NOT NULL`);
+
     logger.info("Automation tables initialized");
   } catch (err) {
     logger.error("Failed to init automation tables", { err });

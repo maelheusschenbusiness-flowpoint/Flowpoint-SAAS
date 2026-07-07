@@ -68,8 +68,68 @@ async function getOpenAI() {
 }
 
 // ── Shared context builder ────────────────────────────────────────────────────
-async function buildFlowpointContext(extra?: Record<string, unknown>): Promise<string> {
+// Queries REAL data from DB. All advice generated using this context must be
+// grounded in the data returned here — no invented generic recommendations.
+async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: string): Promise<string> {
   try {
+    const oid = orgId ?? "default";
+    let keywords: Array<{ keyword: string; current_position: number | null; search_volume: number | null; trend: string | null }> = [];
+    let competitors: Array<{ name: string; domain?: string; rating?: number; reviews_count?: number }> = [];
+    let gscConnected = false;
+    let ga4Connected = false;
+    let gbpConnected = false;
+
+    {
+      // Use pool.query() (auto-checkout/checkin) for truly parallel reads
+      const [kwRes, compRes, gbpRes] = await Promise.allSettled([
+        pool.query(
+          `SELECT keyword, current_position, search_volume, trend
+           FROM tracked_keywords
+           WHERE org_id=$1 AND active=true
+           ORDER BY search_volume DESC NULLS LAST, current_position ASC NULLS LAST
+           LIMIT 15`,
+          [oid]
+        ),
+        pool.query(
+          `SELECT name, url, domain_rating, keywords AS kw_count
+           FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 5`,
+          [oid]
+        ),
+        pool.query(
+          `SELECT id FROM google_tokens WHERE org_id=$1 LIMIT 1`,
+          [oid]
+        ),
+      ]);
+      if (kwRes.status === "fulfilled")   keywords    = kwRes.value.rows as typeof keywords;
+      if (compRes.status === "fulfilled") competitors = (compRes.value.rows as Array<Record<string,unknown>>).map(r => ({
+        name: String(r["name"] ?? ""),
+        domain: String(r["url"] ?? ""),
+        rating: Number(r["domain_rating"] ?? 0),
+        reviews_count: Number(r["kw_count"] ?? 0),
+      }));
+      if (gbpRes.status === "fulfilled")  gbpConnected = gbpRes.value.rows.length > 0;
+
+      // GSC/GA4 — check if tables exist first (optional integrations)
+      const [gscCheck, ga4Check] = await Promise.allSettled([
+        pool.query(
+          `SELECT COUNT(*) AS cnt FROM information_schema.tables
+           WHERE table_schema='public' AND table_name='gsc_sites'`
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS cnt FROM information_schema.tables
+           WHERE table_schema='public' AND table_name='ga4_properties'`
+        ),
+      ]);
+      if (gscCheck.status === "fulfilled" && Number((gscCheck.value.rows[0] as Record<string,unknown>)["cnt"] ?? 0) > 0) {
+        const r = await pool.query(`SELECT id FROM gsc_sites WHERE org_id=$1 LIMIT 1`, [oid]).catch(() => ({ rows: [] }));
+        gscConnected = r.rows.length > 0;
+      }
+      if (ga4Check.status === "fulfilled" && Number((ga4Check.value.rows[0] as Record<string,unknown>)["cnt"] ?? 0) > 0) {
+        const r = await pool.query(`SELECT id FROM ga4_properties WHERE org_id=$1 LIMIT 1`, [oid]).catch(() => ({ rows: [] }));
+        ga4Connected = r.rows.length > 0;
+      }
+    }
+
     const [audits, monitors] = await Promise.all([
       db.select().from(auditsTable).orderBy(desc(auditsTable.createdAt)).limit(10),
       db.select().from(monitorsTable).limit(10),
@@ -79,6 +139,7 @@ async function buildFlowpointContext(extra?: Record<string, unknown>): Promise<s
       : 0;
     const downCount = monitors.filter(m => m.status === "down").length;
     const criticalAudits = audits.filter(a => a.score < 50);
+    const warningAudits  = audits.filter(a => a.score >= 50 && a.score < 75);
 
     // Prefer frontend-enriched context fields when available
     const e = extra ?? {};
@@ -88,7 +149,7 @@ async function buildFlowpointContext(extra?: Record<string, unknown>): Promise<s
     const localScore   = (e["localScore"] as number) ?? 0;
     const convScore    = (e["conversionScore"] as number) ?? 0;
     const city         = (e["city"] as string)  ?? null;
-    const topKw        = (e["topKeywords"] as Array<{keyword:string;position:number}>) ?? [];
+    const topKwFront   = (e["topKeywords"] as Array<{keyword:string;position:number}>) ?? [];
     const recentAct    = (e["recentActivity"] as string[]) ?? [];
     const topCroRecs   = (e["topCroRecs"] as string[]) ?? [];
     const revLeak      = (e["revenueLeak"] as number) ?? 0;
@@ -97,33 +158,60 @@ async function buildFlowpointContext(extra?: Record<string, unknown>): Promise<s
     const activeAlerts = (e["activeAlertsCount"] as number) ?? 0;
     const aiCredits    = (e["aiCredits"] as number|null) ?? null;
 
+    // Merge keywords: DB data takes precedence, frontend supplements
+    const allKw: Array<{keyword: string; position: number | null; volume: number | null; trend: string | null}> = [
+      ...keywords.map(k => ({ keyword: k.keyword, position: k.current_position, volume: k.search_volume, trend: k.trend })),
+      ...topKwFront
+        .filter(fk => !keywords.some(k => k.keyword === fk.keyword))
+        .map(fk => ({ keyword: fk.keyword, position: fk.position, volume: null, trend: null })),
+    ];
+
     const lines: string[] = [
-      `=== CONTEXTE FLOWPOINT ===`,
-      `Utilisateur : ${firstName || "Utilisateur"} | Plan : ${plan}`,
-      city ? `Ville/zone : ${city}` : "",
+      `=== CONTEXTE FLOWPOINT (données réelles) ===`,
+      `Utilisateur : ${firstName || "Utilisateur"} | Plan : ${plan} | OrgId : ${oid}`,
+      city ? `Zone géographique : ${city}` : "",
       ``,
-      `=== SEO ===`,
+      `=== SEO — DONNÉES RÉELLES ===`,
       `Score SEO moyen : ${avgScore}/100 sur ${audits.length} site(s) audité(s)`,
       criticalAudits.length > 0
-        ? `Sites critiques (score < 50) : ${criticalAudits.map(a => `${a.url} (${a.score}/100)`).join(", ")}`
-        : `Aucun site critique`,
-      audits.length > 0
-        ? `Détail audits : ${audits.slice(0,5).map(a => `${a.url} ${a.score}/100${a.speed!=null?` vitesse ${a.speed}/100`:""}${a.issues>0?` ${a.issues} problème(s)`:""}`).join(" | ")}`
+        ? `Sites critiques (score < 50) : ${criticalAudits.map(a => `${a.url} score=${a.score}/100 issues=${a.issues}`).join(" | ")}`
+        : `Aucun site en zone critique`,
+      warningAudits.length > 0
+        ? `Sites à améliorer (50-74) : ${warningAudits.map(a => `${a.url} score=${a.score}/100`).join(" | ")}`
         : "",
+      audits.length > 0
+        ? `Détail audits : ${audits.slice(0,5).map(a =>
+            `${a.url} score=${a.score}/100${a.speed != null ? ` vitesse=${a.speed}/100` : ""}${a.issues > 0 ? ` ${a.issues} problème(s)` : ""}`
+          ).join(" | ")}`
+        : "Aucun audit effectué",
+      ``,
+      `=== KEYWORDS — DONNÉES RÉELLES ===`,
+      allKw.length > 0
+        ? `Mots-clés suivis (${allKw.length}) : ${allKw.slice(0, 10).map(k =>
+            `"${k.keyword}" pos=${k.position ?? "?"} ${k.volume ? `vol=${k.volume}` : ""} ${k.trend ? `trend=${k.trend}` : ""}`.trim()
+          ).join(" | ")}`
+        : "Aucun mot-clé suivi",
       ``,
       `=== MONITORING ===`,
       `Monitors : ${monitors.length} total, ${downCount} DOWN, ${monitors.length - downCount} UP`,
       downCount > 0
-        ? `Sites DOWN : ${monitors.filter(m=>m.status==="down").map(m=>m.url||m.name||"?").join(", ")}`
+        ? `Sites DOWN : ${monitors.filter(m => m.status === "down").map(m => m.url || m.name || "?").join(", ")}`
         : `Tous les monitors sont UP`,
+      ``,
+      `=== CONNEXIONS GOOGLE ===`,
+      `Google Search Console : ${gscConnected ? "✅ Connecté" : "❌ Non connecté"}`,
+      `Google Analytics 4 : ${ga4Connected ? "✅ Connecté" : "❌ Non connecté"}`,
+      `Google Business Profile : ${gbpConnected ? "✅ Connecté" : "❌ Non connecté"}`,
+      ``,
+      `=== CONCURRENTS ===`,
+      competitors.length > 0
+        ? competitors.map(c => `${c.name}${c.domain ? ` (${c.domain})` : ""} rating=${c.rating ?? "?"} avis=${c.reviews_count ?? "?"}`).join(" | ")
+        : "Aucun concurrent enregistré",
       ``,
       `=== PERFORMANCE ===`,
       `Score local SEO : ${localScore}/100`,
       `Score conversion : ${convScore}/100`,
       `Streak activité : ${streak} jour(s)`,
-      topKw.length > 0
-        ? `Top keywords : ${topKw.map(k=>`"${k.keyword}" pos.${k.position}`).join(", ")}`
-        : "",
       ``,
       `=== MISSIONS & ALERTES ===`,
       `Missions actives : ${missAct} | Missions complétées : ${missComp}`,
@@ -131,12 +219,10 @@ async function buildFlowpointContext(extra?: Record<string, unknown>): Promise<s
       topCroRecs.length > 0
         ? `Recommandations CRO prioritaires : ${topCroRecs.join(" / ")}`
         : "",
-      revLeak > 0
-        ? `Fuites de revenus détectées : ${revLeak}`
-        : "",
+      revLeak > 0 ? `Fuites de revenus détectées : ${revLeak}` : "",
       ``,
       `=== ACTIVITÉ RÉCENTE ===`,
-      recentAct.length > 0 ? recentAct.join(" | ") : "Aucune activité récente",
+      recentAct.length > 0 ? recentAct.join(" | ") : "Aucune activité récente fournie",
       aiCredits != null ? `Crédits IA restants : ${aiCredits}` : "",
     ];
 
@@ -145,6 +231,18 @@ async function buildFlowpointContext(extra?: Record<string, unknown>): Promise<s
     return `Platform: Flowpoint SaaS SEO Dashboard. Plan: ${store.me.plan ?? "Pro"}.`;
   }
 }
+
+// Strict instruction inserted into every system prompt to prevent hallucinated generic advice
+const STRICT_AI_RULE = `
+RÈGLES ABSOLUES:
+- Base chaque conseil UNIQUEMENT sur les données fournies dans le contexte.
+- Si un site a un score de 78/100, cite ce score exact — ne dis pas "votre score est faible".
+- Si un keyword est en position 12, cite sa position réelle.
+- Si GSC/GA4/GBP ne sont pas connectés, recommande d'abord de les connecter avant tout autre conseil.
+- N'invente JAMAIS de données (sessions, taux de rebond, backlinks) non présentes dans le contexte.
+- Ne donne pas de conseils génériques ("vérifiez votre robots.txt", "ajoutez des meta descriptions") sans les ancrer aux URLs réelles des audits.
+- Si les données sont insuffisantes pour une recommandation précise, dis-le explicitement.
+`;
 
 // ── Persist chat history ──────────────────────────────────────────────────────
 async function persistChatMessage(opts: {
@@ -236,11 +334,12 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
     // DB unreachable — fail-open; usage will be recorded when DB recovers
   }
 
-  const fpContext = await buildFlowpointContext(context);
+  const fpContext = await buildFlowpointContext(context, orgId);
   const systemPrompt = `Tu es l'assistant IA de Flowpoint, expert SEO local français et analyste web senior.
 Tu analyses les données SEO, performances web, comportement utilisateur et CRO.
 Réponds en français, avec des réponses précises et actionnables. Utilise ** pour le gras et - pour les listes.
-Contexte de la plateforme:\n${fpContext}`;
+${STRICT_AI_RULE}
+Contexte de la plateforme (données réelles de la DB):\n${fpContext}`;
 
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
     { role: "system", content: systemPrompt },
@@ -453,7 +552,7 @@ router.post("/ai/conversion", async (req, res) => {
     return;
   }
 
-  const fpCtx = await buildFlowpointContext();
+  const fpCtx = await buildFlowpointContext(undefined, orgId);
   const prompt = `Analyse CRO (Conversion Rate Optimization) pour ${url ?? "le site"}.
 Métriques: ${JSON.stringify(metrics ?? {})}
 Funnel: ${JSON.stringify(funnel ?? [])}
@@ -601,7 +700,7 @@ router.post("/ai/reports", async (req, res) => {
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
   const openai = await getOpenAI();
-  const fpCtx = await buildFlowpointContext();
+  const fpCtx = await buildFlowpointContext(undefined, orgId);
 
   if (!openai) {
     res.json({ report: "Génération de rapport IA non disponible sans clé OpenAI." });
@@ -657,7 +756,7 @@ router.post("/ai/summary", async (req, res) => {
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
   const openai = await getOpenAI();
-  const fpCtx = await buildFlowpointContext(context);
+  const fpCtx = await buildFlowpointContext(context, orgId);
 
   if (!openai) {
     res.json({ summary: "Résumé exécutif non disponible sans clé OpenAI." });
@@ -730,7 +829,7 @@ router.post("/ai/missions", async (req, res) => {
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
   const openai = await getOpenAI();
-  const fpCtx = await buildFlowpointContext(context);
+  const fpCtx = await buildFlowpointContext(context, orgId);
 
   if (!openai) {
     res.json({ missions: buildFallbackMissions() });
