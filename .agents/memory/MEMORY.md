@@ -16,6 +16,7 @@
 - [RLS UUID org_id tables](rls-uuid-orgid.md) — gsc_keyword_data, gsc_page_data, gsc_sync_logs, ga4_accounts have UUID org_id; use org_id::text comparison in RLS policies
 - [FlowPoint API audit results](flowpoint-api-audit.md) — 31/31 endpoints 200 OK, 6/6 CRUD ops 201; correct paths: /api/team, /api/calendar-events; settings=localStorage only
 - [Google OAuth multi-instance fix](google-oauth-db-state.md) — pendingOAuthStates remplacé par table google_oauth_states; fonctions now async
+- [OAuth return cache-bust pattern](oauth-return-cache-bust.md) — init() must detect ?google_connected/?github_connected in URL and clear fp-state-cache; GA4/GSC status must fallback to google_tokens when property table is empty (discovery async)
 - [FlowPoint review-intel fake data](review-intel-empty-state.md) — SAMPLE_REVIEWS supprimé; empty state propre quand aucun avis GBP
 - [FlowPoint API route map](flowpoint-api-routes.md) — correct paths for all 44 tested routes (revenue-leak not leaks, gbp-posts not gbp/posts, calendar-events, review-intelligence, cro, seo/status)
 - [FlowPoint RLS 100% coverage](flowpoint-rls-migration.md) — 150/150 tables, 600 policies; google_oauth_states patched in init-rls-setup.ts startup hook (migrations/015 SQL for docs)

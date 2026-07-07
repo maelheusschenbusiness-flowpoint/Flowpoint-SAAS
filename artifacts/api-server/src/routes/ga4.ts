@@ -14,6 +14,7 @@ import {
   setStoredProperty,
   isGA4Connected,
 } from "../services/ga4-service.js";
+import { hasGoogleConnection } from "../services/google-service.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -47,10 +48,19 @@ async function resolveProperty(req: Request): Promise<string | null> {
 
 router.get("/ga4/status", async (req: Request, res: Response) => {
   try {
-    const orgId     = getOrgId(req);
-    const connected = await isGA4Connected(orgId);
-    const stored    = connected ? await getStoredProperty(orgId) : null;
-    res.json({ ok: true, connected, propertyId: stored?.propertyId ?? null, propertyName: stored?.displayName ?? null });
+    const orgId        = getOrgId(req);
+    const hasProperty  = await isGA4Connected(orgId);
+    const stored       = hasProperty ? await getStoredProperty(orgId) : null;
+    // Treat as connected if property found OR if Google tokens exist (discovery in progress)
+    const hasTokens    = hasProperty ? true : await hasGoogleConnection(orgId);
+    const connected    = hasProperty || hasTokens;
+    res.json({
+      ok: true,
+      connected,
+      discovering: !hasProperty && hasTokens,
+      propertyId:   stored?.propertyId   ?? null,
+      propertyName: stored?.displayName  ?? null,
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
   }

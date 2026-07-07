@@ -194,6 +194,20 @@ export async function getValidToken(orgId: string): Promise<string> {
 
 // ── GBP status ────────────────────────────────────────────────────────────────
 
+/**
+ * Fast token-only connection check — true as soon as OAuth tokens are saved,
+ * even before GA4/GSC property discovery has run.
+ */
+export async function hasGoogleConnection(orgId: string): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`, [orgId]
+    );
+    return r.rows.length > 0;
+  } catch { return false; } finally { client.release(); }
+}
+
 export async function getGBPStatus(orgId: string): Promise<{
   connected: boolean; accountsCount: number; locationsCount: number; email?: string;
 }> {

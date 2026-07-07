@@ -13,6 +13,7 @@ import {
   getSitemaps,
   getSyncLogs,
 } from "../services/gsc-service.js";
+import { hasGoogleConnection } from "../services/google-service.js";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
@@ -24,8 +25,11 @@ function getOrgId(req: Request): string {
 
 router.get("/gsc/status", async (req: Request, res: Response) => {
   try {
-    const status = await getGSCStatus(getOrgId(req));
-    res.json({ ok: true, ...status });
+    const orgId  = getOrgId(req);
+    const status = await getGSCStatus(orgId);
+    // Also show as connected if Google tokens exist (site discovery in progress)
+    const connected = status.connected || await hasGoogleConnection(orgId);
+    res.json({ ok: true, ...status, connected, discovering: !status.connected && connected });
   } catch (e) {
     logger.error({ e }, "[GSC] /status failed");
     res.status(500).json({ ok: false, error: String(e) });

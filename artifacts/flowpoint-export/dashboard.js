@@ -2958,7 +2958,7 @@ function renderMsgDropdown() {
               <div class="fp-msg-from" style="${m.self?'color:#2563EB':''}">${m.self?'Vous':escHtml(m.from)}</div>
               <div class="fp-msg-time">${escHtml(m.time)}</div>
             </div>
-            <div class="fp-msg-text" style="border-radius:${m.self?'12px 4px 12px 12px':'4px 12px 12px 12px'};background:${m.self?'rgba(37,99,235,0.15)':''};border-color:${m.self?'rgba(37,99,235,0.25)':'rgba(255,255,255,0.06)'};color:${m.self?'#c7d9ff':''}">${escHtml(m.text)}</div>
+            <div class="fp-msg-text" style="border-radius:${m.self?'12px 4px 12px 12px':'4px 12px 12px 12px'};background:${m.self?'rgba(37,99,235,0.15)':'var(--fp-inner-card, rgba(255,255,255,0.07))'};border-color:${m.self?'rgba(37,99,235,0.25)':'rgba(255,255,255,0.06)'};color:${m.self?'#c7d9ff':''}">${escHtml(m.text)}</div>
           </div>
         </div>`;
       }).join('')}
@@ -13795,6 +13795,17 @@ async function init() {
   // Restore AI chat history for this session
   loadAIHistory();
 
+  // ── OAuth return: clear stale cache so status is re-fetched fresh ─────────
+  try {
+    const _href = window.location.href;
+    if (_href.includes('google_connected') || _href.includes('github_connected') ||
+        _href.includes('google_error')     || _href.includes('github_error')) {
+      sessionStorage.removeItem('fp-state-cache');
+      // Clean the URL so a page refresh does not repeat the cache-bust
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(_) {}
+
   // Load data
   await loadData();
 
@@ -17679,7 +17690,7 @@ function renderGrowthProjections() {
               </div>
             </div>
             <div style="padding-top:8px;border-top:1px solid rgba(255,255,255,.05)">
-              <span style="font-size:10px;color:var(--fp-text-faint)">Projections de score SEO uniquement · <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="navigate('settings')">Connecter GA4 pour trafic &amp; leads →</button></span>
+              <span style="font-size:10px;color:var(--fp-text-faint)">Projections de score SEO uniquement · <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;padding:2px 6px" onclick="navigate('analytics');setTimeout(()=>navigateSub('connect'),50)">Connecter GA4 pour trafic &amp; leads →</button></span>
             </div>
           </div>
         `).join('')}
@@ -18217,7 +18228,7 @@ function renderGrowthCommandCenter() {
               <span>⏱ ${w.time}</span>
             </div>
             ${w.pct>0?`<div class="fp-growth-win-prog"><div style="width:${w.pct}%;background:var(--fp-accent);height:100%;border-radius:2px;transition:width .8s ease"></div></div><div style="font-size:9.5px;color:var(--fp-text-faint);margin-bottom:6px">${w.pct}% complété</div>`:''}
-            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="window._launchQuickWin(${JSON.stringify(w.title)},${w.diff},${JSON.stringify(w.time)},${JSON.stringify(w.roi||'')})">
+            <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:auto" onclick="window._launchQuickWin(${escHtml(JSON.stringify(w.title))},${w.diff},${escHtml(JSON.stringify(w.time))},${escHtml(JSON.stringify(w.roi||''))})">
               ${w.pct===100?'✓ Terminé':w.pct>0?'Continuer →':'Commencer →'}
             </button>
           </div>
@@ -24859,7 +24870,7 @@ function renderGrowthKeywords() {
     ${renderTab(activeTab)}
 
     <div id="fp-kw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center">
-      <div class="fp-card" style="width:440px;max-width:92vw;padding:24px;background:var(--fp-bg, #0f1117);border:1px solid var(--fp-border);box-shadow:0 24px 64px rgba(0,0,0,0.6);border-radius:16px;position:relative;z-index:10000">
+      <div class="fp-card" style="width:440px;max-width:92vw;padding:24px;background:var(--fp-surface, var(--fp-bg, #1a1d27));border:1px solid var(--fp-border);box-shadow:0 24px 64px rgba(0,0,0,0.7);border-radius:16px;position:relative;z-index:10000">
         <div style="font-size:16px;font-weight:700;margin-bottom:16px">+ Ajouter un mot-clé</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <input id="kw-add-keyword" class="fp-input" placeholder="Mot-clé (ex: agence seo paris)" required/>
