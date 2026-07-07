@@ -110,6 +110,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
       city:        typeof city       === "string" ? city.trim()       : undefined,
       postalCode:  typeof postalCode === "string" ? postalCode.trim() : undefined,
       country:     typeof country    === "string" ? country.trim()    : undefined,
+      locationConfigured: (typeof address === "string" && address.trim()) || (typeof city === "string" && city.trim()) ? true : undefined,
       subscriptionStatus: store.me.subscriptionStatus,
       trialEndsAt: store.me.trialEndsAt ?? null,
       stripeCustomerId: store.me.stripeCustomerId ?? "",

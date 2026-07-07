@@ -8095,7 +8095,7 @@ function renderAlertRules() {
           <div class="fp-card-title">Règles d\'alerte personnalisées</div>
           <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${rules.length} règle${rules.length !== 1 ? 's' : ''} configurée${rules.length !== 1 ? 's' : ''}</div>
         </div>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" id="show-add-rule-form" onclick="(function(){var f=document.getElementById('add-rule-form');if(f)f.style.display=f.style.display==='none'?'block':'none';})()">+ Nouvelle règle</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" id="show-add-rule-form">+ Nouvelle règle</button>
       </div>
 
       ${rules.length === 0 ? `
@@ -8167,8 +8167,8 @@ function renderAlertRules() {
           </div>` : ''}
         </div>
         <div style="display:flex;gap:8px">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" id="save-alert-rule" onclick="(async function(){var name=(document.getElementById('rule-name')||{}).value?.trim();var type=(document.getElementById('rule-type')||{}).value;var operator=(document.getElementById('rule-operator')||{}).value;var threshold=parseFloat((document.getElementById('rule-threshold')||{}).value);var durationMin=parseInt((document.getElementById('rule-duration')||{}).value||'0',10);var channels=[];if((document.getElementById('rule-ch-email')||{}).checked)channels.push('email');if((document.getElementById('rule-ch-sms')||{}).checked)channels.push('sms');var siteUrls=[...document.querySelectorAll('.new-rule-site:checked')].map(function(cb){return cb.dataset.url;}).filter(Boolean);if(!name||!type||!operator||isNaN(threshold)){showToast('error','Remplissez tous les champs obligatoires');return;}try{var rule=await apiAction('POST','/api/alert-rules',{name:name,type:type,operator:operator,threshold:threshold,durationMin:durationMin,channels:channels,siteUrls:siteUrls,enabled:true});if(rule){STATE.alertRules.push(rule);showToast('success','Règle \"'+name+'\" créée !');navigateSub('alerts');}}catch(e){showToast('error','Erreur lors de la création de la règle');}})()">Créer la règle</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" id="cancel-rule-form" onclick="(function(){var f=document.getElementById('add-rule-form');if(f)f.style.display='none';})()">Annuler</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" id="save-alert-rule">Créer la règle</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" id="cancel-rule-form">Annuler</button>
         </div>
       </div>
     </div>
@@ -8301,7 +8301,7 @@ function renderSettings() {
               oninput="STATE.settings['${f.k}']=this.value;saveSettings()"/>
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const body={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim(),timezone:(document.getElementById('prof-tz')?.value||'').trim(),address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim()};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me){if(body.firstName)STATE.me.firstName=body.firstName;STATE.me.lastName=body.lastName;if(STATE.me.org){STATE.me.org.name=body.orgName||STATE.me.org.name;STATE.me.org.website=body.website;if(body.timezone)STATE.me.org.timezone=body.timezone;}STATE.me.location=STATE.me.location||{};STATE.me.location.address=body.address;STATE.me.location.city=body.city;STATE.me.location.postalCode=body.postalCode;STATE.me.location.country=body.country;}showToast('success','Profil sauvegard\u00e9 !');render();}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const body={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim(),timezone:(document.getElementById('prof-tz')?.value||'').trim(),address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim()};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me){if(body.firstName)STATE.me.firstName=body.firstName;STATE.me.lastName=body.lastName;if(STATE.me.org){STATE.me.org.name=body.orgName||STATE.me.org.name;STATE.me.org.website=body.website;if(body.timezone)STATE.me.org.timezone=body.timezone;}STATE.me.location=STATE.me.location||{};STATE.me.location.address=body.address;STATE.me.location.city=body.city;STATE.me.location.postalCode=body.postalCode;STATE.me.location.country=body.country;if(body.city||body.address)STATE.me.location.locationConfigured=true;}showToast('success','Profil sauvegard\u00e9 !');render();}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
             <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="openPasswordChangePanel()">Changer le mot de passe</button>
           </div>
         </div>
@@ -8463,7 +8463,7 @@ function renderSettings() {
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
                 ${g.options.map(o => `
-                  <button onclick="(function(btn){apiAction('PATCH','/api/me/prefs',{settings:{${JSON.stringify(g.key)}:${JSON.stringify(o.val||o.label)}}}).then(()=>{showToast('success','${escHtml(g.label)} : ${escHtml(o.label)}');btn.parentElement.querySelectorAll('button').forEach(b=>b.style.border='1.5px solid var(--fp-border)');btn.style.border='1.5px solid #2563EB';}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)"
+                  <button data-pref-key="${g.key}" data-pref-val="${escHtml(o.val||o.label)}" data-pref-lbl="${escHtml(g.label+' : '+(o.val||o.label))}" onclick="(function(btn){var k=btn.dataset.prefKey;var v=btn.dataset.prefVal;var lbl=btn.dataset.prefLbl;var s={};s[k]=v;apiAction('PATCH','/api/me/prefs',{settings:s}).then(()=>{showToast('success',lbl);btn.parentElement.querySelectorAll('button').forEach(b=>b.style.border='1.5px solid var(--fp-border)');btn.style.border='1.5px solid #2563EB';}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)"
                     style="padding:5px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid ${o.active ? '#2563EB' : 'var(--fp-border)'};background:${o.active ? 'rgba(37,99,235,0.12)' : 'transparent'};color:${o.active ? '#2563EB' : 'var(--fp-text-muted)'};transition:all 0.15s">
                     ${o.active ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="3" style="margin-right:4px;vertical-align:middle" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>` : ''}${escHtml(o.label)}
                   </button>
@@ -8693,7 +8693,7 @@ function renderSettings() {
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:14px">📋 Historique des connexions</div>
           <div style="display:flex;flex-direction:column;gap:6px">
-            ${loginHistory.map(log => `
+            ${loginHistory.length > 0 ? loginHistory.map(log => `
               <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--fp-inner-card)">
                 <div style="width:6px;height:6px;border-radius:50%;background:${log.success ? '#22c55e' : '#ef4444'};flex-shrink:0"></div>
                 <div style="flex:1;min-width:0">
@@ -8702,7 +8702,7 @@ function renderSettings() {
                 </div>
                 <div style="font-size:9px;color:var(--fp-text-faint);flex-shrink:0">${escHtml(log.date)}</div>
               </div>
-            `).join('')}
+            `).join('') : `<div style="text-align:center;padding:20px;color:var(--fp-text-muted)"><div style="font-size:24px;margin-bottom:8px">📋</div><div style="font-size:12px;font-weight:600">Aucune connexion enregistrée</div><div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">L'historique apparaîtra après votre prochaine connexion.</div></div>`}
           </div>
         </div>
       </div>
@@ -10127,7 +10127,7 @@ function renderAI() {
         </h1>
         <div class="fp-section-sub">Plan ${plan} · Réinitialisation le ${resetDate} · ${isUnlimited ? 'Usage illimité (prioritaire)' : fmtNum(remaining) + ' AI Credits restants'}</div></div>
         <div class="fp-section-actions">
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Upgrader le plan →</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.location.href='https://app.flowpoint.pro/pricing.html'">Upgrader le plan →</button>
         </div>
       </div>
 
@@ -10316,8 +10316,8 @@ function renderAI() {
     <div class="fp-card fp-card-sm fp-mb-16">
       <div style="font-size:10px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">Suggestions rapides</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" data-ai-prompt="Que faire en priorité ?" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">🚨 Que faire en priorité ?</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" data-ai-prompt="Plan d'action 30 jours" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📅 Plan d'action 30 jours</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Que faire en priorité ?" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">🚨 Que faire en priorité ?</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm fp-ai-quick" data-ai-prompt="Plan d'action 30 jours" style="font-size:12px;padding:10px 14px;height:auto;border-radius:10px;font-weight:700;border:1px solid rgba(37,99,235,0.35);white-space:normal;text-align:center">📅 Plan d'action 30 jours</button>
       </div>
       <div class="fp-ai-quick-prompts">
         ${['Améliorer mon score SEO moyen','Analyser les monitors DOWN','Créer un rapport mensuel','Opportunités Local SEO'].map(p =>`<button class="fp-ai-quick" data-ai-prompt="${p}">${p}</button>`).join('')}
@@ -10331,7 +10331,7 @@ function renderAI() {
       </div>
       <div style="border-top:1px solid rgba(255,255,255,0.06);padding:10px 12px">
         <div class="fp-ai-input-row">
-          <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="if(this.files.length){showToast('info',this.files.length+' fichier(s) joint(s) · Fonctionnalité bêta');}"/>
+          <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="Joindre un fichier" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
           <input class="fp-ai-input" id="ai-input" placeholder="Posez votre question… (moniteurs, SEO, conversions, rapports…)" type="text"/>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
@@ -10459,12 +10459,18 @@ function loadAIHistory() {
   } catch(e) {}
 }
 
-// ── Load real AI credit usage from /api/ai/usage ──────────────────────────────
+// ── Load real AI credit usage from /api/ai-credits ────────────────────────────
 async function loadAICredits() {
   try {
-    const data = await apiFetch('/api/ai/usage');
-    if (data && typeof data.used === 'number') {
-      STATE.aiCredits = data;
+    const data = await apiFetch('/api/ai-credits');
+    if (data && typeof data === 'object') {
+      // Backend returns: { monthly: { creditsUsed, creditsLimit, creditsExtra, ... }, byFeature, ... }
+      const m = data.monthly || {};
+      const used  = m.creditsUsed  ?? data.creditsUsed  ?? data.used  ?? 0;
+      const limit = m.creditsLimit ?? data.creditsLimit ?? data.limit ?? 0;
+      const extra = m.creditsExtra ?? data.creditsExtra ?? data.extra ?? 0;
+      const resetDate = m.resetDate ?? data.resetDate ?? null;
+      STATE.aiCredits = { used, limit, extra, resetDate, raw: data };
     }
   } catch(_) { /* non-bloquant */ }
 }
@@ -11483,6 +11489,7 @@ function renderSubNav(items) {
 }
 
 function aiBlock(text, chips = []) {
+  if (STATE.settings && STATE.settings.aiTips === false) return '';
   return `<div class="fp-ai-block">
     <div class="fp-ai-block-icon">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
@@ -13233,7 +13240,9 @@ function bindSectionEvents() {
       });
 
       const TEMPLATES = [
-        { name: 'Score SEO critique', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
+        { name: 'Monitor DOWN', type: 'monitor_down', operator: 'eq', threshold: 1, durationMin: 0, channels: ['email'], siteUrls: [] },
+        { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
+        { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
         { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
         { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email', 'sms'], siteUrls: [] },
       ];
@@ -25739,7 +25748,7 @@ function renderTeamPerformance() {
 
 function renderSettingsLocation() {
   const loc = (STATE.me && STATE.me.location) ? STATE.me.location : {};
-  const configured = !!loc.locationConfigured;
+  const configured = !!(loc.locationConfigured || loc.city || loc.address);
   const srcLabel = loc.locationSource === 'gbp' ? '🏢 Sync GBP' : loc.locationSource === 'geolocation' ? '📡 GPS navigateur' : '✏️ Manuel';
   const serviceAreas = Array.isArray(loc.serviceArea) ? loc.serviceArea : [];
   const gbpConnected = !!(STATE.integrations && STATE.integrations.google && STATE.integrations.google.connected);
@@ -25900,7 +25909,7 @@ function renderSettingsAPI() {
         <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
           ${(()=>{
             const _pk = STATE.settings?.publicApiKey || STATE.me?.publicApiKey || null;
-            const _pkCreated = STATE.settings?.apiKeyCreated || STATE.me?.createdAt ? (STATE.me?.createdAt ? new Date(STATE.me.createdAt).toLocaleDateString('fr-FR') : '—') : '—';
+            const _pkCreated = STATE.me?.createdAt ? new Date(STATE.me.createdAt).toLocaleDateString('fr-FR') : (STATE.settings?.apiKeyCreated || '—');
             return [
               { label:'Clé publique (lecture seule)', key: _pk || (PREVIEW_MODE ? 'fp_pub_k7m2x9q3a1b4c5d6e7f8' : '(clé non disponible — contactez le support)'), created: _pkCreated },
               { label:'Clé secrète (accès complet)',  key:'fp_sec_••••••••••••••••••••', created: _pkCreated },
