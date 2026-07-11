@@ -73,7 +73,7 @@ async function getOpenAI() {
 async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: string): Promise<string> {
   try {
     const oid = orgId ?? "default";
-    let keywords: Array<{ keyword: string; current_position: number | null; search_volume: number | null; trend: string | null }> = [];
+    let keywords: Array<{ keyword: string; current_position: number | null; prev_position: number | null; position_change: number | null; search_volume: number | null; trend: string | null }> = [];
     let competitors: Array<{ name: string; domain?: string; rating?: number; reviews_count?: number }> = [];
     let gscConnected = false;
     let ga4Connected = false;
@@ -84,7 +84,7 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     {
       const [kwRes, compRes, gbpRes] = await Promise.allSettled([
         pool.query(
-          `SELECT keyword, current_position, search_volume, trend
+          `SELECT keyword, current_position, prev_position, position_change, search_volume, trend
            FROM tracked_keywords
            WHERE org_id=$1 AND active=true
            ORDER BY search_volume DESC NULLS LAST, current_position ASC NULLS LAST
@@ -138,11 +138,14 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     // Fetch real PSI critical issues for top 5 audited URLs
     if (audits.length > 0) {
       const urls = audits.slice(0, 5).map(a => a.url);
+      // Join with audits to ensure only URLs belonging to this org are returned
       const psiRes = await pool.query(
-        `SELECT url, critical_issues FROM psi_cache
-         WHERE url = ANY($1) AND strategy='mobile'
-         ORDER BY analyzed_at DESC`,
-        [urls]
+        `SELECT DISTINCT ON (p.url) p.url, p.critical_issues
+         FROM psi_cache p
+         JOIN audits a ON a.url = p.url AND a.org_id = $2
+         WHERE p.url = ANY($1) AND p.strategy='mobile'
+         ORDER BY p.url, p.analyzed_at DESC`,
+        [urls, oid]
       ).catch(() => ({ rows: [] as Array<Record<string,unknown>> }));
       const seen = new Set<string>();
       for (const row of psiRes.rows) {
@@ -181,11 +184,11 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     // Frontend-provided detailed issue list for current audit (enriched by dashboard)
     const frontendIssues = (e["auditIssues"] as Array<{label:string;sev:string;roi:string}>) ?? [];
 
-    const allKw: Array<{keyword: string; position: number | null; volume: number | null; trend: string | null}> = [
-      ...keywords.map(k => ({ keyword: k.keyword, position: k.current_position, volume: k.search_volume, trend: k.trend })),
+    const allKw: Array<{keyword: string; position: number | null; delta: number | null; volume: number | null; trend: string | null}> = [
+      ...keywords.map(k => ({ keyword: k.keyword, position: k.current_position, delta: k.position_change, volume: k.search_volume, trend: k.trend })),
       ...topKwFront
         .filter(fk => !keywords.some(k => k.keyword === fk.keyword))
-        .map(fk => ({ keyword: fk.keyword, position: fk.position, volume: null, trend: null })),
+        .map(fk => ({ keyword: fk.keyword, position: fk.position, delta: null, volume: null, trend: null })),
     ];
 
     // Keyword position analysis
@@ -229,7 +232,7 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       `=== KEYWORDS — DONNÉES RÉELLES ===`,
       allKw.length > 0
         ? `Mots-clés suivis (${allKw.length}) : ${allKw.slice(0, 10).map(k =>
-            `"${k.keyword}" pos=${k.position ?? "?"} ${k.volume ? `vol=${k.volume}` : ""} ${k.trend ? `trend=${k.trend}` : ""}`.trim()
+            `"${k.keyword}" pos=${k.position ?? "?"}${k.delta != null ? (k.delta > 0 ? ` ▲${k.delta}` : k.delta < 0 ? ` ▼${Math.abs(k.delta)}` : " =") : ""} ${k.volume ? `vol=${k.volume}` : ""} ${k.trend ? `trend=${k.trend}` : ""}`.trim()
           ).join(" | ")}`
         : "Aucun mot-clé suivi",
       kwTop3.length > 0    ? `Top 3 : ${kwTop3.map(k => `"${k.keyword}" pos ${k.position}`).join(", ")}` : "",
@@ -251,8 +254,10 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       competitors.length > 0
         ? competitors.map(c => `${c.name}${c.domain ? ` (${c.domain})` : ""} DR=${c.rating ?? "?"}`).join(" | ")
         : "Aucun concurrent enregistré",
-      topComp && topComp.rating && ourBestScore > 0
-        ? `Écart avec le leader concurrentiel : score site=${ourBestScore}/100, DR concurrent="${topComp.name}"=${topComp.rating}`
+      competitors.length >= 2
+        ? `Écart DR concurrents : leader "${competitors[0]!.name}" DR=${competitors[0]!.rating ?? "?"} vs 2e "${competitors[1]!.name}" DR=${competitors[1]!.rating ?? "?"} — écart=${((competitors[0]!.rating ?? 0) - (competitors[1]!.rating ?? 0))} pts DR`
+        : competitors.length === 1
+        ? `Concurrent principal : "${competitors[0]!.name}" DR=${competitors[0]!.rating ?? "?"}`
         : "",
       ``,
       `=== PERFORMANCE ===`,
@@ -508,14 +513,18 @@ router.post("/ai/audit", async (req, res) => {
   let prevScore: number | null = null;
   try {
     const [auditRes, psiRes, prevRes] = await Promise.allSettled([
-      pool.query(`SELECT * FROM audits WHERE url=$1 ORDER BY created_at DESC LIMIT 1`, [url]),
+      pool.query(`SELECT * FROM audits WHERE url=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT 1`, [url, orgId]),
       pool.query(
-        `SELECT critical_issues, opportunities FROM psi_cache WHERE url=$1 AND strategy='mobile' ORDER BY analyzed_at DESC LIMIT 1`,
-        [url]
+        `SELECT p.critical_issues, p.opportunities
+         FROM psi_cache p
+         JOIN audits a ON a.url = p.url AND a.org_id = $2
+         WHERE p.url=$1 AND p.strategy='mobile'
+         ORDER BY p.analyzed_at DESC LIMIT 1`,
+        [url, orgId]
       ),
       pool.query(
-        `SELECT score FROM audits WHERE url=$1 ORDER BY created_at DESC LIMIT 1 OFFSET 1`,
-        [url]
+        `SELECT score FROM audits WHERE url=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT 1 OFFSET 1`,
+        [url, orgId]
       ),
     ]);
     if (auditRes.status === "fulfilled" && auditRes.value.rows[0]) dbAudit = auditRes.value.rows[0] as Record<string,unknown>;
@@ -632,8 +641,14 @@ router.post("/ai/seo", async (req, res) => {
   let realIssues: string[] = [];
   try {
     const [auditRes, psiRes, kwRes] = await Promise.allSettled([
-      pool.query(`SELECT score, speed, issues FROM audits WHERE url=$1 ORDER BY created_at DESC LIMIT 1`, [url]),
-      pool.query(`SELECT critical_issues FROM psi_cache WHERE url=$1 AND strategy='mobile' ORDER BY analyzed_at DESC LIMIT 1`, [url]),
+      pool.query(`SELECT score, speed, issues FROM audits WHERE url=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT 1`, [url, orgId]),
+      pool.query(
+        `SELECT p.critical_issues FROM psi_cache p
+         JOIN audits a ON a.url = p.url AND a.org_id = $2
+         WHERE p.url=$1 AND p.strategy='mobile'
+         ORDER BY p.analyzed_at DESC LIMIT 1`,
+        [url, orgId]
+      ),
       pool.query(`SELECT keyword, current_position, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC NULLS LAST LIMIT 10`, [orgId]),
     ]);
     if (auditRes.status === "fulfilled" && auditRes.value.rows[0]) {
@@ -648,12 +663,18 @@ router.post("/ai/seo", async (req, res) => {
       } catch { /* ignore */ }
     }
     if (kwRes.status === "fulfilled") {
-      const kwRows = kwRes.value.rows as Array<{keyword: string; current_position: number | null; search_volume: number | null}>;
-      if (kwRows.length > 0 && (keywords ?? []).length === 0) {
-        (req.body as { keywords?: string[] }).keywords = kwRows.map(k => `${k.keyword}${k.current_position ? ` (pos ${k.current_position})` : ""}`);
+      const kwRows = kwRes.value.rows as Array<{keyword: string; current_position: number | null; prev_position: number | null; position_change: number | null; search_volume: number | null}>;
+      if (kwRows.length > 0) {
+        dbKeywords = kwRows.map(k => {
+          const delta = k.position_change;
+          const deltaStr = delta != null ? (delta > 0 ? ` ▲${delta}` : delta < 0 ? ` ▼${Math.abs(delta)}` : "") : "";
+          return `${k.keyword}${k.current_position ? ` (pos ${k.current_position}${deltaStr})` : ""}`;
+        });
       }
     }
   } catch { /* use provided data */ }
+  // Merge: DB keywords take precedence over frontend-provided
+  const effectiveKeywords = dbKeywords.length > 0 ? dbKeywords : (keywords ?? []);
 
   const prompt = `Tu es consultant SEO senior pour ${url}.
 
@@ -661,7 +682,7 @@ DONNÉES RÉELLES :
 Score SEO actuel : ${realScore}/100
 Score Performance : ${realSpeed}/100
 Issues critiques PSI : ${realIssues.length > 0 ? realIssues.join(" | ") : "non disponibles"}
-Mots-clés suivis : ${(keywords ?? []).join(", ") || "aucun suivi actif"}
+Mots-clés suivis : ${effectiveKeywords.join(", ") || "aucun suivi actif"}
 
 Contexte du compte :
 ${fpCtx}
@@ -885,18 +906,24 @@ router.post("/ai/reports", async (req, res) => {
   try {
     const evoRes = await pool.query(
       `SELECT
-         ROUND(AVG(score)) AS avg_current,
-         (SELECT ROUND(AVG(score)) FROM audits WHERE org_id=$1 AND created_at < $2) AS avg_prev
-       FROM audits WHERE org_id=$1 AND created_at >= $2`,
-      [orgId, prevPeriodStart]
+         (SELECT ROUND(AVG(score)) FROM audits
+          WHERE org_id=$1
+            AND created_at >= date_trunc('month', now())) AS avg_current,
+         (SELECT ROUND(AVG(score)) FROM audits
+          WHERE org_id=$1
+            AND created_at >= date_trunc('month', now() - INTERVAL '1 month')
+            AND created_at < date_trunc('month', now())) AS avg_prev`,
+      [orgId]
     );
     if (evoRes.rows[0]) {
       const r = evoRes.rows[0] as Record<string,unknown>;
-      const cur = Number(r["avg_current"] ?? 0);
-      const prev = Number(r["avg_prev"] ?? 0);
-      if (cur > 0 && prev > 0) {
+      const cur = r["avg_current"] != null ? Number(r["avg_current"]) : null;
+      const prev = r["avg_prev"] != null ? Number(r["avg_prev"]) : null;
+      if (cur !== null && prev !== null && prev > 0) {
         const delta = cur - prev;
         scoreEvolution = `Évolution score moyen : ${cur}/100 ce mois (${delta >= 0 ? "+" : ""}${delta} vs mois précédent ${prev}/100)`;
+      } else if (cur !== null) {
+        scoreEvolution = `Score moyen ce mois : ${cur}/100 (pas d'historique mois précédent)`;
       }
     }
   } catch { /* ignore */ }

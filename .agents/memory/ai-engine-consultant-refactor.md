@@ -1,28 +1,43 @@
 ---
 name: AI Engine Consultant Refactor
-description: Changes made to turn the FlowPoint AI engine into a data-driven senior SEO consultant
+description: Architectural rules for the FlowPoint AI consultant engine — tenant isolation, real data, format rules
 ---
 
-# AI Engine Consultant Refactor
+# AI Engine Consultant Rules
 
-## What changed
+## Rule 1 — Always call `buildFlowpointContext` before any AI prompt
+Every AI endpoint must call `buildFlowpointContext(context, orgId)` before constructing its prompt. This function reads real DB data (audits, keywords, competitors, PSI, monitors) and injects it as structured text.
 
-**`artifacts/api-server/src/routes/ai.ts`**
-- `buildFlowpointContext`: now queries `psi_cache` for real critical_issues per URL; keyword position buckets (top3/4-10/hors-20); competitor DR gap; frontend-provided `auditIssues` array; maps psi issues per URL.
-- `STRICT_AI_RULE`: strengthened — bans "je ne peux pas deviner"/"copiez-collez"/"autorisez-moi"; mandates Priorité N format with Pourquoi/Où/Impact/Temps blocks.
-- `/ai/chat` system prompt: consultant persona who already knows the site, cites real scores, structured recommendations.
-- `/ai/audit`: queries DB for real audit row + psi_cache before building prompt; structured Priorité N blocks; score evolution vs previous audit.
-- `/ai/seo`: calls `buildFlowpointContext`; queries DB for real audit score/speed/PSI issues; reads real tracked keywords from DB.
-- `/ai/reports`: dynamic dates (`monthNames[now.getMonth()] + year`); queries DB for current vs previous month score avg; real data in prompt.
-- `/ai/missions`: data-anchored prompt — cites real URLs, scores, issues; bans generic missions; calculates realistic gains.
+**Why:** The old engine produced generic checklists because endpoints like `/ai/seo` built prompts without DB data.
+**How to apply:** Add to any new AI endpoint before the OpenAI call.
 
-**`artifacts/api-server/src/services/mission-engine.ts`**
-- Full rewrite: reads real audit + psi_cache data from DB; calls OpenAI to generate data-specific missions; fallback chain: AI → derived-from-audit templates → static templates.
+## Rule 2 — PSI cache queries must be scoped to org via audits join
+`psi_cache` has no `org_id` column (global URL cache). To prevent cross-tenant data leaks, always JOIN with `audits`:
+```sql
+SELECT p.url, p.critical_issues
+FROM psi_cache p
+JOIN audits a ON a.url = p.url AND a.org_id = $2
+WHERE p.url = ANY($1) AND p.strategy = 'mobile'
+```
+**Why:** Querying `psi_cache` by URL alone can expose another tenant's data if URLs coincide.
 
-**`artifacts/flowpoint-export/dashboard.js`**
-- Context enriched: `auditIssues` (derived from audit score/speed/issues), `keywordsBelowPos10`, `keywordsAbove20`.
+## Rule 3 — Keyword deltas available via `prev_position` + `position_change` columns
+`tracked_keywords` has `prev_position` (number|null) and `position_change` (number|null, positive = improved). Include these in keyword context for delta arrows (▲/▼).
 
-## Key rules
+## Rule 4 — Dynamic dates in prompts — never hardcode month strings
+Use `new Date()` and `monthNames[now.getMonth()]` for the current period. Month-over-month DB comparison:
+```sql
+SELECT
+  (SELECT ROUND(AVG(score)) FROM audits WHERE org_id=$1 AND created_at >= date_trunc('month', now())) AS avg_current,
+  (SELECT ROUND(AVG(score)) FROM audits WHERE org_id=$1 AND created_at >= date_trunc('month', now() - INTERVAL '1 month') AND created_at < date_trunc('month', now())) AS avg_prev
+```
+**Why:** Hardcoded "Mai 2026" became stale immediately.
 
-**Why:** The old engine produced generic checklists not anchored to real data.
-**How to apply:** Any new AI endpoint must call `buildFlowpointContext` and query `psi_cache` before constructing prompts. Never hardcode month names — use `new Date()`.
+## Rule 5 — `estimatedTrafficImpact` derives from real severity
+Use `deriveTrafficImpact(score, issues, speed)` helper in `mission-engine.ts`:
+- score < 50 or speed < 40 → ~15 + issues×1.5 %
+- score 50-70 or speed < 60 → ~8 + issues %
+- score ≥ 70 but issues > 3 → ~3 + issues×0.5 %
+
+## Rule 6 — Competitor DR gap must compare DR vs DR (not SEO score vs DR)
+Show top competitor DR vs second competitor DR. Never compare our audit score (0-100 SEO) vs competitor DR (0-100 domain rating) — different scales.

@@ -34,6 +34,21 @@ const MISSION_TEMPLATES: MissionTemplate[] = [
  * Derive data-driven missions from real audit data using OpenAI.
  * Falls back to generic templates if no audit data exists or OpenAI unavailable.
  */
+/**
+ * Derive a realistic traffic impact estimate (% increase) from audit severity.
+ * Returns null if no meaningful estimate can be made.
+ */
+function deriveTrafficImpact(score: number, issues: number, speed: number): number | null {
+  if (score === 0 && issues === 0) return null;
+  // Critical: score < 50 or speed < 40 → high impact potential
+  if (score < 50 || speed < 40) return Math.round(15 + Math.min(issues, 10) * 1.5);
+  // Warning: score 50-70 or speed 40-60
+  if (score < 70 || speed < 60) return Math.round(8 + Math.min(issues, 8) * 1);
+  // Good: score 70+ but some issues
+  if (issues > 3) return Math.round(3 + issues * 0.5);
+  return null;
+}
+
 async function generateDataDrivenMissions(orgId: string, auditData: Array<{
   url: string; score: number; speed: number; issues: number;
   criticalIssues: string[]; opportunities: string[];
@@ -129,7 +144,8 @@ Réponds UNIQUEMENT avec le JSON array.`;
       priority: String(m["priority"] ?? "medium"),
       impact: String(m["impact"] ?? "medium"),
       effort: String(m["effort"] ?? "medium"),
-      estimatedTrafficImpact: typeof m["estimatedTrafficImpact"] === "number" ? m["estimatedTrafficImpact"] : null,
+      estimatedTrafficImpact: typeof m["estimatedTrafficImpact"] === "number" ? m["estimatedTrafficImpact"] :
+        (String(m["impact"] ?? "") === "high" ? 15 : String(m["impact"] ?? "") === "medium" ? 8 : 3),
       estimatedRevenueImpact: null,
       aiExplanation: String(m["aiExplanation"] ?? ""),
       aiActionSteps: Array.isArray(m["aiActionSteps"]) ? (m["aiActionSteps"] as string[]).map(String) : [],
@@ -212,7 +228,7 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
             t.push({
               title: `Corriger les ${a.issues} issues critiques — ${new URL(a.url.startsWith("http") ? a.url : "https://" + a.url).hostname}`,
               category: "seo", type: "technical", priority: "high", impact: "high", effort: "medium",
-              estimatedTrafficImpact: null, estimatedRevenueImpact: null,
+              estimatedTrafficImpact: deriveTrafficImpact(a.score, a.issues, a.speed), estimatedRevenueImpact: null,
               aiExplanation: `L'audit de ${a.url} a détecté ${a.issues} problèmes critiques avec un score de ${a.score}/100. Les corriger peut apporter +10 à +20 points SEO. Problèmes identifiés : ${a.criticalIssues.slice(0, 3).join(", ")}.`,
               aiActionSteps: [...a.criticalIssues.slice(0, 3).map(i => `Corriger : ${i}`), "Relancer l'audit pour valider les corrections"],
               aiQuickWin: a.issues <= 3, priorityScore: Math.max(60, 100 - a.score),
@@ -222,7 +238,7 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
             t.push({
               title: `Améliorer la performance mobile — ${new URL(a.url.startsWith("http") ? a.url : "https://" + a.url).hostname}`,
               category: "performance", type: "technical", priority: "high", impact: "high", effort: "medium",
-              estimatedTrafficImpact: null, estimatedRevenueImpact: null,
+              estimatedTrafficImpact: deriveTrafficImpact(a.score, a.issues, a.speed), estimatedRevenueImpact: null,
               aiExplanation: `Le score de performance de ${a.url} est de ${a.speed}/100. Un score < 50 pénalise directement le classement mobile Google (Core Web Vitals). ${a.opportunities.length > 0 ? "Opportunités : " + a.opportunities.slice(0, 2).join(", ") + "." : ""}`,
               aiActionSteps: a.opportunities.slice(0, 3).map(o => o).concat(["Relancer l'audit pour mesurer le gain"]),
               aiQuickWin: false, priorityScore: 85,
