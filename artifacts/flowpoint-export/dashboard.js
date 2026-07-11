@@ -10611,6 +10611,19 @@ async function sendAIMessage(text) {
     totalAudits: STATE.audits.length,
     criticalAudits: STATE.audits.filter(a=>a.score<50).length,
     auditDetails: STATE.audits.slice(0,8).map(a=>({ url:a.url, score:a.score, speed:a.speed!=null?a.speed:undefined, issues:a.issues })),
+    // Derived issue context — lets the backend AI read real problem categories without DB lookup
+    auditIssues: (() => {
+      const issues = [];
+      const a = STATE.audits[0];
+      if (!a) return issues;
+      if (a.score < 50) issues.push({ label:'Score SEO critique', sev:'Critique', roi:'+15-25 pts', url:a.url });
+      if (a.speed != null && a.speed < 50) issues.push({ label:`Performance mobile faible (${a.speed}/100)`, sev:'Critique', roi:'+10-18 pts perf', url:a.url });
+      if (a.issues > 0) issues.push({ label:`${a.issues} problème(s) détecté(s)`, sev: a.issues > 5 ? 'Critique' : 'Important', roi:'+5-12 pts', url:a.url });
+      if (a.score >= 50 && a.score < 70) issues.push({ label:`Score à améliorer (${a.score}/100)`, sev:'Important', roi:'+8-15 pts', url:a.url });
+      return issues;
+    })(),
+    keywordsBelowPos10: (STATE.keywords||[]).filter(k=>(k.position||k.rank||99)>=4&&(k.position||k.rank||99)<=10).slice(0,5).map(k=>({ keyword:k.keyword||k.query, position:k.position||k.rank })),
+    keywordsAbove20: (STATE.keywords||[]).filter(k=>(k.position||k.rank||0)>20).slice(0,5).map(k=>({ keyword:k.keyword||k.query, position:k.position||k.rank })),
     totalMonitors: STATE.monitors.length,
     monitorDetails: STATE.monitors.slice(0,8).map(m=>({ name:m.name, url:m.url, status:m.status, uptime:m.uptime })),
     missionsActive: STATE.missions.filter(m=>m.status!=='done'&&!m.done).length,

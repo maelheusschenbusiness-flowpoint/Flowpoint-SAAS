@@ -78,9 +78,10 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     let gscConnected = false;
     let ga4Connected = false;
     let gbpConnected = false;
+    // Real PSI critical issues per audit URL (from psi_cache)
+    let psiIssuesByUrl: Map<string, Array<{title: string}>> = new Map();
 
     {
-      // Use pool.query() (auto-checkout/checkin) for truly parallel reads
       const [kwRes, compRes, gbpRes] = await Promise.allSettled([
         pool.query(
           `SELECT keyword, current_position, search_volume, trend
@@ -109,7 +110,6 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       }));
       if (gbpRes.status === "fulfilled")  gbpConnected = gbpRes.value.rows.length > 0;
 
-      // GSC/GA4 — check if tables exist first (optional integrations)
       const [gscCheck, ga4Check] = await Promise.allSettled([
         pool.query(
           `SELECT COUNT(*) AS cnt FROM information_schema.tables
@@ -134,6 +134,28 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       db.select().from(auditsTable).orderBy(desc(auditsTable.createdAt)).limit(10),
       db.select().from(monitorsTable).limit(10),
     ]);
+
+    // Fetch real PSI critical issues for top 5 audited URLs
+    if (audits.length > 0) {
+      const urls = audits.slice(0, 5).map(a => a.url);
+      const psiRes = await pool.query(
+        `SELECT url, critical_issues FROM psi_cache
+         WHERE url = ANY($1) AND strategy='mobile'
+         ORDER BY analyzed_at DESC`,
+        [urls]
+      ).catch(() => ({ rows: [] as Array<Record<string,unknown>> }));
+      const seen = new Set<string>();
+      for (const row of psiRes.rows) {
+        const u = String(row["url"] ?? "");
+        if (seen.has(u)) continue;
+        seen.add(u);
+        try {
+          const issues = JSON.parse(String(row["critical_issues"] ?? "[]")) as Array<{title?: string}>;
+          if (Array.isArray(issues)) psiIssuesByUrl.set(u, issues.map(i => ({ title: i.title ?? "" })).filter(i => i.title));
+        } catch { /* ignore parse errors */ }
+      }
+    }
+
     const avgScore = audits.length > 0
       ? Math.round(audits.reduce((s, a) => s + a.score, 0) / audits.length)
       : 0;
@@ -141,7 +163,6 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     const criticalAudits = audits.filter(a => a.score < 50);
     const warningAudits  = audits.filter(a => a.score >= 50 && a.score < 75);
 
-    // Prefer frontend-enriched context fields when available
     const e = extra ?? {};
     const plan         = (e["plan"] as string)  ?? store.me.plan ?? "Pro";
     const firstName    = (e["firstName"] as string) ?? "";
@@ -157,8 +178,9 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     const missComp     = (e["missionsCompleted"] as number) ?? 0;
     const activeAlerts = (e["activeAlertsCount"] as number) ?? 0;
     const aiCredits    = (e["aiCredits"] as number|null) ?? null;
+    // Frontend-provided detailed issue list for current audit (enriched by dashboard)
+    const frontendIssues = (e["auditIssues"] as Array<{label:string;sev:string;roi:string}>) ?? [];
 
-    // Merge keywords: DB data takes precedence, frontend supplements
     const allKw: Array<{keyword: string; position: number | null; volume: number | null; trend: string | null}> = [
       ...keywords.map(k => ({ keyword: k.keyword, position: k.current_position, volume: k.search_volume, trend: k.trend })),
       ...topKwFront
@@ -166,24 +188,43 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
         .map(fk => ({ keyword: fk.keyword, position: fk.position, volume: null, trend: null })),
     ];
 
+    // Keyword position analysis
+    const kwCritical = allKw.filter(k => k.position !== null && k.position > 20);
+    const kwNearTop  = allKw.filter(k => k.position !== null && k.position !== null && k.position >= 4 && k.position <= 10);
+    const kwTop3     = allKw.filter(k => k.position !== null && k.position !== null && k.position <= 3);
+
+    // Competitor gap analysis
+    const topComp = competitors[0];
+    const ourBestScore = audits.length > 0 ? Math.max(...audits.map(a => a.score)) : 0;
+
     const lines: string[] = [
-      `=== CONTEXTE FLOWPOINT (données réelles) ===`,
+      `=== CONTEXTE FLOWPOINT — CONSULTANT SEO SENIOR ===`,
       `Utilisateur : ${firstName || "Utilisateur"} | Plan : ${plan} | OrgId : ${oid}`,
       city ? `Zone géographique : ${city}` : "",
       ``,
-      `=== SEO — DONNÉES RÉELLES ===`,
+      `=== AUDITS SEO — DONNÉES RÉELLES ===`,
       `Score SEO moyen : ${avgScore}/100 sur ${audits.length} site(s) audité(s)`,
       criticalAudits.length > 0
-        ? `Sites critiques (score < 50) : ${criticalAudits.map(a => `${a.url} score=${a.score}/100 issues=${a.issues}`).join(" | ")}`
-        : `Aucun site en zone critique`,
+        ? `CRITIQUE — Sites en dessous de 50 : ${criticalAudits.map(a => `${a.url} [score=${a.score}/100, vitesse=${a.speed ?? "?"}/100, ${a.issues} issue(s) critiques]`).join(" | ")}`
+        : `Aucun site en zone critique (score < 50)`,
       warningAudits.length > 0
-        ? `Sites à améliorer (50-74) : ${warningAudits.map(a => `${a.url} score=${a.score}/100`).join(" | ")}`
+        ? `ATTENTION — Sites 50-74 : ${warningAudits.map(a => `${a.url} [score=${a.score}/100, vitesse=${a.speed ?? "?"}/100, ${a.issues} issue(s)]`).join(" | ")}`
         : "",
       audits.length > 0
-        ? `Détail audits : ${audits.slice(0,5).map(a =>
-            `${a.url} score=${a.score}/100${a.speed != null ? ` vitesse=${a.speed}/100` : ""}${a.issues > 0 ? ` ${a.issues} problème(s)` : ""}`
+        ? `Tous les audits : ${audits.slice(0, 5).map(a =>
+            `${a.url} score=${a.score}/100 perf=${a.speed ?? "?"}/100 issues=${a.issues}`
           ).join(" | ")}`
         : "Aucun audit effectué",
+      ``,
+      `=== PROBLÈMES RÉELS DÉTECTÉS (PSI) ===`,
+      ...audits.slice(0, 5).flatMap(a => {
+        const issues = psiIssuesByUrl.get(a.url) ?? [];
+        if (issues.length === 0) return [];
+        return [`${a.url} — ${issues.slice(0, 4).map(i => i.title).join(" | ")}`];
+      }),
+      psiIssuesByUrl.size === 0 && frontendIssues.length > 0
+        ? `Problèmes frontend : ${frontendIssues.slice(0, 5).map(i => `${i.label} (${i.sev}, gain=${i.roi})`).join(" | ")}`
+        : "",
       ``,
       `=== KEYWORDS — DONNÉES RÉELLES ===`,
       allKw.length > 0
@@ -191,22 +232,28 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
             `"${k.keyword}" pos=${k.position ?? "?"} ${k.volume ? `vol=${k.volume}` : ""} ${k.trend ? `trend=${k.trend}` : ""}`.trim()
           ).join(" | ")}`
         : "Aucun mot-clé suivi",
+      kwTop3.length > 0    ? `Top 3 : ${kwTop3.map(k => `"${k.keyword}" pos ${k.position}`).join(", ")}` : "",
+      kwNearTop.length > 0 ? `Positions 4-10 (à pousser en top 3) : ${kwNearTop.map(k => `"${k.keyword}" pos ${k.position}`).join(", ")}` : "",
+      kwCritical.length > 0 ? `Hors top 20 (travail de fond) : ${kwCritical.slice(0,5).map(k => `"${k.keyword}" pos ${k.position}`).join(", ")}` : "",
       ``,
       `=== MONITORING ===`,
       `Monitors : ${monitors.length} total, ${downCount} DOWN, ${monitors.length - downCount} UP`,
       downCount > 0
-        ? `Sites DOWN : ${monitors.filter(m => m.status === "down").map(m => m.url || m.name || "?").join(", ")}`
+        ? `⚠ Sites DOWN : ${monitors.filter(m => m.status === "down").map(m => `${m.url || m.name || "?"}`).join(", ")}`
         : `Tous les monitors sont UP`,
       ``,
       `=== CONNEXIONS GOOGLE ===`,
-      `Google Search Console : ${gscConnected ? "✅ Connecté" : "❌ Non connecté"}`,
-      `Google Analytics 4 : ${ga4Connected ? "✅ Connecté" : "❌ Non connecté"}`,
-      `Google Business Profile : ${gbpConnected ? "✅ Connecté" : "❌ Non connecté"}`,
+      `Google Search Console : ${gscConnected ? "✅ Connecté" : "❌ Non connecté — données de clics/impressions manquantes"}`,
+      `Google Analytics 4 : ${ga4Connected ? "✅ Connecté" : "❌ Non connecté — données trafic manquantes"}`,
+      `Google Business Profile : ${gbpConnected ? "✅ Connecté" : "❌ Non connecté — visibilité locale limitée"}`,
       ``,
       `=== CONCURRENTS ===`,
       competitors.length > 0
-        ? competitors.map(c => `${c.name}${c.domain ? ` (${c.domain})` : ""} rating=${c.rating ?? "?"} avis=${c.reviews_count ?? "?"}`).join(" | ")
+        ? competitors.map(c => `${c.name}${c.domain ? ` (${c.domain})` : ""} DR=${c.rating ?? "?"}`).join(" | ")
         : "Aucun concurrent enregistré",
+      topComp && topComp.rating && ourBestScore > 0
+        ? `Écart avec le leader concurrentiel : score site=${ourBestScore}/100, DR concurrent="${topComp.name}"=${topComp.rating}`
+        : "",
       ``,
       `=== PERFORMANCE ===`,
       `Score local SEO : ${localScore}/100`,
@@ -216,13 +263,11 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       `=== MISSIONS & ALERTES ===`,
       `Missions actives : ${missAct} | Missions complétées : ${missComp}`,
       `Alertes actives : ${activeAlerts}`,
-      topCroRecs.length > 0
-        ? `Recommandations CRO prioritaires : ${topCroRecs.join(" / ")}`
-        : "",
+      topCroRecs.length > 0 ? `Recommandations CRO : ${topCroRecs.join(" / ")}` : "",
       revLeak > 0 ? `Fuites de revenus détectées : ${revLeak}` : "",
       ``,
       `=== ACTIVITÉ RÉCENTE ===`,
-      recentAct.length > 0 ? recentAct.join(" | ") : "Aucune activité récente fournie",
+      recentAct.length > 0 ? recentAct.join(" | ") : "Aucune activité récente",
       aiCredits != null ? `Crédits IA restants : ${aiCredits}` : "",
     ];
 
@@ -234,14 +279,20 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
 
 // Strict instruction inserted into every system prompt to prevent hallucinated generic advice
 const STRICT_AI_RULE = `
-RÈGLES ABSOLUES:
-- Base chaque conseil UNIQUEMENT sur les données fournies dans le contexte.
-- Si un site a un score de 78/100, cite ce score exact — ne dis pas "votre score est faible".
-- Si un keyword est en position 12, cite sa position réelle.
-- Si GSC/GA4/GBP ne sont pas connectés, recommande d'abord de les connecter avant tout autre conseil.
-- N'invente JAMAIS de données (sessions, taux de rebond, backlinks) non présentes dans le contexte.
-- Ne donne pas de conseils génériques ("vérifiez votre robots.txt", "ajoutez des meta descriptions") sans les ancrer aux URLs réelles des audits.
-- Si les données sont insuffisantes pour une recommandation précise, dis-le explicitement.
+RÈGLES ABSOLUES DU CONSULTANT SEO SENIOR:
+1. Tu connais déjà le site du client — ne demande jamais des données disponibles dans le contexte.
+2. Cite TOUJOURS les chiffres réels : score exact, URL exacte, position exacte, nombre d'issues.
+3. Ne dis JAMAIS "je ne peux pas deviner", "copiez-collez vos erreurs", "autorisez-moi" — tu as accès à tout.
+4. N'invente JAMAIS de données (sessions, backlinks, taux de rebond) absentes du contexte.
+5. Formate toujours les recommandations prioritaires en blocs :
+   Priorité N — [Nom du problème]
+   Pourquoi : [explication ancrée aux chiffres réels]
+   Où corriger : [URL ou section précise]
+   Impact estimé : +X pts SEO (ou +X% trafic)
+   Temps estimé : X minutes / X heures
+6. Si GSC/GA4/GBP ne sont pas connectés, mentionne-le APRÈS les recommandations principales — pas avant.
+7. Si une donnée manque vraiment, signale-le en une ligne et continue avec ce qui est disponible.
+8. Termine TOUJOURS par "Après ces corrections, je recommande : …" avec les 3 prochaines étapes.
 `;
 
 // ── Persist chat history ──────────────────────────────────────────────────────
@@ -335,11 +386,15 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
   }
 
   const fpContext = await buildFlowpointContext(context, orgId);
-  const systemPrompt = `Tu es l'assistant IA de Flowpoint, expert SEO local français et analyste web senior.
-Tu analyses les données SEO, performances web, comportement utilisateur et CRO.
-Réponds en français, avec des réponses précises et actionnables. Utilise ** pour le gras et - pour les listes.
+  const systemPrompt = `Tu es le consultant SEO senior intégré à FlowPoint. Tu connais déjà le site du client, ses scores, ses problèmes et son historique — tout est dans le contexte ci-dessous.
+Ton rôle : analyser les données réelles et répondre comme un expert qui a étudié le dossier avant la réunion.
+- Cite toujours les chiffres exacts du contexte (score, URL, position, nombre d'issues).
+- Formule des recommandations prioritaires numérotées avec impact estimé (+X pts) et temps estimé.
+- Ne demande jamais à l'utilisateur de te fournir des informations déjà présentes.
+- Réponds en français, structuré avec ** pour le gras.
 ${STRICT_AI_RULE}
-Contexte de la plateforme (données réelles de la DB):\n${fpContext}`;
+=== DONNÉES RÉELLES DU COMPTE ===
+${fpContext}`;
 
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
     { role: "system", content: systemPrompt },
@@ -447,17 +502,86 @@ router.post("/ai/audit", async (req, res) => {
     return;
   }
 
-  const prompt = `Analyse SEO et technique complète pour ${url}.
-Scores: ${JSON.stringify(scores ?? {})}
-Core Web Vitals: ${JSON.stringify(cwv ?? {})}
-Problèmes détectés: ${(issues ?? []).join(", ") || "Aucun fourni"}
+  // Query DB for real audit record + PSI cache
+  let dbAudit: Record<string, unknown> | null = null;
+  let psiMobile: { titles: string[]; opportunities: string[] } = { titles: [], opportunities: [] };
+  let prevScore: number | null = null;
+  try {
+    const [auditRes, psiRes, prevRes] = await Promise.allSettled([
+      pool.query(`SELECT * FROM audits WHERE url=$1 ORDER BY created_at DESC LIMIT 1`, [url]),
+      pool.query(
+        `SELECT critical_issues, opportunities FROM psi_cache WHERE url=$1 AND strategy='mobile' ORDER BY analyzed_at DESC LIMIT 1`,
+        [url]
+      ),
+      pool.query(
+        `SELECT score FROM audits WHERE url=$1 ORDER BY created_at DESC LIMIT 1 OFFSET 1`,
+        [url]
+      ),
+    ]);
+    if (auditRes.status === "fulfilled" && auditRes.value.rows[0]) dbAudit = auditRes.value.rows[0] as Record<string,unknown>;
+    if (psiRes.status === "fulfilled" && psiRes.value.rows[0]) {
+      const row = psiRes.value.rows[0] as Record<string, unknown>;
+      try {
+        const ci = JSON.parse(String(row["critical_issues"] ?? "[]")) as Array<{title?: string}>;
+        psiMobile.titles = ci.filter(i => i.title).map(i => i.title!).slice(0, 6);
+      } catch { /* ignore */ }
+      try {
+        const opp = JSON.parse(String(row["opportunities"] ?? "[]")) as Array<{title?: string; savings?: number}>;
+        psiMobile.opportunities = opp.filter(i => i.title).map(i => `${i.title}${i.savings ? ` (~${Math.round(i.savings)}ms)` : ""}`).slice(0, 4);
+      } catch { /* ignore */ }
+    }
+    if (prevRes.status === "fulfilled" && prevRes.value.rows[0]) prevScore = Number((prevRes.value.rows[0] as Record<string,unknown>)["score"] ?? null);
+  } catch { /* ignore — use frontend-provided data as fallback */ }
 
-Fournis une analyse structurée en français avec:
-1. **Résumé exécutif** (2-3 phrases)
-2. **Points critiques** (max 5 problèmes prioritaires)
-3. **Quick wins** (3 actions < 2h avec impact estimé)
-4. **Plan 30 jours** (roadmap structurée)
-5. **Estimation de gain** (amélioration de score attendue)`;
+  const realScore = dbAudit ? Number(dbAudit["score"] ?? 0) : (scores?.performance ?? 0);
+  const realSpeed = dbAudit ? Number(dbAudit["speed"] ?? 0) : (scores?.speed ?? 0);
+  const realIssuesCount = dbAudit ? Number(dbAudit["issues"] ?? 0) : (issues?.length ?? 0);
+  const realIssuesList = psiMobile.titles.length > 0 ? psiMobile.titles : (issues ?? []);
+  const scoreEvol = prevScore !== null ? (realScore - prevScore > 0 ? `+${realScore - prevScore}` : String(realScore - prevScore)) : null;
+
+  const prompt = `Tu es un consultant SEO senior. Tu viens de terminer l'analyse de ${url}.
+
+DONNÉES RÉELLES DE CET AUDIT :
+Score SEO : ${realScore}/100${scoreEvol !== null ? ` (${scoreEvol} vs audit précédent)` : ""}
+Score Performance : ${realSpeed}/100
+Problèmes critiques détectés : ${realIssuesCount}
+Core Web Vitals : ${JSON.stringify(cwv ?? {})}
+Issues PSI réelles : ${realIssuesList.length > 0 ? realIssuesList.join(" | ") : "non disponibles"}
+Opportunités d'optimisation : ${psiMobile.opportunities.length > 0 ? psiMobile.opportunities.join(" | ") : "voir issues"}
+
+Génère ton analyse exactement dans ce format :
+
+Audit terminé.
+Score SEO : ${realScore}/100
+Performance : ${realSpeed}/100
+Problèmes critiques : ${realIssuesCount}
+
+Ces problèmes représentent actuellement la plus forte perte de score.
+
+[Pour CHAQUE problème critique identifié, génère un bloc :]
+
+Priorité N
+────────────
+[Nom exact du problème]
+
+Pourquoi :
+[Explication technique précise, pourquoi ça pénalise le score]
+
+Où corriger :
+[Section ou page précise sur ${url}]
+
+Impact estimé :
++X points SEO
+
+Temps :
+X minutes / X heures
+
+Après ces corrections je recommande :
+1. Relancer un audit complet.
+2. [Action 2 spécifique aux données]
+3. [Action 3 spécifique aux données]`;
+
+  const systemPrompt = `Tu es un consultant SEO senior intégré à FlowPoint. Tu as déjà analysé le site — réponds directement avec les résultats concrets, jamais de formules génériques. Chaque problème doit citer des données réelles. N'invente aucun chiffre. Si une donnée manque, dis-le en une ligne et continue.`;
 
   try {
     const t0 = Date.now();
@@ -465,10 +589,10 @@ Fournis une analyse structurée en français avec:
     const resp = await openai.chat.completions.create({
       model,
       messages: [
-        { role: "system", content: "Tu es un expert SEO technique senior. Réponds en markdown structuré." },
+        { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
-      ...completionParams(model, 1200, 0.5),
+      ...completionParams(model, 1400, 0.4),
     });
     const analysis = resp.choices[0]?.message?.content ?? "";
     const latencyMs = Date.now() - t0;
@@ -482,7 +606,7 @@ Fournis une analyse structurée en français avec:
 
 // ── POST /ai/seo — SEO recommendations ───────────────────────────────────────
 router.post("/ai/seo", async (req, res) => {
-  const { url, keywords, currentScore } = req.body as {
+  const { url, keywords, currentScore, context } = req.body as {
     url?: string;
     keywords?: string[];
     currentScore?: number;
@@ -501,16 +625,60 @@ router.post("/ai/seo", async (req, res) => {
     return;
   }
 
-  const prompt = `Recommandations SEO pour ${url} (score actuel: ${currentScore ?? "inconnu"}/100).
-Mots-clés cibles: ${(keywords ?? []).join(", ") || "non fournis"}
+  // Read real data from DB
+  const fpCtx = await buildFlowpointContext(context, orgId);
+  let realScore = currentScore ?? 0;
+  let realSpeed = 0;
+  let realIssues: string[] = [];
+  try {
+    const [auditRes, psiRes, kwRes] = await Promise.allSettled([
+      pool.query(`SELECT score, speed, issues FROM audits WHERE url=$1 ORDER BY created_at DESC LIMIT 1`, [url]),
+      pool.query(`SELECT critical_issues FROM psi_cache WHERE url=$1 AND strategy='mobile' ORDER BY analyzed_at DESC LIMIT 1`, [url]),
+      pool.query(`SELECT keyword, current_position, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC NULLS LAST LIMIT 10`, [orgId]),
+    ]);
+    if (auditRes.status === "fulfilled" && auditRes.value.rows[0]) {
+      const r = auditRes.value.rows[0] as Record<string,unknown>;
+      realScore = Number(r["score"] ?? currentScore ?? 0);
+      realSpeed = Number(r["speed"] ?? 0);
+    }
+    if (psiRes.status === "fulfilled" && psiRes.value.rows[0]) {
+      try {
+        const ci = JSON.parse(String((psiRes.value.rows[0] as Record<string,unknown>)["critical_issues"] ?? "[]")) as Array<{title?: string}>;
+        realIssues = ci.filter(i => i.title).map(i => i.title!).slice(0, 5);
+      } catch { /* ignore */ }
+    }
+    if (kwRes.status === "fulfilled") {
+      const kwRows = kwRes.value.rows as Array<{keyword: string; current_position: number | null; search_volume: number | null}>;
+      if (kwRows.length > 0 && (keywords ?? []).length === 0) {
+        (req.body as { keywords?: string[] }).keywords = kwRows.map(k => `${k.keyword}${k.current_position ? ` (pos ${k.current_position})` : ""}`);
+      }
+    }
+  } catch { /* use provided data */ }
 
-Génère des recommandations SEO actionnables en 5 sections:
-1. **Balises meta & structure HTML**
-2. **Contenu & mots-clés**  
-3. **Netlinking & autorité**
-4. **SEO technique** (vitesse, mobile, indexation)
-5. **Contenu local** (si applicable)
-Chaque section : 3-4 recommandations avec priorité (🔴 critique / 🟡 important / 🟢 bonus).`;
+  const prompt = `Tu es consultant SEO senior pour ${url}.
+
+DONNÉES RÉELLES :
+Score SEO actuel : ${realScore}/100
+Score Performance : ${realSpeed}/100
+Issues critiques PSI : ${realIssues.length > 0 ? realIssues.join(" | ") : "non disponibles"}
+Mots-clés suivis : ${(keywords ?? []).join(", ") || "aucun suivi actif"}
+
+Contexte du compte :
+${fpCtx}
+
+Génère des recommandations SEO prioritaires ancrées sur ces données réelles.
+Pour chaque recommandation :
+🔴 Critique / 🟡 Important / 🟢 Bonus
+- Cite l'issue réelle ou le score exact concerné
+- Donne un impact estimé en points SEO ou % trafic
+- Estime le temps de correction
+
+Sections :
+1. **Problèmes critiques à corriger en priorité** (basé sur les issues PSI réelles)
+2. **Optimisation mots-clés** (basé sur les positions réelles)
+3. **Performance & Core Web Vitals** (basé sur le score ${realSpeed}/100)
+4. **Autorité & maillage**
+5. **Prochaines étapes recommandées**`;
 
   try {
     const t0 = Date.now();
@@ -518,10 +686,10 @@ Chaque section : 3-4 recommandations avec priorité (🔴 critique / 🟡 import
     const resp = await openai.chat.completions.create({
       model,
       messages: [
-        { role: "system", content: "Tu es un consultant SEO expert. Réponses en markdown, français." },
+        { role: "system", content: `Tu es un consultant SEO senior. Tu as accès aux données réelles du site. Chaque recommandation doit citer les chiffres exacts fournis — jamais de généralités.` },
         { role: "user", content: prompt },
       ],
-      ...completionParams(model, 1000, 0.6),
+      ...completionParams(model, 1200, 0.5),
     });
     const recommendations = resp.choices[0]?.message?.content ?? "";
     const latencyMs = Date.now() - t0;
@@ -707,26 +875,55 @@ router.post("/ai/reports", async (req, res) => {
     return;
   }
 
-  const prompt = `Génère un rapport ${reportType ?? "SEO mensuel"} pour la période ${period ?? "Mai 2026"}.
-Sites analysés: ${(sites ?? []).join(", ") || "selon le contexte"}
-Métriques: ${JSON.stringify(metrics ?? {})}
-Contexte plateforme: ${fpCtx}
+  // Dynamic period + score evolution
+  const now = new Date();
+  const monthNames = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+  const dynamicPeriod = period ?? `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevPeriodStart = prevMonth.toISOString().slice(0, 10);
+  let scoreEvolution = "";
+  try {
+    const evoRes = await pool.query(
+      `SELECT
+         ROUND(AVG(score)) AS avg_current,
+         (SELECT ROUND(AVG(score)) FROM audits WHERE org_id=$1 AND created_at < $2) AS avg_prev
+       FROM audits WHERE org_id=$1 AND created_at >= $2`,
+      [orgId, prevPeriodStart]
+    );
+    if (evoRes.rows[0]) {
+      const r = evoRes.rows[0] as Record<string,unknown>;
+      const cur = Number(r["avg_current"] ?? 0);
+      const prev = Number(r["avg_prev"] ?? 0);
+      if (cur > 0 && prev > 0) {
+        const delta = cur - prev;
+        scoreEvolution = `Évolution score moyen : ${cur}/100 ce mois (${delta >= 0 ? "+" : ""}${delta} vs mois précédent ${prev}/100)`;
+      }
+    }
+  } catch { /* ignore */ }
 
-Rapport structuré:
+  const prompt = `Génère un rapport ${reportType ?? "SEO mensuel"} pour la période ${dynamicPeriod}.
+Sites analysés : ${(sites ?? []).join(", ") || "selon les audits en base"}
+${scoreEvolution ? scoreEvolution + "\n" : ""}Métriques additionnelles : ${JSON.stringify(metrics ?? {})}
+
+=== DONNÉES RÉELLES DU COMPTE ===
+${fpCtx}
+
+Génère le rapport comme un consultant senior qui présente les résultats à son client. Cite UNIQUEMENT les chiffres réels ci-dessus.
+
 # Résumé Exécutif
-(2-3 phrases sur les résultats clés)
+(2-3 phrases avec les vrais chiffres : score actuel, évolution, nombre d'issues)
 
-# Points Forts Ce Mois
-(3-5 victoires avec chiffres)
+# Points Forts — ${dynamicPeriod}
+(3-5 victoires avec chiffres exacts issus du contexte)
 
-# Problèmes Identifiés  
-(3-5 points avec priorité)
+# Problèmes Prioritaires
+(3-5 points avec : nom du problème, URL concernée, impact estimé, délai de correction)
 
-# Actions Recommandées
-(Plan 30 jours avec responsable et délai)
+# Plan d'Actions — 30 prochains jours
+(Actions ordonnées par priorité, avec responsable suggéré et délai)
 
 # Prévisions Mois Prochain
-(Objectifs SMART)`;
+(Objectifs SMART basés sur l'état actuel)`;
 
   try {
     const t0 = Date.now();
@@ -734,10 +931,10 @@ Rapport structuré:
     const resp = await openai.chat.completions.create({
       model,
       messages: [
-        { role: "system", content: "Tu es un consultant SEO senior générant des rapports clients professionnels. Français formel, structuré en markdown." },
+        { role: "system", content: "Tu es un consultant SEO senior. Tu génères des rapports basés UNIQUEMENT sur les données réelles fournies. Cite les chiffres exacts. Jamais de généralités ou de données inventées. Format markdown professionnel, français formel." },
         { role: "user", content: prompt },
       ],
-      ...completionParams(model, 1500),
+      ...completionParams(model, 1800),
     });
     const report = resp.choices[0]?.message?.content ?? "";
     await trackAIUsage({ feature: "report_gen", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
@@ -836,20 +1033,30 @@ router.post("/ai/missions", async (req, res) => {
     return;
   }
 
-  const prompt = `Génère 6 missions SEO prioritaires pour ce compte.
-Contexte: ${fpCtx}
-Profil: ${JSON.stringify(profile ?? {})}
-Missions actuelles: ${JSON.stringify((currentMissions ?? []).slice(0, 3))}
+  const prompt = `Tu es consultant SEO senior. Génère 6 missions SEO prioritaires basées UNIQUEMENT sur les données réelles ci-dessous.
 
-Retourne un JSON array de 6 missions avec:
+=== DONNÉES RÉELLES ===
+${fpCtx}
+
+Profil additionnel : ${JSON.stringify(profile ?? {})}
+Missions déjà en cours : ${JSON.stringify((currentMissions ?? []).slice(0, 3))}
+
+RÈGLES IMPORTANTES :
+- Chaque mission doit être ancrée à un problème réel cité dans les données (URL précise, score réel, issue réelle).
+- Pas de missions génériques du type "optimiser les images" sans référencer le site concerné.
+- Calcule expectedGain à partir des scores réels (ex: si score=40/100, corriger les issues critiques = +15 à +25 pts).
+- Ordonne par priorité décroissante : les issues les plus bloquantes en premier.
+- N'inclus pas une mission déjà "en cours" dans la liste.
+
+Retourne un JSON array de 6 missions :
 {
-  "title": "string (court, actionnable)",
-  "description": "string (2-3 phrases expliquant quoi faire)",
+  "title": "string (court, spécifique — cite le site ou le problème exact)",
+  "description": "string (2-3 phrases, cite les chiffres réels)",
   "category": "seo|performance|content|local|conversion|technical",
   "priority": 1-10,
   "estimatedImpact": "Faible|Moyen|Élevé|Critique",
   "estimatedEffort": "1h|4h|1j|1sem|2sem",
-  "expectedGain": "string (ex: +8 points SEO)"
+  "expectedGain": "string (ex: +12 points SEO, +20% trafic)"
 }
 
 Réponds uniquement avec le JSON array.`;

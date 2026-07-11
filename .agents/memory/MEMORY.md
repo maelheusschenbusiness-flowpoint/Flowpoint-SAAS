@@ -37,3 +37,4 @@
 - [Postgres silent rollback on abort](postgres-silent-rollback-abort.md) — a failing statement mid-transaction poisons it; COMMIT then silently becomes ROLLBACK with no error; guard secondary logic with SAVEPOINT
 - [integrations-service signatures](integrations-service-pattern.md) — correct fn sigs + table (automation_integrations); Slack/Discord no HMAC; missions use source_type not source
 - [AI context enrichment](ai-context-enrichment.md) — buildFlowpointContext(extra, orgId) queries keywords/competitors/GBP; STRICT_AI_RULE constant in every chat system prompt; competitors has domain_rating not rating
+- [AI engine consultant refactor](ai-engine-consultant-refactor.md) — buildFlowpointContext reads psi_cache; all AI endpoints use real DB data; dynamic dates; mission-engine AI-driven
