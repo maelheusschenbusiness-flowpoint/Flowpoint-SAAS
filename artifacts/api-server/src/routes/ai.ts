@@ -70,6 +70,32 @@ async function getOpenAI() {
 // ── Shared context builder ────────────────────────────────────────────────────
 // Queries REAL data from DB. All advice generated using this context must be
 // grounded in the data returned here — no invented generic recommendations.
+/** Categorize PSI issue titles into SEO buckets for richer consultant context */
+function categorizeIssues(titles: string[]): Record<string, string[]> {
+  const cats: Record<string, string[]> = {
+    "Performance / Core Web Vitals": [],
+    "Meta & Contenu SEO": [],
+    "Accessibilité": [],
+    "SEO Technique": [],
+    "Autres": [],
+  };
+  for (const t of titles) {
+    const low = t.toLowerCase();
+    if (/lcp|fcp|cls|tbt|tti|render|image|script|cache|compress|unused|speed|ttfb|resource|defer|async|lazy|webp|avif|minif|font|preload|preconnect|css block/.test(low)) {
+      cats["Performance / Core Web Vitals"]!.push(t);
+    } else if (/title|description|meta|h1|h2|canonical|duplicate|keyword|content|structured.data|schema|open.graph|og:|twitter:/.test(low)) {
+      cats["Meta & Contenu SEO"]!.push(t);
+    } else if (/alt|aria|contrast|label|focus|tab.order|button|form|input|role|color ratio/.test(low)) {
+      cats["Accessibilité"]!.push(t);
+    } else if (/robot|sitemap|redirect|https|http|ssl|crawl|index|noindex|canonical|url|link|broken|404|intern|extern|backlink|hreflang|pagination/.test(low)) {
+      cats["SEO Technique"]!.push(t);
+    } else {
+      cats["Autres"]!.push(t);
+    }
+  }
+  return cats;
+}
+
 async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: string): Promise<string> {
   try {
     const oid = orgId ?? "default";
@@ -78,11 +104,13 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     let gscConnected = false;
     let ga4Connected = false;
     let gbpConnected = false;
+    let clientDomainAuthority: number | null = null;
+    let clientDomain = "";
     // Real PSI critical issues per audit URL (from psi_cache)
     let psiIssuesByUrl: Map<string, Array<{title: string}>> = new Map();
 
     {
-      const [kwRes, compRes, gbpRes] = await Promise.allSettled([
+      const [kwRes, compRes, gbpRes, clientDrRes] = await Promise.allSettled([
         pool.query(
           `SELECT keyword, current_position, prev_position, position_change, search_volume, trend
            FROM tracked_keywords
@@ -100,6 +128,13 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
           `SELECT id FROM google_tokens WHERE org_id=$1 LIMIT 1`,
           [oid]
         ),
+        // Client's own domain authority from DataForSEO metrics cache (if available)
+        pool.query(
+          `SELECT domain, domain_authority, backlinks_count FROM seo_domain_metrics
+           WHERE org_id=$1
+           ORDER BY cached_at DESC LIMIT 1`,
+          [oid]
+        ).catch(() => ({ rows: [] as Array<Record<string,unknown>> })),
       ]);
       if (kwRes.status === "fulfilled")   keywords    = kwRes.value.rows as typeof keywords;
       if (compRes.status === "fulfilled") competitors = (compRes.value.rows as Array<Record<string,unknown>>).map(r => ({
@@ -109,6 +144,11 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
         reviews_count: Number(r["kw_count"] ?? 0),
       }));
       if (gbpRes.status === "fulfilled")  gbpConnected = gbpRes.value.rows.length > 0;
+      if (clientDrRes.status === "fulfilled" && (clientDrRes as PromiseFulfilledResult<{rows: Array<Record<string,unknown>>}>).value.rows[0]) {
+        const r = (clientDrRes as PromiseFulfilledResult<{rows: Array<Record<string,unknown>>}>).value.rows[0];
+        if (r["domain_authority"] != null) clientDomainAuthority = Number(r["domain_authority"]);
+        if (r["domain"]) clientDomain = String(r["domain"]);
+      }
 
       const [gscCheck, ga4Check] = await Promise.allSettled([
         pool.query(
@@ -201,10 +241,6 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     const kwNearTop  = allKw.filter(k => k.position !== null && k.position !== null && k.position >= 4 && k.position <= 10);
     const kwTop3     = allKw.filter(k => k.position !== null && k.position !== null && k.position <= 3);
 
-    // Competitor gap analysis
-    const topComp = competitors[0];
-    const ourBestScore = audits.length > 0 ? Math.max(...audits.map(a => a.score)) : 0;
-
     const lines: string[] = [
       `=== CONTEXTE FLOWPOINT — CONSULTANT SEO SENIOR ===`,
       `Utilisateur : ${firstName || "Utilisateur"} | Plan : ${plan} | OrgId : ${oid}`,
@@ -224,11 +260,16 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
           ).join(" | ")}`
         : "Aucun audit effectué",
       ``,
-      `=== PROBLÈMES RÉELS DÉTECTÉS (PSI) ===`,
+      `=== PROBLÈMES RÉELS DÉTECTÉS (PSI) PAR CATÉGORIE ===`,
       ...audits.slice(0, 5).flatMap(a => {
         const issues = psiIssuesByUrl.get(a.url) ?? [];
         if (issues.length === 0) return [];
-        return [`${a.url} — ${issues.slice(0, 4).map(i => i.title).join(" | ")}`];
+        const cats = categorizeIssues(issues.map(i => i.title));
+        const catSummary = Object.entries(cats)
+          .filter(([, v]) => v.length > 0)
+          .map(([cat, items]) => `${cat} : ${items.slice(0, 3).join(", ")}`)
+          .join(" | ");
+        return [`${a.url} — ${catSummary || issues.slice(0, 4).map(i => i.title).join(" | ")}`];
       }),
       psiIssuesByUrl.size === 0 && frontendIssues.length > 0
         ? `Problèmes frontend : ${frontendIssues.slice(0, 5).map(i => `${i.label} (${i.sev}, gain=${i.roi})`).join(" | ")}`
@@ -259,10 +300,10 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       competitors.length > 0
         ? competitors.map(c => `${c.name}${c.domain ? ` (${c.domain})` : ""} DR=${c.rating ?? "?"}`).join(" | ")
         : "Aucun concurrent enregistré",
-      competitors.length >= 2
-        ? `Écart DR concurrents : leader "${competitors[0]!.name}" DR=${competitors[0]!.rating ?? "?"} vs 2e "${competitors[1]!.name}" DR=${competitors[1]!.rating ?? "?"} — écart=${((competitors[0]!.rating ?? 0) - (competitors[1]!.rating ?? 0))} pts DR`
-        : competitors.length === 1
-        ? `Concurrent principal : "${competitors[0]!.name}" DR=${competitors[0]!.rating ?? "?"}`
+      competitors.length > 0 && competitors[0]!.rating
+        ? clientDomainAuthority !== null
+          ? `Écart DR : votre domaine ${clientDomain ? `(${clientDomain})` : ""} DA=${clientDomainAuthority} vs concurrent "${competitors[0]!.name}" DR=${competitors[0]!.rating} — ${competitors[0]!.rating > clientDomainAuthority ? `retard de ${competitors[0]!.rating - clientDomainAuthority} pts DR` : `avance de ${clientDomainAuthority - competitors[0]!.rating} pts DR`}`
+          : `Top concurrent "${competitors[0]!.name}" DR=${competitors[0]!.rating} — DA de votre domaine non encore mesuré (connectez DataForSEO pour l'obtenir)`
         : "",
       ``,
       `=== PERFORMANCE ===`,

@@ -10725,6 +10725,48 @@ function updateAIUI() {
 }
 
 /* ── PANEL CONTENTS ── */
+async function fetchAuditAIInsights(auditRef) {
+  const audit = STATE.audits.find(a => a.id === auditRef.id) || auditRef;
+  const targetEl = document.getElementById(`fp-audit-ai-result-${auditRef.id}`);
+  if (targetEl) { targetEl.innerHTML = '<div style="font-size:12px;color:var(--fp-text-faint);padding:12px 0">Analyse en cours…</div>'; }
+  const context = {
+    auditDetails: STATE.audits.slice(0, 8).map(a => ({ url: a.url, score: a.score, speed: a.speed, issues: a.issues })),
+    auditIssues: (() => {
+      const issues = [];
+      if (audit.score < 50) issues.push({ label: `Score critique ${audit.score}/100`, sev: 'Critique', roi: '+15-25 pts' });
+      if (audit.speed != null && audit.speed < 50) issues.push({ label: `Performance ${audit.speed}/100`, sev: 'Critique', roi: '+10-18 pts perf' });
+      if (audit.issues > 0) issues.push({ label: `${audit.issues} problème(s) détecté(s)`, sev: audit.issues > 5 ? 'Critique' : 'Important', roi: '+5-12 pts' });
+      return issues;
+    })(),
+    topKeywords: (STATE.keywords || []).slice(0, 5).map(k => ({ keyword: k.keyword || k.query, position: k.position || k.rank })),
+    plan: STATE.me?.plan,
+    city: STATE.localSeo?.city || STATE.me?.org?.city || null,
+  };
+  try {
+    const resp = await fetch('/api/ai/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: audit.url,
+        scores: { performance: audit.speed || 0, seo: audit.score || 0 },
+        context,
+      }),
+    });
+    if (!resp.ok) { showToast('error', 'Erreur lors de l'analyse IA'); return; }
+    const data = await resp.json();
+    if (data.analysis) {
+      const container = document.createElement('div');
+      container.id = `fp-audit-ai-result-${auditRef.id}`;
+      container.style.cssText = 'margin-top:16px;padding:14px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);font-size:12px;line-height:1.6;white-space:pre-wrap;color:var(--fp-text)';
+      container.textContent = data.analysis;
+      const panel = document.querySelector('.fp-float-panel-body');
+      if (panel && !document.getElementById(`fp-audit-ai-result-${auditRef.id}`)) panel.appendChild(container);
+      else if (targetEl) targetEl.innerHTML = container.outerHTML;
+    }
+    if (data.creditsRemaining != null) STATE.aiCredits = data.creditsRemaining;
+  } catch(e) { showToast('error', 'Analyse IA indisponible'); }
+}
+
 function renderAuditDetailPanel(audit) {
   if (!audit) return '<div class="fp-empty">Audit introuvable</div>';
   const plan = STATE.me?.plan || 'Pro';
@@ -10851,6 +10893,10 @@ function renderAuditDetailPanel(audit) {
       </div>
 
       <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;background:linear-gradient(135deg,#1d4ed8,#7c3aed)" onclick="fetchAuditAIInsights(${JSON.stringify({ id: escHtml(audit.id), url: escHtml(audit.url), score: audit.score, speed: audit.speed })})">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          Analyse IA complète
+        </button>
         ${btn('🔄 Relancer l\'audit','fp-btn fp-btn-primary fp-btn-sm','','id="audit-panel-rerun" style="width:100%"')}
         <div style="display:flex;gap:6px">
           ${btn('+ Mission','fp-btn fp-btn-ghost fp-btn-sm','','id="audit-panel-mission" style="flex:1"')}
