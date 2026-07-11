@@ -639,6 +639,7 @@ router.post("/ai/seo", async (req, res) => {
   let realScore = currentScore ?? 0;
   let realSpeed = 0;
   let realIssues: string[] = [];
+  let dbKeywords: string[] = [];
   try {
     const [auditRes, psiRes, kwRes] = await Promise.allSettled([
       pool.query(`SELECT score, speed, issues FROM audits WHERE url=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT 1`, [url, orgId]),
@@ -649,7 +650,7 @@ router.post("/ai/seo", async (req, res) => {
          ORDER BY p.analyzed_at DESC LIMIT 1`,
         [url, orgId]
       ),
-      pool.query(`SELECT keyword, current_position, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC NULLS LAST LIMIT 10`, [orgId]),
+      pool.query(`SELECT keyword, current_position, prev_position, position_change, search_volume FROM tracked_keywords WHERE org_id=$1 AND active=true ORDER BY search_volume DESC NULLS LAST LIMIT 10`, [orgId]),
     ]);
     if (auditRes.status === "fulfilled" && auditRes.value.rows[0]) {
       const r = auditRes.value.rows[0] as Record<string,unknown>;

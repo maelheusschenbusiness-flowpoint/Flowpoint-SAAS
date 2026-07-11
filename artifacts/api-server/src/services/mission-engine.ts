@@ -179,7 +179,13 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
           [orgId]
         ),
         client.query(
-          `SELECT url, critical_issues, opportunities FROM psi_cache WHERE strategy='mobile' ORDER BY analyzed_at DESC LIMIT 10`
+          `SELECT DISTINCT ON (p.url) p.url, p.critical_issues, p.opportunities
+           FROM psi_cache p
+           JOIN audits a ON a.url = p.url AND a.org_id = $1
+           WHERE p.strategy='mobile'
+           ORDER BY p.url, p.analyzed_at DESC
+           LIMIT 10`,
+          [orgId]
         ),
       ]);
 
