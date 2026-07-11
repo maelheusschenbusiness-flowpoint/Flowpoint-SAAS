@@ -131,8 +131,13 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
     }
 
     const [audits, monitors] = await Promise.all([
-      db.select().from(auditsTable).orderBy(desc(auditsTable.createdAt)).limit(10),
-      db.select().from(monitorsTable).limit(10),
+      db.select().from(auditsTable)
+        .where(eq(auditsTable.orgId, oid))
+        .orderBy(desc(auditsTable.createdAt))
+        .limit(10),
+      db.select().from(monitorsTable)
+        .where(eq(monitorsTable.orgId, oid))
+        .limit(10),
     ]);
 
     // Fetch real PSI critical issues for top 5 audited URLs
