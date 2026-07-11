@@ -10752,7 +10752,7 @@ async function fetchAuditAIInsights(auditRef) {
         context,
       }),
     });
-    if (!resp.ok) { showToast('error', 'Erreur lors de l'analyse IA'); return; }
+    if (!resp.ok) { showToast('error', 'Erreur lors de l\'analyse IA'); return; }
     const data = await resp.json();
     if (data.analysis) {
       const container = document.createElement('div');
