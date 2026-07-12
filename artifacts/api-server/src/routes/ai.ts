@@ -13,6 +13,7 @@ import {
   recordCompletedUsage,
   type AIFeature,
 } from "../services/ai-engine.js";
+import { aiChat, aiStream, checkAllProviders, type AIProviderId } from "../services/ai-provider.js";
 
 const router = Router();
 // Apply AI rate limit to all routes in this router (org-based, plan-aware)
@@ -58,13 +59,65 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-// ── OpenAI client factory ─────────────────────────────────────────────────────
+// ── OpenAI client factory (legacy, kept for non-migrated paths) ────────────
 async function getOpenAI() {
   const { resolveOpenAIConnection } = await import("../lib/openai-client.js");
   const conn = resolveOpenAIConnection();
   if (!conn) return null;
   const { default: OpenAI } = await import("openai");
   return new OpenAI({ apiKey: conn.apiKey, ...(conn.baseURL ? { baseURL: conn.baseURL } : {}) });
+}
+
+// ── Unified AI helper (replaces direct openai.chat.completions.create) ────────
+/** Call aiChat via the unified provider layer with task-based routing and fallback */
+async function callAIWithFallback(args: {
+  task: string;
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  provider?: AIProviderId;
+  model?: string;
+  json?: boolean;
+  fallbackText: string;
+}): Promise<{ text: string; model: string; provider: AIProviderId; tokensIn: number; tokensOut: number; latencyMs: number }> {
+  const t0 = Date.now();
+  const { resolveTaskProvider } = await import("../services/ai-providers/task-router.js");
+  const resolved = resolveTaskProvider(args.task, args.provider);
+  const provider = resolved.provider;
+  const model = args.model ?? resolved.model;
+
+  try {
+    const result = await aiChat({
+      provider,
+      model,
+      systemPrompt: args.systemPrompt,
+      messages: [{ role: "user", content: args.userPrompt }],
+      maxTokens: args.maxTokens ?? 1400,
+      temperature: args.temperature,
+      json: args.json,
+    });
+    const latencyMs = Date.now() - t0;
+    return {
+      text: result.text || args.fallbackText,
+      model,
+      provider,
+      tokensIn: result.usage.promptTokens,
+      tokensOut: result.usage.completionTokens,
+      latencyMs,
+    };
+  } catch (err) {
+    const latencyMs = Date.now() - t0;
+    logger.error({ err, task: args.task, provider, model }, "[AI] callAIWithFallback failed — returning fallback");
+    return {
+      text: args.fallbackText,
+      model,
+      provider,
+      tokensIn: 0,
+      tokensOut: 0,
+      latencyMs,
+    };
+  }
 }
 
 // ── Shared context builder ────────────────────────────────────────────────────
@@ -401,11 +454,13 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
     return;
   }
 
-  const { message, context, stream: wantStream = true, history = [] } = req.body as {
+  const { message, context, stream: wantStream = true, history = [], provider, model } = req.body as {
     message?: string;
     context?: Record<string, unknown>;
     stream?: boolean;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
+    provider?: AIProviderId;
+    model?: string;
   };
 
   if (!message?.trim()) {
@@ -416,11 +471,14 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
   const orgId  = req.orgId  ?? "default";
   const userId = req.userId ?? "anonymous";
 
-  // 1. Check OpenAI is configured BEFORE any DB write — never consume quota for a call that can't happen
-  const openai = await getOpenAI();
-  if (!openai) {
-    res.status(503).json({ error: "AI not configured" });
-    return;
+  // 1. Resolve provider + model: explicit > task-based > default (OpenAI)
+  const selectedProvider = provider ?? "openai";
+  let selectedModel = model;
+  if (!selectedModel) {
+    // Use task router for chat defaults
+    const { resolveTaskProvider } = await import("../services/ai-providers/task-router.js");
+    const resolved = resolveTaskProvider("chat", selectedProvider);
+    selectedModel = resolved.model;
   }
 
   // 2. Token-based quota check — strict pre-flight against monthly token budget
@@ -458,7 +516,7 @@ ${fpContext}`;
     .catch(err => logger.warn({ err }, "[AI] persistChatMessage (user) failed"));
 
   if (wantStream) {
-    // SSE streaming
+    // SSE streaming via unified ai-provider layer
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -466,67 +524,61 @@ ${fpContext}`;
 
     const t0 = Date.now();
     let fullReply = "";
-    let tokensIn = 0;
-    let tokensOut = 0;
 
     try {
-      const streamResp = await openai.chat.completions.create({
-        model: "gpt-5-mini",
-        messages,
-        stream: true,
-        // Request real token counts in the final chunk's usage field
-        stream_options: { include_usage: true },
-        ...completionParams("gpt-5-mini", 800),
+      const stream = aiStream({
+        provider: selectedProvider,
+        model: selectedModel,
+        systemPrompt: messages[0]!.content,
+        messages: messages.slice(1),
+        maxTokens: 800,
       });
 
-      for await (const chunk of streamResp) {
-        const delta = chunk.choices[0]?.delta?.content ?? "";
-        if (delta) {
-          fullReply += delta;
-          res.write(`data: ${JSON.stringify({ delta })}\n\n`);
-        }
-        // The final chunk carries real usage when include_usage: true
-        if (chunk.usage) {
-          tokensIn  = chunk.usage.prompt_tokens;
-          tokensOut = chunk.usage.completion_tokens;
+      for await (const chunk of stream) {
+        if (chunk && typeof chunk === "object" && "content" in chunk) {
+          const text = (chunk as { content: string }).content;
+          fullReply += text;
+          res.write(`data: ${JSON.stringify({ delta: text })}\n\n`);
         }
       }
       res.write(`data: [DONE]\n\n`);
       res.end();
 
       const latencyMs = Date.now() - t0;
-      // 3. Atomic increment with REAL token counts AFTER completion — fire-and-forget, never blocks response
-      persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: "gpt-5-mini", tokensUsed: tokensOut })
+      const estTokensIn = Math.ceil(messages.reduce((s, m) => s + m.content.length, 0) / 4);
+      const estTokensOut = Math.ceil(fullReply.length / 4);
+
+      persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: selectedModel, tokensUsed: estTokensOut })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: "gpt-5-mini", tokensIn, tokensOut, latencyMs, success: true })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage failed"));
     } catch (err) {
-      logger.error({ err }, "[AI] Streaming chat failed");
-      res.write(`data: ${JSON.stringify({ error: "Erreur de génération IA" })}\n\n`);
+      logger.error({ err, provider: selectedProvider, model: selectedModel }, "[AI] Streaming chat failed");
+      res.write(`data: ${JSON.stringify({ error: "Erreur de generation IA" })}\n\n`);
       res.end();
     }
   } else {
-    // Non-streaming fallback
+    // Non-streaming via unified ai-provider layer
     try {
       const t0 = Date.now();
-      const resp = await openai.chat.completions.create({
-        model: "gpt-5-mini",
-        messages,
-        ...completionParams("gpt-5-mini", 800),
+      const result = await aiChat({
+        provider: selectedProvider,
+        model: selectedModel,
+        systemPrompt: messages[0]!.content,
+        messages: messages.slice(1),
+        maxTokens: 800,
       });
-      const reply = resp.choices[0]?.message?.content ?? "Je ne peux pas répondre pour le moment.";
+      const reply = result.text || "Je ne peux pas repondre pour le moment.";
       const latencyMs = Date.now() - t0;
-      const tokensIn = resp.usage?.prompt_tokens ?? 0;
-      const tokensOut = resp.usage?.completion_tokens ?? 0;
 
-      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: "gpt-5-mini", tokensUsed: tokensOut })
+      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: selectedModel, tokensUsed: result.usage.completionTokens })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant non-stream) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: "gpt-5-mini", tokensIn, tokensOut, latencyMs, success: true })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage (non-stream) failed"));
-      res.json({ reply, streaming: false });
+      res.json({ reply, streaming: false, provider: selectedProvider, model: selectedModel });
     } catch (err) {
-      logger.error({ err }, "[AI] Chat failed");
-      res.status(500).json({ error: "Erreur IA — réessayez" });
+      logger.error({ err, provider: selectedProvider, model: selectedModel }, "[AI] Chat failed");
+      res.status(500).json({ error: "Erreur IA - reessayez" });
     }
   }
 });
@@ -547,11 +599,7 @@ router.post("/ai/audit", async (req, res) => {
   const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
-  const openai = await getOpenAI();
-  if (!openai) {
-    res.json({ analysis: buildFallbackAudit(url, scores) });
-    return;
-  }
+  // AI call uses unified provider layer below
 
   // Query DB for real audit record + PSI cache
   let dbAudit: Record<string, unknown> | null = null;
@@ -639,20 +687,16 @@ Après ces corrections je recommande :
   const systemPrompt = `Tu es un consultant SEO senior intégré à FlowPoint. Tu as déjà analysé le site — réponds directement avec les résultats concrets, jamais de formules génériques. Chaque problème doit citer des données réelles. N'invente aucun chiffre. Si une donnée manque, dis-le en une ligne et continue.`;
 
   try {
-    const t0 = Date.now();
-    const model = selectOptimalModel("audit_summary", "balanced");
-    const resp = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: prompt },
-      ],
-      ...completionParams(model, 1400, 0.4),
+    const aiResult = await callAIWithFallback({
+      task: "seo_audit",
+      systemPrompt,
+      userPrompt: prompt,
+      maxTokens: 1400,
+      temperature: 0.4,
+      fallbackText: buildFallbackAudit(url, scores),
     });
-    const analysis = resp.choices[0]?.message?.content ?? "";
-    const latencyMs = Date.now() - t0;
-    await trackAIUsage({ feature: "audit_summary", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs, success: true });
-    res.json({ analysis, model, creditsRemaining: creditCheck.remaining });
+    await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /audit failed");
     res.json({ analysis: buildFallbackAudit(url, scores) });
@@ -674,11 +718,7 @@ router.post("/ai/seo", async (req, res) => {
   const creditCheck = await consumeAICredits({ feature: "cro_analysis", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
-  const openai = await getOpenAI();
-  if (!openai) {
-    res.json({ recommendations: buildFallbackSEO(url) });
-    return;
-  }
+  // AI call uses unified provider layer below
 
   // Read real data from DB
   const fpCtx = await buildFlowpointContext(context, orgId);
@@ -782,11 +822,7 @@ router.post("/ai/conversion", async (req, res) => {
   const creditCheck = await consumeAICredits({ feature: "cro_analysis", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
-  const openai = await getOpenAI();
-  if (!openai) {
-    res.json({ analysis: "Analyse CRO non disponible sans clé OpenAI." });
-    return;
-  }
+  // AI call uses unified provider layer below
 
   const fpCtx = await buildFlowpointContext(undefined, orgId);
   const prompt = `Analyse CRO (Conversion Rate Optimization) pour ${url ?? "le site"}.
@@ -801,19 +837,15 @@ Analyse en 4 sections:
 4. **Impact revenue estimé** (+X% conversion → +€Y/mois)`;
 
   try {
-    const t0 = Date.now();
-    const model = selectOptimalModel("cro_analysis");
-    const resp = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: "Tu es un expert CRO et UX. Réponds en français avec des recommandations concrètes." },
-        { role: "user", content: prompt },
-      ],
-      ...completionParams(model, 1000),
+    const aiResult = await callAIWithFallback({
+      task: "cro_analysis",
+      systemPrompt: "Tu es un expert CRO et UX. Réponds en français avec des recommandations concrètes.",
+      userPrompt: prompt,
+      maxTokens: 1000,
+      fallbackText: "Analyse CRO temporairement indisponible.",
     });
-    const analysis = resp.choices[0]?.message?.content ?? "";
-    await trackAIUsage({ feature: "cro_analysis", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
-    res.json({ analysis, creditsRemaining: creditCheck.remaining });
+    await trackAIUsage({ feature: "cro_analysis", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /conversion failed");
     res.status(500).json({ error: "Erreur analyse CRO" });
@@ -834,11 +866,7 @@ router.post("/ai/local", async (req, res) => {
   const creditCheck = await consumeAICredits({ feature: "market_intel", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
-  const openai = await getOpenAI();
-  if (!openai) {
-    res.json({ recommendations: "Recommandations Local SEO non disponibles sans clé OpenAI." });
-    return;
-  }
+  // AI call uses unified provider layer below
 
   const prompt = `Stratégie Local SEO pour ${business ?? "l'entreprise"} à ${location ?? "France"}.
 Mots-clés locaux: ${(keywords ?? []).join(", ") || "non fournis"}
@@ -853,19 +881,15 @@ Génère une stratégie Local SEO complète:
 6. **Plan 90 jours** avec jalons`;
 
   try {
-    const t0 = Date.now();
-    const model = selectOptimalModel("market_intel");
-    const resp = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: "Tu es un expert Local SEO et Google Business Profile. Réponds en français." },
-        { role: "user", content: prompt },
-      ],
-      ...completionParams(model, 1200),
+    const aiResult = await callAIWithFallback({
+      task: "market_intel",
+      systemPrompt: "Tu es un expert Local SEO et Google Business Profile. Réponds en français.",
+      userPrompt: prompt,
+      maxTokens: 1200,
+      fallbackText: "Recommandations Local SEO temporairement indisponibles.",
     });
-    const recommendations = resp.choices[0]?.message?.content ?? "";
-    await trackAIUsage({ feature: "market_intel", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
-    res.json({ recommendations, creditsRemaining: creditCheck.remaining });
+    await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
+    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /local failed");
     res.status(500).json({ error: "Erreur recommandations Local SEO" });
@@ -885,11 +909,7 @@ router.post("/ai/competitors", async (req, res) => {
   const creditCheck = await consumeAICredits({ feature: "market_intel", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
-  const openai = await getOpenAI();
-  if (!openai) {
-    res.json({ analysis: "Analyse concurrentielle non disponible sans clé OpenAI." });
-    return;
-  }
+  // AI call uses unified provider layer below
 
   const prompt = `Analyse concurrentielle pour ${ourUrl ?? "notre site"} (score SEO: ${ourScore ?? "?"}/100).
 Concurrents: ${JSON.stringify(competitors ?? [])}
@@ -902,19 +922,15 @@ Fournis:
 5. **Estimation de temps** pour rattraper le leader`;
 
   try {
-    const t0 = Date.now();
-    const model = selectOptimalModel("market_intel");
-    const resp = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: "Tu es un analyste stratégique SEO. Réponds en français avec des insights actionnables." },
-        { role: "user", content: prompt },
-      ],
-      ...completionParams(model, 1200),
+    const aiResult = await callAIWithFallback({
+      task: "market_intel",
+      systemPrompt: "Tu es un analyste stratégique SEO. Réponds en français avec des insights actionnables.",
+      userPrompt: prompt,
+      maxTokens: 1200,
+      fallbackText: "Analyse concurrentielle temporairement indisponible.",
     });
-    const analysis = resp.choices[0]?.message?.content ?? "";
-    await trackAIUsage({ feature: "market_intel", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
-    res.json({ analysis, creditsRemaining: creditCheck.remaining });
+    await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /competitors failed");
     res.status(500).json({ error: "Erreur analyse concurrentielle" });
@@ -935,13 +951,7 @@ router.post("/ai/reports", async (req, res) => {
   const creditCheck = await consumeAICredits({ feature: "report_gen", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
-  const openai = await getOpenAI();
   const fpCtx = await buildFlowpointContext(undefined, orgId);
-
-  if (!openai) {
-    res.json({ report: "Génération de rapport IA non disponible sans clé OpenAI." });
-    return;
-  }
 
   // Dynamic period + score evolution
   const now = new Date();
@@ -1000,19 +1010,15 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
 (Objectifs SMART basés sur l'état actuel)`;
 
   try {
-    const t0 = Date.now();
-    const model = selectOptimalModel("report_gen", "max");
-    const resp = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: "Tu es un consultant SEO senior. Tu génères des rapports basés UNIQUEMENT sur les données réelles fournies. Cite les chiffres exacts. Jamais de généralités ou de données inventées. Format markdown professionnel, français formel." },
-        { role: "user", content: prompt },
-      ],
-      ...completionParams(model, 1800),
+    const aiResult = await callAIWithFallback({
+      task: "executive_report",
+      systemPrompt: "Tu es un consultant SEO senior. Tu génères des rapports basés UNIQUEMENT sur les données réelles fournies. Cite les chiffres exacts. Jamais de généralités ou de données inventées. Format markdown professionnel, français formel.",
+      userPrompt: prompt,
+      maxTokens: 1800,
+      fallbackText: "Génération de rapport IA temporairement indisponible.",
     });
-    const report = resp.choices[0]?.message?.content ?? "";
-    await trackAIUsage({ feature: "report_gen", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
-    res.json({ report, creditsRemaining: creditCheck.remaining });
+    await trackAIUsage({ feature: "report_gen", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
+    res.json({ report: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /reports failed");
     res.status(500).json({ error: "Erreur génération rapport" });
@@ -1026,13 +1032,7 @@ router.post("/ai/summary", async (req, res) => {
   const creditCheck = await consumeAICredits({ feature: "strategist", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
-  const openai = await getOpenAI();
   const fpCtx = await buildFlowpointContext(context, orgId);
-
-  if (!openai) {
-    res.json({ summary: "Résumé exécutif non disponible sans clé OpenAI." });
-    return;
-  }
 
   const prompt = `Génère un résumé exécutif de la situation SEO et web pour ce compte Flowpoint.
 Données: ${fpCtx}
@@ -1046,41 +1046,19 @@ Format:
 ## Prévision 3 mois`;
 
   try {
-    const t0 = Date.now();
-    const model = selectOptimalModel("strategist", "max");
-    const chatMessages = [
-      { role: "system" as const, content: "Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. Français." },
-      { role: "user" as const, content: prompt },
-    ];
-
-    // gpt-5 reasoning models can occasionally spend the entire token budget on
-    // hidden reasoning and return empty visible content. Retry once with a
-    // larger budget before falling back.
-    let summary = "";
-    let resp = await openai.chat.completions.create({
-      model,
-      messages: chatMessages,
-      ...completionParams(model, 800),
+    const aiResult = await callAIWithFallback({
+      task: "strategist",
+      systemPrompt: "Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. Français.",
+      userPrompt: prompt,
+      maxTokens: 1600,
+      fallbackText: "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.",
     });
-    summary = resp.choices[0]?.message?.content ?? "";
-
-    if (!summary.trim()) {
-      logger.warn({ finishReason: resp.choices[0]?.finish_reason }, "[AI] /summary empty content — retrying with larger budget");
-      resp = await openai.chat.completions.create({
-        model,
-        messages: chatMessages,
-        ...completionParams(model, 1600),
-      });
-      summary = resp.choices[0]?.message?.content ?? "";
-    }
-
-    if (!summary.trim()) {
-      res.json({ summary: "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.", fallback: true });
+    if (!aiResult.text.trim()) {
+      res.json({ summary: aiResult.fallbackText, fallback: true });
       return;
     }
-
-    await trackAIUsage({ feature: "strategist", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
-    res.json({ summary, creditsRemaining: creditCheck.remaining });
+    await trackAIUsage({ feature: "strategist", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
+    res.json({ summary: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /summary failed — returning fallback");
     res.json({ summary: "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.", fallback: true });
@@ -1099,13 +1077,7 @@ router.post("/ai/missions", async (req, res) => {
   const creditCheck = await consumeAICredits({ feature: "mission_auto", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
-  const openai = await getOpenAI();
   const fpCtx = await buildFlowpointContext(context, orgId);
-
-  if (!openai) {
-    res.json({ missions: buildFallbackMissions() });
-    return;
-  }
 
   const prompt = `Tu es consultant SEO senior. Génère 6 missions SEO prioritaires basées UNIQUEMENT sur les données réelles ci-dessous.
 
@@ -1136,27 +1108,23 @@ Retourne un JSON array de 6 missions :
 Réponds uniquement avec le JSON array.`;
 
   try {
-    const t0 = Date.now();
-    const model = selectOptimalModel("mission_auto");
-    const resp = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: "Tu génères des missions SEO JSON structurées. Réponds UNIQUEMENT avec du JSON valide, aucun autre texte." },
-        { role: "user", content: prompt },
-      ],
-      ...completionParams(model, 1000),
-      response_format: { type: "json_object" },
+    const aiResult = await callAIWithFallback({
+      task: "mission_auto",
+      systemPrompt: "Tu génères des missions SEO JSON structurées. Réponds UNIQUEMENT avec du JSON valide, aucun autre texte.",
+      userPrompt: prompt,
+      maxTokens: 1000,
+      json: true,
+      fallbackText: "{}",
     });
-    const raw = resp.choices[0]?.message?.content ?? "{}";
     let missions: unknown[];
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(aiResult.text);
       missions = Array.isArray(parsed) ? parsed : (parsed.missions ?? buildFallbackMissions());
     } catch {
       missions = buildFallbackMissions();
     }
-    await trackAIUsage({ feature: "mission_auto", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
-    res.json({ missions, creditsRemaining: creditCheck.remaining });
+    await trackAIUsage({ feature: "mission_auto", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
+    res.json({ missions, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /missions failed");
     res.json({ missions: buildFallbackMissions() });
@@ -1178,11 +1146,7 @@ router.post("/ai/pagespeed-insights", async (req, res) => {
   const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
-  const openai = await getOpenAI();
-  if (!openai) {
-    res.json({ recommendations: buildFallbackPSIRecommendations(url, mobile) });
-    return;
-  }
+  // AI call uses unified provider layer below
 
   const prompt = `Analyse les résultats PageSpeed Insights pour ${url} et génère des recommandations d'optimisation.
 
@@ -1200,19 +1164,15 @@ Génère:
 4. **Gains attendus** (estimation score après optimisations)`;
 
   try {
-    const t0 = Date.now();
-    const model = selectOptimalModel("audit_summary");
-    const resp = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: "Tu es un expert performance web (Core Web Vitals, PageSpeed). Réponds en français avec des actions concrètes et du code si nécessaire." },
-        { role: "user", content: prompt },
-      ],
-      ...completionParams(model, 1200),
+    const aiResult = await callAIWithFallback({
+      task: "seo_audit",
+      systemPrompt: "Tu es un expert performance web (Core Web Vitals, PageSpeed). Réponds en français avec des actions concrètes et du code si nécessaire.",
+      userPrompt: prompt,
+      maxTokens: 1200,
+      fallbackText: buildFallbackPSIRecommendations(url, mobile),
     });
-    const recommendations = resp.choices[0]?.message?.content ?? "";
-    await trackAIUsage({ feature: "audit_summary", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs: Date.now() - t0, success: true });
-    res.json({ recommendations, creditsRemaining: creditCheck.remaining });
+    await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
+    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /pagespeed-insights failed");
     res.json({ recommendations: buildFallbackPSIRecommendations(url, mobile) });

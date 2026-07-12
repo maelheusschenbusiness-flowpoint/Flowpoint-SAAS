@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
+    "@google/genai": "^2.11.0",
     "@types/compression": "^1.8.1",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",

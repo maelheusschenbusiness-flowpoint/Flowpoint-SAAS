@@ -54,12 +54,7 @@ async function generateDataDrivenMissions(orgId: string, auditData: Array<{
   criticalIssues: string[]; opportunities: string[];
 }>): Promise<MissionTemplate[]> {
   try {
-    const { resolveOpenAIConnection } = await import("../lib/openai-client.js");
-    const conn = resolveOpenAIConnection();
-    if (!conn) return [];
-
-    const { default: OpenAI } = await import("openai");
-    const openai = new OpenAI({ apiKey: conn.apiKey, ...(conn.baseURL ? { baseURL: conn.baseURL } : {}) });
+    const { aiChat } = await import("./ai-provider.js");
 
     // Fetch keywords and competitors for richer context
     let kwLine = "";
@@ -120,19 +115,15 @@ Retourne un JSON array de 6 objets :
 
 Réponds UNIQUEMENT avec le JSON array.`;
 
-    const model = "gpt-5-mini";
-    const resp = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: "Tu génères des missions SEO JSON basées sur des données réelles. Réponds UNIQUEMENT avec du JSON valide." },
-        { role: "user", content: prompt },
-      ],
-      max_completion_tokens: 1500,
-      reasoning_effort: "low",
-      response_format: { type: "json_object" },
+    const result = await aiChat({
+      provider: "openai",
+      model: "gpt-5-mini",
+      systemPrompt: "Tu génères des missions SEO JSON basées sur des données réelles. Réponds UNIQUEMENT avec du JSON valide.",
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: 1500,
+      json: true,
     });
-
-    const raw = resp.choices[0]?.message?.content ?? "{}";
+    const raw = result.text || "{}";
     const parsed = JSON.parse(raw);
     const arr = Array.isArray(parsed) ? parsed : (parsed.missions ?? parsed.data ?? []);
     if (!Array.isArray(arr) || arr.length === 0) return [];
