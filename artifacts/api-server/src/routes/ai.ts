@@ -87,12 +87,30 @@ async function callAIWithFallback(args: {
   model?: string;
   json?: boolean;
   fallbackText: string;
+  orgId?: string;
 }): Promise<{ text: string; model: string; provider: AIProviderId; tokensIn: number; tokensOut: number; latencyMs: number }> {
   const t0 = Date.now();
-  const { resolveTaskProvider } = await import("../services/ai-providers/task-router.js");
-  const resolved = resolveTaskProvider(args.task, args.provider);
-  const provider = resolved.provider;
-  const model = args.model ?? resolved.model;
+
+  // Resolve provider/model/maxTokens from org preferences when orgId is provided
+  let provider = args.provider ?? "openai";
+  let model = args.model ?? "gpt-5-mini";
+  let maxTokens = args.maxTokens ?? 1400;
+
+  if (args.orgId) {
+    try {
+      const cfg = await selectOptimalModel(args.task, args.orgId);
+      provider = cfg.provider;
+      model = cfg.model;
+      maxTokens = cfg.maxTokens;
+    } catch (err) {
+      logger.warn({ err, orgId: args.orgId, task: args.task }, "[AI] selectOptimalModel failed — using defaults");
+    }
+  } else {
+    const { resolveTaskProvider } = await import("../services/ai-providers/task-router.js");
+    const resolved = resolveTaskProvider(args.task, args.provider);
+    provider = resolved.provider;
+    model = args.model ?? resolved.model;
+  }
 
   try {
     const result = await aiChat({
@@ -100,7 +118,7 @@ async function callAIWithFallback(args: {
       model,
       systemPrompt: args.systemPrompt,
       messages: [{ role: "user", content: args.userPrompt }],
-      maxTokens: args.maxTokens ?? 1400,
+      maxTokens,
       temperature: args.temperature,
       json: args.json,
     });
@@ -712,6 +730,7 @@ Après ces corrections je recommande :
       maxTokens: 1400,
       temperature: 0.4,
       fallbackText: buildFallbackAudit(url, scores),
+      orgId,
     });
     await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
     res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
@@ -870,6 +889,7 @@ Analyse en 4 sections:
       userPrompt: prompt,
       maxTokens: 1000,
       fallbackText: "Analyse CRO temporairement indisponible.",
+      orgId,
     });
     await trackAIUsage({ feature: "cro_analysis", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
     res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
@@ -919,6 +939,7 @@ Génère une stratégie Local SEO complète:
       userPrompt: prompt,
       maxTokens: 1200,
       fallbackText: "Recommandations Local SEO temporairement indisponibles.",
+      orgId,
     });
     await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
     res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
@@ -965,6 +986,7 @@ Fournis:
       userPrompt: prompt,
       maxTokens: 1200,
       fallbackText: "Analyse concurrentielle temporairement indisponible.",
+      orgId,
     });
     await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
     res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
@@ -1058,6 +1080,7 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
       userPrompt: prompt,
       maxTokens: 1800,
       fallbackText: "Génération de rapport IA temporairement indisponible.",
+      orgId,
     });
     await trackAIUsage({ feature: "report_gen", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
     res.json({ report: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
@@ -1093,15 +1116,17 @@ Format:
 ## Prévision 3 mois`;
 
   try {
+    const fallbackText = "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.";
     const aiResult = await callAIWithFallback({
       task: "strategist",
       systemPrompt: "Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. Français.",
       userPrompt: prompt,
       maxTokens: 1600,
-      fallbackText: "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.",
+      fallbackText,
+      orgId,
     });
     if (!aiResult.text.trim()) {
-      res.json({ summary: aiResult.fallbackText, fallback: true });
+      res.json({ summary: fallbackText, fallback: true });
       return;
     }
     await trackAIUsage({ feature: "strategist", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
@@ -1167,6 +1192,7 @@ Réponds uniquement avec le JSON array.`;
       maxTokens: 1000,
       json: true,
       fallbackText: "{}",
+      orgId,
     });
     let missions: unknown[];
     try {
@@ -1227,6 +1253,7 @@ Génère:
       userPrompt: prompt,
       maxTokens: 1200,
       fallbackText: buildFallbackPSIRecommendations(url, mobile),
+      orgId,
     });
     await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
     res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });

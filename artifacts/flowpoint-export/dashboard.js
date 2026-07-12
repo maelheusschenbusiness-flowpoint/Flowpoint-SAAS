@@ -9501,17 +9501,36 @@ function renderSettings() {
   // SUB: DONNÉES & RÉTENTION
   // ══════════════════════════════════════════════════════════
   if (sub === 'data') {
-    const _storRaw = STATE.billing?.storageBreakdown || STATE.storage || null;
-    const storageItems = _storRaw && Array.isArray(_storRaw) && _storRaw.length > 0
-      ? _storRaw.map((s,i) => ({l:s.label||s.l||'Stockage '+(i+1), used:Number(s.used||0), total:Number(s.total||10), color:s.color||['#2563EB','#8b5cf6','#22c55e','#f59e0b'][i%4]}))
-      : (PREVIEW_MODE ? [
-          {l:'Audits & Historique',    used:1.8,  total:5,   color:'#2563EB' },
-          {l:'Rapports PDF stockés',   used:0.4,  total:2,   color:'#8b5cf6' },
-          {l:'Exports & CSV',          used:0.2,  total:1,   color:'#22c55e' },
-          {l:'Données monitors',       used:0.8,  total:2,   color:'#f59e0b' },
-        ] : [
-          {l:'Données utilisées',      used:Number((STATE.billing?.storageUsed||0).toFixed(2)), total:Number(STATE.billing?.storageLimit||10), color:'#2563EB' },
-        ]);
+    // Normalize real API storage (object {counts, size}) into display rows
+    const _storRaw = STATE.storage || STATE.billing?.storageBreakdown || null;
+    let storageItems = [];
+    if (_storRaw && typeof _storRaw === 'object' && !Array.isArray(_storRaw) && _storRaw.counts) {
+      const c = _storRaw.counts;
+      const totalItems = c.total || (c.audits + c.reports + c.monitors + c.keywords + c.uploads + c.integrations + c.logs + c.psiCache);
+      const bytes = _storRaw.size?.bytes || 0;
+      const readable = _storRaw.size?.readable || (bytes > 0 ? (bytes < 1024*1024 ? (bytes/1024).toFixed(1)+' KB' : (bytes/(1024*1024)).toFixed(2)+' MB') : '0 B');
+      const estGB = Math.max(0.01, bytes / (1024*1024*1024));
+      const totalGB = Math.max(estGB, 5); // minimum display total for non-empty UI
+      storageItems = [
+        { l: 'Audits & Historique (' + (c.audits||0) + ')', used: +(estGB * ((c.audits||0)/Math.max(totalItems,1))).toFixed(3), total: totalGB, color: '#2563EB' },
+        { l: 'Rapports PDF stockés (' + (c.reports||0) + ')', used: +(estGB * ((c.reports||0)/Math.max(totalItems,1))).toFixed(3), total: totalGB, color: '#8b5cf6' },
+        { l: 'Exports & CSV (' + (c.uploads||0) + ')',       used: +(estGB * ((c.uploads||0)/Math.max(totalItems,1))).toFixed(3), total: totalGB, color: '#22c55e' },
+        { l: 'Données monitors (' + (c.monitors||0) + ')',  used: +(estGB * ((c.monitors||0)/Math.max(totalItems,1))).toFixed(3), total: totalGB, color: '#f59e0b' },
+      ];
+    } else if (_storRaw && Array.isArray(_storRaw) && _storRaw.length > 0) {
+      storageItems = _storRaw.map((s,i) => ({l:s.label||s.l||'Stockage '+(i+1), used:Number(s.used||0), total:Number(s.total||10), color:s.color||['#2563EB','#8b5cf6','#22c55e','#f59e0b'][i%4]}));
+    } else if (PREVIEW_MODE) {
+      storageItems = [
+        {l:'Audits & Historique',    used:1.8,  total:5,   color:'#2563EB' },
+        {l:'Rapports PDF stockés',   used:0.4,  total:2,   color:'#8b5cf6' },
+        {l:'Exports & CSV',          used:0.2,  total:1,   color:'#22c55e' },
+        {l:'Données monitors',       used:0.8,  total:2,   color:'#f59e0b' },
+      ];
+    } else {
+      storageItems = [
+        {l:'Données utilisées',      used:Number((STATE.billing?.storageUsed||0).toFixed(2)), total:Number(STATE.billing?.storageLimit||10), color:'#2563EB' },
+      ];
+    }
     const totalUsed  = storageItems.reduce((s,i) => s + i.used, 0);
     const totalTotal = storageItems.reduce((s,i) => s + i.total, 0);
     return `

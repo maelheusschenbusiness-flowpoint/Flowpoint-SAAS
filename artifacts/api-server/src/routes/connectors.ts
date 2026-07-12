@@ -180,14 +180,24 @@ router.get("/connectors/:provider/oauth/start", requireAdmin, async (req: Reques
     return;
   }
   const state = crypto.randomBytes(16).toString("hex");
+  const clientIds: Record<string, string | undefined> = {
+    slack:  process.env.SLACK_CLIENT_ID,
+    github: process.env.GITHUB_CLIENT_ID,
+    notion: process.env.NOTION_CLIENT_ID,
+  };
+  const clientId = clientIds[provider];
+  if (!clientId) {
+    res.status(400).json({ error: `OAuth non configuré pour ${provider}. Définissez ${provider.toUpperCase()}_CLIENT_ID dans les variables d'environnement.` });
+    return;
+  }
   const oauthUrls: Record<string, string> = {
-    slack: `https://slack.com/oauth/v2/authorize?client_id=YOUR_SLACK_CLIENT_ID&scope=channels:read,chat:write&state=${state}`,
-    github: `https://github.com/login/oauth/authorize?client_id=YOUR_GITHUB_CLIENT_ID&scope=repo,read:org&state=${state}`,
-    notion: `https://api.notion.com/v1/oauth/authorize?client_id=YOUR_NOTION_CLIENT_ID&response_type=code&owner=user&state=${state}`,
+    slack:  `https://slack.com/oauth/v2/authorize?client_id=${clientId}&scope=channels:read,chat:write&state=${state}`,
+    github: `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=repo,read:org&state=${state}`,
+    notion: `https://api.notion.com/v1/oauth/authorize?client_id=${clientId}&response_type=code&owner=user&state=${state}`,
   };
   const url = oauthUrls[provider];
   if (!url) { res.status(400).json({ error: `OAuth not configured for provider: ${provider}` }); return; }
-  res.json({ ok: true, url, note: "Configure OAuth credentials in environment variables to enable." });
+  res.json({ ok: true, url, state, note: "Conservez le state côté client pour validation au retour OAuth." });
 });
 
 export default router;
