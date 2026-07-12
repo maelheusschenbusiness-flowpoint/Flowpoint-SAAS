@@ -322,6 +322,16 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS team_files_org_id_idx ON team_files(org_id);`);
 
+    // ── ai_usage_logs — extended cost logging columns ────────────────────────
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS provider TEXT;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS cached_tokens INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS real_cost_eur REAL NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS credits_debited INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS duration_ms INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_provider_idx ON ai_usage_logs(provider, created_at DESC);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_model_idx ON ai_usage_logs(model, created_at DESC);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_feature_idx ON ai_usage_logs(feature, created_at DESC);`);
+
     // ── org_settings — ensure all expected columns exist ─────────────────────
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_ends_at            TIMESTAMPTZ;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_ending_notified_at  TIMESTAMPTZ;`);

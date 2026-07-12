@@ -3,8 +3,26 @@ import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
 import { PLAN_AI_CREDITS, PLAN_AI_TOKENS } from "../lib/plans.js";
 import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
+import {
+  getFeatureBaseCost,
+  getModelConfig,
+  getModelMultiplier,
+  computeRealCostEur,
+  computeCreditsDebited,
+  CREDIT_EUR_RATE,
+  type AIProviderId,
+} from "../config/ai-config.js";
 
-export type AIModel = "gpt-5" | "gpt-5-mini" | "gpt-3.5-turbo";
+/** All supported models — expanded for multi-provider support */
+export type AIModel =
+  | "gpt-5" | "gpt-5-mini" | "gpt-5-nano" | "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo"
+  | "claude-4-sonnet" | "claude-4-opus" | "claude-3-5-sonnet" | "claude-3-5-haiku"
+  | "gemini-2.5-pro" | "gemini-2.5-flash" | "gemini-2.0-flash" | "gemini-1.5-pro" | "gemini-1.5-flash"
+  | "mistral-large" | "mistral-medium" | "mistral-small"
+  | "grok-3" | "grok-3-mini"
+  | "openrouter-default"
+  | "deepseek-v3" | "deepseek-r1";
+
 export type AIFeature =
   | "chat"
   | "strategist"
@@ -16,25 +34,6 @@ export type AIFeature =
   | "behavior_analysis"
   | "revenue_leak"
   | "audit_summary";
-
-const CREDITS_PER_FEATURE: Record<AIFeature, number> = {
-  chat:              800,
-  strategist:       2400,
-  report_gen:       1600,
-  mission_auto:      600,
-  cro_analysis:     1200,
-  forecast:         2000,
-  market_intel:     1800,
-  behavior_analysis: 1000,
-  revenue_leak:      900,
-  audit_summary:     500,
-};
-
-const MODEL_COST_EUR_PER_1K_TOKENS: Record<AIModel, number> = {
-  "gpt-5":        0.005,
-  "gpt-5-mini":   0.0002,
-  "gpt-3.5-turbo":0.0003,
-};
 
 function currentMonth(): string {
   const d = new Date();
@@ -108,32 +107,37 @@ export async function consumeAICredits(opts: {
   orgId?: string;
   userId?: string;
   model?: AIModel;
+  provider?: AIProviderId;
   tokensIn?: number;
   tokensOut?: number;
+  cachedTokens?: number;
   metadata?: Record<string, unknown>;
 }): Promise<{ allowed: boolean; creditsUsed: number; remaining: number }> {
-  const orgId    = opts.orgId ?? "default";
-  const aiCfg    = opts.model ? null : await (async () => {
+  const orgId       = opts.orgId ?? "default";
+  const aiCfg       = opts.model ? null : await (async () => {
     try {
       const { selectOptimalModel } = await import("./ai-prefs.js");
       return await selectOptimalModel(opts.feature, orgId);
     } catch { return null; }
   })();
-  const model    = opts.model ?? (aiCfg?.model || "gpt-5-mini");
-  const provider = aiCfg?.provider ?? "openai";
-  const credits  = CREDITS_PER_FEATURE[opts.feature] ?? 500;
-  const tokensIn = opts.tokensIn  ?? 800;
-  const tokensOut= opts.tokensOut ?? 400;
-  const costEur  = ((tokensIn + tokensOut) / 1000) * MODEL_COST_EUR_PER_1K_TOKENS[model];
-  const month    = currentMonth();
+  const model       = opts.model ?? (aiCfg?.model || "gpt-5-mini");
+  const provider    = opts.provider ?? aiCfg?.provider ?? "openai";
+  const tokensIn    = opts.tokensIn  ?? 800;
+  const tokensOut   = opts.tokensOut ?? 400;
+  const cachedTokens= opts.cachedTokens ?? 0;
+
+  // ── Dynamic cost calculation ──────────────────────────────────────────────────────────────
+  const realCostEur    = computeRealCostEur({ model, tokensIn, tokensOut, cachedTokens });
+  const creditsDebited = computeCreditsDebited({ feature: opts.feature, model, realCostEur });
+  const month          = currentMonth();
 
   try {
     const usage = await getOrCreateMonthlyUsage(orgId);
     const totalAvailable = usage.creditsLimit + usage.creditsExtra;
     const remaining = Math.max(0, totalAvailable - usage.creditsUsed);
 
-    if (usage.creditsUsed + credits > totalAvailable * 1.05) {
-      logger.warn({ feature: opts.feature, orgId }, "[AI] Credits exhausted — blocking request");
+    if (usage.creditsUsed + creditsDebited > totalAvailable * 1.05) {
+      logger.warn({ feature: opts.feature, orgId, creditsDebited }, "[AI] Credits exhausted — blocking request");
       await triggerAIAlert(orgId, "quota_100pct", usage.creditsUsed, totalAvailable);
       return { allowed: false, creditsUsed: 0, remaining };
     }
@@ -143,10 +147,14 @@ export async function consumeAICredits(opts: {
     await withOrgDb(orgId, async (client) => {
       await client.query(
         `INSERT INTO ai_usage_logs
-           (id, org_id, user_id, model, feature, credits_used, tokens_in, tokens_out, cost_eur, latency_ms, success, metadata)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,'true',$10)`,
-        [logId, orgId, opts.userId ?? "mael", model, opts.feature, credits,
-         tokensIn, tokensOut, costEur, opts.metadata ? JSON.stringify(opts.metadata) : null]
+           (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
+            tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,0,0,'true',$14)`,
+        [logId, orgId, opts.userId ?? "mael", provider, model, opts.feature,
+         creditsDebited, creditsDebited,
+         tokensIn, tokensOut, cachedTokens,
+         realCostEur, realCostEur,
+         opts.metadata ? JSON.stringify(opts.metadata) : null]
       );
     });
 
@@ -163,22 +171,22 @@ export async function consumeAICredits(opts: {
                request_count  = ai_monthly_usage.request_count  + 1,
                tokens_used    = ai_monthly_usage.tokens_used    + $7,
                updated_at     = NOW()`,
-        [`amu_${orgId}_${month}`, orgId, month, credits, lim, costEur, tokensIn + tokensOut, monthResetDate()]
+        [`amu_${orgId}_${month}`, orgId, month, creditsDebited, lim, realCostEur, tokensIn + tokensOut, monthResetDate()]
       );
     } finally {
       client2.release();
     }
 
-    const newUsed = usage.creditsUsed + credits;
+    const newUsed = usage.creditsUsed + creditsDebited;
     const pct     = Math.round((newUsed / totalAvailable) * 100);
     const oldPct  = Math.round((usage.creditsUsed / totalAvailable) * 100);
     if      (pct >= 90 && oldPct < 90) await triggerAIAlert(orgId, "quota_90pct", newUsed, totalAvailable);
     else if (pct >= 70 && oldPct < 70) await triggerAIAlert(orgId, "quota_70pct", newUsed, totalAvailable);
 
-    return { allowed: true, creditsUsed: credits, remaining: Math.max(0, remaining - credits) };
+    return { allowed: true, creditsUsed: creditsDebited, remaining: Math.max(0, remaining - creditsDebited) };
   } catch (err) {
     logger.error({ err }, "[AI] consumeAICredits failed — allowing with degraded tracking");
-    return { allowed: true, creditsUsed: credits, remaining: 99999 };
+    return { allowed: true, creditsUsed: creditsDebited, remaining: 99999 };
   }
 }
 
@@ -187,23 +195,32 @@ export async function trackAIUsage(opts: {
   orgId?: string;
   userId?: string;
   model: AIModel;
+  provider?: AIProviderId;
   tokensIn: number;
   tokensOut: number;
+  cachedTokens?: number;
   latencyMs: number;
   success: boolean;
   metadata?: Record<string, unknown>;
 }): Promise<void> {
-  const logId  = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const costEur= ((opts.tokensIn + opts.tokensOut) / 1000) * MODEL_COST_EUR_PER_1K_TOKENS[opts.model];
+  const logId      = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const provider   = opts.provider ?? "openai";
+  const cachedTok  = opts.cachedTokens ?? 0;
+  const realCostEur= computeRealCostEur({ model: opts.model, tokensIn: opts.tokensIn, tokensOut: opts.tokensOut, cachedTokens: cachedTok });
+  const creditsDeb = computeCreditsDebited({ feature: opts.feature, model: opts.model, realCostEur });
+
   try {
     await withOrgDb(opts.orgId ?? "default", async (client) => {
       await client.query(
         `INSERT INTO ai_usage_logs
-           (id, org_id, user_id, model, feature, credits_used, tokens_in, tokens_out, cost_eur, latency_ms, success, metadata)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-        [logId, opts.orgId ?? "default", opts.userId ?? "mael", opts.model, opts.feature,
-         CREDITS_PER_FEATURE[opts.feature] ?? 500,
-         opts.tokensIn, opts.tokensOut, costEur, opts.latencyMs,
+           (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
+            tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+        [logId, opts.orgId ?? "default", opts.userId ?? "mael", provider, opts.model, opts.feature,
+         creditsDeb, creditsDeb,
+         opts.tokensIn, opts.tokensOut, cachedTok,
+         realCostEur, realCostEur,
+         opts.latencyMs, opts.latencyMs,
          opts.success ? "true" : "false",
          opts.metadata ? JSON.stringify(opts.metadata) : null]
       );
@@ -218,25 +235,34 @@ export async function recordCompletedUsage(opts: {
   orgId: string;
   userId: string;
   model: AIModel;
+  provider?: AIProviderId;
   tokensIn: number;
   tokensOut: number;
+  cachedTokens?: number;
   latencyMs: number;
   success: boolean;
 }): Promise<void> {
   const { orgId, userId, model, feature, tokensIn, tokensOut, latencyMs } = opts;
-  const credits    = CREDITS_PER_FEATURE[feature] ?? 500;
-  const costEur    = ((tokensIn + tokensOut) / 1000) * MODEL_COST_EUR_PER_1K_TOKENS[model];
-  const month      = currentMonth();
-  const logId      = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const provider     = opts.provider ?? "openai";
+  const cachedTok    = opts.cachedTokens ?? 0;
+  const realCostEur  = computeRealCostEur({ model, tokensIn, tokensOut, cachedTokens: cachedTok });
+  const creditsDeb   = computeCreditsDebited({ feature, model, realCostEur });
+  const month        = currentMonth();
+  const logId        = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
   try {
     await withOrgDb(orgId, async (client) => {
       await client.query(
         `INSERT INTO ai_usage_logs
-           (id, org_id, user_id, model, feature, credits_used, tokens_in, tokens_out, cost_eur, latency_ms, success, metadata)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL)`,
-        [logId, orgId, userId, model, feature, credits, tokensIn, tokensOut,
-         costEur, latencyMs, opts.success ? "true" : "false"]
+           (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
+            tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULL)`,
+        [logId, orgId, userId, provider, model, feature,
+         creditsDeb, creditsDeb,
+         tokensIn, tokensOut, cachedTok,
+         realCostEur, realCostEur,
+         latencyMs, latencyMs,
+         opts.success ? "true" : "false"]
       );
     });
   } catch (err) {
@@ -256,7 +282,7 @@ export async function recordCompletedUsage(opts: {
              request_count  = ai_monthly_usage.request_count  + 1,
              tokens_used    = ai_monthly_usage.tokens_used    + $7,
              updated_at     = NOW()`,
-      [`amu_${orgId}_${month}`, orgId, month, credits, lim, costEur, tokensIn + tokensOut, monthResetDate()]
+      [`amu_${orgId}_${month}`, orgId, month, creditsDeb, lim, realCostEur, tokensIn + tokensOut, monthResetDate()]
     );
   } catch (err) {
     logger.warn({ err }, "[AI] recordCompletedUsage: monthly upsert failed");

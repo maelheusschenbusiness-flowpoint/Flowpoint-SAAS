@@ -62,7 +62,7 @@ router.post("/pagespeed/analyze", async (req, res) => {
   }
 
   // Credit check
-  const creditCheck = await consumeAICredits({ feature: "behavior_analysis", orgId });
+  const creditCheck = await consumeAICredits({ feature: "behavior_analysis", orgId, model: "gpt-5-mini", provider: "openai" });
   if (!creditCheck.allowed) {
     res.status(402).json({ error: "Crédits IA insuffisants pour lancer une analyse PageSpeed" });
     return;

@@ -15,10 +15,15 @@ router.get("/ai-credits", async (_req: Request, res: Response) => {
 router.get("/ai-credits/usage", async (_req: Request, res: Response) => {
   try {
     const stats = await getAIUsageStats();
+    const totalAvailable = stats.monthly.creditsLimit + stats.monthly.creditsExtra;
     res.json({
       monthly: stats.monthly,
       byFeature: stats.byFeature,
+      byProvider: stats.byProvider,
+      byModel: stats.byModel,
       dailyHistory: stats.dailyHistory,
+      estimatedCostEur: stats.estimatedCostEur,
+      remaining: Math.max(0, totalAvailable - stats.monthly.creditsUsed),
     });
   } catch {
     res.status(500).json({ error: "Failed to fetch usage stats" });

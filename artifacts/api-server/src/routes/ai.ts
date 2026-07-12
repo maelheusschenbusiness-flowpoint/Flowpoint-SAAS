@@ -563,7 +563,7 @@ ${fpContext}`;
 
       persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: selectedModel, tokensUsed: estTokensOut })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage failed"));
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: selectedModel }, "[AI] Streaming chat failed");
@@ -586,7 +586,7 @@ ${fpContext}`;
 
       persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: selectedModel, tokensUsed: result.usage.completionTokens })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant non-stream) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, provider: selectedProvider, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage (non-stream) failed"));
       res.json({ reply, streaming: false, provider: selectedProvider, model: selectedModel });
     } catch (err) {

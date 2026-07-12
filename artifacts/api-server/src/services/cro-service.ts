@@ -14,7 +14,7 @@ const CRO_ISSUE_TEMPLATES = [
 
 export async function generateCRORecommendations(siteUrl: string): Promise<void> {
   try {
-    await consumeAICredits({ feature: "cro_analysis", metadata: { siteUrl } });
+    await consumeAICredits({ feature: "cro_analysis", metadata: { siteUrl }, model: "gpt-5-mini", provider: "openai" });
 
     const existingCount = await db.select()
       .from(croRecommendationsTable)
