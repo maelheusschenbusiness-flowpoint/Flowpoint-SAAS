@@ -6,13 +6,20 @@ import { logger } from "../lib/logger.js";
 import { aiRateLimit } from "../middlewares/rateLimiter.js";
 import {
   consumeAICredits,
-  selectOptimalModel,
   trackAIUsage,
   getAIUsageStats,
   getOrCreateMonthlyUsage,
   recordCompletedUsage,
   type AIFeature,
 } from "../services/ai-engine.js";
+import {
+  loadOrgAIPrefs,
+  checkModuleEnabled,
+  moduleDisabledResponse,
+  selectOptimalModel,
+  resolveAIModel,
+  type AIModuleKey,
+} from "../services/ai-prefs.js";
 import { aiChat, aiStream, checkAllProviders, type AIProviderId } from "../services/ai-provider.js";
 
 const router = Router();
@@ -471,6 +478,12 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
   const orgId  = req.orgId  ?? "default";
   const userId = req.userId ?? "anonymous";
 
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "aiAlerts")) {
+    res.status(403).json(moduleDisabledResponse("aiAlerts"));
+    return;
+  }
+
   // 1. Resolve provider + model: explicit > task-based > default (OpenAI)
   const selectedProvider = provider ?? "openai";
   let selectedModel = model;
@@ -596,6 +609,11 @@ router.post("/ai/audit", async (req, res) => {
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
   const orgId = req.orgId ?? "default";
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "aiAlerts")) {
+    res.status(403).json(moduleDisabledResponse("aiAlerts"));
+    return;
+  }
   const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
@@ -715,6 +733,11 @@ router.post("/ai/seo", async (req, res) => {
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
   const orgId = req.orgId ?? "default";
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "aiCRO")) {
+    res.status(403).json(moduleDisabledResponse("aiCRO"));
+    return;
+  }
   const creditCheck = await consumeAICredits({ feature: "cro_analysis", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
@@ -790,18 +813,17 @@ Sections :
 
   try {
     const t0 = Date.now();
-    const model = selectOptimalModel("cro_analysis", "balanced");
-    const resp = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: `Tu es un consultant SEO senior. Tu as accès aux données réelles du site. Chaque recommandation doit citer les chiffres exacts fournis — jamais de généralités.` },
-        { role: "user", content: prompt },
-      ],
-      ...completionParams(model, 1200, 0.5),
+    const aiCfg = await selectOptimalModel("cro_analysis", orgId);
+    const resp = await aiChat({
+      provider: aiCfg.provider,
+      model: aiCfg.model,
+      systemPrompt: `Tu es un consultant SEO senior. Tu as accès aux données réelles du site. Chaque recommandation doit citer les chiffres exacts fournis — jamais de généralités.`,
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: aiCfg.maxTokens,
     });
-    const recommendations = resp.choices[0]?.message?.content ?? "";
+    const recommendations = resp.text ?? "";
     const latencyMs = Date.now() - t0;
-    await trackAIUsage({ feature: "cro_analysis", orgId, model, tokensIn: resp.usage?.prompt_tokens ?? 0, tokensOut: resp.usage?.completion_tokens ?? 0, latencyMs, success: true });
+    await trackAIUsage({ feature: "cro_analysis", orgId, model: aiCfg.model, tokensIn: resp.usage.promptTokens, tokensOut: resp.usage.completionTokens, latencyMs, success: true, provider: aiCfg.provider });
     res.json({ recommendations, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /seo failed");
@@ -819,6 +841,11 @@ router.post("/ai/conversion", async (req, res) => {
   };
 
   const orgId = req.orgId ?? "default";
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "aiCRO")) {
+    res.status(403).json(moduleDisabledResponse("aiCRO"));
+    return;
+  }
   const creditCheck = await consumeAICredits({ feature: "cro_analysis", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
@@ -863,6 +890,11 @@ router.post("/ai/local", async (req, res) => {
   };
 
   const orgId = req.orgId ?? "default";
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "aiMarket")) {
+    res.status(403).json(moduleDisabledResponse("aiMarket"));
+    return;
+  }
   const creditCheck = await consumeAICredits({ feature: "market_intel", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
@@ -906,6 +938,11 @@ router.post("/ai/competitors", async (req, res) => {
   };
 
   const orgId = req.orgId ?? "default";
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "aiMarket")) {
+    res.status(403).json(moduleDisabledResponse("aiMarket"));
+    return;
+  }
   const creditCheck = await consumeAICredits({ feature: "market_intel", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
@@ -948,6 +985,11 @@ router.post("/ai/reports", async (req, res) => {
   };
 
   const orgId = req.orgId ?? "default";
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "aiReporting")) {
+    res.status(403).json(moduleDisabledResponse("aiReporting"));
+    return;
+  }
   const creditCheck = await consumeAICredits({ feature: "report_gen", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
@@ -1029,6 +1071,11 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
 router.post("/ai/summary", async (req, res) => {
   const { context } = req.body as { context?: Record<string, unknown> };
   const orgId = req.orgId ?? "default";
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "aiStrategist")) {
+    res.status(403).json(moduleDisabledResponse("aiStrategist"));
+    return;
+  }
   const creditCheck = await consumeAICredits({ feature: "strategist", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
@@ -1074,6 +1121,11 @@ router.post("/ai/missions", async (req, res) => {
   };
 
   const orgId = req.orgId ?? "default";
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
+    res.status(403).json(moduleDisabledResponse("dailyAI"));
+    return;
+  }
   const creditCheck = await consumeAICredits({ feature: "mission_auto", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
@@ -1143,6 +1195,11 @@ router.post("/ai/pagespeed-insights", async (req, res) => {
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
   const orgId = req.orgId ?? "default";
+  const aiPrefs = await loadOrgAIPrefs(orgId);
+  if (!checkModuleEnabled(aiPrefs, "aiAlerts")) {
+    res.status(403).json(moduleDisabledResponse("aiAlerts"));
+    return;
+  }
   const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });
   if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
 
@@ -1195,10 +1252,14 @@ router.get("/ai/usage", async (req, res) => {
       extra:        stats.monthly.creditsExtra,
       costEur:      stats.monthly.costEur,
       requestCount: stats.monthly.requestCount,
+      remaining:    Math.max(0, stats.monthly.creditsLimit + stats.monthly.creditsExtra - stats.monthly.creditsUsed),
       resetDate,
       byFeature:    stats.byFeature,
+      byProvider:   stats.byProvider,
+      byModel:      stats.byModel,
       dailyHistory: stats.dailyHistory,
       alerts:       stats.alerts,
+      estimatedCostEur: stats.estimatedCostEur,
     });
   } catch (err) {
     logger.error({ err }, "[AI] /ai/usage failed");

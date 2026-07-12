@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { PLAN_LIMITS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -42,6 +43,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         addons:             dbData.addons,
         limits,
         publicApiKey:       `fp_pub_${_pkHash}`,
+        createdAt:          dbData.createdAt ?? new Date().toISOString(),
         location: {
           address:            dbData.address            ?? null,
           city:               dbData.city               ?? null,
@@ -199,6 +201,71 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
     res.json({ ok: true });
   } catch {
     res.json({ ok: false });
+  }
+});
+
+// ── GET /api/me/storage — real DB volume counts ─────────────────────────────
+router.get("/me/storage", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgContext?.orgId ?? "default";
+  try {
+    const client = await (await import("@workspace/db")).pool.connect();
+    try {
+      // Count rows per table + estimate total size
+      const counts = await Promise.all([
+        client.query(`SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM tracked_keywords WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM team_files WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM automation_integrations WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM automation_logs WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+        client.query(`SELECT COUNT(*)::int AS n FROM psi_cache WHERE org_id=$1`, [orgId]).catch(() => ({ rows: [{ n: 0 }] })),
+      ]);
+
+      const [
+        audits, reports, monitors, keywords, uploads, integrations, logs, psiCache
+      ] = counts.map(r => (r.rows[0] as { n: number }).n);
+
+      const totalItems = audits + reports + monitors + keywords + uploads + integrations + logs + psiCache;
+
+      // Try to get real DB size; fallback to estimation
+      let estimatedBytes = 0;
+      let isEstimated = true;
+      try {
+        const sizeRes = await client.query<{ total_bytes: number }>(
+          `SELECT COALESCE(
+            (SELECT SUM(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename)))::bigint
+             FROM pg_tables
+             WHERE tablename = ANY($1)), 0) AS total_bytes`,
+          [['audits', 'reports', 'monitors', 'tracked_keywords', 'team_files', 'automation_integrations', 'automation_logs', 'psi_cache']]
+        );
+        estimatedBytes = Number(sizeRes.rows[0]?.total_bytes ?? 0);
+        if (estimatedBytes > 0) isEstimated = false;
+      } catch {
+        estimatedBytes = totalItems * 2500; // ~2.5 KB/item rough avg
+      }
+
+      res.json({
+        orgId,
+        counts: { audits, reports, monitors, keywords, uploads, integrations, logs, psiCache, total: totalItems },
+        size: {
+          bytes: estimatedBytes,
+          readable: estimatedBytes > 0
+            ? estimatedBytes < 1024
+              ? `${estimatedBytes} B`
+              : estimatedBytes < 1024 * 1024
+                ? `${(estimatedBytes / 1024).toFixed(1)} KB`
+                : `${(estimatedBytes / (1024 * 1024)).toFixed(2)} MB`
+            : "0 B",
+          estimated: isEstimated,
+        },
+      });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.error({ err }, "[me/storage] failed");
+    res.status(500).json({ error: "Impossible de lire le stockage" });
   }
 });
 

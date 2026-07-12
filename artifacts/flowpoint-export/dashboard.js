@@ -9059,7 +9059,7 @@ function renderSettings() {
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
               ${platformCards.map(p => `
-                <div style="padding:16px;border-radius:12px;border:1px solid ${p.connected>0?platColor(p.id)+'44':'rgba(255,255,255,0.06)'};background:${p.connected>0?platColor(p.id)+'08':'var(--fp-inner-card)'}">
+                <div style="padding:16px;border-radius:12px;border:1px solid ${p.connected>0?platColor(p.id)+'44':'rgba(255,255,255,0.15)'};background:${p.connected>0?platColor(p.id)+'08':'var(--fp-inner-card)'}">
                   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                     ${platSvgIcon(p.id)}
                     <div style="flex:1">

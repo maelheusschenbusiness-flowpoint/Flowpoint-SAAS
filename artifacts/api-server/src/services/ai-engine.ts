@@ -2,6 +2,7 @@ import { pool, withOrgDb } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
 import { PLAN_AI_CREDITS, PLAN_AI_TOKENS } from "../lib/plans.js";
+import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
 
 export type AIModel = "gpt-5" | "gpt-5-mini" | "gpt-3.5-turbo";
 export type AIFeature =
@@ -102,18 +103,6 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
   return { creditsUsed: 0, creditsLimit: creditLimit, creditsExtra: 0, costEur: 0, requestCount: 0, tokensUsed: 0, tokenLimit };
 }
 
-export function selectOptimalModel(feature: AIFeature, quality: "fast" | "balanced" | "max" = "balanced"): AIModel {
-  if (quality === "fast") return "gpt-5-mini";
-  if (quality === "max")  return "gpt-5";
-
-  const highQuality: AIFeature[] = ["strategist", "forecast", "market_intel"];
-  const fast: AIFeature[]        = ["audit_summary", "mission_auto"];
-
-  if (highQuality.includes(feature)) return "gpt-5";
-  if (fast.includes(feature))        return "gpt-5-mini";
-  return "gpt-5-mini";
-}
-
 export async function consumeAICredits(opts: {
   feature: AIFeature;
   orgId?: string;
@@ -124,7 +113,14 @@ export async function consumeAICredits(opts: {
   metadata?: Record<string, unknown>;
 }): Promise<{ allowed: boolean; creditsUsed: number; remaining: number }> {
   const orgId    = opts.orgId ?? "default";
-  const model    = opts.model ?? selectOptimalModel(opts.feature);
+  const aiCfg    = opts.model ? null : await (async () => {
+    try {
+      const { selectOptimalModel } = await import("./ai-prefs.js");
+      return await selectOptimalModel(opts.feature, orgId);
+    } catch { return null; }
+  })();
+  const model    = opts.model ?? (aiCfg?.model || "gpt-5-mini");
+  const provider = aiCfg?.provider ?? "openai";
   const credits  = CREDITS_PER_FEATURE[opts.feature] ?? 500;
   const tokensIn = opts.tokensIn  ?? 800;
   const tokensOut= opts.tokensOut ?? 400;
@@ -292,8 +288,11 @@ async function triggerAIAlert(orgId: string, type: string, current: number, limi
 export async function getAIUsageStats(orgId = "default"): Promise<{
   monthly: Awaited<ReturnType<typeof getOrCreateMonthlyUsage>>;
   byFeature: Array<{ feature: string; credits: number; pct: number; cost: number }>;
+  byProvider: Array<{ provider: string; credits: number; pct: number; cost: number }>;
+  byModel: Array<{ model: string; credits: number; pct: number; cost: number }>;
   dailyHistory: number[];
   alerts: Array<{ alertType: string; message: string; triggeredAt: Date }>;
+  estimatedCostEur: number;
 }> {
   const plan        = store.me.plan?.toLowerCase() || "pro";
   const creditLimit = planCreditLimit(plan);
@@ -305,8 +304,11 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
       costEur: 0, requestCount: 0, tokensUsed: 0, tokenLimit,
     },
     byFeature: [] as Array<{ feature: string; credits: number; pct: number; cost: number }>,
+    byProvider: [] as Array<{ provider: string; credits: number; pct: number; cost: number }>,
+    byModel: [] as Array<{ model: string; credits: number; pct: number; cost: number }>,
     dailyHistory: Array.from({ length: 30 }, () => 0),
     alerts: [] as Array<{ alertType: string; message: string; triggeredAt: Date }>,
+    estimatedCostEur: 0,
   };
 
   try {
@@ -315,13 +317,15 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
       cost_eur: number; request_count: number; tokens_used: number;
     };
     type LogRow    = { feature: string; credits: string; cost: string };
+    type ProviderRow = { provider: string; credits: string; cost: string };
+    type ModelRow    = { model: string; credits: string; cost: string };
     type AlertRow  = { alert_type: string; message: string; triggered_at: Date };
     type DailyRow  = { day: string; credits: string };
 
-    const [monthly, byFeature, alerts, dailyHistory] = await withOrgDb<
-      [ReturnType<typeof fallback.monthly> , typeof fallback.byFeature, typeof fallback.alerts, number[]]
+    const [monthly, byFeature, byProvider, byModel, alerts, dailyHistory] = await withOrgDb<
+      [ReturnType<typeof fallback.monthly> , typeof fallback.byFeature, typeof fallback.byProvider, typeof fallback.byModel, typeof fallback.alerts, number[]]
     >(orgId, async (client) => {
-      const [mRes, lRes, aRes, dRes] = await Promise.all([
+      const [mRes, lRes, pRes, moRes, aRes, dRes] = await Promise.all([
         client.query<MonthRow>(
           `SELECT credits_used, credits_limit, credits_extra, cost_eur, request_count,
                   COALESCE(tokens_used, 0) AS tokens_used
@@ -331,6 +335,16 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
         client.query<LogRow>(
           `SELECT feature, SUM(credits_used)::text AS credits, SUM(cost_eur)::text AS cost
            FROM ai_usage_logs WHERE org_id=$1 GROUP BY feature LIMIT 20`,
+          [orgId]
+        ),
+        client.query<ProviderRow>(
+          `SELECT provider, SUM(credits_used)::text AS credits, SUM(cost_eur)::text AS cost
+           FROM ai_usage_logs WHERE org_id=$1 GROUP BY provider LIMIT 20`,
+          [orgId]
+        ),
+        client.query<ModelRow>(
+          `SELECT model, SUM(credits_used)::text AS credits, SUM(cost_eur)::text AS cost
+           FROM ai_usage_logs WHERE org_id=$1 GROUP BY model LIMIT 20`,
           [orgId]
         ),
         client.query<AlertRow>(
@@ -368,6 +382,18 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
         pct:     Math.round((Number(l.credits) / total) * 100),
         cost:    Number(l.cost),
       }));
+      const bp = pRes.rows.map(l => ({
+        provider: l.provider,
+        credits: Number(l.credits),
+        pct:     Math.round((Number(l.credits) / total) * 100),
+        cost:    Number(l.cost),
+      }));
+      const bm = moRes.rows.map(l => ({
+        model: l.model,
+        credits: Number(l.credits),
+        pct:     Math.round((Number(l.credits) / total) * 100),
+        cost:    Number(l.cost),
+      }));
 
       const al = aRes.rows.map(r => ({
         alertType:   r.alert_type,
@@ -382,10 +408,11 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
         return dayMap.get(d.toISOString().slice(0, 10)) ?? 0;
       });
 
-      return [m, bf, al, dh];
+      return [m, bf, bp, bm, al, dh];
     });
 
-    return { monthly, byFeature, alerts, dailyHistory };
+    const estimatedCostEur = byFeature.reduce((s, f) => s + (f.cost || 0), 0);
+    return { monthly, byFeature, byProvider, byModel, alerts, dailyHistory, estimatedCostEur };
   } catch (err) {
     logger.error({ err }, "[AI] getAIUsageStats failed — returning plan-based fallback");
     return fallback;
