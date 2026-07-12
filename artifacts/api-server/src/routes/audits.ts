@@ -72,7 +72,7 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
     store.logActivity({
       type: "audit", label: `Audit lancé : ${normalizedUrl}`,
       targetId: auditId, targetType: "audit", metadata: { url: normalizedUrl, origin },
-    }).catch(() => {});
+    }).catch(err => logger.error({ err }, "[audits] logActivity failed"));
 
     // Async PSI analysis — runs after response is sent.
     // Uses pool (superuser) intentionally: background UPDATE by id, not a cross-org read.

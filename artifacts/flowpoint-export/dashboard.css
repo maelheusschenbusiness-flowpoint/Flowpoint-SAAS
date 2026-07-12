@@ -724,6 +724,7 @@ body::before {
   font-weight: 700;
   white-space: nowrap;
   border: 1px solid transparent;
+  vertical-align: middle;
 }
 
 /* ── TOGGLE ── */

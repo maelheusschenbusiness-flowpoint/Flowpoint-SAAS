@@ -921,7 +921,7 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
       metadata: { addonKey, addonName, orgId },
     });
 
-    store.logActivity({ type: "billing", label: `Add-on checkout initié : ${addonName || addonKey}`, targetId: session.id, targetType: "billing", metadata: { addonKey } }).catch(() => {});
+    store.logActivity({ type: "billing", label: `Add-on checkout initié : ${addonName || addonKey}`, targetId: session.id, targetType: "billing", metadata: { addonKey } }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
     res.json({ url: session.url });
   } catch (err) {
     logger.error({ err, addonKey }, "[Billing] addon-checkout failed");

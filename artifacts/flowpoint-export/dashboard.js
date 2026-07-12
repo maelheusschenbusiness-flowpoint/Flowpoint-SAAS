@@ -2528,23 +2528,25 @@ function pushActivityEvent(event) {
   STATE.activityEvents.unshift(event);
   if (STATE.activityEvents.length > 50) STATE.activityEvents.pop();
 
-  // Flash badge
-  const badge = $('#fp-activity-badge');
-  if (!STATE.activityPanelOpen) {
+  // If the panel is open, mark immediately as seen so the badge doesn't
+  // count events the user is actively viewing
+  if (STATE.activityPanelOpen) {
+    STATE.activityLastSeen = Date.now();
+    localStorage.setItem('fp-activity-last-seen', String(STATE.activityLastSeen));
+    renderActivityList();
+  } else {
+    // Flash badge so user notices new activity
+    const badge = $('#fp-activity-badge');
     updateActivityBadge();
     if (badge) {
       badge.classList.remove('fp-badge-pulse');
       requestAnimationFrame(() => badge.classList.add('fp-badge-pulse'));
     }
+    // Fire browser push notification if tab is hidden
+    if (document.hidden) {
+      firePushNotification(event);
+    }
   }
-
-  // Fire browser push notification if tab is hidden
-  if (document.hidden) {
-    firePushNotification(event);
-  }
-
-  // If panel is open, re-render
-  if (STATE.activityPanelOpen) renderActivityList();
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -14146,38 +14148,80 @@ async function init() {
   // the "Actualiser" button. This prevents all unwanted automatic re-renders.
   (function subscribeBillingEvents() {
     if (PREVIEW_MODE) return;
-    try {
-      const _sseToken = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
-      const es = new EventSource('/api/billing/events' + (_sseToken ? '?token=' + encodeURIComponent(_sseToken) : ''));
-      es.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === 'plan_updated' && msg.plan && STATE.me) {
-            const prev = STATE.me.plan;
-            STATE.me.plan = msg.plan;
-            if (prev !== msg.plan) {
-              showToast('success', `Plan mis à jour : ${msg.plan} — actualisez pour voir les changements`);
+    // Corruption guard: if activityLastSeen is in the future, reset it
+    if (STATE.activityLastSeen > Date.now() + 60000) {
+      STATE.activityLastSeen = 0;
+      localStorage.setItem('fp-activity-last-seen', '0');
+    }
+    let _sseBackoff = 1000;
+    function _sseConnect() {
+      try {
+        const _sseToken = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+        const es = new EventSource('/api/billing/events' + (_sseToken ? '?token=' + encodeURIComponent(_sseToken) : ''));
+        es.onmessage = (e) => {
+          _sseBackoff = 1000; // reset backoff on successful message
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'plan_updated' && msg.plan && STATE.me) {
+              const prev = STATE.me.plan;
+              STATE.me.plan = msg.plan;
+              if (prev !== msg.plan) {
+                showToast('success', `Plan mis à jour : ${msg.plan} — actualisez pour voir les changements`);
+              }
+            } else if (msg.type === 'subscription_status' && STATE.me) {
+              STATE.me.subscriptionStatus = msg.status;
+              if (msg.status === 'past_due') showToast('warning','Paiement en retard — vérifiez votre facturation');
+            } else if (msg.type === 'audit:auto-complete' && msg.audit) {
+              const a = msg.audit;
+              if (!STATE.audits.find(x => x.id === a.id)) {
+                STATE.audits.unshift({ ...a, date: new Date().toISOString(), issues: 0, speed: 0, pinned: false });
+                showToast('success', `Audit terminé — ${escHtml(a.url)} · Score : ${a.score}/100`);
+              }
+            } else if (msg.type === 'activity:new' && msg.event) {
+              pushActivityEvent(msg.event);
             }
-          } else if (msg.type === 'subscription_status' && STATE.me) {
-            STATE.me.subscriptionStatus = msg.status;
-            if (msg.status === 'past_due') showToast('warning','Paiement en retard — vérifiez votre facturation');
-          } else if (msg.type === 'audit:auto-complete' && msg.audit) {
-            const a = msg.audit;
-            if (!STATE.audits.find(x => x.id === a.id)) {
-              STATE.audits.unshift({ ...a, date: new Date().toISOString(), issues: 0, speed: 0, pinned: false });
-              showToast('success', `Audit terminé — ${escHtml(a.url)} · Score : ${a.score}/100`);
-            }
-          } else if (msg.type === 'activity:new' && msg.event) {
-            pushActivityEvent(msg.event);
-          }
-        } catch(err) {}
-      };
-      es.onerror = () => {
-        es.close();
-        setTimeout(subscribeBillingEvents, 60000);
-      };
-    } catch(e) {}
+          } catch(err) {}
+        };
+        es.onerror = () => {
+          es.close();
+          _sseBackoff = Math.min(_sseBackoff * 2, 30000);
+          setTimeout(_sseConnect, _sseBackoff);
+        };
+      } catch(e) {
+        _sseBackoff = Math.min(_sseBackoff * 2, 30000);
+        setTimeout(_sseConnect, _sseBackoff);
+      }
+    }
+    _sseConnect();
   })();
+
+  // 60s poll fallback — keeps badge + feed in sync even if SSE misses events
+  // (fires in addition to SSE; SSE resets _sseBackoff so they don't compete)
+  if (!PREVIEW_MODE) {
+    setInterval(async function _activityPoll() {
+      try {
+        const [actRes, notifRes] = await Promise.allSettled([
+          apiFetch('/api/activity'),
+          apiFetch('/api/notifications'),
+        ]);
+        if (actRes.status === 'fulfilled' && Array.isArray(actRes.value)) {
+          // Merge new events from server (prepend anything newer than latest known)
+          const known = new Set(STATE.activityEvents.map(e => e.id || e.createdAt));
+          const fresh = actRes.value.filter(e => !known.has(e.id || e.createdAt));
+          if (fresh.length > 0) {
+            STATE.activityEvents = [...fresh, ...STATE.activityEvents].slice(0, 50);
+            if (!STATE.activityPanelOpen) updateActivityBadge();
+            else renderActivityList();
+          }
+        }
+        if (notifRes.status === 'fulfilled') {
+          const raw = notifRes.value;
+          const arr = Array.isArray(raw) ? raw : (Array.isArray(raw?.notifications) ? raw.notifications : []);
+          if (arr.length > 0) STATE.notifications = arr;
+        }
+      } catch(e) {}
+    }, 60000);
+  }
 
   // Bind activity panel interactions
   bindActivityPanel();
@@ -14883,6 +14927,23 @@ function renderSubPageContent(route, sub) {
 
   // ── GA4 FUNNELS SUB-PAGES ──
   if (route === 'funnels') {
+    // Guard: show unified empty state for all sub-routes when GA4 is not connected
+    if (!_ga4Connected() && !PREVIEW_MODE) {
+      return `
+        <div class="fp-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 32px;text-align:center;gap:18px">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="rgba(37,99,235,0.5)" stroke-width="1.5">
+            <path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>
+          </svg>
+          <div>
+            <div style="font-size:17px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Entonnoirs non disponibles</div>
+            <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px;line-height:1.6">Connectez Google Analytics 4 pour visualiser vos entonnoirs de conversion, analyser les points de friction et optimiser votre parcours utilisateur.</div>
+          </div>
+          <button class="fp-btn fp-btn-primary" onclick="navigate('settings');setTimeout(()=>navigateSub('integrations'),50)">
+            Connecter GA4 →
+          </button>
+        </div>
+      `;
+    }
     const ga4 = window.FP_DATA?.ga4 || {};
     const cp  = ga4.funnels?.conversionPaths?.rows || [];
     if (sub === 'goals') {
@@ -21750,8 +21811,8 @@ function renderAlertsCenter() {
         ${alertScores.map(k => {
           const filled = k.val / 100 * circ46;
           const dash   = circ46 - filled;
-          return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;text-align:center">
-            <svg width="64" height="64" viewBox="0 0 120 120" style="margin:0 auto 6px">
+          return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center">
+            <svg width="64" height="64" viewBox="0 0 120 120" style="margin-bottom:2px">
               <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
               <circle cx="60" cy="60" r="46" fill="none" stroke="${k.color}" stroke-width="8"
                 stroke-dasharray="${filled.toFixed(1)} ${dash.toFixed(1)}"
@@ -21760,7 +21821,7 @@ function renderAlertsCenter() {
               <text x="60" y="65" text-anchor="middle" font-size="22" font-weight="800" fill="${k.color}" font-family="Outfit,sans-serif">${k.val}</text>
             </svg>
             <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${k.icon} ${escHtml(k.label)}</div>
-            <div style="margin-top:6px">${badge(k.val>=70?'Bon':k.val>=45?'Moyen':'Critique', k.color)}</div>
+            <div>${badge(k.val>=70?'Bon':k.val>=45?'Moyen':'Critique', k.color)}</div>
           </div>`;
         }).join('')}
       </div>
@@ -23436,8 +23497,8 @@ function renderDataExplorer() {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
         ${kpiScores.map(k => {
           const filled = k.val / 100 * circ46;
-          return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;text-align:center">
-            <svg width="64" height="64" viewBox="0 0 64 64" style="margin:0 auto 6px">
+          return `<div style="padding:14px;border-radius:12px;border:1px solid ${k.color}28;background:${k.color}07;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center">
+            <svg width="64" height="64" viewBox="0 0 64 64" style="margin-bottom:2px">
               <circle cx="32" cy="32" r="24" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="7"/>
               <circle cx="32" cy="32" r="24" fill="none" stroke="${k.color}" stroke-width="7"
                 stroke-dasharray="${filled.toFixed(1)} ${(circ46-filled).toFixed(1)}"
@@ -23446,7 +23507,7 @@ function renderDataExplorer() {
               <text x="32" y="36" text-anchor="middle" font-size="13" font-weight="800" fill="${k.color}">${k.val}</text>
             </svg>
             <div style="font-size:11px;font-weight:600;color:var(--fp-text-soft)">${k.icon} ${escHtml(k.label)}</div>
-            <div style="margin-top:6px">${badge(k.val>=70?'Bon':k.val>=50?'Moyen':'Critique', k.color)}</div>
+            <div>${badge(k.val>=70?'Bon':k.val>=50?'Moyen':'Critique', k.color)}</div>
           </div>`;
         }).join('')}
       </div>
@@ -27298,6 +27359,27 @@ function renderGA4Traffic() {
 // GA4 FUNNELS
 // ══════════════════════════════════════════════════════════════════════
 function renderGA4Funnels() {
+  // Empty state when GA4 is not connected and not in preview mode
+  if (!_ga4Connected() && !PREVIEW_MODE) {
+    return `
+      <div class="fp-section-header">
+        <div><h1>🔄 Funnels & Parcours</h1><div class="fp-section-sub">Analyse du parcours utilisateur et des étapes de conversion</div></div>
+      </div>
+      <div class="fp-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 32px;text-align:center;gap:18px">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="rgba(37,99,235,0.5)" stroke-width="1.5">
+          <path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>
+        </svg>
+        <div>
+          <div style="font-size:17px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Entonnoirs non disponibles</div>
+          <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px;line-height:1.6">Connectez Google Analytics 4 pour visualiser vos entonnoirs de conversion, analyser les points de friction et optimiser votre parcours utilisateur.</div>
+        </div>
+        <button class="fp-btn fp-btn-primary" onclick="navigate('settings');setTimeout(()=>navigateSub('integrations'),50)">
+          Connecter GA4 →
+        </button>
+      </div>
+    `;
+  }
+
   const ga4   = window.FP_DATA?.ga4 || {};
   const lp    = ga4.funnels?.landingPages?.rows || [];
   const cp    = ga4.funnels?.conversionPaths?.rows || [];
@@ -27312,7 +27394,7 @@ function renderGA4Funnels() {
     {label:'Checkout / Form',   n: Math.round(_funnelBase*0.14), color:'#ef4444'},
     {label:'Conversion',        n: _funnelConv, color:'#22c55e'},
   ] : [];
-  const topN = funnelSteps[0].n || 1;
+  const topN = funnelSteps.length > 0 ? (funnelSteps[0].n || 1) : 1;
 
   return `
     <div class="fp-section-header">
@@ -27363,10 +27445,10 @@ function renderGA4Funnels() {
             </div>`;
         }).join('')}
       </div>
-      <div style="margin-top:16px;padding:12px;background:rgba(34,197,94,0.06);border-radius:8px;font-size:12px;color:var(--fp-text-muted)">
+      ${funnelSteps.length > 0 ? `<div style="margin-top:16px;padding:12px;background:rgba(34,197,94,0.06);border-radius:8px;font-size:12px;color:var(--fp-text-muted)">
         Taux de conversion global : <strong style="color:#22c55e;font-size:14px">${((funnelSteps[funnelSteps.length-1].n/topN)*100).toFixed(2)}%</strong>
-        · Opportunité : optimiser l\'étape Checkout → +${Math.round(funnelSteps[4].n*0.15)} conversions potentielles
-      </div>
+        ${funnelSteps[4] ? '· Opportunité : optimiser l\'étape Checkout → +' + Math.round(funnelSteps[4].n*0.15) + ' conversions potentielles' : ''}
+      </div>` : ""}
     </div>
 
     <!-- LANDING PAGES + CONVERSION PATHS -->

@@ -28,7 +28,7 @@ router.post("/addons/:key/activate", async (req: Request, res: Response) => {
   }
   const ok = await activateAddon(key);
   if (ok) {
-    store.logActivity({ type: "billing", label: `Add-on activé : ${key}`, targetId: key, targetType: "addon" }).catch(() => {});
+    store.logActivity({ type: "billing", label: `Add-on activé : ${key}`, targetId: key, targetType: "addon" }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:addon:activated", addonKey: key });
     res.json({ ok: true, addonKey: key, addons: store.me.addons });
   } else {
@@ -40,7 +40,7 @@ router.post("/addons/:key/deactivate", async (req: Request, res: Response) => {
   const { key } = req.params;
   const ok = await deactivateAddon(key);
   if (ok) {
-    store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon" }).catch(() => {});
+    store.logActivity({ type: "billing", label: `Add-on désactivé : ${key}`, targetId: key, targetType: "addon" }).catch(err => console.warn("[logActivity]", err?.message));
     store.broadcast({ type: "fp:addon:deactivated", addonKey: key });
   }
   res.json({ ok, addonKey: key });

@@ -71,7 +71,7 @@ export async function executeWorkflow(workflowId: string): Promise<{ success: bo
       targetId: workflowId,
       targetType: "workflow",
       metadata: { durationMs, stepsCompleted },
-    }).catch(() => {});
+    }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
 
     store.broadcast({ type: "workflow:completed", workflowId, runId, durationMs });
     return { success: true, runId };
@@ -140,7 +140,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
         const mobile = await analyzePSI(targetUrl, "mobile", orgId);
         const desktop = await analyzePSI(targetUrl, "desktop", orgId);
         logger.info({ url: targetUrl, mobileScore: mobile.scores.performance, desktopScore: desktop.scores.performance }, "[Automation] run_audit complete");
-        store.logActivity({ type: "audit", label: `Audit automatique: ${targetUrl}`, targetId: targetUrl, targetType: "audit", metadata: { mobile: mobile.scores, desktop: desktop.scores } }).catch(()=>{});
+        store.logActivity({ type: "audit", label: `Audit automatique: ${targetUrl}`, targetId: targetUrl, targetType: "audit", metadata: { mobile: mobile.scores, desktop: desktop.scores } }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
       } catch(err) { logger.error({ err }, "[Automation] run_audit failed"); }
       break;
     }
@@ -160,7 +160,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
           maxTokens: 800,
         });
         logger.info({ url: auditData.url }, "[Automation] generate_recommendations complete");
-        store.logActivity({ type: "team", label: `Recommandations générées: ${auditData.url}`, targetId: auditData.url, targetType: "recommendations" }).catch(()=>{});
+        store.logActivity({ type: "team", label: `Recommandations générées: ${auditData.url}`, targetId: auditData.url, targetType: "recommendations" }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
       } catch(err) { logger.error({ err }, "[Automation] generate_recommendations failed"); }
       break;
     }
@@ -226,7 +226,7 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
     }
     case "create_incident": {
       logger.info("[Automation] create_incident — incident logged");
-      store.logActivity({ type: "team", label: "Incident automatique créé", targetType: "incident" }).catch(()=>{});
+      store.logActivity({ type: "team", label: "Incident automatique créé", targetType: "incident" }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
       break;
     }
     case "create_dashboard": {

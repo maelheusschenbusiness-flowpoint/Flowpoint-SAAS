@@ -236,9 +236,45 @@ async function saveCheckResult(
         const { store } = await import("../services/store.js");
         const mon = notifyAfterCommit!.mon;
         if (!mon) return;
+
+        const isDown = notifyAfterCommit!.kind === "down";
+        const notifTitle = isDown
+          ? `Monitor DOWN : ${String(mon.name)}`
+          : `Monitor rétabli : ${String(mon.name)}`;
+        const notifMessage = isDown
+          ? `${String(mon.url)} est inaccessible.`
+          : `${String(mon.url)} est de nouveau opérationnel (indisponible ${notifyAfterCommit!.downDurationMin ?? 0} min).`;
+
+        // Write to notifications table so the dashboard bell shows it
+        pool.connect().then(client =>
+          client.query(
+            `INSERT INTO notifications (id, org_id, type, title, message, link, read, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, false, NOW())`,
+            [
+              `notif_mon_${Date.now()}`,
+              orgId,
+              isDown ? "danger" : "success",
+              notifTitle,
+              notifMessage,
+              "/monitors",
+            ]
+          )
+            .catch(err => logger.error({ err, monitorId }, "[monitors] Failed to write notification to DB"))
+            .finally(() => client.release())
+        ).catch(err => logger.error({ err }, "[monitors] Pool connect failed for notification write"));
+
+        // Log activity so the activity feed reflects the state change
+        store.logActivity({
+          type: "monitor",
+          label: notifTitle,
+          targetId: monitorId,
+          targetType: "monitor",
+          metadata: { url: String(mon.url), kind: notifyAfterCommit!.kind },
+        }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
+
         const recipient = (mon.alert_email as string | undefined)?.trim() || store.me.email;
         if (recipient) {
-          if (notifyAfterCommit!.kind === "down") {
+          if (isDown) {
             await mailer.sendMonitorDown({
               to: recipient,
               monitorName: String(mon.name),
@@ -258,7 +294,7 @@ async function saveCheckResult(
         if (phone) {
           const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
           if (twilioConfigured()) {
-            const msg = notifyAfterCommit!.kind === "down"
+            const msg = isDown
               ? `Flowpoint ALERTE : ${String(mon.name)} (${String(mon.url)}) est DOWN.`
               : `Flowpoint : ${String(mon.name)} (${String(mon.url)}) est de nouveau UP.`;
             await sendSms(phone, msg);
@@ -413,7 +449,7 @@ router.post("/monitors", monitorCreateRateLimit, async (req: Request, res: Respo
     store.logActivity({
       type: "monitor", label: `Monitor créé : ${name} (${url})`,
       targetId: id, targetType: "monitor", metadata: { url, name },
-    }).catch(() => {});
+    }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     res.status(201).json(toPublic(row.rows[0]));
   } catch (err) {
@@ -499,7 +535,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       label: `Ping ${String(monitor["name"])} — ${newStatus.toUpperCase()} (${result.latencyMs}ms)`,
       targetId: id, targetType: "monitor",
       metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
-    }).catch(() => {});
+    }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs });
 
@@ -601,7 +637,7 @@ router.delete("/monitors/:id", async (req: Request, res: Response) => {
       label: `Monitor supprimé : ${String(m["name"])} (${String(m["url"])})`,
       targetId: id, targetType: "monitor",
       metadata: { url: m["url"], name: m["name"] },
-    }).catch(() => {});
+    }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
     res.json({ ok: true });
   } catch (err) {

@@ -86,7 +86,7 @@ router.post("/reports", reportRateLimit, async (req, res) => {
     );
     const r = await db(req)(`SELECT * FROM reports WHERE id=$1`, [id]);
     const report = r.rows[0] ?? { id, name };
-    store.logActivity({ type: "report", label: `Rapport généré : ${name}`, targetId: id, targetType: "report", metadata: { name, format } }).catch(() => {});
+    store.logActivity({ type: "report", label: `Rapport généré : ${name}`, targetId: id, targetType: "report", metadata: { name, format } }).catch(err => console.warn("[logActivity]", err?.message));
     res.status(201).json(report);
 
     // Fire-and-forget: report generated email
@@ -207,7 +207,7 @@ router.post("/reports/:id/share", async (req: Request, res: Response) => {
 
     await db(req)(`UPDATE reports SET shared=true WHERE id=$1 AND org_id=$2`, [report.id, orgId]);
 
-    store.logActivity({ type: "report", label: `Rapport partagé : ${report.name}`, targetId: report.id as string, targetType: "report", metadata: { name: report.name } }).catch(() => {});
+    store.logActivity({ type: "report", label: `Rapport partagé : ${report.name}`, targetId: report.id as string, targetType: "report", metadata: { name: report.name } }).catch(err => console.warn("[logActivity]", err?.message));
     res.status(201).json({ token, expiresAt });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to share report" });

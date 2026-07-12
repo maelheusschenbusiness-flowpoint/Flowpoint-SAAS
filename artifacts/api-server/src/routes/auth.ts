@@ -542,7 +542,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     targetId: normalizedEmail,
     targetType: "user",
     metadata: { country: country ?? null, companySize: companySize ?? null, objective: objective ?? null },
-  }).catch(() => {});
+  }).catch(err => logger.error({ err }, "[auth] logActivity failed"));
 
   logger.info(
     { email: normalizedEmail, postgres: true },
