@@ -356,9 +356,9 @@
       var span = btn.querySelector('.btn-text');
       if (span) span.textContent = 'Démarrer l\'essai ' + names[plan] + ' →';
     }
-    // Pass plan to Google OAuth href
+    // Pass plan + redirect_to to Google OAuth href so sign-up lands in checkout
     var gBtn = document.getElementById('btn-google-oauth');
-    if (gBtn) gBtn.href = '/api/auth/google/login?plan=' + encodeURIComponent(plan);
+    if (gBtn) gBtn.href = '/api/auth/google/login?plan=' + encodeURIComponent(plan) + '&redirect_to=' + encodeURIComponent('/checkout.html');
   }
 
 (function () {

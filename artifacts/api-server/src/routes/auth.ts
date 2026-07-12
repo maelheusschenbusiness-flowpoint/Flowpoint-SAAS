@@ -700,6 +700,8 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
 
   const rawPlan = String(req.query["plan"] ?? "");
   const selectedPlan = ["standard","pro","ultra"].includes(rawPlan) ? rawPlan : null;
+  const rawRedirect = String(req.query["redirect_to"] ?? "");
+  const redirectTo = rawRedirect.startsWith("/") ? rawRedirect : null;
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -708,7 +710,7 @@ router.get("/auth/google/login", (req: Request, res: Response) => {
     scope: "openid email profile",
     access_type: "offline",
     prompt: "select_account",
-    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan })).toString("base64"),
+    state: Buffer.from(JSON.stringify({ ts: Date.now(), plan: selectedPlan, redirect_to: redirectTo })).toString("base64"),
   });
 
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
@@ -755,17 +757,40 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     if (user.name) store.me.firstName = user.name.split(" ")[0];
     if (user.email && !store.me.org?.name) store.me.org = { name: user.email };
 
-    // Apply plan from OAuth state if present
+    // Apply plan & redirect from OAuth state if present
+    let redirectAfterLogin = `${publicUrl}/dashboard.html?provider=google`;
+    let planFromState: string | null = null;
     try {
       const rawState = String(req.query["state"] ?? "");
       if (rawState) {
-        const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as { plan?: string };
+        const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as { plan?: string; redirect_to?: string | null };
         if (stateObj.plan && ["standard","pro","ultra"].includes(stateObj.plan)) {
+          planFromState = stateObj.plan;
           store.me.plan = stateObj.plan;
           logger.info({ plan: stateObj.plan }, "[Auth] Google login — plan set from OAuth state");
         }
+        if (stateObj.redirect_to && stateObj.redirect_to.startsWith("/")) {
+          redirectAfterLogin = `${publicUrl}${stateObj.redirect_to}`;
+          logger.info({ redirect: redirectAfterLogin }, "[Auth] Google login — redirect after login set from OAuth state");
+        }
       }
     } catch { /* state parse error — ignore */ }
+
+    // Persist org settings (including plan) so /api/me returns correct plan after restart
+    try {
+      const { upsertOrgSettings } = await import("../services/org-settings.js");
+      await upsertOrgSettings("default", {
+        email: resolvedEmail,
+        firstName: user.name ? user.name.split(" ")[0] : undefined,
+        plan: planFromState ?? store.me.plan ?? "pro",
+        subscriptionStatus: "trialing",
+        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60_000).toISOString(),
+        name: user.email ?? undefined,
+      });
+      logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — org_settings persisted");
+    } catch (err) {
+      logger.warn({ err }, "[Auth] Google login — org_settings persist failed (non-fatal)");
+    }
 
     logger.info({ email: user.email }, "[Auth] Google login successful");
 
@@ -780,7 +805,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       maxAge: SESSION_TTL_MS,
       path: "/",
     });
-    res.redirect(`${publicUrl}/dashboard.html?provider=google`);
+    res.redirect(redirectAfterLogin);
   } catch (err) {
     logger.error({ err }, "[Auth] Google login callback failed");
     res.redirect(`${publicUrl}/login.html?error=google_auth_failed`);
