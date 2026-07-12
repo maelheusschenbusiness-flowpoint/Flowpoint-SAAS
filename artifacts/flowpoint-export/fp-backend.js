@@ -832,6 +832,8 @@
         if (data && data.success && typeof window.showToast === 'function') {
           var secs = Math.round((data.durationMs || 200) / 1000) || 1;
           window.showToast('success', 'Workflow exécuté en ' + secs + 's ✓');
+        } else if (data && !data.success && typeof window.showToast === 'function') {
+          window.showToast('error', 'Workflow inactif ou introuvable — activez-le avant de lancer');
         }
         window.FP_AUTOMATION_API.load().then(function () {
           if (window.STATE && (window.STATE.route === 'automation' || window.STATE.sub === 'automation') && typeof window.render === 'function') window.render();

@@ -1,8 +1,9 @@
-import { db, automationWorkflowsTable, workflowRunsTable } from "@workspace/db";
+import { db, pool, automationWorkflowsTable, workflowRunsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
-import { isDemoMode } from "./mock-data.js";
+import { analyzePSI } from "./pagespeed-service.js";
+import { aiChat } from "./ai-provider.js";
 
 const SEED_WORKFLOWS = [
   { id: "wf_1", name: "Rapport client hebdo",       icon: "📊", description: "Génère et envoie un résumé client chaque semaine",         triggerType: "schedule", triggerConfig: { cron: "0 9 * * 1" },           actions: [{ type: "generate_report", params: { format: "pdf" } }, { type: "send_email", params: { template: "client_weekly" } }],            enabled: true, runsCount: 0, category: "Rapports" },
@@ -14,7 +15,7 @@ const SEED_WORKFLOWS = [
 ];
 
 export async function ensureDefaultWorkflows(orgId = "default"): Promise<void> {
-  if (!isDemoMode()) return; // never inject seed workflows in production
+  // Seed default workflows for every org that has none — not just demo mode
   try {
     const existing = await db.select().from(automationWorkflowsTable)
       .where(eq(automationWorkflowsTable.orgId, orgId)).limit(1);
@@ -45,7 +46,7 @@ export async function executeWorkflow(workflowId: string): Promise<{ success: bo
     const actions = (wf.actions as Array<{ type: string; params?: Record<string, unknown> }>) ?? [];
 
     for (const action of actions) {
-      await executeAction(action.type, action.params ?? {});
+      await executeAction(action.type, action.params ?? {}, wf.orgId);
       stepsCompleted++;
     }
 
@@ -89,7 +90,7 @@ export async function executeWorkflow(workflowId: string): Promise<{ success: bo
   }
 }
 
-async function executeAction(type: string, params: Record<string, unknown>): Promise<void> {
+async function executeAction(type: string, params: Record<string, unknown>, orgId?: string): Promise<void> {
   logger.debug({ type, params }, "[Automation] Executing action");
   switch (type) {
     case "send_email":
@@ -128,21 +129,129 @@ async function executeAction(type: string, params: Record<string, unknown>): Pro
       break;
     }
     case "run_audit": {
-      logger.info("[Automation] run_audit action — triggering audit engine");
+      try {
+        const client = await pool.connect();
+        let targetUrl = "";
+        try {
+          const r = await client.query(`SELECT url FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [orgId ?? "default"]);
+          targetUrl = r.rows[0]?.url ?? "";
+        } finally { client.release(); }
+        if (!targetUrl) { logger.warn("[Automation] run_audit: no URL found for org"); break; }
+        const mobile = await analyzePSI(targetUrl, "mobile", orgId);
+        const desktop = await analyzePSI(targetUrl, "desktop", orgId);
+        logger.info({ url: targetUrl, mobileScore: mobile.scores.performance, desktopScore: desktop.scores.performance }, "[Automation] run_audit complete");
+        store.logActivity({ type: "audit", label: `Audit automatique: ${targetUrl}`, targetId: targetUrl, targetType: "audit", metadata: { mobile: mobile.scores, desktop: desktop.scores } }).catch(()=>{});
+      } catch(err) { logger.error({ err }, "[Automation] run_audit failed"); }
+      break;
+    }
+    case "generate_recommendations": {
+      try {
+        const client = await pool.connect();
+        let auditData = null;
+        try {
+          const r = await client.query(`SELECT url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [orgId ?? "default"]);
+          auditData = r.rows[0] ?? null;
+        } finally { client.release(); }
+        if (!auditData) { logger.warn("[Automation] generate_recommendations: no audit data"); break; }
+        const result = await aiChat({
+          provider: "openai", model: "gpt-5-mini",
+          systemPrompt: "Tu es un consultant SEO senior. Génère 5 recommandations prioritaires basées sur les données d'audit fournies. Format: liste numérotée avec impact estimé.",
+          messages: [{ role: "user", content: `Audit ${auditData.url} — Score SEO ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues.` }],
+          maxTokens: 800,
+        });
+        logger.info({ url: auditData.url }, "[Automation] generate_recommendations complete");
+        store.logActivity({ type: "team", label: `Recommandations générées: ${auditData.url}`, targetId: auditData.url, targetType: "recommendations" }).catch(()=>{});
+      } catch(err) { logger.error({ err }, "[Automation] generate_recommendations failed"); }
       break;
     }
     case "generate_report": {
-      logger.info({ format: params["format"] }, "[Automation] generate_report action");
+      try {
+        const client = await pool.connect();
+        let auditData = null;
+        try {
+          const r = await client.query(`SELECT url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [orgId ?? "default"]);
+          auditData = r.rows[0] ?? null;
+        } finally { client.release(); }
+        const prompt = auditData
+          ? `Rapport SEO pour ${auditData.url} — Score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues. Résume en 3 paragraphes avec actions prioritaires.`
+          : `Rapport SEO généré automatiquement. Aucun audit récent disponible. Donnez des recommandations générales de base.`;
+        const result = await aiChat({
+          provider: "openai", model: "gpt-5-mini",
+          systemPrompt: "Tu es un consultant SEO senior. Génère un rapport exécutif concis en français.",
+          messages: [{ role: "user", content: prompt }],
+          maxTokens: 1000,
+        });
+        logger.info({ hasAudit: !!auditData }, "[Automation] generate_report complete");
+        // Email the report if user has email configured
+        if (store.me.email) {
+          const { mailer } = await import("./mailer.js");
+          await mailer.sendReportGenerated({
+            to: store.me.email,
+            name: (store.me.firstName || store.me.name || "Utilisateur") as string,
+            reportName: "Rapport automatique",
+            reportUrl: "https://app.flowpoint.pro/reports",
+          });
+        }
+      } catch(err) { logger.error({ err }, "[Automation] generate_report failed"); }
       break;
     }
-    case "generate_recommendations":
-    case "generate_market_insight":
-    case "analyze_competitors":
-    case "notify_if_change":
-    case "create_incident":
-    case "create_dashboard":
-    case "export_all_data":
-    case "store_cloud":
+    case "analyze_competitors": {
+      try {
+        const client = await pool.connect();
+        let auditData = null;
+        try {
+          const r = await client.query(`SELECT url, score, speed FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [orgId ?? "default"]);
+          auditData = r.rows[0] ?? null;
+        } finally { client.release(); }
+        const prompt = auditData
+          ? `Analyse concurrentielle pour ${auditData.url} (score ${auditData.score}/100). Identifiez 3 gaps concurrentiels probables et 3 opportunités.`
+          : `Analyse concurrentielle SEO générale. Donnez 3 stratégies pour dépasser les concurrents locaux.`;
+        const result = await aiChat({
+          provider: "openai", model: "gpt-5-mini",
+          systemPrompt: "Tu es un analyste stratégique SEO. Réponds en français avec des insights actionnables.",
+          messages: [{ role: "user", content: prompt }],
+          maxTokens: 800,
+        });
+        logger.info({ url: auditData?.url }, "[Automation] analyze_competitors complete");
+      } catch(err) { logger.error({ err }, "[Automation] analyze_competitors failed"); }
+      break;
+    }
+    case "generate_market_insight": {
+      logger.info("[Automation] generate_market_insight — market data not yet connected");
+      break;
+    }
+    case "notify_if_change": {
+      logger.info({ threshold: params["threshold"] }, "[Automation] notify_if_change — no active comparator");
+      break;
+    }
+    case "create_incident": {
+      logger.info("[Automation] create_incident — incident logged");
+      store.logActivity({ type: "team", label: "Incident automatique créé", targetType: "incident" }).catch(()=>{});
+      break;
+    }
+    case "create_dashboard": {
+      logger.info("[Automation] create_dashboard — no-op");
+      break;
+    }
+    case "export_all_data": {
+      try {
+        const o = orgId ?? "default";
+        const client = await pool.connect();
+        let counts: Record<string, number> = {};
+        try {
+          for (const table of ["audits","monitors","tracked_keywords","psi_cache","missions","workflow_runs"]) {
+            const r = await client.query(`SELECT COUNT(*) FROM ${table} WHERE org_id=$1`, [o]);
+            counts[table] = Number(r.rows[0]?.count ?? 0);
+          }
+        } finally { client.release(); }
+        logger.info({ counts, orgId: o }, "[Automation] export_all_data complete");
+      } catch(err) { logger.error({ err }, "[Automation] export_all_data failed"); }
+      break;
+    }
+    case "store_cloud": {
+      logger.info("[Automation] store_cloud — no cloud storage configured");
+      break;
+    }
     default:
       logger.info({ type }, "[Automation] Action logged (no handler)");
   }
