@@ -115,26 +115,10 @@ export function applyAddonToStore(addonKey: string, active: boolean | number): v
 export async function addExtraAICredits(pack: "50k" | "200k" | "500k", orgId = "default"): Promise<number> {
   const packMap = { "50k": 50000, "200k": 200000, "500k": 500000 };
   const credits = packMap[pack];
-  try {
-    const month = (() => {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    })();
-    const client = await (await import("@workspace/db")).pool.connect();
-    try {
-      await client.query(
-        `UPDATE ai_monthly_usage SET credits_extra = credits_extra + $1, updated_at = NOW() WHERE org_id = $2 AND month = $3`,
-        [credits, orgId, month]
-      );
-    } finally {
-      client.release();
-    }
-    store.broadcast({ type: "ai:credits_added", credits, pack });
-    return credits;
-  } catch (err) {
-    logger.error({ err }, "[Addons] Failed to add extra AI credits");
-    return 0;
-  }
+  // NOTE: extra credits are recorded in ai_credit_purchases (Stripe webhook handles that).
+  // ai_monthly_usage no longer stores credits_extra — limit comes exclusively from plans.ts.
+  store.broadcast({ type: "ai:credits_added", credits, pack });
+  return credits;
 }
 
 export function getQuotaLimits(plan: string, addons: Record<string, boolean | number>): {

@@ -170,13 +170,6 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
                 [purchaseId, pack, credits, amountEurCents, sessionId, paymentIntent]
               );
 
-              // Add credits_extra to current month's usage row
-              await client.query(
-                `UPDATE ai_monthly_usage
-                 SET credits_extra = credits_extra + $1, updated_at = NOW()
-                 WHERE org_id = 'default' AND month = $2`,
-                [credits, month]
-              );
             } finally {
               client.release();
             }
