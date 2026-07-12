@@ -7081,12 +7081,12 @@ function renderBilling() {
   const PLANS = [
     {
       id:'standard', name:'Standard', price:29, color:'#2563EB',
-      badge:'Démarrage', tagline:'Idéal pour les indépendants et PME',
+      badge:'Démarrage', tagline:'Pour les indépendants et PME',
       features:[
         'Jusqu\'à 50 audits/mois','10 monitors','5 rapports PDF','1 utilisateur',
-        'Local SEO basique','Support email 48h','Rétention 30 jours','Export CSV','White-label',
+        'Local SEO basique','Export CSV','Support email 48h','Rétention 30 jours',
       ],
-      locked:['IA Insights','Multi-sièges','API Access','Custom domain','Analytics concurrents','Rapports illimités','SSO SAML','SLA garanti','Support prioritaire','Monitors illimités','Onboarding dédié','Facturation client'],
+      locked:['IA Insights','White-label','API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','Facturation client'],
     },
     {
       id:'pro', name:'Pro', price:79, color:'#2563EB', current:true,
@@ -7096,7 +7096,7 @@ function renderBilling() {
         'IA Insights Pro','Local SEO avancé','White-label rapports','API Access',
         'Support prioritaire 4h','Rétention 90 jours','Analytics concurrents',
       ],
-      locked:['Multi-workspace','SSO SAML','Dedicated onboarding','SLA garanti 99.9%'],
+      locked:['Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%'],
     },
     {
       id:'ultra', name:'Ultra', price:149, color:'#2563EB',
@@ -7999,19 +7999,25 @@ function renderBilling() {
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:7px">
-          ${usages.slice(0, 4).map(u => {
-            const pct = Math.round(u.v / u.max * 100);
-            const pc  = pct > 80 ? '#ef4444' : pct > 60 ? '#f59e0b' : u.color;
-            const vd  = u.unit ? u.v + u.unit : String(u.v);
-            const md  = u.unit ? u.max + u.unit : String(u.max);
-            return `<div>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
-                <span style="font-size:11px;color:var(--fp-text-muted)">${escHtml(u.l)}</span>
-                <span style="font-size:11px;font-weight:700;color:${pc}">${vd}/${md} (${pct}%)</span>
-              </div>
-              <div class="fp-progress-track" style="height:5px"><div class="fp-progress-fill" style="width:${pct}%;background:${pc}"></div></div>
-            </div>`;
-          }).join('')}
+          ${(() => {
+            const safePct = (v, max) => max > 0 ? Math.round(v / max * 100) : 0;
+            const activeUsages = usages.filter(u => !u.na && u.max > 0);
+            const showUsages = activeUsages.length > 0 ? activeUsages.slice(0, 4) : usages.slice(0, 4);
+            return showUsages.map(u => {
+              const pct = safePct(u.v, u.max);
+              const pc  = pct > 80 ? '#ef4444' : pct > 60 ? '#f59e0b' : u.color;
+              const vd  = u.unit ? u.v + u.unit : String(u.v);
+              const md  = u.unit ? u.max + u.unit : String(u.max);
+              const label = u.na || u.max === 0 ? 'N/A' : `${vd}/${md} (${pct}%)`;
+              return `<div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+                  <span style="font-size:11px;color:var(--fp-text-muted)">${escHtml(u.l)}</span>
+                  <span style="font-size:11px;font-weight:700;color:${pc}">${label}</span>
+                </div>
+                <div class="fp-progress-track" style="height:5px"><div class="fp-progress-fill" style="width:${u.max > 0 ? pct : 0}%;background:${pc}"></div></div>
+              </div>`;
+            }).join('');
+          })()}
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="width:100%;margin-top:4px;font-size:11px" onclick="navigateSub('usage')">Voir tous les usages →</button>
         </div>
       </div>
@@ -8036,7 +8042,7 @@ function renderBilling() {
             { d:'01/03/2026', ev:'Passage Plan Pro — upgrade',              c:'#8b5cf6' },
             { d:'01/02/2026', ev:'Facture payée — 49€ (Standard)',          c:'#22c55e' },
           ] : []);
-          if (_tlEvents.length === 0) return `<div style="padding:14px;text-align:center;color:var(--fp-text-faint);font-size:11px">Vos événements de facturation apparaîtront ici après votre première facture.</div>`;
+          if (_tlEvents.length === 0) return `<div style="padding:14px;text-align:center;color:var(--fp-text-faint);font-size:11px">Aucune facture disponible — votre abonnement démarre ce mois-ci.</div>`;
           return _tlEvents.map(ev => `<div style="position:relative;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.04)">
             <div style="position:absolute;left:-17px;top:2px;width:8px;height:8px;border-radius:50%;background:${ev.c};box-shadow:0 0 6px ${ev.c}44"></div>
             <div style="font-size:9px;color:var(--fp-text-faint);margin-bottom:2px">${escHtml(ev.d)}</div>
@@ -11618,23 +11624,8 @@ function normalizeRoute(route, subRoute) {
 }
 
 function fpGoToPricing() {
-  try {
-    const _me = STATE.me;
-    const _activeAddons = {};
-    if (_me?.addons && typeof _me.addons === 'object') {
-      Object.entries(_me.addons).forEach(([k, v]) => { if (v) _activeAddons[k] = v; });
-    }
-    localStorage.setItem('fp_dashboard_state', JSON.stringify({
-      fromDashboard: true,
-      plan: (_me?.plan || '').toLowerCase(),
-      planLabel: _me?.plan || 'Pro',
-      status: STATE.billing?.status || _me?.subscriptionStatus || 'trial',
-      addons: _activeAddons,
-      trialEndsAt: STATE.billing?.trialEndsAt || _me?.trialEndsAt || null,
-      nextDate: STATE.billing?.nextDate || null,
-    }));
-  } catch(e) {}
-  window.location.href = 'https://app.flowpoint.pro/pricing.html';
+  navigate('billing');
+  setTimeout(() => navigateSub('plans'), 50);
 }
 window.fpGoToPricing = fpGoToPricing;
 
