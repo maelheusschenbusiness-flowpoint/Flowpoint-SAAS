@@ -51,6 +51,7 @@ const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 // ─────────────────────────────────────────────────────────────────
 const STATE = {
   me: null,
+  planDefs: null,
   audits: [],
   monitors: [],
   missions: [],
@@ -923,7 +924,15 @@ async function loadData() {
   } catch(_) {}
   let me, overview, audits, monitors, reports, team;
   try {
-    [me, overview] = await Promise.all([apiFetch('/api/me'), apiFetch('/api/overview')]);
+    const [_me, _overview, _planDefs] = await Promise.all([
+      apiFetch('/api/me'), apiFetch('/api/overview'),
+      apiFetch('/api/plans/definitions').catch(() => null),
+    ]);
+    me = _me; overview = _overview;
+    if (_planDefs && typeof _planDefs === 'object') {
+      STATE.planDefs = _planDefs;
+      try { sessionStorage.setItem('fp-plan-defs', JSON.stringify({ ..._planDefs, _ts: Date.now() })); } catch(_) {}
+    }
   } catch (e) {
     if (PREVIEW_MODE) {
       console.warn('[FP] Preview mode: using mock /api/me + /api/overview', e);
@@ -4119,7 +4128,7 @@ function renderAudits() {
           <div class="fp-quota-track"><div class="fp-quota-fill" style="width:${mPct}%;background:var(--fp-accent)"></div></div>
           <div class="fp-quota-val">${mUsed} / ${mLimit===999?'∞':mLimit}</div>
         </div>
-        ${isStarter?`<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;padding:6px 12px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.22);border-radius:8px;font-size:11.5px;color:var(--fp-accent);cursor:pointer;white-space:nowrap" onclick="navigate('billing')">🚀 Passer Pro → +250 audits · IA Insights</div>`:''}
+        ${isStarter?`<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;padding:6px 12px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.22);border-radius:8px;font-size:11.5px;color:var(--fp-accent);cursor:pointer;white-space:nowrap" onclick="navigate('billing')">🚀 Passer Pro → +300 audits · IA Insights</div>`:''}
       </div>`;
     })()}
 
@@ -7063,57 +7072,46 @@ function renderBilling() {
   const plan = me?.plan || 'Pro';
   const _ud    = STATE.usageDetails || {};
   const _planKey2 = plan.toLowerCase();
-  const _aLim = { standard:30,  pro:300,  ultra:2000, agency:2000 };
-  const _mLim = { standard:3,   pro:50,   ultra:300,  agency:300  };
-  const _rLim = { standard:30,  pro:300,  ultra:2000, agency:2000 };
+  // ── Source of truth: plan definitions from /api/plans/definitions ──
+  const _planDefs = (() => {
+    const defs = STATE.planDefs;
+    if (defs && typeof defs === 'object') {
+      const arr = Object.values(defs).filter(d => d && d.id && d.limits);
+      if (arr.length >= 3) return arr;
+    }
+    // fallback canonical (identique au backend)
+    return [
+      { id:'standard', name:'Standard', priceEur:29, badge:'Démarrage', tagline:'Pour les indépendants et PME', color:'#2563EB', features:['30 audits','10 monitors','30 rapports PDF','1 utilisateur','100 000 AI credits','1 workspace','Rétention 30 jours','Support email 48h'], locked:['White-label','API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%','Agency Lab'], limits:{audits:30,monitors:10,reports:30,exports:30,teamMembers:1,workspaces:1,retention:30}, aiCredits:100000 },
+      { id:'pro',      name:'Pro',      priceEur:79, badge:'Recommandé', tagline:'Pour les agences et équipes growth', color:'#2563EB', features:['300 audits','50 monitors','300 rapports PDF','5 utilisateurs','500 000 AI credits','5 workspaces','Rétention 90 jours','Support prioritaire 4h'], locked:['Multi-workspace (5 max)','SSO SAML','Onboarding dédié','SLA garanti 99.9%'], limits:{audits:300,monitors:50,reports:300,exports:300,teamMembers:5,workspaces:5,retention:90}, aiCredits:500000 },
+      { id:'ultra',    name:'Ultra',    priceEur:149, badge:'Ultra', tagline:'Pour les grandes agences et entreprises', color:'#2563EB', features:['1000 audits','300 monitors','1000 rapports PDF','10 utilisateurs','10 000 000 AI credits','10 workspaces','Rétention 365 jours','Support dédié <1h','SLA 99.9%','SSO SAML','White-label portail'], locked:[], limits:{audits:1000,monitors:300,reports:1000,exports:1000,teamMembers:10,workspaces:10,retention:365}, aiCredits:10000000 },
+    ];
+  })();
+  const _getDef = (id) => _planDefs.find(p => p.id === id) || _planDefs[1];
+  const _def = _getDef(_planKey2);
+  const _limitsFromDef = _def.limits || {};
+
   const _usage = {
     ...(me?.usage || {}),
-    audit:   { used: me?.usage?.audit?.used   ?? STATE.audits?.length   ?? 0, limit: me?.usage?.audit?.limit   ?? _aLim[_planKey2]  ?? 30 },
-    monitor: { used: me?.usage?.monitor?.used ?? STATE.monitors?.length ?? 0, limit: me?.usage?.monitor?.limit ?? _mLim[_planKey2]  ?? 3  },
-    pdf:     { used: me?.usage?.pdf?.used     ?? 0,                           limit: me?.usage?.pdf?.limit     ?? _rLim[_planKey2]  ?? 30 },
-    exports: { used: me?.usage?.exports?.used ?? 0,                           limit: me?.usage?.exports?.limit ?? _rLim[_planKey2]  ?? 30 },
+    audit:   { used: me?.usage?.audit?.used   ?? STATE.audits?.length   ?? 0, limit: me?.usage?.audit?.limit   ?? _limitsFromDef.audits    ?? 30 },
+    monitor: { used: me?.usage?.monitor?.used ?? STATE.monitors?.length ?? 0, limit: me?.usage?.monitor?.limit ?? _limitsFromDef.monitors  ?? 10 },
+    pdf:     { used: me?.usage?.pdf?.used     ?? 0,                           limit: me?.usage?.pdf?.limit     ?? _limitsFromDef.reports   ?? 30 },
+    exports: { used: me?.usage?.exports?.used ?? 0,                           limit: me?.usage?.exports?.limit ?? _limitsFromDef.exports   ?? 30 },
   };
   const isStd   = plan === 'Standard';
   const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
 
-  // ── Shared plan data ─────────────────────────────────────
-  const PLANS = [
-    {
-      id:'standard', name:'Standard', price:29, color:'#2563EB',
-      badge:'Démarrage', tagline:'Pour les indépendants et PME',
-      features:[
-        'Jusqu\'à 50 audits/mois','10 monitors','5 rapports PDF','1 utilisateur',
-        'Local SEO basique','Export CSV','Support email 48h','Rétention 30 jours',
-      ],
-      locked:['IA Insights','White-label','API Access','Analytics concurrents','Multi-workspace','SSO SAML','Onboarding dédié','Facturation client'],
-    },
-    {
-      id:'pro', name:'Pro', price:79, color:'#2563EB', current:true,
-      badge:'Recommandé', tagline:'Pour les agences et équipes growth',
-      features:[
-        '250 audits/mois','50 monitors','Rapports illimités','5 utilisateurs',
-        'IA Insights Pro','Local SEO avancé','White-label rapports','API Access',
-        'Support prioritaire 4h','Rétention 90 jours','Analytics concurrents',
-      ],
-      locked:['Multi-workspace','SSO SAML','Onboarding dédié','SLA garanti 99.9%'],
-    },
-    {
-      id:'ultra', name:'Ultra', price:149, color:'#2563EB',
-      badge:'Ultra', tagline:'Pour les grandes agences et entreprises',
-      features:[
-        'Audits illimités','Monitors illimités','Multi-workspace','Sièges illimités',
-        'IA Stratégiste complet','White-label portail','SSO SAML','API illimitée',
-        'Custom domain','SLA 99.9% garanti','Support dédié < 1h','Rétention 365 jours',
-        'Onboarding dédié','Agency Lab complet','Facturation client',
-      ],
-      locked:[],
-    },
-  ];
+  // ── Shared plan data (driven by backend definitions) ──
+  const PLANS = _planDefs.map(p => ({
+    id: p.id, name: p.name, price: p.priceEur, color: p.color || '#2563EB',
+    badge: p.badge, tagline: p.tagline,
+    features: p.features || [],
+    locked:   p.locked  || [],
+  }));
 
   const _fcstFactor = 1.18;
   const _dynFcst = (v, max) => v > 0 && max > 0 ? Math.min(99, Math.round(v / max * 100 * _fcstFactor)) : null;
-  const _planLimits = me?.limits || (isUltra ? {audits:2000,monitors:300,reports:2000,exports:2000,teamMembers:10} : isPro ? {audits:300,monitors:50,reports:300,exports:300,teamMembers:5} : {audits:30,monitors:3,reports:30,exports:30,teamMembers:1});
+  const _planLimits = me?.limits || _limitsFromDef;
   const usages = [
     { l:'Audits',      icon:'search',     v:_usage.audit?.used    ?? 0, max:_usage.audit?.limit    ?? _planLimits.audits,    color:'#2563EB', forecast:_dynFcst(_usage.audit?.used??0, _usage.audit?.limit??_planLimits.audits) },
     { l:'PDF',         icon:'file-text',  v:_usage.pdf?.used      ?? 0, max:_usage.pdf?.limit      ?? _planLimits.reports,   color:'#8b5cf6', forecast:_dynFcst(_usage.pdf?.used??0, _usage.pdf?.limit??_planLimits.reports) },
@@ -7201,39 +7199,46 @@ function renderBilling() {
               </tr>
             </thead>
             <tbody>
-              ${[
-                { group:'Core', rows:[
-                  ['Audits / mois', '50', '250', 'Illimités'],
-                  ['Monitors', '10', '50', 'Illimités'],
-                  ['Utilisateurs', '1', '5', 'Illimités'],
-                  ['Rapports PDF', '5', 'Illimités', 'Illimités'],
-                ]},
-                { group:'IA & SEO', rows:[
-                  ['IA Insights', '—', '✓ Pro', '✓ Complet'],
-                  ['White-label', '—', '✓', '✓'],
-                  ['API Access', '—', '✓', '✓ Illimitée'],
-                  ['Analytics concurrents', '—', '✓', '✓'],
-                ]},
-                { group:'Ultra', rows:[
-                  ['Multi-workspace', '—', '—', '✓'],
-                  ['SSO SAML', '—', '—', '✓'],
-                  ['Custom domain', '—', '—', '✓'],
-                  ['Facturation client', '—', '—', '✓'],
-                  ['Onboarding dédié', '—', '—', '✓'],
-                  ['SLA garanti', '—', '—', '99.9%'],
-                ]},
-                { group:'Infrastructure', rows:[
-                  ['Support', 'Email 48h', 'Prioritaire 4h', 'Dédié <1h'],
-                  ['Rétention', '30 jours', '90 jours', '365 jours'],
-                  ['AI Crédits / mois', '100', '1 000', 'Illimités'],
-                  ['Stockage', '1 GB', '10 GB', '100 GB'],
-                  ['Webhooks', '—', '✓', '✓ Avancés'],
-                  ['Alertes SMS', '—', '✓', '✓'],
-                  ['Audit log', '—', '✓', '✓ Complet'],
-                  ['2FA / MFA', '—', '✓', '✓'],
-                  ['Résiliation', 'Mensuel', 'Mensuel', 'Mensuel'],
-                ]},
-              ].map(({ group, rows }, gi) => [
+              ${(() => {
+                const _pd = _planDefs;
+                const _fmtNum = n => n >= 1000000 ? (n/1000000).toFixed(0)+' M' : n >= 1000 ? Math.round(n/1000).toLocaleString('fr-FR')+' k' : n.toLocaleString('fr-FR');
+                const _val = (id, key, fallback) => _pd.find(p=>p.id===id)?.limits?.[key] ?? fallback;
+                const _ai = (id) => { const c=_pd.find(p=>p.id===id)?.aiCredits; return c>=10000000?'Illimités':_fmtNum(c); };
+                return [
+                  { group:'Core', rows:[
+                    ['Audits / mois',  _val('standard','audits',30),  _val('pro','audits',300),  _val('ultra','audits',1000)],
+                    ['Monitors',       _val('standard','monitors',10), _val('pro','monitors',50), _val('ultra','monitors',300)],
+                    ['Utilisateurs',   _val('standard','teamMembers',1), _val('pro','teamMembers',5), _val('ultra','teamMembers',10)],
+                    ['Rapports PDF',   _val('standard','reports',30),  _val('pro','reports',300),   _val('ultra','reports',1000)],
+                    ['Exports',        _val('standard','exports',30),  _val('pro','exports',300),   _val('ultra','exports',1000)],
+                    ['Workspaces',     _val('standard','workspaces',1), _val('pro','workspaces',5),  _val('ultra','workspaces',10)],
+                  ]},
+                  { group:'IA & SEO', rows:[
+                    ['IA Insights', '—', '✓ Pro', '✓ Complet'],
+                    ['White-label', '—', '✓', '✓'],
+                    ['API Access', '—', '✓', '✓ Illimitée'],
+                    ['Analytics concurrents', '—', '✓', '✓'],
+                  ]},
+                  { group:'Ultra', rows:[
+                    ['Multi-workspace', '—', '—', '✓'],
+                    ['SSO SAML', '—', '—', '✓'],
+                    ['Custom domain', '—', '—', '✓'],
+                    ['Facturation client', '—', '—', '✓'],
+                    ['Onboarding dédié', '—', '—', '✓'],
+                    ['SLA garanti', '—', '—', '99.9%'],
+                  ]},
+                  { group:'Infrastructure', rows:[
+                    ['Support', 'Email 48h', 'Prioritaire 4h', 'Dédié <1h'],
+                    ['Rétention', _val('standard','retention',30)+' jours', _val('pro','retention',90)+' jours', _val('ultra','retention',365)+' jours'],
+                    ['AI Crédits / mois', _ai('standard'), _ai('pro'), _ai('ultra')],
+                    ['Stockage', '1 GB', '10 GB', '100 GB'],
+                    ['Webhooks', '—', '✓', '✓ Avancés'],
+                    ['Alertes SMS', '—', '✓', '✓'],
+                    ['Audit log', '—', '✓', '✓ Complet'],
+                    ['2FA / MFA', '—', '✓', '✓'],
+                    ['Résiliation', 'Mensuel', 'Mensuel', 'Mensuel'],
+                  ]},
+                ].map(({ group, rows }, gi) => [
                 `<tr><td colspan="4" style="padding:8px 14px 4px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--fp-text-faint);background:var(--fp-bg-subtle);border-top:${gi>0?'1px solid var(--fp-border)':'none'}">${group}</td></tr>`,
                 ...rows.map(([feat, ...vals], ri) => `<tr style="background:${ri%2===0?'transparent':'var(--fp-bg-subtle)'}">
                   <td style="padding:8px 14px;font-size:11px;font-weight:600;color:var(--fp-text-soft);border-top:1px solid var(--fp-border);white-space:nowrap">${escHtml(feat)}</td>
@@ -10172,17 +10177,23 @@ function renderAI() {
   // SUB: AI CREDITS USAGE
   // ══════════════════════════════════════════════════════════
   if (sub === 'usage') {
-    const creditPlans  = { Standard: 100000, Pro: 500000, Ultra: 15000000 };
-    const maxCredits   = creditPlans[plan] || 100000;
-    const isUnlimited  = isUltra;
+    // ── AI credit defaults read from canonical plan definitions ──
+    const _fallbackCredits = { standard: 100000, pro: 500000, ultra: 10000000 };
+    const _defs = STATE.planDefs;
+    const _getCredits = (id) => {
+      if (_defs && _defs[id]?.aiCredits != null) return _defs[id].aiCredits;
+      return _fallbackCredits[id] || 100000;
+    };
+    const maxCredits   = _getCredits(plan.toLowerCase());
+    const isUnlimited  = maxCredits >= 10000000;
     const fmtNum = n => n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? Math.round(n/1000)+'k' : String(n);
     // Fetch real credits from STATE (loaded via loadAICredits) or fall back to plan default
     const liveCredits  = STATE.aiCredits;
     const usedCredits  = liveCredits ? liveCredits.used  : 0;
     const maxCreditsDB = liveCredits ? (liveCredits.limit + (liveCredits.extra || 0)) : maxCredits;
-    const remaining    = isUnlimited ? 15000000 - usedCredits : Math.max(0, maxCreditsDB - usedCredits);
+    const remaining    = isUnlimited ? maxCredits - usedCredits : Math.max(0, maxCreditsDB - usedCredits);
     const pct          = isUnlimited
-      ? Math.round(usedCredits / 15000000 * 100)
+      ? Math.round(usedCredits / Math.max(maxCredits, 1) * 100)
       : Math.round(usedCredits / Math.max(maxCreditsDB, 1) * 100);
     const pc           = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#2563EB';
     const resetDate    = liveCredits?.resetDate
@@ -11696,19 +11707,30 @@ function fpToggleIssue(rid, el) {
   showToast(ok ? 'success' : 'info', ok ? 'Issue marquée résolue ✓' : 'Issue réouverte');
 }
 
-const FP_PLAN_LIMITS = {
-  Standard: { audit: 50,  monitor: 5,   pdf: 50  },
-  Pro:      { audit: 300, monitor: 50,  pdf: 300 },
-  Ultra:    { audit: 999, monitor: 200, pdf: 999 },
-  Starter:  { audit: 50,  monitor: 5,   pdf: 50  },
-  Agency:   { audit: 999, monitor: 200, pdf: 999 },
-};
+// ── Plan limits — read from canonical definitions when available ──
+function _getPlanLimits(planName) {
+  const id = planName.toLowerCase();
+  const defs = STATE.planDefs;
+  if (defs && defs[id]?.limits) {
+    const lim = defs[id].limits;
+    return { audit: lim.audits, monitor: lim.monitors, pdf: lim.reports };
+  }
+  // fallback canonical (identique au backend)
+  const map = {
+    standard: { audit: 30,  monitor: 10,  pdf: 30  },
+    pro:      { audit: 300, monitor: 50,  pdf: 300 },
+    ultra:    { audit: 1000, monitor: 300, pdf: 1000 },
+    starter:  { audit: 30,  monitor: 10,  pdf: 30  },
+    agency:   { audit: 1000, monitor: 300, pdf: 1000 },
+  };
+  return map[id] || map.pro;
+}
 
 function changePlan(newPlan) {
-  if (!FP_PLAN_LIMITS[newPlan]) return;
+  const l = _getPlanLimits(newPlan);
+  if (!l) return;
   if (!STATE.me) STATE.me = {};
   STATE.me.plan = newPlan;
-  const l = FP_PLAN_LIMITS[newPlan];
   STATE.me.usage = STATE.me.usage || {};
   STATE.me.usage.audit   = { used: STATE.me.usage.audit?.used   ?? 0, limit: l.audit   };
   STATE.me.usage.monitor = { used: STATE.me.usage.monitor?.used ?? 0, limit: l.monitor };
@@ -11724,7 +11746,7 @@ function togglePlanDropdown() {
   }
   const cur = STATE.me?.plan || 'Pro';
   const plans = [
-    { n:'Standard', p:'29€/mois',  color:'#94a3b8', desc:'50 audits · 5 monitors' },
+    { n:'Standard', p:'29€/mois',  color:'#94a3b8', desc:'30 audits · 10 monitors' },
     { n:'Pro',      p:'79€/mois',  color:'#2563EB', desc:'300 audits · IA Insights · PDF' },
     { n:'Ultra',    p:'149€/mois', color:'#8b5cf6', desc:'Illimité · Tout débridé · API' },
   ];
@@ -13146,9 +13168,9 @@ function bindSectionEvents() {
     }));
     $('#billing-change-plan')?.addEventListener('click', () => {
       const plans = [
-        {name:'Standard', price:'29€', features:['50 audits/mois','5 monitors','1 utilisateur']},
+        {name:'Standard', price:'29€', features:['30 audits/mois','10 monitors','1 utilisateur']},
         {name:'Pro',      price:'79€', features:['300 audits/mois','50 monitors','5 utilisateurs','White Label']},
-        {name:'Ultra',    price:'149€',features:['Illimité','200 monitors','15 utilisateurs','API accès','SLA 99.9%']},
+        {name:'Ultra',    price:'149€',features:['1000 audits/mois','300 monitors','10 utilisateurs','API accès','SLA 99.9%']},
       ];
       openFloatPanel('Changer de plan', `
         <div style="display:flex;flex-direction:column;gap:12px">

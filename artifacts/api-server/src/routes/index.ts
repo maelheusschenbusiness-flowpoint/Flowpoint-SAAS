@@ -53,6 +53,7 @@ import adminRouter from "./admin.js";
 import locationRouter from "./location.js";
 import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
+import plansRouter from "./plans.js";
 
 const router: IRouter = Router();
 
@@ -98,6 +99,9 @@ router.use(eventsRouter);
 
 // Public Stripe checkout session — pricing.html public tunnel, no auth required.
 router.use(publicBillingRouter);
+
+// Public plan definitions — all frontend surfaces read from here.
+router.use(plansRouter);
 
 // ── Protected routes (authentication required) ─────────────────────────────
 // All management endpoints require a valid API secret supplied via:

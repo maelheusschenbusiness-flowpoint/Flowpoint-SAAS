@@ -14,10 +14,11 @@ export const CRM_PROVIDERS = [
 
 export type CrmProvider = typeof CRM_PROVIDERS[number]['id'];
 
-const PLAN_LIMITS: Record<string, number> = { Standard: 1, Pro: 3, Ultra: Infinity };
+import { PLAN_DEFINITIONS } from "../lib/plans.js";
 
 export function getCrmLimit(plan: string): number {
-  return PLAN_LIMITS[plan] ?? 1;
+  const def = PLAN_DEFINITIONS[plan.toLowerCase()];
+  return def ? def.limits.workspaces : 1;
 }
 
 export async function getCrmStatus(orgId: string): Promise<{

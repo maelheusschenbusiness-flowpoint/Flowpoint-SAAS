@@ -141,9 +141,9 @@ export function getQuotaLimits(plan: string, addons: Record<string, boolean | nu
   audits: number; monitors: number; reports: number; seats: number; retention: number;
 } {
   const base: Record<string, { audits: number; monitors: number; reports: number; seats: number; retention: number }> = {
-    standard: { audits: 30,   monitors: 3,   reports: 30,   seats: 1,  retention: 30  },
+    standard: { audits: 30,   monitors: 10,  reports: 30,   seats: 1,  retention: 30  },
     pro:      { audits: 300,  monitors: 50,  reports: 300,  seats: 5,  retention: 90  },
-    ultra:    { audits: 2000, monitors: 300, reports: 2000, seats: 10, retention: 365 },
+    ultra:    { audits: 1000, monitors: 300, reports: 1000, seats: 10, retention: 365 },
   };
   const limits = { ...(base[plan.toLowerCase()] ?? base.pro) };
 

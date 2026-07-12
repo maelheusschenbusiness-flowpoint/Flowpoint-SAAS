@@ -27,7 +27,7 @@ export const PLAN_CONFIG = {
     limits: PLAN_LIMITS.pro,
     aiCredits: PLAN_AI_CREDITS.pro,
     features: [
-      "300 audits/mois", "50 monitors", "Rapports illimités", "5 utilisateurs",
+      "300 audits/mois", "50 monitors", "300 rapports PDF/mois", "5 utilisateurs",
       "IA Insights Pro", "Local SEO avancé", "White-label rapports", "API Access",
       "Support prioritaire 4h", "Rétention 90 jours", "Analytics concurrents",
       "Webhooks", "2FA / MFA", "Audit log",
@@ -331,7 +331,7 @@ export async function getInvoices(limit: number = 20) {
 
 // ── Feature gating ────────────────────────────────────────────────────────────
 export const PLAN_FEATURES: Record<string, string[]> = {
-  standard: ["audits:30", "monitors:3", "reports:30", "exports:30", "team:1", "email-support", "export-csv"],
+  standard: ["audits:30", "monitors:10", "reports:30", "exports:30", "team:1", "email-support", "export-csv"],
   pro: [
     "audits:300", "monitors:50", "reports:300", "exports:300", "team:5",
     "ai-insights", "white-label-reports", "api-access", "priority-support",
@@ -339,7 +339,7 @@ export const PLAN_FEATURES: Record<string, string[]> = {
     "keyword-tracking", "behavioral-ai", "cro",
   ],
   ultra: [
-    "audits:unlimited", "monitors:unlimited", "reports:unlimited", "exports:unlimited", "team:unlimited",
+    "audits:1000", "monitors:300", "reports:1000", "exports:1000", "team:10",
     "ai-strategist", "white-label-portal", "sso-enterprise", "custom-domain", "sla-999",
     "retention:365", "multi-workspace", "agency-lab", "client-billing", "dedicated-onboarding",
     "forecasting", "revenue-leak", "automation", "market-intelligence",
