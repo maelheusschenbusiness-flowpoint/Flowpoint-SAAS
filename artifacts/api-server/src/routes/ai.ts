@@ -497,8 +497,8 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
   const userId = req.userId ?? "anonymous";
 
   const aiPrefs = await loadOrgAIPrefs(orgId);
-  if (!checkModuleEnabled(aiPrefs, "aiAlerts")) {
-    res.status(403).json(moduleDisabledResponse("aiAlerts"));
+  if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
+    res.status(403).json(moduleDisabledResponse("dailyAI"));
     return;
   }
 
@@ -625,7 +625,7 @@ router.post("/ai/audit", async (req, res) => {
   const orgId = req.orgId ?? "default";
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
-    res.status(403).json(moduleDisabledResponse("aiAlerts"));
+    res.status(403).json(moduleDisabledResponse("dailyAI"));
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });
@@ -1219,7 +1219,7 @@ router.post("/ai/pagespeed-insights", async (req, res) => {
   const orgId = req.orgId ?? "default";
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
-    res.status(403).json(moduleDisabledResponse("aiAlerts"));
+    res.status(403).json(moduleDisabledResponse("dailyAI"));
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });

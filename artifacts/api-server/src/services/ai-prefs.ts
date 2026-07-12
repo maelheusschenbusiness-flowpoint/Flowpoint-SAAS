@@ -92,27 +92,29 @@ export function resolveAIModel(
 ): ResolvedAIConfig {
   const intensity = INTENSITY_MAP[prefs.aiIntensity] ?? INTENSITY_MAP["Équilibré"];
 
-  // 1. Start from task router default
+  // 1. Hardcoded intensity contract per spec
+  //    Conservateur → gpt-5-mini (OpenAI), Équilibré → task-router default, Agressif → best model
+  //    This guard takes precedence over any provider/model override to guarantee spec compliance.
+  if (prefs.aiIntensity === "Conservateur") {
+    return { provider: "openai", model: "gpt-5-mini", maxTokens: 500, quality: "fast", costPer1kTokens: 0.001 };
+  }
+
+  // 2. Start from task router default
   let { provider, model } = resolveTaskProvider(task, prefs.preferredProvider, capability as any);
 
-  // 2. Intensity overrides for provider selection
+  // 3. Intensity overrides for provider selection
   if (intensity.bias === "cost" && !prefs.preferredProvider) {
-    // Cost-first: prefer Gemini (cheapest), fallback to OpenAI mini
-    if (providerSupports("gemini", capability as any ?? "chat")) {
-      provider = "gemini";
-    } else if (providerSupports("openai", capability as any ?? "chat")) {
-      provider = "openai";
+    if (providerSupports("openai", capability as any ?? "chat")) {
+      provider = "openai"; // keep OpenAI for consistent mini availability
     }
   }
   if (intensity.bias === "quality" && !prefs.preferredProvider) {
     // Quality-first: keep task-router default (usually Anthropic/OpenAI gpt-5)
-    // No override needed — task router already picks the best model per task
   }
 
-  // 3. Model selection based on intensity
+  // 4. Model selection based on intensity
   const caps = PROVIDER_CAPABILITIES[provider];
   if (!caps) {
-    // Ultimate fallback
     return { provider: "openai", model: "gpt-5-mini", maxTokens: 500, quality: intensity.quality, costPer1kTokens: 0.001 };
   }
 
@@ -120,11 +122,9 @@ export function resolveAIModel(
     model = prefs.preferredModel;
   } else {
     if (intensity.quality === "fast") {
-      // Pick cheapest model for this provider
       const cheap = caps.models.find(m => /mini|flash|haiku/i.test(m));
       model = cheap ?? caps.defaultModel;
     } else if (intensity.quality === "max") {
-      // Pick best model for this provider
       const best = caps.models.find(m =>
         /gpt-5(?!.*mini)|opus|pro(?!.*flash)/i.test(m)
       ) ?? caps.models.find(m => /sonnet|o3/i.test(m)) ?? caps.defaultModel;
@@ -134,7 +134,7 @@ export function resolveAIModel(
     }
   }
 
-  // 4. Token budget based on intensity
+  // 5. Token budget based on intensity
   const baseTokens = 800;
   const maxTokens = Math.max(200, Math.round(baseTokens * intensity.tokenMult));
 
