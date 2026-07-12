@@ -970,7 +970,7 @@ async function loadData() {
   const _domain = (STATE.audits[0] && (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return ''; } })()) || '';
   const [
     _schedRes, _udRes, _upcomingRes, _alertRulesRes, _alertEventsRes,
-    _activityRes, _teamMsgsRes, _prefsRes, _notifsRes, _blRes, _llmRes,
+    _activityRes, _teamMsgsRes, _prefsRes, _storageRes, _notifsRes, _blRes, _llmRes,
     _clientsRes, _calRes,
   ] = await Promise.allSettled([
     apiFetch('/api/audits/schedule'),
@@ -981,6 +981,7 @@ async function loadData() {
     apiFetch('/api/activity'),
     apiFetch('/api/team/messages'),
     apiFetch('/api/me/prefs'),
+    apiFetch('/api/me/storage').catch(() => null),
     apiFetch('/api/notifications'),
     _domain ? apiFetch('/api/seo/backlinks?domain='      + encodeURIComponent(_domain)) : Promise.resolve(null),
     _domain ? apiFetch('/api/seo/llm-visibility?domain=' + encodeURIComponent(_domain)) : Promise.resolve(null),
@@ -1012,6 +1013,9 @@ async function loadData() {
     id: e.id, title: e.title, site: e.site||'', type: e.type||'Autre',
     date: e.date||'', startTime: e.startTime||'', duration: e.duration||60, notes: e.notes||'',
   }));
+
+  const _storage = _storageRes.status === 'fulfilled' ? _storageRes.value : null;
+  if (_storage && typeof _storage === 'object' && ('counts' in _storage || 'totalBytes' in _storage)) { STATE.storage = _storage; }
 
   const _prefs = _prefsRes.status === 'fulfilled' ? _prefsRes.value : null;
   if (_prefs) {
