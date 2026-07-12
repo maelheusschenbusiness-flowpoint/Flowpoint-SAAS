@@ -1070,6 +1070,8 @@
     var plan = btn.getAttribute('data-plan');
     if (!plan) return;
     _cart.plan = plan;
+    /* Persist plan immediately so checkout.html always has it */
+    try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
     var planLabels = {
       standard: 'Commencer Standard',
       pro:      'Démarrer Pro — le meilleur choix',
