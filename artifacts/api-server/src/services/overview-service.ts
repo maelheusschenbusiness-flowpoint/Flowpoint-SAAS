@@ -1,6 +1,8 @@
 import { pool } from "@workspace/db";
 import { getGA4Overview } from "./ga4-service.js";
 import { getImpressionsOverTime } from "./gsc-service.js";
+import { PLAN_AI_CREDITS } from "../lib/plans.js";
+import { store } from "./store.js";
 
 export interface OverviewMetrics {
   seoScore: number;
@@ -105,7 +107,7 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
           [orgId]
         ),
         pool.query(
-          `SELECT credits_used, credits_limit
+          `SELECT credits_used
            FROM ai_monthly_usage
            WHERE org_id=$1
            ORDER BY month DESC
@@ -280,7 +282,7 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
       missionsOpen,
       missionsCompleted,
       aiCreditsUsed:     Number(aiRow?.credits_used  ?? 0),
-      aiCreditsLimit:    Number(aiRow?.credits_limit ?? 100_000),
+      aiCreditsLimit:    PLAN_AI_CREDITS[(store.me.plan ?? 'pro').toLowerCase()] ?? 100_000,
       revenueLeaks:      Number(leakRow?.count ?? 0),
       revenueLeakAmount: Math.round(Number(leakRow?.total ?? 0)),
       avgLatency,

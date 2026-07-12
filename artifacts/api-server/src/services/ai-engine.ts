@@ -64,14 +64,12 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
   const tokenLimit  = PLAN_AI_TOKENS[plan] ?? 150_000;
 
   type RowT = {
-    credits_used: number; credits_limit: number; credits_extra: number;
-    cost_eur: number; request_count: number; tokens_used: number;
+    credits_used: number; cost_eur: number; request_count: number; tokens_used: number;
   };
 
   const result = await withOrgDb<RowT | null>(orgId, async (client) => {
     const { rows } = await client.query<RowT>(
-      `SELECT credits_used, credits_limit, credits_extra, cost_eur, request_count,
-              COALESCE(tokens_used, 0) AS tokens_used
+      `SELECT credits_used, cost_eur, request_count, COALESCE(tokens_used, 0) AS tokens_used
        FROM ai_monthly_usage WHERE org_id = $1 AND month = $2 LIMIT 1`,
       [orgId, month]
     );
@@ -79,10 +77,10 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
 
     await client.query(
       `INSERT INTO ai_monthly_usage
-         (id, org_id, month, credits_used, credits_limit, credits_extra, cost_eur, request_count, tokens_used, reset_at, updated_at)
-       VALUES ($1,$2,$3,0,$4,0,0,0,0,$5,NOW())
+         (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
+       VALUES ($1,$2,$3,0,0,0,0,$4,NOW())
        ON CONFLICT (org_id, month) DO NOTHING`,
-      [`amu_${orgId}_${month}`, orgId, month, creditLimit, monthResetDate()]
+      [`amu_${orgId}_${month}`, orgId, month, monthResetDate()]
     );
     return null;
   });
@@ -90,8 +88,8 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
   if (result) {
     return {
       creditsUsed:  Number(result.credits_used),
-      creditsLimit: Number(result.credits_limit),
-      creditsExtra: Number(result.credits_extra),
+      creditsLimit: creditLimit,
+      creditsExtra: 0,
       costEur:      Number(result.cost_eur),
       requestCount: Number(result.request_count),
       tokensUsed:   Number(result.tokens_used),
@@ -158,20 +156,19 @@ export async function consumeAICredits(opts: {
       );
     });
 
-    const lim = planCreditLimit(store.me.plan);
     const client2 = await pool.connect();
     try {
       await client2.query(
         `INSERT INTO ai_monthly_usage
-           (id, org_id, month, credits_used, credits_limit, credits_extra, cost_eur, request_count, tokens_used, reset_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,0,$6,1,$7,$8,NOW())
+           (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,1,$6,$7,NOW())
          ON CONFLICT (org_id, month) DO UPDATE
            SET credits_used   = ai_monthly_usage.credits_used   + $4,
-               cost_eur       = ai_monthly_usage.cost_eur       + $6,
+               cost_eur       = ai_monthly_usage.cost_eur       + $5,
                request_count  = ai_monthly_usage.request_count  + 1,
-               tokens_used    = ai_monthly_usage.tokens_used    + $7,
+               tokens_used    = ai_monthly_usage.tokens_used    + $6,
                updated_at     = NOW()`,
-        [`amu_${orgId}_${month}`, orgId, month, creditsDebited, lim, realCostEur, tokensIn + tokensOut, monthResetDate()]
+        [`amu_${orgId}_${month}`, orgId, month, creditsDebited, realCostEur, tokensIn + tokensOut, monthResetDate()]
       );
     } finally {
       client2.release();
@@ -269,20 +266,19 @@ export async function recordCompletedUsage(opts: {
     logger.warn({ err }, "[AI] recordCompletedUsage: log insert failed");
   }
 
-  const lim = planCreditLimit(store.me.plan);
   const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO ai_monthly_usage
-         (id, org_id, month, credits_used, credits_limit, credits_extra, cost_eur, request_count, tokens_used, reset_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,0,$6,1,$7,$8,NOW())
+         (id, org_id, month, credits_used, cost_eur, request_count, tokens_used, reset_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,1,$6,$7,NOW())
        ON CONFLICT (org_id, month) DO UPDATE
          SET credits_used   = ai_monthly_usage.credits_used   + $4,
-             cost_eur       = ai_monthly_usage.cost_eur       + $6,
+             cost_eur       = ai_monthly_usage.cost_eur       + $5,
              request_count  = ai_monthly_usage.request_count  + 1,
-             tokens_used    = ai_monthly_usage.tokens_used    + $7,
+             tokens_used    = ai_monthly_usage.tokens_used    + $6,
              updated_at     = NOW()`,
-      [`amu_${orgId}_${month}`, orgId, month, creditsDeb, lim, realCostEur, tokensIn + tokensOut, monthResetDate()]
+      [`amu_${orgId}_${month}`, orgId, month, creditsDeb, realCostEur, tokensIn + tokensOut, monthResetDate()]
     );
   } catch (err) {
     logger.warn({ err }, "[AI] recordCompletedUsage: monthly upsert failed");
@@ -339,8 +335,7 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
 
   try {
     type MonthRow = {
-      credits_used: number; credits_limit: number; credits_extra: number;
-      cost_eur: number; request_count: number; tokens_used: number;
+      credits_used: number; cost_eur: number; request_count: number; tokens_used: number;
     };
     type LogRow    = { feature: string; credits: string; cost: string };
     type ProviderRow = { provider: string; credits: string; cost: string };
@@ -353,8 +348,7 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
     >(orgId, async (client) => {
       const [mRes, lRes, pRes, moRes, aRes, dRes] = await Promise.all([
         client.query<MonthRow>(
-          `SELECT credits_used, credits_limit, credits_extra, cost_eur, request_count,
-                  COALESCE(tokens_used, 0) AS tokens_used
+          `SELECT credits_used, cost_eur, request_count, COALESCE(tokens_used, 0) AS tokens_used
            FROM ai_monthly_usage WHERE org_id=$1 AND month=$2 LIMIT 1`,
           [orgId, currentMonth()]
         ),
@@ -392,8 +386,8 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
       const m = mr
         ? {
             creditsUsed:  Number(mr.credits_used),
-            creditsLimit: Number(mr.credits_limit),
-            creditsExtra: Number(mr.credits_extra),
+            creditsLimit: creditLimit,
+            creditsExtra: 0,
             costEur:      Number(mr.cost_eur),
             requestCount: Number(mr.request_count),
             tokensUsed:   Number(mr.tokens_used),
