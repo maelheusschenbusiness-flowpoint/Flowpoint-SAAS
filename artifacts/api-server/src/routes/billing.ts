@@ -42,6 +42,18 @@ router.post("/billing/create-checkout-session", billingCheckoutRateLimit, async 
 router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, res: Response) => {
   const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
 
+  // Guard: reject if a subscription is already active — direct to upgrade instead
+  const currentStatus = store.me.subscriptionStatus;
+  if (currentStatus === "active" || currentStatus === "trialing") {
+    logger.warn({ currentStatus, plan }, "[Billing] checkout blocked — subscription already active");
+    res.status(409).json({
+      error: "subscription_already_active",
+      message: "Vous avez déjà un abonnement actif. Utilisez la mise à niveau pour changer de plan.",
+      redirectTo: "/api/billing/upgrade",
+    });
+    return;
+  }
+
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
@@ -86,11 +98,56 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       store.me.stripeCustomerId = customerId;
     }
 
+    // Authoritative Stripe-side check: if customer exists, verify no active/trialing sub exists
+    // This catches stale store state where subscriptionStatus may be null/canceled but Stripe is active
+    if (customerId) {
+      const existingSubs = await stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 });
+      if (existingSubs.data.length > 0) {
+        logger.warn({ customerId, plan }, "[Billing] checkout blocked by Stripe — active subscription already exists");
+        res.status(409).json({
+          error: "subscription_already_active",
+          message: "Vous avez déjà un abonnement actif. Utilisez la mise à niveau pour changer de plan.",
+          redirectTo: "/api/billing/upgrade",
+        });
+        return;
+      }
+      // Also check trialing
+      const trialingSubs = await stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 });
+      if (trialingSubs.data.length > 0) {
+        logger.warn({ customerId, plan }, "[Billing] checkout blocked by Stripe — trialing subscription already exists");
+        res.status(409).json({
+          error: "subscription_already_active",
+          message: "Vous êtes en période d'essai. Vous ne pouvez pas créer un second abonnement.",
+          redirectTo: "/api/billing/upgrade",
+        });
+        return;
+      }
+    }
+
+    // Guard: only grant 14-day trial for true first-time subscribers
+    // Check trialEndsAt (set whenever a trial was ever started) AND Stripe full subscription history
+    // (status: "all" includes canceled/unpaid/past_due — prevents re-trial after cancellation)
+    const hasHadTrial = !!store.me.trialEndsAt;
+    let hasStripeSubHistory = false;
+    if (customerId) {
+      const allSubs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
+      hasStripeSubHistory = allSubs.data.length > 0;
+    }
+    const grantTrial = !hasHadTrial && !hasStripeSubHistory;
+
+    const subscriptionData: Record<string, unknown> = {};
+    if (grantTrial) {
+      subscriptionData["trial_period_days"] = 14;
+      logger.info({ plan }, "[Billing] Granting 14-day trial — confirmed first-time subscriber");
+    } else {
+      logger.info({ plan, hasHadTrial, hasStripeSubHistory }, "[Billing] Skipping trial — user has prior subscription history");
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
       line_items: lineItems,
-      subscription_data: { trial_period_days: 14 },
+      subscription_data: subscriptionData,
       success_url: `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${publicUrl}/cancel.html?next=${encodeURIComponent("/pricing.html")}`,
       metadata: { plan, addons: JSON.stringify(addons) },
@@ -419,6 +476,19 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, async (req: Request, r
   const { plan = "", interval = "monthly" } = req.body as { plan?: string; interval?: string };
   if (!plan) { res.status(400).json({ error: "plan required" }); return; }
 
+  // Guard: reject if target plan is already the active plan
+  const currentPlan   = (store.me.plan || "").toLowerCase();
+  const targetPlan    = plan.toLowerCase();
+  const upgradeStatus = store.me.subscriptionStatus;
+  if (targetPlan && targetPlan === currentPlan && (upgradeStatus === "active" || upgradeStatus === "trialing")) {
+    logger.warn({ currentPlan, targetPlan }, "[Billing] upgrade blocked — plan already active");
+    res.status(409).json({
+      error: "plan_already_active",
+      message: `Le plan ${plan} est déjà votre plan actuel.`,
+    });
+    return;
+  }
+
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
@@ -509,6 +579,19 @@ router.get("/billing/subscription", async (_req: Request, res: Response) => {
 // We add /billing/checkout/annual as a convenience.
 router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
   const { plan = "pro", addons = {}, coupon } = req.body as { plan?: string; addons?: AddonsMap; coupon?: string };
+
+  // Guard: reject if a subscription is already active
+  const currentStatusAnnual = store.me.subscriptionStatus;
+  if (currentStatusAnnual === "active" || currentStatusAnnual === "trialing") {
+    logger.warn({ currentStatus: currentStatusAnnual, plan }, "[Billing] annual-checkout blocked — subscription already active");
+    res.status(409).json({
+      error: "subscription_already_active",
+      message: "Vous avez déjà un abonnement actif. Utilisez la mise à niveau pour changer de plan.",
+      redirectTo: "/api/billing/upgrade",
+    });
+    return;
+  }
+
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
 
@@ -543,6 +626,30 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
       });
       customerId = customer.id;
       store.me.stripeCustomerId = customerId;
+    }
+
+    // Authoritative Stripe-side check: verify no active/trialing subscription exists
+    if (customerId) {
+      const existingActiveSubs = await stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 });
+      if (existingActiveSubs.data.length > 0) {
+        logger.warn({ customerId, plan }, "[Billing] annual-checkout blocked by Stripe — active subscription already exists");
+        res.status(409).json({
+          error: "subscription_already_active",
+          message: "Vous avez déjà un abonnement actif. Utilisez la mise à niveau pour changer de plan.",
+          redirectTo: "/api/billing/upgrade",
+        });
+        return;
+      }
+      const existingTrialSubs = await stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 });
+      if (existingTrialSubs.data.length > 0) {
+        logger.warn({ customerId, plan }, "[Billing] annual-checkout blocked by Stripe — trialing subscription already exists");
+        res.status(409).json({
+          error: "subscription_already_active",
+          message: "Vous êtes en période d'essai. Vous ne pouvez pas créer un second abonnement.",
+          redirectTo: "/api/billing/upgrade",
+        });
+        return;
+      }
     }
 
     const sessionParams: Parameters<typeof stripe.checkout.sessions.create>[0] = {
@@ -887,6 +994,57 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
 router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Request, res: Response): Promise<void> => {
   const { addonKey = "", addonName = "", price = "" } = req.body as { addonKey?: string; addonName?: string; price?: string };
   if (!addonKey) { res.status(400).json({ error: "addonKey required" }); return; }
+
+  // Guard: reject if add-on is already active — Stripe is authoritative when possible
+  const addonPriceId = ADDON_PRICE_IDS[addonKey];
+  const stripeKeyForAddonCheck = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+
+  if (stripeKeyForAddonCheck && store.me.stripeCustomerId) {
+    // Always check Stripe directly — regardless of local store state — to prevent stale-state bypasses
+    try {
+      const { default: Stripe } = await import("stripe");
+      const stripeForAddonCheck = new Stripe(stripeKeyForAddonCheck, { apiVersion: "2026-04-22.dahlia" });
+      const activeSubs = await stripeForAddonCheck.subscriptions.list({
+        customer: store.me.stripeCustomerId,
+        status: "active",
+        limit: 10,
+      });
+      // Also check trialing subscriptions
+      const trialSubs = await stripeForAddonCheck.subscriptions.list({
+        customer: store.me.stripeCustomerId,
+        status: "trialing",
+        limit: 10,
+      });
+      const allSubs = [...activeSubs.data, ...trialSubs.data];
+      if (addonPriceId && allSubs.some(sub =>
+        sub.items.data.some(item => item.price.id === addonPriceId)
+      )) {
+        logger.warn({ addonKey, customerId: store.me.stripeCustomerId }, "[Billing] addon-checkout blocked — addon already active in Stripe subscription");
+        res.status(409).json({ error: "addon_already_active", message: `L'add-on "${addonName || addonKey}" est déjà actif sur votre abonnement.` });
+        return;
+      }
+      // Stripe confirms not active — allow purchase even if local store says otherwise
+    } catch (stripeCheckErr) {
+      // Stripe check failed — fall back to local store state as a safety net
+      logger.warn({ stripeCheckErr, addonKey }, "[Billing] Stripe addon active-check failed — falling back to store state");
+      const existingAddons = store.me.addons as Record<string, boolean | number>;
+      const existingVal = existingAddons[addonKey];
+      if (existingVal === true || (typeof existingVal === "number" && existingVal > 0)) {
+        logger.warn({ addonKey }, "[Billing] addon-checkout blocked by store state fallback — addon active");
+        res.status(409).json({ error: "addon_already_active", message: `L'add-on "${addonName || addonKey}" est déjà actif sur votre abonnement.` });
+        return;
+      }
+    }
+  } else {
+    // No Stripe credentials or no customer — fall back to local store state
+    const existingAddons = store.me.addons as Record<string, boolean | number>;
+    const existingVal = existingAddons[addonKey];
+    if (existingVal === true || (typeof existingVal === "number" && existingVal > 0)) {
+      logger.warn({ addonKey }, "[Billing] addon-checkout blocked — addon already active (store state, no Stripe key)");
+      res.status(409).json({ error: "addon_already_active", message: `L'add-on "${addonName || addonKey}" est déjà actif sur votre abonnement.` });
+      return;
+    }
+  }
 
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";

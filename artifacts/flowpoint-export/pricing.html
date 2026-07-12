@@ -1198,6 +1198,14 @@
   window.selectPlan = function (btn) {
     var plan = btn.getAttribute('data-plan');
     if (!plan) return;
+
+    /* Backend-authoritative guard: block if plan already active */
+    var bs = window._fpBillingState;
+    if (bs && bs.plan === plan && (bs.status === 'active' || bs.status === 'trialing')) {
+      showToast('Ce plan est déjà votre plan actuel', true);
+      return;
+    }
+
     _cart.plan = plan;
     /* Persist plan immediately so checkout.html always has it */
     try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
@@ -1236,6 +1244,13 @@
 
   /* ── Add addon to cart ── */
   window.addToCart = function (btn, addonId, isQty) {
+    /* Backend-authoritative guard: block if add-on already active */
+    var bs = window._fpBillingState;
+    if (bs && bs.addons && bs.addons[addonId]) {
+      showToast('Cet add-on est déjà actif sur votre compte', true);
+      return;
+    }
+
     var qty = 1;
     if (isQty) {
       var inp = document.getElementById('qty-' + addonId);
@@ -1342,48 +1357,172 @@
 
 })();
 
-/* ── Dashboard state integration — pre-fill plan & active add-ons ── */
+/* ── Billing state: backend is source of truth, localStorage is visual cache ── */
 (function() {
-  var state = null;
-  try { state = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null'); } catch(e) {}
-  if (!state || !state.fromDashboard) return;
+  'use strict';
 
-  /* Banner */
-  var navEl = document.querySelector('.fp-nav');
-  if (navEl) {
-    var planName = (state.planLabel || state.plan || '').replace(/\b\w/g, function(l){ return l.toUpperCase(); });
-    var banner = document.createElement('div');
-    banner.id = 'fp-db-banner';
-    banner.style.cssText = 'background:rgba(37,99,235,0.07);border-bottom:1px solid rgba(37,99,235,0.15);padding:8px 28px;font-size:12px;color:var(--text-soft);display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-    banner.innerHTML = '<span style="font-size:16px">📊</span>'
-      + '<span>Tableau de bord · Plan actuel\u00a0: <strong>' + planName + '</strong>'
-      + (state.nextDate ? ' · Renouvellement\u00a0: ' + state.nextDate : '') + '</span>'
-      + '<a href="/dashboard.html" style="margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap">\u2190 Retour au tableau de bord</a>';
-    navEl.insertAdjacentElement('afterend', banner);
+  /* Normalise a raw data object (from localStorage or API) into a canonical shape */
+  function normalise(raw) {
+    if (!raw) return null;
+    return {
+      plan:       (raw.plan || raw.current || '').toLowerCase() || null,
+      planLabel:  raw.planLabel || raw.plan || raw.current || '',
+      status:     raw.status || raw.subscriptionStatus || null,
+      addons:     raw.addons || {},
+      nextDate:   raw.nextDate || raw.currentPeriodEnd
+                    ? (raw.nextDate || new Date(raw.currentPeriodEnd).toLocaleDateString('fr-FR')) : null,
+      trialEndsAt: raw.trialEndsAt || null,
+    };
   }
 
-  /* Mark current plan button */
-  if (state.plan) {
+  /* Render the banner, mark active plan button and active add-on buttons */
+  function applyBillingState(data) {
+    if (!data || !data.plan) return;
+
+    /* Store in global so selectPlan / addToCart can guard against re-purchase */
+    window._fpBillingState = data;
+
+    /* ── Banner ── */
+    var navEl = document.querySelector('.fp-nav');
+    if (navEl && !document.getElementById('fp-db-banner')) {
+      var planName = (data.planLabel || data.plan || '').replace(/\b\w/g, function(l){ return l.toUpperCase(); });
+      var banner = document.createElement('div');
+      banner.id = 'fp-db-banner';
+      banner.style.cssText = 'background:rgba(37,99,235,0.07);border-bottom:1px solid rgba(37,99,235,0.15);padding:8px 28px;font-size:12px;color:var(--text-soft);display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+      banner.innerHTML = '<span style="font-size:16px">📊</span>'
+        + '<span>Tableau de bord\u00a0· Plan actuel\u00a0: <strong>' + planName + '</strong>'
+        + (data.nextDate ? ' · Renouvellement\u00a0: ' + data.nextDate : '')
+        + (data.trialEndsAt ? ' · <span style="color:var(--blue)">Essai jusqu\'au ' + new Date(data.trialEndsAt).toLocaleDateString('fr-FR') + '</span>' : '')
+        + '</span>'
+        + '<a href="/dashboard.html" style="margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap">\u2190 Retour au tableau de bord</a>';
+      navEl.insertAdjacentElement('afterend', banner);
+    } else if (navEl) {
+      /* Update existing banner content on backend refresh */
+      var existing = document.getElementById('fp-db-banner');
+      if (existing) {
+        var planName2 = (data.planLabel || data.plan || '').replace(/\b\w/g, function(l){ return l.toUpperCase(); });
+        var span = existing.querySelector('span:nth-child(2)');
+        if (span) {
+          span.innerHTML = 'Tableau de bord\u00a0· Plan actuel\u00a0: <strong>' + planName2 + '</strong>'
+            + (data.nextDate ? ' · Renouvellement\u00a0: ' + data.nextDate : '')
+            + (data.trialEndsAt ? ' · <span style="color:var(--blue)">Essai jusqu\'au ' + new Date(data.trialEndsAt).toLocaleDateString('fr-FR') + '</span>' : '');
+        }
+      }
+    }
+
+    var planLabelsDefault = {
+      standard: 'Commencer Standard',
+      pro:      'D\u00e9marrer Pro \u2014 le meilleur choix',
+      ultra:    'D\u00e9marrer Ultra'
+    };
+
+    /* ── Mark current plan button; fully reset all others ── */
+    var isActiveSub = data.status === 'active' || data.status === 'trialing';
     document.querySelectorAll('.fp-card-btn[data-plan]').forEach(function(btn) {
-      if (btn.getAttribute('data-plan') !== state.plan) return;
-      btn.textContent = '\u2713 Votre plan actuel';
-      btn.disabled = true;
-      btn.style.cssText += ';background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.35);color:#34d399;cursor:default;opacity:1';
-      var card = btn.closest('.fp-card');
-      if (card) { card.style.borderColor = 'rgba(16,185,129,0.4)'; card.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.1)'; }
+      var btnPlan = btn.getAttribute('data-plan');
+      if (btnPlan === data.plan && isActiveSub) {
+        btn.textContent = '\u2713 Votre plan actuel';
+        btn.disabled = true;
+        btn.style.background = 'rgba(16,185,129,0.12)';
+        btn.style.borderColor = 'rgba(16,185,129,0.35)';
+        btn.style.color = '#34d399';
+        btn.style.cursor = 'default';
+        btn.style.opacity = '1';
+        var card = btn.closest('.fp-card');
+        if (card) { card.style.borderColor = 'rgba(16,185,129,0.4)'; card.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.1)'; }
+      } else {
+        /* Backend says this plan is NOT the active one — fully reset to default */
+        btn.disabled = false;
+        btn.classList.remove('fp-card-btn-selected');
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        btn.style.cursor = '';
+        btn.style.opacity = '';
+        /* Restore default label only if it was set by applyBillingState, not by selectPlan() */
+        if (btn.textContent === '\u2713 Votre plan actuel') {
+          btn.textContent = planLabelsDefault[btnPlan] || 'Commencer';
+        }
+        var cardEl = btn.closest('.fp-card');
+        if (cardEl) { cardEl.style.borderColor = ''; cardEl.style.boxShadow = ''; cardEl.classList.remove('cart-selected'); }
+      }
+    });
+
+    /* ── Mark active add-ons; fully reset inactive ones ── */
+    var active = data.addons || {};
+    /* Scan all add-on buttons in the DOM */
+    document.querySelectorAll('button[onclick*="addToCart"]').forEach(function(btn) {
+      var m = (btn.getAttribute('onclick') || '').match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+      if (!m) return;
+      var key = m[1];
+      if (active[key]) {
+        btn.textContent = '\u2713 Actif';
+        btn.disabled = true;
+        btn.style.background = 'rgba(16,185,129,0.12)';
+        btn.style.borderColor = 'rgba(16,185,129,0.3)';
+        btn.style.color = '#34d399';
+        btn.style.cursor = 'default';
+      } else {
+        /* Backend says not active — reset to default */
+        btn.disabled = false;
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        btn.style.cursor = '';
+        if (btn.textContent === '\u2713 Actif' || btn.textContent === '\u2713 Dans le panier') {
+          btn.textContent = 'Activer \u2192';
+        }
+      }
     });
   }
 
-  /* Mark active add-ons */
-  var active = state.addons || {};
-  Object.keys(active).forEach(function(key) {
-    if (!active[key]) return;
-    var btn = document.querySelector('button[onclick*="addToCart"][onclick*="\'' + key + '\'"]');
-    if (!btn) return;
-    btn.textContent = '\u2713 Actif';
-    btn.disabled = true;
-    btn.style.cssText += ';background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.3);color:#34d399;cursor:default';
-  });
+  /* ── Step 1: instant render from localStorage (visual cache, anti-flash) ── */
+  var cached = null;
+  try {
+    var raw = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null');
+    if (raw && raw.fromDashboard) cached = normalise(raw);
+  } catch(e) {}
+  if (cached) applyBillingState(cached);
+
+  /* ── Step 2: fetch from backend — backend always wins ── */
+  fetch('/api/billing/subscription', { credentials: 'include' })
+    .then(function(res) {
+      if (res.status === 401) return null; /* Not logged in — pricing page is public */
+      if (!res.ok) return null;
+      return res.json();
+    })
+    .then(function(apiData) {
+      if (!apiData) return;
+      var backend = normalise(apiData);
+      if (!backend || !backend.plan) return;
+
+      /* Detect divergence between cache and backend — backend wins silently */
+      var addonsMatch = cached && JSON.stringify(cached.addons || {}) === JSON.stringify(backend.addons || {});
+      var diverged = !cached
+        || cached.plan !== backend.plan
+        || cached.status !== backend.status
+        || !addonsMatch
+        || cached.trialEndsAt !== backend.trialEndsAt
+        || cached.nextDate !== backend.nextDate;
+
+      /* Apply authoritative backend state */
+      applyBillingState(backend);
+
+      /* Sync localStorage so next page load gets the correct cache */
+      if (diverged) {
+        try {
+          var stored = JSON.parse(localStorage.getItem('fp_dashboard_state') || '{}');
+          stored.plan   = backend.plan;
+          stored.planLabel = backend.planLabel;
+          stored.status = backend.status;
+          stored.addons = backend.addons;
+          stored.nextDate = backend.nextDate;
+          stored.trialEndsAt = backend.trialEndsAt;
+          localStorage.setItem('fp_dashboard_state', JSON.stringify(stored));
+        } catch(e) {}
+      }
+    })
+    .catch(function() { /* non-fatal: offline or API down — cached state already applied */ });
 })();
 </script>
 </body>
