@@ -228,22 +228,9 @@ router.get("/me/storage", async (req: Request, res: Response): Promise<void> => 
 
       const totalItems = audits + reports + monitors + keywords + uploads + integrations + logs + psiCache;
 
-      // Try to get real DB size; fallback to estimation
-      let estimatedBytes = 0;
-      let isEstimated = true;
-      try {
-        const sizeRes = await client.query<{ total_bytes: number }>(
-          `SELECT COALESCE(
-            (SELECT SUM(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename)))::bigint
-             FROM pg_tables
-             WHERE tablename = ANY($1)), 0) AS total_bytes`,
-          [['audits', 'reports', 'monitors', 'tracked_keywords', 'team_files', 'automation_integrations', 'automation_logs', 'psi_cache']]
-        );
-        estimatedBytes = Number(sizeRes.rows[0]?.total_bytes ?? 0);
-        if (estimatedBytes > 0) isEstimated = false;
-      } catch {
-        estimatedBytes = totalItems * 2500; // ~2.5 KB/item rough avg
-      }
+      // Estimate per-org storage from row counts (accurate enough for billing UI)
+      const estimatedBytes = totalItems * 2500; // ~2.5 KB/item rough avg per org
+      const isEstimated = true;
 
       res.json({
         orgId,
@@ -258,6 +245,7 @@ router.get("/me/storage", async (req: Request, res: Response): Promise<void> => 
                 : `${(estimatedBytes / (1024 * 1024)).toFixed(2)} MB`
             : "0 B",
           estimated: isEstimated,
+          note: "Estimation par org basée sur le nombre de lignes",
         },
       });
     } finally {

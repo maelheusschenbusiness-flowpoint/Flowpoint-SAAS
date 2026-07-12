@@ -502,15 +502,11 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
     return;
   }
 
-  // 1. Resolve provider + model: explicit > task-based > default (OpenAI)
-  const selectedProvider = provider ?? "openai";
-  let selectedModel = model;
-  if (!selectedModel) {
-    // Use task router for chat defaults
-    const { resolveTaskProvider } = await import("../services/ai-providers/task-router.js");
-    const resolved = resolveTaskProvider("chat", selectedProvider);
-    selectedModel = resolved.model;
-  }
+  // 1. Resolve provider + model + maxTokens from org AI prefs (intensity wiring)
+  const aiCfg = await selectOptimalModel("chat", orgId);
+  const selectedProvider = provider ?? aiCfg.provider;
+  const selectedModel    = model    ?? aiCfg.model;
+  const selectedMaxTokens = Math.min(800, aiCfg.maxTokens); // chat stays bounded
 
   // 2. Token-based quota check — strict pre-flight against monthly token budget
   //    If DB is unavailable getOrCreateMonthlyUsage() throws and we allow the request
@@ -562,7 +558,7 @@ ${fpContext}`;
         model: selectedModel,
         systemPrompt: messages[0]!.content,
         messages: messages.slice(1),
-        maxTokens: 800,
+        maxTokens: selectedMaxTokens,
       });
 
       for await (const chunk of stream) {
@@ -597,7 +593,7 @@ ${fpContext}`;
         model: selectedModel,
         systemPrompt: messages[0]!.content,
         messages: messages.slice(1),
-        maxTokens: 800,
+        maxTokens: selectedMaxTokens,
       });
       const reply = result.text || "Je ne peux pas repondre pour le moment.";
       const latencyMs = Date.now() - t0;
@@ -628,7 +624,7 @@ router.post("/ai/audit", async (req, res) => {
 
   const orgId = req.orgId ?? "default";
   const aiPrefs = await loadOrgAIPrefs(orgId);
-  if (!checkModuleEnabled(aiPrefs, "aiAlerts")) {
+  if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
     res.status(403).json(moduleDisabledResponse("aiAlerts"));
     return;
   }
@@ -1222,7 +1218,7 @@ router.post("/ai/pagespeed-insights", async (req, res) => {
 
   const orgId = req.orgId ?? "default";
   const aiPrefs = await loadOrgAIPrefs(orgId);
-  if (!checkModuleEnabled(aiPrefs, "aiAlerts")) {
+  if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
     res.status(403).json(moduleDisabledResponse("aiAlerts"));
     return;
   }
