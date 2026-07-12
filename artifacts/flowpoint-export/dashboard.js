@@ -9074,7 +9074,7 @@ function renderSettings() {
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
               ${platformCards.map(p => `
-                <div style="padding:16px;border-radius:12px;border:1px solid ${p.connected>0?platColor(p.id)+'44':'rgba(255,255,255,0.15)'};background:${p.connected>0?platColor(p.id)+'08':'var(--fp-inner-card)'}">
+                <div style="padding:16px;border-radius:12px;border:1px solid ${p.connected>0?platColor(p.id)+'44':'rgba(255,255,255,0.15)'};background:${p.connected>0?platColor(p.id)+'08':'rgba(15,23,42,0.95)'}">
                   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                     ${platSvgIcon(p.id)}
                     <div style="flex:1">
@@ -10604,7 +10604,15 @@ async function loadAICredits() {
       const limit = m.creditsLimit ?? data.creditsLimit ?? data.limit ?? 0;
       const extra = m.creditsExtra ?? data.creditsExtra ?? data.extra ?? 0;
       const resetDate = m.resetDate ?? data.resetDate ?? null;
-      STATE.aiCredits = { used, limit, extra, resetDate, raw: data };
+      STATE.aiCredits = {
+        used, limit, extra, resetDate,
+        byFeature:    data.byFeature    || [],
+        byProvider:   data.byProvider   || [],
+        byModel:      data.byModel      || [],
+        dailyHistory: data.dailyHistory || [],
+        costEur:      data.estimatedCostEur ?? data.costEur ?? 0,
+        raw: data,
+      };
     }
   } catch(_) { /* non-bloquant */ }
 }
@@ -14326,7 +14334,7 @@ async function init() {
   };
 
   window._showConnectModal = function(platformId, platformName, platformIcon) {
-    const _webhookNative = ['zapier','make','slack','discord','n8n','hubspot','mailchimp','airtable','pipedrive','notion'];
+    const _webhookNative = ['zapier','make','discord','n8n','hubspot','mailchimp','airtable','pipedrive'];
     if (_webhookNative.includes(platformId)) {
       window._currentPlatform = platformId;
       const titleEl = document.getElementById('fp-intg-modal-title');

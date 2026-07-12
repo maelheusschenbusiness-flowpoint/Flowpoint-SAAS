@@ -506,7 +506,7 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
   const aiCfg = await selectOptimalModel("chat", orgId);
   const selectedProvider = provider ?? aiCfg.provider;
   const selectedModel    = model    ?? aiCfg.model;
-  const selectedMaxTokens = Math.min(800, aiCfg.maxTokens); // chat stays bounded
+  const selectedMaxTokens = aiCfg.maxTokens; // respect intensity token budget (Conservateur=480, Équilibré=800, Agressif=1200)
 
   // 2. Token-based quota check — strict pre-flight against monthly token budget
   //    If DB is unavailable getOrCreateMonthlyUsage() throws and we allow the request
