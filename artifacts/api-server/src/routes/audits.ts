@@ -103,7 +103,7 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
           `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5`,
           [score, status, speed, issues, auditId],
         );
-        evaluateAlertRulesForAudit(normalizedUrl, score).catch(() => {});
+        evaluateAlertRulesForAudit(normalizedUrl, score, orgId).catch(() => {});
         store.broadcast({ type: "audit:complete", auditId, score, status });
       } catch {
         await pool.query(

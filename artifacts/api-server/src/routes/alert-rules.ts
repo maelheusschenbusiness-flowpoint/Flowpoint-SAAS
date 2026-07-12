@@ -32,6 +32,12 @@ router.get("/alert-rules", async (req, res) => {
   }
 });
 
+// ── GET /alert-rules/templates ────────────────────────────────────────────────
+// Must be BEFORE /:id so Express doesn't consume "templates" as a dynamic param
+router.get("/alert-rules/templates", (_req, res) => {
+  res.json(DEFAULT_TEMPLATES);
+});
+
 // ── GET /alert-rules/:id ──────────────────────────────────────────────────────
 router.get("/alert-rules/:id", async (req, res) => {
   try {
@@ -72,10 +78,6 @@ router.post("/alert-rules", async (req, res) => {
   }
 });
 
-// ── GET /alert-rules/templates ────────────────────────────────────────────────
-router.get("/alert-rules/templates", (_req, res) => {
-  res.json(DEFAULT_TEMPLATES);
-});
 
 // ── PATCH /alert-rules/mark-all-read ─────────────────────────────────────────
 router.patch("/alert-rules/mark-all-read", async (req, res) => {

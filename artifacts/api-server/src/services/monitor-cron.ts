@@ -7,12 +7,17 @@ import { store } from "./store.js";
 
 // ── SEO Alert evaluation ──────────────────────────────────────────────────────
 
-export async function evaluateAlertRulesForAudit(url: string, score: number): Promise<void> {
+export async function evaluateAlertRulesForAudit(url: string, score: number, orgId: string): Promise<void> {
+  if (!orgId) return; // Never evaluate without org scope — prevents cross-tenant leakage
   try {
     const client = await pool.connect();
     try {
       const rules = await client.query(
-        `SELECT * FROM alert_rules WHERE enabled = true AND type = 'seo_score'`
+        `SELECT ar.*, os.email AS org_email
+         FROM alert_rules ar
+         LEFT JOIN org_settings os ON ar.org_id = os.org_id
+         WHERE ar.enabled = true AND ar.type = 'seo_score' AND ar.org_id = $1`,
+        [orgId]
       );
       for (const rule of rules.rows) {
         let triggered = false;
@@ -33,10 +38,11 @@ export async function evaluateAlertRulesForAudit(url: string, score: number): Pr
           } catch (mongoErr) {
             logger.warn({ err: mongoErr }, "[monitor-cron] Notification write to MongoDB failed");
           }
-          const alertEmail = rule.channels?.email || store.me.email;
+          const _channels: string[] = (() => { try { const v = typeof rule.channels === "string" ? JSON.parse(rule.channels) : rule.channels; return Array.isArray(v) ? v : ["email"]; } catch { return ["email"]; } })();
+          const alertEmail: string | null = _channels.includes("email") ? (rule.org_email || store.me?.email || null) : null;
           if (alertEmail) {
             mailer.sendSeoAlert({
-              to: alertEmail,
+              to: String(alertEmail),
               ruleName: String(rule.name),
               url,
               score,

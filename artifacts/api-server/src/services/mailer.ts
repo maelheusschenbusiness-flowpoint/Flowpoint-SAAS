@@ -34,7 +34,7 @@ function getFrom(): string {
     process.env["FROM_EMAIL"] ||
     process.env["ALERT_EMAIL_FROM"] ||
     process.env["EMAIL_FROM"] ||
-    "FlowPoint <support@flowpoint.pro>"
+    "FlowPoint <noreply@flowpoint.pro>"
   );
 }
 

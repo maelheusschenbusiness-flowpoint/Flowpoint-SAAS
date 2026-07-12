@@ -357,6 +357,7 @@ async function apiFetch(path, opts = {}) {
     });
     if (res.status === 401) {
       ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(k => localStorage.removeItem(k));
+      try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
       window.location.href = '/login.html';
       return null;
     }
@@ -1017,7 +1018,13 @@ async function loadData() {
     if (typeof _prefs.streak === 'number') STATE.streak = _prefs.streak;
     if (_prefs.pinned && typeof _prefs.pinned === 'object') STATE.pinned = _prefs.pinned;
     if (_prefs.checklist) STATE.checklist = _prefs.checklist;
-    if (_prefs.settings && typeof _prefs.settings === 'object') STATE.settings = { ...STATE.settings, ..._prefs.settings };
+    if (_prefs.settings && typeof _prefs.settings === 'object') {
+      STATE.settings = { ...STATE.settings, ..._prefs.settings };
+      // Apply language preference from server immediately after load
+      if (_prefs.settings.language) {
+        try { document.documentElement.lang = String(_prefs.settings.language).split('-')[0]; } catch(_) {}
+      }
+    }
   }
 
   // Compute streak from activity events when server prefs don't provide one
@@ -1231,7 +1238,13 @@ function scoreLabel(s) { return s >= 70 ? 'Bon' : s >= 40 ? 'Moyen' : 'Critique'
 function impactColor(i) { return i === 'Très élevé' ? '#ef4444' : i === 'Élevé' ? '#f59e0b' : '#22c55e'; }
 function statusBadgeColor(s) { return s === 'up' ? '#22c55e' : s === 'down' ? '#ef4444' : '#f59e0b'; }
 function statusLabel(s) { return s === 'up' ? 'UP' : s === 'down' ? 'DOWN' : 'LENT'; }
-function relDate(d) { return new Date(d).toLocaleDateString('fr-FR'); }
+function relDate(d) {
+  const fmt = (STATE.settings && STATE.settings.dateFormat) || 'DD/MM/YYYY';
+  const dt = new Date(d);
+  if (fmt === 'MM/DD/YYYY') return dt.toLocaleDateString('en-US');
+  if (fmt === 'YYYY-MM-DD') return dt.toISOString().slice(0, 10);
+  return dt.toLocaleDateString('fr-FR');
+}
 function sanitizeNotes(raw) { return String(raw).replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim().slice(0,2000); }
 function unread() { return STATE.notifications.filter(n => !n.read).length; }
 function avgScore() { return STATE.audits.length ? Math.round(STATE.audits.reduce((a,b) => a+b.score, 0) / STATE.audits.length) : 0; }
@@ -8153,8 +8166,8 @@ function renderAlertRules() {
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
                 <input type="checkbox" class="edit-rule-ch-email" data-rule="${escHtml(r.id)}" ${channels.includes('email')?'checked':''} style="accent-color:#2563EB"/> Email
               </label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
-                <input type="checkbox" class="edit-rule-ch-sms" data-rule="${escHtml(r.id)}" ${channels.includes('sms')?'checked':''} style="accent-color:#2563EB"/> SMS
+              <label style="display:flex;align-items:center;gap:6px;cursor:${isUltra?'pointer':'not-allowed'};font-size:12px;${isUltra?'':'opacity:0.5'}" title="${isUltra?'':'SMS disponible avec le plan Ultra'}" ${isUltra?'':' onclick="event.preventDefault();showToast(\'warning\',\'Fonctionnalité Ultra — mettez à niveau votre plan.\')"'}>
+                <input type="checkbox" class="edit-rule-ch-sms" data-rule="${escHtml(r.id)}" ${channels.includes('sms')&&isUltra?'checked':''} ${isUltra?'':'disabled'} style="accent-color:#2563EB;pointer-events:none"/> SMS${isUltra?'':' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 5px;border-radius:5px;margin-left:3px">Ultra</span>'}
               </label>
             </div>
           </div>
@@ -8241,8 +8254,8 @@ function renderAlertRules() {
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
                 <input type="checkbox" id="rule-ch-email" checked style="accent-color:#2563EB"/> Email
               </label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
-                <input type="checkbox" id="rule-ch-sms" style="accent-color:#2563EB"/> SMS
+              <label style="display:flex;align-items:center;gap:6px;cursor:${isUltra?'pointer':'not-allowed'};font-size:12px;${isUltra?'':'opacity:0.5'}" title="${isUltra?'':'SMS disponible avec le plan Ultra'}" ${isUltra?'':' onclick="event.preventDefault();showToast(\'warning\',\'Fonctionnalité Ultra — mettez à niveau votre plan.\')"'}>
+                <input type="checkbox" id="rule-ch-sms" ${isUltra?'':'disabled'} style="accent-color:#2563EB;pointer-events:none"/> SMS${isUltra?'':' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 5px;border-radius:5px;margin-left:3px">Ultra</span>'}
               </label>
             </div>
           </div>
@@ -8320,7 +8333,6 @@ function renderSettings() {
       </div>
     </div>`;
   }
-  if (!STATE.subRoute) { STATE.subRoute = 'workspace'; }
   const sub  = STATE.subRoute;
   const s    = STATE.settings;
   const me   = STATE.me;
@@ -8385,13 +8397,13 @@ function renderSettings() {
           <hr style="border:none;border-top:1px solid var(--fp-border);margin:14px 0 10px"/>
           <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Canaux d'alerte</div>
           ${[
-            {l:'Page de statut (URL publique)', k:'statusPageUrl', t:'url', ph:'https://status.votre-agence.fr'},
-            {l:"Webhook d'alerte (endpoint)",   k:'webhookUrl',    t:'url', ph:'https://hooks.slack.com/services/...'},
-            {l:'Téléphone SMS urgence',         k:'smsPhone',      t:'tel', ph:'+33 6 00 00 00 00'},
-          ].map(f => `<div class="fp-form-group">
-            <label class="fp-form-label">${escHtml(f.l)}</label>
+            {l:'Page de statut (URL publique)', k:'statusPageUrl', t:'url', ph:'https://status.votre-agence.fr', ultra:false},
+            {l:"Webhook d'alerte (endpoint)",   k:'webhookUrl',    t:'url', ph:'https://hooks.slack.com/services/...', ultra:false},
+            {l:'Téléphone SMS urgence',         k:'smsPhone',      t:'tel', ph:'+33 6 00 00 00 00', ultra:true},
+          ].map(f => `<div class="fp-form-group"${f.ultra && !isUltra ? ' style="opacity:0.55"' : ''}>
+            <label class="fp-form-label">${escHtml(f.l)}${f.ultra && !isUltra ? ' <span style="font-size:9px;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:1px 6px;border-radius:6px">Ultra requis</span>' : ''}</label>
             <input class="fp-input" type="${f.t}" value="${escHtml(s[f.k]||'')}" placeholder="${f.ph}"
-              oninput="STATE.settings['${f.k}']=this.value;saveSettings()"/>
+              ${f.ultra && !isUltra ? 'disabled title="Disponible avec le plan Ultra"' : `oninput="STATE.settings['${f.k}']=this.value;saveSettings()"`}/>
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
             <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const body={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim(),timezone:(document.getElementById('prof-tz')?.value||'').trim(),address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim()};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me){if(body.firstName)STATE.me.firstName=body.firstName;STATE.me.lastName=body.lastName;if(STATE.me.org){STATE.me.org.name=body.orgName||STATE.me.org.name;STATE.me.org.website=body.website;if(body.timezone)STATE.me.org.timezone=body.timezone;}STATE.me.location=STATE.me.location||{};STATE.me.location.address=body.address;STATE.me.location.city=body.city;STATE.me.location.postalCode=body.postalCode;STATE.me.location.country=body.country;if(body.city||body.address)STATE.me.location.locationConfigured=true;}showToast('success','Profil sauvegard\u00e9 !');render();}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
@@ -8407,31 +8419,20 @@ function renderSettings() {
           <div class="fp-form-group">
             <label class="fp-form-label">Thème</label>
             <div style="display:flex;gap:6px">
-              ${[['🌗 Automatique','auto'],['🌑 Sombre','dark'],['☀️ Clair','light']].map(([label,val],i) => `
-                <button class="fp-btn fp-btn-ghost fp-btn-sm${i===0?' active':''}" style="${i===0?'border-color:var(--fp-accent);color:var(--fp-accent);':''};flex:1;font-size:11px" onclick="applyThemeChoice('${val}')">${label}</button>
-              `).join('')}
+              ${(()=>{ const _at = s.themeAuto ? 'auto' : (STATE.theme || 'dark'); return [['🌗 Automatique','auto'],['🌑 Sombre','dark'],['☀️ Clair','light']].map(([label,val]) => { const on = val === _at; return `<button class="fp-btn fp-btn-ghost fp-btn-sm${on?' active':''}" style="${on?'border-color:var(--fp-accent);color:var(--fp-accent);':''};flex:1;font-size:11px" onclick="applyThemeChoice('${val}')">${label}</button>`; }).join(''); })()}
             </div>
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">Langue</label>
-            <select class="fp-select" style="width:100%">
-              <option selected>🇫🇷 Français</option>
-              <option>🇬🇧 English</option>
-              <option>🇪🇸 Español</option>
-              <option>🇩🇪 Deutsch</option>
-              <option>🇮🇹 Italiano</option>
-              <option>🇵🇹 Português</option>
-              <option>🇧🇷 Português (BR)</option>
-              <option>🇳🇱 Nederlands</option>
-              <option>🇵🇱 Polski</option>
-              <option>🇸🇪 Svenska</option>
-              <option>🇷🇴 Română</option>
-              <option>🇨🇿 Čeština</option>
+            <select class="fp-select" style="width:100%" onchange="applyLanguagePref(this.value);saveSettings();showToast('success','Langue sauvegardée')">
+              ${[['fr','🇫🇷 Français'],['en','🇬🇧 English'],['es','🇪🇸 Español'],['de','🇩🇪 Deutsch'],['it','🇮🇹 Italiano'],['pt','🇵🇹 Português'],['pt-br','🇧🇷 Português (BR)'],['nl','🇳🇱 Nederlands'],['pl','🇵🇱 Polski'],['sv','🇸🇪 Svenska'],['ro','🇷🇴 Română'],['cs','🇨🇿 Čeština']].map(([val,lbl]) => `<option value="${val}"${(s.language||'fr')===val?' selected':''}>${lbl}</option>`).join('')}
             </select>
           </div>
           <div class="fp-form-group">
             <label class="fp-form-label">Format de date</label>
-            <select class="fp-select" style="width:100%"><option selected>DD/MM/YYYY</option><option>MM/DD/YYYY</option><option>YYYY-MM-DD</option></select>
+            <select class="fp-select" style="width:100%" onchange="applyDateFormatPref(this.value);saveSettings();showToast('success','Format de date sauvegardé')">
+              ${['DD/MM/YYYY','MM/DD/YYYY','YYYY-MM-DD'].map(fmt => `<option${(s.dateFormat||'DD/MM/YYYY')===fmt?' selected':''}>${fmt}</option>`).join('')}
+            </select>
           </div>
           <div style="margin-top:8px;display:flex;flex-direction:column;gap:0">
             ${[
@@ -8559,7 +8560,7 @@ function renderSettings() {
                 ${g.options.map(o => {
                   const isActive = currentVal === o.val;
                   return `
-                  <button data-pref-key="${g.key}" data-pref-val="${escHtml(o.val||o.label)}" data-pref-lbl="${escHtml(g.label+' : '+(o.val||o.label))}" onclick="(function(btn){var k=btn.dataset.prefKey;var v=btn.dataset.prefVal;var lbl=btn.dataset.prefLbl;var s={};s[k]=v;apiAction('PATCH','/api/me/prefs',{settings:s}).then(()=>{showToast('success',lbl);btn.parentElement.querySelectorAll('button').forEach(b=>{b.style.border='1.5px solid var(--fp-border)';b.style.background='transparent';b.style.color='var(--fp-text-muted)';b.innerHTML=b.dataset.prefVal||b.textContent.trim();});btn.style.border='1.5px solid #2563EB';btn.style.background='rgba(37,99,235,0.12)';btn.style.color='#2563EB';btn.innerHTML='<svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#2563EB\" stroke-width=\"3\" style=\"margin-right:4px;vertical-align:middle\" pointer-events=\"none\"><polyline points=\"20 6 9 17 4 12\"/></svg>'+escHtml(btn.dataset.prefVal);}).catch(()=>showToast('error','Erreur sauvegarde'));})(this)"
+                  <button data-pref-key="${g.key}" data-pref-val="${escHtml(o.val||o.label)}" data-pref-lbl="${escHtml(g.label+' : '+(o.val||o.label))}" onclick="fpSavePref(this)"
                     style="padding:5px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid ${isActive ? '#2563EB' : 'var(--fp-border)'};background:${isActive ? 'rgba(37,99,235,0.12)' : 'transparent'};color:${isActive ? '#2563EB' : 'var(--fp-text-muted)'};transition:all 0.15s">
                     ${isActive ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="3" style="margin-right:4px;vertical-align:middle" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>` : ''}${escHtml(o.label)}
                   </button>`;
@@ -13431,15 +13432,25 @@ function bindSectionEvents() {
           const t = TEMPLATES[idx];
           if (!t) return;
           try {
+            btn.disabled = true;
+            btn.textContent = 'Activation…';
             const rule = await apiAction('POST', '/api/alert-rules', t);
-            if (rule) {
+            if (rule && !rule.error) {
+              STATE.alertRules = STATE.alertRules || [];
               STATE.alertRules.push(rule);
-              // Mark first-access as done once user activates a template
               localStorage.setItem('fp-alert-templates-first-access', 'done');
               showToast('success', `Template "${t.name}" activé !`);
               navigateSub('alerts');
+            } else {
+              btn.disabled = false;
+              btn.textContent = 'Activer';
+              showToast('error', (rule && rule.error) ? rule.error : 'Erreur lors de l\'activation du template');
             }
-          } catch(e) { showToast('error', 'Erreur lors de l\'activation du template'); }
+          } catch(e) {
+            btn.disabled = false;
+            btn.textContent = 'Activer';
+            showToast('error', 'Erreur lors de l\'activation du template');
+          }
         });
       });
     }
@@ -13890,7 +13901,7 @@ function bindGlobalEvents() {
   }
 
   // Logout
-  $('#fp-logout-btn')?.addEventListener('click', () => { showToast('info','Déconnexion…'); setTimeout(()=>{ window.location.href='/login.html'; },1200); });
+  $('#fp-logout-btn')?.addEventListener('click', () => { try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {} showToast('info','Déconnexion…'); setTimeout(()=>{ window.location.href='/login.html'; },1200); });
 
   // Messages button
   $('#fp-msg-btn')?.addEventListener('click', e => {
@@ -13988,6 +13999,11 @@ function bindGlobalEvents() {
 async function init() {
   // Apply theme immediately
   applyTheme();
+  // Apply stored language preference before first render
+  try {
+    const _lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp-language') || 'fr';
+    document.documentElement.lang = _lang.split('-')[0];
+  } catch(_) {}
   // Apply free modules (compact mode, focus mode, etc.)
   applyFreeModules();
 
@@ -14129,6 +14145,54 @@ async function init() {
   window.closeFloatPanel = closeFloatPanel;
   window.navigate = navigate;
   window.navigateSub = navigateSub;
+  window.escHtml = escHtml;
+  window.applyThemeChoice = applyThemeChoice;
+  window.saveSettings = saveSettings;
+
+  // ── fpSavePref: named handler for settings pill/preset buttons ──
+  // Use via: onclick="fpSavePref(this)"
+  // Expects data-pref-key, data-pref-val, data-pref-lbl on the button.
+  window.fpSavePref = function(btn) {
+    var k = btn.dataset.prefKey;
+    var v = btn.dataset.prefVal;
+    var lbl = btn.dataset.prefLbl;
+    var s = {};
+    s[k] = v;
+    if (STATE.settings) STATE.settings[k] = v;
+    apiAction('PATCH', '/api/me/prefs', { settings: s })
+      .then(function() {
+        showToast('success', lbl || (k + ' mis à jour'));
+        btn.parentElement.querySelectorAll('button').forEach(function(b) {
+          b.style.border = '1.5px solid var(--fp-border)';
+          b.style.background = 'transparent';
+          b.style.color = 'var(--fp-text-muted)';
+          b.innerHTML = escHtml(b.dataset.prefVal || b.textContent.trim());
+        });
+        btn.style.border = '1.5px solid #2563EB';
+        btn.style.background = 'rgba(37,99,235,0.12)';
+        btn.style.color = '#2563EB';
+        btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="3" style="margin-right:4px;vertical-align:middle" pointer-events="none"><polyline points="20 6 9 17 4 12"/></svg>' + escHtml(v);
+      })
+      .catch(function() { showToast('error', 'Erreur sauvegarde'); });
+  };
+
+  // ── applyLanguagePref: update document lang attribute immediately ──
+  window.applyLanguagePref = function(val) {
+    if (!val) return;
+    var langCode = val.split('-')[0];
+    document.documentElement.lang = langCode;
+    if (STATE.settings) STATE.settings.language = val;
+  };
+
+  // ── applyDateFormatPref: store format so formatters can read it, then re-render ──
+  window.applyDateFormatPref = function(val) {
+    if (!val) return;
+    if (STATE.settings) STATE.settings.dateFormat = val;
+    render();
+  };
+
+  // ── fpFmtDate: globally accessible date formatter wired to user's date format pref ──
+  window.fpFmtDate = relDate;
   window.openDataDeletionPanel = function(kind) {
     const isAccount = kind === 'account';
     const title = isAccount ? 'Supprimer mon compte' : 'Supprimer toutes les données';
