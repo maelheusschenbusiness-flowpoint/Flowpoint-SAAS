@@ -21978,7 +21978,7 @@ function renderAlertsCenter() {
           Alert Command Center
           <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:20px;color:#ef4444;animation:pulse 2s infinite">LIVE</span>
         </h1>
-        <div class="fp-section-sub">Surveillance temps réel · ${criticals.length} critiques · ${warnings.length} alertes · Mis à jour à l\'instant</div>
+        <div class="fp-section-sub">Surveillance temps réel · ${criticals.length} ${pluralizeFr(criticals.length, 'critique')} · ${warnings.length} ${pluralizeFr(warnings.length, 'alerte')} · Mis à jour à l\'instant</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Tout marquer lu', 'fp-btn fp-btn-ghost fp-btn-sm', 'check', "onclick=\"apiAction('POST','/api/alert-rules/mark-all-read').then(()=>{showToast('success','Alertes marquées lues');render(STATE.currentSection);}).catch(()=>showToast('error','Erreur'))\"" )}
