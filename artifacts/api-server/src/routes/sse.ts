@@ -4,8 +4,8 @@
  * Architecture:
  *   - Single SSE endpoint: GET /api/activity/events
  *   - Clients subscribe and receive all broadcast events
- *   - store.broadcast(payload) fans out to all connected clients
- *   - store.sseClients is a Set<Response> managed in services/store.ts
+ *   - store.broadcast(payload, orgId) fans out only to that org's connected clients
+ *   - store._sseByOrg is a Map<orgId, Set<send>> managed in services/store.ts
  *
  * Event types pushed to clients:
  *   fp:activity          — new activity log entry

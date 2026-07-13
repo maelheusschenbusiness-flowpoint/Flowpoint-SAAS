@@ -135,24 +135,44 @@ router.post("/connectors/:provider/disconnect", requireAdmin, async (req: Reques
 
 router.post("/connectors/:provider/sync", requireAdmin, async (req: Request, res: Response) => {
   const { provider } = req.params;
+  const syncOrgId: string = (req as unknown as Record<string, string>)["orgId"] ?? "default";
   try {
     const [conn] = await db.update(connectorsTable).set({
       syncStatus: "ok", lastSync: new Date().toISOString(),
     }).where(eq(connectorsTable.provider, provider)).returning();
     if (!conn) { res.status(404).json({ error: "Connector not found" }); return; }
-    store.broadcast({ type: "connector:synced", provider, lastSync: conn.lastSync });
+    store.broadcast({ type: "connector:synced", provider, lastSync: conn.lastSync }, syncOrgId);
     res.json({ ok: true, lastSync: conn.lastSync });
   } catch (e) {
     res.status(500).json({ error: "Failed to sync" });
   }
 });
 
-// Slack and GitHub webhooks are externally invoked — no session credential available
+// Slack and GitHub webhooks are invoked externally by third-party systems that
+// carry no FlowPoint auth header.  We attempt to resolve the org via the
+// connector's stored webhook secret (if the platform is multi-tenant and
+// connectors include an org_id column).  Until that column exists, we fan-out
+// only to "default" — the correct behaviour for single-tenant deploys, and the
+// safest fallback for multi-tenant (event is not silently dropped).
+async function resolveConnectorOrg(provider: string): Promise<string> {
+  try {
+    const { pool: pgPool } = await import("@workspace/db");
+    const row = await pgPool.query<{ org_id: string }>(
+      `SELECT org_id FROM connectors WHERE provider = $1 AND org_id IS NOT NULL LIMIT 1`,
+      [provider]
+    );
+    return row.rows[0]?.org_id ?? "default";
+  } catch {
+    return "default";
+  }
+}
+
 router.post("/connectors/slack/webhook", async (req: Request, res: Response) => {
   const { challenge, event, type } = req.body as { challenge?: string; event?: { type: string; text: string; user: string }; type?: string };
   if (challenge) { res.json({ challenge }); return; }
   if (type === "event_callback" && event) {
-    store.broadcast({ type: "slack:message", text: event.text, user: event.user });
+    const slackOrgId = await resolveConnectorOrg("slack");
+    store.broadcast({ type: "slack:message", text: event.text, user: event.user }, slackOrgId);
     store.logActivity({ type: "team", label: `Slack: ${event.text?.slice(0, 80) || "message reçu"}`, targetType: "slack" }).catch(err => console.warn("[logActivity]", err?.message));
   }
   res.json({ ok: true });
@@ -166,8 +186,9 @@ router.post("/connectors/github/webhook", async (req: Request, res: Response) =>
   const label = pull_request
     ? `GitHub PR: ${pull_request.title?.slice(0, 60)} (${action})`
     : `GitHub ${eventType}: ${repository?.name || ""} — ${pusher?.name || ""}`;
+  const githubOrgId = await resolveConnectorOrg("github");
   store.logActivity({ type: "team", label, targetType: "github" }).catch(err => console.warn("[logActivity]", err?.message));
-  store.broadcast({ type: "github:event", eventType, action, repo: repository?.name });
+  store.broadcast({ type: "github:event", eventType, action, repo: repository?.name }, githubOrgId);
   res.json({ ok: true });
 });
 

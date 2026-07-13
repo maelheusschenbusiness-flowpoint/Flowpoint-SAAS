@@ -26,8 +26,10 @@ function toPublic(row: Record<string, unknown>) {
 
 router.get("/competitors", withCache(60), async (req, res) => {
   try {
+    const orgId = (req as import("express").Request & { orgId?: string }).orgId ?? req.orgContext?.orgId ?? "default";
     const result = await req.orgDb(
-      `SELECT * FROM competitors ORDER BY domain_rating DESC LIMIT 200`,
+      `SELECT * FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 200`,
+      [orgId],
     );
     res.json(result.rows.map(toPublic));
   } catch (err) {

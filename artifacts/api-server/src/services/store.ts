@@ -32,36 +32,56 @@ class Store {
   /** In-memory log of triggered alerts (alert rules that fired) */
   triggeredAlerts: Array<Record<string, unknown>> = [];
 
-  /** SSE clients subscribed to real-time billing/event streams */
-  sseClients: Set<(data: string) => void> = new Set();
+  /**
+   * SSE clients partitioned by orgId for tenant isolation.
+   * Each org's connected clients receive only that org's events.
+   */
+  private _sseByOrg: Map<string, Set<(data: string) => void>> = new Map();
 
-  /** Broadcast a JSON event to all connected SSE clients */
-  broadcast(payload: Record<string, unknown>): void {
-    if (!this.sseClients.size) return;
+  /** @deprecated Use addSseClient / removeSseClient + broadcast(payload, orgId) */
+  get sseClients(): Set<(data: string) => void> {
+    return this._sseByOrg.get("default") ?? new Set();
+  }
+
+  addSseClient(orgId: string, send: (data: string) => void): void {
+    let bucket = this._sseByOrg.get(orgId);
+    if (!bucket) { bucket = new Set(); this._sseByOrg.set(orgId, bucket); }
+    bucket.add(send);
+  }
+
+  removeSseClient(orgId: string, send: (data: string) => void): void {
+    const bucket = this._sseByOrg.get(orgId);
+    if (bucket) { bucket.delete(send); if (!bucket.size) this._sseByOrg.delete(orgId); }
+  }
+
+  /** Broadcast a JSON event to all SSE clients of a specific org */
+  broadcast(payload: Record<string, unknown>, orgId = "default"): void {
+    const bucket = this._sseByOrg.get(orgId);
+    if (!bucket?.size) return;
     const msg = `data: ${JSON.stringify(payload)}\n\n`;
-    this.sseClients.forEach(send => {
+    bucket.forEach(send => {
       try { send(msg); } catch { /* client disconnected */ }
     });
   }
 
   /**
-   * Update plan in memory, broadcast to SSE clients, and persist to org_settings DB.
+   * Update plan in memory, broadcast to the org's SSE clients, and persist to org_settings DB.
    * This is the single authoritative way to change the active plan.
    */
-  broadcastPlanUpdate(plan: string): void {
+  broadcastPlanUpdate(plan: string, orgId = "default"): void {
     this.me.plan = plan;
-    this.broadcast({ type: "billing:plan_updated", plan });
+    this.broadcast({ type: "billing:plan_updated", plan }, orgId);
 
     // Persist to DB so plan survives server restarts — fire-and-forget
     pool.connect().then(client =>
       client.query(
         `INSERT INTO org_settings (org_id, plan)
-         VALUES ('default', $1)
+         VALUES ($1, $2)
          ON CONFLICT (org_id) DO UPDATE SET plan = EXCLUDED.plan, updated_at = NOW()`,
-        [plan]
+        [orgId, plan]
       )
-        .then(() => { logger.info({ plan }, "[Store] Plan persisted to org_settings"); })
-        .catch(err => { logger.error({ err, plan }, "[Store] Failed to persist plan to org_settings"); })
+        .then(() => { logger.info({ plan, orgId }, "[Store] Plan persisted to org_settings"); })
+        .catch(err => { logger.error({ err, plan, orgId }, "[Store] Failed to persist plan to org_settings"); })
         .finally(() => client.release())
     ).catch(err => { logger.error({ err }, "[Store] Pool connect failed for plan persist"); });
   }

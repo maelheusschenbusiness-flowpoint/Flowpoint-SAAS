@@ -304,9 +304,9 @@ router.get("/google/reviews", async (req: Request, res: Response) => {
 router.post("/google/sync", async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
-    store.broadcast({ type: "gbp:sync_started" });
+    store.broadcast({ type: "gbp:sync_started" }, orgId);
     const result = await syncAll(orgId);
-    store.broadcast({ type: "gbp:sync_complete", ...result });
+    store.broadcast({ type: "gbp:sync_complete", ...result }, orgId);
     res.json({ ok: true, ...result });
   } catch (e) {
     logger.error({ e }, "[GBP] Manual sync failed");

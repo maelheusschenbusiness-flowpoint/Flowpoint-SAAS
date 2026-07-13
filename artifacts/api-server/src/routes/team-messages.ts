@@ -61,7 +61,7 @@ router.post("/team/messages", async (req, res) => {
     );
     const r = await db(req)(`SELECT * FROM team_messages WHERE id=$1`, [id]);
     const msg = r.rows[0] ?? { id, channel, senderName: from, content: text };
-    store.broadcast({ type: "chat:message", channel, message: msg });
+    store.broadcast({ type: "chat:message", channel, message: msg }, org(req));
     res.status(201).json(msg);
   } catch {
     res.status(500).json({ error: "Failed to send message" });

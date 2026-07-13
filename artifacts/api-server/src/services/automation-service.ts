@@ -74,7 +74,7 @@ export async function executeWorkflow(workflowId: string): Promise<{ success: bo
       metadata: { durationMs, stepsCompleted },
     }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
 
-    store.broadcast({ type: "workflow:completed", workflowId, runId, durationMs });
+    store.broadcast({ type: "workflow:completed", workflowId, runId, durationMs }, orgId);
     return { success: true, runId };
   } catch (err) {
     logger.error({ err, workflowId }, "[Automation] Workflow execution failed");

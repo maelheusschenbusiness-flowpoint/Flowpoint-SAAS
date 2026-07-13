@@ -184,9 +184,9 @@ export async function getMRRData(orgId = "default") {
   }
 }
 
-export async function getSubscriptionAnalytics() {
-  const mrr = await getMRRData();
-  const usage = await getUsageSummary();
+export async function getSubscriptionAnalytics(orgId = "default") {
+  const mrr = await getMRRData(orgId);
+  const usage = await getUsageSummary(orgId);
   const me = store.me;
 
   const trialDaysLeft = me.trialEndsAt
@@ -205,7 +205,7 @@ export async function getSubscriptionAnalytics() {
 }
 
 // ── Trial management ──────────────────────────────────────────────────────────
-export async function startTrial(plan: string = "pro", days: number = 14) {
+export async function startTrial(plan: string = "pro", days: number = 14, orgId = "default") {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
@@ -215,7 +215,7 @@ export async function startTrial(plan: string = "pro", days: number = 14) {
     store.me.plan = plan;
     store.me.subscriptionStatus = "trialing";
     store.me.trialEndsAt = trialEnd;
-    store.broadcastPlanUpdate(plan);
+    store.broadcastPlanUpdate(plan, orgId);
     logger.info({ plan, days }, "[Billing] Trial activated (dev mode — no Stripe key)");
     return { ok: true, trialEndsAt: trialEnd, plan, mock: true };
   }
@@ -230,7 +230,7 @@ export async function startTrial(plan: string = "pro", days: number = 14) {
       store.me.plan = plan;
       store.me.subscriptionStatus = "trialing";
       store.me.trialEndsAt = trialEnd;
-      store.broadcastPlanUpdate(plan);
+      store.broadcastPlanUpdate(plan, orgId);
       return { ok: true, trialEndsAt: trialEnd, plan, noPrice: true };
     }
 
@@ -251,7 +251,7 @@ export async function startTrial(plan: string = "pro", days: number = 14) {
     store.me.plan = plan;
     store.me.subscriptionStatus = "trialing";
     store.me.trialEndsAt = trialEnd;
-    store.broadcastPlanUpdate(plan);
+    store.broadcastPlanUpdate(plan, orgId);
 
     logger.info({ plan, days, subId: sub.id }, "[Billing] Stripe trial started");
     return { ok: true, trialEndsAt: trialEnd, subscriptionId: sub.id, plan };

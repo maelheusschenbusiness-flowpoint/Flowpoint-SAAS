@@ -63,7 +63,7 @@ export async function activateAddon(addonKey: string, orgId = "default"): Promis
     }
 
     applyAddonToStore(addonKey, true);
-    store.broadcast({ type: "addon:activated", addonKey });
+    store.broadcast({ type: "addon:activated", addonKey }, orgId);
     store.logActivity({ type: "team", label: `Add-on activé : ${ADDON_DEFINITIONS[addonKey]?.name ?? addonKey}`, metadata: { addonKey } }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
 
     logger.info({ addonKey, orgId }, "[Addons] Addon activated");
@@ -86,7 +86,7 @@ export async function deactivateAddon(addonKey: string, orgId = "default"): Prom
       client.release();
     }
     applyAddonToStore(addonKey, false);
-    store.broadcast({ type: "addon:deactivated", addonKey });
+    store.broadcast({ type: "addon:deactivated", addonKey }, orgId);
     return true;
   } catch (err) {
     logger.error({ err, addonKey }, "[Addons] Failed to deactivate addon");
@@ -117,7 +117,7 @@ export async function addExtraAICredits(pack: "50k" | "200k" | "500k", orgId = "
   const credits = packMap[pack];
   // NOTE: extra credits are recorded in ai_credit_purchases (Stripe webhook handles that).
   // ai_monthly_usage no longer stores credits_extra — limit comes exclusively from plans.ts.
-  store.broadcast({ type: "ai:credits_added", credits, pack });
+  store.broadcast({ type: "ai:credits_added", credits, pack }, orgId);
   return credits;
 }
 

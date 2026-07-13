@@ -548,7 +548,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
       metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
     }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
 
-    store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs });
+    store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs }, orgId);
 
     res.json({
       ok:           true,

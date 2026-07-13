@@ -114,13 +114,13 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
           [score, status, speed, issues, auditId],
         );
         evaluateAlertRulesForAudit(normalizedUrl, score, orgId).catch(() => {});
-        store.broadcast({ type: "audit:complete", auditId, score, status });
+        store.broadcast({ type: "audit:complete", auditId, score, status }, orgId);
       } catch {
         await pool.query(
           `UPDATE audits SET status='error', score=0 WHERE id=$1`,
           [auditId],
         ).catch(() => {});
-        store.broadcast({ type: "audit:error", auditId });
+        store.broadcast({ type: "audit:error", auditId }, orgId);
       }
     })().catch(() => {});
 
@@ -144,10 +144,11 @@ router.get("/audits/history", async (req: Request, res: Response) => {
   if (!url) { res.status(400).json({ error: "url required" }); return; }
 
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const orgId  = (req as Request & { orgId?: string }).orgId ?? req.orgContext?.orgId ?? "default";
   try {
     const result = await req.orgDb(
-      `SELECT * FROM audits WHERE url = $1 AND date >= $2 ORDER BY date ASC LIMIT 365`,
-      [url, cutoff],
+      `SELECT * FROM audits WHERE url = $1 AND date >= $2 AND org_id = $3 ORDER BY date ASC LIMIT 365`,
+      [url, cutoff, orgId],
     );
     res.json(result.rows.map(auditToPublic));
   } catch { res.json([]); }
@@ -157,15 +158,17 @@ router.get("/audits/history", async (req: Request, res: Response) => {
 // Must be registered BEFORE /:id.
 
 router.get("/audits/quick-scan", async (req: Request, res: Response) => {
-  const url = req.query.url as string | undefined;
+  const url   = req.query.url as string | undefined;
+  const orgId = (req as Request & { orgId?: string }).orgId ?? req.orgContext?.orgId ?? "default";
   try {
     const result = url
       ? await req.orgDb(
-          `SELECT * FROM audits WHERE url = $1 ORDER BY created_at DESC LIMIT 1`,
-          [url],
+          `SELECT * FROM audits WHERE url = $1 AND org_id = $2 ORDER BY created_at DESC LIMIT 1`,
+          [url, orgId],
         )
       : await req.orgDb(
-          `SELECT * FROM audits ORDER BY created_at DESC LIMIT 1`,
+          `SELECT * FROM audits WHERE org_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [orgId],
         );
     if (result.rowCount && result.rowCount > 0) {
       res.json(auditToPublic(result.rows[0]));

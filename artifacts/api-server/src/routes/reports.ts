@@ -147,7 +147,7 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
 
   let audit: Record<string, unknown> | undefined;
   if (report.audit_id) {
-    const ar = await db(req)(`SELECT * FROM audits WHERE id=$1`, [report.audit_id]);
+    const ar = await db(req)(`SELECT * FROM audits WHERE id=$1 AND org_id=$2`, [report.audit_id, orgId]);
     audit = ar.rows[0];
   }
 
@@ -157,9 +157,9 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
   let monitors: Array<{ name: string; url?: string; status?: string; uptime?: number | null }> = [];
   let missions: Array<{ title: string; status?: string; priority?: string; dueDate?: string | null }> = [];
   try {
-    const mr = await db(req)(`SELECT name, url, status, uptime FROM monitors ORDER BY name LIMIT 20`);
+    const mr = await db(req)(`SELECT name, url, status, uptime FROM monitors WHERE org_id=$1 ORDER BY name LIMIT 20`, [orgId]);
     monitors = mr.rows as typeof monitors;
-    const misr = await db(req)(`SELECT title, status, priority, due_date FROM missions ORDER BY created_at DESC LIMIT 20`);
+    const misr = await db(req)(`SELECT title, status, priority, due_date FROM missions WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20`, [orgId]);
     missions = misr.rows.map(r => ({ title: r.title as string, status: r.status as string, priority: r.priority as string, dueDate: r.due_date as string }));
   } catch {}
 

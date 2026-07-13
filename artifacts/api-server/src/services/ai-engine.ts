@@ -323,7 +323,7 @@ async function triggerAIAlert(orgId: string, type: string, current: number, limi
        VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING`,
       [id, orgId, type, messages[type] ?? `Alerte quota IA : ${type}`, limit, current]
     );
-    store.broadcast({ type: "ai:quota_alert", alertType: type, current, limit });
+    store.broadcast({ type: "ai:quota_alert", alertType: type, current, limit }, orgId);
   } catch { /* silent */ } finally {
     client.release();
   }

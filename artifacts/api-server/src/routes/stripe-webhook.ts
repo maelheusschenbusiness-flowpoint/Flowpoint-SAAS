@@ -136,6 +136,23 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   logger.info({ type: event.type }, "[Webhook] Received Stripe event");
   const obj = event.data.object;
 
+  // Resolve orgId from Stripe customer ID → org_settings lookup.
+  // Falls back to "default" for single-tenant deployments or if lookup fails.
+  let orgId = "default";
+  try {
+    const stripeCustomerId = (obj["customer"] as string | undefined) ?? (obj["id"] as string | undefined);
+    if (stripeCustomerId) {
+      const { pool: pgPool } = await import("@workspace/db");
+      const orgLookup = await pgPool.query<{ org_id: string }>(
+        `SELECT org_id FROM org_settings WHERE stripe_customer_id = $1 LIMIT 1`,
+        [stripeCustomerId]
+      );
+      if (orgLookup.rows[0]) orgId = orgLookup.rows[0].org_id;
+    }
+  } catch (e) {
+    logger.warn({ e }, "[Webhook] org lookup by stripe_customer_id failed — using default");
+  }
+
   switch (event.type) {
 
     case "checkout.session.completed": {
@@ -173,7 +190,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
             } finally {
               client.release();
             }
-            store.broadcast({ type: "ai:credits_added", pack, credits });
+            store.broadcast({ type: "ai:credits_added", pack, credits }, orgId);
             logger.info({ pack, credits }, "[Webhook] AI credits credited to org");
           } catch (e) {
             logger.error({ e }, "[Webhook] Failed to credit AI credits to org");
@@ -186,7 +203,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       const plan     = meta["plan"] ?? "";
       const planNorm = plan.toLowerCase();
       if (["standard","pro","ultra"].includes(planNorm)) {
-        store.broadcastPlanUpdate(planNorm);
+        store.broadcastPlanUpdate(planNorm, orgId);
       }
       const customerId = obj["customer"] ? String(obj["customer"]) : undefined;
       if (customerId) store.me.stripeCustomerId = customerId;
@@ -206,7 +223,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       if (newPlan) {
         logger.info({ newPlan, status }, "[Webhook] Subscription updated — broadcasting plan change");
-        store.broadcastPlanUpdate(newPlan);
+        store.broadcastPlanUpdate(newPlan, orgId);
       }
 
       // Persist subscription status so it survives restarts
@@ -226,7 +243,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       } catch { /* non-critical */ }
 
       if (status === "past_due" || status === "unpaid" || status === "canceled") {
-        store.broadcast({ type: "subscription_status", status });
+        store.broadcast({ type: "subscription_status", status }, orgId);
       }
       break;
     }
@@ -243,9 +260,9 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       store.me.addons.retention365d = false;
       const client2 = await (await import("@workspace/db")).pool.connect();
       try {
-        await client2.query(`UPDATE org_addons SET active = false, updated_at = NOW() WHERE org_id = 'default'`);
+        await client2.query(`UPDATE org_addons SET active = false, updated_at = NOW() WHERE org_id = $1`, [orgId]);
       } finally { client2.release(); }
-      store.broadcastPlanUpdate("standard");
+      store.broadcastPlanUpdate("standard", orgId);
       break;
     }
 
@@ -253,7 +270,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       logger.info("[Webhook] Payment succeeded");
       store.me.subscriptionStatus = "active";
       await persistSubscriptionMeta({ subscriptionStatus: "active" });
-      store.broadcast({ type: "payment_succeeded" });
+      store.broadcast({ type: "payment_succeeded" }, orgId);
       // Persist active add-ons to DB on successful payment
       try {
         const { activateAddon } = await import("../services/addons-service.js");
@@ -286,7 +303,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       logger.warn({ attemptCount }, "[Webhook] Payment failed");
       store.me.subscriptionStatus = "past_due";
       await persistSubscriptionMeta({ subscriptionStatus: "past_due" });
-      store.broadcast({ type: "payment_failed", attemptCount });
+      store.broadcast({ type: "payment_failed", attemptCount }, orgId);
       // Email: payment failed
       if (store.me.email) {
         const nextAttempt = obj["next_payment_attempt"]

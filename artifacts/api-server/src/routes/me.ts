@@ -98,7 +98,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     } catch { /* non-fatal */ }
   }
   if (typeof plan === "string" && ["standard", "pro", "ultra"].includes(plan.toLowerCase())) {
-    store.broadcastPlanUpdate(plan.toLowerCase());
+    store.broadcastPlanUpdate(plan.toLowerCase(), orgId);
   }
 
   try {

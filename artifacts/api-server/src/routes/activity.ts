@@ -29,6 +29,7 @@ router.post("/activity", async (req: Request, res: Response) => {
 // SSE alias: frontend subscribes via /api/billing/events (shared sseClients Set).
 // This route provides the same channel under a semantically correct path.
 router.get("/activity/events", (req: Request, res: Response) => {
+  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -38,7 +39,7 @@ router.get("/activity/events", (req: Request, res: Response) => {
   res.write(`data: ${JSON.stringify({ type: "connected" })}\n\n`);
 
   const send = (data: string) => res.write(data);
-  store.sseClients.add(send);
+  store.addSseClient(orgId, send);
 
   const keepAlive = setInterval(() => {
     res.write(": ping\n\n");
@@ -46,7 +47,7 @@ router.get("/activity/events", (req: Request, res: Response) => {
 
   req.on("close", () => {
     clearInterval(keepAlive);
-    store.sseClients.delete(send);
+    store.removeSseClient(orgId, send);
   });
 });
 

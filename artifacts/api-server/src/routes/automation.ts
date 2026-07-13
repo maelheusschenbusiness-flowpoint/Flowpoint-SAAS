@@ -80,7 +80,7 @@ router.post("/automation/workflows/:id/run", async (req: Request, res: Response)
   try {
     const result = await executeWorkflow(id);
     store.logActivity({ type: "audit", label: `Workflow exécuté : ${id}`, targetId: id, targetType: "workflow" }).catch(err => console.warn("[logActivity]", err?.message));
-    store.broadcast({ type: "fp:workflow:completed", workflowId: id, durationMs: result?.durationMs });
+    store.broadcast({ type: "fp:workflow:completed", workflowId: id, durationMs: result?.durationMs }, org(req));
     res.json(result);
   } catch {
     res.status(500).json({ error: "Failed to execute workflow" });

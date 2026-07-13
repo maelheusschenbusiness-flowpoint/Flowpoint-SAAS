@@ -261,8 +261,9 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     }
 
     const planMeta = (session.metadata?.["plan"] || "pro").toLowerCase();
+    const orgIdVerify = req.orgId ?? "default";
     if (["standard","pro","ultra"].includes(planMeta)) {
-      store.broadcastPlanUpdate(planMeta);
+      store.broadcastPlanUpdate(planMeta, orgIdVerify);
     }
 
     if (session.customer) {
@@ -363,9 +364,10 @@ router.get("/billing/plans", (_req: Request, res: Response) => {
 });
 
 // ── NEW: GET /billing/usage ──────────────────────────────────────────────────
-router.get("/billing/usage", async (_req: Request, res: Response) => {
+router.get("/billing/usage", async (req: Request, res: Response) => {
+  const orgId = req.orgId ?? "default";
   try {
-    const usage = await getUsageSummary();
+    const usage = await getUsageSummary(orgId);
     res.json(usage);
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to get usage");
@@ -374,9 +376,10 @@ router.get("/billing/usage", async (_req: Request, res: Response) => {
 });
 
 // ── NEW: GET /billing/analytics ──────────────────────────────────────────────
-router.get("/billing/analytics", async (_req: Request, res: Response) => {
+router.get("/billing/analytics", async (req: Request, res: Response) => {
+  const orgId = req.orgId ?? "default";
   try {
-    const analytics = await getSubscriptionAnalytics();
+    const analytics = await getSubscriptionAnalytics(orgId);
     res.json(analytics);
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to get analytics");
@@ -417,7 +420,7 @@ router.post("/billing/trial", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const result = await startTrial(plan, days);
+    const result = await startTrial(plan, days, orgId);
     await trackBillingEvent("trial_started", { plan, days, ...result }, orgId).catch(() => {});
     res.json(result);
   } catch (err) {
@@ -801,6 +804,7 @@ router.get("/billing/config", (_req: Request, res: Response) => {
 });
 
 router.get("/billing/events", (req: Request, res: Response) => {
+  const orgId = req.orgId ?? "default";
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -810,13 +814,13 @@ router.get("/billing/events", (req: Request, res: Response) => {
   res.write(`data: ${JSON.stringify({ type: "connected", plan: store.me.plan })}\n\n`);
 
   const send = (data: string) => res.write(data);
-  store.sseClients.add(send);
+  store.addSseClient(orgId, send);
 
   const keepAlive = setInterval(() => { res.write(": ping\n\n"); }, 25_000);
 
   req.on("close", () => {
     clearInterval(keepAlive);
-    store.sseClients.delete(send);
+    store.removeSseClient(orgId, send);
   });
 });
 
@@ -863,7 +867,24 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
 
   try {
     const { upsertOrgSettings } = await import("../services/org-settings.js");
-    const orgId = "default";
+
+    // Derive orgId from Stripe customer ID stored in org_settings.
+    // Falls back to "default" for single-tenant deployments or if lookup fails.
+    let orgId = "default";
+    try {
+      const stripeCustomerId =
+        (event.data.object as Record<string, unknown>)["customer"] as string | undefined;
+      if (stripeCustomerId) {
+        const { pool: rawPool } = await import("@workspace/db");
+        const orgLookup = await rawPool.query<{ org_id: string }>(
+          `SELECT org_id FROM org_settings WHERE stripe_customer_id = $1 LIMIT 1`,
+          [stripeCustomerId]
+        );
+        if (orgLookup.rows[0]) orgId = orgLookup.rows[0].org_id;
+      }
+    } catch (lookupErr) {
+      logger.warn({ lookupErr }, "[Webhook] org lookup by stripe_customer_id failed — falling back to default");
+    }
 
     switch (event.type) {
       // ── Trial started ──────────────────────────────────────────────────────
@@ -875,7 +896,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
 
         store.me.subscriptionStatus = status;
         store.me.trialEndsAt = trialEnd ?? store.me.trialEndsAt;
-        if (plan) { store.me.plan = plan; store.broadcastPlanUpdate(plan); }
+        if (plan) { store.me.plan = plan; store.broadcastPlanUpdate(plan, orgId); }
         if (sub.customer) store.me.stripeCustomerId = String(sub.customer);
 
         await upsertOrgSettings(orgId, {
@@ -897,7 +918,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
 
         store.me.subscriptionStatus = status;
         if (trialEnd) store.me.trialEndsAt = trialEnd;
-        if (plan) { store.me.plan = plan; store.broadcastPlanUpdate(plan); }
+        if (plan) { store.me.plan = plan; store.broadcastPlanUpdate(plan, orgId); }
 
         await upsertOrgSettings(orgId, {
           subscriptionStatus: status,
@@ -959,7 +980,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         if (session.customer) store.me.stripeCustomerId = String(session.customer);
         store.me.subscriptionStatus = "active";
         store.me.plan = plan;
-        store.broadcastPlanUpdate(plan);
+        store.broadcastPlanUpdate(plan, orgId);
         await upsertOrgSettings(orgId, {
           subscriptionStatus: "active",
           plan,
