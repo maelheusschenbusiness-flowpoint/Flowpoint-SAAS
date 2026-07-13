@@ -10899,14 +10899,16 @@ async function sendAIMessage(text) {
 
     if (!resp.ok || !resp.body) {
       const err = await resp.json().catch(() => ({}));
-      const msg = resp.status === 503
-        ? '⚠ Le service IA n\'est pas configuré. Contactez votre administrateur.'
+      const msg = resp.status === 401
+        ? '⚠ Session expirée — <a href="/login.html" style="color:inherit;text-decoration:underline">reconnectez-vous</a> pour continuer.'
+        : resp.status === 402
+        ? '⚠ Crédits IA épuisés — passez à Ultra pour continuer.'
         : resp.status === 429
         ? '⚠ Trop de requêtes. Attendez quelques instants puis réessayez.'
-        : resp.status === 402
-        ? '⚠ AI Credits épuisés — rechargez votre solde pour continuer.'
-        : resp.status === 401
-        ? '⚠ Session expirée — <a href="/login.html" style="color:inherit;text-decoration:underline">reconnectez-vous</a> pour continuer.'
+        : resp.status === 503
+        ? '⚠ Le service IA n\'est pas configuré. Contactez votre administrateur.'
+        : resp.status >= 500
+        ? `⚠ Erreur serveur (${resp.status}) — réessayez dans quelques instants.`
         : (err.error || '⚠ Le service IA est temporairement indisponible.');
       STATE.aiMessages[streamIdx] = { from:'ai', text: msg, streaming: false };
       STATE.aiLoading = false;
@@ -10946,7 +10948,9 @@ async function sendAIMessage(text) {
     STATE.aiMessages[streamIdx] = { from:'ai', text: fullText || '(Réponse vide)', streaming: false };
   } catch(e) {
     console.error('[AI Chat] sendAIMessage error:', e.name, e.message, e);
-    const errMsg = (e.name === 'AbortError') ? '⚠ La requête IA a été annulée (délai dépassé).' : '⚠ Le service IA est temporairement indisponible. Veuillez réessayer dans quelques instants.';
+    const errMsg = (e.name === 'AbortError') ? '⚠ La requête IA a été annulée (délai dépassé).'
+      : (e instanceof TypeError) ? '⚠ Connexion impossible — vérifiez votre réseau et réessayez.'
+      : '⚠ Le service IA est temporairement indisponible. Veuillez réessayer dans quelques instants.';
     STATE.aiMessages[streamIdx] = { from:'ai', text: errMsg, streaming: false };
   }
 
