@@ -7636,6 +7636,7 @@ function renderBilling() {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:20px">
         ${usages.map(u => {
           if (u.na) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><div style="display:flex;align-items:center;gap:7px;margin-bottom:8px"><div style="width:24px;height:24px;border-radius:7px;background:rgba(100,116,139,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">${svgIcon(u.icon).replace('stroke="currentColor"','stroke="#64748b"').replace('width="14"','width="12"').replace('height="14"','height="12"')}</div><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(u.l)}</span></div><div style="font-size:11px;color:var(--fp-text-faint)">Non instrumenté</div><div style="font-size:10px;color:var(--fp-text-faint);margin-top:2px">—</div></div>`;
+          if (!u.max || u.max <= 0) return `<div class="fp-card" style="border-left:3px solid var(--fp-border);padding:12px 14px;opacity:0.65"><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(u.l)}</span><div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">—</div></div>`;
           const pct  = Math.round(u.v / u.max * 100);
           const fc   = u.forecast;
           const pc   = pct > 80 ? '#ef4444' : pct > 60 ? '#f59e0b' : u.color;

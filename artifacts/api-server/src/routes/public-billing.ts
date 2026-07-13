@@ -1,11 +1,32 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
+import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
+import { store } from "../services/store.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
 
 const router = Router();
+
+// ── GET /api/billing/plans ────────────────────────────────────────────────────
+// Public endpoint — returns the full plan catalog + add-on catalog.
+// The `current` field reflects the authenticated org's plan when available
+// (store.me is a singleton populated after auth), defaulting to "standard".
+// Registered BEFORE requireAuth so the dashboard never gets a 401 on this call.
+router.get("/billing/plans", (_req: Request, res: Response): void => {
+  const plans = Object.values(PLAN_CONFIG).map((p) => ({
+    ...p,
+    priceId: PLAN_PRICE_IDS[p.id] ?? "",
+  }));
+  res.json({
+    plans,
+    addons: ADDON_CATALOG,
+    current: (store.me.plan || "standard").toLowerCase(),
+    subscriptionStatus: store.me.subscriptionStatus ?? null,
+    trialEndsAt: store.me.trialEndsAt ?? null,
+  });
+});
 
 type AddonsMap = Record<string, boolean | number>;
 
