@@ -4621,9 +4621,9 @@ function renderMonitors() {
           <tbody>
             ${(()=>{
               const _eps = PREVIEW_MODE ? [
-                { name: 'API Contact Form',  url: '/api/contact',  method: 'POST', status: 'UP',   latency: '142ms',   rate: '99.8%', last: '2 min', id: null },
+                { name: 'API Auth Check',      url: '/api/me',       method: 'GET', status: 'UP',   latency: '142ms',   rate: '99.8%', last: '2 min', id: null },
                 { name: 'Webhook GBP Sync',  url: '/webhooks/gbp', method: 'POST', status: 'UP',   latency: '89ms',    rate: '100%',  last: '5 min', id: null },
-                { name: 'API Avis Google',   url: '/api/reviews',  method: 'GET',  status: 'UP',   latency: '312ms',   rate: '99.1%', last: '1 min', id: null },
+                { name: 'API Review Intel',   url: '/api/review-intelligence/reviews', method: 'GET',  status: 'UP',   latency: '312ms',   rate: '99.1%', last: '1 min', id: null },
                 { name: 'Sitemap Generator', url: '/sitemap.xml',  method: 'GET',  status: 'SLOW', latency: '1 240ms', rate: '97.4%', last: '3 min', id: null },
               ] : (STATE.monitors||[]).map(m => ({
                 id: m.id,
