@@ -1276,7 +1276,7 @@
       return;
     }
     try { localStorage.setItem('fp_cart', JSON.stringify(_cart)); } catch(e) {}
-    window.location.href = '/checkout.html';
+    window.location.href = '/checkout.html' + (_cart.plan ? '?plan=' + encodeURIComponent(_cart.plan) : '');
   };
 
   /* ── Toggle plan card extra features ── */

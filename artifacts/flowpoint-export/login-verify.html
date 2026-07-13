@@ -15,7 +15,7 @@
   <script>
     (function(){
       try {
-        var t = localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        var t = localStorage.getItem('fp:theme') || localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         document.documentElement.setAttribute('data-theme', t);
         document.getElementById('fp-meta-tc').content = t === 'dark' ? '#050810' : '#f8faff';
       } catch(e){}

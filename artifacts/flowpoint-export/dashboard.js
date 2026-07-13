@@ -10772,7 +10772,7 @@ function renderAIMessages() {
   return messages + typing;
 }
 
-const AI_SESSION_KEY = 'fp-ai-history';
+const AI_SESSION_KEY = 'fp:ai-history';
 
 function loadAIHistory() {
   try {
