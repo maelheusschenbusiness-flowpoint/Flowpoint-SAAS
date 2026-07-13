@@ -27,26 +27,97 @@
     } catch (_) { return {}; }
   }
 
-  function apiFetch(path, opts) {
-    var o = Object.assign({ credentials: 'include' }, opts || {});
-    o.headers = Object.assign({}, _authHeaders(), o.headers || {});
-    return fetch(path, o)
-      .then(function (res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
-        return res.json();
+  // ── Shared transport constants — identical to dashboard.js semantics ─────────
+  // Both files share the same: cache TTL, GET dedup, cache-buster, auth headers,
+  // 401 redirect, retry policy (exponential backoff, 2 retries max).
+  var _API_CACHE_TTL = 30000; // 30 s — same as dashboard.js _API_CACHE_TTL
+  var _fpInFlight = {};       // GET dedup: path → Promise (mirrors _apiFetchInFlight)
+  var _fpCache    = {};       // GET cache: path → { data, ts } (mirrors _apiFetchCache)
+
+  function _clearAuth() {
+    try {
+      ['token','fp_token','fp-token','fp-auth','fp-session','fp-user'].forEach(function(k) {
+        localStorage.removeItem(k);
       });
+    } catch (_) {}
   }
 
-  function apiAction(method, path, body) {
-    return fetch(path, {
-      method: method,
+  function apiFetch(path, opts) {
+    var isGet = !opts || !opts.method || opts.method === 'GET';
+
+    // ── GET cache (30 s TTL, same as dashboard.js) ────────────────────────────
+    if (isGet) {
+      var cached = _fpCache[path];
+      if (cached && (Date.now() - cached.ts < _API_CACHE_TTL)) return Promise.resolve(cached.data);
+      if (_fpInFlight[path]) return _fpInFlight[path];
+    }
+
+    // ── Cache-buster for GETs (same pattern as dashboard.js) ─────────────────
+    var _path = path;
+    if (isGet) {
+      _path = path.indexOf('?') === -1
+        ? path + '?_cb=' + Date.now()
+        : path + '&_cb=' + Date.now();
+    }
+
+    var headers = Object.assign(
+      { 'Content-Type': 'application/json' },
+      isGet ? { 'Cache-Control': 'no-cache, no-store' } : {},
+      _authHeaders(),
+      (opts && opts.headers) || {}
+    );
+
+    var fetchOpts = Object.assign({}, opts || {}, {
       credentials: 'include',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    }).then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
-      return res.json();
+      headers: headers,
     });
+
+    var promise = fetch(_path, fetchOpts)
+      .then(function (res) {
+        if (res.status === 401) {
+          _clearAuth();
+          window.location.href = '/login.html';
+          return null;
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + path);
+        return res.json();
+      })
+      .then(function (data) {
+        if (isGet) {
+          _fpCache[path] = { data: data, ts: Date.now() };
+          delete _fpInFlight[path];
+        }
+        return data;
+      })
+      .catch(function (err) {
+        if (isGet) delete _fpInFlight[path];
+        throw err;
+      });
+
+    if (isGet) _fpInFlight[path] = promise;
+    return promise;
+  }
+
+  // apiAction: exponential backoff, 2 retries max — identical to dashboard.js apiAction
+  function apiAction(method, path, body, retries) {
+    if (retries === undefined) retries = 2;
+    var lastErr;
+    function attempt(n) {
+      return apiFetch(path, {
+        method: method,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      }).catch(function (err) {
+        lastErr = err;
+        if (n > 0) {
+          var delay = Math.min(1000 * Math.pow(2, retries - n), 5000);
+          return new Promise(function (resolve) {
+            setTimeout(function () { resolve(attempt(n - 1)); }, delay);
+          });
+        }
+        throw lastErr;
+      });
+    }
+    return attempt(retries);
   }
 
   function normalizeDoc(doc) {
@@ -139,7 +210,7 @@
 
     delete: async function (id) {
       try {
-        await fetch('/api/missions/' + id, { method: 'DELETE', credentials: 'include' });
+        await apiAction('DELETE', '/api/missions/' + id);
       } catch (e) {
         console.warn('[FP] mission delete error:', e.message);
       }
@@ -220,19 +291,19 @@
 
     markRead: async function (id) {
       try {
-        await fetch('/api/notifications/' + id + '/read', { method: 'PATCH', credentials: 'include' });
+        await apiAction('PATCH', '/api/notifications/' + id + '/read');
       } catch (e) { console.warn('[FP] notif markRead error:', e.message); }
     },
 
     markAllRead: async function () {
       try {
-        await fetch('/api/notifications/read-all', { method: 'PATCH', credentials: 'include' });
+        await apiAction('PATCH', '/api/notifications/read-all');
       } catch (e) { console.warn('[FP] notif markAllRead error:', e.message); }
     },
 
     delete: async function (id) {
       try {
-        await fetch('/api/notifications/' + id, { method: 'DELETE', credentials: 'include' });
+        await apiAction('DELETE', '/api/notifications/' + id);
       } catch (e) { console.warn('[FP] notif delete error:', e.message); }
     },
   };
@@ -271,7 +342,7 @@
 
     delete: async function (id) {
       try {
-        await fetch('/api/keywords/' + id, { method: 'DELETE', credentials: 'include' });
+        await apiAction('DELETE', '/api/keywords/' + id);
       } catch (e) {
         console.warn('[FP] keyword delete error:', e.message);
       }
@@ -303,7 +374,7 @@
 
     delete: async function (id) {
       try {
-        await fetch('/api/competitors/' + id, { method: 'DELETE', credentials: 'include' });
+        await apiAction('DELETE', '/api/competitors/' + id);
       } catch (e) {
         console.warn('[FP] competitor delete error:', e.message);
       }
@@ -1929,11 +2000,14 @@
       this.history.push({ role: 'user', content: message });
 
       try {
-        var token = localStorage.getItem('fp_token') || '';
+        // AI chat uses a direct fetch for SSE streaming (body.getReader requires
+        // the raw Response — apiFetch reads it as JSON). Auth/401 policy is applied
+        // identically to apiFetch: _authHeaders() token + 401 → redirect.
         var base = window.__FP_BACKEND_URL || '';
         var resp = await fetch(base + '/api/ai/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
+          credentials: 'include',
           body: JSON.stringify({
             message: message,
             history: this.history.slice(-10),
@@ -1942,6 +2016,7 @@
           }),
         });
 
+        if (resp.status === 401) { _clearAuth(); window.location.href = '/login.html'; return; }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
         var contentType = resp.headers.get('content-type') || '';
@@ -2241,42 +2316,35 @@
     function refresh() {
       if (!window.STATE || !window.STATE.me) return;
 
-      // Monitors — refresh every tick
-      fetch('/api/monitors', { credentials: 'include' })
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(data) {
-          if (!data) return;
-          var arr = Array.isArray(data) ? data : (Array.isArray(data.monitors) ? data.monitors : null);
-          if (arr) {
-            window.STATE.monitors = arr;
-            // Update monitor badge
-            var down = arr.filter(function(m) { return m.status === 'down'; }).length;
-            var badge = document.querySelector('[data-route="monitors"] .fp-nav-badge, [data-nav="monitors"] .fp-nav-badge');
-            if (badge) {
-              badge.textContent = down > 0 ? String(down) : '';
-              badge.style.display = down > 0 ? 'flex' : 'none';
-            }
+      // Monitors — refresh every tick (via apiFetch for consistent auth/401 handling)
+      apiFetch('/api/monitors').then(function(data) {
+        if (!data) return;
+        var arr = Array.isArray(data) ? data : (Array.isArray(data.monitors) ? data.monitors : null);
+        if (arr) {
+          window.STATE.monitors = arr;
+          var down = arr.filter(function(m) { return m.status === 'down'; }).length;
+          var badge = document.querySelector('[data-route="monitors"] .fp-nav-badge, [data-nav="monitors"] .fp-nav-badge');
+          if (badge) {
+            badge.textContent = down > 0 ? String(down) : '';
+            badge.style.display = down > 0 ? 'flex' : 'none';
           }
-        }).catch(function(){});
+        }
+      }).catch(function(){});
 
       // Notifications — refresh every tick
-      fetch('/api/notifications', { credentials: 'include' })
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(data) {
-          if (!data) return;
-          var arr = Array.isArray(data) ? data : (Array.isArray(data.notifications) ? data.notifications : null);
-          if (arr) window.STATE.notifications = arr;
-        }).catch(function(){});
+      apiFetch('/api/notifications').then(function(data) {
+        if (!data) return;
+        var arr = Array.isArray(data) ? data : (Array.isArray(data.notifications) ? data.notifications : null);
+        if (arr) window.STATE.notifications = arr;
+      }).catch(function(){});
 
       // Overview stats — refresh every 5 ticks (5 min)
       if (!refresh._tick) refresh._tick = 0;
       refresh._tick++;
       if (refresh._tick % 5 === 0) {
-        fetch('/api/overview', { credentials: 'include' })
-          .then(function(r) { return r.ok ? r.json() : null; })
-          .then(function(data) {
-            if (data) window.STATE.overview = data;
-          }).catch(function(){});
+        apiFetch('/api/overview').then(function(data) {
+          if (data) window.STATE.overview = data;
+        }).catch(function(){});
       }
     }
 
@@ -2323,9 +2391,9 @@
     var t = btn.textContent || '';
     btn.textContent = '⟳ Actualisation…';
     Promise.all([
-      fetch('/api/monitors',     { credentials: 'include' }).then(function(r) { return r.ok ? r.json() : null; }).catch(function(){return null;}),
-      fetch('/api/overview',     { credentials: 'include' }).then(function(r) { return r.ok ? r.json() : null; }).catch(function(){return null;}),
-      fetch('/api/notifications',{ credentials: 'include' }).then(function(r) { return r.ok ? r.json() : null; }).catch(function(){return null;}),
+      apiFetch('/api/monitors').catch(function(){return null;}),
+      apiFetch('/api/overview').catch(function(){return null;}),
+      apiFetch('/api/notifications').catch(function(){return null;}),
     ]).then(function(results) {
       var monitors = results[0]; var overview = results[1]; var notifs = results[2];
       if (monitors) {

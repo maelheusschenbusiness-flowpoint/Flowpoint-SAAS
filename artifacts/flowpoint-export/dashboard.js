@@ -13458,21 +13458,8 @@ function bindSectionEvents() {
       }, 50);
     });
     $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', async () => { const memberId = btn.dataset.removeMember; if (!memberId || !confirm('Retirer ce membre de l\'équipe ?')) return; const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }));
-    const sendChat = async () => {
-      const input = $('#team-chat-input');
-      if (!input?.value.trim()) return;
-      const now = new Date();
-      const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-      const msg = input.value;
-      const from = STATE.me?.firstName || 'Vous';
-      STATE.teamChatHistory.push({ from, msg, time });
-      input.value = '';
-      render();
-      setTimeout(() => { const msgs = $('#team-chat-msgs'); if(msgs) msgs.scrollTop = msgs.scrollHeight; }, 50);
-      try { await apiAction('POST', '/api/team/messages', { channel: 'general', from, text: msg, self: true }); } catch(_) {}
-    };
-    $('#team-chat-send')?.addEventListener('click', sendChat);
-    $('#team-chat-input')?.addEventListener('keydown', e => { if(e.key==='Enter') sendChat(); });
+    // sendChat listeners are bound in bindNewRouteEvents (team+chat sub-route only)
+    // to avoid double-binding when re-rendering.
   }
 
   if (route === 'settings') {

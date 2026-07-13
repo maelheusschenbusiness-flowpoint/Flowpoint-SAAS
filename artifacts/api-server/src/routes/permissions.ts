@@ -70,12 +70,9 @@ router.get("/access/logs", requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.post("/team/invite", requireAdmin, async (req, res) => {
-  const { email, roleId, name } = req.body as { email?: string; roleId?: string; name?: string };
-  if (!email || !roleId) { res.status(400).json({ error: "email et roleId requis" }); return; }
-  await logAccess(org(req), 'admin', 'team.invited', 'team', { email, roleId, name });
-  res.json({ ok: true, message: `Invitation envoyée à ${email}`, inviteId: `inv_${Date.now()}` });
-});
+// NOTE: POST /team/invite is handled by teamRouter (routes/team.ts) which does
+// the real DB insert + email dispatch. This stub has been removed to avoid the
+// duplicate route and the misleading stub response it used to send.
 
 router.post("/team/remove", requireAdmin, async (req, res) => {
   const { userId } = req.body as { userId?: string };
