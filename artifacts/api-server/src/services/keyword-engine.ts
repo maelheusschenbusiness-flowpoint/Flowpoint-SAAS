@@ -11,6 +11,7 @@ import { logger } from "../lib/logger.js";
 import {
   isDataForSEOConfigured,
   checkAndIncrementQuota,
+  dfsRequest,
 } from "./dataforseo-service.js";
 
 export interface KeywordStats {
@@ -48,16 +49,6 @@ export async function trackKeyword(
   }
 }
 
-// ── SERP sync via DataForSEO ──────────────────────────────────────────────────
-
-const DFS_BASE = "https://api.dataforseo.com/v3";
-
-function dfsAuth(): string {
-  const login = process.env["DATAFORSEO_LOGIN"] ?? "";
-  const pass  = process.env["DATAFORSEO_PASSWORD"] ?? "";
-  return `Basic ${Buffer.from(`${login}:${pass}`).toString("base64")}`;
-}
-
 function extractDomain(url: string): string {
   try {
     return new URL(url.startsWith("http") ? url : `https://${url}`)
@@ -67,22 +58,25 @@ function extractDomain(url: string): string {
   }
 }
 
-async function batchSERP(tasks: Array<{
-  keyword: string; location_name: string; language_code: string; device: string; depth: number;
-}>): Promise<Array<{
+async function batchSERP(
+  tasks: Array<{ keyword: string; location_name: string; language_code: string; device: string; depth: number }>,
+  orgId = "default"
+): Promise<Array<{
   status_code: number;
   result?: Array<{
     items?: Array<{ type: string; rank_absolute: number; url?: string; domain?: string }>;
   }>;
 }>> {
-  const res = await fetch(`${DFS_BASE}/serp/google/organic/live/regular`, {
-    method:  "POST",
-    headers: { Authorization: dfsAuth(), "Content-Type": "application/json" },
-    body:    JSON.stringify(tasks),
-    signal:  AbortSignal.timeout(45_000),
-  });
-  if (!res.ok) throw new Error(`DataForSEO SERP ${res.status}`);
-  return res.json() as Promise<Array<{ status_code: number; result?: Array<{ items?: Array<{ type: string; rank_absolute: number; url?: string; domain?: string }> }> }>>;
+  return dfsRequest(
+    "/serp/google/organic/live/regular",
+    tasks,
+    orgId
+  ) as Promise<Array<{
+    status_code: number;
+    result?: Array<{
+      items?: Array<{ type: string; rank_absolute: number; url?: string; domain?: string }>;
+    }>;
+  }>>;
 }
 
 export async function syncOrgRankings(orgId: string): Promise<void> {
@@ -137,7 +131,7 @@ export async function syncOrgRankings(orgId: string): Promise<void> {
 
       let results: Awaited<ReturnType<typeof batchSERP>>;
       try {
-        results = await batchSERP(tasks);
+        results = await batchSERP(tasks, orgId);
       } catch (e) {
         logger.warn({ e, orgId, batch: i }, "[keyword-engine] SERP batch request failed");
         continue;

@@ -3039,6 +3039,7 @@ function initLocalSEOMap() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(pos => {
         const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        map.setCenter(userPos);
         STATE._geoMarker = new google.maps.Marker({
           position: userPos, map, zIndex: 20, title: 'Vous \u00eates ici',
           icon: { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: '#22c55e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }
@@ -9419,8 +9420,8 @@ function renderSettings() {
                 ℹ️ Les credentials sont stockés de manière sécurisée côté serveur uniquement. Le mot de passe n'est jamais conservé dans le navigateur. En l'absence de credentials personnels, les variables d'environnement <code>DATAFORSEO_LOGIN</code> et <code>DATAFORSEO_PASSWORD</code> sont utilisées comme fallback.
               </div>
               <div style="display:flex;gap:8px;justify-content:flex-end">
-                <button class="fp-btn fp-btn-ghost" onclick="apiAction('DELETE','/api/me/dataforseo/credentials').then(function(r){showToast(r&&r.ok?'info':'error',r&&r.ok?'Credentials effacés':'Erreur');window._dfsStatusCache={configured:false,login:''};render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});">Effacer</button>
-                <button class="fp-btn fp-btn-primary" onclick="(function(){var l=document.getElementById('dfs-login')?.value?.trim();var p=document.getElementById('dfs-password')?.value?.trim();if(!l||!p){showToast('warning','Renseignez login et mot de passe');return;}apiAction('POST','/api/me/dataforseo/credentials',{login:l,password:p}).then(function(r){showToast(r&&r.ok?'success':'error',r&&r.ok?'Credentials DataForSEO sauvegardés':'Erreur');window._dfsStatusCache={configured:true,login:l};document.getElementById('dfs-password').value='';render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});})();">Sauvegarder</button>
+                <button class="fp-btn fp-btn-ghost" onclick="apiAction('DELETE','/api/me/dataforseo/credentials').then(function(r){showToast(r&&r.ok?'info':'error',r&&r.ok?'Credentials effacés':'Erreur');delete window._dfsStatusCache;render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});">Effacer</button>
+                <button class="fp-btn fp-btn-primary" onclick="(function(){var l=document.getElementById('dfs-login')?.value?.trim();var p=document.getElementById('dfs-password')?.value?.trim();if(!l||!p){showToast('warning','Renseignez login et mot de passe');return;}apiAction('POST','/api/me/dataforseo/credentials',{login:l,password:p}).then(function(r){showToast(r&&r.ok?'success':'error',r&&r.ok?'Credentials DataForSEO sauvegardés':'Erreur');delete window._dfsStatusCache;document.getElementById('dfs-password').value='';render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});})();">Sauvegarder</button>
               </div>
             </div>
           </div>

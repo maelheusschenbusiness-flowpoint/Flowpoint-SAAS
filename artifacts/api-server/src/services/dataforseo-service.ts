@@ -103,9 +103,9 @@ export async function getQuotaUsage(
 // ── Keywords ──────────────────────────────────────────────────────────────────
 
 export async function getKeywordSuggestions(
-  keyword: string, location = "France", lang = "fr"
+  keyword: string, location = "France", lang = "fr", orgId = "default"
 ): Promise<Array<{ keyword: string; volume: number; difficulty: number; cpc: number }>> {
-  if (!await isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured(orgId)) return [];
   try {
     type DFSKwResult = Array<{
       result?: Array<{ keyword: string; search_volume: number; keyword_difficulty: number; cpc: number }>;
@@ -114,7 +114,7 @@ export async function getKeywordSuggestions(
       keywords:      [keyword, `${keyword} local`, `${keyword} gratuit`, `meilleur ${keyword}`, `${keyword} pas cher`],
       location_name: location,
       language_code: lang,
-    }]);
+    }], orgId);
     return (data[0]?.result ?? []).map(r => ({
       keyword:    r.keyword,
       volume:     r.search_volume,
@@ -128,22 +128,22 @@ export async function getKeywordSuggestions(
 }
 
 export async function getSERP(
-  keyword: string, location = "France", lang = "fr"
+  keyword: string, location = "France", lang = "fr", orgId = "default"
 ): Promise<unknown[]> {
-  if (!await isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured(orgId)) return [];
   try {
     type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
     const data = await dfsRequest<DFSResult>("/serp/google/organic/live/regular", [{
       keyword, location_name: location, language_code: lang, depth: 10,
-    }]);
+    }], orgId);
     return data[0]?.result?.[0] as unknown[] ?? [];
   } catch { return []; }
 }
 
 export async function getCompetitors(
-  domain: string
+  domain: string, orgId = "default"
 ): Promise<Array<{ domain: string; organicTraffic: number; keywords: number; authority: number }>> {
-  if (!await isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured(orgId)) return [];
   try {
     type DFSResult = Array<{
       result?: Array<{
@@ -152,7 +152,8 @@ export async function getCompetitors(
     }>;
     const data = await dfsRequest<DFSResult>(
       "/dataforseo_labs/google/competitors_domain/live",
-      [{ target: domain, location_name: "France", language_name: "French" }]
+      [{ target: domain, location_name: "France", language_name: "French" }],
+      orgId
     );
     return (data[0]?.result ?? []).slice(0, 10).map(r => ({
       domain:         r.domain,
@@ -164,12 +165,12 @@ export async function getCompetitors(
 }
 
 export async function getBacklinks(
-  domain: string
+  domain: string, orgId = "default"
 ): Promise<{ referring_domains: number; backlinks: number; domain_rank: number }> {
-  if (!await isDataForSEOConfigured()) return { referring_domains: 0, backlinks: 0, domain_rank: 0 };
+  if (!await isDataForSEOConfigured(orgId)) return { referring_domains: 0, backlinks: 0, domain_rank: 0 };
   try {
     type DFSResult = Array<{ result?: Array<Record<string, number>> }>;
-    const data = await dfsRequest<DFSResult>("/backlinks/summary/live", [{ target: domain }]);
+    const data = await dfsRequest<DFSResult>("/backlinks/summary/live", [{ target: domain }], orgId);
     const r = data[0]?.result?.[0] ?? {};
     return {
       referring_domains: r["referring_domains"] ?? 0,
@@ -180,14 +181,15 @@ export async function getBacklinks(
 }
 
 export async function getDomainMetrics(
-  domain: string
+  domain: string, orgId = "default"
 ): Promise<{ traffic: number; keywords: number; rank: number; backlinks: number }> {
-  if (!await isDataForSEOConfigured()) return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 };
+  if (!await isDataForSEOConfigured(orgId)) return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 };
   try {
     type DFSResult = Array<{ result?: Array<Record<string, number>> }>;
     const data = await dfsRequest<DFSResult>(
       "/dataforseo_labs/google/domain_metrics/live",
-      [{ target: domain, location_name: "France" }]
+      [{ target: domain, location_name: "France" }],
+      orgId
     );
     const r = data[0]?.result?.[0] ?? {};
     return {
@@ -199,13 +201,14 @@ export async function getDomainMetrics(
   } catch { return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 }; }
 }
 
-export async function getKeywordDifficulty(keyword: string): Promise<number> {
-  if (!await isDataForSEOConfigured()) return 0;
+export async function getKeywordDifficulty(keyword: string, orgId = "default"): Promise<number> {
+  if (!await isDataForSEOConfigured(orgId)) return 0;
   try {
     type DFSResult = Array<{ result?: Array<{ keyword_difficulty: number }> }>;
     const data = await dfsRequest<DFSResult>(
       "/dataforseo_labs/google/keyword_difficulty/live",
-      [{ keywords: [keyword], location_name: "France" }]
+      [{ keywords: [keyword], location_name: "France" }],
+      orgId
     );
     return data[0]?.result?.[0]?.keyword_difficulty ?? 0;
   } catch { return 0; }
@@ -214,9 +217,9 @@ export async function getKeywordDifficulty(keyword: string): Promise<number> {
 // ── Local Pack (Google Maps / Pack 3) ─────────────────────────────────────────
 
 export async function getLocalPackRank(
-  keyword: string, location: string
+  keyword: string, location: string, orgId = "default"
 ): Promise<Array<{ rank: number; title: string; rating: number; reviews: number; address?: string }>> {
-  if (!await isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured(orgId)) return [];
   try {
     type DFSResult = Array<{
       status_code: number;
@@ -235,7 +238,7 @@ export async function getLocalPackRank(
       location_name: location,
       language_code: "fr",
       depth: 3,
-    }]);
+    }], orgId);
 
     const items = (data[0]?.result?.[0]?.items ?? [])
       .filter(i => i.type === "local_pack")
@@ -255,9 +258,9 @@ export async function getLocalPackRank(
 }
 
 export async function getGoogleMapsResults(
-  keyword: string, location: string
+  keyword: string, location: string, orgId = "default"
 ): Promise<Array<{ name: string; rating: number; reviews: number; address: string; category: string }>> {
-  if (!await isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured(orgId)) return [];
   try {
     type DFSResult = Array<{
       status_code: number;
@@ -276,7 +279,7 @@ export async function getGoogleMapsResults(
       location_name: location,
       language_code: "fr",
       depth: 10,
-    }]);
+    }], orgId);
 
     const items = (data[0]?.result?.[0]?.items ?? [])
       .filter(i => i.type === "maps_search")
@@ -308,9 +311,9 @@ export async function getAIVisibility(
 // ── Content optimisation ──────────────────────────────────────────────────────
 
 export async function getContentOptimization(
-  url: string, keyword: string
+  url: string, keyword: string, orgId = "default"
 ): Promise<{ score: number; wordCount: number; headings: number; recommendations: string[] }> {
-  if (!await isDataForSEOConfigured()) {
+  if (!await isDataForSEOConfigured(orgId)) {
     return { score: 0, wordCount: 0, headings: 0, recommendations: [] };
   }
   try {
@@ -325,7 +328,7 @@ export async function getContentOptimization(
     }>;
     const data = await dfsRequest<DFSResult>("/content_analysis/summary/live", [{
       url, keyword, location_name: "France", language_code: "fr",
-    }]);
+    }], orgId);
     const r = data[0]?.result?.[0] ?? {};
     const htags = r.meta?.htags ?? {};
     const headings = Object.values(htags).flat().length;
@@ -341,9 +344,9 @@ export async function getContentOptimization(
 // ── SEO Missions (generated from competitor gap analysis) ─────────────────────
 
 export async function generateSEOMissions(
-  domain: string, keywords: string[]
+  orgId: string, domain: string, keywords: string[]
 ): Promise<unknown[]> {
-  if (!await isDataForSEOConfigured() || keywords.length === 0) return [];
+  if (!await isDataForSEOConfigured(orgId) || keywords.length === 0) return [];
   try {
     type DFSResult = Array<{
       result?: Array<{
@@ -354,7 +357,8 @@ export async function generateSEOMissions(
     }>;
     const data = await dfsRequest<DFSResult>(
       "/dataforseo_labs/google/keyword_difficulty/live",
-      [{ keywords: keywords.slice(0, 20), location_name: "France" }]
+      [{ keywords: keywords.slice(0, 20), location_name: "France" }],
+      orgId
     );
     return (data[0]?.result ?? []).map((r, i) => ({
       id:               `dfs_mission_${i}`,

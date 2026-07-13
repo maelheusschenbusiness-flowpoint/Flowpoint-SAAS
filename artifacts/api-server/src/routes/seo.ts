@@ -56,9 +56,10 @@ router.get("/seo/status", async (req, res) => {
 // ── GET /api/seo/keywords ─────────────────────────────────────────────────────
 
 router.get("/seo/keywords", withQuota(async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "seo local", location = "France", language = "fr" } = req.query as Record<string,string>;
   try {
-    const data = await getKeywordSuggestions(keyword, location, language);
+    const data = await getKeywordSuggestions(keyword, location, language, orgId);
     res.json({ keyword, location, language, count: data.length, keywords: data });
   } catch (e) {
     res.status(500).json({ error: "Keyword fetch failed", detail: String(e) });
@@ -68,9 +69,10 @@ router.get("/seo/keywords", withQuota(async (req, res) => {
 // ── GET /api/seo/serp ─────────────────────────────────────────────────────────
 
 router.get("/seo/serp", withQuota(async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "seo local", location = "France", language = "fr" } = req.query as Record<string,string>;
   try {
-    const data = await getSERP(keyword, location, language);
+    const data = await getSERP(keyword, location, language, orgId);
     res.json({ keyword, location, count: data.length, results: data });
   } catch (e) {
     res.status(500).json({ error: "SERP fetch failed", detail: String(e) });
@@ -80,9 +82,10 @@ router.get("/seo/serp", withQuota(async (req, res) => {
 // ── GET /api/seo/competitors ──────────────────────────────────────────────────
 
 router.get("/seo/competitors", withQuota(async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain = "exemple.fr" } = req.query as Record<string,string>;
   try {
-    const data = await getCompetitors(domain);
+    const data = await getCompetitors(domain, orgId);
     res.json({ domain, count: data.length, competitors: data });
   } catch (e) {
     res.status(500).json({ error: "Competitors fetch failed", detail: String(e) });
@@ -92,9 +95,10 @@ router.get("/seo/competitors", withQuota(async (req, res) => {
 // ── GET /api/seo/backlinks ────────────────────────────────────────────────────
 
 router.get("/seo/backlinks", withQuota(async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain = "exemple.fr" } = req.query as Record<string,string>;
   try {
-    const data = await getBacklinks(domain);
+    const data = await getBacklinks(domain, orgId);
     res.json({ domain, ...data });
   } catch (e) {
     res.status(500).json({ error: "Backlinks fetch failed", detail: String(e) });
@@ -104,9 +108,10 @@ router.get("/seo/backlinks", withQuota(async (req, res) => {
 // ── GET /api/seo/domain-metrics ───────────────────────────────────────────────
 
 router.get("/seo/domain-metrics", withQuota(async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain = "exemple.fr" } = req.query as Record<string,string>;
   try {
-    const data = await getDomainMetrics(domain);
+    const data = await getDomainMetrics(domain, orgId);
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: "Domain metrics fetch failed", detail: String(e) });
@@ -116,9 +121,10 @@ router.get("/seo/domain-metrics", withQuota(async (req, res) => {
 // ── GET /api/seo/keyword-difficulty ──────────────────────────────────────────
 
 router.get("/seo/keyword-difficulty", withQuota(async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "seo local" } = req.query as Record<string,string>;
   try {
-    const difficulty = await getKeywordDifficulty(keyword);
+    const difficulty = await getKeywordDifficulty(keyword, orgId);
     res.json({ keyword, difficulty });
   } catch (e) {
     res.status(500).json({ error: "Keyword difficulty fetch failed" });
@@ -128,9 +134,10 @@ router.get("/seo/keyword-difficulty", withQuota(async (req, res) => {
 // ── GET /api/seo/local-rank ───────────────────────────────────────────────────
 
 router.get("/seo/local-rank", withQuota(async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "restaurant", location = "Paris" } = req.query as Record<string,string>;
   try {
-    const data = await getLocalPackRank(keyword, location);
+    const data = await getLocalPackRank(keyword, location, orgId);
     res.json({ keyword, location, count: data.length, results: data });
   } catch (e) {
     res.status(500).json({ error: "Local rank fetch failed", detail: String(e) });
@@ -140,9 +147,10 @@ router.get("/seo/local-rank", withQuota(async (req, res) => {
 // ── GET /api/seo/maps ─────────────────────────────────────────────────────────
 
 router.get("/seo/maps", withQuota(async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { keyword = "restaurant", location = "Paris" } = req.query as Record<string,string>;
   try {
-    const data = await getGoogleMapsResults(keyword, location);
+    const data = await getGoogleMapsResults(keyword, location, orgId);
     res.json({ keyword, location, count: data.length, results: data });
   } catch (e) {
     res.status(500).json({ error: "Maps fetch failed", detail: String(e) });
@@ -164,10 +172,11 @@ router.get("/seo/ai-mentions", withQuota(async (req, res) => {
 // ── POST /api/seo/content-optimization ───────────────────────────────────────
 
 router.post("/seo/content-optimization", withQuota(async (req, res) => {
+  const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { url } = req.body as { url?: string };
   if (!url) { res.status(400).json({ error: "url required" }); return; }
   try {
-    const data = await getContentOptimization(url);
+    const data = await getContentOptimization(url, "seo local", orgId);
     await store.logActivity({
       type: "audit", label: `Analyse de contenu : ${url}`, targetId: url, targetType: "url",
     }).catch(() => {});
@@ -184,7 +193,7 @@ router.post("/seo/generate-missions", async (req, res) => {
   const { domain } = req.body as { domain?: string };
   if (!domain) { res.status(400).json({ error: "domain required" }); return; }
   try {
-    await generateSEOMissions(orgId, domain);
+    await generateSEOMissions(orgId, domain, []);
     res.json({ ok: true, message: `Missions SEO générées pour ${domain}` });
   } catch (e) {
     res.status(500).json({ error: "Mission generation failed" });
@@ -202,7 +211,7 @@ router.get("/local-seo/citations", async (req, res) => {
     if (domain && await isDataForSEOConfigured(orgId)) {
       const allowed = await checkAndIncrementQuota(orgId, "citations", 1).catch(() => false);
       if (allowed) {
-        const bl = await getBacklinks(domain);
+        const bl = await getBacklinks(domain, orgId);
         res.json({
           domain,
           totalCitations: bl?.total ?? 0,
