@@ -8221,6 +8221,7 @@ function renderAlertRules() {
   const typeLabels = { seo_score: 'Score SEO', latency: 'Latence', uptime: 'Uptime', monitor_down: 'Monitor DOWN', keyword_ranking_drop: 'Chute ranking' };
   const opLabels = { lt: '<', gt: '>', eq: '=' };
   const unitMap = { seo_score: '/100', latency: 'ms', uptime: '%', monitor_down: '', keyword_ranking_drop: ' pos' };
+  const isUltra = STATE.me?.plan === 'Agency' || STATE.me?.plan === 'Ultra';
 
   const TEMPLATES = [
     { name: 'Monitor DOWN', type: 'monitor_down', operator: 'eq', threshold: 1, durationMin: 0, channels: ['email'], siteUrls: [] },
