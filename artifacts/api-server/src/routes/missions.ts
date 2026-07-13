@@ -2,6 +2,9 @@ import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 import { runMissionEngine, getMissionsStats } from "../services/mission-engine.js";
+import { consumeAICredits } from "../services/ai-engine.js";
+import { loadOrgAIPrefs } from "../services/ai-prefs.js";
+import { buildQuotaGuidance } from "../services/ai-quota.js";
 
 const router = Router();
 
@@ -288,7 +291,14 @@ router.get("/missions/:id", async (req: Request, res: Response) => {
 // POST /missions/generate — trigger AI Mission Engine
 router.post("/missions/generate", async (req: Request, res: Response) => {
   try {
-    const result = await runMissionEngine(orgId(req), "manual");
+    const oid = orgId(req);
+    const aiPrefs = await loadOrgAIPrefs(oid);
+    const creditCheck = await consumeAICredits({ feature: "mission_auto", orgId: oid });
+    if (!creditCheck.allowed) {
+      res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs));
+      return;
+    }
+    const result = await runMissionEngine(oid, "manual");
     res.json({ ok: true, ...result });
 
     // Fire-and-forget: new missions email

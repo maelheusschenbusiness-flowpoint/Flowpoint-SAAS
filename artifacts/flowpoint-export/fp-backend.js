@@ -1951,6 +1951,7 @@
           var decoder = new TextDecoder();
           var fullReply = '';
           var buf = '';
+          var lastAi = null;
           while (true) {
             var chunk = await reader.read();
             if (chunk.done) break;
@@ -1968,12 +1969,13 @@
                   fullReply += obj.delta;
                   if (typeof onDelta === 'function') onDelta(obj.delta, fullReply);
                 }
+                if (obj._ai) lastAi = obj._ai;
                 if (obj.error) throw new Error(obj.error);
               } catch(parseErr) { /* skip malformed */ }
             }
           }
           this.history.push({ role: 'assistant', content: fullReply });
-          if (typeof onDone === 'function') onDone(fullReply);
+          if (typeof onDone === 'function') onDone(fullReply, lastAi);
           return fullReply;
         } else {
           // JSON fallback
@@ -1981,7 +1983,7 @@
           var reply = json.reply || json.error || 'Erreur inattendue';
           this.history.push({ role: 'assistant', content: reply });
           if (typeof onDelta === 'function') onDelta(reply, reply);
-          if (typeof onDone === 'function') onDone(reply);
+          if (typeof onDone === 'function') onDone(reply, json._ai || null);
           return reply;
         }
       } catch(e) {

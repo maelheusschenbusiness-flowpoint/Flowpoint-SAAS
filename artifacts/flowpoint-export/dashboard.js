@@ -29116,10 +29116,27 @@ document.addEventListener('keydown', function(e) {
             fullReply = full;
             updateMessage(msgId, fullReply, false);
           },
-          onDone: function(full) {
+          onDone: function(full, _ai) {
             setTyping(false);
             if (msgId) updateMessage(msgId, full, true);
-            else appendMessage('assistant', full, false);
+            else msgId = appendMessage('assistant', full, false);
+            if (_ai && msgId) {
+              var el = document.getElementById(msgId);
+              if (el) {
+                var providerLabel = { openai: 'GPT', anthropic: 'Claude', gemini: 'Gemini' }[_ai.provider] || _ai.provider;
+                var badge = document.createElement('div');
+                badge.className = 'fp-ai-provider-badge';
+                badge.title = 'Modèle : ' + (_ai.model || _ai.provider);
+                badge.style.cssText = 'margin-top:4px;font-size:10px;color:#6b7280;display:flex;align-items:center;gap:4px;padding-left:36px';
+                badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.15);border-radius:4px;padding:1px 6px;font-weight:600;letter-spacing:.02em">'
+                  + '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:.7"><path d="M12 2a2 2 0 0 1 2 2v1a7 7 0 0 1 7 7v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a7 7 0 0 1 7-7V4a2 2 0 0 1 2-2z"/></svg>'
+                  + providerLabel + '</span>';
+                el.appendChild(badge);
+                if (_ai.switchReason) {
+                  if (typeof showToast === 'function') showToast('info', 'Basculement IA : ' + _ai.switchReason);
+                }
+              }
+            }
             setSendEnabled(true);
           },
         });

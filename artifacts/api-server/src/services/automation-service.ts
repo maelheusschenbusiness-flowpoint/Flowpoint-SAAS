@@ -4,6 +4,7 @@ import { logger } from "../lib/logger.js";
 import { store } from "./store.js";
 import { analyzePSI } from "./pagespeed-service.js";
 import { aiChat } from "./ai-provider.js";
+import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
 
 const SEED_WORKFLOWS = [
   { id: "wf_1", name: "Rapport client hebdo",       icon: "📊", description: "Génère et envoie un résumé client chaque semaine",         triggerType: "schedule", triggerConfig: { cron: "0 9 * * 1" },           actions: [{ type: "generate_report", params: { format: "pdf" } }, { type: "send_email", params: { template: "client_weekly" } }],            enabled: true, runsCount: 0, category: "Rapports" },
@@ -146,43 +147,50 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
     }
     case "generate_recommendations": {
       try {
+        const o = orgId ?? "default";
         const client = await pool.connect();
         let auditData = null;
         try {
-          const r = await client.query(`SELECT url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [orgId ?? "default"]);
+          const r = await client.query(`SELECT url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [o]);
           auditData = r.rows[0] ?? null;
         } finally { client.release(); }
         if (!auditData) { logger.warn("[Automation] generate_recommendations: no audit data"); break; }
-        const result = await aiChat({
-          provider: "openai", model: "gpt-5-mini",
+        const prefs = await loadOrgAIPrefs(o);
+        const aiCfg = resolveAIModel(prefs, "seo_audit");
+        await aiChat({
+          provider: aiCfg.provider, model: aiCfg.model,
           systemPrompt: "Tu es un consultant SEO senior. Génère 5 recommandations prioritaires basées sur les données d'audit fournies. Format: liste numérotée avec impact estimé.",
           messages: [{ role: "user", content: `Audit ${auditData.url} — Score SEO ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues.` }],
-          maxTokens: 800,
+          maxTokens: aiCfg.maxTokens,
         });
-        logger.info({ url: auditData.url }, "[Automation] generate_recommendations complete");
+        logger.info({ url: auditData.url, provider: aiCfg.provider, model: aiCfg.model }, "[Automation] generate_recommendations complete");
         store.logActivity({ type: "team", label: `Recommandations générées: ${auditData.url}`, targetId: auditData.url, targetType: "recommendations" }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
       } catch(err) { logger.error({ err }, "[Automation] generate_recommendations failed"); }
       break;
     }
     case "generate_report": {
       try {
+        const o = orgId ?? "default";
         const client = await pool.connect();
         let auditData = null;
         try {
-          const r = await client.query(`SELECT url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [orgId ?? "default"]);
+          const r = await client.query(`SELECT url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [o]);
           auditData = r.rows[0] ?? null;
         } finally { client.release(); }
-        const prompt = auditData
-          ? `Rapport SEO pour ${auditData.url} — Score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues. Résume en 3 paragraphes avec actions prioritaires.`
-          : `Rapport SEO généré automatiquement. Aucun audit récent disponible. Donnez des recommandations générales de base.`;
-        const result = await aiChat({
-          provider: "openai", model: "gpt-5-mini",
+        if (!auditData) {
+          logger.warn("[Automation] generate_report: no audit data — cannot generate meaningful report");
+          break;
+        }
+        const prefs = await loadOrgAIPrefs(o);
+        const aiCfg = resolveAIModel(prefs, "executive_report");
+        const prompt = `Rapport SEO pour ${auditData.url} — Score ${auditData.score}/100, Performance ${auditData.speed}/100, ${auditData.issues} issues. Résume en 3 paragraphes avec actions prioritaires.`;
+        await aiChat({
+          provider: aiCfg.provider, model: aiCfg.model,
           systemPrompt: "Tu es un consultant SEO senior. Génère un rapport exécutif concis en français.",
           messages: [{ role: "user", content: prompt }],
-          maxTokens: 1000,
+          maxTokens: aiCfg.maxTokens,
         });
-        logger.info({ hasAudit: !!auditData }, "[Automation] generate_report complete");
-        // Email the report if user has email configured
+        logger.info({ hasAudit: true, provider: aiCfg.provider, model: aiCfg.model }, "[Automation] generate_report complete");
         if (store.me.email) {
           const { mailer } = await import("./mailer.js");
           await mailer.sendReportGenerated({
@@ -197,22 +205,27 @@ async function executeAction(type: string, params: Record<string, unknown>, orgI
     }
     case "analyze_competitors": {
       try {
+        const o = orgId ?? "default";
         const client = await pool.connect();
         let auditData = null;
         try {
-          const r = await client.query(`SELECT url, score, speed FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [orgId ?? "default"]);
+          const r = await client.query(`SELECT url, score, speed FROM audits WHERE org_id=$1 ORDER BY created_at DESC LIMIT 1`, [o]);
           auditData = r.rows[0] ?? null;
         } finally { client.release(); }
-        const prompt = auditData
-          ? `Analyse concurrentielle pour ${auditData.url} (score ${auditData.score}/100). Identifiez 3 gaps concurrentiels probables et 3 opportunités.`
-          : `Analyse concurrentielle SEO générale. Donnez 3 stratégies pour dépasser les concurrents locaux.`;
-        const result = await aiChat({
-          provider: "openai", model: "gpt-5-mini",
-          systemPrompt: "Tu es un analyste stratégique SEO. Réponds en français avec des insights actionnables.",
+        if (!auditData) {
+          logger.warn("[Automation] analyze_competitors: no audit data — skipping");
+          break;
+        }
+        const prefs = await loadOrgAIPrefs(o);
+        const aiCfg = resolveAIModel(prefs, "market_intel");
+        const prompt = `Analyse concurrentielle pour ${auditData.url} (score ${auditData.score}/100). Identifiez 3 gaps concurrentiels probables et 3 opportunités de différenciation.`;
+        await aiChat({
+          provider: aiCfg.provider, model: aiCfg.model,
+          systemPrompt: "Tu es un analyste stratégique SEO. Réponds en français avec des insights actionnables basés sur les données fournies.",
           messages: [{ role: "user", content: prompt }],
-          maxTokens: 800,
+          maxTokens: aiCfg.maxTokens,
         });
-        logger.info({ url: auditData?.url }, "[Automation] analyze_competitors complete");
+        logger.info({ url: auditData.url, provider: aiCfg.provider, model: aiCfg.model }, "[Automation] analyze_competitors complete");
       } catch(err) { logger.error({ err }, "[Automation] analyze_competitors failed"); }
       break;
     }

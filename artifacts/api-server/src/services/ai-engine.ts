@@ -13,15 +13,13 @@ import {
   type AIProviderId,
 } from "../config/ai-config.js";
 
-/** All supported models — expanded for multi-provider support */
+/** All supported models — openai, anthropic, gemini only */
 export type AIModel =
-  | "gpt-5" | "gpt-5-mini" | "gpt-5-nano" | "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo"
-  | "claude-4-sonnet" | "claude-4-opus" | "claude-3-5-sonnet" | "claude-3-5-haiku"
-  | "gemini-2.5-pro" | "gemini-2.5-flash" | "gemini-2.0-flash" | "gemini-1.5-pro" | "gemini-1.5-flash"
-  | "mistral-large" | "mistral-medium" | "mistral-small"
-  | "grok-3" | "grok-3-mini"
-  | "openrouter-default"
-  | "deepseek-v3" | "deepseek-r1";
+  | "gpt-5" | "gpt-5-mini" | "gpt-5-nano" | "gpt-5.4" | "gpt-5.3-codex" | "gpt-5.2"
+  | "gpt-image-1" | "gpt-4o" | "gpt-4o-mini" | "o3" | "o4-mini"
+  | "claude-sonnet-4-6" | "claude-sonnet-4-5" | "claude-opus-4-8" | "claude-opus-4-7" | "claude-haiku-4-5"
+  | "gemini-3.1-pro-preview" | "gemini-3-flash-preview" | "gemini-3-pro-image-preview"
+  | "gemini-2.5-pro" | "gemini-2.5-flash" | "gemini-2.5-flash-image";
 
 export type AIFeature =
   | "chat"

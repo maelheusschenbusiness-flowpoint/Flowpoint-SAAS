@@ -67,97 +67,146 @@ export function resetProviders(): void {
   instances.clear();
 }
 
+// ── Fallback order for provider chain ──────────────────────────────────────
+const FALLBACK_ORDER: AIProviderId[] = ["openai", "anthropic", "gemini"];
+
+function getFallbackChain(primary: AIProviderId): AIProviderId[] {
+  return [primary, ...FALLBACK_ORDER.filter(p => p !== primary)];
+}
+
 // ── Unified chat API ────────────────────────────────────────────────────────
 
 export async function aiChat(opts: AIProviderChatOptions & {
   provider?: AIProviderId;
   task?: string;
-}): Promise<AIProviderResult> {
+}): Promise<AIProviderResult & { _ai: { provider: AIProviderId; model: string; switchReason?: string } }> {
   const { provider: explicitProvider, task, ...chatOpts } = opts;
 
-  // Resolve provider: explicit > task-based > default
-  let providerId: AIProviderId;
-  let model: string;
+  // Resolve primary provider: explicit > task-based > default
+  let primaryProviderId: AIProviderId;
+  let primaryModel: string;
 
   if (explicitProvider) {
-    providerId = explicitProvider;
-    model = chatOpts.model ?? PROVIDER_CAPABILITIES[providerId].defaultModel;
+    primaryProviderId = explicitProvider;
+    primaryModel = chatOpts.model ?? PROVIDER_CAPABILITIES[primaryProviderId].defaultModel;
   } else if (task) {
     const resolved = resolveTaskProvider(task as import("./ai-providers/task-router.js").AITaskType, undefined);
-    providerId = resolved.provider;
-    model = chatOpts.model ?? resolved.model;
+    primaryProviderId = resolved.provider;
+    primaryModel = chatOpts.model ?? resolved.model;
   } else {
-    providerId = "openai";
-    model = chatOpts.model ?? "gpt-5-mini";
+    primaryProviderId = "openai";
+    primaryModel = chatOpts.model ?? "gpt-5-mini";
   }
 
-  const provider = getProvider(providerId);
-  logger.info({ provider: providerId, model, task }, "[AI] Chat request");
+  const chain = getFallbackChain(primaryProviderId);
+  let lastErr: unknown;
 
-  try {
-    const result = await provider.chat({ ...chatOpts, model });
-    logger.info({ provider: providerId, model, tokens: result.usage.totalTokens, latency: result.latencyMs }, "[AI] Chat complete");
-    return result;
-  } catch (err) {
-    logger.error({ err, provider: providerId, model }, "[AI] Chat failed");
-    throw err;
+  for (let i = 0; i < chain.length; i++) {
+    const providerId = chain[i];
+    const model = i === 0 ? primaryModel : (PROVIDER_CAPABILITIES[providerId]?.defaultModel ?? "gpt-5-mini");
+    const switchReason = i > 0 ? `${chain[0]} indisponible — basculé sur ${providerId}` : undefined;
+
+    try {
+      const provider = getProvider(providerId);
+      logger.info({ provider: providerId, model, task, attempt: i + 1 }, "[AI] Chat request");
+      const result = await provider.chat({ ...chatOpts, model });
+      logger.info({ provider: providerId, model, tokens: result.usage.totalTokens, latency: result.latencyMs }, "[AI] Chat complete");
+      if (i > 0) {
+        logger.warn({ primary: chain[0], used: providerId, switchReason }, "[AI] Provider fallback used");
+      }
+      return { ...result, _ai: { provider: providerId, model, switchReason } };
+    } catch (err) {
+      lastErr = err;
+      logger.warn({ err, provider: providerId, model, attempt: i + 1, nextProvider: chain[i + 1] }, "[AI] Chat failed — trying next provider");
+    }
   }
+
+  logger.error({ lastErr, chain }, "[AI] All providers failed");
+  throw Object.assign(new Error("AI_ALL_PROVIDERS_FAILED: tous les providers IA sont indisponibles"), {
+    code: "AI_ALL_PROVIDERS_FAILED",
+    cause: lastErr,
+  });
 }
 
 // ── Unified streaming API ───────────────────────────────────────────────────
 
+// Special chunk type to carry provider metadata through the stream pipeline
+export interface AIStreamMetaChunk {
+  _aiMeta: { provider: AIProviderId; model: string; switchReason?: string };
+}
+
 export async function *aiStream(opts: AIProviderChatOptions & {
   provider?: AIProviderId;
   task?: string;
-}): AsyncGenerator<AIProviderStreamChunk, AIProviderResult, unknown> {
+}): AsyncGenerator<AIProviderStreamChunk | AIStreamMetaChunk, AIProviderResult, unknown> {
   const { provider: explicitProvider, task, ...chatOpts } = opts;
 
-  let providerId: AIProviderId;
-  let model: string;
+  // Resolve primary provider: explicit > task-based > default (same as aiChat)
+  let primaryProviderId: AIProviderId;
+  let primaryModel: string;
 
   if (explicitProvider) {
-    providerId = explicitProvider;
-    model = chatOpts.model ?? PROVIDER_CAPABILITIES[providerId].defaultModel;
+    primaryProviderId = explicitProvider;
+    primaryModel = chatOpts.model ?? PROVIDER_CAPABILITIES[primaryProviderId].defaultModel;
   } else if (task) {
     const resolved = resolveTaskProvider(task as import("./ai-providers/task-router.js").AITaskType, undefined);
-    providerId = resolved.provider;
-    model = chatOpts.model ?? resolved.model;
+    primaryProviderId = resolved.provider;
+    primaryModel = chatOpts.model ?? resolved.model;
   } else {
-    providerId = "openai";
-    model = chatOpts.model ?? "gpt-5-mini";
+    primaryProviderId = "openai";
+    primaryModel = chatOpts.model ?? "gpt-5-mini";
   }
 
-  const provider = getProvider(providerId);
-  logger.info({ provider: providerId, model, task, streaming: true }, "[AI] Stream request");
+  const chain = getFallbackChain(primaryProviderId);
+  let lastErr: unknown;
 
-  try {
-    const gen = provider.stream({ ...chatOpts, model });
-    let finalResult: AIProviderResult | undefined;
+  for (let i = 0; i < chain.length; i++) {
+    const providerId = chain[i];
+    const model = i === 0 ? primaryModel : (PROVIDER_CAPABILITIES[providerId]?.defaultModel ?? "gpt-5-mini");
+    const switchReason = i > 0 ? `${chain[0]} indisponible — basculé sur ${providerId}` : undefined;
 
-    for await (const chunk of gen) {
-      if (chunk && typeof chunk === "object" && "content" in chunk) {
-        yield chunk as AIProviderStreamChunk;
+    try {
+      const provider = getProvider(providerId);
+      logger.info({ provider: providerId, model, task, streaming: true, attempt: i + 1 }, "[AI] Stream request");
+
+      const gen = provider.stream({ ...chatOpts, model });
+      let finalResult: AIProviderResult | undefined;
+      let hasContent = false;
+
+      for await (const chunk of gen) {
+        if (chunk && typeof chunk === "object" && "content" in chunk) {
+          hasContent = true;
+          yield chunk as AIProviderStreamChunk;
+        }
+        if (chunk && typeof chunk === "object" && "text" in chunk && "usage" in chunk) {
+          finalResult = chunk as unknown as AIProviderResult;
+        }
       }
-      // The last value from the generator is the return value (not yielded)
-      if (chunk && typeof chunk === "object" && "text" in chunk && "usage" in chunk) {
-        finalResult = chunk as unknown as AIProviderResult;
+
+      if (!finalResult) {
+        // Fallback: non-streaming call to get usage stats
+        finalResult = await provider.chat({ ...chatOpts, model });
       }
-    }
 
-    // For generators that return via the final yield, extract from the generator
-    // Actually, the return value is obtained differently with AsyncGenerator
-    // Let's re-stream and capture
-    if (!finalResult) {
-      // Re-run to get the final result — inefficient but safe fallback
-      finalResult = await provider.chat({ ...chatOpts, model });
-    }
+      if (i > 0) {
+        logger.warn({ primary: chain[0], used: providerId, switchReason }, "[AI] Stream fallback used");
+      }
+      logger.info({ provider: providerId, model, tokens: finalResult.usage.totalTokens, latency: finalResult.latencyMs }, "[AI] Stream complete");
 
-    logger.info({ provider: providerId, model, tokens: finalResult.usage.totalTokens, latency: finalResult.latencyMs }, "[AI] Stream complete");
-    return finalResult;
-  } catch (err) {
-    logger.error({ err, provider: providerId, model }, "[AI] Stream failed");
-    throw err;
+      // Emit _aiMeta so the caller knows which provider actually responded
+      yield { _aiMeta: { provider: providerId, model, switchReason } } as AIStreamMetaChunk;
+      return finalResult;
+    } catch (err) {
+      lastErr = err;
+      logger.warn({ err, provider: providerId, model, attempt: i + 1, nextProvider: chain[i + 1] }, "[AI] Stream failed — trying next provider");
+    }
   }
+
+  logger.error({ lastErr, chain }, "[AI] All stream providers failed");
+  throw Object.assign(new Error("AI_ALL_PROVIDERS_FAILED: tous les providers IA sont indisponibles"), {
+    code: "AI_ALL_PROVIDERS_FAILED",
+    cause: lastErr,
+  });
 }
 
 // ── Image generation ────────────────────────────────────────────────────────

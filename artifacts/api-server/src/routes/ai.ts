@@ -19,8 +19,10 @@ import {
   selectOptimalModel,
   resolveAIModel,
   type AIModuleKey,
+  type OrgAIPrefs,
 } from "../services/ai-prefs.js";
 import { aiChat, aiStream, checkAllProviders, type AIProviderId } from "../services/ai-provider.js";
+import { buildQuotaGuidance } from "../services/ai-quota.js";
 
 const router = Router();
 // Apply AI rate limit to all routes in this router (org-based, plan-aware)
@@ -53,6 +55,8 @@ function completionParams(model: string, maxTokens: number, temperature?: number
   }
   return { max_tokens: maxTokens, ...(temperature !== undefined ? { temperature } : {}) };
 }
+
+
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -88,7 +92,7 @@ async function callAIWithFallback(args: {
   json?: boolean;
   fallbackText: string;
   orgId?: string;
-}): Promise<{ text: string; model: string; provider: AIProviderId; tokensIn: number; tokensOut: number; latencyMs: number }> {
+}): Promise<{ text: string; model: string; provider: AIProviderId; tokensIn: number; tokensOut: number; latencyMs: number; _ai: { provider: AIProviderId; model: string; switchReason?: string } }> {
   const t0 = Date.now();
 
   // Resolve provider/model/maxTokens from org preferences when orgId is provided
@@ -125,24 +129,25 @@ async function callAIWithFallback(args: {
     const latencyMs = Date.now() - t0;
     return {
       text: result.text || args.fallbackText,
-      model,
-      provider,
+      model: result._ai.model,
+      provider: result._ai.provider,
       tokensIn: result.usage.promptTokens,
       tokensOut: result.usage.completionTokens,
       latencyMs,
+      _ai: result._ai,
     };
   } catch (err) {
     const latencyMs = Date.now() - t0;
-    logger.error({ err, task: args.task, provider, model }, "[AI] callAIWithFallback failed — returning fallback");
-    return {
-      text: args.fallbackText,
-      model,
-      provider,
-      tokensIn: 0,
-      tokensOut: 0,
-      latencyMs,
-    };
+    logger.error({ err, task: args.task, provider, model, latencyMs }, "[AI] callAIWithFallback failed — all providers exhausted");
+    throw Object.assign(
+      new Error("AI_UNAVAILABLE: tous les providers IA sont indisponibles"),
+      { code: "AI_UNAVAILABLE", cause: err }
+    );
   }
+}
+
+function aiUnavailableJson(): { code: string; error: string } {
+  return { code: "AI_UNAVAILABLE", error: "Service IA temporairement indisponible — tous les providers sont hors ligne" };
 }
 
 // ── Shared context builder ────────────────────────────────────────────────────
@@ -561,13 +566,19 @@ ${fpContext}`;
         maxTokens: selectedMaxTokens,
       });
 
+      let actualAiMeta: { provider: string; model: string; switchReason?: string } = { provider: selectedProvider, model: selectedModel };
       for await (const chunk of stream) {
+        if (chunk && typeof chunk === "object" && "_aiMeta" in chunk) {
+          actualAiMeta = (chunk as { _aiMeta: typeof actualAiMeta })._aiMeta;
+          continue;
+        }
         if (chunk && typeof chunk === "object" && "content" in chunk) {
           const text = (chunk as { content: string }).content;
           fullReply += text;
           res.write(`data: ${JSON.stringify({ delta: text })}\n\n`);
         }
       }
+      res.write(`data: ${JSON.stringify({ _ai: actualAiMeta })}\n\n`);
       res.write(`data: [DONE]\n\n`);
       res.end();
 
@@ -602,10 +613,10 @@ ${fpContext}`;
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant non-stream) failed"));
       recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, provider: selectedProvider, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage (non-stream) failed"));
-      res.json({ reply, streaming: false, provider: selectedProvider, model: selectedModel });
+      res.json({ reply, streaming: false, _ai: result._ai });
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: selectedModel }, "[AI] Chat failed");
-      res.status(500).json({ error: "Erreur IA - reessayez" });
+      res.status(503).json(aiUnavailableJson());
     }
   }
 });
@@ -629,7 +640,7 @@ router.post("/ai/audit", async (req, res) => {
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });
-  if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
+  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -729,10 +740,10 @@ Après ces corrections je recommande :
       orgId,
     });
     await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /audit failed");
-    res.json({ analysis: buildFallbackAudit(url, scores) });
+    res.status(503).json(aiUnavailableJson());
   }
 });
 
@@ -754,7 +765,7 @@ router.post("/ai/seo", async (req, res) => {
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "cro_analysis", orgId });
-  if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
+  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -838,11 +849,11 @@ Sections :
     });
     const recommendations = resp.text ?? "";
     const latencyMs = Date.now() - t0;
-    await trackAIUsage({ feature: "cro_analysis", orgId, model: aiCfg.model, tokensIn: resp.usage.promptTokens, tokensOut: resp.usage.completionTokens, latencyMs, success: true, provider: aiCfg.provider });
-    res.json({ recommendations, creditsRemaining: creditCheck.remaining });
+    await trackAIUsage({ feature: "cro_analysis", orgId, model: resp._ai.model, tokensIn: resp.usage.promptTokens, tokensOut: resp.usage.completionTokens, latencyMs, success: true, provider: resp._ai.provider });
+    res.json({ recommendations, _ai: resp._ai, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /seo failed");
-    res.json({ recommendations: buildFallbackSEO(url) });
+    res.status(503).json(aiUnavailableJson());
   }
 });
 
@@ -862,7 +873,7 @@ router.post("/ai/conversion", async (req, res) => {
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "cro_analysis", orgId });
-  if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
+  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -888,10 +899,10 @@ Analyse en 4 sections:
       orgId,
     });
     await trackAIUsage({ feature: "cro_analysis", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /conversion failed");
-    res.status(500).json({ error: "Erreur analyse CRO" });
+    res.status(503).json(aiUnavailableJson());
   }
 });
 
@@ -912,7 +923,7 @@ router.post("/ai/local", async (req, res) => {
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "market_intel", orgId });
-  if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
+  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -938,10 +949,10 @@ Génère une stratégie Local SEO complète:
       orgId,
     });
     await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
+    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /local failed");
-    res.status(500).json({ error: "Erreur recommandations Local SEO" });
+    res.status(503).json(aiUnavailableJson());
   }
 });
 
@@ -961,7 +972,7 @@ router.post("/ai/competitors", async (req, res) => {
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "market_intel", orgId });
-  if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
+  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -985,10 +996,10 @@ Fournis:
       orgId,
     });
     await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /competitors failed");
-    res.status(500).json({ error: "Erreur analyse concurrentielle" });
+    res.status(503).json(aiUnavailableJson());
   }
 });
 
@@ -1009,7 +1020,7 @@ router.post("/ai/reports", async (req, res) => {
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "report_gen", orgId });
-  if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
+  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
 
   const fpCtx = await buildFlowpointContext(undefined, orgId);
 
@@ -1079,10 +1090,10 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
       orgId,
     });
     await trackAIUsage({ feature: "report_gen", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ report: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
+    res.json({ report: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /reports failed");
-    res.status(500).json({ error: "Erreur génération rapport" });
+    res.status(503).json(aiUnavailableJson());
   }
 });
 
@@ -1096,7 +1107,7 @@ router.post("/ai/summary", async (req, res) => {
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "strategist", orgId });
-  if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
+  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
 
   const fpCtx = await buildFlowpointContext(context, orgId);
 
@@ -1112,24 +1123,19 @@ Format:
 ## Prévision 3 mois`;
 
   try {
-    const fallbackText = "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.";
     const aiResult = await callAIWithFallback({
       task: "strategist",
       systemPrompt: "Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. Français.",
       userPrompt: prompt,
       maxTokens: 1600,
-      fallbackText,
+      fallbackText: "",
       orgId,
     });
-    if (!aiResult.text.trim()) {
-      res.json({ summary: fallbackText, fallback: true });
-      return;
-    }
     await trackAIUsage({ feature: "strategist", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ summary: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
+    res.json({ summary: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
   } catch (err) {
-    logger.error({ err }, "[AI] /summary failed — returning fallback");
-    res.json({ summary: "Résumé exécutif temporairement indisponible. Veuillez réessayer dans quelques instants.", fallback: true });
+    logger.error({ err }, "[AI] /summary failed");
+    res.status(503).json(aiUnavailableJson());
   }
 });
 
@@ -1148,7 +1154,7 @@ router.post("/ai/missions", async (req, res) => {
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "mission_auto", orgId });
-  if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
+  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
 
   const fpCtx = await buildFlowpointContext(context, orgId);
 
@@ -1193,15 +1199,19 @@ Réponds uniquement avec le JSON array.`;
     let missions: unknown[];
     try {
       const parsed = JSON.parse(aiResult.text);
-      missions = Array.isArray(parsed) ? parsed : (parsed.missions ?? buildFallbackMissions());
+      missions = Array.isArray(parsed) ? parsed : (parsed.missions ?? []);
     } catch {
-      missions = buildFallbackMissions();
+      missions = [];
+    }
+    if (missions.length === 0) {
+      res.status(503).json(aiUnavailableJson());
+      return;
     }
     await trackAIUsage({ feature: "mission_auto", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ missions, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
+    res.json({ missions, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /missions failed");
-    res.json({ missions: buildFallbackMissions() });
+    res.status(503).json(aiUnavailableJson());
   }
 });
 
@@ -1223,7 +1233,7 @@ router.post("/ai/pagespeed-insights", async (req, res) => {
     return;
   }
   const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });
-  if (!creditCheck.allowed) { res.status(402).json({ error: "Crédits IA insuffisants" }); return; }
+  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -1252,10 +1262,10 @@ Génère:
       orgId,
     });
     await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, creditsRemaining: creditCheck.remaining });
+    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /pagespeed-insights failed");
-    res.json({ recommendations: buildFallbackPSIRecommendations(url, mobile) });
+    res.status(503).json(aiUnavailableJson());
   }
 });
 
@@ -1370,26 +1380,29 @@ router.post("/ai/generate", async (req: Request, res: Response) => {
   const { prompt, type = "general" } = req.body as { prompt?: string; type?: string };
   if (!prompt) return res.status(400).json({ error: "prompt required" });
   try {
-    const { openai, hasOpenAI } = await import("../lib/openai.js");
-    if (!hasOpenAI) {
-      return res.json({
-        content: `[Contenu généré] ${prompt.slice(0, 100)}…\n\n*Connectez OpenAI pour une génération IA réelle.*`,
-        mock: true,
+    const result = await aiChat({
+      task: "chat",
+      systemPrompt: `Tu es un assistant marketing expert. Type de contenu: ${type}. Réponds en français, de façon professionnelle et directement utilisable.`,
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: 800,
+    });
+    res.json({
+      content: result.text,
+      mock: false,
+      _ai: result._ai,
+    });
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "AI_ALL_PROVIDERS_FAILED") {
+      return res.status(503).json({
+        error: "Service IA temporairement indisponible. Réessayez dans quelques instants.",
+        code: "AI_UNAVAILABLE",
       });
     }
-    const resp = await openai.chat.completions.create({
-      model: "gpt-5-mini",
-      messages: [
-        { role: "system", content: `Tu es un assistant marketing expert. Type de contenu: ${type}.` },
-        { role: "user", content: prompt },
-      ],
-      max_completion_tokens: 800,
-    });
-    res.json({ content: resp.choices[0]?.message?.content ?? "", mock: false });
-  } catch {
-    res.json({
-      content: `[Contenu généré] ${prompt.slice(0, 100)}…\n\n*Erreur OpenAI — réessayez.*`,
-      mock: true,
+    logger.error({ err }, "[AI] /ai/generate failed");
+    return res.status(503).json({
+      error: "Service IA temporairement indisponible. Réessayez dans quelques instants.",
+      code: "AI_UNAVAILABLE",
     });
   }
 });

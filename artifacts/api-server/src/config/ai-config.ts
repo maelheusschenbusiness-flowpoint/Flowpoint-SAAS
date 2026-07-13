@@ -1,16 +1,10 @@
 /**
  * AI Config — Centralized provider pricing, model multipliers, feature costs.
  * Single source of truth for all AI credit & cost calculations.
+ * Supported providers: openai, anthropic, gemini only.
  */
 
-export type AIProviderId =
-  | "openai"
-  | "anthropic"
-  | "gemini"
-  | "mistral"
-  | "grok"
-  | "openrouter"
-  | "deepseek";
+export type AIProviderId = "openai" | "anthropic" | "gemini";
 
 export interface AIModelConfig {
   provider: AIProviderId;
@@ -21,53 +15,40 @@ export interface AIModelConfig {
 
 /** ── Provider definitions ─────────────────────────────────────────────── */
 export const AI_PROVIDERS: Record<AIProviderId, { name: string; baseUrl?: string }> = {
-  openai:     { name: "OpenAI" },
-  anthropic:  { name: "Anthropic" },
-  gemini:     { name: "Google Gemini" },
-  mistral:    { name: "Mistral AI" },
-  grok:       { name: "xAI Grok" },
-  openrouter: { name: "OpenRouter" },
-  deepseek:   { name: "DeepSeek" },
+  openai:    { name: "OpenAI" },
+  anthropic: { name: "Anthropic" },
+  gemini:    { name: "Google Gemini" },
 };
 
-/** ── Model pricing (EUR per 1k tokens) — updated 2026-07-12 ──────────── */
+/** ── Model pricing (EUR per 1k tokens) — updated 2026-07-13 ──────────── */
 export const AI_MODELS: Record<string, AIModelConfig> = {
   // OpenAI GPT-5 family
-  "gpt-5":              { provider: "openai",    inputCostPer1k: 0.005,  outputCostPer1k: 0.015,  cacheCostPer1k: 0.00125 },
-  "gpt-5-mini":         { provider: "openai",    inputCostPer1k: 0.0002, outputCostPer1k: 0.0008,  cacheCostPer1k: 0.00005 },
-  "gpt-5-nano":         { provider: "openai",    inputCostPer1k: 0.00005,outputCostPer1k: 0.0002,  cacheCostPer1k: 0.00001 },
-  "gpt-4o":             { provider: "openai",    inputCostPer1k: 0.0025, outputCostPer1k: 0.01,    cacheCostPer1k: 0.00125 },
-  "gpt-4o-mini":        { provider: "openai",    inputCostPer1k: 0.00015,outputCostPer1k: 0.0006,  cacheCostPer1k: 0.000075 },
-  "gpt-3.5-turbo":      { provider: "openai",    inputCostPer1k: 0.0003, outputCostPer1k: 0.0006,  cacheCostPer1k: 0 },
+  "gpt-5":              { provider: "openai",    inputCostPer1k: 0.005,   outputCostPer1k: 0.015,   cacheCostPer1k: 0.00125 },
+  "gpt-5-mini":         { provider: "openai",    inputCostPer1k: 0.0002,  outputCostPer1k: 0.0008,  cacheCostPer1k: 0.00005 },
+  "gpt-5-nano":         { provider: "openai",    inputCostPer1k: 0.00005, outputCostPer1k: 0.0002,  cacheCostPer1k: 0.00001 },
+  "gpt-5.4":            { provider: "openai",    inputCostPer1k: 0.006,   outputCostPer1k: 0.018,   cacheCostPer1k: 0.0015 },
+  "gpt-5.3-codex":      { provider: "openai",    inputCostPer1k: 0.005,   outputCostPer1k: 0.015,   cacheCostPer1k: 0.00125 },
+  "gpt-5.2":            { provider: "openai",    inputCostPer1k: 0.004,   outputCostPer1k: 0.012,   cacheCostPer1k: 0.001 },
+  "gpt-image-1":        { provider: "openai",    inputCostPer1k: 0.005,   outputCostPer1k: 0.040,   cacheCostPer1k: 0 },
+  "gpt-4o":             { provider: "openai",    inputCostPer1k: 0.0025,  outputCostPer1k: 0.01,    cacheCostPer1k: 0.00125 },
+  "gpt-4o-mini":        { provider: "openai",    inputCostPer1k: 0.00015, outputCostPer1k: 0.0006,  cacheCostPer1k: 0.000075 },
+  "o3":                 { provider: "openai",    inputCostPer1k: 0.01,    outputCostPer1k: 0.04,    cacheCostPer1k: 0.0025 },
+  "o4-mini":            { provider: "openai",    inputCostPer1k: 0.0011,  outputCostPer1k: 0.0044,  cacheCostPer1k: 0.000275 },
 
-  // Anthropic Claude family
-  "claude-4-sonnet":    { provider: "anthropic", inputCostPer1k: 0.003,  outputCostPer1k: 0.015,  cacheCostPer1k: 0.0003 },
-  "claude-4-opus":      { provider: "anthropic", inputCostPer1k: 0.015,  outputCostPer1k: 0.075,  cacheCostPer1k: 0.0015 },
-  "claude-3-5-sonnet":  { provider: "anthropic", inputCostPer1k: 0.003,  outputCostPer1k: 0.015,  cacheCostPer1k: 0.0003 },
-  "claude-3-5-haiku":   { provider: "anthropic", inputCostPer1k: 0.00025,outputCostPer1k: 0.00125, cacheCostPer1k: 0.000025 },
+  // Anthropic Claude family — IDs aligned with task-router and capabilities.ts
+  "claude-sonnet-4-6":  { provider: "anthropic", inputCostPer1k: 0.003,   outputCostPer1k: 0.015,   cacheCostPer1k: 0.0003 },
+  "claude-sonnet-4-5":  { provider: "anthropic", inputCostPer1k: 0.003,   outputCostPer1k: 0.015,   cacheCostPer1k: 0.0003 },
+  "claude-opus-4-8":    { provider: "anthropic", inputCostPer1k: 0.015,   outputCostPer1k: 0.075,   cacheCostPer1k: 0.0015 },
+  "claude-opus-4-7":    { provider: "anthropic", inputCostPer1k: 0.015,   outputCostPer1k: 0.075,   cacheCostPer1k: 0.0015 },
+  "claude-haiku-4-5":   { provider: "anthropic", inputCostPer1k: 0.00025, outputCostPer1k: 0.00125, cacheCostPer1k: 0.000025 },
 
-  // Google Gemini family
-  "gemini-2.5-pro":     { provider: "gemini",    inputCostPer1k: 0.00125,outputCostPer1k: 0.01,    cacheCostPer1k: 0 },
-  "gemini-2.5-flash":   { provider: "gemini",    inputCostPer1k: 0.000075,outputCostPer1k: 0.0003, cacheCostPer1k: 0 },
-  "gemini-2.0-flash":   { provider: "gemini",    inputCostPer1k: 0.0001, outputCostPer1k: 0.0004,  cacheCostPer1k: 0 },
-  "gemini-1.5-pro":     { provider: "gemini",    inputCostPer1k: 0.00125,outputCostPer1k: 0.005,  cacheCostPer1k: 0 },
-  "gemini-1.5-flash":   { provider: "gemini",    inputCostPer1k: 0.000075,outputCostPer1k: 0.0003, cacheCostPer1k: 0 },
-
-  // Mistral (placeholder pricing — adjust when connected)
-  "mistral-large":      { provider: "mistral",   inputCostPer1k: 0.002,  outputCostPer1k: 0.006,  cacheCostPer1k: 0 },
-  "mistral-medium":     { provider: "mistral",   inputCostPer1k: 0.0005, outputCostPer1k: 0.0015,  cacheCostPer1k: 0 },
-  "mistral-small":      { provider: "mistral",   inputCostPer1k: 0.0001, outputCostPer1k: 0.0003,  cacheCostPer1k: 0 },
-
-  // xAI Grok (placeholder pricing)
-  "grok-3":             { provider: "grok",      inputCostPer1k: 0.005,  outputCostPer1k: 0.015,  cacheCostPer1k: 0 },
-  "grok-3-mini":        { provider: "grok",      inputCostPer1k: 0.0003, outputCostPer1k: 0.001,  cacheCostPer1k: 0 },
-
-  // OpenRouter (placeholder — actual cost depends on routed model)
-  "openrouter-default": { provider: "openrouter",inputCostPer1k: 0.002,  outputCostPer1k: 0.008,  cacheCostPer1k: 0 },
-
-  // DeepSeek (placeholder pricing)
-  "deepseek-v3":        { provider: "deepseek",  inputCostPer1k: 0.00014,outputCostPer1k: 0.00028, cacheCostPer1k: 0.000014 },
-  "deepseek-r1":        { provider: "deepseek",  inputCostPer1k: 0.00055,outputCostPer1k: 0.00219, cacheCostPer1k: 0.00014 },
+  // Google Gemini family — IDs aligned with capabilities.ts
+  "gemini-3.1-pro-preview":    { provider: "gemini", inputCostPer1k: 0.002,    outputCostPer1k: 0.012,  cacheCostPer1k: 0 },
+  "gemini-3-flash-preview":    { provider: "gemini", inputCostPer1k: 0.0001,   outputCostPer1k: 0.0004, cacheCostPer1k: 0 },
+  "gemini-3-pro-image-preview":{ provider: "gemini", inputCostPer1k: 0.002,    outputCostPer1k: 0.012,  cacheCostPer1k: 0 },
+  "gemini-2.5-pro":            { provider: "gemini", inputCostPer1k: 0.00125,  outputCostPer1k: 0.01,   cacheCostPer1k: 0 },
+  "gemini-2.5-flash":          { provider: "gemini", inputCostPer1k: 0.000075, outputCostPer1k: 0.0003, cacheCostPer1k: 0 },
+  "gemini-2.5-flash-image":    { provider: "gemini", inputCostPer1k: 0.000075, outputCostPer1k: 0.0003, cacheCostPer1k: 0 },
 };
 
 /** ── Model cost multipliers (applied to base feature cost) ────────────── */
@@ -76,32 +57,29 @@ export const MODEL_MULTIPLIERS: Record<string, number> = {
   "gpt-5":              1.5,
   "gpt-5-mini":         0.5,
   "gpt-5-nano":         0.2,
+  "gpt-5.4":            1.8,
+  "gpt-5.3-codex":      1.5,
+  "gpt-5.2":            1.3,
+  "gpt-image-1":        2.0,
   "gpt-4o":             1.2,
   "gpt-4o-mini":        0.4,
-  "gpt-3.5-turbo":      0.3,
+  "o3":                 2.5,
+  "o4-mini":            0.6,
 
   // Anthropic
-  "claude-4-sonnet":    1.4,
-  "claude-4-opus":      2.5,
-  "claude-3-5-sonnet":  1.3,
-  "claude-3-5-haiku":   0.3,
+  "claude-sonnet-4-6":  1.4,
+  "claude-sonnet-4-5":  1.3,
+  "claude-opus-4-8":    2.5,
+  "claude-opus-4-7":    2.4,
+  "claude-haiku-4-5":   0.3,
 
   // Gemini
+  "gemini-3.1-pro-preview":    1.2,
+  "gemini-3-flash-preview":    0.3,
+  "gemini-3-pro-image-preview":1.5,
   "gemini-2.5-pro":     1.0,
   "gemini-2.5-flash":   0.3,
-  "gemini-2.0-flash":   0.35,
-  "gemini-1.5-pro":     0.8,
-  "gemini-1.5-flash":   0.25,
-
-  // Others
-  "mistral-large":      0.9,
-  "mistral-medium":     0.4,
-  "mistral-small":      0.2,
-  "grok-3":             1.5,
-  "grok-3-mini":        0.4,
-  "openrouter-default": 1.0,
-  "deepseek-v3":        0.25,
-  "deepseek-r1":        0.6,
+  "gemini-2.5-flash-image":    0.35,
 };
 
 /** Fallback multiplier for unknown models */
@@ -123,6 +101,7 @@ export const FEATURE_BASE_COSTS: Record<string, number> = {
 
 /** ── Tool / image call costs (EUR per call) ──────────────────────────── */
 export const IMAGE_COSTS: Record<string, number> = {
+  "gpt-image-1":      0.04,
   "dall-e-3":         0.04,
   "dall-e-3-hd":      0.08,
   "stable-diffusion": 0.02,

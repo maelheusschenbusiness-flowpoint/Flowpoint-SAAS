@@ -1,8 +1,36 @@
 import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { store } from "../services/store.js";
+import { logger } from "../lib/logger.js";
+import { aiChat } from "../services/ai-provider.js";
+import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
+import { consumeAICredits } from "../services/ai-engine.js";
+import { buildQuotaGuidance } from "../services/ai-quota.js";
 
 const router = Router();
+
+const DEFAULT_ROADMAP = [
+  { priority: 1, label: "Optimiser balises meta et titres H1", impact: "+18% trafic organique", tag: "SEO" },
+  { priority: 2, label: "Améliorer vitesse mobile (Core Web Vitals)", impact: "+24% Core Web Vitals", tag: "Performance" },
+  { priority: 3, label: "Créer 3 landing pages conversion optimisées", impact: "+31% taux conversion", tag: "CRO" },
+  { priority: 4, label: "Configurer Google Business Profile complet", impact: "+42% visibilité locale", tag: "Local SEO" },
+  { priority: 5, label: "Mettre en place schema markup FAQ + Review", impact: "+15% CTR SERP", tag: "SEO" },
+];
+
+const DEFAULT_MISSIONS = [
+  { title: "Audit SEO technique complet", category: "seo", priority: 1, impact: "+18% trafic", effort: "2h" },
+  { title: "Optimiser les Core Web Vitals", category: "performance", priority: 2, impact: "+24% CWV", effort: "3h" },
+  { title: "Créer une landing page conversion", category: "conversion", priority: 3, impact: "+31% CVR", effort: "4h" },
+  { title: "Configurer Google Business Profile", category: "local_seo", priority: 4, impact: "+42% local", effort: "1h" },
+  { title: "Mettre en place les schema markup", category: "seo", priority: 5, impact: "+15% CTR", effort: "2h" },
+  { title: "Analyser les concurrents SEO", category: "seo", priority: 6, impact: "+12% rankings", effort: "2h" },
+  { title: "Optimiser le tunnel de conversion", category: "conversion", priority: 7, impact: "+28% CVR", effort: "3h" },
+  { title: "Créer des rapports automatiques", category: "reporting", priority: 8, impact: "Gain 2h/sem", effort: "1h" },
+  { title: "Configurer les alertes de monitoring", category: "monitoring", priority: 9, impact: "Uptime 99.9%", effort: "30min" },
+  { title: "Analyser les avis et e-réputation", category: "local_seo", priority: 10, impact: "+38% note", effort: "1h" },
+  { title: "Optimiser les balises title/meta", category: "seo", priority: 11, impact: "+8% CTR", effort: "2h" },
+  { title: "Mettre en place le tracking analytics", category: "analytics", priority: 12, impact: "Données fiables", effort: "1h" },
+];
 
 router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
   try {
@@ -26,13 +54,99 @@ router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
       priorities?: string[];
     };
 
-    const orgId = "default";
-    const userId = "demo";
+    const orgId = req.orgId ?? "default";
+    const userId = req.userId ?? "anonymous";
+
+    // Quota gate before AI work
+    const creditCheck = await consumeAICredits({ feature: "strategist", orgId });
+    if (!creditCheck.allowed) {
+      const prefs = await loadOrgAIPrefs(orgId);
+      res.status(402).json(buildQuotaGuidance(creditCheck, prefs));
+      return;
+    }
+
     const now = new Date();
     const sessionId = `ows_${Date.now()}`;
     const profileId = `awp_${Date.now()}`;
 
     const client = await pool.connect();
+
+    let roadmap = DEFAULT_ROADMAP;
+    let missionTemplates = DEFAULT_MISSIONS;
+    let strategy = `Stratégie IA personnalisée pour ${businessName ?? "votre business"} (${niche ?? "secteur"}, ${location ?? "France"}).`;
+    let aiGenerationSucceeded = false;
+    let actualProvider: string = "openai";
+    let actualModel: string = "workspace_launch";
+
+    try {
+      const prefs = await loadOrgAIPrefs(orgId);
+      const aiCfg = resolveAIModel(prefs, "strategist");
+      actualProvider = aiCfg.provider;
+      actualModel = aiCfg.model;
+
+      const contextParts: string[] = [];
+      if (businessName) contextParts.push(`Entreprise : ${businessName}`);
+      if (niche) contextParts.push(`Secteur/niche : ${niche}`);
+      if (location) contextParts.push(`Localisation : ${location}`);
+      if (siteUrl) contextParts.push(`Site web : ${siteUrl}`);
+      if (goals.length > 0) contextParts.push(`Objectifs : ${goals.join(", ")}`);
+      if (competitors.length > 0) contextParts.push(`Concurrents : ${competitors.join(", ")}`);
+      if (stack.length > 0) contextParts.push(`Stack technique : ${stack.join(", ")}`);
+      if (priorities.length > 0) contextParts.push(`Priorités déclarées : ${priorities.join(", ")}`);
+
+      const prompt = `Tu es consultant SEO senior. Génère un plan de lancement workspace personnalisé pour ce client.
+
+PROFIL CLIENT :
+${contextParts.join("\n")}
+
+Génère un JSON avec EXACTEMENT cette structure (pas de markdown, juste le JSON) :
+{
+  "strategy": "string (2 phrases sur la stratégie spécifique à ce client)",
+  "roadmap": [
+    { "priority": 1, "label": "string (action spécifique au secteur)", "impact": "string (ex: +20% trafic local)", "tag": "string" },
+    { "priority": 2, "label": "...", "impact": "...", "tag": "..." },
+    { "priority": 3, "label": "...", "impact": "...", "tag": "..." },
+    { "priority": 4, "label": "...", "impact": "...", "tag": "..." },
+    { "priority": 5, "label": "...", "impact": "...", "tag": "..." }
+  ],
+  "missions": [
+    { "title": "string (mission spécifique)", "category": "seo|performance|content|local_seo|conversion|reporting|monitoring|analytics", "priority": 1, "impact": "string", "effort": "string (ex: 2h)" },
+    ... (12 missions au total)
+  ]
+}
+
+RÈGLES IMPORTANTES :
+- Chaque action doit être spécifique au secteur "${niche ?? "général"}" et à la localisation "${location ?? "France"}".
+- Les missions doivent varier en catégories (SEO, perf, contenu, local, etc.).
+- Les impacts doivent être réalistes et quantifiés.
+- Réponds UNIQUEMENT avec le JSON, aucun autre texte.`;
+
+      const aiResult = await aiChat({
+        provider: aiCfg.provider,
+        model: aiCfg.model,
+        systemPrompt: "Tu es un expert SEO. Réponds toujours en JSON valide uniquement, sans markdown ni commentaire.",
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: aiCfg.maxTokens,
+        json: true,
+      });
+
+      const parsed = JSON.parse(aiResult.text || "{}");
+      if (parsed.roadmap && Array.isArray(parsed.roadmap) && parsed.roadmap.length > 0) {
+        roadmap = parsed.roadmap.slice(0, 5);
+        aiGenerationSucceeded = true;
+      }
+      if (parsed.missions && Array.isArray(parsed.missions) && parsed.missions.length > 0) {
+        missionTemplates = parsed.missions.slice(0, 12);
+        aiGenerationSucceeded = true;
+      }
+      if (parsed.strategy) strategy = parsed.strategy;
+
+      logger.info({ orgId, provider: aiCfg.provider, model: aiCfg.model, businessName }, "[AWL] AI generation succeeded");
+    } catch (aiErr) {
+      logger.warn({ aiErr, businessName }, "[AWL] AI generation failed — using default templates (not silent)");
+      strategy = `Stratégie par défaut pour ${businessName ?? "votre business"} — connectez OpenAI/Anthropic/Gemini pour une stratégie personnalisée.`;
+    }
+
     try {
       await client.query(
         `INSERT INTO onboarding_sessions (id, org_id, user_id, status, site_url, business_name, niche, location, started_at, completed_at, metadata)
@@ -48,21 +162,9 @@ router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
           location ?? null,
           now,
           now,
-          JSON.stringify({ goals, competitors, stack, priorities }),
+          JSON.stringify({ goals, competitors, stack, priorities, aiGenerated: aiGenerationSucceeded }),
         ]
       );
-
-      const roadmap = [
-        { priority: 1, label: "Optimiser balises meta et titres H1", impact: "+18% trafic organique", tag: "SEO" },
-        { priority: 2, label: "Améliorer vitesse mobile (Core Web Vitals)", impact: "+24% Core Web Vitals", tag: "Performance" },
-        { priority: 3, label: "Créer 3 landing pages conversion optimisées", impact: "+31% taux conversion", tag: "CRO" },
-        { priority: 4, label: "Configurer Google Business Profile complet", impact: "+42% visibilité locale", tag: "Local SEO" },
-        { priority: 5, label: "Mettre en place schema markup FAQ + Review", impact: "+15% CTR SERP", tag: "SEO" },
-      ];
-
-      // seoScore is populated later via real PSI once the user's site URL is known.
-      // Using 0 here avoids surfacing a random fake score in the UI.
-      const seoScore = 0;
 
       await client.query(
         `INSERT INTO ai_workspace_profiles (id, org_id, session_id, business_name, niche, location, goals, competitors, stack, priorities, generated_roadmap, generated_strategy, seo_score)
@@ -80,25 +182,10 @@ router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
           JSON.stringify(stack),
           JSON.stringify(priorities),
           JSON.stringify(roadmap),
-          `Stratégie IA personnalisée pour ${businessName ?? "votre business"} (${niche ?? "secteur"}, ${location ?? "France"}).`,
-          seoScore,
+          strategy,
+          0,
         ]
       );
-
-      const missionTemplates = [
-        { title: "Audit SEO technique complet", category: "seo", priority: 1, impact: "+18% trafic", effort: "2h" },
-        { title: "Optimiser les Core Web Vitals", category: "performance", priority: 2, impact: "+24% CWV", effort: "3h" },
-        { title: "Créer une landing page conversion", category: "conversion", priority: 3, impact: "+31% CVR", effort: "4h" },
-        { title: "Configurer Google Business Profile", category: "local_seo", priority: 4, impact: "+42% local", effort: "1h" },
-        { title: "Mettre en place les schema markup", category: "seo", priority: 5, impact: "+15% CTR", effort: "2h" },
-        { title: "Analyser les concurrents SEO", category: "seo", priority: 6, impact: "+12% rankings", effort: "2h" },
-        { title: "Optimiser le tunnel de conversion", category: "conversion", priority: 7, impact: "+28% CVR", effort: "3h" },
-        { title: "Créer des rapports automatiques", category: "reporting", priority: 8, impact: "Gain 2h/sem", effort: "1h" },
-        { title: "Configurer les alertes de monitoring", category: "monitoring", priority: 9, impact: "Uptime 99.9%", effort: "30min" },
-        { title: "Analyser les avis et e-réputation", category: "local_seo", priority: 10, impact: "+38% note", effort: "1h" },
-        { title: "Optimiser les balises title/meta", category: "seo", priority: 11, impact: "+8% CTR", effort: "2h" },
-        { title: "Mettre en place le tracking analytics", category: "analytics", priority: 12, impact: "Données fiables", effort: "1h" },
-      ];
 
       for (const m of missionTemplates) {
         const mId = `agm_${Date.now()}_${m.priority}`;
@@ -113,9 +200,9 @@ router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
       const logEntries = [
         { step: "init", message: `Session démarrée pour ${businessName ?? "business"} (${niche ?? "secteur"})` },
         { step: "profile", message: "Profil IA workspace créé" },
-        { step: "missions", message: `${missionTemplates.length} missions générées automatiquement` },
-        { step: "roadmap", message: "Roadmap de ${roadmap.length} étapes générée" },
-        { step: "complete", message: "Workspace AI configuré avec succès" },
+        { step: "missions", message: `${missionTemplates.length} missions générées ${aiGenerationSucceeded ? "via IA" : "depuis les templates par défaut"}` },
+        { step: "roadmap", message: `Roadmap de ${roadmap.length} étapes générée ${aiGenerationSucceeded ? "via IA (personnalisée)" : "(template générique)"}` },
+        { step: "complete", message: `Workspace AI configuré avec succès${aiGenerationSucceeded ? " — stratégie personnalisée" : " — reconnectez un provider IA pour une stratégie personnalisée"}` },
       ];
       for (const l of logEntries) {
         await client.query(
@@ -136,22 +223,24 @@ router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
       label: `AI Workspace Launch configuré pour "${businessName ?? "Workspace"}"`,
       targetId: profileId,
       targetType: "ai_workspace",
-      metadata: { niche, location, missionsCount: 12 },
+      metadata: { niche, location, missionsCount: missionTemplates.length, aiGenerated: aiGenerationSucceeded },
     });
 
     res.json({
       ok: true,
       sessionId,
       profileId,
-      missionsGenerated: 12,
-      roadmapSteps: 5,
+      missionsGenerated: missionTemplates.length,
+      roadmapSteps: roadmap.length,
       alertsConfigured: 8,
       dashboardsCreated: 4,
       reportsScheduled: 3,
-      message: `Workspace IA "${businessName ?? "FlowPoint"}" configuré avec succès`,
+      aiGenerated: aiGenerationSucceeded,
+      message: `Workspace IA "${businessName ?? "FlowPoint"}" configuré avec succès${aiGenerationSucceeded ? " — stratégie personnalisée générée" : ""}`,
+      _ai: aiGenerationSucceeded ? { provider: actualProvider, model: actualModel } : null,
     });
   } catch (err) {
-    console.error("[AWL] Error:", err);
+    logger.error({ err }, "[AWL] Error");
     res.status(500).json({ ok: false, error: "Configuration IA échouée" });
   }
 });

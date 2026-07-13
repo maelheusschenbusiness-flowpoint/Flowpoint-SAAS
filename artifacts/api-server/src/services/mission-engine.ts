@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { loadOrgAIPrefs, resolveAIModel } from "./ai-prefs.js";
 
 export interface MissionStats {
   total: number;
@@ -115,12 +116,14 @@ Retourne un JSON array de 6 objets :
 
 Réponds UNIQUEMENT avec le JSON array.`;
 
+    const prefs = await loadOrgAIPrefs(orgId);
+    const aiCfg = resolveAIModel(prefs, "mission_generation");
     const result = await aiChat({
-      provider: "openai",
-      model: "gpt-5-mini",
+      provider: aiCfg.provider,
+      model: aiCfg.model,
       systemPrompt: "Tu génères des missions SEO JSON basées sur des données réelles. Réponds UNIQUEMENT avec du JSON valide.",
       messages: [{ role: "user", content: prompt }],
-      maxTokens: 1500,
+      maxTokens: aiCfg.maxTokens,
       json: true,
     });
     const raw = result.text || "{}";
@@ -162,11 +165,11 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
     if (slots === 0) return 0;
 
     // Read real audit data from DB
-    let auditData: Array<{url: string; score: number; speed: number; issues: number; criticalIssues: string[]; opportunities: string[]}> = [];
+    let auditData: Array<{id: string; url: string; score: number; speed: number; issues: number; criticalIssues: string[]; opportunities: string[]}> = [];
     try {
       const [auditRes, psiRes] = await Promise.allSettled([
         client.query(
-          `SELECT DISTINCT ON (url) url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY url, created_at DESC LIMIT 5`,
+          `SELECT DISTINCT ON (url) id, url, score, speed, issues FROM audits WHERE org_id=$1 ORDER BY url, created_at DESC LIMIT 5`,
           [orgId]
         ),
         client.query(
@@ -200,6 +203,7 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
           const u = String(r["url"] ?? "");
           const psi = psiMap.get(u) ?? { ci: [], opp: [] };
           return {
+            id: String(r["id"] ?? ""),
             url: u,
             score: Number(r["score"] ?? 0),
             speed: Number(r["speed"] ?? 0),
@@ -246,9 +250,15 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
       }
     }
 
-    if (templates.length === 0) {
+    const usingGenericTemplates = templates.length === 0;
+    if (usingGenericTemplates) {
       templates = MISSION_TEMPLATES;
     }
+
+    // Generic fallback templates are not derived from any specific audit — keep source null
+    const primaryAudit = !usingGenericTemplates && auditData.length > 0 ? auditData[0] : null;
+    const primarySourceUrl = primaryAudit ? primaryAudit.url : null;
+    const primarySourceAuditId = primaryAudit?.id || null;
 
     let inserted = 0;
     for (const t of templates.slice(0, slots)) {
@@ -256,8 +266,8 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
       await client.query(
         `INSERT INTO missions (id, org_id, title, description, category, type, priority, priority_score,
           status, impact, effort, estimated_traffic_impact, estimated_revenue_impact,
-          ai_explanation, ai_action_steps, ai_quick_win, due_date, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9,$10,$11,$12,$13,$14,$15,
+          ai_explanation, ai_action_steps, ai_quick_win, source_url, source_audit_id, due_date, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9,$10,$11,$12,$13,$14,$15,$16,$17,
            NOW() + INTERVAL '30 days', NOW(), NOW())
          ON CONFLICT (id) DO NOTHING`,
         [
@@ -266,6 +276,7 @@ export async function runMissionEngine(orgId = "default"): Promise<number> {
           t.category, t.type, t.priority, t.priorityScore,
           t.impact, t.effort, t.estimatedTrafficImpact, t.estimatedRevenueImpact,
           t.aiExplanation, JSON.stringify(t.aiActionSteps), t.aiQuickWin,
+          primarySourceUrl, primarySourceAuditId,
         ]
       ).catch(err => logger.warn({ err, id }, "[mission-engine] Insert failed — skipping"));
       inserted++;
