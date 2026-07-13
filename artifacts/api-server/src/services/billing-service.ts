@@ -3,7 +3,6 @@ import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
 import { PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS } from "../lib/plans.js";
 
-const ORG_ID = "default";
 
 // ── Plan configuration (public) ───────────────────────────────────────────────
 export const PLAN_CONFIG = {
@@ -77,10 +76,10 @@ export async function getUsageSummary(orgId: string = ORG_ID) {
   const client = await pool.connect();
   try {
     const [auditCount, monitorCount, reportCount, memberCount] = await Promise.all([
-      client.query(`SELECT COUNT(*) FROM audits WHERE created_at > date_trunc('month', now())`),
-      client.query(`SELECT COUNT(*) FROM monitors`),
-      client.query(`SELECT COUNT(*) FROM reports WHERE created_at > date_trunc('month', now())`),
-      client.query(`SELECT COUNT(*) FROM team_members`),
+      client.query(`SELECT COUNT(*) FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]),
+      client.query(`SELECT COUNT(*) FROM monitors WHERE org_id=$1`, [orgId]),
+      client.query(`SELECT COUNT(*) FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]),
+      client.query(`SELECT COUNT(*) FROM team_members WHERE org_id=$1`, [orgId]),
     ]);
 
     const usage = (me as Record<string, unknown>).usage as Record<string, Record<string, number>> | undefined;
@@ -128,13 +127,13 @@ export function checkQuota(resource: "audits" | "monitors" | "reports" | "export
 }
 
 // ── Billing events / MRR tracking ─────────────────────────────────────────────
-export async function trackBillingEvent(type: string, data: Record<string, unknown>) {
+export async function trackBillingEvent(type: string, data: Record<string, unknown>, orgId = "default") {
   const client = await pool.connect();
   try {
     await client.query(
       `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,now())`,
-      [ORG_ID, type, data.amount ?? 0, data.currency ?? "eur", data.plan ?? store.me.plan, JSON.stringify(data)]
+      [orgId, type, data.amount ?? 0, data.currency ?? "eur", data.plan ?? store.me.plan, JSON.stringify(data)]
     );
   } catch (err) {
     logger.warn({ err }, "[Billing] Failed to track billing event");
@@ -143,7 +142,7 @@ export async function trackBillingEvent(type: string, data: Record<string, unkno
   }
 }
 
-export async function getMRRData() {
+export async function getMRRData(orgId = "default") {
   const client = await pool.connect();
   try {
     const rows = await client.query(`
@@ -154,9 +153,9 @@ export async function getMRRData() {
         COUNT(CASE WHEN type = 'subscription_created' THEN 1 END) AS new_subs,
         COUNT(CASE WHEN type = 'subscription_canceled' THEN 1 END) AS cancels
       FROM billing_events
-      WHERE created_at > now() - INTERVAL '12 months'
+      WHERE org_id=$1 AND created_at > now() - INTERVAL '12 months'
       GROUP BY 1 ORDER BY 1 DESC LIMIT 12
-    `);
+    `, [orgId]);
 
     const me = store.me;
     const plan = (me.plan || "standard").toLowerCase();

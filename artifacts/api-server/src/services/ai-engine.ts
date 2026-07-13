@@ -44,7 +44,7 @@ function monthResetDate(): Date {
 }
 
 function planCreditLimit(plan?: string | null): number {
-  return PLAN_AI_CREDITS[(plan ?? "pro").toLowerCase()] ?? 100000;
+  return PLAN_AI_CREDITS[(plan ?? "pro").toLowerCase()] ?? PLAN_AI_CREDITS.standard ?? 100_000;
 }
 
 export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{

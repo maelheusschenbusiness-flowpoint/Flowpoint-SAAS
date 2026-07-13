@@ -90,7 +90,7 @@ async function callAIWithFallback(args: {
   provider?: AIProviderId;
   model?: string;
   json?: boolean;
-  fallbackText: string;
+  fallbackText?: string;
   orgId?: string;
 }): Promise<{ text: string; model: string; provider: AIProviderId; tokensIn: number; tokensOut: number; latencyMs: number; _ai: { provider: AIProviderId; model: string; switchReason?: string } }> {
   const t0 = Date.now();
@@ -128,7 +128,7 @@ async function callAIWithFallback(args: {
     });
     const latencyMs = Date.now() - t0;
     return {
-      text: result.text || args.fallbackText,
+      text: result.text || "",
       model: result._ai.model,
       provider: result._ai.provider,
       tokensIn: result.usage.promptTokens,
@@ -736,7 +736,6 @@ Après ces corrections je recommande :
       userPrompt: prompt,
       maxTokens: 1400,
       temperature: 0.4,
-      fallbackText: buildFallbackAudit(url, scores),
       orgId,
     });
     await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
@@ -1258,7 +1257,6 @@ Génère:
       systemPrompt: "Tu es un expert performance web (Core Web Vitals, PageSpeed). Réponds en français avec des actions concrètes et du code si nécessaire.",
       userPrompt: prompt,
       maxTokens: 1200,
-      fallbackText: buildFallbackPSIRecommendations(url, mobile),
       orgId,
     });
     await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
@@ -1300,63 +1298,6 @@ router.get("/ai/usage", async (req, res) => {
   }
 });
 
-// ── Fallback builders ─────────────────────────────────────────────────────────
-function buildFallbackAudit(url: string, scores?: Record<string, number>): string {
-  return `## Analyse SEO — ${url}
-
-**Score actuel :** ${scores?.performance ?? "?"}/100
-
-### Points critiques
-- Optimisez les Core Web Vitals (LCP, CLS, INP)
-- Améliorez la vitesse de chargement mobile
-- Vérifiez la structure des balises meta
-
-### Quick wins (< 2h)
-- Compresser les images (gain estimé : +5-8 points)
-- Activer la mise en cache navigateur
-- Minifier JS/CSS non utilisé
-
-*Connectez OpenAI pour une analyse approfondie.*`;
-}
-
-function buildFallbackSEO(url: string): string {
-  return `## Recommandations SEO — ${url}
-
-### Balises meta & structure
-- 🔴 Optimisez la balise title (50-60 caractères avec mot-clé principal)
-- 🟡 Meta description unique par page (120-158 caractères)
-
-### Contenu & mots-clés
-- 🔴 Identifiez 5 mots-clés longue traîne à fort potentiel local
-- 🟡 Créez 2 articles de blog par mois ciblant ces mots-clés
-
-*Connectez OpenAI pour des recommandations personnalisées.*`;
-}
-
-function buildFallbackMissions(): object[] {
-  return [
-    { title: "Optimiser les images du site", description: "Compresser et convertir en WebP toutes les images > 100KB.", category: "performance", priority: 9, estimatedImpact: "Élevé", estimatedEffort: "4h", expectedGain: "+10 points performance" },
-    { title: "Corriger les balises title manquantes", description: "Ajouter des balises title uniques sur toutes les pages sans titre.", category: "seo", priority: 8, estimatedImpact: "Élevé", estimatedEffort: "2h", expectedGain: "+5-8 points SEO" },
-    { title: "Améliorer le LCP mobile", description: "Identifier et optimiser l'élément LCP (image hero ou texte principal).", category: "performance", priority: 7, estimatedImpact: "Élevé", estimatedEffort: "1j", expectedGain: "LCP < 2.5s" },
-    { title: "Créer une page Google Business Profile", description: "Optimiser la fiche GBP avec photos, horaires et réponses avis.", category: "local", priority: 8, estimatedImpact: "Critique", estimatedEffort: "4h", expectedGain: "+30% visibilité locale" },
-    { title: "Supprimer le CSS non utilisé", description: "Analyser et supprimer les règles CSS inutilisées pour réduire le TBT.", category: "technical", priority: 6, estimatedImpact: "Moyen", estimatedEffort: "4h", expectedGain: "-200ms TBT" },
-    { title: "Ajouter des données structurées", description: "Implémenter Schema.org (LocalBusiness, FAQPage) pour les rich snippets.", category: "seo", priority: 7, estimatedImpact: "Élevé", estimatedEffort: "1j", expectedGain: "+15% CTR" },
-  ];
-}
-
-function buildFallbackPSIRecommendations(url: string, mobile?: Record<string, unknown>): string {
-  const perf = (mobile?.scores as Record<string, number>)?.performance ?? 0;
-  return `## Recommandations Performance — ${url}
-
-**Score performance mobile :** ${perf}/100
-
-### Optimisations prioritaires
-1. **Réduire le LCP** — Préchargez l'image hero avec \`<link rel="preload">\`
-2. **Éliminer les ressources bloquantes** — Déférez le JS non critique avec \`defer\`
-3. **Optimiser les images** — Utilisez le format WebP et les dimensions adaptées
-
-*Connectez OpenAI pour des recommandations détaillées avec exemples de code.*`;
-}
 
 router.get("/ai/recommendations", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";

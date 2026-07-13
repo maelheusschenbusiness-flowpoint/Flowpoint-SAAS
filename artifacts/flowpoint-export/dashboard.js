@@ -964,14 +964,26 @@ async function loadData() {
   }
 
   // ── Phase 3: Section data — each section fails independently, dashboard stays usable ──
+  // classifySectionError maps an Error message to a type code for per-section rendering
+  function classifySectionError(reason) {
+    if (!reason) return 'unknown';
+    const msg = reason.message || String(reason);
+    if (/401/.test(msg)) return 'session';    // expired token / re-login required
+    if (/403/.test(msg)) return 'permission'; // insufficient rights
+    if (/404/.test(msg)) return 'route';      // backend route missing
+    if (/5\d\d/.test(msg)) return 'server';   // 5xx backend error
+    if (/timeout|abort|network|fetch/i.test(msg)) return 'network'; // connectivity
+    return 'unknown';
+  }
+  STATE.sectionErrors = {};
   const [_auRes, _moRes, _reRes, _teRes] = await Promise.allSettled([
     apiFetch('/api/audits'), apiFetch('/api/monitors'),
     apiFetch('/api/reports'), apiFetch('/api/team'),
   ]);
-  if (_auRes.status === 'fulfilled') audits   = _auRes.value;   else console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason);
-  if (_moRes.status === 'fulfilled') monitors = _moRes.value;   else console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason);
-  if (_reRes.status === 'fulfilled') reports  = _reRes.value;   else console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason);
-  if (_teRes.status === 'fulfilled') team     = _teRes.value;   else console.warn('[FP] /api/team failed:', _teRes.reason?.message || _teRes.reason);
+  if (_auRes.status === 'fulfilled') { audits   = _auRes.value; } else { STATE.sectionErrors.audits   = classifySectionError(_auRes.reason); console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason); }
+  if (_moRes.status === 'fulfilled') { monitors = _moRes.value; } else { STATE.sectionErrors.monitors = classifySectionError(_moRes.reason); console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason); }
+  if (_reRes.status === 'fulfilled') { reports  = _reRes.value; } else { STATE.sectionErrors.reports  = classifySectionError(_reRes.reason); console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason); }
+  if (_teRes.status === 'fulfilled') { team     = _teRes.value; } else { STATE.sectionErrors.team     = classifySectionError(_teRes.reason); console.warn('[FP] /api/team failed:', _teRes.reason?.message || _teRes.reason); }
 
   const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud   && _aud.length   > 0) ? _aud   : (PREVIEW_MODE ? MOCK_AUDITS   : []);
   const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon   && _mon.length   > 0) ? _mon   : (PREVIEW_MODE ? MOCK_MONITORS : []);
@@ -1028,7 +1040,7 @@ async function loadData() {
   }
 
   const _clientsRaw = (_clientsRes.status === 'fulfilled' && Array.isArray(_clientsRes.value)) ? _clientsRes.value : [];
-  STATE.clients = _clientsRaw.filter(c => c.type !== 'client' || c.type === 'client').filter(c => c.name);
+  STATE.clients = _clientsRaw.filter(c => c.name);
   const _calRaw = (_calRes.status === 'fulfilled' && Array.isArray(_calRes.value)) ? _calRes.value : [];
   STATE.calendarEvents = _calRaw.map(e => ({
     id: e.id, title: e.title, site: e.site||'', type: e.type||'Autre',
@@ -4098,6 +4110,24 @@ function renderOverview() {
 
 
 /* ── AUDITS ── */
+function _sectionErrorBanner(section) {
+  const err = STATE.sectionErrors && STATE.sectionErrors[section];
+  if (!err) return '';
+  const msgs = {
+    session:    { icon: '🔑', text: 'Session expirée — <a href="/login.html" style="color:var(--fp-accent)">reconnectez-vous</a>' },
+    permission: { icon: '🚫', text: 'Accès refusé pour cette section' },
+    route:      { icon: '🔌', text: 'Route API introuvable — vérifiez que le backend est à jour' },
+    server:     { icon: '⚠️',  text: 'Erreur serveur — les données affichées peuvent être incomplètes' },
+    network:    { icon: '📡', text: 'Réseau indisponible — tentative de reconnexion automatique' },
+    unknown:    { icon: '❓', text: 'Données indisponibles — réessayez dans un instant' },
+  };
+  const m = msgs[err] || msgs.unknown;
+  return `<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:10px 16px;margin-bottom:14px;font-size:13px;color:var(--fp-text-secondary);display:flex;align-items:center;gap:8px">
+    <span>${m.icon}</span><span>${m.text}</span>
+    <button onclick="loadData().catch(()=>{})" style="margin-left:auto;font-size:11px;padding:2px 10px;border:1px solid rgba(239,68,68,0.3);border-radius:6px;background:transparent;color:var(--fp-text-secondary);cursor:pointer">↺ Réessayer</button>
+  </div>`;
+}
+
 function renderAudits() {
   if (STATE.loading) {
     return `<div class="fp-skeleton-page">
@@ -4111,6 +4141,7 @@ function renderAudits() {
       </div>
     </div>`;
   }
+  const _auditErrBanner = _sectionErrorBanner('audits');
   const q = STATE.auditFilter;
   const scoreStatus = a => a.score >= 70 ? 'good' : a.score >= 45 ? 'medium' : 'bad';
   const showArchived = STATE.auditShowArchived;
@@ -4121,6 +4152,7 @@ function renderAudits() {
   const best = sorted.length ? Math.max(...sorted.map(a=>a.score)) : 0;
 
   return `
+    ${_auditErrBanner}
     <div class="fp-section-header">
       <div>
         <h1>Audits SEO</h1>
@@ -4320,6 +4352,7 @@ function renderMonitors() {
       </div>
     </div>`;
   }
+  const _monErrBanner = _sectionErrorBanner('monitors');
   const plan = STATE.me?.plan || 'Pro';
   const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
@@ -4364,6 +4397,7 @@ function renderMonitors() {
   const tlIcon   = t => t === 'down' ? '⬇' : t === 'up' ? '⬆' : t === 'alert' ? '⚡' : '⚙';
 
   return `
+    ${_monErrBanner}
     <div class="fp-section-header">
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
@@ -5492,6 +5526,7 @@ function renderReports() {
       </div>
     </div>`;
   }
+  const _repErrBanner = _sectionErrorBanner('reports');
   const sub = STATE.subRoute;
   const plan = STATE.me?.plan || 'Pro';
   const isStd   = plan === 'Standard';
@@ -6259,6 +6294,7 @@ function renderReports() {
   // DEFAULT (null) — Report Command Center
   // ══════════════════════════════════════════════════════════
   return `
+    ${_repErrBanner}
     <div class="fp-section-header">
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
@@ -6907,6 +6943,7 @@ function renderTeam() {
       </div>
     </div>`;
   }
+  const _teamErrBanner = _sectionErrorBanner('team');
   const me = STATE.me;
   const roleColors = { owner:'#f59e0b', manager:'#2563EB', editor:'#8b5cf6', viewer:'#94a3b8' };
   const rolePerms = {
@@ -6919,6 +6956,7 @@ function renderTeam() {
   const permKeys   = ['audits','monitors','reports','billing','team','settings'];
 
   return `
+    ${_teamErrBanner}
     <div class="fp-section-header">
       <div><h1>Équipe & Collaboration</h1><div class="fp-section-sub">Gérez les membres, permissions, communication et tâches partagées</div></div>
       <div class="fp-section-actions">

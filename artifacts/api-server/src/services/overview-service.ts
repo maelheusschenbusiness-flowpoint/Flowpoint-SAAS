@@ -118,7 +118,8 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
           `SELECT COUNT(*) as count,
                   COALESCE(SUM(estimated_loss), 0) as total
            FROM revenue_leaks
-           WHERE status='active'`
+           WHERE org_id=$1 AND status='active'`,
+          [orgId]
         ),
         // Check if an analytics connector (GA4, Matomo) is connected for this org
         pool.query(

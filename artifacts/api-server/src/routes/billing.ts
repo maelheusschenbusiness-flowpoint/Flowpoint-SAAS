@@ -385,9 +385,10 @@ router.get("/billing/analytics", async (_req: Request, res: Response) => {
 });
 
 // ── NEW: GET /billing/mrr ────────────────────────────────────────────────────
-router.get("/billing/mrr", async (_req: Request, res: Response) => {
+router.get("/billing/mrr", async (req: Request, res: Response) => {
+  const orgId = req.orgId ?? "default";
   try {
-    const mrr = await getMRRData();
+    const mrr = await getMRRData(orgId);
     res.json(mrr);
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to get MRR data");
@@ -410,13 +411,14 @@ router.get("/billing/invoices", async (_req: Request, res: Response) => {
 // ── NEW: POST /billing/trial ─────────────────────────────────────────────────
 router.post("/billing/trial", async (req: Request, res: Response) => {
   const { plan = "pro", days = 14 } = req.body as { plan?: string; days?: number };
+  const orgId = req.orgId ?? "default";
   if (store.me.subscriptionStatus === "active") {
     res.status(409).json({ error: "Vous avez déjà un abonnement actif" });
     return;
   }
   try {
     const result = await startTrial(plan, days);
-    await trackBillingEvent("trial_started", { plan, days, ...result }).catch(() => {});
+    await trackBillingEvent("trial_started", { plan, days, ...result }, orgId).catch(() => {});
     res.json(result);
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to start trial");
@@ -882,7 +884,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
           trialEndsAt: trialEnd ?? undefined,
           stripeCustomerId: String(sub.customer),
         });
-        await trackBillingEvent("subscription_created", { plan, amount: 0, currency: "eur", subscriptionId: sub.id });
+        await trackBillingEvent("subscription_created", { plan, amount: 0, currency: "eur", subscriptionId: sub.id }, orgId);
         break;
       }
 
@@ -911,7 +913,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         store.me.subscriptionStatus = "canceled";
 
         await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" });
-        await trackBillingEvent("subscription_canceled", { plan: store.me.plan, amount: 0, currency: "eur", subscriptionId: sub.id });
+        await trackBillingEvent("subscription_canceled", { plan: store.me.plan, amount: 0, currency: "eur", subscriptionId: sub.id }, orgId);
         logger.warn({ subId: sub.id }, "[Webhook] Subscription canceled");
         break;
       }
@@ -936,7 +938,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         await trackBillingEvent("subscription_renewed", {
           plan: store.me.plan, amount, currency: invoice.currency ?? "eur",
           invoiceId: invoice.id, subscriptionId: subId,
-        });
+        }, orgId);
         logger.info({ invoiceId: invoice.id, amount }, "[Webhook] Payment succeeded — subscription active");
         break;
       }
@@ -963,7 +965,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
           plan,
           stripeCustomerId: session.customer ? String(session.customer) : undefined,
         });
-        await trackBillingEvent("subscription_created", { plan, amount: 0, currency: "eur", sessionId: session.id });
+        await trackBillingEvent("subscription_created", { plan, amount: 0, currency: "eur", sessionId: session.id }, orgId);
         break;
       }
 
