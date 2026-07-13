@@ -42,7 +42,8 @@ function scheduleToPublic(row: Record<string, unknown>) {
 router.get("/audits", async (req: Request, res: Response) => {
   try {
     const result = await req.orgDb(
-      `SELECT * FROM audits ORDER BY created_at DESC LIMIT 500`,
+      `SELECT * FROM audits WHERE org_id = $1 ORDER BY created_at DESC LIMIT 500`,
+      [req.orgContext?.orgId ?? "default"],
     );
     res.json(result.rows.map(auditToPublic));
   } catch (err) {

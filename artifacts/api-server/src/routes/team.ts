@@ -11,7 +11,8 @@ function getOrg(req: Request): string {
 router.get("/team", async (req: Request, res: Response) => {
   try {
     const r = await (req as OrgReq).orgDb(
-      `SELECT id, name, email, role, joined, created_at FROM team_members ORDER BY created_at ASC LIMIT 100`
+      `SELECT id, name, email, role, joined, created_at FROM team_members WHERE org_id = $1 ORDER BY created_at ASC LIMIT 100`,
+      [getOrg(req)]
     );
     res.json(r.rows.map(m => ({
       id:        m.id,

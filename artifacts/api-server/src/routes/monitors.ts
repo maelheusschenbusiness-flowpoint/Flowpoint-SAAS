@@ -313,7 +313,8 @@ async function saveCheckResult(
 router.get("/monitors", async (req: Request, res: Response) => {
   try {
     const result = await req.orgDb(
-      `SELECT * FROM monitors ORDER BY created_at DESC LIMIT 500`,
+      `SELECT * FROM monitors WHERE org_id = $1 ORDER BY created_at DESC LIMIT 500`,
+      [req.orgContext?.orgId ?? "default"],
     );
     res.json(result.rows.map(toPublic));
   } catch (err) {
