@@ -190,7 +190,7 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
          streak    = COALESCE($2, user_prefs.streak),
          pinned    = COALESCE($3::jsonb, user_prefs.pinned),
          checklist = COALESCE($4, user_prefs.checklist),
-         settings  = COALESCE($5, user_prefs.settings),
+         settings  = COALESCE(user_prefs.settings, '{}'::jsonb) || COALESCE($5::jsonb, '{}'::jsonb),
          updated_at = now()`,
       [orgId,
        streak    ?? null,

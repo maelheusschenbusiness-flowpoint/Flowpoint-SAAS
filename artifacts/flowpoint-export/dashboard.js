@@ -1033,6 +1033,15 @@ async function loadData() {
     if (_prefs.checklist) STATE.checklist = _prefs.checklist;
     if (_prefs.settings && typeof _prefs.settings === 'object') {
       STATE.settings = { ...STATE.settings, ..._prefs.settings };
+      // Apply theme from server prefs immediately after load (prevents flicker)
+      if (_prefs.settings.themeAuto) {
+        STATE.theme = 'dark';
+        STATE.themeManual = false;
+      } else if (_prefs.settings.theme) {
+        STATE.theme = _prefs.settings.theme;
+        STATE.themeManual = true;
+      }
+      applyTheme();
       // Apply language preference from server immediately after load
       if (_prefs.settings.language) {
         try { document.documentElement.lang = String(_prefs.settings.language).split('-')[0]; } catch(_) {}
@@ -2968,7 +2977,7 @@ function initLocalSEOMap() {
     const map = new google.maps.Map(mapEl, {
       zoom:14, center,
       styles: isLight ? [] : darkStyles,
-      mapTypeControl:false, streetViewControl:false, fullscreenControl:true,
+      mapTypeControl:true, streetViewControl:false, fullscreenControl:true,
       gestureHandling:'cooperative',
     });
     STATE._gmap = map;
@@ -3024,6 +3033,27 @@ function initLocalSEOMap() {
       const iw = new google.maps.InfoWindow({ content:`<div style="font-family:Inter,sans-serif;padding:10px;min-width:190px"><strong style="font-size:13px">${c.name}</strong><div style="display:flex;gap:16px;margin-top:8px"><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.score}</div><div style="font-size:10px;color:#94a3b8">Score SEO</div></div><div style="text-align:center"><div style="font-size:18px;font-weight:700">${c.reviews}</div><div style="font-size:10px;color:#94a3b8">Avis Google</div></div></div><div style="margin-top:8px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block;background:${c.color}22;color:${c.color}">Menace: ${c.threat}</div></div>` });
       mk.addListener('click', () => iw.open(map, mk));
     });
+
+    // User geolocation marker
+    if (navigator.geolocation && !STATE._geoMarker) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        STATE._geoMarker = new google.maps.Marker({
+          position: userPos, map, zIndex: 20, title: 'Vous \u00eates ici',
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: '#22c55e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }
+        });
+        const uIW = new google.maps.InfoWindow({ content: '<div style="font-family:Inter,sans-serif;padding:8px;min-width:120px"><strong>\ud83d\udccd Vous \u00eates ici</strong></div>' });
+        STATE._geoMarker.addListener('click', () => uIW.open(map, STATE._geoMarker));
+        STATE._lastUserLat = userPos.lat;
+        STATE._lastUserLng = userPos.lng;
+      }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
+    } else if (STATE._lastUserLat != null && STATE._lastUserLng != null && !STATE._geoMarker) {
+      const userPos = { lat: STATE._lastUserLat, lng: STATE._lastUserLng };
+      STATE._geoMarker = new google.maps.Marker({
+        position: userPos, map, zIndex: 20, title: 'Vous \u00eates ici',
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: '#22c55e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }
+      });
+    }
   });
 }
 
@@ -9351,6 +9381,65 @@ function renderSettings() {
           </div>
         `;
       }
+      // ── DATAFORSEO ─────────────────────────────────────────────────────────────
+      if (tab === 'dataforseo') {
+        const _dfsCfg = (STATE.settings && STATE.settings.dataForSEO) || {};
+        const _hasLogin  = !!_dfsCfg.login;
+        const _hasPass   = !!_dfsCfg.password;
+        const _isConfigured = _hasLogin && _hasPass;
+        return `
+          <div class="fp-card fp-mb-16">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+              <div>
+                <div class="fp-card-title" style="margin-bottom:0">🔎 DataForSEO</div>
+                <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Rankings locaux Google · SERP · Backlinks · Mots-clés</div>
+              </div>
+              <span style="font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;${_isConfigured?'background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:var(--fp-success)':'background:var(--fp-track);border:1px solid rgba(255,255,255,0.1);color:var(--fp-text-faint)'}">
+                ${_isConfigured ? 'Connecté ✓' : 'Non configuré'}
+              </span>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div>
+                <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Login DataForSEO</label>
+                <input id="dfs-login" class="fp-input" type="text" placeholder="votre-login@exemple.com" value="${escHtml(_dfsCfg.login || '')}"
+                  oninput="(function(el){const s=STATE.settings||{};s.dataForSEO=s.dataForSEO||{};s.dataForSEO.login=el.value;STATE.settings=s;})(this)"/>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Mot de passe / Clé API</label>
+                <input id="dfs-password" class="fp-input" type="password" placeholder="••••••••••••" value="${escHtml(_dfsCfg.password || '')}"
+                  oninput="(function(el){const s=STATE.settings||{};s.dataForSEO=s.dataForSEO||{};s.dataForSEO.password=el.value;STATE.settings=s;})(this)"/>
+              </div>
+              <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
+                ℹ️ Les credentials sont sauvegardés dans vos préférences utilisateur. En l'absence de credentials personnels, les variables d'environnement <code>DATAFORSEO_LOGIN</code> et <code>DATAFORSEO_PASSWORD</code> sont utilisées comme fallback.
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('dfs-login').value='';document.getElementById('dfs-password').value='';STATE.settings=STATE.settings||{};STATE.settings.dataForSEO={};saveSettings();showToast('info','Credentials effacés')">Effacer</button>
+                <button class="fp-btn fp-btn-primary" onclick="(function(){const s=STATE.settings||{};const l=document.getElementById('dfs-login')?.value?.trim();const p=document.getElementById('dfs-password')?.value?.trim();s.dataForSEO={login:l,password:p};STATE.settings=s;saveSettings();apiAction('PATCH','/api/me/prefs',{settings:{dataForSEO:{login:l,password:p}}}).then(function(r){showToast(r&&r.ok?'success':'error',r&&r.ok?'Credentials DataForSEO sauvegardés':'Erreur');render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});})();">Sauvegarder</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- DATAFORSEO STATUS / QUOTA -->
+          <div class="fp-card">
+            <div class="fp-card-title" style="margin-bottom:14px">📊 Quota & État du service</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+              <div style="padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+                <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">Requêtes journalières</div>
+                <div style="font-size:18px;font-weight:800;color:var(--fp-text)">1 000</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">limite DataForSEO</div>
+              </div>
+              <div style="padding:12px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid var(--fp-border)">
+                <div style="font-size:11px;color:var(--fp-text-faint);margin-bottom:4px">Utilisées aujourd'hui</div>
+                <div style="font-size:18px;font-weight:800;color:${_isConfigured?'var(--fp-success)':'var(--fp-text-faint)'}">${_isConfigured?'0':'—'}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${_isConfigured?'synchro active':'en attente de config'}</div>
+              </div>
+            </div>
+            ${_isConfigured ? '' : '<div style="margin-top:12px;font-size:11px;color:var(--fp-warning)">⚠️ Configurez vos credentials pour activer les fonctionnalités Local SEO avancées (rankings, SERP, backlinks).</div>'}
+          </div>
+        `;
+      }
+
       return '';
     }
 
@@ -9383,6 +9472,7 @@ function renderSettings() {
           ['webhooks',  '🔗 Webhooks',   intgs.length > 0 ? String(intgs.length) : ''],
           ['templates', '📦 Templates',  templates.length > 0 ? String(templates.length) : ''],
           ['logs',      '📋 Logs',       runs.length > 0 ? String(runs.length) : ''],
+          ['dataforseo','🔎 DataForSEO',   ''],
         ].map(([id, label, cnt]) => `
           <button onclick="window._intgTab='${id}';render(STATE.currentSection)"
             style="padding:10px 18px;border:none;border-bottom:2px solid ${activeTab===id?'var(--fp-accent)':'transparent'};background:none;color:${activeTab===id?'var(--fp-accent)':'var(--fp-text-muted)'};font-size:13px;font-weight:${activeTab===id?'700':'500'};cursor:pointer;transition:all 0.15s">
