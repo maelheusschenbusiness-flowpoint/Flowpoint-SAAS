@@ -65,7 +65,7 @@ export const ADDON_CATALOG = [
 ];
 
 // ── Usage tracking ────────────────────────────────────────────────────────────
-export async function getUsageSummary(orgId: string = ORG_ID) {
+export async function getUsageSummary(orgId = "default") {
   const me = store.me;
   const plan = (me.plan || "standard").toLowerCase();
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.standard;
