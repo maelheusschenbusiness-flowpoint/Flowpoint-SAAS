@@ -94,6 +94,49 @@ function isEmailAllowed(email: string): boolean {
   return false;
 }
 
+// ── Alias /auth/me → /me (success.html frontend legacy path)
+router.get("/auth/me", async (req: Request, res: Response) => {
+  const orgId = req.orgContext?.orgId ?? "default";
+  try {
+    const { loadOrgSettings } = await import("../services/org-settings.js");
+    const dbData = await loadOrgSettings(orgId);
+    if (dbData) {
+      const plan = dbData.plan.toLowerCase();
+      const { PLAN_LIMITS } = await import("../lib/plans.js");
+      const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
+      const firstName = dbData.firstName || (req.orgContext?.email?.split("@")[0] ?? "");
+      res.json({
+        id: dbData.id || orgId,
+        firstName,
+        lastName: dbData.lastName ?? "",
+        email: req.orgContext?.email ?? "",
+        plan: dbData.plan,
+        role: req.orgContext?.role ?? "owner",
+        org: { name: dbData.orgName, website: dbData.website ?? "" },
+        subscriptionStatus: dbData.subscriptionStatus,
+        trialEndsAt: dbData.trialEndsAt,
+        usage: dbData.usage,
+        addons: dbData.addons,
+        limits,
+        createdAt: dbData.createdAt ?? new Date().toISOString(),
+      });
+      return;
+    }
+  } catch { /* fall through to store fallback */ }
+  res.json({
+    id: orgId,
+    firstName: "Utilisateur",
+    lastName: "",
+    email: req.orgContext?.email ?? "",
+    plan: "Pro",
+    role: "owner",
+    org: { name: "FlowPoint", website: "" },
+    subscriptionStatus: "trialing",
+    limits: { audits: 100, monitors: 50, reports: 100, exports: 100, teamMembers: 3, workspaces: 1, retention: 90 },
+    createdAt: new Date().toISOString(),
+  });
+});
+
 function getPublicUrl(): string {
   return (
     process.env["PUBLIC_BASE_URL"] ||

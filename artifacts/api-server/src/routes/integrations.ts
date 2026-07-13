@@ -253,6 +253,41 @@ router.post("/integrations/dispatch", requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
+// ── POST /api/integrations/webhooks ─ save outgoing webhook ──────────────────
+router.post("/integrations/webhooks", requireAdmin, async (req, res) => {
+  const { url, events = ["*"], headers = {} } = req.body as { url?: string; events?: string[]; headers?: Record<string, string> };
+  if (!url) { res.status(400).json({ error: "url requis" }); return; }
+  const id = `wh_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    await db(req)(
+      `INSERT INTO automation_integrations (id, org_id, name, type, platform, endpoint_url, events, headers, active, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,now(),now()) RETURNING *`,
+      [id, org(req), url, "outgoing", "webhook", url, JSON.stringify(events), JSON.stringify(headers)]
+    );
+    res.status(201).json({ ok: true, id, url });
+  } catch { res.status(500).json({ error: "Failed to save webhook" }); }
+});
+
+// ── POST /api/integrations/webhooks/test ─ ping test ─────────────────────────
+router.post("/integrations/webhooks/test", requireAdmin, async (req, res) => {
+  const { url } = req.body as { url?: string };
+  if (!url) { res.status(400).json({ error: "url requis" }); return; }
+  try {
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), 8_000);
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "FlowPoint-Webhook-Test/1.0" },
+      body: JSON.stringify({ event: "ping", ts: Date.now(), source: "flowpoint-test" }),
+      signal: ac.signal,
+    });
+    clearTimeout(to);
+    res.json({ ok: r.ok, url, statusCode: r.status, durationMs: 0, note: r.ok ? "Ping OK" : "Endpoint a renvoyé une erreur" });
+  } catch (err) {
+    res.json({ ok: false, url, error: safeErrMsg(err), note: "Test indisponible — enregistrez le webhook" });
+  }
+});
+
 // ── POST /api/integrations/webhook/incoming/:token — public ────────────────────
 router.post("/integrations/webhook/incoming/:token", async (req, res) => {
   try {
