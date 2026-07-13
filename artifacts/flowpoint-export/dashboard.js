@@ -8793,19 +8793,19 @@ function renderSettings() {
   if (sub === 'security') {
     const _secRaw = STATE.security || null;
     const secItems = _secRaw?.checks || (PREVIEW_MODE ? [
-      {label:'Mot de passe fort',         done:true,  weight:20, desc:'Complexité vérifiée'},
-      {label:'2FA activé',                done:false, weight:25, desc:'Non configuré — risque élevé'},
-      {label:'Sessions actives vérifiées',done:true,  weight:15, desc:'2 appareils reconnus'},
-      {label:'API keys sécurisées',       done:true,  weight:15, desc:'Pas d\'accès public détecté'},
-      {label:'Alertes de connexion',      done:false, weight:15, desc:'Notifications non activées'},
-      {label:'IP de confiance définie',   done:false, weight:10, desc:'Liste blanche non configurée'},
+      {label:'Mot de passe fort',            done:true,  weight:20, desc:'Complexité vérifiée'},
+      {label:'2FA non configuré',            done:false, weight:25, desc:'Risque élevé — accès non autorisés possibles', vuln:true},
+      {label:'Sessions actives vérifiées',   done:true,  weight:15, desc:'2 appareils reconnus'},
+      {label:'API keys sécurisées',          done:true,  weight:15, desc:'Pas d\'accès public détecté'},
+      {label:'CSP absente',                  done:false, weight:15, desc:'Content-Security-Policy non déclarée — XSS possible', vuln:true},
+      {label:'CORS wildcard potentiel',      done:false, weight:10, desc:'Origines non restreintes — risque d\'accès cross-origin', vuln:true},
     ] : [
-      {label:'Mot de passe fort',         done:true,  weight:20, desc:'Complexité vérifiée'},
-      {label:'2FA activé',                done:false, weight:25, desc:'Non configuré — risque élevé'},
-      {label:'Sessions actives vérifiées',done:true,  weight:15, desc:'Sessions actives'},
-      {label:'API keys sécurisées',       done:true,  weight:15, desc:'Pas d\'accès public détecté'},
-      {label:'Alertes de connexion',      done:false, weight:15, desc:'Notifications non activées'},
-      {label:'IP de confiance définie',   done:false, weight:10, desc:'Liste blanche non configurée'},
+      {label:'Mot de passe fort',            done:true,  weight:20, desc:'Complexité vérifiée'},
+      {label:'2FA non configuré',            done:false, weight:25, desc:'Risque élevé — accès non autorisés possibles', vuln:true},
+      {label:'Sessions actives vérifiées',   done:true,  weight:15, desc:'Sessions actives'},
+      {label:'API keys sécurisées',          done:true,  weight:15, desc:'Pas d\'accès public détecté'},
+      {label:'CSP absente',                  done:false, weight:15, desc:'Content-Security-Policy non déclarée — XSS possible', vuln:true},
+      {label:'CORS wildcard potentiel',      done:false, weight:10, desc:'Origines non restreintes — risque d\'accès cross-origin', vuln:true},
     ]);
     const secScore = _secRaw?.score != null ? _secRaw.score : Math.round(secItems.reduce((s,i) => i.done ? s + i.weight : s, 0));
     const sessions = [
@@ -8824,7 +8824,7 @@ function renderSettings() {
     const circ34 = 2 * Math.PI * 34;
     return `
       ${aiBlock(
-        (()=>{const _vul=secItems.filter(i=>!i.done);return '<strong>Score de sécurité : '+secScore+'/100</strong>. '+(_vul.length>0?'<strong>'+_vul.length+' vulnérabilité'+(_vul.length>1?'s':'')+' détectée'+(_vul.length>1?'s':'')+' — '+escHtml(_vul[0].label)+' non configuré</strong>.':' Aucune vulnérabilité critique détectée ✅.')+' Action recommandée : activer la double authentification immédiatement.';})(),
+        (()=>{const _vul=secItems.filter(i=>!i.done);return '<strong>Score de sécurité : '+secScore+'/100</strong>. '+(_vul.length>0?'<strong>'+_vul.length+' vulnérabilité'+(_vul.length>1?'s':'')+' détectée'+(_vul.length>1?'s':'')+' : '+_vul.map(v=>escHtml(v.label)).join(', ')+'</strong>.':' Aucune vulnérabilité critique détectée ✅.')+' Action prioritaire : activer le 2FA et déclarer la Content-Security-Policy.';})(),
         ['Activer le 2FA', 'Configurer les alertes', 'Auditer les sessions']
       )}
 
@@ -8865,11 +8865,13 @@ function renderSettings() {
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(item.desc)} · +${item.weight} pts</div>
               </div>
               ${!item.done
-                ? (item.label === '2FA activé'
-                    ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="document.getElementById('fp-sec-2fa')?.scrollIntoView({behavior:'smooth'})">Configurer →</button>`
-                    : item.label === 'Alertes de connexion'
-                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigateSub('alerts')">Activer →</button>`
-                      : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;opacity:0.6" onclick="showToast('info','Disponible prochainement')">Bientôt →</button>`)
+                ? (item.label === '2FA non configuré'
+                    ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="document.getElementById('fp-sec-2fa')?.scrollIntoView({behavior:'smooth'})">Configurer 2FA →</button>`
+                    : item.label === 'CSP absente'
+                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="showToast('warning','Ajoutez Content-Security-Policy dans vos en-têtes HTTP. Exemple : default-src \'self\'')">Voir guide →</button>`
+                      : item.label === 'CORS wildcard potentiel'
+                        ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigate('settings');setTimeout(()=>navigateSub('api'),50)">Restreindre →</button>`
+                        : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;opacity:0.6" onclick="showToast('info','Disponible prochainement')">Bientôt →</button>`)
                 : `<span style="font-size:10px;color:#22c55e;font-weight:700;flex-shrink:0">✓ OK</span>`}
             </div>
           `).join('')}
