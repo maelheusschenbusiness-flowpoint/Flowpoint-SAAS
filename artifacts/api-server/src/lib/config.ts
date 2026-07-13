@@ -3,6 +3,7 @@
  * Single source of truth for plan limits, feature flags, quotas, rate limits, AI limits.
  * Import this anywhere instead of scattering constants across services.
  */
+import { PLAN_AI_CREDITS } from "./plans.js";
 
 // ── Plan tiers ────────────────────────────────────────────────────────────────
 export type PlanTier = 'standard' | 'pro' | 'ultra' | 'agency';
@@ -59,10 +60,10 @@ export interface AILimits {
 }
 
 export const AI_LIMITS: Record<PlanTier, AILimits> = {
-  standard: { creditsMonthly:100_000,    reportsPerMonth:5,   summariesPerDay:10,  imageGenPerMonth:0,   maxPromptTokens:2000,  model:'gpt-5-mini' },
-  pro:      { creditsMonthly:500_000,    reportsPerMonth:50,  summariesPerDay:100, imageGenPerMonth:20,  maxPromptTokens:8000,  model:'gpt-5-mini' },
-  ultra:    { creditsMonthly:10_000_000, reportsPerMonth:500, summariesPerDay:999, imageGenPerMonth:200, maxPromptTokens:32000, model:'gpt-5' },
-  agency:   { creditsMonthly:10_000_000, reportsPerMonth:999, summariesPerDay:999, imageGenPerMonth:999, maxPromptTokens:32000, model:'gpt-5' },
+  standard: { creditsMonthly: PLAN_AI_CREDITS['standard'] ?? 100_000,    reportsPerMonth:5,   summariesPerDay:10,  imageGenPerMonth:0,   maxPromptTokens:2000,  model:'gpt-5-mini' },
+  pro:      { creditsMonthly: PLAN_AI_CREDITS['pro']      ?? 500_000,    reportsPerMonth:50,  summariesPerDay:100, imageGenPerMonth:20,  maxPromptTokens:8000,  model:'gpt-5-mini' },
+  ultra:    { creditsMonthly: PLAN_AI_CREDITS['ultra']    ?? 10_000_000, reportsPerMonth:500, summariesPerDay:999, imageGenPerMonth:200, maxPromptTokens:32000, model:'gpt-5' },
+  agency:   { creditsMonthly: PLAN_AI_CREDITS['agency']   ?? 10_000_000, reportsPerMonth:999, summariesPerDay:999, imageGenPerMonth:999, maxPromptTokens:32000, model:'gpt-5' },
 };
 
 // ── Rate limits (requests per window) ─────────────────────────────────────────

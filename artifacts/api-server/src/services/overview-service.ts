@@ -283,7 +283,7 @@ export async function getOverviewMetrics(orgId = "default"): Promise<OverviewMet
       missionsOpen,
       missionsCompleted,
       aiCreditsUsed:     Number(aiRow?.credits_used  ?? 0),
-      aiCreditsLimit:    PLAN_AI_CREDITS[(store.me.plan ?? 'pro').toLowerCase()] ?? 100_000,
+      aiCreditsLimit:    PLAN_AI_CREDITS[(store.me.plan ?? 'standard').toLowerCase()] ?? PLAN_AI_CREDITS.standard,
       revenueLeaks:      Number(leakRow?.count ?? 0),
       revenueLeakAmount: Math.round(Number(leakRow?.total ?? 0)),
       avgLatency,

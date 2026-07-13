@@ -6,11 +6,13 @@ import { logger } from "../lib/logger.js";
 import { aiRateLimit } from "../middlewares/rateLimiter.js";
 import {
   consumeAICredits,
+  checkAIQuota,
   trackAIUsage,
   getAIUsageStats,
   getOrCreateMonthlyUsage,
   recordCompletedUsage,
   type AIFeature,
+  type AIModel,
 } from "../services/ai-engine.js";
 import {
   loadOrgAIPrefs,
@@ -90,7 +92,6 @@ async function callAIWithFallback(args: {
   provider?: AIProviderId;
   model?: string;
   json?: boolean;
-  fallbackText?: string;
   orgId?: string;
 }): Promise<{ text: string; model: string; provider: AIProviderId; tokensIn: number; tokensOut: number; latencyMs: number; _ai: { provider: AIProviderId; model: string; switchReason?: string } }> {
   const t0 = Date.now();
@@ -639,8 +640,8 @@ router.post("/ai/audit", async (req, res) => {
     res.status(403).json(moduleDisabledResponse("dailyAI"));
     return;
   }
-  const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });
-  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
+  const quotaCheck = await checkAIQuota({ feature: "audit_summary", orgId });
+  if (!quotaCheck.allowed) { res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -738,8 +739,9 @@ Après ces corrections je recommande :
       temperature: 0.4,
       orgId,
     });
+    const creditResult = await consumeAICredits({ feature: "audit_summary", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
     await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /audit failed");
     res.status(503).json(aiUnavailableJson());
@@ -763,8 +765,8 @@ router.post("/ai/seo", async (req, res) => {
     res.status(403).json(moduleDisabledResponse("aiCRO"));
     return;
   }
-  const creditCheck = await consumeAICredits({ feature: "cro_analysis", orgId });
-  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
+  const quotaCheck = await checkAIQuota({ feature: "cro_analysis", orgId });
+  if (!quotaCheck.allowed) { res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -848,8 +850,9 @@ Sections :
     });
     const recommendations = resp.text ?? "";
     const latencyMs = Date.now() - t0;
+    const creditResult = await consumeAICredits({ feature: "cro_analysis", orgId, model: resp._ai.model as AIModel, tokensIn: resp.usage.promptTokens, tokensOut: resp.usage.completionTokens });
     await trackAIUsage({ feature: "cro_analysis", orgId, model: resp._ai.model, tokensIn: resp.usage.promptTokens, tokensOut: resp.usage.completionTokens, latencyMs, success: true, provider: resp._ai.provider });
-    res.json({ recommendations, _ai: resp._ai, creditsRemaining: creditCheck.remaining });
+    res.json({ recommendations, _ai: resp._ai, creditsRemaining: creditResult.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /seo failed");
     res.status(503).json(aiUnavailableJson());
@@ -871,8 +874,8 @@ router.post("/ai/conversion", async (req, res) => {
     res.status(403).json(moduleDisabledResponse("aiCRO"));
     return;
   }
-  const creditCheck = await consumeAICredits({ feature: "cro_analysis", orgId });
-  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
+  const quotaCheck = await checkAIQuota({ feature: "cro_analysis", orgId });
+  if (!quotaCheck.allowed) { res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -894,11 +897,11 @@ Analyse en 4 sections:
       systemPrompt: "Tu es un expert CRO et UX. Réponds en français avec des recommandations concrètes.",
       userPrompt: prompt,
       maxTokens: 1000,
-      fallbackText: "Analyse CRO temporairement indisponible.",
       orgId,
     });
+    const creditResult = await consumeAICredits({ feature: "cro_analysis", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
     await trackAIUsage({ feature: "cro_analysis", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /conversion failed");
     res.status(503).json(aiUnavailableJson());
@@ -921,8 +924,8 @@ router.post("/ai/local", async (req, res) => {
     res.status(403).json(moduleDisabledResponse("aiMarket"));
     return;
   }
-  const creditCheck = await consumeAICredits({ feature: "market_intel", orgId });
-  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
+  const quotaCheck = await checkAIQuota({ feature: "market_intel", orgId });
+  if (!quotaCheck.allowed) { res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -944,11 +947,11 @@ Génère une stratégie Local SEO complète:
       systemPrompt: "Tu es un expert Local SEO et Google Business Profile. Réponds en français.",
       userPrompt: prompt,
       maxTokens: 1200,
-      fallbackText: "Recommandations Local SEO temporairement indisponibles.",
       orgId,
     });
+    const creditResult = await consumeAICredits({ feature: "market_intel", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
     await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
+    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /local failed");
     res.status(503).json(aiUnavailableJson());
@@ -970,8 +973,8 @@ router.post("/ai/competitors", async (req, res) => {
     res.status(403).json(moduleDisabledResponse("aiMarket"));
     return;
   }
-  const creditCheck = await consumeAICredits({ feature: "market_intel", orgId });
-  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
+  const quotaCheck = await checkAIQuota({ feature: "market_intel", orgId });
+  if (!quotaCheck.allowed) { res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -991,11 +994,11 @@ Fournis:
       systemPrompt: "Tu es un analyste stratégique SEO. Réponds en français avec des insights actionnables.",
       userPrompt: prompt,
       maxTokens: 1200,
-      fallbackText: "Analyse concurrentielle temporairement indisponible.",
       orgId,
     });
+    const creditResult = await consumeAICredits({ feature: "market_intel", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
     await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /competitors failed");
     res.status(503).json(aiUnavailableJson());
@@ -1018,8 +1021,8 @@ router.post("/ai/reports", async (req, res) => {
     res.status(403).json(moduleDisabledResponse("aiReporting"));
     return;
   }
-  const creditCheck = await consumeAICredits({ feature: "report_gen", orgId });
-  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
+  const quotaCheck = await checkAIQuota({ feature: "report_gen", orgId });
+  if (!quotaCheck.allowed) { res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs)); return; }
 
   const fpCtx = await buildFlowpointContext(undefined, orgId);
 
@@ -1085,11 +1088,11 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
       systemPrompt: "Tu es un consultant SEO senior. Tu génères des rapports basés UNIQUEMENT sur les données réelles fournies. Cite les chiffres exacts. Jamais de généralités ou de données inventées. Format markdown professionnel, français formel.",
       userPrompt: prompt,
       maxTokens: 1800,
-      fallbackText: "Génération de rapport IA temporairement indisponible.",
       orgId,
     });
+    const creditResult = await consumeAICredits({ feature: "report_gen", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
     await trackAIUsage({ feature: "report_gen", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ report: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
+    res.json({ report: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /reports failed");
     res.status(503).json(aiUnavailableJson());
@@ -1105,8 +1108,8 @@ router.post("/ai/summary", async (req, res) => {
     res.status(403).json(moduleDisabledResponse("aiStrategist"));
     return;
   }
-  const creditCheck = await consumeAICredits({ feature: "strategist", orgId });
-  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
+  const quotaCheck = await checkAIQuota({ feature: "strategist", orgId });
+  if (!quotaCheck.allowed) { res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs)); return; }
 
   const fpCtx = await buildFlowpointContext(context, orgId);
 
@@ -1127,11 +1130,11 @@ Format:
       systemPrompt: "Tu es un directeur stratégique digital. Résumé concis, chiffré, actionnable. Français.",
       userPrompt: prompt,
       maxTokens: 1600,
-      fallbackText: "",
       orgId,
     });
+    const creditResult = await consumeAICredits({ feature: "strategist", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
     await trackAIUsage({ feature: "strategist", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ summary: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
+    res.json({ summary: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /summary failed");
     res.status(503).json(aiUnavailableJson());
@@ -1152,8 +1155,8 @@ router.post("/ai/missions", async (req, res) => {
     res.status(403).json(moduleDisabledResponse("dailyAI"));
     return;
   }
-  const creditCheck = await consumeAICredits({ feature: "mission_auto", orgId });
-  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
+  const quotaCheck = await checkAIQuota({ feature: "mission_auto", orgId });
+  if (!quotaCheck.allowed) { res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs)); return; }
 
   const fpCtx = await buildFlowpointContext(context, orgId);
 
@@ -1192,7 +1195,6 @@ Réponds uniquement avec le JSON array.`;
       userPrompt: prompt,
       maxTokens: 1000,
       json: true,
-      fallbackText: "{}",
       orgId,
     });
     let missions: unknown[];
@@ -1206,8 +1208,9 @@ Réponds uniquement avec le JSON array.`;
       res.status(503).json(aiUnavailableJson());
       return;
     }
+    const creditResult = await consumeAICredits({ feature: "mission_auto", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
     await trackAIUsage({ feature: "mission_auto", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ missions, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
+    res.json({ missions, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /missions failed");
     res.status(503).json(aiUnavailableJson());
@@ -1231,8 +1234,8 @@ router.post("/ai/pagespeed-insights", async (req, res) => {
     res.status(403).json(moduleDisabledResponse("dailyAI"));
     return;
   }
-  const creditCheck = await consumeAICredits({ feature: "audit_summary", orgId });
-  if (!creditCheck.allowed) { res.status(402).json(buildQuotaGuidance(creditCheck, aiPrefs)); return; }
+  const quotaCheck = await checkAIQuota({ feature: "audit_summary", orgId });
+  if (!quotaCheck.allowed) { res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs)); return; }
 
   // AI call uses unified provider layer below
 
@@ -1259,8 +1262,9 @@ Génère:
       maxTokens: 1200,
       orgId,
     });
+    const creditResult = await consumeAICredits({ feature: "audit_summary", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
     await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditCheck.remaining });
+    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
   } catch (err) {
     logger.error({ err }, "[AI] /pagespeed-insights failed");
     res.status(503).json(aiUnavailableJson());

@@ -44,7 +44,7 @@ function monthResetDate(): Date {
 }
 
 function planCreditLimit(plan?: string | null): number {
-  return PLAN_AI_CREDITS[(plan ?? "pro").toLowerCase()] ?? PLAN_AI_CREDITS.standard ?? 100_000;
+  return PLAN_AI_CREDITS[(plan ?? "standard").toLowerCase()] ?? PLAN_AI_CREDITS.standard;
 }
 
 export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
@@ -57,9 +57,9 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
   tokenLimit: number;
 }> {
   const month       = currentMonth();
-  const plan        = store.me.plan?.toLowerCase() || "pro";
+  const plan        = store.me.plan?.toLowerCase() || "standard";
   const creditLimit = planCreditLimit(plan);
-  const tokenLimit  = PLAN_AI_TOKENS[plan] ?? 150_000;
+  const tokenLimit  = PLAN_AI_TOKENS[plan] ?? PLAN_AI_TOKENS.standard;
 
   type RowT = {
     credits_used: number; cost_eur: number; request_count: number; tokens_used: number;
@@ -182,6 +182,30 @@ export async function consumeAICredits(opts: {
   } catch (err) {
     logger.error({ err }, "[AI] consumeAICredits failed — allowing with degraded tracking");
     return { allowed: true, creditsUsed: creditsDebited, remaining: 99999 };
+  }
+}
+
+/** Read-only quota precheck — no DB writes. Call this before the AI request.
+ *  Only debit via consumeAICredits() after the AI call succeeds. */
+export async function checkAIQuota(opts: {
+  feature: AIFeature;
+  orgId?: string;
+}): Promise<{ allowed: boolean; remaining: number }> {
+  const orgId = opts.orgId ?? "default";
+  try {
+    const usage = await getOrCreateMonthlyUsage(orgId);
+    const totalAvailable = usage.creditsLimit + usage.creditsExtra;
+    const remaining = Math.max(0, totalAvailable - usage.creditsUsed);
+    const estimatedCost = getFeatureBaseCost(opts.feature);
+    if (usage.creditsUsed + estimatedCost > totalAvailable * 1.05) {
+      logger.warn({ feature: opts.feature, orgId }, "[AI] checkAIQuota — quota exhausted, blocking request");
+      await triggerAIAlert(orgId, "quota_100pct", usage.creditsUsed, totalAvailable);
+      return { allowed: false, remaining };
+    }
+    return { allowed: true, remaining };
+  } catch (err) {
+    logger.warn({ err, orgId }, "[AI] checkAIQuota failed — allowing with degraded tracking");
+    return { allowed: true, remaining: 99999 };
   }
 }
 
@@ -314,9 +338,9 @@ export async function getAIUsageStats(orgId = "default"): Promise<{
   alerts: Array<{ alertType: string; message: string; triggeredAt: Date }>;
   estimatedCostEur: number;
 }> {
-  const plan        = store.me.plan?.toLowerCase() || "pro";
+  const plan        = store.me.plan?.toLowerCase() || "standard";
   const creditLimit = planCreditLimit(plan);
-  const tokenLimit  = PLAN_AI_TOKENS[plan] ?? 150_000;
+  const tokenLimit  = PLAN_AI_TOKENS[plan] ?? PLAN_AI_TOKENS.standard;
 
   const fallback = {
     monthly: {
