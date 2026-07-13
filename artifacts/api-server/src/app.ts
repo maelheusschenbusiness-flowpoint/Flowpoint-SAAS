@@ -228,6 +228,47 @@ app.get(["/apple-touch-icon.png", "/api/dashboard/apple-touch-icon.png"], (_req:
   res.sendFile(path.join(dashboardDir, "apple-touch-icon.png"));
 });
 
+// ── Well-known / crawler files — public, no auth, fast inline response ───────
+app.get("/robots.txt", (_req: Request, res: Response): void => {
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send(
+    "User-agent: *\n" +
+    "Disallow: /api/\n" +
+    "Disallow: /checkout\n" +
+    "Disallow: /checkout-payment\n" +
+    "Disallow: /checkout-return\n" +
+    "Disallow: /dashboard\n" +
+    "Disallow: /login-verify\n" +
+    "Allow: /\n" +
+    "\n" +
+    "Sitemap: https://app.flowpoint.pro/sitemap.xml\n"
+  );
+});
+
+app.get("/sitemap.xml", (_req: Request, res: Response): void => {
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    '  <url><loc>https://app.flowpoint.pro/</loc></url>\n' +
+    '  <url><loc>https://app.flowpoint.pro/pricing.html</loc></url>\n' +
+    '  <url><loc>https://app.flowpoint.pro/login.html</loc></url>\n' +
+    '</urlset>\n'
+  );
+});
+
+app.get("/.well-known/security.txt", (_req: Request, res: Response): void => {
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send(
+    "Contact: mailto:security@flowpoint.pro\n" +
+    "Expires: 2027-07-13T00:00:00Z\n" +
+    "Preferred-Languages: fr, en\n"
+  );
+});
+
 // ── Frontend page routes ──────────────────────────────────────────────────────
 // Landing / Signup page — public marketing & auth entry point
 app.get("/index.html", (_req: Request, res: Response) => res.redirect(301, "/signin.html"));
