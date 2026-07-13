@@ -47,6 +47,33 @@ const PREVIEW_MODE = false; // Production mode: demo/preview disabled — all da
 const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 
 // ─────────────────────────────────────────────────────────────────
+// localStorage MIGRATION: fp- → fp: (one-time, on first load)
+// ─────────────────────────────────────────────────────────────────
+(function migrateLocalStorage() {
+  var keys = [
+    'fp-theme','fp-settings','fp-free-modules','fp-sidebar-collapsed',
+    'fp-streak','fp-search-hist','fp-last-route','fp-last-sub',
+    'fp-activity-last-seen','fp-push-notif','fp-pinned','fp-wl-branding',
+  ];
+  keys.forEach(function(oldKey) {
+    var newKey = 'fp:' + oldKey.slice(3);
+    try {
+      var val = localStorage.getItem(oldKey);
+      if (val !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, val);
+      }
+      localStorage.removeItem(oldKey);
+    } catch(e) {}
+  });
+}());
+
+// ─────────────────────────────────────────────────────────────────
+// UTILITY HELPERS
+// ─────────────────────────────────────────────────────────────────
+window.__DEV__ = (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+function pluralizeFr(n, sg, pl) { return n === 1 ? sg : (pl || sg + 's'); }
+
+// ─────────────────────────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────────────────────────
 const STATE = {
@@ -60,8 +87,8 @@ const STATE = {
   overview: null,
   sectionErrors: {}, // { audits:'network', monitors:'server', ... }
   route: 'overview',
-  theme: document.documentElement.dataset.theme || localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'),
-  themeManual: !!localStorage.getItem('fp-theme'),
+  theme: document.documentElement.dataset.theme || localStorage.getItem('fp:theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'),
+  themeManual: !!localStorage.getItem('fp:theme'),
   toasts: [],
   notifications: [],
   aiMessages: [],
@@ -69,7 +96,7 @@ const STATE = {
   aiCredits: null,
   ctxMenu: null,
   floatPanel: null,
-  pinned: JSON.parse(localStorage.getItem('fp-pinned') || '{}'),
+  pinned: JSON.parse(localStorage.getItem('fp:pinned') || '{}'),
   missionView: 'list',
   missionFilter: 'all',
   missionSearch: '',
@@ -92,19 +119,19 @@ const STATE = {
   fabOpen: false,
   gPressed: false,
   gTimer: null,
-  searchHistory: JSON.parse(localStorage.getItem('fp-search-hist') || '[]'),
+  searchHistory: JSON.parse(localStorage.getItem('fp:search-hist') || '[]'),
   teamChatHistory: [],
-  settings: JSON.parse(localStorage.getItem('fp-settings') || '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}'),
+  settings: JSON.parse(localStorage.getItem('fp:settings') || '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}'),
   checklist: null,
-  freeModules: JSON.parse(localStorage.getItem('fp-free-modules') || '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}'),
-  sidebarCollapsed: localStorage.getItem('fp-sidebar-collapsed') === '1',
+  freeModules: JSON.parse(localStorage.getItem('fp:free-modules') || '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}'),
+  sidebarCollapsed: localStorage.getItem('fp:sidebar-collapsed') === '1',
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(),
   subRoute: null,
   msgChannel: 'general',
   channelMessages: null,
   msgAttachment: null,
-  streak: parseInt(localStorage.getItem('fp-streak') || '0', 10),
+  streak: parseInt(localStorage.getItem('fp:streak') || '0', 10),
   userScore: null, // computed from real API data in loadData
   selectedRowIndex: -1,
   alertRules: [],
@@ -114,8 +141,8 @@ const STATE = {
   activityEvents: [],
   activityFilter: 'all',
   activityPanelOpen: false,
-  activityLastSeen: parseInt(localStorage.getItem('fp-activity-last-seen') || '0', 10),
-  pushNotifEnabled: localStorage.getItem('fp-push-notif') === '1',
+  activityLastSeen: parseInt(localStorage.getItem('fp:activity-last-seen') || '0', 10),
+  pushNotifEnabled: localStorage.getItem('fp:push-notif') === '1',
   calendarSearch: '',
   calendarTypeFilter: '',
   calendarSelectedDate: null,
@@ -410,7 +437,7 @@ async function apiAction(method, path, body, { retries = 2 } = {}) {
     try {
       const result = await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
       const ms = Math.round(performance.now() - _t0);
-      console.log(`[FP_ACTION] bouton=${method} route=${path} status=ok ms=${ms} attempt=${attempt}`);
+      if(window.__DEV__) console.log(`[FP_ACTION] bouton=${method} route=${path} status=ok ms=${ms} attempt=${attempt}`);
       return result;
     } catch (e) {
       lastErr = e;
@@ -749,7 +776,7 @@ async function createShareLink() {
   const token = 'fp-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   const base = location.pathname.replace('dashboard.html', 'report-view.html');
   const url = `${location.origin}${base}?token=${token}`;
-  localStorage.setItem('fp-share-' + token, JSON.stringify({
+  localStorage.setItem('fp:share-' + token, JSON.stringify({
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString()
   }));
@@ -1080,7 +1107,7 @@ async function loadData() {
     for (let _d = 0; _d < 365; _d++) {
       if (activeDays.has(new Date(Date.now() - _d * 86400000).toISOString().slice(0, 10))) { _s++; } else if (_d > 0) break;
     }
-    if (_s > 0) { STATE.streak = _s; localStorage.setItem('fp-streak', String(_s)); }
+    if (_s > 0) { STATE.streak = _s; localStorage.setItem('fp:streak', String(_s)); }
   }
 
   // ── Phase 5: API module data — all parallel ───────────────────────────────────
@@ -1337,7 +1364,7 @@ function logActivityEvent(type, label, metadata = {}) {
 }
 function saveCalendarEvents() { /* calendar events persisted via API only */ }
 function saveSettings() {
-  localStorage.setItem('fp-settings', JSON.stringify(STATE.settings));
+  localStorage.setItem('fp:settings', JSON.stringify(STATE.settings));
   apiAction('PATCH', '/api/me/prefs', { settings: STATE.settings }).catch(() => {});
 }
 function saveChecklist() {
@@ -2074,7 +2101,7 @@ function _cmdRenderResults() {
 
   if (STATE.cmdQuery.length > 2) {
     STATE.searchHistory = [STATE.cmdQuery, ...STATE.searchHistory.filter(h => h !== STATE.cmdQuery)].slice(0, 5);
-    localStorage.setItem('fp-search-hist', JSON.stringify(STATE.searchHistory));
+    localStorage.setItem('fp:search-hist', JSON.stringify(STATE.searchHistory));
   }
 
   const cats = [...new Set(allItems.map(i => i.cat))];
@@ -2505,7 +2532,7 @@ function openActivityPanel() {
   STATE.activityPanelOpen = true;
   // Mark as seen — update timestamp
   STATE.activityLastSeen = Date.now();
-  localStorage.setItem('fp-activity-last-seen', String(STATE.activityLastSeen));
+  localStorage.setItem('fp:activity-last-seen', String(STATE.activityLastSeen));
   updateActivityBadge();
   renderActivityList();
 }
@@ -2565,7 +2592,7 @@ function pushActivityEvent(event) {
   // count events the user is actively viewing
   if (STATE.activityPanelOpen) {
     STATE.activityLastSeen = Date.now();
-    localStorage.setItem('fp-activity-last-seen', String(STATE.activityLastSeen));
+    localStorage.setItem('fp:activity-last-seen', String(STATE.activityLastSeen));
     renderActivityList();
   } else {
     // Flash badge so user notices new activity
@@ -2630,14 +2657,14 @@ async function requestPushPermission() {
 async function togglePushNotifications() {
   if (STATE.pushNotifEnabled) {
     STATE.pushNotifEnabled = false;
-    localStorage.setItem('fp-push-notif', '0');
+    localStorage.setItem('fp:push-notif', '0');
     showToast('info', 'Notifications push désactivées');
     updatePushToggleUI();
   } else {
     const granted = await requestPushPermission();
     if (granted) {
       STATE.pushNotifEnabled = true;
-      localStorage.setItem('fp-push-notif', '1');
+      localStorage.setItem('fp:push-notif', '1');
       showToast('success', 'Notifications push activées — vous serez alerté même onglet réduit');
       updatePushToggleUI();
     }
@@ -6321,7 +6348,7 @@ function renderReports() {
           ['Rapport executif PDF', 'Briefing client', 'Plan actions'])
       : `<div style="padding:14px 16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;align-items:center;gap:12px">
           <div style="font-size:22px">📋</div>
-          <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Syntheses IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports narratifs automatiques, analyse business et recommandations strategiques generees par IA.</div></div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:2px">Synthèses IA — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Rapports narratifs automatiques, analyse business et recommandations stratégiques générées par IA.</div></div>
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing');setTimeout(()=>navigateSub('plans'),50)">Passer Ultra</button>
         </div>`
     }
@@ -8443,7 +8470,7 @@ function renderSettings() {
   const isStd   = plan === 'Standard';
   const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
   const isUltra = plan === 'Agency' || plan === 'Ultra';
-  const wlBranding = JSON.parse(localStorage.getItem('fp-wl-branding') || '{}');
+  const wlBranding = JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
 
   // ── Shared Toggle helper ──────────────────────────────────
   const Toggle = (key, label, desc, locked) => {
@@ -10627,7 +10654,7 @@ function renderAI() {
         <div class="fp-ai-input-row">
           <input type="file" id="ai-file-input" style="display:none" accept="image/*,.pdf,.csv,.txt,.docx,.xlsx" multiple onchange="(function(inp){if(inp.files.length){var names=[...inp.files].map(f=>f.name).join(', ');var aiInp=document.getElementById('ai-input');if(aiInp&&!aiInp.value){aiInp.value='[Fichier : '+names+'] ';}showToast('success',inp.files.length+' fichier(s) joint(s) — posez votre question puis envoyez.');};})(this)"/>
           <label for="ai-file-input" title="Joindre un fichier" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--fp-radius-md);background:var(--fp-track);border:1px solid var(--fp-border);cursor:pointer;flex-shrink:0;transition:background 0.15s;color:var(--fp-text-muted)" onmouseover="this.style.background='var(--fp-track-hover,rgba(0,0,0,0.08))'" onmouseout="this.style.background='var(--fp-track)'"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></label>
-          <input class="fp-ai-input" id="ai-input" placeholder="Posez votre question… (moniteurs, SEO, conversions, rapports…)" type="text"/>
+          <textarea class="fp-ai-input" id="ai-input" placeholder="Posez votre question… (moniteurs, SEO, conversions, rapports…)" rows="1" style="resize:none;overflow:hidden;line-height:1.5;max-height:120px"></textarea>
           <button class="fp-ai-send" id="ai-send">${svgIcon('send').replace('width="14"','width="15"').replace('height="14"','height="15"')}</button>
         </div>
       </div>
@@ -10878,6 +10905,8 @@ async function sendAIMessage(text) {
         ? '⚠ Trop de requêtes. Attendez quelques instants puis réessayez.'
         : resp.status === 402
         ? '⚠ AI Credits épuisés — rechargez votre solde pour continuer.'
+        : resp.status === 401
+        ? '⚠ Session expirée — <a href="/login.html" style="color:inherit;text-decoration:underline">reconnectez-vous</a> pour continuer.'
         : (err.error || '⚠ Le service IA est temporairement indisponible.');
       STATE.aiMessages[streamIdx] = { from:'ai', text: msg, streaming: false };
       STATE.aiLoading = false;
@@ -11836,7 +11865,7 @@ function navigate(route, subRoute) {
   STATE.route    = _n.route;
   STATE.subRoute = _n.subRoute;
   try { history.replaceState(null, '', '#' + STATE.route + (STATE.subRoute ? '/' + STATE.subRoute : '')); } catch(e) { /* sandboxed */ }
-  try { localStorage.setItem('fp-last-route', STATE.route); if (STATE.subRoute) localStorage.setItem('fp-last-sub', STATE.subRoute); else localStorage.removeItem('fp-last-sub'); } catch(e) {}
+  try { localStorage.setItem('fp:last-route', STATE.route); if (STATE.subRoute) localStorage.setItem('fp:last-sub', STATE.subRoute); else localStorage.removeItem('fp:last-sub'); } catch(e) {}
   document.querySelectorAll('.fp-chart-tooltip').forEach(t => t.remove());
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
@@ -11845,7 +11874,7 @@ function navigate(route, subRoute) {
 
 function navigateSub(sub) {
   STATE.subRoute = sub;
-  try { localStorage.setItem('fp-last-sub', sub || ''); } catch(e) {}
+  try { localStorage.setItem('fp:last-sub', sub || ''); } catch(e) {}
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
   const _p = document.getElementById('fp-page'); if (_p) _p.scrollTo({ top: 0, behavior: 'instant' });
@@ -12583,7 +12612,7 @@ function bindSectionEvents() {
         { key:'view', icon:'eye',      label:'Voir les détails', action:()=>openFloatPanel('Détail de l\'audit',renderAuditDetailPanel(audit)) },
         { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success','URL copiée'); } },
         { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel('Détail de l\'audit',renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
-        { key:'pin',  icon:'pin',      label: audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp-pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); showToast('success',audit.pinned?'Épinglé !':'Épingle retiré'); render(); } },
+        { key:'pin',  icon:'pin',      label: audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); showToast('success',audit.pinned?'Épinglé !':'Épingle retiré'); render(); } },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',         action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error','Audit supprimé'); render(); }, danger:true },
       ]);
@@ -12604,7 +12633,7 @@ function bindSectionEvents() {
         { key:'view', icon:'eye',      label:'Voir les détails', action:()=>{ openFloatPanel('Détail de l\'audit',renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
         { key:'copy', icon:'copy',     label:'Copier l\'URL',    action:()=>{ navigator.clipboard?.writeText(audit.url); showToast('success','URL copiée'); } },
         { key:'pdf',  icon:'download', label:'Exporter PDF',     action:()=>{ openFloatPanel('Détail de l\'audit',renderAuditDetailPanel(audit)); bindAuditPanelBtns(audit); } },
-        { key:'pin',  icon:'pin',      label:audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp-pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); render(); } },
+        { key:'pin',  icon:'pin',      label:audit.pinned?'Détacher':'Épingler', action:()=>{ audit.pinned=!audit.pinned; STATE.pinned['audit_'+audit.id]=audit.pinned; localStorage.setItem('fp:pinned',JSON.stringify(STATE.pinned)); apiAction('PATCH','/api/me/prefs',{pinned:STATE.pinned}).catch(()=>{}); render(); } },
         { divider:true, key:'div' },
         { key:'del',  icon:'trash',    label:'Supprimer',        action:async()=>{ try { await apiAction('DELETE',`/api/audits/${audit.id}`); } catch(e){} STATE.audits=STATE.audits.filter(a=>a.id!==audit.id); showToast('error','Audit supprimé'); render(); }, danger:true },
       ]);
@@ -13262,7 +13291,7 @@ function bindSectionEvents() {
       e.stopPropagation();
       const reportId = btn.dataset.reportShare;
       const report = STATE.reports.find(r => r.id === reportId);
-      const branding = JSON.parse(localStorage.getItem('fp-wl-branding') || '{}');
+      const branding = JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
       const brandingPayload = {
         agencyName:     branding.agencyName    || STATE.me?.org?.name || 'Mon Agence',
         logoUrl:        branding.logoUrl       || '',
@@ -13299,7 +13328,7 @@ function bindSectionEvents() {
         createdAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
       };
-      localStorage.setItem('fp-share-' + token, JSON.stringify({ reportId: payload.report?.id||null, createdAt: payload.createdAt, expiresAt: payload.expiresAt }));
+      localStorage.setItem('fp:share-' + token, JSON.stringify({ reportId: payload.report?.id||null, createdAt: payload.createdAt, expiresAt: payload.expiresAt }));
       if (report) { report.shared = true; }
       const base = location.pathname.endsWith('dashboard.html')
         ? location.pathname.replace('dashboard.html', 'report-view.html')
@@ -13316,7 +13345,7 @@ function bindSectionEvents() {
         showCtxMenu(e, [
           { key:'dl',    icon:'download', label:'Télécharger', action:()=>{ downloadReportPdf(report.id, report.name||'rapport'); showToast('success','Téléchargement PDF…'); } },
           { key:'share', icon:'copy',     label:'Copier le lien', action: async ()=>{
-            const wlb = JSON.parse(localStorage.getItem('fp-wl-branding') || '{}');
+            const wlb = JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
             const bp = { agencyName: wlb.agencyName || STATE.me?.org?.name || 'Mon Agence', logoUrl: wlb.logoUrl || '', primaryColor: wlb.primaryColor || '#2563EB', secondaryColor: wlb.secondaryColor || '#1d4ed8', footerMsg: wlb.footerMsg || '' };
             const base = location.pathname.endsWith('dashboard.html') ? location.pathname.replace('dashboard.html','report-view.html') : location.pathname.replace(/\/?$/,'/report-view.html');
             try {
@@ -13325,7 +13354,7 @@ function bindSectionEvents() {
             } catch(err) { console.warn('[FP] Share API fallback'); }
             const token = 'fp-'+Math.random().toString(36).slice(2,10)+Date.now().toString(36);
             let _ctxNotes = []; try { if (report?.meetingNotesJson) _ctxNotes = JSON.parse(report.meetingNotesJson); } catch {}
-            localStorage.setItem('fp-share-'+token, JSON.stringify({ reportId: report?.id||null, createdAt:new Date().toISOString(), expiresAt:new Date(Date.now()+30*24*3600*1000).toISOString() }));
+            localStorage.setItem('fp:share-'+token, JSON.stringify({ reportId: report?.id||null, createdAt:new Date().toISOString(), expiresAt:new Date(Date.now()+30*24*3600*1000).toISOString() }));
             navigator.clipboard?.writeText(`${location.origin}${base}?token=${token}`).catch(()=>{});
             showToast('success','Lien copié ! Valable 30 jours.');
           } },
@@ -13348,7 +13377,7 @@ function bindSectionEvents() {
       const key = btn.dataset.moduleKey;
       if (!key || !(key in STATE.freeModules)) return;
       STATE.freeModules[key] = !STATE.freeModules[key];
-      localStorage.setItem('fp-free-modules', JSON.stringify(STATE.freeModules));
+      localStorage.setItem('fp:free-modules', JSON.stringify(STATE.freeModules));
       applyFreeModules();
       navigate(STATE.route);
       showToast('success', STATE.freeModules[key] ? 'Module activé !' : 'Module désactivé');
@@ -13627,7 +13656,7 @@ function bindSectionEvents() {
         { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email', 'sms'], siteUrls: [] },
       ];
       $('#dismiss-templates')?.addEventListener('click', () => {
-        localStorage.setItem('fp-alert-templates-first-access', 'done');
+        localStorage.setItem('fp:alert-templates-first-access', 'done');
         navigateSub('alerts');
       });
 
@@ -13643,7 +13672,7 @@ function bindSectionEvents() {
             if (rule && !rule.error) {
               STATE.alertRules = STATE.alertRules || [];
               STATE.alertRules.push(rule);
-              localStorage.setItem('fp-alert-templates-first-access', 'done');
+              localStorage.setItem('fp:alert-templates-first-access', 'done');
               showToast('success', `Template "${t.name}" activé !`);
               navigateSub('alerts');
             } else {
@@ -13681,7 +13710,7 @@ function bindSectionEvents() {
         secondaryColor: $('#wl-secondary-color-hex')?.value.trim() || '#1d4ed8',
         footerMsg:      $('#wl-footer-msg')?.value.trim() || '',
       };
-      localStorage.setItem('fp-wl-branding', JSON.stringify(branding));
+      localStorage.setItem('fp:wl-branding', JSON.stringify(branding));
       showToast('success', 'Branding White Label sauvegardé !');
       render();
     });
@@ -13692,7 +13721,7 @@ function bindSectionEvents() {
     const aiInput = $('#ai-input');
     const aiSend = $('#ai-send');
     aiSend?.addEventListener('click', () => { sendAIMessage(aiInput?.value||''); if(aiInput) aiInput.value=''; });
-    aiInput?.addEventListener('keydown', e => { if(e.key==='Enter') { sendAIMessage(aiInput.value); aiInput.value=''; } });
+    aiInput?.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(aiInput.value); aiInput.value=''; if(aiInput.style) aiInput.style.height=''; } });
   }
 
   initChartTooltips();
@@ -13880,7 +13909,7 @@ function initChartTooltips() {
 // ─────────────────────────────────────────────────────────────────
 function applyTheme() {
   document.documentElement.dataset.theme = STATE.theme;
-  if (STATE.themeManual) localStorage.setItem('fp-theme', STATE.theme);
+  if (STATE.themeManual) localStorage.setItem('fp:theme', STATE.theme);
   const sun = document.querySelector('.fp-icon-sun');
   const moon = document.querySelector('.fp-icon-moon');
   if (sun) sun.style.display = STATE.theme === 'dark' ? 'block' : 'none';
@@ -13923,7 +13952,7 @@ function toggleTheme() {
     _themeToggleTimer = null;
     STATE.theme = STATE.theme === 'dark' ? 'light' : 'dark';
     STATE.themeManual = true;
-    localStorage.setItem('fp-theme', STATE.theme);
+    localStorage.setItem('fp:theme', STATE.theme);
     applyTheme();
     render();
     showToast('info', `Thème ${STATE.theme === 'dark' ? 'sombre' : 'clair'} activé`);
@@ -13977,7 +14006,7 @@ function renderOnboarding() {
 
 function completeOnboarding() {
   STATE.onboardingComplete = true;
-  localStorage.setItem('fp-onboarded','1');
+  localStorage.setItem('fp:onboarded','1');
   const el = $('#fp-onboarding');
   if (el) el.setAttribute('hidden','');
   showToast('success','Bienvenue ! Votre dashboard est prêt 🎉');
@@ -14221,7 +14250,7 @@ async function init() {
   applyTheme();
   // Apply stored language preference before first render
   try {
-    const _lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp-language') || 'fr';
+    const _lang = (STATE.settings && STATE.settings.language) || localStorage.getItem('fp:language') || 'fr';
     document.documentElement.lang = _lang.split('-')[0];
   } catch(_) {}
   // Apply free modules (compact mode, focus mode, etc.)
@@ -14229,8 +14258,8 @@ async function init() {
 
   // Restore last route immediately so first render shows correct page
   try {
-    const savedRoute = localStorage.getItem('fp-last-route');
-    const savedSub   = localStorage.getItem('fp-last-sub');
+    const savedRoute = localStorage.getItem('fp:last-route');
+    const savedSub   = localStorage.getItem('fp:last-sub');
     if (savedRoute) STATE.route = savedRoute;
     if (savedSub)   STATE.subRoute = savedSub || null;
   } catch(e) {}
@@ -14325,7 +14354,7 @@ async function init() {
     // Corruption guard: if activityLastSeen is in the future, reset it
     if (STATE.activityLastSeen > Date.now() + 60000) {
       STATE.activityLastSeen = 0;
-      localStorage.setItem('fp-activity-last-seen', '0');
+      localStorage.setItem('fp:activity-last-seen', '0');
     }
     let _sseBackoff = 1000;
     function _sseConnect() {
@@ -14872,11 +14901,11 @@ function toggleSidebar() {
   if (STATE.sidebarCollapsed) {
     sidebar?.classList.add('collapsed');
     layout?.classList.add('sidebar-collapsed');
-    localStorage.setItem('fp-sidebar-collapsed', '1');
+    localStorage.setItem('fp:sidebar-collapsed', '1');
   } else {
     sidebar?.classList.remove('collapsed');
     layout?.classList.remove('sidebar-collapsed');
-    localStorage.setItem('fp-sidebar-collapsed', '0');
+    localStorage.setItem('fp:sidebar-collapsed', '0');
   }
 }
 
@@ -22848,7 +22877,7 @@ function renderActivityFeed() {
           Activity Command Center
           <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:#22c55e;animation:pulse 2s infinite">● LIVE</span>
         </h1>
-        <div class="fp-section-sub">${liveFeed.length} événements · Mis à jour à l\'instant</div>
+        <div class="fp-section-sub">${liveFeed.length === 0 ? 'Aucun événement — créez des audits ou monitors' : liveFeed.length + ' ' + pluralizeFr(liveFeed.length, 'événement', 'événements') + ' · Mis à jour à l\'instant'}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Exporter', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"exportActivityCsv()\"")}
@@ -22911,19 +22940,26 @@ function renderActivityFeed() {
           <span style="font-size:10px;color:var(--fp-text-faint)">Mis à jour à l\'instant</span>
         </div>
         <div class="fp-timeline" style="gap:6px">
-          ${liveFeed.slice(0, 10).map(item => {
-            const c = colors[item.type] || '#2563EB';
-            return `<div class="fp-timeline-item">
-              <div class="fp-timeline-dot" style="background:${c}12;border-color:${c}25;width:28px;height:28px;min-width:28px">
-                ${svgIcon(item.icon).replace('stroke="currentColor"',`stroke="${c}"`).replace('width="14"','width="11"').replace('height="14"','height="11"')}
-              </div>
-              <div class="fp-timeline-body" style="flex:1;min-width:0">
-                <div class="fp-timeline-title" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(item.title)}</div>
-                <div class="fp-timeline-time" style="font-size:9px">Il y a ${escHtml(item.time)} · ${escHtml(item.user)} · ${escHtml(item.cat)}</div>
-              </div>
-              ${badge(escHtml(item.impact), item.impact === 'Critique' ? '#ef4444' : item.impact === 'Élevé' ? '#f59e0b' : '#475569')}
-            </div>`;
-          }).join('')}
+          ${liveFeed.length === 0 && !PREVIEW_MODE
+            ? `<div style="text-align:center;padding:24px 16px;color:var(--fp-text-faint);font-size:12px;line-height:1.6">
+                <div style="font-size:28px;margin-bottom:8px">📋</div>
+                <div style="font-weight:600;margin-bottom:4px">Aucune activité pour l'instant</div>
+                <div>Créez votre premier audit ou monitor pour alimenter ce fil en temps réel.</div>
+              </div>`
+            : liveFeed.slice(0, 10).map(item => {
+                const c = colors[item.type] || '#2563EB';
+                return `<div class="fp-timeline-item">
+                  <div class="fp-timeline-dot" style="background:${c}12;border-color:${c}25;width:28px;height:28px;min-width:28px">
+                    ${svgIcon(item.icon).replace('stroke="currentColor"',`stroke="${c}"`).replace('width="14"','width="11"').replace('height="14"','height="11"')}
+                  </div>
+                  <div class="fp-timeline-body" style="flex:1;min-width:0">
+                    <div class="fp-timeline-title" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(item.title)}</div>
+                    <div class="fp-timeline-time" style="font-size:9px">Il y a ${escHtml(item.time)} · ${escHtml(item.user)} · ${escHtml(item.cat)}</div>
+                  </div>
+                  ${badge(escHtml(item.impact), item.impact === 'Critique' ? '#ef4444' : item.impact === 'Élevé' ? '#f59e0b' : '#475569')}
+                </div>`;
+              }).join('')
+          }
         </div>
       </div>
 
@@ -26195,7 +26231,7 @@ function renderConversionHeatmap() {
       </div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('billing')">Passer à Ultra</button>
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="localStorage.setItem('fp-notify-heatmap','1');this.disabled=true;this.style.opacity='0.6';this.textContent='✓ Vous serez notifié'">Me notifier</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="localStorage.setItem('fp:notify-heatmap','1');this.disabled=true;this.style.opacity='0.6';this.textContent='✓ Vous serez notifié'">Me notifier</button>
       </div>
     </div>
   `;
@@ -30190,7 +30226,7 @@ function renderGSCIndexing(gsc) {
           try {
             const r = await apiFetch('/api/gsc/indexing', {method:'POST', body: JSON.stringify({inspectionUrl:url})});
             showToast(r.ok?'success':'error', r.ok ? 'URL inspectée — voir console' : String(r.error));
-            console.log('[GSC Indexing]', r);
+            if(window.__DEV__) console.log('[GSC Indexing]', r);
           } catch(e) { showToast('error', String(e)); }
         })()">Inspecter</button>
       </div>

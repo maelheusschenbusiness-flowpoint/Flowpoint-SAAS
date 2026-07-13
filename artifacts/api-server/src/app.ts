@@ -281,6 +281,48 @@ const staticCache = (req: Request, res: Response, next: Function) => {
   }
   next();
 };
+// ── SEO & Security standard files ────────────────────────────────────────────
+app.get("/robots.txt", (_req: Request, res: Response): void => {
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(
+    [
+      "User-agent: *",
+      "Disallow: /api/",
+      "Disallow: /checkout",
+      "Disallow: /checkout-payment.html",
+      "Disallow: /checkout-return.html",
+      "Disallow: /login-verify.html",
+      "Disallow: /dev-login.html",
+      "",
+      "Sitemap: https://app.flowpoint.pro/sitemap.xml",
+    ].join("\n"),
+  );
+});
+
+app.get("/sitemap.xml", (_req: Request, res: Response): void => {
+  const ts = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>https://app.flowpoint.pro/</loc><lastmod>${ts}</lastmod><changefreq>monthly</changefreq><priority>1.0</priority></url>\n  <url><loc>https://app.flowpoint.pro/pricing.html</loc><lastmod>${ts}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>\n  <url><loc>https://app.flowpoint.pro/login.html</loc><lastmod>${ts}</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>\n</urlset>`,
+  );
+});
+
+app.get("/.well-known/security.txt", (_req: Request, res: Response): void => {
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  const expires = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+  res.send(
+    [
+      "Contact: mailto:security@flowpoint.pro",
+      `Expires: ${expires}`,
+      "Preferred-Languages: fr, en",
+      "Policy: https://flowpoint.pro/politique-de-confidentialite",
+    ].join("\n"),
+  );
+});
+
 // Dev-only auth helper: never serve in real production deployments
 app.get("/dev-login.html", (req: Request, res: Response, next: NextFunction) => {
   if (process.env["NODE_ENV"] === "production" && !process.env["REPLIT_DEV_DOMAIN"]) {

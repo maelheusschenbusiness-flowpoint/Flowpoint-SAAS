@@ -341,8 +341,8 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
     nodeEnv: process.env["NODE_ENV"] || "(not set)",
   }, "[Auth] login-request received");
 
-  if (!rawEmail || !String(rawEmail).includes("@")) {
-    res.status(400).json({ error: "Email valide requis" });
+  if (!rawEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(rawEmail).trim())) {
+    res.status(400).json({ error: "Adresse email invalide" });
     return;
   }
 

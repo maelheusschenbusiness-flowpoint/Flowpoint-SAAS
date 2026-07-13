@@ -65,7 +65,7 @@
     .then(function (res) {
       if (res.status === 401) {
         /* Not logged in — save plan and redirect to signup */
-        try { sessionStorage.setItem('fp_next', '/checkout.html'); } catch(e) {}
+        try { sessionStorage.setItem('fp_next', '/checkout.html?plan=' + encodeURIComponent(plan) + '&billing=' + encodeURIComponent(billing)); } catch(e) {}
         window.location.href = '/login.html';
         return null;
       }
