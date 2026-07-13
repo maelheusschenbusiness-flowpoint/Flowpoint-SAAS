@@ -179,9 +179,15 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
 // ── PATCH /api/me/prefs ───────────────────────────────────────────────────────
 router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => {
   const orgId = req.orgContext?.orgId ?? "default";
-  const { streak, pinned, checklist, settings } = req.body as {
+  const { streak, pinned, checklist, settings: rawSettings } = req.body as {
     streak?: number; pinned?: Record<string, boolean>; checklist?: unknown; settings?: Record<string, unknown>;
   };
+  // Strip any DataForSEO credentials from settings before storing in user_prefs
+  let settings = rawSettings;
+  if (settings && typeof settings === "object") {
+    const { dataForSEO: _, ...rest } = settings;
+    settings = rest;
+  }
   try {
     await orgDb(req)(
       `INSERT INTO user_prefs (org_id, streak, pinned, checklist, settings, updated_at)
@@ -201,6 +207,65 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
     res.json({ ok: true });
   } catch {
     res.json({ ok: false });
+  }
+});
+
+// ── DataForSEO credentials — server-only org-scoped storage ───────────────────────────────────
+
+import { pool } from "@workspace/db";
+import { isDataForSEOConfigured } from "../services/dataforseo-service.js";
+
+/** GET /api/me/dataforseo/status — return configured status (never exposes password) */
+router.get("/me/dataforseo/status", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgContext?.orgId ?? "default";
+  try {
+    const configured = await isDataForSEOConfigured(orgId);
+    let login = "";
+    if (configured) {
+      const r = await pool.query(
+        `SELECT value FROM org_secrets WHERE org_id = $1 AND key = 'dataforseo_login'`, [orgId]
+      );
+      login = r.rows[0]?.value ?? "";
+    }
+    res.json({ configured, login });
+  } catch {
+    res.json({ configured: false, login: "" });
+  }
+});
+
+/** POST /api/me/dataforseo/credentials — save org-scoped credentials */
+router.post("/me/dataforseo/credentials", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgContext?.orgId ?? "default";
+  const { login, password } = req.body as { login?: string; password?: string };
+  if (!login || !password) {
+    res.status(400).json({ ok: false, error: "login and password required" });
+    return;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO org_secrets (org_id, key, value, created_at)
+       VALUES ($1, 'dataforseo_login',    $2, NOW()),
+              ($1, 'dataforseo_password', $3, NOW())
+       ON CONFLICT (org_id, key) DO UPDATE SET value = EXCLUDED.value, created_at = NOW()`,
+      [orgId, login.trim(), password.trim()]
+    );
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to save credentials" });
+  }
+});
+
+/** DELETE /api/me/dataforseo/credentials — clear org-scoped credentials */
+router.delete("/me/dataforseo/credentials", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgContext?.orgId ?? "default";
+  try {
+    await pool.query(
+      `DELETE FROM org_secrets WHERE org_id = $1 AND key IN ('dataforseo_login','dataforseo_password')`,
+      [orgId]
+    );
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to clear credentials" });
   }
 });
 

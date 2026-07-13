@@ -86,7 +86,7 @@ async function batchSERP(tasks: Array<{
 }
 
 export async function syncOrgRankings(orgId: string): Promise<void> {
-  if (!isDataForSEOConfigured()) {
+  if (!await isDataForSEOConfigured(orgId)) {
     logger.warn({ orgId }, "[keyword-engine] DataForSEO not configured — skipping rank sync");
     return;
   }

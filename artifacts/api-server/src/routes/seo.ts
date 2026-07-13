@@ -43,12 +43,12 @@ function withQuota(handler: (req: import("express").Request, res: import("expres
 
 // ── GET /api/seo/status ───────────────────────────────────────────────────────
 
-router.get("/seo/status", (req, res) => {
+router.get("/seo/status", async (req, res) => {
   const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const plan  = ((req as Record<string, unknown>)["me"] as Record<string,string> | undefined)?.plan ?? "Pro";
   const { used, limit } = getQuotaUsage(orgId, plan);
   res.json({
-    configured: isDataForSEOConfigured(),
+    configured: await isDataForSEOConfigured(orgId),
     plan, quota: { used, limit, remaining: Math.max(0, limit - used) },
   });
 });
@@ -199,7 +199,7 @@ router.get("/local-seo/citations", async (req, res) => {
   const domain = req.query.domain as string | undefined;
   const orgId  = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   try {
-    if (domain && isDataForSEOConfigured()) {
+    if (domain && await isDataForSEOConfigured(orgId)) {
       const allowed = await checkAndIncrementQuota(orgId, "citations", 1).catch(() => false);
       if (allowed) {
         const bl = await getBacklinks(domain);
@@ -239,7 +239,7 @@ router.post("/local-seo/rankings", async (req, res) => {
     return;
   }
   try {
-    if (isDataForSEOConfigured()) {
+    if (await isDataForSEOConfigured(orgId)) {
       const allowed = await checkAndIncrementQuota(orgId, "rankings", 1).catch(() => false);
       if (allowed) {
         // DataForSEO local pack search — delegate to existing service if available

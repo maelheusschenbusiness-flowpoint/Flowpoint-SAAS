@@ -322,6 +322,18 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS team_files_org_id_idx ON team_files(org_id);`);
 
+    // ── org_secrets — per-org secure credential storage ───────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS org_secrets (
+        org_id      TEXT NOT NULL DEFAULT 'default',
+        key         TEXT NOT NULL DEFAULT '',
+        value       TEXT NOT NULL DEFAULT '',
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, key)
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS org_secrets_org_id_idx ON org_secrets(org_id);`);
+
     // ── ai_usage_logs — extended cost logging columns ────────────────────────
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS provider TEXT;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS cached_tokens INTEGER NOT NULL DEFAULT 0;`);

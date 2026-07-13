@@ -3034,8 +3034,9 @@ function initLocalSEOMap() {
       mk.addListener('click', () => iw.open(map, mk));
     });
 
-    // User geolocation marker
-    if (navigator.geolocation && !STATE._geoMarker) {
+    // User geolocation marker — always recreate on new map instance
+    if (STATE._geoMarker) { try { STATE._geoMarker.setMap(null); } catch(_){} STATE._geoMarker = null; }
+    if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(pos => {
         const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         STATE._geoMarker = new google.maps.Marker({
@@ -3047,7 +3048,7 @@ function initLocalSEOMap() {
         STATE._lastUserLat = userPos.lat;
         STATE._lastUserLng = userPos.lng;
       }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
-    } else if (STATE._lastUserLat != null && STATE._lastUserLng != null && !STATE._geoMarker) {
+    } else if (STATE._lastUserLat != null && STATE._lastUserLng != null) {
       const userPos = { lat: STATE._lastUserLat, lng: STATE._lastUserLng };
       STATE._geoMarker = new google.maps.Marker({
         position: userPos, map, zIndex: 20, title: 'Vous \u00eates ici',
@@ -9383,10 +9384,16 @@ function renderSettings() {
       }
       // ── DATAFORSEO ─────────────────────────────────────────────────────────────
       if (tab === 'dataforseo') {
-        const _dfsCfg = (STATE.settings && STATE.settings.dataForSEO) || {};
-        const _hasLogin  = !!_dfsCfg.login;
-        const _hasPass   = !!_dfsCfg.password;
-        const _isConfigured = _hasLogin && _hasPass;
+        // Lazily load server status; cache it in a module-level var for the session
+        const _dfsStatus = window._dfsStatusCache || { configured: false, login: '' };
+        if (!window._dfsStatusRequested) {
+          window._dfsStatusRequested = true;
+          apiFetch('/api/me/dataforseo/status').then(function(d){
+            window._dfsStatusCache = d || { configured: false, login: '' };
+            if (STATE.currentSection === 'integrations' && window._intgTab === 'dataforseo') render(STATE.currentSection);
+          }).catch(function(){});
+        }
+        const _isConfigured = !!_dfsStatus.configured;
         return `
           <div class="fp-card fp-mb-16">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -9402,20 +9409,18 @@ function renderSettings() {
             <div style="display:flex;flex-direction:column;gap:12px">
               <div>
                 <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Login DataForSEO</label>
-                <input id="dfs-login" class="fp-input" type="text" placeholder="votre-login@exemple.com" value="${escHtml(_dfsCfg.login || '')}"
-                  oninput="(function(el){const s=STATE.settings||{};s.dataForSEO=s.dataForSEO||{};s.dataForSEO.login=el.value;STATE.settings=s;})(this)"/>
+                <input id="dfs-login" class="fp-input" type="text" placeholder="votre-login@exemple.com" value="${escHtml(_dfsStatus.login || '')}"/>
               </div>
               <div>
                 <label style="font-size:11px;color:var(--fp-text-muted);display:block;margin-bottom:4px">Mot de passe / Clé API</label>
-                <input id="dfs-password" class="fp-input" type="password" placeholder="••••••••••••" value="${escHtml(_dfsCfg.password || '')}"
-                  oninput="(function(el){const s=STATE.settings||{};s.dataForSEO=s.dataForSEO||{};s.dataForSEO.password=el.value;STATE.settings=s;})(this)"/>
+                <input id="dfs-password" class="fp-input" type="password" placeholder="••••••••••••" value=""/>
               </div>
               <div style="font-size:10px;color:var(--fp-text-faint);padding:8px;background:rgba(37,99,235,0.06);border-radius:8px;border:1px solid rgba(37,99,235,0.15)">
-                ℹ️ Les credentials sont sauvegardés dans vos préférences utilisateur. En l'absence de credentials personnels, les variables d'environnement <code>DATAFORSEO_LOGIN</code> et <code>DATAFORSEO_PASSWORD</code> sont utilisées comme fallback.
+                ℹ️ Les credentials sont stockés de manière sécurisée côté serveur uniquement. Le mot de passe n'est jamais conservé dans le navigateur. En l'absence de credentials personnels, les variables d'environnement <code>DATAFORSEO_LOGIN</code> et <code>DATAFORSEO_PASSWORD</code> sont utilisées comme fallback.
               </div>
               <div style="display:flex;gap:8px;justify-content:flex-end">
-                <button class="fp-btn fp-btn-ghost" onclick="document.getElementById('dfs-login').value='';document.getElementById('dfs-password').value='';STATE.settings=STATE.settings||{};STATE.settings.dataForSEO={};saveSettings();showToast('info','Credentials effacés')">Effacer</button>
-                <button class="fp-btn fp-btn-primary" onclick="(function(){const s=STATE.settings||{};const l=document.getElementById('dfs-login')?.value?.trim();const p=document.getElementById('dfs-password')?.value?.trim();s.dataForSEO={login:l,password:p};STATE.settings=s;saveSettings();apiAction('PATCH','/api/me/prefs',{settings:{dataForSEO:{login:l,password:p}}}).then(function(r){showToast(r&&r.ok?'success':'error',r&&r.ok?'Credentials DataForSEO sauvegardés':'Erreur');render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});})();">Sauvegarder</button>
+                <button class="fp-btn fp-btn-ghost" onclick="apiAction('DELETE','/api/me/dataforseo/credentials').then(function(r){showToast(r&&r.ok?'info':'error',r&&r.ok?'Credentials effacés':'Erreur');window._dfsStatusCache={configured:false,login:''};render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});">Effacer</button>
+                <button class="fp-btn fp-btn-primary" onclick="(function(){var l=document.getElementById('dfs-login')?.value?.trim();var p=document.getElementById('dfs-password')?.value?.trim();if(!l||!p){showToast('warning','Renseignez login et mot de passe');return;}apiAction('POST','/api/me/dataforseo/credentials',{login:l,password:p}).then(function(r){showToast(r&&r.ok?'success':'error',r&&r.ok?'Credentials DataForSEO sauvegardés':'Erreur');window._dfsStatusCache={configured:true,login:l};document.getElementById('dfs-password').value='';render(STATE.currentSection);}).catch(function(){showToast('error','Erreur réseau');});})();">Sauvegarder</button>
               </div>
             </div>
           </div>

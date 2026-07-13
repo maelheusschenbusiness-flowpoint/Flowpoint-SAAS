@@ -1,7 +1,7 @@
 /**
  * dataforseo-service.ts — DataForSEO API client
  *
- * All functions check isDataForSEOConfigured() and fall back to empty
+ * All functions check await isDataForSEOConfigured() and fall back to empty
  * arrays / null values when credentials are absent — no more fake data.
  *
  * Quota system: tracks daily requests per org in dataforseo_quota table.
@@ -13,20 +13,43 @@ import { logger } from "../lib/logger.js";
 const DFS_BASE           = "https://api.dataforseo.com/v3";
 const MAX_DAILY_REQUESTS = 1000;
 
-export function isDataForSEOConfigured(): boolean {
+/** Read per-org secrets from DB; returns null if not set. */
+async function getOrgCredentials(orgId = "default"): Promise<{ login: string; password: string } | null> {
+  try {
+    const res = await pool.query(
+      `SELECT value FROM org_secrets WHERE org_id = $1 AND key = 'dataforseo_password'`,
+      [orgId]
+    );
+    const password = res.rows[0]?.value ?? "";
+    const loginRes = await pool.query(
+      `SELECT value FROM org_secrets WHERE org_id = $1 AND key = 'dataforseo_login'`,
+      [orgId]
+    );
+    const login = loginRes.rows[0]?.value ?? "";
+    if (login && password) return { login, password };
+  } catch { /* non-fatal */ }
+  return null;
+}
+
+/** Check if DataForSEO is configured for a given org (DB overrides env). */
+export async function isDataForSEOConfigured(orgId = "default"): Promise<boolean> {
+  const orgCreds = await getOrgCredentials(orgId);
+  if (orgCreds) return true;
   return !!(process.env["DATAFORSEO_LOGIN"] && process.env["DATAFORSEO_PASSWORD"]);
 }
 
-function getAuth(): string {
-  const login = process.env["DATAFORSEO_LOGIN"] ?? "";
-  const pass  = process.env["DATAFORSEO_PASSWORD"] ?? "";
+/** Build Basic auth header — org DB credentials take priority over env. */
+async function getAuth(orgId = "default"): Promise<string> {
+  const orgCreds = await getOrgCredentials(orgId);
+  const login = orgCreds?.login ?? (process.env["DATAFORSEO_LOGIN"] ?? "");
+  const pass  = orgCreds?.password ?? (process.env["DATAFORSEO_PASSWORD"] ?? "");
   return `Basic ${Buffer.from(`${login}:${pass}`).toString("base64")}`;
 }
 
-export async function dfsRequest<T>(path: string, body: unknown): Promise<T> {
+export async function dfsRequest<T>(path: string, body: unknown, orgId = "default"): Promise<T> {
   const res = await fetch(`${DFS_BASE}${path}`, {
     method:  "POST",
-    headers: { Authorization: getAuth(), "Content-Type": "application/json" },
+    headers: { Authorization: await getAuth(orgId), "Content-Type": "application/json" },
     body:    JSON.stringify(body),
     signal:  AbortSignal.timeout(25_000),
   });
@@ -82,7 +105,7 @@ export async function getQuotaUsage(
 export async function getKeywordSuggestions(
   keyword: string, location = "France", lang = "fr"
 ): Promise<Array<{ keyword: string; volume: number; difficulty: number; cpc: number }>> {
-  if (!isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured()) return [];
   try {
     type DFSKwResult = Array<{
       result?: Array<{ keyword: string; search_volume: number; keyword_difficulty: number; cpc: number }>;
@@ -107,7 +130,7 @@ export async function getKeywordSuggestions(
 export async function getSERP(
   keyword: string, location = "France", lang = "fr"
 ): Promise<unknown[]> {
-  if (!isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured()) return [];
   try {
     type DFSResult = Array<{ result?: Array<Record<string, unknown>> }>;
     const data = await dfsRequest<DFSResult>("/serp/google/organic/live/regular", [{
@@ -120,7 +143,7 @@ export async function getSERP(
 export async function getCompetitors(
   domain: string
 ): Promise<Array<{ domain: string; organicTraffic: number; keywords: number; authority: number }>> {
-  if (!isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured()) return [];
   try {
     type DFSResult = Array<{
       result?: Array<{
@@ -143,7 +166,7 @@ export async function getCompetitors(
 export async function getBacklinks(
   domain: string
 ): Promise<{ referring_domains: number; backlinks: number; domain_rank: number }> {
-  if (!isDataForSEOConfigured()) return { referring_domains: 0, backlinks: 0, domain_rank: 0 };
+  if (!await isDataForSEOConfigured()) return { referring_domains: 0, backlinks: 0, domain_rank: 0 };
   try {
     type DFSResult = Array<{ result?: Array<Record<string, number>> }>;
     const data = await dfsRequest<DFSResult>("/backlinks/summary/live", [{ target: domain }]);
@@ -159,7 +182,7 @@ export async function getBacklinks(
 export async function getDomainMetrics(
   domain: string
 ): Promise<{ traffic: number; keywords: number; rank: number; backlinks: number }> {
-  if (!isDataForSEOConfigured()) return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 };
+  if (!await isDataForSEOConfigured()) return { traffic: 0, keywords: 0, rank: 0, backlinks: 0 };
   try {
     type DFSResult = Array<{ result?: Array<Record<string, number>> }>;
     const data = await dfsRequest<DFSResult>(
@@ -177,7 +200,7 @@ export async function getDomainMetrics(
 }
 
 export async function getKeywordDifficulty(keyword: string): Promise<number> {
-  if (!isDataForSEOConfigured()) return 0;
+  if (!await isDataForSEOConfigured()) return 0;
   try {
     type DFSResult = Array<{ result?: Array<{ keyword_difficulty: number }> }>;
     const data = await dfsRequest<DFSResult>(
@@ -193,7 +216,7 @@ export async function getKeywordDifficulty(keyword: string): Promise<number> {
 export async function getLocalPackRank(
   keyword: string, location: string
 ): Promise<Array<{ rank: number; title: string; rating: number; reviews: number; address?: string }>> {
-  if (!isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured()) return [];
   try {
     type DFSResult = Array<{
       status_code: number;
@@ -234,7 +257,7 @@ export async function getLocalPackRank(
 export async function getGoogleMapsResults(
   keyword: string, location: string
 ): Promise<Array<{ name: string; rating: number; reviews: number; address: string; category: string }>> {
-  if (!isDataForSEOConfigured()) return [];
+  if (!await isDataForSEOConfigured()) return [];
   try {
     type DFSResult = Array<{
       status_code: number;
@@ -287,7 +310,7 @@ export async function getAIVisibility(
 export async function getContentOptimization(
   url: string, keyword: string
 ): Promise<{ score: number; wordCount: number; headings: number; recommendations: string[] }> {
-  if (!isDataForSEOConfigured()) {
+  if (!await isDataForSEOConfigured()) {
     return { score: 0, wordCount: 0, headings: 0, recommendations: [] };
   }
   try {
@@ -320,7 +343,7 @@ export async function getContentOptimization(
 export async function generateSEOMissions(
   domain: string, keywords: string[]
 ): Promise<unknown[]> {
-  if (!isDataForSEOConfigured() || keywords.length === 0) return [];
+  if (!await isDataForSEOConfigured() || keywords.length === 0) return [];
   try {
     type DFSResult = Array<{
       result?: Array<{
