@@ -24,3 +24,9 @@ id = "mEdehkMQbYGYli_qGB2Id"
 uri = "file://ARCHITECTURE.md"
 type = "text"
 title = "FlowPoint — Documentation Technique Complète"
+
+[[outputs]]
+id = "OQnzCQsKKoUPF7Hpv3A-q"
+uri = "file://flowpoint-complete-project.zip"
+type = "unspecified"
+title = "FlowPoint — Projet Complet (backend + frontend)"
