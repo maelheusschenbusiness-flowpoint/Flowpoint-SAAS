@@ -13,6 +13,17 @@ router.get("/ai-credits", async (req: Request, res: Response) => {
   }
 });
 
+// Alias: /api/ai/credits → same handler (spec compatibility)
+router.get("/ai/credits", async (req: Request, res: Response) => {
+  const orgId = (req as unknown as Record<string, string>)?.["orgContext"]?.["orgId"] ?? "default";
+  try {
+    const stats = await getAIUsageStats(orgId);
+    res.json(stats);
+  } catch {
+    res.status(500).json({ error: "Failed to fetch AI credits" });
+  }
+});
+
 router.get("/ai-credits/usage", async (req: Request, res: Response) => {
   const orgId = (req as unknown as Record<string, string>)?.["orgContext"]?.["orgId"] ?? "default";
   try {
