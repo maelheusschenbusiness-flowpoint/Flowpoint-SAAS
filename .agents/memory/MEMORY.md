@@ -38,3 +38,4 @@
 - [integrations-service signatures](integrations-service-pattern.md) — correct fn sigs + table (automation_integrations); Slack/Discord no HMAC; missions use source_type not source
 - [AI context enrichment](ai-context-enrichment.md) — buildFlowpointContext(extra, orgId) queries keywords/competitors/GBP; STRICT_AI_RULE constant in every chat system prompt; competitors has domain_rating not rating
 - [AI engine consultant refactor](ai-engine-consultant-refactor.md) — buildFlowpointContext reads psi_cache; all AI endpoints use real DB data; dynamic dates; mission-engine AI-driven
+- [Security tab / Checkout / Logout patterns](flowpoint-security-checkout-logout.md) — security checklist CTAs per item.label; logout calls POST /auth/logout; PaymentElement needs 8s fallback + loaderror handler

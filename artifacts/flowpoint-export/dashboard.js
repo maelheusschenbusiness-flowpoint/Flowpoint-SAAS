@@ -8864,7 +8864,13 @@ function renderSettings() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(item.label)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(item.desc)} · +${item.weight} pts</div>
               </div>
-              ${!item.done ? `<span style="font-size:10px;color:var(--fp-text-faint);font-weight:600;flex-shrink:0">Bientôt disponible</span>` : `<span style="font-size:10px;color:#22c55e;font-weight:700;flex-shrink:0">✓ OK</span>`}
+              ${!item.done
+                ? (item.label === '2FA activé'
+                    ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="document.getElementById('fp-sec-2fa')?.scrollIntoView({behavior:'smooth'})">Configurer →</button>`
+                    : item.label === 'Alertes de connexion'
+                      ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" onclick="navigateSub('alerts')">Activer →</button>`
+                      : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0;opacity:0.6" onclick="showToast('info','Disponible prochainement')">Bientôt →</button>`)
+                : `<span style="font-size:10px;color:#22c55e;font-weight:700;flex-shrink:0">✓ OK</span>`}
             </div>
           `).join('')}
         </div>
@@ -8908,7 +8914,7 @@ function renderSettings() {
       </div>
 
       <!-- 2FA CONFIG -->
-      <div class="fp-card" style="border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.04)">
+      <div class="fp-card" id="fp-sec-2fa" style="border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.04)">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
           <div style="font-size:24px">🔐</div>
           <div>
@@ -14107,8 +14113,13 @@ function bindGlobalEvents() {
     $('#fp-sidebar-collapse')?.addEventListener('click', toggleSidebar);
   }
 
-  // Logout
-  $('#fp-logout-btn')?.addEventListener('click', () => { try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {} showToast('info','Déconnexion…'); setTimeout(()=>{ window.location.href='/login.html'; },1200); });
+  // Logout — révocation session côté serveur avant redirection
+  $('#fp-logout-btn')?.addEventListener('click', async () => {
+    try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
+    showToast('info', 'Déconnexion…');
+    try { await window.apiFetch('/api/auth/logout', { method: 'POST' }); } catch(_) {}
+    setTimeout(() => { window.location.href = '/login.html'; }, 1200);
+  });
 
   // Messages button
   $('#fp-msg-btn')?.addEventListener('click', e => {

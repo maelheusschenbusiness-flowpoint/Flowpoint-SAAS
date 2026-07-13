@@ -374,16 +374,21 @@
       wallets: { googlePay: 'never' }  /* prevent play.google.com requests blocked by ad-blockers */
     });
     paymentElement.mount('#fp-payment-element');
-    paymentElement.on('ready', function() {
-      var btnLabel;
-      if (data.mode === 'setup') {
-        btnLabel = 'Démarrer l\'essai gratuit →';
-      } else {
-        btnLabel = 'Payer ' + immediateTotal + '€ →';
-      }
-      document.getElementById('fp-btn-text').textContent = btnLabel;
+    var _payBtnLabel = data.mode === 'setup' ? 'Démarrer l\'essai gratuit →' : 'Payer ' + immediateTotal + '€ →';
+    var _payBtnReady = false;
+    function _enablePayBtn() {
+      if (_payBtnReady) return;
+      _payBtnReady = true;
+      document.getElementById('fp-btn-text').textContent = _payBtnLabel;
       document.getElementById('fp-pay-btn').disabled = false;
+    }
+    paymentElement.on('ready', _enablePayBtn);
+    paymentElement.on('loaderror', function(e) {
+      console.error('[FlowPoint Payment] PaymentElement loaderror', e);
+      showAlert('Impossible de charger le formulaire de paiement. Désactivez votre bloqueur de publicités et réessayez.');
     });
+    /* Fallback : activer le bouton après 8s si ready n\'a pas tiré (ex. bloqueur partiel) */
+    setTimeout(_enablePayBtn, 8000);
 
     /* Store mode for submit handler */
     document.getElementById('fp-pay-btn').setAttribute('data-mode', data.mode);
@@ -391,7 +396,7 @@
 
   initStripe().catch(function(err) {
     console.error('[FlowPoint Payment]', err);
-    showAlert('Erreur de chargement du terminal de paiement. Réessayez.');
+    showAlert('Erreur de chargement du terminal de paiement. Vérifiez votre connexion et réessayez.');
   });
 
   /* ── Submit ── */
