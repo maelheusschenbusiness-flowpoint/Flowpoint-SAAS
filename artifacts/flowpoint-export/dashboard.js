@@ -70,6 +70,7 @@ const isDemoMode = () => !!(STATE && (STATE.demoMode || STATE.demo));
 // ─────────────────────────────────────────────────────────────────
 // UTILITY HELPERS
 // ─────────────────────────────────────────────────────────────────
+// M13-fix: all console.log gated — never fires in production (app.flowpoint.pro)
 window.__DEV__ = (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
 function pluralizeFr(n, sg, pl) { return n === 1 ? sg : (pl || sg + 's'); }
 
@@ -10961,9 +10962,13 @@ async function sendAIMessage(text) {
 
 function updateAIUI() {
   const rendered = renderAIMessages();
+  // M12-fix: #ai-panel-messages only exists when the floating panel is open;
+  // guard prevents no-op querySelectorAll errors when panel is not mounted.
   ['#ai-messages', '#ai-panel-messages'].forEach(sel => {
     const el = $(sel);
-    if (el) { el.innerHTML = rendered; el.scrollTop = el.scrollHeight; }
+    if (!el) return;
+    el.innerHTML = rendered;
+    el.scrollTop = el.scrollHeight;
   });
   const sendBtn = $('#ai-send') || $('#ai-panel-send');
   if (sendBtn) sendBtn.disabled = STATE.aiLoading;
@@ -22881,7 +22886,7 @@ function renderActivityFeed() {
           Activity Command Center
           <span style="font-size:11px;font-weight:600;padding:3px 10px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:#22c55e;animation:pulse 2s infinite">● LIVE</span>
         </h1>
-        <div class="fp-section-sub">${liveFeed.length === 0 ? 'Aucun événement — créez des audits ou monitors' : liveFeed.length + ' ' + pluralizeFr(liveFeed.length, 'événement', 'événements') + ' · Mis à jour à l\'instant'}</div>
+        <div class="fp-section-sub">${liveFeed.length === 0 ? 'Aucun événement — créez des audits ou monitors' : (liveFeed.length > 10 ? '10 affichés sur ' + liveFeed.length + ' ' + pluralizeFr(liveFeed.length, 'événement', 'événements') : liveFeed.length + ' ' + pluralizeFr(liveFeed.length, 'événement', 'événements')) + ' · Mis à jour à l\'instant'}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Exporter', 'fp-btn fp-btn-ghost fp-btn-sm', 'download', "onclick=\"exportActivityCsv()\"")}
