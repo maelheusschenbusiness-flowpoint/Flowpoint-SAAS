@@ -7247,8 +7247,9 @@ function renderBilling() {
                   '  <td style="padding:8px 14px;font-size:11px;font-weight:600;color:var(--fp-text-soft);border-top:1px solid var(--fp-border);white-space:nowrap">' + escHtml(feat) + '</td>' +
                   vals.map((v, i) => {
                     const col = i === 2 ? '#2563EB' : PLANS[i].color;
-                    const isCheck = v.startsWith('\u2713');
-                    const isDash = v === '\u2014';
+                    const vs = String(v);
+                    const isCheck = vs.startsWith('\u2713');
+                    const isDash = vs === '\u2014';
                     return '<td style="text-align:center;padding:8px 14px;font-size:11px;font-weight:' + (isDash?400:700) + ';color:' + (isDash?'var(--fp-text-faint)':col) + ';border-top:1px solid var(--fp-border);white-space:nowrap">' + (isDash ? '\u2013' : v) + '</td>';
                   }).join('') +
                   '</tr>'
