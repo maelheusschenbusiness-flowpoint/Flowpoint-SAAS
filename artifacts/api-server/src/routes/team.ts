@@ -30,8 +30,19 @@ router.get("/team", async (req: Request, res: Response) => {
 router.post("/team/invite", async (req: Request, res: Response) => {
   const { email, role } = req.body as { email?: string; role?: string };
   if (!email) { res.status(400).json({ error: "email required" }); return; }
-  const id  = `t${Date.now()}`;
   const org = getOrg(req);
+  // Guard: email already in this org
+  try {
+    const dup = await (req as OrgReq).orgDb(
+      `SELECT id FROM team_members WHERE org_id = $1 AND email = $2 LIMIT 1`,
+      [org, email]
+    );
+    if (dup.rows.length) {
+      res.status(409).json({ error: "Ce membre est déjà dans l'équipe" });
+      return;
+    }
+  } catch { /* continue even if guard fails */ }
+  const id  = `t${Date.now()}`;
   const name = email.split("@")[0] || "Invité";
   const memberRole = role || "viewer";
   const joined = new Date().toISOString().slice(0, 10);

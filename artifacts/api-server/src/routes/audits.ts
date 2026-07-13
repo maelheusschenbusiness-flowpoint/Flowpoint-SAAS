@@ -64,6 +64,15 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
   const dateStr       = new Date().toISOString();
 
   try {
+    // Guard: audit running on same URL for this org today
+    const dup = await req.orgDb(
+      `SELECT id FROM audits WHERE org_id = $1 AND url = $2 AND date >= date_trunc('day', now()) LIMIT 1`,
+      [orgId, normalizedUrl]
+    );
+    if (dup.rows.length) {
+      res.status(409).json({ error: "Audit déjà lancé aujourd'hui", duplicateId: dup.rows[0].id });
+      return;
+    }
     await req.orgDb(
       `INSERT INTO audits (id, url, score, status, speed, date, issues, origin, org_id, created_at)
        VALUES ($1,$2,0,'processing',0,$3,0,$4,$5,NOW())`,

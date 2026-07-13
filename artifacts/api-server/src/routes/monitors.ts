@@ -438,6 +438,16 @@ router.post("/monitors", monitorCreateRateLimit, async (req: Request, res: Respo
     const id    = `m${Date.now()}`;
     const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
 
+    // Guard: same URL already monitored for this org
+    const dup = await req.orgDb(
+      `SELECT id FROM monitors WHERE org_id = $1 AND url = $2 LIMIT 1`,
+      [orgId, url]
+    );
+    if (dup.rows.length) {
+      res.status(409).json({ error: "Cette URL est déjà surveillée", duplicateId: dup.rows[0].id });
+      return;
+    }
+
     await req.orgDb(
       `INSERT INTO monitors
          (id, org_id, name, url, status, uptime, latency,

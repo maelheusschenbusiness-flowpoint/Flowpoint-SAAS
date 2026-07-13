@@ -347,10 +347,15 @@ async function apiFetch(path, opts = {}) {
   }
   const _promise = (async () => {
     const token = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
-    const res = await fetch(path, {
+    // Cache-buster for GET to bypass CDN/browser cache
+    const _path = isGet && !path.includes('?')
+      ? `${path}?_cb=${Date.now()}`
+      : isGet ? `${path}&_cb=${Date.now()}` : path;
+    const res = await fetch(_path, {
       ...opts,
       headers: {
         'Content-Type': 'application/json',
+        ...(isGet ? { 'Cache-Control': 'no-cache, no-store' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(opts.headers || {}),
       },
@@ -397,19 +402,27 @@ function normArr(raw, key) {
   return arr ? arr.map(normalizeDoc) : null;
 }
 
-async function apiAction(method, path, body) {
+async function apiAction(method, path, body, { retries = 2 } = {}) {
   const _t0 = performance.now();
-  try {
-    const result = await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
-    const ms = Math.round(performance.now() - _t0);
-    console.log(`[FP_ACTION] bouton=${method} route=${path} status=ok ms=${ms}`);
-    return result;
-  } catch (e) {
-    const ms = Math.round(performance.now() - _t0);
-    console.warn(`[FP_ACTION] bouton=${method} route=${path} status=error ms=${ms}`, e.message);
-    if (PREVIEW_MODE) { return null; }
-    throw e;
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const result = await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
+      const ms = Math.round(performance.now() - _t0);
+      console.log(`[FP_ACTION] bouton=${method} route=${path} status=ok ms=${ms} attempt=${attempt}`);
+      return result;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
   }
+  const ms = Math.round(performance.now() - _t0);
+  console.warn(`[FP_ACTION] bouton=${method} route=${path} status=error ms=${ms} retries=${retries}`, lastErr?.message);
+  if (PREVIEW_MODE) { return null; }
+  throw lastErr;
 }
 
 // ─── HELPERS GLOBAUX ─────────────────────────────────────────────────────────
