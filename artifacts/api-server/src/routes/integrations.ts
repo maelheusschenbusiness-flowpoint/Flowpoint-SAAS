@@ -272,6 +272,16 @@ router.post("/integrations/webhooks", requireAdmin, async (req, res) => {
 router.post("/integrations/webhooks/test", requireAdmin, async (req, res) => {
   const { url } = req.body as { url?: string };
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
+  // SSRF guard: https only, no private/link-local/loopback
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { res.status(400).json({ error: "URL invalide" }); return; }
+  if (parsed.protocol !== "https:") { res.status(400).json({ error: "HTTPS uniquement" }); return; }
+  const hostname = parsed.hostname.toLowerCase();
+  const blocked = ["localhost", "127.0.0.1", "::1", "0.0.0.0", "[::1]"];
+  if (blocked.includes(hostname)) { res.status(400).json({ error: "Adresse interdite" }); return; }
+  if (hostname.endsWith(".local") || hostname.endsWith(".internal") || /^10\./.test(hostname) || /^192\.168\./.test(hostname) || /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname)) {
+    res.status(400).json({ error: "Adresse privée interdite" }); return;
+  }
   try {
     const ac = new AbortController();
     const to = setTimeout(() => ac.abort(), 8_000);
@@ -280,6 +290,7 @@ router.post("/integrations/webhooks/test", requireAdmin, async (req, res) => {
       headers: { "Content-Type": "application/json", "User-Agent": "FlowPoint-Webhook-Test/1.0" },
       body: JSON.stringify({ event: "ping", ts: Date.now(), source: "flowpoint-test" }),
       signal: ac.signal,
+      redirect: "error",
     });
     clearTimeout(to);
     res.json({ ok: r.ok, url, statusCode: r.status, durationMs: 0, note: r.ok ? "Ping OK" : "Endpoint a renvoyé une erreur" });

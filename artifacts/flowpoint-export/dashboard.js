@@ -58,6 +58,7 @@ const STATE = {
   reports: [],
   team: [],
   overview: null,
+  sectionErrors: {}, // { audits:'network', monitors:'server', ... }
   route: 'overview',
   theme: document.documentElement.dataset.theme || localStorage.getItem('fp-theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'),
   themeManual: !!localStorage.getItem('fp-theme'),
