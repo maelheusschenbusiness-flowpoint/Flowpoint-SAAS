@@ -66,7 +66,7 @@
       if (res.status === 401) {
         /* Not logged in — save plan and redirect to signup */
         try { sessionStorage.setItem('fp_next', '/checkout.html'); } catch(e) {}
-        window.location.href = '/signin.html';
+        window.location.href = '/login.html';
         return null;
       }
       return res.json();

@@ -64,7 +64,7 @@ router.post("/team/invite", async (req: Request, res: Response) => {
       inviterName: store.me.firstName || store.me.name || "L'équipe FlowPoint",
       orgName: store.me.org?.name,
       role: memberRole,
-      inviteUrl: `${publicUrl}/signin.html?invite=${encodeURIComponent(id)}&email=${encodeURIComponent(email)}`,
+      inviteUrl: `${publicUrl}/login.html?invite=${encodeURIComponent(id)}&email=${encodeURIComponent(email)}`,
     }).catch(() => {});
   } catch (err) {
     res.status(500).json({ error: "Failed to invite member" });

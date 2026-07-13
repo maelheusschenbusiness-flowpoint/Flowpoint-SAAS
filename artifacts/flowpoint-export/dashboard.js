@@ -19,7 +19,7 @@
  *     const chat = await openai.chat.completions.create({
  *       model: 'gpt-5-mini',
  *       messages: [
- *         { role:'system', content:`Tu es l\'assistant IA de Flowpoint, expert SEO local. Plan ${context?.plan}, score ${context?.avgScore}/100. Réponds en français, concis, avec ** pour le gras.` },
+ *         { role:'system', content:`Tu es l\'assistant IA de FlowPoint, expert SEO local. Plan ${context?.plan}, score ${context?.avgScore}/100. Réponds en français, concis, avec ** pour le gras.` },
  *         { role:'user', content: message }
  *       ], max_tokens: 500
  *     });
@@ -143,7 +143,7 @@ if (!STATE.checklist) {
 // ─────────────────────────────────────────────────────────────────
 const MOCK_ME = {
   firstName: 'Maël', plan: 'Pro', role: 'owner',
-  org: { name: 'Flowpoint Agency' },
+  org: { name: 'FlowPoint Agency' },
   subscriptionStatus: 'active', trialEndsAt: null,
   usage: { audit:{used:87,limit:300}, pdf:{used:34,limit:300}, exports:{used:12,limit:300}, monitor:{used:18,limit:50} },
   addons: { whiteLabel:true, prioritySupport:true, customDomain:false, extraSeats:2, monitorsPack50:0 },
@@ -257,7 +257,7 @@ const MISSION_LIBRARY = {
   ],
   'Croissance': [
     { title:'Analyser et optimiser le tunnel de conversion', impact:'Très élevé', effort:'4h', gain:'+20% conversions', steps:['Installer Google Tag Manager + suivi d\'objectifs Analytics','Mapper le parcours utilisateur étape par étape','Identifier les pages avec fort taux d\'abandon','A/B tester les 2 pages les plus critiques'] },
-    { title:'Mettre en place le suivi des positions de mots-clés', impact:'Élevé', effort:'1h', gain:'Visibilité stratégique', steps:['Lister les 20 mots-clés principaux à tracker','Configurer le suivi quotidien dans Flowpoint','Créer un rapport de positions hebdomadaire','Définir des alertes en cas de chute > 5 positions'] },
+    { title:'Mettre en place le suivi des positions de mots-clés', impact:'Élevé', effort:'1h', gain:'Visibilité stratégique', steps:['Lister les 20 mots-clés principaux à tracker','Configurer le suivi quotidien dans FlowPoint','Créer un rapport de positions hebdomadaire','Définir des alertes en cas de chute > 5 positions'] },
     { title:'Créer une stratégie de liens internes optimisée', impact:'Moyen', effort:'2h', gain:'+18% autorité de domaine', steps:['Cartographier les pages orphelines (sans liens entrants)','Identifier les pages pilier à renforcer','Ajouter 2-3 liens contextuels depuis les articles récents','Vérifier l\'ancre text avec les mots-clés cibles'] },
     { title:'Lancer une campagne de netlinking local', impact:'Très élevé', effort:'5h', gain:'+30 DA en 3 mois', steps:['Identifier 20 sites locaux partenaires potentiels','Rédiger une proposition de partenariat personnalisée','Proposer un échange d\'articles invités ou de liens','Suivre les nouvelles acquisitions de backlinks dans GSC'] },
   ],
@@ -890,7 +890,7 @@ function openFileImport() {
 }
 
 function downloadFileAsset(name, content) {
-  const blob = new Blob([content || `# ${name}\nTemplate Flowpoint`], { type: 'text/plain' });
+  const blob = new Blob([content || `# ${name}\nTemplate FlowPoint`], { type: 'text/plain' });
   const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(a.href);
@@ -2592,8 +2592,8 @@ function firePushNotification(event) {
   if (Notification.permission !== 'granted') return;
 
   const title = event.userName
-    ? `${event.userName} — Flowpoint`
-    : 'Flowpoint';
+    ? `${event.userName} — FlowPoint`
+    : 'FlowPoint';
   const body = event.label
     ? event.label.replace(/<[^>]*>/g, '')
     : 'Nouvelle activité équipe';
@@ -6108,10 +6108,10 @@ function renderReports() {
       { label: 'Logo agence',         type: 'upload', val: 'logo-agence.png',                       locked: false },
       { label: 'Couleur principale',  type: 'color',  val: '#2563EB',                               locked: false },
       { label: 'Couleur secondaire',  type: 'color',  val: '#22c55e',                               locked: false },
-      { label: 'Nom agence',          type: 'text',   val: 'Flowpoint Agency',                      locked: false },
+      { label: 'Nom agence',          type: 'text',   val: 'FlowPoint Agency',                      locked: false },
       { label: 'Site agence',         type: 'text',   val: 'https://agence.fr',                     locked: false },
-      { label: 'Pied de page custom', type: 'text',   val: 'Rapport prepare par Flowpoint Agency',  locked: false },
-      { label: 'Signature email',     type: 'text',   val: 'Envoyé par Flowpoint Agency',           locked: false },
+      { label: 'Pied de page custom', type: 'text',   val: 'Rapport prepare par FlowPoint Agency',  locked: false },
+      { label: 'Signature email',     type: 'text',   val: 'Envoyé par FlowPoint Agency',           locked: false },
       { label: 'Domaine portail',     type: 'text',   val: 'rapports.agence.fr',                    locked: false },
       { label: 'Typographie',         type: 'text',   val: 'Inter (défaut)',                        locked: false },
       { label: 'Export White-Label',  type: 'text',   val: 'PDF co-marqué client',                  locked: false },
@@ -10224,7 +10224,7 @@ function renderAI() {
     return `
       <div class="fp-section-header">
         <div><h1>Actions Rapides</h1>
-        <div class="fp-section-sub">Naviguez vers n\'importe quel système Flowpoint en un clic</div></div>
+        <div class="fp-section-sub">Naviguez vers n\'importe quel système FlowPoint en un clic</div></div>
       </div>
       ${groups.map(g => `
         <div class="fp-card fp-mb-20">
@@ -10580,13 +10580,13 @@ function renderAI() {
     <div class="fp-section-header">
       <div>
         <h1 style="display:flex;align-items:center;gap:10px">
-          Assistant IA Flowpoint
+          Assistant IA FlowPoint
           <span style="font-size:10px;font-weight:600;padding:2px 8px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:20px;color:#22c55e">● En ligne</span>
         </h1>
         <div class="fp-section-sub"><span style="color:#2563EB;font-weight:700">IA Performante</span> · Contexte complet workspace · Réponses &lt; 3s</div>
       </div>
       <div class="fp-section-actions">
-        <select class="fp-select" style="font-size:11px;color:#2563EB;font-weight:700;border-color:rgba(37,99,235,0.4);background:rgba(37,99,235,0.06)" onchange="(function(sel){const v=sel.options[sel.selectedIndex].text;const labels={'ChatGPT':'GPT-5','Claude (Anthropic)':'Claude','Gemini (Google)':'Gemini','Mistral':'Mistral'};const badge=labels[v]||v;STATE.aiModel=badge;const b=document.getElementById('fp-ai-badge');if(b)b.textContent=badge;const s=document.getElementById('fp-ai-chat-model-label');if(s)s.textContent=badge+' · Flowpoint Expert';showToast('success','Modèle IA : '+v)})(this)">
+        <select class="fp-select" style="font-size:11px;color:#2563EB;font-weight:700;border-color:rgba(37,99,235,0.4);background:rgba(37,99,235,0.06)" onchange="(function(sel){const v=sel.options[sel.selectedIndex].text;const labels={'ChatGPT':'GPT-5','Claude (Anthropic)':'Claude','Gemini (Google)':'Gemini','Mistral':'Mistral'};const badge=labels[v]||v;STATE.aiModel=badge;const b=document.getElementById('fp-ai-badge');if(b)b.textContent=badge;const s=document.getElementById('fp-ai-chat-model-label');if(s)s.textContent=badge+' · FlowPoint Expert';showToast('success','Modèle IA : '+v)})(this)">
           <option selected>ChatGPT</option>
           <option>Claude (Anthropic)</option>
           <option>Gemini (Google)</option>
@@ -10671,7 +10671,7 @@ function renderAI() {
 
 function renderAIMessages() {
   if (STATE.aiMessages.length === 0) {
-    STATE.aiMessages = [{ from:'ai', text:'Bonjour ! Je suis votre co-pilote Flowpoint IA. J\'ai accès à vos audits, monitors, score SEO (74/100), alertes actives et métriques clients. Par où commençons-nous ?', chips:['audits','monitors'] }];
+    STATE.aiMessages = [{ from:'ai', text:'Bonjour ! Je suis votre co-pilote FlowPoint IA. J\'ai accès à vos audits, monitors, score SEO (74/100), alertes actives et métriques clients. Par où commençons-nous ?', chips:['audits','monitors'] }];
   }
 
   // Detect contextual chips to add from message content
@@ -11867,7 +11867,7 @@ function aiBlock(text, chips = []) {
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
     </div>
     <div class="fp-ai-block-content">
-      <div class="fp-ai-block-label">Analyse IA · Flowpoint</div>
+      <div class="fp-ai-block-label">Analyse IA · FlowPoint</div>
       <div class="fp-ai-block-text">${text}</div>
       ${chips.length ? `<div class="fp-ai-block-actions">${chips.map(c=>`<button class="fp-ai-chip" data-q="${escHtml(c)}" onclick="var q=this.dataset.q;navigate('ai');setTimeout(function(){var inp=document.getElementById('ai-input');if(inp){inp.value=q;inp.dispatchEvent(new Event('input'));}},120)">${escHtml(c)}</button>`).join('')}</div>` : ''}
     </div>
@@ -13934,7 +13934,7 @@ function toggleTheme() {
 // ONBOARDING TOUR
 // ─────────────────────────────────────────────────────────────────
 const ONBOARDING_STEPS = [
-  { title:'Bienvenue dans Flowpoint !', desc:'Votre centre de contrôle SEO local. Commençons par découvrir les fonctionnalités clés en 5 étapes rapides.' },
+  { title:'Bienvenue dans FlowPoint !', desc:'Votre centre de contrôle SEO local. Commençons par découvrir les fonctionnalités clés en 5 étapes rapides.' },
   { title:'Palette de commandes', desc:'Appuyez sur ⌘K (ou Ctrl+K) depuis n\'importe où pour accéder à toutes les sections, audits et actions en un instant.' },
   { title:'Lancez votre premier audit', desc:'Entrez une URL dans la section Audits et cliquez sur "Lancer". Vous obtiendrez un score SEO complet en secondes.' },
   { title:'Configurez un monitor', desc:'Les monitors surveillent la disponibilité de vos sites 24h/24. Créez-en un via le bouton + en bas à droite.' },
@@ -14088,7 +14088,7 @@ function bindGlobalEvents() {
 
   // AI quick access in topbar
   $('#topbar-ai')?.addEventListener('click', () => {
-    openFloatPanel('Assistant IA Flowpoint', renderAIPanelContent());
+    openFloatPanel('Assistant IA FlowPoint', renderAIPanelContent());
     setTimeout(() => {
       $$('.fp-ai-quick[data-ai-prompt]', $('#fp-float-panel-body')).forEach(btn => btn.addEventListener('click', async () => {
         await sendAIMessage(btn.dataset.aiPrompt);
@@ -17197,7 +17197,7 @@ function renderMonitorsConfig() {
   const channels = [
     { icon: '📧', name: 'Email',    active: true,    detail: `${STATE.monitors.filter(m => m.alertEmail).length} monitors configurés`, color: '#22c55e', gate: null },
     { icon: '💬', name: 'Slack',    active: isPro,   detail: isPro ? '#flowpoint-alerts actif' : 'Disponible à partir de Pro', color: isPro ? '#22c55e' : '#64748b', gate: 'Pro' },
-    { icon: '🎮', name: 'Discord',  active: isPro,   detail: isPro ? 'Bot Flowpoint connecté' : 'Disponible à partir de Pro', color: isPro ? '#8b5cf6' : '#64748b', gate: 'Pro' },
+    { icon: '🎮', name: 'Discord',  active: isPro,   detail: isPro ? 'Bot FlowPoint connecté' : 'Disponible à partir de Pro', color: isPro ? '#8b5cf6' : '#64748b', gate: 'Pro' },
     { icon: '📱', name: 'SMS',      active: isUltra, detail: isUltra ? ((STATE.settings&&STATE.settings.smsPhone)||'Non configuré') : 'Disponible Ultra', color: isUltra ? '#22c55e' : '#64748b', gate: 'Ultra' },
     { icon: '🔗', name: 'Webhook',  active: isPro,   detail: isPro ? ((STATE.settings&&STATE.settings.webhookUrl)||'URL non configurée') : 'Disponible à partir de Pro', color: isPro ? '#2563EB' : '#64748b', gate: 'Pro' },
     { icon: '📢', name: 'PagerDuty',active: isUltra, detail: isUltra ? 'Intégration active' : 'Disponible Ultra', color: isUltra ? '#f59e0b' : '#64748b', gate: 'Ultra' },
@@ -24384,7 +24384,7 @@ function renderClientMode() {
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
           ${[
             { label:"Logo agence",        val:"FlowPoint (défaut)",                  icon:"🖼️", locked:false },
-            { label:"Couleur primaire",   val:"#2563EB (Flowpoint Blue)",            icon:"🎨", locked:false },
+            { label:"Couleur primaire",   val:"#2563EB (FlowPoint Blue)",            icon:"🎨", locked:false },
             { label:"Nom de la marque",   val:me?.org?.name || "Votre Agence",       icon:"✏️", locked:false },
             { label:"Domaine client",     val:"portal.votreagence.fr",               icon:"🌐", locked:false },
             { label:"Pied de page",       val:"Propulsé par FlowPoint",              icon:"📝", locked:false },
@@ -26452,8 +26452,8 @@ function renderSettingsAPI() {
   return `
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:14px">Clés API Flowpoint</div>
-        ${aiBlock('Vos clés API permettent d\'intégrer Flowpoint dans vos propres outils. Ne partagez jamais votre clé secrète — régénérez-la immédiatement si elle est compromise.',[])}
+        <div class="fp-card-title" style="margin-bottom:14px">Clés API FlowPoint</div>
+        ${aiBlock('Vos clés API permettent d\'intégrer FlowPoint dans vos propres outils. Ne partagez jamais votre clé secrète — régénérez-la immédiatement si elle est compromise.',[])}
         <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
           ${(()=>{
             const _pk = STATE.settings?.publicApiKey || STATE.me?.publicApiKey || null;
@@ -26482,7 +26482,7 @@ function renderSettingsAPI() {
       </div>
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:6px">Webhooks</div>
-        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Recevez des événements Flowpoint dans vos outils (Zapier, Make, n8n, Slack…)</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:14px">Recevez des événements FlowPoint dans vos outils (Zapier, Make, n8n, Slack…)</div>
         ${[
           ...(STATE.settings?.webhooks && Array.isArray(STATE.settings.webhooks) && STATE.settings.webhooks.length > 0
             ? STATE.settings.webhooks
@@ -29156,7 +29156,7 @@ document.addEventListener('keydown', function(e) {
       <div class="fp-ai-chat-welcome-icon">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 0 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1 0-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
       </div>
-      <p><strong>Bonjour !</strong> Je suis votre assistant SEO Flowpoint.<br>Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.</p>
+      <p><strong>Bonjour !</strong> Je suis votre assistant SEO FlowPoint.<br>Posez-moi des questions sur vos sites, performances, opportunités ou demandez-moi de générer un rapport.</p>
       <div class="fp-ai-chat-chips" id="fp-ai-chat-chips">
         <button class="fp-ai-quick-chip" data-msg="Quel est le score SEO moyen de mes sites ?">Score SEO moyen</button>
         <button class="fp-ai-quick-chip" data-msg="Quelles sont les 3 actions prioritaires à faire cette semaine ?">Actions prioritaires</button>
