@@ -823,8 +823,9 @@ function openPasswordChangePanel() {
 }
 
 function applyThemeChoice(t) {
-  if (t === 'auto') { STATE.settings.themeAuto = true; STATE.theme = 'dark'; }
-  else { STATE.settings.themeAuto = false; STATE.theme = t; }
+  if (t === 'auto') { STATE.settings.themeAuto = true; STATE.theme = 'dark'; STATE.settings.theme = 'dark'; }
+  else { STATE.settings.themeAuto = false; STATE.theme = t; STATE.settings.theme = t; }
+  localStorage.setItem('fp:theme', STATE.theme);
   applyTheme();
   saveSettings();
   showToast('success', 'Thème appliqué !');
@@ -1085,8 +1086,15 @@ async function loadData() {
     if (_prefs.checklist) STATE.checklist = _prefs.checklist;
     if (_prefs.settings && typeof _prefs.settings === 'object') {
       STATE.settings = { ...STATE.settings, ..._prefs.settings };
-      // Apply theme from server prefs immediately after load (prevents flicker)
-      if (_prefs.settings.themeAuto) {
+      // Theme priority: manual-local > backend-manual > auto-system.
+      // A valid localStorage entry written by a prior manual toggle must
+      // never be overwritten by backend prefs (backend may still have
+      // themeAuto:true from before the user toggled manually).
+      const _localManualTheme = localStorage.getItem('fp:theme');
+      if (_localManualTheme) {
+        STATE.theme = _localManualTheme;
+        STATE.themeManual = true;
+      } else if (_prefs.settings.themeAuto) {
         STATE.theme = 'dark';
         STATE.themeManual = false;
       } else if (_prefs.settings.theme) {
@@ -8485,6 +8493,13 @@ function renderSettings() {
     </div>`;
   };
 
+  // ── Single source of truth for all 12 settings sub-routes ────────────────
+  // renderSubPageContent() returns null for settings — all tabs render here.
+  if (sub === 'alerts')        return renderAlertRules();
+  if (sub === 'api')           return renderSettingsAPI();
+  if (sub === 'localisation')  return renderSettingsLocation();
+  if (sub === 'sso')           return renderSettingsSSO();
+
   // ══════════════════════════════════════════════════════════
   // SUB: WORKSPACE SETTINGS
   // ══════════════════════════════════════════════════════════
@@ -12739,7 +12754,6 @@ function bindSectionEvents() {
         `Vérification terminée — ${ok} OK${fail > 0 ? ', ' + fail + ' échoué(s)' : ''}`);
       render();
     });
-    $('#monitor-new-btn')?.addEventListener('click', () => { openFloatPanel('Nouveau monitor', renderNewMonitorPanel()); setupNewMonitorPanel(); });
     $('#monitor-add-endpoint-btn')?.addEventListener('click', () => { openFloatPanel('Ajouter un endpoint API', renderNewEndpointPanel()); setupNewEndpointPanel(); });
 
     // ── Monitor bulk checkboxes ──
@@ -13961,8 +13975,11 @@ function toggleTheme() {
     _themeToggleTimer = null;
     STATE.theme = STATE.theme === 'dark' ? 'light' : 'dark';
     STATE.themeManual = true;
+    STATE.settings.themeAuto = false;
+    STATE.settings.theme = STATE.theme;
     localStorage.setItem('fp:theme', STATE.theme);
     applyTheme();
+    saveSettings();
     render();
     showToast('info', `Thème ${STATE.theme === 'dark' ? 'sombre' : 'clair'} activé`);
   }, 250);
@@ -14964,12 +14981,6 @@ function renderSubPageContent(route, sub) {
     if (sub === 'activity')    return renderTeamActivity();
     if (sub === 'files')       return renderTeamFiles();
     if (sub === 'performance') return renderTeamPerformance();
-  }
-  if (route === 'settings') {
-    if (sub === 'localisation') return renderSettingsLocation();
-    if (sub === 'alerts') return renderAlertRules();
-    if (sub === 'api')    return renderSettingsAPI();
-    if (sub === 'sso')    return renderSettingsSSO();
   }
   if (route === 'conversion') {
     if (sub === 'heatmap')      return renderConversionHeatmap();

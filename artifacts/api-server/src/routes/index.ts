@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type Request, type Response, type NextFunction, type IRouter } from "express";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import healthRouter from "./health.js";
 import eventsRouter from "./events.js";
@@ -103,6 +103,23 @@ router.use(plansRouter);
 // All management endpoints require a valid API secret supplied via:
 //   Authorization: Bearer <secret>   or   X-Api-Key: <secret>
 router.use(requireAuth);
+
+// Block any request that passed auth but lacks a valid org context.
+// Prevents the API_SECRET_KEY service credential (orgId: "default") from
+// accessing user-scoped data routes.
+// Dev bypass: when API_SECRET_KEY is not configured requireAuth already
+// lets all requests through — we honour that same bypass here.
+router.use((req: Request, res: Response, next: NextFunction) => {
+  const serviceSecret = process.env["API_SECRET_KEY"];
+  const isProduction  = process.env["NODE_ENV"] === "production";
+  if (!serviceSecret && !isProduction) { next(); return; }
+  const orgId = req.orgContext?.orgId;
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ error: "Unauthorized: no valid organization context" });
+    return;
+  }
+  next();
+});
 
 router.use(meRouter);
 router.use(overviewRouter);

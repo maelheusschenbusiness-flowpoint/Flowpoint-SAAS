@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { requireOrgId } from "../lib/require-org-id.js";
 import { pool } from "@workspace/db";
 import { computeNextRun, isValidFrequency } from "../services/schedule-utils.js";
 import { evaluateAlertRulesForAudit } from "../services/monitor-cron.js";
@@ -40,10 +41,12 @@ function scheduleToPublic(row: Record<string, unknown>) {
 // req.orgDb scopes the query to the authenticated org via RLS.
 
 router.get("/audits", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     const result = await req.orgDb(
       `SELECT * FROM audits WHERE org_id = $1 ORDER BY created_at DESC LIMIT 500`,
-      [req.orgContext?.orgId ?? "default"],
+      [orgId],
     );
     res.json(result.rows.map(auditToPublic));
   } catch (err) {
@@ -59,7 +62,8 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
   if (!url) { res.status(400).json({ error: "url required" }); return; }
 
   const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
-  const orgId         = (req as Request & { orgId?: string }).orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const auditId       = `a${Date.now()}`;
   const dateStr       = new Date().toISOString();
 
@@ -144,7 +148,8 @@ router.get("/audits/history", async (req: Request, res: Response) => {
   if (!url) { res.status(400).json({ error: "url required" }); return; }
 
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const orgId  = (req as Request & { orgId?: string }).orgId ?? req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     const result = await req.orgDb(
       `SELECT * FROM audits WHERE url = $1 AND date >= $2 AND org_id = $3 ORDER BY date ASC LIMIT 365`,
@@ -159,7 +164,8 @@ router.get("/audits/history", async (req: Request, res: Response) => {
 
 router.get("/audits/quick-scan", async (req: Request, res: Response) => {
   const url   = req.query.url as string | undefined;
-  const orgId = (req as Request & { orgId?: string }).orgId ?? req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     const result = url
       ? await req.orgDb(
@@ -238,7 +244,8 @@ async function createSchedule(req: Request, res: Response) {
   if (!isValidFrequency(frequency)) {
     res.status(400).json({ error: "frequency must be daily, weekly or monthly" }); return;
   }
-  const orgId   = (req as Request & { orgId?: string }).orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const nextRun = computeNextRun(frequency);
   try {
     const existing = await req.orgDb(

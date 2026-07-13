@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { requireOrgId } from "../lib/require-org-id.js";
 import { store } from "../services/store.js";
 import { PLAN_LIMITS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
@@ -16,7 +17,8 @@ const orgDb = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 router.get("/me", async (req: Request, res: Response): Promise<void> => {
   res.setHeader("Cache-Control", "no-store, no-cache");
 
-  const orgId = req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
 
   try {
     const dbData = await loadOrgSettings(orgId);
@@ -76,7 +78,8 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     website?:    string; timezone?:   string; address?:    string;
     city?:       string; postalCode?: string; country?:    string;
   };
-  const orgId = req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
 
   if (typeof firstName === "string" && firstName.trim()) store.me.firstName = firstName.trim();
   if (typeof lastName  === "string") store.me.lastName = lastName.trim();
@@ -129,7 +132,8 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
 
 // ── PUT /api/me/addons ────────────────────────────────────────────────────────
 router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
-  const orgId  = req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const body   = req.body as Partial<typeof store.me.addons>;
 
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -163,7 +167,8 @@ router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
 
 // ── GET /api/me/prefs ─────────────────────────────────────────────────────────
 router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
-  const orgId = req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     const r = await orgDb(req)(`SELECT streak, pinned, checklist, settings FROM user_prefs WHERE org_id=$1`, [orgId]);
     if (r.rows[0]) {
@@ -178,7 +183,8 @@ router.get("/me/prefs", async (req: Request, res: Response): Promise<void> => {
 
 // ── PATCH /api/me/prefs ───────────────────────────────────────────────────────
 router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => {
-  const orgId = req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const { streak, pinned, checklist, settings: rawSettings } = req.body as {
     streak?: number; pinned?: Record<string, boolean>; checklist?: unknown; settings?: Record<string, unknown>;
   };
@@ -217,7 +223,8 @@ import { isDataForSEOConfigured } from "../services/dataforseo-service.js";
 
 /** GET /api/me/dataforseo/status — return configured status (never exposes password) */
 router.get("/me/dataforseo/status", async (req: Request, res: Response): Promise<void> => {
-  const orgId = req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     const configured = await isDataForSEOConfigured(orgId);
     let login = "";
@@ -235,7 +242,8 @@ router.get("/me/dataforseo/status", async (req: Request, res: Response): Promise
 
 /** POST /api/me/dataforseo/credentials — save org-scoped credentials */
 router.post("/me/dataforseo/credentials", async (req: Request, res: Response): Promise<void> => {
-  const orgId = req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   const { login, password } = req.body as { login?: string; password?: string };
   if (!login || !password) {
     res.status(400).json({ ok: false, error: "login and password required" });
@@ -257,7 +265,8 @@ router.post("/me/dataforseo/credentials", async (req: Request, res: Response): P
 
 /** DELETE /api/me/dataforseo/credentials — clear org-scoped credentials */
 router.delete("/me/dataforseo/credentials", async (req: Request, res: Response): Promise<void> => {
-  const orgId = req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     await pool.query(
       `DELETE FROM org_secrets WHERE org_id = $1 AND key IN ('dataforseo_login','dataforseo_password')`,
@@ -271,7 +280,8 @@ router.delete("/me/dataforseo/credentials", async (req: Request, res: Response):
 
 // ── GET /api/me/storage — real DB volume counts ─────────────────────────────
 router.get("/me/storage", async (req: Request, res: Response): Promise<void> => {
-  const orgId = req.orgContext?.orgId ?? "default";
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     const client = await (await import("@workspace/db")).pool.connect();
     try {

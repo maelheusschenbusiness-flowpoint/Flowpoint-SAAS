@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { requireOrgId } from "../lib/require-org-id.js";
 import { Router, Request, Response } from "express";
 import { pool, withOrgDb } from "@workspace/db";
 import { validateMonitorUrl, isPrivateHost, checkDnsResolution } from "../middlewares/validateMonitorUrl.js";
@@ -311,10 +312,12 @@ async function saveCheckResult(
 // req.orgDb scopes via RLS → only this org's monitors are returned.
 
 router.get("/monitors", async (req: Request, res: Response) => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
   try {
     const result = await req.orgDb(
       `SELECT * FROM monitors WHERE org_id = $1 ORDER BY created_at DESC LIMIT 500`,
-      [req.orgContext?.orgId ?? "default"],
+      [orgId],
     );
     res.json(result.rows.map(toPublic));
   } catch (err) {
@@ -436,7 +439,8 @@ router.post("/monitors", monitorCreateRateLimit, async (req: Request, res: Respo
 
   try {
     const id    = `m${Date.now()}`;
-    const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
+    const orgId = requireOrgId(req, res);
+    if (!orgId) return;
 
     // Guard: same URL already monitored for this org
     const dup = await req.orgDb(
@@ -534,7 +538,8 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
 
     const monitor        = monRow.rows[0] as Record<string, unknown>;
     const previousStatus = monitor["status"] as string;
-    const orgId          = (monitor["org_id"] as string) ?? "default";
+    const orgId          = monitor["org_id"] as string | undefined;
+    if (!orgId) { res.status(500).json({ error: "Monitor data integrity error: missing org_id" }); return; }
 
     const result    = await performCheck(monitor["url"] as string);
     const { newStatus } = await saveCheckResult(id, orgId, previousStatus, result);
@@ -591,11 +596,13 @@ export async function checkAllMonitorsDue(): Promise<{ checked: number; errors: 
        WHERE last_check::timestamptz < NOW() - (GREATEST(COALESCE(NULLIF(regexp_replace(frequency, '[^0-9]', '', 'g'), '')::int, 5), 1) || ' minutes')::interval`
     );
     for (const monitor of rows) {
+      const _cronOrgId = monitor["org_id"] as string | undefined;
+      if (!_cronOrgId) { errors++; continue; }
       try {
         const result = await performCheck(monitor["url"] as string);
         await saveCheckResult(
           monitor["id"] as string,
-          (monitor["org_id"] as string) ?? "default",
+          _cronOrgId,
           monitor["status"] as string,
           result,
         );
