@@ -1,67 +1,88 @@
 import { Router, type Request, type Response } from "express";
-import { db, monitorsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { pool } from "@workspace/db";
 
 const router = Router();
 
-// ── In-memory SSE client registry ──────────────────────────────────────────
-const clients = new Set<Response>();
+// ── In-memory SSE client registry — scoped by org_id ─────────────────────────────────────
+const clients = new Map<string, Set<Response>>();
 
-/** Broadcast an event to all connected SSE clients */
-export function broadcastSSE(eventType: string, data: unknown): void {
+function getOrgClients(orgId: string): Set<Response> {
+  if (!clients.has(orgId)) clients.set(orgId, new Set());
+  return clients.get(orgId)!;
+}
+
+/** Broadcast an event to SSE clients of a specific org (or all if no orgId given) */
+export function broadcastSSE(eventType: string, data: unknown, orgId?: string): void {
   const payload = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of clients) {
-    try {
-      res.write(payload);
-    } catch {
-      clients.delete(res);
+  if (orgId) {
+    const orgSet = clients.get(orgId);
+    if (orgSet) {
+      for (const res of orgSet) {
+        try { res.write(payload); } catch { orgSet.delete(res); }
+      }
+    }
+  } else {
+    for (const orgSet of clients.values()) {
+      for (const res of orgSet) {
+        try { res.write(payload); } catch { orgSet.delete(res); }
+      }
     }
   }
 }
 
 /** Broadcast a generic message event */
-export function broadcastMessage(data: unknown): void {
+export function broadcastMessage(data: unknown, orgId?: string): void {
   const payload = `data: ${JSON.stringify(data)}\n\n`;
-  for (const res of clients) {
-    try {
-      res.write(payload);
-    } catch {
-      clients.delete(res);
+  if (orgId) {
+    const orgSet = clients.get(orgId);
+    if (orgSet) {
+      for (const res of orgSet) {
+        try { res.write(payload); } catch { orgSet.delete(res); }
+      }
+    }
+  } else {
+    for (const orgSet of clients.values()) {
+      for (const res of orgSet) {
+        try { res.write(payload); } catch { orgSet.delete(res); }
+      }
     }
   }
 }
 
-// ── GET /events — SSE stream ────────────────────────────────────────────────
+// ── GET /events — SSE stream (authentifié + scopé par org) ────────────────────────
 router.get("/events", (req: Request, res: Response) => {
+  const orgId = req.orgContext?.orgId ?? "default";
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  clients.add(res);
+  const orgSet = getOrgClients(orgId);
+  orgSet.add(res);
 
-  // Send initial welcome + current monitor snapshot
+  // Send initial welcome + org-scoped monitor snapshot
   (async () => {
     try {
-      const monitors = await db
-        .select()
-        .from(monitorsTable)
-        .orderBy(desc(monitorsTable.createdAt))
-        .limit(50);
-
+      const result = await req.orgDb(
+        `SELECT id, name, status, uptime, latency, last_check AS "lastCheck", created_at AS "createdAt"
+         FROM monitors WHERE org_id = $1 ORDER BY created_at DESC LIMIT 50`,
+        [orgId]
+      );
+      const monitors = result.rows;
       const down = monitors.filter((m) => m.status === "down").length;
-
       res.write(
         `event: init\ndata: ${JSON.stringify({
           type: "init",
-          clientCount: clients.size,
+          clientCount: orgSet.size,
           monitors: monitors.map((m) => ({
             id: m.id,
             name: m.name,
             status: m.status,
             uptime: m.uptime,
             latency: m.latency,
+            lastCheck: m.lastCheck,
           })),
           summary: { total: monitors.length, down, up: monitors.length - down },
           ts: Date.now(),
@@ -78,14 +99,19 @@ router.get("/events", (req: Request, res: Response) => {
       res.write(`event: heartbeat\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
     } catch {
       clearInterval(heartbeat);
-      clients.delete(res);
+      orgSet.delete(res);
     }
   }, 25_000);
 
-  // Monitor poll every 30s — push diffs to this client
+  // Monitor poll every 30s — push org-scoped diffs to this client
   const monitorPoll = setInterval(async () => {
     try {
-      const monitors = await db.select().from(monitorsTable).limit(50);
+      const result = await req.orgDb(
+        `SELECT id, name, status, uptime, latency, last_check AS "lastCheck", created_at AS "createdAt"
+         FROM monitors WHERE org_id = $1 ORDER BY created_at DESC LIMIT 50`,
+        [orgId]
+      );
+      const monitors = result.rows;
       res.write(
         `event: monitor_snapshot\ndata: ${JSON.stringify({
           type: "monitor_snapshot",
@@ -109,19 +135,21 @@ router.get("/events", (req: Request, res: Response) => {
   req.on("close", () => {
     clearInterval(heartbeat);
     clearInterval(monitorPoll);
-    clients.delete(res);
+    orgSet.delete(res);
   });
 
   req.on("error", () => {
     clearInterval(heartbeat);
     clearInterval(monitorPoll);
-    clients.delete(res);
+    orgSet.delete(res);
   });
 });
 
-// ── GET /events/status — simple health check for SSE subsystem ─────────────
+// ── GET /events/status — simple health check for SSE subsystem ───────────
 router.get("/events/status", (_req, res) => {
-  res.json({ clients: clients.size, ok: true, ts: Date.now() });
+  let totalClients = 0;
+  for (const orgSet of clients.values()) totalClients += orgSet.size;
+  res.json({ clients: totalClients, orgs: clients.size, ok: true, ts: Date.now() });
 });
 
 export default router;

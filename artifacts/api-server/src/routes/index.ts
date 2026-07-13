@@ -93,10 +93,6 @@ router.use(publicBehavioralRouter);
 // capabilities is a public disclosure endpoint.
 router.use(publicSsoRouter);
 
-// SSE real-time event stream — must be public so the dashboard can subscribe
-// before the user is authenticated (shows live monitor status on login page too).
-router.use(eventsRouter);
-
 // Public Stripe checkout session — pricing.html public tunnel, no auth required.
 router.use(publicBillingRouter);
 
@@ -118,6 +114,8 @@ router.use(aiRouter);
 router.use(billingRouter);
 router.use(alertRulesRouter);
 router.use(activityRouter);
+// SSE real-time event stream — authentifié et scopé par org_id (après requireAuth)
+router.use(eventsRouter);
 router.use(calendarEventsRouter);
 router.use(missionsRouter);
 router.use(keywordsRouter);

@@ -2131,7 +2131,8 @@
     function connect() {
       if (_sse) { try { _sse.close(); } catch(e){} }
       try {
-        _sse = new EventSource('/api/events');
+        var _sseTok = (function(){ try { return localStorage.getItem('token') || localStorage.getItem('fp_token') || ''; } catch(_){ return ''; } })();
+        _sse = new EventSource('/api/events' + (_sseTok ? '?token=' + encodeURIComponent(_sseTok) : ''));
 
         _sse.onopen = function() {
           _retries = 0;

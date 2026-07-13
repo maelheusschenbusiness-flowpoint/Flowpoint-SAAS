@@ -922,21 +922,13 @@ async function loadData() {
       }
     }
   } catch(_) {}
-  let me, overview, audits, monitors, reports, team;
+  // ── Phase 1: Critical identity — /api/me is mandatory; everything else is resilient ──
+  let me = null, overview = null, audits = null, monitors = null, reports = null, team = null;
   try {
-    const [_me, _overview, _planDefs] = await Promise.all([
-      apiFetch('/api/me'), apiFetch('/api/overview'),
-      apiFetch('/api/plans/definitions').catch(() => null),
-    ]);
-    me = _me; overview = _overview;
-    if (_planDefs && typeof _planDefs === 'object') {
-      STATE.planDefs = _planDefs;
-      try { sessionStorage.setItem('fp-plan-defs', JSON.stringify({ ..._planDefs, _ts: Date.now() })); } catch(_) {}
-    }
+    me = await apiFetch('/api/me');
   } catch (e) {
     if (PREVIEW_MODE) {
-      console.warn('[FP] Preview mode: using mock /api/me + /api/overview', e);
-      me = null; overview = null;
+      console.warn('[FP] Preview mode: using mock /api/me', e);
     } else {
       showFatalError('Impossible de joindre /api/me. Vérifiez que le backend est démarré.');
       return;
@@ -946,20 +938,26 @@ async function loadData() {
   if (!STATE.me) { showFatalError('/api/me n\'a pas répondu.'); return; }
   if (STATE.me?.plan) STATE.me.plan = STATE.me.plan.charAt(0).toUpperCase() + STATE.me.plan.slice(1);
 
-  try {
-    [audits, monitors, reports, team] = await Promise.all([
-      apiFetch('/api/audits'), apiFetch('/api/monitors'),
-      apiFetch('/api/reports'), apiFetch('/api/team'),
-    ]);
-  } catch (e) {
-    if (PREVIEW_MODE) {
-      console.warn('[FP] Preview mode: using mock section data', e);
-      audits = monitors = reports = team = null;
-    } else {
-      showFatalError('Impossible de joindre les APIs de section (/api/audits, /api/monitors…).');
-      return;
-    }
+  // ── Phase 2: Overview + plan definitions — resilient, any failure is non-blocking ──
+  const [_ovRes, _pdRes] = await Promise.allSettled([
+    apiFetch('/api/overview'),
+    apiFetch('/api/plans/definitions').catch(() => null),
+  ]);
+  if (_ovRes.status === 'fulfilled') overview = _ovRes.value;
+  if (_pdRes.status === 'fulfilled' && _pdRes.value && typeof _pdRes.value === 'object') {
+    STATE.planDefs = _pdRes.value;
+    try { sessionStorage.setItem('fp-plan-defs', JSON.stringify({ ..._pdRes.value, _ts: Date.now() })); } catch(_) {}
   }
+
+  // ── Phase 3: Section data — each section fails independently, dashboard stays usable ──
+  const [_auRes, _moRes, _reRes, _teRes] = await Promise.allSettled([
+    apiFetch('/api/audits'), apiFetch('/api/monitors'),
+    apiFetch('/api/reports'), apiFetch('/api/team'),
+  ]);
+  if (_auRes.status === 'fulfilled') audits   = _auRes.value;   else console.warn('[FP] /api/audits failed:', _auRes.reason?.message || _auRes.reason);
+  if (_moRes.status === 'fulfilled') monitors = _moRes.value;   else console.warn('[FP] /api/monitors failed:', _moRes.reason?.message || _moRes.reason);
+  if (_reRes.status === 'fulfilled') reports  = _reRes.value;   else console.warn('[FP] /api/reports failed:', _reRes.reason?.message || _reRes.reason);
+  if (_teRes.status === 'fulfilled') team     = _teRes.value;   else console.warn('[FP] /api/team failed:', _teRes.reason?.message || _teRes.reason);
 
   const _aud = normArr(audits,   'audits');   STATE.audits   = (_aud   && _aud.length   > 0) ? _aud   : (PREVIEW_MODE ? MOCK_AUDITS   : []);
   const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon   && _mon.length   > 0) ? _mon   : (PREVIEW_MODE ? MOCK_MONITORS : []);
