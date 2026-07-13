@@ -71,6 +71,16 @@
     html[data-theme="dark"] body { background:#050810!important; color-scheme:dark; }
     html[data-theme="dark"] .fp-topbar { background:#050810!important; }
     html[data-theme="dark"] .fp-sidebar { background:#0a1020!important; border-right:1px solid rgba(255,255,255,0.06)!important; }
+    /* ── DARK MODE CARDS — prevents white/transparent card backgrounds ── */
+    html[data-theme="dark"] .fp-card,
+    html[data-theme="dark"] .fp-live-cc,
+    html[data-theme="dark"] .fp-gauge-card,
+    html[data-theme="dark"] .fp-hero-cmd {
+      background:rgba(10,16,32,0.95)!important;
+      border-color:rgba(255,255,255,0.07)!important;
+      backdrop-filter:none!important;
+      -webkit-backdrop-filter:none!important;
+    }
     /* ── PRE-RENDER SKELETON — visible while JS loads, replaced by render() ── */
     .fp-pre-skel { border-radius:12px; background:rgba(255,255,255,0.05); }
     html[data-theme="light"] .fp-pre-skel { background:rgba(0,0,0,0.07); }

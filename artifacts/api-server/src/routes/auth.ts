@@ -544,7 +544,8 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   const ln = String(lastName  || "").trim();
   const company = String(companyName || "").trim();
   const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60_000).toISOString();
-  const orgId = "default";
+  // Each user gets their own org keyed by their email — never share the "default" seed org
+  const orgId = normalizedEmail;
 
   // Upsert org_settings (create or update org)
   try {
@@ -706,7 +707,7 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
 
   const sessionToken = await createSession({
     userId: entry.email,
-    orgId: "default",
+    orgId: entry.email,
     email: entry.email,
     role: "admin",
   });
@@ -822,7 +823,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     // Persist org settings (including plan) so /api/me returns correct plan after restart
     try {
       const { upsertOrgSettings } = await import("../services/org-settings.js");
-      await upsertOrgSettings("default", {
+      await upsertOrgSettings(resolvedEmail, {
         email: resolvedEmail,
         firstName: user.name ? user.name.split(" ")[0] : undefined,
         plan: planFromState ?? store.me.plan ?? "pro",
@@ -839,7 +840,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
 
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // In this single-tenant deployment every OAuth login is an owner/admin.
-    const sessionToken = await createSession({ userId: resolvedEmail, orgId: "default", email: resolvedEmail, role: "admin" });
+    const sessionToken = await createSession({ userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "admin" });
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
@@ -901,11 +902,26 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
 
     if (user.name || user.login) store.me.firstName = (user.name || user.login || "").split(" ")[0];
 
+    // Persist per-user org so /api/me returns correct data after restart
+    try {
+      const { upsertOrgSettings } = await import("../services/org-settings.js");
+      await upsertOrgSettings(resolvedEmail, {
+        email: resolvedEmail,
+        firstName: user.name ? user.name.split(" ")[0] : (user.login ?? undefined),
+        plan: store.me.plan ?? "pro",
+        subscriptionStatus: "trialing",
+        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60_000).toISOString(),
+        name: user.login ?? undefined,
+      });
+    } catch (err) {
+      logger.warn({ err }, "[Auth] GitHub login — org_settings persist failed (non-fatal)");
+    }
+
     logger.info({ login: user.login }, "[Auth] GitHub login successful");
 
     // Issue a unique per-session token and set it as an HttpOnly cookie.
     // In this single-tenant deployment every OAuth login is an owner/admin.
-    const sessionToken = await createSession({ userId: resolvedEmail, orgId: "default", email: resolvedEmail, role: "admin" });
+    const sessionToken = await createSession({ userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "admin" });
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,

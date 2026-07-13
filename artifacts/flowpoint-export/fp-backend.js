@@ -2111,6 +2111,9 @@
     if (window.FP_AI_CHAT_API) window.FP_AI_CHAT_API.loadHistory().catch(function(){});
   }, 2000);
 
+  // Expose apiFetch globally so other IIFEs (e.g. initDataRefresh) can use it
+  window.apiFetch = apiFetch;
+
   console.log('[FP] Backend integration layer v7 chargé — APIs: missions, chat, notifs, keywords, competitors, connectors, monitors, billing, addons, ai-credits, revenue-leak, cro, forecast, behavioral, automation, white-label, maps, pagespeed, ai-chat');
 })();
 
@@ -2317,7 +2320,7 @@
       if (!window.STATE || !window.STATE.me) return;
 
       // Monitors — refresh every tick (via apiFetch for consistent auth/401 handling)
-      apiFetch('/api/monitors').then(function(data) {
+      window.apiFetch('/api/monitors').then(function(data) {
         if (!data) return;
         var arr = Array.isArray(data) ? data : (Array.isArray(data.monitors) ? data.monitors : null);
         if (arr) {
@@ -2332,7 +2335,7 @@
       }).catch(function(){});
 
       // Notifications — refresh every tick
-      apiFetch('/api/notifications').then(function(data) {
+      window.apiFetch('/api/notifications').then(function(data) {
         if (!data) return;
         var arr = Array.isArray(data) ? data : (Array.isArray(data.notifications) ? data.notifications : null);
         if (arr) window.STATE.notifications = arr;
@@ -2342,7 +2345,7 @@
       if (!refresh._tick) refresh._tick = 0;
       refresh._tick++;
       if (refresh._tick % 5 === 0) {
-        apiFetch('/api/overview').then(function(data) {
+        window.apiFetch('/api/overview').then(function(data) {
           if (data) window.STATE.overview = data;
         }).catch(function(){});
       }
@@ -2391,9 +2394,9 @@
     var t = btn.textContent || '';
     btn.textContent = '⟳ Actualisation…';
     Promise.all([
-      apiFetch('/api/monitors').catch(function(){return null;}),
-      apiFetch('/api/overview').catch(function(){return null;}),
-      apiFetch('/api/notifications').catch(function(){return null;}),
+      window.apiFetch('/api/monitors').catch(function(){return null;}),
+      window.apiFetch('/api/overview').catch(function(){return null;}),
+      window.apiFetch('/api/notifications').catch(function(){return null;}),
     ]).then(function(results) {
       var monitors = results[0]; var overview = results[1]; var notifs = results[2];
       if (monitors) {

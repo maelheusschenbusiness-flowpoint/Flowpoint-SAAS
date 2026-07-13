@@ -10857,6 +10857,7 @@ async function sendAIMessage(text) {
   try {
     const resp = await fetch('/api/ai/chat', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, context, stream: true, history }),
     });
@@ -10907,7 +10908,9 @@ async function sendAIMessage(text) {
 
     STATE.aiMessages[streamIdx] = { from:'ai', text: fullText || '(Réponse vide)', streaming: false };
   } catch(e) {
-    STATE.aiMessages[streamIdx] = { from:'ai', text:'⚠ Le service IA est temporairement indisponible. Veuillez réessayer dans quelques instants.', streaming: false };
+    console.error('[AI Chat] sendAIMessage error:', e.name, e.message, e);
+    const errMsg = (e.name === 'AbortError') ? '⚠ La requête IA a été annulée (délai dépassé).' : '⚠ Le service IA est temporairement indisponible. Veuillez réessayer dans quelques instants.';
+    STATE.aiMessages[streamIdx] = { from:'ai', text: errMsg, streaming: false };
   }
 
   STATE.aiLoading = false;
@@ -11844,7 +11847,8 @@ function renderSubNav(items) {
   return `<nav class="fp-sub-nav" role="tablist">${items.map(t => `
     <button class="fp-sub-nav-item${(STATE.subRoute === t.id) ? ' active' : ''}"
       data-sub-route="${t.id ?? ''}"
-      role="tab" aria-selected="${STATE.subRoute === t.id}">${escHtml(t.label)}</button>
+      role="tab" aria-selected="${STATE.subRoute === t.id}"
+      onclick="navigateSub(this.dataset.subRoute===''?null:this.dataset.subRoute)">${escHtml(t.label)}</button>
   `).join('')}</nav>`;
 }
 
@@ -14041,8 +14045,18 @@ function bindGlobalEvents() {
     $('#fp-mobile-overlay')?.setAttribute('aria-hidden','true');
   });
 
-  // Theme toggle
-  $('#fp-theme-toggle')?.addEventListener('click', toggleTheme);
+  // Theme toggle — event delegation survives re-renders
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('#fp-theme-toggle')) toggleTheme();
+  });
+
+  // Monitor "Nouveau" button — event delegation so it works regardless of render timing
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('#monitor-new-btn')) {
+      openFloatPanel('Nouveau monitor', renderNewMonitorPanel());
+      setupNewMonitorPanel();
+    }
+  });
 
   // Shortcuts modal
   $('#fp-shortcuts-btn')?.addEventListener('click', () => {
