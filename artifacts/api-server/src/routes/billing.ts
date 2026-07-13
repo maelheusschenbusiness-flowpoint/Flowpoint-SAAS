@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS } from "../lib/plans.js";
-import { upsertOrgSettings } from "../services/org-settings.js";
+import { upsertOrgSettings, loadOrgSettings } from "../services/org-settings.js";
 import { PLAN_CONFIG, ADDON_CATALOG, getUsageSummary, getMRRData, getSubscriptionAnalytics, startTrial, validateCoupon, getInvoices, trackBillingEvent } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 
@@ -317,7 +317,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/billing/portal", billingCheckoutRateLimit, async (_req: Request, res: Response) => {
+router.post("/billing/portal", billingCheckoutRateLimit, async (req: Request, res: Response) => {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
   const returnUrl = process.env["STRIPE_RETURN_URL"] || `${publicUrl}/dashboard`;
@@ -333,21 +333,19 @@ router.post("/billing/portal", billingCheckoutRateLimit, async (_req: Request, r
     return;
   }
 
+  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
+  const dbData = await loadOrgSettings(orgId).catch(() => null);
+  const customerId = dbData?.stripeCustomerId ?? store.me.stripeCustomerId ?? null;
+
+  if (!customerId) {
+    logger.warn({ orgId }, "[Billing] portal requested but no stripeCustomerId — no active subscription");
+    res.status(422).json({ error: "no_customer", message: "Aucun abonnement actif — souscrivez d'abord un plan." });
+    return;
+  }
+
   try {
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-
-    let customerId = store.me.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: req.orgContext?.email || store.me.email || undefined,
-        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { plan: store.me.plan ?? "standard", orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
-      });
-      customerId = customer.id;
-      store.me.stripeCustomerId = customerId;
-    }
-
     const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
     res.json({ url: session.url });
   } catch (err) {
@@ -356,20 +354,7 @@ router.post("/billing/portal", billingCheckoutRateLimit, async (_req: Request, r
   }
 });
 
-// ── NEW: GET /billing/plans ──────────────────────────────────────────────────
-router.get("/billing/plans", (_req: Request, res: Response) => {
-  const plans = Object.values(PLAN_CONFIG).map(p => ({
-    ...p,
-    priceId: PLAN_PRICE_IDS[p.id] ?? "",
-  }));
-  res.json({
-    plans,
-    addons: ADDON_CATALOG,
-    current: (store.me.plan || "standard").toLowerCase(),
-    subscriptionStatus: store.me.subscriptionStatus,
-    trialEndsAt: store.me.trialEndsAt,
-  });
-});
+// ── NOTE: GET /billing/plans is handled by public-billing.ts (pre-auth) ─────
 
 // ── NEW: GET /billing/usage ──────────────────────────────────────────────────
 router.get("/billing/usage", async (req: Request, res: Response) => {
@@ -408,10 +393,13 @@ router.get("/billing/mrr", async (req: Request, res: Response) => {
 });
 
 // ── NEW: GET /billing/invoices ───────────────────────────────────────────────
-router.get("/billing/invoices", async (_req: Request, res: Response) => {
-  const limit = Math.min(Number((_req.query as Record<string, string>)["limit"] || 20), 100);
+router.get("/billing/invoices", async (req: Request, res: Response) => {
+  const limit = Math.min(Number((req.query as Record<string, string>)["limit"] || 20), 100);
+  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
+  const dbData = await loadOrgSettings(orgId).catch(() => null);
+  const stripeCustomerId = dbData?.stripeCustomerId ?? store.me.stripeCustomerId ?? undefined;
   try {
-    const result = await getInvoices(limit);
+    const result = await getInvoices(limit, stripeCustomerId);
     res.json(result);
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to get invoices");
@@ -563,16 +551,24 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, async (req: Request, r
   }
 });
 
-router.get("/billing/subscription", async (_req: Request, res: Response) => {
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+router.get("/billing/subscription", async (req: Request, res: Response) => {
+  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
+  const dbData = await loadOrgSettings(orgId).catch(() => null);
   const me = store.me;
 
-  if (!stripeKey || !me.stripeCustomerId) {
+  const plan = (dbData?.plan || me.plan || "standard").toLowerCase();
+  const subscriptionStatus = dbData?.subscriptionStatus || me.subscriptionStatus || "none";
+  const trialEndsAt = dbData?.trialEndsAt ?? me.trialEndsAt ?? null;
+  const stripeCustomerId = dbData?.stripeCustomerId ?? me.stripeCustomerId ?? null;
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+
+  if (!stripeKey || !stripeCustomerId) {
     res.json({
-      plan: me.plan,
-      status: me.subscriptionStatus,
-      trialEndsAt: me.trialEndsAt,
+      plan,
+      status: subscriptionStatus,
+      trialEndsAt,
       addons: me.addons,
+      subscriptionId: null,
       mock: !stripeKey,
     });
     return;
@@ -581,21 +577,22 @@ router.get("/billing/subscription", async (_req: Request, res: Response) => {
   try {
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const subs = await stripe.subscriptions.list({ customer: me.stripeCustomerId, limit: 1 });
+    const subs = await stripe.subscriptions.list({ customer: stripeCustomerId, limit: 1 });
     const sub = subs.data[0];
 
     res.json({
-      plan: me.plan,
-      status: sub?.status || me.subscriptionStatus,
-      trialEndsAt: sub?.trial_end ? new Date(sub.trial_end * 1000).toISOString() : me.trialEndsAt,
+      plan,
+      status: sub?.status || subscriptionStatus,
+      trialEndsAt: sub?.trial_end ? new Date(sub.trial_end * 1000).toISOString() : trialEndsAt,
       currentPeriodEnd: sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
       cancelAtPeriodEnd: sub?.cancel_at_period_end || false,
+      subscriptionId: sub?.id ?? null,
       addons: me.addons,
-      stripeCustomerId: me.stripeCustomerId,
+      stripeCustomerId,
     });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to get subscription");
-    res.json({ plan: me.plan, status: me.subscriptionStatus, addons: me.addons });
+    res.json({ plan, status: subscriptionStatus, addons: me.addons, subscriptionId: null });
   }
 });
 

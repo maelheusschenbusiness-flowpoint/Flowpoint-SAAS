@@ -7458,10 +7458,23 @@ function renderBilling() {
       'SSO SAML':'ssoEnterprise', 'AI Workspace Launch':'aiWorkspaceLaunch',
     };
     window._fpAddonStripeKeys = _ADDON_STRIPE_KEYS;
-    window.fpActivateAddon = function(addonIdx) {
+    window.fpActivateAddon = async function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
-      showToast('info', 'Redirection vers la boutique FlowPoint…');
-      fpGoToPricing();
+      if (!_a) { fpGoToPricing(); return; }
+      const key = _ADDON_STRIPE_KEYS[_a.name];
+      if (!key) { fpGoToPricing(); return; }
+      showToast('info', 'Chargement…');
+      try {
+        const _resp = await fetch('/api/billing/addon-checkout', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addonKey: key, addonName: _a.name, price: _a.price || '' })
+        });
+        const _data = await _resp.json();
+        if (_resp.ok && _data.url) { window.location.href = _data.url; }
+        else { showToast('error', _data.message || _data.error || 'Erreur activation'); }
+      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
     };
     window._fpAllAddons = allAddons;
     window.fpShowAddonDetail = function(idx) {

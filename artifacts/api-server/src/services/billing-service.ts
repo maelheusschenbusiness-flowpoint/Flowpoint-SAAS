@@ -60,19 +60,20 @@ export async function getUsageSummary(orgId = "default") {
   const extraSeats = (me.addons as Record<string, number>)["extraSeats"] || 0;
 
   const client = await pool.connect();
+  const usage = (me as Record<string, unknown>).usage as Record<string, Record<string, number>> | undefined;
   try {
-    const [auditCount, monitorCount, reportCount, memberCount] = await Promise.all([
-      client.query(`SELECT COUNT(*) FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]),
-      client.query(`SELECT COUNT(*) FROM monitors WHERE org_id=$1`, [orgId]),
-      client.query(`SELECT COUNT(*) FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]),
-      client.query(`SELECT COUNT(*) FROM team_members WHERE org_id=$1`, [orgId]),
+    const safeCount = async (query: string, params: unknown[]): Promise<number> => {
+      try {
+        const r = await client.query(query, params);
+        return Number(r.rows[0]?.count ?? 0);
+      } catch { return 0; }
+    };
+    const [auditsUsed, monitorsUsed, reportsUsed, seatsUsed] = await Promise.all([
+      safeCount(`SELECT COUNT(*) FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]),
+      safeCount(`SELECT COUNT(*) FROM monitors WHERE org_id=$1`, [orgId]),
+      safeCount(`SELECT COUNT(*) FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`, [orgId]),
+      safeCount(`SELECT COUNT(*) FROM team_members WHERE org_id=$1`, [orgId]),
     ]);
-
-    const usage = (me as Record<string, unknown>).usage as Record<string, Record<string, number>> | undefined;
-    const auditsUsed   = Number(auditCount.rows[0]?.count  ?? usage?.audit?.used   ?? 0);
-    const monitorsUsed = Number(monitorCount.rows[0]?.count ?? usage?.monitor?.used ?? 0);
-    const reportsUsed  = Number(reportCount.rows[0]?.count  ?? usage?.pdf?.used     ?? 0);
-    const seatsUsed    = Number(memberCount.rows[0]?.count  ?? 1);
 
     return {
       plan,
@@ -279,16 +280,17 @@ export async function validateCoupon(code: string) {
 }
 
 // ── Invoices ──────────────────────────────────────────────────────────────────
-export async function getInvoices(limit: number = 20) {
+export async function getInvoices(limit: number = 20, stripeCustomerId?: string) {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  if (!stripeKey || !store.me.stripeCustomerId) {
-    return { invoices: [], mock: true };
+  const customerId = stripeCustomerId ?? store.me.stripeCustomerId;
+  if (!stripeKey || !customerId) {
+    return { invoices: [], mock: !stripeKey };
   }
 
   try {
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const invoices = await stripe.invoices.list({ customer: store.me.stripeCustomerId, limit });
+    const invoices = await stripe.invoices.list({ customer: customerId, limit });
 
     return {
       invoices: invoices.data.map(inv => ({
