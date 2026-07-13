@@ -6,6 +6,13 @@ import { upsertOrgSettings } from "../services/org-settings.js";
 import { PLAN_CONFIG, ADDON_CATALOG, getUsageSummary, getMRRData, getSubscriptionAnalytics, startTrial, validateCoupon, getInvoices, trackBillingEvent } from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 
+/* Add-ons included in each plan — same source as public-billing.ts */
+const PLAN_INCLUDED_ADDONS: Record<string, Set<string>> = {
+  standard: new Set([]),
+  pro:      new Set(["whiteLabel"]),
+  ultra:    new Set(["whiteLabel", "agencyPacks"]),
+};
+
 const billingCheckoutRateLimit = createRateLimit("reportsPerHour");
 
 const router = Router();
@@ -14,13 +21,14 @@ type AddonsMap = Record<string, boolean | number>;
 
 function buildLineItems(plan: string, addons: AddonsMap): Array<{ price: string; quantity: number }> {
   const items: Array<{ price: string; quantity: number }> = [];
+  const included = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set<string>();
 
   const planPriceId = PLAN_PRICE_IDS[plan.toLowerCase()];
   if (planPriceId) items.push({ price: planPriceId, quantity: 1 });
 
   for (const key of FLAG_ADDONS) {
     if (!addons[key]) continue;
-    if (key === "whiteLabel") continue;
+    if (included.has(key)) continue; /* skip add-ons already included in the plan */
     const priceId = ADDON_PRICE_IDS[key];
     if (priceId) items.push({ price: priceId, quantity: 1 });
   }
@@ -507,19 +515,32 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, async (req: Request, r
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
 
-    // Try to update existing subscription first
+    // Try to update existing subscription first (active OR trialing — prevents double subscription)
     if (store.me.stripeCustomerId) {
-      const subs = await stripe.subscriptions.list({ customer: store.me.stripeCustomerId, status: "active", limit: 1 });
-      const sub = subs.data[0];
+      const [activeSubs, trialingSubs] = await Promise.all([
+        stripe.subscriptions.list({ customer: store.me.stripeCustomerId, status: "active",   limit: 1 }),
+        stripe.subscriptions.list({ customer: store.me.stripeCustomerId, status: "trialing", limit: 1 }),
+      ]);
+      const sub = activeSubs.data[0] ?? trialingSubs.data[0];
       if (sub) {
         const priceId = PLAN_PRICE_IDS[plan.toLowerCase()];
         if (!priceId) { res.status(400).json({ error: `Unknown plan: ${plan}` }); return; }
+        /* Build updated items: replace plan price, preserve existing add-on items */
+        const planItemIds = new Set(Object.values(PLAN_PRICE_IDS));
+        const existingAddonItems = sub.items.data
+          .filter(item => !planItemIds.has(item.price.id))
+          .map(item => ({ id: item.id }));
+        const planItem = sub.items.data.find(item => planItemIds.has(item.price.id));
         await stripe.subscriptions.update(sub.id, {
-          items: [{ id: sub.items.data[0]?.id, price: priceId }],
+          items: [
+            { id: planItem?.id, price: priceId },
+            ...existingAddonItems,
+          ],
           proration_behavior: "create_prorations",
           metadata: { plan },
         });
         store.me.plan = plan;
+        logger.info({ plan, subId: sub.id, subStatus: sub.status }, "[Billing] upgrade: subscription updated");
         res.json({ ok: true, plan, upgraded: true });
         return;
       }

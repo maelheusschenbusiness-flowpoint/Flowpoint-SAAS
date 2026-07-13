@@ -7287,7 +7287,7 @@ function renderBilling() {
                 const _pd = _planDefs;
                 const _fmtNum = n => n >= 1000000 ? (n/1000000).toFixed(0)+' M' : n >= 1000 ? Math.round(n/1000).toLocaleString('fr-FR')+' k' : n.toLocaleString('fr-FR');
                 const _val = (id, key, fallback) => _pd.find(p=>p.id===id)?.limits?.[key] ?? fallback;
-                const _ai = (id) => { const c=_pd.find(p=>p.id===id)?.aiCredits; return c>=10000000?'Illimités':_fmtNum(c); };
+                const _ai = (id) => { const c=_pd.find(p=>p.id===id)?.aiCredits; return c>=10000000?'10 000 000':_fmtNum(c); };
                 return [
                   { group:'Core', rows:[
                     ['Audits / mois',  _val('standard','audits',30),  _val('pro','audits',300),  _val('ultra','audits',1000)],
@@ -8713,9 +8713,9 @@ function renderSettings() {
       )}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Membres actifs', String(members.length), plan === 'Standard' ? '1/1 inclus' : plan === 'Pro' ? '3/5 inclus' : 'Illimités', 'up')}
+        ${statCard('Membres actifs', String(members.length), plan === 'Standard' ? '1/1 inclus' : plan === 'Pro' ? '3/5 inclus' : '10 max inclus', 'up')}
         ${statCard('Rôles définis', String(roles.length), '4 rôles système', 'up')}
-        ${statCard('Sièges disponibles', plan === 'Standard' ? '0' : plan === 'Pro' ? '2' : 'Illimités', 'inclus dans votre plan', 'neutral')}
+        ${statCard('Sièges disponibles', plan === 'Standard' ? '0' : plan === 'Pro' ? '2' : '0', 'inclus dans votre plan', 'neutral')}
         ${statCard('Dernière activité', displayStat(STATE.team && STATE.team.length > 0 ? 'Récemment' : null, 'Il y a 2h'), STATE.team && STATE.team.length > 0 ? STATE.team[0].name || 'Membre actif' : PREVIEW_MODE ? 'Sophie Martin' : 'Aucun membre', STATE.team && STATE.team.length > 0 ? 'up' : 'neutral')}
       </div>
 
@@ -10411,7 +10411,7 @@ function renderAI() {
           🤖 AI Credits — Usage
           ${isUnlimited ? `<span style="font-size:10px;font-weight:700;padding:2px 10px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:20px;color:#8b5cf6">Ultra · Usage prioritaire</span>` : ''}
         </h1>
-        <div class="fp-section-sub">Plan ${plan} · Réinitialisation le ${resetDate} · ${isUnlimited ? 'Usage illimité (prioritaire)' : fmtNum(remaining) + ' AI Credits restants'}</div></div>
+        <div class="fp-section-sub">Plan ${plan} · Réinitialisation le ${resetDate} · ${isUnlimited ? '10 000 000 AI Credits/mois (prioritaire)' : fmtNum(remaining) + ' AI Credits restants'}</div></div>
         <div class="fp-section-actions">
           <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToPricing()">Upgrader le plan →</button>
         </div>
@@ -10423,7 +10423,7 @@ function renderAI() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('AI Credits utilisés', fmtNum(usedCredits), 'ce mois', 'up')}
         ${isUnlimited
-          ? statCard('AI Credits', 'Illimité', 'Usage prioritaire · Fair use', 'up')
+          ? statCard('AI Credits', '10 M', '10 000 000 inclus/mois', 'up')
           : statCard('AI Credits restants', fmtNum(remaining), 'sur ' + fmtNum(maxCredits) + ' alloués', remaining < 20000 ? 'down' : 'up')}
         ${statCard('Statut IA', 'Performante', 'Haute qualité · Prioritaire', 'up')}
         ${statCard('Consommation', pct + '%', 'du quota mensuel', pct > 70 ? 'down' : 'neutral')}
@@ -10433,11 +10433,11 @@ function renderAI() {
       <div class="fp-card fp-mb-16" style="padding:20px 22px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">Quota mensuel — Plan ${plan}${isUnlimited ? ' · Illimité' : ''}</div>
+            <div style="font-size:14px;font-weight:800;color:var(--fp-text)">Quota mensuel — Plan ${plan}${isUnlimited ? ' · 10 M crédits' : ''}</div>
             <div style="font-size:11px;color:var(--fp-text-faint);margin-top:2px">Réinitialisation automatique le 1er de chaque mois${isUnlimited ? ' · Usage raisonnable appliqué' : ''}</div>
           </div>
           <div style="text-align:right">
-            <div style="font-size:22px;font-weight:900;color:${pc};font-family:var(--fp-font-head)">${fmtNum(usedCredits)} <span style="font-size:13px;font-weight:500;color:var(--fp-text-faint)">/ ${isUnlimited ? '∞' : fmtNum(maxCredits)}</span></div>
+            <div style="font-size:22px;font-weight:900;color:${pc};font-family:var(--fp-font-head)">${fmtNum(usedCredits)} <span style="font-size:13px;font-weight:500;color:var(--fp-text-faint)">/ ${isUnlimited ? '10 M' : fmtNum(maxCredits)}</span></div>
             <div style="font-size:11px;color:${pc};font-weight:700">${pct}% consommé</div>
           </div>
         </div>
@@ -10450,7 +10450,7 @@ function renderAI() {
           <span>0</span>
           <span style="color:#f59e0b">⚡ Alerte 70%</span>
           <span style="color:#ef4444">🚨 Alerte 90%</span>
-          <span>${isUnlimited ? '∞' : fmtNum(maxCredits)}</span>
+          <span>${isUnlimited ? '10 000 000' : fmtNum(maxCredits)}</span>
         </div>
       </div>
 
@@ -10497,7 +10497,7 @@ function renderAI() {
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);text-align:center">
             <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:8px">Ou passer au plan supérieur pour plus d\'AI Credits inclus</div>
             <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%" onclick="fpGoToPricing()" ${isUltra ? 'disabled' : ''}>
-              ${isUltra ? '✓ Ultra — AI Credits illimités (usage prioritaire)' : plan === 'Pro' ? 'Passer Ultra — AI Credits illimités →' : 'Passer Pro — 500k AI Credits/mois →'}
+              ${isUltra ? '✓ Ultra — 10 000 000 AI Credits/mois' : plan === 'Pro' ? 'Passer Ultra — 10 M AI Credits/mois →' : 'Passer Pro — 500k AI Credits/mois →'}
             </button>
           </div>
         </div>
@@ -10529,7 +10529,7 @@ function renderAI() {
           ${[
             { name:'Standard', credits:'100k',    price:'29€',  color:'#22c55e', current: plan === 'Standard', features:['IA Performante'] },
             { name:'Pro',      credits:'500k',    price:'79€',  color:'#2563EB', current: plan === 'Pro',      features:['IA Performante'] },
-            { name:'Ultra',    credits:'Illimité',price:'149€', color:'#8b5cf6', current: isUltra,             features:['IA Prioritaire'] },
+            { name:'Ultra',    credits:'10 M',    price:'149€', color:'#8b5cf6', current: isUltra,             features:['IA Prioritaire'] },
           ].map(p => `
             <div style="padding:14px;border-radius:12px;border:2px solid ${p.current?p.color+'66':'var(--fp-border)'};background:${p.current?p.color+'0d':'var(--fp-inner-card)'};text-align:center">
               <div style="font-size:12px;font-weight:800;color:${p.color};margin-bottom:4px">${p.name}</div>
@@ -10592,7 +10592,7 @@ function renderAI() {
     <div style="display:flex;align-items:center;gap:16px;padding:8px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.05);margin-bottom:16px;flex-wrap:wrap">
       ${[
         {l:'Requêtes',      v:STATE.aiCredits?(function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()):(PREVIEW_MODE?'47/100':'—')},
-        {l:'AI Credits',    v:STATE.aiCredits?(function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()):(PREVIEW_MODE?'Illimités':'—')},
+        {l:'AI Credits',    v:STATE.aiCredits?(function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()):(PREVIEW_MODE?'47k/100k':'—')},
         {l:'Temps moyen',   v:PREVIEW_MODE?'2.4s':'—'},
         {l:'Satisfaction',  v:PREVIEW_MODE?'94%':'—'},
       ].map(k => `<div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--fp-text-faint)">${escHtml(k.l)} :</span><span style="font-size:11px;font-weight:700;color:var(--fp-text)">${escHtml(k.v)}</span></div>`).join('<span style="color:rgba(255,255,255,0.1)">|</span>')}
@@ -11927,7 +11927,7 @@ function togglePlanDropdown() {
   const plans = [
     { n:'Standard', p:'29€/mois',  color:'#94a3b8', desc:'30 audits · 10 monitors' },
     { n:'Pro',      p:'79€/mois',  color:'#2563EB', desc:'300 audits · IA Insights · PDF' },
-    { n:'Ultra',    p:'149€/mois', color:'#8b5cf6', desc:'Illimité · Tout débridé · API' },
+    { n:'Ultra',    p:'149€/mois', color:'#8b5cf6', desc:'1 000 audits · 300 monitors · API' },
   ];
   const sw = document.getElementById('fp-plan-switcher');
   if (!sw) return;
@@ -13377,9 +13377,19 @@ function bindSectionEvents() {
             checkBtn.textContent = 'Redirection…';
             showToast('info', 'Ouverture du paiement Stripe…');
             try {
-              const res = await apiAction('POST', '/api/billing/checkout', { plan });
+              const subStatus = STATE.me?.subscriptionStatus;
+              const isActiveSub = subStatus === 'active' || subStatus === 'trialing';
+              const endpoint = isActiveSub ? '/api/billing/upgrade' : '/api/billing/checkout';
+              const res = await apiAction('POST', endpoint, { plan });
               if (res?.url) {
                 window.location.href = res.url;
+              } else if (res?.ok) {
+                showToast('success', 'Plan mis à jour avec succès');
+                setTimeout(() => window.location.reload(), 1200);
+              } else if (res?.error === 'plan_already_active') {
+                showToast('info', res.message || 'Ce plan est déjà votre plan actuel');
+                checkBtn.disabled = false;
+                checkBtn.textContent = 'Plan actuel';
               } else {
                 showToast('error', 'Impossible de démarrer le paiement');
                 checkBtn.disabled = false;

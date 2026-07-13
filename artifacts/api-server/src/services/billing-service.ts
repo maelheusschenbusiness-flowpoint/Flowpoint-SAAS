@@ -1,55 +1,41 @@
 import { pool } from "@workspace/db";
 import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
-import { PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS } from "../lib/plans.js";
+import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS } from "../lib/plans.js";
 
-
-// ── Plan configuration (public) ───────────────────────────────────────────────
-export const PLAN_CONFIG = {
-  standard: {
-    id: "standard", name: "Standard", monthlyPrice: 29, annualPrice: 24,
-    badge: "Démarrage", tagline: "Idéal pour les indépendants et PME",
-    color: "#64748b", popular: false,
-    limits: PLAN_LIMITS.standard,
-    aiCredits: PLAN_AI_CREDITS.standard,
-    features: [
-      "Jusqu'à 30 audits/mois", "3 monitors", "30 rapports PDF", "1 utilisateur",
-      "Local SEO basique", "Support email 48h", "Rétention 30 jours", "Export CSV",
-    ],
-    addons: [],
-    highlighted: [],
-  },
-  pro: {
-    id: "pro", name: "Pro", monthlyPrice: 79, annualPrice: 65,
-    badge: "Recommandé", tagline: "Pour les agences et équipes growth",
-    color: "#2563eb", popular: true,
-    limits: PLAN_LIMITS.pro,
-    aiCredits: PLAN_AI_CREDITS.pro,
-    features: [
-      "300 audits/mois", "50 monitors", "300 rapports PDF/mois", "5 utilisateurs",
-      "IA Insights Pro", "Local SEO avancé", "White-label rapports", "API Access",
-      "Support prioritaire 4h", "Rétention 90 jours", "Analytics concurrents",
-      "Webhooks", "2FA / MFA", "Audit log",
-    ],
-    addons: ["whiteLabel", "prioritySupport", "extraSeats", "monitorsPack50"],
-    highlighted: ["IA Insights Pro", "50 monitors"],
-  },
-  ultra: {
-    id: "ultra", name: "Ultra", monthlyPrice: 149, annualPrice: 120,
-    badge: "Enterprise", tagline: "Pour les grandes agences et entreprises",
-    color: "#7c3aed", popular: false,
-    limits: PLAN_LIMITS.ultra,
-    aiCredits: PLAN_AI_CREDITS.ultra,
-    features: [
-      "Audits illimités", "Monitors illimités", "Multi-workspace", "Sièges illimités",
-      "IA Stratégiste complet", "White-label portail", "SSO Enterprise", "API illimitée",
-      "Custom domain", "SLA 99.9% garanti", "Support dédié < 1h", "Rétention 365 jours",
-      "Onboarding dédié", "Agency Lab complet", "Facturation client",
-    ],
-    addons: [],
-    highlighted: ["Audits illimités", "SLA 99.9%"],
-  },
+/* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
+const _PLAN_PRESENTATION: Record<string, {
+  color: string; popular: boolean; annualPrice: number;
+  addons: string[]; highlighted: string[];
+}> = {
+  standard: { color: "#64748b", popular: false, annualPrice: 24, addons: [], highlighted: [] },
+  pro:      { color: "#2563eb", popular: true,  annualPrice: 65, addons: ["whiteLabel","prioritySupport","extraSeats","monitorsPack50"], highlighted: ["IA Insights Pro","50 monitors"] },
+  ultra:    { color: "#7c3aed", popular: false, annualPrice: 120, addons: [], highlighted: ["1 000 audits/mois","SLA 99.9%"] },
 };
+
+// ── Plan configuration (public) — derived from plans.ts PLAN_DEFINITIONS ─────
+// NEVER add manual values here — edit PLAN_DEFINITIONS in lib/plans.ts instead.
+export const PLAN_CONFIG = Object.fromEntries(
+  Object.entries(PLAN_DEFINITIONS).map(([id, def]) => {
+    const pres = _PLAN_PRESENTATION[id] ?? { color: "#64748b", popular: false, annualPrice: Math.round(def.priceEur * 0.8), addons: [], highlighted: [] };
+    return [id, {
+      id:           def.id,
+      name:         def.name,
+      monthlyPrice: def.priceEur,
+      annualPrice:  pres.annualPrice,
+      badge:        def.badge,
+      tagline:      def.tagline,
+      color:        pres.color,
+      popular:      pres.popular,
+      limits:       def.limits,
+      aiCredits:    def.aiCredits,
+      features:     def.features,
+      locked:       def.locked,
+      addons:       pres.addons,
+      highlighted:  pres.highlighted,
+    }];
+  })
+);
 
 // ── Add-on catalog ────────────────────────────────────────────────────────────
 export const ADDON_CATALOG = [
