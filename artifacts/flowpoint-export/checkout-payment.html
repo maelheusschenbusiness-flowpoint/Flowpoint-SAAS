@@ -167,8 +167,9 @@
     <div class="fp-card-title">Informations de paiement</div>
     <div id="fp-trial-note" class="fp-trial-note" style="display:none"></div>
     <div class="fp-alert fp-alert-error" id="fp-alert"></div>
-    <div id="fp-payment-element" role="group" aria-label="Formulaire de paiement sécurisé"></div>
-    <button class="fp-btn fp-btn-primary" id="fp-pay-btn" disabled aria-label="Confirmer et payer">
+    <div id="fp-payment-element" role="group" aria-label="Informations de paiement"></div>
+    <span id="fp-pay-desc" hidden>Confirme et finalise votre abonnement FlowPoint. Paiement sécurisé par Stripe.</span>
+    <button class="fp-btn fp-btn-primary" id="fp-pay-btn" disabled aria-label="Confirmer et payer" aria-describedby="fp-pay-desc">
       <span id="fp-btn-text">Chargement…</span>
       <span class="fp-spinner" id="fp-spinner" style="display:none"></span>
     </button>

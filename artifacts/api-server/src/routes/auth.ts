@@ -411,12 +411,11 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
 router.post("/auth/register", authRateLimit, async (req: Request, res: Response) => {
   const { email, firstName, companyName, plan } = req.body as { email?: string; firstName?: string; companyName?: string; plan?: string };
 
-  if (!email || !String(email).includes("@")) {
-    res.status(400).json({ error: "Email valide requis" });
+  const normalizedEmail = String(email ?? "").toLowerCase().trim();
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) {
+    res.status(400).json({ error: "Adresse email invalide ou manquante" });
     return;
   }
-
-  const normalizedEmail = String(email).toLowerCase().trim();
 
   if (!isEmailAllowed(normalizedEmail)) {
     logger.warn({ email: normalizedEmail }, "[Auth] Registration rejected — email not on allowlist");
@@ -509,9 +508,9 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   }
 
   // Validate required fields
-  const normalizedEmail = String(email || "").toLowerCase().trim();
-  if (!normalizedEmail || !normalizedEmail.includes("@") || !normalizedEmail.includes(".")) {
-    res.status(400).json({ error: "Email invalide." });
+  const normalizedEmail = String(email ?? "").toLowerCase().trim();
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) {
+    res.status(400).json({ error: "Adresse email invalide ou manquante." });
     return;
   }
   if (!String(firstName || "").trim()) {
