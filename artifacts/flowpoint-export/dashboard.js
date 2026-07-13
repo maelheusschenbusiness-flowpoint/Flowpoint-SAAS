@@ -7189,7 +7189,7 @@ function renderBilling() {
   const me   = STATE.me;
   if (!me) return '<div style="padding:40px;text-align:center;color:var(--fp-text-muted);font-size:14px">Chargement du profil…</div>';
   const user   = STATE?.me?.user || STATE?.user || null;
-  const plan = me?.plan || 'Pro';
+  const plan = me?.plan || 'Standard';
   const _ud    = STATE.usageDetails || {};
   const _planKey2 = plan.toLowerCase();
   // ── Source of truth: plan definitions from /api/plans/definitions ──
@@ -7263,8 +7263,8 @@ function renderBilling() {
 
       <div class="fp-stat-row fp-mb-20">
     ${statCard('Plan actuel', plan, STATE.billing?.nextDate ? 'actif · renouvellement ' + STATE.billing.nextDate : 'actif · abonnement mensuel', 'up')}
-        ${statCard('Coût mensuel', isStd ? '29€' : isPro && !isUltra ? '79€' : '149€', 'HT · abonnement mensuel', 'neutral')}
-        ${statCard('Prochaine facture', displayStat(STATE.billing?.nextDate || null, '01/06/2026'), STATE.billing?.nextDate ? 'prochaine échéance' : PREVIEW_MODE ? 'dans 23 jours' : 'Voir facturation', 'neutral')}
+        ${statCard('Coût mensuel', (_def?.priceEur ?? '') + '€', 'HT · abonnement mensuel', 'neutral')}
+        ${statCard('Prochaine facture', displayStat(STATE.billing?.nextDate || null, (()=>{ const _d=new Date(); _d.setMonth(_d.getMonth()+1); return '01/'+String(_d.getMonth()+1).padStart(2,'0')+'/'+_d.getFullYear(); })()), STATE.billing?.nextDate ? 'prochaine échéance' : PREVIEW_MODE ? 'dans 23 jours' : 'Voir facturation', 'neutral')}
         ${statCard('Sans engagement', 'Mensuel', 'résiliation à tout moment', 'up')}
       </div>
 

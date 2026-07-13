@@ -182,9 +182,9 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
               await client.query(
                 `INSERT INTO ai_credit_purchases
                    (id, org_id, pack, credits, amount_eur_cents, stripe_session_id, stripe_payment_intent)
-                 VALUES ($1, 'default', $2, $3, $4, $5, $6)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
                  ON CONFLICT (id) DO NOTHING`,
-                [purchaseId, pack, credits, amountEurCents, sessionId, paymentIntent]
+                [purchaseId, orgId, pack, credits, amountEurCents, sessionId, paymentIntent]
               );
 
             } finally {

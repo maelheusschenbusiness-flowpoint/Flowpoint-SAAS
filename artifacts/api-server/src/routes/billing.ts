@@ -296,7 +296,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
     }
 
     // Persist addon changes to DB so they survive server restart
-    const orgId = "default";
+    const orgId = orgIdVerify;
     upsertOrgSettings(orgId, {
       plan: store.me.plan,
       firstName: store.me.firstName,

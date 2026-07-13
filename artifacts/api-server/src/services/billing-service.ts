@@ -145,8 +145,7 @@ export async function getMRRData(orgId = "default") {
 
     const me = store.me;
     const plan = (me.plan || "standard").toLowerCase();
-    const PLAN_PRICES: Record<string, number> = { standard: 29, pro: 79, ultra: 149 };
-    const currentMRR = PLAN_PRICES[plan] || 0;
+    const currentMRR = PLAN_DEFINITIONS[plan]?.priceEur ?? 0;
 
     return {
       currentMRR,
@@ -162,8 +161,7 @@ export async function getMRRData(orgId = "default") {
   } catch {
     const me = store.me;
     const plan = (me.plan || "standard").toLowerCase();
-    const PLAN_PRICES: Record<string, number> = { standard: 29, pro: 79, ultra: 149 };
-    const currentMRR = PLAN_PRICES[plan] || 0;
+    const currentMRR = PLAN_DEFINITIONS[plan]?.priceEur ?? 0;
     return { currentMRR, arr: currentMRR * 12, history: [] };
   } finally {
     client.release();
