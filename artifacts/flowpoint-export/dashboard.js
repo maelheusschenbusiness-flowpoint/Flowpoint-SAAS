@@ -14287,6 +14287,20 @@ function bindGlobalEvents() {
       }
     }
   });
+
+  // Back/Forward support — navigateSub uses pushState so browser history
+  // triggers popstate (not hashchange). Read the hash from the new URL,
+  // normalise it, and re-render only when the route actually changed.
+  window.addEventListener('popstate', () => {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    const _n = normalizeRoute(hash, null);
+    if (_n.route !== STATE.route || _n.subRoute !== STATE.subRoute) {
+      STATE.route = _n.route;
+      STATE.subRoute = _n.subRoute;
+      render();
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────

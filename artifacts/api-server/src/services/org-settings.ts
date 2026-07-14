@@ -20,11 +20,18 @@ export interface OrgSettings {
   city: string | null;
   postalCode: string | null;
   country: string | null;
+  region: string | null;
+  phone: string | null;
   latitude: number | null;
   longitude: number | null;
   serviceArea: string[];
   locationConfigured: boolean;
   locationSource: string | null;
+  timezone: string | null;
+  language: string | null;
+  currency: string | null;
+  dateFormat: string | null;
+  timeFormat: string | null;
 }
 
 export async function loadOrgSettings(orgId = "default"): Promise<OrgSettings | null> {
@@ -52,11 +59,18 @@ export async function loadOrgSettings(orgId = "default"): Promise<OrgSettings | 
       city: r.city ?? null,
       postalCode: r.postal_code ?? null,
       country: r.country ?? null,
+      region: r.region ?? null,
+      phone: r.phone ?? null,
       latitude: r.latitude != null ? parseFloat(r.latitude) : null,
       longitude: r.longitude != null ? parseFloat(r.longitude) : null,
       serviceArea: Array.isArray(r.service_area) ? r.service_area : (r.service_area ? JSON.parse(r.service_area) : []),
       locationConfigured: r.location_configured ?? false,
       locationSource: r.location_source ?? null,
+      timezone: r.timezone ?? null,
+      language: r.language ?? null,
+      currency: r.currency ?? null,
+      dateFormat: r.date_format ?? null,
+      timeFormat: r.time_format ?? null,
     };
   } catch (err) {
     logger.debug({ err }, "[org-settings] loadOrgSettings failed");
@@ -107,7 +121,14 @@ export async function upsertOrgSettings(
       [data.city,               "city"],
       [data.postalCode,         "postal_code"],
       [data.country,            "country"],
+      [data.region,             "region"],
+      [data.phone,              "phone"],
       [data.locationSource,     "location_source"],
+      [data.timezone,           "timezone"],
+      [data.language,           "language"],
+      [data.currency,           "currency"],
+      [data.dateFormat,         "date_format"],
+      [data.timeFormat,         "time_format"],
     ];
     for (const [val, col] of textCols) {
       if (val !== undefined && val !== null) {

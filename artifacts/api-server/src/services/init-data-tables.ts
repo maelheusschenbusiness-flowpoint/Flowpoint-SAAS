@@ -369,15 +369,63 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_id_idx ON team_members(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_email_idx ON team_members(org_id, email);`);
 
-    // ── alert_rules — add columns added after initial migration ─────────────
+    // ── alert_rules — CREATE first (idempotent), then ensure columns ─────────
+    // Without CREATE TABLE, ALTER TABLE on a fresh DB logs a non-fatal warn but
+    // the table never gets created, so INSERT → 500 ("relation does not exist").
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS alert_rules (
+        id           TEXT        PRIMARY KEY,
+        org_id       TEXT        NOT NULL DEFAULT 'default',
+        name         TEXT        NOT NULL DEFAULT '',
+        type         TEXT        NOT NULL DEFAULT 'seo_score',
+        operator     TEXT        NOT NULL DEFAULT 'lt',
+        threshold    REAL        NOT NULL DEFAULT 0,
+        duration_min INTEGER     NOT NULL DEFAULT 0,
+        channels     JSONB       NOT NULL DEFAULT '["email"]',
+        site_urls    JSONB       NOT NULL DEFAULT '[]',
+        enabled      BOOLEAN     NOT NULL DEFAULT true,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
     await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS org_id        TEXT    NOT NULL DEFAULT 'default';`);
     await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS operator      TEXT    NOT NULL DEFAULT 'lt';`);
     await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS duration_min  INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS site_urls     JSONB   NOT NULL DEFAULT '[]';`);
+    await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS enabled       BOOLEAN NOT NULL DEFAULT true;`);
+    await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `CREATE INDEX IF NOT EXISTS alert_rules_org_id_idx ON alert_rules(org_id);`);
 
-    // ── team_members — add org_id column for multi-tenant isolation ──────────
-    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    // ── team_members — add org_id + invite tracking columns ──────────────────
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS org_id     TEXT        NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS status     TEXT        NOT NULL DEFAULT 'invited';`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_by TEXT        NOT NULL DEFAULT '';`);
+    // Drop the global UNIQUE(email) constraint (if it exists from the old schema)
+    // and replace with a per-org UNIQUE(org_id, email) so the same email can be
+    // invited to multiple organisations.
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'team_members_email_key'
+            AND conrelid = 'team_members'::regclass
+        ) THEN
+          ALTER TABLE team_members DROP CONSTRAINT team_members_email_key;
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'team_members_org_email_key'
+        ) THEN
+          ALTER TABLE team_members
+            ADD CONSTRAINT team_members_org_email_key UNIQUE (org_id, email);
+        END IF;
+      END $$;
+    `);
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_idx ON team_members(org_id, email);`);
 
     // ── org_settings — columns that may be missing in older DBs ─────────────
@@ -387,6 +435,15 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS stripe_customer_id  TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS addons              JSONB NOT NULL DEFAULT '{}';`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS usage               JSONB NOT NULL DEFAULT '{}';`);
+    // Locale / timezone columns
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS timezone    TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS language    TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS currency    TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS date_format TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS time_format TEXT;`);
+    // Location extended
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS region      TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS phone       TEXT;`);
 
     logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages ready");
   } catch (err) {

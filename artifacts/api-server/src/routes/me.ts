@@ -52,11 +52,18 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         limits,
         publicApiKey:       `fp_pub_${_pkHash}`,
         createdAt:          dbData.createdAt ?? new Date().toISOString(),
+        timezone:  dbData.timezone  ?? null,
+        language:  dbData.language  ?? null,
+        currency:  dbData.currency  ?? null,
+        dateFormat: dbData.dateFormat ?? null,
+        timeFormat: dbData.timeFormat ?? null,
         location: {
           address:            dbData.address            ?? null,
           city:               dbData.city               ?? null,
           postalCode:         dbData.postalCode         ?? null,
           country:            dbData.country            ?? null,
+          region:             dbData.region             ?? null,
+          phone:              dbData.phone              ?? null,
           latitude:           dbData.latitude           ?? null,
           longitude:          dbData.longitude          ?? null,
           serviceArea:        dbData.serviceArea        ?? [],
@@ -84,10 +91,13 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   const {
     firstName, lastName, orgName,
     website, timezone, address, city, postalCode, country,
+    region, phone, language, currency, dateFormat, timeFormat,
   } = req.body as {
     firstName?:  string; lastName?:   string; orgName?:    string;
     website?:    string; timezone?:   string; address?:    string;
     city?:       string; postalCode?: string; country?:    string;
+    region?:     string; phone?:      string; language?:   string;
+    currency?:   string; dateFormat?: string; timeFormat?: string;
   };
 
   // Load current org data from DB (isolated per org)
@@ -96,23 +106,17 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   // If no row yet, seed with defaults so upsert has a base
   const toSave: Parameters<typeof upsertOrgSettings>[1] = {};
 
-  if (typeof firstName === "string" && firstName.trim()) toSave.firstName = firstName.trim();
-  if (typeof lastName  === "string") toSave.lastName  = lastName.trim();
-  if (typeof orgName   === "string" && orgName.trim()) toSave.orgName   = orgName.trim();
-  if (typeof website   === "string") toSave.website   = website.trim();
-  if (typeof timezone  === "string" && timezone.trim()) {
-    // Persist timezone to user_prefs as well (for non-org-settings consumers)
-    try {
-      await orgDb(req)(
-        `INSERT INTO user_prefs (org_id, settings, updated_at)
-         VALUES ($1, $2::jsonb, now())
-         ON CONFLICT (org_id) DO UPDATE
-           SET settings = COALESCE(user_prefs.settings, '{}'::jsonb) || $2::jsonb,
-               updated_at = now()`,
-        [orgId, JSON.stringify({ timezone: timezone.trim() })]
-      );
-    } catch { /* non-fatal */ }
-  }
+  if (typeof firstName  === "string" && firstName.trim())  toSave.firstName  = firstName.trim();
+  if (typeof lastName   === "string")                       toSave.lastName   = lastName.trim();
+  if (typeof orgName    === "string" && orgName.trim())    toSave.orgName    = orgName.trim();
+  if (typeof website    === "string")                       toSave.website    = website.trim();
+  if (typeof timezone   === "string" && timezone.trim())   toSave.timezone   = timezone.trim();
+  if (typeof language   === "string" && language.trim())   toSave.language   = language.trim();
+  if (typeof currency   === "string" && currency.trim())   toSave.currency   = currency.trim();
+  if (typeof dateFormat === "string" && dateFormat.trim()) toSave.dateFormat = dateFormat.trim();
+  if (typeof timeFormat === "string" && timeFormat.trim()) toSave.timeFormat = timeFormat.trim();
+  if (typeof phone      === "string")                       toSave.phone      = phone.trim();
+  if (typeof region     === "string")                       toSave.region     = region.trim();
   if (typeof address    === "string") {
     toSave.address    = address.trim();
     if (address.trim()) toSave.locationConfigured = true;
@@ -157,11 +161,18 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     limits,
     publicApiKey:       `fp_pub_${_pkHash}`,
     createdAt:          current?.createdAt ?? new Date().toISOString(),
+    timezone:           current?.timezone  ?? null,
+    language:           current?.language  ?? null,
+    currency:           current?.currency  ?? null,
+    dateFormat:         current?.dateFormat ?? null,
+    timeFormat:         current?.timeFormat ?? null,
     location: {
       address:            current?.address            ?? null,
       city:               current?.city               ?? null,
       postalCode:         current?.postalCode         ?? null,
       country:            current?.country            ?? null,
+      region:             current?.region             ?? null,
+      phone:              current?.phone              ?? null,
       latitude:           current?.latitude           ?? null,
       longitude:          current?.longitude          ?? null,
       serviceArea:        current?.serviceArea        ?? [],

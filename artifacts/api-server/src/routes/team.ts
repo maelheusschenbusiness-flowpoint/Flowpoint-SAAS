@@ -46,14 +46,32 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   const name = email.split("@")[0] || "Invité";
   const memberRole = (role || "viewer").toLowerCase();
   const joined = new Date().toISOString().slice(0, 10);
+  const invitedBy = (req as OrgReq).orgId ?? "";
   try {
     const r = await (req as OrgReq).orgDb(
-      `INSERT INTO team_members (id, org_id, name, email, role, joined, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,NOW()) RETURNING *`,
-      [id, org, name, email, memberRole, joined]
+      `INSERT INTO team_members (id, org_id, name, email, role, joined, status, invited_at, invited_by, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'invited',NOW(),$7,NOW())
+       RETURNING *`,
+      [id, org, name, email, memberRole, joined, invitedBy]
     );
     const m = r.rows[0];
-    res.status(201).json({ ok: true, member: { id: m.id, name: m.name, email: m.email, role: m.role, joined: m.joined }, invited: true });
+    if (!m) {
+      res.status(500).json({ error: "Insert succeeded but returned no row" });
+      return;
+    }
+    res.status(201).json({
+      ok: true,
+      member: {
+        id:        m.id,
+        name:      m.name,
+        email:     m.email,
+        role:      m.role,
+        status:    m.status ?? "invited",
+        invitedAt: m.invited_at ?? joined,
+        joined:    m.joined,
+      },
+      invited: true,
+    });
 
     // Fire-and-forget: invitation email
     const { mailer } = await import("../services/mailer.js");
@@ -66,7 +84,13 @@ router.post("/team/invite", async (req: Request, res: Response) => {
       role: memberRole,
       inviteUrl: `${publicUrl}/login.html?invite=${encodeURIComponent(id)}&email=${encodeURIComponent(email)}`,
     }).catch(() => {});
-  } catch (err) {
+  } catch (err: unknown) {
+    // PostgreSQL 23505 = unique_violation — treat as 409 (duplicate)
+    const pgCode = (err as { code?: string }).code;
+    if (pgCode === "23505") {
+      res.status(409).json({ error: "Ce membre est déjà dans l'équipe" });
+      return;
+    }
     res.status(500).json({ error: "Failed to invite member" });
   }
 });

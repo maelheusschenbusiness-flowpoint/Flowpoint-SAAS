@@ -240,23 +240,37 @@ router.get("/location", async (req: Request, res: Response): Promise<void> => {
     city:               s?.city               ?? null,
     postalCode:         s?.postalCode         ?? null,
     country:            s?.country            ?? null,
+    region:             s?.region             ?? null,
+    phone:              s?.phone              ?? null,
     latitude:           s?.latitude           ?? null,
     longitude:          s?.longitude          ?? null,
     serviceArea:        s?.serviceArea        ?? [],
     locationConfigured: s?.locationConfigured ?? false,
     locationSource:     s?.locationSource     ?? null,
-    timezone:           null,
-    language:           null,
-    currency:           null,
+    timezone:           s?.timezone           ?? null,
+    language:           s?.language           ?? null,
+    currency:           s?.currency           ?? null,
+    dateFormat:         s?.dateFormat         ?? null,
+    timeFormat:         s?.timeFormat         ?? null,
   });
 });
 
 // ── PATCH /api/location — save location/locale prefs ─────────────────────────
 router.patch("/location", async (req: Request, res: Response): Promise<void> => {
   const orgId = req.orgContext?.orgId ?? "default";
-  const { address, city, postalCode, country, latitude, longitude, serviceArea, locationSource } = req.body as {
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ ok: false, error: "Unauthorized" }); return;
+  }
+  const {
+    address, city, postalCode, country, region, phone,
+    latitude, longitude, serviceArea, locationSource,
+    timezone, language, currency, dateFormat, timeFormat,
+  } = req.body as {
     address?: string; city?: string; postalCode?: string; country?: string;
+    region?: string; phone?: string;
     latitude?: number; longitude?: number; serviceArea?: string[]; locationSource?: string;
+    timezone?: string; language?: string; currency?: string;
+    dateFormat?: string; timeFormat?: string;
   };
   try {
     const toSave: Parameters<typeof upsertOrgSettings>[1] = {};
@@ -264,12 +278,40 @@ router.patch("/location", async (req: Request, res: Response): Promise<void> => 
     if (city       !== undefined) { toSave.city = city; if (city) toSave.locationConfigured = true; }
     if (postalCode !== undefined) toSave.postalCode = postalCode;
     if (country    !== undefined) toSave.country    = country;
+    if (region     !== undefined) toSave.region     = region;
+    if (phone      !== undefined) toSave.phone      = phone;
     if (latitude   !== undefined) toSave.latitude   = Number(latitude);
     if (longitude  !== undefined) toSave.longitude  = Number(longitude);
     if (serviceArea !== undefined) toSave.serviceArea = serviceArea;
     if (locationSource !== undefined) toSave.locationSource = locationSource;
-    const updated = await upsertOrgSettings(orgId, toSave);
-    res.json({ ok: true, location: updated });
+    if (timezone   !== undefined) toSave.timezone   = timezone;
+    if (language   !== undefined) toSave.language   = language;
+    if (currency   !== undefined) toSave.currency   = currency;
+    if (dateFormat !== undefined) toSave.dateFormat = dateFormat;
+    if (timeFormat !== undefined) toSave.timeFormat = timeFormat;
+    await upsertOrgSettings(orgId, toSave);
+    const updated = await loadOrgSettings(orgId);
+    res.json({
+      ok: true,
+      location: {
+        address:            updated?.address            ?? null,
+        city:               updated?.city               ?? null,
+        postalCode:         updated?.postalCode         ?? null,
+        country:            updated?.country            ?? null,
+        region:             updated?.region             ?? null,
+        phone:              updated?.phone              ?? null,
+        latitude:           updated?.latitude           ?? null,
+        longitude:          updated?.longitude          ?? null,
+        serviceArea:        updated?.serviceArea        ?? [],
+        locationConfigured: updated?.locationConfigured ?? false,
+        locationSource:     updated?.locationSource     ?? null,
+        timezone:           updated?.timezone           ?? null,
+        language:           updated?.language           ?? null,
+        currency:           updated?.currency           ?? null,
+        dateFormat:         updated?.dateFormat         ?? null,
+        timeFormat:         updated?.timeFormat         ?? null,
+      },
+    });
   } catch (err) {
     logger.error({ err }, "[location] PATCH /location failed");
     res.status(500).json({ ok: false, error: "Failed to save location" });
