@@ -230,3 +230,48 @@ router.post("/org/location/sync-gbp", async (req: Request, res: Response): Promi
 });
 
 export default router;
+
+// ── GET /api/location — alias for /api/org/location ─────────────────────────
+router.get("/location", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgContext?.orgId ?? "default";
+  const s = await loadOrgSettings(orgId).catch(() => null);
+  res.json({
+    address:            s?.address            ?? null,
+    city:               s?.city               ?? null,
+    postalCode:         s?.postalCode         ?? null,
+    country:            s?.country            ?? null,
+    latitude:           s?.latitude           ?? null,
+    longitude:          s?.longitude          ?? null,
+    serviceArea:        s?.serviceArea        ?? [],
+    locationConfigured: s?.locationConfigured ?? false,
+    locationSource:     s?.locationSource     ?? null,
+    timezone:           null,
+    language:           null,
+    currency:           null,
+  });
+});
+
+// ── PATCH /api/location — save location/locale prefs ─────────────────────────
+router.patch("/location", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.orgContext?.orgId ?? "default";
+  const { address, city, postalCode, country, latitude, longitude, serviceArea, locationSource } = req.body as {
+    address?: string; city?: string; postalCode?: string; country?: string;
+    latitude?: number; longitude?: number; serviceArea?: string[]; locationSource?: string;
+  };
+  try {
+    const toSave: Parameters<typeof upsertOrgSettings>[1] = {};
+    if (address    !== undefined) toSave.address    = address;
+    if (city       !== undefined) { toSave.city = city; if (city) toSave.locationConfigured = true; }
+    if (postalCode !== undefined) toSave.postalCode = postalCode;
+    if (country    !== undefined) toSave.country    = country;
+    if (latitude   !== undefined) toSave.latitude   = Number(latitude);
+    if (longitude  !== undefined) toSave.longitude  = Number(longitude);
+    if (serviceArea !== undefined) toSave.serviceArea = serviceArea;
+    if (locationSource !== undefined) toSave.locationSource = locationSource;
+    const updated = await upsertOrgSettings(orgId, toSave);
+    res.json({ ok: true, location: updated });
+  } catch (err) {
+    logger.error({ err }, "[location] PATCH /location failed");
+    res.status(500).json({ ok: false, error: "Failed to save location" });
+  }
+});

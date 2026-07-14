@@ -369,6 +369,25 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_id_idx ON team_members(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_email_idx ON team_members(org_id, email);`);
 
+    // ── alert_rules — add columns added after initial migration ─────────────
+    await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS org_id        TEXT    NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS operator      TEXT    NOT NULL DEFAULT 'lt';`);
+    await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS duration_min  INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS site_urls     JSONB   NOT NULL DEFAULT '[]';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS alert_rules_org_id_idx ON alert_rules(org_id);`);
+
+    // ── team_members — add org_id column for multi-tenant isolation ──────────
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_idx ON team_members(org_id, email);`);
+
+    // ── org_settings — columns that may be missing in older DBs ─────────────
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS last_name           TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS org_name            TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS website             TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS stripe_customer_id  TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS addons              JSONB NOT NULL DEFAULT '{}';`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS usage               JSONB NOT NULL DEFAULT '{}';`);
+
     logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");

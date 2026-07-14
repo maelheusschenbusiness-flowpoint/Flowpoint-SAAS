@@ -194,7 +194,19 @@ router.patch("/ai/config", async (req: Request, res: Response): Promise<void> =>
 });
 
 router.get("/ai/preferences", async (req: Request, res: Response): Promise<void> => {
-  res.redirect(302, "/api/ai/config");
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const settings = r.rows[0]?.settings ?? {};
+    res.json({
+      aiModules:   (settings as Record<string, unknown>).aiModules   ?? {},
+      aiIntensity: (settings as Record<string, unknown>).aiIntensity ?? 'Équilibré',
+      provider:    'openai',
+    });
+  } catch {
+    res.json({ aiModules: {}, aiIntensity: 'Équilibré', provider: 'openai' });
+  }
 });
 
 export default router;

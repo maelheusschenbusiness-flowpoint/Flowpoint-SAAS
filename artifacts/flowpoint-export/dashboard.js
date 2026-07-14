@@ -7008,7 +7008,7 @@ function renderTeam() {
         : STATE.team && STATE.team.length === 1
           ? "Vous êtes seul dans l'espace de travail. Invitez un collaborateur pour déléguer les audits et rapports — gain estimé : <strong>3h/semaine</strong>."
           : "Configurez votre équipe pour déléguer audits, rapports et monitoring. Commencez par inviter un collaborateur.",
-      ['Inviter un membre', 'Configurer les permissions', 'Voir les tâches']
+      ['IA : Inviter un membre', 'IA : Configurer les permissions', 'IA : Voir les tâches']
     )}
 
     <!-- TEAM STATS -->
@@ -8521,7 +8521,7 @@ function renderSettings() {
     return `
       ${aiBlock(
         "Workspace configuré et en bonne santé. <strong>Branding white-label actif</strong> — logo et couleurs personnalisés détectés. Recommandation : activer le domaine personnalisé pour une expérience client premium.",
-        ['Configurer le domaine', 'Optimiser le branding', 'Sauvegarder le workspace']
+        ['Configurer le domaine', 'Optimiser le branding', 'IA : Sauvegarder']
       )}
 
       <div class="fp-grid-2 fp-mb-20">
@@ -8767,7 +8767,7 @@ function renderSettings() {
             : ' Recommandation : créer un rôle personnalisé «Rapporteur» pour les utilisateurs qui génèrent uniquement des rapports.';
           return _tm.length + ' membre' + (_tm.length > 1 ? 's' : '') + ' actif' + (_tm.length > 1 ? 's' : '') + '.' + _billingWarn;
         })(),
-        ['Créer un rôle custom', 'Auditer les permissions', 'Inviter un membre']
+        ['Créer un rôle custom', 'Auditer les permissions', 'IA : Inviter un membre']
       )}
 
       <div class="fp-stat-row fp-mb-20">
@@ -9584,7 +9584,7 @@ function renderSettings() {
         totalConnected > 0
           ? `${totalConnected} intégration${totalConnected>1?'s':''} active${totalConnected>1?'s':''}. Taux de succès : <strong>${stats.successRate||100}%</strong>. ${stats.recentErrors>0?'<strong>'+stats.recentErrors+' erreur(s)</strong> dans les 24h — vérifiez les logs de livraison.':'Toutes les livraisons sont nominales.'}`
           : 'Connectez Zapier ou Make pour automatiser vos workflows SEO. Ou créez un webhook personnalisé pour notifier vos outils en temps réel.',
-        ['Connecter Zapier', 'Configurer Slack', 'Voir les templates']
+        ['IA : Connecter Zapier', 'IA : Configurer Slack', 'Voir les templates']
       )}
 
       <!-- TABS -->
@@ -11941,9 +11941,9 @@ function navigateSub(sub) {
   try {
     const _base = STATE.route || '';
     if (_base && sub) {
-      history.replaceState(null,'', location.pathname + location.search + '#' + _base + '/' + sub);
+      history.pushState(null,'', location.pathname + location.search + '#' + _base + '/' + sub);
     } else if (_base) {
-      history.replaceState(null,'', location.pathname + location.search + '#' + _base);
+      history.pushState(null,'', location.pathname + location.search + '#' + _base);
     }
   } catch(_) {}
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
@@ -13731,7 +13731,6 @@ function bindSectionEvents() {
       });
 
       // [data-apply-template] now handled by global fpApplyAlertTemplate() function
-      });
     }
 
     const syncColorHex = (pickerId, hexId) => {
@@ -14506,11 +14505,11 @@ async function init() {
         navigateSub('alerts');
       } else {
         if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
-        showToast('error', (rule && rule.error) ? rule.error : 'Erreur lors de l'activation');
+        showToast('error', (rule && rule.error) ? rule.error : 'Erreur lors de l\'activation');
       }
     } catch(e) {
       if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
-      showToast('error', 'Erreur lors de l'activation du template');
+      showToast('error', 'Erreur lors de l\'activation du template');
     }
   };
   window.escHtml = escHtml;
