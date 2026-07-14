@@ -353,6 +353,22 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS org_settings_trial_ends_at_idx ON org_settings(trial_ends_at) WHERE trial_ends_at IS NOT NULL;`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_settings_sub_status_idx    ON org_settings(subscription_status);`);
 
+    // ── team_members — self-healing creation ──────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS team_members (
+        id          TEXT        NOT NULL DEFAULT '',
+        org_id      TEXT        NOT NULL DEFAULT 'default',
+        name        TEXT        NOT NULL DEFAULT '',
+        email       TEXT        NOT NULL DEFAULT '',
+        role        TEXT        NOT NULL DEFAULT 'viewer',
+        joined      TEXT        NOT NULL DEFAULT '',
+        created_at  TIMESTAMP   NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (id)
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_id_idx ON team_members(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_members_email_idx ON team_members(org_id, email);`);
+
     logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");

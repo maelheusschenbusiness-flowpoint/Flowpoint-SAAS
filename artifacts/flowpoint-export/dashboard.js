@@ -8462,7 +8462,7 @@ function renderAlertRules() {
               </div>
               ${alreadyExists
                 ? `<span style="font-size:10px;color:var(--fp-success);font-weight:600">✓ Activée</span>`
-                : `<button class="fp-btn fp-btn-ghost fp-btn-sm" data-apply-template="${i}" style="font-size:11px">Activer</button>`
+                : `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="fpApplyAlertTemplate(${i},this)" style="font-size:11px">Activer</button>`
               }
             </div>
           `;
@@ -11938,6 +11938,14 @@ function navigate(route, subRoute) {
 function navigateSub(sub) {
   STATE.subRoute = sub;
   try { localStorage.setItem('fp:last-sub', sub || ''); } catch(e) {}
+  try {
+    const _base = STATE.route || '';
+    if (_base && sub) {
+      history.replaceState(null,'', location.pathname + location.search + '#' + _base + '/' + sub);
+    } else if (_base) {
+      history.replaceState(null,'', location.pathname + location.search + '#' + _base);
+    }
+  } catch(_) {}
   if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
   _doRender();
   const _p = document.getElementById('fp-page'); if (_p) _p.scrollTo({ top: 0, behavior: 'instant' });
@@ -13722,32 +13730,7 @@ function bindSectionEvents() {
         navigateSub('alerts');
       });
 
-      $$('[data-apply-template]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const idx = parseInt(btn.dataset.applyTemplate, 10);
-          const t = TEMPLATES[idx];
-          if (!t) return;
-          try {
-            btn.disabled = true;
-            btn.textContent = 'Activation…';
-            const rule = await apiAction('POST', '/api/alert-rules', t);
-            if (rule && !rule.error) {
-              STATE.alertRules = STATE.alertRules || [];
-              STATE.alertRules.push(rule);
-              localStorage.setItem('fp:alert-templates-first-access', 'done');
-              showToast('success', `Template "${t.name}" activé !`);
-              navigateSub('alerts');
-            } else {
-              btn.disabled = false;
-              btn.textContent = 'Activer';
-              showToast('error', (rule && rule.error) ? rule.error : 'Erreur lors de l\'activation du template');
-            }
-          } catch(e) {
-            btn.disabled = false;
-            btn.textContent = 'Activer';
-            showToast('error', 'Erreur lors de l\'activation du template');
-          }
-        });
+      // [data-apply-template] now handled by global fpApplyAlertTemplate() function
       });
     }
 
@@ -14501,6 +14484,35 @@ async function init() {
   window.closeFloatPanel = closeFloatPanel;
   window.navigate = navigate;
   window.navigateSub = navigateSub;
+  window.renderInvitePanel = renderInvitePanel;
+  window.fpApplyAlertTemplate = async function(idx, btn) {
+    const TMPL = [
+      { name: 'Monitor DOWN', type: 'monitor_down', operator: 'eq', threshold: 1, durationMin: 0, channels: ['email'], siteUrls: [] },
+      { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
+      { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
+      { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
+      { name: 'Uptime faible (< 98%)', type: 'uptime', operator: 'lt', threshold: 98, durationMin: 10, channels: ['email', 'sms'], siteUrls: [] },
+    ];
+    const t = TMPL[idx];
+    if (!t) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Activation…'; }
+    try {
+      const rule = await apiAction('POST', '/api/alert-rules', t);
+      if (rule && !rule.error) {
+        STATE.alertRules = STATE.alertRules || [];
+        STATE.alertRules.push(rule);
+        localStorage.setItem('fp:alert-templates-first-access', 'done');
+        showToast('success', 'Template "' + t.name + '" activé !');
+        navigateSub('alerts');
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
+        showToast('error', (rule && rule.error) ? rule.error : 'Erreur lors de l'activation');
+      }
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Activer'; }
+      showToast('error', 'Erreur lors de l'activation du template');
+    }
+  };
   window.escHtml = escHtml;
   window.applyThemeChoice = applyThemeChoice;
   window.saveSettings = saveSettings;

@@ -65,7 +65,16 @@ publicSsoRouter.get("/sso/saml/:orgId/init", (_req, res) => {
 // ── Protected SSO router (auth required) ──────────────────────────────────────
 const router = Router();
 const org  = (req: import("express").Request) => req.orgId ?? "default";
-const plan = (req: import("express").Request) => ((req as unknown as { me?: { plan?: string } }).me?.plan ?? "Pro");
+// Resolve plan from org DB (org-isolated); never falls back to a foreign org's data
+async function getPlan(req: import("express").Request): Promise<string> {
+  try {
+    const { loadOrgSettings } = await import("../services/org-settings.js");
+    const orgId = (req as unknown as { orgId?: string }).orgId ?? "default";
+    const settings = await loadOrgSettings(orgId);
+    if (settings?.plan) return settings.plan.charAt(0).toUpperCase() + settings.plan.slice(1).toLowerCase();
+  } catch { /* fallback */ }
+  return "Standard";
+}
 
 // ── SAML provider types that are NOT yet production-ready ─────────────────────
 // TODO: Implement full SAML 2.0 flow (AuthnRequest, ACS, SAMLResponse parsing)
@@ -75,9 +84,9 @@ const SAML_ROADMAP_PROVIDERS = new Set(['saml', 'okta', 'azure_ad', 'onelogin', 
 router.get("/sso", requireAdmin, async (req, res) => {
   try {
     const data = await getSSODashboard(org(req));
-    res.json({ ...data, providers_catalog: SSO_PROVIDER_TYPES, plan: plan(req) });
+    res.json({ ...data, providers_catalog: SSO_PROVIDER_TYPES, plan: await getPlan(req) });
   } catch {
-    res.json({ providers: [], auth_config: null, login_audits: [], providers_catalog: SSO_PROVIDER_TYPES, plan: plan(req) });
+    res.json({ providers: [], auth_config: null, login_audits: [], providers_catalog: SSO_PROVIDER_TYPES, plan: await getPlan(req) });
   }
 });
 
@@ -112,7 +121,7 @@ router.post("/sso/providers", requireAdmin, async (req, res) => {
   }
 
   try {
-    const provider = await createSSOProvider(org(req), plan(req), { providerType, name, domain, clientId, clientSecret, metadataUrl, ssoUrl, scopes, autoProvision, defaultRoleId });
+    const provider = await createSSOProvider(org(req), await getPlan(req), { providerType, name, domain, clientId, clientSecret, metadataUrl, ssoUrl, scopes, autoProvision, defaultRoleId });
     res.status(201).json({ ok: true, provider });
   } catch (err) {
     const msg = safeErrMsg(err);

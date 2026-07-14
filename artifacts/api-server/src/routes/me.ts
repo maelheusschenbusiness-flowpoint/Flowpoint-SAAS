@@ -13,6 +13,12 @@ type OrgReq = Request & {
 };
 const orgDb = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
+// Helper: normalize plan to Title Case
+function normPlan(p: string | null | undefined): string {
+  if (!p) return "Standard";
+  return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+}
+
 // ── GET /api/me ───────────────────────────────────────────────────────────────
 router.get("/me", async (req: Request, res: Response): Promise<void> => {
   res.setHeader("Cache-Control", "no-store, no-cache");
@@ -35,7 +41,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         firstName,
         lastName:           dbData.lastName ?? "",
         email:              req.orgContext?.email ?? "",
-        plan:               dbData.plan ? dbData.plan.charAt(0).toUpperCase() + dbData.plan.slice(1).toLowerCase() : 'Standard',
+        plan:               normPlan(dbData.plan),
         role:               req.orgContext?.role ?? "owner",
         org:                { name: dbData.orgName, website: dbData.website ?? "" },
         subscriptionStatus: dbData.subscriptionStatus,
@@ -65,31 +71,37 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   }
 
   const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
-  const _planNorm = store.me.plan ? store.me.plan.charAt(0).toUpperCase() + store.me.plan.slice(1).toLowerCase() : 'Standard';
-  res.json({ ...store.me, plan: _planNorm, email: req.orgContext?.email ?? "", lastName: "", limits });
+  res.json({ ...store.me, plan: normPlan(store.me.plan), email: req.orgContext?.email ?? "", lastName: "", limits });
 });
 
 // ── PATCH /api/me ─────────────────────────────────────────────────────────────
+// Fully org-isolated: reads from DB, applies only provided fields, returns DB-confirmed data.
+// Never reads from store.me (global singleton) to prevent multi-tenant leaks.
 router.patch("/me", async (req: Request, res: Response): Promise<void> => {
-  const {
-    firstName, lastName, orgName, plan,
-    website, timezone, address, city, postalCode, country,
-  } = req.body as {
-    firstName?:  string; lastName?:   string; orgName?:    string; plan?:       string;
-    website?:    string; timezone?:   string; address?:    string;
-    city?:       string; postalCode?: string; country?:    string;
-  };
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
 
-  if (typeof firstName === "string" && firstName.trim()) store.me.firstName = firstName.trim();
-  if (typeof lastName  === "string") store.me.lastName = lastName.trim();
-  if (typeof orgName   === "string" && orgName.trim()) store.me.org = { ...store.me.org, name: orgName.trim() };
-  if (typeof website   === "string") store.me.org = { ...store.me.org, website: website.trim() };
+  const {
+    firstName, lastName, orgName,
+    website, timezone, address, city, postalCode, country,
+  } = req.body as {
+    firstName?:  string; lastName?:   string; orgName?:    string;
+    website?:    string; timezone?:   string; address?:    string;
+    city?:       string; postalCode?: string; country?:    string;
+  };
+
+  // Load current org data from DB (isolated per org)
+  let current = await loadOrgSettings(orgId);
+
+  // If no row yet, seed with defaults so upsert has a base
+  const toSave: Parameters<typeof upsertOrgSettings>[1] = {};
+
+  if (typeof firstName === "string" && firstName.trim()) toSave.firstName = firstName.trim();
+  if (typeof lastName  === "string") toSave.lastName  = lastName.trim();
+  if (typeof orgName   === "string" && orgName.trim()) toSave.orgName   = orgName.trim();
+  if (typeof website   === "string") toSave.website   = website.trim();
   if (typeof timezone  === "string" && timezone.trim()) {
-    store.me.org = { ...store.me.org, timezone: timezone.trim() };
-    if (store.settings) store.settings.timezone = timezone.trim();
-    // Persist timezone to user_prefs so it survives server restarts
+    // Persist timezone to user_prefs as well (for non-org-settings consumers)
     try {
       await orgDb(req)(
         `INSERT INTO user_prefs (org_id, settings, updated_at)
@@ -101,35 +113,62 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
       );
     } catch { /* non-fatal */ }
   }
-  if (typeof plan === "string" && ["standard", "pro", "ultra"].includes(plan.toLowerCase())) {
-    store.broadcastPlanUpdate(plan.toLowerCase(), orgId);
+  if (typeof address    === "string") {
+    toSave.address    = address.trim();
+    if (address.trim()) toSave.locationConfigured = true;
+  }
+  if (typeof city       === "string") {
+    toSave.city       = city.trim();
+    if (city.trim()) toSave.locationConfigured = true;
+  }
+  if (typeof postalCode === "string") toSave.postalCode = postalCode.trim();
+  if (typeof country    === "string") toSave.country    = country.trim();
+
+  // Preserve immutable fields from DB (never overwrite plan/billing from this endpoint)
+  if (current) {
+    if (!toSave.firstName && current.firstName)  toSave.firstName = current.firstName;
+    if (!toSave.orgName   && current.orgName)    toSave.orgName   = current.orgName;
   }
 
   try {
-    await upsertOrgSettings(orgId, {
-      firstName:   store.me.firstName,
-      lastName:    typeof lastName === "string" ? lastName.trim() : undefined,
-      orgName:     store.me.org?.name ?? (typeof orgName === "string" ? orgName.trim() : undefined),
-      plan:        store.me.plan,
-      website:     typeof website === "string" ? website.trim() : (store.me.org?.website ?? undefined),
-      address:     typeof address    === "string" ? address.trim()    : undefined,
-      city:        typeof city       === "string" ? city.trim()       : undefined,
-      postalCode:  typeof postalCode === "string" ? postalCode.trim() : undefined,
-      country:     typeof country    === "string" ? country.trim()    : undefined,
-      locationConfigured: (typeof address === "string" && address.trim()) || (typeof city === "string" && city.trim()) ? true : undefined,
-      subscriptionStatus: store.me.subscriptionStatus,
-      trialEndsAt: store.me.trialEndsAt ?? null,
-      stripeCustomerId: store.me.stripeCustomerId ?? "",
-      addons:      store.me.addons,
-      usage:       store.me.usage,
-    });
-  } catch {
-    // Non-fatal
+    current = await upsertOrgSettings(orgId, toSave);
+  } catch (err) {
+    logger.error({ err, orgId }, "[PATCH /api/me] upsertOrgSettings failed");
+    res.status(500).json({ error: "Failed to save profile" });
+    return;
   }
 
-  const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
-  const _planNormPatch = store.me.plan ? store.me.plan.charAt(0).toUpperCase() + store.me.plan.slice(1).toLowerCase() : 'Standard';
-  res.json({ ...store.me, plan: _planNormPatch, limits });
+  const plan   = current?.plan ?? "standard";
+  const limits = PLAN_LIMITS[plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
+  const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
+
+  res.json({
+    firstName:          current?.firstName ?? "",
+    lastName:           current?.lastName  ?? "",
+    email:              req.orgContext?.email ?? "",
+    plan:               normPlan(current?.plan),
+    role:               req.orgContext?.role ?? "owner",
+    org:                { name: current?.orgName ?? "", website: current?.website ?? "" },
+    subscriptionStatus: current?.subscriptionStatus,
+    trialEndsAt:        current?.trialEndsAt,
+    stripeCustomerId:   current?.stripeCustomerId,
+    usage:              current?.usage ?? {},
+    addons:             current?.addons ?? {},
+    limits,
+    publicApiKey:       `fp_pub_${_pkHash}`,
+    createdAt:          current?.createdAt ?? new Date().toISOString(),
+    location: {
+      address:            current?.address            ?? null,
+      city:               current?.city               ?? null,
+      postalCode:         current?.postalCode         ?? null,
+      country:            current?.country            ?? null,
+      latitude:           current?.latitude           ?? null,
+      longitude:          current?.longitude          ?? null,
+      serviceArea:        current?.serviceArea        ?? [],
+      locationConfigured: current?.locationConfigured ?? false,
+      locationSource:     current?.locationSource     ?? null,
+    },
+  });
 });
 
 // ── PUT /api/me/addons ────────────────────────────────────────────────────────
@@ -150,20 +189,14 @@ router.put("/me/addons", async (req: Request, res: Response): Promise<void> => {
 
   try {
     await upsertOrgSettings(orgId, {
-      firstName:   store.me.firstName,
-      orgName:     store.me.org.name,
-      plan:        store.me.plan,
-      subscriptionStatus: store.me.subscriptionStatus,
-      trialEndsAt: store.me.trialEndsAt ?? null,
-      stripeCustomerId: store.me.stripeCustomerId ?? "",
-      addons:      store.me.addons,
-      usage:       store.me.usage,
+      addons: store.me.addons,
     });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to persist addons — try again" }); return;
   }
 
-  const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
+  const current = await loadOrgSettings(orgId);
+  const limits = PLAN_LIMITS[(current?.plan ?? "standard").toLowerCase()] ?? PLAN_LIMITS["standard"];
   res.json({ ok: true, addons: store.me.addons, limits });
 });
 
@@ -215,6 +248,18 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
     res.json({ ok: true });
   } catch {
     res.json({ ok: false });
+  }
+});
+
+// ── /api/me/settings — alias for /api/me/prefs ────────────────────────────────
+router.get("/me/settings", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+  try {
+    const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    res.json(r.rows[0]?.settings ?? {});
+  } catch {
+    res.json({});
   }
 });
 

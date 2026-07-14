@@ -54,6 +54,7 @@ import locationRouter from "./location.js";
 import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
 import plansRouter from "./plans.js";
+import securityRouter from "./security.js";
 
 const router: IRouter = Router();
 
@@ -168,6 +169,7 @@ router.use(gscRouter);
 router.use(betterstackRouter);
 router.use(diagnosticsRouter);
 router.use(locationRouter);
+router.use(securityRouter);
 router.use(growthObjectivesRouter);
 
 export default router;
