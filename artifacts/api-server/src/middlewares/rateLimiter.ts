@@ -8,6 +8,7 @@ import type { Request, Response, NextFunction } from "express";
 import { logger } from "../lib/logger.js";
 import { getRateLimit, type RateLimits } from "../lib/config.js";
 import { store } from "../services/store.js";
+import { loadOrgSettings } from "../services/org-settings.js";
 
 interface Window {
   count: number;
@@ -47,8 +48,14 @@ function getOrgId(req: Request): string {
   return (req as { orgId?: string }).orgId ?? 'default';
 }
 
-function getCurrentPlan(): string {
-  return store.me?.plan ?? 'standard';
+async function getPlanForOrg(orgId: string): Promise<string> {
+  if (orgId === 'default') return (store.me?.plan || 'standard').toLowerCase();
+  try {
+    const data = await loadOrgSettings(orgId);
+    return (data?.plan || store.me?.plan || 'standard').toLowerCase();
+  } catch {
+    return (store.me?.plan || 'standard').toLowerCase();
+  }
 }
 
 /** General API rate limiter (global per org) */
@@ -61,54 +68,66 @@ export function globalRateLimit(req: Request, res: Response, next: NextFunction)
     return;
   }
 
-  const plan = getCurrentPlan();
-  const limit = getRateLimit(plan, 'globalPerMinute');
-  const key = `global:${orgId}`;
-  const { allowed, remaining, resetInMs } = checkRate(key, limit);
+  void (async () => {
+    try {
+      const plan = await getPlanForOrg(orgId);
+      const limit = getRateLimit(plan, 'globalPerMinute');
+      const key = `global:${orgId}`;
+      const { allowed, remaining, resetInMs } = checkRate(key, limit);
 
-  res.setHeader('X-RateLimit-Limit', String(limit));
-  res.setHeader('X-RateLimit-Remaining', String(remaining));
-  res.setHeader('X-RateLimit-Reset', String(Math.ceil(resetInMs / 1000)));
+      res.setHeader('X-RateLimit-Limit', String(limit));
+      res.setHeader('X-RateLimit-Remaining', String(remaining));
+      res.setHeader('X-RateLimit-Reset', String(Math.ceil(resetInMs / 1000)));
 
-  if (!allowed) {
-    logger.warn({ orgId, plan, limit }, '[RateLimit] Global limit exceeded');
-    res.status(429).json({ ok: false, error: 'Rate limit exceeded', code: 'RATE_LIMIT_EXCEEDED', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000) } });
-    return;
-  }
-  next();
+      if (!allowed) {
+        logger.warn({ orgId, plan, limit }, '[RateLimit] Global limit exceeded');
+        res.status(429).json({ ok: false, error: 'Rate limit exceeded', code: 'RATE_LIMIT_EXCEEDED', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000) } });
+        return;
+      }
+      next();
+    } catch { next(); }
+  })();
 }
 
 /** AI endpoint rate limiter */
 export function aiRateLimit(req: Request, res: Response, next: NextFunction): void {
   const orgId = getOrgId(req);
-  const plan = getCurrentPlan();
-  const limit = getRateLimit(plan, 'aiPerMinute');
-  const { allowed, remaining, resetInMs } = checkRate(`ai:${orgId}`, limit);
+  void (async () => {
+    try {
+      const plan = await getPlanForOrg(orgId);
+      const limit = getRateLimit(plan, 'aiPerMinute');
+      const { allowed, remaining, resetInMs } = checkRate(`ai:${orgId}`, limit);
 
-  res.setHeader('X-AI-RateLimit-Remaining', String(remaining));
+      res.setHeader('X-AI-RateLimit-Remaining', String(remaining));
 
-  if (!allowed) {
-    logger.warn({ orgId, plan }, '[RateLimit] AI limit exceeded');
-    res.status(429).json({ ok: false, error: 'AI rate limit exceeded', code: 'AI_RATE_LIMIT', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000), plan, limit } });
-    return;
-  }
-  next();
+      if (!allowed) {
+        logger.warn({ orgId, plan }, '[RateLimit] AI limit exceeded');
+        res.status(429).json({ ok: false, error: 'AI rate limit exceeded', code: 'AI_RATE_LIMIT', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000), plan, limit } });
+        return;
+      }
+      next();
+    } catch { next(); }
+  })();
 }
 
 /** Factory: create a rate limiter for a specific endpoint type */
 export function createRateLimit(bucket: keyof RateLimits): (req: Request, res: Response, next: NextFunction) => void {
   return (req: Request, res: Response, next: NextFunction): void => {
     const orgId = getOrgId(req);
-    const plan = getCurrentPlan();
-    const limit = getRateLimit(plan, bucket);
-    const { allowed, remaining, resetInMs } = checkRate(`${bucket}:${orgId}`, limit);
+    void (async () => {
+      try {
+        const plan = await getPlanForOrg(orgId);
+        const limit = getRateLimit(plan, bucket);
+        const { allowed, remaining, resetInMs } = checkRate(`${bucket}:${orgId}`, limit);
 
-    if (!allowed) {
-      res.status(429).json({ ok: false, error: `Rate limit exceeded for ${bucket}`, code: 'RATE_LIMIT_EXCEEDED', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000), bucket } });
-      return;
-    }
-    res.setHeader(`X-RateLimit-${bucket}`, String(remaining));
-    next();
+        if (!allowed) {
+          res.status(429).json({ ok: false, error: `Rate limit exceeded for ${bucket}`, code: 'RATE_LIMIT_EXCEEDED', details: { retryAfterSeconds: Math.ceil(resetInMs / 1000), bucket } });
+          return;
+        }
+        res.setHeader(`X-RateLimit-${bucket}`, String(remaining));
+        next();
+      } catch { next(); }
+    })();
   };
 }
 

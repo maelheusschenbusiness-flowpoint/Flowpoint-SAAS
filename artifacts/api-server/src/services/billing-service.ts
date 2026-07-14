@@ -1,6 +1,7 @@
 import { pool } from "@workspace/db";
 import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
+import { loadOrgSettings } from "./org-settings.js";
 import { PLAN_DEFINITIONS, PLAN_LIMITS, PLAN_AI_CREDITS, PLAN_PRICE_IDS, ADDON_PRICE_IDS } from "../lib/plans.js";
 
 /* ── Presentation-only fields not in PLAN_DEFINITIONS ── */
@@ -53,7 +54,8 @@ export const ADDON_CATALOG = [
 // ── Usage tracking ────────────────────────────────────────────────────────────
 export async function getUsageSummary(orgId = "default") {
   const me = store.me;
-  const plan = (me.plan || "standard").toLowerCase();
+  const _dbData = await loadOrgSettings(orgId).catch(() => null);
+  const plan = (_dbData?.plan || me.plan || "standard").toLowerCase();
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.standard;
 
   const extraMonitors = (me.addons as Record<string, number>)["monitorsPack50"] || 0;

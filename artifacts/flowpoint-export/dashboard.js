@@ -7295,7 +7295,7 @@ function renderBilling() {
                 ${escHtml(f)}
               </div>`).join('')}
             </div>
-            <button class="fp-btn ${isCurrent ? 'fp-btn-ghost' : 'fp-btn-primary'} fp-btn-sm" style="width:100%;margin-top:auto;${isCurrent ? 'opacity:0.5;cursor:default' : `background:${p.color};border-color:${p.color}`}" ${isCurrent ? '' : `onclick="fpGoToPricing()"`}>
+            <button class="fp-btn ${isCurrent ? 'fp-btn-ghost' : 'fp-btn-primary'} fp-btn-sm" style="width:100%;margin-top:auto;${isCurrent ? 'opacity:0.5;cursor:default' : `background:${p.color};border-color:${p.color}`}" ${isCurrent ? '' : `onclick="fpGoToPricing('${p.id}')"`}>
               ${isCurrent ? 'Plan actuel' : `Passer ${p.name} →`}
             </button>
           </div>`;
@@ -11891,9 +11891,34 @@ function normalizeRoute(route, subRoute) {
   return { route, subRoute: subRoute || null };
 }
 
-function fpGoToPricing() {
-  navigate('billing');
-  setTimeout(() => navigateSub('plans'), 50);
+async function fpGoToPricing(targetPlan) {
+  const plan = (targetPlan || 'pro').toLowerCase();
+  const currentPlan = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
+  if (currentPlan && currentPlan === plan) {
+    showToast('Vous êtes déjà sur le plan ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.', 'info');
+    return;
+  }
+  showToast('Chargement du parcours upgrade…', 'loading');
+  try {
+    const r = await apiFetch('/api/billing/upgrade', { method: 'POST', body: JSON.stringify({ plan }) });
+    if (r && r.url) {
+      window.location.href = r.url;
+      return;
+    }
+    if (r && r.upgraded) {
+      showToast('Plan mis à jour vers ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' !', 'success');
+      if (STATE.billing) STATE.billing.plan = plan;
+      setTimeout(function() { loadBillingState && loadBillingState(); }, 800);
+      return;
+    }
+    if (r && r.error === 'plan_already_active') {
+      showToast('Ce plan est déjà actif.', 'info');
+      return;
+    }
+    showToast((r && (r.message || r.error)) || 'Erreur lors de l\'upgrade.', 'error');
+  } catch (e) {
+    showToast('Erreur réseau lors de l\'upgrade.', 'error');
+  }
 }
 window.fpGoToPricing = fpGoToPricing;
 

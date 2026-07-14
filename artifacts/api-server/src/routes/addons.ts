@@ -1,13 +1,16 @@
 import { Router, type Request, type Response } from "express";
 import { activateAddon, deactivateAddon, getOrgAddons, addExtraAICredits, getQuotaLimits, ADDON_DEFINITIONS } from "../services/addons-service.js";
 import { store } from "../services/store.js";
+import { loadOrgSettings } from "../services/org-settings.js";
 
 const router = Router();
 
-router.get("/addons", async (_req: Request, res: Response) => {
+router.get("/addons", async (req: Request, res: Response) => {
   try {
-    const orgAddons = await getOrgAddons();
-    const plan = store.me.plan?.toLowerCase() ?? "pro";
+    const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
+    const dbData = await loadOrgSettings(orgId).catch(() => null);
+    const plan = (dbData?.plan || store.me.plan || "standard").toLowerCase();
+    const orgAddons = await getOrgAddons(orgId);
     const quotas = getQuotaLimits(plan, store.me.addons as Record<string, boolean | number>);
     res.json({
       addons: store.me.addons,

@@ -129,7 +129,7 @@ export function getQuotaLimits(plan: string, addons: Record<string, boolean | nu
     pro:      { audits: 300,  monitors: 50,  reports: 300,  seats: 5,  retention: 90  },
     ultra:    { audits: 1000, monitors: 300, reports: 1000, seats: 10, retention: 365 },
   };
-  const limits = { ...(base[plan.toLowerCase()] ?? base.pro) };
+  const limits = { ...(base[plan.toLowerCase()] ?? base.standard) };
 
   if (addons.monitorsPack50) limits.monitors += Number(addons.monitorsPack50) * 50;
   if (addons.auditsPack200)  limits.audits   += 200;
