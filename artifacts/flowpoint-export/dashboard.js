@@ -8566,7 +8566,7 @@ function renderSettings() {
               ${f.ultra && !isUltra ? 'disabled title="Disponible avec le plan Ultra"' : `oninput="STATE.settings['${f.k}']=this.value;saveSettings()"`}/>
           </div>`).join('')}
           <div style="display:flex;gap:8px;margin-top:4px">
-            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const body={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim(),timezone:(document.getElementById('prof-tz')?.value||'').trim(),address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim()};const r=await apiAction('PATCH','/api/me',body).catch(()=>null);btn.disabled=false;btn.textContent='Sauvegarder';if(r&&!r.error){if(STATE.me){if(body.firstName)STATE.me.firstName=body.firstName;STATE.me.lastName=body.lastName;if(STATE.me.org){STATE.me.org.name=body.orgName||STATE.me.org.name;STATE.me.org.website=body.website;if(body.timezone)STATE.me.org.timezone=body.timezone;}STATE.me.location=STATE.me.location||{};STATE.me.location.address=body.address;STATE.me.location.city=body.city;STATE.me.location.postalCode=body.postalCode;STATE.me.location.country=body.country;if(body.city||body.address)STATE.me.location.locationConfigured=true;}showToast('success','Profil sauvegard\u00e9 !');render();}else{showToast('error','Erreur de sauvegarde');}})()">Sauvegarder</button>
+            <button class="fp-btn fp-btn-primary fp-btn-sm" id="profile-save-btn" onclick="(async()=>{const btn=document.getElementById('profile-save-btn');btn.disabled=true;btn.textContent='Sauvegarde\u2026';const profilePayload={firstName:(document.getElementById('prof-fname')?.value||'').trim(),lastName:(document.getElementById('prof-lname')?.value||'').trim(),orgName:(document.getElementById('prof-org')?.value||'').trim(),website:(document.getElementById('prof-website')?.value||'').trim(),timezone:(document.getElementById('prof-tz')?.value||'').trim()};const locationPayload={address:(document.getElementById('prof-addr')?.value||'').trim(),city:(document.getElementById('prof-city')?.value||'').trim(),postalCode:(document.getElementById('prof-postal')?.value||'').trim(),country:(document.getElementById('prof-country')?.value||'').trim()};const hasLoc=locationPayload.address||locationPayload.city||locationPayload.postalCode||locationPayload.country;const [rMe,rLoc]=await Promise.all([apiAction('PATCH','/api/me',profilePayload).catch(e=>({_err:true,error:(e&&e.error)||'Erreur profil'})),hasLoc?apiAction('PATCH','/api/location',locationPayload).catch(e=>({_err:true,error:(e&&e.error)||'Erreur localisation'})):Promise.resolve({ok:true})]);btn.disabled=false;btn.textContent='Sauvegarder';if(rMe&&rMe._err){showToast('error',rMe.error||'Erreur profil');return;}if(hasLoc&&rLoc&&rLoc._err){showToast('error',rLoc.error||'Erreur localisation');return;}const [freshMe,freshLoc]=await Promise.all([fetch('/api/me',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null),hasLoc?fetch('/api/location',{credentials:'include'}).then(r=>r.ok?r.json():null).catch(()=>null):Promise.resolve(null)]);if(freshMe&&!freshMe.error){STATE.me=freshMe;}if(freshLoc&&!freshLoc.error){if(!STATE.me)STATE.me={};STATE.me.location=freshLoc;}showToast('success','Profil sauvegard\u00e9 !');render();})()">Sauvegarder</button>
           </div>
         </div>
 
@@ -13556,15 +13556,45 @@ function bindSectionEvents() {
     $('#team-invite-btn')?.addEventListener('click', () => {
       openFloatPanel('Inviter un membre', renderInvitePanel());
       setTimeout(() => {
-        $('#invite-send')?.addEventListener('click', async () => {
-          const email = $('#invite-email')?.value.trim();
-          const role = ($('#invite-role')?.value || 'editor').toLowerCase();
-          if (!email) { showToast('warning','Entrez un email'); return; }
+        const sendBtn = $('#invite-send');
+        if (!sendBtn) return;
+        sendBtn.addEventListener('click', async () => {
+          const email = ($('#invite-email')?.value || '').trim();
+          const role  = ($('#invite-role')?.value  || 'editor').toLowerCase();
+          if (!email) { showToast('warning', 'Entrez un email'); return; }
+          if (sendBtn.disabled) return;
+          sendBtn.disabled = true;
+          sendBtn.textContent = 'Envoi\u2026';
           try {
-            await apiAction('POST', '/api/team/invite', { email, role });
-            showToast('success',`Invitation envoyée à ${escHtml(email)} !`);
-          } catch(e) { showToast('error','Erreur lors de l\'invitation'); return; }
-          closeFloatPanel();
+            const resp = await fetch('/api/team/invite', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ email, role }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Envoyer l\'invitation';
+            if (resp.status === 201 && data.ok) {
+              closeFloatPanel && closeFloatPanel();
+              showToast('success', 'Invitation envoy\u00e9e \u00e0 ' + escHtml(email) + ' !');
+              const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
+              if (t && Array.isArray(t)) { STATE.team = t; render(); }
+            } else if (resp.status === 409) {
+              showToast('warning', 'Une invitation est d\u00e9j\u00e0 en attente pour cette adresse.');
+            } else if (resp.status === 502) {
+              showToast('warning', 'L\'invitation a \u00e9t\u00e9 cr\u00e9\u00e9e, mais l\'e-mail n\'a pas pu \u00eatre envoy\u00e9.');
+              closeFloatPanel && closeFloatPanel();
+              const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
+              if (t && Array.isArray(t)) { STATE.team = t; render(); }
+            } else {
+              showToast('error', data.error || 'Erreur lors de l\'invitation');
+            }
+          } catch (_e) {
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Envoyer l\'invitation';
+            showToast('error', 'Erreur r\u00e9seau \u2014 r\u00e9essayez');
+          }
         });
       }, 50);
     });

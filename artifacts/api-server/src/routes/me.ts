@@ -90,13 +90,19 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
 
   const body = req.body as Record<string, unknown>;
 
-  // Strictly geographic fields belong to PATCH /api/location — never silently ignore them
-  const GEO_FIELDS = ["city", "country", "address", "postalCode", "latitude", "longitude", "serviceArea"] as const;
-  const rejectedGeo = GEO_FIELDS.filter(f => f in body);
-  if (rejectedGeo.length > 0) {
+  // Localisation fields must go to PATCH /api/location — reject explicitly, never silently ignore
+  const LOC_FIELDS = [
+    "city", "country", "address", "postalCode",
+    "latitude", "longitude", "serviceArea", "location",
+    "language", "currency", "dateFormat", "timeFormat",
+    "phone", "region",
+  ] as const;
+  const rejectedLoc = LOC_FIELDS.filter(f => f in body);
+  if (rejectedLoc.length > 0) {
     res.status(400).json({
       error: "Use PATCH /api/location for localisation fields.",
-      fields: rejectedGeo,
+      code:  "LOCATION_ENDPOINT_REQUIRED",
+      fields: rejectedLoc,
     });
     return;
   }
@@ -104,12 +110,9 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   const {
     firstName, lastName, orgName,
     website, timezone,
-    region, phone, language, currency, dateFormat, timeFormat,
   } = body as {
-    firstName?:  string; lastName?:   string; orgName?:    string;
-    website?:    string; timezone?:   string;
-    region?:     string; phone?:      string; language?:   string;
-    currency?:   string; dateFormat?: string; timeFormat?: string;
+    firstName?: string; lastName?:  string; orgName?:  string;
+    website?:   string; timezone?:  string;
   };
 
   // Load current org data from DB (isolated per org)
@@ -118,17 +121,11 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   // If no row yet, seed with defaults so upsert has a base
   const toSave: Parameters<typeof upsertOrgSettings>[1] = {};
 
-  if (typeof firstName  === "string" && firstName.trim())  toSave.firstName  = firstName.trim();
-  if (typeof lastName   === "string")                       toSave.lastName   = lastName.trim();
-  if (typeof orgName    === "string" && orgName.trim())    toSave.orgName    = orgName.trim();
-  if (typeof website    === "string")                       toSave.website    = website.trim();
-  if (typeof timezone   === "string" && timezone.trim())   toSave.timezone   = timezone.trim();
-  if (typeof language   === "string" && language.trim())   toSave.language   = language.trim();
-  if (typeof currency   === "string" && currency.trim())   toSave.currency   = currency.trim();
-  if (typeof dateFormat === "string" && dateFormat.trim()) toSave.dateFormat = dateFormat.trim();
-  if (typeof timeFormat === "string" && timeFormat.trim()) toSave.timeFormat = timeFormat.trim();
-  if (typeof phone      === "string")                       toSave.phone      = phone.trim();
-  if (typeof region     === "string")                       toSave.region     = region.trim();
+  if (typeof firstName === "string" && firstName.trim()) toSave.firstName = firstName.trim();
+  if (typeof lastName  === "string")                      toSave.lastName  = lastName.trim();
+  if (typeof orgName   === "string" && orgName.trim())   toSave.orgName   = orgName.trim();
+  if (typeof website   === "string")                      toSave.website   = website.trim();
+  if (typeof timezone  === "string" && timezone.trim())  toSave.timezone  = timezone.trim();
 
   // Preserve immutable fields from DB (never overwrite plan/billing from this endpoint)
   if (current) {

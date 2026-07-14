@@ -396,14 +396,21 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `CREATE INDEX IF NOT EXISTS alert_rules_org_id_idx ON alert_rules(org_id);`);
 
-    // ── team_members — add org_id + invite tracking columns ──────────────────
-    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS org_id     TEXT        NOT NULL DEFAULT 'default';`);
-    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS status     TEXT        NOT NULL DEFAULT 'invited';`);
-    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
-    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_by TEXT        NOT NULL DEFAULT '';`);
-    // Drop the global UNIQUE(email) constraint (if it exists from the old schema)
-    // and replace with a per-org UNIQUE(org_id, email) so the same email can be
-    // invited to multiple organisations.
+    // ── team_members — add org_id + full invite tracking columns ────────────
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS org_id                  TEXT        NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS status                  TEXT        NOT NULL DEFAULT 'pending';`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_at              TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_by              TEXT        NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invitation_token_hash   TEXT;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS expires_at              TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS accepted_at             TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS email_status            TEXT        NOT NULL DEFAULT 'pending';`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS resend_message_id       TEXT;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS email_error             TEXT;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    // Update status default to 'pending' for future rows (existing rows unchanged)
+    await run(client, `ALTER TABLE team_members ALTER COLUMN status SET DEFAULT 'pending';`);
+    // Drop the global UNIQUE(email) constraint and replace with per-org functional index
     await run(client, `
       DO $$ BEGIN
         IF EXISTS (
@@ -417,15 +424,16 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `
       DO $$ BEGIN
-        IF NOT EXISTS (
+        IF EXISTS (
           SELECT 1 FROM pg_constraint
           WHERE conname = 'team_members_org_email_key'
         ) THEN
-          ALTER TABLE team_members
-            ADD CONSTRAINT team_members_org_email_key UNIQUE (org_id, email);
+          ALTER TABLE team_members DROP CONSTRAINT team_members_org_email_key;
         END IF;
       END $$;
     `);
+    // Functional unique index on (org_id, lower(email)) — same email allowed in different orgs
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS team_members_org_lower_email_idx ON team_members(org_id, lower(email));`);
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_idx ON team_members(org_id, email);`);
 
     // ── org_settings — columns that may be missing in older DBs ─────────────
