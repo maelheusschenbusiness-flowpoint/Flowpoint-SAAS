@@ -10,7 +10,7 @@ export const ADDON_DEFINITIONS: Record<string, {
   price: string;
   isFlagAddon: boolean;
 }> = {
-  whiteLabel:          { name: "White-Label Exports",        category: "Reporting",    description: "PDF 100% white-label",                    price: "Inclus",    isFlagAddon: true  },
+  whiteLabel:          { name: "White-Label Exports",        category: "Reporting",    description: "PDF 100% white-label",                    price: "17€/mois",  isFlagAddon: true  },
   customDomain:        { name: "Custom Domain",              category: "Enterprise",   description: "Domaine personnalisé pour le portail",     price: "29€/mois",  isFlagAddon: true  },
   prioritySupport:     { name: "Support Prioritaire",        category: "Support",      description: "Réponse < 4h, canal dédié",                price: "Inclus Pro", isFlagAddon: true  },
   retention90d:        { name: "Rétention +90 jours",        category: "Storage",      description: "90 jours de données historiques",          price: "9€/mois",   isFlagAddon: true  },

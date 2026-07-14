@@ -7407,7 +7407,7 @@ function renderBilling() {
       { cat:'Conversion', name:'Revenue Leak AI',         price:'29€/mois', icon:'💸', color:'#f97316', active:false, tag:'ROI',             roi:'Détecte fuites de revenus',       includedFrom:null,    desc:'IA de détection des pertes de conversion. Prioritise les quick wins revenue.', features:['Détection automatique des fuites de revenus','Quick wins classés par impact €','Analyse abandons de panier / formulaire','Alertes dégradation conversion','ROI estimé par correction'] },
       { cat:'Conversion', name:'AB Testing IA',           price:'24€/mois', icon:'🔀', color:'#f97316', active:false, tag:'Expérimentation', roi:'+22% conversion moyenne',         includedFrom:null,    desc:'Tests A/B automatisés par IA. Hypothèses générées, variantes créées, et gagnant sélectionné automatiquement.', features:['Hypothèses A/B générées par IA','Création automatique des variantes','Sélection du gagnant statistiquement validée','Calcul de significativité en temps réel','Rapport impact par test'] },
       // ── Reporting ──
-      { cat:'Reporting',  name:'White-Label Exports',     price:'Inclus',   icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', includedFrom:'pro', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
+      { cat:'Reporting',  name:'White-Label Exports',     price:'17€/mois', icon:'🎨', color:'#eab308', active:me.addons?.whiteLabel, tag:'Pro inclus', roi:'Rapports à votre marque', includedFrom:'pro', desc:'Rapports PDF 100% white-label. Logo, couleurs, et domaine personnalisés.', features:['Logo et couleurs de votre agence','Suppression de la marque FlowPoint','URL de rapport personnalisée','Templates PDF premium inclus','Livraison automatique aux clients'] },
       { cat:'Reporting',  name:'Agency Reporting Packs',  price:'49€/mois', icon:'📦', color:'#eab308', active:false, tag:'Agence',          roi:'12 templates pro inclus',         includedFrom:null,    desc:'Bibliothèque de 12 templates agence premium. Rapports Executive, KPI, et Local SEO.', features:['12 templates premium (Executive, Local, SEO…)','Personnalisation par client','Envoi automatique PDF mensuel','Rapports multi-sites consolidés','Tableau de bord client dédié'] },
       { cat:'Reporting',  name:'AI Executive Reporting',  price:'24€/mois', icon:'📊', color:'#eab308', active:false, tag:'IA Auto',         roi:'Rapports auto hebdo/mensuel',     includedFrom:null,    desc:'Résumés IA automatiques envoyés à vos clients. Format executive, multi-canal.', features:['Résumés IA en langage naturel','Envoi automatique email hebdo/mensuel','Format adapté aux décideurs non-tech','Intégration Slack pour résumés','Comparatif vs période précédente automatique'] },
       // ── IA ──
@@ -7430,10 +7430,9 @@ function renderBilling() {
       { cat:'Ultra', name:'AI Workspace Launch',     price:'49€/mois', icon:'🤖', color:'#6366f1', active:false, tag:'IA Setup',        roi:'Workspace auto en 2 min',         includedFrom:null,    desc:'L\'IA configure automatiquement votre workspace FlowPoint : dashboards, KPIs, alertes, missions et stratégie business.', features:['Configuration complète workspace en 2 min','KPIs et alertes adaptés à votre secteur','Missions et stratégie SEO pré-configurées','Dashboards personnalisés par votre métier','Accompagnement IA en continu'], wizardFn:'openAIWorkspaceLaunch' },
     ];
 
-    const currentPlan = (me.plan || 'Pro');
-    const planLevel = currentPlan === 'Ultra' ? 2 : currentPlan === 'Pro' ? 1 : 0;
+    const currentPlan = (me.plan || '').toLowerCase();
+    const planLevel = currentPlan === 'ultra' ? 2 : currentPlan === 'pro' ? 1 : 0;
     const isIncluded = a => {
-      if (a.price === 'Inclus') return true;
       if (a.includedFrom === 'pro'   && planLevel >= 1) return true;
       if (a.includedFrom === 'ultra' && planLevel >= 2) return true;
       return false;
