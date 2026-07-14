@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@replit/connectors-sdk':
+        specifier: ^0.4.1
+        version: 0.4.1
     devDependencies:
       '@playwright/test':
         specifier: ^1.61.1
@@ -528,6 +532,9 @@ packages:
 
   '@protobufjs/utf8@1.1.2':
     resolution: {integrity: sha512-b1UQwcEZ4yCnMCD8DAL1VlbvBJE9/IX4FTIp7BG1xYpf29SLazLSrqUkj4w7Y5y7cCVP6E5tcqqcI0xemPkHug==}
+
+  '@replit/connectors-sdk@0.4.1':
+    resolution: {integrity: sha512-iw0uy95+Qul8MPc/bBo8hBfYk1wm6RpBZ9sHyCpcA9A9T4zcUT9deSQxdyMyI0w3sv3+5uGmdfq1TpFTMrjD1g==}
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
@@ -1710,6 +1717,8 @@ snapshots:
   '@protobufjs/pool@1.1.0': {}
 
   '@protobufjs/utf8@1.1.2': {}
+
+  '@replit/connectors-sdk@0.4.1': {}
 
   '@stablelib/base64@1.0.1': {}
 

@@ -10,5 +10,8 @@
     "@playwright/test": "^1.61.1",
     "playwright": "^1.61.1",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@replit/connectors-sdk": "^0.4.1"
   }
 }
