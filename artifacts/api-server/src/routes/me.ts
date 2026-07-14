@@ -26,6 +26,17 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
 
+  // Canonical timezone from user_prefs.settings (written by PATCH /api/me/settings).
+  // Queried unconditionally so it appears even when org_settings row is missing.
+  let settingsTimezone: string | null = null;
+  try {
+    const pRow = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const prefs = pRow.rows[0]?.settings as Record<string, unknown> | null;
+    if (prefs && typeof prefs.timezone === "string" && prefs.timezone) {
+      settingsTimezone = prefs.timezone;
+    }
+  } catch { /* non-fatal */ }
+
   try {
     const dbData = await loadOrgSettings(orgId);
 
@@ -52,7 +63,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         limits,
         publicApiKey:       `fp_pub_${_pkHash}`,
         createdAt:          dbData.createdAt ?? new Date().toISOString(),
-        timezone:  dbData.timezone  ?? null,
+        timezone:  settingsTimezone ?? dbData.timezone  ?? null,
         language:  dbData.language  ?? null,
         currency:  dbData.currency  ?? null,
         dateFormat: dbData.dateFormat ?? null,
@@ -78,7 +89,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   }
 
   const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
-  res.json({ ...store.me, plan: normPlan(store.me.plan), email: req.orgContext?.email ?? "", lastName: "", limits });
+  res.json({ ...store.me, plan: normPlan(store.me.plan), email: req.orgContext?.email ?? "", lastName: "", limits, timezone: settingsTimezone ?? null });
 });
 
 // ── PATCH /api/me ─────────────────────────────────────────────────────────────

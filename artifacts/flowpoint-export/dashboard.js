@@ -431,14 +431,20 @@ function normArr(raw, key) {
   return arr ? arr.map(normalizeDoc) : null;
 }
 
-async function apiAction(method, path, body, { retries = 2 } = {}) {
+async function apiAction(method, path, body, options = {}) {
+  // Non-idempotent writes (POST/PUT/PATCH/DELETE) default to 0 retries.
+  // A failed write must NOT be silently retried — it can create duplicate rows,
+  // duplicate emails or other irreversible side-effects.
+  // GET / HEAD are safe-to-retry up to 2 times.
+  const _idempotent = method === 'GET' || method === 'HEAD';
+  const retries = (options.retries !== undefined) ? options.retries : (_idempotent ? 2 : 0);
   const _t0 = performance.now();
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const result = await apiFetch(path, { method, body: body ? JSON.stringify(body) : undefined });
       const ms = Math.round(performance.now() - _t0);
-      if(window.__DEV__) console.log(`[FP_ACTION] bouton=${method} route=${path} status=ok ms=${ms} attempt=${attempt}`);
+      if(window.__DEV__) console.log('[FP_ACTION] method=' + method + ' route=' + path + ' status=ok ms=' + ms + ' attempt=' + attempt);
       return result;
     } catch (e) {
       lastErr = e;
@@ -449,7 +455,7 @@ async function apiAction(method, path, body, { retries = 2 } = {}) {
     }
   }
   const ms = Math.round(performance.now() - _t0);
-  console.warn(`[FP_ACTION] bouton=${method} route=${path} status=error ms=${ms} retries=${retries}`, lastErr?.message);
+  console.warn('[FP_ACTION] method=' + method + ' route=' + path + ' status=error ms=' + ms + ' retries=' + retries, lastErr?.message);
   if (PREVIEW_MODE) { return null; }
   throw lastErr;
 }

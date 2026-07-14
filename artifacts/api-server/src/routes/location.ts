@@ -232,9 +232,28 @@ router.post("/org/location/sync-gbp", async (req: Request, res: Response): Promi
 export default router;
 
 // ── GET /api/location — alias for /api/org/location ─────────────────────────
+type _LocOrgReq = Request & {
+  orgDb: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+};
+
 router.get("/location", async (req: Request, res: Response): Promise<void> => {
   const orgId = req.orgContext?.orgId ?? "default";
   const s = await loadOrgSettings(orgId).catch(() => null);
+
+  // Canonical timezone from user_prefs.settings (set by PATCH /api/me/settings).
+  // org_settings.timezone is a legacy fallback only.
+  let settingsTimezone: string | null = null;
+  try {
+    const orgDbFn = (req as _LocOrgReq).orgDb;
+    if (typeof orgDbFn === "function") {
+      const pRow = await orgDbFn.call(req, `SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+      const prefs = pRow.rows[0]?.settings as Record<string, unknown> | null;
+      if (prefs && typeof prefs.timezone === "string" && prefs.timezone) {
+        settingsTimezone = prefs.timezone;
+      }
+    }
+  } catch { /* non-fatal */ }
+
   res.json({
     address:            s?.address            ?? null,
     city:               s?.city               ?? null,
@@ -247,7 +266,7 @@ router.get("/location", async (req: Request, res: Response): Promise<void> => {
     serviceArea:        s?.serviceArea        ?? [],
     locationConfigured: s?.locationConfigured ?? false,
     locationSource:     s?.locationSource     ?? null,
-    timezone:           s?.timezone           ?? null,
+    timezone:           settingsTimezone ?? s?.timezone ?? null,
     language:           s?.language           ?? null,
     currency:           s?.currency           ?? null,
     dateFormat:         s?.dateFormat         ?? null,

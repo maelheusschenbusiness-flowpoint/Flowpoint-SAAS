@@ -113,9 +113,16 @@ router.post("/team/invite", async (req: Request, res: Response) => {
 
   const email      = rawEmail.toLowerCase().trim();
   const ROLES      = ["manager", "editor", "viewer"];
-  const memberRole = ROLES.includes((role ?? "viewer").toLowerCase())
-    ? (role ?? "viewer").toLowerCase()
-    : "viewer";
+  const rawRole    = (role ?? "viewer").toLowerCase();
+  if (!ROLES.includes(rawRole)) {
+    logger.warn({ reqId, rawRole }, "[team/invite] STEP 3 FAIL: invalid role → 400");
+    res.status(400).json({
+      error: `Rôle invalide. Valeurs acceptées : ${ROLES.join(", ")}.`,
+      code: "INVALID_ROLE",
+    });
+    return;
+  }
+  const memberRole = rawRole;
   logger.info({ reqId, emailDomain: email.split("@")[1] ?? "?", memberRole }, "[team/invite] STEP 3 OK");
 
   // ── STEP 4 — Duplicate guard ─────────────────────────────────────────────
