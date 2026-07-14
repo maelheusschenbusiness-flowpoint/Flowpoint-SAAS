@@ -44,7 +44,7 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   } catch { /* continue even if guard fails */ }
   const id  = `t${Date.now()}`;
   const name = email.split("@")[0] || "Invité";
-  const memberRole = role || "viewer";
+  const memberRole = (role || "viewer").toLowerCase();
   const joined = new Date().toISOString().slice(0, 10);
   try {
     const r = await (req as OrgReq).orgDb(

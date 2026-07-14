@@ -8233,7 +8233,7 @@ function renderAlertRules() {
   const typeLabels = { seo_score: 'Score SEO', latency: 'Latence', uptime: 'Uptime', monitor_down: 'Monitor DOWN', keyword_ranking_drop: 'Chute ranking' };
   const opLabels = { lt: '<', gt: '>', eq: '=' };
   const unitMap = { seo_score: '/100', latency: 'ms', uptime: '%', monitor_down: '', keyword_ranking_drop: ' pos' };
-  const isUltra = STATE.me?.plan === 'Agency' || STATE.me?.plan === 'Ultra';
+  const isUltra = ['agency','ultra'].includes((STATE.me?.plan || '').toLowerCase());
 
   const TEMPLATES = [
     { name: 'Monitor DOWN', type: 'monitor_down', operator: 'eq', threshold: 1, durationMin: 0, channels: ['email'], siteUrls: [] },
@@ -8488,10 +8488,11 @@ function renderSettings() {
   const sub  = STATE.subRoute;
   const s    = STATE.settings;
   const me   = STATE.me;
-  const plan = me?.plan || 'Pro';
-  const isStd   = plan === 'Standard';
-  const isPro   = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
-  const isUltra = plan === 'Agency' || plan === 'Ultra';
+  const plan  = me?.plan || '';
+  const planLc = plan.toLowerCase();
+  const isStd   = planLc === 'standard';
+  const isPro   = planLc === 'pro' || planLc === 'agency' || planLc === 'ultra';
+  const isUltra = planLc === 'agency' || planLc === 'ultra';
   const wlBranding = JSON.parse(localStorage.getItem('fp:wl-branding') || '{}');
 
   // ── Shared Toggle helper ──────────────────────────────────
@@ -8541,7 +8542,7 @@ function renderSettings() {
           ${[
             {l:'Prénom',       id:'prof-fname',   v:me.firstName,                                                                           t:'text'},
             {l:'Nom',          id:'prof-lname',   v:me.lastName||'',                                                                            t:'text'},
-            {l:'Email',        id:'prof-email',   v:me.email||'',                                                                               t:'email'},
+            {l:'Email',        id:'prof-email',   v:me.email||'',                                                                               t:'email', ro:true},
             {l:'Organisation', id:'prof-org',     v:me.org.name,                                                                                t:'text'},
             {l:'Site web',     id:'prof-website', v:me.org?.website||'',                                                                        t:'url'},
             {l:'Fuseau horaire',id:'prof-tz',     v:(me.org&&me.org.timezone)||(STATE.settings&&STATE.settings.timezone)||'', t:'text',ph:'Ex: Europe/Paris'},
@@ -8551,7 +8552,7 @@ function renderSettings() {
             {l:'Pays',         id:'prof-country',v:me.location?.country||'',                t:'text', ph:'France'},
           ].map(f => `<div class="fp-form-group">
             <label class="fp-form-label">${escHtml(f.l)}</label>
-            <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}/>
+            <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}${f.ro ? ' readonly title="L\'adresse email est gérée via votre authentification — modifiable depuis votre provider SSO" style="opacity:0.6;cursor:not-allowed"' : ''}/>
           </div>`).join('')}
           <hr style="border:none;border-top:1px solid var(--fp-border);margin:14px 0 10px"/>
           <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Canaux d'alerte</div>
@@ -8738,6 +8739,7 @@ function renderSettings() {
   if (sub === 'team') {
     const roleColors2 = { owner:'#2563EB', manager:'#8b5cf6', editor:'#22c55e', viewer:'#94a3b8' };
     const members = (STATE.team && STATE.team.length > 0 ? STATE.team : []).map(t => ({
+      id:     String(t.id || t._id || ''),
       name:   t.name || t.firstName || 'Membre',
       role:   (t.role||'viewer').charAt(0).toUpperCase() + (t.role||'viewer').slice(1),
       email:  t.email || '',
@@ -8769,9 +8771,9 @@ function renderSettings() {
       )}
 
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Membres actifs', String(members.length), plan === 'Standard' ? '1/1 inclus' : plan === 'Pro' ? '3/5 inclus' : '10 max inclus', 'up')}
+        ${statCard('Membres actifs', String(members.length), isStd ? '1/1 inclus' : !isUltra ? '3/5 inclus' : '10 max inclus', 'up')}
         ${statCard('Rôles définis', String(roles.length), '4 rôles système', 'up')}
-        ${statCard('Sièges disponibles', plan === 'Standard' ? '0' : plan === 'Pro' ? '2' : '0', 'inclus dans votre plan', 'neutral')}
+        ${statCard('Sièges disponibles', isStd ? '0' : !isUltra ? '2' : '0', 'inclus dans votre plan', 'neutral')}
         ${statCard('Dernière activité', displayStat(STATE.team && STATE.team.length > 0 ? 'Récemment' : null, 'Il y a 2h'), STATE.team && STATE.team.length > 0 ? STATE.team[0].name || 'Membre actif' : PREVIEW_MODE ? 'Sophie Martin' : 'Aucun membre', STATE.team && STATE.team.length > 0 ? 'up' : 'neutral')}
       </div>
 
@@ -8782,7 +8784,7 @@ function renderSettings() {
             ${svgIcon('users').replace('stroke="currentColor"','stroke="#2563EB"')}
             Membres de l\'équipe
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Inviter un membre',renderInvitePanel());setTimeout(()=>{const btn=document.getElementById('invite-send');if(btn)btn.onclick=async()=>{const em=document.getElementById('invite-email')?.value?.trim();const rl=document.getElementById('invite-role')?.value||'Viewer';if(!em)return showToast('error','Email requis');btn.disabled=true;btn.textContent='Envoi…';const r=await apiAction('POST','/api/team/invite',{email:em,role:rl}).catch(()=>null);btn.disabled=false;btn.textContent='Envoyer l\'invitation';if(r&&!r.error){closeFloatPanel&&closeFloatPanel();showToast('success','Invitation envoyée à '+em);}else{showToast('error','Erreur d\'envoi');}}},100)">+ Inviter</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Inviter un membre',renderInvitePanel());setTimeout(()=>{const btn=document.getElementById('invite-send');if(btn)btn.onclick=async()=>{const em=document.getElementById('invite-email')?.value?.trim();const rl=(document.getElementById('invite-role')?.value||'viewer').toLowerCase();if(!em)return showToast('error','Email requis');btn.disabled=true;btn.textContent='Envoi…';const r=await apiAction('POST','/api/team/invite',{email:em,role:rl}).catch(()=>null);btn.disabled=false;btn.textContent='Envoyer l\'invitation';if(r&&!r.error){closeFloatPanel&&closeFloatPanel();showToast('success','Invitation envoyée à '+em);}else{showToast('error','Erreur d\'envoi');}}},100)">+ Inviter</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${members.map(m => `
@@ -8792,7 +8794,7 @@ function renderSettings() {
                 <div style="font-size:12px;font-weight:700;color:var(--fp-text)">${escHtml(m.name)}</div>
                 <div style="font-size:10px;color:var(--fp-text-muted)">${escHtml(m.email)} · ${escHtml(m.last)}</div>
               </div>
-              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const r=await apiAction('PATCH','/api/team/${m.id}',{role:el.value}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=el.value;showToast('success','R\u00f4le mis \u00e0 jour');}else{showToast('error','Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
+              <select class="fp-select" style="font-size:11px;padding:4px 8px;border-radius:7px;min-width:90px" onchange="(async(el)=>{const r=await apiAction('PATCH','/api/team/${m.id}',{role:el.value.toLowerCase()}).catch(()=>null);if(r&&!r.error){const tm=(STATE.team||[]).find(t=>t.id==='${m.id}');if(tm)tm.role=el.value.toLowerCase();showToast('success','R\u00f4le mis \u00e0 jour');}else{showToast('error','Erreur mise \u00e0 jour r\u00f4le');}el.blur();})(this)">
                 ${roles.map(r => `<option ${r === m.role ? 'selected' : ''}>${r}</option>`).join('')}
               </select>
               ${m.role !== 'Owner' ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="(async()=>{if(!confirm('Retirer ce membre de l\\'\\'équipe ?'))return;const r=await apiAction('DELETE','/api/team/${m.id}').catch(()=>null);if(r&&!r.error){STATE.team=(STATE.team||[]).filter(t=>t.id!=='${m.id}');showToast('success','Membre retir\u00e9');render();}else{showToast('error','Erreur lors du retrait');}})()">Retirer</button>` : ''}
@@ -8848,6 +8850,7 @@ function renderSettings() {
   // ══════════════════════════════════════════════════════════
   if (sub === 'security') {
     const _secRaw = STATE.security || null;
+    const _twoFaOn = !!STATE.me?.twoFactorEnabled;
     const secItems = _secRaw?.checks || (PREVIEW_MODE ? [
       {label:'Mot de passe fort',            done:true,  weight:20, desc:'Complexité vérifiée'},
       {label:'2FA non configuré',            done:false, weight:25, desc:'Risque élevé — accès non autorisés possibles', vuln:true},
@@ -8856,12 +8859,10 @@ function renderSettings() {
       {label:'CSP absente',                  done:false, weight:15, desc:'Content-Security-Policy non déclarée — XSS possible', vuln:true},
       {label:'CORS wildcard potentiel',      done:false, weight:10, desc:'Origines non restreintes — risque d\'accès cross-origin', vuln:true},
     ] : [
-      {label:'Mot de passe fort',            done:true,  weight:20, desc:'Complexité vérifiée'},
-      {label:'2FA non configuré',            done:false, weight:25, desc:'Risque élevé — accès non autorisés possibles', vuln:true},
-      {label:'Sessions actives vérifiées',   done:true,  weight:15, desc:'Sessions actives'},
-      {label:'API keys sécurisées',          done:true,  weight:15, desc:'Pas d\'accès public détecté'},
-      {label:'CSP absente',                  done:false, weight:15, desc:'Content-Security-Policy non déclarée — XSS possible', vuln:true},
-      {label:'CORS wildcard potentiel',      done:false, weight:10, desc:'Origines non restreintes — risque d\'accès cross-origin', vuln:true},
+      {label:'Mot de passe fort',         done:true,     weight:20, desc:'Complexité vérifiée'},
+      {label:'Double facteur (2FA)',       done:_twoFaOn, weight:25, desc:_twoFaOn ? '2FA activé — accès protégé' : '2FA non configuré — activez-le dans Paramètres', vuln:!_twoFaOn},
+      {label:'Session sécurisée (HTTPS)', done:true,     weight:15, desc:'Connexion chiffrée'},
+      {label:'API keys sécurisées',        done:true,     weight:15, desc:'Clé publique en lecture seule'},
     ]);
     const secScore = _secRaw?.score != null ? _secRaw.score : Math.round(secItems.reduce((s,i) => i.done ? s + i.weight : s, 0));
     const sessions = [
@@ -9060,7 +9061,7 @@ function renderSettings() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Workflows actifs', String(workflows.filter(w => w.active).length), 'sur ' + workflows.length + ' configurés', 'up')}
         ${statCard('Exécutions ce mois', String(workflows.reduce((s,w) => s + w.runs, 0)), 'automatisations réussies', 'up')}
-        ${statCard('Temps économisé', displayStat(null, '~6h/mois'), PREVIEW_MODE ? 'estimé par l\'IA' : 'Activez des workflows', 'neutral')}
+        ${statCard('Temps économisé', displayStat(null, PREVIEW_MODE ? '~6h/mois' : '—'), PREVIEW_MODE ? 'estimé par l\'IA' : 'Activez des workflows', 'neutral')}
         ${statCard('Templates dispo', String(templates.length), 'prêts à l\'emploi', 'up')}
       </div>
 
@@ -9669,7 +9670,7 @@ function renderSettings() {
         ${statCard('Modules IA actifs', String(aiModules.filter(m => m.active).length) + '/' + aiModules.length, 'modules configurés', 'up')}
         ${statCard('Intensité IA', _savedIntensity, 'recommandations mesurées', 'up')}
         ${statCard('AI Credits', STATE.aiCredits ? (function(){var u=STATE.aiCredits,fk=n=>n>=1000?Math.round(n/1000)+'k':String(n);return fk(u.used)+'/'+fk(u.limit);}()) : '…/…', PREVIEW_MODE ? '41% utilisés ce mois' : (STATE.aiCredits ? Math.round(STATE.aiCredits.used/Math.max(STATE.aiCredits.limit,1)*100)+'% utilisés' : 'Chargement…'), 'neutral')}
-        ${statCard('Précision IA', displayStat(null, '87%'), PREVIEW_MODE ? 'recommandations pertinentes' : 'Analyse en cours', 'neutral')}
+        ${statCard('Précision IA', displayStat(null, PREVIEW_MODE ? '87%' : '—'), PREVIEW_MODE ? '87% recommandations pertinentes' : 'Analyse en cours', 'neutral')}
       </div>
 
       <!-- AI INTENSITY -->
@@ -9758,7 +9759,7 @@ function renderSettings() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Stockage utilisé', totalUsed.toFixed(1) + ' GB', 'sur ' + totalTotal + ' GB disponibles', 'up')}
         ${statCard('Rétention actuelle', isStd ? '30 jours' : isPro && !isUltra ? '90 jours' : '365 jours', 'selon votre plan', 'neutral')}
-        ${statCard('Dernier backup', displayStat(null, '01/05/2026'), 'automatique mensuel', 'neutral')}
+        ${statCard('Dernier backup', displayStat(null, PREVIEW_MODE ? '01/05/2026' : '—'), 'automatique mensuel', 'neutral')}
         ${statCard('Conformité RGPD', 'En cours', 'données EU · politique active', 'neutral')}
       </div>
 
@@ -13549,7 +13550,7 @@ function bindSectionEvents() {
       setTimeout(() => {
         $('#invite-send')?.addEventListener('click', async () => {
           const email = $('#invite-email')?.value.trim();
-          const role = $('#invite-role')?.value || 'Editor';
+          const role = ($('#invite-role')?.value || 'editor').toLowerCase();
           if (!email) { showToast('warning','Entrez un email'); return; }
           try {
             await apiAction('POST', '/api/team/invite', { email, role });
@@ -32560,9 +32561,10 @@ const SSO_LOGOS = {
 };
 
 function renderSettingsSSO() {
-  const plan = STATE.me?.plan || 'Pro';
-  const isStd = plan === 'Standard';
-  const isUltra = plan === 'Agency' || plan === 'Ultra';
+  const plan  = STATE.me?.plan || '';
+  const planLc = plan.toLowerCase();
+  const isStd = planLc === 'standard';
+  const isUltra = planLc === 'agency' || planLc === 'ultra';
   const ssoData = window.FP_DATA?.sso || {};
   const providers = ssoData.providers || [];
   const rawStats = ssoData.stats || {};

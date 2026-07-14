@@ -35,7 +35,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         firstName,
         lastName:           dbData.lastName ?? "",
         email:              req.orgContext?.email ?? "",
-        plan:               dbData.plan,
+        plan:               dbData.plan ? dbData.plan.charAt(0).toUpperCase() + dbData.plan.slice(1).toLowerCase() : 'Standard',
         role:               req.orgContext?.role ?? "owner",
         org:                { name: dbData.orgName, website: dbData.website ?? "" },
         subscriptionStatus: dbData.subscriptionStatus,
@@ -65,7 +65,8 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
   }
 
   const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
-  res.json({ ...store.me, email: req.orgContext?.email ?? "", lastName: "", limits });
+  const _planNorm = store.me.plan ? store.me.plan.charAt(0).toUpperCase() + store.me.plan.slice(1).toLowerCase() : 'Standard';
+  res.json({ ...store.me, plan: _planNorm, email: req.orgContext?.email ?? "", lastName: "", limits });
 });
 
 // ── PATCH /api/me ─────────────────────────────────────────────────────────────
@@ -127,7 +128,8 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   }
 
   const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
-  res.json({ ...store.me, limits });
+  const _planNormPatch = store.me.plan ? store.me.plan.charAt(0).toUpperCase() + store.me.plan.slice(1).toLowerCase() : 'Standard';
+  res.json({ ...store.me, plan: _planNormPatch, limits });
 });
 
 // ── PUT /api/me/addons ────────────────────────────────────────────────────────

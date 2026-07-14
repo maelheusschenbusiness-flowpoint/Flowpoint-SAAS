@@ -1,7 +1,8 @@
 - [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
 - [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
 - [FlowPoint isDemoMode pattern](flowpoint-demodmode.md) — all Math.random fake data must be isDemoMode()-gated; import from services/mock-data.js
-- [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 29k-line file; use sed -n for large offsets, always get exact context before editing
+- [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 32925-line file (read tool capped at 14681); use bash sed -n for lines > 14681, always get exact context before editing
+- [Settings plan casing & real data](settings-plan-casing.md) — plan stored lowercase in DB; me.ts must normalize to Title Case; team member map needs id field; security vuln fallback uses twoFactorEnabled
 - [FlowPoint dynamic dates](flowpoint-dynamic-dates.md) — CUR_MONTH/PREV_MONTH constants at IIFE top; all section titles use these, never hardcode month strings
 - [Public vs Protected Routes](public-routes-pattern.md) — behavioral snippet/event/session and SSO SAML endpoints must be on publicBehavioralRouter/publicSsoRouter before requireAuth in routes/index.ts
 - [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
