@@ -178,12 +178,7 @@ router.post("/team/invite", async (req: Request, res: Response) => {
       });
       return;
     }
-    // Return SQL details in response to assist debugging without log access
-    res.status(500).json({
-      error:     "Failed to create invitation",
-      _sqlCode:  pgCode  ?? "unknown",
-      _detail:   pgMsg,
-    });
+    res.status(500).json({ error: "Failed to create invitation" });
     return;
   }
 

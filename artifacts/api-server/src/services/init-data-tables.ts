@@ -397,6 +397,8 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS alert_rules_org_id_idx ON alert_rules(org_id);`);
 
     // ── team_members — add org_id + full invite tracking columns ────────────
+    // name was in CREATE TABLE but may be missing on tables created before this ALTER block was added
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS name                    TEXT        NOT NULL DEFAULT '';`);
     await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS org_id                  TEXT        NOT NULL DEFAULT 'default';`);
     await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS status                  TEXT        NOT NULL DEFAULT 'pending';`);
     await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_at              TIMESTAMPTZ NOT NULL DEFAULT NOW();`);

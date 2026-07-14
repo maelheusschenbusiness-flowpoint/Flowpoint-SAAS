@@ -109,10 +109,10 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
 
   const {
     firstName, lastName, orgName,
-    website, timezone,
+    website,
   } = body as {
-    firstName?: string; lastName?:  string; orgName?:  string;
-    website?:   string; timezone?:  string;
+    firstName?: string; lastName?: string; orgName?: string;
+    website?:   string;
   };
 
   // Load current org data from DB (isolated per org)
@@ -125,7 +125,6 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   if (typeof lastName  === "string")                      toSave.lastName  = lastName.trim();
   if (typeof orgName   === "string" && orgName.trim())   toSave.orgName   = orgName.trim();
   if (typeof website   === "string")                      toSave.website   = website.trim();
-  if (typeof timezone  === "string" && timezone.trim())  toSave.timezone  = timezone.trim();
 
   // Preserve immutable fields from DB (never overwrite plan/billing from this endpoint)
   if (current) {
@@ -261,7 +260,7 @@ router.patch("/me/prefs", async (req: Request, res: Response): Promise<void> => 
   }
 });
 
-// ── /api/me/settings — alias for /api/me/prefs ────────────────────────────────
+// ── /api/me/settings — read canonical user preferences (timezone, etc.) ────────
 router.get("/me/settings", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
@@ -270,6 +269,46 @@ router.get("/me/settings", async (req: Request, res: Response): Promise<void> =>
     res.json(r.rows[0]?.settings ?? {});
   } catch {
     res.json({});
+  }
+});
+
+// ── PATCH /api/me/settings — write canonical user preferences (timezone, etc.) ──
+// Canonical storage for timezone. Merges into user_prefs.settings JSONB so that
+// GET /api/me/settings always returns the authoritative value.
+router.patch("/me/settings", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+
+  const body = req.body as Record<string, unknown>;
+
+  // Accept only safe preference fields — never billing or auth data
+  const ALLOWED_KEYS = ["timezone", "language", "dateFormat", "timeFormat", "currency"] as const;
+  const patch: Record<string, unknown> = {};
+  for (const key of ALLOWED_KEYS) {
+    if (typeof body[key] === "string" && (body[key] as string).trim()) {
+      patch[key] = (body[key] as string).trim();
+    }
+  }
+
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ ok: false, error: "No valid preference fields provided" });
+    return;
+  }
+
+  try {
+    await orgDb(req)(
+      `INSERT INTO user_prefs (org_id, settings, updated_at)
+       VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (org_id) DO UPDATE SET
+         settings   = COALESCE(user_prefs.settings, '{}'::jsonb) || $2::jsonb,
+         updated_at = now()`,
+      [orgId, JSON.stringify(patch)]
+    );
+    const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    res.json(r.rows[0]?.settings ?? patch);
+  } catch (err) {
+    logger.error({ err, orgId }, "[PATCH /me/settings] upsert failed");
+    res.status(500).json({ ok: false, error: "Failed to save settings" });
   }
 });
 
