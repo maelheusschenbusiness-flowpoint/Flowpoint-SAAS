@@ -88,14 +88,26 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   const orgId = requireOrgId(req, res);
   if (!orgId) return;
 
+  const body = req.body as Record<string, unknown>;
+
+  // Strictly geographic fields belong to PATCH /api/location — never silently ignore them
+  const GEO_FIELDS = ["city", "country", "address", "postalCode", "latitude", "longitude", "serviceArea"] as const;
+  const rejectedGeo = GEO_FIELDS.filter(f => f in body);
+  if (rejectedGeo.length > 0) {
+    res.status(400).json({
+      error: "Use PATCH /api/location for localisation fields.",
+      fields: rejectedGeo,
+    });
+    return;
+  }
+
   const {
     firstName, lastName, orgName,
-    website, timezone, address, city, postalCode, country,
+    website, timezone,
     region, phone, language, currency, dateFormat, timeFormat,
-  } = req.body as {
+  } = body as {
     firstName?:  string; lastName?:   string; orgName?:    string;
-    website?:    string; timezone?:   string; address?:    string;
-    city?:       string; postalCode?: string; country?:    string;
+    website?:    string; timezone?:   string;
     region?:     string; phone?:      string; language?:   string;
     currency?:   string; dateFormat?: string; timeFormat?: string;
   };
@@ -117,16 +129,6 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
   if (typeof timeFormat === "string" && timeFormat.trim()) toSave.timeFormat = timeFormat.trim();
   if (typeof phone      === "string")                       toSave.phone      = phone.trim();
   if (typeof region     === "string")                       toSave.region     = region.trim();
-  if (typeof address    === "string") {
-    toSave.address    = address.trim();
-    if (address.trim()) toSave.locationConfigured = true;
-  }
-  if (typeof city       === "string") {
-    toSave.city       = city.trim();
-    if (city.trim()) toSave.locationConfigured = true;
-  }
-  if (typeof postalCode === "string") toSave.postalCode = postalCode.trim();
-  if (typeof country    === "string") toSave.country    = country.trim();
 
   // Preserve immutable fields from DB (never overwrite plan/billing from this endpoint)
   if (current) {
