@@ -56,13 +56,13 @@ router.get("/team", async (req: Request, res: Response) => {
   if (!org) return;
   try {
     const r = await orgDb(req)(
-      `SELECT id, name, email, role, joined, status, invited_at, email_status, created_at
+      `SELECT id, email, role, joined, status, invited_at, email_status, created_at
        FROM team_members WHERE org_id = $1 ORDER BY created_at ASC LIMIT 100`,
       [org]
     );
     res.json(r.rows.map(m => ({
       id:          m.id,
-      name:        m.name,
+      name:        (m.email as string)?.split("@")[0] ?? "",
       email:       m.email,
       role:        m.role,
       status:      m.status      ?? "active",
@@ -155,20 +155,22 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
   const id        = `inv_${Date.now()}_${randomBytes(4).toString("hex")}`;
-  const name      = email.split("@")[0] ?? "Invité";
   const joined    = new Date().toISOString().slice(0, 10);
   logger.info({ reqId, id, tokenHashPrefix: tokenHash.slice(0, 8) }, "[team/invite] STEP 5 OK");
 
   // ── STEP 6 — INSERT team_members ─────────────────────────────────────────
+  // `name` column is intentionally excluded: it may not exist on older production
+  // tables where the ALTER TABLE ADD COLUMN ran silently (pooler / permissions).
+  // The email prefix is derived at read-time instead (GET /api/team response).
   logger.info({ reqId, id, org: org.slice(0, 20) }, "[team/invite] STEP 6: INSERT into team_members");
   try {
     await orgDb(req)(
       `INSERT INTO team_members
-         (id, org_id, name, email, role, joined, status,
+         (id, org_id, email, role, joined, status,
           invited_by, invitation_token_hash, invited_at, expires_at,
           email_status, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,NOW(),$9,'pending',NOW(),NOW())`,
-      [id, org, name, email, memberRole, joined, org, tokenHash, expiresAt.toISOString()]
+       VALUES ($1,$2,$3,$4,$5,'pending',$6,$7,NOW(),$8,'pending',NOW(),NOW())`,
+      [id, org, email, memberRole, joined, org, tokenHash, expiresAt.toISOString()]
     );
     logger.info({ reqId, id }, "[team/invite] STEP 6 OK: INSERT succeeded");
   } catch (insertErr: unknown) {
@@ -266,12 +268,12 @@ router.patch("/team/:id", async (req: Request, res: Response) => {
   if (!ALLOWED.includes(role)) { res.status(400).json({ error: "invalid role" }); return; }
   try {
     const r = await orgDb(req)(
-      `UPDATE team_members SET role=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3 RETURNING id, name, email, role`,
+      `UPDATE team_members SET role=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3 RETURNING id, email, role`,
       [role, req.params.id, org]
     );
     if (!r.rows[0]) { res.status(404).json({ error: "member not found" }); return; }
     const m = r.rows[0];
-    res.json({ ok: true, member: { id: m.id, name: m.name, email: m.email, role: m.role } });
+    res.json({ ok: true, member: { id: m.id, name: (m.email as string)?.split("@")[0] ?? "", email: m.email, role: m.role } });
   } catch (err) {
     logger.error({ err, org }, "[team/patch] UPDATE failed");
     res.status(500).json({ error: "Failed to update member" });
