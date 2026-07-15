@@ -120,10 +120,10 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
 
   const {
     firstName, lastName, orgName,
-    website,
+    website, timezone,
   } = body as {
     firstName?: string; lastName?: string; orgName?: string;
-    website?:   string;
+    website?: string; timezone?: string;
   };
 
   // Load current org data from DB (isolated per org)
@@ -151,6 +151,27 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // Mirror timezone to user_prefs.settings — single source of truth read by GET /api/me.
+  // This ensures timezone persists on hard reload regardless of which endpoint the
+  // frontend uses to write it (PATCH /api/me or PATCH /api/me/settings both write here).
+  let resolvedTimezone: string | null = current?.timezone ?? null;
+  if (typeof timezone === "string" && timezone.trim()) {
+    const tz = timezone.trim();
+    resolvedTimezone = tz;
+    try {
+      await orgDb(req)(
+        `INSERT INTO user_prefs (org_id, settings, updated_at)
+         VALUES ($1, $2::jsonb, now())
+         ON CONFLICT (org_id) DO UPDATE SET
+           settings   = COALESCE(user_prefs.settings, '{}'::jsonb) || $2::jsonb,
+           updated_at = now()`,
+        [orgId, JSON.stringify({ timezone: tz })]
+      );
+    } catch (err) {
+      logger.warn({ err, orgId }, "[PATCH /api/me] Failed to mirror timezone to user_prefs.settings — non-fatal");
+    }
+  }
+
   const plan   = current?.plan ?? "standard";
   const limits = PLAN_LIMITS[plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
   const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
@@ -170,7 +191,7 @@ router.patch("/me", async (req: Request, res: Response): Promise<void> => {
     limits,
     publicApiKey:       `fp_pub_${_pkHash}`,
     createdAt:          current?.createdAt ?? new Date().toISOString(),
-    timezone:           current?.timezone  ?? null,
+    timezone:           resolvedTimezone,
     language:           current?.language  ?? null,
     currency:           current?.currency  ?? null,
     dateFormat:         current?.dateFormat ?? null,

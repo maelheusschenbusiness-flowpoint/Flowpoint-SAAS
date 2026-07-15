@@ -1,6 +1,109 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
+// ── Expected columns for team_members (source of truth) ───────────────────────
+const TEAM_MEMBERS_EXPECTED: Array<{ col: string; sql: string }> = [
+  { col: "id",                    sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS id                    TEXT        NOT NULL DEFAULT '';` },
+  { col: "org_id",                sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS org_id                TEXT        NOT NULL DEFAULT 'default';` },
+  { col: "name",                  sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS name                  TEXT        NOT NULL DEFAULT '';` },
+  { col: "email",                 sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS email                 TEXT        NOT NULL DEFAULT '';` },
+  { col: "role",                  sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS role                  TEXT        NOT NULL DEFAULT 'viewer';` },
+  { col: "joined",                sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS joined                TEXT        NOT NULL DEFAULT '';` },
+  { col: "status",                sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS status                TEXT        NOT NULL DEFAULT 'pending';` },
+  { col: "invited_at",            sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_at            TIMESTAMPTZ NOT NULL DEFAULT NOW();` },
+  { col: "invited_by",            sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_by            TEXT        NOT NULL DEFAULT '';` },
+  { col: "invitation_token_hash", sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invitation_token_hash TEXT;` },
+  { col: "expires_at",            sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS expires_at            TIMESTAMPTZ;` },
+  { col: "accepted_at",           sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS accepted_at           TIMESTAMPTZ;` },
+  { col: "email_status",          sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS email_status          TEXT        NOT NULL DEFAULT 'pending';` },
+  { col: "resend_message_id",     sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS resend_message_id     TEXT;` },
+  { col: "email_error",           sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS email_error           TEXT;` },
+  { col: "updated_at",            sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW();` },
+  { col: "created_at",            sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS created_at            TIMESTAMP   NOT NULL DEFAULT NOW();` },
+];
+
+/**
+ * Queries information_schema.columns for team_members, logs Present/Expected/Missing,
+ * auto-repairs each missing column via ALTER TABLE, then verifies repair succeeded.
+ * Every DDL failure is logged with full PostgreSQL error detail.
+ */
+async function verifyTeamMembersSchema(client: import("pg").PoolClient): Promise<void> {
+  try {
+    const snapshot = await client.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name='team_members' ORDER BY ordinal_position`
+    );
+    const present  = snapshot.rows.map(r => r.column_name);
+    const expected = TEAM_MEMBERS_EXPECTED.map(e => e.col);
+    const missing  = expected.filter(c => !present.includes(c));
+
+    logger.info(
+      { present, expected, missing },
+      `[team_members schema] Present: ${present.join(", ")} | Expected: ${expected.join(", ")} | Missing: ${missing.length ? missing.join(", ") : "none"}`
+    );
+
+    if (missing.length === 0) return;
+
+    // Auto-repair each missing column one by one
+    for (const col of missing) {
+      const entry = TEAM_MEMBERS_EXPECTED.find(e => e.col === col)!;
+      logger.warn({ col, sqlStmt: entry.sql }, `[team_members schema] Auto-repairing missing column "${col}"`);
+
+      try {
+        await client.query(entry.sql);
+      } catch (err) {
+        const e = err as Record<string, unknown>;
+        logger.error(
+          {
+            col,
+            sqlMsg:        err instanceof Error ? err.message : String(err),
+            sqlCode:       e["code"],
+            sqlState:      e["code"],
+            sqlDetail:     e["detail"],
+            sqlConstraint: e["constraint"],
+            sqlTable:      e["table"],
+            sqlColumn:     e["column"],
+            sqlStmt:       entry.sql,
+            stack:         err instanceof Error ? err.stack : undefined,
+          },
+          `[team_members schema] FAILED to repair column "${col}"`
+        );
+        continue;
+      }
+
+      // Confirm the repair took effect
+      const check = await client.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns WHERE table_name='team_members' AND column_name=$1`,
+        [col]
+      );
+      if (check.rows.length === 0) {
+        logger.error(
+          { col, sqlStmt: entry.sql },
+          `[team_members schema] Column "${col}" STILL MISSING after ALTER TABLE — DDL silently rejected`
+        );
+      } else {
+        logger.info({ col }, `[team_members schema] Column "${col}" repaired and verified ✓`);
+      }
+    }
+
+    // Final post-repair snapshot
+    const final = await client.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name='team_members' ORDER BY ordinal_position`
+    );
+    const finalPresent  = final.rows.map(r => r.column_name);
+    const finalMissing  = expected.filter(c => !finalPresent.includes(c));
+    if (finalMissing.length > 0) {
+      logger.error(
+        { finalPresent, finalMissing },
+        `[team_members schema] POST-REPAIR: columns still missing: ${finalMissing.join(", ")}`
+      );
+    } else {
+      logger.info({ finalPresent }, "[team_members schema] All expected columns present after auto-repair ✓");
+    }
+  } catch (err) {
+    logger.error({ err }, "[team_members schema] verifyTeamMembersSchema failed — information_schema query error");
+  }
+}
+
 async function run(client: import("pg").PoolClient, sql: string): Promise<void> {
   try {
     await client.query(sql);
@@ -497,6 +600,9 @@ export async function initDataTables(): Promise<void> {
     // Location extended
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS region      TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS phone       TEXT;`);
+
+    // ── Schema verification: log Present/Expected/Missing + auto-repair ─────────
+    await verifyTeamMembersSchema(client);
 
     logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages ready");
   } catch (err) {
