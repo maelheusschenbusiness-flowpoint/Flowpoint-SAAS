@@ -30,12 +30,7 @@ function getResend(): Resend | null {
 }
 
 function getFrom(): string {
-  return (
-    process.env["FROM_EMAIL"] ||
-    process.env["ALERT_EMAIL_FROM"] ||
-    process.env["EMAIL_FROM"] ||
-    "FlowPoint <noreply@flowpoint.pro>"
-  );
+  return process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>";
 }
 
 export interface MailResult {
@@ -420,7 +415,6 @@ async function sendTeamInvitation(opts: {
   const org = opts.orgName || "FlowPoint";
   return send({
     to: opts.to,
-    from: "FlowPoint <noreply@flowpoint.pro>",
     subject: `${opts.inviterName} t'invite à rejoindre ${org} sur FlowPoint`,
     tag: "team_invitation",
     html: layout({

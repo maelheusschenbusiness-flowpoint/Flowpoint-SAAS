@@ -152,12 +152,9 @@ async function sendMagicEmail(email: string, link: string): Promise<void> {
     throw new Error("RESEND_API_KEY_MISSING");
   }
 
-  // Prefer verified custom domain; fall back to Resend's shared sender (works without domain verification)
+  // Centralized transactional sender — override via RESEND_FROM env var only
   const fromEmail =
-    process.env["FROM_EMAIL"] ||
-    process.env["ALERT_EMAIL_FROM"] ||
-    process.env["EMAIL_FROM"] ||
-    "FlowPoint <onboarding@resend.dev>";
+    process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>";
 
   logger.info({
     email,
@@ -333,7 +330,7 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
   // ── Entry diagnostic log — always visible in Render logs ─────────────────────
   logger.info({
     emailReceived: rawEmail ? String(rawEmail).replace(/(.{2}).+(@.+)/, "$1***$2") : "(none)",
-    fromEmail: process.env["FROM_EMAIL"] || process.env["RESEND_FROM"] || process.env["ALERT_EMAIL_FROM"] || process.env["EMAIL_FROM"] || "(fallback: onboarding@resend.dev)",
+    fromEmail: process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>",
     publicBaseUrl: process.env["PUBLIC_BASE_URL"] || process.env["PUBLIC_URL"] || "(not set)",
     resendKeyPresent: !!(process.env["RESEND_API_KEY"]),
     databaseUrlPresent: !!(process.env["DATABASE_URL"]),
