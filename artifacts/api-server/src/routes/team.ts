@@ -230,25 +230,32 @@ router.post("/team/invite", async (req: Request, res: Response) => {
     );
     logger.info({ reqId, id }, "[team/invite] STEP 6 OK: INSERT succeeded");
   } catch (insertErr: unknown) {
-    const ie     = insertErr as Record<string, unknown>;
-    const pgCode = ie["code"] as string | undefined;
+    const err = insertErr as Error & {
+      code?:       string;
+      detail?:     string;
+      constraint?: string;
+      schema?:     string;
+      table?:      string;
+      column?:     string;
+    };
     logger.error(
       {
         reqId,
-        step:          6,
+        step:        6,
         maskedEmail,
-        orgIdPrefix:   org.slice(0, 20),
-        pgCode,
-        pgMessage:     (insertErr as Error).message,
-        pgDetail:      ie["detail"],
-        pgConstraint:  ie["constraint"],
-        pgSchema:      ie["schema"],
-        pgTable:       ie["table"],
-        pgColumn:      ie["column"],
-        stack:         (insertErr as Error).stack,
+        orgIdPrefix: org.slice(0, 20),
+        pgCode:       err.code,
+        pgMessage:    err.message,
+        pgDetail:     err.detail,
+        pgConstraint: err.constraint,
+        pgSchema:     err.schema,
+        pgTable:      err.table,
+        pgColumn:     err.column,
+        stack:        err.stack,
       },
       "[team/invite] STEP 6 FAIL"
     );
+    const pgCode = err.code;
     if (pgCode === "23505") {
       res.status(409).json({
         ok:    false,
