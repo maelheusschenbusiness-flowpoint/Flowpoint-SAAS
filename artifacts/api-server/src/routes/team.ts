@@ -103,7 +103,7 @@ router.get("/team", async (req: Request, res: Response) => {
  * Schema repairs run only in initDataTables() at startup — never from here.
  */
 const INSERT_COLS = [
-  "id", "org_id", "email", "role", "joined", "status",
+  "id", "org_id", "email", "name", "role", "joined", "status",
   "invited_by", "invitation_token_hash", "invited_at", "expires_at",
   "email_status", "created_at", "updated_at",
 ] as const;
@@ -206,6 +206,8 @@ router.post("/team/invite", async (req: Request, res: Response) => {
 
   // ── STEP 6 — INSERT team_members ─────────────────────────────────────────
   // Columns logged above (STEP 5.5). Values never logged.
+  // name:                  TEXT local part of email (email.split('@')[0])
+  //                        — required NOT NULL; production Supabase has no DEFAULT
   // joined:                TEXT date string  (YYYY-MM-DD)
   // status:                TEXT literal      'pending'
   // invited_by:            TEXT              org (org_id of inviting org)
@@ -214,6 +216,7 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   // expires_at:            TIMESTAMPTZ       7 days from now
   // email_status:          TEXT literal      'pending' (updated at STEP 10)
   // created_at / updated_at: TIMESTAMPTZ     NOW()
+  const memberName = email.split("@")[0] ?? "";
   logger.info(
     { reqId, id, orgId: org.slice(0, 20), maskedEmail, insertCols: INSERT_COLS },
     "[team/invite] STEP 6: INSERT into team_members"
@@ -221,12 +224,12 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   try {
     await orgDb(req)(
       `INSERT INTO team_members
-         (id, org_id, email, role, joined, status,
+         (id, org_id, email, name, role, joined, status,
           invited_by, invitation_token_hash, invited_at, expires_at,
           email_status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'pending',
-               $6, $7, NOW(), $8, 'pending', NOW(), NOW())`,
-      [id, org, email, memberRole, joined, org, tokenHash, expiresAt.toISOString()]
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending',
+               $7, $8, NOW(), $9, 'pending', NOW(), NOW())`,
+      [id, org, email, memberName, memberRole, joined, org, tokenHash, expiresAt.toISOString()]
     );
     logger.info({ reqId, id }, "[team/invite] STEP 6 OK: INSERT succeeded");
   } catch (insertErr: unknown) {
