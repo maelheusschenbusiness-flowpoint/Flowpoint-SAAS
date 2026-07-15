@@ -8790,7 +8790,7 @@ function renderSettings() {
             ${svgIcon('users').replace('stroke="currentColor"','stroke="#2563EB"')}
             Membres de l\'équipe
           </div>
-          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Inviter un membre',renderInvitePanel());setTimeout(()=>{const btn=document.getElementById('invite-send');if(btn)btn.onclick=async()=>{const em=document.getElementById('invite-email')?.value?.trim();const rl=(document.getElementById('invite-role')?.value||'viewer').toLowerCase();if(!em)return showToast('error','Email requis');btn.disabled=true;btn.textContent='Envoi…';const r=await apiAction('POST','/api/team/invite',{email:em,role:rl}).catch(()=>null);btn.disabled=false;btn.textContent='Envoyer l\'invitation';if(r&&!r.error){closeFloatPanel&&closeFloatPanel();showToast('success','Invitation envoyée à '+em);}else{showToast('error','Erreur d\'envoi');}}},100)">+ Inviter</button>
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="openFloatPanel('Inviter un membre',renderInvitePanel())">+ Inviter</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${members.map(m => `
@@ -13564,11 +13564,12 @@ function bindSectionEvents() {
       setTimeout(() => {
         const sendBtn = $('#invite-send');
         if (!sendBtn) return;
-        sendBtn.addEventListener('click', async () => {
+        sendBtn.onclick = async () => {
+          if (sendBtn.dataset.submitting === '1') return;
           const email = ($('#invite-email')?.value || '').trim();
           const role  = ($('#invite-role')?.value  || 'editor').toLowerCase();
           if (!email) { showToast('warning', 'Entrez un email'); return; }
-          if (sendBtn.disabled) return;
+          sendBtn.dataset.submitting = '1';
           sendBtn.disabled = true;
           sendBtn.textContent = 'Envoi\u2026';
           try {
@@ -13579,6 +13580,7 @@ function bindSectionEvents() {
               body: JSON.stringify({ email, role }),
             });
             const data = await resp.json().catch(() => ({}));
+            sendBtn.dataset.submitting = '';
             sendBtn.disabled = false;
             sendBtn.textContent = 'Envoyer l\'invitation';
             if (resp.status === 201 && data.ok) {
@@ -13597,11 +13599,12 @@ function bindSectionEvents() {
               showToast('error', data.error || 'Erreur lors de l\'invitation');
             }
           } catch (_e) {
+            sendBtn.dataset.submitting = '';
             sendBtn.disabled = false;
             sendBtn.textContent = 'Envoyer l\'invitation';
             showToast('error', 'Erreur r\u00e9seau \u2014 r\u00e9essayez');
           }
-        });
+        };
       }, 50);
     });
     $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', async () => { const memberId = btn.dataset.removeMember; if (!memberId || !confirm('Retirer ce membre de l\'équipe ?')) return; const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }));

@@ -156,75 +156,17 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   const memberRole = rawRole;
   logger.info({ reqId, maskedEmail, memberRole }, "[team/invite] STEP 3 OK");
 
-  // ── STEP 4 — Duplicate guard SELECT ──────────────────────────────────────
-  // Uses pool.query() (postgres superuser, BYPASSRLS) instead of orgDb/withOrgDb.
-  // Tenant isolation is enforced by the explicit WHERE org_id = $1 — identical
-  // to what the RLS tenant_select policy would enforce, but without any role
-  // switch or GUC transaction that could fail in production.
-  // Only SELECT id — we need existence, not column values.
-  const dupSql    = `SELECT id FROM team_members WHERE org_id = $1 AND lower(email) = lower($2) LIMIT 1`;
-  const dupParams: unknown[] = [org, email];
-  logger.info(
-    {
-      reqId,
-      step:      "DUPLICATE CHECK START",
-      sql:       dupSql,
-      orgPrefix: org.slice(0, 8) + "…",
-      email:     maskedEmail,
-      via:       "pool.query",
-    },
-    "[team/invite] STEP DUPLICATE CHECK START"
-  );
-  try {
-    const dup = await pool.query(dupSql, dupParams);
-    logger.info({ reqId, dupFound: dup.rows.length > 0 }, "[team/invite] STEP 4 OK");
-    if (dup.rows.length > 0) {
-      logger.warn(
-        { reqId, maskedEmail, existingId: (dup.rows[0] as { id: string }).id?.slice(0, 8) },
-        "[team/invite] STEP 4: duplicate found → 409"
-      );
-      res.status(409).json({
-        ok:    false,
-        code:  "DUPLICATE_INVITATION",
-        error: "Une invitation est déjà en attente pour cette adresse.",
-      });
-      return;
-    }
-  } catch (guardErr) {
-    const ge = guardErr as Record<string, unknown>;
-    logger.error(
-      {
-        reqId,
-        step:          4,
-        via:           "pool.query",
-        orgPrefix:     org.slice(0, 20),
-        email:         maskedEmail,
-        pgCode:        ge["code"],
-        pgMessage:     (guardErr as Error).message,
-        pgDetail:      ge["detail"],
-        pgConstraint:  ge["constraint"],
-        pgTable:       ge["table"],
-        pgColumn:      ge["column"],
-        stack:         (guardErr as Error).stack,
-      },
-      "[team/invite] STEP 4 FAIL: duplicate guard pool.query failed → 500"
-    );
-    res.status(500).json({
-      ok:    false,
-      code:  "INVITATION_DUPLICATE_CHECK_ERROR",
-      error: "Internal error during invitation check",
-    });
-    return;
-  }
-
-  // ── STEP 5 — Token generation ────────────────────────────────────────────
-  logger.info({ reqId }, "[team/invite] STEP 5: generating invitation token");
+  // ── STEP 4 — Token generation ────────────────────────────────────────────
+  // No SELECT-before-INSERT. The partial unique index on (org_id, lower(email))
+  // WHERE status='pending' is the sole source of truth for duplicates.
+  // If a pending row already exists the INSERT throws 23505 → 409 in STEP 6.
+  logger.info({ reqId }, "[team/invite] STEP 4: generating invitation token");
   const rawToken  = randomBytes(32).toString("hex");
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
   const id        = `inv_${Date.now()}_${randomBytes(4).toString("hex")}`;
   const joined    = new Date().toISOString().slice(0, 10);
-  logger.info({ reqId, id, tokenHashPrefix: tokenHash.slice(0, 8) }, "[team/invite] STEP 5 OK");
+  logger.info({ reqId, id, tokenHashPrefix: tokenHash.slice(0, 8) }, "[team/invite] STEP 4 OK");
 
   // ── STEP 5.5 — Read-only schema assertion ────────────────────────────────
   // Verifies that every column used in the INSERT exists in production.

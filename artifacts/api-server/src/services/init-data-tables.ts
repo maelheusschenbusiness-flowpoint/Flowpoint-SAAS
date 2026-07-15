@@ -580,8 +580,28 @@ export async function initDataTables(): Promise<void> {
         END IF;
       END $$;
     `);
-    // Functional unique index on (org_id, lower(email)) — same email allowed in different orgs
-    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS team_members_org_lower_email_idx ON team_members(org_id, lower(email));`);
+    // ── Switch to partial unique index (pending rows only) ───────────────────
+    // Drop the old full unique index (may not exist or may have failed due to
+    // pre-existing duplicates).  Then de-dup any existing pending rows, keeping
+    // the most-recent by invited_at so the new partial index can be created
+    // cleanly.  Same email in different orgs, or same email once accepted/expired,
+    // is allowed — only one *pending* row per (org_id, lower(email)) is blocked.
+    await run(client, `DROP INDEX IF EXISTS team_members_org_lower_email_idx;`);
+    await run(client, `
+      DELETE FROM team_members
+      WHERE status = 'pending'
+        AND ctid NOT IN (
+          SELECT DISTINCT ON (org_id, lower(email)) ctid
+          FROM   team_members
+          WHERE  status = 'pending'
+          ORDER  BY org_id, lower(email), invited_at DESC NULLS LAST, ctid DESC
+        );
+    `);
+    await run(client, `
+      CREATE UNIQUE INDEX IF NOT EXISTS team_members_org_lower_email_idx
+      ON team_members (org_id, lower(email))
+      WHERE status = 'pending';
+    `);
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_idx ON team_members(org_id, email);`);
 
     // ── org_settings — columns that may be missing in older DBs ─────────────
