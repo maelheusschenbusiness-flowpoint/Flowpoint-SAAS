@@ -18,6 +18,7 @@
 import { Router, type Request, type Response } from "express";
 import { logger }                               from "../lib/logger.js";
 import { randomBytes, createHash }             from "crypto";
+import { pool }                                from "@workspace/db";
 
 const router = Router();
 
@@ -168,6 +169,66 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   const id        = `inv_${Date.now()}_${randomBytes(4).toString("hex")}`;
   const joined    = new Date().toISOString().slice(0, 10);
   logger.info({ reqId, id, tokenHashPrefix: tokenHash.slice(0, 8) }, "[team/invite] STEP 5 OK");
+
+  // ── STEP 5.5 — Inline schema self-heal ───────────────────────────────────
+  // Belt-and-suspenders: if startup DDL (initDataTables) was silently rejected
+  // (e.g. pgBouncer transaction-mode, insufficient privileges), columns required
+  // by STEP 4 SELECT and STEP 6 INSERT may be missing in the production DB.
+  // This step checks via information_schema and adds any missing columns using
+  // pool.query() (postgres superuser — bypasses RLS, bypasses app_user ROLE).
+  // Cost: one cheap information_schema query per request until schema is complete.
+  {
+    const INVITE_COLS: Record<string, string> = {
+      org_id:                "TEXT        NOT NULL DEFAULT 'default'",
+      status:                "TEXT        NOT NULL DEFAULT 'pending'",
+      invited_at:            "TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+      invited_by:            "TEXT        NOT NULL DEFAULT ''",
+      invitation_token_hash: "TEXT",
+      expires_at:            "TIMESTAMPTZ",
+      accepted_at:           "TIMESTAMPTZ",
+      email_status:          "TEXT        NOT NULL DEFAULT 'pending'",
+      resend_message_id:     "TEXT",
+      email_error:           "TEXT",
+      updated_at:            "TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+    };
+    try {
+      const schemaRows = await pool.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'team_members'`
+      );
+      const present = new Set(schemaRows.rows.map(r => r.column_name));
+      const missing = Object.keys(INVITE_COLS).filter(c => !present.has(c));
+      logger.info(
+        { reqId, present: [...present], missing },
+        `[team/invite] STEP 5.5: schema check — missing: ${missing.length ? missing.join(", ") : "none"}`
+      );
+      for (const col of missing) {
+        const colDef = INVITE_COLS[col];
+        try {
+          await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS "${col}" ${colDef}`);
+          logger.info({ reqId, col }, `[team/invite] STEP 5.5: added column "${col}" ✓`);
+        } catch (repairErr) {
+          const re = repairErr as Record<string, unknown>;
+          logger.error(
+            {
+              reqId, col, colDef,
+              sqlCode:   re["code"],
+              sqlMsg:    (repairErr as Error).message,
+              sqlDetail: re["detail"],
+              sqlTable:  re["table"],
+              sqlColumn: re["column"],
+              stack:     (repairErr as Error).stack,
+            },
+            `[team/invite] STEP 5.5: FAILED to add column "${col}" — INSERT will likely fail next`
+          );
+        }
+      }
+    } catch (schemaErr) {
+      logger.warn(
+        { reqId, err: (schemaErr as Error).message },
+        "[team/invite] STEP 5.5: schema check failed — proceeding anyway"
+      );
+    }
+  }
 
   // ── STEP 6 — INSERT team_members ─────────────────────────────────────────
   // `name` column is intentionally excluded: it may not exist on older production
