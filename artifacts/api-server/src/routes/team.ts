@@ -237,8 +237,7 @@ router.post("/team/invite", async (req: Request, res: Response) => {
         reqId,
         step:          6,
         maskedEmail,
-        orgId:         org.slice(0, 20),
-        insertCols:    INSERT_COLS,
+        orgIdPrefix:   org.slice(0, 20),
         pgCode,
         pgMessage:     (insertErr as Error).message,
         pgDetail:      ie["detail"],
@@ -248,7 +247,7 @@ router.post("/team/invite", async (req: Request, res: Response) => {
         pgColumn:      ie["column"],
         stack:         (insertErr as Error).stack,
       },
-      "[team/invite] STEP 6 FAIL: INSERT error"
+      "[team/invite] STEP 6 FAIL"
     );
     if (pgCode === "23505") {
       res.status(409).json({

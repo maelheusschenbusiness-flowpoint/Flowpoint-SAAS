@@ -2277,27 +2277,34 @@ function openFloatPanel(title, content) {
   if (title === 'Inviter un membre') {
     const sendBtn = body.querySelector('#invite-send');
     if (sendBtn) {
-      const hid = Math.random().toString(36).slice(2, 8);
-      console.debug('[fp-invite] handler attached hid=' + hid, sendBtn);
+      const attachId = (globalThis.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
+      console.debug('[team-invite] handler attached', { attachId });
       sendBtn.onclick = async () => {
-        if (sendBtn.dataset.submitting === '1') return;
+        console.debug('[team-invite] click received', { attachId, submitting: sendBtn.dataset.submitting });
+        if (sendBtn.dataset.submitting === '1') {
+          console.debug('[team-invite] duplicate click blocked', { attachId });
+          return;
+        }
         const email = (body.querySelector('#invite-email')?.value || '').trim();
         const role  = (body.querySelector('#invite-role')?.value  || 'viewer').toLowerCase();
         if (!email) { showToast('warning', 'Entrez un email'); return; }
+        const maskedEmail = email.slice(0, 2) + '***@' + (email.split('@')[1] || '?');
         sendBtn.dataset.submitting = '1';
         sendBtn.disabled = true;
         sendBtn.textContent = 'Envoi\u2026';
+        let resp;
         try {
-          const resp = await fetch('/api/team/invite', {
+          console.debug('[team-invite] POST start', { attachId, email: maskedEmail, role });
+          resp = await fetch('/api/team/invite', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({ email, role }),
           });
+          console.debug('[team-invite] POST end', { attachId, status: resp.status });
           const data = await resp.json().catch(() => ({}));
-          sendBtn.dataset.submitting = '';
-          sendBtn.disabled = false;
-          sendBtn.textContent = 'Envoyer l\'invitation';
           if (resp.status === 201 && data.ok) {
             closeFloatPanel && closeFloatPanel();
             showToast('success', 'Invitation envoy\u00e9e \u00e0 ' + escHtml(email) + ' !');
@@ -2314,10 +2321,11 @@ function openFloatPanel(title, content) {
             showToast('error', data.error || 'Erreur lors de l\'invitation');
           }
         } catch (_e) {
-          sendBtn.dataset.submitting = '';
+          showToast('error', 'Erreur r\u00e9seau \u2014 r\u00e9essayez');
+        } finally {
+          delete sendBtn.dataset.submitting;
           sendBtn.disabled = false;
           sendBtn.textContent = 'Envoyer l\'invitation';
-          showToast('error', 'Erreur r\u00e9seau \u2014 r\u00e9essayez');
         }
       };
     }
