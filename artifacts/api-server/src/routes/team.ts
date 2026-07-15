@@ -157,16 +157,25 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   logger.info({ reqId, maskedEmail, memberRole }, "[team/invite] STEP 3 OK");
 
   // ── STEP 4 — Duplicate guard SELECT ──────────────────────────────────────
-  logger.info({ reqId, maskedEmail }, "[team/invite] STEP 4: duplicate guard SELECT");
+  // Only SELECT id — we need existence, not column values.
+  // Selecting "status" caused 42703 when that column was absent in production.
+  const dupSql    = `SELECT id FROM team_members WHERE org_id = $1 AND lower(email) = lower($2) LIMIT 1`;
+  const dupParams = [org, email];
+  logger.info(
+    {
+      reqId,
+      step:         "DUPLICATE CHECK START",
+      sql:          dupSql,
+      params:       [org.slice(0, 8) + "…", maskedEmail],
+    },
+    "[team/invite] STEP DUPLICATE CHECK START"
+  );
   try {
-    const dup = await orgDb(req)(
-      `SELECT id, status FROM team_members WHERE org_id = $1 AND lower(email) = lower($2) LIMIT 1`,
-      [org, email]
-    );
+    const dup = await orgDb(req)(dupSql, dupParams);
     logger.info({ reqId, dupFound: dup.rows.length > 0 }, "[team/invite] STEP 4 OK");
     if (dup.rows.length > 0) {
       logger.warn(
-        { reqId, maskedEmail, existingStatus: dup.rows[0]?.status },
+        { reqId, maskedEmail, existingId: (dup.rows[0] as { id: string }).id?.slice(0, 8) },
         "[team/invite] STEP 4: duplicate found → 409"
       );
       res.status(409).json({

@@ -522,9 +522,17 @@ export async function withOrgDb<T>(
   try {
     await client.query("BEGIN");
 
+    // SET does not accept $N parameters — escape the value as a SQL literal.
+    // The GUC is set FIRST while still running as the pool connection user
+    // (postgres / superuser) which always has permission to set custom GUCs.
+    // SET LOCAL scopes it to the current transaction; it survives the role
+    // switch below and remains visible to every query in this transaction.
+    const safeOrgId = orgId.replace(/'/g, "''");
+    await client.query(`SET LOCAL "app.current_org_id" = '${safeOrgId}'`);
+
     // Drop to app_user role so BYPASSRLS is inactive and RLS policies are evaluated.
     // Skipped when probeAppUserRole() determined the role is not grantable (Supabase,
-    // managed DBs). In that case tenant isolation relies solely on the GUC below.
+    // managed DBs). In that case tenant isolation relies solely on the GUC above.
     if (!_appUserRoleUnavailable) {
       try {
         await client.query("SET LOCAL ROLE app_user");
@@ -536,15 +544,12 @@ export async function withOrgDb<T>(
           (roleErr as Error).message,
         );
         // A failed command inside a transaction puts it in aborted state.
-        // ROLLBACK + fresh BEGIN so the GUC and callback queries can proceed.
+        // ROLLBACK + fresh BEGIN, then re-apply the GUC in the fresh transaction.
         await client.query("ROLLBACK");
         await client.query("BEGIN");
+        await client.query(`SET LOCAL "app.current_org_id" = '${safeOrgId}'`);
       }
     }
-
-    // SET does not accept $N parameters — escape the value as a SQL literal.
-    const safeOrgId = orgId.replace(/'/g, "''");
-    await client.query(`SET LOCAL "app.current_org_id" = '${safeOrgId}'`);
     const result = await callback(client);
     await client.query("COMMIT");
     return result;
