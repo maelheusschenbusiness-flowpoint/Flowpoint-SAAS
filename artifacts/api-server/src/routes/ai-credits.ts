@@ -4,7 +4,7 @@ import { getAIUsageStats, consumeAICredits, type AIFeature } from "../services/a
 const router = Router();
 
 router.get("/ai-credits", async (req: Request, res: Response) => {
-  const orgId = (req as unknown as Record<string, string>)?.["orgContext"]?.["orgId"] ?? "default";
+  const orgId = req.orgId ?? "default";
   try {
     const stats = await getAIUsageStats(orgId);
     res.json(stats);
@@ -15,7 +15,7 @@ router.get("/ai-credits", async (req: Request, res: Response) => {
 
 // Alias: /api/ai/credits → same handler (spec compatibility)
 router.get("/ai/credits", async (req: Request, res: Response) => {
-  const orgId = (req as unknown as Record<string, string>)?.["orgContext"]?.["orgId"] ?? "default";
+  const orgId = req.orgId ?? "default";
   try {
     const stats = await getAIUsageStats(orgId);
     res.json(stats);
@@ -25,7 +25,7 @@ router.get("/ai/credits", async (req: Request, res: Response) => {
 });
 
 router.get("/ai-credits/usage", async (req: Request, res: Response) => {
-  const orgId = (req as unknown as Record<string, string>)?.["orgContext"]?.["orgId"] ?? "default";
+  const orgId = req.orgId ?? "default";
   try {
     const stats = await getAIUsageStats(orgId);
     const totalAvailable = stats.monthly.creditsLimit + stats.monthly.creditsExtra;
@@ -44,7 +44,7 @@ router.get("/ai-credits/usage", async (req: Request, res: Response) => {
 });
 
 router.get("/ai-credits/alerts", async (req: Request, res: Response) => {
-  const orgId = (req as unknown as Record<string, string>)?.["orgContext"]?.["orgId"] ?? "default";
+  const orgId = req.orgId ?? "default";
   try {
     const stats = await getAIUsageStats(orgId);
     res.json({ alerts: stats.alerts });
@@ -54,11 +54,12 @@ router.get("/ai-credits/alerts", async (req: Request, res: Response) => {
 });
 
 router.post("/ai-credits/consume", async (req: Request, res: Response) => {
-  const orgId = (req as unknown as Record<string, string>)?.["orgContext"]?.["orgId"] ?? "default";
+  const orgId  = req.orgId  ?? "default";
+  const userId = req.userId ?? "system";
   const { feature, metadata } = req.body as { feature?: AIFeature; metadata?: Record<string, unknown> };
   if (!feature) { res.status(400).json({ error: "feature required" }); return; }
   try {
-    const result = await consumeAICredits({ feature, metadata, orgId });
+    const result = await consumeAICredits({ feature, metadata, orgId, userId });
     res.json(result);
   } catch {
     res.status(500).json({ error: "Failed to consume credits" });

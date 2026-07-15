@@ -7,7 +7,6 @@ import { aiRateLimit } from "../middlewares/rateLimiter.js";
 import {
   consumeAICredits,
   checkAIQuota,
-  trackAIUsage,
   getAIUsageStats,
   getOrCreateMonthlyUsage,
   recordCompletedUsage,
@@ -634,7 +633,9 @@ router.post("/ai/audit", async (req, res) => {
 
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
-  const orgId = req.orgId ?? "default";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
     res.status(403).json(moduleDisabledResponse("dailyAI"));
@@ -739,9 +740,8 @@ Après ces corrections je recommande :
       temperature: 0.4,
       orgId,
     });
-    const creditResult = await consumeAICredits({ feature: "audit_summary", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
-    await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
+    const { remaining: auditRemaining } = await recordCompletedUsage({ feature: "audit_summary", orgId, userId, model: aiResult.model as AIModel, provider: aiResult.provider, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, requestId });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: auditRemaining });
   } catch (err) {
     logger.error({ err }, "[AI] /audit failed");
     res.status(503).json(aiUnavailableJson());
@@ -759,7 +759,9 @@ router.post("/ai/seo", async (req, res) => {
 
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
-  const orgId = req.orgId ?? "default";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "aiCRO")) {
     res.status(403).json(moduleDisabledResponse("aiCRO"));
@@ -850,9 +852,8 @@ Sections :
     });
     const recommendations = resp.text ?? "";
     const latencyMs = Date.now() - t0;
-    const creditResult = await consumeAICredits({ feature: "cro_analysis", orgId, model: resp._ai.model as AIModel, tokensIn: resp.usage.promptTokens, tokensOut: resp.usage.completionTokens });
-    await trackAIUsage({ feature: "cro_analysis", orgId, model: resp._ai.model, tokensIn: resp.usage.promptTokens, tokensOut: resp.usage.completionTokens, latencyMs, success: true, provider: resp._ai.provider });
-    res.json({ recommendations, _ai: resp._ai, creditsRemaining: creditResult.remaining });
+    const { remaining: seoRemaining } = await recordCompletedUsage({ feature: "cro_analysis", orgId, userId, model: resp._ai.model as AIModel, provider: resp._ai.provider, tokensIn: resp.usage.promptTokens, tokensOut: resp.usage.completionTokens, latencyMs, success: true, requestId });
+    res.json({ recommendations, _ai: resp._ai, creditsRemaining: seoRemaining });
   } catch (err) {
     logger.error({ err }, "[AI] /seo failed");
     res.status(503).json(aiUnavailableJson());
@@ -868,7 +869,9 @@ router.post("/ai/conversion", async (req, res) => {
     context?: Record<string, unknown>;
   };
 
-  const orgId = req.orgId ?? "default";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "aiCRO")) {
     res.status(403).json(moduleDisabledResponse("aiCRO"));
@@ -899,9 +902,8 @@ Analyse en 4 sections:
       maxTokens: 1000,
       orgId,
     });
-    const creditResult = await consumeAICredits({ feature: "cro_analysis", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
-    await trackAIUsage({ feature: "cro_analysis", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
+    const { remaining: convRemaining } = await recordCompletedUsage({ feature: "cro_analysis", orgId, userId, model: aiResult.model as AIModel, provider: aiResult.provider, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, requestId });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: convRemaining });
   } catch (err) {
     logger.error({ err }, "[AI] /conversion failed");
     res.status(503).json(aiUnavailableJson());
@@ -918,7 +920,9 @@ router.post("/ai/local", async (req, res) => {
     context?: Record<string, unknown>;
   };
 
-  const orgId = req.orgId ?? "default";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "aiMarket")) {
     res.status(403).json(moduleDisabledResponse("aiMarket"));
@@ -949,9 +953,8 @@ Génère une stratégie Local SEO complète:
       maxTokens: 1200,
       orgId,
     });
-    const creditResult = await consumeAICredits({ feature: "market_intel", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
-    await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
+    const { remaining: localRemaining } = await recordCompletedUsage({ feature: "market_intel", orgId, userId, model: aiResult.model as AIModel, provider: aiResult.provider, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, requestId });
+    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: localRemaining });
   } catch (err) {
     logger.error({ err }, "[AI] /local failed");
     res.status(503).json(aiUnavailableJson());
@@ -967,7 +970,9 @@ router.post("/ai/competitors", async (req, res) => {
     context?: Record<string, unknown>;
   };
 
-  const orgId = req.orgId ?? "default";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "aiMarket")) {
     res.status(403).json(moduleDisabledResponse("aiMarket"));
@@ -996,9 +1001,8 @@ Fournis:
       maxTokens: 1200,
       orgId,
     });
-    const creditResult = await consumeAICredits({ feature: "market_intel", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
-    await trackAIUsage({ feature: "market_intel", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
+    const { remaining: compRemaining } = await recordCompletedUsage({ feature: "market_intel", orgId, userId, model: aiResult.model as AIModel, provider: aiResult.provider, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, requestId });
+    res.json({ analysis: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: compRemaining });
   } catch (err) {
     logger.error({ err }, "[AI] /competitors failed");
     res.status(503).json(aiUnavailableJson());
@@ -1015,7 +1019,9 @@ router.post("/ai/reports", async (req, res) => {
     context?: Record<string, unknown>;
   };
 
-  const orgId = req.orgId ?? "default";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "aiReporting")) {
     res.status(403).json(moduleDisabledResponse("aiReporting"));
@@ -1090,9 +1096,8 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
       maxTokens: 1800,
       orgId,
     });
-    const creditResult = await consumeAICredits({ feature: "report_gen", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
-    await trackAIUsage({ feature: "report_gen", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ report: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
+    const { remaining: repRemaining } = await recordCompletedUsage({ feature: "report_gen", orgId, userId, model: aiResult.model as AIModel, provider: aiResult.provider, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, requestId });
+    res.json({ report: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: repRemaining });
   } catch (err) {
     logger.error({ err }, "[AI] /reports failed");
     res.status(503).json(aiUnavailableJson());
@@ -1102,7 +1107,9 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
 // ── POST /ai/summary — Executive summary ──────────────────────────────────────
 router.post("/ai/summary", async (req, res) => {
   const { context } = req.body as { context?: Record<string, unknown> };
-  const orgId = req.orgId ?? "default";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "aiStrategist")) {
     res.status(403).json(moduleDisabledResponse("aiStrategist"));
@@ -1132,9 +1139,8 @@ Format:
       maxTokens: 1600,
       orgId,
     });
-    const creditResult = await consumeAICredits({ feature: "strategist", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
-    await trackAIUsage({ feature: "strategist", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ summary: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
+    const { remaining: sumRemaining } = await recordCompletedUsage({ feature: "strategist", orgId, userId, model: aiResult.model as AIModel, provider: aiResult.provider, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, requestId });
+    res.json({ summary: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: sumRemaining });
   } catch (err) {
     logger.error({ err }, "[AI] /summary failed");
     res.status(503).json(aiUnavailableJson());
@@ -1149,7 +1155,9 @@ router.post("/ai/missions", async (req, res) => {
     context?: Record<string, unknown>;
   };
 
-  const orgId = req.orgId ?? "default";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
     res.status(403).json(moduleDisabledResponse("dailyAI"));
@@ -1208,9 +1216,8 @@ Réponds uniquement avec le JSON array.`;
       res.status(503).json(aiUnavailableJson());
       return;
     }
-    const creditResult = await consumeAICredits({ feature: "mission_auto", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
-    await trackAIUsage({ feature: "mission_auto", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ missions, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
+    const { remaining: missRemaining } = await recordCompletedUsage({ feature: "mission_auto", orgId, userId, model: aiResult.model as AIModel, provider: aiResult.provider, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, requestId });
+    res.json({ missions, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: missRemaining });
   } catch (err) {
     logger.error({ err }, "[AI] /missions failed");
     res.status(503).json(aiUnavailableJson());
@@ -1228,7 +1235,9 @@ router.post("/ai/pagespeed-insights", async (req, res) => {
 
   if (!url) { res.status(400).json({ error: "url requis" }); return; }
 
-  const orgId = req.orgId ?? "default";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
     res.status(403).json(moduleDisabledResponse("dailyAI"));
@@ -1262,9 +1271,8 @@ Génère:
       maxTokens: 1200,
       orgId,
     });
-    const creditResult = await consumeAICredits({ feature: "audit_summary", orgId, model: aiResult.model as AIModel, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut });
-    await trackAIUsage({ feature: "audit_summary", orgId, model: aiResult.model, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, provider: aiResult.provider });
-    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: creditResult.remaining });
+    const { remaining: psiRemaining } = await recordCompletedUsage({ feature: "audit_summary", orgId, userId, model: aiResult.model as AIModel, provider: aiResult.provider, tokensIn: aiResult.tokensIn, tokensOut: aiResult.tokensOut, latencyMs: aiResult.latencyMs, success: true, requestId });
+    res.json({ recommendations: aiResult.text, model: aiResult.model, provider: aiResult.provider, _ai: aiResult._ai, creditsRemaining: psiRemaining });
   } catch (err) {
     logger.error({ err }, "[AI] /pagespeed-insights failed");
     res.status(503).json(aiUnavailableJson());
@@ -1305,16 +1313,20 @@ router.get("/ai/usage", async (req, res) => {
 
 router.get("/ai/recommendations", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
-  const { pool } = await import("@workspace/db");
   const client = await pool.connect();
   try {
-    const rows = await client.query(
-      `SELECT id, type, title, description, priority, status, created_at
-       FROM ai_usage_logs WHERE org_id=$1 ORDER BY created_at DESC LIMIT 50`,
+    const { rows } = await client.query(
+      `SELECT id, type, title, description, priority, status, source, metadata, created_at, expires_at
+       FROM ai_recommendations
+       WHERE org_id = $1
+         AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY priority ASC, created_at DESC
+       LIMIT 50`,
       [orgId]
     );
-    res.json({ recommendations: rows.rows });
-  } catch {
+    res.json({ recommendations: rows });
+  } catch (err) {
+    logger.warn({ err }, "[AI] /ai/recommendations query failed — returning empty");
     res.json({ recommendations: [] });
   } finally {
     client.release();
@@ -1324,6 +1336,19 @@ router.get("/ai/recommendations", async (req: Request, res: Response) => {
 router.post("/ai/generate", async (req: Request, res: Response) => {
   const { prompt, type = "general" } = req.body as { prompt?: string; type?: string };
   if (!prompt) return res.status(400).json({ error: "prompt required" });
+
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  // Pre-flight quota check — /ai/generate calls a paid AI provider
+  const quotaCheck = await checkAIQuota({ feature: "chat", orgId });
+  if (!quotaCheck.allowed) {
+    const aiPrefs = await loadOrgAIPrefs(orgId);
+    return res.status(402).json(buildQuotaGuidance(quotaCheck, aiPrefs));
+  }
+
+  const t0 = Date.now();
   try {
     const result = await aiChat({
       task: "chat",
@@ -1331,19 +1356,21 @@ router.post("/ai/generate", async (req: Request, res: Response) => {
       messages: [{ role: "user", content: prompt }],
       maxTokens: 800,
     });
+    const latencyMs = Date.now() - t0;
+
+    recordCompletedUsage({
+      feature: "chat", orgId, userId,
+      model: (result._ai.model) as AIModel, provider: result._ai.provider,
+      tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens,
+      latencyMs, success: true, requestId,
+    }).catch(err => logger.warn({ err }, "[AI] /generate recordCompletedUsage failed"));
+
     res.json({
       content: result.text,
       mock: false,
       _ai: result._ai,
     });
   } catch (err) {
-    const code = (err as { code?: string }).code;
-    if (code === "AI_ALL_PROVIDERS_FAILED") {
-      return res.status(503).json({
-        error: "Service IA temporairement indisponible. Réessayez dans quelques instants.",
-        code: "AI_UNAVAILABLE",
-      });
-    }
     logger.error({ err }, "[AI] /ai/generate failed");
     return res.status(503).json({
       error: "Service IA temporairement indisponible. Réessayez dans quelques instants.",

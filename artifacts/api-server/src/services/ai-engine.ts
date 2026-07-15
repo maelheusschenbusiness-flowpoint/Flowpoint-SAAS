@@ -148,7 +148,7 @@ export async function consumeAICredits(opts: {
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
             tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,0,0,'true',$14)`,
-        [logId, orgId, opts.userId ?? "mael", provider, model, opts.feature,
+        [logId, orgId, opts.userId ?? "system", provider, model, opts.feature,
          creditsDebited, creditsDebited,
          tokensIn, tokensOut, cachedTokens,
          realCostEur, realCostEur,
@@ -237,7 +237,7 @@ export async function trackAIUsage(opts: {
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
             tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-        [logId, opts.orgId ?? "default", opts.userId ?? "mael", provider, opts.model, opts.feature,
+        [logId, opts.orgId ?? "default", opts.userId ?? "system", provider, opts.model, opts.feature,
          creditsDeb, creditsDeb,
          opts.tokensIn, opts.tokensOut, cachedTok,
          realCostEur, realCostEur,
@@ -262,28 +262,35 @@ export async function recordCompletedUsage(opts: {
   cachedTokens?: number;
   latencyMs: number;
   success: boolean;
-}): Promise<void> {
+  /** Idempotency key — callers should generate once per logical AI request and reuse
+   *  on retry. The key is stored in ai_usage_logs.idempotency_key with a UNIQUE index,
+   *  so a second call with the same key is silently ignored (no double-billing). */
+  requestId?: string;
+}): Promise<{ creditsDebited: number; remaining: number }> {
   const { orgId, userId, model, feature, tokensIn, tokensOut, latencyMs } = opts;
-  const provider     = opts.provider ?? "openai";
-  const cachedTok    = opts.cachedTokens ?? 0;
-  const realCostEur  = computeRealCostEur({ model, tokensIn, tokensOut, cachedTokens: cachedTok });
-  const creditsDeb   = computeCreditsDebited({ feature, model, realCostEur });
-  const month        = currentMonth();
-  const logId        = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const provider    = opts.provider ?? "openai";
+  const cachedTok   = opts.cachedTokens ?? 0;
+  const realCostEur = computeRealCostEur({ model, tokensIn, tokensOut, cachedTokens: cachedTok });
+  const creditsDeb  = computeCreditsDebited({ feature, model, realCostEur });
+  const month       = currentMonth();
+  const logId       = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const idemKey     = opts.requestId ?? null;
 
   try {
     await withOrgDb(orgId, async (client) => {
       await client.query(
         `INSERT INTO ai_usage_logs
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
-            tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULL)`,
+            tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata, idempotency_key)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULL,$17)
+         ON CONFLICT (id) DO NOTHING`,
         [logId, orgId, userId, provider, model, feature,
          creditsDeb, creditsDeb,
          tokensIn, tokensOut, cachedTok,
          realCostEur, realCostEur,
          latencyMs, latencyMs,
-         opts.success ? "true" : "false"]
+         opts.success ? "true" : "false",
+         idemKey]
       );
     });
   } catch (err) {
@@ -308,6 +315,23 @@ export async function recordCompletedUsage(opts: {
     logger.warn({ err }, "[AI] recordCompletedUsage: monthly upsert failed");
   } finally {
     client.release();
+  }
+
+  // Fetch updated usage for alert thresholds + return value
+  try {
+    const usage = await getOrCreateMonthlyUsage(orgId);
+    const totalAvailable = usage.creditsLimit + usage.creditsExtra;
+    const newUsed = usage.creditsUsed;
+    const oldUsed = newUsed - creditsDeb;
+    const pct    = totalAvailable > 0 ? Math.round((newUsed  / totalAvailable) * 100) : 0;
+    const oldPct = totalAvailable > 0 ? Math.round((oldUsed  / totalAvailable) * 100) : 0;
+    if      (pct >= 100 && oldPct < 100) await triggerAIAlert(orgId, "quota_100pct", newUsed, totalAvailable);
+    else if (pct >= 90  && oldPct < 90)  await triggerAIAlert(orgId, "quota_90pct",  newUsed, totalAvailable);
+    else if (pct >= 70  && oldPct < 70)  await triggerAIAlert(orgId, "quota_70pct",  newUsed, totalAvailable);
+    const remaining = Math.max(0, totalAvailable - newUsed);
+    return { creditsDebited: creditsDeb, remaining };
+  } catch {
+    return { creditsDebited: creditsDeb, remaining: 0 };
   }
 }
 

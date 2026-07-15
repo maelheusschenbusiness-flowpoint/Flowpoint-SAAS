@@ -4,7 +4,7 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { aiChat } from "../services/ai-provider.js";
 import { loadOrgAIPrefs, resolveAIModel } from "../services/ai-prefs.js";
-import { consumeAICredits } from "../services/ai-engine.js";
+import { checkAIQuota, recordCompletedUsage, type AIModel } from "../services/ai-engine.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
 
 const router = Router();
@@ -57,11 +57,11 @@ router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
     const orgId = req.orgId ?? "default";
     const userId = req.userId ?? "anonymous";
 
-    // Quota gate before AI work
-    const creditCheck = await consumeAICredits({ feature: "strategist", orgId });
-    if (!creditCheck.allowed) {
+    // Read-only quota check before AI work — no DB write until AI succeeds
+    const quotaCheck = await checkAIQuota({ feature: "strategist", orgId });
+    if (!quotaCheck.allowed) {
       const prefs = await loadOrgAIPrefs(orgId);
-      res.status(402).json(buildQuotaGuidance(creditCheck, prefs));
+      res.status(402).json(buildQuotaGuidance(quotaCheck, prefs));
       return;
     }
 
@@ -71,18 +71,23 @@ router.post("/ai-workspace-launch", async (req: Request, res: Response) => {
 
     const client = await pool.connect();
 
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     let roadmap = DEFAULT_ROADMAP;
     let missionTemplates = DEFAULT_MISSIONS;
     let strategy = `Stratégie IA personnalisée pour ${businessName ?? "votre business"} (${niche ?? "secteur"}, ${location ?? "France"}).`;
     let aiGenerationSucceeded = false;
     let actualProvider: string = "openai";
     let actualModel: string = "workspace_launch";
+    let aiTokensIn = 0;
+    let aiTokensOut = 0;
+    let aiLatencyMs = 0;
 
     try {
       const prefs = await loadOrgAIPrefs(orgId);
       const aiCfg = resolveAIModel(prefs, "strategist");
       actualProvider = aiCfg.provider;
-      actualModel = aiCfg.model;
+      actualModel    = aiCfg.model;
+      const t0 = Date.now();
 
       const contextParts: string[] = [];
       if (businessName) contextParts.push(`Entreprise : ${businessName}`);
@@ -130,7 +135,10 @@ RÈGLES IMPORTANTES :
         json: true,
       });
 
+      aiTokensIn  = aiResult.usage?.promptTokens    ?? 0;
+      aiTokensOut = aiResult.usage?.completionTokens ?? 0;
       const parsed = JSON.parse(aiResult.text || "{}");
+      aiLatencyMs = Date.now() - t0;
       if (parsed.roadmap && Array.isArray(parsed.roadmap) && parsed.roadmap.length > 0) {
         roadmap = parsed.roadmap.slice(0, 5);
         aiGenerationSucceeded = true;
@@ -140,6 +148,16 @@ RÈGLES IMPORTANTES :
         aiGenerationSucceeded = true;
       }
       if (parsed.strategy) strategy = parsed.strategy;
+
+      // Record usage only when AI actually generated content (not when using fallback)
+      if (aiGenerationSucceeded) {
+        recordCompletedUsage({
+          feature: "strategist", orgId, userId,
+          model: aiCfg.model as AIModel, provider: aiCfg.provider,
+          tokensIn: aiTokensIn, tokensOut: aiTokensOut,
+          latencyMs: aiLatencyMs, success: true, requestId,
+        }).catch(err => logger.warn({ err }, "[AWL] recordCompletedUsage failed"));
+      }
 
       logger.info({ orgId, provider: aiCfg.provider, model: aiCfg.model, businessName }, "[AWL] AI generation succeeded");
     } catch (aiErr) {
@@ -247,6 +265,10 @@ RÈGLES IMPORTANTES :
 
 router.get("/ai-workspace-launch/:sessionId", async (req: Request, res: Response) => {
   const { sessionId } = req.params;
+  const orgId = req.orgId;
+  if (!orgId) {
+    return res.status(401).json({ ok: false, error: "Organization context required" });
+  }
   const client = await pool.connect();
   try {
     const sess = await client.query(
@@ -254,8 +276,8 @@ router.get("/ai-workspace-launch/:sessionId", async (req: Request, res: Response
               (SELECT COUNT(*) FROM ai_generated_missions WHERE profile_id = p.id) as mission_count
        FROM onboarding_sessions s
        LEFT JOIN ai_workspace_profiles p ON p.session_id = s.id
-       WHERE s.id = $1 AND s.org_id = 'default'`,
-      [sessionId]
+       WHERE s.id = $1 AND s.org_id = $2`,
+      [sessionId, orgId]
     );
     if (sess.rows.length === 0) {
       return res.status(404).json({ ok: false, error: "Session not found" });
