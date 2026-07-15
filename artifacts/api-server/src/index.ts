@@ -8,6 +8,7 @@ import { initMonitorsTables } from "./services/init-monitors.js";
 import { initDataTables } from "./services/init-data-tables.js";
 import { initRlsSetup } from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
+import { initAiMigration } from "./services/init-ai-migration.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
 
 const PORT = env.PORT;
@@ -65,6 +66,12 @@ async function main() {
     await initDataTables();
   } catch (err) {
     logger.warn({ err }, "Data tables init failed — non-fatal, continuing");
+  }
+
+  try {
+    await initAiMigration();
+  } catch (err) {
+    logger.warn({ err }, "AI migration failed — non-fatal, continuing");
   }
 
   const server = app.listen(PORT, () => {

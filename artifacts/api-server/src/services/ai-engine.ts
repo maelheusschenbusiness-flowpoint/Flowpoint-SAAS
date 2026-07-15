@@ -283,7 +283,7 @@ export async function recordCompletedUsage(opts: {
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
             tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata, idempotency_key)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULL,$17)
-         ON CONFLICT (id) DO NOTHING`,
+         ON CONFLICT DO NOTHING`,
         [logId, orgId, userId, provider, model, feature,
          creditsDeb, creditsDeb,
          tokensIn, tokensOut, cachedTok,

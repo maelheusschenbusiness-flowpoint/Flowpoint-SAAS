@@ -498,8 +498,9 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
     return;
   }
 
-  const orgId  = req.orgId  ?? "default";
-  const userId = req.userId ?? "anonymous";
+  const orgId     = req.orgId  ?? "default";
+  const userId    = req.userId ?? "anonymous";
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const aiPrefs = await loadOrgAIPrefs(orgId);
   if (!checkModuleEnabled(aiPrefs, "dailyAI")) {
@@ -588,7 +589,7 @@ ${fpContext}`;
 
       persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: selectedModel, tokensUsed: estTokensOut })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true, requestId })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage failed"));
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: selectedModel }, "[AI] Streaming chat failed");
@@ -611,7 +612,7 @@ ${fpContext}`;
 
       persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: selectedModel, tokensUsed: result.usage.completionTokens })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant non-stream) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, provider: selectedProvider, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, provider: selectedProvider, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true, requestId })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage (non-stream) failed"));
       res.json({ reply, streaming: false, _ai: result._ai });
     } catch (err) {
