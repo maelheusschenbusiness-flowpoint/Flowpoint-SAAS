@@ -50,34 +50,63 @@ function orgDb(req: Request): OrgDbFn {
   return fn;
 }
 
+/** Mask email for safe logging: j***@example.com */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  return `${(local ?? "?")[0] ?? "?"}***@${domain ?? "?"}`;
+}
+
 // ── GET /team ─────────────────────────────────────────────────────────────────
 
 router.get("/team", async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
+
+  const sql = `SELECT id, email, role, joined, status, invited_at, email_status, created_at
+               FROM team_members WHERE org_id = $1 ORDER BY created_at ASC LIMIT 100`;
   try {
-    const r = await orgDb(req)(
-      `SELECT id, email, role, joined, status, invited_at, email_status, created_at
-       FROM team_members WHERE org_id = $1 ORDER BY created_at ASC LIMIT 100`,
-      [org]
-    );
+    const r = await orgDb(req)(sql, [org]);
     res.json(r.rows.map(m => ({
       id:          m.id,
       name:        (m.email as string)?.split("@")[0] ?? "",
       email:       m.email,
       role:        m.role,
-      status:      m.status      ?? "active",
+      status:      m.status       ?? "active",
       emailStatus: m.email_status ?? null,
       joined:      m.joined,
-      invitedAt:   m.invited_at  ?? null,
+      invitedAt:   m.invited_at   ?? null,
       createdAt:   m.created_at,
     })));
-  } catch {
+  } catch (listErr) {
+    const le = listErr as Record<string, unknown>;
+    logger.error(
+      {
+        orgId:         org.slice(0, 20),
+        sqlCode:       le["code"],
+        sqlMsg:        (listErr as Error).message,
+        sqlDetail:     le["detail"],
+        sqlConstraint: le["constraint"],
+        sqlTable:      le["table"],
+        sqlColumn:     le["column"],
+        stack:         (listErr as Error).stack,
+      },
+      "[team/get] SELECT failed"
+    );
     res.json([]);
   }
 });
 
 // ── POST /team/invite ─────────────────────────────────────────────────────────
+
+/*
+ * Columns used by the INSERT (logged at STEP 5.5 and STEP 6, never values).
+ * Schema repairs run only in initDataTables() at startup — never from here.
+ */
+const INSERT_COLS = [
+  "id", "org_id", "email", "role", "joined", "status",
+  "invited_by", "invitation_token_hash", "invited_at", "expires_at",
+  "email_status", "created_at", "updated_at",
+] as const;
 
 router.post("/team/invite", async (req: Request, res: Response) => {
   const reqId = `inv_req_${Date.now()}`;
@@ -93,10 +122,9 @@ router.post("/team/invite", async (req: Request, res: Response) => {
 
   // ── STEP 2 — orgDb availability ──────────────────────────────────────────
   logger.info({ reqId }, "[team/invite] STEP 2: checking orgDb availability");
-  const hasOrgDb = typeof (req as OrgReq).orgDb === "function";
-  if (!hasOrgDb) {
+  if (typeof (req as OrgReq).orgDb !== "function") {
     logger.error({ reqId }, "[team/invite] STEP 2 FAIL: req.orgDb is not a function");
-    res.status(500).json({ error: "Database context unavailable", code: "ORGDB_MISSING" });
+    res.status(500).json({ ok: false, code: "ORGDB_MISSING", error: "Database context unavailable" });
     return;
   }
   logger.info({ reqId }, "[team/invite] STEP 2 OK: orgDb is available");
@@ -107,58 +135,71 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   logger.info({ reqId, hasEmail: !!rawEmail, role }, "[team/invite] STEP 3: raw input received");
 
   if (!rawEmail || !rawEmail.includes("@")) {
-    logger.warn({ reqId, rawEmail }, "[team/invite] STEP 3 FAIL: invalid email → 400");
-    res.status(400).json({ error: "Valid email required" });
+    logger.warn({ reqId }, "[team/invite] STEP 3 FAIL: invalid email → 400");
+    res.status(400).json({ ok: false, error: "Valid email required" });
     return;
   }
 
   const email      = rawEmail.toLowerCase().trim();
+  const maskedEmail = maskEmail(email);
   const ROLES      = ["manager", "editor", "viewer"];
   const rawRole    = (role ?? "viewer").toLowerCase();
   if (!ROLES.includes(rawRole)) {
     logger.warn({ reqId, rawRole }, "[team/invite] STEP 3 FAIL: invalid role → 400");
     res.status(400).json({
+      ok: false,
+      code:  "INVALID_ROLE",
       error: `Rôle invalide. Valeurs acceptées : ${ROLES.join(", ")}.`,
-      code: "INVALID_ROLE",
     });
     return;
   }
   const memberRole = rawRole;
-  logger.info({ reqId, emailDomain: email.split("@")[1] ?? "?", memberRole }, "[team/invite] STEP 3 OK");
+  logger.info({ reqId, maskedEmail, memberRole }, "[team/invite] STEP 3 OK");
 
-  // ── STEP 4 — Duplicate guard ─────────────────────────────────────────────
-  logger.info({ reqId }, "[team/invite] STEP 4: duplicate guard query");
+  // ── STEP 4 — Duplicate guard SELECT ──────────────────────────────────────
+  logger.info({ reqId, maskedEmail }, "[team/invite] STEP 4: duplicate guard SELECT");
   try {
     const dup = await orgDb(req)(
       `SELECT id, status FROM team_members WHERE org_id = $1 AND lower(email) = lower($2) LIMIT 1`,
       [org, email]
     );
-    logger.info({ reqId, dupFound: dup.rows.length > 0 }, "[team/invite] STEP 4: duplicate check done");
+    logger.info({ reqId, dupFound: dup.rows.length > 0 }, "[team/invite] STEP 4 OK");
     if (dup.rows.length > 0) {
-      logger.warn({ reqId, existingStatus: dup.rows[0]?.status }, "[team/invite] STEP 4 FAIL: duplicate → 409");
+      logger.warn(
+        { reqId, maskedEmail, existingStatus: dup.rows[0]?.status },
+        "[team/invite] STEP 4: duplicate found → 409"
+      );
       res.status(409).json({
-        error: "Une invitation est déjà en attente pour cette adresse.",
+        ok:    false,
         code:  "DUPLICATE_INVITATION",
+        error: "Une invitation est déjà en attente pour cette adresse.",
       });
       return;
     }
   } catch (guardErr) {
-    // Non-fatal — proceed; INSERT will catch real uniqueness violations
-    const g = guardErr as Record<string, unknown>;
-    logger.warn(
+    const ge = guardErr as Record<string, unknown>;
+    logger.error(
       {
         reqId,
         step:          4,
-        sqlCode:       g.code,
+        maskedEmail,
+        orgId:         org.slice(0, 20),
+        sqlCode:       ge["code"],
         sqlMsg:        (guardErr as Error).message,
-        sqlDetail:     g.detail,
-        sqlConstraint: g.constraint,
-        sqlTable:      g.table,
-        sqlColumn:     g.column,
+        sqlDetail:     ge["detail"],
+        sqlConstraint: ge["constraint"],
+        sqlTable:      ge["table"],
+        sqlColumn:     ge["column"],
         stack:         (guardErr as Error).stack,
       },
-      "[team/invite] STEP 4 WARN: duplicate guard query failed — proceeding to INSERT"
+      "[team/invite] STEP 4 FAIL: duplicate guard SELECT failed → 500"
     );
+    res.status(500).json({
+      ok:    false,
+      code:  "INVITATION_DUPLICATE_CHECK_ERROR",
+      error: "Internal error during invitation check",
+    });
+    return;
   }
 
   // ── STEP 5 — Token generation ────────────────────────────────────────────
@@ -170,113 +211,101 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   const joined    = new Date().toISOString().slice(0, 10);
   logger.info({ reqId, id, tokenHashPrefix: tokenHash.slice(0, 8) }, "[team/invite] STEP 5 OK");
 
-  // ── STEP 5.5 — Inline schema self-heal ───────────────────────────────────
-  // Belt-and-suspenders: if startup DDL (initDataTables) was silently rejected
-  // (e.g. pgBouncer transaction-mode, insufficient privileges), columns required
-  // by STEP 4 SELECT and STEP 6 INSERT may be missing in the production DB.
-  // This step checks via information_schema and adds any missing columns using
-  // pool.query() (postgres superuser — bypasses RLS, bypasses app_user ROLE).
-  // Cost: one cheap information_schema query per request until schema is complete.
-  {
-    const INVITE_COLS: Record<string, string> = {
-      org_id:                "TEXT        NOT NULL DEFAULT 'default'",
-      status:                "TEXT        NOT NULL DEFAULT 'pending'",
-      invited_at:            "TIMESTAMPTZ NOT NULL DEFAULT NOW()",
-      invited_by:            "TEXT        NOT NULL DEFAULT ''",
-      invitation_token_hash: "TEXT",
-      expires_at:            "TIMESTAMPTZ",
-      accepted_at:           "TIMESTAMPTZ",
-      email_status:          "TEXT        NOT NULL DEFAULT 'pending'",
-      resend_message_id:     "TEXT",
-      email_error:           "TEXT",
-      updated_at:            "TIMESTAMPTZ NOT NULL DEFAULT NOW()",
-    };
-    try {
-      const schemaRows = await pool.query<{ column_name: string }>(
-        `SELECT column_name FROM information_schema.columns WHERE table_name = 'team_members'`
+  // ── STEP 5.5 — Read-only schema assertion ────────────────────────────────
+  // Verifies that every column used in the INSERT exists in production.
+  // NO DDL here — schema repairs run only in initDataTables() at startup
+  // or via a dedicated migration script.
+  logger.info({ reqId, insertCols: INSERT_COLS }, "[team/invite] STEP 5.5: read-only schema assertion");
+  try {
+    const schemaRows = await pool.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'team_members'`
+    );
+    const present    = new Set(schemaRows.rows.map(r => r.column_name));
+    const missing    = (INSERT_COLS as readonly string[]).filter(c => !present.has(c));
+    logger.info(
+      { reqId, presentColumns: [...present], missingColumns: missing },
+      `[team/invite] STEP 5.5: schema assertion — missing: ${missing.length ? missing.join(", ") : "none"}`
+    );
+    if (missing.length > 0) {
+      logger.error(
+        { reqId, maskedEmail, orgId: org.slice(0, 20), missingColumns: missing },
+        "[team/invite] STEP 5.5 FAIL: team_members is missing required INSERT columns → 500 TEAM_SCHEMA_INVALID"
       );
-      const present = new Set(schemaRows.rows.map(r => r.column_name));
-      const missing = Object.keys(INVITE_COLS).filter(c => !present.has(c));
-      logger.info(
-        { reqId, present: [...present], missing },
-        `[team/invite] STEP 5.5: schema check — missing: ${missing.length ? missing.join(", ") : "none"}`
-      );
-      for (const col of missing) {
-        const colDef = INVITE_COLS[col];
-        try {
-          await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS "${col}" ${colDef}`);
-          logger.info({ reqId, col }, `[team/invite] STEP 5.5: added column "${col}" ✓`);
-        } catch (repairErr) {
-          const re = repairErr as Record<string, unknown>;
-          logger.error(
-            {
-              reqId, col, colDef,
-              sqlCode:   re["code"],
-              sqlMsg:    (repairErr as Error).message,
-              sqlDetail: re["detail"],
-              sqlTable:  re["table"],
-              sqlColumn: re["column"],
-              stack:     (repairErr as Error).stack,
-            },
-            `[team/invite] STEP 5.5: FAILED to add column "${col}" — INSERT will likely fail next`
-          );
-        }
-      }
-    } catch (schemaErr) {
-      logger.warn(
-        { reqId, err: (schemaErr as Error).message },
-        "[team/invite] STEP 5.5: schema check failed — proceeding anyway"
-      );
+      res.status(500).json({
+        ok:    false,
+        code:  "TEAM_SCHEMA_INVALID",
+        error: "Database schema error — please contact support",
+      });
+      return;
     }
+    logger.info({ reqId }, "[team/invite] STEP 5.5 OK: all INSERT columns present");
+  } catch (schemaErr) {
+    // Non-fatal: if information_schema is unreachable, proceed and let the INSERT surface the real error.
+    logger.warn(
+      { reqId, err: (schemaErr as Error).message },
+      "[team/invite] STEP 5.5 WARN: schema assertion query failed — proceeding to INSERT"
+    );
   }
 
   // ── STEP 6 — INSERT team_members ─────────────────────────────────────────
-  // `name` column is intentionally excluded: it may not exist on older production
-  // tables where the ALTER TABLE ADD COLUMN ran silently (pooler / permissions).
-  // The email prefix is derived at read-time instead (GET /api/team response).
-  logger.info({ reqId, id, org: org.slice(0, 20) }, "[team/invite] STEP 6: INSERT into team_members");
+  // Columns logged above (STEP 5.5). Values never logged.
+  // joined:                TEXT date string  (YYYY-MM-DD)
+  // status:                TEXT literal      'pending'
+  // invited_by:            TEXT              org (org_id of inviting org)
+  // invitation_token_hash: TEXT              SHA-256 hex
+  // invited_at:            TIMESTAMPTZ       NOW()
+  // expires_at:            TIMESTAMPTZ       7 days from now
+  // email_status:          TEXT literal      'pending' (updated at STEP 10)
+  // created_at / updated_at: TIMESTAMPTZ     NOW()
+  logger.info(
+    { reqId, id, orgId: org.slice(0, 20), maskedEmail, insertCols: INSERT_COLS },
+    "[team/invite] STEP 6: INSERT into team_members"
+  );
   try {
     await orgDb(req)(
       `INSERT INTO team_members
          (id, org_id, email, role, joined, status,
           invited_by, invitation_token_hash, invited_at, expires_at,
           email_status, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,'pending',$6,$7,NOW(),$8,'pending',NOW(),NOW())`,
+       VALUES ($1, $2, $3, $4, $5, 'pending',
+               $6, $7, NOW(), $8, 'pending', NOW(), NOW())`,
       [id, org, email, memberRole, joined, org, tokenHash, expiresAt.toISOString()]
     );
     logger.info({ reqId, id }, "[team/invite] STEP 6 OK: INSERT succeeded");
   } catch (insertErr: unknown) {
-    const pgCode       = (insertErr as Record<string, unknown>).code       as string | undefined;
-    const pgMsg        = (insertErr as Error).message                      ?? "unknown SQL error";
-    const pgDetail     = (insertErr as Record<string, unknown>).detail     as string | undefined;
-    const pgConstraint = (insertErr as Record<string, unknown>).constraint as string | undefined;
-    const pgSchema     = (insertErr as Record<string, unknown>).schema     as string | undefined;
-    const pgTable      = (insertErr as Record<string, unknown>).table      as string | undefined;
-    const pgColumn     = (insertErr as Record<string, unknown>).column     as string | undefined;
+    const ie     = insertErr as Record<string, unknown>;
+    const pgCode = ie["code"] as string | undefined;
     logger.error(
       {
         reqId,
         step:          6,
+        maskedEmail,
+        orgId:         org.slice(0, 20),
+        insertCols:    INSERT_COLS,
         sqlCode:       pgCode,
-        sqlMsg:        pgMsg,
-        sqlDetail:     pgDetail,
-        sqlConstraint: pgConstraint,
-        sqlSchema:     pgSchema,
-        sqlTable:      pgTable,
-        sqlColumn:     pgColumn,
+        sqlMsg:        (insertErr as Error).message,
+        sqlDetail:     ie["detail"],
+        sqlConstraint: ie["constraint"],
+        sqlSchema:     ie["schema"],
+        sqlTable:      ie["table"],
+        sqlColumn:     ie["column"],
         stack:         (insertErr as Error).stack,
-        emailDomain:   email.split("@")[1] ?? "?",
       },
       "[team/invite] STEP 6 FAIL: INSERT error"
     );
     if (pgCode === "23505") {
       res.status(409).json({
-        error: "Une invitation est déjà en attente pour cette adresse.",
+        ok:    false,
         code:  "DUPLICATE_INVITATION",
+        error: "Une invitation est déjà en attente pour cette adresse.",
       });
       return;
     }
-    res.status(500).json({ error: "Failed to create invitation" });
+    res.status(500).json({
+      ok:    false,
+      code:  "INVITATION_DB_ERROR",
+      error: "Failed to create invitation",
+    });
     return;
   }
 
@@ -296,64 +325,88 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   logger.info({ reqId, inviteUrlLength: inviteUrl.length }, "[team/invite] STEP 8 OK: invite URL built");
 
   // ── STEP 9 — Send invitation email ────────────────────────────────────────
-  logger.info({ reqId, toEmailDomain: email.split("@")[1] ?? "?" }, "[team/invite] STEP 9: calling mailer.sendTeamInvitation");
+  logger.info({ reqId, maskedEmail }, "[team/invite] STEP 9: calling mailer.sendTeamInvitation");
   const { mailer } = await import("../services/mailer.js");
-  const mailResult = await mailer.sendTeamInvitation({
-    to:          email,
-    inviterName,
-    orgName,
-    role:        memberRole,
-    inviteUrl,
-  }).catch((e: unknown) => {
-    logger.error({ reqId, err: (e as Error).message }, "[team/invite] STEP 9 WARN: mailer threw");
-    return { ok: false as const, error: String(e), id: undefined };
-  });
-  logger.info(
-    { reqId, mailOk: mailResult.ok, mailErr: mailResult.ok ? null : mailResult.error },
-    "[team/invite] STEP 9: mailer returned"
-  );
+  type MailResult = { ok: boolean; error?: string; id?: string };
+  let mailResult: MailResult;
+  try {
+    const sent = await mailer.sendTeamInvitation({
+      to:          email,
+      inviterName,
+      orgName,
+      role:        memberRole,
+      inviteUrl,
+    }) as MailResult;
+    mailResult = sent;
+    logger.info(
+      { reqId, mailOk: mailResult.ok, hasMessageId: !!(mailResult.ok && mailResult.id) },
+      "[team/invite] STEP 9 OK"
+    );
+  } catch (mailerErr) {
+    logger.error(
+      {
+        reqId,
+        step:    9,
+        maskedEmail,
+        sqlMsg:  (mailerErr as Error).message,
+        stack:   (mailerErr as Error).stack,
+      },
+      "[team/invite] STEP 9 FAIL: mailer threw → INVITATION_EMAIL_ERROR (invitation row kept)"
+    );
+    mailResult = { ok: false, error: String(mailerErr) };
+  }
 
   // ── STEP 10 — Persist email delivery status ───────────────────────────────
   const emailStatus  = mailResult.ok ? "sent"   : "failed";
-  const resendMsgId  = mailResult.ok ? ((mailResult as Record<string, unknown>).id as string ?? null) : null;
-  const emailErrSafe = mailResult.ok ? null : ((mailResult.error ?? "unknown error") as string).slice(0, 250);
+  const resendMsgId  = mailResult.ok ? (mailResult.id ?? null) : null;
+  const emailErrSafe = mailResult.ok ? null : ((mailResult.error ?? "unknown error")).slice(0, 250);
 
-  logger.info({ reqId, emailStatus, hasMessageId: !!resendMsgId }, "[team/invite] STEP 10: updating email_status in DB");
-  orgDb(req)(
-    `UPDATE team_members SET email_status=$1, resend_message_id=$2, email_error=$3, updated_at=NOW() WHERE id=$4`,
-    [emailStatus, resendMsgId, emailErrSafe, id]
-  ).catch((e: unknown) => {
-    const u = e as Record<string, unknown>;
-    logger.warn(
+  logger.info({ reqId, emailStatus, hasMessageId: !!resendMsgId }, "[team/invite] STEP 10: UPDATE email_status");
+  try {
+    await orgDb(req)(
+      `UPDATE team_members
+         SET email_status = $1, resend_message_id = $2, email_error = $3, updated_at = NOW()
+       WHERE id = $4`,
+      [emailStatus, resendMsgId, emailErrSafe, id]
+    );
+    logger.info({ reqId, emailStatus }, "[team/invite] STEP 10 OK: email_status updated");
+  } catch (updateErr) {
+    const ue = updateErr as Record<string, unknown>;
+    logger.error(
       {
         reqId,
         step:          10,
-        sqlCode:       u.code,
-        sqlMsg:        (e as Error).message,
-        sqlDetail:     u.detail,
-        sqlConstraint: u.constraint,
-        sqlTable:      u.table,
-        sqlColumn:     u.column,
-        stack:         (e as Error).stack,
-        id,
+        maskedEmail,
+        orgId:         org.slice(0, 20),
+        code:          "INVITATION_STATUS_UPDATE_ERROR",
+        sqlCode:       ue["code"],
+        sqlMsg:        (updateErr as Error).message,
+        sqlDetail:     ue["detail"],
+        sqlConstraint: ue["constraint"],
+        sqlTable:      ue["table"],
+        sqlColumn:     ue["column"],
+        stack:         (updateErr as Error).stack,
       },
-      "[team/invite] STEP 10 WARN: email status UPDATE failed"
+      "[team/invite] STEP 10 FAIL: email status UPDATE failed (non-fatal — invitation row was inserted)"
     );
-  });
+  }
 
   // ── STEP 11 — Final response ──────────────────────────────────────────────
   if (!mailResult.ok) {
-    logger.warn({ reqId, emailErr: emailErrSafe }, "[team/invite] STEP 11: email failed → 502 (row kept)");
+    logger.warn(
+      { reqId, maskedEmail, emailErr: emailErrSafe },
+      "[team/invite] STEP 11: email failed → INVITATION_EMAIL_ERROR 502"
+    );
     res.status(502).json({
-      ok:    false,
-      code:  "INVITATION_EMAIL_FAILED",
-      error: "L'invitation a été créée, mais l'e-mail n'a pas pu être envoyé.",
+      ok:     false,
+      code:   "INVITATION_EMAIL_ERROR",
+      error:  "L'invitation a été créée, mais l'e-mail n'a pas pu être envoyé.",
       member: { id, email, role: memberRole, status: "pending", invitedAt: new Date().toISOString() },
     });
     return;
   }
 
-  logger.info({ reqId, id, messageId: resendMsgId }, "[team/invite] STEP 11: SUCCESS → 201");
+  logger.info({ reqId, id, maskedEmail, messageId: resendMsgId }, "[team/invite] STEP 11: SUCCESS → 201");
   res.status(201).json({
     ok:     true,
     member: { id, email, role: memberRole, status: "pending", invitedAt: new Date().toISOString() },
@@ -367,20 +420,39 @@ router.patch("/team/:id", async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
   const { role } = req.body as { role?: string };
-  if (!role) { res.status(400).json({ error: "role required" }); return; }
+  if (!role) { res.status(400).json({ ok: false, error: "role required" }); return; }
   const ALLOWED = ["viewer", "editor", "admin", "owner", "manager"];
-  if (!ALLOWED.includes(role)) { res.status(400).json({ error: "invalid role" }); return; }
+  if (!ALLOWED.includes(role)) { res.status(400).json({ ok: false, error: "invalid role" }); return; }
   try {
     const r = await orgDb(req)(
-      `UPDATE team_members SET role=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3 RETURNING id, email, role`,
+      `UPDATE team_members SET role = $1, updated_at = NOW()
+       WHERE id = $2 AND org_id = $3
+       RETURNING id, email, role`,
       [role, req.params.id, org]
     );
-    if (!r.rows[0]) { res.status(404).json({ error: "member not found" }); return; }
+    if (!r.rows[0]) { res.status(404).json({ ok: false, error: "member not found" }); return; }
     const m = r.rows[0];
-    res.json({ ok: true, member: { id: m.id, name: (m.email as string)?.split("@")[0] ?? "", email: m.email, role: m.role } });
-  } catch (err) {
-    logger.error({ err, org }, "[team/patch] UPDATE failed");
-    res.status(500).json({ error: "Failed to update member" });
+    res.json({
+      ok:     true,
+      member: { id: m.id, name: (m.email as string)?.split("@")[0] ?? "", email: m.email, role: m.role },
+    });
+  } catch (patchErr) {
+    const pe = patchErr as Record<string, unknown>;
+    logger.error(
+      {
+        orgId:         org.slice(0, 20),
+        memberId:      req.params.id,
+        sqlCode:       pe["code"],
+        sqlMsg:        (patchErr as Error).message,
+        sqlDetail:     pe["detail"],
+        sqlConstraint: pe["constraint"],
+        sqlTable:      pe["table"],
+        sqlColumn:     pe["column"],
+        stack:         (patchErr as Error).stack,
+      },
+      "[team/patch] UPDATE failed"
+    );
+    res.status(500).json({ ok: false, error: "Failed to update member" });
   }
 });
 
@@ -391,13 +463,27 @@ router.delete("/team/:id", async (req: Request, res: Response) => {
   if (!org) return;
   try {
     await orgDb(req)(
-      `DELETE FROM team_members WHERE id=$1 AND org_id=$2`,
+      `DELETE FROM team_members WHERE id = $1 AND org_id = $2`,
       [req.params.id, org]
     );
     res.json({ ok: true });
-  } catch (err) {
-    logger.error({ err, org }, "[team/delete] DELETE failed");
-    res.status(500).json({ error: "Failed to delete member" });
+  } catch (deleteErr) {
+    const de = deleteErr as Record<string, unknown>;
+    logger.error(
+      {
+        orgId:         org.slice(0, 20),
+        memberId:      req.params.id,
+        sqlCode:       de["code"],
+        sqlMsg:        (deleteErr as Error).message,
+        sqlDetail:     de["detail"],
+        sqlConstraint: de["constraint"],
+        sqlTable:      de["table"],
+        sqlColumn:     de["column"],
+        stack:         (deleteErr as Error).stack,
+      },
+      "[team/delete] DELETE failed"
+    );
+    res.status(500).json({ ok: false, error: "Failed to delete member" });
   }
 });
 
