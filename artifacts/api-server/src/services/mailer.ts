@@ -156,13 +156,14 @@ async function send(opts: {
   subject: string;
   html: string;
   tag?: string;
+  from?: string;
 }): Promise<MailResult> {
   const resend = getResend();
   if (!resend) return { ok: false, error: "RESEND_API_KEY_MISSING" };
 
   try {
     const result = await resend.emails.send({
-      from: getFrom(),
+      from: opts.from ?? getFrom(),
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
@@ -419,6 +420,7 @@ async function sendTeamInvitation(opts: {
   const org = opts.orgName || "FlowPoint";
   return send({
     to: opts.to,
+    from: "FlowPoint <noreply@flowpoint.pro>",
     subject: `${opts.inviterName} t'invite à rejoindre ${org} sur FlowPoint`,
     tag: "team_invitation",
     html: layout({
