@@ -234,40 +234,41 @@ router.post("/team/invite", async (req: Request, res: Response) => {
     logger.info({ reqId, id }, "[team/invite] STEP 6 OK: INSERT succeeded");
   } catch (insertErr: unknown) {
     const err = insertErr as Error & {
-      code?:       string;
-      severity?:   string;
-      detail?:     string;
-      hint?:       string;
-      constraint?: string;
-      schema?:     string;
-      table?:      string;
-      column?:     string;
-      where?:      string;
-      routine?:    string;
-      cause?:      unknown;
+      code?:             string;
+      severity?:         string;
+      detail?:           string;
+      hint?:             string;
+      constraint?:       string;
+      schema?:           string;
+      table?:            string;
+      column?:           string;
+      where?:            string;
+      routine?:          string;
+      position?:         string;
+      internalPosition?: string;
+      internalQuery?:    string;
+      cause?:            unknown;
     };
     logger.error(
       {
-        reqId,
-        step:              6,
-        maskedEmail,
-        orgIdPrefix:       org.slice(0, 20),
-        constructorName:   (insertErr as object)?.constructor?.name,
-        ownPropertyNames:  Object.getOwnPropertyNames(insertErr),
-        reflectOwnKeys:    Reflect.ownKeys(insertErr as object).map(String),
-        pgCode:            err.code,
-        pgSeverity:        err.severity,
-        pgMessage:         err.message,
-        pgDetail:          err.detail,
-        pgHint:            err.hint,
-        pgConstraint:      err.constraint,
-        pgSchema:          err.schema,
-        pgTable:           err.table,
-        pgColumn:          err.column,
-        pgWhere:           err.where,
-        pgRoutine:         err.routine,
-        cause:             err.cause,
-        stack:             err.stack,
+        pgCode:           err.code,
+        severity:         err.severity,
+        detail:           err.detail,
+        hint:             err.hint,
+        schema:           err.schema,
+        table:            err.table,
+        column:           err.column,
+        constraint:       err.constraint,
+        routine:          err.routine,
+        where:            err.where,
+        position:         err.position,
+        internalPosition: err.internalPosition,
+        internalQuery:    err.internalQuery,
+        message:          err.message,
+        ownKeys:          Reflect.ownKeys(insertErr as object).map(String),
+        ownProps:         Object.getOwnPropertyNames(insertErr),
+        constructor:      (insertErr as object)?.constructor?.name,
+        stack:            err.stack,
       },
       "[team/invite] STEP 6 FAIL"
     );

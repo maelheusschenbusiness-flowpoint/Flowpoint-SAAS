@@ -45,3 +45,4 @@
 - [Security tab / Checkout / Logout patterns](flowpoint-security-checkout-logout.md) — security checklist CTAs per item.label; logout calls POST /auth/logout; PaymentElement needs 8s fallback + loaderror handler
 - [Multi-tenant org isolation pattern](multitenant-org-isolation.md) — two-layer defence: requireValidOrg middleware in index.ts + requireOrgId() helper; service token gets orgId:"default" which is blocked at boundary
 - [Billing route architecture](billing-route-architecture.md) — /billing/plans served by public-billing.ts (pre-auth); billingRouter routes are post-auth; /addons/:key/activate|deactivate exist in addons.ts; getUsageSummary uses safeCount() per-query isolation; getInvoices accepts optional stripeCustomerId param
+- [FlowPoint team_members schema fix](flowpoint-team-invite-fix.md) — UUID→TEXT migration; local pool ≠ Supabase; production session via PostgREST service role
