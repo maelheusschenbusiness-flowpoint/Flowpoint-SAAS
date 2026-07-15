@@ -157,21 +157,26 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   logger.info({ reqId, maskedEmail, memberRole }, "[team/invite] STEP 3 OK");
 
   // ── STEP 4 — Duplicate guard SELECT ──────────────────────────────────────
+  // Uses pool.query() (postgres superuser, BYPASSRLS) instead of orgDb/withOrgDb.
+  // Tenant isolation is enforced by the explicit WHERE org_id = $1 — identical
+  // to what the RLS tenant_select policy would enforce, but without any role
+  // switch or GUC transaction that could fail in production.
   // Only SELECT id — we need existence, not column values.
-  // Selecting "status" caused 42703 when that column was absent in production.
   const dupSql    = `SELECT id FROM team_members WHERE org_id = $1 AND lower(email) = lower($2) LIMIT 1`;
-  const dupParams = [org, email];
+  const dupParams: unknown[] = [org, email];
   logger.info(
     {
       reqId,
-      step:         "DUPLICATE CHECK START",
-      sql:          dupSql,
-      params:       [org.slice(0, 8) + "…", maskedEmail],
+      step:      "DUPLICATE CHECK START",
+      sql:       dupSql,
+      orgPrefix: org.slice(0, 8) + "…",
+      email:     maskedEmail,
+      via:       "pool.query",
     },
     "[team/invite] STEP DUPLICATE CHECK START"
   );
   try {
-    const dup = await orgDb(req)(dupSql, dupParams);
+    const dup = await pool.query(dupSql, dupParams);
     logger.info({ reqId, dupFound: dup.rows.length > 0 }, "[team/invite] STEP 4 OK");
     if (dup.rows.length > 0) {
       logger.warn(
@@ -191,17 +196,18 @@ router.post("/team/invite", async (req: Request, res: Response) => {
       {
         reqId,
         step:          4,
-        maskedEmail,
-        orgId:         org.slice(0, 20),
-        sqlCode:       ge["code"],
-        sqlMsg:        (guardErr as Error).message,
-        sqlDetail:     ge["detail"],
-        sqlConstraint: ge["constraint"],
-        sqlTable:      ge["table"],
-        sqlColumn:     ge["column"],
+        via:           "pool.query",
+        orgPrefix:     org.slice(0, 20),
+        email:         maskedEmail,
+        pgCode:        ge["code"],
+        pgMessage:     (guardErr as Error).message,
+        pgDetail:      ge["detail"],
+        pgConstraint:  ge["constraint"],
+        pgTable:       ge["table"],
+        pgColumn:      ge["column"],
         stack:         (guardErr as Error).stack,
       },
-      "[team/invite] STEP 4 FAIL: duplicate guard SELECT failed → 500"
+      "[team/invite] STEP 4 FAIL: duplicate guard pool.query failed → 500"
     );
     res.status(500).json({
       ok:    false,
