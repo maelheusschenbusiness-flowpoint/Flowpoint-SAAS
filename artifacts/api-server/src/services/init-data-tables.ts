@@ -340,9 +340,24 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS real_cost_eur REAL NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS credits_debited INTEGER NOT NULL DEFAULT 0;`);
     await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS duration_ms INTEGER NOT NULL DEFAULT 0;`);
+    // cost_eur, credits_used, tokens_in/out, latency_ms, success, metadata — missing from original CREATE TABLE
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS cost_eur REAL NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS credits_used INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS tokens_in INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS tokens_out INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS latency_ms INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS success BOOLEAN NOT NULL DEFAULT true;`);
+    await run(client, `ALTER TABLE ai_usage_logs ADD COLUMN IF NOT EXISTS metadata JSONB;`);
     await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_provider_idx ON ai_usage_logs(provider, created_at DESC);`);
     await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_model_idx ON ai_usage_logs(model, created_at DESC);`);
     await run(client, `CREATE INDEX IF NOT EXISTS ai_usage_logs_feature_idx ON ai_usage_logs(feature, created_at DESC);`);
+
+    // ── ai_monthly_usage — credits/cost columns missing from original CREATE TABLE ──
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS credits_used INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS cost_eur REAL NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS tokens_used INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS reset_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE ai_monthly_usage ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
 
     // ── org_settings — ensure all expected columns exist ─────────────────────
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_ends_at            TIMESTAMPTZ;`);

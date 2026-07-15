@@ -174,10 +174,26 @@ router.post("/team/invite", async (req: Request, res: Response) => {
     );
     logger.info({ reqId, id }, "[team/invite] STEP 6 OK: INSERT succeeded");
   } catch (insertErr: unknown) {
-    const pgCode = (insertErr as Record<string, unknown>).code as string | undefined;
-    const pgMsg  = (insertErr as Error).message ?? "unknown SQL error";
+    const pgCode       = (insertErr as Record<string, unknown>).code       as string | undefined;
+    const pgMsg        = (insertErr as Error).message                      ?? "unknown SQL error";
+    const pgDetail     = (insertErr as Record<string, unknown>).detail     as string | undefined;
+    const pgConstraint = (insertErr as Record<string, unknown>).constraint as string | undefined;
+    const pgSchema     = (insertErr as Record<string, unknown>).schema     as string | undefined;
+    const pgTable      = (insertErr as Record<string, unknown>).table      as string | undefined;
+    const pgColumn     = (insertErr as Record<string, unknown>).column     as string | undefined;
     logger.error(
-      { reqId, sqlCode: pgCode, sqlMsg: pgMsg, id, org: org.slice(0, 20), emailDomain: email.split("@")[1] ?? "?" },
+      {
+        reqId,
+        step:          6,
+        sqlCode:       pgCode,
+        sqlMsg:        pgMsg,
+        sqlDetail:     pgDetail,
+        sqlConstraint: pgConstraint,
+        sqlSchema:     pgSchema,
+        sqlTable:      pgTable,
+        sqlColumn:     pgColumn,
+        emailDomain:   email.split("@")[1] ?? "?",
+      },
       "[team/invite] STEP 6 FAIL: INSERT error"
     );
     if (pgCode === "23505") {
