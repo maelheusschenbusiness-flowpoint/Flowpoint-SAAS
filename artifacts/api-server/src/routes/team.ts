@@ -232,26 +232,39 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   } catch (insertErr: unknown) {
     const err = insertErr as Error & {
       code?:       string;
+      severity?:   string;
       detail?:     string;
+      hint?:       string;
       constraint?: string;
       schema?:     string;
       table?:      string;
       column?:     string;
+      where?:      string;
+      routine?:    string;
+      cause?:      unknown;
     };
     logger.error(
       {
         reqId,
-        step:        6,
+        step:              6,
         maskedEmail,
-        orgIdPrefix: org.slice(0, 20),
-        pgCode:       err.code,
-        pgMessage:    err.message,
-        pgDetail:     err.detail,
-        pgConstraint: err.constraint,
-        pgSchema:     err.schema,
-        pgTable:      err.table,
-        pgColumn:     err.column,
-        stack:        err.stack,
+        orgIdPrefix:       org.slice(0, 20),
+        constructorName:   (insertErr as object)?.constructor?.name,
+        ownPropertyNames:  Object.getOwnPropertyNames(insertErr),
+        reflectOwnKeys:    Reflect.ownKeys(insertErr as object).map(String),
+        pgCode:            err.code,
+        pgSeverity:        err.severity,
+        pgMessage:         err.message,
+        pgDetail:          err.detail,
+        pgHint:            err.hint,
+        pgConstraint:      err.constraint,
+        pgSchema:          err.schema,
+        pgTable:           err.table,
+        pgColumn:          err.column,
+        pgWhere:           err.where,
+        pgRoutine:         err.routine,
+        cause:             err.cause,
+        stack:             err.stack,
       },
       "[team/invite] STEP 6 FAIL"
     );
