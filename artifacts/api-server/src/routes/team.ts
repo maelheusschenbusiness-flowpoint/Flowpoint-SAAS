@@ -143,8 +143,19 @@ router.post("/team/invite", async (req: Request, res: Response) => {
     }
   } catch (guardErr) {
     // Non-fatal — proceed; INSERT will catch real uniqueness violations
+    const g = guardErr as Record<string, unknown>;
     logger.warn(
-      { reqId, err: (guardErr as Error).message, sqlCode: (guardErr as Record<string, unknown>).code },
+      {
+        reqId,
+        step:          4,
+        sqlCode:       g.code,
+        sqlMsg:        (guardErr as Error).message,
+        sqlDetail:     g.detail,
+        sqlConstraint: g.constraint,
+        sqlTable:      g.table,
+        sqlColumn:     g.column,
+        stack:         (guardErr as Error).stack,
+      },
       "[team/invite] STEP 4 WARN: duplicate guard query failed — proceeding to INSERT"
     );
   }
@@ -192,6 +203,7 @@ router.post("/team/invite", async (req: Request, res: Response) => {
         sqlSchema:     pgSchema,
         sqlTable:      pgTable,
         sqlColumn:     pgColumn,
+        stack:         (insertErr as Error).stack,
         emailDomain:   email.split("@")[1] ?? "?",
       },
       "[team/invite] STEP 6 FAIL: INSERT error"
@@ -249,9 +261,24 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   orgDb(req)(
     `UPDATE team_members SET email_status=$1, resend_message_id=$2, email_error=$3, updated_at=NOW() WHERE id=$4`,
     [emailStatus, resendMsgId, emailErrSafe, id]
-  ).catch((e: unknown) =>
-    logger.warn({ reqId, err: (e as Error).message, id }, "[team/invite] STEP 10 WARN: email status UPDATE failed")
-  );
+  ).catch((e: unknown) => {
+    const u = e as Record<string, unknown>;
+    logger.warn(
+      {
+        reqId,
+        step:          10,
+        sqlCode:       u.code,
+        sqlMsg:        (e as Error).message,
+        sqlDetail:     u.detail,
+        sqlConstraint: u.constraint,
+        sqlTable:      u.table,
+        sqlColumn:     u.column,
+        stack:         (e as Error).stack,
+        id,
+      },
+      "[team/invite] STEP 10 WARN: email status UPDATE failed"
+    );
+  });
 
   // ── STEP 11 — Final response ──────────────────────────────────────────────
   if (!mailResult.ok) {

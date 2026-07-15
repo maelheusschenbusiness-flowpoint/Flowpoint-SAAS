@@ -5,8 +5,20 @@ async function run(client: import("pg").PoolClient, sql: string): Promise<void> 
   try {
     await client.query(sql);
   } catch (err: unknown) {
+    const e   = err as Record<string, unknown>;
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ msg }, "[init-data-tables] Non-fatal SQL warn");
+    // Log the SQL statement (first 120 chars) so production logs reveal which DDL failed
+    logger.warn(
+      {
+        sqlMsg:        msg,
+        sqlCode:       e["code"],
+        sqlTable:      e["table"],
+        sqlColumn:     e["column"],
+        sqlConstraint: e["constraint"],
+        sqlStmt:       sql.replace(/\s+/g, " ").trim().slice(0, 120),
+      },
+      "[init-data-tables] Non-fatal SQL warn"
+    );
   }
 }
 
@@ -369,15 +381,28 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS org_settings_sub_status_idx    ON org_settings(subscription_status);`);
 
     // ── team_members — self-healing creation ──────────────────────────────────
+    // ALL columns required by the STEP 6 INSERT are included here so fresh DBs
+    // (where CREATE TABLE IF NOT EXISTS actually runs) never hit 42703.
+    // Existing DBs fall through to the ALTER TABLE ADD COLUMN IF NOT EXISTS block.
     await run(client, `
       CREATE TABLE IF NOT EXISTS team_members (
-        id          TEXT        NOT NULL DEFAULT '',
-        org_id      TEXT        NOT NULL DEFAULT 'default',
-        name        TEXT        NOT NULL DEFAULT '',
-        email       TEXT        NOT NULL DEFAULT '',
-        role        TEXT        NOT NULL DEFAULT 'viewer',
-        joined      TEXT        NOT NULL DEFAULT '',
-        created_at  TIMESTAMP   NOT NULL DEFAULT NOW(),
+        id                    TEXT        NOT NULL DEFAULT '',
+        org_id                TEXT        NOT NULL DEFAULT 'default',
+        name                  TEXT        NOT NULL DEFAULT '',
+        email                 TEXT        NOT NULL DEFAULT '',
+        role                  TEXT        NOT NULL DEFAULT 'viewer',
+        joined                TEXT        NOT NULL DEFAULT '',
+        status                TEXT        NOT NULL DEFAULT 'pending',
+        invited_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        invited_by            TEXT        NOT NULL DEFAULT '',
+        invitation_token_hash TEXT,
+        expires_at            TIMESTAMPTZ,
+        accepted_at           TIMESTAMPTZ,
+        email_status          TEXT        NOT NULL DEFAULT 'pending',
+        resend_message_id     TEXT,
+        email_error           TEXT,
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at            TIMESTAMP   NOT NULL DEFAULT NOW(),
         PRIMARY KEY (id)
       );
     `);
