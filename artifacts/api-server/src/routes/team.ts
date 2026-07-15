@@ -17,7 +17,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { logger }                               from "../lib/logger.js";
-import { randomBytes, createHash }             from "crypto";
+import { randomBytes, createHash, randomUUID }  from "crypto";
 import { pool }                                from "@workspace/db";
 
 const router = Router();
@@ -164,7 +164,7 @@ router.post("/team/invite", async (req: Request, res: Response) => {
   const rawToken  = randomBytes(32).toString("hex");
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-  const id        = `inv_${Date.now()}_${randomBytes(4).toString("hex")}`;
+  const id        = randomUUID();
   const joined    = new Date().toISOString().slice(0, 10);
   logger.info({ reqId, id, tokenHashPrefix: tokenHash.slice(0, 8) }, "[team/invite] STEP 4 OK");
 
@@ -280,10 +280,24 @@ router.post("/team/invite", async (req: Request, res: Response) => {
       });
       return;
     }
+    const isDiagMode =
+      process.env["ADMIN_KEY"] &&
+      req.headers["x-admin-key"] === process.env["ADMIN_KEY"];
     res.status(500).json({
       ok:    false,
       code:  "INVITATION_DB_ERROR",
       error: "Failed to create invitation",
+      ...(isDiagMode && {
+        diagnostic: {
+          pgCode:     err.code        ?? null,
+          pgSeverity: err.severity    ?? null,
+          constraint: err.constraint  ?? null,
+          schema:     err.schema      ?? null,
+          table:      err.table       ?? null,
+          column:     err.column      ?? null,
+          routine:    err.routine     ?? null,
+        },
+      }),
     });
     return;
   }

@@ -539,6 +539,27 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `CREATE INDEX IF NOT EXISTS alert_rules_org_id_idx ON alert_rules(org_id);`);
 
+    // ── team_members — coerce UUID→TEXT if table was created via Supabase UI ──
+    // Supabase Dashboard creates id/org_id as UUID; migrations expect TEXT.
+    // ADD COLUMN IF NOT EXISTS silently skips existing columns regardless of type,
+    // so we must ALTER COLUMN TYPE explicitly when the types differ.
+    // This block is idempotent: the DO $$ guard checks data_type before acting.
+    await run(client, `
+      DO $$ BEGIN
+        IF (
+          SELECT data_type FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='team_members' AND column_name='id'
+        ) = 'uuid' THEN
+          -- Drop FK from org_id → organizations.id (UUID only; TEXT has no FK)
+          ALTER TABLE team_members DROP CONSTRAINT IF EXISTS team_members_org_id_fkey;
+          -- Coerce PRIMARY KEY id: UUID → TEXT (UUID strings are valid TEXT)
+          ALTER TABLE team_members ALTER COLUMN id      TYPE TEXT USING id::text;
+          -- Coerce org_id: UUID → TEXT so email-based org_ids are accepted
+          ALTER TABLE team_members ALTER COLUMN org_id  TYPE TEXT USING COALESCE(org_id::text, 'default');
+        END IF;
+      END $$;
+    `);
+
     // ── team_members — add org_id + full invite tracking columns ────────────
     // ADD COLUMN IF NOT EXISTS adds name when column is absent (production).
     // ALTER COLUMN SET DEFAULT handles tables where name existed WITHOUT a default

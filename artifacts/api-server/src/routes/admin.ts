@@ -10,7 +10,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
-import { pool } from "@workspace/db";
+import { pool, withOrgDb } from "@workspace/db";
 
 const router = Router();
 
@@ -422,6 +422,146 @@ router.get("/admin/rls", async (req: Request, res: Response): Promise<void> => {
       },
       unprotectedTables: unprotected.rows.map((r: Record<string, unknown>) => r.tablename),
       samplePolicies: policies.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: safeErrMsg(err) });
+  }
+});
+
+// ── GET /api/admin/team-schema-check ─────────────────────────────────────────
+// Diagnostic: schema definition + dual INSERT test (pool vs withOrgDb).
+// Query param: orgId (required) — e.g. ?orgId=alice@example.com
+// Returns pgCode / constraint / column for each path.
+// DELETE after root-cause is identified.
+router.get("/admin/team-schema-check", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdminKey(req, res)) return;
+
+  const orgId = (req.query["orgId"] as string | undefined)?.trim();
+  if (!orgId) {
+    res.status(400).json({ ok: false, error: "orgId query param required" });
+    return;
+  }
+
+  try {
+    // ── 1. Schema queries ─────────────────────────────────────────────────
+    const [columnsR, constraintsR, indexesR] = await Promise.all([
+      pool.query<Record<string, unknown>>(`
+        SELECT column_name, is_nullable, column_default, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'team_members'
+        ORDER BY ordinal_position
+      `),
+      pool.query<Record<string, unknown>>(`
+        SELECT conname, contype, pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint
+        WHERE conrelid = 'public.team_members'::regclass
+      `),
+      pool.query<Record<string, unknown>>(`
+        SELECT indexname, indexdef
+        FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'team_members'
+      `),
+    ]);
+
+    // ── 2. Dual INSERT probe ──────────────────────────────────────────────
+    const testId      = `diag_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+    const testEmail   = `diag-probe-${testId}@diag.internal`;
+    const testName    = testEmail.split("@")[0] ?? "diag";
+    const testExpires = new Date(Date.now() + 7 * 864e5).toISOString();
+    const testHash    = "0000000000000000000000000000000000000000000000000000000000000000";
+    const testJoined  = new Date().toISOString().slice(0, 10);
+
+    const PROBE_SQL = `
+      INSERT INTO team_members
+        (id, org_id, email, name, role, joined, status,
+         invited_by, invitation_token_hash, invited_at, expires_at,
+         email_status, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,NOW(),$9,'pending',NOW(),NOW())
+    `;
+    const PROBE_PARAMS = [
+      testId, orgId, testEmail, testName, "viewer",
+      testJoined, orgId, testHash, testExpires,
+    ];
+
+    type ProbeResult = {
+      ok: boolean;
+      pgCode?:     string | null;
+      constraint?: string | null;
+      table?:      string | null;
+      column?:     string | null;
+      routine?:    string | null;
+      errSummary?: string;
+    };
+
+    // 2a. pool.query — postgres role, no RLS (ROLLBACK after)
+    let poolProbe: ProbeResult = { ok: false };
+    const pc = await pool.connect();
+    try {
+      await pc.query("BEGIN");
+      await pc.query(PROBE_SQL, PROBE_PARAMS);
+      await pc.query("ROLLBACK");
+      poolProbe = { ok: true };
+    } catch (e: unknown) {
+      await pc.query("ROLLBACK").catch(() => {});
+      const pg = e as { code?: string; constraint?: string; table?: string; column?: string; routine?: string };
+      poolProbe = {
+        ok:         false,
+        pgCode:     pg.code        ?? null,
+        constraint: pg.constraint  ?? null,
+        table:      pg.table       ?? null,
+        column:     pg.column      ?? null,
+        routine:    pg.routine     ?? null,
+        errSummary: (e as Error).message?.slice(0, 160),
+      };
+    } finally {
+      pc.release();
+    }
+
+    // 2b. withOrgDb — app_user role, RLS enforced (INSERT then DELETE inside tx)
+    let orgDbProbe: ProbeResult = { ok: false };
+    try {
+      await withOrgDb(orgId, async (client) => {
+        await client.query(PROBE_SQL, PROBE_PARAMS);
+        await client.query("DELETE FROM team_members WHERE id = $1", [testId]);
+      });
+      orgDbProbe = { ok: true };
+    } catch (e: unknown) {
+      const pg = e as { code?: string; constraint?: string; table?: string; column?: string; routine?: string };
+      orgDbProbe = {
+        ok:         false,
+        pgCode:     pg.code        ?? null,
+        constraint: pg.constraint  ?? null,
+        table:      pg.table       ?? null,
+        column:     pg.column      ?? null,
+        routine:    pg.routine     ?? null,
+        errSummary: (e as Error).message?.slice(0, 160),
+      };
+    }
+
+    // ── 3. Interpretation ─────────────────────────────────────────────────
+    let interpretation: string;
+    if (poolProbe.ok && !orgDbProbe.ok) {
+      interpretation = "RLS / withOrgDb / app_user / GUC issue — pool succeeds but orgDb fails";
+    } else if (!poolProbe.ok && !orgDbProbe.ok) {
+      interpretation = "SQL / constraint / trigger / value issue — both roles fail";
+    } else if (poolProbe.ok && orgDbProbe.ok) {
+      interpretation = "Both paths succeed — INSERT is structurally OK; check other code paths";
+    } else {
+      interpretation = "Unexpected: orgDb succeeded but pool failed";
+    }
+
+    res.json({
+      ok: true,
+      schema: {
+        columns:     columnsR.rows,
+        constraints: constraintsR.rows,
+        indexes:     indexesR.rows,
+      },
+      insertTest: {
+        pool:           poolProbe,
+        orgDb:          orgDbProbe,
+        interpretation,
+      },
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: safeErrMsg(err) });
