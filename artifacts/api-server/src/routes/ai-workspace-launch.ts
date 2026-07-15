@@ -266,23 +266,46 @@ RÈGLES IMPORTANTES :
 router.get("/ai-workspace-launch/:sessionId", async (req: Request, res: Response) => {
   const { sessionId } = req.params;
   const orgId = req.orgId;
+
+  logger.info({ orgId, sessionId }, "[AWL-GET] incoming request");
+
   if (!orgId) {
+    logger.warn({ sessionId }, "[AWL-GET] orgId is undefined — rejecting 401");
     return res.status(401).json({ ok: false, error: "Organization context required" });
   }
-  const client = await pool.connect();
-  try {
-    const sess = await client.query(
-      `SELECT s.*, p.generated_roadmap, p.generated_strategy, p.seo_score,
-              (SELECT COUNT(*) FROM ai_generated_missions WHERE profile_id = p.id) as mission_count
+
+  const sql = `SELECT s.*, p.generated_roadmap, p.generated_strategy, p.seo_score,
+        (SELECT COUNT(*) FROM ai_generated_missions WHERE profile_id = p.id) as mission_count
        FROM onboarding_sessions s
        LEFT JOIN ai_workspace_profiles p ON p.session_id = s.id
-       WHERE s.id = $1 AND s.org_id = $2`,
-      [sessionId, orgId]
-    );
+       WHERE s.id = $1 AND s.org_id = $2`;
+  const params = [sessionId, orgId];
+
+  logger.info({ orgId, sessionId, sql: sql.replace(/\s+/g, " ").trim(), params }, "[AWL-GET] executing query");
+
+  const client = await pool.connect();
+  try {
+    const sess = await client.query(sql, params);
+
+    logger.info({ orgId, sessionId, rowCount: sess.rows.length }, "[AWL-GET] query returned");
+
     if (sess.rows.length === 0) {
-      return res.status(404).json({ ok: false, error: "Session not found" });
+      return res.status(404).json({ ok: false, code: "SESSION_NOT_FOUND" });
     }
     return res.json({ ok: true, session: sess.rows[0] });
+  } catch (err: any) {
+    logger.error({
+      orgId,
+      sessionId,
+      pg_code:       err?.code,
+      pg_detail:     err?.detail,
+      pg_constraint: err?.constraint,
+      pg_table:      err?.table,
+      pg_column:     err?.column,
+      pg_routine:    err?.routine,
+      message:       err?.message,
+    }, "[AWL-GET] PostgreSQL error");
+    return res.status(500).json({ ok: false, code: "DB_ERROR", error: err?.message ?? "Internal server error" });
   } finally {
     client.release();
   }
