@@ -2273,6 +2273,55 @@ function openFloatPanel(title, content) {
   panelTitle.textContent = title;
   body.innerHTML = content;
   wrapper.removeAttribute('hidden');
+  // ── Invite panel: attach handler exactly once, right here, after innerHTML ──
+  if (title === 'Inviter un membre') {
+    const sendBtn = body.querySelector('#invite-send');
+    if (sendBtn) {
+      const hid = Math.random().toString(36).slice(2, 8);
+      console.debug('[fp-invite] handler attached hid=' + hid, sendBtn);
+      sendBtn.onclick = async () => {
+        if (sendBtn.dataset.submitting === '1') return;
+        const email = (body.querySelector('#invite-email')?.value || '').trim();
+        const role  = (body.querySelector('#invite-role')?.value  || 'viewer').toLowerCase();
+        if (!email) { showToast('warning', 'Entrez un email'); return; }
+        sendBtn.dataset.submitting = '1';
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Envoi\u2026';
+        try {
+          const resp = await fetch('/api/team/invite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ email, role }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          sendBtn.dataset.submitting = '';
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'Envoyer l\'invitation';
+          if (resp.status === 201 && data.ok) {
+            closeFloatPanel && closeFloatPanel();
+            showToast('success', 'Invitation envoy\u00e9e \u00e0 ' + escHtml(email) + ' !');
+            const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
+            if (t && Array.isArray(t)) { STATE.team = t; render(); }
+          } else if (resp.status === 409) {
+            showToast('warning', 'Une invitation est d\u00e9j\u00e0 en attente pour cette adresse.');
+          } else if (resp.status === 502) {
+            showToast('warning', 'L\'invitation a \u00e9t\u00e9 cr\u00e9\u00e9e, mais l\'e-mail n\'a pas pu \u00eatre envoy\u00e9.');
+            closeFloatPanel && closeFloatPanel();
+            const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
+            if (t && Array.isArray(t)) { STATE.team = t; render(); }
+          } else {
+            showToast('error', data.error || 'Erreur lors de l\'invitation');
+          }
+        } catch (_e) {
+          sendBtn.dataset.submitting = '';
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'Envoyer l\'invitation';
+          showToast('error', 'Erreur r\u00e9seau \u2014 r\u00e9essayez');
+        }
+      };
+    }
+  }
 }
 
 function closeFloatPanel() { $('#fp-float-panel').setAttribute('hidden', ''); }
@@ -13561,51 +13610,6 @@ function bindSectionEvents() {
     });
     $('#team-invite-btn')?.addEventListener('click', () => {
       openFloatPanel('Inviter un membre', renderInvitePanel());
-      setTimeout(() => {
-        const sendBtn = $('#invite-send');
-        if (!sendBtn) return;
-        sendBtn.onclick = async () => {
-          if (sendBtn.dataset.submitting === '1') return;
-          const email = ($('#invite-email')?.value || '').trim();
-          const role  = ($('#invite-role')?.value  || 'editor').toLowerCase();
-          if (!email) { showToast('warning', 'Entrez un email'); return; }
-          sendBtn.dataset.submitting = '1';
-          sendBtn.disabled = true;
-          sendBtn.textContent = 'Envoi\u2026';
-          try {
-            const resp = await fetch('/api/team/invite', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ email, role }),
-            });
-            const data = await resp.json().catch(() => ({}));
-            sendBtn.dataset.submitting = '';
-            sendBtn.disabled = false;
-            sendBtn.textContent = 'Envoyer l\'invitation';
-            if (resp.status === 201 && data.ok) {
-              closeFloatPanel && closeFloatPanel();
-              showToast('success', 'Invitation envoy\u00e9e \u00e0 ' + escHtml(email) + ' !');
-              const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
-              if (t && Array.isArray(t)) { STATE.team = t; render(); }
-            } else if (resp.status === 409) {
-              showToast('warning', 'Une invitation est d\u00e9j\u00e0 en attente pour cette adresse.');
-            } else if (resp.status === 502) {
-              showToast('warning', 'L\'invitation a \u00e9t\u00e9 cr\u00e9\u00e9e, mais l\'e-mail n\'a pas pu \u00eatre envoy\u00e9.');
-              closeFloatPanel && closeFloatPanel();
-              const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
-              if (t && Array.isArray(t)) { STATE.team = t; render(); }
-            } else {
-              showToast('error', data.error || 'Erreur lors de l\'invitation');
-            }
-          } catch (_e) {
-            sendBtn.dataset.submitting = '';
-            sendBtn.disabled = false;
-            sendBtn.textContent = 'Envoyer l\'invitation';
-            showToast('error', 'Erreur r\u00e9seau \u2014 r\u00e9essayez');
-          }
-        };
-      }, 50);
     });
     $$('[data-remove-member]').forEach(btn => btn.addEventListener('click', async () => { const memberId = btn.dataset.removeMember; if (!memberId || !confirm('Retirer ce membre de l\'équipe ?')) return; const r = await apiAction('DELETE', `/api/team/${memberId}`).catch(() => null); if (r && !r.error) { STATE.team = (STATE.team || []).filter(t => t.id !== memberId); showToast('success', 'Membre retiré'); render(); } else { showToast('error', 'Erreur lors du retrait'); } }));
     // sendChat listeners are bound in bindNewRouteEvents (team+chat sub-route only)
