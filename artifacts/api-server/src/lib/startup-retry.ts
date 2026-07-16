@@ -26,6 +26,23 @@ function isTransient(err: unknown): boolean {
   return typeof code === "string" && TRANSIENT_CODES.has(code);
 }
 
+/** Returns the error code string without exposing any connection details. */
+export function getErrorCode(err: unknown): string | undefined {
+  if (err === null || typeof err !== "object") return undefined;
+  const code = (err as Record<string, unknown>)["code"];
+  return typeof code === "string" ? code : undefined;
+}
+
+/**
+ * Returns the error message string.
+ * Never logs stack traces, connection strings, SQL queries, or credentials.
+ */
+export function getSafeErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return "Unknown error";
+}
+
 /**
  * Wraps a startup operation with exponential-backoff retry for transient
  * PostgreSQL / network errors.
@@ -69,7 +86,7 @@ export async function withStartupRetry<T>(
 
       const delay = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
       logger.warn(
-        { code: (err as Record<string, unknown>)["code"] },
+        { code: getErrorCode(err) },
         `[startup] ${label} failed transiently — retry ${attempt}/${attempts}`,
       );
       await new Promise<void>((resolve) => setTimeout(resolve, delay));
@@ -77,4 +94,57 @@ export async function withStartupRetry<T>(
   }
 
   throw lastErr;
+}
+
+/**
+ * Runs a CRITICAL startup step.
+ *
+ * On exhausted retries or a permanent error the exception propagates
+ * unconditionally, preventing app.listen() and cron start.
+ * Use for every step whose failure would leave the server in an unsafe
+ * or broken state (missing tables, missing RLS policies, no DB access).
+ */
+export async function runCriticalStartupStep(
+  label: string,
+  operation: () => Promise<void>,
+  options?: {
+    attempts?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+  },
+): Promise<void> {
+  await withStartupRetry(label, operation, options);
+}
+
+/**
+ * Runs an OPTIONAL startup step.
+ *
+ * On failure the error is logged safely (label + code + message only —
+ * no DATABASE_URL, no passwords, no SQL queries) and the bootstrap continues.
+ *
+ * A step may only be optional when its absence demonstrably does not break
+ * any active route, any multi-tenant isolation boundary, or any write path.
+ * Document the rationale inline at the call site.
+ */
+export async function runOptionalStartupStep(
+  label: string,
+  operation: () => Promise<void>,
+  options?: {
+    attempts?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+  },
+): Promise<void> {
+  try {
+    await withStartupRetry(label, operation, options);
+  } catch (error) {
+    logger.warn(
+      {
+        label,
+        code: getErrorCode(error),
+        message: getSafeErrorMessage(error),
+      },
+      "[startup] Optional step unavailable",
+    );
+  }
 }

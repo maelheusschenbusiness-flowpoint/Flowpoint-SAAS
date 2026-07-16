@@ -6,6 +6,7 @@
   "include": [],
   "files": [
     "src/lib/startup-retry.ts",
-    "src/lib/startup-retry.test.ts"
+    "src/lib/startup-retry.test.ts",
+    "src/startup-bootstrap.test.ts"
   ]
 }

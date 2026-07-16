@@ -10,76 +10,62 @@ import { initRlsSetup } from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
 import { initAiMigration } from "./services/init-ai-migration.js";
 import { startMonitorCron } from "./services/monitor-cron.js";
-import { withStartupRetry } from "./lib/startup-retry.js";
+import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib/startup-retry.js";
 
 const PORT = env.PORT;
 
+// ── Bootstrap classification ───────────────────────────────────────────────────
+//
+// CRITICAL — any failure after exhausted retries aborts startup, prevents
+//            app.listen(), and exits with a non-zero code.
+//
+//   1. database connection   — no DB access means nothing works
+//   2. init-rls-setup        — creates app_user role required by all RLS policies
+//   3. app_user role probe   — sets the global RLS mode flag for withOrgDb()
+//   4. rls-migration         — applies tenant-isolation policies to every table
+//   5. init-missions         — mission routes write on every user action
+//   6. init-automation       — automation routes require these tables
+//   7. init-monitors         — monitor cron and routes require these tables
+//   8. init-data-tables      — core tables (audits, notifications, competitors…)
+//   9. AI migration          — AI routes require ai_recommendations et al.
+//
+// OPTIONAL — none currently.
+//   A step may only be optional when its absence demonstrably does not break
+//   any active route, any multi-tenant isolation boundary, or any write path.
+//
+// ──────────────────────────────────────────────────────────────────────────────
+
 async function main() {
-  try {
-    await withStartupRetry("database connection", () => pool.query("SELECT 1"));
+  // 1. Verify the DB is reachable before any init that assumes a connection.
+  await runCriticalStartupStep("database connection", async () => {
+    await pool.query("SELECT 1");
     logger.info("Database connection OK");
-  } catch (err) {
-    logger.warn({ err }, "Database connection check failed — continuing startup");
-  }
+  });
 
-  // initRlsSetup BEFORE probeAppUserRole: the role must exist before we probe
-  // whether the connection user is allowed to SET ROLE app_user.
-  // On the very first boot the role is absent; running setup first means the
-  // probe on the same boot already sees the role and can enable role-based RLS
-  // instead of falling back to GUC-only mode.
-  try {
-    await withStartupRetry("init-rls-setup", initRlsSetup);
-  } catch (err) {
-    logger.warn({ err }, "RLS setup failed — non-fatal, continuing");
-  }
+  // 2. Create/verify app_user role + grant schema + sequence privileges.
+  //    MUST run before probeAppUserRole: role must exist before being probed.
+  await runCriticalStartupStep("init-rls-setup", initRlsSetup);
 
-  // Probe once (outside any transaction) whether SET ROLE app_user is allowed.
-  // This sets the global flag that prevents withOrgDb() from attempting the role
-  // switch when it would fail and abort the transaction (Supabase / managed DBs).
-  try {
-    await withStartupRetry("app_user role probe", probeAppUserRole);
-  } catch (err) {
-    logger.warn({ err }, "app_user role probe failed — GUC-only RLS mode");
-  }
+  // 3. Probe whether the connection user can SET ROLE app_user.
+  //    Sets _appUserRoleUnavailable flag consumed by every withOrgDb() call.
+  await runCriticalStartupStep("app_user role probe", probeAppUserRole);
 
-  // Apply RLS tenant isolation to any tables still missing it.
-  // Fast no-op (~2 ms) once all tables are secured.
-  try {
-    await withStartupRetry("rls-migration", runRlsMigrationIfNeeded);
-  } catch (err) {
-    logger.warn({ err }, "RLS migration failed — non-fatal, continuing");
-  }
+  // 4. Apply tenant-isolation RLS policies to any tables still missing them.
+  await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
 
-  try {
-    await withStartupRetry("init-missions", initMissionsTables);
-  } catch (err) {
-    logger.warn({ err }, "Missions table init failed — non-fatal, continuing");
-  }
+  // 5–7. Domain tables — routes assume these exist at every request.
+  await runCriticalStartupStep("init-missions",   initMissionsTables);
+  await runCriticalStartupStep("init-automation", initAutomationTables);
+  await runCriticalStartupStep("init-monitors",   initMonitorsTables);
 
-  try {
-    await withStartupRetry("init-automation", initAutomationTables);
-  } catch (err) {
-    logger.warn({ err }, "Automation table init failed — non-fatal, continuing");
-  }
+  // 8. Core data tables (audits, notifications, competitors, …).
+  await runCriticalStartupStep("init-data-tables", initDataTables);
 
-  try {
-    await withStartupRetry("init-monitors", initMonitorsTables);
-  } catch (err) {
-    logger.warn({ err }, "Monitors table init failed — non-fatal, continuing");
-  }
+  // 9. AI tables — creates & validates ai_recommendations et al.
+  //    Throws on any failure: missing tables = broken AI routes.
+  await runCriticalStartupStep("AI migration", initAiMigration);
 
-  try {
-    await withStartupRetry("init-data-tables", initDataTables);
-  } catch (err) {
-    logger.warn({ err }, "Data tables init failed — non-fatal, continuing");
-  }
-
-  // AI migration is FATAL — the server must not start if required tables
-  // cannot be created (e.g. permission denied, schema missing, DB unreachable).
-  // withStartupRetry retries transient errors (ECONNABORTED, ECONNRESET, etc.);
-  // permanent failures propagate to main().catch() which logs + exits non-zero.
-  await withStartupRetry("AI migration", initAiMigration);
-
+  // ── All critical steps succeeded — safe to open port and start crons ────────
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
@@ -99,7 +85,15 @@ async function main() {
   process.on("SIGINT",  () => void shutdown("SIGINT"));
 }
 
-main().catch((err) => {
-  logger.error({ err }, "Fatal startup error");
+main().catch((err: unknown) => {
+  // Log only code + message — never log DATABASE_URL, passwords, or full
+  // stack traces that may contain connection parameters.
+  logger.error(
+    {
+      code:    getErrorCode(err),
+      message: getSafeErrorMessage(err),
+    },
+    "Fatal startup error — process will exit",
+  );
   process.exit(1);
 });
