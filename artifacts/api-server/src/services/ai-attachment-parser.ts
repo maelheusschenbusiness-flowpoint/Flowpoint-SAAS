@@ -7,6 +7,7 @@
  *
  * Provider is NEVER changed here.  No credits are debited during local parsing.
  * Images (png/jpg/jpeg/webp) return HTTP 415 — they are never sent to a provider.
+ * XLS (legacy binary)         returns HTTP 415 — only XLSX is supported.
  */
 
 import { logger }                    from "../lib/logger.js";
@@ -109,6 +110,16 @@ async function parseOne(
     );
   }
 
+  // ── XLS (legacy binary): explicit 415 — ExcelJS supports XLSX only ─────────
+  if (ext === "xls") {
+    return parseError(
+      "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET",
+      "Le format XLS (Excel ancien format binaire) n'est pas supporté. " +
+      "Convertissez le fichier en XLSX et réessayez.",
+      415,
+    );
+  }
+
   // ── Decode base64 → Buffer ────────────────────────────────────────────────
   let buf: Buffer;
   try {
@@ -134,9 +145,16 @@ async function parseOne(
   if (ext === "json") {
     const r = parseJsonBuffer(buf, limits.maxJsonDepth, limits.maxCharsPerAttachment);
     if ("error" in r) {
+      if (r.error === "ATTACHMENT_JSON_TOO_DEEP") {
+        return parseError(
+          "ATTACHMENT_JSON_TOO_DEEP",
+          `L'imbrication JSON dépasse la limite autorisée (${limits.maxJsonDepth} niveaux).`,
+          400,
+        );
+      }
       return parseError(
         "ATTACHMENT_JSON_INVALID",
-        "Le fichier JSON est invalide ou sa profondeur d'imbrication dépasse la limite autorisée.",
+        "Le fichier JSON est invalide (syntaxe incorrecte).",
         400,
       );
     }
@@ -160,9 +178,9 @@ async function parseOne(
     return buildNormalized(att, "csv", r.text, r.truncated, { rowCount: r.totalRows });
   }
 
-  // ── XLS / XLSX ────────────────────────────────────────────────────────────
-  if (ext === "xls" || ext === "xlsx") {
-    const r = parseSpreadsheetBuffer(
+  // ── XLSX ─────────────────────────────────────────────────────────────────
+  if (ext === "xlsx") {
+    const r = await parseSpreadsheetBuffer(
       buf,
       limits.maxSpreadsheetSheets,
       limits.maxSpreadsheetRows,
@@ -170,10 +188,10 @@ async function parseOne(
       limits.maxCharsPerAttachment,
     );
     if ("error" in r) {
-      if (r.error === "ATTACHMENT_TABLE_EMPTY") {
-        return parseError("ATTACHMENT_TABLE_EMPTY", "Le classeur ne contient aucune donnée.", 422);
+      if (r.error === "ATTACHMENT_SPREADSHEET_EMPTY") {
+        return parseError("ATTACHMENT_SPREADSHEET_EMPTY", "Le classeur XLSX ne contient aucune donnée.", 422);
       }
-      return parseError("ATTACHMENT_PARSE_FAILED", "Impossible de lire le classeur.", 400);
+      return parseError("ATTACHMENT_SPREADSHEET_INVALID", "Impossible de lire le fichier XLSX.", 400);
     }
     const combinedText = r.map(s => s.text).join("\n\n");
     const totalRows    = r.reduce((sum, s) => sum + s.rowCount, 0);
@@ -190,7 +208,7 @@ async function parseOne(
       if (r.error === "ATTACHMENT_DOCX_EMPTY") {
         return parseError("ATTACHMENT_DOCX_EMPTY", "Le document Word est vide.", 422);
       }
-      return parseError("ATTACHMENT_PARSE_FAILED", "Impossible de lire le document Word.", 400);
+      return parseError("ATTACHMENT_DOCX_INVALID", "Impossible de lire le document Word (format invalide).", 400);
     }
     return buildNormalized(att, "docx", r.text, r.truncated, {});
   }
@@ -214,7 +232,7 @@ async function parseOne(
     return buildNormalized(att, "pdf", r.text, r.truncated, { pageCount: r.pageCount });
   }
 
-  // ── Unknown (should not reach here — ai-attachments.ts validates MIME) ────
+  // ── Unknown ───────────────────────────────────────────────────────────────
   return parseError(
     "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET",
     `Format non supporté : .${ext}`,

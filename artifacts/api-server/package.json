@@ -21,6 +21,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "drizzle-orm": "^0.45.0",
+    "exceljs": "^4.4.0",
     "express": "^5",
     "googleapis": "^171.4.0",
     "helmet": "^8.2.0",
@@ -36,7 +37,6 @@
     "pino-http": "^10",
     "resend": "^6.12.4",
     "stripe": "^22.1.0",
-    "xlsx": "^0.18.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {

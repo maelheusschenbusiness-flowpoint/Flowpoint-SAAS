@@ -2,10 +2,16 @@
  * json-parser.ts — Parse JSON files from a Buffer.
  *
  * Handles:
- *   - JSON validation
- *   - Depth limit enforcement (returns error when exceeded)
- *   - Sensitive key redaction
+ *   - JSON validation (ATTACHMENT_JSON_INVALID on syntax error)
+ *   - Depth limit enforcement (ATTACHMENT_JSON_TOO_DEEP when exceeded — distinct code)
+ *   - Sensitive key redaction via explicit normalised-key matching
  *   - Truncation to maxChars on serialised output
+ *
+ * Redaction strategy (not regex-based):
+ *   Keys are normalised to lowercase with separators stripped.
+ *   Only exact normalised matches against SENSITIVE_NORMALIZED_KEYS are redacted.
+ *   This prevents false positives on non-sensitive keys like:
+ *     tokenCount, cookieBanner, authorizationStatus, secretariat, passport
  */
 
 export interface JsonParseResult {
@@ -14,17 +20,45 @@ export interface JsonParseResult {
   charCount: number;
 }
 
+export type JsonParseErrorCode = "ATTACHMENT_JSON_INVALID" | "ATTACHMENT_JSON_TOO_DEEP";
+
 export interface JsonParseError {
-  error: "ATTACHMENT_JSON_INVALID";
+  error: JsonParseErrorCode;
 }
 
-// Keys matching this pattern are redacted to "[REDACTED]"
-const SENSITIVE_KEY_RE =
-  /^(password|passwd|secret|token|api[_\-]?key|auth|credential|private[_\-]?key|access[_\-]?token|refresh[_\-]?token|client[_\-]?secret)/i;
+// ── Sensitive key normalisation ───────────────────────────────────────────────
+// Normalise: lowercase + remove [-_] separators (camelCase → lower, snake_case → lower)
+function normaliseKey(key: string): string {
+  return key.toLowerCase().replace(/[-_]/g, "");
+}
 
-/**
- * Compute the maximum nesting depth of a JSON value (iterative BFS).
- */
+// Exact normalised matches — no prefix matching, no glob.
+// Covers:  password, passwd, secret, token, accessToken, access_token,
+//          refreshToken, refresh-token, apiKey, api_key, authorization,
+//          Authorization, cookie, Cookie, privateKey, private_key,
+//          clientSecret, client_secret, credential, credentials
+const SENSITIVE_NORMALISED_KEYS = new Set([
+  "password",
+  "passwd",
+  "secret",
+  "token",
+  "accesstoken",
+  "refreshtoken",
+  "apikey",
+  "authorization",
+  "cookie",
+  "privatekey",
+  "clientsecret",
+  "credential",
+  "credentials",
+]);
+
+function isSensitiveKey(key: string): boolean {
+  return SENSITIVE_NORMALISED_KEYS.has(normaliseKey(key));
+}
+
+// ── Depth computation ─────────────────────────────────────────────────────────
+
 function computeJsonDepth(value: unknown): number {
   if (value === null || typeof value !== "object") return 0;
 
@@ -58,9 +92,8 @@ function computeJsonDepth(value: unknown): number {
   return maxDepth;
 }
 
-/**
- * Recursively redact sensitive keys and truncate deeply nested objects.
- */
+// ── Sensitive-key redaction ───────────────────────────────────────────────────
+
 function redactSensitiveKeys(
   value:    unknown,
   depth:    number,
@@ -75,7 +108,7 @@ function redactSensitiveKeys(
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = SENSITIVE_KEY_RE.test(key)
+      out[key] = isSensitiveKey(key)
         ? "[REDACTED]"
         : redactSensitiveKeys(val, depth + 1, maxDepth);
     }
@@ -85,8 +118,14 @@ function redactSensitiveKeys(
   return value;
 }
 
+// ── Main parse function ───────────────────────────────────────────────────────
+
 /**
  * Parse a JSON buffer, redact sensitive keys, enforce depth, and truncate.
+ *
+ * Returns JsonParseError with:
+ *   "ATTACHMENT_JSON_INVALID"  — syntax error (JSON.parse threw)
+ *   "ATTACHMENT_JSON_TOO_DEEP" — nesting exceeds maxDepth (distinct from invalid)
  */
 export function parseJsonBuffer(
   buf:      Buffer,
@@ -102,10 +141,10 @@ export function parseJsonBuffer(
 
   const depth = computeJsonDepth(parsed);
   if (depth > maxDepth) {
-    return { error: "ATTACHMENT_JSON_INVALID" };
+    return { error: "ATTACHMENT_JSON_TOO_DEEP" };
   }
 
-  const redacted  = redactSensitiveKeys(parsed, 0, maxDepth);
+  const redacted   = redactSensitiveKeys(parsed, 0, maxDepth);
   const serialized = JSON.stringify(redacted, null, 2);
 
   const truncated = serialized.length > maxChars;

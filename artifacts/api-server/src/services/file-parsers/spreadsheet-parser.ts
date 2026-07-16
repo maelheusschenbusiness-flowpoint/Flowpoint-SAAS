@@ -1,16 +1,24 @@
 /**
- * spreadsheet-parser.ts — Parse XLS / XLSX workbooks from a Buffer using SheetJS.
+ * spreadsheet-parser.ts — Parse XLSX workbooks from a Buffer using ExcelJS.
+ *
+ * ExcelJS replaces SheetJS (xlsx@0.18.5) which had 2 HIGH CVEs with no npm fix.
+ * ExcelJS is MIT-licenced, actively maintained, and does NOT evaluate formulas
+ * — it reads cached cell values from the file, with no re-computation.
+ *
+ * XLS (legacy binary format, .xls) is NOT supported — callers should return 415.
  *
  * Handles:
  *   - Multiple sheets (limited to maxSheets)
  *   - Empty sheet skipping
- *   - Formula neutralisation (raw value returned, not formula result)
  *   - Row and column limits per sheet
+ *   - Formula cells: cached result is used, formula string is never executed
+ *   - Formula neutralisation on output (prefix "'" to cells starting with =+-@)
  *   - Markdown table output per sheet
- *   - Invalid workbook detection
+ *   - Invalid XLSX → ATTACHMENT_SPREADSHEET_INVALID (distinct from empty)
+ *   - Empty XLSX → ATTACHMENT_SPREADSHEET_EMPTY (distinct from invalid)
  */
 
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 export interface SheetResult {
   sheetName: string;
@@ -21,16 +29,50 @@ export interface SheetResult {
   text:      string;
 }
 
+export type SpreadsheetParseErrorCode =
+  | "ATTACHMENT_SPREADSHEET_INVALID"
+  | "ATTACHMENT_SPREADSHEET_EMPTY";
+
 export interface SpreadsheetParseError {
-  error: "ATTACHMENT_PARSE_FAILED" | "ATTACHMENT_TABLE_EMPTY";
+  error: SpreadsheetParseErrorCode;
 }
 
-const FORMULA_RE = /^=/;
+// ── Cell value helpers ────────────────────────────────────────────────────────
 
-function neutralizeCell(raw: unknown): string {
-  const s = String(raw ?? "");
-  return FORMULA_RE.test(s) ? "'" + s : s;
+type CellVal = ExcelJS.CellValue;
+
+function getCellText(value: CellVal): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") {
+    // Formula: { formula: "=A1+B1", result: 42 }
+    if ("result" in value) {
+      return getCellText((value as ExcelJS.CellFormulaValue).result as CellVal);
+    }
+    // RichText: { richText: [{ text: "..." }] }
+    if ("richText" in value) {
+      return (value as ExcelJS.CellRichTextValue).richText.map(r => r.text).join("");
+    }
+    // Hyperlink: { text: "...", hyperlink: "..." }
+    if ("text" in value) {
+      return getCellText((value as ExcelJS.CellHyperlinkValue).text as CellVal);
+    }
+    // Error: { error: "#REF!" }
+    if ("error" in value) {
+      return String((value as { error: string }).error);
+    }
+  }
+  return String(value);
 }
+
+const FORMULA_NEUTRALIZE_RE = /^[=+\-@]/;
+
+function neutralizeCell(value: CellVal): string {
+  const s = getCellText(value);
+  return FORMULA_NEUTRALIZE_RE.test(s) ? "'" + s : s;
+}
+
+// ── Markdown table builder ────────────────────────────────────────────────────
 
 function buildMarkdownTable(headers: string[], rows: string[][]): string {
   if (headers.length === 0) return "";
@@ -44,67 +86,66 @@ function buildMarkdownTable(headers: string[], rows: string[][]): string {
   return [header, separator, ...body].join("\n");
 }
 
+// ── Main parser ───────────────────────────────────────────────────────────────
+
 /**
- * Parse a spreadsheet buffer (XLS or XLSX) and return per-sheet Markdown tables.
- * Formulas are NOT evaluated — cells containing formulas are neutralised.
+ * Parse an XLSX buffer and return per-sheet Markdown tables.
+ *
+ * Formula cells are read as their cached values — no formula re-evaluation occurs.
+ * The formula neutralisation pass adds "'" to any cell whose string value starts
+ * with =, +, -, or @ before writing it to the output text.
  */
-export function parseSpreadsheetBuffer(
+export async function parseSpreadsheetBuffer(
   buf:       Buffer,
   maxSheets: number,
   maxRows:   number,
   maxCols:   number,
   maxChars:  number,
-): SheetResult[] | SpreadsheetParseError {
-  let wb: XLSX.WorkBook;
+): Promise<SheetResult[] | SpreadsheetParseError> {
+  const wb = new ExcelJS.Workbook();
   try {
-    wb = XLSX.read(buf, {
-      type:        "buffer",
-      cellFormula: false,
-      cellHTML:    false,
-    });
+    // ExcelJS.xlsx.load accepts Buffer | ArrayBuffer. Cast required because
+    // @types/node@20+ types Buffer as Buffer<ArrayBufferLike> which breaks
+    // structural assignment against ExcelJS's unparameterised Buffer type.
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
   } catch {
-    return { error: "ATTACHMENT_PARSE_FAILED" };
+    return { error: "ATTACHMENT_SPREADSHEET_INVALID" };
   }
 
-  // Treat workbooks with no sheets as parse failures (XLSX.read can silently
-  // succeed on some non-XLSX buffers and return an empty SheetNames array).
-  if (!wb.SheetNames || wb.SheetNames.length === 0) {
-    return { error: "ATTACHMENT_PARSE_FAILED" };
+  if (wb.worksheets.length === 0) {
+    return { error: "ATTACHMENT_SPREADSHEET_EMPTY" };
   }
 
   const results: SheetResult[] = [];
-  const sheetNames = (wb.SheetNames ?? []).slice(0, maxSheets);
+  const sheets  = wb.worksheets.slice(0, maxSheets);
 
-  for (const sheetName of sheetNames) {
-    const ws = wb.Sheets[sheetName];
-    if (!ws) continue;
-
-    const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, {
-      header: 1,
-      defval: "",
-      raw:    false,
+  for (const ws of sheets) {
+    // Collect all rows as arrays of CellValue
+    const aoa: CellVal[][] = [];
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      // row.values is 1-indexed; index 0 is always undefined
+      const vals = (row.values as CellVal[]).slice(1);
+      aoa.push(vals);
     });
 
     if (aoa.length === 0) continue;
 
     const [rawHeader, ...rawData] = aoa;
-    if (!rawHeader || (rawHeader as unknown[]).length === 0) continue;
+    if (!rawHeader || rawHeader.length === 0) continue;
 
-    const headers   = (rawHeader as unknown[]).slice(0, maxCols).map(neutralizeCell);
-    const totalRows = rawData.length;
+    const headers      = rawHeader.slice(0, maxCols).map(neutralizeCell);
+    const totalRows    = rawData.length;
     const truncatedRows = totalRows > maxRows;
-    const limitedRows   = rawData
+    const limitedRows  = rawData
       .slice(0, maxRows)
-      .map(row => (row as unknown[]).slice(0, maxCols).map(neutralizeCell));
+      .map(row => row.slice(0, maxCols).map(neutralizeCell));
 
-    let text = `## Feuille : ${sheetName}\n\n` + buildMarkdownTable(headers, limitedRows);
+    let text = `## Feuille : ${ws.name}\n\n` + buildMarkdownTable(headers, limitedRows);
     const truncatedChars = text.length > maxChars;
-    if (truncatedChars) {
-      text = text.slice(0, maxChars);
-    }
+    if (truncatedChars) text = text.slice(0, maxChars);
 
     results.push({
-      sheetName,
+      sheetName: ws.name,
       headers,
       rows:      limitedRows,
       rowCount:  totalRows,
@@ -114,7 +155,7 @@ export function parseSpreadsheetBuffer(
   }
 
   if (results.length === 0) {
-    return { error: "ATTACHMENT_TABLE_EMPTY" };
+    return { error: "ATTACHMENT_SPREADSHEET_EMPTY" };
   }
 
   return results;

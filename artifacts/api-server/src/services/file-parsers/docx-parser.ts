@@ -3,8 +3,8 @@
  *
  * Handles:
  *   - Plain text extraction (mammoth extractRawText)
- *   - Empty document detection
- *   - Invalid DOCX detection
+ *   - Empty document detection → ATTACHMENT_DOCX_EMPTY
+ *   - Invalid DOCX detection   → ATTACHMENT_DOCX_INVALID (distinct from generic failed)
  *   - Truncation to maxChars
  */
 
@@ -16,8 +16,10 @@ export interface DocxParseResult {
   charCount: number;
 }
 
+export type DocxParseErrorCode = "ATTACHMENT_DOCX_EMPTY" | "ATTACHMENT_DOCX_INVALID";
+
 export interface DocxParseError {
-  error: "ATTACHMENT_DOCX_EMPTY" | "ATTACHMENT_PARSE_FAILED";
+  error: DocxParseErrorCode;
 }
 
 /**
@@ -31,7 +33,7 @@ export async function parseDocxBuffer(
   try {
     extracted = await mammoth.extractRawText({ buffer: buf });
   } catch {
-    return { error: "ATTACHMENT_PARSE_FAILED" };
+    return { error: "ATTACHMENT_DOCX_INVALID" };
   }
 
   const text = (extracted.value ?? "").trim();
