@@ -68,11 +68,10 @@ async function main() {
     logger.warn({ err }, "Data tables init failed — non-fatal, continuing");
   }
 
-  try {
-    await initAiMigration();
-  } catch (err) {
-    logger.warn({ err }, "AI migration failed — non-fatal, continuing");
-  }
+  // AI migration is FATAL — the server must not start if required tables
+  // cannot be created (e.g. permission denied, schema missing, DB unreachable).
+  // Errors are already logged with full pg details inside initAiMigration().
+  await initAiMigration();
 
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
