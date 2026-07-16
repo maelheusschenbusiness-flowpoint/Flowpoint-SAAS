@@ -24,6 +24,7 @@ import {
 } from "../services/ai-prefs.js";
 import { aiChat, aiStream, checkAllProviders, type AIProviderId } from "../services/ai-provider.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
+import { resolveIntensityConfig, isValidProvider, isModelValidForProvider } from "../services/ai-provider-matrix.js";
 
 const router = Router();
 // Apply AI rate limit to all routes in this router (org-based, plan-aware)
@@ -508,11 +509,29 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
     return;
   }
 
-  // 1. Resolve provider + model + maxTokens from org AI prefs (intensity wiring)
-  const aiCfg = await selectOptimalModel("chat", orgId);
-  const selectedProvider = provider ?? aiCfg.provider;
-  const selectedModel    = model    ?? aiCfg.model;
-  const selectedMaxTokens = aiCfg.maxTokens; // respect intensity token budget (Conservateur=480, Équilibré=800, Agressif=1200)
+  // 1. Validate provider if explicitly provided
+  if (provider !== undefined && !isValidProvider(provider)) {
+    res.status(400).json({ ok: false, code: "INVALID_AI_PROVIDER" });
+    return;
+  }
+
+  // 2. Resolve final provider: body.provider > org preferredProvider > "openai"
+  //    Le backend ne remplace jamais un provider explicite valide.
+  const resolvedProvider: AIProviderId = (provider as AIProviderId | undefined)
+    ?? aiPrefs.preferredProvider
+    ?? "openai";
+
+  // 3. Validate model+provider combination if model is explicitly provided
+  if (model !== undefined && !isModelValidForProvider(resolvedProvider, model)) {
+    res.status(400).json({ ok: false, code: "INVALID_PROVIDER_MODEL_COMBINATION" });
+    return;
+  }
+
+  // 4. Resolve model and token budget from intensity matrix — provider NEVER changes here
+  const intensityCfg = resolveIntensityConfig(resolvedProvider, aiPrefs.aiIntensity);
+  const selectedProvider = resolvedProvider;
+  const selectedModel    = model ?? intensityCfg.model;
+  const selectedMaxTokens = intensityCfg.maxTokens;
 
   // 2. Token-based quota check — strict pre-flight against monthly token budget
   //    If DB is unavailable getOrCreateMonthlyUsage() throws and we allow the request
@@ -562,6 +581,7 @@ ${fpContext}`;
       const stream = aiStream({
         provider: selectedProvider,
         model: selectedModel,
+        strictProvider: true,
         systemPrompt: messages[0]!.content,
         messages: messages.slice(1),
         maxTokens: selectedMaxTokens,
@@ -593,7 +613,14 @@ ${fpContext}`;
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage failed"));
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: selectedModel }, "[AI] Streaming chat failed");
-      res.write(`data: ${JSON.stringify({ error: "Erreur de generation IA" })}\n\n`);
+      const errCode = (err as Record<string, unknown>)?.code;
+      const errProvider = (err as Record<string, unknown>)?.provider as string | undefined;
+      if (errCode === "PROVIDER_UNAVAILABLE") {
+        res.write(`data: ${JSON.stringify({ ok: false, code: "PROVIDER_UNAVAILABLE", provider: errProvider ?? selectedProvider })}\n\n`);
+      } else {
+        res.write(`data: ${JSON.stringify({ error: "Erreur de generation IA" })}\n\n`);
+      }
+      res.write(`data: [DONE]\n\n`);
       res.end();
     }
   } else {
@@ -603,6 +630,7 @@ ${fpContext}`;
       const result = await aiChat({
         provider: selectedProvider,
         model: selectedModel,
+        strictProvider: true,
         systemPrompt: messages[0]!.content,
         messages: messages.slice(1),
         maxTokens: selectedMaxTokens,
@@ -617,7 +645,13 @@ ${fpContext}`;
       res.json({ reply, streaming: false, _ai: result._ai });
     } catch (err) {
       logger.error({ err, provider: selectedProvider, model: selectedModel }, "[AI] Chat failed");
-      res.status(503).json(aiUnavailableJson());
+      const errCode = (err as Record<string, unknown>)?.code;
+      const errProvider = (err as Record<string, unknown>)?.provider as string | undefined;
+      if (errCode === "PROVIDER_UNAVAILABLE") {
+        res.status(503).json({ ok: false, code: "PROVIDER_UNAVAILABLE", provider: errProvider ?? selectedProvider });
+      } else {
+        res.status(503).json(aiUnavailableJson());
+      }
     }
   }
 });

@@ -198,14 +198,99 @@ router.get("/ai/preferences", async (req: Request, res: Response): Promise<void>
   if (!orgId) return;
   try {
     const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
-    const settings = r.rows[0]?.settings ?? {};
+    const settings = (r.rows[0]?.settings ?? {}) as Record<string, unknown>;
     res.json({
-      aiModules:   (settings as Record<string, unknown>).aiModules   ?? {},
-      aiIntensity: (settings as Record<string, unknown>).aiIntensity ?? 'Équilibré',
-      provider:    'openai',
+      preferredProvider: (settings.preferredProvider as string) ?? null,
+      preferredModel:    (settings.preferredModel as string) ?? null,
+      aiIntensity:       (settings.aiIntensity as string) ?? "Équilibré",
+      aiModules:         (settings.aiModules as Record<string, boolean>) ?? {},
     });
   } catch {
-    res.json({ aiModules: {}, aiIntensity: 'Équilibré', provider: 'openai' });
+    res.json({ preferredProvider: null, preferredModel: null, aiIntensity: "Équilibré", aiModules: {} });
+  }
+});
+
+// ── PATCH /api/ai/preferences — persist user AI provider/model/intensity ─────
+router.patch("/ai/preferences", async (req: Request, res: Response): Promise<void> => {
+  const orgId = requireOrgId(req, res);
+  if (!orgId) return;
+
+  const VALID_PROVIDERS = ["openai", "anthropic", "gemini"];
+  const VALID_INTENSITIES = ["Conservateur", "Équilibré", "Performant", "Agressif"];
+
+  const { preferredProvider, preferredModel, aiIntensity } = req.body as {
+    preferredProvider?: string;
+    preferredModel?: string;
+    aiIntensity?: string;
+  };
+
+  // Reject unknown fields — only these 3 are accepted
+  const allowedKeys = new Set(["preferredProvider", "preferredModel", "aiIntensity"]);
+  const unknownKeys = Object.keys(req.body as object).filter(k => !allowedKeys.has(k));
+  if (unknownKeys.length > 0) {
+    res.status(400).json({ ok: false, code: "UNKNOWN_FIELDS", fields: unknownKeys });
+    return;
+  }
+
+  // Validate provider
+  if (preferredProvider !== undefined && !VALID_PROVIDERS.includes(preferredProvider)) {
+    res.status(400).json({ ok: false, code: "INVALID_AI_PROVIDER" });
+    return;
+  }
+
+  // Validate intensity
+  if (aiIntensity !== undefined && !VALID_INTENSITIES.includes(aiIntensity)) {
+    res.status(400).json({ ok: false, code: "INVALID_AI_INTENSITY", validValues: ["Conservateur", "Équilibré", "Performant"] });
+    return;
+  }
+
+  // Validate model+provider combination (only when both are provided together)
+  if (preferredProvider !== undefined && preferredModel !== undefined) {
+    const { PROVIDER_CAPABILITIES } = await import("../services/ai-providers/capabilities.js");
+    const caps = PROVIDER_CAPABILITIES[preferredProvider as keyof typeof PROVIDER_CAPABILITIES];
+    if (!caps || !caps.models.includes(preferredModel)) {
+      res.status(400).json({ ok: false, code: "INVALID_PROVIDER_MODEL_COMBINATION" });
+      return;
+    }
+  }
+
+  // Build patch object — only the 3 allowed fields, normalize Agressif→Performant
+  const patch: Record<string, unknown> = {};
+  if (preferredProvider !== undefined) patch.preferredProvider = preferredProvider;
+  if (preferredModel !== undefined)    patch.preferredModel    = preferredModel;
+  if (aiIntensity !== undefined)       patch.aiIntensity       = aiIntensity === "Agressif" ? "Performant" : aiIntensity;
+
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ ok: false, code: "EMPTY_PATCH" });
+    return;
+  }
+
+  try {
+    // Upsert: merge only the allowed patch fields into existing settings JSONB
+    await orgDb(req)(`
+      INSERT INTO user_prefs (org_id, settings)
+      VALUES ($1, $2::jsonb)
+      ON CONFLICT (org_id)
+      DO UPDATE SET settings = COALESCE(user_prefs.settings, '{}'::jsonb) || $2::jsonb,
+                   updated_at = NOW()
+    `, [orgId, JSON.stringify(patch)]);
+
+    // Return the full persisted preferences
+    const r = await orgDb(req)(`SELECT settings FROM user_prefs WHERE org_id=$1`, [orgId]);
+    const settings = (r.rows[0]?.settings ?? {}) as Record<string, unknown>;
+    res.json({
+      ok: true,
+      preferences: {
+        preferredProvider: (settings.preferredProvider as string) ?? null,
+        preferredModel:    (settings.preferredModel as string) ?? null,
+        aiIntensity:       (settings.aiIntensity as string) ?? "Équilibré",
+        aiModules:         (settings.aiModules as Record<string, boolean>) ?? {},
+      },
+    });
+  } catch (err) {
+    const { logger } = await import("../lib/logger.js");
+    logger.error({ err, orgId }, "[AI Prefs] PATCH /ai/preferences failed");
+    res.status(500).json({ ok: false, code: "PREFS_SAVE_FAILED" });
   }
 });
 

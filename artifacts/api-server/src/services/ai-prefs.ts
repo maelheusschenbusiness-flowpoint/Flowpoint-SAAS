@@ -1,14 +1,20 @@
 /**
  * AI Preferences — reads org user_prefs and resolves provider+model based on
  * intensity, module gates, preferred provider, task type, and cost/quality bias.
+ *
+ * RÈGLE FONDAMENTALE (Phase 2) :
+ *   resolveAIModel() ne change JAMAIS le provider.
+ *   Le provider vient de prefs.preferredProvider (source de vérité org).
+ *   L'intensité ne modifie que le modèle à l'intérieur du provider fixé.
  */
 
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { resolveTaskProvider, type AITaskType } from "./ai-providers/task-router.js";
-import { PROVIDER_CAPABILITIES, providerSupports, type AIProviderId } from "./ai-providers/capabilities.js";
+import { PROVIDER_CAPABILITIES, type AIProviderId } from "./ai-providers/capabilities.js";
+import { resolveIntensityConfig, normalizeIntensity } from "./ai-provider-matrix.js";
 
-export type AIIntensity = "Conservateur" | "Équilibré" | "Agressif";
+export type AIIntensity = "Conservateur" | "Équilibré" | "Performant" | "Agressif";
 export type AIModuleKey =
   | "dailyAI" | "aiAlerts" | "aiForecasting" | "aiReporting"
   | "aiCRO" | "aiStrategist" | "aiChurn" | "aiMarket";
@@ -23,12 +29,6 @@ const MODULE_TO_TASK: Record<AIModuleKey, AITaskType> = {
   aiStrategist:   "strategist",
   aiChurn:        "behavior_analysis",
   aiMarket:       "market_intel",
-};
-
-const INTENSITY_MAP: Record<AIIntensity, { quality: "fast" | "balanced" | "max"; tokenMult: number; bias: "cost" | "balanced" | "quality" }> = {
-  "Conservateur": { quality: "fast",   tokenMult: 0.6, bias: "cost" },
-  "Équilibré":    { quality: "balanced", tokenMult: 1.0, bias: "balanced" },
-  "Agressif":     { quality: "max",    tokenMult: 1.5, bias: "quality" },
 };
 
 export interface OrgAIPrefs {
@@ -54,10 +54,13 @@ export async function loadOrgAIPrefs(orgId: string): Promise<OrgAIPrefs> {
       [orgId]
     );
     const s = r.rows[0]?.settings ?? {};
+    // Normalize legacy "Agressif" → "Performant" on read
+    const rawIntensity = (s.aiIntensity as string) ?? "Équilibré";
+    const intensity = normalizeIntensity(rawIntensity) as AIIntensity;
     return {
-      aiIntensity:  (s.aiIntensity as AIIntensity)  ?? "Équilibré",
-      aiModules:    (s.aiModules as Record<string, boolean>) ?? {},
-      preferredProvider: (s.preferredProvider as AIProviderId)  ?? undefined,
+      aiIntensity:       intensity,
+      aiModules:         (s.aiModules as Record<string, boolean>) ?? {},
+      preferredProvider: (s.preferredProvider as AIProviderId) ?? undefined,
       preferredModel:    (s.preferredModel as string) ?? undefined,
     };
   } catch (err) {
@@ -83,64 +86,55 @@ export function moduleDisabledResponse(moduleKey: AIModuleKey): { error: string;
 
 /**
  * Resolve the best provider + model for a given AI feature and org preferences.
- * Takes into account: intensity, preferred provider, cost/quality bias, and capabilities.
+ *
+ * IMPORTANT : cette fonction ne change JAMAIS le provider.
+ *   1. Provider = prefs.preferredProvider ?? task-router default
+ *   2. Modèle = matrice intensity × provider (jamais de changement de provider)
  */
 export function resolveAIModel(
   prefs: OrgAIPrefs,
   task: AITaskType,
-  capability?: string
+  _capability?: string
 ): ResolvedAIConfig {
-  const intensity = INTENSITY_MAP[prefs.aiIntensity] ?? INTENSITY_MAP["Équilibré"];
+  const normalizedIntensity = normalizeIntensity(prefs.aiIntensity);
 
-  // 1. Hardcoded intensity contract per spec
-  //    Conservateur → gpt-5-mini (OpenAI), Équilibré → task-router default, Agressif → best model
-  //    This guard takes precedence over any provider/model override to guarantee spec compliance.
-  if (prefs.aiIntensity === "Conservateur") {
-    return { provider: "openai", model: "gpt-5-mini", maxTokens: 500, quality: "fast", costPer1kTokens: 0.001 };
+  // 1. Provider : preferredProvider > task-router default
+  //    On respecte toujours le preferredProvider de l'org, quelle que soit la tâche.
+  let provider: AIProviderId;
+  if (prefs.preferredProvider) {
+    provider = prefs.preferredProvider;
+  } else {
+    const taskDefault = resolveTaskProvider(task, undefined);
+    provider = taskDefault.provider;
   }
 
-  // 2. Start from task router default
-  let { provider, model } = resolveTaskProvider(task, prefs.preferredProvider, capability as any);
+  // 2. Modèle : matrice intensity × provider
+  //    Si l'org a un preferredModel valide pour ce provider, on l'utilise.
+  //    Sinon, la matrice décide du modèle selon l'intensité.
+  const intensityCfg = resolveIntensityConfig(provider, normalizedIntensity);
 
-  // 3. Intensity overrides for provider selection
-  if (intensity.bias === "cost" && !prefs.preferredProvider) {
-    if (providerSupports("openai", capability as any ?? "chat")) {
-      provider = "openai"; // keep OpenAI for consistent mini availability
-    }
-  }
-  if (intensity.bias === "quality" && !prefs.preferredProvider) {
-    // Quality-first: keep task-router default (usually Anthropic/OpenAI gpt-5)
-  }
-
-  // 4. Model selection based on intensity
-  const caps = PROVIDER_CAPABILITIES[provider];
-  if (!caps) {
-    return { provider: "openai", model: "gpt-5-mini", maxTokens: 500, quality: intensity.quality, costPer1kTokens: 0.001 };
-  }
-
-  if (prefs.preferredModel && caps.models.includes(prefs.preferredModel)) {
+  let model: string;
+  if (
+    prefs.preferredModel &&
+    PROVIDER_CAPABILITIES[provider]?.models.includes(prefs.preferredModel)
+  ) {
     model = prefs.preferredModel;
   } else {
-    if (intensity.quality === "fast") {
-      const cheap = caps.models.find(m => /mini|flash|haiku/i.test(m));
-      model = cheap ?? caps.defaultModel;
-    } else if (intensity.quality === "max") {
-      const best = caps.models.find(m =>
-        /gpt-5(?!.*mini)|opus|pro(?!.*flash)/i.test(m)
-      ) ?? caps.models.find(m => /sonnet|o3/i.test(m)) ?? caps.defaultModel;
-      model = best;
-    } else {
-      model = caps.defaultModel;
-    }
+    model = intensityCfg.model;
   }
 
-  // 5. Token budget based on intensity
-  const baseTokens = 800;
-  const maxTokens = Math.max(200, Math.round(baseTokens * intensity.tokenMult));
+  const maxTokens = intensityCfg.maxTokens;
+  const caps = PROVIDER_CAPABILITIES[provider];
+  const costPer1kTokens = caps ? (caps.costPer1kTokensIn + caps.costPer1kTokensOut) / 2 : 0.001;
 
-  const costPer1kTokens = (caps.costPer1kTokensIn + caps.costPer1kTokensOut) / 2;
+  const qualityMap: Record<string, "fast" | "balanced" | "max"> = {
+    Conservateur: "fast",
+    Équilibré:    "balanced",
+    Performant:   "max",
+  };
+  const quality = qualityMap[normalizedIntensity] ?? "balanced";
 
-  return { provider, model, maxTokens, quality: intensity.quality, costPer1kTokens };
+  return { provider, model, maxTokens, quality, costPer1kTokens };
 }
 
 /**

@@ -9,6 +9,7 @@
 - [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing-service needs prod guard (throw/503) when Stripe key missing; SSRF runs after auth (401 before URL validation = correct); auth rate limit 10/15min per IP; ai-worker buildFallbackResult returns generic recs tagged mock:true on OpenAI failure
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
+- [AI provider strict mode](ai-provider-strict-mode.md) — strictProvider=true dans aiChat/aiStream désactive fallback cross-provider; uniquement /ai/chat; matrice provider×mode dans ai-provider-matrix.ts
 - [Inline onclick pattern](inline-onclick-pattern.md) — never JSON.stringify or template vars inside onclick attrs; use data-attributes + escHtml + this.dataset
 - [QA harness](qa-harness.md) — Playwright scans .local/qa_*.mjs, run from workspace root, sequential batches, token via addInitScript; key UI ids inside
 - [De-mock completeness](flowpoint-demock-completeness.md) — fake data hides in sub-page side cards and forecast pages (fabricated past curves); audit every card per sub-route, derive slopes from real auditHistory

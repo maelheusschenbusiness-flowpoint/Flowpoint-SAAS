@@ -1,13 +1,14 @@
 /**
  * ai-provider.ts — Unified AI Provider Layer for FlowPoint
  *
- * This is the SINGLE entry point for all AI calls in the backend.
- * It routes requests to OpenAI, Anthropic, or Gemini based on:
- *   • User-selected provider/model
- *   • Task type (chat, report, vision, image generation, etc.)
- *   • Provider capabilities
+ * RÈGLE FONDAMENTALE (Phase 2) :
+ *   Quand `provider` est explicitement fourni par l'appelant, il n'y a AUCUN
+ *   fallback cross-provider. Si ce provider est indisponible, on lance
+ *   immédiatement une erreur PROVIDER_UNAVAILABLE.
  *
- * Adding a new provider = adding a new file in ai-providers/ + registering here.
+ *   Le fallback cross-provider est conservé UNIQUEMENT pour les routes internes
+ *   (rapports, audits, missions…) qui n'exposent pas de sélection utilisateur —
+ *   ces routes n'envoient jamais de `provider` explicite.
  */
 
 import { logger } from "../lib/logger.js";
@@ -38,27 +39,27 @@ function getProvider(id: AIProviderId): OpenAIProvider | AnthropicProvider | Gem
   switch (id) {
     case "openai": {
       const conn = resolveOpenAIConnection();
-      if (!conn) throw new Error("AI_NOT_CONFIGURED: OpenAI API key missing");
+      if (!conn) throw Object.assign(new Error("AI_NOT_CONFIGURED: OpenAI API key missing"), { code: "AI_NOT_CONFIGURED", provider: "openai" });
       const p = new OpenAIProvider(conn.apiKey, conn.baseURL);
       instances.set(id, p);
       return p;
     }
     case "anthropic": {
       const key = process.env["ANTHROPIC_API_KEY"];
-      if (!key) throw new Error("AI_NOT_CONFIGURED: ANTHROPIC_API_KEY missing");
+      if (!key) throw Object.assign(new Error("AI_NOT_CONFIGURED: ANTHROPIC_API_KEY missing"), { code: "AI_NOT_CONFIGURED", provider: "anthropic" });
       const p = new AnthropicProvider(key);
       instances.set(id, p);
       return p;
     }
     case "gemini": {
       const key = process.env["GEMINI_API_KEY"];
-      if (!key) throw new Error("AI_NOT_CONFIGURED: GEMINI_API_KEY missing");
+      if (!key) throw Object.assign(new Error("AI_NOT_CONFIGURED: GEMINI_API_KEY missing"), { code: "AI_NOT_CONFIGURED", provider: "gemini" });
       const p = new GeminiProvider(key);
       instances.set(id, p);
       return p;
     }
     default:
-      throw new Error(`AI_NOT_CONFIGURED: Unknown provider "${id}"`);
+      throw Object.assign(new Error(`AI_NOT_CONFIGURED: Unknown provider "${id}"`), { code: "AI_NOT_CONFIGURED", provider: id });
   }
 }
 
@@ -67,11 +68,11 @@ export function resetProviders(): void {
   instances.clear();
 }
 
-// ── Fallback order for provider chain ──────────────────────────────────────
-const FALLBACK_ORDER: AIProviderId[] = ["openai", "anthropic", "gemini"];
+// ── Fallback order — ONLY used for internal routes (no explicit provider) ──
+const INTERNAL_FALLBACK_ORDER: AIProviderId[] = ["openai", "anthropic", "gemini"];
 
-function getFallbackChain(primary: AIProviderId): AIProviderId[] {
-  return [primary, ...FALLBACK_ORDER.filter(p => p !== primary)];
+function getInternalFallbackChain(primary: AIProviderId): AIProviderId[] {
+  return [primary, ...INTERNAL_FALLBACK_ORDER.filter(p => p !== primary)];
 }
 
 // ── Unified chat API ────────────────────────────────────────────────────────
@@ -79,10 +80,17 @@ function getFallbackChain(primary: AIProviderId): AIProviderId[] {
 export async function aiChat(opts: AIProviderChatOptions & {
   provider?: AIProviderId;
   task?: string;
+  /**
+   * strictProvider=true : le provider fourni est la source de vérité absolue.
+   * Aucun fallback cross-provider. Si le provider est indisponible → PROVIDER_UNAVAILABLE.
+   * Utiliser UNIQUEMENT pour les routes où l'utilisateur a explicitement choisi son provider.
+   * Routes internes (missions, reports, automation…) ne doivent PAS le passer.
+   */
+  strictProvider?: boolean;
 }): Promise<AIProviderResult & { _ai: { provider: AIProviderId; model: string; switchReason?: string } }> {
-  const { provider: explicitProvider, task, ...chatOpts } = opts;
+  const { provider: explicitProvider, task, strictProvider, ...chatOpts } = opts;
 
-  // Resolve primary provider: explicit > task-based > default
+  // Resolve primary provider + model
   let primaryProviderId: AIProviderId;
   let primaryModel: string;
 
@@ -98,30 +106,48 @@ export async function aiChat(opts: AIProviderChatOptions & {
     primaryModel = chatOpts.model ?? "gpt-5-mini";
   }
 
-  const chain = getFallbackChain(primaryProviderId);
+  // ── STRICT PATH : provider utilisateur = source de vérité, pas de fallback ──
+  if (strictProvider) {
+    try {
+      const provider = getProvider(primaryProviderId);
+      logger.info({ provider: primaryProviderId, model: primaryModel, task }, "[AI] Chat request (strict provider — user selected)");
+      const result = await provider.chat({ ...chatOpts, model: primaryModel });
+      logger.info({ provider: primaryProviderId, model: primaryModel, tokens: result.usage.totalTokens, latency: result.latencyMs }, "[AI] Chat complete");
+      return { ...result, _ai: { provider: primaryProviderId, model: primaryModel } };
+    } catch (err) {
+      logger.error({ err, provider: primaryProviderId, model: primaryModel }, "[AI] Chat failed — provider unavailable (no cross-provider fallback, strictProvider=true)");
+      throw Object.assign(
+        new Error(`PROVIDER_UNAVAILABLE: ${primaryProviderId} est indisponible`),
+        { code: "PROVIDER_UNAVAILABLE", provider: primaryProviderId, cause: err }
+      );
+    }
+  }
+
+  // ── FALLBACK PATH : routes internes (pas de strictProvider) ──
+  const chain = getInternalFallbackChain(primaryProviderId);
   let lastErr: unknown;
 
   for (let i = 0; i < chain.length; i++) {
     const providerId = chain[i];
     const model = i === 0 ? primaryModel : (PROVIDER_CAPABILITIES[providerId]?.defaultModel ?? "gpt-5-mini");
-    const switchReason = i > 0 ? `${chain[0]} indisponible — basculé sur ${providerId}` : undefined;
+    const switchReason = i > 0 ? `${chain[0]} indisponible — basculé sur ${providerId} (route interne)` : undefined;
 
     try {
       const provider = getProvider(providerId);
-      logger.info({ provider: providerId, model, task, attempt: i + 1 }, "[AI] Chat request");
+      logger.info({ provider: providerId, model, task, attempt: i + 1 }, "[AI] Chat request (internal route)");
       const result = await provider.chat({ ...chatOpts, model });
       logger.info({ provider: providerId, model, tokens: result.usage.totalTokens, latency: result.latencyMs }, "[AI] Chat complete");
       if (i > 0) {
-        logger.warn({ primary: chain[0], used: providerId, switchReason }, "[AI] Provider fallback used");
+        logger.warn({ primary: chain[0], used: providerId, switchReason }, "[AI] Provider fallback used (internal route)");
       }
       return { ...result, _ai: { provider: providerId, model, switchReason } };
     } catch (err) {
       lastErr = err;
-      logger.warn({ err, provider: providerId, model, attempt: i + 1, nextProvider: chain[i + 1] }, "[AI] Chat failed — trying next provider");
+      logger.warn({ err, provider: providerId, model, attempt: i + 1, nextProvider: chain[i + 1] }, "[AI] Chat failed — trying next provider (internal route)");
     }
   }
 
-  logger.error({ lastErr, chain }, "[AI] All providers failed");
+  logger.error({ lastErr, chain }, "[AI] All providers failed (internal route)");
   throw Object.assign(new Error("AI_ALL_PROVIDERS_FAILED: tous les providers IA sont indisponibles"), {
     code: "AI_ALL_PROVIDERS_FAILED",
     cause: lastErr,
@@ -130,7 +156,6 @@ export async function aiChat(opts: AIProviderChatOptions & {
 
 // ── Unified streaming API ───────────────────────────────────────────────────
 
-// Special chunk type to carry provider metadata through the stream pipeline
 export interface AIStreamMetaChunk {
   _aiMeta: { provider: AIProviderId; model: string; switchReason?: string };
 }
@@ -138,10 +163,11 @@ export interface AIStreamMetaChunk {
 export async function *aiStream(opts: AIProviderChatOptions & {
   provider?: AIProviderId;
   task?: string;
+  /** Voir aiChat — strictProvider=true désactive le fallback cross-provider. */
+  strictProvider?: boolean;
 }): AsyncGenerator<AIProviderStreamChunk | AIStreamMetaChunk, AIProviderResult, unknown> {
-  const { provider: explicitProvider, task, ...chatOpts } = opts;
+  const { provider: explicitProvider, task, strictProvider, ...chatOpts } = opts;
 
-  // Resolve primary provider: explicit > task-based > default (same as aiChat)
   let primaryProviderId: AIProviderId;
   let primaryModel: string;
 
@@ -157,25 +183,27 @@ export async function *aiStream(opts: AIProviderChatOptions & {
     primaryModel = chatOpts.model ?? "gpt-5-mini";
   }
 
-  const chain = getFallbackChain(primaryProviderId);
-  let lastErr: unknown;
+  // ── STRICT PATH : provider utilisateur = source de vérité, pas de fallback ──
+  if (strictProvider) {
+    let provider: OpenAIProvider | AnthropicProvider | GeminiProvider;
+    try {
+      provider = getProvider(primaryProviderId);
+    } catch (err) {
+      logger.error({ err, provider: primaryProviderId }, "[AI] Stream — provider unavailable (strictProvider=true, no fallback)");
+      throw Object.assign(
+        new Error(`PROVIDER_UNAVAILABLE: ${primaryProviderId} est indisponible`),
+        { code: "PROVIDER_UNAVAILABLE", provider: primaryProviderId, cause: err }
+      );
+    }
 
-  for (let i = 0; i < chain.length; i++) {
-    const providerId = chain[i];
-    const model = i === 0 ? primaryModel : (PROVIDER_CAPABILITIES[providerId]?.defaultModel ?? "gpt-5-mini");
-    const switchReason = i > 0 ? `${chain[0]} indisponible — basculé sur ${providerId}` : undefined;
+    logger.info({ provider: primaryProviderId, model: primaryModel, task, streaming: true }, "[AI] Stream request (strict provider — user selected)");
 
     try {
-      const provider = getProvider(providerId);
-      logger.info({ provider: providerId, model, task, streaming: true, attempt: i + 1 }, "[AI] Stream request");
-
-      const gen = provider.stream({ ...chatOpts, model });
+      const gen = provider.stream({ ...chatOpts, model: primaryModel });
       let finalResult: AIProviderResult | undefined;
-      let hasContent = false;
 
       for await (const chunk of gen) {
         if (chunk && typeof chunk === "object" && "content" in chunk) {
-          hasContent = true;
           yield chunk as AIProviderStreamChunk;
         }
         if (chunk && typeof chunk === "object" && "text" in chunk && "usage" in chunk) {
@@ -184,25 +212,63 @@ export async function *aiStream(opts: AIProviderChatOptions & {
       }
 
       if (!finalResult) {
-        // Fallback: non-streaming call to get usage stats
+        finalResult = await provider.chat({ ...chatOpts, model: primaryModel });
+      }
+
+      logger.info({ provider: primaryProviderId, model: primaryModel, tokens: finalResult.usage.totalTokens, latency: finalResult.latencyMs }, "[AI] Stream complete");
+      yield { _aiMeta: { provider: primaryProviderId, model: primaryModel } } as AIStreamMetaChunk;
+      return finalResult;
+    } catch (err) {
+      logger.error({ err, provider: primaryProviderId, model: primaryModel }, "[AI] Stream failed — provider unavailable (strictProvider=true, no fallback)");
+      throw Object.assign(
+        new Error(`PROVIDER_UNAVAILABLE: ${primaryProviderId} est indisponible`),
+        { code: "PROVIDER_UNAVAILABLE", provider: primaryProviderId, cause: err }
+      );
+    }
+  }
+
+  // ── FALLBACK PATH : routes internes (pas de strictProvider) ──
+  const chain = getInternalFallbackChain(primaryProviderId);
+  let lastErr: unknown;
+
+  for (let i = 0; i < chain.length; i++) {
+    const providerId = chain[i];
+    const model = i === 0 ? primaryModel : (PROVIDER_CAPABILITIES[providerId]?.defaultModel ?? "gpt-5-mini");
+    const switchReason = i > 0 ? `${chain[0]} indisponible — basculé sur ${providerId} (route interne)` : undefined;
+
+    try {
+      const provider = getProvider(providerId);
+      logger.info({ provider: providerId, model, task, streaming: true, attempt: i + 1 }, "[AI] Stream request (internal route)");
+
+      const gen = provider.stream({ ...chatOpts, model });
+      let finalResult: AIProviderResult | undefined;
+
+      for await (const chunk of gen) {
+        if (chunk && typeof chunk === "object" && "content" in chunk) {
+          yield chunk as AIProviderStreamChunk;
+        }
+        if (chunk && typeof chunk === "object" && "text" in chunk && "usage" in chunk) {
+          finalResult = chunk as unknown as AIProviderResult;
+        }
+      }
+
+      if (!finalResult) {
         finalResult = await provider.chat({ ...chatOpts, model });
       }
 
       if (i > 0) {
-        logger.warn({ primary: chain[0], used: providerId, switchReason }, "[AI] Stream fallback used");
+        logger.warn({ primary: chain[0], used: providerId, switchReason }, "[AI] Stream fallback used (internal route)");
       }
       logger.info({ provider: providerId, model, tokens: finalResult.usage.totalTokens, latency: finalResult.latencyMs }, "[AI] Stream complete");
-
-      // Emit _aiMeta so the caller knows which provider actually responded
       yield { _aiMeta: { provider: providerId, model, switchReason } } as AIStreamMetaChunk;
       return finalResult;
     } catch (err) {
       lastErr = err;
-      logger.warn({ err, provider: providerId, model, attempt: i + 1, nextProvider: chain[i + 1] }, "[AI] Stream failed — trying next provider");
+      logger.warn({ err, provider: providerId, model, attempt: i + 1, nextProvider: chain[i + 1] }, "[AI] Stream failed — trying next provider (internal route)");
     }
   }
 
-  logger.error({ lastErr, chain }, "[AI] All stream providers failed");
+  logger.error({ lastErr, chain }, "[AI] All stream providers failed (internal route)");
   throw Object.assign(new Error("AI_ALL_PROVIDERS_FAILED: tous les providers IA sont indisponibles"), {
     code: "AI_ALL_PROVIDERS_FAILED",
     cause: lastErr,
