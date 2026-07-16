@@ -11,6 +11,15 @@
 
 import { vi, describe, it, expect, beforeAll, afterAll } from "vitest";
 
+// ── pdf-parse@1.1.1 loads a test PDF at import time in test environments.
+// Mock it here to prevent the ENOENT crash. No PDF parsing is tested via DB.
+vi.mock("pdf-parse", () => ({ default: vi.fn() }));
+
+// Mammoth is mocked to avoid heavy DOCX binary dependency in integration tests.
+vi.mock("mammoth", () => ({
+  default: { extractRawText: vi.fn().mockResolvedValue({ value: "" }) },
+}));
+
 // ── Use real @workspace/db ───────────────────────────────────────────────────
 vi.mock("@workspace/db", async (importOriginal) => {
   return importOriginal<typeof import("@workspace/db")>();
@@ -93,20 +102,15 @@ beforeAll(async () => {
   const xlsxContent = makeXlsxB64();
   const pngContent  = fakePngB64();
 
+  // $2 = orgId, reused in all rows — only 11 unique parameter slots.
   await pool.query(
     `INSERT INTO team_files (id, org_id, name, type, size, content, shared_by, created_at) VALUES
-     ($1, $2, 'notes.txt',   'text/plain',       100, $3,  'Test', NOW()),
-     ($4, $2, 'data.json',   'application/json', 200, $5,  'Test', NOW()),
-     ($6, $2, 'report.csv',  'text/csv',         300, $7,  'Test', NOW()),
-     ($8, $2, 'sheet.xlsx',  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 400, $9,  'Test', NOW()),
+     ($1,  $2, 'notes.txt',  'text/plain',       100, $3,  'Test', NOW()),
+     ($4,  $2, 'data.json',  'application/json', 200, $5,  'Test', NOW()),
+     ($6,  $2, 'report.csv', 'text/csv',         300, $7,  'Test', NOW()),
+     ($8,  $2, 'sheet.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 400, $9,  'Test', NOW()),
      ($10, $2, 'photo.png',  'image/png',        500, $11, 'Test', NOW())`,
-    [
-      fileIdTxt,  orgId, txtContent,
-      fileIdJson, orgId, jsonContent,
-      fileIdCsv,  orgId, csvContent,
-      fileIdXlsx, orgId, xlsxContent,
-      fileIdPng,  orgId, pngContent,
-    ],
+    [fileIdTxt, orgId, txtContent, fileIdJson, jsonContent, fileIdCsv, csvContent, fileIdXlsx, xlsxContent, fileIdPng, pngContent],
   );
 });
 
