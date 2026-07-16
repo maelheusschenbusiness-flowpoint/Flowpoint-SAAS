@@ -500,7 +500,7 @@ router.get("/ai/history", async (req, res) => {
 });
 
 // ── POST /ai/chat — streaming conversational AI ───────────────────────────────
-router.post("/ai/chat", async (req: Request, res: Response) => {
+export async function chatHandler(req: Request, res: Response): Promise<void> {
   const ip = getClientIp(req);
   if (!checkRateLimit(ip)) {
     res.status(429).json({ error: "Trop de requêtes — attendez avant d'envoyer un autre message" });
@@ -777,7 +777,8 @@ ${fpContext}`;
       }
     }
   }
-});
+}
+router.post("/ai/chat", chatHandler);
 
 // ── POST /ai/audit — full technical + SEO audit analysis ─────────────────────
 router.post("/ai/audit", async (req, res) => {

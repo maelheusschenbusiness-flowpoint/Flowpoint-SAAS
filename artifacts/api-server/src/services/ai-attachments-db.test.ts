@@ -31,7 +31,7 @@ vi.mock("../lib/logger.js", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { pool }                from "@workspace/db";
+import { pool, withOrgDb }    from "@workspace/db";
 import { resolveAIAttachments, type OrgDb } from "./ai-attachments.js";
 import type { ResolvedAIAttachment }         from "../types/ai-attachments.js";
 
@@ -40,16 +40,21 @@ const orgA = `test-attach-a-${Date.now()}`;
 const orgB = `test-attach-b-${Date.now()}`;
 let   fileIdA = "";
 
-// ── Real orgDb that scopes queries to a specific org ──────────────────────────
-// Isolation is enforced at the SQL level via the explicit AND org_id = $2
-// clause in every resolveAIAttachments query — equivalent to RLS for the
-// SELECT statements this service issues.  SET LOCAL ROLE is intentionally
-// omitted here because the test environment may not have the app_user role,
-// and a failed SET inside a transaction aborts all subsequent statements.
-function makeRealOrgDb(_orgId: string): OrgDb {
+// ── Real orgDb that exactly mirrors production dbContext.ts ───────────────────
+// Uses withOrgDb() from @workspace/db — the same helper used by the real
+// dbContext middleware — so the test applies the same GUC isolation
+// (SET LOCAL "app.current_org_id") and the same SAVEPOINT-based recovery
+// for SET LOCAL ROLE app_user when the role is unavailable (Supabase /
+// managed DBs).  This ensures the test proves org isolation the same way
+// production enforces it, not via a weaker pool.query shortcut.
+function makeRealOrgDb(orgId: string): OrgDb {
   return async (sql: string, values?: unknown[]) => {
-    const result = await pool.query(sql, values as unknown[]);
-    return { rows: result.rows };
+    const result = await withOrgDb(orgId, (client) =>
+      values !== undefined
+        ? client.query(sql, values as unknown[])
+        : client.query(sql),
+    );
+    return { rows: result.rows as Record<string, unknown>[] };
   };
 }
 

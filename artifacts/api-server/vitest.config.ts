@@ -17,6 +17,7 @@ export default defineConfig({
       "src/services/ai-economy-db.test.ts",
       "src/services/ai-attachments.test.ts",
       "src/services/ai-attachments-db.test.ts",
+      "src/routes/ai-chat-attachments.test.ts",
     ],
     environment: "node",
     globals:     false,

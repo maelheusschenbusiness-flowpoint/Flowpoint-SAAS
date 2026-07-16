@@ -54,15 +54,39 @@ function isValidFileId(id: unknown): id is string {
 }
 
 // ── Base64 validation ─────────────────────────────────────────────────────────
-// Validates that the string contains only base64 characters with optional padding.
-// Does NOT re-encode to verify round-trip (too expensive for large files).
+// Strictly validates RFC 4648 base64 encoding.
+//
+// NOTE: Buffer.from(value, "base64") silently accepts many invalid strings
+// (extra whitespace, truncated padding, unknown chars) because it uses a
+// lenient decoder.  A regex approach is more reliable here.
+//
+// Checks performed:
+//   1. Non-empty string
+//   2. Total length (including padding) is a multiple of 4
+//   3. At most 2 trailing padding characters '='
+//   4. Data portion contains only the valid base64 alphabet [A-Za-z0-9+/]
+//
 // Future hook: detectRealMimeType(Buffer.from(b64, "base64")) can be inserted
 // in resolveAIAttachments after this check once file-type is installed.
-const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+const BASE64_CHAR_RE = /^[A-Za-z0-9+/]*$/;
 
 export function isValidBase64(s: string): boolean {
   if (!s || s.length === 0) return false;
-  return BASE64_RE.test(s);
+
+  // Strip trailing padding chars to check the data length separately.
+  const stripped = s.replace(/=+$/, "");
+  const padCount = s.length - stripped.length;
+
+  // RFC 4648: a valid base64 stream (with padding) has length % 4 === 0.
+  if (s.length % 4 !== 0) return false;
+
+  // At most 2 padding characters are valid (1 or 2 missing input bytes).
+  if (padCount > 2) return false;
+
+  // Data portion must contain only valid base64 alphabet characters.
+  if (!BASE64_CHAR_RE.test(stripped)) return false;
+
+  return true;
 }
 
 // ── 1. validateAttachmentReferences ──────────────────────────────────────────

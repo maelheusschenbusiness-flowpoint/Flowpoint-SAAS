@@ -86,6 +86,34 @@ describe("isValidBase64", () => {
     expect(isValidBase64("AAAA BBBB")).toBe(false);
     expect(isValidBase64("abc\ndef")).toBe(false);
   });
+
+  it("returns false for '%%%%' (invalid alphabet)", () => {
+    // All four chars are outside the base64 alphabet — rejected by char check.
+    expect(isValidBase64("%%%%")).toBe(false);
+  });
+
+  it("returns false for 'abc*' (invalid char *)", () => {
+    // '*' is not in [A-Za-z0-9+/].
+    expect(isValidBase64("abc*")).toBe(false);
+  });
+
+  it("returns false for 'AAAA=' (length 5 — not multiple of 4)", () => {
+    // Valid chars, 1 padding char, but total length 5 % 4 ≠ 0.
+    expect(isValidBase64("AAAA=")).toBe(false);
+  });
+
+  it("returns false for 'A===' (padding count 3 > max 2)", () => {
+    // Total length 4 (% 4 = 0) but RFC 4648 allows at most 2 padding chars.
+    expect(isValidBase64("A===")).toBe(false);
+  });
+
+  it("returns true for 'AA==' (2 data chars + 2 padding — valid RFC 4648)", () => {
+    expect(isValidBase64("AA==")).toBe(true);
+  });
+
+  it("returns true for 'AAA=' (3 data chars + 1 padding — valid RFC 4648)", () => {
+    expect(isValidBase64("AAA=")).toBe(true);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
