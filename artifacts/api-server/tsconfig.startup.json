@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.vitest.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [],
+  "files": [
+    "src/lib/startup-retry.ts",
+    "src/lib/startup-retry.test.ts"
+  ]
+}
