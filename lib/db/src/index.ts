@@ -13,6 +13,24 @@ export const pool = new Pool({
   connectionTimeoutMillis: 5_000,
 });
 
+// Guard against unhandled 'error' events on idle pool clients.
+// When a connection is dropped by the server (ECONNABORTED, ECONNRESET, etc.)
+// pg emits 'error' on the idle Client instance. Without this handler Node.js
+// would throw an uncaught exception and crash the process.
+// The pool automatically removes the broken client; no further action needed.
+// IMPORTANT: Never log the connection string, password, or any secret.
+pool.on("error", (err: Error & { code?: string }) => {
+  process.stderr.write(
+    JSON.stringify({
+      level: 50,
+      time: Date.now(),
+      code: err.code,
+      message: err.message,
+      msg: "[postgres] Unexpected idle client error — client removed from pool",
+    }) + "\n",
+  );
+});
+
 // ── Schema ────────────────────────────────────────────────────────────────────
 
 export const auditsTable = pgTable("audits", {
