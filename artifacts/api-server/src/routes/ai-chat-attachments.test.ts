@@ -310,26 +310,76 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
     expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
   });
 
-  // ── E — SSE path not broken by attachment block ───────────────────────────────
+  // ── 6 — No attachment + quota available → provider called, HTTP 200 ──────────
 
-  it("E — without attachment aiStream IS called (SSE path not regressed)", async () => {
-    // Make aiStream throw immediately — enough to confirm it was reached
-    // without needing a full async-generator mock.  The error surfaces via the
-    // SSE error path (res.write + res.end) — not res.status(501).
-    spies.aiStream.mockImplementation(() => {
-      throw Object.assign(new Error("mock-stream-error"), { code: "PROVIDER_UNAVAILABLE" });
+  it("6 — no attachment + quota available → aiChat called, reply returned (non-stream)", async () => {
+    // Proves the normal chat path is completely unaffected by the attachment block.
+    spies.aiChat.mockResolvedValue({
+      text:  "Bonjour ! Je suis votre consultant SEO.",
+      usage: { promptTokens: 50, completionTokens: 30 },
     });
+
+    const req = makeReq({ body: { message: "bonjour", stream: false } }); // no attachments
+    const res = makeRes();
+
+    await chatHandler(req, res);
+
+    // Provider WAS called
+    expect(spies.aiChat).toHaveBeenCalledOnce();
+
+    // Normal JSON reply — not 501 / 402 / 400
+    expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(501);
+    expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(402);
+    expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(400);
+    expect(vi.mocked(res.json)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reply:     "Bonjour ! Je suis votre consultant SEO.",
+        streaming: false,
+      }),
+    );
+  });
+
+  // ── E / 10 — SSE regression: multiple deltas, single _ai, [DONE], one usage ──
+
+  it("10 — SSE without attachment: multiple deltas, _ai before [DONE], single usage debit", async () => {
+    // Full async-generator mock — verifies the complete SSE contract.
+    spies.aiStream.mockReturnValue(
+      (async function* () {
+        yield { content: "Bonjour" };
+        yield { content: " le monde" };
+      })(),
+    );
 
     const req = makeReq({ body: { message: "bonjour", stream: true } }); // no attachments
     const res = makeRes();
 
     await chatHandler(req, res);
 
-    expect(spies.aiStream).toHaveBeenCalledOnce();
+    const writes: string[] = vi.mocked(res.write).mock.calls.map(c => String(c[0]));
+
+    // Multiple distinct deltas written
+    expect(writes.some(s => s.includes('"delta":"Bonjour"'))).toBe(true);
+    expect(writes.some(s => s.includes('"delta":" le monde"'))).toBe(true);
+
+    // Exactly one _ai metadata frame
+    const aiFrames = writes.filter(s => s.includes('"_ai"'));
+    expect(aiFrames).toHaveLength(1);
+
+    // [DONE] present and after _ai — use reduce to find last index (ES2020-safe)
+    const doneIdx = writes.reduce((acc, s, i) => (s.includes("[DONE]")  ? i : acc), -1);
+    const aiIdx   = writes.reduce((acc, s, i) => (s.includes('"_ai"')   ? i : acc), -1);
+    expect(doneIdx).toBeGreaterThan(-1);
+
+    // _ai comes before [DONE]
+    expect(aiIdx).toBeLessThan(doneIdx);
+
+    // res.end() called exactly once
+    expect(vi.mocked(res.end)).toHaveBeenCalledOnce();
+
+    // Exactly one usage debit
+    expect(spies.recordCompletedUsage).toHaveBeenCalledOnce();
+
+    // Not 501
     expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(501);
-    // SSE error path ends with [DONE] written to the stream
-    expect(vi.mocked(res.write)).toHaveBeenCalledWith(
-      expect.stringContaining("[DONE]"),
-    );
   });
 });
