@@ -615,7 +615,7 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
     economyTier:      economyPolicy.economyTier,
     usagePercent:     Math.round(resolvedUsagePercent * 10) / 10,
     downgradeApplied: economyPolicy.downgradeApplied,
-    downgradeReason:  economyPolicy.downgradeApplied ? economyPolicy.reason : undefined,
+    downgradeReason:  economyPolicy.downgradeApplied ? "MONTHLY_USAGE_THRESHOLD" : null,
   };
 
   // Economy metadata for ai_usage_logs
