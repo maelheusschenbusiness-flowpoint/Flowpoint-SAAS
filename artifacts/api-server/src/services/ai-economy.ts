@@ -253,6 +253,43 @@ export function resolveEconomyPolicy(opts: {
   }
 }
 
+// ── Context depth limits ───────────────────────────────────────────────────────
+
+export interface ContextLimits {
+  kwLimit:      number;  // keywords from DB
+  compLimit:    number;  // competitors from DB
+  auditLimit:   number;  // audit records from DB
+  monLimit:     number;  // monitor records from DB
+  psiLimit:     number;  // PSI cache records from DB
+  kwDisplayLim: number;  // keywords shown in prompt
+  historyLimit: number;  // chat history messages kept
+}
+
+/**
+ * Pure function: compute DB query depth limits from contextFactor.
+ * Used by buildFlowpointContext() and the route handler for historyLimit.
+ *
+ * Tableau par tier :
+ * | Tier      | factor | kw | comp | audit | mon | psi | hist |
+ * |-----------|--------|----|------|-------|-----|-----|------|
+ * | NORMAL    |  1.00  | 15 |   5  |   10  |  10 |   5 |   10 |
+ * | OPTIMIZED |  0.85  | 13 |   4  |    9  |   9 |   4 |    9 |
+ * | ECONOMY   |  0.60  |  9 |   3  |    6  |   6 |   3 |    6 |
+ * | CRITICAL  |  0.35  |  5 |   2  |    4  |   4 |   2 |    4 |
+ * Floors : kw≥3, comp≥1, audit≥2, mon≥2, psi≥1, kwDisp≥2, hist≥2
+ */
+export function computeContextLimits(contextFactor: number): ContextLimits {
+  return {
+    kwLimit:      Math.max(3, Math.round(15 * contextFactor)),
+    compLimit:    Math.max(1, Math.round(5  * contextFactor)),
+    auditLimit:   Math.max(2, Math.round(10 * contextFactor)),
+    monLimit:     Math.max(2, Math.round(10 * contextFactor)),
+    psiLimit:     Math.max(1, Math.round(5  * contextFactor)),
+    kwDisplayLim: Math.max(2, Math.round(10 * contextFactor)),
+    historyLimit: Math.max(2, Math.round(10 * contextFactor)),
+  };
+}
+
 // ── DB-backed functions ─────────────────────────────────────────────────────────
 
 /**

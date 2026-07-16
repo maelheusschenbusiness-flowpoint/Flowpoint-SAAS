@@ -3,13 +3,15 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"],
-    "composite": false,
-    "incremental": false,
-    "paths": {
-      "@workspace/db":      ["../../lib/db/src/index.ts"],
-      "@workspace/api-zod": ["../../lib/api-zod/src/index.ts"]
-    }
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    {
+      "path": "../../lib/db"
+    },
+    {
+      "path": "../../lib/api-zod"
+    }
+  ]
 }

@@ -29,6 +29,7 @@ import {
   computeEconomyTier,
   resolveEconomyPolicy,
   loadOrgEconomyThresholds,
+  computeContextLimits,
   type EconomyTier,
 } from "../services/ai-economy.js";
 
@@ -190,17 +191,12 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
   try {
     const oid = orgId ?? "default";
 
-    // Context depth limits — scaled by contextFactor
-    // NORMAL(1.0): kw=15, comp=5, audits=10, monitors=10, psi=5
-    // OPTIMIZED(0.85): kw=13, comp=4, audits=9, monitors=9, psi=4
-    // ECONOMY(0.60):   kw=9,  comp=3, audits=6, monitors=6, psi=3
-    // CRITICAL(0.35):  kw=5,  comp=2, audits=4, monitors=4, psi=2
-    const kwLimit      = Math.max(3, Math.round(15 * contextFactor));
-    const compLimit    = Math.max(1, Math.round(5  * contextFactor));
-    const auditLimit   = Math.max(2, Math.round(10 * contextFactor));
-    const monLimit     = Math.max(2, Math.round(10 * contextFactor));
-    const psiLimit     = Math.max(1, Math.round(5  * contextFactor));
-    const kwDisplayLim = Math.max(2, Math.round(10 * contextFactor));
+    // Context depth limits — scaled by contextFactor via computeContextLimits()
+    // NORMAL(1.0): kw=15, comp=5, audit=10, mon=10, psi=5
+    // OPTIMIZED(0.85): kw=13, comp=4, audit=9, mon=9, psi=4
+    // ECONOMY(0.60):   kw=9,  comp=3, audit=6, mon=6, psi=3
+    // CRITICAL(0.35):  kw=5,  comp=2, audit=4, mon=4, psi=2
+    const { kwLimit, compLimit, auditLimit, monLimit, psiLimit, kwDisplayLim } = computeContextLimits(contextFactor);
 
     let keywords: Array<{ keyword: string; current_position: number | null; prev_position: number | null; position_change: number | null; search_volume: number | null; trend: string | null }> = [];
     let competitors: Array<{ name: string; domain?: string; rating?: number; reviews_count?: number }> = [];
@@ -603,7 +599,7 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
   const effectiveModel     = economyPolicy.effectiveModel;
   const effectiveMaxTokens = economyPolicy.maxTokens;
   const contextFactor      = economyPolicy.contextFactor;
-  const historyLimit       = Math.max(2, Math.round(10 * contextFactor));
+  const { historyLimit }   = computeContextLimits(contextFactor);
 
   // 6. Build enriched _ai metadata — always tells the truth about what was used
   const aiMeta = {

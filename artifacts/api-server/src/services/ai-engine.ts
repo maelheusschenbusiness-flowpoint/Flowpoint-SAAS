@@ -63,17 +63,27 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
   const creditLimit = planCreditLimit(plan);
   const tokenLimit  = PLAN_AI_TOKENS[plan] ?? PLAN_AI_TOKENS.standard;
 
-  type RowT = {
-    credits_used: number; cost_eur: number; request_count: number; tokens_used: number;
-  };
+  type RowT   = { credits_used: number; cost_eur: number; request_count: number; tokens_used: number; };
+  type ExtraT = { extra: number };
+  type ResultT = [RowT | null, number];
 
-  const result = await withOrgDb<RowT | null>(orgId, async (client) => {
-    const { rows } = await client.query<RowT>(
-      `SELECT credits_used, cost_eur, request_count, COALESCE(tokens_used, 0) AS tokens_used
-       FROM ai_monthly_usage WHERE org_id = $1 AND month = $2 LIMIT 1`,
-      [orgId, month]
-    );
-    if (rows[0]) return rows[0];
+  const result = await withOrgDb<ResultT>(orgId, async (client) => {
+    // Fetch monthly usage AND purchased extra credits in one round-trip.
+    // Canonical extra-credit source: ai_credit_purchases (Stripe webhook appends rows there).
+    const [usageRes, extraRes] = await Promise.all([
+      client.query<RowT>(
+        `SELECT credits_used, cost_eur, request_count, COALESCE(tokens_used, 0) AS tokens_used
+         FROM ai_monthly_usage WHERE org_id = $1 AND month = $2 LIMIT 1`,
+        [orgId, month]
+      ),
+      client.query<ExtraT>(
+        `SELECT COALESCE(SUM(credits), 0)::integer AS extra FROM ai_credit_purchases WHERE org_id = $1`,
+        [orgId]
+      ),
+    ]);
+    const creditsExtra = Number(extraRes.rows[0]?.extra ?? 0);
+
+    if (usageRes.rows[0]) return [usageRes.rows[0], creditsExtra];
 
     await client.query(
       `INSERT INTO ai_monthly_usage
@@ -82,22 +92,24 @@ export async function getOrCreateMonthlyUsage(orgId = "default"): Promise<{
        ON CONFLICT (org_id, month) DO NOTHING`,
       [`amu_${orgId}_${month}`, orgId, month, monthResetDate()]
     );
-    return null;
+    return [null, creditsExtra];
   });
 
-  if (result) {
+  const [row, creditsExtra] = Array.isArray(result) ? result : [null, 0];
+
+  if (row) {
     return {
-      creditsUsed:  Number(result.credits_used),
+      creditsUsed:  Number(row.credits_used),
       creditsLimit: creditLimit,
-      creditsExtra: 0,
-      costEur:      Number(result.cost_eur),
-      requestCount: Number(result.request_count),
-      tokensUsed:   Number(result.tokens_used),
+      creditsExtra,
+      costEur:      Number(row.cost_eur),
+      requestCount: Number(row.request_count),
+      tokensUsed:   Number(row.tokens_used),
       tokenLimit,
     };
   }
 
-  return { creditsUsed: 0, creditsLimit: creditLimit, creditsExtra: 0, costEur: 0, requestCount: 0, tokensUsed: 0, tokenLimit };
+  return { creditsUsed: 0, creditsLimit: creditLimit, creditsExtra, costEur: 0, requestCount: 0, tokensUsed: 0, tokenLimit };
 }
 
 export async function consumeAICredits(opts: {
