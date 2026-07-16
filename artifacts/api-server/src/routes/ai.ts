@@ -32,6 +32,13 @@ import {
   computeContextLimits,
   type EconomyTier,
 } from "../services/ai-economy.js";
+import {
+  validateAttachmentReferences,
+  resolveAIAttachments,
+  validateResolvedAttachments,
+  type OrgDb,
+} from "../services/ai-attachments.js";
+import type { AIAttachmentReference } from "../types/ai-attachments.js";
 
 const router = Router();
 // Apply AI rate limit to all routes in this router (org-based, plan-aware)
@@ -514,6 +521,19 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
     return;
   }
 
+  // ── Early attachment structure validation (sync, no DB, no provider call) ───
+  // Runs before loadOrgAIPrefs so malformed attachment arrays are rejected fast.
+  const rawAttachments: unknown = (req.body as Record<string, unknown>)["attachments"];
+  let attachmentRefs: AIAttachmentReference[] = [];
+  if (rawAttachments !== undefined) {
+    const refResult = validateAttachmentReferences(rawAttachments);
+    if ("code" in refResult) {
+      res.status(refResult.httpStatus).json({ ok: false, code: refResult.code, message: refResult.message });
+      return;
+    }
+    attachmentRefs = refResult;
+  }
+
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -600,6 +620,32 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
   const effectiveMaxTokens = economyPolicy.maxTokens;
   const contextFactor      = economyPolicy.contextFactor;
   const { historyLimit }   = computeContextLimits(contextFactor);
+
+  // ── Resolve attachments from team_files (DB-scoped to org) ─────────────────
+  // Runs after economy policy but BEFORE any provider call.
+  // No credits are debited: recordCompletedUsage is never reached when
+  // attachments are present (501 returned before adapter invocation — Step 3A).
+  if (attachmentRefs.length > 0) {
+    const resolveResult = await resolveAIAttachments(req.orgDb as OrgDb, orgId, attachmentRefs);
+    if ("code" in resolveResult) {
+      res.status(resolveResult.httpStatus).json({ ok: false, code: resolveResult.code, message: resolveResult.message });
+      return;
+    }
+    const aggregateError = validateResolvedAttachments(resolveResult);
+    if (aggregateError) {
+      res.status(aggregateError.httpStatus).json({ ok: false, code: aggregateError.code, message: aggregateError.message });
+      return;
+    }
+    logger.info(
+      { requestId, orgId, attachmentCount: resolveResult.length },
+      "[AI] attachment processing not yet implemented — returning 501",
+    );
+    res.status(501).json({
+      code:    "ATTACHMENT_PROCESSING_NOT_IMPLEMENTED",
+      message: "Le traitement des pièces jointes est en cours d'activation.",
+    });
+    return;
+  }
 
   // 6. Build enriched _ai metadata — always tells the truth about what was used
   const aiMeta = {

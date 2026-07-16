@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
-import path from "path";
+import { sanitizeFilename } from "../lib/file-validation.js";
 
 const router = Router();
 
@@ -54,13 +54,6 @@ for (const [mime, ext] of Object.entries(ALLOWED_MIME)) {
   EXT_TO_MIMES[ext].push(mime);
 }
 const ALLOWED_EXTENSIONS = new Set(Object.keys(EXT_TO_MIMES));
-
-// Sanitize a filename: strip path components, remove dangerous chars, limit length.
-function sanitizeFilename(raw: string): string {
-  const base = path.basename(raw).replace(/[/\\]/g, "");
-  const safe = base.replace(/[^a-zA-Z0-9 ._\-]/g, "_").replace(/\.{2,}/g, ".");
-  return safe.slice(0, 200) || "file";
-}
 
 // Validate MIME against extension AND enforce extension↔MIME consistency.
 // Returns the canonical MIME to store, or null if invalid/mismatched.
