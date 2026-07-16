@@ -266,6 +266,8 @@ export async function recordCompletedUsage(opts: {
    *  on retry. The key is stored in ai_usage_logs.idempotency_key with a UNIQUE index,
    *  so a second call with the same key is silently ignored (no double-billing). */
   requestId?: string;
+  /** Economy metadata — requestedModel, effectiveModel, economyTier, etc. */
+  metadata?: Record<string, unknown>;
 }): Promise<{ creditsDebited: number; remaining: number }> {
   const { orgId, userId, model, feature, tokensIn, tokensOut, latencyMs } = opts;
   const provider    = opts.provider ?? "openai";
@@ -275,6 +277,7 @@ export async function recordCompletedUsage(opts: {
   const month       = currentMonth();
   const logId       = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const idemKey     = opts.requestId ?? null;
+  const metaJson    = opts.metadata ? JSON.stringify(opts.metadata) : null;
 
   try {
     await withOrgDb(orgId, async (client) => {
@@ -282,7 +285,7 @@ export async function recordCompletedUsage(opts: {
         `INSERT INTO ai_usage_logs
            (id, org_id, user_id, provider, model, feature, credits_used, credits_debited,
             tokens_in, tokens_out, cached_tokens, cost_eur, real_cost_eur, latency_ms, duration_ms, success, metadata, idempotency_key)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULL,$17)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          ON CONFLICT DO NOTHING`,
         [logId, orgId, userId, provider, model, feature,
          creditsDeb, creditsDeb,
@@ -290,6 +293,7 @@ export async function recordCompletedUsage(opts: {
          realCostEur, realCostEur,
          latencyMs, latencyMs,
          opts.success ? "true" : "false",
+         metaJson,
          idemKey]
       );
     });

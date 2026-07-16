@@ -24,7 +24,13 @@ import {
 } from "../services/ai-prefs.js";
 import { aiChat, aiStream, checkAllProviders, type AIProviderId } from "../services/ai-provider.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
-import { resolveIntensityConfig, isValidProvider, isModelValidForProvider } from "../services/ai-provider-matrix.js";
+import { resolveIntensityConfig, isValidProvider, isModelValidForProvider, type AIIntensityMode } from "../services/ai-provider-matrix.js";
+import {
+  computeEconomyTier,
+  resolveEconomyPolicy,
+  loadOrgEconomyThresholds,
+  type EconomyTier,
+} from "../services/ai-economy.js";
 
 const router = Router();
 // Apply AI rate limit to all routes in this router (org-based, plan-aware)
@@ -180,9 +186,22 @@ function categorizeIssues(titles: string[]): Record<string, string[]> {
   return cats;
 }
 
-async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: string): Promise<string> {
+async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: string, contextFactor = 1.0): Promise<string> {
   try {
     const oid = orgId ?? "default";
+
+    // Context depth limits — scaled by contextFactor
+    // NORMAL(1.0): kw=15, comp=5, audits=10, monitors=10, psi=5
+    // OPTIMIZED(0.85): kw=13, comp=4, audits=9, monitors=9, psi=4
+    // ECONOMY(0.60):   kw=9,  comp=3, audits=6, monitors=6, psi=3
+    // CRITICAL(0.35):  kw=5,  comp=2, audits=4, monitors=4, psi=2
+    const kwLimit      = Math.max(3, Math.round(15 * contextFactor));
+    const compLimit    = Math.max(1, Math.round(5  * contextFactor));
+    const auditLimit   = Math.max(2, Math.round(10 * contextFactor));
+    const monLimit     = Math.max(2, Math.round(10 * contextFactor));
+    const psiLimit     = Math.max(1, Math.round(5  * contextFactor));
+    const kwDisplayLim = Math.max(2, Math.round(10 * contextFactor));
+
     let keywords: Array<{ keyword: string; current_position: number | null; prev_position: number | null; position_change: number | null; search_volume: number | null; trend: string | null }> = [];
     let competitors: Array<{ name: string; domain?: string; rating?: number; reviews_count?: number }> = [];
     let gscConnected = false;
@@ -200,12 +219,12 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
            FROM tracked_keywords
            WHERE org_id=$1 AND active=true
            ORDER BY search_volume DESC NULLS LAST, current_position ASC NULLS LAST
-           LIMIT 15`,
+           LIMIT ${kwLimit}`,
           [oid]
         ),
         pool.query(
           `SELECT name, url, domain_rating, keywords AS kw_count
-           FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT 5`,
+           FROM competitors WHERE org_id=$1 ORDER BY domain_rating DESC LIMIT ${compLimit}`,
           [oid]
         ),
         pool.query(
@@ -258,15 +277,15 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       db.select().from(auditsTable)
         .where(eq(auditsTable.orgId, oid))
         .orderBy(desc(auditsTable.createdAt))
-        .limit(10),
+        .limit(auditLimit),
       db.select().from(monitorsTable)
         .where(eq(monitorsTable.orgId, oid))
-        .limit(10),
+        .limit(monLimit),
     ]);
 
-    // Fetch real PSI critical issues for top 5 audited URLs
+    // Fetch real PSI critical issues for top audited URLs (scaled by contextFactor)
     if (audits.length > 0) {
-      const urls = audits.slice(0, 5).map(a => a.url);
+      const urls = audits.slice(0, psiLimit).map(a => a.url);
       // Join with audits to ensure only URLs belonging to this org are returned
       const psiRes = await pool.query(
         `SELECT DISTINCT ON (p.url) p.url, p.critical_issues
@@ -339,13 +358,13 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
         ? `ATTENTION — Sites 50-74 : ${warningAudits.map(a => `${a.url} [score=${a.score}/100, vitesse=${a.speed ?? "?"}/100, ${a.issues} issue(s)]`).join(" | ")}`
         : "",
       audits.length > 0
-        ? `Tous les audits : ${audits.slice(0, 5).map(a =>
+        ? `Tous les audits : ${audits.slice(0, psiLimit).map(a =>
             `${a.url} score=${a.score}/100 perf=${a.speed ?? "?"}/100 issues=${a.issues}`
           ).join(" | ")}`
         : "Aucun audit effectué",
       ``,
       `=== PROBLÈMES RÉELS DÉTECTÉS (PSI) PAR CATÉGORIE ===`,
-      ...audits.slice(0, 5).flatMap(a => {
+      ...audits.slice(0, psiLimit).flatMap(a => {
         const issues = psiIssuesByUrl.get(a.url) ?? [];
         if (issues.length === 0) return [];
         const cats = categorizeIssues(issues.map(i => i.title));
@@ -361,7 +380,7 @@ async function buildFlowpointContext(extra?: Record<string, unknown>, orgId?: st
       ``,
       `=== KEYWORDS — DONNÉES RÉELLES ===`,
       allKw.length > 0
-        ? `Mots-clés suivis (${allKw.length}) : ${allKw.slice(0, 10).map(k =>
+        ? `Mots-clés suivis (${allKw.length}) : ${allKw.slice(0, kwDisplayLim).map(k =>
             `"${k.keyword}" pos=${k.position ?? "?"}${k.delta != null ? (k.delta > 0 ? ` ▲${k.delta}` : k.delta < 0 ? ` ▼${Math.abs(k.delta)}` : " =") : ""} ${k.volume ? `vol=${k.volume}` : ""} ${k.trend ? `trend=${k.trend}` : ""}`.trim()
           ).join(" | ")}`
         : "Aucun mot-clé suivi",
@@ -528,25 +547,89 @@ router.post("/ai/chat", async (req: Request, res: Response) => {
   }
 
   // 4. Resolve model and token budget from intensity matrix — provider NEVER changes here
-  const intensityCfg = resolveIntensityConfig(resolvedProvider, aiPrefs.aiIntensity);
-  const selectedProvider = resolvedProvider;
-  const selectedModel    = model ?? intensityCfg.model;
-  const selectedMaxTokens = intensityCfg.maxTokens;
+  const intensityCfg      = resolveIntensityConfig(resolvedProvider, aiPrefs.aiIntensity);
+  const selectedProvider  = resolvedProvider;
+  const requestedModel    = model ?? intensityCfg.model;
+  const requestedMode     = aiPrefs.aiIntensity as AIIntensityMode;
+  const baseMaxTokens     = intensityCfg.maxTokens;
 
-  // 2. Token-based quota check — strict pre-flight against monthly token budget
-  //    If DB is unavailable getOrCreateMonthlyUsage() throws and we allow the request
-  //    (fail-open is safer than silently blocking every call during a DB outage)
+  // 5. Usage + economy policy — single DB call for quota check AND economy tier
+  //    EXHAUSTED (≥100%) → 402 QUOTA_EXCEEDED (credit-based, strict)
+  //    Token limit exceeded → 429
+  //    Otherwise → compute economy policy (model downgrade within same provider)
+  let economyPolicy: ReturnType<typeof resolveEconomyPolicy>;
+  let resolvedUsagePercent = 0;
+  let resolvedEconomyTier: EconomyTier = "NORMAL";
+
   try {
-    const usage = await getOrCreateMonthlyUsage(orgId);
-    if (usage.tokensUsed >= usage.tokenLimit) {
-      res.status(429).json({ error: "AI quota exceeded", used: usage.tokensUsed, limit: usage.tokenLimit });
+    const [rawUsage, orgThresholds] = await Promise.all([
+      getOrCreateMonthlyUsage(orgId),
+      loadOrgEconomyThresholds(orgId),
+    ]);
+
+    const totalAvailable = rawUsage.creditsLimit + rawUsage.creditsExtra;
+    const usagePercent   = totalAvailable > 0
+      ? Math.min((rawUsage.creditsUsed / totalAvailable) * 100, 100)
+      : 0;
+    const economyTier = computeEconomyTier(usagePercent, orgThresholds);
+
+    // Hard block on credit exhaustion — 402 per spec
+    if (economyTier === "EXHAUSTED") {
+      res.status(402).json({ ok: false, code: "QUOTA_EXCEEDED", economyTier: "EXHAUSTED", usagePercent: Math.round(usagePercent) });
       return;
     }
+
+    // Token-based quota check (secondary guard)
+    if (rawUsage.tokensUsed >= rawUsage.tokenLimit) {
+      res.status(429).json({ error: "AI quota exceeded", used: rawUsage.tokensUsed, limit: rawUsage.tokenLimit });
+      return;
+    }
+
+    resolvedUsagePercent = usagePercent;
+    resolvedEconomyTier  = economyTier;
   } catch (_) {
-    // DB unreachable — fail-open; usage will be recorded when DB recovers
+    // DB unreachable — fail-open, NORMAL tier (safer than blocking all requests during outage)
   }
 
-  const fpContext = await buildFlowpointContext(context, orgId);
+  economyPolicy = resolveEconomyPolicy({
+    provider:       selectedProvider,
+    requestedModel,
+    requestedMode,
+    baseMaxTokens,
+    usagePercent:   resolvedUsagePercent,
+    economyTier:    resolvedEconomyTier,
+  });
+
+  const effectiveModel     = economyPolicy.effectiveModel;
+  const effectiveMaxTokens = economyPolicy.maxTokens;
+  const contextFactor      = economyPolicy.contextFactor;
+  const historyLimit       = Math.max(2, Math.round(10 * contextFactor));
+
+  // 6. Build enriched _ai metadata — always tells the truth about what was used
+  const aiMeta = {
+    provider:         selectedProvider,
+    requestedModel,
+    model:            effectiveModel,
+    requestedMode,
+    effectiveMode:    economyPolicy.effectiveMode,
+    economyTier:      economyPolicy.economyTier,
+    usagePercent:     Math.round(resolvedUsagePercent * 10) / 10,
+    downgradeApplied: economyPolicy.downgradeApplied,
+    downgradeReason:  economyPolicy.downgradeApplied ? economyPolicy.reason : undefined,
+  };
+
+  // Economy metadata for ai_usage_logs
+  const usageMetadata: Record<string, unknown> = {
+    requestedModel,
+    effectiveModel,
+    requestedMode,
+    effectiveMode:    economyPolicy.effectiveMode,
+    economyTier:      economyPolicy.economyTier,
+    usagePercent:     Math.round(resolvedUsagePercent * 10) / 10,
+    downgradeApplied: economyPolicy.downgradeApplied,
+  };
+
+  const fpContext = await buildFlowpointContext(context, orgId, contextFactor);
   const systemPrompt = `Tu es le consultant SEO senior intégré à FlowPoint. Tu connais déjà le site du client, ses scores, ses problèmes et son historique — tout est dans le contexte ci-dessous.
 Ton rôle : analyser les données réelles et répondre comme un expert qui a étudié le dossier avant la réunion.
 - Cite toujours les chiffres exacts du contexte (score, URL, position, nombre d'issues).
@@ -559,7 +642,7 @@ ${fpContext}`;
 
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
     { role: "system", content: systemPrompt },
-    ...history.slice(-10).map(m => ({ role: m.role, content: m.content })),
+    ...history.slice(-historyLimit).map(m => ({ role: m.role, content: m.content })),
     { role: "user", content: message },
   ];
 
@@ -579,19 +662,17 @@ ${fpContext}`;
 
     try {
       const stream = aiStream({
-        provider: selectedProvider,
-        model: selectedModel,
+        provider:      selectedProvider,
+        model:         effectiveModel,
         strictProvider: true,
-        systemPrompt: messages[0]!.content,
-        messages: messages.slice(1),
-        maxTokens: selectedMaxTokens,
+        systemPrompt:  messages[0]!.content,
+        messages:      messages.slice(1),
+        maxTokens:     effectiveMaxTokens,
       });
 
-      let actualAiMeta: { provider: string; model: string; switchReason?: string } = { provider: selectedProvider, model: selectedModel };
       for await (const chunk of stream) {
         if (chunk && typeof chunk === "object" && "_aiMeta" in chunk) {
-          actualAiMeta = (chunk as { _aiMeta: typeof actualAiMeta })._aiMeta;
-          continue;
+          continue; // We use our own enriched aiMeta — ignore internal routing metadata
         }
         if (chunk && typeof chunk === "object" && "content" in chunk) {
           const text = (chunk as { content: string }).content;
@@ -599,21 +680,21 @@ ${fpContext}`;
           res.write(`data: ${JSON.stringify({ delta: text })}\n\n`);
         }
       }
-      res.write(`data: ${JSON.stringify({ _ai: actualAiMeta })}\n\n`);
+      res.write(`data: ${JSON.stringify({ _ai: aiMeta })}\n\n`);
       res.write(`data: [DONE]\n\n`);
       res.end();
 
       const latencyMs = Date.now() - t0;
-      const estTokensIn = Math.ceil(messages.reduce((s, m) => s + m.content.length, 0) / 4);
+      const estTokensIn  = Math.ceil(messages.reduce((s, m) => s + m.content.length, 0) / 4);
       const estTokensOut = Math.ceil(fullReply.length / 4);
 
-      persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: selectedModel, tokensUsed: estTokensOut })
+      persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: effectiveModel, tokensUsed: estTokensOut })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true, requestId })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: effectiveModel as AIModel, provider: selectedProvider, tokensIn: estTokensIn, tokensOut: estTokensOut, latencyMs, success: true, requestId, metadata: usageMetadata })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage failed"));
     } catch (err) {
-      logger.error({ err, provider: selectedProvider, model: selectedModel }, "[AI] Streaming chat failed");
-      const errCode = (err as Record<string, unknown>)?.code;
+      logger.error({ err, provider: selectedProvider, model: effectiveModel }, "[AI] Streaming chat failed");
+      const errCode    = (err as Record<string, unknown>)?.code;
       const errProvider = (err as Record<string, unknown>)?.provider as string | undefined;
       if (errCode === "PROVIDER_UNAVAILABLE") {
         res.write(`data: ${JSON.stringify({ ok: false, code: "PROVIDER_UNAVAILABLE", provider: errProvider ?? selectedProvider })}\n\n`);
@@ -628,24 +709,24 @@ ${fpContext}`;
     try {
       const t0 = Date.now();
       const result = await aiChat({
-        provider: selectedProvider,
-        model: selectedModel,
+        provider:      selectedProvider,
+        model:         effectiveModel,
         strictProvider: true,
-        systemPrompt: messages[0]!.content,
-        messages: messages.slice(1),
-        maxTokens: selectedMaxTokens,
+        systemPrompt:  messages[0]!.content,
+        messages:      messages.slice(1),
+        maxTokens:     effectiveMaxTokens,
       });
       const reply = result.text || "Je ne peux pas repondre pour le moment.";
       const latencyMs = Date.now() - t0;
 
-      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: selectedModel, tokensUsed: result.usage.completionTokens })
+      persistChatMessage({ orgId, userId, role: "assistant", content: reply, feature: "chat", model: effectiveModel, tokensUsed: result.usage.completionTokens })
         .catch(err => logger.warn({ err }, "[AI] persistChatMessage (assistant non-stream) failed"));
-      recordCompletedUsage({ feature: "chat", orgId, userId, model: selectedModel, provider: selectedProvider, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true, requestId })
+      recordCompletedUsage({ feature: "chat", orgId, userId, model: effectiveModel as AIModel, provider: selectedProvider, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens, latencyMs, success: true, requestId, metadata: usageMetadata })
         .catch(err => logger.warn({ err }, "[AI] recordCompletedUsage (non-stream) failed"));
-      res.json({ reply, streaming: false, _ai: result._ai });
+      res.json({ reply, streaming: false, _ai: aiMeta });
     } catch (err) {
-      logger.error({ err, provider: selectedProvider, model: selectedModel }, "[AI] Chat failed");
-      const errCode = (err as Record<string, unknown>)?.code;
+      logger.error({ err, provider: selectedProvider, model: effectiveModel }, "[AI] Chat failed");
+      const errCode    = (err as Record<string, unknown>)?.code;
       const errProvider = (err as Record<string, unknown>)?.provider as string | undefined;
       if (errCode === "PROVIDER_UNAVAILABLE") {
         res.status(503).json({ ok: false, code: "PROVIDER_UNAVAILABLE", provider: errProvider ?? selectedProvider });
