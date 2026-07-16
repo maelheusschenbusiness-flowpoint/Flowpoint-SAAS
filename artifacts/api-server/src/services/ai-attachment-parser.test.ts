@@ -29,7 +29,7 @@ vi.mock("mammoth", () => ({
   default: { extractRawText: mocks.mammothExtractRawText },
 }));
 
-vi.mock("pdf-parse", () => ({ default: mocks.pdfParse }));
+vi.mock("pdf-parse/lib/pdf-parse.js", () => ({ default: mocks.pdfParse }));
 
 // ── Imports (after mocks) ────────────────────────────────────────────────────
 
@@ -774,7 +774,7 @@ describe("Lazy loading — boot and per-format proofs", () => {
     const loaded: string[] = [];
     vi.doMock("exceljs",   () => { loaded.push("exceljs");   return { default: { Workbook: class {} } }; });
     vi.doMock("mammoth",   () => { loaded.push("mammoth");   return { default: { extractRawText: vi.fn() } }; });
-    vi.doMock("pdf-parse", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
+    vi.doMock("pdf-parse/lib/pdf-parse.js", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
 
     // Fresh import of the orchestrator — heavy modules must NOT be requested yet
     await import("./ai-attachment-parser.js");
@@ -786,7 +786,7 @@ describe("Lazy loading — boot and per-format proofs", () => {
     const loaded: string[] = [];
     vi.doMock("exceljs",   () => { loaded.push("exceljs");   return { default: { Workbook: class {} } }; });
     vi.doMock("mammoth",   () => { loaded.push("mammoth");   return { default: { extractRawText: vi.fn() } }; });
-    vi.doMock("pdf-parse", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
+    vi.doMock("pdf-parse/lib/pdf-parse.js", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
     vi.doMock("papaparse", () => ({ default: { parse: vi.fn().mockReturnValue({ data: [], errors: [] }) } }));
 
     const { parseAIAttachments: fresh, getDefaultParserLimits: freshLimits } = await import("./ai-attachment-parser.js");
@@ -804,7 +804,7 @@ describe("Lazy loading — boot and per-format proofs", () => {
     const loaded: string[] = [];
     vi.doMock("exceljs",   () => { loaded.push("exceljs");   return { default: { Workbook: class {} } }; });
     vi.doMock("mammoth",   () => { loaded.push("mammoth");   return { default: { extractRawText: vi.fn() } }; });
-    vi.doMock("pdf-parse", () => {
+    vi.doMock("pdf-parse/lib/pdf-parse.js", () => {
       loaded.push("pdf-parse");
       return { default: vi.fn().mockResolvedValue({ text: "content", numpages: 1 }) };
     });
@@ -820,7 +820,7 @@ describe("Lazy loading — boot and per-format proofs", () => {
   it("PDF parse: second call reuses the module cache (pdf-parse factory called exactly once)", async () => {
     vi.resetModules();
     let callCount = 0;
-    vi.doMock("pdf-parse", () => {
+    vi.doMock("pdf-parse/lib/pdf-parse.js", () => {
       callCount++;
       return { default: vi.fn().mockResolvedValue({ text: "ok", numpages: 1 }) };
     });
@@ -841,7 +841,7 @@ describe("Lazy loading — boot and per-format proofs", () => {
       loaded.push("mammoth");
       return { default: { extractRawText: vi.fn().mockResolvedValue({ value: "text content" }) } };
     });
-    vi.doMock("pdf-parse", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
+    vi.doMock("pdf-parse/lib/pdf-parse.js", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
 
     const { parseDocxBuffer: fresh } = await import("./file-parsers/docx-parser.js");
     await fresh(Buffer.alloc(10), 10_000);
@@ -864,7 +864,7 @@ describe("Lazy loading — boot and per-format proofs", () => {
       return { default: { Workbook: MockWorkbook } };
     });
     vi.doMock("mammoth",   () => { loaded.push("mammoth");   return { default: { extractRawText: vi.fn() } }; });
-    vi.doMock("pdf-parse", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
+    vi.doMock("pdf-parse/lib/pdf-parse.js", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
 
     const { parseSpreadsheetBuffer: fresh } = await import("./file-parsers/spreadsheet-parser.js");
     // Result will be SPREADSHEET_EMPTY (mock has no sheets) — we only care about what was loaded
@@ -877,7 +877,7 @@ describe("Lazy loading — boot and per-format proofs", () => {
 
   it("ATTACHMENT_PARSER_UNAVAILABLE (503) when pdf-parse fails to load — no crash, no provider", async () => {
     vi.resetModules();
-    vi.doMock("pdf-parse", () => { throw new Error("Cannot find module 'pdf-parse'"); });
+    vi.doMock("pdf-parse/lib/pdf-parse.js", () => { throw new Error("Cannot find module 'pdf-parse'"); });
 
     const { parsePdfBuffer: fresh } = await import("./file-parsers/pdf-parser.js");
     const r = await fresh(pdfBuf(), 50, 10_000);
@@ -910,7 +910,7 @@ describe("Lazy loading — boot and per-format proofs", () => {
 
   it("parseAIAttachments propagates ATTACHMENT_PARSER_UNAVAILABLE with httpStatus 503", async () => {
     vi.resetModules();
-    vi.doMock("pdf-parse", () => { throw new Error("Cannot find module 'pdf-parse'"); });
+    vi.doMock("pdf-parse/lib/pdf-parse.js", () => { throw new Error("Cannot find module 'pdf-parse'"); });
     vi.doMock("mammoth",   () => ({ default: { extractRawText: vi.fn() } }));
     vi.doMock("exceljs",   () => ({ default: { Workbook: class {} } }));
     vi.doMock("papaparse", () => ({ default: { parse: vi.fn() } }));

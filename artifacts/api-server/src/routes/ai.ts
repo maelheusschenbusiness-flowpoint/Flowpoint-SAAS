@@ -688,6 +688,9 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
   };
 
   const fpContext = await buildFlowpointContext(context, orgId, contextFactor);
+
+  // Base consultant instructions. fpContext is appended separately below so the
+  // attachment block can be added in one explicit place visible to both paths.
   const systemPromptBase = `Tu es le consultant SEO senior intégré à FlowPoint. Tu connais déjà le site du client, ses scores, ses problèmes et son historique — tout est dans le contexte ci-dessous.
 Ton rôle : analyser les données réelles et répondre comme un expert qui a étudié le dossier avant la réunion.
 - Cite toujours les chiffres exacts du contexte (score, URL, position, nombre d'issues).
@@ -695,16 +698,30 @@ Ton rôle : analyser les données réelles et répondre comme un expert qui a é
 - Ne demande jamais à l'utilisateur de te fournir des informations déjà présentes.
 - Réponds en français, structuré avec ** pour le gras.
 ${STRICT_AI_RULE}
-=== DONNÉES RÉELLES DU COMPTE ===
-${fpContext}`;
+=== DONNÉES RÉELLES DU COMPTE ===`;
 
-  // Append parsed attachment content (Step 3B) — clearly delimited, security-prefixed.
-  const systemPrompt = parsedAttachments.length > 0
-    ? systemPromptBase + buildAttachmentContextBlock(parsedAttachments)
-    : systemPromptBase;
+  // Step 3B: attachment block (security-prefixed, XML-delimited).
+  // Built before the messages array so it cannot diverge between stream/non-stream.
+  const attachmentContext = parsedAttachments.length > 0
+    ? buildAttachmentContextBlock(parsedAttachments)
+    : "";
 
+  // Single finalSystemPrompt: base instructions + real account data + attachment block.
+  // All three assembled here — neither stream nor non-stream path can omit any part.
+  const finalSystemPrompt = [
+    systemPromptBase,
+    fpContext,
+    attachmentContext,
+  ].filter(Boolean).join("\n\n");
+
+  // Single messages array shared by both paths.
+  // ⚠ INJECTION FIX: the FULL array (including the system message at index 0) is
+  // passed to aiStream / aiChat as opts.messages.  The provider layer uses
+  // opts.messages when present and ignores opts.systemPrompt in that branch —
+  // previously passing messages.slice(1) caused the provider to receive history +
+  // user only, silently dropping the system prompt and all attachment content.
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: finalSystemPrompt },
     ...history.slice(-historyLimit).map(m => ({ role: m.role, content: m.content })),
     { role: "user", content: message },
   ];
@@ -728,8 +745,8 @@ ${fpContext}`;
         provider:      selectedProvider,
         model:         effectiveModel,
         strictProvider: true,
-        systemPrompt:  messages[0]!.content,
-        messages:      messages.slice(1),
+        systemPrompt:  finalSystemPrompt,
+        messages,
         maxTokens:     effectiveMaxTokens,
       });
 
@@ -775,8 +792,8 @@ ${fpContext}`;
         provider:      selectedProvider,
         model:         effectiveModel,
         strictProvider: true,
-        systemPrompt:  messages[0]!.content,
-        messages:      messages.slice(1),
+        systemPrompt:  finalSystemPrompt,
+        messages,
         maxTokens:     effectiveMaxTokens,
       });
       const reply = result.text || "Je ne peux pas repondre pour le moment.";

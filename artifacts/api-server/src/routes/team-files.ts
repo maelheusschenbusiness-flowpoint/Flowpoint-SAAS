@@ -31,6 +31,7 @@ const ALLOWED_MIME: Record<string, string> = {
   "application/pdf":                                                                      "pdf",
   "text/csv":                                                                             "csv",
   "text/plain":                                                                           "txt",
+  "text/markdown":                                                                        "md",
   "application/json":                                                                     "json",
   "application/zip":                                                                      "zip",
   "application/x-zip-compressed":                                                         "zip",
@@ -60,6 +61,13 @@ const ALLOWED_EXTENSIONS = new Set(Object.keys(EXT_TO_MIMES));
 function validateMime(suppliedMime: string | undefined, filename: string): string | null {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
   if (!ALLOWED_EXTENSIONS.has(ext)) return null; // extension not on allowlist
+
+  // Browser compatibility: most browsers send .md files as text/plain.
+  // Normalise to text/markdown so the AI pipeline resolves the correct extension.
+  // This is explicit: only .md + text/plain triggers the normalisation.
+  if (ext === "md" && suppliedMime === "text/plain") {
+    return "text/markdown";
+  }
 
   const allowedMimesForExt = EXT_TO_MIMES[ext] ?? [];
 

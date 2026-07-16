@@ -320,3 +320,56 @@ describe("DELETE /team/files/:id — delete", () => {
     expect(res.status).toBe(403);
   });
 });
+
+// ─── Markdown support (Step 3B) ───────────────────────────────────────────────
+
+describe("POST /team/files — Markdown support (.md)", () => {
+
+  it("MD-A — .md + text/markdown → 201 (canonical MIME accepted)", async () => {
+    const db = makeDbSeq([{ cnt: 0, total_bytes: 0 }], []);
+    const res = await request(makeApp(db))
+      .post("/team/files")
+      .send({ name: "README.md", type: "text/markdown", content: SMALL_B64 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.file.type).toBe("text/markdown");
+  });
+
+  it("MD-B — .md + text/plain → 201, stored as text/markdown (browser compat normalisation)", async () => {
+    const db = makeDbSeq([{ cnt: 0, total_bytes: 0 }], []);
+    const res = await request(makeApp(db))
+      .post("/team/files")
+      .send({ name: "notes.md", type: "text/plain", content: SMALL_B64 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.file.type).toBe("text/markdown");
+  });
+
+  it("MD-C — .md + application/pdf → 415 (MIME↔extension mismatch)", async () => {
+    const res = await request(makeApp(makeDb()))
+      .post("/team/files")
+      .send({ name: "report.md", type: "application/pdf", content: SMALL_B64 });
+
+    expect(res.status).toBe(415);
+  });
+
+  it("MD-D — .exe + text/markdown → 415 (extension not on allowlist)", async () => {
+    const res = await request(makeApp(makeDb()))
+      .post("/team/files")
+      .send({ name: "malware.exe", type: "text/markdown", content: SMALL_B64 });
+
+    expect(res.status).toBe(415);
+  });
+
+  it("MD-E — .txt + text/plain still works (normalisation does not break existing TXT)", async () => {
+    const db = makeDbSeq([{ cnt: 0, total_bytes: 0 }], []);
+    const res = await request(makeApp(db))
+      .post("/team/files")
+      .send({ name: "notes.txt", type: "text/plain", content: SMALL_B64 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.file.type).toBe("text/plain");
+  });
+});

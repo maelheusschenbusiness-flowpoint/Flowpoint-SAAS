@@ -47,14 +47,22 @@ type PdfParseType = (data: Buffer, options?: { max?: number }) => Promise<{ text
 /**
  * Load pdf-parse on first use — NOT at module import time.
  * Returns the parse function or throws if the module is unavailable.
+ *
+ * Root cause of production 503: pdf-parse/index.js calls
+ * readFileSync('./test/data/05-versions-space.pdf') at module load time.
+ * That path is relative to the process cwd, which is NOT the package directory
+ * in production → ENOENT → the dynamic import throws → 503.
+ * Fix: import the internal library directly, bypassing index.js.
+ * Verified ESM import shape in Node 22: { default: fn } (keys: ['default']).
  */
 async function loadPdfParse(): Promise<PdfParseType> {
-  const mod = await import("pdf-parse");
-  const fn  = (mod.default ?? mod) as unknown;
-  if (typeof fn !== "function") {
-    throw new TypeError("pdf-parse: default export is not a function");
+  // @ts-ignore — pdf-parse sub-path has no type declarations but exists in v1.1.1
+  const mod = await import("pdf-parse/lib/pdf-parse.js") as { default?: unknown };
+  const candidate = typeof mod.default === "function" ? mod.default : null;
+  if (!candidate) {
+    throw new TypeError("pdf-parse/lib/pdf-parse.js: default export is not a function");
   }
-  return fn as PdfParseType;
+  return candidate as PdfParseType;
 }
 
 // ── Main parse function ───────────────────────────────────────────────────────
