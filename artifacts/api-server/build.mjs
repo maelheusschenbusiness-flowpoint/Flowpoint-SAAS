@@ -106,6 +106,11 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
+      // ── Heavy attachment parsers — lazy-loaded at runtime, never bundled ──
+      "exceljs",
+      "mammoth",
+      "pdf-parse",
+      "papaparse",
     ],
     sourcemap: "linked",
     plugins: [

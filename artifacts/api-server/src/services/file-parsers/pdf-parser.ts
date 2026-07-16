@@ -1,20 +1,18 @@
 /**
  * pdf-parser.ts — Parse PDF files from a Buffer using pdf-parse.
  *
- * pdf-parse is a CJS module; esbuild and vitest both resolve CJS interop
- * automatically via the "default" export.
+ * pdf-parse is loaded lazily (dynamic import) so it is never bundled into
+ * dist/index.mjs and never initialised at server startup.
  *
  * Handles:
- *   - %PDF- binary signature check (ATTACHMENT_PARSE_FAILED if absent)
+ *   - %PDF- binary signature check (ATTACHMENT_PARSE_FAILED if absent — no module load)
+ *   - Dynamic module load failure  (ATTACHMENT_PARSER_UNAVAILABLE / HTTP 503)
  *   - Text extraction with page limit
- *   - Empty / scanned PDF detection (no extractable text → ATTACHMENT_PDF_NO_EXTRACTABLE_TEXT)
- *   - Encrypted PDF detection (ATTACHMENT_PDF_ENCRYPTED)
- *   - Invalid PDF detection (ATTACHMENT_PARSE_FAILED)
+ *   - Empty / scanned PDF         (ATTACHMENT_PDF_NO_EXTRACTABLE_TEXT)
+ *   - Encrypted PDF               (ATTACHMENT_PDF_ENCRYPTED)
+ *   - Invalid PDF                 (ATTACHMENT_PARSE_FAILED)
  *   - Truncation to maxChars
  */
-
-// pdf-parse ships as CJS — import via default to support both ESM and CJS callers.
-import pdfParse from "pdf-parse";
 
 export interface PdfParseResult {
   text:      string;
@@ -26,13 +24,15 @@ export interface PdfParseResult {
 export type PdfParseErrorCode =
   | "ATTACHMENT_PDF_NO_EXTRACTABLE_TEXT"
   | "ATTACHMENT_PDF_ENCRYPTED"
-  | "ATTACHMENT_PARSE_FAILED";
+  | "ATTACHMENT_PARSE_FAILED"
+  | "ATTACHMENT_PARSER_UNAVAILABLE";
 
 export interface PdfParseError {
   error: PdfParseErrorCode;
 }
 
-// The canonical %PDF- magic bytes (ASCII).
+// ── PDF magic-byte check ──────────────────────────────────────────────────────
+
 const PDF_SIGNATURE = Buffer.from("%PDF-", "ascii");
 
 function hasPdfSignature(buf: Buffer): boolean {
@@ -40,25 +40,54 @@ function hasPdfSignature(buf: Buffer): boolean {
   return buf.slice(0, PDF_SIGNATURE.length).equals(PDF_SIGNATURE);
 }
 
+// ── Lazy loader ───────────────────────────────────────────────────────────────
+
+type PdfParseType = (data: Buffer, options?: { max?: number }) => Promise<{ text: string; numpages: number }>;
+
+/**
+ * Load pdf-parse on first use — NOT at module import time.
+ * Returns the parse function or throws if the module is unavailable.
+ */
+async function loadPdfParse(): Promise<PdfParseType> {
+  const mod = await import("pdf-parse");
+  const fn  = (mod.default ?? mod) as unknown;
+  if (typeof fn !== "function") {
+    throw new TypeError("pdf-parse: default export is not a function");
+  }
+  return fn as PdfParseType;
+}
+
+// ── Main parse function ───────────────────────────────────────────────────────
+
 /**
  * Parse a PDF buffer and extract plain text up to maxPages pages.
  *
- * Step 1: Verify %PDF- magic bytes — non-PDF content returns ATTACHMENT_PARSE_FAILED
- *         before touching pdf-parse, preventing garbage-in attacks.
- * Step 2: Call pdf-parse with page limit.
- * Step 3: Check for empty text (scanned PDF / image-only).
+ * Step 1: Verify %PDF- magic bytes — non-PDF returns ATTACHMENT_PARSE_FAILED
+ *         before touching any module (prevents garbage-in attacks and saves
+ *         the dynamic-import overhead for clearly invalid data).
+ * Step 2: Lazy-load pdf-parse — returns ATTACHMENT_PARSER_UNAVAILABLE (503)
+ *         if the module cannot be loaded.
+ * Step 3: Parse and classify errors.
  */
 export async function parsePdfBuffer(
   buf:      Buffer,
   maxPages: number,
   maxChars: number,
 ): Promise<PdfParseResult | PdfParseError> {
-  // ── Signature check ───────────────────────────────────────────────────────
+  // ── 1. Signature check (no module load needed) ────────────────────────────
   if (!hasPdfSignature(buf)) {
     return { error: "ATTACHMENT_PARSE_FAILED" };
   }
 
-  // ── Parse ─────────────────────────────────────────────────────────────────
+  // ── 2. Lazy module load ───────────────────────────────────────────────────
+  let pdfParse: PdfParseType;
+  try {
+    pdfParse = await loadPdfParse();
+  } catch {
+    return { error: "ATTACHMENT_PARSER_UNAVAILABLE" };
+  }
+
+  // ── 3. Parse ──────────────────────────────────────────────────────────────
   let parsed: { text: string; numpages: number };
   try {
     parsed = await pdfParse(buf, { max: maxPages });
@@ -70,7 +99,6 @@ export async function parsePdfBuffer(
     return { error: "ATTACHMENT_PARSE_FAILED" };
   }
 
-  // ── Empty / scanned PDF ───────────────────────────────────────────────────
   const text = (parsed.text ?? "").trim();
   if (!text) {
     return { error: "ATTACHMENT_PDF_NO_EXTRACTABLE_TEXT" };

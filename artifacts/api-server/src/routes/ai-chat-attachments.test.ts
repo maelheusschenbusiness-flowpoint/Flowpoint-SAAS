@@ -403,6 +403,27 @@ describe("POST /ai/chat — attachment contract (Steps 3A/3B)", () => {
     expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
   });
 
+  it("NEW — parser module unavailable → 503, no provider call, no usage debit", async () => {
+    spies.parseAIAttachments.mockResolvedValue({
+      code:       "ATTACHMENT_PARSER_UNAVAILABLE",
+      message:    "Le parser PDF est temporairement indisponible.",
+      httpStatus: 503,
+    });
+
+    const req = makeReq({
+      body:  { message: "analyse", stream: false, attachments: [{ fileId: "file1" }] },
+      orgDb: makeValidOrgDb(),
+    });
+    const res = makeRes();
+
+    await chatHandler(req, res);
+
+    expect(vi.mocked(res.status)).toHaveBeenCalledWith(503);
+    expect(spies.aiChat).not.toHaveBeenCalled();
+    expect(spies.aiStream).not.toHaveBeenCalled();
+    expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
+  });
+
   // ── 7 (Step 3B) — Provider IS called when attachment parses ──────────────
 
   it("7 — aiChat IS called when valid attachment parses successfully (stream=false)", async () => {

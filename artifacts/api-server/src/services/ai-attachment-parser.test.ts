@@ -16,7 +16,7 @@
  *   Injection   : buildAttachmentContextBlock delimiters and security warning
  */
 
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
 // ── Mock heavy binary-format dependencies ────────────────────────────────────
 
@@ -751,5 +751,180 @@ describe("getAttachmentUsageMetadata", () => {
     expect(meta["attachmentExtractedChars"]).toBe(2);
     expect(meta["attachmentEstimatedTokens"]).toBe(1);
     expect(meta["attachmentTruncated"]).toBe(false);
+  });
+});
+
+// ── Lazy loading proofs ───────────────────────────────────────────────────────
+//
+// These tests use vi.resetModules() + vi.doMock() (non-hoisted) to load fresh
+// module instances and verify which heavy modules are (or are not) initialised
+// during different parsing scenarios.
+//
+// After each test vi.resetModules() is called again so subsequent tests get
+// fresh module instances; the hoisted vi.mock() at the top of this file then
+// takes effect again for all non-lazy-loading tests.
+
+describe("Lazy loading — boot and per-format proofs", () => {
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  it("exceljs / mammoth / pdf-parse NOT loaded when ai-attachment-parser is imported", async () => {
+    vi.resetModules();
+    const loaded: string[] = [];
+    vi.doMock("exceljs",   () => { loaded.push("exceljs");   return { default: { Workbook: class {} } }; });
+    vi.doMock("mammoth",   () => { loaded.push("mammoth");   return { default: { extractRawText: vi.fn() } }; });
+    vi.doMock("pdf-parse", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
+
+    // Fresh import of the orchestrator — heavy modules must NOT be requested yet
+    await import("./ai-attachment-parser.js");
+    expect(loaded).toEqual([]);
+  });
+
+  it("TXT parse: exceljs / mammoth / pdf-parse remain unloaded", async () => {
+    vi.resetModules();
+    const loaded: string[] = [];
+    vi.doMock("exceljs",   () => { loaded.push("exceljs");   return { default: { Workbook: class {} } }; });
+    vi.doMock("mammoth",   () => { loaded.push("mammoth");   return { default: { extractRawText: vi.fn() } }; });
+    vi.doMock("pdf-parse", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
+    vi.doMock("papaparse", () => ({ default: { parse: vi.fn().mockReturnValue({ data: [], errors: [] }) } }));
+
+    const { parseAIAttachments: fresh, getDefaultParserLimits: freshLimits } = await import("./ai-attachment-parser.js");
+    const limits = freshLimits(1.0);
+    const att = makeResolved({ extension: "txt", contentBase64: textB64("hello"), name: "f.txt" });
+    await fresh([att], limits);
+
+    expect(loaded).not.toContain("exceljs");
+    expect(loaded).not.toContain("mammoth");
+    expect(loaded).not.toContain("pdf-parse");
+  });
+
+  it("PDF parse: pdf-parse loaded; exceljs / mammoth remain unloaded", async () => {
+    vi.resetModules();
+    const loaded: string[] = [];
+    vi.doMock("exceljs",   () => { loaded.push("exceljs");   return { default: { Workbook: class {} } }; });
+    vi.doMock("mammoth",   () => { loaded.push("mammoth");   return { default: { extractRawText: vi.fn() } }; });
+    vi.doMock("pdf-parse", () => {
+      loaded.push("pdf-parse");
+      return { default: vi.fn().mockResolvedValue({ text: "content", numpages: 1 }) };
+    });
+
+    const { parsePdfBuffer: fresh } = await import("./file-parsers/pdf-parser.js");
+    await fresh(pdfBuf(), 50, 10_000);
+
+    expect(loaded).toContain("pdf-parse");
+    expect(loaded).not.toContain("exceljs");
+    expect(loaded).not.toContain("mammoth");
+  });
+
+  it("PDF parse: second call reuses the module cache (pdf-parse factory called exactly once)", async () => {
+    vi.resetModules();
+    let callCount = 0;
+    vi.doMock("pdf-parse", () => {
+      callCount++;
+      return { default: vi.fn().mockResolvedValue({ text: "ok", numpages: 1 }) };
+    });
+
+    const { parsePdfBuffer: fresh } = await import("./file-parsers/pdf-parser.js");
+    await fresh(pdfBuf(), 50, 10_000);
+    await fresh(pdfBuf(), 50, 10_000);
+
+    // Factory invoked exactly once; second call uses cached module
+    expect(callCount).toBe(1);
+  });
+
+  it("DOCX parse: mammoth loaded; exceljs / pdf-parse remain unloaded", async () => {
+    vi.resetModules();
+    const loaded: string[] = [];
+    vi.doMock("exceljs",   () => { loaded.push("exceljs");   return { default: { Workbook: class {} } }; });
+    vi.doMock("mammoth",   () => {
+      loaded.push("mammoth");
+      return { default: { extractRawText: vi.fn().mockResolvedValue({ value: "text content" }) } };
+    });
+    vi.doMock("pdf-parse", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
+
+    const { parseDocxBuffer: fresh } = await import("./file-parsers/docx-parser.js");
+    await fresh(Buffer.alloc(10), 10_000);
+
+    expect(loaded).toContain("mammoth");
+    expect(loaded).not.toContain("exceljs");
+    expect(loaded).not.toContain("pdf-parse");
+  });
+
+  it("XLSX parse: exceljs loaded; mammoth / pdf-parse remain unloaded", async () => {
+    vi.resetModules();
+    const loaded: string[] = [];
+    vi.doMock("exceljs", () => {
+      loaded.push("exceljs");
+      // Minimal mock workbook — load succeeds, then worksheets=[] → SPREADSHEET_EMPTY
+      // A plain class constructor that returns the mock object is needed because
+      // spreadsheet-parser uses `new ExcelJS.Workbook()`.
+      const mockXlsx = { load: vi.fn().mockResolvedValue(undefined) };
+      class MockWorkbook { worksheets = []; xlsx = mockXlsx; }
+      return { default: { Workbook: MockWorkbook } };
+    });
+    vi.doMock("mammoth",   () => { loaded.push("mammoth");   return { default: { extractRawText: vi.fn() } }; });
+    vi.doMock("pdf-parse", () => { loaded.push("pdf-parse"); return { default: vi.fn() }; });
+
+    const { parseSpreadsheetBuffer: fresh } = await import("./file-parsers/spreadsheet-parser.js");
+    // Result will be SPREADSHEET_EMPTY (mock has no sheets) — we only care about what was loaded
+    await fresh(Buffer.alloc(10), 3, 100, 50, 10_000);
+
+    expect(loaded).toContain("exceljs");
+    expect(loaded).not.toContain("mammoth");
+    expect(loaded).not.toContain("pdf-parse");
+  });
+
+  it("ATTACHMENT_PARSER_UNAVAILABLE (503) when pdf-parse fails to load — no crash, no provider", async () => {
+    vi.resetModules();
+    vi.doMock("pdf-parse", () => { throw new Error("Cannot find module 'pdf-parse'"); });
+
+    const { parsePdfBuffer: fresh } = await import("./file-parsers/pdf-parser.js");
+    const r = await fresh(pdfBuf(), 50, 10_000);
+
+    expect("error" in r).toBe(true);
+    if ("error" in r) expect(r.error).toBe("ATTACHMENT_PARSER_UNAVAILABLE");
+  });
+
+  it("ATTACHMENT_PARSER_UNAVAILABLE (503) when mammoth fails to load — no crash, no provider", async () => {
+    vi.resetModules();
+    vi.doMock("mammoth", () => { throw new Error("Cannot find module 'mammoth'"); });
+
+    const { parseDocxBuffer: fresh } = await import("./file-parsers/docx-parser.js");
+    const r = await fresh(Buffer.alloc(10), 10_000);
+
+    expect("error" in r).toBe(true);
+    if ("error" in r) expect(r.error).toBe("ATTACHMENT_PARSER_UNAVAILABLE");
+  });
+
+  it("ATTACHMENT_PARSER_UNAVAILABLE (503) when exceljs fails to load — no crash, no provider", async () => {
+    vi.resetModules();
+    vi.doMock("exceljs", () => { throw new Error("Cannot find module 'exceljs'"); });
+
+    const { parseSpreadsheetBuffer: fresh } = await import("./file-parsers/spreadsheet-parser.js");
+    const r = await fresh(Buffer.alloc(10), 3, 100, 50, 10_000);
+
+    expect("error" in r).toBe(true);
+    if ("error" in r) expect(r.error).toBe("ATTACHMENT_PARSER_UNAVAILABLE");
+  });
+
+  it("parseAIAttachments propagates ATTACHMENT_PARSER_UNAVAILABLE with httpStatus 503", async () => {
+    vi.resetModules();
+    vi.doMock("pdf-parse", () => { throw new Error("Cannot find module 'pdf-parse'"); });
+    vi.doMock("mammoth",   () => ({ default: { extractRawText: vi.fn() } }));
+    vi.doMock("exceljs",   () => ({ default: { Workbook: class {} } }));
+    vi.doMock("papaparse", () => ({ default: { parse: vi.fn() } }));
+
+    const { parseAIAttachments: fresh, getDefaultParserLimits: freshLimits } = await import("./ai-attachment-parser.js");
+    const limits = freshLimits(1.0);
+    const buf    = pdfBuf().toString("base64");
+    const att    = makeResolved({ extension: "pdf", contentBase64: buf, declaredMimeType: "application/pdf", name: "f.pdf" });
+
+    const r = await fresh([att], limits);
+    expect("code" in r).toBe(true);
+    if ("code" in r) {
+      expect(r.code).toBe("ATTACHMENT_PARSER_UNAVAILABLE");
+      expect(r.httpStatus).toBe(503);
+    }
   });
 });

@@ -5,9 +5,15 @@
  * its extension, applies context-factor-scaled limits, enforces total char
  * budget, and returns a NormalizedAttachment array ready for context injection.
  *
+ * Heavy parser modules (exceljs, mammoth, pdf-parse) are lazy-loaded inside
+ * each parser file — they are NOT imported here and NOT loaded at startup.
+ * Only text-parser, json-parser, csv-parser are loaded statically (all pure JS,
+ * no native bindings, negligible startup cost).
+ *
  * Provider is NEVER changed here.  No credits are debited during local parsing.
- * Images (png/jpg/jpeg/webp) return HTTP 415 — they are never sent to a provider.
- * XLS (legacy binary)         returns HTTP 415 — only XLSX is supported.
+ * Images (png/jpg/jpeg/webp) → HTTP 415 (never sent to a provider).
+ * XLS (legacy binary)         → HTTP 415 (ExcelJS supports XLSX only).
+ * Parser module unavailable   → HTTP 503 (graceful degradation, no crash).
  */
 
 import { logger }                    from "../lib/logger.js";
@@ -15,9 +21,6 @@ import { AI_ATTACHMENT_PARSE_LIMITS } from "../config/ai-attachments.js";
 import { parseTextBuffer }            from "./file-parsers/text-parser.js";
 import { parseJsonBuffer }            from "./file-parsers/json-parser.js";
 import { parseCsvBuffer }             from "./file-parsers/csv-parser.js";
-import { parseSpreadsheetBuffer }     from "./file-parsers/spreadsheet-parser.js";
-import { parseDocxBuffer }            from "./file-parsers/docx-parser.js";
-import { parsePdfBuffer }             from "./file-parsers/pdf-parser.js";
 import type { ResolvedAIAttachment }  from "../types/ai-attachments.js";
 import type {
   NormalizedAttachment,
@@ -73,13 +76,13 @@ const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp"]);
 type ParsedMeta = NormalizedAttachment["metadata"];
 
 function buildNormalized(
-  att:      ResolvedAIAttachment,
-  category: AttachmentCategory,
-  text:     string,
+  att:       ResolvedAIAttachment,
+  category:  AttachmentCategory,
+  text:      string,
   truncated: boolean,
-  extra:    Omit<ParsedMeta, "truncated" | "charCount">,
+  extra:     Omit<ParsedMeta, "truncated" | "charCount">,
 ): NormalizedAttachment {
-  const charCount      = text.length;
+  const charCount       = text.length;
   const estimatedTokens = Math.ceil(charCount / 4);
   return {
     id:            att.id,
@@ -100,7 +103,7 @@ async function parseOne(
 ): Promise<NormalizedAttachment | ParseError> {
   const ext = att.extension.toLowerCase();
 
-  // ── Images: explicit 415 — no provider call, no text extraction ────────────
+  // ── Images: explicit 415 — no module load, no provider call ──────────────
   if (IMAGE_EXTENSIONS.has(ext)) {
     return parseError(
       "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET",
@@ -110,7 +113,7 @@ async function parseOne(
     );
   }
 
-  // ── XLS (legacy binary): explicit 415 — ExcelJS supports XLSX only ─────────
+  // ── XLS (legacy binary): explicit 415 — ExcelJS supports XLSX only ───────
   if (ext === "xls") {
     return parseError(
       "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET",
@@ -128,7 +131,7 @@ async function parseOne(
     return parseError("ATTACHMENT_PARSE_FAILED", "Contenu de la pièce jointe corrompu.", 400);
   }
 
-  // ── TXT / MD ──────────────────────────────────────────────────────────────
+  // ── TXT / MD (pure JS — no heavy deps) ────────────────────────────────────
   if (ext === "txt" || ext === "md") {
     const r = parseTextBuffer(buf, limits.maxCharsPerAttachment);
     if ("error" in r) {
@@ -141,7 +144,7 @@ async function parseOne(
     return buildNormalized(att, "text", r.text, r.truncated, {});
   }
 
-  // ── JSON ──────────────────────────────────────────────────────────────────
+  // ── JSON (pure JS — no heavy deps) ───────────────────────────────────────
   if (ext === "json") {
     const r = parseJsonBuffer(buf, limits.maxJsonDepth, limits.maxCharsPerAttachment);
     if ("error" in r) {
@@ -152,16 +155,12 @@ async function parseOne(
           400,
         );
       }
-      return parseError(
-        "ATTACHMENT_JSON_INVALID",
-        "Le fichier JSON est invalide (syntaxe incorrecte).",
-        400,
-      );
+      return parseError("ATTACHMENT_JSON_INVALID", "Le fichier JSON est invalide (syntaxe incorrecte).", 400);
     }
     return buildNormalized(att, "json", r.text, r.truncated, {});
   }
 
-  // ── CSV ───────────────────────────────────────────────────────────────────
+  // ── CSV (PapaParse — lightweight, static import) ──────────────────────────
   if (ext === "csv") {
     const r = parseCsvBuffer(
       buf,
@@ -178,8 +177,9 @@ async function parseOne(
     return buildNormalized(att, "csv", r.text, r.truncated, { rowCount: r.totalRows });
   }
 
-  // ── XLSX ─────────────────────────────────────────────────────────────────
+  // ── XLSX (ExcelJS — lazy-loaded) ─────────────────────────────────────────
   if (ext === "xlsx") {
+    const { parseSpreadsheetBuffer } = await import("./file-parsers/spreadsheet-parser.js");
     const r = await parseSpreadsheetBuffer(
       buf,
       limits.maxSpreadsheetSheets,
@@ -188,6 +188,9 @@ async function parseOne(
       limits.maxCharsPerAttachment,
     );
     if ("error" in r) {
+      if (r.error === "ATTACHMENT_PARSER_UNAVAILABLE") {
+        return parseError("ATTACHMENT_PARSER_UNAVAILABLE", "Le parser XLSX est temporairement indisponible.", 503);
+      }
       if (r.error === "ATTACHMENT_SPREADSHEET_EMPTY") {
         return parseError("ATTACHMENT_SPREADSHEET_EMPTY", "Le classeur XLSX ne contient aucune donnée.", 422);
       }
@@ -201,10 +204,14 @@ async function parseOne(
     });
   }
 
-  // ── DOCX ──────────────────────────────────────────────────────────────────
+  // ── DOCX (mammoth — lazy-loaded) ─────────────────────────────────────────
   if (ext === "docx") {
+    const { parseDocxBuffer } = await import("./file-parsers/docx-parser.js");
     const r = await parseDocxBuffer(buf, limits.maxCharsPerAttachment);
     if ("error" in r) {
+      if (r.error === "ATTACHMENT_PARSER_UNAVAILABLE") {
+        return parseError("ATTACHMENT_PARSER_UNAVAILABLE", "Le parser DOCX est temporairement indisponible.", 503);
+      }
       if (r.error === "ATTACHMENT_DOCX_EMPTY") {
         return parseError("ATTACHMENT_DOCX_EMPTY", "Le document Word est vide.", 422);
       }
@@ -213,10 +220,14 @@ async function parseOne(
     return buildNormalized(att, "docx", r.text, r.truncated, {});
   }
 
-  // ── PDF ───────────────────────────────────────────────────────────────────
+  // ── PDF (pdf-parse — lazy-loaded) ────────────────────────────────────────
   if (ext === "pdf") {
+    const { parsePdfBuffer } = await import("./file-parsers/pdf-parser.js");
     const r = await parsePdfBuffer(buf, limits.maxPdfPages, limits.maxCharsPerAttachment);
     if ("error" in r) {
+      if (r.error === "ATTACHMENT_PARSER_UNAVAILABLE") {
+        return parseError("ATTACHMENT_PARSER_UNAVAILABLE", "Le parser PDF est temporairement indisponible.", 503);
+      }
       if (r.error === "ATTACHMENT_PDF_ENCRYPTED") {
         return parseError("ATTACHMENT_PDF_ENCRYPTED", "Le PDF est protégé par mot de passe.", 422);
       }
@@ -233,11 +244,7 @@ async function parseOne(
   }
 
   // ── Unknown ───────────────────────────────────────────────────────────────
-  return parseError(
-    "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET",
-    `Format non supporté : .${ext}`,
-    415,
-  );
+  return parseError("ATTACHMENT_FORMAT_NOT_SUPPORTED_YET", `Format non supporté : .${ext}`, 415);
 }
 
 // ── Main orchestrator ─────────────────────────────────────────────────────────
@@ -246,8 +253,9 @@ async function parseOne(
  * Parse all resolved attachments sequentially.
  *
  * Returns NormalizedAttachment[] on success.
- * Returns ParseError (first failure) on any parse error — no credits are debited.
+ * Returns ParseError (first failure) on any error — no credits are debited.
  * Enforces the total extracted-character budget across all attachments.
+ * Parser module load failures return HTTP 503 — the process never crashes.
  */
 export async function parseAIAttachments(
   attachments: ResolvedAIAttachment[],
@@ -261,7 +269,7 @@ export async function parseAIAttachments(
 
     if ("code" in r) {
       logger.warn(
-        { attachmentId: att.id, ext: att.extension, code: r.code },
+        { attachmentId: att.id, ext: att.extension, code: r.code, httpStatus: r.httpStatus },
         "[AIParser] attachment parse failed",
       );
       return r;
@@ -298,16 +306,13 @@ const SECURITY_WARNING =
 
 /**
  * Build the <flowpoint_attachments> XML block to append to the system prompt.
- * Content is clearly delimited and preceded by a security warning.
  */
 export function buildAttachmentContextBlock(attachments: NormalizedAttachment[]): string {
   if (attachments.length === 0) return "";
-
   const blocks = attachments.map(a => {
     const attrs = `id="${a.id}" name="${a.name}" type="${a.category}"`;
     return `<attachment ${attrs}>\n${a.extractedText}\n</attachment>`;
   });
-
   return (
     "\n\n<flowpoint_attachments>\n" +
     SECURITY_WARNING + "\n" +

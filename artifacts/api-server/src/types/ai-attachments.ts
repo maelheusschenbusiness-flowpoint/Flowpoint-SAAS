@@ -61,10 +61,11 @@ export type ParseErrorCode =
   | "ATTACHMENT_DOCX_EMPTY"
   | "ATTACHMENT_EXTRACTED_CONTENT_TOO_LARGE"
   | "ATTACHMENT_PDF_NO_EXTRACTABLE_TEXT"
-  | "ATTACHMENT_PDF_ENCRYPTED";
+  | "ATTACHMENT_PDF_ENCRYPTED"
+  | "ATTACHMENT_PARSER_UNAVAILABLE";
 
 export type ParseError = {
   code:       ParseErrorCode;
   message:    string;
-  httpStatus: 400 | 413 | 415 | 422;
+  httpStatus: 400 | 413 | 415 | 422 | 503;
 };
