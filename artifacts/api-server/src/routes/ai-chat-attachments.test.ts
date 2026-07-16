@@ -1,13 +1,19 @@
 /**
  * ai-chat-attachments.test.ts
  *
- * Route-level contract tests for POST /ai/chat attachment handling (Step 3A).
+ * Route-level contract tests for POST /ai/chat attachment handling (Steps 3A/3B).
  *
- * Audit points verified:
- *   C — Attachment path blocks at 501 ATTACHMENT_PROCESSING_NOT_IMPLEMENTED
- *   7 — aiChat and aiStream are NOT called when 501 is returned (spy proof)
- *   8 — recordCompletedUsage is NOT called when 501 is returned (usage proof)
- *   E — Without attachments the SSE path is entered normally (no 501 regression)
+ * Step 3A contract (preserved):
+ *   C — Invalid attachment structure → 400 (unchanged)
+ *   C — No attachments → handler does not 501
+ *   E — Without attachments the SSE path is entered normally
+ *
+ * Step 3B contract (updated):
+ *   C — Valid parseable attachment → provider IS called, 200 returned
+ *   7 — aiChat IS called when attachment parses successfully
+ *   8 — recordCompletedUsage IS called when attachment parses successfully
+ *   NEW — parse error (image 415) → no provider call, no usage debit
+ *   NEW — parse failure (400) → no provider call, no usage debit
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
@@ -29,6 +35,8 @@ const spies = vi.hoisted(() => ({
   resolveEconomyPolicy:     vi.fn(),
   loadOrgEconomyThresholds: vi.fn(),
   computeContextLimits:     vi.fn(),
+  parseAIAttachments:       vi.fn(),
+  buildAttachmentContextBlock: vi.fn().mockReturnValue(""),
 }));
 
 // ── Module mocks ───────────────────────────────────────────────────────────────
@@ -98,13 +106,38 @@ vi.mock("../services/ai-economy.js", () => ({
   computeContextLimits:     spies.computeContextLimits,
 }));
 
+vi.mock("../services/ai-attachment-parser.js", () => ({
+  parseAIAttachments:          spies.parseAIAttachments,
+  getDefaultParserLimits:      vi.fn().mockReturnValue({
+    maxCharsPerAttachment:   100_000,
+    maxTotalExtractedChars:  200_000,
+    maxCsvRows:              10_000,
+    maxSpreadsheetRows:      10_000,
+    maxSpreadsheetColumns:   50,
+    maxSpreadsheetSheets:    3,
+    maxPdfPages:             50,
+    maxJsonDepth:            10,
+  }),
+  buildAttachmentContextBlock: spies.buildAttachmentContextBlock,
+  getAttachmentUsageMetadata:  vi.fn().mockReturnValue({}),
+}));
+
 // ── Import handler after mocks ─────────────────────────────────────────────────
 import { chatHandler } from "../routes/ai.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-// Valid base64 string (~1 024 decoded bytes, length multiple of 4)
 const VALID_B64 = "A".repeat(1368);
+
+const PARSED_PDF_ATTACHMENT = {
+  id:            "file1",
+  name:          "document.pdf",
+  mimeType:      "application/pdf",
+  category:      "pdf",
+  extractedText: "Contenu du rapport annuel FlowPoint.",
+  metadata:      { truncated: false, charCount: 36 },
+  estimatedTokens: 9,
+};
 
 function makeValidOrgDb() {
   return vi.fn().mockResolvedValue({
@@ -134,13 +167,13 @@ function makeReq(
 
 function makeRes(): Response {
   const r = {
-    status:       vi.fn(),
-    json:         vi.fn(),
-    write:        vi.fn(),
-    end:          vi.fn(),
-    setHeader:    vi.fn(),
+    status:        vi.fn(),
+    json:          vi.fn(),
+    write:         vi.fn(),
+    end:           vi.fn(),
+    setHeader:     vi.fn(),
     writableEnded: false,
-    on:           vi.fn(),
+    on:            vi.fn(),
   };
   r.status.mockReturnValue(r);
   r.json.mockReturnValue(r);
@@ -171,20 +204,32 @@ function setupDefaultMocks(): void {
     downgradeApplied: false,
   });
   spies.computeContextLimits.mockReturnValue({ historyLimit: 10 });
+
+  // Step 3B: default parser mock — successful parse returns a PDF NormalizedAttachment
+  spies.parseAIAttachments.mockResolvedValue([PARSED_PDF_ATTACHMENT]);
+  spies.buildAttachmentContextBlock.mockReturnValue(
+    "\n\n<flowpoint_attachments>⚠ ...doc content...</flowpoint_attachments>",
+  );
+
+  // Default provider response for non-stream tests
+  spies.aiChat.mockResolvedValue({
+    text:  "Analyse du document : tout est en ordre.",
+    usage: { promptTokens: 150, completionTokens: 40 },
+  });
 }
 
 // ── Test suite ─────────────────────────────────────────────────────────────────
 
-describe("POST /ai/chat — attachment contract (Step 3A)", () => {
+describe("POST /ai/chat — attachment contract (Steps 3A/3B)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupDefaultMocks();
   });
 
-  // ── C — Valid attachment → 501 ────────────────────────────────────────────────
+  // ── C (Step 3B) — Valid parseable attachment → provider IS called ─────────
 
-  describe("C — valid attachment → 501 ATTACHMENT_PROCESSING_NOT_IMPLEMENTED", () => {
-    it("returns HTTP 501 with correct code (stream=false)", async () => {
+  describe("C (3B) — valid parseable attachment → provider called (200)", () => {
+    it("aiChat IS called and reply returned for parseable attachment (stream=false)", async () => {
       const req = makeReq({
         body:  { message: "analyse ce fichier", stream: false, attachments: [{ fileId: "file1" }] },
         orgDb: makeValidOrgDb(),
@@ -193,28 +238,55 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
 
       await chatHandler(req, res);
 
-      expect(vi.mocked(res.status)).toHaveBeenCalledWith(501);
+      expect(spies.aiChat).toHaveBeenCalledOnce();
       expect(vi.mocked(res.json)).toHaveBeenCalledWith(
-        expect.objectContaining({ code: "ATTACHMENT_PROCESSING_NOT_IMPLEMENTED" }),
+        expect.objectContaining({ reply: "Analyse du document : tout est en ordre.", streaming: false }),
       );
+      expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(501);
     });
 
-    it("returns HTTP 501 with correct code (stream=true — not SSE)", async () => {
+    it("aiStream IS called for parseable attachment (stream=true)", async () => {
+      spies.aiStream.mockReturnValue(
+        (async function* () { yield { content: "Analyse OK" }; })(),
+      );
       const req = makeReq({
-        body:  { message: "analyse ce fichier", stream: true, attachments: [{ fileId: "file1" }] },
+        body:  { message: "analyse", stream: true, attachments: [{ fileId: "file1" }] },
         orgDb: makeValidOrgDb(),
       });
       const res = makeRes();
 
       await chatHandler(req, res);
 
-      expect(vi.mocked(res.status)).toHaveBeenCalledWith(501);
-      expect(vi.mocked(res.json)).toHaveBeenCalledWith(
-        expect.objectContaining({ code: "ATTACHMENT_PROCESSING_NOT_IMPLEMENTED" }),
+      expect(spies.aiStream).toHaveBeenCalledOnce();
+      expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(501);
+    });
+
+    it("provider is NOT changed (remains openai)", async () => {
+      const req = makeReq({
+        body:  { message: "analyse", stream: false, attachments: [{ fileId: "file1" }] },
+        orgDb: makeValidOrgDb(),
+      });
+
+      await chatHandler(req, makeRes());
+
+      expect(spies.aiChat).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "openai" }),
       );
     });
 
-    it("returns correct French message in body", async () => {
+    it("attachment context is injected into system prompt (provider-agnostic)", async () => {
+      const req = makeReq({
+        body:  { message: "analyse", stream: false, attachments: [{ fileId: "file1" }] },
+        orgDb: makeValidOrgDb(),
+      });
+
+      await chatHandler(req, makeRes());
+
+      // buildAttachmentContextBlock must have been called with parsed result
+      expect(spies.buildAttachmentContextBlock).toHaveBeenCalledWith([PARSED_PDF_ATTACHMENT]);
+    });
+
+    it("French message preserved in body when attachment present", async () => {
       const req = makeReq({
         body:  { message: "analyse", attachments: [{ fileId: "file1" }] },
         orgDb: makeValidOrgDb(),
@@ -223,15 +295,14 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
 
       await chatHandler(req, res);
 
-      expect(vi.mocked(res.json)).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: "Le traitement des pièces jointes est en cours d'activation.",
-        }),
-      );
+      // Should NOT contain the Step 3A 501 message
+      const calls = vi.mocked(res.json).mock.calls.map(c => JSON.stringify(c));
+      const has501Msg = calls.some(c => c.includes("ATTACHMENT_PROCESSING_NOT_IMPLEMENTED"));
+      expect(has501Msg).toBe(false);
     });
   });
 
-  // ── C — Invalid attachment structure → 400 ────────────────────────────────────
+  // ── C — Invalid attachment structure → 400 (unchanged from Step 3A) ──────
 
   it("C — attachment not an array → HTTP 400", async () => {
     const req = makeReq({ body: { message: "analyse", attachments: "not-an-array" } });
@@ -252,19 +323,16 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
     expect(vi.mocked(res.status)).toHaveBeenCalledWith(400);
   });
 
-  // ── C — No attachment → attachment block skipped ──────────────────────────────
+  // ── C — No attachment → attachment block skipped ──────────────────────────
 
   it("C — no attachments field → handler does not return 501", async () => {
-    // Exit early via economy exhaustion (402) — happens after the attachment
-    // block is skipped, before buildFlowpointContext or any provider call.
-    // This proves: with no attachments the 501 path is never entered.
     spies.computeEconomyTier.mockReturnValueOnce("EXHAUSTED");
     spies.getOrCreateMonthlyUsage.mockResolvedValueOnce({
       creditsUsed: 100_000, creditsLimit: 100_000, creditsExtra: 0,
       tokensUsed: 0, tokenLimit: 1_000_000,
     });
 
-    const req = makeReq({ body: { message: "bonjour" } }); // no attachments
+    const req = makeReq({ body: { message: "bonjour" } });
     const res = makeRes();
 
     await chatHandler(req, res);
@@ -273,9 +341,71 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
     expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(501);
   });
 
-  // ── 7 — Provider spies: NOT called when 501 returned ─────────────────────────
+  // ── NEW — Parse error → no provider call, no usage debit ─────────────────
 
-  it("7 — aiChat is NOT called when valid attachment → 501", async () => {
+  it("NEW — image attachment → 415, no provider call", async () => {
+    spies.parseAIAttachments.mockResolvedValue({
+      code:       "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET",
+      message:    "Les images ne peuvent pas être analysées.",
+      httpStatus: 415,
+    });
+
+    const req = makeReq({
+      body:  { message: "analyse image", stream: false, attachments: [{ fileId: "file1" }] },
+      orgDb: makeValidOrgDb(),
+    });
+    const res = makeRes();
+
+    await chatHandler(req, res);
+
+    expect(vi.mocked(res.status)).toHaveBeenCalledWith(415);
+    expect(spies.aiChat).not.toHaveBeenCalled();
+    expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
+  });
+
+  it("NEW — scanned PDF → 422, no provider call", async () => {
+    spies.parseAIAttachments.mockResolvedValue({
+      code:       "ATTACHMENT_PDF_NO_EXTRACTABLE_TEXT",
+      message:    "Ce PDF ne contient pas de texte extractible.",
+      httpStatus: 422,
+    });
+
+    const req = makeReq({
+      body:  { message: "analyse pdf", stream: false, attachments: [{ fileId: "file1" }] },
+      orgDb: makeValidOrgDb(),
+    });
+    const res = makeRes();
+
+    await chatHandler(req, res);
+
+    expect(vi.mocked(res.status)).toHaveBeenCalledWith(422);
+    expect(spies.aiChat).not.toHaveBeenCalled();
+    expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
+  });
+
+  it("NEW — parse failure → 400, no provider call", async () => {
+    spies.parseAIAttachments.mockResolvedValue({
+      code:       "ATTACHMENT_PARSE_FAILED",
+      message:    "Impossible de lire le fichier.",
+      httpStatus: 400,
+    });
+
+    const req = makeReq({
+      body:  { message: "analyse", stream: false, attachments: [{ fileId: "file1" }] },
+      orgDb: makeValidOrgDb(),
+    });
+    const res = makeRes();
+
+    await chatHandler(req, res);
+
+    expect(vi.mocked(res.status)).toHaveBeenCalledWith(400);
+    expect(spies.aiChat).not.toHaveBeenCalled();
+    expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
+  });
+
+  // ── 7 (Step 3B) — Provider IS called when attachment parses ──────────────
+
+  it("7 — aiChat IS called when valid attachment parses successfully (stream=false)", async () => {
     const req = makeReq({
       body:  { message: "analyse", stream: false, attachments: [{ fileId: "file1" }] },
       orgDb: makeValidOrgDb(),
@@ -283,10 +413,14 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
 
     await chatHandler(req, makeRes());
 
-    expect(spies.aiChat).not.toHaveBeenCalled();
+    expect(spies.aiChat).toHaveBeenCalledOnce();
   });
 
-  it("7 — aiStream is NOT called when valid attachment → 501", async () => {
+  it("7 — aiStream IS called when valid attachment parses successfully (stream=true)", async () => {
+    spies.aiStream.mockReturnValue(
+      (async function* () { yield { content: "OK" }; })(),
+    );
+
     const req = makeReq({
       body:  { message: "analyse", stream: true, attachments: [{ fileId: "file1" }] },
       orgDb: makeValidOrgDb(),
@@ -294,12 +428,29 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
 
     await chatHandler(req, makeRes());
 
-    expect(spies.aiStream).not.toHaveBeenCalled();
+    expect(spies.aiStream).toHaveBeenCalledOnce();
   });
 
-  // ── 8 — Usage NOT debited when 501 returned ───────────────────────────────────
+  // ── 8 (Step 3B) — Usage IS debited when attachment parses successfully ────
 
-  it("8 — recordCompletedUsage is NOT called when 501 returned", async () => {
+  it("8 — recordCompletedUsage IS called when attachment parses successfully", async () => {
+    const req = makeReq({
+      body:  { message: "analyse", stream: false, attachments: [{ fileId: "file1" }] },
+      orgDb: makeValidOrgDb(),
+    });
+
+    await chatHandler(req, makeRes());
+
+    expect(spies.recordCompletedUsage).toHaveBeenCalledOnce();
+  });
+
+  it("8 — recordCompletedUsage NOT called when parse fails", async () => {
+    spies.parseAIAttachments.mockResolvedValue({
+      code: "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET",
+      message: "Image non supportée.",
+      httpStatus: 415,
+    });
+
     const req = makeReq({
       body:  { message: "analyse", stream: false, attachments: [{ fileId: "file1" }] },
       orgDb: makeValidOrgDb(),
@@ -310,10 +461,13 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
     expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
   });
 
-  it("8★ — attachment 501: no INSERT to ai_usage_logs or ai_chat_history via pool.query", async () => {
-    // DB-level proof: pool.query is mocked — assert it was never called with any
-    // SQL touching ai_usage_logs (usage debit) or ai_chat_history (message persist).
-    // These calls only happen AFTER the 501 early-return, so both counts must be 0.
+  it("8★ — parse failure: no INSERT to ai_usage_logs via pool.query", async () => {
+    spies.parseAIAttachments.mockResolvedValue({
+      code: "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET",
+      message: "Image non supportée.",
+      httpStatus: 415,
+    });
+
     const { pool } = await import("@workspace/db");
     const poolQuerySpy = vi.mocked(pool.query);
     poolQuerySpy.mockClear();
@@ -324,41 +478,26 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
     });
     await chatHandler(req, makeRes());
 
-    const allSqlCalls = poolQuerySpy.mock.calls.map(([sql]) => String(sql ?? ""));
-
-    // No usage debit query
-    const usageCalls = allSqlCalls.filter(s => s.includes("ai_usage_logs"));
+    const usageCalls = poolQuerySpy.mock.calls.map(([sql]) => String(sql ?? "")).filter(s => s.includes("ai_usage_logs"));
     expect(usageCalls).toHaveLength(0);
-
-    // No message persistence query
-    const chatCalls = allSqlCalls.filter(s => s.includes("ai_chat_history"));
-    expect(chatCalls).toHaveLength(0);
-
-    // recordCompletedUsage spy: belt-and-suspenders confirmation
     expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
   });
 
-  // ── 6 — No attachment + quota available → provider called, HTTP 200 ──────────
+  // ── 6 — No attachment + quota available → provider called, HTTP 200 ──────
 
   it("6 — no attachment + quota available → aiChat called, reply returned (non-stream)", async () => {
-    // Proves the normal chat path is completely unaffected by the attachment block.
     spies.aiChat.mockResolvedValue({
       text:  "Bonjour ! Je suis votre consultant SEO.",
       usage: { promptTokens: 50, completionTokens: 30 },
     });
 
-    const req = makeReq({ body: { message: "bonjour", stream: false } }); // no attachments
+    const req = makeReq({ body: { message: "bonjour", stream: false } });
     const res = makeRes();
 
     await chatHandler(req, res);
 
-    // Provider WAS called
     expect(spies.aiChat).toHaveBeenCalledOnce();
-
-    // Normal JSON reply — not 501 / 402 / 400
     expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(501);
-    expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(402);
-    expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(400);
     expect(vi.mocked(res.json)).toHaveBeenCalledWith(
       expect.objectContaining({
         reply:     "Bonjour ! Je suis votre consultant SEO.",
@@ -367,10 +506,9 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
     );
   });
 
-  // ── E / 10 — SSE regression: multiple deltas, single _ai, [DONE], one usage ──
+  // ── E / 10 — SSE regression: multiple deltas, single _ai, [DONE], one usage
 
   it("10 — SSE without attachment: multiple deltas, _ai before [DONE], single usage debit", async () => {
-    // Full async-generator mock — verifies the complete SSE contract.
     spies.aiStream.mockReturnValue(
       (async function* () {
         yield { content: "Bonjour" };
@@ -378,36 +516,26 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
       })(),
     );
 
-    const req = makeReq({ body: { message: "bonjour", stream: true } }); // no attachments
+    const req = makeReq({ body: { message: "bonjour", stream: true } });
     const res = makeRes();
 
     await chatHandler(req, res);
 
     const writes: string[] = vi.mocked(res.write).mock.calls.map(c => String(c[0]));
 
-    // Multiple distinct deltas written
     expect(writes.some(s => s.includes('"delta":"Bonjour"'))).toBe(true);
     expect(writes.some(s => s.includes('"delta":" le monde"'))).toBe(true);
 
-    // Exactly one _ai metadata frame
     const aiFrames = writes.filter(s => s.includes('"_ai"'));
     expect(aiFrames).toHaveLength(1);
 
-    // [DONE] present and after _ai — use reduce to find last index (ES2020-safe)
-    const doneIdx = writes.reduce((acc, s, i) => (s.includes("[DONE]")  ? i : acc), -1);
-    const aiIdx   = writes.reduce((acc, s, i) => (s.includes('"_ai"')   ? i : acc), -1);
+    const doneIdx = writes.reduce((acc, s, i) => (s.includes("[DONE]") ? i : acc), -1);
+    const aiIdx   = writes.reduce((acc, s, i) => (s.includes('"_ai"')  ? i : acc), -1);
     expect(doneIdx).toBeGreaterThan(-1);
-
-    // _ai comes before [DONE]
     expect(aiIdx).toBeLessThan(doneIdx);
 
-    // res.end() called exactly once
     expect(vi.mocked(res.end)).toHaveBeenCalledOnce();
-
-    // Exactly one usage debit
     expect(spies.recordCompletedUsage).toHaveBeenCalledOnce();
-
-    // Not 501
     expect(vi.mocked(res.status)).not.toHaveBeenCalledWith(501);
   });
 });

@@ -263,6 +263,11 @@ export interface ContextLimits {
   psiLimit:     number;  // PSI cache records from DB
   kwDisplayLim: number;  // keywords shown in prompt
   historyLimit: number;  // chat history messages kept
+  // Step 3B — attachment parsing budgets (scaled by contextFactor)
+  attachmentCharLimit?:      number;  // max chars per single attachment
+  attachmentTotalCharLimit?: number;  // max total extracted chars
+  attachmentRowLimit?:       number;  // max rows for CSV / spreadsheet
+  attachmentSheetLimit?:     number;  // max sheets for spreadsheet
 }
 
 /**
@@ -287,6 +292,11 @@ export function computeContextLimits(contextFactor: number): ContextLimits {
     psiLimit:     Math.max(1, Math.round(5  * contextFactor)),
     kwDisplayLim: Math.max(2, Math.round(10 * contextFactor)),
     historyLimit: Math.max(2, Math.round(10 * contextFactor)),
+    // Step 3B — attachment parsing budgets
+    attachmentCharLimit:      Math.max(1_000, Math.round(100_000 * contextFactor)),
+    attachmentTotalCharLimit: Math.max(2_000, Math.round(200_000 * contextFactor)),
+    attachmentRowLimit:       Math.max(10,    Math.round(10_000  * contextFactor)),
+    attachmentSheetLimit:     3,
   };
 }
 

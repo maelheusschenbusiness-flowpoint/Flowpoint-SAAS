@@ -38,7 +38,13 @@ import {
   validateResolvedAttachments,
   type OrgDb,
 } from "../services/ai-attachments.js";
-import type { AIAttachmentReference } from "../types/ai-attachments.js";
+import {
+  parseAIAttachments,
+  getDefaultParserLimits,
+  buildAttachmentContextBlock,
+  getAttachmentUsageMetadata,
+} from "../services/ai-attachment-parser.js";
+import type { AIAttachmentReference, ResolvedAIAttachment, NormalizedAttachment } from "../types/ai-attachments.js";
 
 const router = Router();
 // Apply AI rate limit to all routes in this router (org-based, plan-aware)
@@ -623,8 +629,7 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
 
   // ── Resolve attachments from team_files (DB-scoped to org) ─────────────────
   // Runs after economy policy but BEFORE any provider call.
-  // No credits are debited: recordCompletedUsage is never reached when
-  // attachments are present (501 returned before adapter invocation — Step 3A).
+  let resolvedAttachments: ResolvedAIAttachment[] = [];
   if (attachmentRefs.length > 0) {
     const resolveResult = await resolveAIAttachments(req.orgDb as OrgDb, orgId, attachmentRefs);
     if ("code" in resolveResult) {
@@ -636,15 +641,23 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
       res.status(aggregateError.httpStatus).json({ ok: false, code: aggregateError.code, message: aggregateError.message });
       return;
     }
-    logger.info(
-      { requestId, orgId, attachmentCount: resolveResult.length },
-      "[AI] attachment processing not yet implemented — returning 501",
-    );
-    res.status(501).json({
-      code:    "ATTACHMENT_PROCESSING_NOT_IMPLEMENTED",
-      message: "Le traitement des pièces jointes est en cours d'activation.",
-    });
-    return;
+    resolvedAttachments = resolveResult;
+  }
+
+  // ── Parse attachments (Step 3B) ───────────────────────────────────────────
+  // Local text extraction — no provider call, no credit debit.
+  // On parse error: structured JSON response, no SSE, no usage write.
+  // Images (png/jpg/webp) → HTTP 415; scanned PDF → HTTP 422.
+  let parsedAttachments: NormalizedAttachment[] = [];
+  if (resolvedAttachments.length > 0) {
+    const parseLimits = getDefaultParserLimits(contextFactor);
+    const parseResult = await parseAIAttachments(resolvedAttachments, parseLimits);
+    if ("code" in parseResult) {
+      logger.warn({ requestId, orgId, code: parseResult.code }, "[AI] attachment parse failed");
+      res.status(parseResult.httpStatus).json({ ok: false, code: parseResult.code, message: parseResult.message });
+      return;
+    }
+    parsedAttachments = parseResult;
   }
 
   // 6. Build enriched _ai metadata — always tells the truth about what was used
@@ -669,10 +682,13 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     economyTier:      economyPolicy.economyTier,
     usagePercent:     Math.round(resolvedUsagePercent * 10) / 10,
     downgradeApplied: economyPolicy.downgradeApplied,
+    ...(parsedAttachments.length > 0
+      ? getAttachmentUsageMetadata(resolvedAttachments, parsedAttachments)
+      : {}),
   };
 
   const fpContext = await buildFlowpointContext(context, orgId, contextFactor);
-  const systemPrompt = `Tu es le consultant SEO senior intégré à FlowPoint. Tu connais déjà le site du client, ses scores, ses problèmes et son historique — tout est dans le contexte ci-dessous.
+  const systemPromptBase = `Tu es le consultant SEO senior intégré à FlowPoint. Tu connais déjà le site du client, ses scores, ses problèmes et son historique — tout est dans le contexte ci-dessous.
 Ton rôle : analyser les données réelles et répondre comme un expert qui a étudié le dossier avant la réunion.
 - Cite toujours les chiffres exacts du contexte (score, URL, position, nombre d'issues).
 - Formule des recommandations prioritaires numérotées avec impact estimé (+X pts) et temps estimé.
@@ -681,6 +697,11 @@ Ton rôle : analyser les données réelles et répondre comme un expert qui a é
 ${STRICT_AI_RULE}
 === DONNÉES RÉELLES DU COMPTE ===
 ${fpContext}`;
+
+  // Append parsed attachment content (Step 3B) — clearly delimited, security-prefixed.
+  const systemPrompt = parsedAttachments.length > 0
+    ? systemPromptBase + buildAttachmentContextBlock(parsedAttachments)
+    : systemPromptBase;
 
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
     { role: "system", content: systemPrompt },

@@ -4,3 +4,14 @@ export const AI_ATTACHMENT_LIMITS = {
   maxTotalSizeBytes:   20 * 1024 * 1024,
   maxFilenameLength:   200,
 } as const;
+
+export const AI_ATTACHMENT_PARSE_LIMITS = {
+  maxCharsPerAttachment:   100_000,
+  maxTotalExtractedChars:  200_000,
+  maxCsvRows:              10_000,
+  maxSpreadsheetRows:      10_000,
+  maxSpreadsheetColumns:   50,
+  maxSpreadsheetSheets:    3,
+  maxPdfPages:             50,
+  maxJsonDepth:            10,
+} as const;

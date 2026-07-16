@@ -26,3 +26,41 @@ export type AttachmentError = {
   message:    string;
   httpStatus: 400 | 404 | 413;
 };
+
+// ── Step 3B — Normalised attachment after local parsing ───────────────────────
+
+export type AttachmentCategory = "text" | "json" | "csv" | "spreadsheet" | "docx" | "pdf";
+
+export type NormalizedAttachment = {
+  id:            string;
+  name:          string;
+  mimeType:      string;
+  category:      AttachmentCategory;
+  extractedText: string;
+  metadata: {
+    pageCount?:   number;
+    sheetCount?:  number;
+    rowCount?:    number;
+    columnCount?: number;
+    truncated:    boolean;
+    charCount:    number;
+  };
+  estimatedTokens: number;
+};
+
+export type ParseErrorCode =
+  | "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET"
+  | "ATTACHMENT_PARSE_FAILED"
+  | "ATTACHMENT_JSON_INVALID"
+  | "ATTACHMENT_CSV_INVALID"
+  | "ATTACHMENT_EXTRACTED_CONTENT_TOO_LARGE"
+  | "ATTACHMENT_PDF_NO_EXTRACTABLE_TEXT"
+  | "ATTACHMENT_PDF_ENCRYPTED"
+  | "ATTACHMENT_DOCX_EMPTY"
+  | "ATTACHMENT_TABLE_EMPTY";
+
+export type ParseError = {
+  code:       ParseErrorCode;
+  message:    string;
+  httpStatus: 400 | 413 | 415 | 422;
+};
