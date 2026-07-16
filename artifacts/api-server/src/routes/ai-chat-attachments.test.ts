@@ -310,6 +310,34 @@ describe("POST /ai/chat — attachment contract (Step 3A)", () => {
     expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
   });
 
+  it("8★ — attachment 501: no INSERT to ai_usage_logs or ai_chat_history via pool.query", async () => {
+    // DB-level proof: pool.query is mocked — assert it was never called with any
+    // SQL touching ai_usage_logs (usage debit) or ai_chat_history (message persist).
+    // These calls only happen AFTER the 501 early-return, so both counts must be 0.
+    const { pool } = await import("@workspace/db");
+    const poolQuerySpy = vi.mocked(pool.query);
+    poolQuerySpy.mockClear();
+
+    const req = makeReq({
+      body:  { message: "analyse", stream: false, attachments: [{ fileId: "file1" }] },
+      orgDb: makeValidOrgDb(),
+    });
+    await chatHandler(req, makeRes());
+
+    const allSqlCalls = poolQuerySpy.mock.calls.map(([sql]) => String(sql ?? ""));
+
+    // No usage debit query
+    const usageCalls = allSqlCalls.filter(s => s.includes("ai_usage_logs"));
+    expect(usageCalls).toHaveLength(0);
+
+    // No message persistence query
+    const chatCalls = allSqlCalls.filter(s => s.includes("ai_chat_history"));
+    expect(chatCalls).toHaveLength(0);
+
+    // recordCompletedUsage spy: belt-and-suspenders confirmation
+    expect(spies.recordCompletedUsage).not.toHaveBeenCalled();
+  });
+
   // ── 6 — No attachment + quota available → provider called, HTTP 200 ──────────
 
   it("6 — no attachment + quota available → aiChat called, reply returned (non-stream)", async () => {

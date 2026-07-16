@@ -91,7 +91,7 @@ router.get("/team/files", async (req: Request, res: Response) => {
       `SELECT id, name, type, size, shared_by, created_at FROM team_files WHERE org_id=$1 ORDER BY created_at DESC LIMIT 200`,
       [getOrg(req)]
     );
-    res.json(r.rows.map(f => ({
+    res.json(r.rows.map((f: Record<string, unknown>) => ({
       id:        f.id,
       name:      f.name,
       type:      f.type,

@@ -365,6 +365,26 @@ describe("resolveAIAttachments", () => {
     expect((r as { code: string }).code).toBe("ATTACHMENT_TYPE_NOT_ALLOWED");
   });
 
+  it("F — rejects DOC (legacy Word format — explicitly excluded from AI allowlist)", async () => {
+    // application/msword is listed as excluded in the AI_ALLOWED_MIME comment.
+    // Only DOCX (application/vnd...wordprocessingml.document) is allowed.
+    const row = { id: "f1", org_id: "org1", name: "document.doc", type: "application/msword", size: 512, content: makeB64(512) };
+    const r = await resolveAIAttachments(makeOrgDb([row]), "org1", [{ fileId: "f1" }]);
+    expect(isError(r)).toBe(true);
+    expect((r as { code: string }).code).toBe("ATTACHMENT_TYPE_NOT_ALLOWED");
+    expect((r as { httpStatus: number }).httpStatus).toBe(400);
+  });
+
+  it("F — rejects PPTX (explicitly excluded from AI allowlist)", async () => {
+    // PowerPoint is in team-files allowlist but NOT in the AI pipeline allowlist.
+    const pptxMime = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    const row = { id: "f1", org_id: "org1", name: "deck.pptx", type: pptxMime, size: 512, content: makeB64(512) };
+    const r = await resolveAIAttachments(makeOrgDb([row]), "org1", [{ fileId: "f1" }]);
+    expect(isError(r)).toBe(true);
+    expect((r as { code: string }).code).toBe("ATTACHMENT_TYPE_NOT_ALLOWED");
+    expect((r as { httpStatus: number }).httpStatus).toBe(400);
+  });
+
   it("F — rejects extension/MIME mismatch (PDF extension + PNG MIME)", async () => {
     const row = { id: "f1", org_id: "org1", name: "file.pdf", type: "image/png", size: 512, content: makeB64(512) };
     const r = await resolveAIAttachments(makeOrgDb([row]), "org1", [{ fileId: "f1" }]);
@@ -434,6 +454,60 @@ describe("resolveAIAttachments", () => {
     ];
     const orgDb = makeOrgDb(rows);
     const r = await resolveAIAttachments(orgDb, "org1", [
+      { fileId: "f1" }, { fileId: "f2" }, { fileId: "f3" },
+    ]);
+    expect(isError(r)).toBe(true);
+    expect((r as { code: string }).code).toBe("ATTACHMENTS_TOTAL_TOO_LARGE");
+    expect((r as { httpStatus: number }).httpStatus).toBe(413);
+  });
+
+  // ── Exact boundary tests (Buffer-encoded, not approximations) ──────────────
+
+  it("H — accepts exactly 10 MB (Buffer.alloc(TEN_MB) decoded = 10 485 760 bytes)", async () => {
+    // Buffer.alloc(TEN_MB) produces exactly 10 485 760 bytes.
+    // Its base64 encoding has padCount=2 (TEN_MB%3=1).
+    // Exact formula: (b64.length*3)/4 - 2 = 10 485 760 = maxFileSizeBytes → NOT > limit → accepted.
+    const exactB64 = Buffer.alloc(MAX).toString("base64");
+    const row = { ...makePdfRow(), content: exactB64 };
+    const r = await resolveAIAttachments(makeOrgDb([row]), "org1", [{ fileId: "f123" }]);
+    expect(Array.isArray(r)).toBe(true);
+    expect((r as ResolvedAIAttachment[])[0]?.sizeBytes).toBe(MAX);
+  });
+
+  it("H — rejects 10 MB + 1 byte (Buffer.alloc(TEN_MB+1) decoded = 10 485 761 bytes)", async () => {
+    // 10 485 761 > 10 485 760 = maxFileSizeBytes → ATTACHMENT_TOO_LARGE 413.
+    const overB64 = Buffer.alloc(MAX + 1).toString("base64");
+    const row = { ...makePdfRow(), content: overB64 };
+    const r = await resolveAIAttachments(makeOrgDb([row]), "org1", [{ fileId: "f123" }]);
+    expect(isError(r)).toBe(true);
+    expect((r as { code: string }).code).toBe("ATTACHMENT_TOO_LARGE");
+    expect((r as { httpStatus: number }).httpStatus).toBe(413);
+  });
+
+  it("H — accepts cumulative total of exactly 20 MB (2 × TEN_MB)", async () => {
+    // 2 files of exactly 10 MB → total = 20 971 520 = maxTotalSizeBytes → NOT > limit → accepted.
+    const b64_10MB = Buffer.alloc(MAX).toString("base64");
+    const rows = [
+      { id: "f1", org_id: "org1", name: "a.pdf", type: "application/pdf", size: 0, content: b64_10MB },
+      { id: "f2", org_id: "org1", name: "b.pdf", type: "application/pdf", size: 0, content: b64_10MB },
+    ];
+    const r = await resolveAIAttachments(makeOrgDb(rows), "org1", [{ fileId: "f1" }, { fileId: "f2" }]);
+    expect(Array.isArray(r)).toBe(true);
+    const total = (r as ResolvedAIAttachment[]).reduce((s, f) => s + f.sizeBytes, 0);
+    expect(total).toBe(TOTAL_MAX);
+  });
+
+  it("H — rejects cumulative total of 20 MB + 1 byte (2 × TEN_MB + 1 byte)", async () => {
+    // File 1: 10 MB, File 2: 10 MB → running total = 20 MB (accepted).
+    // File 3: 1 byte → running total = 20 971 521 > 20 971 520 → ATTACHMENTS_TOTAL_TOO_LARGE 413.
+    const b64_10MB = Buffer.alloc(MAX).toString("base64");
+    const b64_1B   = Buffer.alloc(1).toString("base64");   // "AA==" — 1 decoded byte
+    const rows = [
+      { id: "f1", org_id: "org1", name: "a.pdf", type: "application/pdf", size: 0, content: b64_10MB },
+      { id: "f2", org_id: "org1", name: "b.pdf", type: "application/pdf", size: 0, content: b64_10MB },
+      { id: "f3", org_id: "org1", name: "c.pdf", type: "application/pdf", size: 0, content: b64_1B  },
+    ];
+    const r = await resolveAIAttachments(makeOrgDb(rows), "org1", [
       { fileId: "f1" }, { fileId: "f2" }, { fileId: "f3" },
     ]);
     expect(isError(r)).toBe(true);

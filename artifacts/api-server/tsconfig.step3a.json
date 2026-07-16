@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.vitest.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [],
+  "files": [
+    "src/config/ai-attachments.ts",
+    "src/types/ai-attachments.ts",
+    "src/lib/file-validation.ts",
+    "src/services/ai-attachments.ts",
+    "src/services/ai-attachments.test.ts",
+    "src/services/ai-attachments-db.test.ts",
+    "src/routes/team-files.ts",
+    "src/routes/team-files.test.ts"
+  ]
+}

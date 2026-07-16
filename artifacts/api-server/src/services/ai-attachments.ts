@@ -227,7 +227,11 @@ export async function resolveAIAttachments(
     }
 
     // ── Individual size (server-derived — never trust DB size column) ────────
-    const sizeBytes = Math.round(b64.length * 0.75);
+    // Exact decoded byte count per RFC 4648: (length*3/4) minus padding chars.
+    // b64 is valid at this point (isValidBase64 passed → length%4=0, padCount≤2).
+    // Math.round(0.75*len) overcounts by padCount; this formula is exact.
+    const padCount = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
+    const sizeBytes = (b64.length * 3) / 4 - padCount;
     if (sizeBytes > AI_ATTACHMENT_LIMITS.maxFileSizeBytes) {
       return attachmentError(
         "ATTACHMENT_TOO_LARGE",
