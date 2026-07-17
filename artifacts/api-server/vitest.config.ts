@@ -25,6 +25,7 @@ export default defineConfig({
       "src/routes/ai-chat-attachments.test.ts",
       "src/routes/team-files.test.ts",
       "src/routes/overview.test.ts",
+      "src/routes/growth-objectives.test.ts",
     ],
     environment: "node",
     globals:     false,

@@ -18354,6 +18354,55 @@ function growthRing(val, color, sz, sw, label, sub) {
   '</div>';
 }
 
+var _sparkUidCounter = 0;
+
+// ── Growth projection helper ────────────────────────────────────────────────
+// Returns {stepPerWeek, score30d, score60d, score90d, sampleSize} or null.
+// Requires at least 2 valid, dated audit-history points; never returns fabricated data.
+function computeGrowthProjection(auditHistory) {
+  if (!Array.isArray(auditHistory) || auditHistory.length < 2) return null;
+  var pts = auditHistory.map(function(h) { return Number(h.avg || h.score || 0); }).filter(function(v) { return Number.isFinite(v) && v > 0; });
+  if (pts.length < 2) return null;
+  var step = (pts[pts.length - 1] - pts[0]) / Math.max(1, pts.length - 1);
+  var last = pts[pts.length - 1];
+  return {
+    stepPerWeek: step,
+    score30d: Math.min(99, Math.round(last + step * 4)),
+    score60d: Math.min(99, Math.round(last + step * 8)),
+    score90d: Math.min(99, Math.round(last + step * 12)),
+    sampleSize: pts.length,
+  };
+}
+
+// Returns true only when the series has ≥2 valid numeric points.
+function hasValidTimeSeries(series) {
+  return Array.isArray(series) && series.length >= 2 &&
+    series.every(function(v) { return typeof v === 'number' && Number.isFinite(v); });
+}
+
+// Lazy-loads data required by the Growth Command Center that is not fetched
+// globally (keyword stats/opportunities + local-seo).  Fire-and-forget:
+// guards prevent duplicate requests; re-renders once data arrives.
+function loadGrowthData() {
+  var _needKw   = !(STATE.keywordData && STATE.keywordData.stats) && !STATE._growthKwLoading;
+  var _needLseo = !STATE.localSeo && !STATE._growthLseoLoading;
+  if (!_needKw && !_needLseo) return;
+  if (_needKw) {
+    STATE._growthKwLoading = true;
+    Promise.allSettled([
+      apiFetch('/api/keywords/stats').then(function(r) { STATE.keywordData = STATE.keywordData || {}; STATE.keywordData.stats = r || {}; }).catch(function() {}),
+      apiFetch('/api/keywords/opportunities').then(function(r) { STATE.keywordData = STATE.keywordData || {}; STATE.keywordData.opportunities = (r && r.opportunities) || []; }).catch(function() {}),
+    ]).then(function() { STATE._growthKwLoading = false; if (STATE.route === 'growth') render(); });
+  }
+  if (_needLseo) {
+    STATE._growthLseoLoading = true;
+    apiFetch('/api/local-seo')
+      .then(function(r) { if (r && typeof r === 'object') STATE.localSeo = r; })
+      .catch(function() {})
+      .finally(function() { STATE._growthLseoLoading = false; if (STATE.route === 'growth') render(); });
+  }
+}
+
 function miniSparkSvg(values, color, w, h) {
   w = w || 72; h = h || 26;
   const mn = Math.min.apply(null, values), mx = Math.max.apply(null, values), rng = mx - mn || 1;
@@ -18361,7 +18410,7 @@ function miniSparkSvg(values, color, w, h) {
     return (i / (values.length - 1) * w).toFixed(1) + ',' + (h - 3 - ((v - mn) / rng) * (h - 6)).toFixed(1);
   }).join(' ');
   const last = pts.split(' ').pop().split(',');
-  const uid = 'sg' + Math.random().toString(36).slice(2, 8);
+  const uid = 'sg' + (++_sparkUidCounter);
   return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" style="display:block;flex-shrink:0">' +
     '<defs><linearGradient id="' + uid + '" x1="0" y1="0" x2="0" y2="1">' +
       '<stop offset="0%" stop-color="' + color + '" stop-opacity="0.20"/>' +
@@ -18478,8 +18527,10 @@ function renderGrowthProjections() {
   </div>`;
   const _auditHP = ((STATE.overview && STATE.overview.auditHistory) || []).map(function(h){ return Number(h.avg || h.score || 0); });
   const past   = _auditHP.length >= 2 ? _auditHP.slice(-7) : Array(7).fill(avgSc);
-  const _stepRaw = past.length > 1 ? (past[past.length-1] - past[0]) / Math.max(1, past.length-1) : 0;
-  const _stepP = Math.max(0.5, Math.min(4, _stepRaw || 1.5));
+  // Use the same deterministic helper as Command Center — no synthetic fallback slope
+  const _projResult = computeGrowthProjection((STATE.overview && STATE.overview.auditHistory) || []);
+  const _stepRaw = _projResult ? _projResult.stepPerWeek : 0;
+  const _stepP = _projResult ? Math.max(0.5, Math.min(4, _stepRaw)) : 0;
   const _p30 = Math.round(_stepP*4), _p60 = Math.round(_stepP*8), _p90 = Math.round(_stepP*12);
   const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.min(99, avgSc + _stepP * i)); });
   const months = (function(){ const arr=[]; const now=new Date(); for(let i=1;i<=6;i++){ const d=new Date(now.getFullYear(), now.getMonth()+i, 1); const m=d.toLocaleDateString('fr-FR',{month:'short'}); arr.push(m.charAt(0).toUpperCase()+m.slice(1)+' '+d.getFullYear()); } return arr; })();
@@ -18781,8 +18832,11 @@ function renderGrowthObjectives() {
 function renderGrowthCommandCenter() {
   const avgSc = avgScore();
   const monitorsUp = STATE.monitors.filter(function(m){return m.status==='up'||m.status==='UP';}).length;
-  const monitorsTotal = STATE.monitors.length || 4;
-  const growthPts = Math.min(99, Math.round(avgSc * 0.55 + (STATE.audits.length||6) * 4 + (monitorsTotal>0?Math.round(monitorsUp/monitorsTotal*100)*0.15:14)));
+  const monitorsTotal = STATE.monitors.length;
+  // growthPts: uses real audit count only — never fabricates a count fallback
+  const growthPts = avgSc > 0
+    ? Math.min(99, Math.round(avgSc * 0.55 + STATE.audits.length * 4 + (monitorsTotal > 0 ? Math.round(monitorsUp / monitorsTotal * 100) * 0.15 : 0)))
+    : 0;
   const level = growthPts < 30 ? 1 : growthPts < 50 ? 2 : growthPts < 65 ? 3 : growthPts < 82 ? 4 : 5;
   const levelNames = ['Débutant','En croissance','Avancé','Expert','Élite'];
 
@@ -18791,29 +18845,39 @@ function renderGrowthCommandCenter() {
   const _kwOpps   = (STATE.keywordData && STATE.keywordData.opportunities) || [];
   const _lseo     = STATE.localSeo || {};
   const _comp1    = (STATE.competitors && STATE.competitors.length > 0) ? STATE.competitors[0] : null;
-  const _auditH   = ((STATE.overview && STATE.overview.auditHistory) || []).map(function(h){ return Number(h.avg || h.score || 0); });
-  // Sparklines depuis l'historique réel ou ligne plate
-  const sparkS = _auditH.length >= 7 ? _auditH.slice(-7) : Array(7).fill(avgSc);
-  const _avgStep = sparkS.length > 1 ? (sparkS[sparkS.length-1] - sparkS[0]) / Math.max(1, sparkS.length-1) : 0;
-  const _projStep = Math.max(0.5, Math.min(4, _avgStep || 1.5));
-  const sparkT = sparkS.map(function(v){ return Math.round(v * 38); });
-  const sparkL = sparkS.map(function(v){ return Math.round(v * 1.2); });
-  const sparkR = sparkS.map(function(v){ return Math.round(v * 20); });
-  // Prévision depuis la tendance réelle
-  const past   = sparkS;
-  const future = [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.min(99, avgSc + _projStep * (i+1))); });
-  // Données réelles pour le radar
-  const _mySpeed  = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce(function(s,a){ return s+(a.speed||a.score||0); },0)/STATE.audits.length) : null;
-  const _myLocal  = Math.min(99, _lseo.domScore || STATE.overview?.localScore || 0);
-  const _myAvis   = Math.min(99, Math.round((_lseo.avgRating||0)*20));
-  const _myContenu= Math.min(99, STATE.overview?.contentScore || Math.round(avgSc*0.85));
-  const _c1Score  = _comp1 ? Math.min(99, _comp1.score || _comp1.domainRating || 0) : null;
+  // Projection — requires ≥2 real historical data points; null if insufficient
+  const _proj = computeGrowthProjection((STATE.overview && STATE.overview.auditHistory) || []);
+  const _projStep = _proj ? Math.max(0.5, Math.min(4, _proj.stepPerWeek)) : 0;
+  // Sparklines : audit history only — no proxy on SEO score
+  const _auditH = ((STATE.overview && STATE.overview.auditHistory) || []).map(function(h){ return Number(h.avg || h.score || 0); });
+  const sparkS = _auditH.length >= 2 ? _auditH.slice(-7) : null;
+  // trafic / leads / revenu require real GA4 series — never fabricate from score
+  const sparkT = null; // requires GA4 traffic series
+  const sparkL = null; // requires GA4 conversion series
+  const sparkR = null; // requires GA4 revenue series
+  // Chart past/future: only when projection is valid
+  const past   = sparkS || Array(7).fill(avgSc);
+  const future = _proj
+    ? [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.min(99, avgSc + _projStep * (i+1))); })
+    : null;
+  // Données réelles pour le radar — null when a field is genuinely absent
+  const _mySpeed   = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce(function(s,a){ return s+(a.speed||a.score||0); },0)/STATE.audits.length) : null;
+  const _myLocal   = typeof _lseo.domScore === 'number' ? Math.min(99, _lseo.domScore)
+                   : (typeof STATE.overview?.localScore === 'number' ? Math.min(99, STATE.overview.localScore) : null);
+  const _myAvis    = typeof _lseo.avgRating === 'number' ? Math.min(99, Math.round(_lseo.avgRating * 20)) : null;
+  const _myContenu = typeof STATE.overview?.contentScore === 'number' ? Math.min(99, STATE.overview.contentScore) : null;
+  const _c1Score   = _comp1 ? Math.min(99, _comp1.score || _comp1.domainRating || 0) : null;
+  // Competitor radar: only use real backend fields — never ratio-derive from domain score
+  const _c1Speed   = _comp1 && typeof _comp1.speed === 'number' ? Math.min(99, _comp1.speed) : null;
+  const _c1Local   = _comp1 && typeof _comp1.localScore === 'number' ? Math.min(99, _comp1.localScore) : null;
+  const _c1Avis    = _comp1 && typeof _comp1.rating === 'number' ? Math.min(99, Math.round(_comp1.rating * 20)) : null;
+  const _c1Contenu = _comp1 && typeof _comp1.contentScore === 'number' ? Math.min(99, _comp1.contentScore) : null;
   const radarDims = [
-    {label:'SEO',    user:avgSc,         comp:_c1Score},
-    {label:'Vitesse',user:_mySpeed,       comp:_c1Score ? Math.round(_c1Score*0.9) : null},
-    {label:'Local',  user:_myLocal,       comp:_c1Score ? Math.round(_c1Score*0.85) : null},
-    {label:'Avis',   user:_myAvis,        comp:_c1Score ? Math.round(_c1Score*0.88) : null},
-    {label:'Contenu',user:_myContenu,     comp:_c1Score ? Math.round(_c1Score*0.92) : null},
+    {label:'SEO',    user:avgSc,      comp:_c1Score},
+    {label:'Vitesse',user:_mySpeed,   comp:_c1Speed},
+    {label:'Local',  user:_myLocal,   comp:_c1Local},
+    {label:'Avis',   user:_myAvis,    comp:_c1Avis},
+    {label:'Contenu',user:_myContenu, comp:_c1Contenu},
   ];
 
   const _gcRecs = window.FP_DATA && window.FP_DATA.cro && window.FP_DATA.cro.recommendations;
@@ -18995,7 +19059,7 @@ function renderGrowthCommandCenter() {
             <div class="fp-growth-hero-chips">
               ${STATE.overview?.scoreChange30d != null ? `<span class="fp-growth-chip ${STATE.overview.scoreChange30d>=0?'up':'down'}">${STATE.overview.scoreChange30d>=0?'↑ +':'↓ '}${Math.abs(STATE.overview.scoreChange30d)} pts ce mois</span>` : ''}
               ${STATE.overview?.sectorMultiplier != null ? `<span class="fp-growth-chip up">↑ ${STATE.overview.sectorMultiplier}× secteur</span>` : ''}
-              ${avgSc > 0 ? `<span class="fp-growth-chip ai">IA : ${Math.round(Math.min(99, avgSc + _projStep*4))}/100 en 30j</span>` : ''}
+              ${(_proj && avgSc > 0) ? `<span class="fp-growth-chip ai">IA : ${_proj.score30d}/100 en 30j</span>` : ''}
             </div>
           </div>
           <div class="fp-growth-comparison">
@@ -19005,7 +19069,7 @@ function renderGrowthCommandCenter() {
               if (STATE.overview?.scoreChange7d != null) rows.push(['7 jours', STATE.overview.scoreChange7d>=0?'up':'down', (STATE.overview.scoreChange7d>=0?'+':'')+STATE.overview.scoreChange7d+' pts']);
               if (STATE.overview?.scoreChange30d != null) rows.push(['30 jours', STATE.overview.scoreChange30d>=0?'up':'down', (STATE.overview.scoreChange30d>=0?'+':'')+STATE.overview.scoreChange30d+' pts']);
               if (STATE.overview?.sectorMultiplier != null) rows.push(['vs secteur', 'up', STATE.overview.sectorMultiplier+'×']);
-              rows.push(['Prévision 30j', 'ai', '+'+Math.round(_projStep*4)+' pts estimés']);
+              if (_proj) rows.push(['Prévision 30j', 'ai', '+'+Math.round(_projStep*4)+' pts estimés']);
               return rows.map(function(r) {
                 return '<div class="fp-growth-cmp-row"><span>'+r[0]+'</span><span class="val '+r[1]+'">'+r[2]+'</span></div>';
               }).join('');
@@ -19031,12 +19095,12 @@ function renderGrowthCommandCenter() {
         var _convR = STATE.overview?.conversionRate ?? null;
         var _leadsEst = (_trafficGain != null && _convR != null) ? Math.round(_trafficGain * _convR) : null;
         var _revMonth = STATE.overview?.revenue ?? null;
-        var _proj60 = Math.round(Math.min(99, avgSc + _projStep * 4));
+        var _proj60 = _proj ? _proj.score60d : null;
         var _items = [
-          {label:'Trafic gagnable',    val:_trafficGain,  suffix:'/mois',  sub:_trafficGain != null ? 'Basé sur mots-clés suivis' : 'Connectez vos mots-clés',  color:'var(--fp-accent)', spark:sparkT, na:_trafficGain==null},
-          {label:'Leads estimés',      val:_leadsEst,     suffix:'/mois',  sub:_leadsEst != null ? 'Taux conv. : '+((_convR||0)*100).toFixed(2)+'%' : 'Connectez analytics', color:'#22c55e', spark:sparkL, na:_leadsEst==null},
-          {label:'Revenu estimé',      val:_revMonth,     suffix:'€/mois', sub:_revMonth != null ? 'Depuis votre historique' : 'Connectez analytics',           color:'#8b5cf6', spark:sparkR, na:_revMonth==null},
-          {label:'Score IA prévu 60j', val:_proj60,       suffix:'/100',   sub:'Projection basée sur tendance réelle',                                          color:'#f59e0b', spark:sparkS, na:false},
+          {label:'Trafic gagnable',    val:_trafficGain,  suffix:'/mois',  sub:_trafficGain != null ? 'Basé sur mots-clés suivis' : 'Connectez vos mots-clés',  color:'var(--fp-accent)', spark:null, na:_trafficGain==null},
+          {label:'Leads estimés',      val:_leadsEst,     suffix:'/mois',  sub:_leadsEst != null ? 'Taux conv. : '+((_convR||0)*100).toFixed(2)+'%' : 'Connectez analytics', color:'#22c55e', spark:null, na:_leadsEst==null},
+          {label:'Revenu estimé',      val:_revMonth,     suffix:'€/mois', sub:_revMonth != null ? 'Depuis votre historique' : 'Connectez analytics',           color:'#8b5cf6', spark:null, na:_revMonth==null},
+          {label:'Score IA prévu 60j', val:_proj60,       suffix:'/100',   sub:_proj ? 'Projection basée sur tendance réelle' : 'Lancez 2 audits pour une projection', color:'#f59e0b', spark:sparkS, na:_proj60==null},
         ];
         return _items.map(function(item) { return '<div class="fp-growth-revenue-card">' +
           '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--fp-text-faint);margin-bottom:6px">'+item.label+'</div>' +
@@ -19047,7 +19111,7 @@ function renderGrowthCommandCenter() {
               '</div>' +
               '<div style="font-size:11px;color:var(--fp-text-muted);margin-top:3px">'+item.sub+'</div>' +
             '</div>' +
-            miniSparkSvg(item.spark, item.na ? 'rgba(148,163,184,0.3)' : item.color) +
+            (hasValidTimeSeries(item.spark) ? miniSparkSvg(item.spark, item.na ? 'rgba(148,163,184,0.3)' : item.color) : '<div style="width:72px;flex-shrink:0"></div>') +
           '</div>' +
           '<div class="fp-growth-rev-bar"><div style="width:'+(item.na?0:Math.min(100,Math.round((item.val||0)/Math.max(1,(item.val||0)*0.012+1))))+'%;background:'+item.color+';height:100%;border-radius:2px;transition:width 1.4s cubic-bezier(.4,0,.2,1)"></div></div>' +
         '</div>';
@@ -19167,13 +19231,16 @@ function renderGrowthCommandCenter() {
           <span style="font-size:11px;color:var(--fp-text-faint);display:flex;align-items:center;gap:5px"><span style="width:14px;height:2px;background:#22c55e;display:inline-block"></span>Projection IA</span>
         </div>
         <div class="fp-growth-fcast-stats">
-          ${[['30 jours',Math.min(99,avgSc+Math.round(_projStep*4)),'var(--fp-accent)','+'+Math.round(_projStep*4)+' pts'],['60 jours',Math.min(99,avgSc+Math.round(_projStep*8)),'#22c55e','+'+Math.round(_projStep*8)+' pts'],['90 jours',Math.min(99,avgSc+Math.round(_projStep*12)),'#8b5cf6','+'+Math.round(_projStep*12)+' pts']].map(([l,v,c,d])=>`
+          ${_proj
+            ? [['30 jours',_proj.score30d,'var(--fp-accent)','+'+Math.round(_projStep*4)+' pts'],['60 jours',_proj.score60d,'#22c55e','+'+Math.round(_projStep*8)+' pts'],['90 jours',_proj.score90d,'#8b5cf6','+'+Math.round(_projStep*12)+' pts']].map(([l,v,c,d])=>`
             <div class="fp-growth-fcast-stat">
               <div style="font-size:10px;color:var(--fp-text-faint)">Dans ${l}</div>
               <div style="font-size:18px;font-weight:800;color:${c};font-family:var(--fp-font-head);line-height:1.1">${v}<span style="font-size:11px">/100</span></div>
               <div style="font-size:10px;color:${c};margin-top:1px">${d} estimés</div>
             </div>
-          `).join('')}
+          `).join('')
+            : '<div style="text-align:center;padding:12px 0;color:var(--fp-text-faint);font-size:11px">Au moins 2 audits sont nécessaires pour générer une projection.</div>'
+          }
         </div>
         <button class="fp-btn fp-btn-primary fp-btn-sm" style="width:100%;margin-top:14px" onclick="STATE.subRoute='projections';render()">Projections détaillées →</button>
       </div>
@@ -19441,6 +19508,8 @@ function renderGrowth() {
       </div>
     </div>`;
   }
+  // Lazy-load keyword stats + local-seo needed by Command Center (fire-and-forget, deduped)
+  loadGrowthData();
   const sub = STATE.subRoute;
   if (sub === 'keywords')    return renderGrowthKeywords();
   if (sub === 'projections') return renderGrowthProjections();
@@ -19485,10 +19554,13 @@ function renderCompetitor() {
         kw:      c.keywords || 0, bl: 0, content: 0,
         threat:  (['critical','high','medium','low'].includes(c.threatLevel||'') ? c.threatLevel : 'low'),
       }))
-    : (PREVIEW_MODE ? _fbLetters.slice(0,3).map(l => ({
-        name: `Concurrent ${l}`, url: 'exemple.com', score: Math.floor(Math.random()*25)+55, speed: Math.floor(Math.random()*20)+60, reviews: 0, stars: 0,
-        local: false, auth: 0, traffic: 0, delta: 0, kw: 0, bl: 0, content: 0, threat: 'low',
-      })) : []);
+    : (PREVIEW_MODE ? _fbLetters.slice(0,3).map(function(l, _pi) { return {
+        name: 'Concurrent ' + l, url: 'exemple.com',
+        // Fixed constants — no Math.random() in Growth section
+        score: [65, 72, 58][_pi] !== undefined ? [65, 72, 58][_pi] : 65,
+        speed: [71, 68, 74][_pi] !== undefined ? [71, 68, 74][_pi] : 70,
+        reviews: 0, stars: 0, local: false, auth: 0, traffic: 0, delta: 0, kw: 0, bl: 0, content: 0, threat: 'low',
+      }; }) : []);
   const _latestAudit = STATE.audits && STATE.audits.length > 0 ? STATE.audits[STATE.audits.length-1] : null;
   const myScore   = _latestAudit?.score   ?? STATE.overview?.avgScore      ?? (PREVIEW_MODE ? 74   : null);
   const mySpeed   = _latestAudit?.speed   ?? STATE.overview?.avgSpeed      ?? (PREVIEW_MODE ? 84   : null);

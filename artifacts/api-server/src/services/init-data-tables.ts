@@ -652,6 +652,53 @@ export async function initDataTables(): Promise<void> {
       );
     `);
 
+    // ── growth_objectives ────────────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS growth_objectives (
+        id          TEXT        PRIMARY KEY,
+        org_id      TEXT        NOT NULL,
+        label       TEXT        NOT NULL,
+        target      NUMERIC     NOT NULL DEFAULT 0,
+        unit        TEXT        NOT NULL DEFAULT '',
+        deadline    TEXT        NOT NULL DEFAULT '',
+        next_action TEXT        NOT NULL DEFAULT '',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS growth_objectives_org_idx ON growth_objectives(org_id);`);
+
+    // ── seo_forecasts (with tenant isolation via org_id) ────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS seo_forecasts (
+        id                    TEXT        PRIMARY KEY,
+        org_id                TEXT        NOT NULL DEFAULT 'default',
+        site_url              TEXT        NOT NULL,
+        forecast_date         DATE        NOT NULL,
+        predicted_traffic     INT         NOT NULL DEFAULT 0,
+        predicted_conversions INT         NOT NULL DEFAULT 0,
+        predicted_revenue     NUMERIC     NOT NULL DEFAULT 0,
+        confidence            INT         NOT NULL DEFAULT 75,
+        scenario              TEXT        NOT NULL DEFAULT 'realistic',
+        generated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (org_id, site_url, forecast_date, scenario)
+      );
+    `);
+    // Additive migration: add org_id to existing rows that were inserted without it
+    await run(client, `ALTER TABLE seo_forecasts ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS seo_forecasts_org_site_idx ON seo_forecasts(org_id, site_url);`);
+    // Drop old unique constraint that lacks org_id (idempotent — no-op if already gone)
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'seo_forecasts_site_url_forecast_date_scenario_key'
+            AND conrelid = 'seo_forecasts'::regclass
+        ) THEN
+          ALTER TABLE seo_forecasts DROP CONSTRAINT seo_forecasts_site_url_forecast_date_scenario_key;
+        END IF;
+      END $$;
+    `);
+
     // ── Schema verification: log Present/Expected/Missing + auto-repair ─────────
     await verifyTeamMembersSchema(client);
 

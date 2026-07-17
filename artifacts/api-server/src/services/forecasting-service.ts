@@ -37,14 +37,23 @@ const EMPTY_FORECAST: ForecastData = {
   generatedAt: new Date().toISOString(),
 };
 
-export async function getForecastData(siteUrl?: string): Promise<ForecastData> {
+export interface GetForecastParams {
+  orgId: string;
+  siteUrl?: string;
+}
+
+/**
+ * Fetch forecast data scoped to the given organisation.
+ * orgId is always required — never rely on site_url alone for tenant isolation.
+ */
+export async function getForecastData({ orgId, siteUrl }: GetForecastParams): Promise<ForecastData> {
   const url = siteUrl ?? "default";
   try {
     const client = await pool.connect();
     try {
       const res = await client.query(
-        `SELECT * FROM seo_forecasts WHERE site_url=$1 ORDER BY forecast_date ASC LIMIT 90`,
-        [url]
+        `SELECT * FROM seo_forecasts WHERE org_id=$1 AND site_url=$2 ORDER BY forecast_date ASC LIMIT 90`,
+        [orgId, url]
       );
       if (res.rows.length > 0) {
         const forecasts: ForecastPoint[] = res.rows.map((r: Record<string, unknown>) => ({
@@ -70,7 +79,6 @@ export async function getForecastData(siteUrl?: string): Promise<ForecastData> {
             expectedTrafficIn90d:     realTraffic90,
             expectedConversionsIn30d: in30.reduce((s, f) => s + f.predictedConversions, 0),
             expectedRevenueIn90d:     in90.reduce((s, f) => s + f.predictedRevenue, 0),
-            // Confidence derived from average of stored confidence values
             confidenceScore: Math.round(
               realistic.slice(0, 30).reduce((s, f) => s + f.confidence, 0) / Math.max(in30.length, 1)
             ),
@@ -134,19 +142,19 @@ function buildComputedForecast(url: string): ForecastData {
   };
 }
 
-export async function generateForecasts(siteUrl: string): Promise<void> {
+export async function generateForecasts(orgId: string, siteUrl: string): Promise<void> {
   const forecast = buildComputedForecast(siteUrl);
   try {
     const client = await pool.connect();
     try {
       for (const f of forecast.forecasts) {
         await client.query(
-          `INSERT INTO seo_forecasts (id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, generated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-           ON CONFLICT (site_url, forecast_date, scenario) DO UPDATE SET
-             predicted_traffic=$4, predicted_conversions=$5, predicted_revenue=$6, confidence=$7, generated_at=NOW()`,
-          [`fc_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
-           siteUrl, f.date, f.predictedTraffic, f.predictedConversions, f.predictedRevenue, f.confidence, f.scenario]
+          `INSERT INTO seo_forecasts (id, org_id, site_url, forecast_date, predicted_traffic, predicted_conversions, predicted_revenue, confidence, scenario, generated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+           ON CONFLICT (org_id, site_url, forecast_date, scenario) DO UPDATE SET
+             predicted_traffic=$5, predicted_conversions=$6, predicted_revenue=$7, confidence=$8, generated_at=NOW()`,
+          [`fc_${orgId}_${siteUrl}_${f.date}_${f.scenario}`.replace(/[^a-z0-9_]/gi, "_").slice(0, 80),
+           orgId, siteUrl, f.date, f.predictedTraffic, f.predictedConversions, f.predictedRevenue, f.confidence, f.scenario]
         );
       }
     } finally { client.release(); }

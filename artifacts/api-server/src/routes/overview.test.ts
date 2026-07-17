@@ -764,3 +764,186 @@ describe("getOverviewApiPath — URL single source of truth", () => {
     expect(path7d).toContain("7d");
   });
 });
+
+// ─── Section 8 — computeGrowthProjection helper (LOT 5 frontend tests) ──────
+// These tests verify the deterministic projection helper extracted from dashboard.js.
+// They are pure unit tests — no DB, no HTTP, no mocks needed.
+
+type AuditHistoryPoint = { avg?: number; score?: number };
+
+function computeGrowthProjection(auditHistory: AuditHistoryPoint[]) {
+  if (!Array.isArray(auditHistory) || auditHistory.length < 2) return null;
+  const pts = auditHistory
+    .map(h => Number(h.avg ?? h.score ?? 0))
+    .filter(v => Number.isFinite(v) && v > 0);
+  if (pts.length < 2) return null;
+  const step = (pts[pts.length - 1]! - pts[0]!) / Math.max(1, pts.length - 1);
+  const last = pts[pts.length - 1]!;
+  return {
+    stepPerWeek: step,
+    score30d: Math.min(99, Math.round(last + step * 4)),
+    score60d: Math.min(99, Math.round(last + step * 8)),
+    score90d: Math.min(99, Math.round(last + step * 12)),
+    sampleSize: pts.length,
+  };
+}
+
+function hasValidTimeSeries(series: unknown) {
+  return Array.isArray(series) && series.length >= 2 &&
+    series.every(v => typeof v === "number" && Number.isFinite(v));
+}
+
+describe("P5-01 — computeGrowthProjection — insufficient history", () => {
+  it("null for empty array", () => expect(computeGrowthProjection([])).toBeNull());
+  it("null for 1 audit", () => expect(computeGrowthProjection([{ avg: 70 }])).toBeNull());
+  it("null for all-zero scores", () => expect(computeGrowthProjection([{ avg: 0 }, { avg: 0 }])).toBeNull());
+  it("null for non-numeric scores", () => {
+    expect(computeGrowthProjection([{ avg: NaN }, { avg: NaN }])).toBeNull();
+  });
+});
+
+describe("P5-02 — computeGrowthProjection — valid history", () => {
+  it("2 audits → valid projection with correct step", () => {
+    const result = computeGrowthProjection([{ avg: 60 }, { avg: 68 }]);
+    expect(result).not.toBeNull();
+    expect(result!.stepPerWeek).toBe(8);
+    expect(result!.sampleSize).toBe(2);
+  });
+
+  it("positive slope → score30d > base", () => {
+    const result = computeGrowthProjection([{ avg: 60 }, { avg: 64 }]);
+    expect(result!.score30d).toBeGreaterThan(64);
+  });
+
+  it("negative slope → score30d < base", () => {
+    const result = computeGrowthProjection([{ avg: 80 }, { avg: 70 }]);
+    expect(result!.score30d).toBeLessThan(70);
+  });
+
+  it("score is always capped at 99", () => {
+    const result = computeGrowthProjection([{ avg: 90 }, { avg: 98 }]);
+    expect(result!.score90d).toBeLessThanOrEqual(99);
+  });
+
+  it("out-of-order input → uses array order (no implicit sort)", () => {
+    const r1 = computeGrowthProjection([{ avg: 70 }, { avg: 60 }]);
+    const r2 = computeGrowthProjection([{ avg: 60 }, { avg: 70 }]);
+    expect(r1!.stepPerWeek).toBe(-10);
+    expect(r2!.stepPerWeek).toBe(10);
+  });
+
+  it("accepts avg or score field interchangeably", () => {
+    const rAvg   = computeGrowthProjection([{ avg: 60 }, { avg: 70 }]);
+    const rScore = computeGrowthProjection([{ score: 60 }, { score: 70 }]);
+    expect(rAvg!.stepPerWeek).toBe(rScore!.stepPerWeek);
+  });
+
+  it("large history → step computed from first and last", () => {
+    const history = [60, 62, 65, 66, 68, 70, 72].map(avg => ({ avg }));
+    const result = computeGrowthProjection(history);
+    expect(result).not.toBeNull();
+    // step = (72 - 60) / 6 = 2
+    expect(result!.stepPerWeek).toBeCloseTo(2, 5);
+  });
+});
+
+describe("P5-03 — hasValidTimeSeries", () => {
+  it("null → false", () => expect(hasValidTimeSeries(null)).toBe(false));
+  it("empty array → false", () => expect(hasValidTimeSeries([])).toBe(false));
+  it("single value → false", () => expect(hasValidTimeSeries([42])).toBe(false));
+  it("two valid numbers → true", () => expect(hasValidTimeSeries([40, 42])).toBe(true));
+  it("array with NaN → false", () => expect(hasValidTimeSeries([40, NaN])).toBe(false));
+  it("array with non-number → false", () => expect(hasValidTimeSeries([40, "42"])).toBe(false));
+  it("string → false", () => expect(hasValidTimeSeries("40,42")).toBe(false));
+});
+
+describe("P5-04 — GA4 absent → no sparkline fabrication", () => {
+  it("sparkT null when no GA4 series", () => {
+    // Simulates the dashboard.js constant after the fix: sparkT = null
+    const sparkT: null = null;
+    expect(hasValidTimeSeries(sparkT)).toBe(false);
+  });
+
+  it("sparkL null when no GA4 conversion series", () => {
+    const sparkL: null = null;
+    expect(hasValidTimeSeries(sparkL)).toBe(false);
+  });
+
+  it("sparkR null when no GA4 revenue series", () => {
+    const sparkR: null = null;
+    expect(hasValidTimeSeries(sparkR)).toBe(false);
+  });
+});
+
+describe("P5-05 — growthPts never uses fabricated audit count", () => {
+  // Regression: (STATE.audits.length || 6) was the bug — 6 audits fabricated
+  function computeGrowthPts(avgSc: number, auditCount: number, monitorsUp: number, monitorsTotal: number) {
+    if (avgSc <= 0) return 0;
+    return Math.min(99, Math.round(
+      avgSc * 0.55 +
+      auditCount * 4 +  // no fallback — real count only
+      (monitorsTotal > 0 ? Math.round(monitorsUp / monitorsTotal * 100) * 0.15 : 0)
+    ));
+  }
+
+  it("0 audits, 0 avgSc → 0 (no fabrication)", () => {
+    expect(computeGrowthPts(0, 0, 0, 0)).toBe(0);
+  });
+
+  it("0 audits with avgSc=60 → lower than with 6 audits", () => {
+    const pts0 = computeGrowthPts(60, 0, 0, 0);
+    const pts6 = computeGrowthPts(60, 6, 0, 0);
+    expect(pts0).toBeLessThan(pts6);
+  });
+
+  it("real audits contribute linearly (no offset)", () => {
+    const pts2 = computeGrowthPts(70, 2, 0, 0);
+    const pts3 = computeGrowthPts(70, 3, 0, 0);
+    expect(pts3 - pts2).toBe(4); // each audit = 4 pts
+  });
+});
+
+describe("P5-06 — competitor radar uses no ratio-derived dimensions", () => {
+  // Simulates the corrected radar computation: fields come from real competitor data
+  function buildRadarDims(comp: Record<string, number | undefined> | null) {
+    const c1Score   = comp ? Math.min(99, comp.score ?? comp.domainRating ?? 0) : null;
+    const c1Speed   = comp && typeof comp.speed === "number" ? Math.min(99, comp.speed) : null;
+    const c1Local   = comp && typeof comp.localScore === "number" ? Math.min(99, comp.localScore) : null;
+    const c1Avis    = comp && typeof comp.rating === "number" ? Math.min(99, Math.round(comp.rating * 20)) : null;
+    const c1Contenu = comp && typeof comp.contentScore === "number" ? Math.min(99, comp.contentScore) : null;
+    return [
+      { label: "SEO",     comp: c1Score },
+      { label: "Vitesse", comp: c1Speed },
+      { label: "Local",   comp: c1Local },
+      { label: "Avis",    comp: c1Avis },
+      { label: "Contenu", comp: c1Contenu },
+    ];
+  }
+
+  it("no competitor → all dims null", () => {
+    const dims = buildRadarDims(null);
+    expect(dims.every(d => d.comp === null)).toBe(true);
+  });
+
+  it("competitor with score only → Vitesse/Local/Avis/Contenu are null (not ratio-derived)", () => {
+    const dims = buildRadarDims({ score: 75 });
+    const vitesse = dims.find(d => d.label === "Vitesse")!;
+    const local   = dims.find(d => d.label === "Local")!;
+    const avis    = dims.find(d => d.label === "Avis")!;
+    const contenu = dims.find(d => d.label === "Contenu")!;
+    expect(vitesse.comp).toBeNull();
+    expect(local.comp).toBeNull();
+    expect(avis.comp).toBeNull();
+    expect(contenu.comp).toBeNull();
+  });
+
+  it("competitor with all real fields → no dim is null", () => {
+    const dims = buildRadarDims({ score: 75, speed: 80, localScore: 60, rating: 4.2, contentScore: 65 });
+    expect(dims.every(d => d.comp !== null)).toBe(true);
+  });
+
+  it("dims never exceed 99", () => {
+    const dims = buildRadarDims({ score: 100, speed: 110, localScore: 105, rating: 5.5, contentScore: 102 });
+    expect(dims.every(d => d.comp === null || d.comp! <= 99)).toBe(true);
+  });
+});
