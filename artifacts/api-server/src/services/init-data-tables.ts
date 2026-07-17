@@ -642,6 +642,16 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS region      TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS phone       TEXT;`);
 
+    // ── org_checklist — server-side checklist persistence (replaces localStorage) ─
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS org_checklist (
+        org_id     TEXT        PRIMARY KEY,
+        items      JSONB       NOT NULL DEFAULT '[]',
+        extra      JSONB       NOT NULL DEFAULT '{}',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
     // ── Schema verification: log Present/Expected/Missing + auto-repair ─────────
     await verifyTeamMembersSchema(client);
 

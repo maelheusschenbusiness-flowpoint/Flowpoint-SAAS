@@ -48,8 +48,7 @@ import { buildProviderMessages, getImageUsageMetadata, type MultimodalMessage } 
 import type { AIAttachmentReference, ResolvedAIAttachment, NormalizedAttachment, NormalizedImageAttachment } from "../types/ai-attachments.js";
 
 const router = Router();
-// Apply AI rate limit to all routes in this router (org-based, plan-aware)
-router.use(aiRateLimit);
+// aiRateLimit applied per POST route below — GET endpoints (history, usage, recommendations) are not rate-limited
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 const AI_RATE_LIMIT = 30;
@@ -833,10 +832,10 @@ ${STRICT_AI_RULE}
     }
   }
 }
-router.post("/ai/chat", chatHandler);
+router.post("/ai/chat", aiRateLimit, chatHandler);
 
 // ── POST /ai/audit — full technical + SEO audit analysis ─────────────────────
-router.post("/ai/audit", async (req, res) => {
+router.post("/ai/audit", aiRateLimit, async (req, res) => {
   const { url, scores, issues, cwv } = req.body as {
     url?: string;
     scores?: Record<string, number>;
@@ -963,7 +962,7 @@ Après ces corrections je recommande :
 });
 
 // ── POST /ai/seo — SEO recommendations ───────────────────────────────────────
-router.post("/ai/seo", async (req, res) => {
+router.post("/ai/seo", aiRateLimit, async (req, res) => {
   const { url, keywords, currentScore, context } = req.body as {
     url?: string;
     keywords?: string[];
@@ -1075,7 +1074,7 @@ Sections :
 });
 
 // ── POST /ai/conversion — CRO & conversion analysis ──────────────────────────
-router.post("/ai/conversion", async (req, res) => {
+router.post("/ai/conversion", aiRateLimit, async (req, res) => {
   const { url, metrics, funnel } = req.body as {
     url?: string;
     metrics?: Record<string, unknown>;
@@ -1125,7 +1124,7 @@ Analyse en 4 sections:
 });
 
 // ── POST /ai/local — Local SEO recommendations ────────────────────────────────
-router.post("/ai/local", async (req, res) => {
+router.post("/ai/local", aiRateLimit, async (req, res) => {
   const { business, location, keywords, gbpData } = req.body as {
     business?: string;
     location?: string;
@@ -1176,7 +1175,7 @@ Génère une stratégie Local SEO complète:
 });
 
 // ── POST /ai/competitors — Competitor analysis ────────────────────────────────
-router.post("/ai/competitors", async (req, res) => {
+router.post("/ai/competitors", aiRateLimit, async (req, res) => {
   const { competitors, ourUrl, ourScore } = req.body as {
     competitors?: Array<{ name: string; url?: string; rating?: number }>;
     ourUrl?: string;
@@ -1224,7 +1223,7 @@ Fournis:
 });
 
 // ── POST /ai/reports — AI report generation ───────────────────────────────────
-router.post("/ai/reports", async (req, res) => {
+router.post("/ai/reports", aiRateLimit, async (req, res) => {
   const { reportType, period, sites, metrics } = req.body as {
     reportType?: string;
     period?: string;
@@ -1319,7 +1318,7 @@ Génère le rapport comme un consultant senior qui présente les résultats à s
 });
 
 // ── POST /ai/summary — Executive summary ──────────────────────────────────────
-router.post("/ai/summary", async (req, res) => {
+router.post("/ai/summary", aiRateLimit, async (req, res) => {
   const { context } = req.body as { context?: Record<string, unknown> };
   const orgId     = req.orgId  ?? "default";
   const userId    = req.userId ?? "anonymous";
@@ -1362,7 +1361,7 @@ Format:
 });
 
 // ── POST /ai/missions — AI mission generation ─────────────────────────────────
-router.post("/ai/missions", async (req, res) => {
+router.post("/ai/missions", aiRateLimit, async (req, res) => {
   const { profile, currentMissions, context } = req.body as {
     profile?: Record<string, unknown>;
     currentMissions?: unknown[];
@@ -1439,7 +1438,7 @@ Réponds uniquement avec le JSON array.`;
 });
 
 // ── POST /ai/pagespeed-insights — AI analysis of PSI data ────────────────────
-router.post("/ai/pagespeed-insights", async (req, res) => {
+router.post("/ai/pagespeed-insights", aiRateLimit, async (req, res) => {
   const { url, mobile, desktop } = req.body as {
     url?: string;
     mobile?: Record<string, unknown>;
@@ -1547,7 +1546,7 @@ router.get("/ai/recommendations", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/ai/generate", async (req: Request, res: Response) => {
+router.post("/ai/generate", aiRateLimit, async (req: Request, res: Response) => {
   const { prompt, type = "general" } = req.body as { prompt?: string; type?: string };
   if (!prompt) return res.status(400).json({ error: "prompt required" });
 

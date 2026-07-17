@@ -95,6 +95,7 @@ const STATE = {
   aiMessages: [],
   aiLoading: false,
   aiCredits: null,
+  checklistExtra: {},
   ctxMenu: null,
   floatPanel: null,
   pinned: JSON.parse(localStorage.getItem('fp:pinned') || '{}'),
@@ -1038,7 +1039,7 @@ async function loadData() {
   const _domain = (STATE.audits[0] && (() => { try { return new URL(STATE.audits[0].url).hostname; } catch(_){ return ''; } })()) || '';
   const [
     _schedRes, _udRes, _upcomingRes, _alertRulesRes, _alertEventsRes,
-    _activityRes, _teamMsgsRes, _prefsRes, _storageRes, _notifsRes, _blRes, _llmRes,
+    _activityRes, _teamMsgsRes, _prefsRes, _storageRes, _clRes, _notifsRes, _blRes, _llmRes,
     _clientsRes, _calRes,
   ] = await Promise.allSettled([
     apiFetch('/api/audits/schedule'),
@@ -1050,6 +1051,7 @@ async function loadData() {
     apiFetch('/api/team/messages'),
     apiFetch('/api/me/prefs'),
     apiFetch('/api/me/storage').catch(() => null),
+    apiFetch('/api/overview/checklist').catch(() => null),
     apiFetch('/api/notifications'),
     _domain ? apiFetch('/api/seo/backlinks?domain='      + encodeURIComponent(_domain)) : Promise.resolve(null),
     _domain ? apiFetch('/api/seo/llm-visibility?domain=' + encodeURIComponent(_domain)) : Promise.resolve(null),
@@ -1082,6 +1084,11 @@ async function loadData() {
     date: e.date||'', startTime: e.startTime||'', duration: e.duration||60, notes: e.notes||'',
   }));
 
+  // ── Checklist from server (P0-01: replaces localStorage) ──────────────────
+  if (_clRes && _clRes.status === 'fulfilled' && _clRes.value && typeof _clRes.value === 'object') {
+    if (Array.isArray(_clRes.value.items)) STATE.checklist = _clRes.value.items;
+    if (_clRes.value.extra && typeof _clRes.value.extra === 'object') STATE.checklistExtra = _clRes.value.extra;
+  }
   const _storage = _storageRes.status === 'fulfilled' ? _storageRes.value : null;
   if (_storage && typeof _storage === 'object' && ('counts' in _storage || 'totalBytes' in _storage)) { STATE.storage = _storage; }
 
@@ -1089,7 +1096,8 @@ async function loadData() {
   if (_prefs) {
     if (typeof _prefs.streak === 'number') STATE.streak = _prefs.streak;
     if (_prefs.pinned && typeof _prefs.pinned === 'object') STATE.pinned = _prefs.pinned;
-    if (_prefs.checklist) STATE.checklist = _prefs.checklist;
+    if (_prefs.checklist && !(_clRes?.status === 'fulfilled' && _clRes.value?.items)) STATE.checklist = _prefs.checklist;
+    if (_prefs.checklist_extra && !(_clRes?.status === 'fulfilled' && _clRes.value?.extra)) STATE.checklistExtra = _prefs.checklist_extra;
     if (_prefs.settings && typeof _prefs.settings === 'object') {
       STATE.settings = { ...STATE.settings, ..._prefs.settings };
       // Theme priority: manual-local > backend-manual > auto-system.
@@ -1383,7 +1391,10 @@ function saveSettings() {
   apiAction('PATCH', '/api/me/prefs', { settings: STATE.settings }).catch(() => {});
 }
 function saveChecklist() {
-  apiAction('PATCH', '/api/me/prefs', { checklist: STATE.checklist }).catch(() => {});
+  apiAction('PUT', '/api/overview/checklist', { items: STATE.checklist }).catch(() => {});
+}
+function saveChecklistExtra() {
+  apiAction('PUT', '/api/overview/checklist', { extra: STATE.checklistExtra }).catch(() => {});
 }
 function saveNotifs() { /* notifications persisted via API only */ }
 
@@ -3532,9 +3543,9 @@ function renderOverview() {
         ? Math.min(100, Math.round(STATE.competitors.filter(c => (c.domainRating||0) > 30).length / STATE.competitors.length * 100))
         : 0);
   const revenueOpp = STATE.overview?.revenueOpportunity ?? null;
-  const growthMomentum = STATE.overview?.growthMomentum
-    ?? ((STATE.keywords||[]).filter(k => (k.current_position||99) <= 5).length > 0 ? 55 : 35);
-  const globalScore = Math.round((avg + localScore + conversionScore + growthMomentum) / 4);
+  const growthMomentum = STATE.overview?.growthMomentum ?? null;
+  const _scoreVals = [avg, localScore, conversionScore, growthMomentum].filter(v => v != null && Number.isFinite(v));
+  const globalScore = _scoreVals.length > 0 ? Math.round(_scoreVals.reduce((a,b) => a+b, 0) / _scoreVals.length) : null;
 
   const missionsCompleted = STATE.missions.filter(m => m.status === 'done' || m.done === true).length;
   const missionsActive    = STATE.missions.filter(m => m.status !== 'done' && !m.done).length;
@@ -3622,15 +3633,15 @@ function renderOverview() {
     : (PREVIEW_MODE ? _previewOpps : []);
 
   const wsModules = [
-    { name:'Audits SEO',      score:avg,    status:avg>70?'ok':'warn', icon:'🔍', issues:avg<70?3:0, color:'#2563EB',  route:'audits' },
+    { name:'Audits SEO',      score:avg,    status:avg>70?'ok':'warn', icon:'🔍', issues:STATE.overview?.criticalIssues ?? 0, color:'#2563EB',  route:'audits' },
     { name:'Monitors',        score:pingOk, status:down===0?'ok':'down', icon:'📡', issues:down, color:'#22c55e', route:'monitors' },
-    { name:'Local SEO',       score:localScore||0,       status:localScore>70?'ok':localScore>0?'warn':'no-data', icon:'📍', issues:localScore>0&&localScore<60?2:0, color:'#f59e0b', route:'local-seo' },
+    { name:'Local SEO',       score:localScore||0,       status:localScore>70?'ok':localScore>0?'warn':'no-data', icon:'📍', issues:0, color:'#f59e0b', route:'local-seo' },
     { name:'Concurrents',     score:competitorPressure||0, status:competitorPressure>0?'ok':'no-data', icon:'⚔️', issues:0, color:'#ef4444', route:'competitor' },
-    { name:'Conversion',      score:conversionScore||0,  status:conversionScore>70?'ok':conversionScore>0?'warn':'no-data', icon:'⚡', issues:conversionScore>0&&conversionScore<60?3:0, color:'#8b5cf6', route:'conversion' },
-    { name:'Data Explorer',   score: Math.min(98, 45 + (STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length * 12 + (STATE.reports.length > 0 ? 10 : 0)), status: STATE.connectors?.length > 0 ? 'ok' : 'warn', icon:'📊', issues: STATE.connectors?.length === 0 ? 1 : 0, color:'#06b6d4', route:'data-explorer' },
-    { name:'Rapports',        score: STATE.reports.length > 0 ? Math.min(98, 55 + Math.min(40, STATE.reports.length * 6)) : 35, status: STATE.reports.length > 0 ? 'ok' : 'warn', icon:'📄', issues: STATE.reports.length === 0 ? 1 : 0, color:'#2563EB', route:'reports' },
-    { name:'Alertes',         score: STATE.alertRules.length > 0 ? Math.min(98, 55 + Math.min(38, STATE.alertRules.filter(r=>r.active).length * 6)) : 35, status: STATE.alertRules.length > 0 ? 'ok' : 'warn', icon:'🔔', issues: STATE.alertEvents.filter(e=>!e.resolvedAt).length, color:'#f59e0b', route:'alerts-center' },
-    { name:'IA Copilot',      score: (STATE.aiCredits != null && STATE.aiCredits > 0) ? Math.min(98, 65 + Math.round(Math.min(33, STATE.aiCredits / 3))) : (STATE.reports.length > 0 ? 78 : 65), status:'ok', icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
+    { name:'Conversion',      score:conversionScore||0,  status:conversionScore>70?'ok':conversionScore>0?'warn':'no-data', icon:'⚡', issues:0, color:'#8b5cf6', route:'conversion' },
+    { name:'Data Explorer',   score: (function(){ var _ac=(STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length; return _ac > 0 ? Math.min(98, 50 + _ac*15 + (STATE.reports.length>0?8:0)) : null; }()), status:(STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length>0?'ok':'no-data', icon:'📊', issues:0, color:'#06b6d4', route:'data-explorer' },
+    { name:'Rapports',        score: STATE.reports.length > 0 ? Math.min(98, 55 + Math.min(40, STATE.reports.length * 6)) : null, status: STATE.reports.length > 0 ? 'ok' : 'no-data', icon:'📄', issues:0, color:'#2563EB', route:'reports' },
+    { name:'Alertes',         score: STATE.alertRules.length > 0 ? Math.min(98, 55 + Math.min(38, STATE.alertRules.filter(r=>r.active).length * 6)) : null, status: STATE.alertRules.length > 0 ? 'ok' : 'no-data', icon:'🔔', issues: STATE.alertEvents.filter(e=>!e.resolvedAt).length, color:'#f59e0b', route:'alerts-center' },
+    { name:'IA Copilot',      score: (STATE.aiCredits?.limit > 0) ? Math.min(98, 65 + Math.round(Math.min(33, (1 - STATE.aiCredits.used/Math.max(STATE.aiCredits.limit,1)) * 33))) : null, status:'ok', icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
   ];
 
   var _liveRangeMs = (STATE.overviewRange || 7) * 86400000;
@@ -3723,7 +3734,7 @@ function renderOverview() {
             <span style="font-size:11px;font-weight:700;color:#22c55e;letter-spacing:0.1em;text-transform:uppercase">LIVE · Command Center</span>
           </div>
           <h1 style="font-size:26px;font-weight:900;color:var(--fp-text);margin:0 0 4px;font-family:var(--fp-font-head);line-height:1.1">Bonjour, ${escHtml(me.firstName)} 👋</h1>
-          <div style="font-size:13px;color:var(--fp-text-muted)">Plateforme IA · Plan <strong style="color:#2563EB">${escHtml(me.plan)}</strong> · Score global <strong style="color:${scoreColor(globalScore)}">${globalScore}/100</strong></div>
+          <div style="font-size:13px;color:var(--fp-text-muted)">Plateforme IA · Plan <strong style="color:#2563EB">${escHtml(me.plan)}</strong> · Score global <strong style="color:${globalScore != null ? scoreColor(globalScore) : 'var(--fp-text-muted)'}">${globalScore != null ? globalScore + '/100' : '—'}</strong></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <div class="fp-view-toggle" id="chart-range-toggle">
@@ -12531,11 +12542,12 @@ function bindSectionEvents() {
         </div>`;
       }).join(''));
     });
-    $('#refresh-btn')?.addEventListener('click', () => {
+    const _refreshBtn = $('#refresh-btn');
+    if (_refreshBtn) _refreshBtn.onclick = () => {
       try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
       showToast('info', 'Actualisation en cours…');
       loadData().then(() => { render(); showToast('success', 'Données à jour ✓'); }).catch(() => showToast('error', 'Erreur d\'actualisation'));
-    });
+    };
     $('#export-btn')?.addEventListener('click', () => { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); });
     $('#mission-tomorrow')?.addEventListener('click', () => {
       const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
@@ -12546,7 +12558,13 @@ function bindSectionEvents() {
     });
     $$('#chart-range-toggle .fp-view-toggle-btn').forEach(b => b.addEventListener('click', function() {
       STATE.overviewRange = parseInt(this.dataset.range) || 7;
-      render();
+      if (!PREVIEW_MODE) {
+        apiFetch('/api/overview?range=' + STATE.overviewRange)
+          .then(function(ov) { if (ov && typeof ov === 'object') STATE.overview = ov; render(); })
+          .catch(function() { render(); });
+      } else {
+        render();
+      }
     }));
   }
 
@@ -15880,7 +15898,7 @@ function renderOverviewChecklist() {
   const total = (STATE.checklist || []).length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
-  const _clsLS = (()=>{ try { return JSON.parse(localStorage.getItem('fp_checklist_extra')||'{}'); } catch(e){ return {}; } })();
+  const _clsLS = STATE.checklistExtra || {};
   const _clItem = (id, defaultDone) => _clsLS[id] !== undefined ? _clsLS[id] : (PREVIEW_MODE ? defaultDone : false);
   const extraCategories = [
     {
@@ -16004,7 +16022,7 @@ function renderOverviewChecklist() {
           <div class="fp-progress-track" style="height:3px;margin-bottom:12px"><div class="fp-progress-fill" style="width:${catPct}%;background:${cat.color}"></div></div>
           <div style="display:flex;flex-direction:column;gap:5px">
             ${cat.items.map(item => `
-              <div style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;border-radius:6px;transition:background 0.1s" onclick="(function(id,done){try{var s=JSON.parse(localStorage.getItem('fp_checklist_extra')||'{}');s[id]=!done;localStorage.setItem('fp_checklist_extra',JSON.stringify(s));}catch(e){}render()})(${JSON.stringify(item.id)},${item.done})" title="${item.done?'Coché — cliquer pour décocher':'Cliquer pour cocher'}">
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;border-radius:6px;transition:background 0.1s" onclick="window._fpToggleChecklistExtra && window._fpToggleChecklistExtra(${JSON.stringify(item.id)},${item.done})" title="${item.done?'Coché — cliquer pour décocher':'Cliquer pour cocher'}">
                 <div style="width:16px;height:16px;border-radius:4px;border:2px solid ${item.done?cat.color:'var(--fp-border)'};background:${item.done?cat.color+'20':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   ${item.done?`<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${cat.color}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`:''}
                 </div>
@@ -28303,6 +28321,12 @@ function renderGA4Live() {
 // pour mettre à jour le dashboard en temps réel sans modifier ce fichier.
 window.STATE     = STATE;
 window.render    = render;
+window._fpToggleChecklistExtra = function(id, done) {
+  if (!STATE.checklistExtra) STATE.checklistExtra = {};
+  STATE.checklistExtra[id] = !done;
+  saveChecklistExtra();
+  render();
+};
 window.showToast = showToast;
 window.navigate  = navigate;
 
