@@ -5,6 +5,16 @@ export const AI_ATTACHMENT_LIMITS = {
   maxFilenameLength:   200,
 } as const;
 
+// ── Step 3C — Image limits ────────────────────────────────────────────────────
+
+export const AI_IMAGE_LIMITS = {
+  maxImageBytes:       5 * 1024 * 1024,    // 5 MB per image
+  maxImagesPerRequest: 4,
+  maxImageWidth:       4096,
+  maxImageHeight:      4096,
+  maxTotalImageBytes:  12 * 1024 * 1024,   // 12 MB total across all images
+} as const;
+
 export const AI_ATTACHMENT_PARSE_LIMITS = {
   maxCharsPerAttachment:   100_000,
   maxTotalExtractedChars:  200_000,

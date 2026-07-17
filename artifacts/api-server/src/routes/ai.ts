@@ -44,7 +44,8 @@ import {
   buildAttachmentContextBlock,
   getAttachmentUsageMetadata,
 } from "../services/ai-attachment-parser.js";
-import type { AIAttachmentReference, ResolvedAIAttachment, NormalizedAttachment } from "../types/ai-attachments.js";
+import { buildProviderMessages, getImageUsageMetadata, type MultimodalMessage } from "../services/ai-multimodal.js";
+import type { AIAttachmentReference, ResolvedAIAttachment, NormalizedAttachment, NormalizedImageAttachment } from "../types/ai-attachments.js";
 
 const router = Router();
 // Apply AI rate limit to all routes in this router (org-based, plan-aware)
@@ -644,11 +645,13 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     resolvedAttachments = resolveResult;
   }
 
-  // ── Parse attachments (Step 3B) ───────────────────────────────────────────
-  // Local text extraction — no provider call, no credit debit.
+  // ── Parse attachments (Steps 3B + 3C) ────────────────────────────────────
+  // Local extraction — no provider call, no credit debit.
   // On parse error: structured JSON response, no SSE, no usage write.
-  // Images (png/jpg/webp) → HTTP 415; scanned PDF → HTTP 422.
-  let parsedAttachments: NormalizedAttachment[] = [];
+  // Text formats (txt/json/csv/xlsx/docx/pdf) → extracted text → system prompt.
+  // Images (png/jpg/jpeg/webp) → NormalizedImageAttachment → user message blocks.
+  let parsedTextAttachments:  NormalizedAttachment[]      = [];
+  let parsedImageAttachments: NormalizedImageAttachment[] = [];
   if (resolvedAttachments.length > 0) {
     const parseLimits = getDefaultParserLimits(contextFactor);
     const parseResult = await parseAIAttachments(resolvedAttachments, parseLimits);
@@ -657,7 +660,8 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
       res.status(parseResult.httpStatus).json({ ok: false, code: parseResult.code, message: parseResult.message });
       return;
     }
-    parsedAttachments = parseResult;
+    parsedTextAttachments  = parseResult.text;
+    parsedImageAttachments = parseResult.images;
   }
 
   // 6. Build enriched _ai metadata — always tells the truth about what was used
@@ -682,9 +686,10 @@ export async function chatHandler(req: Request, res: Response): Promise<void> {
     economyTier:      economyPolicy.economyTier,
     usagePercent:     Math.round(resolvedUsagePercent * 10) / 10,
     downgradeApplied: economyPolicy.downgradeApplied,
-    ...(parsedAttachments.length > 0
-      ? getAttachmentUsageMetadata(resolvedAttachments, parsedAttachments)
+    ...(parsedTextAttachments.length > 0
+      ? getAttachmentUsageMetadata(resolvedAttachments, parsedTextAttachments)
       : {}),
+    ...getImageUsageMetadata(parsedImageAttachments),
   };
 
   const fpContext = await buildFlowpointContext(context, orgId, contextFactor);
@@ -702,8 +707,8 @@ ${STRICT_AI_RULE}
 
   // Step 3B: attachment block (security-prefixed, XML-delimited).
   // Built before the messages array so it cannot diverge between stream/non-stream.
-  const attachmentContext = parsedAttachments.length > 0
-    ? buildAttachmentContextBlock(parsedAttachments)
+  const attachmentContext = parsedTextAttachments.length > 0
+    ? buildAttachmentContextBlock(parsedTextAttachments)
     : "";
 
   // Single finalSystemPrompt: base instructions + real account data + attachment block.
@@ -720,11 +725,18 @@ ${STRICT_AI_RULE}
   // opts.messages when present and ignores opts.systemPrompt in that branch —
   // previously passing messages.slice(1) caused the provider to receive history +
   // user only, silently dropping the system prompt and all attachment content.
-  const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-    { role: "system", content: finalSystemPrompt },
-    ...history.slice(-historyLimit).map(m => ({ role: m.role, content: m.content })),
-    { role: "user", content: message },
-  ];
+  // Step 3C: buildProviderMessages embeds image ContentBlock[] in the user message
+  // when parsedImageAttachments.length > 0; text-only path returns string content.
+  const messages: MultimodalMessage[] = buildProviderMessages({
+    provider:         selectedProvider,
+    systemPrompt:     finalSystemPrompt,
+    history:          history.slice(-historyLimit).map(m => ({
+      role:    m.role as "system" | "user" | "assistant",
+      content: m.content,
+    })),
+    userMessage:      message,
+    imageAttachments: parsedImageAttachments,
+  });
 
   // Persist user message fire-and-forget — log failures but never block streaming
   persistChatMessage({ orgId, userId, role: "user", content: message, feature: "chat" })
@@ -765,7 +777,12 @@ ${STRICT_AI_RULE}
       res.end();
 
       const latencyMs = Date.now() - t0;
-      const estTokensIn  = Math.ceil(messages.reduce((s, m) => s + m.content.length, 0) / 4);
+      // Step 3C: content may be ContentBlock[] for multimodal messages — only sum text lengths
+      const estTokensIn  = Math.ceil(messages.reduce((s, m) => {
+        const c = m.content;
+        if (typeof c === "string") return s + c.length;
+        return s + c.reduce((cs, b) => cs + (b.type === "text" ? b.text.length : 50), 0);
+      }, 0) / 4);
       const estTokensOut = Math.ceil(fullReply.length / 4);
 
       persistChatMessage({ orgId, userId, role: "assistant", content: fullReply, feature: "chat", model: effectiveModel, tokensUsed: estTokensOut })

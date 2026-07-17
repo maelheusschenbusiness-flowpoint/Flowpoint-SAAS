@@ -21,6 +21,7 @@ export default defineConfig({
       "src/services/ai-attachments-db.test.ts",
       "src/services/ai-attachment-parser.test.ts",
       "src/services/ai-attachment-parser-db.test.ts",
+      "src/services/ai-multimodal.test.ts",
       "src/routes/ai-chat-attachments.test.ts",
       "src/routes/team-files.test.ts",
     ],

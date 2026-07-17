@@ -16,14 +16,16 @@
  * Parser module unavailable   → HTTP 503 (graceful degradation, no crash).
  */
 
-import { logger }                    from "../lib/logger.js";
-import { AI_ATTACHMENT_PARSE_LIMITS } from "../config/ai-attachments.js";
-import { parseTextBuffer }            from "./file-parsers/text-parser.js";
-import { parseJsonBuffer }            from "./file-parsers/json-parser.js";
-import { parseCsvBuffer }             from "./file-parsers/csv-parser.js";
-import type { ResolvedAIAttachment }  from "../types/ai-attachments.js";
+import { logger }                                   from "../lib/logger.js";
+import { AI_ATTACHMENT_PARSE_LIMITS, AI_IMAGE_LIMITS } from "../config/ai-attachments.js";
+import { parseTextBuffer }                             from "./file-parsers/text-parser.js";
+import { parseJsonBuffer }                             from "./file-parsers/json-parser.js";
+import { parseCsvBuffer }                              from "./file-parsers/csv-parser.js";
+import { parseImageBuffer }                            from "./file-parsers/image-parser.js";
+import type { ResolvedAIAttachment }                   from "../types/ai-attachments.js";
 import type {
   NormalizedAttachment,
+  NormalizedImageAttachment,
   ParseError,
   AttachmentCategory,
 } from "../types/ai-attachments.js";
@@ -100,17 +102,23 @@ function buildNormalized(
 async function parseOne(
   att:    ResolvedAIAttachment,
   limits: AttachmentParserLimits,
-): Promise<NormalizedAttachment | ParseError> {
+): Promise<NormalizedAttachment | NormalizedImageAttachment | ParseError> {
   const ext = att.extension.toLowerCase();
 
-  // ── Images: explicit 415 — no module load, no provider call ──────────────
+  // ── Images: Step 3C — route to image parser ───────────────────────────────
   if (IMAGE_EXTENSIONS.has(ext)) {
-    return parseError(
-      "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET",
-      `Les images (${ext.toUpperCase()}) ne peuvent pas encore être analysées. ` +
-      `Utilisez un fichier texte, PDF, CSV, XLSX ou DOCX.`,
-      415,
+    const result = await parseImageBuffer(
+      att.id,
+      att.name,
+      att.declaredMimeType,
+      att.contentBase64,
+      att.sizeBytes,
     );
+    if ("error" in result) {
+      // Map image-parser failure to ParseError (same shape, compatible codes)
+      return { code: result.error, message: result.message, httpStatus: result.httpStatus };
+    }
+    return result;
   }
 
   // ── XLS (legacy binary): explicit 415 — ExcelJS supports XLSX only ───────
@@ -249,19 +257,27 @@ async function parseOne(
 
 // ── Main orchestrator ─────────────────────────────────────────────────────────
 
+/** Successful result from parseAIAttachments — text and image attachments separated. */
+export type ParsedAttachmentSet = {
+  text:   NormalizedAttachment[];
+  images: NormalizedImageAttachment[];
+};
+
 /**
  * Parse all resolved attachments sequentially.
  *
- * Returns NormalizedAttachment[] on success.
+ * Returns ParsedAttachmentSet on success (text and image attachments separated).
  * Returns ParseError (first failure) on any error — no credits are debited.
- * Enforces the total extracted-character budget across all attachments.
+ * Enforces the total extracted-character budget (text only; images are excluded).
+ * Per-request image count and total-size limits are checked after all parsing.
  * Parser module load failures return HTTP 503 — the process never crashes.
  */
 export async function parseAIAttachments(
   attachments: ResolvedAIAttachment[],
   limits:      AttachmentParserLimits,
-): Promise<NormalizedAttachment[] | ParseError> {
-  const results: NormalizedAttachment[] = [];
+): Promise<ParsedAttachmentSet | ParseError> {
+  const textResults:  NormalizedAttachment[]      = [];
+  const imageResults: NormalizedImageAttachment[] = [];
   let totalChars = 0;
 
   for (const att of attachments) {
@@ -275,7 +291,13 @@ export async function parseAIAttachments(
       return r;
     }
 
-    totalChars += r.extractedText.length;
+    if (r.category === "image") {
+      imageResults.push(r as NormalizedImageAttachment);
+      continue; // images do not count towards the text-char budget
+    }
+
+    const textAtt = r as NormalizedAttachment;
+    totalChars += textAtt.extractedText.length;
     if (totalChars > limits.maxTotalExtractedChars) {
       return parseError(
         "ATTACHMENT_EXTRACTED_CONTENT_TOO_LARGE",
@@ -283,18 +305,35 @@ export async function parseAIAttachments(
         413,
       );
     }
+    textResults.push(textAtt);
+  }
 
-    results.push(r);
+  // Per-request image budget checks (after all parsing so we see the full set)
+  if (imageResults.length > AI_IMAGE_LIMITS.maxImagesPerRequest) {
+    return parseError(
+      "ATTACHMENT_IMAGE_TOO_LARGE",
+      `Maximum ${AI_IMAGE_LIMITS.maxImagesPerRequest} images par requête.`,
+      400,
+    );
+  }
+  const totalImageBytes = imageResults.reduce((s, i) => s + i.metadata.sizeBytes, 0);
+  if (totalImageBytes > AI_IMAGE_LIMITS.maxTotalImageBytes) {
+    return parseError(
+      "ATTACHMENT_IMAGE_TOO_LARGE",
+      `La taille totale des images dépasse ${Math.round(AI_IMAGE_LIMITS.maxTotalImageBytes / 1024 / 1024)} Mo.`,
+      413,
+    );
   }
 
   logger.info({
-    attachmentCount:  results.length,
+    textCount:      textResults.length,
+    imageCount:     imageResults.length,
     totalChars,
-    estimatedTokens:  results.reduce((s, a) => s + a.estimatedTokens, 0),
-    formats:          results.map(a => a.category),
+    estimatedTokens: textResults.reduce((s, a) => s + a.estimatedTokens, 0),
+    formats:        textResults.map(a => a.category),
   }, "[AIParser] parsed attachments");
 
-  return results;
+  return { text: textResults, images: imageResults };
 }
 
 // ── Context injection ─────────────────────────────────────────────────────────

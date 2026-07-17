@@ -7,6 +7,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import type { AIProviderId, AIProviderChatOptions, AIProviderStreamChunk, AIProviderResult } from "./openai-provider.js";
+import { toGeminiParts, type GeminiPart } from "./multimodal-mappers.js";
 
 export class GeminiProvider {
   readonly id: AIProviderId = "gemini";
@@ -107,12 +108,19 @@ export class GeminiProvider {
     throw new Error("Gemini image generation returned no image data");
   }
 
-  private buildContents(opts: AIProviderChatOptions): Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> {
+  private buildContents(opts: AIProviderChatOptions): Array<{ role: "user" | "model"; parts: GeminiPart[] }> {
     if (opts.messages) {
-      return opts.messages.map(m => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      }));
+      return opts.messages.map(m => {
+        const { content } = m;
+        if (typeof content !== "string") {
+          // Multimodal content — images only appear in user turns
+          return { role: "user" as const, parts: toGeminiParts(content) };
+        }
+        return {
+          role:  (m.role === "assistant" ? "model" : "user") as "user" | "model",
+          parts: [{ text: content }],
+        };
+      });
     }
     return [
       { role: "user", parts: [{ text: `${opts.systemPrompt}\n\n${opts.userPrompt}` }] },

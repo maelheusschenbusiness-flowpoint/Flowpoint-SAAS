@@ -48,6 +48,27 @@ export type NormalizedAttachment = {
   estimatedTokens: number;
 };
 
+// ── Step 3C — Image attachments ──────────────────────────────────────────────
+
+export type NormalizedImageAttachment = {
+  id:       string;
+  name:     string;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  category: "image";
+  image: {
+    dataBase64: string;   // raw base64, never logged
+    width?:     number;
+    height?:    number;
+  };
+  metadata: {
+    sizeBytes:    number;
+    parser:       "image-native";
+    truncated:    false;
+    extractionMs: number;
+  };
+  estimatedTokens: number;
+};
+
 export type ParseErrorCode =
   | "ATTACHMENT_FORMAT_NOT_SUPPORTED_YET"
   | "ATTACHMENT_PARSE_FAILED"
@@ -62,7 +83,12 @@ export type ParseErrorCode =
   | "ATTACHMENT_EXTRACTED_CONTENT_TOO_LARGE"
   | "ATTACHMENT_PDF_NO_EXTRACTABLE_TEXT"
   | "ATTACHMENT_PDF_ENCRYPTED"
-  | "ATTACHMENT_PARSER_UNAVAILABLE";
+  | "ATTACHMENT_PARSER_UNAVAILABLE"
+  // Step 3C — image-specific codes
+  | "ATTACHMENT_IMAGE_INVALID"
+  | "ATTACHMENT_IMAGE_MIME_MISMATCH"
+  | "ATTACHMENT_IMAGE_TOO_LARGE"
+  | "ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE";
 
 export type ParseError = {
   code:       ParseErrorCode;

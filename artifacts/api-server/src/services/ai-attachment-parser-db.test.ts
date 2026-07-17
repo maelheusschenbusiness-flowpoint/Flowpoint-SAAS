@@ -200,10 +200,10 @@ describe("parseAIAttachments — DB integration (parse pipeline)", () => {
     expect(Array.isArray(resolved)).toBe(true);
 
     const parsed = await parseAIAttachments(resolved as Parameters<typeof parseAIAttachments>[0], limits);
-    expect(Array.isArray(parsed)).toBe(true);
-    if (Array.isArray(parsed)) {
-      expect(parsed[0]?.category).toBe("text");
-      expect(parsed[0]?.extractedText).toContain("Bonjour");
+    expect("code" in parsed).toBe(false);
+    if (!("code" in parsed)) {
+      expect(parsed.text[0]?.category).toBe("text");
+      expect(parsed.text[0]?.extractedText).toContain("Bonjour");
     }
   });
 
@@ -213,10 +213,10 @@ describe("parseAIAttachments — DB integration (parse pipeline)", () => {
     expect(Array.isArray(resolved)).toBe(true);
 
     const parsed = await parseAIAttachments(resolved as Parameters<typeof parseAIAttachments>[0], limits);
-    expect(Array.isArray(parsed)).toBe(true);
-    if (Array.isArray(parsed)) {
-      expect(parsed[0]?.category).toBe("json");
-      expect(parsed[0]?.extractedText).toContain("titre");
+    expect("code" in parsed).toBe(false);
+    if (!("code" in parsed)) {
+      expect(parsed.text[0]?.category).toBe("json");
+      expect(parsed.text[0]?.extractedText).toContain("titre");
     }
   });
 
@@ -226,11 +226,11 @@ describe("parseAIAttachments — DB integration (parse pipeline)", () => {
     expect(Array.isArray(resolved)).toBe(true);
 
     const parsed = await parseAIAttachments(resolved as Parameters<typeof parseAIAttachments>[0], limits);
-    expect(Array.isArray(parsed)).toBe(true);
-    if (Array.isArray(parsed)) {
-      expect(parsed[0]?.category).toBe("csv");
-      expect(parsed[0]?.extractedText).toContain("produit");
-      expect(parsed[0]?.extractedText).toContain("Widget");
+    expect("code" in parsed).toBe(false);
+    if (!("code" in parsed)) {
+      expect(parsed.text[0]?.category).toBe("csv");
+      expect(parsed.text[0]?.extractedText).toContain("produit");
+      expect(parsed.text[0]?.extractedText).toContain("Widget");
     }
   });
 
@@ -240,23 +240,24 @@ describe("parseAIAttachments — DB integration (parse pipeline)", () => {
     expect(Array.isArray(resolved)).toBe(true);
 
     const parsed = await parseAIAttachments(resolved as Parameters<typeof parseAIAttachments>[0], limits);
-    expect(Array.isArray(parsed)).toBe(true);
-    if (Array.isArray(parsed)) {
-      expect(parsed[0]?.category).toBe("spreadsheet");
-      expect(parsed[0]?.extractedText).toContain("Produit");
+    expect("code" in parsed).toBe(false);
+    if (!("code" in parsed)) {
+      expect(parsed.text[0]?.category).toBe("spreadsheet");
+      expect(parsed.text[0]?.extractedText).toContain("Produit");
     }
   });
 
-  it("J — returns 415 for PNG image attachment", async () => {
+  it("J — Step 3C: PNG image attachment succeeds and lands in images[]", async () => {
     const orgDb   = makeOrgDb(orgId);
     const resolved = await resolveAIAttachments(orgDb, orgId, [{ fileId: fileIdPng }]);
     expect(Array.isArray(resolved)).toBe(true);
 
     const parsed = await parseAIAttachments(resolved as Parameters<typeof parseAIAttachments>[0], limits);
-    expect("code" in parsed).toBe(true);
-    if ("code" in parsed) {
-      expect(parsed.code).toBe("ATTACHMENT_FORMAT_NOT_SUPPORTED_YET");
-      expect(parsed.httpStatus).toBe(415);
+    expect("code" in parsed).toBe(false);
+    if (!("code" in parsed)) {
+      expect(parsed.images).toHaveLength(1);
+      expect(parsed.images[0]?.category).toBe("image");
+      expect(parsed.text).toHaveLength(0);
     }
   });
 
@@ -269,8 +270,8 @@ describe("parseAIAttachments — DB integration (parse pipeline)", () => {
     expect(Array.isArray(resolved)).toBe(true);
 
     const parsed = await parseAIAttachments(resolved as Parameters<typeof parseAIAttachments>[0], limits);
-    expect(Array.isArray(parsed)).toBe(true);
-    if (Array.isArray(parsed)) expect(parsed).toHaveLength(2);
+    expect("code" in parsed).toBe(false);
+    if (!("code" in parsed)) expect(parsed.text).toHaveLength(2);
   });
 });
 
@@ -291,12 +292,12 @@ describe("parseAIAttachments — DB usage proof (ai_usage_logs / ai_monthly_usag
       resolved as Parameters<typeof parseAIAttachments>[0],
       limits,
     );
-    expect(Array.isArray(parsed)).toBe(true); // parse succeeded
+    expect("code" in parsed).toBe(false); // parse succeeded
 
     // 3. Simulate what the route does after success: write to ai_usage_logs + ai_monthly_usage.
     //    Uses the same columns as recordCompletedUsage in ai-engine.ts.
-    const attachMeta = Array.isArray(parsed)
-      ? { hasAttachments: true, attachmentCount: parsed.length, attachmentFormats: ["text"] }
+    const attachMeta = !("code" in parsed)
+      ? { hasAttachments: true, attachmentCount: parsed.text.length, attachmentFormats: ["text"] }
       : {};
     await insertUsageLog(attachMeta);
 
@@ -317,15 +318,15 @@ describe("parseAIAttachments — DB usage proof (ai_usage_logs / ai_monthly_usag
       resolved as Parameters<typeof parseAIAttachments>[0],
       limits,
     );
-    expect(Array.isArray(parsed)).toBe(true);
+    expect("code" in parsed).toBe(false);
 
     // Write metadata exactly as the route would (no extractedText)
-    const attachMeta = Array.isArray(parsed) ? {
+    const attachMeta = !("code" in parsed) ? {
       hasAttachments:            true,
-      attachmentCount:           parsed.length,
+      attachmentCount:           parsed.text.length,
       attachmentFormats:         ["json"],
-      attachmentExtractedChars:  parsed[0]?.metadata.charCount ?? 0,
-      attachmentEstimatedTokens: parsed[0]?.estimatedTokens ?? 0,
+      attachmentExtractedChars:  (parsed.text[0] as { metadata?: { charCount?: number } } | undefined)?.metadata?.charCount ?? 0,
+      attachmentEstimatedTokens: parsed.text[0]?.estimatedTokens ?? 0,
     } : {};
 
     // insertUsageLog returns the logId — select that specific row to avoid
@@ -347,15 +348,22 @@ describe("parseAIAttachments — DB usage proof (ai_usage_logs / ai_monthly_usag
     expect(metaStr).toContain("json");
   });
 
-  it("L — parse failure (PNG): ai_usage_logs delta=0, no monthly increment", async () => {
+  it("L — parse failure (XLS legacy format): ai_usage_logs delta=0, no monthly increment", async () => {
+    // Insert a temporary XLS file — ExcelJS XLSX-only, so XLS → 415
+    const xlsId = `f_xls_${Date.now()}`;
+    await pool.query(
+      "INSERT INTO team_files (id, org_id, name, type, size, content, shared_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())",
+      [xlsId, orgId, "legacy.xls", "application/vnd.ms-excel", 8, b64("garbage"), "Test"],
+    );
+
     const orgDb = makeOrgDb(orgId);
 
     // 1. Baseline counts
     const beforeLogs    = await countUsageLogs();
     const beforeMonthly = await countMonthlyUsageRequests();
 
-    // 2. Attempt parse — PNG returns 415 (failure)
-    const resolved = await resolveAIAttachments(orgDb, orgId, [{ fileId: fileIdPng }]);
+    // 2. Attempt parse — XLS returns 415 (legacy format, XLSX-only parser)
+    const resolved = await resolveAIAttachments(orgDb, orgId, [{ fileId: xlsId }]);
     expect(Array.isArray(resolved)).toBe(true);
     const parsed = await parseAIAttachments(
       resolved as Parameters<typeof parseAIAttachments>[0],

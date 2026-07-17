@@ -6,6 +6,8 @@
 
 import OpenAI from "openai";
 import type { AIProviderId } from "./capabilities.js";
+export type { AIProviderId };
+import { toOpenAIContentParts, isMultimodalContent, type ContentBlock } from "./multimodal-mappers.js";
 
 export interface AIProviderChatOptions {
   systemPrompt: string;
@@ -14,7 +16,7 @@ export interface AIProviderChatOptions {
   maxTokens?: number;
   temperature?: number;
   json?: boolean;
-  messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  messages?: Array<{ role: "system" | "user" | "assistant"; content: string | ContentBlock[] }>;
 }
 
 export interface AIProviderStreamChunk {
@@ -53,7 +55,13 @@ export class OpenAIProvider {
 
     const resp = await this.client.chat.completions.create({
       model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: messages.map(m => {
+        const { role, content } = m;
+        if (isMultimodalContent(content)) {
+          return { role: "user" as const, content: toOpenAIContentParts(content) };
+        }
+        return { role, content };
+      }) as OpenAI.ChatCompletionMessageParam[],
       ...(isGpt5Family(model)
         ? { max_completion_tokens: tokenLimit + 500, reasoning_effort: "low" as const }
         : { max_tokens: tokenLimit, temperature: opts.temperature ?? 0.7 }),
@@ -87,7 +95,13 @@ export class OpenAIProvider {
 
     const stream = await this.client.chat.completions.create({
       model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: messages.map(m => {
+        const { role, content } = m;
+        if (isMultimodalContent(content)) {
+          return { role: "user" as const, content: toOpenAIContentParts(content) };
+        }
+        return { role, content };
+      }) as OpenAI.ChatCompletionMessageParam[],
       stream: true,
       stream_options: { include_usage: true },
       ...(isGpt5Family(model)
@@ -131,7 +145,7 @@ export class OpenAIProvider {
       size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
       response_format: "b64_json",
     });
-    const b64 = resp.data[0]?.b64_json ?? "";
+    const b64 = resp.data?.[0]?.b64_json ?? "";
     return { b64_json: b64 };
   }
 }

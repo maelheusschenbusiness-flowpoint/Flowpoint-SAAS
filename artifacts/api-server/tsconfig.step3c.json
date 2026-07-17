@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.vitest.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src/types/ai-attachments.ts",
+    "src/config/ai-attachments.ts",
+    "src/services/file-parsers/image-parser.ts",
+    "src/services/ai-providers/multimodal-mappers.ts",
+    "src/services/ai-multimodal.ts",
+    "src/services/ai-multimodal.test.ts",
+    "src/services/ai-providers/openai-provider.ts",
+    "src/services/ai-providers/anthropic-provider.ts",
+    "src/services/ai-providers/gemini-provider.ts",
+    "src/services/ai-attachment-parser.ts",
+    "src/services/ai-attachment-parser.test.ts",
+    "src/routes/ai-chat-attachments.test.ts"
+  ]
+}

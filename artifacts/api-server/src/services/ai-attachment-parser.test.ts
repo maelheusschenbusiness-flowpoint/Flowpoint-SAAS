@@ -545,26 +545,68 @@ describe("parsePdfBuffer", () => {
 describe("parseAIAttachments", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it("returns HTTP 415 for PNG image attachment", async () => {
-    const att = makeResolved({ extension: "png", contentBase64: "aGVsbG8=", declaredMimeType: "image/png", name: "photo.png" });
-    const r   = await parseAIAttachments([att], DEFAULT_LIMITS);
-    expect("code" in r).toBe(true);
-    if ("code" in r) {
-      expect(r.code).toBe("ATTACHMENT_FORMAT_NOT_SUPPORTED_YET");
-      expect(r.httpStatus).toBe(415);
+  it("Step 3C — PNG attachment succeeds and lands in images[]", async () => {
+    // Valid PNG magic bytes (8-byte signature + padding)
+    const pngBuf = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+      Buffer.alloc(100),
+    ]);
+    const att = makeResolved({
+      extension: "png", contentBase64: pngBuf.toString("base64"),
+      sizeBytes: pngBuf.length, declaredMimeType: "image/png", name: "photo.png",
+    });
+    const r = await parseAIAttachments([att], DEFAULT_LIMITS);
+    expect("code" in r).toBe(false);
+    if (!("code" in r)) {
+      expect(r.text).toHaveLength(0);
+      expect(r.images).toHaveLength(1);
+      expect(r.images[0]?.category).toBe("image");
+      expect(r.images[0]?.mimeType).toBe("image/png");
     }
   });
 
-  it("returns HTTP 415 for JPEG attachment", async () => {
-    const att = makeResolved({ extension: "jpg", contentBase64: "aGVsbG8=", declaredMimeType: "image/jpeg", name: "img.jpg" });
-    const r   = await parseAIAttachments([att], DEFAULT_LIMITS);
-    expect("code" in r && r.httpStatus).toBe(415);
+  it("Step 3C — JPEG attachment succeeds and lands in images[]", async () => {
+    const jpgBuf = Buffer.concat([
+      Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]),
+      Buffer.alloc(100),
+    ]);
+    const att = makeResolved({
+      extension: "jpg", contentBase64: jpgBuf.toString("base64"),
+      sizeBytes: jpgBuf.length, declaredMimeType: "image/jpeg", name: "img.jpg",
+    });
+    const r = await parseAIAttachments([att], DEFAULT_LIMITS);
+    expect("code" in r).toBe(false);
+    if (!("code" in r)) {
+      expect(r.images).toHaveLength(1);
+    }
   });
 
-  it("returns HTTP 415 for WebP attachment", async () => {
-    const att = makeResolved({ extension: "webp", contentBase64: "aGVsbG8=", declaredMimeType: "image/webp", name: "img.webp" });
+  it("Step 3C — WebP attachment succeeds and lands in images[]", async () => {
+    const webpBuf = Buffer.concat([
+      Buffer.from([0x52, 0x49, 0x46, 0x46]),
+      Buffer.alloc(4),
+      Buffer.from([0x57, 0x45, 0x42, 0x50]),
+      Buffer.alloc(100),
+    ]);
+    const att = makeResolved({
+      extension: "webp", contentBase64: webpBuf.toString("base64"),
+      sizeBytes: webpBuf.length, declaredMimeType: "image/webp", name: "img.webp",
+    });
+    const r = await parseAIAttachments([att], DEFAULT_LIMITS);
+    expect("code" in r).toBe(false);
+    if (!("code" in r)) {
+      expect(r.images).toHaveLength(1);
+    }
+  });
+
+  it("Step 3C — invalid image bytes returns ATTACHMENT_IMAGE_INVALID", async () => {
+    const att = makeResolved({ extension: "png", contentBase64: "aGVsbG8=", declaredMimeType: "image/png", name: "bad.png" });
     const r   = await parseAIAttachments([att], DEFAULT_LIMITS);
-    expect("code" in r && r.httpStatus).toBe(415);
+    expect("code" in r).toBe(true);
+    if ("code" in r) {
+      expect(r.code).toBe("ATTACHMENT_IMAGE_INVALID");
+      expect(r.httpStatus).toBe(415);
+    }
   });
 
   it("returns HTTP 415 for XLS (legacy format — ExcelJS XLSX-only)", async () => {
@@ -577,7 +619,7 @@ describe("parseAIAttachments", () => {
     }
   });
 
-  it("parses TXT attachment and returns NormalizedAttachment", async () => {
+  it("parses TXT attachment and returns NormalizedAttachment in text[]", async () => {
     const att = makeResolved({
       extension:    "txt",
       contentBase64: textB64("Contenu de test."),
@@ -585,10 +627,11 @@ describe("parseAIAttachments", () => {
       name: "notes.txt",
     });
     const r = await parseAIAttachments([att], DEFAULT_LIMITS);
-    expect(Array.isArray(r)).toBe(true);
-    if (Array.isArray(r)) {
-      expect(r[0]?.category).toBe("text");
-      expect(r[0]?.extractedText).toBe("Contenu de test.");
+    expect("code" in r).toBe(false);
+    if (!("code" in r)) {
+      expect(r.images).toHaveLength(0);
+      expect(r.text[0]?.category).toBe("text");
+      expect(r.text[0]?.extractedText).toBe("Contenu de test.");
     }
   });
 
@@ -596,12 +639,12 @@ describe("parseAIAttachments", () => {
     const json = JSON.stringify({ user: "alice", password: "hunter2", cookie: "sid=abc", authorization: "Bearer tok" });
     const att  = makeResolved({ extension: "json", contentBase64: textB64(json), declaredMimeType: "application/json", name: "data.json" });
     const r    = await parseAIAttachments([att], DEFAULT_LIMITS);
-    expect(Array.isArray(r)).toBe(true);
-    if (Array.isArray(r)) {
-      expect(r[0]?.extractedText).not.toContain("hunter2");
-      expect(r[0]?.extractedText).not.toContain("sid=abc");
-      expect(r[0]?.extractedText).not.toContain("Bearer tok");
-      expect(r[0]?.extractedText).toContain("[REDACTED]");
+    expect("code" in r).toBe(false);
+    if (!("code" in r)) {
+      expect(r.text[0]?.extractedText).not.toContain("hunter2");
+      expect(r.text[0]?.extractedText).not.toContain("sid=abc");
+      expect(r.text[0]?.extractedText).not.toContain("Bearer tok");
+      expect(r.text[0]?.extractedText).toContain("[REDACTED]");
     }
   });
 
@@ -644,9 +687,9 @@ describe("parseAIAttachments", () => {
     expect("code" in r && r.httpStatus).toBe(400);
   });
 
-  it("returns error from first failing attachment (fail-fast)", async () => {
+  it("returns error from first failing attachment (fail-fast) — XLS triggers 415", async () => {
     const ok  = makeResolved({ extension: "txt", contentBase64: textB64("ok"), name: "a.txt" });
-    const bad = makeResolved({ id: "att2", extension: "png", contentBase64: "aGVsbG8=", declaredMimeType: "image/png", name: "b.png" });
+    const bad = makeResolved({ id: "att2", extension: "xls", contentBase64: textB64("old xls"), declaredMimeType: "application/vnd.ms-excel", name: "b.xls" });
     const r   = await parseAIAttachments([bad, ok], DEFAULT_LIMITS);
     expect("code" in r).toBe(true);
     if ("code" in r) expect(r.code).toBe("ATTACHMENT_FORMAT_NOT_SUPPORTED_YET");
@@ -665,20 +708,23 @@ describe("parseAIAttachments", () => {
     }
   });
 
-  it("parses multiple attachments and returns all results", async () => {
+  it("parses multiple text attachments and returns ParsedAttachmentSet.text", async () => {
     const att1 = makeResolved({ id: "a1", extension: "txt", contentBase64: textB64("Hello"), name: "a.txt" });
     const att2 = makeResolved({ id: "a2", extension: "json", contentBase64: textB64(JSON.stringify({ k: "v" })), name: "b.json" });
     const r    = await parseAIAttachments([att1, att2], DEFAULT_LIMITS);
-    expect(Array.isArray(r)).toBe(true);
-    if (Array.isArray(r)) expect(r).toHaveLength(2);
+    expect("code" in r).toBe(false);
+    if (!("code" in r)) {
+      expect(r.text).toHaveLength(2);
+      expect(r.images).toHaveLength(0);
+    }
   });
 
   it("estimatedTokens ≈ charCount / 4", async () => {
     const text = "A".repeat(400);
     const att  = makeResolved({ extension: "txt", contentBase64: textB64(text), name: "f.txt" });
     const r    = await parseAIAttachments([att], DEFAULT_LIMITS);
-    if (Array.isArray(r) && r[0]) {
-      expect(r[0].estimatedTokens).toBe(Math.ceil(400 / 4));
+    if (!("code" in r) && r.text[0]) {
+      expect(r.text[0].estimatedTokens).toBe(Math.ceil(400 / 4));
     }
   });
 });

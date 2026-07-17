@@ -7,6 +7,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { AIProviderId, AIProviderChatOptions, AIProviderStreamChunk, AIProviderResult } from "./openai-provider.js";
+import { toAnthropicContentParts } from "./multimodal-mappers.js";
 
 export class AnthropicProvider {
   readonly id: AIProviderId = "anthropic";
@@ -91,13 +92,21 @@ export class AnthropicProvider {
 
   private buildMessages(opts: AIProviderChatOptions): Anthropic.MessageParam[] {
     if (opts.messages) {
-      return opts.messages.map(m => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.content,
-      }));
+      return opts.messages.map(m => {
+        const { content } = m;
+        if (typeof content !== "string") {
+          // Multimodal content — images only appear in user messages
+          return {
+            role:    "user" as const,
+            content: toAnthropicContentParts(content) as Anthropic.ContentBlockParam[],
+          };
+        }
+        return {
+          role:    m.role === "assistant" ? "assistant" as const : "user" as const,
+          content,
+        };
+      });
     }
-    return [
-      { role: "user", content: opts.userPrompt },
-    ];
+    return [{ role: "user", content: opts.userPrompt }];
   }
 }
