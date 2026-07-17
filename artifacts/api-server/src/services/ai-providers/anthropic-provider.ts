@@ -107,6 +107,6 @@ export class AnthropicProvider {
         };
       });
     }
-    return [{ role: "user", content: opts.userPrompt }];
+    return [{ role: "user", content: opts.userPrompt ?? "" }];
   }
 }

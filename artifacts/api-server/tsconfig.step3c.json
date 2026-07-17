@@ -14,7 +14,6 @@
     "src/services/ai-providers/anthropic-provider.ts",
     "src/services/ai-providers/gemini-provider.ts",
     "src/services/ai-attachment-parser.ts",
-    "src/services/ai-attachment-parser.test.ts",
-    "src/routes/ai-chat-attachments.test.ts"
+    "src/services/ai-attachment-parser.test.ts"
   ]
 }

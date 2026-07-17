@@ -11,7 +11,7 @@ import { toOpenAIContentParts, isMultimodalContent, type ContentBlock } from "./
 
 export interface AIProviderChatOptions {
   systemPrompt: string;
-  userPrompt: string;
+  userPrompt?: string;  // optional when messages[] is provided
   model?: string;
   maxTokens?: number;
   temperature?: number;
@@ -50,7 +50,7 @@ export class OpenAIProvider {
     const tokenLimit = opts.maxTokens ?? 512;
     const messages = opts.messages ?? [
       { role: "system" as const, content: opts.systemPrompt },
-      { role: "user" as const, content: opts.userPrompt },
+      { role: "user" as const, content: opts.userPrompt ?? "" },
     ];
 
     const resp = await this.client.chat.completions.create({
@@ -90,7 +90,7 @@ export class OpenAIProvider {
     const tokenLimit = opts.maxTokens ?? 512;
     const messages = opts.messages ?? [
       { role: "system" as const, content: opts.systemPrompt },
-      { role: "user" as const, content: opts.userPrompt },
+      { role: "user" as const, content: opts.userPrompt ?? "" },
     ];
 
     const stream = await this.client.chat.completions.create({
