@@ -1097,8 +1097,18 @@ async function loadData() {
   if (_prefs) {
     if (typeof _prefs.streak === 'number') STATE.streak = _prefs.streak;
     if (_prefs.pinned && typeof _prefs.pinned === 'object') STATE.pinned = _prefs.pinned;
-    if (_prefs.checklist && !(_clRes?.status === 'fulfilled' && _clRes.value?.items)) STATE.checklist = _prefs.checklist;
-    if (_prefs.checklist_extra && !(_clRes?.status === 'fulfilled' && _clRes.value?.extra)) STATE.checklistExtra = _prefs.checklist_extra;
+    var _serverHasItems = _clRes?.status === 'fulfilled' && Array.isArray(_clRes.value?.items) && _clRes.value.items.length > 0;
+    var _serverHasExtra = _clRes?.status === 'fulfilled' && _clRes.value?.extra && Object.keys(_clRes.value.extra).length > 0;
+    var _serverHasData  = _serverHasItems || _serverHasExtra;
+    if (!_serverHasData && _prefs?.checklist && !localStorage.getItem('fp-checklist-migrated')) {
+      STATE.checklist = _prefs.checklist;
+      if (_prefs.checklist_extra && typeof _prefs.checklist_extra === 'object') STATE.checklistExtra = _prefs.checklist_extra;
+      apiAction('PUT', '/api/overview/checklist', { items: _prefs.checklist, extra: _prefs.checklist_extra || {} })
+        .then(function() { localStorage.setItem('fp-checklist-migrated', '1'); })
+        .catch(function() { /* network failure — keep local data, retry on next load */ });
+    } else if (!_serverHasData && _prefs?.checklist_extra && typeof _prefs.checklist_extra === 'object') {
+      STATE.checklistExtra = _prefs.checklist_extra;
+    }
     if (_prefs.settings && typeof _prefs.settings === 'object') {
       STATE.settings = { ...STATE.settings, ..._prefs.settings };
       // Theme priority: manual-local > backend-manual > auto-system.
@@ -3642,7 +3652,7 @@ function renderOverview() {
     { name:'Data Explorer',   score: (function(){ var _ac=(STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length; return _ac > 0 ? Math.min(98, 50 + _ac*15 + (STATE.reports.length>0?8:0)) : null; }()), status:(STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length>0?'ok':'no-data', icon:'📊', issues:0, color:'#06b6d4', route:'data-explorer' },
     { name:'Rapports',        score: STATE.reports.length > 0 ? Math.min(98, 55 + Math.min(40, STATE.reports.length * 6)) : null, status: STATE.reports.length > 0 ? 'ok' : 'no-data', icon:'📄', issues:0, color:'#2563EB', route:'reports' },
     { name:'Alertes',         score: STATE.alertRules.length > 0 ? Math.min(98, 55 + Math.min(38, STATE.alertRules.filter(r=>r.active).length * 6)) : null, status: STATE.alertRules.length > 0 ? 'ok' : 'no-data', icon:'🔔', issues: STATE.alertEvents.filter(e=>!e.resolvedAt).length, color:'#f59e0b', route:'alerts-center' },
-    { name:'IA Copilot',      score: (STATE.aiCredits?.limit > 0) ? Math.min(98, 65 + Math.round(Math.min(33, (1 - STATE.aiCredits.used/Math.max(STATE.aiCredits.limit,1)) * 33))) : null, status:'ok', icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
+    { name:'IA Copilot',      score: (function(){ var _au=STATE.aiCredits?.used??0,_ar=STATE.aiCredits?.requestCount??0,_al=(STATE.aiCredits?.limit??0)+(STATE.aiCredits?.extra??0); if(!_au||!_ar||!_al) return null; var _rate=_au/Math.max(_al,1); return Math.min(98,Math.round(40+Math.min(58,_rate*58))); }()), status:(STATE.aiCredits?.used>0&&STATE.aiCredits?.requestCount>0)?'ok':'no-data', icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
   ];
 
   var _rangeToMs = { 'today':86400000, '1d':86400000, '3d':3*86400000, '7d':7*86400000, '30d':30*86400000 };
@@ -10897,8 +10907,9 @@ async function loadAICredits() {
       const limit = m.creditsLimit ?? data.creditsLimit ?? data.limit ?? 0;
       const extra = m.creditsExtra ?? data.creditsExtra ?? data.extra ?? 0;
       const resetDate = m.resetDate ?? data.resetDate ?? null;
+      const requestCount = m.requestCount ?? data.requestCount ?? 0;
       STATE.aiCredits = {
-        used, limit, extra, resetDate,
+        used, limit, extra, resetDate, requestCount,
         byFeature:    data.byFeature    || [],
         byProvider:   data.byProvider   || [],
         byModel:      data.byModel      || [],
