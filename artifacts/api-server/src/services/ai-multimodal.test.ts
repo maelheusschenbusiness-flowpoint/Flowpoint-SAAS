@@ -335,3 +335,165 @@ describe("isImageAttachment", () => {
     expect(isImageAttachment(txt as never)).toBe(false);
   });
 });
+
+// ── Dimension extraction and enforcement ──────────────────────────────────────
+
+// Build a minimal PNG buffer with explicit IHDR dimensions.
+// Layout: magic(8) + chunk_len(4) + "IHDR"(4) + width(4BE) + height(4BE) = 24 bytes.
+function makePngWithDims(width: number, height: number): { b64: string; sizeBytes: number } {
+  const buf = Buffer.alloc(24, 0);
+  buf[0] = 0x89; buf[1] = 0x50; buf[2] = 0x4E; buf[3] = 0x47;
+  buf[4] = 0x0D; buf[5] = 0x0A; buf[6] = 0x1A; buf[7] = 0x0A; // PNG magic
+  buf.writeUInt32BE(13, 8);             // IHDR data length = 13
+  buf.write("IHDR", 12, "ascii");       // chunk type
+  buf.writeUInt32BE(width,  16);        // width  at bytes 16-19
+  buf.writeUInt32BE(height, 20);        // height at bytes 20-23
+  return { b64: buf.toString("base64"), sizeBytes: buf.length };
+}
+
+// Build a minimal JPEG buffer with a SOF0 marker immediately after SOI.
+// Layout: SOI(2) + SOF0_marker(2) + seg_len(2) + precision(1) + height(2BE) + width(2BE) + …
+function makeJpegWithDims(width: number, height: number): { b64: string; sizeBytes: number } {
+  const buf = Buffer.alloc(20, 0);
+  buf[0] = 0xFF; buf[1] = 0xD8;          // SOI
+  buf[2] = 0xFF; buf[3] = 0xC0;          // SOF0 marker
+  buf[4] = 0x00; buf[5] = 0x11;          // segment length = 17
+  buf[6] = 0x08;                          // precision = 8 bits
+  buf.writeUInt16BE(height, 7);           // height at scanner offset i+5 = 7
+  buf.writeUInt16BE(width,  9);           // width  at scanner offset i+7 = 9
+  return { b64: buf.toString("base64"), sizeBytes: buf.length };
+}
+
+// Build a minimal VP8X (extended WebP) buffer.
+// Layout: RIFF(4)+size(4)+WEBP(4)+VP8X(4)+chunk_size(4)+flags(4)+width-1(3LE)+height-1(3LE)
+function makeWebpVP8X(width: number, height: number): { b64: string; sizeBytes: number } {
+  const buf = Buffer.alloc(30, 0);
+  buf.write("RIFF", 0, "ascii");
+  buf.writeUInt32LE(22, 4);              // file size (arbitrary)
+  buf.write("WEBP", 8, "ascii");
+  buf.write("VP8X", 12, "ascii");
+  buf.writeUInt32LE(10, 16);             // VP8X chunk data size = 10 bytes
+  // flags at bytes 20-23 (all zero = no animation, alpha, etc.)
+  // canvas_width_minus_one: 3 bytes LE at bytes 24-26
+  const wm1 = width - 1;
+  buf[24] = wm1 & 0xFF;
+  buf[25] = (wm1 >> 8) & 0xFF;
+  buf[26] = (wm1 >> 16) & 0xFF;
+  // canvas_height_minus_one: 3 bytes LE at bytes 27-29
+  const hm1 = height - 1;
+  buf[27] = hm1 & 0xFF;
+  buf[28] = (hm1 >> 8) & 0xFF;
+  buf[29] = (hm1 >> 16) & 0xFF;
+  return { b64: buf.toString("base64"), sizeBytes: buf.length };
+}
+
+describe("parseImageBuffer — dimension extraction and enforcement", () => {
+  // ── PNG ──────────────────────────────────────────────────────────────────
+
+  it("PNG 1×1 — accepted (within limits)", async () => {
+    const { b64, sizeBytes } = makePngWithDims(1, 1);
+    const r = await parseImageBuffer("d1", "tiny.png", "image/png", b64, sizeBytes);
+    expect("error" in r).toBe(false);
+    if (!("error" in r)) {
+      expect(r.image.width).toBe(1);
+      expect(r.image.height).toBe(1);
+    }
+  });
+
+  it("PNG 4096×4096 — accepted (exactly at limit)", async () => {
+    const { b64, sizeBytes } = makePngWithDims(4096, 4096);
+    const r = await parseImageBuffer("d2", "limit.png", "image/png", b64, sizeBytes);
+    expect("error" in r).toBe(false);
+  });
+
+  it("PNG 4097×1 — rejected ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE (413)", async () => {
+    const { b64, sizeBytes } = makePngWithDims(4097, 1);
+    const r = await parseImageBuffer("d3", "wide.png", "image/png", b64, sizeBytes);
+    expect("error" in r).toBe(true);
+    if ("error" in r) {
+      expect(r.error).toBe("ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE");
+      expect(r.httpStatus).toBe(413);
+      expect(r.message).toContain("4097");
+    }
+  });
+
+  it("PNG 1×5000 — rejected ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE (413)", async () => {
+    const { b64, sizeBytes } = makePngWithDims(1, 5000);
+    const r = await parseImageBuffer("d4", "tall.png", "image/png", b64, sizeBytes);
+    expect("error" in r).toBe(true);
+    if ("error" in r) {
+      expect(r.error).toBe("ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE");
+      expect(r.httpStatus).toBe(413);
+    }
+  });
+
+  it("PNG truncated header (< 24 bytes) — rejected ATTACHMENT_IMAGE_INVALID (415)", async () => {
+    // 15 bytes: PNG magic (8) + 7 padding bytes — too short to contain IHDR width/height
+    const buf = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+      Buffer.alloc(7),
+    ]);
+    const b64 = buf.toString("base64");
+    const r = await parseImageBuffer("d5", "trunc.png", "image/png", b64, buf.length);
+    expect("error" in r).toBe(true);
+    if ("error" in r) {
+      expect(r.error).toBe("ATTACHMENT_IMAGE_INVALID");
+      expect(r.httpStatus).toBe(415);
+    }
+  });
+
+  // ── JPEG ─────────────────────────────────────────────────────────────────
+
+  it("JPEG 100×200 — accepted, dimensions stored", async () => {
+    const { b64, sizeBytes } = makeJpegWithDims(100, 200);
+    const r = await parseImageBuffer("d6", "photo.jpg", "image/jpeg", b64, sizeBytes);
+    expect("error" in r).toBe(false);
+    if (!("error" in r)) {
+      expect(r.image.width).toBe(100);
+      expect(r.image.height).toBe(200);
+    }
+  });
+
+  it("JPEG 5000×100 — rejected ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE", async () => {
+    const { b64, sizeBytes } = makeJpegWithDims(5000, 100);
+    const r = await parseImageBuffer("d7", "wide.jpg", "image/jpeg", b64, sizeBytes);
+    expect("error" in r).toBe(true);
+    if ("error" in r) {
+      expect(r.error).toBe("ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE");
+    }
+  });
+
+  // ── WebP VP8X ────────────────────────────────────────────────────────────
+
+  it("WebP VP8X 300×400 — accepted, dimensions stored", async () => {
+    const { b64, sizeBytes } = makeWebpVP8X(300, 400);
+    const r = await parseImageBuffer("d8", "banner.webp", "image/webp", b64, sizeBytes);
+    expect("error" in r).toBe(false);
+    if (!("error" in r)) {
+      expect(r.image.width).toBe(300);
+      expect(r.image.height).toBe(400);
+    }
+  });
+
+  it("WebP VP8X 5000×100 — rejected ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE", async () => {
+    const { b64, sizeBytes } = makeWebpVP8X(5000, 100);
+    const r = await parseImageBuffer("d9", "huge.webp", "image/webp", b64, sizeBytes);
+    expect("error" in r).toBe(true);
+    if ("error" in r) {
+      expect(r.error).toBe("ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE");
+      expect(r.httpStatus).toBe(413);
+    }
+  });
+
+  // ── Dimension stored in result ────────────────────────────────────────────
+
+  it("accepted PNG includes width and height in image field", async () => {
+    const { b64, sizeBytes } = makePngWithDims(800, 600);
+    const r = await parseImageBuffer("d10", "img.png", "image/png", b64, sizeBytes);
+    expect("error" in r).toBe(false);
+    if (!("error" in r)) {
+      expect(r.image.width).toBe(800);
+      expect(r.image.height).toBe(600);
+    }
+  });
+});

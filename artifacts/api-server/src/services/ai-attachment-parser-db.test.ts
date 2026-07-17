@@ -82,6 +82,19 @@ function fakePngB64(): string {
   return pngHeader.toString("base64");
 }
 
+// Build a valid 24-byte PNG stub with explicit IHDR dimensions.
+// Identical layout to makePngWithDims in ai-multimodal.test.ts.
+function fakePngWithDimsB64(width: number, height: number): string {
+  const buf = Buffer.alloc(24, 0);
+  buf[0] = 0x89; buf[1] = 0x50; buf[2] = 0x4E; buf[3] = 0x47;
+  buf[4] = 0x0D; buf[5] = 0x0A; buf[6] = 0x1A; buf[7] = 0x0A;
+  buf.writeUInt32BE(13, 8);
+  buf.write("IHDR", 12, "ascii");
+  buf.writeUInt32BE(width,  16);
+  buf.writeUInt32BE(height, 20);
+  return buf.toString("base64");
+}
+
 function makeOrgDb(oid: string): OrgDb {
   return async (sql: string, values?: unknown[]) => {
     const result = await withOrgDb(oid, (client) =>
@@ -171,7 +184,7 @@ beforeAll(async () => {
   const jsonContent = b64(JSON.stringify({ titre: "Test", valeur: 42, note: "aucune" }));
   const csvContent  = b64("produit,prix,stock\nWidget,9.99,100\nGadget,19.99,50\n");
   const xlsxContent = await makeXlsxB64();
-  const pngContent  = fakePngB64();
+  const pngContent  = fakePngWithDimsB64(100, 100);
 
   // $2 = orgId, reused in all rows — only 11 unique parameter slots.
   await pool.query(
@@ -459,6 +472,90 @@ describe("parseAIAttachments — DB usage proof (ai_usage_logs / ai_monthly_usag
 
     // mammoth mock returns empty string → DOCX_INVALID (since it throws on non-zip)
     expect("code" in parsed).toBe(true);
+
+    const afterLogs = await countUsageLogs();
+    expect(afterLogs - beforeLogs).toBe(0);
+  });
+
+  // ── Step 3C — Image parse failure cases (real DB) ─────────────────────────
+  // Each inserts a file with an image MIME type but bad/mismatched content,
+  // verifies parseAIAttachments returns a structured error code, and proves
+  // the route's early-return contract: zero usage writes on failure.
+
+  it("L — image: invalid PNG magic → ATTACHMENT_IMAGE_INVALID, delta=0", async () => {
+    const badPngId = `f_img_invalid_${Date.now()}`;
+    // Content is plain text — no PNG magic bytes → detectMime returns null
+    await pool.query(
+      "INSERT INTO team_files (id, org_id, name, type, size, content, shared_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())",
+      [badPngId, orgId, "bad.png", "image/png", 20, b64("this is not a png"), "Test"],
+    );
+
+    const orgDb      = makeOrgDb(orgId);
+    const beforeLogs = await countUsageLogs();
+
+    const resolved = await resolveAIAttachments(orgDb, orgId, [{ fileId: badPngId }]);
+    expect(Array.isArray(resolved)).toBe(true);
+
+    const parsed = await parseAIAttachments(
+      resolved as Parameters<typeof parseAIAttachments>[0],
+      limits,
+    );
+
+    expect("code" in parsed).toBe(true);
+    expect((parsed as { code: string }).code).toBe("ATTACHMENT_IMAGE_INVALID");
+
+    const afterLogs = await countUsageLogs();
+    expect(afterLogs - beforeLogs).toBe(0);
+  });
+
+  it("L — image: PNG content declared as JPEG → ATTACHMENT_IMAGE_MIME_MISMATCH, delta=0", async () => {
+    const mismatchId = `f_img_mismatch_${Date.now()}`;
+    // Content IS a valid PNG stub but MIME says image/jpeg → MIME mismatch
+    await pool.query(
+      "INSERT INTO team_files (id, org_id, name, type, size, content, shared_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())",
+      [mismatchId, orgId, "photo.jpg", "image/jpeg", 8, fakePngB64(), "Test"],
+    );
+
+    const orgDb      = makeOrgDb(orgId);
+    const beforeLogs = await countUsageLogs();
+
+    const resolved = await resolveAIAttachments(orgDb, orgId, [{ fileId: mismatchId }]);
+    expect(Array.isArray(resolved)).toBe(true);
+
+    const parsed = await parseAIAttachments(
+      resolved as Parameters<typeof parseAIAttachments>[0],
+      limits,
+    );
+
+    expect("code" in parsed).toBe(true);
+    expect((parsed as { code: string }).code).toBe("ATTACHMENT_IMAGE_MIME_MISMATCH");
+
+    const afterLogs = await countUsageLogs();
+    expect(afterLogs - beforeLogs).toBe(0);
+  });
+
+  it("L — image: PNG 5000×5000 IHDR → ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE, delta=0", async () => {
+    const oversizeId = `f_img_dims_${Date.now()}`;
+    // Valid PNG magic + IHDR reporting 5000×5000 — exceeds 4096×4096 limit
+    const oversizePng = fakePngWithDimsB64(5000, 5000);
+    await pool.query(
+      "INSERT INTO team_files (id, org_id, name, type, size, content, shared_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())",
+      [oversizeId, orgId, "huge.png", "image/png", 24, oversizePng, "Test"],
+    );
+
+    const orgDb      = makeOrgDb(orgId);
+    const beforeLogs = await countUsageLogs();
+
+    const resolved = await resolveAIAttachments(orgDb, orgId, [{ fileId: oversizeId }]);
+    expect(Array.isArray(resolved)).toBe(true);
+
+    const parsed = await parseAIAttachments(
+      resolved as Parameters<typeof parseAIAttachments>[0],
+      limits,
+    );
+
+    expect("code" in parsed).toBe(true);
+    expect((parsed as { code: string }).code).toBe("ATTACHMENT_IMAGE_DIMENSIONS_TOO_LARGE");
 
     const afterLogs = await countUsageLogs();
     expect(afterLogs - beforeLogs).toBe(0);

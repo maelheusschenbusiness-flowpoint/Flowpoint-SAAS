@@ -152,16 +152,20 @@ function makeValidOrgDb() {
   });
 }
 
+// Unique IP counter — each makeReq() call increments so that chatHandler's
+// module-level rateLimitMap never shares a bucket across test calls.
+let _reqCounter = 0;
 function makeReq(
   overrides: { body?: Record<string, unknown>; orgDb?: unknown } = {},
 ): Request {
+  _reqCounter++;
   return {
     body:    { message: "bonjour", stream: false, ...overrides.body },
     orgId:   "org-test",
     userId:  "user-test",
     orgDb:   overrides.orgDb ?? vi.fn().mockResolvedValue({ rows: [] }),
     headers: {},
-    ip:      "127.0.0.1",
+    ip:      `10.0.${Math.floor(_reqCounter / 256)}.${_reqCounter % 256}`,
   } as unknown as Request;
 }
 
@@ -182,6 +186,12 @@ function makeRes(): Response {
 }
 
 function setupDefaultMocks(): void {
+  // Provider validation — must be set here because vi.resetAllMocks() clears vi.hoisted() defaults
+  spies.isValidProvider.mockReturnValue(true);
+  spies.isModelValidForProvider.mockReturnValue(true);
+  spies.recordCompletedUsage.mockResolvedValue(undefined);
+  spies.moduleDisabledResponse.mockReturnValue({ error: "module disabled" });
+
   spies.loadOrgAIPrefs.mockResolvedValue({
     aiIntensity:       "standard",
     preferredProvider: "openai",
@@ -216,13 +226,17 @@ function setupDefaultMocks(): void {
     text:  "Analyse du document : tout est en ordre.",
     usage: { promptTokens: 150, completionTokens: 40 },
   });
+  // Default stream response — factory so each call gets a fresh generator
+  spies.aiStream.mockImplementation(
+    () => (async function* () { yield { content: "Stream OK" }; })(),
+  );
 }
 
 // ── Test suite ─────────────────────────────────────────────────────────────────
 
 describe("POST /ai/chat — attachment contract (Steps 3A/3B)", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     setupDefaultMocks();
   });
 
@@ -712,6 +726,93 @@ describe("POST /ai/chat — attachment contract (Steps 3A/3B)", () => {
       expect(nonStreamSys).toContain(PARITY_UNIQUE);
       expect(streamSys).toContain(PARITY_UNIQUE);
       expect(streamSys).toBe(nonStreamSys);
+    });
+  });
+
+  // ── Step 3C — Provider isolation with image attachments ───────────────────
+  // Image attachments must NOT change the resolved provider.
+  // The unified aiChat/aiStream dispatcher is called with `provider` and `strictProvider: true`
+  // exactly as resolved from org preferences — image presence is transparent to provider routing.
+
+  describe("Step 3C — provider isolation with image attachments", () => {
+    const FAKE_PNG_IMG = {
+      id:       "img-png",
+      name:     "screenshot.png",
+      mimeType: "image/png" as const,
+      category: "image" as const,
+      image:    { dataBase64: "A".repeat(100), width: 100, height: 100 },
+      metadata: { sizeBytes: 75, parser: "image-native" as const, truncated: false, extractionMs: 1 },
+      estimatedTokens: 85,
+    };
+
+    const FAKE_JPEG_IMG = {
+      ...FAKE_PNG_IMG,
+      id:       "img-jpeg",
+      name:     "photo.jpg",
+      mimeType: "image/jpeg" as const,
+    };
+
+    const FAKE_WEBP_IMG = {
+      ...FAKE_PNG_IMG,
+      id:       "img-webp",
+      name:     "banner.webp",
+      mimeType: "image/webp" as const,
+    };
+
+    it("openai org + PNG image → aiChat called with provider='openai' and strictProvider=true", async () => {
+      spies.loadOrgAIPrefs.mockResolvedValue({
+        aiIntensity: "standard", preferredProvider: "openai", activeModules: { dailyAI: true },
+      });
+      spies.parseAIAttachments.mockResolvedValue({ text: [], images: [FAKE_PNG_IMG] });
+
+      const req = makeReq({
+        body:  { message: "analyse cette image", stream: false, attachments: [{ fileId: "img-png" }] },
+        orgDb: makeValidOrgDb(),
+      });
+      await chatHandler(req, makeRes());
+
+      expect(spies.aiChat).toHaveBeenCalledOnce();
+      const callArg = spies.aiChat.mock.calls[0]![0] as Record<string, unknown>;
+      expect(callArg["provider"]).toBe("openai");
+      expect(callArg["strictProvider"]).toBe(true);
+    });
+
+    it("anthropic org + JPEG image → aiChat called with provider='anthropic' (image/webp supported)", async () => {
+      spies.loadOrgAIPrefs.mockResolvedValue({
+        aiIntensity: "standard", preferredProvider: "anthropic", activeModules: { dailyAI: true },
+      });
+      spies.resolveIntensityConfig.mockReturnValue({ model: "claude-opus-4-5", maxTokens: 2048 });
+      spies.parseAIAttachments.mockResolvedValue({ text: [], images: [FAKE_JPEG_IMG] });
+
+      const req = makeReq({
+        body:  { message: "décris cette photo", stream: false, attachments: [{ fileId: "img-jpeg" }] },
+        orgDb: makeValidOrgDb(),
+      });
+      await chatHandler(req, makeRes());
+
+      expect(spies.aiChat).toHaveBeenCalledOnce();
+      const callArg = spies.aiChat.mock.calls[0]![0] as Record<string, unknown>;
+      expect(callArg["provider"]).toBe("anthropic");
+      expect(callArg["strictProvider"]).toBe(true);
+    });
+
+    it("gemini org + WebP image → aiChat called with provider='gemini' and strictProvider=true", async () => {
+      spies.loadOrgAIPrefs.mockResolvedValue({
+        aiIntensity: "standard", preferredProvider: "gemini", activeModules: { dailyAI: true },
+      });
+      spies.resolveIntensityConfig.mockReturnValue({ model: "gemini-2.5-flash", maxTokens: 2048 });
+      spies.parseAIAttachments.mockResolvedValue({ text: [], images: [FAKE_WEBP_IMG] });
+
+      const req = makeReq({
+        body:  { message: "analyse ce WebP", stream: false, attachments: [{ fileId: "img-webp" }] },
+        orgDb: makeValidOrgDb(),
+      });
+      await chatHandler(req, makeRes());
+
+      expect(spies.aiChat).toHaveBeenCalledOnce();
+      const callArg = spies.aiChat.mock.calls[0]![0] as Record<string, unknown>;
+      expect(callArg["provider"]).toBe("gemini");
+      expect(callArg["strictProvider"]).toBe(true);
     });
   });
 });
