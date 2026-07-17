@@ -82,41 +82,72 @@ router.get("/overview/checklist", async (req: Request, res: Response) => {
 });
 
 // ── PUT /overview/checklist — persist checklist state server-side ─────────────
-// Accepts either:
-//   { completedItems: string[] }  — IDs of completed items (shorthand contract)
-//   { items: any[], extra: object } — full checklist + extra categories state
+// Accepts partial payloads: { items } | { extra } | { items, extra }
+// Absent fields preserve their existing value in DB.
+// Shorthand: { completedItems: string[] } → extra map
 router.put("/overview/checklist", async (req: Request, res: Response) => {
   try {
     const orgId = (req as unknown as { orgContext?: { orgId?: string }; orgId?: string })
       .orgContext?.orgId ?? (req as unknown as { orgId?: string }).orgId ?? "default";
 
-    let { items, extra, completedItems } = req.body as {
-      items?: unknown[] | null;
-      extra?: Record<string, boolean> | null;
-      completedItems?: string[] | null;
-    };
+    const body = req.body as Record<string, unknown>;
 
-    // Support shorthand: completedItems → extra map  { id → true }
-    if (Array.isArray(completedItems) && items == null && extra == null) {
-      extra = Object.fromEntries(completedItems.map((id) => [id, true]));
+    // Support shorthand: completedItems → extra map { id → true }
+    if (Array.isArray(body.completedItems) && !Object.prototype.hasOwnProperty.call(body, "items") && !Object.prototype.hasOwnProperty.call(body, "extra")) {
+      body.extra = Object.fromEntries((body.completedItems as string[]).map((id) => [id, true]));
     }
 
-    await pool.query(
+    const hasItems = Object.prototype.hasOwnProperty.call(body, "items");
+    const hasExtra = Object.prototype.hasOwnProperty.call(body, "extra");
+
+    // Reject empty update
+    if (!hasItems && !hasExtra) {
+      return res.status(400).json({
+        error: "At least one checklist field is required",
+        code: "CHECKLIST_EMPTY_UPDATE",
+      });
+    }
+
+    // Validate types
+    if (hasItems && !Array.isArray(body.items)) {
+      return res.status(400).json({
+        error: "items must be an array",
+        code: "CHECKLIST_INVALID_PAYLOAD",
+      });
+    }
+    if (hasExtra && (body.extra === null || typeof body.extra !== "object" || Array.isArray(body.extra))) {
+      return res.status(400).json({
+        error: "extra must be an object",
+        code: "CHECKLIST_INVALID_PAYLOAD",
+      });
+    }
+
+    const result = await pool.query(
       `INSERT INTO org_checklist (org_id, items, extra, updated_at)
-       VALUES ($1, $2::jsonb, $3::jsonb, NOW())
+       VALUES (
+         $1,
+         COALESCE($2::jsonb, '[]'::jsonb),
+         COALESCE($3::jsonb, '{}'::jsonb),
+         NOW()
+       )
        ON CONFLICT (org_id) DO UPDATE SET
-         items      = CASE WHEN $2 IS NOT NULL THEN $2::jsonb ELSE org_checklist.items END,
-         extra      = CASE WHEN $3 IS NOT NULL THEN $3::jsonb ELSE org_checklist.extra END,
-         updated_at = NOW()`,
+         items      = CASE WHEN $4::boolean THEN EXCLUDED.items      ELSE org_checklist.items END,
+         extra      = CASE WHEN $5::boolean THEN EXCLUDED.extra      ELSE org_checklist.extra END,
+         updated_at = NOW()
+       RETURNING items, extra, updated_at`,
       [
         orgId,
-        items != null ? JSON.stringify(items) : null,
-        extra != null ? JSON.stringify(extra) : null,
+        hasItems ? JSON.stringify(body.items) : null,
+        hasExtra ? JSON.stringify(body.extra)  : null,
+        hasItems,
+        hasExtra,
       ]
     );
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: "Failed to save checklist" });
+
+    const row = result.rows[0];
+    return res.json({ ok: true, items: row?.items ?? [], extra: row?.extra ?? {}, updatedAt: row?.updated_at });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to save checklist" });
   }
 });
 

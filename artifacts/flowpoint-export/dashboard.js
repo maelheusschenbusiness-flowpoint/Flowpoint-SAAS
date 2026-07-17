@@ -370,6 +370,7 @@ const _apiFetchCache    = new Map();
 const _API_CACHE_TTL    = 30_000;
 async function apiFetch(path, opts = {}) {
   const isGet = !opts.method || opts.method === 'GET';
+  if (isGet && opts.force) { _apiFetchCache.delete(path); _apiFetchInFlight.delete(path); }
   if (isGet) {
     const cached = _apiFetchCache.get(path);
     if (cached && (Date.now() - cached.ts < _API_CACHE_TTL)) return cached.data;
@@ -1402,10 +1403,32 @@ function saveSettings() {
   apiAction('PATCH', '/api/me/prefs', { settings: STATE.settings }).catch(() => {});
 }
 function saveChecklist() {
-  apiAction('PUT', '/api/overview/checklist', { items: STATE.checklist }).catch(() => {});
+  var _payload = { items: STATE.checklist, extra: STATE.checklistExtra || {} };
+  apiAction('PUT', '/api/overview/checklist', _payload)
+    .then(function(r) {
+      if (r && r.ok) {
+        showToast('success', 'Votre checklist est sauvegardée.');
+      } else {
+        showToast('error', 'Impossible de sauvegarder la checklist. Nouvelle tentative au prochain changement.');
+      }
+    })
+    .catch(function() {
+      showToast('error', 'Impossible de sauvegarder la checklist. Nouvelle tentative au prochain changement.');
+    });
 }
 function saveChecklistExtra() {
-  apiAction('PUT', '/api/overview/checklist', { extra: STATE.checklistExtra }).catch(() => {});
+  var _payload = { items: STATE.checklist, extra: STATE.checklistExtra || {} };
+  apiAction('PUT', '/api/overview/checklist', _payload)
+    .then(function(r) {
+      if (r && r.ok) {
+        showToast('success', 'Votre checklist est sauvegardée.');
+      } else {
+        showToast('error', 'Impossible de sauvegarder la checklist. Nouvelle tentative au prochain changement.');
+      }
+    })
+    .catch(function() {
+      showToast('error', 'Impossible de sauvegarder la checklist. Nouvelle tentative au prochain changement.');
+    });
 }
 function saveNotifs() { /* notifications persisted via API only */ }
 
@@ -12555,11 +12578,26 @@ function bindSectionEvents() {
         </div>`;
       }).join(''));
     });
+    var _refreshInProgress = false;
     const _refreshBtn = $('#refresh-btn');
     if (_refreshBtn) _refreshBtn.onclick = () => {
+      if (_refreshInProgress) return;
+      _refreshInProgress = true;
+      _refreshBtn.disabled = true;
+      _refreshBtn.textContent = 'Actualisation…';
       try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-      showToast('info', 'Actualisation en cours…');
-      loadData().then(() => { render(); showToast('success', 'Données à jour ✓'); }).catch(() => showToast('error', 'Erreur d\'actualisation'));
+      // Force-clear overview cache so exactly 1 fresh network request is made
+      var _ovPath = '/api/overview?range=' + (STATE.overviewRange || '7d');
+      _apiFetchCache.delete(_ovPath);
+      _apiFetchInFlight.delete(_ovPath);
+      loadData()
+        .then(function() { render(); showToast('success', 'Données à jour ✓'); })
+        .catch(function() { showToast('error', 'Erreur d\'actualisation'); })
+        .finally(function() {
+          _refreshInProgress = false;
+          _refreshBtn.disabled = false;
+          _refreshBtn.textContent = 'Actualiser';
+        });
     };
     $('#export-btn')?.addEventListener('click', () => { openFloatPanel('Exporter les données', renderExportPanel()); setupExportPanel(); });
     $('#mission-tomorrow')?.addEventListener('click', () => {
@@ -16025,7 +16063,7 @@ function renderOverviewChecklist() {
     <!-- ADDITIONAL CHECKLISTS -->
     <div style="display:flex;align-items:center;gap:6px;margin:20px 0 10px;font-size:11px;color:var(--fp-text-faint)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 16v-4M12 8h.01"/></svg>
-      <span>Ces listes sont enregistrées uniquement dans ce navigateur (pas synchronisées entre appareils ni sauvegardées côté serveur).</span>
+      <span>Vos checklists sont automatiquement sauvegardées.</span>
     </div>
     <div class="fp-grid-2">
       ${extraCategories.map(cat => {
