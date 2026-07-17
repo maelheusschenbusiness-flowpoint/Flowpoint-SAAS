@@ -125,6 +125,7 @@ const STATE = {
   teamChatHistory: [],
   settings: JSON.parse(localStorage.getItem('fp:settings') || '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}'),
   checklist: null,
+  overviewRange: '7d',
   freeModules: JSON.parse(localStorage.getItem('fp:free-modules') || '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}'),
   sidebarCollapsed: localStorage.getItem('fp:sidebar-collapsed') === '1',
   calendarYear: new Date().getFullYear(),
@@ -3644,7 +3645,8 @@ function renderOverview() {
     { name:'IA Copilot',      score: (STATE.aiCredits?.limit > 0) ? Math.min(98, 65 + Math.round(Math.min(33, (1 - STATE.aiCredits.used/Math.max(STATE.aiCredits.limit,1)) * 33))) : null, status:'ok', icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
   ];
 
-  var _liveRangeMs = (STATE.overviewRange || 7) * 86400000;
+  var _rangeToMs = { 'today':86400000, '1d':86400000, '3d':3*86400000, '7d':7*86400000, '30d':30*86400000 };
+  var _liveRangeMs = _rangeToMs[STATE.overviewRange] || 7*86400000;
   const liveEvents = (STATE.activityEvents && STATE.activityEvents.length > 0)
     ? STATE.activityEvents
         .filter(function(e) { return (Date.now() - new Date(e.createdAt).getTime()) < _liveRangeMs; })
@@ -3738,10 +3740,10 @@ function renderOverview() {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <div class="fp-view-toggle" id="chart-range-toggle">
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||7)===1?' active':''}" data-range="1">Auj.</button>
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||7)===3?' active':''}" data-range="3">3j</button>
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||7)===7?' active':''}" data-range="7">7j</button>
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||7)===30?' active':''}" data-range="30">30j</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='today'?' active':''}" data-range="today">Auj.</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='3d'?' active':''}" data-range="3d">3j</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='7d'?' active':''}" data-range="7d">7j</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='30d'?' active':''}" data-range="30d">30j</button>
           </div>
           ${btn('Actualiser','fp-btn fp-btn-ghost fp-btn-sm','refresh','id="refresh-btn"')}
           ${btn('Exporter','fp-btn fp-btn-ghost fp-btn-sm','download','id="export-btn"')}
@@ -12556,14 +12558,17 @@ function bindSectionEvents() {
       if (target) { target.date = tomorrow; saveMissions(); showToast('success', `Mission reportée à demain (${tomorrow})`); render(); }
       else showToast('warning', 'Aucune mission à reporter');
     });
+    var _overviewFetchCtrl = null;
     $$('#chart-range-toggle .fp-view-toggle-btn').forEach(b => b.addEventListener('click', function() {
-      STATE.overviewRange = parseInt(this.dataset.range) || 7;
+      STATE.overviewRange = this.dataset.range || '7d';
+      render(); // instant active-class update
       if (!PREVIEW_MODE) {
+        if (_overviewFetchCtrl) _overviewFetchCtrl.abort();
+        _overviewFetchCtrl = new AbortController();
+        var _sig = _overviewFetchCtrl.signal;
         apiFetch('/api/overview?range=' + STATE.overviewRange)
-          .then(function(ov) { if (ov && typeof ov === 'object') STATE.overview = ov; render(); })
-          .catch(function() { render(); });
-      } else {
-        render();
+          .then(function(ov) { if (!_sig.aborted && ov && typeof ov === 'object') { STATE.overview = ov; render(); } })
+          .catch(function(e) { if (!e || e.name !== 'AbortError') render(); });
       }
     }));
   }
@@ -15960,6 +15965,10 @@ function renderOverviewChecklist() {
 
     <!-- GLOBAL PROGRESS -->
     <div class="fp-card fp-mb-20" style="padding:16px 20px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;font-size:11px;color:var(--fp-success)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>Votre checklist est automatiquement sauvegardée.</span>
+      </div>
       <div class="fp-flex-between" style="margin-bottom:10px">
         <div>
           <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Progression globale</div>

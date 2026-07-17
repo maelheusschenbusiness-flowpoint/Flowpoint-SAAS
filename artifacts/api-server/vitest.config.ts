@@ -24,6 +24,7 @@ export default defineConfig({
       "src/services/ai-multimodal.test.ts",
       "src/routes/ai-chat-attachments.test.ts",
       "src/routes/team-files.test.ts",
+      "src/routes/overview.test.ts",
     ],
     environment: "node",
     globals:     false,

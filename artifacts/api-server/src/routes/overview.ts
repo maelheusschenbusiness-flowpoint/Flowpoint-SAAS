@@ -4,15 +4,54 @@ import { pool } from "@workspace/db";
 
 const router = Router();
 
+// ── Range label parsing ─────────────────────────────────────────────────────
+const RANGE_MAP: Record<string, number> = {
+  today: 1,
+  "1d":  1,
+  "3d":  3,
+  "7d":  7,
+  "30d": 30,
+};
+
+/**
+ * Parse ?range from query string.
+ * Accepts string labels (today, 3d, 7d, 30d) or plain integers (1, 3, 7, 30).
+ * Returns { days: number, label: string } or { error } for invalid input.
+ */
+function parseRange(raw: string | undefined): { days: number; label: string } | { error: true } {
+  if (!raw) return { days: 30, label: "30d" };
+
+  // String label (today, 3d, 7d, 30d)
+  if (raw in RANGE_MAP) return { days: RANGE_MAP[raw]!, label: raw };
+
+  // Pure integer fallback (legacy / direct API calls)
+  const n = parseInt(raw, 10);
+  if (Number.isFinite(n) && n >= 1 && n <= 30) {
+    const label = n === 1 ? "today" : `${n}d`;
+    return { days: n, label };
+  }
+
+  return { error: true };
+}
+
 // ── GET /overview — aggregate metrics for the Overview dashboard page ─────────
-// ?range=N: filter time-based metrics to last N days (1 | 3 | 7 | 30, default 30)
 router.get("/overview", async (req: Request, res: Response) => {
   try {
     const orgId = (req as unknown as { orgContext?: { orgId?: string }; orgId?: string })
       .orgContext?.orgId ?? (req as unknown as { orgId?: string }).orgId ?? "default";
-    const rangeRaw = parseInt(req.query["range"] as string);
-    const range = Number.isFinite(rangeRaw) ? Math.min(30, Math.max(1, rangeRaw)) : 30;
-    const metrics = await getOverviewMetrics(orgId, range);
+
+    const parsed = parseRange(req.query["range"] as string | undefined);
+    if ("error" in parsed) {
+      res.status(400).json({
+        error: "Invalid range parameter",
+        code: "INVALID_RANGE",
+        allowed: ["today", "3d", "7d", "30d"],
+        received: req.query["range"],
+      });
+      return;
+    }
+
+    const metrics = await getOverviewMetrics(orgId, parsed.days, parsed.label);
     res.setHeader("Cache-Control", "private, max-age=60, stale-while-revalidate=30");
     res.json(metrics);
   } catch {
@@ -20,7 +59,7 @@ router.get("/overview", async (req: Request, res: Response) => {
   }
 });
 
-// ── GET /overview/checklist — load persisted checklist + extra categories ─────
+// ── GET /overview/checklist — load persisted checklist items and extra state ─
 router.get("/overview/checklist", async (req: Request, res: Response) => {
   try {
     const orgId = (req as unknown as { orgContext?: { orgId?: string }; orgId?: string })
@@ -32,7 +71,10 @@ router.get("/overview/checklist", async (req: Request, res: Response) => {
     if (result.rows.length === 0) {
       res.json({ items: null, extra: null });
     } else {
-      res.json({ items: result.rows[0].items ?? null, extra: result.rows[0].extra ?? null });
+      res.json({
+        items: result.rows[0].items ?? null,
+        extra: result.rows[0].extra ?? null,
+      });
     }
   } catch {
     res.status(500).json({ error: "Failed to fetch checklist" });
@@ -40,15 +82,25 @@ router.get("/overview/checklist", async (req: Request, res: Response) => {
 });
 
 // ── PUT /overview/checklist — persist checklist state server-side ─────────────
-// Body: { items?: array, extra?: object }  — null fields are left unchanged
+// Accepts either:
+//   { completedItems: string[] }  — IDs of completed items (shorthand contract)
+//   { items: any[], extra: object } — full checklist + extra categories state
 router.put("/overview/checklist", async (req: Request, res: Response) => {
   try {
     const orgId = (req as unknown as { orgContext?: { orgId?: string }; orgId?: string })
       .orgContext?.orgId ?? (req as unknown as { orgId?: string }).orgId ?? "default";
-    const { items, extra } = req.body as {
+
+    let { items, extra, completedItems } = req.body as {
       items?: unknown[] | null;
       extra?: Record<string, boolean> | null;
+      completedItems?: string[] | null;
     };
+
+    // Support shorthand: completedItems → extra map  { id → true }
+    if (Array.isArray(completedItems) && items == null && extra == null) {
+      extra = Object.fromEntries(completedItems.map((id) => [id, true]));
+    }
+
     await pool.query(
       `INSERT INTO org_checklist (org_id, items, extra, updated_at)
        VALUES ($1, $2::jsonb, $3::jsonb, NOW())

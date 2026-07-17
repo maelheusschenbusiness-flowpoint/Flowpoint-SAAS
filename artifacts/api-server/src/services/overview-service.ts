@@ -59,8 +59,8 @@ export interface OverviewMetrics {
 /** In-memory cache keyed by `orgId:range` — 60 s TTL */
 const _cache = new Map<string, { data: OverviewMetrics; expiresAt: number }>();
 
-export async function getOverviewMetrics(orgId = "default", range = 30): Promise<OverviewMetrics> {
-  const cacheKey = `${orgId}:${range}`;
+export async function getOverviewMetrics(orgId = "default", range = 30, rangeLabel = "30d"): Promise<OverviewMetrics> {
+  const cacheKey = `${orgId}:${rangeLabel}`;
   const cached = _cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
@@ -188,21 +188,27 @@ export async function getOverviewMetrics(orgId = "default", range = 30): Promise
     const aiCreditsLimit = aiPlanLimit + aiExtraCredits;
 
     // ── Real GA4 metrics ────────────────────────────────────────────────────────
-    const ga4     = ga4Data.status === "fulfilled"  ? ga4Data.value  : null;
-    const gscRows = gscData.status === "fulfilled"  ? gscData.value  : [];
+    // GA4 metric indices (from getGA4Overview): 0=sessions 1=totalUsers 2=newUsers
+    //   3=bounceRate 4=engagementRate 5=avgDuration 6=pageViews 7=conversions
+    const ga4     = ga4Data.status === "fulfilled" ? ga4Data.value : null;
+    const gscRows = gscData.status === "fulfilled" ? gscData.value : [];
 
-    const realTraffic: number | null =
-      ga4 && ga4.sessions > 0 ? ga4.sessions : null;
-    const realConversions: number | null =
-      ga4 && ga4.conversions > 0 ? ga4.conversions : null;
-    const realRevenue: number | null =
-      ga4 && ga4.revenue > 0 ? ga4.revenue : null;
-    const realConvRate: number | null =
-      ga4 && ga4.conversionRate > 0 ? ga4.conversionRate : null;
+    const _mv  = (idx: number): number => Math.round(parseFloat(ga4?.totals?.[0]?.metricValues?.[idx]?.value ?? "0") * 100) / 100;
+    const _mvP = (idx: number): number => Math.round(parseFloat(ga4?.totals?.[1]?.metricValues?.[idx]?.value ?? "0") * 100) / 100;
+
+    const ga4Sessions     = ga4 ? _mv(0) : 0;
+    const ga4Conversions  = ga4 ? _mv(7) : 0;
+    const ga4SessionsPrev = ga4 ? _mvP(0) : 0;
+
+    const realTraffic: number | null      = ga4Sessions > 0     ? ga4Sessions     : null;
+    const realConversions: number | null  = ga4Conversions > 0  ? ga4Conversions  : null;
+    const realRevenue: number | null      = null; // not in getGA4Overview metric set
+    const realConvRate: number | null     =
+      ga4Sessions > 0 ? Math.round((ga4Conversions / ga4Sessions) * 10000) / 100 : null;
 
     const ga4TrafficDelta: number | null =
-      ga4 && realTraffic !== null && ga4.comparisonPeriod.sessions > 0
-        ? Math.round(((ga4.sessions - ga4.comparisonPeriod.sessions) / ga4.comparisonPeriod.sessions) * 100)
+      realTraffic !== null && ga4SessionsPrev > 0
+        ? Math.round(((ga4Sessions - ga4SessionsPrev) / ga4SessionsPrev) * 100)
         : null;
 
     // ── GSC organic growth ──────────────────────────────────────────────────────
