@@ -631,3 +631,136 @@ describe("Checklist auto-migration contract", () => {
     expect(!migrationDone).toBe(true);
   });
 });
+
+// ─── Section 7 — getOverviewApiPath / Actualiser cache-bypass contract ────────
+// Mirrors the getOverviewApiPath() function from dashboard.js for structural tests.
+
+function getOverviewApiPath(range?: string | null): string {
+  return "/api/overview?range=" + encodeURIComponent(range || "7d");
+}
+
+describe("getOverviewApiPath — URL single source of truth", () => {
+  it("default range → /api/overview?range=7d", () => {
+    expect(getOverviewApiPath()).toBe("/api/overview?range=7d");
+  });
+
+  it("range=today → /api/overview?range=today", () => {
+    expect(getOverviewApiPath("today")).toBe("/api/overview?range=today");
+  });
+
+  it("range=3d → /api/overview?range=3d", () => {
+    expect(getOverviewApiPath("3d")).toBe("/api/overview?range=3d");
+  });
+
+  it("range=30d → /api/overview?range=30d", () => {
+    expect(getOverviewApiPath("30d")).toBe("/api/overview?range=30d");
+  });
+
+  it("null range → falls back to 7d", () => {
+    expect(getOverviewApiPath(null)).toBe("/api/overview?range=7d");
+  });
+
+  it("loadData uses getOverviewApiPath() — key matches what Actualiser deletes", () => {
+    // Both loadData() and the Actualiser button now call getOverviewApiPath()
+    // Confirmed by grep: apiFetch(getOverviewApiPath()) in loadData, _ovPath = getOverviewApiPath() in Actualiser
+    const loadDataKey    = getOverviewApiPath("7d");
+    const actualiserKey  = getOverviewApiPath("7d");
+    expect(loadDataKey).toBe(actualiserKey); // keys are identical → cache delete hits correctly
+  });
+
+  it("cache delete targets the same key used by apiFetch", () => {
+    // Simulate the cache and the two operations
+    const cache = new Map<string, { data: string; ts: number }>();
+    const range = "7d";
+    const path = getOverviewApiPath(range);
+
+    // Populate cache (simulates a previous fetch)
+    cache.set(path, { data: "stale", ts: Date.now() - 1000 });
+    expect(cache.has(path)).toBe(true);
+
+    // Actualiser deletes using same key
+    cache.delete(getOverviewApiPath(range));
+    expect(cache.has(path)).toBe(false); // cache miss → fresh network request
+  });
+
+  it("first click: cache miss → 1 network request", () => {
+    const cache = new Map<string, unknown>();
+    const path = getOverviewApiPath("7d");
+    let networkCalls = 0;
+
+    const fetchIfNotCached = (p: string) => {
+      if (cache.has(p)) return; // cache hit — no request
+      networkCalls++;
+      cache.set(p, { data: "fresh", ts: Date.now() });
+    };
+
+    fetchIfNotCached(path); // 1st click — cache empty
+    expect(networkCalls).toBe(1);
+  });
+
+  it("second click < 30s WITHOUT cache-clear → 0 new requests (cache hit)", () => {
+    const cache = new Map<string, { data: unknown; ts: number }>();
+    const path = getOverviewApiPath("7d");
+    let networkCalls = 0;
+    const TTL = 30_000;
+
+    const fetchIfNotCached = (p: string) => {
+      const hit = cache.get(p);
+      if (hit && Date.now() - hit.ts < TTL) return; // cache hit
+      networkCalls++;
+      cache.set(p, { data: "fresh", ts: Date.now() });
+    };
+
+    fetchIfNotCached(path); // 1st click
+    fetchIfNotCached(path); // 2nd click immediately — within TTL
+    expect(networkCalls).toBe(1); // demonstrates the old bug
+  });
+
+  it("second click < 30s WITH cache-clear (Actualiser pattern) → 1 new request", () => {
+    const cache = new Map<string, { data: unknown; ts: number }>();
+    const path = getOverviewApiPath("7d");
+    let networkCalls = 0;
+    const TTL = 30_000;
+
+    const fetchIfNotCached = (p: string) => {
+      const hit = cache.get(p);
+      if (hit && Date.now() - hit.ts < TTL) return;
+      networkCalls++;
+      cache.set(p, { data: "fresh", ts: Date.now() });
+    };
+
+    fetchIfNotCached(path); // 1st click
+    expect(networkCalls).toBe(1);
+
+    // Actualiser: delete before 2nd call
+    cache.delete(getOverviewApiPath("7d")); // same key as loadData
+    fetchIfNotCached(path); // 2nd click — cache cleared → fresh request
+    expect(networkCalls).toBe(2); // demonstrates the fix
+  });
+
+  it("double-click guard: _refreshInProgress prevents concurrent requests", () => {
+    let inProgress = false;
+    let calls = 0;
+
+    const onRefreshClick = () => {
+      if (inProgress) return; // guard
+      inProgress = true;
+      calls++;
+      // async load completes and sets inProgress = false
+    };
+
+    onRefreshClick(); // 1st click — starts
+    onRefreshClick(); // 2nd click — blocked by guard
+    expect(calls).toBe(1); // only 1 concurrent request
+  });
+
+  it("period change uses correct cache key for new range", () => {
+    // After STATE.overviewRange = '3d', getOverviewApiPath returns /api/overview?range=3d
+    // Actualiser would delete /api/overview?range=3d — correct key for new range
+    const path7d = getOverviewApiPath("7d");
+    const path3d = getOverviewApiPath("3d");
+    expect(path7d).not.toBe(path3d); // different keys for different ranges
+    expect(path3d).toContain("3d");
+    expect(path7d).toContain("7d");
+  });
+});

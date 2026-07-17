@@ -365,6 +365,10 @@ function displayStat(liveVal, previewFallback, emptyFallback) {
   return PREVIEW_MODE ? String(previewFallback) : _empty;
 }
 
+function getOverviewApiPath() {
+  return '/api/overview?range=' + encodeURIComponent(STATE.overviewRange || '7d');
+}
+
 const _apiFetchInFlight = new Map();
 const _apiFetchCache    = new Map();
 const _API_CACHE_TTL    = 30_000;
@@ -992,7 +996,7 @@ async function loadData() {
 
   // ── Phase 2: Overview + plan definitions — resilient, any failure is non-blocking ──
   const [_ovRes, _pdRes] = await Promise.allSettled([
-    apiFetch('/api/overview'),
+    apiFetch(getOverviewApiPath()),
     apiFetch('/api/plans/definitions').catch(() => null),
   ]);
   if (_ovRes.status === 'fulfilled') overview = _ovRes.value;
@@ -12586,8 +12590,8 @@ function bindSectionEvents() {
       _refreshBtn.disabled = true;
       _refreshBtn.textContent = 'Actualisation…';
       try { sessionStorage.removeItem('fp-state-cache'); } catch(_) {}
-      // Force-clear overview cache so exactly 1 fresh network request is made
-      var _ovPath = '/api/overview?range=' + (STATE.overviewRange || '7d');
+      // Force-clear overview cache using the same key loadData() will use
+      var _ovPath = getOverviewApiPath();
       _apiFetchCache.delete(_ovPath);
       _apiFetchInFlight.delete(_ovPath);
       loadData()
