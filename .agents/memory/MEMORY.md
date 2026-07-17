@@ -48,5 +48,3 @@
 - [Billing route architecture](billing-route-architecture.md) — /billing/plans served by public-billing.ts (pre-auth); billingRouter routes are post-auth; /addons/:key/activate|deactivate exist in addons.ts; getUsageSummary uses safeCount() per-query isolation; getInvoices accepts optional stripeCustomerId param
 - [FlowPoint team_members schema fix](flowpoint-team-invite-fix.md) — UUID→TEXT migration; local pool ≠ Supabase; production session via PostgREST service role
 - [AI Economy Mode Pattern](ai-economy-pattern.md) — provider never changes; model+tokens degrade within same family; EXHAUSTED→402; test E needs matching plan limit
-- [pdf-parse sub-path import](pdf-parse-subpath.md) — import pdf-parse/lib/pdf-parse.js not pdf-parse; index.js readFileSync at load time causes ENOENT in prod; tests must mock same sub-path
-- [AI provider messages injection fix](ai-provider-messages-injection.md) — openai-provider ignores opts.systemPrompt when opts.messages is provided; always pass FULL messages array (index 0 = system) not messages.slice(1)
