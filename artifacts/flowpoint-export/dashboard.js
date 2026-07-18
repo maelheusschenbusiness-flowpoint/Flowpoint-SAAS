@@ -11495,7 +11495,11 @@ function renderNewMissionPanel() {
 }
 function setupNewMissionPanel() {
   setTimeout(() => {
-    $('#nm2-create')?.addEventListener('click', async () => {
+    const _createBtn = $('#nm2-create');
+    if (!_createBtn) return;
+    _createBtn.addEventListener('click', async () => {
+      // P1.1: Double-click guard — prevent duplicate submissions
+      if (STATE._missionCreating) return;
       const title = $('#nm2-title')?.value.trim();
       if (!title) { showToast('warning','Entrez un titre'); return; }
       const dupli = STATE.missions.find(m => m.title.toLowerCase().trim() === title.toLowerCase().trim() && m.status !== 'done');
@@ -11505,20 +11509,37 @@ function setupNewMissionPanel() {
         navigate('missions');
         return;
       }
-      const m = { id:'ms'+Date.now(), title, category:$('#nm2-cat')?.value||'Audits', impact:$('#nm2-impact')?.value||'Élevé', status:'todo', date:$('#nm2-date')?.value||new Date().toISOString().slice(0,10) };
-      STATE.missions.unshift(m);
-      saveMissions();
-      showToast('success','Mission créée !');
-      closeFloatPanel();
-      if (STATE.route === 'missions') render(); else navigate('missions');
-      // Persistance backend (asynchrone, non bloquante)
-      if (typeof window.FP_MISSIONS_API !== 'undefined') {
-        const saved = await window.FP_MISSIONS_API.create(m);
-        if (saved && saved.id && saved.id !== m.id) {
-          const idx = STATE.missions.findIndex(x => x.id === m.id);
-          if (idx >= 0) STATE.missions[idx].id = saved.id;
+      // P0.4: No optimistic insert — wait for backend confirmation before updating STATE
+      STATE._missionCreating = true;
+      _createBtn.disabled = true;
+      _createBtn.textContent = 'Création…';
+      try {
+        const payload = {
+          title,
+          category: $('#nm2-cat')?.value || 'Audits',
+          impact:   $('#nm2-impact')?.value || 'Élevé',
+          status:   'todo',
+          dueDate:  $('#nm2-date')?.value || new Date().toISOString().slice(0,10),
+        };
+        const saved = await apiAction('POST', '/api/missions', payload);
+        if (saved && (saved.id || saved.title)) {
+          const m = saved.id ? saved : { id: 'ms'+Date.now(), ...payload };
+          STATE.missions.unshift(m);
           saveMissions();
+          showToast('success', 'Mission créée !');
+          closeFloatPanel();
+          if (STATE.route === 'missions') render(); else navigate('missions');
+        } else {
+          showToast('error', 'Erreur lors de la création');
+          _createBtn.disabled = false;
+          _createBtn.textContent = 'Créer la mission';
         }
+      } catch (e) {
+        showToast('error', 'Erreur lors de la création');
+        _createBtn.disabled = false;
+        _createBtn.textContent = 'Créer la mission';
+      } finally {
+        STATE._missionCreating = false;
       }
     });
   }, 50);
@@ -12281,14 +12302,21 @@ function _doRender() {
       animated.insertAdjacentHTML('afterbegin', subNavHtml);
     }
     // If sub-route active, replace body content after sub-nav
+    // P0.1: Validate sub-route belongs to current route before using it
     if (STATE.subRoute !== null) {
-      const subContent = renderSubPageContent(STATE.route, STATE.subRoute);
-      if (subContent) {
-        const subNav = animated?.querySelector('.fp-sub-nav');
-        if (subNav) {
-          let next = subNav.nextElementSibling;
-          while (next) { const r = next; next = next.nextElementSibling; r.remove(); }
-          subNav.insertAdjacentHTML('afterend', subContent);
+      const _validSubs = (SUB_NAVS[STATE.route] || []).map(function(s) { return s.id; }).filter(Boolean);
+      if (_validSubs.length > 0 && !_validSubs.includes(STATE.subRoute)) {
+        // Sub-route is stale from a different page — clear it silently
+        STATE.subRoute = null;
+      } else {
+        const subContent = renderSubPageContent(STATE.route, STATE.subRoute);
+        if (subContent) {
+          const subNav = animated?.querySelector('.fp-sub-nav');
+          if (subNav) {
+            let next = subNav.nextElementSibling;
+            while (next) { const r = next; next = next.nextElementSibling; r.remove(); }
+            subNav.insertAdjacentHTML('afterend', subContent);
+          }
         }
       }
     }
@@ -12682,18 +12710,43 @@ function bindSectionEvents() {
       cb.addEventListener('click', e => e.stopPropagation());
     });
     $('#audit-new-btn')?.addEventListener('click', () => { $('#audit-url-input')?.focus(); showToast('info','Entrez l\'URL à auditer'); });
-    $('#audit-run-btn')?.addEventListener('click', async () => {
-      const url = $('#audit-url-input')?.value.trim();
-      if (!url) { showToast('warning','Entrez une URL'); return; }
-      try {
-        const res = await apiAction('POST', '/api/audits', { url });
-        const a = res || { id:'a'+Date.now(), url, score: null, status:'pending', speed: null, date: new Date().toISOString(), issues: 0 };
-        STATE.audits.unshift(a);
-        showToast('success', `Audit lancé pour ${escHtml(url)}`);
-        $('#audit-url-input').value = '';
-        render();
-      } catch(e) { showToast('error','Erreur lors du lancement de l\'audit'); }
-    });
+    // P1.2: audit-run-btn — URL validation + anti-double-click guard + proper loading state
+    (function _bindAuditRun() {
+      const _btn = $('#audit-run-btn');
+      const _input = $('#audit-url-input');
+      if (!_btn) return;
+      _btn.addEventListener('click', async () => {
+        if (STATE._auditRunning) return; // P1.2: double-click guard
+        const url = _input?.value.trim();
+        if (!url) { showToast('warning','Entrez une URL'); _input?.focus(); return; }
+        // Basic URL validation
+        try { new URL(url.startsWith('http') ? url : 'https://' + url); } catch(_) { showToast('warning','URL invalide'); _input?.focus(); return; }
+        const _normUrl = url.startsWith('http') ? url : 'https://' + url;
+        STATE._auditRunning = true;
+        _btn.disabled = true;
+        const _origText = _btn.textContent;
+        _btn.textContent = 'Lancement…';
+        try {
+          const res = await apiAction('POST', '/api/audits', { url: _normUrl });
+          if (res && (res.id || res.url)) {
+            STATE.audits.unshift(res);
+          } else {
+            // Fallback entry while audit processes asynchronously
+            STATE.audits.unshift({ id:'a'+Date.now(), url:_normUrl, score:null, status:'pending', speed:null, date:new Date().toISOString(), issues:0 });
+          }
+          showToast('success', `Audit lancé pour ${escHtml(_normUrl)}`);
+          if (_input) _input.value = '';
+          render();
+        } catch(e) {
+          const _msg = e && e.message ? e.message : '';
+          showToast('error', _msg.includes('400') ? 'URL invalide ou non accessible' : 'Erreur lors du lancement de l\'audit');
+        } finally {
+          STATE._auditRunning = false;
+          _btn.disabled = false;
+          _btn.textContent = _origText;
+        }
+      });
+    })();
     $('#audit-url-input')?.addEventListener('keydown', e => { if(e.key==='Enter') $('#audit-run-btn')?.click(); });
 
     // Schedule toggles
@@ -18398,7 +18451,10 @@ function loadGrowthData() {
     STATE._growthLseoLoading = true;
     apiFetch('/api/local-seo')
       .then(function(r) { if (r && typeof r === 'object') STATE.localSeo = r; })
-      .catch(function() {})
+      .catch(function(err) {
+        // Set a sentinel so _needLseo stays false permanently — prevents retry loop on 404/error
+        STATE.localSeo = { _status: err && err.message && err.message.includes('404') ? 'unavailable' : 'error' };
+      })
       .finally(function() { STATE._growthLseoLoading = false; if (STATE.route === 'growth') render(); });
   }
 }
@@ -18423,6 +18479,13 @@ function miniSparkSvg(values, color, w, h) {
 }
 
 function growthForecastSvg(past, future) {
+  // P0.3: Guard against null/empty arrays — return empty SVG rather than crashing
+  var _safePast   = Array.isArray(past)   ? past.filter(function(v) { return typeof v === 'number' && isFinite(v); }) : [];
+  var _safeFuture = Array.isArray(future) ? future.filter(function(v) { return typeof v === 'number' && isFinite(v); }) : [];
+  if (_safePast.length < 2 || _safeFuture.length < 1) {
+    return '<div style="height:108px;display:flex;align-items:center;justify-content:center;color:var(--fp-text-faint);font-size:12px">Données insuffisantes pour la projection</div>';
+  }
+  past = _safePast; future = _safeFuture;
   var _fcDark = document.documentElement.getAttribute('data-theme') !== 'light';
   var _fcGrid = _fcDark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.10)';
   var _fcLabel = _fcDark ? 'rgba(148,163,184,.5)' : 'rgba(0,0,0,.45)';
@@ -18833,11 +18896,12 @@ function renderGrowthCommandCenter() {
   const avgSc = avgScore();
   const monitorsUp = STATE.monitors.filter(function(m){return m.status==='up'||m.status==='UP';}).length;
   const monitorsTotal = STATE.monitors.length;
-  // growthPts: uses real audit count only — never fabricates a count fallback
+  // growthPts: uses real audit count only — null when no data (P1.4: never fabricate 0)
   const growthPts = avgSc > 0
     ? Math.min(99, Math.round(avgSc * 0.55 + STATE.audits.length * 4 + (monitorsTotal > 0 ? Math.round(monitorsUp / monitorsTotal * 100) * 0.15 : 0)))
-    : 0;
-  const level = growthPts < 30 ? 1 : growthPts < 50 ? 2 : growthPts < 65 ? 3 : growthPts < 82 ? 4 : 5;
+    : (STATE.audits.length > 0 ? 0 : null);
+  // P1.4: null-safe level — when no data, level stays 1 (Débutant), no fabricated score
+  const level = growthPts == null ? 1 : growthPts < 30 ? 1 : growthPts < 50 ? 2 : growthPts < 65 ? 3 : growthPts < 82 ? 4 : 5;
   const levelNames = ['Débutant','En croissance','Avancé','Expert','Élite'];
 
   // ── Sources de données réelles ──────────────────────────────
@@ -18855,9 +18919,9 @@ function renderGrowthCommandCenter() {
   const sparkT = null; // requires GA4 traffic series
   const sparkL = null; // requires GA4 conversion series
   const sparkR = null; // requires GA4 revenue series
-  // Chart past/future: only when projection is valid
-  const past   = sparkS || Array(7).fill(avgSc);
-  const future = _proj
+  // P1.4: Chart past/future — only real data; null when insufficient (never fabricate zero arrays)
+  const past   = sparkS; // null when < 2 real audit history points → growthForecastSvg shows empty state
+  const future = (_proj && sparkS && sparkS.length >= 2)
     ? [0,1,2,3,4,5,6].map(function(i){ return Math.round(Math.min(99, avgSc + _projStep * (i+1))); })
     : null;
   // Données réelles pour le radar — null when a field is genuinely absent
@@ -19397,14 +19461,14 @@ function renderGrowthCommandCenter() {
             </div>
             <div>
               <div style="font-size:14px;font-weight:700">${levelNames[level-1]}</div>
-              <div style="font-size:11px;color:var(--fp-text-faint)">Niveau ${level} · ${growthPts} pts de croissance</div>
+              <div style="font-size:11px;color:var(--fp-text-faint)">Niveau ${level} · ${growthPts != null ? growthPts + ' pts de croissance' : 'Lancez un audit pour démarrer'}</div>
             </div>
           </div>
           <div class="fp-progress-bar" style="height:8px;margin-bottom:5px">
-            <div class="fp-progress-fill" style="width:${growthPts}%;background:linear-gradient(90deg,var(--fp-accent),#8b5cf6);border-radius:4px"></div>
+            <div class="fp-progress-fill" style="width:${growthPts ?? 0}%;background:linear-gradient(90deg,var(--fp-accent),#8b5cf6);border-radius:4px"></div>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--fp-text-faint);margin-bottom:14px">
-            <span>${growthPts} pts</span><span>→ Niveau ${level<5?level+1:'⭐ MAX'}</span>
+            <span>${growthPts != null ? growthPts + ' pts' : '—'}</span><span>→ Niveau ${level<5?level+1:'⭐ MAX'}</span>
           </div>
           <div class="fp-growth-streaks">
             ${(function(){
@@ -29368,22 +29432,51 @@ function fpMarkdown(text) {
 async function fpAnalyzePSI() {
   const input = document.getElementById('fp-psi-url-input');
   const btn = document.getElementById('fp-psi-analyze-btn');
-  const url = input && input.value.trim();
-  if (!url) { showToast && showToast('error','Entrez une URL valide'); return; }
+  const rawUrl = input && input.value.trim();
+  if (!rawUrl) { showToast && showToast('error','Entrez une URL valide'); return; }
+  // P1.3: anti-double-click guard
+  if (window._fpPsiAnalyzing) return;
 
+  const url = rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl;
   if (btn) { btn.disabled = true; btn.textContent = 'Analyse en cours…'; }
   window._fpPsiAnalyzing = true;
   render();
 
   try {
     if (window.FP_PAGESPEED_API) {
+      // Use the registered API service when available
       const result = await window.FP_PAGESPEED_API.analyze(url, { force: true });
       if (result) {
         showToast && showToast('success', 'Analyse terminée !');
       } else {
         showToast && showToast('error', 'Erreur lors de l\'analyse — URL accessible ?');
       }
+    } else {
+      // P1.3: Fallback — call /api/pagespeed/analyze directly
+      const token = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+      const resp = await fetch('/api/pagespeed/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        credentials: 'include',
+        body: JSON.stringify({ url, force: true }),
+      });
+      if (resp.ok) {
+        const result = await resp.json();
+        if (result && (result.mobile || result.desktop)) {
+          if (!window.FP_DATA) window.FP_DATA = {};
+          window.FP_DATA.pagespeed = result;
+          showToast && showToast('success', 'Analyse terminée !');
+        } else {
+          showToast && showToast('error', 'Réponse invalide du serveur');
+        }
+      } else if (resp.status === 402) {
+        showToast && showToast('error', 'Crédits insuffisants pour lancer une analyse PageSpeed');
+      } else {
+        showToast && showToast('error', 'Erreur lors de l\'analyse — URL accessible publiquement ?');
+      }
     }
+  } catch(_e) {
+    showToast && showToast('error', 'Erreur réseau lors de l\'analyse PageSpeed');
   } finally {
     window._fpPsiAnalyzing = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Analyser'; }

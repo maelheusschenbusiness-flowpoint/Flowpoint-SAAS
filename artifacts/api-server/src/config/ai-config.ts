@@ -67,11 +67,19 @@ export const MODEL_MULTIPLIERS: Record<string, number> = {
   "o4-mini":            0.6,
 
   // Anthropic
+  "claude-4-opus":      2.5,
+  "claude-4-sonnet":    1.3,
+  "claude-4-haiku":     0.3,
   "claude-sonnet-4-6":  1.4,
   "claude-sonnet-4-5":  1.3,
   "claude-opus-4-8":    2.5,
   "claude-opus-4-7":    2.4,
   "claude-haiku-4-5":   0.3,
+
+  // DeepSeek
+  "deepseek-v3":        0.25,
+  "deepseek-v3-0324":   0.25,
+  "deepseek-r2":        0.35,
 
   // Gemini
   "gemini-3.1-pro-preview":    1.2,
