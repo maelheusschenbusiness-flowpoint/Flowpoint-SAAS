@@ -3681,7 +3681,7 @@ function renderOverview() {
     { name:'Conversion',      score:conversionScore||0,  status:conversionScore>70?'ok':conversionScore>0?'warn':'no-data', icon:'⚡', issues:0, color:'#8b5cf6', route:'conversion' },
     { name:'Data Explorer',   score: (function(){ var _ac=(STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length; return _ac > 0 ? Math.min(98, 50 + _ac*15 + (STATE.reports.length>0?8:0)) : null; }()), status:(STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length>0?'ok':'no-data', icon:'📊', issues:0, color:'#06b6d4', route:'data-explorer' },
     { name:'Rapports',        score: STATE.reports.length > 0 ? Math.min(98, 55 + Math.min(40, STATE.reports.length * 6)) : null, status: STATE.reports.length > 0 ? 'ok' : 'no-data', icon:'📄', issues:0, color:'#2563EB', route:'reports' },
-    { name:'Alertes',         score: STATE.alertRules.length > 0 ? Math.min(98, 55 + Math.min(38, STATE.alertRules.filter(r=>r.active).length * 6)) : null, status: STATE.alertRules.length > 0 ? 'ok' : 'no-data', icon:'🔔', issues: STATE.alertEvents.filter(e=>!e.resolvedAt).length, color:'#f59e0b', route:'alerts-center' },
+    { name:'Alertes',         score: STATE.alertRules.length > 0 ? Math.min(98, 55 + Math.min(38, STATE.alertRules.filter(r=>r.enabled).length * 6)) : null, status: STATE.alertRules.length > 0 ? 'ok' : 'no-data', icon:'🔔', issues: STATE.alertEvents.filter(e=>!e.resolvedAt).length, color:'#f59e0b', route:'alerts-center' },
     { name:'IA Copilot',      score: (function(){ var _au=STATE.aiCredits?.used??0,_ar=STATE.aiCredits?.requestCount??0,_al=(STATE.aiCredits?.limit??0)+(STATE.aiCredits?.extra??0); if(!_au||!_ar||!_al) return null; var _rate=_au/Math.max(_al,1); return Math.min(98,Math.round(40+Math.min(58,_rate*58))); }()), status:(STATE.aiCredits?.used>0&&STATE.aiCredits?.requestCount>0)?'ok':'no-data', icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
   ];
 
@@ -4158,7 +4158,7 @@ function renderOverview() {
           ${[
             { label:'Audits actifs',    val: String(STATE.audits.length),   color:'#2563EB' },
             { label:'Missions actives', val: String(missionsActive),        color:'#8b5cf6' },
-            { label:'Alertes actives',  val: String(STATE.alertEvents.filter(e => !e.resolvedAt).length || STATE.alertRules.filter(r => r.active).length || 0), color:'#f59e0b' },
+            { label:'Alertes actives',  val: String(STATE.alertEvents.filter(e => !e.resolvedAt).length || STATE.alertRules.filter(r => r.enabled).length || 0), color:'#f59e0b' },
           ].map(s => `<div style="text-align:center">
             <div style="font-size:20px;font-weight:800;color:${s.color};font-family:var(--fp-font-head)">${s.val}</div>
             <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(s.label)}</div>
@@ -5707,7 +5707,7 @@ function renderReports() {
     { id:'r4', name:'Export données CSV — Audits',     date:'28/04/2026', type:'CSV', pages:1,  shared:false, size:'34 KB',  client:'Interne', score:'—',   color:'#64748b' },
   ] : [];
   const allReports = _stRepts.length > 0
-    ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString('fr-FR'):'—', type:r.type||r.format||'PDF', pages:r.pages||null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', score:r.score||null, color:r.color||'#2563EB' }))
+    ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString('fr-FR'):'—', type:r.type||r.format||'PDF', pages:r.pages??null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', score:r.score??null, color:r.color||'#2563EB' }))
     : _DEMO_AR;
 
   const _scheduledRaw = STATE.scheduledReports || STATE.reportSchedules || null;
@@ -6452,7 +6452,7 @@ function renderReports() {
         <h1 style="display:flex;align-items:center;gap:10px">
           Executive Reporting Hub
         </h1>
-        <div class="fp-section-sub">Plateforme de reporting business · ${allReports.length} rapports disponibles · Prochain envoi auto : 01/06</div>
+        <div class="fp-section-sub">Plateforme de reporting business · ${allReports.length} rapports disponibles${scheduled.filter(s=>s.active).length > 0 ? ' · Prochain envoi auto : ' + (scheduled.find(s=>s.active)?.next || '—') : ''}</div>
       </div>
       <div class="fp-section-actions">
         ${btn('Generer rapport', 'fp-btn fp-btn-primary fp-btn-sm', 'file', "onclick=\"openFloatPanel('Nouveau rapport',renderNewReportPanel());setupNewReportPanel()\"" )}
@@ -16071,7 +16071,7 @@ function renderOverviewChecklist() {
         { id:'re2', label:'Réponse à tous les avis < 48h', done: _clItem('re2', STATE.gbp?.unansweredReviews === 0) },
         { id:'re3', label:'Processus de collecte d\'avis en place', done: _clItem('re3', false) },
         { id:'re4', label:'Présence sur Trustpilot / PagesJaunes', done: _clItem('re4', false) },
-        { id:'re5', label:'Alertes Google My Business configurées', done: _clItem('re5', STATE.alertRules && STATE.alertRules.some(r => r.type === 'review_received' && r.active)) },
+        { id:'re5', label:'Alertes Google My Business configurées', done: _clItem('re5', STATE.alertRules && STATE.alertRules.some(r => r.type === 'review_received' && r.enabled)) },
       ]
     },
     {

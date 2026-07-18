@@ -2,11 +2,13 @@ import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
 export interface ActivityLog {
+  id?: string;
   type: string;
   label: string;
   targetId?: string;
   targetType?: string;
   metadata?: Record<string, unknown>;
+  createdAt?: string;
 }
 
 export interface OrgMe {
@@ -114,14 +116,37 @@ class Store {
     } catch { /* non-fatal */ }
   }
 
-  async getRecentActivity(limit: number): Promise<ActivityLog[]> {
+  /**
+   * Fetch activity events with SQL-level filtering and pagination.
+   * Always returns an array for backward compatibility with the frontend.
+   * Deterministic order: created_at DESC, id DESC.
+   */
+  async getFilteredActivity(opts: {
+    limit: number;
+    offset: number;
+    type?: string;
+  }): Promise<ActivityLog[]> {
+    const { limit, offset, type } = opts;
     try {
       const client = await pool.connect();
       try {
+        const values: unknown[] = [limit, offset];
+        let where = "";
+        if (type) {
+          values.push(type);
+          where = `WHERE type = $${values.length}`;
+        }
         const r = await client.query(
-          `SELECT type, label, target_id as "targetId", target_type as "targetType", metadata, created_at as "createdAt"
-           FROM activity_logs ORDER BY created_at DESC LIMIT $1`,
-          [limit]
+          `SELECT id, type, label,
+                  target_id   AS "targetId",
+                  target_type AS "targetType",
+                  metadata,
+                  created_at  AS "createdAt"
+           FROM activity_logs
+           ${where}
+           ORDER BY created_at DESC, id DESC
+           LIMIT $1 OFFSET $2`,
+          values
         );
         return r.rows;
       } finally {
@@ -130,6 +155,11 @@ class Store {
     } catch {
       return [];
     }
+  }
+
+  /** @deprecated Prefer getFilteredActivity — kept for any legacy internal callers */
+  async getRecentActivity(limit: number): Promise<ActivityLog[]> {
+    return this.getFilteredActivity({ limit, offset: 0 });
   }
 
   async logActivity(opts: ActivityLog): Promise<void> {

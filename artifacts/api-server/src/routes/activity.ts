@@ -3,9 +3,15 @@ import { store } from "../services/store.js";
 
 const router = Router();
 
-router.get("/activity", async (_req: Request, res: Response) => {
+router.get("/activity", async (req: Request, res: Response) => {
   try {
-    const events = await store.getRecentActivity(50);
+    const rawLimit = parseInt(String(req.query.limit ?? "50"), 10);
+    const limit    = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50;
+    const rawPage  = parseInt(String(req.query.page  ?? "0"), 10);
+    const page     = Number.isFinite(rawPage)  ? Math.max(rawPage, 0) : 0;
+    const type     = typeof req.query.type === "string" && req.query.type ? req.query.type : undefined;
+
+    const events = await store.getFilteredActivity({ limit, offset: page * limit, type });
     res.json(events);
   } catch {
     res.json([]);

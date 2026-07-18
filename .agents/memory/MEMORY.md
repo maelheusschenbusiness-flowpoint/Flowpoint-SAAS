@@ -51,3 +51,6 @@
 - [AI Economy Mode Pattern](ai-economy-pattern.md) — provider never changes; model+tokens degrade within same family; EXHAUSTED→402; test E needs matching plan limit
 - [audits.date TEXT column](audits-date-column.md) — audits.date is TEXT NOT NULL DEFAULT ''; never compare it to a timestamp; use created_at (TIMESTAMP) for date-range duplicate checks
 - [_doRender crash pattern](dorender-crash-pattern.md) — nav/breadcrumb updated BEFORE html=renderXxx(); if renderer throws, page.innerHTML is never written and old DOM stays; fix: try/catch around switch block
+- [Wave 2 Lot B investigation context](lotb-investigation-context.md) — MON-001/ALT-002/ALT-003/REP-001/MON-002 each need targeted investigation before any code; constraints per bug documented
+- [Alert rules enabled vs active](alert-rules-enabled-field.md) — backend returns `enabled` (boolean), never `active`; dashboard.js had 3 r.active refs on alertRules (L3684, L4161, L16074) — all fixed to r.enabled
+- [activity.ts parameterized SQL](activity-sql-params.md) — GET /api/activity now supports limit(1-200)/page/type via SQL; id included in SELECT for 60s-poll dedup; always returns array (backward compat)
