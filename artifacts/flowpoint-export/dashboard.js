@@ -29695,7 +29695,7 @@ async function pollAudits() {
   if (auditPolling.inFlight) return;
   auditPolling.inFlight = true;
   try {
-    var fresh = await apiFetch('/api/audits');
+    var fresh = await apiFetch('/api/audits', { force: true });
     if (!Array.isArray(fresh)) return;
     var prev = Array.isArray(STATE && STATE.audits) ? STATE.audits : [];
     var changed = fresh.some(function(a) {
