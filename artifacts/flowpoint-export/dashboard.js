@@ -3772,7 +3772,7 @@ function renderOverview() {
         <div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
             <div style="width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px rgba(34,197,94,0.6);animation:fp-pulse-dot 2s ease-in-out infinite"></div>
-            <span style="font-size:11px;font-weight:700;color:#22c55e;letter-spacing:0.1em;text-transform:uppercase">LIVE · Command Center</span>
+            <span style="font-size:11px;font-weight:700;color:#22c55e;letter-spacing:0.1em;text-transform:uppercase">LIVE · Vue d'ensemble</span>
           </div>
           <h1 style="font-size:26px;font-weight:900;color:var(--fp-text);margin:0 0 4px;font-family:var(--fp-font-head);line-height:1.1">Bonjour, ${escHtml(me.firstName)} 👋</h1>
           <div style="font-size:13px;color:var(--fp-text-muted)">Plateforme IA · Plan <strong style="color:#2563EB">${escHtml(me.plan)}</strong> · Score global <strong style="color:${globalScore != null ? scoreColor(globalScore) : 'var(--fp-text-muted)'}">${globalScore != null ? globalScore + '/100' : '—'}</strong></div>
@@ -3923,7 +3923,7 @@ function renderOverview() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div style="display:flex;align-items:center;gap:8px">
             <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite"></div>
-            <span class="fp-card-title" style="margin-bottom:0">Live Command Center</span>
+            <span class="fp-card-title" style="margin-bottom:0">Activité récente</span>
           </div>
           <span style="font-size:10px;color:var(--fp-text-faint)">Mise à jour en temps réel</span>
         </div>
@@ -11957,7 +11957,7 @@ const PAGE_NAMES = {
 };
 
 const SUB_NAVS = {
-  'overview':   [{id:null,label:'Aperçu'},{id:'insights',label:'Insights IA'},{id:'quick-wins',label:'Quick Wins'},{id:'checklist',label:'Checklist'}],
+  'overview':   [{id:null,label:'Aperçu'}],
   'missions':   [{id:null,label:'Toutes'},{id:'todo',label:'À faire'},{id:'inprogress',label:'En cours'},{id:'done',label:'Terminées'},{id:'ai',label:'IA Missions'}],
   'audits':     [{id:null,label:'Liste'},{id:'analysis',label:'Analyse'},{id:'compare',label:'Comparaison'},{id:'history',label:'Historique'},{id:'opportunites',label:'Opportunités'}],
   'monitors':   [{id:null,label:'Status'},{id:'performance',label:'Performance'},{id:'incidents',label:'Incidents'},{id:'config',label:'Config'},{id:'sla',label:'SLA'}],

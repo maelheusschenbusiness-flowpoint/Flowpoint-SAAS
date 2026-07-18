@@ -360,8 +360,18 @@ router.post("/missions", async (req: Request, res: Response) => {
 
     res.status(201).json(mission);
   } catch (err) {
-    // BUG-003: log full stack so the next test run exposes the exact throw location
-    logger.error({ err, stack: (err as Error)?.stack, msg: (err as Error)?.message }, "[Missions] POST error");
+    const e = err as Error & { code?: string; constraint?: string; detail?: string };
+    logger.error({
+      requestId: (req.headers["x-request-id"] as string) || "?",
+      body: req.body,
+      orgId: (req as OrgReq).orgId,
+      errName: e?.name,
+      errMsg: e?.message,
+      errCode: e?.code,
+      errConstraint: e?.constraint,
+      errDetail: e?.detail,
+      stack: e?.stack,
+    }, "[Missions] POST 500 — full context");
     res.status(500).json({ error: "Database error" });
   }
 });

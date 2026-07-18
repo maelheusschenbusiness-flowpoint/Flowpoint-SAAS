@@ -74,6 +74,7 @@ export async function initMissionsTables(): Promise<void> {
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_audit_id TEXT;
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'manual';
       ALTER TABLE missions ADD COLUMN IF NOT EXISTS source_data JSONB DEFAULT '{}';
+      ALTER TABLE missions ADD COLUMN IF NOT EXISTS assigned_to TEXT;
     `);
     logger.info("Missions tables initialized");
   } catch (err) {
