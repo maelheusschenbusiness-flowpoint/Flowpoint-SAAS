@@ -28569,6 +28569,97 @@ if (document.readyState === 'loading') {
 // PERFORMANCE / PAGESPEED PAGES
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── BUG-W1-007/008/009 helpers ────────────────────────────────────────────────
+function safePercent(value, total) {
+  var n = Number(value), d = Number(total);
+  if (!Number.isFinite(n) || !Number.isFinite(d) || d <= 0) return 0;
+  return Math.round((n / d) * 100);
+}
+
+function getWebVitalRating(metric, value) {
+  if (!Number.isFinite(value)) return 'unavailable';
+  var t = { lcp:{good:2500,poor:4000}, cls:{good:0.1,poor:0.25}, inp:{good:200,poor:500}, ttfb:{good:800,poor:1800}, fcp:{good:1800,poor:3000}, tbt:{good:200,poor:600}, si:{good:3400,poor:5800} }[metric];
+  if (!t) return 'unknown';
+  return value <= t.good ? 'good' : value <= t.poor ? 'needs-improvement' : 'poor';
+}
+
+// ── BUG-W1-002/004/005/006 — PSI normalizer ───────────────────────────────────
+function _psiCategoryFromId(id) {
+  var s = String(id||'').toLowerCase();
+  if (s.includes('render-block') || s.includes('critical-request')) return 'render-blocking';
+  if (s.includes('unused-js') || s.includes('unused-javascript') || s.includes('unminified-javascript')) return 'unused-js';
+  if (s.includes('unused-css') || s.includes('unminified-css')) return 'unused-css';
+  if (s.includes('image') || s.includes('webp') || s.includes('offscreen')) return 'images';
+  return 'other';
+}
+
+function _normalizePSIStrategy(r) {
+  if (!r) return null;
+  if (r.cwv) return r; // already normalized
+  var m = r.metrics || {};
+  return {
+    scores:       r.scores || {},
+    cwv: {
+      lcp:        Number.isFinite(m.lcp)  ? m.lcp  : null,
+      fcp:        Number.isFinite(m.fcp)  ? m.fcp  : null,
+      cls:        Number.isFinite(m.cls)  ? m.cls  : null,
+      tbt:        Number.isFinite(m.tbt)  ? m.tbt  : null,
+      inp:        null,
+      ttfb:       null,
+      speedIndex: Number.isFinite(m.si)   ? m.si   : null,
+    },
+    opportunities: (r.opportunities || []).map(function(o) {
+      return {
+        id:          o.id || '',
+        title:       o.title || '',
+        description: o.description || '',
+        category:    _psiCategoryFromId(o.id),
+        savingsMs:   typeof o.savings === 'number' ? o.savings * 1000 : 0,
+        savingsBytes: o.savingsBytes || 0,
+      };
+    }),
+    criticalIssues: (r.criticalIssues || []).map(function(i) {
+      return typeof i === 'string' ? i : (i && i.title) || '';
+    }).filter(Boolean),
+    passedAudits:  null,
+    totalAudits:   null,
+    url:           r.url || '',
+    strategy:      r.strategy || '',
+    analyzedAt:    r.analyzedAt || null,
+  };
+}
+
+function normalizePageSpeedResult(raw) {
+  if (!raw) return null;
+  return {
+    url:              raw.url || '',
+    analyzedAt:       raw.analyzedAt || null,
+    mobile:           _normalizePSIStrategy(raw.mobile),
+    desktop:          _normalizePSIStrategy(raw.desktop),
+    aiRecommendations: raw.aiRecommendations || null,
+  };
+}
+
+// ── BUG-W1-008/009 — Audit summary builder ────────────────────────────────────
+function buildTechnicalAuditSummary(audits, psiMobile) {
+  var list = Array.isArray(audits) ? audits : [];
+  var completedAudits  = list.filter(function(a){ return ['ok','warn','completed','success'].includes(a.status); });
+  var processingAudits = list.filter(function(a){ return a.status === 'processing'; });
+  var failedAudits     = list.filter(function(a){ return a.status === 'error' || a.status === 'failed'; });
+  var opps = (psiMobile && psiMobile.opportunities) || [];
+  return {
+    totalAudits:          list.length,
+    completedAudits:      completedAudits.length,
+    processingAudits:     processingAudits.length,
+    failedAudits:         failedAudits.length,
+    renderBlockingIssues: opps.filter(function(o){ return o.category === 'render-blocking'; }),
+    jsCssIssues:          opps.filter(function(o){ return o.category === 'unused-js' || o.category === 'unused-css'; }),
+    imageIssues:          opps.filter(function(o){ return o.category === 'images'; }),
+    accessibilityIssues:  [],
+    technicalSeoIssues:   [],
+  };
+}
+
 function psiScoreColor(score) {
   if (score >= 90) return '#10b981';
   if (score >= 50) return '#f59e0b';
@@ -28649,10 +28740,18 @@ function renderCWVCards(cwv) {
   ];
   return `<div class="fp-grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
     ${metrics.map(m => {
+      // BUG-W1-004/005: null protection — show "Donnée indisponible" if metric is absent
+      if (m.value === null || m.value === undefined || !Number.isFinite(m.value)) {
+        return `<div class="fp-cwv-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--fp-text-faint)">${m.label}</span>
+          </div>
+          <div style="font-size:13px;color:var(--fp-text-faint);padding:6px 0">Donnée indisponible</div>
+          <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(m.desc)}</div>
+        </div>`;
+      }
       const cls = cwvBadgeClass(m.key, m.value);
-      const pct = m.key === 'cls'
-        ? Math.min(100, (m.value / (m.poor * 1.5)) * 100)
-        : Math.min(100, (m.value / (m.poor * 1.5)) * 100);
+      const pct = Math.min(100, (m.value / (m.poor * 1.5)) * 100);
       const markerLeft = Math.min(96, Math.max(4, pct));
       const color = { good:'#10b981','needs-improvement':'#f59e0b', poor:'#ef4444' }[cls];
       const displayVal = m.key === 'cls' ? m.value.toFixed(3) : Math.round(m.value).toLocaleString('fr-FR');
@@ -29014,7 +29113,7 @@ function renderCoreWebVitals() {
 
   ${aiBlock(
     psi
-      ? `LCP mobile : <strong>${psi.mobile?.cwv?.lcp?.displayValue||'?'}</strong> · CLS : <strong>${psi.mobile?.cwv?.cls?.displayValue||'?'}</strong> · INP : <strong>${psi.mobile?.cwv?.inp?.displayValue||'?'}</strong>. ${(psi.mobile?.scores?.performance||0) < 60 ? '⚠️ Score mobile critique — priorité aux optimisations LCP et CLS.' : 'Core Web Vitals analysés. Consultez les opportunités pour optimiser chaque métrique.'}`
+      ? `LCP mobile : <strong>${psi.mobile?.cwv?.lcp != null ? Math.round(psi.mobile.cwv.lcp)+'ms' : '?'}</strong> · CLS : <strong>${psi.mobile?.cwv?.cls != null ? psi.mobile.cwv.cls.toFixed(3) : '?'}</strong> · INP : <strong>${psi.mobile?.cwv?.inp != null ? Math.round(psi.mobile.cwv.inp)+'ms' : 'N/A'}</strong>. ${(psi.mobile?.scores?.performance||0) < 60 ? '⚠️ Score mobile critique — priorité aux optimisations LCP et CLS.' : 'Core Web Vitals analysés. Consultez les opportunités pour optimiser chaque métrique.'}`
       : "Lancez une analyse depuis Performance pour voir vos Core Web Vitals (LCP, CLS, INP, TTFB) en temps réel.",
     ['Analyser LCP', 'Comparer mobile vs desktop', 'Voir les opportunités']
   )}
@@ -29058,14 +29157,15 @@ function renderCoreWebVitals() {
       ${['lcp','cls','inp','ttfb'].map(key=>{
         const metricNames={lcp:'LCP',cls:'CLS',inp:'INP',ttfb:'TTFB'};
         const units={lcp:'ms',cls:'',inp:'ms',ttfb:'ms'};
-        const val = cwv[key]||0;
-        const cls2 = cwvBadgeClass(key,val);
-        const color = {good:'#10b981','needs-improvement':'#f59e0b',poor:'#ef4444'}[cls2];
-        const display = key==='cls'?val.toFixed(3):Math.round(val).toLocaleString('fr-FR');
+        // BUG-W1-004: null-safe inline CWV card
+        const val = (cwv && Number.isFinite(cwv[key])) ? cwv[key] : null;
+        const cls2 = val !== null ? cwvBadgeClass(key,val) : 'needs-improvement';
+        const color = {good:'#10b981','needs-improvement':'#f59e0b',poor:'#ef4444'}[cls2] || 'var(--fp-text-faint)';
+        const display = val === null ? '—' : key==='cls' ? val.toFixed(3) : Math.round(val).toLocaleString('fr-FR');
         return `<div class="fp-cwv-card" style="cursor:pointer" onclick="navigateSub('${key}')">
           <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--fp-text-faint);margin-bottom:8px">${metricNames[key]}</div>
-          <div style="font-size:32px;font-weight:800;color:${color};margin-bottom:4px">${display}<span style="font-size:14px;color:var(--fp-text-muted)">${units[key]}</span></div>
-          <span class="fp-cwv-badge fp-cwv-badge--${cls2}" style="font-size:11px">${cwvBadgeLabel(cls2)}</span>
+          <div style="font-size:32px;font-weight:800;color:${color};margin-bottom:4px">${display}<span style="font-size:14px;color:var(--fp-text-muted)">${val !== null ? units[key] : ''}</span></div>
+          <span class="fp-cwv-badge fp-cwv-badge--${cls2}" style="font-size:11px">${val !== null ? cwvBadgeLabel(cls2) : 'Indisponible'}</span>
           <div style="font-size:10px;color:var(--fp-text-faint);margin-top:8px">→ Voir détails</div>
         </div>`;
       }).join('')}
@@ -29086,10 +29186,11 @@ function renderCoreWebVitals() {
         return `<div>
           <div style="font-size:12px;font-weight:700;margin-bottom:12px;color:var(--fp-text-muted);text-transform:uppercase;letter-spacing:1px">${strat}</div>
           ${d && d.cwv ? ['lcp','cls','inp','ttfb'].map(key=>{
-            const val=d.cwv[key]||0;
-            const cls2=cwvBadgeClass(key,val);
-            const color={good:'#10b981','needs-improvement':'#f59e0b',poor:'#ef4444'}[cls2];
-            const display=key==='cls'?val.toFixed(3):Math.round(val)+'ms';
+            // BUG-W1-004: null-safe comparison preview
+            const val=(d.cwv && Number.isFinite(d.cwv[key])) ? d.cwv[key] : null;
+            const cls2=val!==null?cwvBadgeClass(key,val):'needs-improvement';
+            const color={good:'#10b981','needs-improvement':'#f59e0b',poor:'#ef4444'}[cls2]||'var(--fp-text-faint)';
+            const display=val===null?'N/A':key==='cls'?val.toFixed(3):Math.round(val)+'ms';
             return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--fp-border)">
               <span style="font-size:12px;font-weight:700;color:var(--fp-text-faint)">${key.toUpperCase()}</span>
               <span style="font-size:14px;font-weight:700;color:${color}">${display}</span>
@@ -29111,10 +29212,11 @@ function renderCWVMetricDetail(metric, mobile, desktop) {
     ttfb: { desc:"Le TTFB mesure le temps avant le premier octet de réponse serveur.", good:'< 800ms', needs:'800ms – 1800ms', poor:'> 1800ms', tips:['Utilisez un CDN avec edge caching','Optimisez les requêtes DB (index, cache)','Activez la compression gzip/brotli côté serveur','Utilisez HTTP/2 ou HTTP/3','Minimisez les redirections (chaque redirect = +100-300ms)'] },
   };
   const g = guides[metric] || {};
-  const mval = mobile && mobile.cwv && mobile.cwv[metric] || 0;
-  const dval = desktop && desktop.cwv && desktop.cwv[metric] || 0;
-  const mcls = cwvBadgeClass(metric, mval);
-  const dcls = cwvBadgeClass(metric, dval);
+  // BUG-W1-005: null-safe — show "Indisponible" instead of 0ms for absent CWV metrics
+  const mval = (mobile && mobile.cwv && Number.isFinite(mobile.cwv[metric])) ? mobile.cwv[metric] : null;
+  const dval = (desktop && desktop.cwv && Number.isFinite(desktop.cwv[metric])) ? desktop.cwv[metric] : null;
+  const mcls = mval !== null ? cwvBadgeClass(metric, mval) : 'needs-improvement';
+  const dcls = dval !== null ? cwvBadgeClass(metric, dval) : 'needs-improvement';
 
   return `
   <div class="fp-section-header">
@@ -29131,7 +29233,7 @@ function renderCWVMetricDetail(metric, mobile, desktop) {
       <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);letter-spacing:1px;margin-bottom:12px">MOBILE</div>
       ${renderPSIRing(mcls==='good'?95:mcls==='needs-improvement'?60:25,100)}
       <div style="font-size:22px;font-weight:800;color:${{good:'#10b981','needs-improvement':'#f59e0b',poor:'#ef4444'}[mcls]};margin:8px 0;white-space:nowrap">
-        ${metric==='cls'?mval.toFixed(3):Math.round(mval)+'ms'}
+        ${mval===null ? '<span style="color:var(--fp-text-faint);font-size:16px">Indisponible</span>' : metric==='cls'?mval.toFixed(3):Math.round(mval)+'ms'}
       </div>
       <span class="fp-cwv-badge fp-cwv-badge--${mcls}">${cwvBadgeLabel(mcls)}</span>
     </div>
@@ -29139,7 +29241,7 @@ function renderCWVMetricDetail(metric, mobile, desktop) {
       <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);letter-spacing:1px;margin-bottom:12px">DESKTOP</div>
       ${renderPSIRing(dcls==='good'?95:dcls==='needs-improvement'?60:25,100)}
       <div style="font-size:22px;font-weight:800;color:${{good:'#10b981','needs-improvement':'#f59e0b',poor:'#ef4444'}[dcls]};margin:8px 0;white-space:nowrap">
-        ${metric==='cls'?dval.toFixed(3):Math.round(dval)+'ms'}
+        ${dval===null ? '<span style="color:var(--fp-text-faint);font-size:16px">Indisponible</span>' : metric==='cls'?dval.toFixed(3):Math.round(dval)+'ms'}
       </div>
       <span class="fp-cwv-badge fp-cwv-badge--${dcls}">${cwvBadgeLabel(dcls)}</span>
     </div>
@@ -29189,16 +29291,17 @@ function renderCWVComparison(mobile, desktop) {
       <tbody>
         ${['lcp','cls','inp','ttfb','fcp','tbt','speedIndex'].map(key=>{
           const labels={lcp:'LCP',cls:'CLS',inp:'INP',ttfb:'TTFB',fcp:'FCP',tbt:'TBT',speedIndex:'Speed Index'};
-          const mv = mobile?.cwv?.[key]||0;
-          const dv = desktop?.cwv?.[key]||0;
-          const diff = mv-dv;
-          const mcls=cwvBadgeClass(key==='speedIndex'?'si':key,mv);
-          const fmt=v=>key==='cls'?v.toFixed(3):Math.round(v).toLocaleString('fr-FR')+'ms';
+          // BUG-W1-006: null-safe — show N/A instead of 0ms for absent CWV metrics
+          const mv = (mobile?.cwv && Number.isFinite(mobile.cwv[key])) ? mobile.cwv[key] : null;
+          const dv = (desktop?.cwv && Number.isFinite(desktop.cwv[key])) ? desktop.cwv[key] : null;
+          const diff = (mv !== null && dv !== null) ? mv - dv : null;
+          const mcls = mv !== null ? cwvBadgeClass(key==='speedIndex'?'si':key, mv) : 'needs-improvement';
+          const fmt = v => v === null ? '<span style="color:var(--fp-text-faint)">N/A</span>' : key==='cls' ? v.toFixed(3) : Math.round(v).toLocaleString('fr-FR')+'ms';
           return `<tr>
             <td style="font-weight:600">${labels[key]||key}</td>
             <td style="font-weight:700;color:${{good:'#10b981','needs-improvement':'#f59e0b',poor:'#ef4444'}[mcls]}">${fmt(mv)}</td>
             <td>${fmt(dv)}</td>
-            <td style="color:${diff>0?'#ef4444':'#10b981'}">${diff>0?'+':''}${fmt(diff)}</td>
+            <td style="color:${diff===null?'var(--fp-text-faint)':diff>0?'#ef4444':'#10b981'}">${diff===null?'—':((diff>0?'+':'')+fmt(diff))}</td>
             <td><span class="fp-cwv-badge fp-cwv-badge--${mcls}">${cwvBadgeLabel(mcls)}</span></td>
           </tr>`;
         }).join('')}
@@ -29212,6 +29315,9 @@ function renderCWVComparison(mobile, desktop) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function renderTechnicalAudit() {
+  // BUG-W1-010: trigger audit poller check on every render of this page
+  if (window._fpStartAuditPoll) window._fpStartAuditPoll();
+
   const sub = STATE.subRoute;
   const psi = window.FP_DATA && window.FP_DATA.pagespeed;
   const mobile = psi && psi.mobile;
@@ -29243,7 +29349,9 @@ function renderTechnicalAudit() {
 
   // Command Center overview
   const totalSavingsMs = opps.reduce((s,o)=>s+(o.savingsMs||0),0);
-  const passRate = mobile ? Math.round((mobile.passedAudits/(mobile.totalAudits||1))*100) : 0;
+  // BUG-W1-008: use real STATE.audits counts — passedAudits/totalAudits not in PSI response
+  const _techSummary = buildTechnicalAuditSummary(STATE.audits||[], mobile);
+  const passRate = safePercent(_techSummary.completedAudits, _techSummary.totalAudits || 1);
 
   return `
   <div class="fp-section-header">
@@ -29271,9 +29379,9 @@ function renderTechnicalAudit() {
   <!-- KPI summary -->
   <div class="fp-kpi-grid" style="margin-bottom:20px">
     <div class="fp-kpi-card">
-      <div class="fp-kpi-label">Audits passés</div>
-      <div class="fp-kpi-value" style="color:#10b981">${mobile.passedAudits||0}</div>
-      <div class="fp-kpi-sub">${passRate}% du total</div>
+      <div class="fp-kpi-label">Audits terminés</div>
+      <div class="fp-kpi-value" style="color:#10b981">${_techSummary.completedAudits}</div>
+      <div class="fp-kpi-sub">${passRate}% · ${_techSummary.processingAudits ? `<span style="color:#f59e0b">${_techSummary.processingAudits} en cours</span>` : 'aucun en cours'}</div>
     </div>
     <div class="fp-kpi-card">
       <div class="fp-kpi-label">Opportunités</div>
@@ -29298,8 +29406,8 @@ function renderTechnicalAudit() {
       {sub:'render-blocking',icon:'⚡',label:'Ressources bloquantes',count:renderBlockingOpps.length,color:'#ef4444',savings:renderBlockingOpps.reduce((s,o)=>s+(o.savingsMs||0),0)},
       {sub:'js-css',icon:'📦',label:'JS & CSS non utilisés',count:jsOpps.length+cssOpps.length,color:'#f59e0b',savings:(jsOpps.concat(cssOpps)).reduce((s,o)=>s+(o.savingsMs||0),0)},
       {sub:'images',icon:'🖼',label:'Optimisation images',count:imgOpps.length,color:'#06b6d4',savings:imgOpps.reduce((s,o)=>s+(o.savingsBytes||0)/1024,0)},
-      {sub:'accessibility',icon:'♿',label:'Accessibilité',count:mobile.scores?Math.round((1-(mobile.scores.accessibility||0)/100)*15):0,color:'#8b5cf6',savings:0},
-      {sub:'seo',icon:'🔍',label:'SEO Technique',count:mobile.scores?Math.round((1-(mobile.scores.seo||0)/100)*10):0,color:'#10b981',savings:0},
+      {sub:'accessibility',icon:'♿',label:'Accessibilité',count:_techSummary.accessibilityIssues.length,color:'#8b5cf6',savings:0},
+      {sub:'seo',icon:'🔍',label:'SEO Technique',count:_techSummary.technicalSeoIssues.length,color:'#10b981',savings:0},
       {sub:'ai',icon:'🤖',label:'IA Audit Complet',count:null,color:'var(--fp-accent)',savings:0},
     ].map(c=>`<div class="fp-card" style="cursor:pointer;transition:border-color 0.15s" onclick="navigateSub('${c.sub}')" onmouseenter="this.style.borderColor='${c.color}'" onmouseleave="this.style.borderColor=''">
       <div style="font-size:28px;margin-bottom:8px">${c.icon}</div>
@@ -29461,10 +29569,18 @@ async function fpAnalyzePSI() {
   const btn = document.getElementById('fp-psi-analyze-btn');
   const rawUrl = input && input.value.trim();
   if (!rawUrl) { showToast && showToast('error','Entrez une URL valide'); return; }
+  // BUG-W1-001: validate URL with new URL() — reject plain text, javascript:, ftp:, etc.
+  let _parsedUrl;
+  try { _parsedUrl = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl); } catch(_) { _parsedUrl = null; }
+  if (!_parsedUrl || !['http:','https:'].includes(_parsedUrl.protocol) || !_parsedUrl.hostname || _parsedUrl.hostname.split('.').filter(Boolean).length < 2) {
+    if (input && input.reportValidity) input.reportValidity();
+    showToast && showToast('error', 'Veuillez saisir une URL valide (ex: https://example.com)');
+    return;
+  }
   // P1.3: anti-double-click guard
   if (window._fpPsiAnalyzing) return;
 
-  const url = rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl;
+  const url = _parsedUrl.href;
   if (btn) { btn.disabled = true; btn.textContent = 'Analyse en cours…'; }
   window._fpPsiAnalyzing = true;
   render();
@@ -29491,11 +29607,13 @@ async function fpAnalyzePSI() {
         const result = await resp.json();
         if (result && (result.mobile || result.desktop)) {
           if (!window.FP_DATA) window.FP_DATA = {};
-          window.FP_DATA.pagespeed = result;
+          window.FP_DATA.pagespeed = normalizePageSpeedResult(result);
           showToast && showToast('success', 'Analyse terminée !');
         } else {
           showToast && showToast('error', 'Réponse invalide du serveur');
         }
+      } else if (resp.status === 409) {
+        showToast && showToast('warning', 'Une analyse est déjà en cours pour cette URL. Réessayez dans quelques instants.');
       } else if (resp.status === 402) {
         showToast && showToast('error', 'Crédits insuffisants pour lancer une analyse PageSpeed');
       } else {
@@ -29532,6 +29650,56 @@ document.addEventListener('click', function(e) {
 document.addEventListener('keydown', function(e) {
   if (e.target && e.target.id === 'fp-psi-url-input' && e.key === 'Enter') fpAnalyzePSI();
 });
+
+// ── BUG-W1-010 — Audit polling — auto-refresh while processing audits exist ──
+(function initAuditPoller() {
+  var _auditPollTimer = null;
+
+  function _stopAuditPoll() {
+    if (_auditPollTimer) { clearInterval(_auditPollTimer); _auditPollTimer = null; }
+  }
+
+  function _pollAudits() {
+    var list = Array.isArray(STATE && STATE.audits) ? STATE.audits : [];
+    var hasProcessing = list.some(function(a) { return a.status === 'processing'; });
+    if (!hasProcessing) { _stopAuditPoll(); return; }
+    apiFetch('/api/audits').then(function(fresh) {
+      if (!Array.isArray(fresh)) return;
+      var changed = fresh.some(function(a) {
+        var old = list.find(function(o) { return o.id === a.id; });
+        return !old || old.status !== a.status;
+      });
+      if (changed) {
+        STATE.audits = fresh.map(function(a) {
+          return Object.assign({}, a, { pinned: !!(STATE.pinned && STATE.pinned['audit_'+a.id]) });
+        });
+        render();
+      }
+      var stillProcessing = fresh.some(function(a) { return a.status === 'processing'; });
+      if (!stillProcessing) _stopAuditPoll();
+    }).catch(function() {});
+  }
+
+  function _maybeStartAuditPoll() {
+    var list = Array.isArray(STATE && STATE.audits) ? STATE.audits : [];
+    var hasProcessing = list.some(function(a) { return a.status === 'processing'; });
+    if (hasProcessing && !_auditPollTimer) {
+      _auditPollTimer = setInterval(_pollAudits, 7000);
+    } else if (!hasProcessing) {
+      _stopAuditPoll();
+    }
+  }
+
+  // Hook into render cycle — start/stop poll based on processing state
+  var _origRender = typeof render === 'function' ? render : null;
+  if (_origRender) {
+    window._fpAuditPollerCheck = _maybeStartAuditPoll;
+  }
+  // Also start immediately if audits already loaded
+  setTimeout(_maybeStartAuditPoll, 1500);
+  // Expose for manual trigger after new audit creation
+  window._fpStartAuditPoll = _maybeStartAuditPoll;
+})();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI CHAT PANEL — Side assistant
