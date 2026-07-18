@@ -8,7 +8,7 @@ import {
 
 export const pool = new Pool({
   connectionString: process.env["DATABASE_URL"] ?? process.env["MONGO_URI"],
-  max: 20,
+  max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });

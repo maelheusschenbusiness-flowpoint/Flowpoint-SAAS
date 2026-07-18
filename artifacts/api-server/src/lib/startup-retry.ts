@@ -20,10 +20,26 @@ const TRANSIENT_CODES = new Set([
   "57P03", // cannot_connect_now
 ]);
 
+// pg-pool emits "Connection terminated due to connection timeout" as a plain
+// Error with no standard code when connectionTimeoutMillis is exceeded.
+// Treat it as transient so startup-retry can attempt reconnection.
+const TRANSIENT_MESSAGES = [
+  "Connection terminated due to connection timeout",
+  "Connection terminated unexpectedly",
+  "read ECONNRESET",
+  "write EPIPE",
+];
+
 function isTransient(err: unknown): boolean {
   if (err === null || typeof err !== "object") return false;
-  const code = (err as Record<string, unknown>)["code"];
-  return typeof code === "string" && TRANSIENT_CODES.has(code);
+  const e = err as Record<string, unknown>;
+  const code = e["code"];
+  if (typeof code === "string" && TRANSIENT_CODES.has(code)) return true;
+  const msg = e["message"];
+  if (typeof msg === "string") {
+    return TRANSIENT_MESSAGES.some((pattern) => msg.includes(pattern));
+  }
+  return false;
 }
 
 /** Returns the error code string without exposing any connection details. */

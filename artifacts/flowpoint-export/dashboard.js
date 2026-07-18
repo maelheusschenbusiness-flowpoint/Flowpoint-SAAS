@@ -690,6 +690,7 @@ async function bindAuditPanelBtns(audit) {
           const idx = STATE.audits.findIndex(x => x.id === audit.id);
           if (idx >= 0) STATE.audits.splice(idx, 1);
           STATE.audits.unshift(res);
+          if (typeof startAuditPolling === 'function') startAuditPolling(res.id);
         }
         showToast('success', `Audit relancé pour ${escHtml(audit.url)}`);
         closeFloatPanel();
@@ -11453,6 +11454,7 @@ function setupNewAuditPanel() {
         const res = await apiAction('POST', '/api/audits', { url, type });
         const a = res || { id:'a'+Date.now(), url, score: null, status:'pending', speed: null, date: new Date().toISOString(), issues: 0 };
         STATE.audits.unshift(a);
+        if (typeof startAuditPolling === 'function') startAuditPolling(a.id);
         showToast('success', `Audit lancé pour ${escHtml(url)}`);
         closeFloatPanel();
         if (STATE.route === 'audits') render(); else navigate('audits');
@@ -12738,12 +12740,10 @@ function bindSectionEvents() {
         _btn.textContent = 'Lancement…';
         try {
           const res = await apiAction('POST', '/api/audits', { url: _normUrl });
-          if (res && (res.id || res.url)) {
-            STATE.audits.unshift(res);
-          } else {
-            // Fallback entry while audit processes asynchronously
-            STATE.audits.unshift({ id:'a'+Date.now(), url:_normUrl, score:null, status:'pending', speed:null, date:new Date().toISOString(), issues:0 });
-          }
+          const _launchedAudit = (res && (res.id || res.url)) ? res
+            : { id:'a'+Date.now(), url:_normUrl, score:null, status:'pending', speed:null, date:new Date().toISOString(), issues:0 };
+          STATE.audits.unshift(_launchedAudit);
+          if (typeof startAuditPolling === 'function') startAuditPolling(_launchedAudit.id);
           showToast('success', `Audit lancé pour ${escHtml(_normUrl)}`);
           if (_input) _input.value = '';
           render();
@@ -28640,6 +28640,23 @@ function normalizePageSpeedResult(raw) {
   };
 }
 
+// ── BUG-W1-V32-001 — Single source of truth for pagespeed storage ─────────────
+// FP_PAGESPEED_API.analyze() stores raw data directly; always call this to
+// normalize and overwrite so render functions see mobile.cwv.* not mobile.metrics.*
+function setPageSpeedResult(raw) {
+  var normalized = normalizePageSpeedResult(raw);
+  if (window.FP_DATA) window.FP_DATA.pagespeed = normalized;
+  return normalized;
+}
+window.setPageSpeedResult = setPageSpeedResult;
+
+// ── BUG-W1-V32-003 — Metric formatter — no ? fallback ────────────────────────
+function formatMetricOrUnavailable(value, metric) {
+  if (!Number.isFinite(value)) return 'N/A';
+  if (metric === 'cls') return value.toFixed(3);
+  return Math.round(value) + ' ms';
+}
+
 // ── BUG-W1-008/009 — Audit summary builder ────────────────────────────────────
 function buildTechnicalAuditSummary(audits, psiMobile) {
   var list = Array.isArray(audits) ? audits : [];
@@ -29113,7 +29130,7 @@ function renderCoreWebVitals() {
 
   ${aiBlock(
     psi
-      ? `LCP mobile : <strong>${psi.mobile?.cwv?.lcp != null ? Math.round(psi.mobile.cwv.lcp)+'ms' : '?'}</strong> · CLS : <strong>${psi.mobile?.cwv?.cls != null ? psi.mobile.cwv.cls.toFixed(3) : '?'}</strong> · INP : <strong>${psi.mobile?.cwv?.inp != null ? Math.round(psi.mobile.cwv.inp)+'ms' : 'N/A'}</strong>. ${(psi.mobile?.scores?.performance||0) < 60 ? '⚠️ Score mobile critique — priorité aux optimisations LCP et CLS.' : 'Core Web Vitals analysés. Consultez les opportunités pour optimiser chaque métrique.'}`
+      ? (() => { const _cwv = psi.mobile && psi.mobile.cwv; const _lcp = (_cwv && Number.isFinite(_cwv.lcp)) ? _cwv.lcp : null; const _cls = (_cwv && Number.isFinite(_cwv.cls)) ? _cwv.cls : null; const _inp = (_cwv && Number.isFinite(_cwv.inp)) ? _cwv.inp : null; const _av = [_lcp,_cls,_inp].filter(function(v){return v!==null;}).length; const _perf = (psi.mobile && psi.mobile.scores) ? (psi.mobile.scores.performance || 0) : 0; const _cwvMsg = _av === 3 ? 'Core Web Vitals analysés. Consultez les opportunités pour optimiser chaque métrique.' : _av > 0 ? 'Données Core Web Vitals partielles.' : 'Données Core Web Vitals indisponibles pour cette analyse.'; return 'LCP mobile : <strong>' + formatMetricOrUnavailable(_lcp,'lcp') + '</strong> · CLS : <strong>' + formatMetricOrUnavailable(_cls,'cls') + '</strong> · INP : <strong>' + formatMetricOrUnavailable(_inp,'inp') + '</strong>. ' + (_perf < 60 ? '⚠️ Score mobile critique — priorité aux optimisations LCP et CLS.' : _cwvMsg); })()
       : "Lancez une analyse depuis Performance pour voir vos Core Web Vitals (LCP, CLS, INP, TTFB) en temps réel.",
     ['Analyser LCP', 'Comparer mobile vs desktop', 'Voir les opportunités']
   )}
@@ -29586,39 +29603,40 @@ async function fpAnalyzePSI() {
   render();
 
   try {
-    if (window.FP_PAGESPEED_API) {
-      // Use the registered API service when available
-      const result = await window.FP_PAGESPEED_API.analyze(url, { force: true });
-      if (result) {
+    // BUG-W1-V32-001+002: Always use raw fetch — FP_PAGESPEED_API.analyze() stores
+    // raw data (mobile.metrics.*) without normalizing to mobile.cwv.*, and returns
+    // null on error making status codes (409/402/4xx) invisible to the caller.
+    const _psiToken = localStorage.getItem('fp_token') || localStorage.getItem('token') || '';
+    const _psiBase = window.__FP_BACKEND_URL || '';
+    const resp = await fetch(_psiBase + '/api/pagespeed/analyze', {
+      method: 'POST',
+      headers: Object.assign(
+        { 'Content-Type': 'application/json' },
+        _psiToken ? { Authorization: 'Bearer ' + _psiToken } : {}
+      ),
+      credentials: 'include',
+      body: JSON.stringify({ url: url, force: true }),
+    });
+    if (resp.ok) {
+      const raw = await resp.json();
+      if (raw && (raw.mobile || raw.desktop)) {
+        setPageSpeedResult(raw);
         showToast && showToast('success', 'Analyse terminée !');
       } else {
-        showToast && showToast('error', 'Erreur lors de l\'analyse — URL accessible ?');
+        showToast && showToast('error', 'Réponse invalide du serveur');
       }
+    } else if (resp.status === 409) {
+      showToast && showToast('warning', 'Une analyse est déjà en cours pour cette URL. Réessayez dans quelques instants.');
+    } else if (resp.status === 402) {
+      showToast && showToast('error', 'Crédits insuffisants pour lancer une analyse PageSpeed');
+    } else if (resp.status === 401) {
+      showToast && showToast('error', 'Session expirée — veuillez vous reconnecter');
+    } else if (resp.status === 400) {
+      showToast && showToast('error', 'URL invalide ou non accessible publiquement');
+    } else if (resp.status === 429) {
+      showToast && showToast('warning', 'Trop de requêtes — réessayez dans quelques instants');
     } else {
-      // P1.3: Fallback — call /api/pagespeed/analyze directly
-      const token = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
-      const resp = await fetch('/api/pagespeed/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        credentials: 'include',
-        body: JSON.stringify({ url, force: true }),
-      });
-      if (resp.ok) {
-        const result = await resp.json();
-        if (result && (result.mobile || result.desktop)) {
-          if (!window.FP_DATA) window.FP_DATA = {};
-          window.FP_DATA.pagespeed = normalizePageSpeedResult(result);
-          showToast && showToast('success', 'Analyse terminée !');
-        } else {
-          showToast && showToast('error', 'Réponse invalide du serveur');
-        }
-      } else if (resp.status === 409) {
-        showToast && showToast('warning', 'Une analyse est déjà en cours pour cette URL. Réessayez dans quelques instants.');
-      } else if (resp.status === 402) {
-        showToast && showToast('error', 'Crédits insuffisants pour lancer une analyse PageSpeed');
-      } else {
-        showToast && showToast('error', 'Erreur lors de l\'analyse — URL accessible publiquement ?');
-      }
+      showToast && showToast('error', 'Erreur lors de l\'analyse — URL accessible publiquement ?');
     }
   } catch(_e) {
     showToast && showToast('error', 'Erreur réseau lors de l\'analyse PageSpeed');
@@ -29651,55 +29669,82 @@ document.addEventListener('keydown', function(e) {
   if (e.target && e.target.id === 'fp-psi-url-input' && e.key === 'Enter') fpAnalyzePSI();
 });
 
-// ── BUG-W1-010 — Audit polling — auto-refresh while processing audits exist ──
-(function initAuditPoller() {
-  var _auditPollTimer = null;
+// ── BUG-W1-V32-005 — Audit polling controller ────────────────────────────────
+// Replaces the old initAuditPoller IIFE. Key fixes:
+// • pollAudits() fetches FIRST, then decides — never uses stale snapshot to stop early
+// • startAuditPolling(id) tracks specific audit ids; stops only when ALL tracked ids resolve
+// • in-flight guard prevents overlapping GETs when one takes > 7s
+// • global scope — not page-dependent; continues across navigations
+// • bootstrap on load covers audits already processing before page render
+var auditPolling = {
+  timer:          null,
+  running:        false,
+  inFlight:       false,
+  intervalMs:     7000,
+  trackedAuditIds: new Set(),
+};
 
-  function _stopAuditPoll() {
-    if (_auditPollTimer) { clearInterval(_auditPollTimer); _auditPollTimer = null; }
-  }
+function stopAuditPolling() {
+  if (auditPolling.timer) clearInterval(auditPolling.timer);
+  auditPolling.timer   = null;
+  auditPolling.running = false;
+  auditPolling.trackedAuditIds.clear();
+}
 
-  function _pollAudits() {
-    var list = Array.isArray(STATE && STATE.audits) ? STATE.audits : [];
-    var hasProcessing = list.some(function(a) { return a.status === 'processing'; });
-    if (!hasProcessing) { _stopAuditPoll(); return; }
-    apiFetch('/api/audits').then(function(fresh) {
-      if (!Array.isArray(fresh)) return;
-      var changed = fresh.some(function(a) {
-        var old = list.find(function(o) { return o.id === a.id; });
-        return !old || old.status !== a.status;
+async function pollAudits() {
+  if (auditPolling.inFlight) return;
+  auditPolling.inFlight = true;
+  try {
+    var fresh = await apiFetch('/api/audits');
+    if (!Array.isArray(fresh)) return;
+    var prev = Array.isArray(STATE && STATE.audits) ? STATE.audits : [];
+    var changed = fresh.some(function(a) {
+      var old = prev.find(function(o) { return o.id === a.id; });
+      return !old || old.status !== a.status;
+    });
+    STATE.audits = fresh.map(function(a) {
+      return Object.assign({}, a, { pinned: !!(STATE.pinned && STATE.pinned['audit_'+a.id]) });
+    });
+    if (changed) render();
+    // Stop only when ALL explicitly tracked audits have left processing state
+    if (auditPolling.trackedAuditIds.size > 0) {
+      var trackedStillProcessing = fresh.some(function(a) {
+        return auditPolling.trackedAuditIds.has(a.id) && a.status === 'processing';
       });
-      if (changed) {
-        STATE.audits = fresh.map(function(a) {
-          return Object.assign({}, a, { pinned: !!(STATE.pinned && STATE.pinned['audit_'+a.id]) });
-        });
-        render();
-      }
-      var stillProcessing = fresh.some(function(a) { return a.status === 'processing'; });
-      if (!stillProcessing) _stopAuditPoll();
-    }).catch(function() {});
-  }
-
-  function _maybeStartAuditPoll() {
-    var list = Array.isArray(STATE && STATE.audits) ? STATE.audits : [];
-    var hasProcessing = list.some(function(a) { return a.status === 'processing'; });
-    if (hasProcessing && !_auditPollTimer) {
-      _auditPollTimer = setInterval(_pollAudits, 7000);
-    } else if (!hasProcessing) {
-      _stopAuditPoll();
+      if (!trackedStillProcessing) stopAuditPolling();
+    } else {
+      // No tracked ids (legacy path) — stop when no audits are processing at all
+      var anyProcessing = fresh.some(function(a) { return a.status === 'processing'; });
+      if (!anyProcessing) stopAuditPolling();
     }
+  } catch(_) {
+    // Network error — do not stop; will retry on next interval
+  } finally {
+    auditPolling.inFlight = false;
   }
+}
 
-  // Hook into render cycle — start/stop poll based on processing state
-  var _origRender = typeof render === 'function' ? render : null;
-  if (_origRender) {
-    window._fpAuditPollerCheck = _maybeStartAuditPoll;
+function startAuditPolling(auditId) {
+  if (auditId) auditPolling.trackedAuditIds.add(String(auditId));
+  if (auditPolling.running) return;
+  auditPolling.running = true;
+  pollAudits(); // immediate first fetch — do not wait for first interval tick
+  auditPolling.timer = setInterval(pollAudits, auditPolling.intervalMs);
+}
+
+// Backward-compat shim — renderTechnicalAudit still calls window._fpStartAuditPoll
+window._fpStartAuditPoll = function() {
+  var list = Array.isArray(STATE && STATE.audits) ? STATE.audits : [];
+  if (list.some(function(a) { return a.status === 'processing'; }) && !auditPolling.running) {
+    startAuditPolling();
   }
-  // Also start immediately if audits already loaded
-  setTimeout(_maybeStartAuditPoll, 1500);
-  // Expose for manual trigger after new audit creation
-  window._fpStartAuditPoll = _maybeStartAuditPoll;
-})();
+};
+
+// Bootstrap: cover audits already processing when the page loads/reloads
+setTimeout(function() {
+  var list = Array.isArray(STATE && STATE.audits) ? STATE.audits : [];
+  if (list.some(function(a) { return a.status === 'processing'; })) startAuditPolling();
+}, 1500);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI CHAT PANEL — Side assistant
