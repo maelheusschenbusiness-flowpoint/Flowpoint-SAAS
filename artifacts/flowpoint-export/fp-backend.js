@@ -1892,6 +1892,12 @@
     setTimeout(function () { window.FP_MAPS_API.init(); }, 1200);
   }
 
+  // P0.5: _fpFetch alias — FP_PAGESPEED_API methods depend on window._fpFetch;
+  // define it as a thin wrapper over apiFetch (already auth-aware in this closure).
+  if (typeof window._fpFetch === 'undefined') {
+    window._fpFetch = function(url, opts) { return apiFetch(url, opts); };
+  }
+
   // ── FP_PAGESPEED_API ─────────────────────────────────────────────────────────
   window.FP_PAGESPEED_API = {
     _cache: new Map(),

@@ -3575,7 +3575,9 @@ function renderOverview() {
   const totalMonitors  = (STATE.monitors||[]).length;
   const pingOk = totalMonitors > 0 ? Math.round(activeMonitors / totalMonitors * 100) : 100;
   const conversionScore = STATE.overview?.conversionScore || 0;
-  const localScore = STATE.overview?.localScore || STATE.overview?.seoScore || avg;
+  const localScore = STATE.overview?.localScore > 0 ? STATE.overview.localScore
+                   : STATE.overview?.seoScore   > 0 ? STATE.overview.seoScore
+                   : 0;
   const competitorPressure = STATE.overview?.competitorPressure
     ?? (STATE.competitors && STATE.competitors.length > 0
         ? Math.min(100, Math.round(STATE.competitors.filter(c => (c.domainRating||0) > 30).length / STATE.competitors.length * 100))
@@ -13239,15 +13241,18 @@ function bindSectionEvents() {
       logActivityEvent('team', `Mission créée : ${title}`, { missionId: newMs.id, category: newMs.category });
       showToast('success','Mission créée !');
       render();
-      // Persistance backend
-      if (typeof window.FP_MISSIONS_API !== 'undefined') {
-        const saved = await window.FP_MISSIONS_API.create(newMs);
+      // Persistance backend — direct apiFetch (no _fpFetch dependency, works pre-OAuth)
+      try {
+        const saved = await apiFetch('/api/missions', {
+          method: 'POST',
+          body: JSON.stringify({ title: newMs.title, category: newMs.category, impact: newMs.impact, status: 'todo' }),
+        });
         if (saved && saved.id && saved.id !== newMs.id) {
           const idx = STATE.missions.findIndex(x => x.id === newMs.id);
           if (idx >= 0) STATE.missions[idx].id = saved.id;
           saveMissions();
         }
-      }
+      } catch(e) { console.warn('[FP] Mission inline persist failed', e); }
     });
     $('#mission-title-input')?.addEventListener('keydown', e => { if(e.key==='Enter') $('#mission-add-btn')?.click(); });
     $$('.mission-check').forEach(cb => cb.addEventListener('change', () => {
@@ -14503,6 +14508,13 @@ async function init() {
     const savedSub   = localStorage.getItem('fp:last-sub');
     if (savedRoute) STATE.route = savedRoute;
     if (savedSub)   STATE.subRoute = savedSub || null;
+  } catch(e) {}
+
+  // P0.1: Hash wins over localStorage — resolve BEFORE loadData() so every render
+  // during data loading (including the initial skeleton render) uses the correct route.
+  try {
+    const _h0 = window.location.hash.slice(1);
+    if (_h0) { const _n0 = normalizeRoute(_h0, null); STATE.route = _n0.route; STATE.subRoute = _n0.subRoute; }
   } catch(e) {}
 
   // Restore AI chat history for this session
@@ -18369,6 +18381,7 @@ function initPageAnimations(route, sub) {
     });
     document.querySelectorAll('[data-count-to]').forEach(el => {
       const target = parseFloat(el.dataset.countTo);
+      if (!isFinite(target)) return; // P1.1: guard NaN% from null growthRing values
       const suffix = el.dataset.suffix || '';
       const prefix = el.dataset.prefix || '';
       const dec = parseInt(el.dataset.decimals || '0');
