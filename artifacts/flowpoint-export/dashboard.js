@@ -12241,6 +12241,9 @@ function _doRender() {
   if (pageNameEl) pageNameEl.textContent = PAGE_NAMES[STATE.route] || 'Dashboard';
 
   let html = '';
+  // BUG-002 fix: wrap renderer in try/catch — if any renderXxx() throws,
+  // the old page DOM must NOT be left visible. Show an error state instead.
+  try {
   switch(STATE.route) {
     case 'overview':       html = renderOverview(); break;
     case 'missions':       html = renderMissions(); break;
@@ -12286,6 +12289,11 @@ function _doRender() {
     case 'keywords':         STATE.route = 'growth'; if (!STATE.subRoute) STATE.subRoute = 'keywords'; html = renderGrowth(); break;
     case 'content':          STATE.route = 'growth';        html = renderGrowth();       break;
     default:               html = renderOverview();
+  }
+  } catch(_renderErr) {
+    // BUG-002 fix: renderer threw — expose exact error and show fallback instead of leaving old DOM
+    console.error('[FP] _doRender crash route=' + STATE.route, _renderErr);
+    html = '<div style="padding:40px 32px;text-align:center;color:var(--fp-text-muted,#94a3b8)"><div style="font-size:32px;margin-bottom:12px">\u26A0\uFE0F</div><div style="font-weight:600;margin-bottom:8px;color:var(--fp-text,#e2e8f0)">Erreur de rendu</div><div style="font-size:13px;margin-bottom:16px">Rechargez la page ou revenez \u00E0 l\'accueil.</div><button onclick="navigate(\'overview\')" style="padding:8px 20px;border-radius:8px;background:var(--fp-accent,#2563eb);color:#fff;border:none;cursor:pointer;font-size:13px">Retour accueil</button></div>';
   }
 
   window.__fpAnimationsInitialized = false;
@@ -13233,8 +13241,13 @@ function bindSectionEvents() {
       render();
     }));
     $('#mission-add-btn')?.addEventListener('click', async () => {
+      // BUG-004 fix: anti-double-click guard — prevent duplicate optimistic inserts
+      if (STATE._missionAddBusy) return;
       const title = $('#mission-title-input')?.value.trim();
       if (!title) { showToast('warning','Entrez un titre'); return; }
+      STATE._missionAddBusy = true;
+      const addBtn = $('#mission-add-btn');
+      if (addBtn) { addBtn.disabled = true; }
       const newMs = { id:'ms'+Date.now(), title, category:$('#mission-cat-input')?.value||'Audits', impact:$('#mission-impact-input')?.value||'Élevé', status:'todo', date:new Date().toISOString().slice(0,10) };
       STATE.missions.push(newMs);
       saveMissions();
@@ -13253,6 +13266,7 @@ function bindSectionEvents() {
           saveMissions();
         }
       } catch(e) { console.warn('[FP] Mission inline persist failed', e); }
+      finally { STATE._missionAddBusy = false; if (addBtn) addBtn.disabled = false; }
     });
     $('#mission-title-input')?.addEventListener('keydown', e => { if(e.key==='Enter') $('#mission-add-btn')?.click(); });
     $$('.mission-check').forEach(cb => cb.addEventListener('change', () => {

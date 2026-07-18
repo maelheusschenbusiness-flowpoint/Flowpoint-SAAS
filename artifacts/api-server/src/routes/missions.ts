@@ -343,6 +343,12 @@ router.post("/missions", async (req: Request, res: Response) => {
         JSON.stringify(steps || []), (dueDate as string) || null, (assignedTo as string) || null]);
 
     const row = await db(`SELECT * FROM missions WHERE id = $1 AND org_id = $2`, [id, org]);
+    // BUG-003 guard: INSERT committed but SELECT returned no row — log full context for diagnosis
+    if (!row.rows[0]) {
+      logger.error({ id, org, title }, "[Missions] POST: row not found after INSERT – possible RLS conflict");
+      res.status(500).json({ error: "Mission créée mais introuvable (conflit RLS)" });
+      return;
+    }
     const mission = rowToMission(row.rows[0]);
 
     await logHistory(db, id, org, "created", null, status as string);
@@ -354,7 +360,8 @@ router.post("/missions", async (req: Request, res: Response) => {
 
     res.status(201).json(mission);
   } catch (err) {
-    logger.error({ err }, "[Missions] POST error");
+    // BUG-003: log full stack so the next test run exposes the exact throw location
+    logger.error({ err, stack: (err as Error)?.stack, msg: (err as Error)?.message }, "[Missions] POST error");
     res.status(500).json({ error: "Database error" });
   }
 });

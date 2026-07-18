@@ -69,8 +69,10 @@ router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
 
   try {
     // Guard: audit running on same URL for this org today
+    // BUG-005 fix: audits.date is TEXT — compare via created_at (TIMESTAMP) to avoid
+    // "operator does not exist: text >= timestamp with time zone" PostgreSQL error.
     const dup = await req.orgDb(
-      `SELECT id FROM audits WHERE org_id = $1 AND url = $2 AND date >= date_trunc('day', now()) LIMIT 1`,
+      `SELECT id FROM audits WHERE org_id = $1 AND url = $2 AND created_at >= date_trunc('day', now()) LIMIT 1`,
       [orgId, normalizedUrl]
     );
     if (dup.rows.length) {
