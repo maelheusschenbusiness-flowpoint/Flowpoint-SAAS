@@ -142,6 +142,10 @@ const STATE = {
   selectedAudits: new Set(),
   selectedMonitors: new Set(),
   activityEvents: [],
+  activityPage: 0,
+  activityHasMore: true,
+  activityFilteredEvents: null,
+  activityFilterLoading: false,
   activityFilter: 'all',
   activityPanelOpen: false,
   activityLastSeen: parseInt(localStorage.getItem('fp:activity-last-seen') || '0', 10),
@@ -2606,9 +2610,24 @@ function renderActivityList() {
   const list = $('#fp-activity-list');
   if (!list) return;
   const filter = STATE.activityFilter;
-  const events = filter === 'all'
-    ? STATE.activityEvents
-    : STATE.activityEvents.filter(e => e.type === filter);
+
+  // ACT-001: use API-fetched filtered results when a type filter is active.
+  // ACT-002: use full STATE.activityEvents (paginated via "Voir plus") for 'all'.
+  let events;
+  if (filter !== 'all') {
+    if (STATE.activityFilterLoading) {
+      list.innerHTML = `<div class="fp-activity-empty" style="opacity:.6">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
+        <div>Chargement…</div>
+      </div>`;
+      return;
+    }
+    events = Array.isArray(STATE.activityFilteredEvents)
+      ? STATE.activityFilteredEvents
+      : STATE.activityEvents.filter(e => e.type === filter);
+  } else {
+    events = STATE.activityEvents;
+  }
 
   if (events.length === 0) {
     list.innerHTML = `<div class="fp-activity-empty">
@@ -2619,7 +2638,7 @@ function renderActivityList() {
   }
 
   const lastSeen = STATE.activityLastSeen;
-  list.innerHTML = events.map(e => {
+  let html = events.map(e => {
     const cfg = ACTIVITY_TYPE_CONFIG[e.type] || ACTIVITY_TYPE_CONFIG.audit;
     const avatarColor = getAvatarColor(e.userName || 'U');
     const isNew = new Date(e.createdAt).getTime() > lastSeen;
@@ -2639,6 +2658,37 @@ function renderActivityList() {
       </div>
     `;
   }).join('');
+
+  // ACT-002: "Voir plus" button for 'all' filter (server-side pagination)
+  if (filter === 'all') {
+    if (STATE.activityHasMore) {
+      html += `<button id="fp-act-load-more" style="width:100%;padding:8px;margin-top:8px;background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;color:var(--fp-text-soft);font-size:12px;cursor:pointer">Voir plus</button>`;
+    } else {
+      html += `<div style="text-align:center;padding:8px;font-size:11px;color:var(--fp-text-faint)">— Fin de l'historique —</div>`;
+    }
+  }
+
+  list.innerHTML = html;
+
+  // ACT-002: bind "Voir plus" click — loads next page from API
+  document.getElementById('fp-act-load-more')?.addEventListener('click', async () => {
+    const btn = document.getElementById('fp-act-load-more');
+    if (btn) btn.textContent = 'Chargement…';
+    try {
+      const nextPage = STATE.activityPage + 1;
+      const newEvents = await apiFetch('/api/activity?page=' + nextPage + '&limit=50');
+      if (Array.isArray(newEvents) && newEvents.length > 0) {
+        const known = new Set(STATE.activityEvents.map(e => e.id || e.createdAt));
+        const fresh = newEvents.filter(e => !known.has(e.id || e.createdAt));
+        STATE.activityEvents = [...STATE.activityEvents, ...fresh];
+        STATE.activityPage = nextPage;
+        if (newEvents.length < 50) STATE.activityHasMore = false;
+      } else {
+        STATE.activityHasMore = false;
+      }
+    } catch(_) { STATE.activityHasMore = false; }
+    renderActivityList();
+  });
 }
 
 function openActivityPanel() {
@@ -2693,8 +2743,23 @@ function bindActivityPanel() {
       if (!btn) return;
       $$('.fp-activity-filter', filters).forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      STATE.activityFilter = btn.dataset.filter || 'all';
-      renderActivityList();
+      const nextFilter = btn.dataset.filter || 'all';
+      STATE.activityFilter = nextFilter;
+      if (nextFilter === 'all') {
+        // ACT-001: reset to full cached events when returning to 'all'
+        STATE.activityFilteredEvents = null;
+        STATE.activityFilterLoading = false;
+        renderActivityList();
+      } else {
+        // ACT-001: fetch type-filtered events from API (server-side WHERE clause)
+        STATE.activityFilteredEvents = null;
+        STATE.activityFilterLoading = true;
+        renderActivityList();
+        apiFetch('/api/activity?type=' + encodeURIComponent(nextFilter) + '&limit=50')
+          .then(res => { STATE.activityFilteredEvents = Array.isArray(res) ? res : []; })
+          .catch(() => { STATE.activityFilteredEvents = []; })
+          .finally(() => { STATE.activityFilterLoading = false; renderActivityList(); });
+      }
     });
   }
 
@@ -14704,6 +14769,10 @@ async function init() {
   window.navigate = navigate;
   window.navigateSub = navigateSub;
   window.renderInvitePanel = renderInvitePanel;
+  window.openActivityPanel    = openActivityPanel;
+  window.closeActivityPanel   = closeActivityPanel;
+  window.apiFetch             = apiFetch;
+  window.renderActivityList   = renderActivityList;
   window.fpApplyAlertTemplate = async function(idx, btn) {
     const TMPL = [
       { name: 'Monitor DOWN', type: 'monitor_down', operator: 'eq', threshold: 1, durationMin: 0, channels: ['email'], siteUrls: [] },
