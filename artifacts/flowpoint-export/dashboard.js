@@ -5743,7 +5743,7 @@ function renderReports() {
     { id:'r4', name:'Export données CSV — Audits',     date:'28/04/2026', type:'CSV', pages:1,  shared:false, size:'34 KB',  client:'Interne', score:'—',   color:'#64748b' },
   ] : [];
   const allReports = _stRepts.length > 0
-    ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString('fr-FR'):'—', type:r.type||r.format||'PDF', pages:r.pages??null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', score:r.score??null, color:r.color||'#2563EB' }))
+    ? _stRepts.map(r=>({ id:r.id||r._id||'r'+Math.random(), name:r.name||r.title||'Rapport', date:r.date||r.createdAt?new Date(r.date||r.createdAt).toLocaleDateString('fr-FR'):'—', type:r.type||r.format||'PDF', pages:r.pages??null, shared:r.shared||r.isShared||false, size:r.size||null, client:r.client||r.clientName||'Interne', color:r.color||'#2563EB' }))
     : _DEMO_AR;
 
   const _scheduledRaw = STATE.scheduledReports || STATE.reportSchedules || null;
@@ -6571,7 +6571,7 @@ function renderReports() {
               </div>
               <div style="flex:1;min-width:0">
                 <div style="font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.name)}</div>
-                <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(r.date)} · ${escHtml(r.size)}${r.shared ? ' · <span style="color:#22c55e">Partage</span>' : ''}</div>
+                <div style="font-size:10px;color:var(--fp-text-faint)">${typeof r.pages === 'number' ? (r.pages > 1 ? r.pages + ' pages' : r.pages + ' page') + ' · ' : ''}${escHtml(r.date)} · ${escHtml(r.size)}${r.shared ? ' · <span style="color:#22c55e">Partage</span>' : ''}</div>
               </div>
               <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(function(b){const link=document.createElement('a');link.href='/api/reports/'+b.dataset.rid+'/download';link.download=b.dataset.rname+'.pdf';document.body.appendChild(link);link.click();document.body.removeChild(link)})(this)">↓</button>
             </div>
@@ -6581,11 +6581,15 @@ function renderReports() {
 
       <div class="fp-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div class="fp-card-title" style="margin-bottom:0">⏰ Envois planifies</div>
+          <div class="fp-card-title" style="margin-bottom:0">⏰ Rapports planifiés</div>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('reports');setTimeout(()=>navigateSub('scheduled'),50)" >+ Planifier</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-          ${scheduled.map(s => `
+          ${scheduled.length === 0 ? `
+            <div style="padding:20px 0;text-align:center">
+              <div style="font-size:13px;font-weight:600;color:var(--fp-text-soft);margin-bottom:4px">Aucun rapport planifié</div>
+              <div style="font-size:11px;color:var(--fp-text-faint)">Créez une planification pour automatiser l'envoi de vos rapports.</div>
+            </div>` : scheduled.map(s => `
             <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--fp-inner-card);border:1px solid ${s.active ? 'rgba(34,197,94,0.2)' : 'var(--fp-border)'}">
               <div style="flex:1">
                 <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(s.name)}</div>
@@ -8424,7 +8428,7 @@ function renderAlertRules() {
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-          <span style="font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;${r.enabled ? 'background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)' : 'background:var(--fp-track);color:var(--fp-text-faint);border:1px solid var(--fp-border)'}">
+          <span data-ar-badge style="font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;${r.enabled ? 'background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)' : 'background:var(--fp-track);color:var(--fp-text-faint);border:1px solid var(--fp-border)'}">
             ${r.enabled ? 'Active' : 'Inactive'}
           </span>
           <button class="fp-btn fp-btn-ghost fp-btn-sm" data-edit-rule="${escHtml(r.id)}" style="padding:4px 10px">Modifier</button>
@@ -13871,22 +13875,28 @@ function bindSectionEvents() {
           const ruleId = btn.dataset.toggleRule;
           const rule = STATE.alertRules.find(r => r.id === ruleId);
           if (!rule) return;
+          if (btn.dataset.pending === '1') return;
+          btn.dataset.pending = '1';
           const newEnabled = !rule.enabled;
           try {
             await apiAction('PATCH', `/api/alert-rules/${ruleId}`, { enabled: newEnabled });
             rule.enabled = newEnabled;
             btn.classList.toggle('on', newEnabled);
-            btn.setAttribute('aria-pressed', newEnabled);
+            btn.setAttribute('aria-pressed', String(newEnabled));
+            btn.dataset.pending = '0';
             const row = btn.closest('[data-rule-id]');
-            const badge = row?.querySelector('span');
-            if (badge) {
-              badge.textContent = newEnabled ? 'Active' : 'Inactive';
-              badge.style.cssText = newEnabled
+            const arBadge = row?.querySelector('[data-ar-badge]');
+            if (arBadge) {
+              arBadge.textContent = newEnabled ? 'Active' : 'Inactive';
+              arBadge.style.cssText = newEnabled
                 ? 'font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)'
                 : 'font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;background:var(--fp-track);color:var(--fp-text-faint);border:1px solid var(--fp-border)';
             }
             showToast('success', `Règle ${newEnabled ? 'activée' : 'désactivée'}`);
-          } catch(e) { showToast('error', 'Erreur lors de la mise à jour'); }
+          } catch(e) {
+            btn.dataset.pending = '0';
+            showToast('error', 'Erreur lors de la mise à jour');
+          }
         });
       });
 
@@ -14376,6 +14386,7 @@ function bindGlobalEvents() {
       setupNewMonitorPanel();
     }
   });
+
 
   // Shortcuts modal
   $('#fp-shortcuts-btn')?.addEventListener('click', () => {
@@ -22415,6 +22426,32 @@ function renderAlertsCenter() {
       ${statCard('Impact estimé', displayStat(null, '-980€'), PREVIEW_MODE ? 'ce mois — récupérable' : 'Connectez analytics', 'neutral')}
     </div>
 
+    <!-- CONFIGURED ALERT RULES -->
+    <div class="fp-card fp-mb-20">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div class="fp-card-title" style="margin-bottom:0">
+          ${svgIcon('bell').replace('stroke="currentColor"','stroke="#ef4444"')}
+          Règles d'alerte — ${(STATE.alertRules||[]).length} ${pluralizeFr((STATE.alertRules||[]).length,'règle')} configurée${(STATE.alertRules||[]).length > 1 ? 's' : ''}
+        </div>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="navigate('settings');setTimeout(()=>navigateSub('alerts'),50)">+ Nouvelle règle</button>
+      </div>
+      ${(STATE.alertRules||[]).length === 0
+        ? '<div style="text-align:center;padding:24px;color:var(--fp-text-faint);font-size:12px">Aucune règle configurée.</div>'
+        : `<div style="display:flex;flex-direction:column;gap:8px">
+          ${(STATE.alertRules||[]).map(r => {
+            const _typeLabel = ({seo_score:'Score SEO',latency:'Latence',uptime:'Uptime',monitor_down:'Monitor DOWN',keyword_ranking_drop:'Chute ranking'})[r.type] || r.type;
+            return `<div class="fp-alert-rule-row" data-rule-id="${escHtml(r.id)}" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:var(--fp-inner-card);border:1px solid ${r.enabled ? 'rgba(34,197,94,0.2)' : 'var(--fp-border)'}">
+              <button class="fp-toggle${r.enabled ? ' on' : ''}" data-toggle-rule="${escHtml(r.id)}" aria-pressed="${r.enabled}" title="${r.enabled ? 'Désactiver la règle' : 'Activer la règle'}" style="flex-shrink:0" onclick="(function(b){if(b.dataset.pending==='1')return;b.dataset.pending='1';var id=b.getAttribute('data-toggle-rule');var rule=(STATE.alertRules||[]).find(function(x){return x.id===id;});if(!rule){b.dataset.pending='0';return;}var n=!rule.enabled;apiAction('PATCH','/api/alert-rules/'+id,{enabled:n}).then(function(){rule.enabled=n;b.classList.toggle('on',n);b.setAttribute('aria-pressed',String(n));b.dataset.pending='0';var row=b.closest('[data-rule-id]');var badge=row?row.querySelector('[data-ar-badge]'):null;if(badge){badge.textContent=n?'Active':'Inactive';badge.style.cssText=n?'font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)':'font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;background:var(--fp-track);color:var(--fp-text-faint);border:1px solid var(--fp-border)';}showToast('success',n?'Règle activée':'Règle désactivée');}).catch(function(){b.dataset.pending='0';showToast('error','Erreur');})})(this)"></button>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(r.name)}</div>
+                <div style="font-size:11px;color:var(--fp-text-muted);margin-top:1px">${escHtml(_typeLabel)}</div>
+              </div>
+              <span data-ar-badge style="font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600;${r.enabled ? 'background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)' : 'background:var(--fp-track);color:var(--fp-text-faint);border:1px solid var(--fp-border)'}">${r.enabled ? 'Active' : 'Inactive'}</span>
+            </div>`;
+          }).join('')}
+        </div>`}
+    </div>
+
     <!-- 6 SCORE GAUGES -->
     <div class="fp-card fp-mb-20">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -28590,6 +28627,7 @@ window._fpToggleChecklistExtra = function(id, done) {
 };
 window.showToast = showToast;
 window.navigate  = navigate;
+window.apiAction = apiAction;
 
 // ─────────────────────────────────────────────────────────────────
 // START
