@@ -55,6 +55,7 @@ import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
 import plansRouter from "./plans.js";
 import securityRouter from "./security.js";
+import { qaFixturesRouter, publicQaRouter } from "./qa-fixtures.js";
 
 const router: IRouter = Router();
 
@@ -100,24 +101,46 @@ router.use(publicBillingRouter);
 // Public plan definitions — all frontend surfaces read from here.
 router.use(plansRouter);
 
+// QA fixture probe — GET /qa/fixture/:id is called directly by monitors during tests.
+// Must be public (monitors fetch URLs without auth headers). Always 404 in production.
+router.use(publicQaRouter);
+
 // ── Protected routes (authentication required) ─────────────────────────────
 // All management endpoints require a valid API secret supplied via:
 //   Authorization: Bearer <secret>   or   X-Api-Key: <secret>
 router.use(requireAuth);
 
 // Block any request that passed auth but lacks a valid org context.
-// Prevents the API_SECRET_KEY service credential (orgId: "default") from
-// accessing user-scoped data routes — EXCEPT when the caller is the service
-// credential itself (userId: "service"), which uses orgId "default" by design
-// and is allowed through for server-to-server endpoints (e.g. /alert-events).
-// Dev bypass: when API_SECRET_KEY is not configured requireAuth already
-// lets all requests through — we honour that same bypass here.
+// Service credential security model:
+//   - userId="service" is ONLY valid when it comes from the real API_SECRET_KEY via
+//     the X-Api-Key header — not from a forged Bearer session in the DB.
+//   - Service credential is restricted to explicit internal routes only (POST /alert-events).
+//   - Any attempt to use a Bearer token whose DB session has user_id="service" is rejected
+//     with 401 because req.headers["x-api-key"] will not equal the service secret.
 router.use((req: Request, res: Response, next: NextFunction) => {
   const serviceSecret = process.env["API_SECRET_KEY"];
   const isProduction  = process.env["NODE_ENV"] === "production";
   if (!serviceSecret && !isProduction) { next(); return; }
-  // Service credential (API_SECRET_KEY) always allowed — it sets userId="service"
-  if (req.userId === "service") { next(); return; }
+
+  if (req.userId === "service") {
+    // Verify the credential arrived via X-Api-Key, not a forged Bearer DB session.
+    const apiKeyHeader = req.headers["x-api-key"];
+    if (!serviceSecret || typeof apiKeyHeader !== "string" || apiKeyHeader !== serviceSecret) {
+      // userId="service" came from a Bearer session — reject as fraudulent.
+      res.status(401).json({ error: "Unauthorized: invalid credentials" });
+      return;
+    }
+    // Service credential is restricted to explicitly internal routes only.
+    // All ordinary user routes return 403 — the key must never read user data.
+    const isInternalRoute = req.method === "POST" && req.path === "/alert-events";
+    if (!isInternalRoute) {
+      res.status(403).json({ error: "Service credential: route not permitted" });
+      return;
+    }
+    next();
+    return;
+  }
+
   const orgId = req.orgContext?.orgId;
   if (!orgId || orgId === "default") {
     res.status(401).json({ error: "Unauthorized: no valid organization context" });
@@ -135,6 +158,7 @@ router.use(teamRouter);
 router.use(aiRouter);
 router.use(billingRouter);
 router.use(alertRulesRouter);
+router.use(qaFixturesRouter);
 router.use(activityRouter);
 // SSE real-time event stream — authentifié et scopé par org_id (après requireAuth)
 router.use(eventsRouter);

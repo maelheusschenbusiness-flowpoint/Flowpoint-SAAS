@@ -199,6 +199,43 @@ router.delete("/alert-rules/:id", canAdmin, async (req, res) => {
   }
 });
 
+// ── GET /alert-events/:id ────────────────────────────────────────────────────
+// Read a single alert event (open OR resolved) by ID within the caller's org.
+// Supports the test contract: resolvedFor() lookup that GET /alert-events list
+// would also return — but this route is the canonical single-item accessor.
+router.get("/alert-events/:id", async (req, res) => {
+  try {
+    const r = await db(req)(
+      `SELECT id, rule_id, rule_name, type, metric_value, threshold, operator,
+              severity, message, site_url, monitor_id, status,
+              read_at, resolved_at, triggered_at
+       FROM alert_events WHERE id=$1 AND org_id=$2`,
+      [req.params["id"], org(req)],
+    );
+    if (!r.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+    const row = r.rows[0];
+    res.json({
+      id:          row["id"],
+      ruleId:      row["rule_id"],
+      ruleName:    row["rule_name"],
+      type:        row["type"],
+      metricValue: row["metric_value"],
+      threshold:   row["threshold"],
+      operator:    row["operator"],
+      severity:    row["severity"],
+      message:     row["message"],
+      siteUrl:     row["site_url"],
+      monitorId:   row["monitor_id"],
+      status:      row["status"] ?? "open",
+      readAt:      row["read_at"],
+      resolvedAt:  row["resolved_at"],
+      triggeredAt: row["triggered_at"],
+    });
+  } catch {
+    res.status(500).json({ error: "Failed to fetch alert event" });
+  }
+});
+
 // ── PATCH /alert-events/:id/resolve ──────────────────────────────────────────
 // Must be before /alert-events GET to avoid Express consuming "resolve" as :id
 router.patch("/alert-events/:id/resolve", canWrite, async (req, res) => {

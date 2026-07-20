@@ -51,6 +51,7 @@
 - [Billing route architecture](billing-route-architecture.md) — /billing/plans served by public-billing.ts (pre-auth); billingRouter routes are post-auth; /addons/:key/activate|deactivate exist in addons.ts; getUsageSummary uses safeCount() per-query isolation; getInvoices accepts optional stripeCustomerId param
 - [FlowPoint team_members schema fix](flowpoint-team-invite-fix.md) — UUID→TEXT migration; local pool ≠ Supabase; production session via PostgREST service role
 - [AI Economy Mode Pattern](ai-economy-pattern.md) — provider never changes; model+tokens degrade within same family; EXHAUSTED→402; test E needs matching plan limit
+- [QA fixture injection pattern](qa-fixture-injection.md) — _qa_result body bypasses SSRF/performCheck in !RENDER envs; saveCheckResult (real evaluator) always runs; isProd()=!!RENDER not NODE_ENV
 - [audits.date TEXT column](audits-date-column.md) — audits.date is TEXT NOT NULL DEFAULT ''; never compare it to a timestamp; use created_at (TIMESTAMP) for date-range duplicate checks
 - [_doRender crash pattern](dorender-crash-pattern.md) — nav/breadcrumb updated BEFORE html=renderXxx(); if renderer throws, page.innerHTML is never written and old DOM stays; fix: try/catch around switch block
 - [Wave 2 Lot B investigation context](lotb-investigation-context.md) — MON-001/ALT-002/ALT-003/REP-001/MON-002 each need targeted investigation before any code; constraints per bug documented

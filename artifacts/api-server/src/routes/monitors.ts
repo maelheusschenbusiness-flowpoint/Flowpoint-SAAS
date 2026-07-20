@@ -681,7 +681,22 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
     const orgId          = monitor["org_id"] as string | undefined;
     if (!orgId) { res.status(500).json({ error: "Monitor data integrity error: missing org_id" }); return; }
 
-    const result    = await performCheck(monitor["url"] as string);
+    // QA injection bypass: when RENDER is not set (Replit dev/test environment)
+    // the caller may supply a pre-built check result to skip the SSRF-guarded
+    // performCheck step. saveCheckResult (the real business evaluator) always runs.
+    let result: CheckResult;
+    const qaInject = !process.env["RENDER"] && (req.body as Record<string, unknown> | undefined)?._qa_result;
+    if (qaInject && typeof qaInject === "object") {
+      const q = qaInject as { ok?: unknown; statusCode?: unknown; latencyMs?: unknown; error?: unknown };
+      result = {
+        ok:        !!q.ok,
+        statusCode: Number(q.statusCode) || (q.ok ? 200 : 503),
+        latencyMs:  Math.max(1, Number(q.latencyMs) || 10),
+        error:      typeof q.error === "string" ? q.error : undefined,
+      };
+    } else {
+      result = await performCheck(monitor["url"] as string);
+    }
     const { newStatus } = await saveCheckResult(id, orgId, previousStatus, result);
 
     const updated = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
