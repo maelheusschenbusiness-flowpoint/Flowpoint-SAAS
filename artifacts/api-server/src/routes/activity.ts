@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
+import { canAdmin } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -18,7 +19,7 @@ router.get("/activity", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/activity", async (req: Request, res: Response) => {
+router.post("/activity", canAdmin, async (req: Request, res: Response) => {
   const { type, label, targetId, targetType, metadata } = req.body || {};
   if (typeof type !== "string" || !type || typeof label !== "string" || !label) {
     res.status(400).json({ error: "type and label are required strings" }); return;

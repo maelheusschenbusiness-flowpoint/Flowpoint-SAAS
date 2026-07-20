@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
+import { canWrite } from "../middlewares/requireRole.js";
 import {
   analyzeReview, generateReply, getReputationDashboard, syncReviewsFromGBP,
 } from "../services/review-intel-service.js";
@@ -37,7 +38,7 @@ router.get("/review-intelligence/reviews", async (req, res) => {
   } catch { res.json({ reviews: [], count: 0 }); }
 });
 
-router.post("/review-intelligence/analyze", async (req, res) => {
+router.post("/review-intelligence/analyze", canWrite, async (req, res) => {
   const { id, authorName, rating, reviewText, language, locationId } = req.body as {
     id?: string; authorName?: string; rating?: number; reviewText?: string;
     language?: string; locationId?: string;
@@ -55,7 +56,7 @@ router.post("/review-intelligence/analyze", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.post("/review-intelligence/reply", async (req, res) => {
+router.post("/review-intelligence/reply", canWrite, async (req, res) => {
   const { content, tone = "professional", language = "fr" } = req.body as {
     content?: string; tone?: string; language?: string;
   };
@@ -65,7 +66,7 @@ router.post("/review-intelligence/reply", async (req, res) => {
   } catch { res.json({ ok: true, reply: "Merci pour votre avis, nous prenons note de vos commentaires." }); }
 });
 
-router.post("/review-intelligence/reply/:reviewId", async (req, res) => {
+router.post("/review-intelligence/reply/:reviewId", canWrite, async (req, res) => {
   const { tone = "professional", language = "fr" } = req.body as { tone?: string; language?: string };
   try {
     const reply = await generateReply(org(req), req.params.reviewId, tone, language);
@@ -73,7 +74,7 @@ router.post("/review-intelligence/reply/:reviewId", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.post("/review-intelligence/reply/:reviewId/publish", async (req, res) => {
+router.post("/review-intelligence/reply/:reviewId/publish", canWrite, async (req, res) => {
   try {
     await db(req)(
       `UPDATE review_analysis SET reply_status='published', replied_at=now() WHERE id=$1 AND org_id=$2`,
@@ -94,7 +95,7 @@ router.get("/review-intelligence/alerts", async (req, res) => {
   } catch { res.json({ alerts: [], count: 0 }); }
 });
 
-router.patch("/review-intelligence/alerts/:id/resolve", async (req, res) => {
+router.patch("/review-intelligence/alerts/:id/resolve", canWrite, async (req, res) => {
   try {
     await db(req)(
       `UPDATE review_alerts SET resolved=true WHERE id=$1 AND org_id=$2`,
@@ -104,7 +105,7 @@ router.patch("/review-intelligence/alerts/:id/resolve", async (req, res) => {
   } catch { res.status(500).json({ error: "Failed to resolve alert" }); }
 });
 
-router.post("/review-intelligence/sync/:locationId", async (req, res) => {
+router.post("/review-intelligence/sync/:locationId", canWrite, async (req, res) => {
   try {
     const result = await syncReviewsFromGBP(org(req), req.params.locationId);
     res.json({ ok: true, ...result });

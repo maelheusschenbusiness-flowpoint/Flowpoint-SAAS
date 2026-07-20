@@ -131,9 +131,10 @@ router.patch("/competitors/:id", canWrite, async (req, res) => {
 
 router.delete("/competitors/:id", canWrite, async (req, res) => {
   try {
-    await req.orgDb(`DELETE FROM competitors WHERE id = $1`, [req.params.id]);
+    const r = await req.orgDb(`DELETE FROM competitors WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) { res.status(404).json({ error: "Competitor not found" }); return; }
     res.json({ ok: true });
-  } catch { res.json({ ok: true }); }
+  } catch { res.status(500).json({ error: "Failed to delete competitor" }); }
 });
 
 export default router;

@@ -74,7 +74,10 @@ router.patch("/calendar-events/:id", canWrite, async (req: Request, res: Respons
 
 router.delete("/calendar-events/:id", canWrite, async (req: Request, res: Response) => {
   try {
-    await (req as OrgReq).orgDb(`DELETE FROM calendar_events WHERE id=$1`, [req.params.id]);
+    const r = await (req as OrgReq).orgDb(
+      `DELETE FROM calendar_events WHERE id=$1 RETURNING id`, [req.params.id]
+    );
+    if (!r.rows[0]) { res.status(404).json({ error: "Event not found" }); return; }
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to delete event" });

@@ -647,6 +647,29 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_idx ON team_members(org_id, email);`);
 
+    // ── team_members — organization_members constraints (T06) ────────────────
+    // 1. CHECK role IN allowed set (enforced at DB level)
+    await run(client, `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'team_members_role_check'
+            AND conrelid = 'team_members'::regclass
+        ) THEN
+          ALTER TABLE team_members
+            ADD CONSTRAINT team_members_role_check
+            CHECK (role IN ('owner','admin','member','viewer'));
+        END IF;
+      END $$;
+    `);
+    // 2. Sanitize any rows that violate the new constraint before applying it
+    await run(client, `
+      UPDATE team_members SET role = 'viewer'
+      WHERE role NOT IN ('owner','admin','member','viewer');
+    `);
+    // 3. Soft FK: index on org_id for JOIN performance (TEXT org_id ≠ UUID, no hard FK)
+    await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_fk_idx ON team_members(org_id);`);
+
     // ── org_settings — columns that may be missing in older DBs ─────────────
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS last_name           TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS org_name            TEXT;`);

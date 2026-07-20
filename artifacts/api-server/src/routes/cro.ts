@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { getCROData, generateCRORecommendations, upsertCROScore } from "../services/cro-service.js";
+import { canWrite } from "../middlewares/requireRole.js";
 import { requireFeature } from "../middlewares/planGate.js";
 import { logger } from "../lib/logger.js";
 
@@ -36,7 +37,7 @@ router.get("/cro", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/cro/generate", async (req: Request, res: Response) => {
+router.post("/cro/generate", canWrite, async (req: Request, res: Response) => {
   const { siteUrl } = req.body ?? {};
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
   try {
@@ -53,7 +54,7 @@ router.post("/cro/generate", async (req: Request, res: Response) => {
   }
 });
 
-router.patch("/cro/recommendations/:id", async (req: Request, res: Response) => {
+router.patch("/cro/recommendations/:id", canWrite, async (req: Request, res: Response) => {
   const { id } = req.params;
   const { status } = req.body ?? {};
   if (!status) { res.status(400).json({ error: "status required" }); return; }

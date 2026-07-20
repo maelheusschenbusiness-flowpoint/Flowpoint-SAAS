@@ -59,3 +59,5 @@
 - [activity.ts parameterized SQL](activity-sql-params.md) — GET /api/activity now supports limit(1-200)/page/type via SQL; id included in SELECT for 60s-poll dedup; always returns array (backward compat)
 - [window.apiAction timing](window-apiaction-timing.md) — window.apiAction must be assigned at module level (near window.STATE) not only inside the async IIFE; IIFE awaits delay the assignment past onclick fire
 - [Wave 3 RBAC pattern](wave3-rbac.md) — requireRole exports, role matrix, ALLOWED roles, organizations table
+- [Alert-events service-only gate](alert-events-service-gate.md) — POST /alert-events blocked for user sessions via userId check (not role); service bypass in routes/index.ts allows userId="service" past org-context gate
+- [Lot B3 pre-existing failures](lotb3-preexisting.md) — uptime pipeline (10 fails): env always 100% uptime; monitor_down resolved (2 fails): GET filters resolved events; not caused by RBAC changes

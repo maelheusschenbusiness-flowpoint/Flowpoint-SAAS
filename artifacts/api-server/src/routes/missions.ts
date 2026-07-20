@@ -174,7 +174,7 @@ router.get("/missions/templates", (_req: Request, res: Response) => {
 });
 
 // POST /missions/from-template — must be before /:id
-router.post("/missions/from-template", async (req: Request, res: Response) => {
+router.post("/missions/from-template", canWrite, async (req: Request, res: Response) => {
   try {
     const db = orgDb(req);
     const org = orgId(req);
@@ -213,7 +213,7 @@ router.post("/missions/from-template", async (req: Request, res: Response) => {
 });
 
 // POST /missions/bulk-create — must be before /:id
-router.post("/missions/bulk-create", async (req: Request, res: Response) => {
+router.post("/missions/bulk-create", canWrite, async (req: Request, res: Response) => {
   try {
     const db = orgDb(req);
     const org = orgId(req);
@@ -290,7 +290,7 @@ router.get("/missions/:id", async (req: Request, res: Response) => {
 });
 
 // POST /missions/generate — trigger AI Mission Engine
-router.post("/missions/generate", async (req: Request, res: Response) => {
+router.post("/missions/generate", canWrite, async (req: Request, res: Response) => {
   try {
     const oid = orgId(req);
     const aiPrefs = await loadOrgAIPrefs(oid);
@@ -473,7 +473,7 @@ router.delete("/missions/:id", canWrite, async (req: Request, res: Response) => 
 });
 
 // PATCH /missions/:id/steps/:stepId
-router.patch("/missions/:id/steps/:stepId", async (req: Request, res: Response) => {
+router.patch("/missions/:id/steps/:stepId", canWrite, async (req: Request, res: Response) => {
   try {
     const db = orgDb(req);
     const org = orgId(req);

@@ -708,8 +708,8 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
   }
 }
 
-router.post("/monitors/:id/check", handleCheck);
-router.post("/monitors/:id/ping",  handleCheck);
+router.post("/monitors/:id/check", canWrite, handleCheck);
+router.post("/monitors/:id/ping",  canWrite, handleCheck);
 
 // ── Periodic background checks (called by monitor-cron every few minutes) ────
 // Runs a real HTTP check for every monitor across all orgs, respecting each
@@ -762,7 +762,7 @@ export async function checkAllMonitorsDue(): Promise<{ checked: number; errors: 
 
 // ── POST /monitors/:id/test-sms ───────────────────────────────────────────────
 
-router.post("/monitors/:id/test-sms", async (req: Request, res: Response) => {
+router.post("/monitors/:id/test-sms", canAdmin, async (req: Request, res: Response) => {
   const { phone } = req.body as { phone?: string };
   if (!phone) { res.status(400).json({ error: "phone required" }); return; }
   const { sendSms, twilioConfigured } = await import("../services/sms-service.js");
@@ -785,7 +785,7 @@ router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => 
   const { id } = req.params;
   try {
     const existing = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
-    if (existing.rowCount === 0) { res.json({ ok: true }); return; }
+    if (existing.rowCount === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
     const m = existing.rows[0] as Record<string, unknown>;
 
     await req.orgDb(`DELETE FROM monitor_checks    WHERE monitor_id = $1`, [id]);

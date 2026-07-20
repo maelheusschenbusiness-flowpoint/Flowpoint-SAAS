@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
+import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.get("/notifications", async (req: Request, res: Response) => {
 
 // ── POST /notifications ───────────────────────────────────────────────────────
 
-router.post("/notifications", async (req: Request, res: Response) => {
+router.post("/notifications", canAdmin, async (req: Request, res: Response) => {
   const { type = "info", title, message, link } = req.body as {
     type?: string; title?: string; message?: string; link?: string;
   };
@@ -91,9 +92,13 @@ router.patch("/notifications/read-all", async (req: Request, res: Response) => {
 
 // ── DELETE /notifications/:id ─────────────────────────────────────────────────
 
-router.delete("/notifications/:id", async (req: Request, res: Response) => {
+router.delete("/notifications/:id", canWrite, async (req: Request, res: Response) => {
   try {
-    await (req as OrgReq).orgDb(`DELETE FROM notifications WHERE id = $1`, [req.params.id]);
+    const r = await (req as OrgReq).orgDb(
+      `DELETE FROM notifications WHERE id = $1 AND org_id = $2 RETURNING id`,
+      [req.params.id, getOrg(req)],
+    );
+    if (!r.rows[0]) { res.status(404).json({ error: "Notification not found" }); return; }
     res.json({ ok: true });
   } catch { res.json({ ok: true }); }
 });

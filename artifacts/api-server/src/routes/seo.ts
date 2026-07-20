@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { canWrite } from "../middlewares/requireRole.js";
 import {
   isDataForSEOConfigured,
   checkAndIncrementQuota,
@@ -171,7 +172,7 @@ router.get("/seo/ai-mentions", withQuota(async (req, res) => {
 
 // ── POST /api/seo/content-optimization ───────────────────────────────────────
 
-router.post("/seo/content-optimization", withQuota(async (req, res) => {
+router.post("/seo/content-optimization", canWrite, withQuota(async (req, res) => {
   const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { url } = req.body as { url?: string };
   if (!url) { res.status(400).json({ error: "url required" }); return; }
@@ -188,7 +189,7 @@ router.post("/seo/content-optimization", withQuota(async (req, res) => {
 
 // ── POST /api/seo/generate-missions ──────────────────────────────────────────
 
-router.post("/seo/generate-missions", async (req, res) => {
+router.post("/seo/generate-missions", canWrite, async (req, res) => {
   const orgId  = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   const { domain } = req.body as { domain?: string };
   if (!domain) { res.status(400).json({ error: "domain required" }); return; }
@@ -240,7 +241,7 @@ router.get("/local-seo/citations", async (req, res) => {
 // ── POST /local-seo/rankings ──────────────────────────────────────────────────
 // Frontend (_submitLoadRankings) calls this with { keyword, location }.
 // Returns grid-pack positions when DataForSEO is configured, empty array otherwise.
-router.post("/local-seo/rankings", async (req, res) => {
+router.post("/local-seo/rankings", canWrite, async (req, res) => {
   const { keyword, location } = req.body as { keyword?: string; location?: string };
   const orgId = (req as Record<string, unknown>)["orgId"] as string ?? "default";
   if (!keyword || !location) {

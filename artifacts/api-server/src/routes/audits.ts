@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { requireOrgId } from "../lib/require-org-id.js";
+import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 import { pool } from "@workspace/db";
 import { computeNextRun, isValidFrequency } from "../services/schedule-utils.js";
 import { evaluateAlertRulesForAudit } from "../services/monitor-cron.js";
@@ -57,7 +58,7 @@ router.get("/audits", async (req: Request, res: Response) => {
 
 // ── POST /audits ──────────────────────────────────────────────────────────────
 
-router.post("/audits", auditRateLimit, async (req: Request, res: Response) => {
+router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Response) => {
   const { url, origin = "manual" } = req.body as { url?: string; origin?: string };
   if (!url) { res.status(400).json({ error: "url required" }); return; }
 
@@ -211,12 +212,13 @@ router.get("/audits/:id", async (req: Request, res: Response) => {
 // ── DELETE /audits/:id ────────────────────────────────────────────────────────
 // RLS ensures only the org's own audits can be deleted.
 
-router.delete("/audits/:id", async (req: Request, res: Response) => {
+router.delete("/audits/:id", canAdmin, async (req: Request, res: Response) => {
   try {
-    await req.orgDb(`DELETE FROM audits WHERE id = $1`, [req.params.id]);
+    const r = await req.orgDb(`DELETE FROM audits WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) { res.status(404).json({ error: "Audit not found" }); return; }
     res.json({ ok: true });
   } catch {
-    res.json({ ok: true });
+    res.status(500).json({ error: "Failed to delete audit" });
   }
 });
 
@@ -300,12 +302,12 @@ async function deleteSchedule(req: Request, res: Response) {
 }
 
 // (schedule + upcoming GET routes registered earlier, before /:id)
-router.post("/audits/schedule",        createSchedule);
-router.patch("/audits/schedule/:id",   patchSchedule);
-router.delete("/audits/schedule/:id",  deleteSchedule);
+router.post("/audits/schedule",        canWrite,  createSchedule);
+router.patch("/audits/schedule/:id",   canWrite,  patchSchedule);
+router.delete("/audits/schedule/:id",  canAdmin,  deleteSchedule);
 router.get("/audits/schedules",        listSchedules);
-router.post("/audits/schedules",       createSchedule);
-router.patch("/audits/schedules/:id",  patchSchedule);
-router.delete("/audits/schedules/:id", deleteSchedule);
+router.post("/audits/schedules",       canWrite,  createSchedule);
+router.patch("/audits/schedules/:id",  canWrite,  patchSchedule);
+router.delete("/audits/schedules/:id", canAdmin,  deleteSchedule);
 
 export default router;

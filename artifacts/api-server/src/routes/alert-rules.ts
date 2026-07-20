@@ -112,7 +112,7 @@ router.post("/alert-rules", canWrite, async (req, res) => {
 
 
 // ── PATCH /alert-rules/mark-all-read ─────────────────────────────────────────
-router.patch("/alert-rules/mark-all-read", async (req, res) => {
+router.patch("/alert-rules/mark-all-read", canWrite, async (req, res) => {
   try {
     await db(req)(`UPDATE alert_events SET read_at=NOW() WHERE read_at IS NULL AND org_id=$1`, [org(req)]);
     if (Array.isArray(store.triggeredAlerts)) store.triggeredAlerts = [];
@@ -191,7 +191,8 @@ router.patch("/alert-rules/:id", canWrite, async (req, res) => {
 // ── DELETE /alert-rules/:id ───────────────────────────────────────────────────
 router.delete("/alert-rules/:id", canAdmin, async (req, res) => {
   try {
-    await db(req)(`DELETE FROM alert_rules WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
+    const r = await db(req)(`DELETE FROM alert_rules WHERE id=$1 AND org_id=$2 RETURNING id`, [req.params.id, org(req)]);
+    if (!r.rows[0]) { res.status(404).json({ error: "Alert rule not found" }); return; }
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to delete alert rule" });
@@ -200,7 +201,7 @@ router.delete("/alert-rules/:id", canAdmin, async (req, res) => {
 
 // ── PATCH /alert-events/:id/resolve ──────────────────────────────────────────
 // Must be before /alert-events GET to avoid Express consuming "resolve" as :id
-router.patch("/alert-events/:id/resolve", async (req, res) => {
+router.patch("/alert-events/:id/resolve", canWrite, async (req, res) => {
   try {
     await db(req)(
       `UPDATE alert_events SET status='resolved', resolved_at=NOW()
@@ -246,7 +247,19 @@ router.get("/alert-events", async (req, res) => {
 });
 
 // ── POST /alert-events ────────────────────────────────────────────────────────
-router.post("/alert-events", requireAdmin, async (req, res) => {
+// INTERNAL ONLY — blocked for all user sessions (owner/admin/member/viewer).
+// Server pipelines call createAlertEvent() directly; this HTTP route exists
+// only for service credentials (API_SECRET_KEY). All user sessions → 404.
+router.post("/alert-events", (req, res, next) => {
+  // Only the API_SECRET_KEY service credential (userId="service") may use this HTTP route.
+  // All user sessions (owner/admin/member/viewer) get 404 — server pipelines call
+  // createAlertEvent() directly and never need this HTTP endpoint.
+  if (req.userId !== "service") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  next();
+}, async (req, res) => {
   const { ruleId, ruleName, type, metricValue, threshold, operator, severity, message, siteUrl, monitorId } = req.body as {
     ruleId?: string; ruleName?: string; type?: string; metricValue?: number;
     threshold?: number; operator?: string; severity?: string; message?: string;

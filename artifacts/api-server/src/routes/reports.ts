@@ -106,7 +106,7 @@ router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
 });
 
 // ── POST /reports/clients ─────────────────────────────────────────────────────
-router.post("/reports/clients", async (req, res) => {
+router.post("/reports/clients", canWrite, async (req, res) => {
   const { name } = req.body as { name?: string };
   if (!name) { res.status(400).json({ error: "name required" }); return; }
   const id = `cl${Date.now()}`;
@@ -124,7 +124,7 @@ router.post("/reports/clients", async (req, res) => {
 });
 
 // ── POST /reports/approve ─────────────────────────────────────────────────────
-router.post("/reports/approve", async (req, res) => {
+router.post("/reports/approve", canWrite, async (req, res) => {
   const { reportId } = req.body as { reportId?: string };
   if (!reportId) { res.status(400).json({ error: "reportId required" }); return; }
   try {
@@ -134,7 +134,7 @@ router.post("/reports/approve", async (req, res) => {
 });
 
 // ── POST /reports/send-invoice ────────────────────────────────────────────────
-router.post("/reports/send-invoice", async (req, res) => {
+router.post("/reports/send-invoice", canAdmin, async (req, res) => {
   const { invoiceId } = req.body as { invoiceId?: string };
   res.json({ ok: true, invoiceId: invoiceId ?? null, sent: true });
 });
@@ -168,7 +168,7 @@ router.get("/reports/:id/download", async (req: Request, res: Response) => {
 });
 
 // ── POST /reports/:id/share ────────────────────────────────────────────────────
-router.post("/reports/:id/share", async (req: Request, res: Response) => {
+router.post("/reports/:id/share", canWrite, async (req: Request, res: Response) => {
   try {
     const orgId = org(req);
     const rr = await db(req)(`SELECT * FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, orgId]);
@@ -239,7 +239,7 @@ router.get("/reports/:id/shares", async (req: Request, res: Response) => {
 });
 
 // ── DELETE /reports/:id/shares/:token ─────────────────────────────────────────
-router.delete("/reports/:id/shares/:token", async (req: Request, res: Response) => {
+router.delete("/reports/:id/shares/:token", canWrite, async (req: Request, res: Response) => {
   try {
     const r = await db(req)(
       `SELECT token FROM share_tokens WHERE token=$1 AND report_id=$2 AND org_id=$3`,
@@ -256,6 +256,8 @@ router.delete("/reports/:id/shares/:token", async (req: Request, res: Response) 
 // ── DELETE /reports/:id ────────────────────────────────────────────────────────
 router.delete("/reports/:id", canAdmin, async (req: Request, res: Response) => {
   try {
+    const check = await db(req)(`SELECT id FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
+    if (!check.rows[0]) { res.status(404).json({ error: "Report not found" }); return; }
     await db(req)(`DELETE FROM share_tokens WHERE report_id=$1`, [req.params.id]);
     await db(req)(`DELETE FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     res.json({ ok: true });

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { safeErrMsg } from "../lib/safe-error.js";
+import { canWrite } from "../middlewares/requireRole.js";
 import {
   createHeatmap, getHeatmaps, getHeatmapDetail,
   getMapsDashboard, generateAiLocalRecommendations,
@@ -30,7 +31,7 @@ router.get("/local-maps/heatmaps/:id", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.post("/local-maps/heatmaps", async (req, res) => {
+router.post("/local-maps/heatmaps", canWrite, async (req, res) => {
   const { locationId, name, keyword, centerLat, centerLng, radiusKm, gridSize } = req.body as {
     locationId?: string; name?: string; keyword?: string;
     centerLat?: number; centerLng?: number; radiusKm?: number; gridSize?: number;
@@ -44,7 +45,7 @@ router.post("/local-maps/heatmaps", async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrMsg(err) }); }
 });
 
-router.delete("/local-maps/heatmaps/:id", async (req, res) => {
+router.delete("/local-maps/heatmaps/:id", canWrite, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query(`DELETE FROM local_heatmaps WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
@@ -96,7 +97,7 @@ router.get("/local-maps/visibility-scores", async (req, res) => {
   } finally { client.release(); }
 });
 
-router.post("/local-maps/ai-recommendations", async (req, res) => {
+router.post("/local-maps/ai-recommendations", canWrite, async (req, res) => {
   try {
     const summary = await generateAiLocalRecommendations(org(req));
     res.json({ ok: true, summary });

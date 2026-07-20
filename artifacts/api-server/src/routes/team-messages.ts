@@ -1,6 +1,7 @@
 import { Router, type Request } from "express";
 import { store } from "../services/store.js";
 import { isDemoMode } from "../services/mock-data.js";
+import { canWrite } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -49,7 +50,7 @@ router.get("/team/messages", async (req, res) => {
   }
 });
 
-router.post("/team/messages", async (req, res) => {
+router.post("/team/messages", canWrite, async (req, res) => {
   const { channel = "general", from, text } = req.body as { channel?: string; from?: string; text?: string };
   if (!text || !from) { res.status(400).json({ error: "text and from required" }); return; }
   const id = "msg" + Date.now();
@@ -68,7 +69,7 @@ router.post("/team/messages", async (req, res) => {
   }
 });
 
-router.delete("/team/messages/:id", async (req, res) => {
+router.delete("/team/messages/:id", canWrite, async (req, res) => {
   await db(req)(`DELETE FROM team_messages WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
   res.json({ ok: true });
 });

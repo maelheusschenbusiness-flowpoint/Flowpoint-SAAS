@@ -993,10 +993,11 @@ router.get("/auth/apple/login", (req: Request, res: Response) => {
 });
 
 // ── Dev-only session endpoint (Playwright / CI auth bypass) ──────────────────
-// Blocked in deployed production. Protected by ADMIN_KEY header.
+// Requires ENABLE_DEV_AUTH=true AND non-production env. Returns 404 otherwise.
 router.post("/auth/dev-session", async (req: Request, res: Response) => {
-  if (isDeployedProd()) {
-    res.status(403).json({ error: "Not available in production" });
+  const devEnabled = process.env["ENABLE_DEV_AUTH"] === "true";
+  if (!devEnabled || isDeployedProd() || process.env["NODE_ENV"] === "production") {
+    res.status(404).json({ error: "Not found" });
     return;
   }
   const adminKey = (req.headers["x-admin-key"] as string) ?? "";
@@ -1026,7 +1027,11 @@ router.post("/auth/dev-session", async (req: Request, res: Response) => {
 // ── Dev-only GET login (Playwright / CI) — sets cookie then redirects ──────
 // Usage: GET /api/auth/dev-login?key=ADMIN_KEY&redirect=/api/dashboard/
 router.get("/auth/dev-login", async (req: Request, res: Response) => {
-  if (isDeployedProd()) { res.status(403).send("Not available in production"); return; }
+  const devEnabled = process.env["ENABLE_DEV_AUTH"] === "true";
+  if (!devEnabled || isDeployedProd() || process.env["NODE_ENV"] === "production") {
+    res.status(404).send("Not found");
+    return;
+  }
   const key      = (req.query["key"] as string) ?? "";
   const expected = process.env["ADMIN_KEY"] ?? "";
   if (!expected || key !== expected) { res.status(401).send("Unauthorized"); return; }

@@ -107,13 +107,17 @@ router.use(requireAuth);
 
 // Block any request that passed auth but lacks a valid org context.
 // Prevents the API_SECRET_KEY service credential (orgId: "default") from
-// accessing user-scoped data routes.
+// accessing user-scoped data routes — EXCEPT when the caller is the service
+// credential itself (userId: "service"), which uses orgId "default" by design
+// and is allowed through for server-to-server endpoints (e.g. /alert-events).
 // Dev bypass: when API_SECRET_KEY is not configured requireAuth already
 // lets all requests through — we honour that same bypass here.
 router.use((req: Request, res: Response, next: NextFunction) => {
   const serviceSecret = process.env["API_SECRET_KEY"];
   const isProduction  = process.env["NODE_ENV"] === "production";
   if (!serviceSecret && !isProduction) { next(); return; }
+  // Service credential (API_SECRET_KEY) always allowed — it sets userId="service"
+  if (req.userId === "service") { next(); return; }
   const orgId = req.orgContext?.orgId;
   if (!orgId || orgId === "default") {
     res.status(401).json({ error: "Unauthorized: no valid organization context" });
