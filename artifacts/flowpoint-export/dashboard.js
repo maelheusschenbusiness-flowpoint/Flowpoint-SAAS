@@ -85,6 +85,8 @@ const STATE = {
   missions: [],
   reports: [],
   team: [],
+  pendingInvitations: [],
+  seatUsage: null,
   overview: null,
   sectionErrors: {}, // { audits:'network', monitors:'server', ... }
   route: 'overview',
@@ -1061,6 +1063,8 @@ async function loadData() {
   const _mon = normArr(monitors, 'monitors'); STATE.monitors = (_mon   && _mon.length   > 0) ? _mon   : (PREVIEW_MODE ? MOCK_MONITORS : []);
   const _rep = normArr(reports,  'reports');  STATE.reports  = (_rep   && _rep.length   > 0) ? _rep   : (PREVIEW_MODE ? MOCK_REPORTS  : []);
   const _team= normArr(team,     'members');  STATE.team     = (_team  && _team.length  > 0) ? _team  : (PREVIEW_MODE ? MOCK_TEAM     : []);
+  STATE.pendingInvitations = (team && Array.isArray(team.pendingInvitations)) ? team.pendingInvitations : [];
+  STATE.seatUsage          = (team && team.seatUsage) ? team.seatUsage : null;
 
   STATE.calendarEvents = [];
   STATE.clients = [];
@@ -2388,14 +2392,16 @@ function openFloatPanel(title, content) {
             closeFloatPanel && closeFloatPanel();
             showToast('success', 'Invitation envoy\u00e9e \u00e0 ' + escHtml(email) + ' !');
             const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
-            if (t && Array.isArray(t)) { STATE.team = t; render(); }
+            if (t) { STATE.team = normArr(t,'members') || []; STATE.pendingInvitations = t.pendingInvitations||[]; STATE.seatUsage = t.seatUsage||null; render(); }
           } else if (resp.status === 409) {
             showToast('warning', 'Une invitation est d\u00e9j\u00e0 en attente pour cette adresse.');
+          } else if (resp.status === 402) {
+            showToast('warning', data.error || 'Limite de sièges atteinte pour ce plan.');
           } else if (resp.status === 502) {
             showToast('warning', 'L\'invitation a \u00e9t\u00e9 cr\u00e9\u00e9e, mais l\'e-mail n\'a pas pu \u00eatre envoy\u00e9.');
             closeFloatPanel && closeFloatPanel();
             const t = await fetch('/api/team', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
-            if (t && Array.isArray(t)) { STATE.team = t; render(); }
+            if (t) { STATE.team = normArr(t,'members') || []; STATE.pendingInvitations = t.pendingInvitations||[]; STATE.seatUsage = t.seatUsage||null; render(); }
           } else {
             showToast('error', data.error || 'Erreur lors de l\'invitation');
           }
@@ -7195,7 +7201,7 @@ function renderTeam() {
 
     <!-- TEAM STATS -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Membres actifs', STATE.team.length + '/' + (1+(me.addons.extraSeats||0)), 'seats utilisés', 'neutral')}
+      ${statCard('Membres actifs', (STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : STATE.team.length + '/' + (1+(me.addons.extraSeats||0))), 'seats utilisés', 'neutral')}
       ${statCard('Messages aujourd\'hui', displayStat(null, '12'), PREVIEW_MODE ? '+4 vs hier' : 'Connectez messagerie', 'neutral')}
       ${statCard('Fichiers partagés', displayStat(null, '6'), PREVIEW_MODE ? 'ce mois' : 'Activité réelle', 'neutral')}
       ${statCard('Tâches assignées', displayStat(STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.length) : null, '4'), STATE.missions && STATE.missions.length > 0 ? 'missions actives' : PREVIEW_MODE ? '1 terminée' : 'Aucune mission', 'neutral')}
@@ -7206,8 +7212,8 @@ function renderTeam() {
       <div style="display:flex;flex-direction:column">
         <div class="fp-table-wrap fp-mb-16">
           <div style="padding:14px 20px;border-bottom:1px solid var(--fp-border);display:flex;align-items:center;justify-content:space-between">
-            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Membres (${STATE.team.length}/${1+(me.addons.extraSeats||0)} seats)</div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${1+(me.addons.extraSeats||0)-STATE.team.length} siège(s) libre(s)</div>
+            <div style="font-size:14px;font-weight:700;color:var(--fp-text)">Membres (${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : STATE.team.length + '/' + (1+(me.addons.extraSeats||0))} seats)</div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.pendingInvitations.length > 0 ? STATE.pendingInvitations.length + ' invitation(s) en attente · ' : ''}${STATE.seatUsage ? STATE.seatUsage.limit - STATE.seatUsage.used : 1+(me.addons.extraSeats||0)-STATE.team.length} siège(s) libre(s)</div>
           </div>
           ${STATE.team.map((t,i)=>`
             <div class="fp-team-member-row" data-member-id="${t.id}" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:${i<STATE.team.length-1?'1px solid rgba(255,255,255,0.04)':'none'}">
@@ -7224,8 +7230,8 @@ function renderTeam() {
             </div>
           `).join('')}
           <div style="padding:10px 20px;border-top:1px solid var(--fp-border)">
-            <div class="fp-progress-track" style="height:5px;margin-bottom:5px"><div class="fp-progress-fill" style="width:${STATE.team.length/(1+(me.addons.extraSeats||0))*100}%;background:#2563EB"></div></div>
-            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.team.length}/${1+(me.addons.extraSeats||0)} seats · ${btn('Ajouter des sièges','fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
+            <div class="fp-progress-track" style="height:5px;margin-bottom:5px"><div class="fp-progress-fill" style="width:${STATE.seatUsage ? Math.min(100, STATE.seatUsage.used/STATE.seatUsage.limit*100) : STATE.team.length/(1+(me.addons.extraSeats||0))*100}%;background:#2563EB"></div></div>
+            <div style="font-size:11px;color:var(--fp-text-faint)">${STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : STATE.team.length + '/' + (1+(me.addons.extraSeats||0))} seats · ${btn('Ajouter des sièges','fp-btn fp-btn-ghost fp-btn-sm','','style="display:inline;padding:2px 8px;font-size:10px" onclick="navigate(\'billing\')"')}</div>
           </div>
         </div>
 

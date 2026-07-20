@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <script>(function(){var t=localStorage.getItem('fp:theme')||localStorage.getItem('fp-theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
+  <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=5">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=5">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Rejoindre l'équipe — FlowPoint</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0b1120;
+      --bg2:       #111827;
+      --surface:   #1e293b;
+      --border:    #2d3f55;
+      --blue:      #2563eb;
+      --blue-h:    #1d4ed8;
+      --blue-light:#3b82f6;
+      --text:      #f1f5f9;
+      --text-soft: #94a3b8;
+      --text-muted:#64748b;
+      --input-bg:  #162032;
+      --radius:    14px;
+      --shadow:    0 8px 40px rgba(0,0,0,.5);
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --amber:     #f59e0b;
+    }
+
+    html[data-theme="light"] {
+      --bg:        #f8fafc;
+      --bg2:       #ffffff;
+      --surface:   #f1f5f9;
+      --border:    rgba(0,0,0,.1);
+      --text:      #0f172a;
+      --text-soft: #475569;
+      --text-muted:#94a3b8;
+      --input-bg:  #f8fafc;
+      --shadow:    0 4px 24px rgba(0,0,0,.1);
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 40px 36px;
+      text-align: center;
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+      text-decoration: none;
+    }
+
+    .logo-mark {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-mark svg { width: 20px; height: 20px; }
+
+    .logo-text {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -.4px;
+    }
+
+    .state-loading, .state-valid, .state-error, .state-success { display: none; }
+    .state-loading.active, .state-valid.active, .state-error.active, .state-success.active { display: block; }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .icon-circle {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 28px;
+    }
+    .icon-circle.green  { background: rgba(34,197,94,.12); }
+    .icon-circle.red    { background: rgba(239,68,68,.12); }
+    .icon-circle.amber  { background: rgba(245,158,11,.12); }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .sub {
+      font-size: 14px;
+      color: var(--text-soft);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    .invite-info {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+
+    .invite-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .invite-row + .invite-row { margin-top: 10px; }
+
+    .invite-label {
+      color: var(--text-muted);
+      min-width: 70px;
+      flex-shrink: 0;
+    }
+
+    .invite-value {
+      color: var(--text);
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .role-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      text-transform: capitalize;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 13px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      transition: background .15s, opacity .15s;
+    }
+
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--blue);
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--blue-h); }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-soft);
+      margin-top: 10px;
+    }
+    .btn-ghost:hover:not(:disabled) { border-color: var(--blue); color: var(--blue-light); }
+
+    .alert {
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      text-align: left;
+    }
+    .alert-error   { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); color: #fca5a5; }
+    .alert-success { background: rgba(34,197,94,.08);  border: 1px solid rgba(34,197,94,.25);  color: #86efac; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <a href="/" class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+      </svg>
+    </div>
+    <span class="logo-text">FlowPoint</span>
+  </a>
+
+  <!-- Loading state -->
+  <div class="state-loading" id="stateLoading">
+    <div class="spinner"></div>
+    <div class="sub">Vérification de l'invitation…</div>
+  </div>
+
+  <!-- Valid state — ready to accept -->
+  <div class="state-valid" id="stateValid">
+    <div class="icon-circle green">🎉</div>
+    <h2>Vous avez été invité</h2>
+    <div class="sub">Rejoignez l'équipe FlowPoint pour accéder à tous les outils d'agence.</div>
+
+    <div class="invite-info" id="inviteInfo"></div>
+
+    <div id="alertArea"></div>
+
+    <button class="btn btn-primary" id="btnAccept" onclick="acceptInvitation()">
+      Rejoindre l'équipe
+    </button>
+    <button class="btn btn-ghost" onclick="window.location.href='/'">Retour à l'accueil</button>
+  </div>
+
+  <!-- Error state -->
+  <div class="state-error" id="stateError">
+    <div class="icon-circle red" id="errorIcon">❌</div>
+    <h2 id="errorTitle">Invitation invalide</h2>
+    <div class="sub" id="errorSub">Ce lien d'invitation est invalide ou a expiré.</div>
+    <button class="btn btn-ghost" onclick="window.location.href='/'">Retour à l'accueil</button>
+  </div>
+
+  <!-- Success state -->
+  <div class="state-success" id="stateSuccess">
+    <div class="icon-circle green">✅</div>
+    <h2>Bienvenue dans l'équipe !</h2>
+    <div class="sub" id="successSub">Vous avez bien rejoint l'espace de travail. Redirection en cours…</div>
+    <button class="btn btn-primary" onclick="window.location.href='/dashboard.html'">
+      Accéder au tableau de bord
+    </button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const API    = '/api';
+  const params = new URLSearchParams(window.location.search);
+  const token  = params.get('token') || '';
+  const email  = params.get('email') || '';
+
+  function setState(name) {
+    ['Loading','Valid','Error','Success'].forEach(s => {
+      document.getElementById('state' + s).classList.toggle('active', s.toLowerCase() === name);
+    });
+  }
+
+  function roleColor(role) {
+    return { owner: '#f59e0b', admin: '#2563eb', member: '#8b5cf6', viewer: '#94a3b8' }[role] || '#64748b';
+  }
+
+  async function validate() {
+    setState('loading');
+
+    if (!token) {
+      showError('Lien invalide', 'Ce lien ne contient pas de jeton d\'invitation.', '🔗');
+      return;
+    }
+
+    try {
+      const r = await fetch(`${API}/team/invitations/validate?token=${encodeURIComponent(token)}`);
+      const d = await r.json().catch(() => ({}));
+
+      if (r.status === 410) {
+        const reason = d.reason || '';
+        if (reason === 'expired') {
+          showError('Invitation expirée', 'Ce lien d\'invitation a expiré. Demandez un nouvel envoi à votre administrateur.', '⏰');
+        } else if (reason === 'already_accepted') {
+          showError('Déjà acceptée', 'Cette invitation a déjà été acceptée. Connectez-vous directement.', '✅');
+        } else if (reason === 'revoked') {
+          showError('Invitation révoquée', 'Cette invitation a été révoquée par l\'administrateur.', '🚫');
+        } else {
+          showError('Invitation expirée', d.error || 'Ce lien n\'est plus valide.', '⏰');
+        }
+        return;
+      }
+
+      if (!r.ok || !d.valid || !d.invitation) {
+        showError('Invitation introuvable', 'Ce lien d\'invitation est introuvable ou invalide.', '❌');
+        return;
+      }
+
+      const inv = d.invitation;
+
+      const col = roleColor(inv.role);
+      document.getElementById('inviteInfo').innerHTML = `
+        <div class="invite-row">
+          <span class="invite-label">Organisation</span>
+          <span class="invite-value">${esc(inv.orgName || inv.orgId || 'FlowPoint')}</span>
+        </div>
+        <div class="invite-row">
+          <span class="invite-label">Email</span>
+          <span class="invite-value">${esc(inv.email || email)}</span>
+        </div>
+        <div class="invite-row">
+          <span class="invite-label">Rôle</span>
+          <span class="role-badge" style="background:${col}22;color:${col}">${esc(inv.role || 'viewer')}</span>
+        </div>
+        ${inv.expiresAt ? `<div class="invite-row"><span class="invite-label">Expire le</span><span class="invite-value" style="color:var(--text-muted)">${new Date(inv.expiresAt).toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}</span></div>` : ''}
+      `;
+
+      setState('valid');
+    } catch (err) {
+      showError('Erreur réseau', 'Impossible de vérifier l\'invitation. Vérifiez votre connexion et réessayez.', '🌐');
+    }
+  }
+
+  async function acceptInvitation() {
+    const btn = document.getElementById('btnAccept');
+    const alertArea = document.getElementById('alertArea');
+    alertArea.innerHTML = '';
+    btn.disabled = true;
+    btn.textContent = 'Validation…';
+
+    const acceptEmail = email || prompt('Confirmez votre adresse email') || '';
+    if (!acceptEmail) {
+      btn.disabled = false;
+      btn.textContent = 'Rejoindre l\'équipe';
+      return;
+    }
+
+    try {
+      const r = await fetch(`${API}/team/invitations/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, email: acceptEmail }),
+      });
+      const d = await r.json().catch(() => ({}));
+
+      if (r.ok && d.ok && d.sessionToken) {
+        localStorage.setItem('fp-session-token', d.sessionToken);
+        document.getElementById('successSub').textContent =
+          'Bienvenue ' + (d.email || acceptEmail) + ' ! Redirection en cours…';
+        setState('success');
+        setTimeout(() => { window.location.href = '/dashboard.html'; }, 2000);
+        return;
+      }
+
+      if (r.status === 409) {
+        alertArea.innerHTML = '<div class="alert alert-error">Cette invitation a déjà été acceptée. <a href="/login.html" style="color:inherit;text-decoration:underline">Connectez-vous</a>.</div>';
+      } else if (r.status === 404) {
+        alertArea.innerHTML = '<div class="alert alert-error">Email incorrect — assurez-vous d\'utiliser l\'adresse à laquelle l\'invitation a été envoyée.</div>';
+      } else {
+        alertArea.innerHTML = `<div class="alert alert-error">${esc(d.error || 'Une erreur est survenue. Réessayez.')}</div>`;
+      }
+    } catch (err) {
+      alertArea.innerHTML = '<div class="alert alert-error">Erreur réseau — vérifiez votre connexion.</div>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Rejoindre l\'équipe';
+    }
+  }
+
+  function showError(title, sub, icon = '❌') {
+    document.getElementById('errorTitle').textContent = title;
+    document.getElementById('errorSub').textContent   = sub;
+    document.getElementById('errorIcon').textContent  = icon;
+    setState('error');
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  window.acceptInvitation = acceptInvitation;
+
+  validate();
+})();
+</script>
+</body>
+</html>

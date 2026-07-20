@@ -20,6 +20,12 @@ const TEAM_MEMBERS_EXPECTED: Array<{ col: string; sql: string }> = [
   { col: "email_error",           sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS email_error           TEXT;` },
   { col: "updated_at",            sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW();` },
   { col: "created_at",            sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS created_at            TIMESTAMP   NOT NULL DEFAULT NOW();` },
+  { col: "user_id",               sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS user_id               TEXT;` },
+  { col: "first_name",            sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS first_name            TEXT;` },
+  { col: "last_name",             sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS last_name             TEXT;` },
+  { col: "invited_by_user_id",    sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_by_user_id    TEXT;` },
+  { col: "joined_at",             sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS joined_at             TIMESTAMPTZ;` },
+  { col: "resend_count",          sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS resend_count          INTEGER NOT NULL DEFAULT 0;` },
 ];
 
 /**
@@ -798,7 +804,69 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations(owner_user_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_slug_idx  ON organizations(slug);`);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations ready");
+    // ── team_invitations — dedicated invitation table (Wave 3 Lot B) ─────────
+    // Invitations are decoupled from team_members: pending/accepted/expired/revoked.
+    // When an invitation is accepted, a team_members row with status='active' is created.
+    // Token is stored as SHA-256 hash only (raw token delivered by email, never stored).
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS team_invitations (
+        id                 TEXT        NOT NULL PRIMARY KEY,
+        org_id             TEXT        NOT NULL DEFAULT 'default',
+        email              TEXT        NOT NULL DEFAULT '',
+        role               TEXT        NOT NULL DEFAULT 'viewer',
+        token_hash         TEXT        NOT NULL DEFAULT '',
+        status             TEXT        NOT NULL DEFAULT 'pending',
+        invited_by_user_id TEXT,
+        expires_at         TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
+        accepted_at        TIMESTAMPTZ,
+        revoked_at         TIMESTAMPTZ,
+        resend_count       INTEGER     NOT NULL DEFAULT 0,
+        last_resent_at     TIMESTAMPTZ,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS id                 TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS org_id             TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS email              TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS role               TEXT NOT NULL DEFAULT 'viewer';`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS token_hash         TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS status             TEXT NOT NULL DEFAULT 'pending';`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS invited_by_user_id TEXT;`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS expires_at         TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days');`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS accepted_at        TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS revoked_at         TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS resend_count       INTEGER NOT NULL DEFAULT 0;`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS last_resent_at     TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    await run(client, `ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    // Indexes
+    await run(client, `CREATE INDEX IF NOT EXISTS team_invitations_org_idx      ON team_invitations(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_invitations_token_idx    ON team_invitations(token_hash);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_invitations_email_idx    ON team_invitations(org_id, lower(email));`);
+    await run(client, `CREATE INDEX IF NOT EXISTS team_invitations_status_idx   ON team_invitations(org_id, status);`);
+    // One pending invitation per (org_id, email) — prevent duplicate pending invites
+    await run(client, `
+      CREATE UNIQUE INDEX IF NOT EXISTS team_invitations_pending_email_idx
+      ON team_invitations (org_id, lower(email))
+      WHERE status = 'pending';
+    `);
+    // Token hash uniqueness (globally unique per invitation)
+    await run(client, `
+      CREATE UNIQUE INDEX IF NOT EXISTS team_invitations_token_hash_unique_idx
+      ON team_invitations (token_hash)
+      WHERE status = 'pending';
+    `);
+
+    // ── team_members — new columns for active member tracking (Wave 3 Lot B) ──
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS user_id            TEXT;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS first_name         TEXT;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS last_name          TEXT;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS invited_by_user_id TEXT;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS joined_at          TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS resend_count       INTEGER NOT NULL DEFAULT 0;`);
+
+    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;

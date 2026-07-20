@@ -1,18 +1,19 @@
 /**
- * /api/team — Team management endpoints
+ * /api/team — Team management + invitation system (Wave 3 Lot B)
  *
- * GET  /team           → list members
- * POST /team/invite    → invite by email (201/409/502)
- * PATCH /team/:id      → change role
- * DELETE /team/:id     → remove member
+ * Public routes (no auth required):
+ *   GET  /team/invitations/validate    → validate invitation token
+ *   POST /team/invitations/accept      → accept invitation (atomic, creates member + session)
  *
- * All DB calls go through req.orgDb which:
- *   • checks out a pool connection
- *   • sets ROLE app_user (drops BYPASSRLS)
- *   • sets app.current_org_id GUC (used by RLS policies)
- *   • runs the query in a transaction and commits
- *
- * Email delivery via the central mailer service (Resend, sender: FlowPoint <noreply@flowpoint.pro>)
+ * Protected routes (requireAuth + orgContext):
+ *   GET    /team                        → {members, pendingInvitations, seatUsage}
+ *   POST   /team/invite                 → invite member by email
+ *   PATCH  /team/:id                    → change member role (canAdmin, owner protected)
+ *   DELETE /team/:id                    → soft-remove member + session revocation
+ *   POST   /team/invitations/:id/resend → resend invite email (canAdmin, max 3 resends)
+ *   DELETE /team/invitations/:id        → revoke invitation (canAdmin)
+ *   GET    /organizations               → list caller's organizations
+ *   POST   /organizations/:id/switch    → switch active org session
  */
 
 import { Router, type Request, type Response } from "express";
@@ -20,7 +21,13 @@ import { logger }                               from "../lib/logger.js";
 import { randomBytes, createHash, randomUUID }  from "crypto";
 import { pool }                                from "@workspace/db";
 import { canAdmin }                             from "../middlewares/requireRole.js";
+import { createSession, invalidateAllSessions } from "../services/sessions.js";
+import { PLAN_LIMITS }                          from "../lib/plans.js";
 
+// ── Public router (registered before requireAuth in index.ts) ─────────────────
+export const publicTeamRouter = Router();
+
+// ── Protected router (default export, registered after requireAuth) ───────────
 const router = Router();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,7 +41,6 @@ type OrgReq = Request & {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Return orgId if valid, otherwise send 401 and return null. */
 function requireOrg(req: Request, res: Response): string | null {
   const orgId = (req as OrgReq).orgId;
   if (!orgId || orgId === "default") {
@@ -44,18 +50,288 @@ function requireOrg(req: Request, res: Response): string | null {
   return orgId;
 }
 
-/** Safely call req.orgDb — throws TypeError if middleware is missing. */
 function orgDb(req: Request): OrgDbFn {
   const fn = (req as OrgReq).orgDb;
-  if (typeof fn !== "function") throw new Error("orgDb middleware not applied — check app.ts");
+  if (typeof fn !== "function") throw new Error("orgDb middleware not applied");
   return fn;
 }
 
-/** Mask email for safe logging: j***@example.com */
+function hashToken(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex");
+}
+
 function maskEmail(email: string): string {
   const [local, domain] = email.split("@");
   return `${(local ?? "?")[0] ?? "?"}***@${domain ?? "?"}`;
 }
+
+function buildInviteUrl(rawToken: string, email: string): string {
+  const base = process.env["PUBLIC_URL"] ?? "https://app.flowpoint.pro";
+  return `${base}/accept-invitation.html?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(email)}`;
+}
+
+/** Resolve plan seat limit for an org (queries org_settings via pool, non-fatal). */
+async function getOrgSeatLimit(orgId: string): Promise<{ limit: number; plan: string }> {
+  try {
+    const r = await pool.query<{ plan: string }>(
+      `SELECT plan FROM org_settings WHERE org_id = $1 LIMIT 1`,
+      [orgId]
+    );
+    const plan  = (r.rows[0]?.plan ?? "standard").toLowerCase();
+    const limit = PLAN_LIMITS[plan]?.teamMembers ?? 1;
+    return { limit, plan };
+  } catch {
+    return { limit: 1, plan: "standard" };
+  }
+}
+
+/** Count used seats: 1 (owner) + active members + pending invitations. */
+async function getSeatUsage(
+  db: OrgDbFn,
+  orgId: string,
+): Promise<{ used: number; limit: number; plan: string }> {
+  const [{ limit, plan }, membersRes, invitesRes] = await Promise.all([
+    getOrgSeatLimit(orgId),
+    db(
+      `SELECT COUNT(*)::int AS n FROM team_members
+       WHERE org_id = $1 AND status = 'active'`,
+      [orgId]
+    ),
+    db(
+      `SELECT COUNT(*)::int AS n FROM team_invitations
+       WHERE org_id = $1 AND status = 'pending'`,
+      [orgId]
+    ),
+  ]);
+  const activeMembers  = (membersRes.rows[0]?.n  as number) ?? 0;
+  const pendingInvites = (invitesRes.rows[0]?.n   as number) ?? 0;
+  const used = 1 + activeMembers + pendingInvites; // 1 = owner always occupies 1 seat
+  return { used, limit, plan };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLIC ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── GET /team/invitations/validate ───────────────────────────────────────────
+
+publicTeamRouter.get("/team/invitations/validate", async (req: Request, res: Response) => {
+  const raw = req.query["token"];
+  if (!raw || typeof raw !== "string" || raw.length < 10) {
+    res.status(400).json({ valid: false, reason: "missing_token" });
+    return;
+  }
+
+  const tHash = hashToken(raw);
+
+  try {
+    const r = await pool.query<{
+      id: string; org_id: string; email: string; role: string;
+      status: string; expires_at: string;
+    }>(
+      `SELECT id, org_id, email, role, status, expires_at
+       FROM team_invitations
+       WHERE token_hash = $1 LIMIT 1`,
+      [tHash]
+    );
+    const inv = r.rows[0];
+
+    if (!inv) {
+      res.status(404).json({ valid: false, reason: "not_found" });
+      return;
+    }
+    if (inv.status === "accepted") {
+      res.status(410).json({ valid: false, reason: "already_accepted" });
+      return;
+    }
+    if (inv.status === "revoked") {
+      res.status(410).json({ valid: false, reason: "revoked" });
+      return;
+    }
+    if (inv.status !== "pending" || new Date(inv.expires_at) < new Date()) {
+      res.status(410).json({ valid: false, reason: "expired" });
+      return;
+    }
+
+    // Load org name for display
+    let orgName = inv.org_id;
+    try {
+      const orgR = await pool.query<{ org_name: string }>(
+        `SELECT COALESCE(NULLIF(org_name,''), org_id) AS org_name
+         FROM org_settings WHERE org_id = $1 LIMIT 1`,
+        [inv.org_id]
+      );
+      if (orgR.rows[0]) orgName = orgR.rows[0].org_name;
+    } catch { /* non-fatal */ }
+
+    res.json({
+      valid: true,
+      invitation: {
+        id:        inv.id,
+        email:     inv.email,
+        role:      inv.role,
+        orgId:     inv.org_id,
+        orgName,
+        expiresAt: inv.expires_at,
+      },
+    });
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[team/validate] DB error");
+    res.status(500).json({ valid: false, reason: "server_error" });
+  }
+});
+
+// ── POST /team/invitations/accept ────────────────────────────────────────────
+
+publicTeamRouter.post("/team/invitations/accept", async (req: Request, res: Response) => {
+  const { token: rawToken, email: rawEmail } = req.body as { token?: string; email?: string };
+
+  if (!rawToken || typeof rawToken !== "string" || rawToken.length < 10) {
+    res.status(400).json({ ok: false, code: "MISSING_TOKEN", error: "token required" });
+    return;
+  }
+  if (!rawEmail || !rawEmail.includes("@")) {
+    res.status(400).json({ ok: false, code: "MISSING_EMAIL", error: "valid email required" });
+    return;
+  }
+
+  const email  = rawEmail.toLowerCase().trim();
+  const tHash  = hashToken(rawToken);
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Atomic: lock the invitation row, verify all conditions
+    const invR = await client.query<{
+      id: string; org_id: string; email: string; role: string;
+      status: string; expires_at: string; invited_by_user_id: string | null;
+    }>(
+      `SELECT id, org_id, email, role, status, expires_at, invited_by_user_id
+       FROM team_invitations
+       WHERE token_hash = $1 AND lower(email) = lower($2)
+       FOR UPDATE`,
+      [tHash, email]
+    );
+
+    const inv = invR.rows[0];
+
+    if (!inv) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ ok: false, code: "INVALID_TOKEN", error: "Invitation introuvable ou email incorrect." });
+      return;
+    }
+    if (inv.status === "accepted") {
+      await client.query("ROLLBACK");
+      res.status(409).json({ ok: false, code: "ALREADY_ACCEPTED", error: "Cette invitation a déjà été acceptée." });
+      return;
+    }
+    if (inv.status === "revoked") {
+      await client.query("ROLLBACK");
+      res.status(410).json({ ok: false, code: "REVOKED", error: "Cette invitation a été révoquée." });
+      return;
+    }
+    if (inv.status !== "pending" || new Date(inv.expires_at) < new Date()) {
+      await client.query("ROLLBACK");
+      res.status(410).json({ ok: false, code: "EXPIRED", error: "Cette invitation a expiré." });
+      return;
+    }
+
+    const now = new Date();
+
+    // Mark invitation as accepted
+    await client.query(
+      `UPDATE team_invitations
+         SET status = 'accepted', accepted_at = $1, updated_at = $1
+       WHERE id = $2`,
+      [now, inv.id]
+    );
+
+    // Create active team member
+    const memberId  = randomUUID();
+    const nowIso    = now.toISOString();
+    const joinedDay = now.toISOString().slice(0, 10);
+    await client.query(
+      `INSERT INTO team_members
+         (id, org_id, email, name, role, joined, status, user_id,
+          invited_by_user_id, joined_at, accepted_at, invitation_token_hash,
+          invited_at, email_status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', $3,
+               $7, $8, $9, '',
+               $10, 'sent', $11, $12)
+       ON CONFLICT DO NOTHING`,
+      [
+        memberId,          // $1
+        inv.org_id,        // $2
+        email,             // $3  (also used as user_id via $3 literal)
+        email.split("@")[0] ?? "", // $4 name
+        inv.role,          // $5
+        joinedDay,         // $6  joined (text date)
+        inv.invited_by_user_id ?? null, // $7
+        nowIso,            // $8  joined_at (timestamptz)
+        nowIso,            // $9  accepted_at (timestamptz)
+        nowIso,            // $10 invited_at (timestamptz)
+        nowIso,            // $11 created_at (timestamptz)
+        nowIso,            // $12 updated_at (timestamptz)
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    // Create session for the newly accepted member
+    const sessionToken = await createSession({
+      userId: email,
+      orgId:  inv.org_id,
+      email,
+      role:   inv.role,
+    });
+
+    // Notify the inviter asynchronously (fire-and-forget)
+    if (inv.invited_by_user_id) {
+      const inviterEmail = inv.invited_by_user_id;
+      const invOrgId     = inv.org_id;
+      const invRole      = inv.role;
+      Promise.resolve().then(async () => {
+        try {
+          const { mailer } = await import("../services/mailer.js");
+          const { loadOrgSettings } = await import("../services/org-settings.js");
+          const settings = await loadOrgSettings(invOrgId).catch(() => null);
+          await mailer.sendInvitationAccepted({
+            to:          inviterEmail,
+            memberEmail: email,
+            memberName:  email.split("@")[0],
+            orgName:     settings?.orgName ?? invOrgId,
+            role:        invRole,
+          });
+        } catch { /* non-fatal */ }
+      });
+    }
+
+    logger.info(
+      { orgId: inv.org_id.slice(0, 20), maskedEmail: maskEmail(email), role: inv.role },
+      "[team/accept] invitation accepted — member created"
+    );
+
+    res.json({
+      ok:           true,
+      sessionToken,
+      orgId:        inv.org_id,
+      email,
+      role:         inv.role,
+      memberId,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    logger.error({ err: (err as Error).message, stack: (err as Error).stack }, "[team/accept] DB error");
+    res.status(500).json({ ok: false, code: "SERVER_ERROR", error: "Failed to accept invitation" });
+  } finally {
+    client.release();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROTECTED ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── GET /team ─────────────────────────────────────────────────────────────────
 
@@ -63,422 +339,596 @@ router.get("/team", async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
 
-  const sql = `SELECT id, email, role, joined, status, invited_at, email_status, created_at
-               FROM team_members WHERE org_id = $1 ORDER BY created_at ASC LIMIT 100`;
   try {
-    const r = await orgDb(req)(sql, [org]);
-    res.json(r.rows.map(m => ({
-      id:          m.id,
-      name:        (m.email as string)?.split("@")[0] ?? "",
-      email:       m.email,
-      role:        m.role,
-      status:      m.status       ?? "active",
-      emailStatus: m.email_status ?? null,
-      joined:      m.joined,
-      invitedAt:   m.invited_at   ?? null,
-      createdAt:   m.created_at,
-    })));
-  } catch (listErr) {
-    const le = listErr as Record<string, unknown>;
-    logger.error(
-      {
-        orgId:         org.slice(0, 20),
-        sqlCode:       le["code"],
-        sqlMsg:        (listErr as Error).message,
-        sqlDetail:     le["detail"],
-        sqlConstraint: le["constraint"],
-        sqlTable:      le["table"],
-        sqlColumn:     le["column"],
-        stack:         (listErr as Error).stack,
-      },
-      "[team/get] SELECT failed"
-    );
-    res.json([]);
+    const db = orgDb(req);
+
+    const [membersRes, invitationsRes, seatUsage] = await Promise.all([
+      db(
+        `SELECT id, email, role, status, user_id,
+                COALESCE(first_name, '') AS first_name,
+                COALESCE(last_name,  '') AS last_name,
+                name, joined, joined_at, accepted_at, created_at, updated_at
+         FROM team_members
+         WHERE org_id = $1 AND status = 'active'
+         ORDER BY created_at ASC LIMIT 100`,
+        [org]
+      ),
+      db(
+        `SELECT id, email, role, status, invited_by_user_id,
+                resend_count, last_resent_at, expires_at, created_at
+         FROM team_invitations
+         WHERE org_id = $1 AND status = 'pending'
+         ORDER BY created_at ASC LIMIT 100`,
+        [org]
+      ),
+      getSeatUsage(orgDb(req), org),
+    ]);
+
+    const members = membersRes.rows.map(m => ({
+      id:        m.id,
+      email:     m.email,
+      name:      (m.first_name && m.last_name)
+                   ? `${m.first_name} ${m.last_name}`.trim()
+                   : ((m.first_name as string) || (m.name as string) || (m.email as string)?.split("@")[0] || ""),
+      firstName: m.first_name,
+      lastName:  m.last_name,
+      role:      m.role,
+      status:    m.status,
+      userId:    m.user_id,
+      joinedAt:  m.joined_at ?? m.accepted_at ?? m.created_at,
+      createdAt: m.created_at,
+    }));
+
+    const pendingInvitations = invitationsRes.rows.map(i => ({
+      id:              i.id,
+      email:           i.email,
+      role:            i.role,
+      status:          i.status,
+      invitedByUserId: i.invited_by_user_id,
+      resendCount:     i.resend_count,
+      lastResentAt:    i.last_resent_at,
+      expiresAt:       i.expires_at,
+      createdAt:       i.created_at,
+    }));
+
+    res.json({ members, pendingInvitations, seatUsage });
+  } catch (err) {
+    logger.error({ orgId: org.slice(0, 20), err: (err as Error).message }, "[team/get] failed");
+    res.json({ members: [], pendingInvitations: [], seatUsage: { used: 1, limit: 1, plan: "standard" } });
   }
 });
 
 // ── POST /team/invite ─────────────────────────────────────────────────────────
 
-/*
- * Columns used by the INSERT (logged at STEP 5.5 and STEP 6, never values).
- * Schema repairs run only in initDataTables() at startup — never from here.
- */
-const INSERT_COLS = [
-  "id", "org_id", "email", "name", "role", "joined", "status",
-  "invited_by", "invitation_token_hash", "invited_at", "expires_at",
-  "email_status", "created_at", "updated_at",
-] as const;
-
 router.post("/team/invite", canAdmin, async (req: Request, res: Response) => {
-  const reqId = `inv_req_${Date.now()}`;
-
-  // ── STEP 1 — Auth / org context ──────────────────────────────────────────
-  logger.info({ reqId }, "[team/invite] STEP 1: resolving org context");
   const org = requireOrg(req, res);
-  if (!org) {
-    logger.warn({ reqId }, "[team/invite] STEP 1 FAIL: no valid org → 401");
-    return;
-  }
-  logger.info({ reqId, orgPrefix: org.slice(0, 20) }, "[team/invite] STEP 1 OK");
+  if (!org) return;
 
-  // ── STEP 2 — orgDb availability ──────────────────────────────────────────
-  logger.info({ reqId }, "[team/invite] STEP 2: checking orgDb availability");
-  if (typeof (req as OrgReq).orgDb !== "function") {
-    logger.error({ reqId }, "[team/invite] STEP 2 FAIL: req.orgDb is not a function");
-    res.status(500).json({ ok: false, code: "ORGDB_MISSING", error: "Database context unavailable" });
-    return;
-  }
-  logger.info({ reqId }, "[team/invite] STEP 2 OK: orgDb is available");
-
-  // ── STEP 3 — Input validation ────────────────────────────────────────────
-  logger.info({ reqId }, "[team/invite] STEP 3: validating input");
   const { email: rawEmail, role } = req.body as { email?: string; role?: string };
-  logger.info({ reqId, hasEmail: !!rawEmail, role }, "[team/invite] STEP 3: raw input received");
 
   if (!rawEmail || !rawEmail.includes("@")) {
-    logger.warn({ reqId }, "[team/invite] STEP 3 FAIL: invalid email → 400");
-    res.status(400).json({ ok: false, error: "Valid email required" });
+    res.status(400).json({ ok: false, code: "INVALID_EMAIL", error: "Valid email required" });
     return;
   }
 
-  const email      = rawEmail.toLowerCase().trim();
-  const maskedEmail = maskEmail(email);
-  const ROLES      = ["admin", "member", "viewer"];
-  const rawRole    = (role ?? "viewer").toLowerCase();
-  if (!ROLES.includes(rawRole)) {
-    logger.warn({ reqId, rawRole }, "[team/invite] STEP 3 FAIL: invalid role → 400");
+  const ALLOWED_ROLES = ["admin", "member", "viewer"];
+  const memberRole = (role ?? "viewer").toLowerCase();
+
+  if (memberRole === "owner") {
+    res.status(400).json({ ok: false, code: "INVALID_ROLE", error: "Cannot assign role 'owner' via invitation." });
+    return;
+  }
+  if (!ALLOWED_ROLES.includes(memberRole)) {
     res.status(400).json({
-      ok: false,
-      code:  "INVALID_ROLE",
-      error: `Rôle invalide. Valeurs acceptées : ${ROLES.join(", ")}.`,
+      ok: false, code: "INVALID_ROLE",
+      error: `Rôle invalide. Valeurs acceptées : ${ALLOWED_ROLES.join(", ")}.`,
     });
     return;
   }
-  const memberRole = rawRole;
-  logger.info({ reqId, maskedEmail, memberRole }, "[team/invite] STEP 3 OK");
 
-  // ── STEP 4 — Token generation ────────────────────────────────────────────
-  // No SELECT-before-INSERT. The partial unique index on (org_id, lower(email))
-  // WHERE status='pending' is the sole source of truth for duplicates.
-  // If a pending row already exists the INSERT throws 23505 → 409 in STEP 6.
-  logger.info({ reqId }, "[team/invite] STEP 4: generating invitation token");
-  const rawToken  = randomBytes(32).toString("hex");
-  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-  const id        = randomUUID();
-  const joined    = new Date().toISOString().slice(0, 10);
-  logger.info({ reqId, id, tokenHashPrefix: tokenHash.slice(0, 8) }, "[team/invite] STEP 4 OK");
+  const email       = rawEmail.toLowerCase().trim();
+  const db          = orgDb(req);
+  const callerEmail = req.orgContext?.email ?? null;
 
-  // ── STEP 5.5 — Read-only schema assertion ────────────────────────────────
-  // Verifies that every column used in the INSERT exists in production.
-  // NO DDL here — schema repairs run only in initDataTables() at startup
-  // or via a dedicated migration script.
-  logger.info({ reqId, insertCols: INSERT_COLS }, "[team/invite] STEP 5.5: read-only schema assertion");
-  try {
-    const schemaRows = await pool.query<{ column_name: string }>(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = 'team_members'`
-    );
-    const present    = new Set(schemaRows.rows.map(r => r.column_name));
-    const missing    = (INSERT_COLS as readonly string[]).filter(c => !present.has(c));
-    logger.info(
-      { reqId, presentColumns: [...present], missingColumns: missing },
-      `[team/invite] STEP 5.5: schema assertion — missing: ${missing.length ? missing.join(", ") : "none"}`
-    );
-    if (missing.length > 0) {
-      logger.error(
-        { reqId, maskedEmail, orgId: org.slice(0, 20), missingColumns: missing },
-        "[team/invite] STEP 5.5 FAIL: team_members is missing required INSERT columns → 500 TEAM_SCHEMA_INVALID"
-      );
-      res.status(500).json({
-        ok:    false,
-        code:  "TEAM_SCHEMA_INVALID",
-        error: "Database schema error — please contact support",
-      });
-      return;
-    }
-    logger.info({ reqId }, "[team/invite] STEP 5.5 OK: all INSERT columns present");
-  } catch (schemaErr) {
-    // Non-fatal: if information_schema is unreachable, proceed and let the INSERT surface the real error.
-    logger.warn(
-      { reqId, err: (schemaErr as Error).message },
-      "[team/invite] STEP 5.5 WARN: schema assertion query failed — proceeding to INSERT"
-    );
+  // Prevent self-invite
+  if (callerEmail && callerEmail.toLowerCase() === email) {
+    res.status(400).json({ ok: false, code: "SELF_INVITE", error: "Vous ne pouvez pas vous inviter vous-même." });
+    return;
   }
 
-  // ── STEP 6 — INSERT team_members ─────────────────────────────────────────
-  // Columns logged above (STEP 5.5). Values never logged.
-  // name:                  TEXT local part of email (email.split('@')[0])
-  //                        — required NOT NULL; production Supabase has no DEFAULT
-  // joined:                TEXT date string  (YYYY-MM-DD)
-  // status:                TEXT literal      'pending'
-  // invited_by:            TEXT              org (org_id of inviting org)
-  // invitation_token_hash: TEXT              SHA-256 hex
-  // invited_at:            TIMESTAMPTZ       NOW()
-  // expires_at:            TIMESTAMPTZ       7 days from now
-  // email_status:          TEXT literal      'pending' (updated at STEP 10)
-  // created_at / updated_at: TIMESTAMPTZ     NOW()
-  const memberName = email.split("@")[0] ?? "";
-  logger.info(
-    { reqId, id, orgId: org.slice(0, 20), maskedEmail, insertCols: INSERT_COLS },
-    "[team/invite] STEP 6: INSERT into team_members"
-  );
+  // Duplicate check BEFORE seat quota (specific error beats generic one)
   try {
-    await orgDb(req)(
-      `INSERT INTO team_members
-         (id, org_id, email, name, role, joined, status,
-          invited_by, invitation_token_hash, invited_at, expires_at,
-          email_status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending',
-               $7, $8, NOW(), $9, 'pending', NOW(), NOW())`,
-      [id, org, email, memberName, memberRole, joined, org, tokenHash, expiresAt.toISOString()]
+    const existing = await db(
+      `SELECT id FROM team_invitations WHERE org_id = $1 AND lower(email) = lower($2) AND status = 'pending' LIMIT 1`,
+      [org, email]
     );
-    logger.info({ reqId, id }, "[team/invite] STEP 6 OK: INSERT succeeded");
+    if (existing.rows.length > 0) {
+      res.status(409).json({ ok: false, code: "DUPLICATE_INVITATION", error: "Une invitation est déjà en attente pour cette adresse." });
+      return;
+    }
+  } catch { /* non-fatal, let INSERT catch the 23505 */ }
+
+  // Seat quota check
+  const seatUsage = await getSeatUsage(db, org);
+  if (seatUsage.used >= seatUsage.limit) {
+    res.status(402).json({
+      ok:         false,
+      code:       "SEAT_LIMIT_REACHED",
+      error:      `Limite de ${seatUsage.limit} siège${seatUsage.limit > 1 ? "s" : ""} atteinte pour le plan ${seatUsage.plan}.`,
+      seatUsage,
+    });
+    return;
+  }
+
+  // Generate token
+  const rawToken  = randomBytes(32).toString("hex");
+  const tHash     = hashToken(rawToken);
+  const id        = randomUUID();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  // Insert (UNIQUE index on (org_id, lower(email)) WHERE pending blocks duplicates)
+  try {
+    await db(
+      `INSERT INTO team_invitations
+         (id, org_id, email, role, token_hash, status, invited_by_user_id, expires_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, NOW(), NOW())`,
+      [id, org, email, memberRole, tHash, callerEmail ?? null, expiresAt.toISOString()]
+    );
   } catch (insertErr: unknown) {
-    const err = insertErr as Error & {
-      code?:             string;
-      severity?:         string;
-      detail?:           string;
-      hint?:             string;
-      constraint?:       string;
-      schema?:           string;
-      table?:            string;
-      column?:           string;
-      where?:            string;
-      routine?:          string;
-      position?:         string;
-      internalPosition?: string;
-      internalQuery?:    string;
-      cause?:            unknown;
-    };
-    logger.error(
-      {
-        pgCode:           err.code,
-        severity:         err.severity,
-        detail:           err.detail,
-        hint:             err.hint,
-        schema:           err.schema,
-        table:            err.table,
-        column:           err.column,
-        constraint:       err.constraint,
-        routine:          err.routine,
-        where:            err.where,
-        position:         err.position,
-        internalPosition: err.internalPosition,
-        internalQuery:    err.internalQuery,
-        message:          err.message,
-        ownKeys:          Reflect.ownKeys(insertErr as object).map(String),
-        ownProps:         Object.getOwnPropertyNames(insertErr),
-        constructor:      (insertErr as object)?.constructor?.name,
-        stack:            err.stack,
-      },
-      "[team/invite] STEP 6 FAIL"
-    );
-    const pgCode = err.code;
-    if (pgCode === "23505") {
+    const err = insertErr as Error & { code?: string };
+    if (err.code === "23505") {
       res.status(409).json({
-        ok:    false,
-        code:  "DUPLICATE_INVITATION",
+        ok: false, code: "DUPLICATE_INVITATION",
         error: "Une invitation est déjà en attente pour cette adresse.",
       });
       return;
     }
-    const isDiagMode =
-      process.env["ADMIN_KEY"] &&
-      req.headers["x-admin-key"] === process.env["ADMIN_KEY"];
-    res.status(500).json({
-      ok:    false,
-      code:  "INVITATION_DB_ERROR",
-      error: "Failed to create invitation",
-      ...(isDiagMode && {
-        diagnostic: {
-          pgCode:     err.code        ?? null,
-          pgSeverity: err.severity    ?? null,
-          constraint: err.constraint  ?? null,
-          schema:     err.schema      ?? null,
-          table:      err.table       ?? null,
-          column:     err.column      ?? null,
-          routine:    err.routine     ?? null,
-        },
-      }),
-    });
+    logger.error({ orgId: org.slice(0, 20), maskedEmail: maskEmail(email), err: err.message }, "[team/invite] INSERT failed");
+    res.status(500).json({ ok: false, code: "DB_ERROR", error: "Failed to create invitation" });
     return;
   }
 
-  // ── STEP 7 — Load inviter profile ────────────────────────────────────────
-  logger.info({ reqId }, "[team/invite] STEP 7: loading inviter profile from org_settings");
-  const { loadOrgSettings } = await import("../services/org-settings.js");
-  const inviterProfile = await loadOrgSettings(org).catch((e: unknown) => {
-    logger.warn({ reqId, err: (e as Error).message }, "[team/invite] STEP 7 WARN: loadOrgSettings failed");
-    return null;
-  });
-  const inviterName = inviterProfile?.firstName ?? "Un collègue";
-  const orgName     = inviterProfile?.orgName   ?? "FlowPoint";
-  logger.info({ reqId, inviterName, orgName }, "[team/invite] STEP 7 OK");
-
-  // ── STEP 8 — Build invite URL ─────────────────────────────────────────────
-  const inviteUrl = `https://app.flowpoint.pro/login.html?invite=${encodeURIComponent(id)}&token=${rawToken}&email=${encodeURIComponent(email)}`;
-  logger.info({ reqId, inviteUrlLength: inviteUrl.length }, "[team/invite] STEP 8 OK: invite URL built");
-
-  // ── STEP 9 — Send invitation email ────────────────────────────────────────
-  logger.info({ reqId, maskedEmail }, "[team/invite] STEP 9: calling mailer.sendTeamInvitation");
-  const { mailer } = await import("../services/mailer.js");
-  type MailResult = { ok: boolean; error?: string; id?: string };
-  let mailResult: MailResult;
+  // Load inviter profile for email
+  let inviterName = "Un collègue";
+  let orgName     = "FlowPoint";
   try {
-    const sent = await mailer.sendTeamInvitation({
-      to:          email,
-      inviterName,
-      orgName,
-      role:        memberRole,
-      inviteUrl,
-    }) as MailResult;
-    mailResult = sent;
-    logger.info(
-      { reqId, mailOk: mailResult.ok, hasMessageId: !!(mailResult.ok && mailResult.id) },
-      "[team/invite] STEP 9 OK"
-    );
+    const { loadOrgSettings } = await import("../services/org-settings.js");
+    const settings = await loadOrgSettings(org);
+    if (settings) {
+      inviterName = settings.firstName ?? inviterName;
+      orgName     = settings.orgName   ?? orgName;
+    }
+  } catch { /* non-fatal */ }
+
+  // Send invitation email
+  const inviteUrl = buildInviteUrl(rawToken, email);
+  let emailOk  = false;
+  let emailId: string | undefined;
+  try {
+    const { mailer } = await import("../services/mailer.js");
+    const result = await mailer.sendTeamInvitation({ to: email, inviterName, orgName, role: memberRole, inviteUrl });
+    emailOk = result.ok;
+    emailId = result.ok ? result.id : undefined;
   } catch (mailerErr) {
-    logger.error(
-      {
-        reqId,
-        step:    9,
-        maskedEmail,
-        sqlMsg:  (mailerErr as Error).message,
-        stack:   (mailerErr as Error).stack,
-      },
-      "[team/invite] STEP 9 FAIL: mailer threw → INVITATION_EMAIL_ERROR (invitation row kept)"
-    );
-    mailResult = { ok: false, error: String(mailerErr) };
+    logger.warn({ err: (mailerErr as Error).message, maskedEmail: maskEmail(email) }, "[team/invite] mailer threw");
   }
 
-  // ── STEP 10 — Persist email delivery status ───────────────────────────────
-  const emailStatus  = mailResult.ok ? "sent"   : "failed";
-  const resendMsgId  = mailResult.ok ? (mailResult.id ?? null) : null;
-  const emailErrSafe = mailResult.ok ? null : ((mailResult.error ?? "unknown error")).slice(0, 250);
+  logger.info(
+    { id, orgId: org.slice(0, 20), maskedEmail: maskEmail(email), role: memberRole, emailOk },
+    "[team/invite] invitation created"
+  );
 
-  logger.info({ reqId, emailStatus, hasMessageId: !!resendMsgId }, "[team/invite] STEP 10: UPDATE email_status");
-  try {
-    await orgDb(req)(
-      `UPDATE team_members
-         SET email_status = $1, resend_message_id = $2, email_error = $3, updated_at = NOW()
-       WHERE id = $4`,
-      [emailStatus, resendMsgId, emailErrSafe, id]
-    );
-    logger.info({ reqId, emailStatus }, "[team/invite] STEP 10 OK: email_status updated");
-  } catch (updateErr) {
-    const ue = updateErr as Record<string, unknown>;
-    logger.error(
-      {
-        reqId,
-        step:          10,
-        maskedEmail,
-        orgId:         org.slice(0, 20),
-        code:          "INVITATION_STATUS_UPDATE_ERROR",
-        sqlCode:       ue["code"],
-        sqlMsg:        (updateErr as Error).message,
-        sqlDetail:     ue["detail"],
-        sqlConstraint: ue["constraint"],
-        sqlTable:      ue["table"],
-        sqlColumn:     ue["column"],
-        stack:         (updateErr as Error).stack,
-      },
-      "[team/invite] STEP 10 FAIL: email status UPDATE failed (non-fatal — invitation row was inserted)"
-    );
-  }
-
-  // ── STEP 11 — Final response ──────────────────────────────────────────────
-  if (!mailResult.ok) {
-    logger.warn(
-      { reqId, maskedEmail, emailErr: emailErrSafe },
-      "[team/invite] STEP 11: email failed → INVITATION_EMAIL_ERROR 502"
-    );
+  if (!emailOk) {
     res.status(502).json({
-      ok:     false,
-      code:   "INVITATION_EMAIL_ERROR",
-      error:  "L'invitation a été créée, mais l'e-mail n'a pas pu être envoyé.",
-      member: { id, email, role: memberRole, status: "pending", invitedAt: new Date().toISOString() },
+      ok: false, code: "INVITATION_EMAIL_ERROR",
+      error: "L'invitation a été créée, mais l'e-mail n'a pas pu être envoyé.",
+      invitation: { id, email, role: memberRole, status: "pending", expiresAt: expiresAt.toISOString() },
     });
     return;
   }
 
-  logger.info({ reqId, id, maskedEmail, messageId: resendMsgId }, "[team/invite] STEP 11: SUCCESS → 201");
   res.status(201).json({
-    ok:     true,
-    member: { id, email, role: memberRole, status: "pending", invitedAt: new Date().toISOString() },
-    email:  { status: "sent", messageId: resendMsgId },
+    ok: true,
+    invitation: { id, email, role: memberRole, status: "pending", expiresAt: expiresAt.toISOString() },
+    email: { status: "sent", messageId: emailId },
   });
 });
 
-// ── PATCH /team/:id — change role ─────────────────────────────────────────────
+// ── PATCH /team/:id — change member role ──────────────────────────────────────
 
 router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
-  const { role } = req.body as { role?: string };
-  if (!role) { res.status(400).json({ ok: false, error: "role required" }); return; }
-  const ALLOWED = ["viewer", "member", "admin"];
-  if (!ALLOWED.includes(role)) { res.status(400).json({ ok: false, error: "invalid role" }); return; }
+
+  const { role: newRole } = req.body as { role?: string };
+  if (!newRole) { res.status(400).json({ ok: false, error: "role required" }); return; }
+
+  const ALLOWED_ROLES = ["admin", "member", "viewer"];
+  if (newRole === "owner") {
+    res.status(400).json({ ok: false, code: "CANNOT_SET_OWNER", error: "Le rôle 'owner' ne peut pas être assigné via cette route." });
+    return;
+  }
+  if (!ALLOWED_ROLES.includes(newRole)) {
+    res.status(400).json({ ok: false, code: "INVALID_ROLE", error: `Rôle invalide. Valeurs : ${ALLOWED_ROLES.join(", ")}.` });
+    return;
+  }
+
+  const db          = orgDb(req);
+  const callerRole  = req.orgContext?.role  ?? "viewer";
+  const callerEmail = req.orgContext?.email ?? "";
+  const memberId    = req.params.id;
+
+  // Load current member
+  let memberRes: { rows: Record<string, unknown>[] };
   try {
-    const r = await orgDb(req)(
+    memberRes = await db(
+      `SELECT id, email, role, status FROM team_members WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      [memberId, org]
+    );
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[team/patch] SELECT failed");
+    res.status(500).json({ ok: false, error: "Failed to load member" });
+    return;
+  }
+
+  const member = memberRes.rows[0];
+  if (!member) { res.status(404).json({ ok: false, error: "Member not found" }); return; }
+
+  if (member.role === "owner") {
+    res.status(403).json({ ok: false, code: "CANNOT_MODIFY_OWNER", error: "Le rôle du propriétaire ne peut pas être modifié." });
+    return;
+  }
+
+  if (callerEmail && (member.email as string)?.toLowerCase() === callerEmail.toLowerCase()) {
+    res.status(403).json({ ok: false, code: "CANNOT_SELF_MODIFY", error: "Vous ne pouvez pas modifier votre propre rôle." });
+    return;
+  }
+
+  // Admin cannot touch admin roles — only owner can
+  if (callerRole === "admin" && (member.role === "admin" || newRole === "admin")) {
+    res.status(403).json({ ok: false, code: "INSUFFICIENT_ROLE", error: "Seul le propriétaire peut gérer les rôles admin." });
+    return;
+  }
+
+  try {
+    const r = await db(
       `UPDATE team_members SET role = $1, updated_at = NOW()
        WHERE id = $2 AND org_id = $3
-       RETURNING id, email, role`,
-      [role, req.params.id, org]
+       RETURNING id, email, role, status`,
+      [newRole, memberId, org]
     );
-    if (!r.rows[0]) { res.status(404).json({ ok: false, error: "member not found" }); return; }
+    if (!r.rows[0]) { res.status(404).json({ ok: false, error: "Member not found" }); return; }
     const m = r.rows[0];
     res.json({
-      ok:     true,
-      member: { id: m.id, name: (m.email as string)?.split("@")[0] ?? "", email: m.email, role: m.role },
-    });
-  } catch (patchErr) {
-    const pe = patchErr as Record<string, unknown>;
-    logger.error(
-      {
-        orgId:         org.slice(0, 20),
-        memberId:      req.params.id,
-        sqlCode:       pe["code"],
-        sqlMsg:        (patchErr as Error).message,
-        sqlDetail:     pe["detail"],
-        sqlConstraint: pe["constraint"],
-        sqlTable:      pe["table"],
-        sqlColumn:     pe["column"],
-        stack:         (patchErr as Error).stack,
+      ok: true,
+      member: {
+        id:     m.id,
+        email:  m.email,
+        name:   (m.email as string)?.split("@")[0] ?? "",
+        role:   m.role,
+        status: m.status,
       },
-      "[team/patch] UPDATE failed"
-    );
+    });
+  } catch (err) {
+    logger.error({ orgId: org.slice(0, 20), memberId, err: (err as Error).message }, "[team/patch] UPDATE failed");
     res.status(500).json({ ok: false, error: "Failed to update member" });
   }
 });
 
-// ── DELETE /team/:id — remove member ──────────────────────────────────────────
+// ── DELETE /team/:id — soft-remove member ─────────────────────────────────────
 
 router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
+
+  const db          = orgDb(req);
+  const callerEmail = req.orgContext?.email ?? "";
+  const memberId    = req.params.id;
+
+  // Load current member
+  let memberRes: { rows: Record<string, unknown>[] };
   try {
-    await orgDb(req)(
-      `DELETE FROM team_members WHERE id = $1 AND org_id = $2`,
-      [req.params.id, org]
+    memberRes = await db(
+      `SELECT id, email, role, status FROM team_members WHERE id = $1 AND org_id = $2 AND status = 'active' LIMIT 1`,
+      [memberId, org]
     );
-    res.json({ ok: true });
-  } catch (deleteErr) {
-    const de = deleteErr as Record<string, unknown>;
-    logger.error(
-      {
-        orgId:         org.slice(0, 20),
-        memberId:      req.params.id,
-        sqlCode:       de["code"],
-        sqlMsg:        (deleteErr as Error).message,
-        sqlDetail:     de["detail"],
-        sqlConstraint: de["constraint"],
-        sqlTable:      de["table"],
-        sqlColumn:     de["column"],
-        stack:         (deleteErr as Error).stack,
-      },
-      "[team/delete] DELETE failed"
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[team/delete] SELECT failed");
+    res.status(500).json({ ok: false, error: "Failed to load member" });
+    return;
+  }
+
+  const member = memberRes.rows[0];
+  if (!member) { res.status(404).json({ ok: false, error: "Member not found" }); return; }
+
+  if (member.role === "owner") {
+    res.status(403).json({ ok: false, code: "CANNOT_REMOVE_OWNER", error: "Le propriétaire ne peut pas être retiré de l'équipe." });
+    return;
+  }
+
+  if (callerEmail && (member.email as string)?.toLowerCase() === callerEmail.toLowerCase()) {
+    res.status(403).json({ ok: false, code: "CANNOT_REMOVE_SELF", error: "Vous ne pouvez pas vous retirer vous-même." });
+    return;
+  }
+
+  try {
+    await db(
+      `UPDATE team_members SET status = 'removed', updated_at = NOW() WHERE id = $1 AND org_id = $2`,
+      [memberId, org]
     );
-    res.status(500).json({ ok: false, error: "Failed to delete member" });
+  } catch (err) {
+    logger.error({ orgId: org.slice(0, 20), memberId, err: (err as Error).message }, "[team/delete] UPDATE failed");
+    res.status(500).json({ ok: false, error: "Failed to remove member" });
+    return;
+  }
+
+  // Revoke all sessions for this member (fire-and-forget)
+  const memberEmail = member.email as string;
+  if (memberEmail) {
+    invalidateAllSessions(memberEmail).catch(err =>
+      logger.warn({ err: (err as Error).message, maskedEmail: maskEmail(memberEmail) }, "[team/delete] session revocation failed")
+    );
+  }
+
+  logger.info({ orgId: org.slice(0, 20), memberId, maskedEmail: maskEmail(memberEmail) }, "[team/delete] member soft-removed");
+  res.json({ ok: true });
+});
+
+// ── POST /team/invitations/:id/resend ─────────────────────────────────────────
+// NOTE: registered before DELETE /team/invitations/:id to prevent ambiguous matching
+
+router.post("/team/invitations/:id/resend", canAdmin, async (req: Request, res: Response) => {
+  const org = requireOrg(req, res);
+  if (!org) return;
+
+  const db    = orgDb(req);
+  const invId = req.params.id;
+
+  let invRes: { rows: Record<string, unknown>[] };
+  try {
+    invRes = await db(
+      `SELECT id, email, role, status, resend_count, last_resent_at, expires_at, invited_by_user_id
+       FROM team_invitations WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      [invId, org]
+    );
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[team/resend] SELECT failed");
+    res.status(500).json({ ok: false, error: "Failed to load invitation" });
+    return;
+  }
+
+  const inv = invRes.rows[0];
+  if (!inv) { res.status(404).json({ ok: false, error: "Invitation not found" }); return; }
+  if (inv.status !== "pending") {
+    res.status(409).json({ ok: false, code: "NOT_PENDING", error: "Cette invitation n'est plus active." });
+    return;
+  }
+  if (new Date(inv.expires_at as string) < new Date()) {
+    res.status(410).json({ ok: false, code: "EXPIRED", error: "Cette invitation a expiré." });
+    return;
+  }
+
+  const resendCount = (inv.resend_count as number) ?? 0;
+  if (resendCount >= 3) {
+    res.status(429).json({
+      ok: false, code: "RESEND_LIMIT_REACHED",
+      error: "Limite de 3 renvois atteinte pour cette invitation.",
+    });
+    return;
+  }
+
+  const email     = inv.email as string;
+  const rawToken  = randomBytes(32).toString("hex");
+  const tHash     = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  try {
+    await db(
+      `UPDATE team_invitations
+         SET token_hash     = $1,
+             resend_count   = resend_count + 1,
+             last_resent_at = NOW(),
+             expires_at     = $2,
+             updated_at     = NOW()
+       WHERE id = $3 AND org_id = $4`,
+      [tHash, expiresAt.toISOString(), invId, org]
+    );
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[team/resend] UPDATE failed");
+    res.status(500).json({ ok: false, error: "Failed to resend invitation" });
+    return;
+  }
+
+  let emailOk = false;
+  try {
+    const { mailer }          = await import("../services/mailer.js");
+    const { loadOrgSettings } = await import("../services/org-settings.js");
+    const settings    = await loadOrgSettings(org).catch(() => null);
+    const inviterName = settings?.firstName ?? "Un collègue";
+    const orgName     = settings?.orgName   ?? "FlowPoint";
+    const inviteUrl   = buildInviteUrl(rawToken, email);
+    const result = await mailer.sendTeamInvitation({ to: email, inviterName, orgName, role: inv.role as string, inviteUrl });
+    emailOk = result.ok;
+  } catch (mailerErr) {
+    logger.warn({ err: (mailerErr as Error).message }, "[team/resend] mailer threw");
+  }
+
+  logger.info(
+    { invId, orgId: org.slice(0, 20), maskedEmail: maskEmail(email), newCount: resendCount + 1 },
+    "[team/resend] invitation resent"
+  );
+
+  res.json({ ok: true, email: { status: emailOk ? "sent" : "failed" }, resendCount: resendCount + 1 });
+});
+
+// ── DELETE /team/invitations/:id — revoke invitation ─────────────────────────
+
+router.delete("/team/invitations/:id", canAdmin, async (req: Request, res: Response) => {
+  const org = requireOrg(req, res);
+  if (!org) return;
+
+  const db    = orgDb(req);
+  const invId = req.params.id;
+
+  let invRes: { rows: Record<string, unknown>[] };
+  try {
+    invRes = await db(
+      `SELECT id, status FROM team_invitations WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      [invId, org]
+    );
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[team/revoke] SELECT failed");
+    res.status(500).json({ ok: false, error: "Failed to load invitation" });
+    return;
+  }
+
+  const inv = invRes.rows[0];
+  if (!inv) { res.status(404).json({ ok: false, error: "Invitation not found" }); return; }
+  if (inv.status !== "pending") {
+    res.status(409).json({ ok: false, code: "NOT_PENDING", error: "Seules les invitations en attente peuvent être révoquées." });
+    return;
+  }
+
+  try {
+    await db(
+      `UPDATE team_invitations SET status = 'revoked', revoked_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND org_id = $2`,
+      [invId, org]
+    );
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[team/revoke] UPDATE failed");
+    res.status(500).json({ ok: false, error: "Failed to revoke invitation" });
+    return;
+  }
+
+  logger.info({ invId, orgId: org.slice(0, 20) }, "[team/revoke] invitation revoked");
+  res.json({ ok: true });
+});
+
+// ── GET /organizations ────────────────────────────────────────────────────────
+
+router.get("/organizations", async (req: Request, res: Response) => {
+  const org         = requireOrg(req, res);
+  if (!org) return;
+  const callerEmail = req.orgContext?.email ?? "";
+  const callerRole  = req.orgContext?.role  ?? "viewer";
+
+  try {
+    const currentOrg = await pool.query<{ id: string; name: string; slug: string; plan: string }>(
+      `SELECT id, COALESCE(NULLIF(name,''), id) AS name, slug, plan
+       FROM organizations WHERE id = $1 LIMIT 1`,
+      [org]
+    );
+
+    const results: Array<{
+      id: string; name: string; slug: string; plan: string; role: string; isCurrent: boolean;
+    }> = [];
+
+    if (currentOrg.rows[0]) {
+      results.push({
+        id:        currentOrg.rows[0].id,
+        name:      currentOrg.rows[0].name,
+        slug:      currentOrg.rows[0].slug,
+        plan:      currentOrg.rows[0].plan,
+        role:      callerRole,
+        isCurrent: true,
+      });
+    }
+
+    // Other orgs where this email is an active member
+    if (callerEmail) {
+      const otherOrgs = await pool.query<{
+        org_id: string; role: string; org_name: string; slug: string; plan: string;
+      }>(
+        `SELECT tm.org_id, tm.role,
+                COALESCE(NULLIF(o.name,''), tm.org_id) AS org_name,
+                o.slug, o.plan
+         FROM team_members tm
+         JOIN organizations o ON o.id = tm.org_id
+         WHERE lower(tm.email) = lower($1)
+           AND tm.status = 'active'
+           AND tm.org_id != $2
+         LIMIT 20`,
+        [callerEmail, org]
+      );
+      for (const row of otherOrgs.rows) {
+        results.push({
+          id:        row.org_id,
+          name:      row.org_name,
+          slug:      row.slug,
+          plan:      row.plan,
+          role:      row.role,
+          isCurrent: false,
+        });
+      }
+    }
+
+    res.json({ organizations: results });
+  } catch (err) {
+    logger.error({ orgId: org.slice(0, 20), err: (err as Error).message }, "[organizations/get] failed");
+    res.status(500).json({ error: "Failed to load organizations" });
+  }
+});
+
+// ── POST /organizations/:id/switch ────────────────────────────────────────────
+
+router.post("/organizations/:id/switch", async (req: Request, res: Response) => {
+  const currentOrg = requireOrg(req, res);
+  if (!currentOrg) return;
+
+  const targetOrgId = req.params.id;
+  const callerEmail = req.orgContext?.email ?? "";
+
+  if (!callerEmail) {
+    res.status(401).json({ ok: false, error: "Authentication required" });
+    return;
+  }
+
+  if (targetOrgId === currentOrg) {
+    res.status(400).json({ ok: false, code: "SAME_ORG", error: "Already in this organization." });
+    return;
+  }
+
+  try {
+    const [memberRes, ownerRes] = await Promise.all([
+      pool.query<{ role: string }>(
+        `SELECT role FROM team_members
+         WHERE org_id = $1 AND lower(email) = lower($2) AND status = 'active'
+         LIMIT 1`,
+        [targetOrgId, callerEmail]
+      ),
+      pool.query<{ plan: string }>(
+        `SELECT plan FROM organizations WHERE id = $1 AND owner_user_id = $2 LIMIT 1`,
+        [targetOrgId, callerEmail]
+      ),
+    ]);
+
+    const memberRole = memberRes.rows[0]?.role;
+    const isOwner    = !!ownerRes.rows[0];
+
+    if (!memberRole && !isOwner) {
+      res.status(403).json({ ok: false, code: "ACCESS_DENIED", error: "Vous n'avez pas accès à cette organisation." });
+      return;
+    }
+
+    const role = isOwner ? "owner" : memberRole;
+
+    const sessionToken = await createSession({
+      userId: callerEmail,
+      orgId:  targetOrgId,
+      email:  callerEmail,
+      role,
+    });
+
+    logger.info(
+      { from: currentOrg.slice(0, 20), to: targetOrgId.slice(0, 20), maskedEmail: maskEmail(callerEmail) },
+      "[organizations/switch] org switch"
+    );
+
+    res.json({ ok: true, sessionToken, orgId: targetOrgId, role });
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, "[organizations/switch] failed");
+    res.status(500).json({ ok: false, error: "Failed to switch organization" });
   }
 });
 

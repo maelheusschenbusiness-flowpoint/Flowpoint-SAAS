@@ -409,7 +409,7 @@ async function sendTeamInvitation(opts: {
   inviteUrl?: string;
 }): Promise<MailResult> {
   const roleLabel: Record<string, string> = {
-    viewer: "Lecteur", editor: "Éditeur", admin: "Administrateur", owner: "Propriétaire",
+    viewer: "Lecteur", member: "Membre", editor: "Éditeur", admin: "Administrateur", owner: "Propriétaire",
   };
   const role = roleLabel[opts.role] || opts.role;
   const org = opts.orgName || "FlowPoint";
@@ -430,7 +430,40 @@ async function sendTeamInvitation(opts: {
   });
 }
 
-// ── 10. New AI Missions ───────────────────────────────────────────────────────
+// ── 10. Invitation Accepted (notify inviter) ─────────────────────────────────
+
+async function sendInvitationAccepted(opts: {
+  to: string;
+  memberEmail: string;
+  memberName?: string;
+  orgName?: string;
+  role: string;
+  dashboardUrl?: string;
+}): Promise<MailResult> {
+  const roleLabel: Record<string, string> = {
+    viewer: "Lecteur", member: "Membre", editor: "Éditeur", admin: "Administrateur",
+  };
+  const role = roleLabel[opts.role] || opts.role;
+  const org = opts.orgName || "FlowPoint";
+  const memberName = opts.memberName || opts.memberEmail;
+  return send({
+    to: opts.to,
+    subject: `${memberName} a rejoint ${org} sur FlowPoint`,
+    tag: "invitation_accepted",
+    html: layout({
+      eyebrow: "Invitation acceptée",
+      eyebrowColor: "rgba(34,197,94,0.15)",
+      accentColor: "#16a34a",
+      title: `Nouvelle recrue dans l'équipe`,
+      body: `<p style="margin:0 0 16px;"><strong>${memberName}</strong> a accepté ton invitation et a rejoint l'espace <strong>${org}</strong> en tant que <strong>${role}</strong>.</p>
+             <p style="margin:0;">Tu peux maintenant collaborer ensemble directement depuis ton dashboard FlowPoint.</p>`,
+      cta: { label: "Voir l'équipe →", url: opts.dashboardUrl || "https://app.flowpoint.pro/dashboard.html#team" },
+      note: "Cet e-mail t'a été envoyé car tu avais invité ce membre dans ton espace FlowPoint.",
+    }),
+  });
+}
+
+// ── 11. New AI Missions ───────────────────────────────────────────────────────
 
 async function sendNewMissions(opts: {
   to: string;
@@ -509,6 +542,7 @@ export const mailer = {
   sendMonitorUp,
   sendReportGenerated,
   sendTeamInvitation,
+  sendInvitationAccepted,
   sendNewMissions,
   sendSeoAlert,
 };

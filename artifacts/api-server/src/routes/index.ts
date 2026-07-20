@@ -10,7 +10,7 @@ import overviewRouter from "./overview.js";
 import auditsRouter from "./audits.js";
 import monitorsRouter from "./monitors.js";
 import reportsRouter from "./reports.js";
-import teamRouter from "./team.js";
+import teamRouter, { publicTeamRouter } from "./team.js";
 import aiRouter from "./ai.js";
 import billingRouter from "./billing.js";
 import alertRulesRouter from "./alert-rules.js";
@@ -104,6 +104,10 @@ router.use(plansRouter);
 // QA fixture probe — GET /qa/fixture/:id is called directly by monitors during tests.
 // Must be public (monitors fetch URLs without auth headers). Always 404 in production.
 router.use(publicQaRouter);
+
+// Team invitation public endpoints — validate and accept use a cryptographic token,
+// no session required. Must be before requireAuth.
+router.use(publicTeamRouter);
 
 // ── Protected routes (authentication required) ─────────────────────────────
 // All management endpoints require a valid API secret supplied via:
