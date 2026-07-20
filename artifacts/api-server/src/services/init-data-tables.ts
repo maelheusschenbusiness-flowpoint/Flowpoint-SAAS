@@ -654,26 +654,43 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_idx ON team_members(org_id, email);`);
 
     // ── team_members — organization_members constraints (T06) ────────────────
-    // 1. CHECK role IN allowed set (enforced at DB level)
+    // 1. Sanitize invalid roles FIRST (must run before constraint is added/validated)
+    //    Uses canonical mapping; anything unrecognised keeps its value so the
+    //    final invalid-roles check below catches it explicitly.
     await run(client, `
-      DO $$ BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint
-          WHERE conname = 'team_members_role_check'
-            AND conrelid = 'team_members'::regclass
-        ) THEN
-          ALTER TABLE team_members
-            ADD CONSTRAINT team_members_role_check
-            CHECK (role IN ('owner','admin','member','viewer'));
-        END IF;
-      END $$;
+      UPDATE team_members
+      SET role = CASE
+        WHEN role IN ('administrator', 'manager')          THEN 'admin'
+        WHEN role IN ('user', 'editor', 'collaborator')    THEN 'member'
+        WHEN role IN ('read_only', 'readonly', 'client')   THEN 'viewer'
+        WHEN role IS NULL OR trim(role) = ''               THEN 'member'
+        ELSE role
+      END
+      WHERE role IS NULL
+         OR role NOT IN ('owner','admin','member','viewer');
     `);
-    // 2. Sanitize any rows that violate the new constraint before applying it
+    // 2. Drop and re-add constraint to ensure it matches the current allowed set.
+    //    Two-step approach: DROP IF EXISTS (idempotent) then ADD — safer than
+    //    the DO-IF-NOT-EXISTS pattern when the constraint definition might drift.
+    await run(client, `ALTER TABLE team_members DROP CONSTRAINT IF EXISTS team_members_role_check;`);
     await run(client, `
-      UPDATE team_members SET role = 'viewer'
-      WHERE role NOT IN ('owner','admin','member','viewer');
+      ALTER TABLE team_members
+        ADD CONSTRAINT team_members_role_check
+        CHECK (role IN ('owner','admin','member','viewer'));
     `);
-    // 3. Soft FK: index on org_id for JOIN performance (TEXT org_id ≠ UUID, no hard FK)
+    // 3. Verify no invalid roles remain (non-fatal warn if any slipped through)
+    {
+      const inv = await client.query(
+        `SELECT COUNT(*) AS n FROM team_members WHERE role IS NULL OR role NOT IN ('owner','admin','member','viewer')`
+      );
+      const n = Number(inv.rows[0]?.n ?? 0);
+      if (n > 0) {
+        logger.warn({ invalidRoles: n }, "[init-data-tables] team_members: invalid roles remain after sanitize — investigate");
+      } else {
+        logger.info("[init-data-tables] team_members role constraint: all rows valid ✓");
+      }
+    }
+    // 4. Soft FK index on org_id for JOIN performance (TEXT org_id ≠ UUID, no hard FK)
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_fk_idx ON team_members(org_id);`);
 
     // ── org_settings — columns that may be missing in older DBs ─────────────

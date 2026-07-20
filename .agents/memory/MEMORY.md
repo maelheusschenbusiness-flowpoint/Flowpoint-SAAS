@@ -24,7 +24,8 @@
 - [FlowPoint review-intel fake data](review-intel-empty-state.md) — SAMPLE_REVIEWS supprimé; empty state propre quand aucun avis GBP
 - [FlowPoint API route map](flowpoint-api-routes.md) — correct paths for all 44 tested routes (revenue-leak not leaks, gbp-posts not gbp/posts, calendar-events, review-intelligence, cro, seo/status)
 - [FlowPoint RLS 100% coverage](flowpoint-rls-migration.md) — 150/150 tables, 600 policies; google_oauth_states patched in init-rls-setup.ts startup hook (migrations/015 SQL for docs)
-- [FlowPoint mailer service](flowpoint-mailer.md) — centralized mailer at services/mailer.ts; 11 email types; all fire-and-forget; RESEND_API_KEY required; never throws
+- [FlowPoint mailer service](flowpoint-mailer.md) — centralized mailer at services/mailer.ts; 11 email types; all fire-and-forget; TEST_MAIL_DIR transport captures email to disk (no Resend); token extracted via regex [?&]token=([a-f0-9]{64})
+- [QA self-contained session pattern](qa-self-contained-sessions.md) — all QA suites use pg + randomBytes; ensureOrg+createSession in each file; RUN=Date.now() suffix; ultra plan for Lot B (10 seats); E2E group needs SEPARATE fresh org to avoid quota saturation
 - [FlowPoint billing production state](flowpoint-billing-prod.md) — NODE_ENV=production, mock=false confirmed; plans.ts has live price IDs with env var overrides; webhook rejects unsigned in prod (correct)
 - [FlowPoint Playwright auth](flowpoint-playwright-auth.md) — HttpOnly cookie blocks testing subagent; use Bearer header for API tests instead
 - [GET :id routes missing](get-id-routes.md) — monitors/competitors/keywords/reports/alert-rules all lacked GET :id; added in one pass

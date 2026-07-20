@@ -17,6 +17,8 @@
 
 import { Resend } from "resend";
 import { logger } from "../lib/logger.js";
+import fs from "fs";
+import path from "path";
 
 // ── Resend client ─────────────────────────────────────────────────────────────
 
@@ -153,6 +155,34 @@ async function send(opts: {
   tag?: string;
   from?: string;
 }): Promise<MailResult> {
+  // ── Test transport: write to TEST_MAIL_DIR when set (never sends via Resend) ──
+  const testMailDir = process.env["TEST_MAIL_DIR"];
+  if (testMailDir) {
+    try {
+      fs.mkdirSync(testMailDir, { recursive: true });
+      const timestamp = Date.now();
+      const fname = path.join(testMailDir, `${timestamp}_${opts.tag || "mail"}.json`);
+      const payload: Record<string, unknown> = {
+        to: opts.to,
+        subject: opts.subject,
+        tag: opts.tag || null,
+        sentAt: new Date().toISOString(),
+      };
+      // Extract raw token from invitation URL (token is 64-char hex)
+      const tokenMatch = opts.html.match(/[?&]token=([a-f0-9]{64})/i);
+      if (tokenMatch) payload["token"] = tokenMatch[1];
+      // Extract full invitation URL
+      const urlMatch = opts.html.match(/href="([^"]*accept-invitation[^"]*)"/i);
+      if (urlMatch) payload["inviteUrl"] = urlMatch[1];
+      fs.writeFileSync(fname, JSON.stringify(payload, null, 2));
+      logger.info({ fname, to: opts.to, tag: opts.tag }, "[Mailer] TEST_MAIL_DIR: email captured (not sent)");
+      return { ok: true, id: `test-${timestamp}` };
+    } catch (writeErr: unknown) {
+      logger.error({ err: writeErr }, "[Mailer] TEST_MAIL_DIR write failed");
+      return { ok: false, error: "TEST_MAIL_DIR write failed" };
+    }
+  }
+
   const resend = getResend();
   if (!resend) return { ok: false, error: "RESEND_API_KEY_MISSING" };
 
