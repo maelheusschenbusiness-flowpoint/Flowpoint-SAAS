@@ -7,6 +7,12 @@ description: How to run the Playwright QA scans and interaction tests for the da
 
 Scripts in `.local/`: `qa_scan.mjs` (per-section scan: console errors, NaN/undefined text, toast-only buttons, failed API calls — sections as args), `qa_nan.mjs` (DOM NaN locator), `qa_interact.mjs` (real interactions: create/delete mission+monitor via UI, search, modal, SSE query-token), `qa_probe.mjs` (dump visible buttons + onclick per section).
 
+**Dashboard Command Center alert rendering (B3 lesson):**
+- `allAlerts` in the main Command Center list renders only `a.title` + `a.time` + severity badge — NOT `a.desc`.
+- `a.desc` (e.g. "Latence observée : 149ms — seuil > 0ms") is only rendered in sub-views (performance, seo, etc.).
+- DOM assert must target `a.title` (e.g. "Latence élevée") + `ev.siteUrl` (e.g. "httpbin.org") not the numeric value.
+- `a.desc` field IS correctly computed in STATE; `innerText()` vs `innerHTML` distinction matters — use `innerText` for visible-text "no undefined/NaN" checks, `innerHTML` for structural presence checks.
+
 **Rules learned:**
 - Run from workspace root only — `node /tmp/x.mjs` cannot resolve `playwright`.
 - Run section batches sequentially; parallel scans trigger 429 rate-limit artifacts.
