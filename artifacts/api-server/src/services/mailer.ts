@@ -146,6 +146,28 @@ function layout(opts: {
 </html>`;
 }
 
+/**
+ * isTestMailerEnabled — strict guard for the disk-capture test transport.
+ *
+ * ALL conditions must hold simultaneously:
+ *   1. TEST_MAIL_DIR is set        — explicit opt-in directory
+ *   2. ENABLE_TEST_MAILER === "true" — second explicit opt-in (TEST_MAIL_DIR alone is NOT enough)
+ *   3. RENDER is not set           — never on Render.com deployments
+ *   4. FLY_APP_NAME is not set     — never on Fly.io deployments
+ *   5. REPLIT_DEPLOYMENT !== "1"   — never on Replit published/deployed instances
+ *
+ * In every real production environment (Render, Fly, Replit deployed) this returns false
+ * and the mailer falls through to Resend.  Tokens are never written to disk in production.
+ */
+function isTestMailerEnabled(): boolean {
+  if (!process.env["TEST_MAIL_DIR"])                       return false;
+  if (process.env["ENABLE_TEST_MAILER"] !== "true")        return false;
+  if (process.env["RENDER"])                               return false;
+  if (process.env["FLY_APP_NAME"])                         return false;
+  if (process.env["REPLIT_DEPLOYMENT"] === "1")            return false;
+  return true;
+}
+
 // ── Internal send helper ──────────────────────────────────────────────────────
 
 async function send(opts: {
@@ -155,9 +177,9 @@ async function send(opts: {
   tag?: string;
   from?: string;
 }): Promise<MailResult> {
-  // ── Test transport: write to TEST_MAIL_DIR when set (never sends via Resend) ──
-  const testMailDir = process.env["TEST_MAIL_DIR"];
-  if (testMailDir) {
+  // ── Test transport: write to TEST_MAIL_DIR (requires ENABLE_TEST_MAILER=true) ──
+  if (isTestMailerEnabled()) {
+    const testMailDir = process.env["TEST_MAIL_DIR"]!;
     try {
       fs.mkdirSync(testMailDir, { recursive: true });
       const timestamp = Date.now();

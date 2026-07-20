@@ -883,6 +883,47 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS joined_at          TIMESTAMPTZ;`);
     await run(client, `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS resend_count       INTEGER NOT NULL DEFAULT 0;`);
 
+    // ── team_members status constraint ───────────────────────────────────────
+    // Sanitize first, then enforce.
+    await run(client, `
+      UPDATE team_members
+      SET status = 'active'
+      WHERE status IS NULL OR status NOT IN ('active','pending','removed','suspended');
+    `);
+    await run(client, `ALTER TABLE team_members DROP CONSTRAINT IF EXISTS team_members_status_check;`);
+    await run(client, `
+      ALTER TABLE team_members
+        ADD CONSTRAINT team_members_status_check
+        CHECK (status IN ('active','pending','removed','suspended'));
+    `);
+
+    // ── team_invitations role constraint ─────────────────────────────────────
+    // Owners cannot be invited (invite always creates admin/member/viewer).
+    await run(client, `
+      UPDATE team_invitations
+      SET role = 'viewer'
+      WHERE role IS NULL OR role NOT IN ('admin','member','viewer');
+    `);
+    await run(client, `ALTER TABLE team_invitations DROP CONSTRAINT IF EXISTS team_invitations_role_check;`);
+    await run(client, `
+      ALTER TABLE team_invitations
+        ADD CONSTRAINT team_invitations_role_check
+        CHECK (role IN ('admin','member','viewer'));
+    `);
+
+    // ── team_invitations status constraint ───────────────────────────────────
+    await run(client, `
+      UPDATE team_invitations
+      SET status = 'pending'
+      WHERE status IS NULL OR status NOT IN ('pending','accepted','revoked','expired');
+    `);
+    await run(client, `ALTER TABLE team_invitations DROP CONSTRAINT IF EXISTS team_invitations_status_check;`);
+    await run(client, `
+      ALTER TABLE team_invitations
+        ADD CONSTRAINT team_invitations_status_check
+        CHECK (status IN ('pending','accepted','revoked','expired'));
+    `);
+
     logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
