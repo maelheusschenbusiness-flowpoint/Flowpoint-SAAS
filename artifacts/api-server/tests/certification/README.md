@@ -17,9 +17,25 @@ TEST_MAIL_DIR=/tmp/qa_mail
 
 ## Run all suites
 
+**Important:** Run suites sequentially. Parallel execution causes cleanup race conditions
+between suites that share the same QA org patterns, leaving residual QA orgs in the DB.
+Always run `schema_checks.mjs` last.
+
 ```bash
-# From workspace root:
-for f in artifacts/api-server/tests/certification/*.mjs; do
+# From workspace root (sequential — required for schema_checks to pass):
+for f in \
+  artifacts/api-server/tests/certification/lot_a_cert.mjs \
+  artifacts/api-server/tests/certification/security_w3a.mjs \
+  artifacts/api-server/tests/certification/security_w3a2.mjs \
+  artifacts/api-server/tests/certification/service_cred.mjs \
+  artifacts/api-server/tests/certification/fixture_guard.mjs \
+  artifacts/api-server/tests/certification/lot_b1.mjs \
+  artifacts/api-server/tests/certification/lot_b2.mjs \
+  artifacts/api-server/tests/certification/lot_b3.mjs \
+  artifacts/api-server/tests/certification/lot_b_team.mjs \
+  artifacts/api-server/tests/certification/lot_b_frontend.mjs \
+  artifacts/api-server/tests/certification/mailer_guard.mjs \
+  artifacts/api-server/tests/certification/schema_checks.mjs; do
   echo "=== Running $f ==="; node "$f"; echo "";
 done
 ```
