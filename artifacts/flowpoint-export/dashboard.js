@@ -4663,10 +4663,10 @@ function renderMonitors() {
           </label>
           <div class="fp-monitor-status-row">
             <div class="fp-monitor-name-wrap">
-              <div class="fp-monitor-pulse ${m.status}"></div>
+              <div class="fp-monitor-pulse ${m.enabled === false ? 'pause' : m.status}"></div>
               <span class="fp-monitor-name">${escHtml(m.name)}</span>
             </div>
-            ${badge(statusLabel(m.status), statusBadgeColor(m.status))}
+            ${m.enabled === false ? badge('En pause', '#64748b') : badge(statusLabel(m.status), statusBadgeColor(m.status))}
           </div>
           <div class="fp-monitor-url">${escHtml(m.url)}</div>
           <div class="fp-monitor-stats">
@@ -4692,9 +4692,10 @@ function renderMonitors() {
             <span style="font-size:9px;color:var(--fp-text-faint)">latence 7 checks</span>
           </div>
           <div class="fp-hover-toolbar">
-            <button class="fp-hover-toolbar-btn monitor-view" data-id="${m.id}" title="Voir détails">${svgIcon('eye')}</button>
-            <button class="fp-hover-toolbar-btn monitor-ping" data-id="${m.id}" title="Tester">${svgIcon('refresh')}</button>
-            <button class="fp-hover-toolbar-btn monitor-del"  data-id="${m.id}" title="Supprimer">${svgIcon('trash')}</button>
+            <button class="fp-hover-toolbar-btn monitor-view"   data-id="${m.id}" title="Voir détails">${svgIcon('eye')}</button>
+            <button class="fp-hover-toolbar-btn monitor-ping"   data-id="${m.id}" title="Tester">${svgIcon('refresh')}</button>
+            <button class="fp-hover-toolbar-btn monitor-toggle" data-id="${m.id}" data-enabled="${m.enabled !== false}" title="${m.enabled !== false ? 'Mettre en pause' : 'Reprendre'}">${svgIcon(m.enabled !== false ? 'pause-circle' : 'play-circle')}</button>
+            <button class="fp-hover-toolbar-btn monitor-del"    data-id="${m.id}" title="Supprimer">${svgIcon('trash')}</button>
           </div>
         </div>
       `).join('')}
@@ -8474,7 +8475,7 @@ function renderAlertRules() {
               <option value="latency" ${r.type==='latency'?'selected':''}>Latence</option>
               <option value="uptime" ${r.type==='uptime'?'selected':''}>Uptime</option>
               <option value="monitor_down" ${r.type==='monitor_down'?'selected':''}>Monitor DOWN</option>
-              <option value="keyword_ranking_drop" ${r.type==='keyword_ranking_drop'?'selected':''}>Chute ranking mot-clé</option>
+              <option value="keyword_ranking_drop" ${r.type==='keyword_ranking_drop'?'selected':''} disabled>Chute ranking mot-clé (bientôt disponible)</option>
             </select>
           </div>
           <div class="fp-form-group">
@@ -8562,7 +8563,7 @@ function renderAlertRules() {
               <option value="latency">Latence</option>
               <option value="uptime">Uptime</option>
               <option value="monitor_down">Monitor DOWN</option>
-              <option value="keyword_ranking_drop">Chute ranking mot-clé</option>
+              <option value="keyword_ranking_drop" disabled>Chute ranking mot-clé (bientôt disponible)</option>
             </select>
           </div>
           <div class="fp-form-group" id="rule-operator-group">
@@ -13107,6 +13108,25 @@ function bindSectionEvents() {
               showToast('error', 'Ping échoué — ' + (err?.message || 'Erreur réseau'));
             }
           })();
+          return;
+        }
+        // Pause / Resume button (BUG-W2-MON-001)
+        if (e.target.closest('.monitor-toggle')) {
+          e.stopPropagation();
+          const btn = e.target.closest('.monitor-toggle');
+          if (btn.dataset.pending === '1') return;
+          btn.dataset.pending = '1';
+          const nowEnabled = btn.dataset.enabled !== 'false';
+          const newEnabled = !nowEnabled;
+          apiAction('PATCH', '/api/monitors/' + monitor.id, { enabled: newEnabled })
+            .then(() => {
+              const idx = STATE.monitors.findIndex(m => m.id === monitor.id);
+              if (idx >= 0) STATE.monitors[idx] = { ...STATE.monitors[idx], enabled: newEnabled };
+              showToast('success', newEnabled ? 'Surveillance reprise' : 'Monitor mis en pause');
+              render();
+            })
+            .catch(() => { showToast('error', 'Erreur — réessayez'); })
+            .finally(() => { btn.dataset.pending = '0'; });
           return;
         }
         // Delete button
@@ -21721,18 +21741,21 @@ function renderAlertsCenter() {
   const isUltra = plan === 'Agency' || plan === 'Ultra';
 
   // ── Rule-based alerts from STATE ────────────────────────────
-  const ruleAlerts = (STATE.alertEvents || []).map(ev => ({
-    id: ev.id,
-    sev: ev.severity === 'critical' ? 'critical' : 'warning',
-    cat: 'Règle',
-    icon: ev.ruleType === 'seo_score' ? 'trending-up' : ev.ruleType === 'latency' ? 'activity' : 'wifi',
-    title: "Règle déclenchée : " + escHtml(ev.ruleName),
-    desc: escHtml(ev.message),
-    time: new Date(ev.time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-    color: ev.severity === 'critical' ? '#ef4444' : '#f59e0b',
-    ruleSource: ev.ruleName,
-    impact: "Surveillance automatique active",
-  }));
+  const ruleAlerts = (STATE.alertEvents || [])
+    .filter(ev => !ev.resolvedAt && ev.status !== 'resolved')
+    .map(ev => ({
+      id: ev.id,
+      sev: ev.severity === 'critical' ? 'critical' : ev.severity === 'info' ? 'info' : 'warning',
+      cat: ev.type === 'monitor_down' ? 'Monitor' : ev.type === 'monitor_up' ? 'Monitor' : ev.type === 'seo_score' ? 'SEO' : 'Règle',
+      icon: ev.type === 'seo_score' ? 'trending-up' : ev.type === 'latency' ? 'activity' : ev.type === 'monitor_down' ? 'wifi-off' : ev.type === 'monitor_up' ? 'check-circle' : 'wifi',
+      title: "Règle déclenchée : " + escHtml(ev.ruleName || ev.type),
+      desc: escHtml(ev.message),
+      time: ev.triggeredAt ? new Date(ev.triggeredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—',
+      color: ev.severity === 'critical' ? '#ef4444' : ev.severity === 'info' ? '#22c55e' : '#f59e0b',
+      ruleSource: ev.ruleName,
+      impact: "Surveillance automatique active",
+      _id: ev.id,
+    }));
 
   // ── Dynamic alert feed derived from real monitors + audits ──────────────
   const _alMonDown = (STATE.monitors || []).filter(m => m.status === 'down').slice(0, 1);

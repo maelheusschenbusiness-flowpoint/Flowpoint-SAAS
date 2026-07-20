@@ -33,6 +33,8 @@ export async function initMonitorsTables(): Promise<void> {
     await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS last_alert_sent BIGINT;`);
     await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMP NOT NULL DEFAULT NOW();`);
     await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS created_at      TIMESTAMP NOT NULL DEFAULT NOW();`);
+    // BUG-W2-MON-001: pause/resume support — enabled=false skips cron checks
+    await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS enabled         BOOLEAN NOT NULL DEFAULT TRUE;`);
     // BUG-W2-MON-002: latency=0 on a never-checked monitor is ambiguous.
     // Allow NULL to mean "no measurement yet"; 0 = genuine 0ms measurement.
     await client.query(`ALTER TABLE monitors ALTER COLUMN latency DROP NOT NULL;`);

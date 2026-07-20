@@ -196,12 +196,28 @@ router.delete("/alert-rules/:id", async (req, res) => {
   }
 });
 
+// ── PATCH /alert-events/:id/resolve ──────────────────────────────────────────
+// Must be before /alert-events GET to avoid Express consuming "resolve" as :id
+router.patch("/alert-events/:id/resolve", async (req, res) => {
+  try {
+    await db(req)(
+      `UPDATE alert_events SET status='resolved', resolved_at=NOW()
+       WHERE id=$1 AND org_id=$2 AND status='open'`,
+      [req.params.id, org(req)],
+    );
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "Failed to resolve alert event" });
+  }
+});
+
 // ── GET /alert-events ─────────────────────────────────────────────────────────
 router.get("/alert-events", async (req, res) => {
   try {
     const r = await db(req)(
       `SELECT id, rule_id, rule_name, type, metric_value, threshold, operator,
-              severity, message, site_url, read_at, resolved_at, triggered_at
+              severity, message, site_url, monitor_id, status,
+              read_at, resolved_at, triggered_at
        FROM alert_events WHERE org_id=$1 ORDER BY triggered_at DESC LIMIT 200`,
       [org(req)]
     );
@@ -216,6 +232,8 @@ router.get("/alert-events", async (req, res) => {
       severity:    row.severity,
       message:     row.message,
       siteUrl:     row.site_url,
+      monitorId:   row.monitor_id,
+      status:      row.status ?? "open",
       readAt:      row.read_at,
       resolvedAt:  row.resolved_at,
       triggeredAt: row.triggered_at,
@@ -227,17 +245,20 @@ router.get("/alert-events", async (req, res) => {
 
 // ── POST /alert-events ────────────────────────────────────────────────────────
 router.post("/alert-events", async (req, res) => {
-  const { ruleId, ruleName, type, metricValue, threshold, operator, severity, message, siteUrl } = req.body as {
+  const { ruleId, ruleName, type, metricValue, threshold, operator, severity, message, siteUrl, monitorId } = req.body as {
     ruleId?: string; ruleName?: string; type?: string; metricValue?: number;
-    threshold?: number; operator?: string; severity?: string; message?: string; siteUrl?: string;
+    threshold?: number; operator?: string; severity?: string; message?: string;
+    siteUrl?: string; monitorId?: string;
   };
   const id = `ae_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
     await db(req)(
-      `INSERT INTO alert_events (id, org_id, rule_id, rule_name, type, metric_value, threshold, operator, severity, message, site_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      `INSERT INTO alert_events
+         (id, org_id, rule_id, rule_name, type, metric_value, threshold, operator,
+          severity, message, site_url, monitor_id, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open')`,
       [id, org(req), ruleId ?? "", ruleName ?? "", type ?? "seo_score", metricValue ?? null, threshold ?? null,
-       operator ?? null, severity ?? "warning", message ?? "", siteUrl ?? ""]
+       operator ?? null, severity ?? "warning", message ?? "", siteUrl ?? "", monitorId ?? ""]
     );
     res.status(201).json({ id, triggeredAt: new Date().toISOString() });
   } catch {

@@ -26,6 +26,26 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
         if (rule.operator === "eq" && score === rule.threshold) triggered = true;
         if (triggered) {
           logger.info({ url, score, rule: rule.name }, "[monitor-cron] Alert rule triggered");
+          // BUG-W2-ALT-003: write real alert_event (dedupe by org+rule+day)
+          try {
+            const { fireAlertEvent } = await import("./alert-events-service.js");
+            const dedupeKey = `seo_score_${orgId}_${rule.id}_${new Date().toISOString().slice(0, 10)}`;
+            await fireAlertEvent({
+              orgId,
+              ruleId:      String(rule.id),
+              ruleName:    String(rule.name),
+              type:        "seo_score",
+              metricValue: score,
+              threshold:   Number(rule.threshold),
+              operator:    String(rule.operator),
+              severity:    score < 40 ? "critical" : "warning",
+              message:     `${url} — score ${score}/100 (seuil ${rule.operator} ${rule.threshold})`,
+              siteUrl:     url,
+              dedupeKey,
+            });
+          } catch (aeErr) {
+            logger.warn({ err: aeErr }, "[monitor-cron] alert_event write failed (non-fatal)");
+          }
           try {
             await connectMongo();
             await NotificationModel.create({

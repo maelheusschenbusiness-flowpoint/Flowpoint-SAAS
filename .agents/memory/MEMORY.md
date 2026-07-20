@@ -6,6 +6,7 @@
 - [FlowPoint dynamic dates](flowpoint-dynamic-dates.md) — CUR_MONTH/PREV_MONTH constants at IIFE top; all section titles use these, never hardcode month strings
 - [Public vs Protected Routes](public-routes-pattern.md) — behavioral snippet/event/session and SSO SAML endpoints must be on publicBehavioralRouter/publicSsoRouter before requireAuth in routes/index.ts
 - [Alert rules extended types](alert-rules-types.md) — monitor_down and keyword_ranking_drop added; monitor_down fires on state transition (no threshold), keyword_ranking_drop fires when drop > N positions
+- [alert_events operator nullable](alert-events-operator.md) — operator column must be NULL-able; event-based types (monitor_down/up) have no operator; DROP NOT NULL in init-data-tables.ts
 - [FlowPoint audit session findings](flowpoint-audit-hardening.md) — billing-service needs prod guard (throw/503) when Stripe key missing; SSRF runs after auth (401 before URL validation = correct); auth rate limit 10/15min per IP; ai-worker buildFallbackResult returns generic recs tagged mock:true on OpenAI failure
 - [API-server service stubs](api-server-stubs.md) — 29 missing service files created to fix esbuild; export names must match exactly what routes import; google-service.ts export names differ from generic OAuth helpers
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)

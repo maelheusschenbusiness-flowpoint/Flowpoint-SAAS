@@ -49,6 +49,8 @@ function toPublic(row: Record<string, unknown>) {
     alertPhone:  row["alert_phone"],
     isCritical:  row["is_critical"],
     frequency:   row["frequency"],
+    // BUG-W2-MON-001: expose enabled; explicitly preserve false
+    enabled:     row["enabled"] !== false,
     orgId:       row["org_id"],
     createdAt:   row["created_at"],
     updatedAt:   row["updated_at"],
@@ -301,6 +303,61 @@ async function saveCheckResult(
             await sendSms(phone, msg);
           }
         }
+
+        // BUG-W2-ALT-003: fire/resolve alert_events for monitor transitions
+        const { fireAlertEvent, resolveAlertEvents } = await import("../services/alert-events-service.js");
+        const monUrl = (mon.url as string | undefined) ?? "";
+        if (isDown) {
+          // Fire alert_events for all matching monitor_down rules
+          const rClient = await pool.connect();
+          try {
+            const { rows: rules } = await rClient.query(
+              `SELECT id, name, site_urls FROM alert_rules WHERE org_id=$1 AND type='monitor_down' AND enabled=true`,
+              [orgId],
+            );
+            for (const rule of rules) {
+              const siteUrls: string[] = (() => { try { return JSON.parse(rule["site_urls"] as string) as string[]; } catch { return []; } })();
+              if (siteUrls.length > 0 && !siteUrls.some((u: string) => monUrl.startsWith(u) || u === monUrl)) continue;
+              await fireAlertEvent({
+                orgId,
+                ruleId:     String(rule["id"]),
+                ruleName:   String(rule["name"]),
+                type:       "monitor_down",
+                severity:   "critical",
+                message:    `${monUrl} est inaccessible`,
+                siteUrl:    monUrl,
+                monitorId,
+                // Unique per org+monitor+rule — ON CONFLICT DO NOTHING deduplicates
+                dedupeKey:  `mon_down_${orgId}_${monitorId}_${String(rule["id"])}`,
+              });
+            }
+          } finally { rClient.release(); }
+        } else {
+          // Resolve open monitor_down events for this monitor
+          await resolveAlertEvents({ orgId, monitorId, type: "monitor_down" });
+          // Fire alert_events for all matching monitor_up rules (no dedup — each recovery is unique)
+          const rClient = await pool.connect();
+          try {
+            const { rows: rules } = await rClient.query(
+              `SELECT id, name, site_urls FROM alert_rules WHERE org_id=$1 AND type='monitor_up' AND enabled=true`,
+              [orgId],
+            );
+            for (const rule of rules) {
+              const siteUrls: string[] = (() => { try { return JSON.parse(rule["site_urls"] as string) as string[]; } catch { return []; } })();
+              if (siteUrls.length > 0 && !siteUrls.some((u: string) => monUrl.startsWith(u) || u === monUrl)) continue;
+              await fireAlertEvent({
+                orgId,
+                ruleId:   String(rule["id"]),
+                ruleName: String(rule["name"]),
+                type:     "monitor_up",
+                severity: "info",
+                message:  `${monUrl} est de nouveau opérationnel`,
+                siteUrl:  monUrl,
+                monitorId,
+              });
+            }
+          } finally { rClient.release(); }
+        }
       } catch { /* non-fatal */ }
     })();
   }
@@ -480,7 +537,13 @@ router.patch("/monitors/:id", async (req: Request, res: Response) => {
   const body = req.body as {
     name?: string; url?: string; alertEmail?: string;
     alertPhone?: string; isCritical?: boolean; frequency?: string;
+    enabled?: boolean;
   };
+
+  // BUG-W2-MON-001: enabled must be a strict boolean (never a string or number)
+  if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+    res.status(400).json({ error: "enabled must be a boolean (true or false)" }); return;
+  }
 
   if (body.url !== undefined) {
     const urlError = await validateMonitorUrl(body.url);
@@ -509,6 +572,8 @@ router.patch("/monitors/:id", async (req: Request, res: Response) => {
   if (body.alertPhone !== undefined) addField("alert_phone", body.alertPhone);
   if (body.isCritical !== undefined) addField("is_critical", body.isCritical);
   if (body.frequency  !== undefined) addField("frequency",   body.frequency);
+  // BUG-W2-MON-001: pause/resume
+  if (body.enabled    !== undefined) addField("enabled",     body.enabled);
 
   if (setClauses.length === 0) {
     res.status(400).json({ error: "No valid fields to update" }); return;
@@ -590,10 +655,12 @@ export async function checkAllMonitorsDue(): Promise<{ checked: number; errors: 
           OR last_check = ''
           OR last_check !~ '^\\d{4}-\\d{2}-\\d{2}'`
     );
+    // BUG-W2-MON-001: only check monitors that are not paused
     const { rows } = await client.query(
       `SELECT id, org_id, url, status, frequency, last_check
        FROM monitors
-       WHERE last_check::timestamptz < NOW() - (GREATEST(COALESCE(NULLIF(regexp_replace(frequency, '[^0-9]', '', 'g'), '')::int, 5), 1) || ' minutes')::interval`
+       WHERE enabled = TRUE
+         AND last_check::timestamptz < NOW() - (GREATEST(COALESCE(NULLIF(regexp_replace(frequency, '[^0-9]', '', 'g'), '')::int, 5), 1) || ' minutes')::interval`
     );
     for (const monitor of rows) {
       const _cronOrgId = monitor["org_id"] as string | undefined;
