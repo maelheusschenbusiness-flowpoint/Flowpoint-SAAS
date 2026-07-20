@@ -249,6 +249,7 @@ if (!monId) {
 await DB.query(`DELETE FROM user_sessions WHERE token = ANY($1)`, [TOKENS_CREATED]);
 await DB.query(`DELETE FROM org_settings WHERE org_id = $1`, [ORG]);
 await DB.query(`DELETE FROM team_members WHERE org_id = $1`, [ORG]);
+await DB.query(`DELETE FROM organizations WHERE id = $1`, [ORG]);
 await DB.end();
 
 console.log(`\n━━━ Fixture Guard RÉSULTAT ━━━`);

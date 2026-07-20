@@ -239,6 +239,7 @@ if (TOKENS_CREATED.length) {
 }
 await DB.query(`DELETE FROM org_settings WHERE org_id = ANY($1)`, [[ORG_A, ORG_B]]);
 await DB.query(`DELETE FROM team_members WHERE org_id = ANY($1)`, [[ORG_A, ORG_B]]);
+await DB.query(`DELETE FROM organizations WHERE id = ANY($1)`, [[ORG_A, ORG_B]]);
 await DB.end();
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────

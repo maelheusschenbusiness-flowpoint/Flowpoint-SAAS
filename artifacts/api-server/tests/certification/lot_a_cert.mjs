@@ -325,6 +325,8 @@ if (!hard1 && !fake1 && !hard2 && !fake2) {
 await browser.close();
 await DB.query(`DELETE FROM user_sessions WHERE token = $1`, [TOKEN]);
 await DB.query(`DELETE FROM org_settings WHERE org_id = $1`, [ORG]);
+await DB.query(`DELETE FROM team_members WHERE org_id = $1`, [ORG]);
+await DB.query(`DELETE FROM organizations WHERE id = $1`, [ORG]);
 await DB.end();
 
 // ──────────────────────────────────────────────────────────────

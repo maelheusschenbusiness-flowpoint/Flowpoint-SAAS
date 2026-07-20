@@ -99,6 +99,7 @@ if (invR.body.invitation?.id) {
 }
 await DB.query(`DELETE FROM user_sessions WHERE token=$1`, [TOKEN]);
 await DB.query(`DELETE FROM org_settings WHERE org_id=$1`, [ORG]);
+await DB.query(`DELETE FROM team_members WHERE org_id=$1`, [ORG]);
 await DB.query(`DELETE FROM organizations WHERE id=$1`, [ORG]);
 try {
   fs.readdirSync(MAIL_DIR)
