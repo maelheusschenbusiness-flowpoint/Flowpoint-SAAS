@@ -21743,19 +21743,33 @@ function renderAlertsCenter() {
   // ── Rule-based alerts from STATE ────────────────────────────
   const ruleAlerts = (STATE.alertEvents || [])
     .filter(ev => !ev.resolvedAt && ev.status !== 'resolved')
-    .map(ev => ({
-      id: ev.id,
-      sev: ev.severity === 'critical' ? 'critical' : ev.severity === 'info' ? 'info' : 'warning',
-      cat: ev.type === 'monitor_down' ? 'Monitor' : ev.type === 'monitor_up' ? 'Monitor' : ev.type === 'seo_score' ? 'SEO' : 'Règle',
-      icon: ev.type === 'seo_score' ? 'trending-up' : ev.type === 'latency' ? 'activity' : ev.type === 'monitor_down' ? 'wifi-off' : ev.type === 'monitor_up' ? 'check-circle' : 'wifi',
-      title: "Règle déclenchée : " + escHtml(ev.ruleName || ev.type),
-      desc: escHtml(ev.message),
-      time: ev.triggeredAt ? new Date(ev.triggeredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—',
-      color: ev.severity === 'critical' ? '#ef4444' : ev.severity === 'info' ? '#22c55e' : '#f59e0b',
-      ruleSource: ev.ruleName,
-      impact: "Surveillance automatique active",
-      _id: ev.id,
-    }));
+    .map(ev => {
+      const isLatency = ev.type === 'latency';
+      const isUptime  = ev.type === 'uptime';
+      const opLabel   = ev.operator === 'lt' ? '<' : ev.operator === 'lte' ? '≤' : ev.operator === 'gt' ? '>' : ev.operator === 'gte' ? '≥' : ev.operator === 'eq' ? '=' : '';
+      const unit      = isLatency ? 'ms' : isUptime ? '%' : '';
+      const observed  = (ev.metricValue != null && isFinite(Number(ev.metricValue))) ? Number(ev.metricValue) : null;
+      const thresh    = (ev.threshold  != null && isFinite(Number(ev.threshold)))   ? Number(ev.threshold)  : null;
+      let detailLine  = escHtml(ev.message || '');
+      if ((isLatency || isUptime) && observed !== null && thresh !== null && opLabel) {
+        const obsStr = isLatency ? observed + unit : observed.toFixed(1) + unit;
+        const thrStr = isLatency ? thresh + unit   : thresh + unit;
+        detailLine = (isLatency ? 'Latence observée : ' : 'Uptime observé : ') + obsStr + ' — seuil ' + opLabel + ' ' + thrStr;
+      }
+      return {
+        id: ev.id,
+        sev: ev.severity === 'critical' ? 'critical' : ev.severity === 'info' ? 'info' : 'warning',
+        cat: ev.type === 'monitor_down' ? 'Monitor' : ev.type === 'monitor_up' ? 'Monitor' : ev.type === 'seo_score' ? 'SEO' : isLatency ? 'Performance' : isUptime ? 'Uptime' : 'Règle',
+        icon: ev.type === 'seo_score' ? 'trending-up' : isLatency ? 'activity' : isUptime ? 'bar-chart' : ev.type === 'monitor_down' ? 'wifi-off' : ev.type === 'monitor_up' ? 'check-circle' : 'wifi',
+        title: isLatency ? 'Latence élevée — ' + escHtml(ev.siteUrl || ev.ruleName || '') : isUptime ? 'Uptime sous le seuil — ' + escHtml(ev.siteUrl || ev.ruleName || '') : 'Règle déclenchée : ' + escHtml(ev.ruleName || ev.type),
+        desc: detailLine,
+        time: ev.triggeredAt ? new Date(ev.triggeredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—',
+        color: ev.severity === 'critical' ? '#ef4444' : ev.severity === 'info' ? '#22c55e' : '#f59e0b',
+        ruleSource: ev.ruleName,
+        impact: isLatency ? 'Performance dégradée' : isUptime ? 'Disponibilité sous le seuil' : 'Surveillance automatique active',
+        _id: ev.id,
+      };
+    });
 
   // ── Dynamic alert feed derived from real monitors + audits ──────────────
   const _alMonDown = (STATE.monitors || []).filter(m => m.status === 'down').slice(0, 1);

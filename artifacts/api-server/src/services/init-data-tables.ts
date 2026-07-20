@@ -367,7 +367,10 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE alert_events ALTER COLUMN operator DROP DEFAULT;`);
     await run(client, `CREATE INDEX IF NOT EXISTS alert_events_org_id_idx    ON alert_events(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS alert_events_monitor_id_idx ON alert_events(monitor_id);`);
-    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS alert_events_dedupe_key_idx ON alert_events(dedupe_key) WHERE dedupe_key IS NOT NULL;`);
+    // B3: replace old dedupe index (blocked re-firing after resolve) with one
+    // conditioned on status='open' so resolved events free their dedupe slot.
+    await run(client, `DROP INDEX IF EXISTS alert_events_dedupe_key_idx;`);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS alert_events_open_dedupe_key_idx ON alert_events(dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'open';`);
 
     // ── calendar_events ───────────────────────────────────────────────────────
     await run(client, `

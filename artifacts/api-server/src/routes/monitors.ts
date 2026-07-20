@@ -141,6 +141,10 @@ async function saveCheckResult(
     | { kind: "up"; mon: Record<string, unknown> | undefined; downDurationMin: number }
     | null = null;
 
+  // BUG-W2-ALT-003 B3: hoisted so latency/uptime rule evaluation (post-commit)
+  // can access the real values computed inside the withOrgDb transaction.
+  let capturedUptimePct = 100;
+
   await withOrgDb(orgId, async (client) => {
     // 1. Insert check record
     await client.query(
@@ -161,6 +165,7 @@ async function saveCheckResult(
     const okCount   = Number(uptimeRes.rows[0]?.ok_count ?? 0);
     const total     = Number(uptimeRes.rows[0]?.total    ?? 1);
     const uptimePct = total > 0 ? Math.round((okCount / total) * 1000) / 10 : 100;
+    capturedUptimePct = uptimePct; // expose to post-commit scope
 
     // 3. Update monitor row
     await client.query(
@@ -361,6 +366,75 @@ async function saveCheckResult(
       } catch { /* non-fatal */ }
     })();
   }
+
+  // BUG-W2-ALT-003 B3: evaluate latency and uptime threshold rules.
+  // Runs AFTER EVERY check (unconditional — no dependency on state transition)
+  // so the pipeline fires and resolves independently of monitor_down/up events.
+  // Uses capturedUptimePct hoisted from the withOrgDb callback and result.latencyMs
+  // directly — both are the real values already persisted by the transaction.
+  (async () => {
+    try {
+      const { evaluateCondition, fireAlertEvent: fireAE, resolveAlertEvents: resolveAE } =
+        await import("../services/alert-events-service.js");
+      // Fetch monitor URL — needed for site_url field and event message.
+      const monUrlRes = await pool.query(`SELECT url FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]);
+      const monUrl    = (monUrlRes.rows[0]?.["url"] as string | undefined) ?? "";
+      const rClient2  = await pool.connect();
+      try {
+        const { rows: threshRules } = await rClient2.query(
+          `SELECT id, name, type, operator, threshold, site_urls
+           FROM alert_rules
+           WHERE org_id = $1 AND type IN ('latency', 'uptime') AND enabled = true`,
+          [orgId],
+        );
+        for (const rule of threshRules) {
+          const ruleType   = String(rule["type"]);
+          const ruleOp     = String(rule["operator"] ?? "gt");
+          const ruleThresh = Number(rule["threshold"] ?? 0);
+          const ruleId     = String(rule["id"]);
+          const ruleName   = String(rule["name"]);
+
+          // Respect optional site_url filter
+          const siteUrls: string[] = (() => {
+            try { return JSON.parse(rule["site_urls"] as string) as string[]; } catch { return []; }
+          })();
+          if (siteUrls.length > 0 && !siteUrls.some((u: string) => monUrl.startsWith(u) || u === monUrl)) continue;
+
+          // Real observed values — latencyMs from HTTP check, capturedUptimePct from
+          // rolling window computed and persisted inside the withOrgDb transaction.
+          const observedValue = ruleType === "latency" ? result.latencyMs : capturedUptimePct;
+
+          const triggered = evaluateCondition(observedValue, ruleOp, ruleThresh);
+          // Dedupe key is stable while condition holds — unique per rule×monitor×org.
+          // The partial index (status='open') ensures resolution frees the slot.
+          const dedupeKey = `${ruleType}_${orgId}_${monitorId}_${ruleId}`;
+
+          if (triggered) {
+            const unit    = ruleType === "latency" ? "ms" : "%";
+            const opLabel = ruleOp === "lt" ? "<" : ruleOp === "lte" ? "≤" : ruleOp === "gt" ? ">" : ruleOp === "gte" ? "≥" : "=";
+            const label   = ruleType === "latency" ? "Latence élevée" : "Uptime sous le seuil";
+            await fireAE({
+              orgId, ruleId, ruleName,
+              type:        ruleType,
+              metricValue: observedValue,
+              threshold:   ruleThresh,
+              operator:    ruleOp,
+              severity:    ruleType === "latency" ? "warning" : "critical",
+              message:     `${label} — ${monUrl} : ${observedValue}${unit} (seuil ${opLabel} ${ruleThresh}${unit})`,
+              siteUrl:     monUrl,
+              monitorId,
+              dedupeKey,
+            });
+          } else {
+            // Condition back to normal — resolve open event for this rule×monitor×type
+            await resolveAE({ orgId, ruleId, monitorId, type: ruleType });
+          }
+        }
+      } finally { rClient2.release(); }
+    } catch (err) {
+      logger.warn({ err, monitorId }, "[monitors] latency/uptime rule evaluation failed (non-fatal)");
+    }
+  })();
 
   return { newStatus };
 }

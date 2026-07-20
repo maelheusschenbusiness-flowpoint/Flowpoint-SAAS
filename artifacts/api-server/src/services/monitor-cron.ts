@@ -29,6 +29,7 @@ export async function evaluateAlertRulesForAudit(url: string, score: number, org
           // BUG-W2-ALT-003: write real alert_event (dedupe by org+rule+day)
           try {
             const { fireAlertEvent } = await import("./alert-events-service.js");
+            // dedupeKey is daily — ON CONFLICT targets the open-status partial index
             const dedupeKey = `seo_score_${orgId}_${rule.id}_${new Date().toISOString().slice(0, 10)}`;
             await fireAlertEvent({
               orgId,

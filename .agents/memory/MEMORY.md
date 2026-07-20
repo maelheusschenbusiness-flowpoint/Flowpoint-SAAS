@@ -54,6 +54,7 @@
 - [audits.date TEXT column](audits-date-column.md) — audits.date is TEXT NOT NULL DEFAULT ''; never compare it to a timestamp; use created_at (TIMESTAMP) for date-range duplicate checks
 - [_doRender crash pattern](dorender-crash-pattern.md) — nav/breadcrumb updated BEFORE html=renderXxx(); if renderer throws, page.innerHTML is never written and old DOM stays; fix: try/catch around switch block
 - [Wave 2 Lot B investigation context](lotb-investigation-context.md) — MON-001/ALT-002/ALT-003/REP-001/MON-002 each need targeted investigation before any code; constraints per bug documented
+- [Monitor check rule eval scope](monitor-check-rule-eval.md) — latency/uptime evaluation must be a standalone fire-and-forget IIFE after every check; NOT inside if(notifyAfterCommit)
 - [Alert rules enabled vs active](alert-rules-enabled-field.md) — backend returns `enabled` (boolean), never `active`; dashboard.js had 3 r.active refs on alertRules (L3684, L4161, L16074) — all fixed to r.enabled
 - [activity.ts parameterized SQL](activity-sql-params.md) — GET /api/activity now supports limit(1-200)/page/type via SQL; id included in SELECT for 60s-poll dedup; always returns array (backward compat)
 - [window.apiAction timing](window-apiaction-timing.md) — window.apiAction must be assigned at module level (near window.STATE) not only inside the async IIFE; IIFE awaits delay the assignment past onclick fire
