@@ -448,6 +448,23 @@ router.post("/team/invite", canAdmin, async (req: Request, res: Response) => {
     }
   } catch { /* non-fatal, let INSERT catch the 23505 */ }
 
+  // Active/suspended member check: cannot invite an already-active member
+  try {
+    const activeMember = await db(
+      `SELECT id FROM team_members
+       WHERE org_id = $1 AND lower(trim(email)) = lower($2) AND status IN ('active','suspended')
+       LIMIT 1`,
+      [org, email]
+    );
+    if (activeMember.rows.length > 0) {
+      res.status(409).json({
+        ok: false, code: "ALREADY_MEMBER",
+        error: "Un membre actif ou suspendu existe déjà avec cette adresse.",
+      });
+      return;
+    }
+  } catch { /* non-fatal */ }
+
   // Seat quota check
   const seatUsage = await getSeatUsage(db, org);
   if (seatUsage.used >= seatUsage.limit) {

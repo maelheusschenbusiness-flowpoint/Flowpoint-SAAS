@@ -653,6 +653,29 @@ export async function initDataTables(): Promise<void> {
     `);
     await run(client, `CREATE INDEX IF NOT EXISTS team_members_org_idx ON team_members(org_id, email);`);
 
+    // ── Broader uniqueness: one live row per (org_id, email) across active+pending+suspended ──
+    // Sanitize duplicate live rows (keep highest-priority status first: active > suspended > pending)
+    await run(client, `
+      DELETE FROM team_members
+      WHERE status IN ('active','pending','suspended')
+        AND ctid NOT IN (
+          SELECT DISTINCT ON (org_id, lower(trim(email))) ctid
+          FROM   team_members
+          WHERE  status IN ('active','pending','suspended')
+          ORDER  BY org_id,
+                    lower(trim(email)),
+                    CASE status WHEN 'active' THEN 0 WHEN 'suspended' THEN 1 ELSE 2 END ASC,
+                    COALESCE(updated_at, created_at) DESC NULLS LAST,
+                    ctid DESC
+        );
+    `);
+    await run(client, `DROP INDEX IF EXISTS team_members_unique_live_email_idx;`);
+    await run(client, `
+      CREATE UNIQUE INDEX IF NOT EXISTS team_members_unique_live_email_idx
+      ON team_members (org_id, lower(trim(email)))
+      WHERE status IN ('active','pending','suspended');
+    `);
+
     // ── team_members — organization_members constraints (T06) ────────────────
     // 1. Sanitize invalid roles FIRST (must run before constraint is added/validated)
     //    Uses canonical mapping; anything unrecognised keeps its value so the
