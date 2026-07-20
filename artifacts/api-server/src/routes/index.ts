@@ -55,7 +55,7 @@ import publicBillingRouter from "./public-billing.js";
 import growthObjectivesRouter from "./growth-objectives.js";
 import plansRouter from "./plans.js";
 import securityRouter from "./security.js";
-import { qaFixturesRouter, publicQaRouter } from "./qa-fixtures.js";
+import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixtures.js";
 
 const router: IRouter = Router();
 
@@ -133,7 +133,17 @@ router.use((req: Request, res: Response, next: NextFunction) => {
     // Service credential is restricted to explicitly internal routes only.
     // All ordinary user routes return 403 — the key must never read user data.
     const isInternalRoute = req.method === "POST" && req.path === "/alert-events";
-    if (!isInternalRoute) {
+    // QA injection: allow POST /monitors/:id/check ONLY when the request body
+    // explicitly carries a _qa_result field (service-only injection path).
+    // isQaFixturesEnabled() is NOT checked here — handleCheck does that and
+    // returns 404 when fixtures are disabled. Keeping the guard out of the
+    // middleware ensures the caller receives 404 (not 403) when fixtures are off.
+    const bodyHasQaResult = !!(req.body as Record<string, unknown> | undefined)?.["_qa_result"];
+    const isQaMonitorCheck =
+      bodyHasQaResult &&
+      req.method === "POST" &&
+      /^\/monitors\/[^/]+\/check$/.test(req.path);
+    if (!isInternalRoute && !isQaMonitorCheck) {
       res.status(403).json({ error: "Service credential: route not permitted" });
       return;
     }

@@ -7,6 +7,7 @@ import { validateMonitorUrl, isPrivateHost, checkDnsResolution } from "../middle
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
+import { isQaFixturesEnabled } from "./qa-fixtures.js";
 
 const router = Router();
 const monitorCreateRateLimit = createRateLimit("reportsPerHour");
@@ -673,6 +674,66 @@ router.patch("/monitors/:id", canWrite, async (req: Request, res: Response) => {
 async function handleCheck(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   try {
+    // ── QA injection path ────────────────────────────────────────────────────
+    // Must run BEFORE req.orgDb: service credential has orgId="default" so the
+    // org-scoped connection cannot find monitors owned by test orgs. We use the
+    // unscoped pool directly for the QA path.
+    const qaRaw = (req.body as Record<string, unknown> | undefined)?._qa_result;
+    if (qaRaw !== undefined && qaRaw !== null) {
+      // Gate 1 — fixtures must be explicitly enabled (ENABLE_QA_FIXTURES=true,
+      // NODE_ENV≠production, REPLIT_DEPLOYMENT≠1, no RENDER, no FLY_APP_NAME)
+      if (!isQaFixturesEnabled()) {
+        res.status(404).json({ error: "Not found" }); return;
+      }
+      // Gate 2 — request must carry the valid X-Api-Key service credential.
+      // User Bearer tokens (owner/admin/member/viewer) are never permitted to inject.
+      const serviceSecret = process.env["API_SECRET_KEY"];
+      const apiKeyHeader  = req.headers["x-api-key"];
+      if (typeof apiKeyHeader !== "string") {
+        res.status(403).json({ error: "Not authorized" }); return;
+      }
+      if (!serviceSecret || apiKeyHeader !== serviceSecret) {
+        res.status(401).json({ error: "Unauthorized" }); return;
+      }
+      // Both gates passed — use unscoped pool to find the monitor across any org.
+      const client = await pool.connect();
+      try {
+        const monRow = await client.query(`SELECT * FROM monitors WHERE id = $1`, [id]);
+        if (monRow.rowCount === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
+        const monitor        = monRow.rows[0] as Record<string, unknown>;
+        const previousStatus = monitor["status"] as string;
+        const orgId          = monitor["org_id"] as string | undefined;
+        if (!orgId) { res.status(500).json({ error: "Monitor data integrity error: missing org_id" }); return; }
+        const q = qaRaw as { ok?: unknown; statusCode?: unknown; latencyMs?: unknown; error?: unknown };
+        const result: CheckResult = {
+          ok:         !!q.ok,
+          statusCode: Number(q.statusCode) || (q.ok ? 200 : 503),
+          latencyMs:  Math.max(1, Number(q.latencyMs) || 10),
+          error:      typeof q.error === "string" ? q.error : undefined,
+        };
+        const { newStatus } = await saveCheckResult(id, orgId, previousStatus, result);
+        const updated = await client.query(`SELECT * FROM monitors WHERE id = $1`, [id]);
+        store.logActivity({
+          type: "monitor",
+          label: `Ping ${String(monitor["name"])} — ${newStatus.toUpperCase()} (${result.latencyMs}ms)`,
+          targetId: id, targetType: "monitor",
+          metadata: { url: monitor["url"], responseTime: result.latencyMs, status: newStatus },
+        }).catch(err => logger.error({ err }, "[monitors] logActivity failed"));
+        store.broadcast({ type: "monitor:ping", monitorId: id, status: newStatus, responseTime: result.latencyMs }, orgId);
+        res.json({
+          ok:           true,
+          status:       newStatus,
+          responseTime: result.latencyMs,
+          statusCode:   result.statusCode,
+          monitor:      updated.rowCount ? toPublic(updated.rows[0]) : null,
+        });
+      } finally {
+        client.release();
+      }
+      return;
+    }
+
+    // ── Normal (non-QA) path — org-scoped connection ─────────────────────────
     const monRow = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
     if (monRow.rowCount === 0) { res.status(404).json({ error: "Monitor not found" }); return; }
 
@@ -681,22 +742,7 @@ async function handleCheck(req: Request, res: Response): Promise<void> {
     const orgId          = monitor["org_id"] as string | undefined;
     if (!orgId) { res.status(500).json({ error: "Monitor data integrity error: missing org_id" }); return; }
 
-    // QA injection bypass: when RENDER is not set (Replit dev/test environment)
-    // the caller may supply a pre-built check result to skip the SSRF-guarded
-    // performCheck step. saveCheckResult (the real business evaluator) always runs.
-    let result: CheckResult;
-    const qaInject = !process.env["RENDER"] && (req.body as Record<string, unknown> | undefined)?._qa_result;
-    if (qaInject && typeof qaInject === "object") {
-      const q = qaInject as { ok?: unknown; statusCode?: unknown; latencyMs?: unknown; error?: unknown };
-      result = {
-        ok:        !!q.ok,
-        statusCode: Number(q.statusCode) || (q.ok ? 200 : 503),
-        latencyMs:  Math.max(1, Number(q.latencyMs) || 10),
-        error:      typeof q.error === "string" ? q.error : undefined,
-      };
-    } else {
-      result = await performCheck(monitor["url"] as string);
-    }
+    const result = await performCheck(monitor["url"] as string);
     const { newStatus } = await saveCheckResult(id, orgId, previousStatus, result);
 
     const updated = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);

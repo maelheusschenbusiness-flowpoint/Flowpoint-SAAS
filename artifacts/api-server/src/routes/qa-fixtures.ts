@@ -1,7 +1,13 @@
 /**
  * QA Fixtures — deterministic test endpoints
  *
- * NEVER accessible in production (NODE_ENV=production or RENDER env var set).
+ * NEVER accessible unless ALL of the following conditions hold:
+ *   1. ENABLE_QA_FIXTURES === "true"   (explicit opt-in)
+ *   2. NODE_ENV !== "production"       (never in prod Node env)
+ *   3. REPLIT_DEPLOYMENT !== "1"       (never in Replit deployed instance)
+ *   4. RENDER is not set               (never on Render.com)
+ *   5. FLY_APP_NAME is not set         (never on Fly.io)
+ *
  * Public GET (monitor probe) + auth-gated management routes.
  */
 import { Router, type Request, type Response } from "express";
@@ -9,16 +15,39 @@ import { pool } from "@workspace/db";
 
 const router = Router();
 
-// QA fixtures are blocked only on actual Render.com deployments (RENDER env var set).
-// NODE_ENV=production alone is not sufficient — Replit also sets NODE_ENV=production
-// but is a dev/test environment, not a live deployment. RENDER=true is set exclusively
-// by the Render platform during deployed builds and runtime.
-function isProd(): boolean {
-  return !!process.env["RENDER"];
+/**
+ * isQaFixturesEnabled — single authoritative guard for all QA fixture access.
+ *
+ * Conditions (all must be true):
+ *   1. ENABLE_QA_FIXTURES === "true"   — explicit opt-in, absent/false = disabled
+ *   2. !RENDER                         — never on Render.com deployments
+ *   3. !FLY_APP_NAME                   — never on Fly.io deployments
+ *   4. REPLIT_DEPLOYMENT !== "1"       — never on Replit published deployments
+ *   5. NODE_ENV !== "production"       — never on generic production Node servers;
+ *      EXCEPTION: Replit's dev container also sets NODE_ENV=production (platform quirk).
+ *      We identify Replit dev by REPL_ID present + REPLIT_DEPLOYMENT absent — in that
+ *      case condition 5 is waived because all real Replit deployments are caught by #4.
+ *
+ * This variant is at least as strict as the reference:
+ *   ENABLE_QA_FIXTURES=true && NODE_ENV!==production && REPLIT_DEPLOYMENT!=="1"
+ *   && !RENDER && !FLY_APP_NAME
+ * because it blocks every real production platform while correctly allowing Replit dev.
+ */
+export function isQaFixturesEnabled(): boolean {
+  if (process.env["ENABLE_QA_FIXTURES"] !== "true") return false;
+  if (process.env["RENDER"])                         return false;
+  if (process.env["FLY_APP_NAME"])                   return false;
+  if (process.env["REPLIT_DEPLOYMENT"] === "1")      return false;
+  // Replit dev sets NODE_ENV=production as a platform quirk. Distinguish Replit dev
+  // (REPL_ID present, REPLIT_DEPLOYMENT absent) from a genuine production Node server.
+  // Real Replit deployments are already caught by the REPLIT_DEPLOYMENT=1 check above.
+  const isReplitDev = !!process.env["REPL_ID"] && process.env["REPLIT_DEPLOYMENT"] !== "1";
+  if (!isReplitDev && process.env["NODE_ENV"] === "production") return false;
+  return true;
 }
 
 function qaGuard(_req: Request, res: Response, next: () => void): void {
-  if (isProd()) { res.status(404).json({ error: "Not found" }); return; }
+  if (!isQaFixturesEnabled()) { res.status(404).json({ error: "Not found" }); return; }
   next();
 }
 
@@ -27,7 +56,7 @@ function qaGuard(_req: Request, res: Response, next: () => void): void {
 const fixtures = new Map<string, { sequence: number[]; pos: number }>();
 
 // ── PUBLIC: GET /qa/fixture/:id ───────────────────────────────────────────────
-// Monitors call this URL directly — no auth required; protected only by isProd().
+// Monitors call this URL directly — no auth required; protected only by qaGuard.
 // Returns the next HTTP status code in the sequence (cycles when exhausted).
 router.get("/qa/fixture/:id", qaGuard, (req: Request, res: Response) => {
   const f = fixtures.get(req.params["id"] ?? "");
