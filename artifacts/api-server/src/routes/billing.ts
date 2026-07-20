@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
+import { ownerOnly, canAdmin } from "../middlewares/requireRole.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS } from "../lib/plans.js";
 import { upsertOrgSettings, loadOrgSettings } from "../services/org-settings.js";
 import { PLAN_CONFIG, ADDON_CATALOG, getUsageSummary, getMRRData, getSubscriptionAnalytics, startTrial, validateCoupon, getInvoices, trackBillingEvent } from "../services/billing-service.js";
@@ -317,7 +318,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/billing/portal", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+router.post("/billing/portal", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
   const returnUrl = process.env["STRIPE_RETURN_URL"] || `${publicUrl}/dashboard`;
@@ -440,7 +441,7 @@ router.post("/billing/coupon/validate", async (req: Request, res: Response) => {
 
 // ── NEW: GET /billing/subscription ──────────────────────────────────────────
 // ── POST /billing/cancel ─────────────────────────────────────────────────────
-router.post("/billing/cancel", async (req: Request, res: Response) => {
+router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) => {
   const { atPeriodEnd = true } = req.body as { atPeriodEnd?: boolean };
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
 
@@ -473,7 +474,7 @@ router.post("/billing/cancel", async (req: Request, res: Response) => {
 });
 
 // ── POST /billing/upgrade ─────────────────────────────────────────────────────
-router.post("/billing/upgrade", billingCheckoutRateLimit, async (req: Request, res: Response) => {
+router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const { plan = "", interval = "monthly" } = req.body as { plan?: string; interval?: string };
   if (!plan) { res.status(400).json({ error: "plan required" }); return; }
 

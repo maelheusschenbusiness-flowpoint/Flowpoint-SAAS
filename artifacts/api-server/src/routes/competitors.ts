@@ -2,6 +2,7 @@ import { Router, Request } from "express";
 import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
 import { logger } from "../lib/logger.js";
+import { canWrite } from "../middlewares/requireRole.js";
 import { withCache } from "../middlewares/cacheControl.js";
 
 const router = Router();
@@ -53,7 +54,7 @@ router.get("/competitors/:id", async (req, res) => {
 
 // ── POST /competitors ─────────────────────────────────────────────────────────
 
-router.post("/competitors", reportRateLimit, async (req, res) => {
+router.post("/competitors", reportRateLimit, canWrite, async (req, res) => {
   const {
     name, url,
     domainRating = 0, keywords = 0, traffic = 0, threatLevel = "low",
@@ -85,7 +86,7 @@ router.post("/competitors", reportRateLimit, async (req, res) => {
 
 // ── PATCH /competitors/:id ────────────────────────────────────────────────────
 
-router.patch("/competitors/:id", async (req, res) => {
+router.patch("/competitors/:id", canWrite, async (req, res) => {
   const { id } = req.params;
   const body = req.body as {
     name?: string; url?: string; domainRating?: number;
@@ -128,7 +129,7 @@ router.patch("/competitors/:id", async (req, res) => {
 // ── DELETE /competitors/:id ───────────────────────────────────────────────────
 // RLS ensures cross-org deletes are silently blocked.
 
-router.delete("/competitors/:id", async (req, res) => {
+router.delete("/competitors/:id", canWrite, async (req, res) => {
   try {
     await req.orgDb(`DELETE FROM competitors WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });

@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger.js";
 import { store } from "../services/store.js";
 import { runMissionEngine, getMissionsStats } from "../services/mission-engine.js";
+import { canWrite } from "../middlewares/requireRole.js";
 import { consumeAICredits } from "../services/ai-engine.js";
 import { loadOrgAIPrefs } from "../services/ai-prefs.js";
 import { buildQuotaGuidance } from "../services/ai-quota.js";
@@ -319,7 +320,7 @@ router.post("/missions/generate", async (req: Request, res: Response) => {
 });
 
 // POST /missions — create manual mission
-router.post("/missions", async (req: Request, res: Response) => {
+router.post("/missions", canWrite, async (req: Request, res: Response) => {
   try {
     const db = orgDb(req);
     const org = orgId(req);
@@ -377,7 +378,7 @@ router.post("/missions", async (req: Request, res: Response) => {
 });
 
 // PATCH /missions/:id
-router.patch("/missions/:id", async (req: Request, res: Response) => {
+router.patch("/missions/:id", canWrite, async (req: Request, res: Response) => {
   try {
     const db = orgDb(req);
     const org = orgId(req);
@@ -446,7 +447,7 @@ router.patch("/missions/:id", async (req: Request, res: Response) => {
 });
 
 // DELETE /missions/:id
-router.delete("/missions/:id", async (req: Request, res: Response) => {
+router.delete("/missions/:id", canWrite, async (req: Request, res: Response) => {
   try {
     const db = orgDb(req);
     const org = orgId(req);

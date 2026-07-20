@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { streamReportPdf } from "../services/pdf.js";
 import { store } from "../services/store.js";
 import { reportRateLimit } from "../middlewares/rateLimiter.js";
+import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -67,7 +68,7 @@ router.get("/reports/:id", async (req, res) => {
 });
 
 // ── POST /reports ─────────────────────────────────────────────────────────────
-router.post("/reports", reportRateLimit, async (req, res) => {
+router.post("/reports", reportRateLimit, canWrite, async (req, res) => {
   const { name, auditId, format, whiteLabel, meetingNotes, dateStart, dateEnd } = req.body as {
     name?: string; auditId?: string; format?: string; whiteLabel?: boolean;
     meetingNotes?: Array<{ title: string; date: string; notes: string; site?: string }>;
@@ -253,7 +254,7 @@ router.delete("/reports/:id/shares/:token", async (req: Request, res: Response) 
 });
 
 // ── DELETE /reports/:id ────────────────────────────────────────────────────────
-router.delete("/reports/:id", async (req: Request, res: Response) => {
+router.delete("/reports/:id", canAdmin, async (req: Request, res: Response) => {
   try {
     await db(req)(`DELETE FROM share_tokens WHERE report_id=$1`, [req.params.id]);
     await db(req)(`DELETE FROM reports WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);

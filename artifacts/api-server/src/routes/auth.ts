@@ -705,7 +705,9 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
     userId: entry.email,
     orgId: entry.email,
     email: entry.email,
-    role: "admin",
+    // Direct magic-link login = org creator → owner.
+    // Invited members who accept an invitation token get their role from team_members (see /team/accept).
+    role: "owner",
   });
 
   logger.info({ email: entry.email }, "[Auth] Magic link verified — session started");
@@ -835,8 +837,8 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
     logger.info({ email: user.email }, "[Auth] Google login successful");
 
     // Issue a unique per-session token and set it as an HttpOnly cookie.
-    // In this single-tenant deployment every OAuth login is an owner/admin.
-    const sessionToken = await createSession({ userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "admin" });
+    // Direct OAuth login = org creator → owner role.
+    const sessionToken = await createSession({ userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "owner" });
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,
@@ -916,8 +918,8 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
     logger.info({ login: user.login }, "[Auth] GitHub login successful");
 
     // Issue a unique per-session token and set it as an HttpOnly cookie.
-    // In this single-tenant deployment every OAuth login is an owner/admin.
-    const sessionToken = await createSession({ userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "admin" });
+    // Direct OAuth login = org creator → owner role.
+    const sessionToken = await createSession({ userId: resolvedEmail, orgId: resolvedEmail, email: resolvedEmail, role: "owner" });
     const isProd = isDeployedProd();
     res.cookie("fp_token", sessionToken, {
       httpOnly: true,

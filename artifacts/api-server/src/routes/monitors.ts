@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { requireOrgId } from "../lib/require-org-id.js";
 import { Router, Request, Response } from "express";
+import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 import { pool, withOrgDb } from "@workspace/db";
 import { validateMonitorUrl, isPrivateHost, checkDnsResolution } from "../middlewares/validateMonitorUrl.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
@@ -552,7 +553,7 @@ router.get("/monitors/:id/incidents", async (req: Request, res: Response) => {
 
 // ── POST /monitors ────────────────────────────────────────────────────────────
 
-router.post("/monitors", monitorCreateRateLimit, async (req: Request, res: Response) => {
+router.post("/monitors", monitorCreateRateLimit, canWrite, async (req: Request, res: Response) => {
   const { url, name, alertEmail, alertPhone, isCritical, frequency } = req.body as {
     url?: string; name?: string; alertEmail?: string; alertPhone?: string;
     isCritical?: boolean; frequency?: string;
@@ -606,7 +607,7 @@ router.post("/monitors", monitorCreateRateLimit, async (req: Request, res: Respo
 
 // ── PATCH /monitors/:id ───────────────────────────────────────────────────────
 
-router.patch("/monitors/:id", async (req: Request, res: Response) => {
+router.patch("/monitors/:id", canWrite, async (req: Request, res: Response) => {
   const { id } = req.params;
   const body = req.body as {
     name?: string; url?: string; alertEmail?: string;
@@ -780,7 +781,7 @@ router.post("/monitors/:id/test-sms", async (req: Request, res: Response) => {
 // ── DELETE /monitors/:id ──────────────────────────────────────────────────────
 // RLS ensures cross-org deletes are silently blocked.
 
-router.delete("/monitors/:id", async (req: Request, res: Response) => {
+router.delete("/monitors/:id", canAdmin, async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const existing = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);

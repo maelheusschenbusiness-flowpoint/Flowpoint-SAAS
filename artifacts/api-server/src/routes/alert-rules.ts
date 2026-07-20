@@ -1,5 +1,7 @@
 import { Router, type Request } from "express";
 import { store } from "../services/store.js";
+import { requireAdmin } from "../middlewares/requireAdmin.js";
+import { canWrite, canAdmin } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -51,7 +53,7 @@ router.get("/alert-rules/:id", async (req, res) => {
 });
 
 // ── POST /alert-rules ─────────────────────────────────────────────────────────
-router.post("/alert-rules", async (req, res) => {
+router.post("/alert-rules", canWrite, async (req, res) => {
   const { name, type, operator, threshold, durationMin, channels, siteUrls, enabled } = req.body as {
     name?: string; type?: string; operator?: string; threshold?: number;
     durationMin?: number; channels?: string[]; siteUrls?: string[]; enabled?: boolean;
@@ -122,7 +124,7 @@ router.patch("/alert-rules/mark-all-read", async (req, res) => {
 });
 
 // ── PATCH /alert-rules/:id ────────────────────────────────────────────────────
-router.patch("/alert-rules/:id", async (req, res) => {
+router.patch("/alert-rules/:id", canWrite, async (req, res) => {
   const body = req.body as Record<string, unknown>;
 
   if (body.type !== undefined && !VALID_TYPES.includes(body.type as string)) {
@@ -187,7 +189,7 @@ router.patch("/alert-rules/:id", async (req, res) => {
 });
 
 // ── DELETE /alert-rules/:id ───────────────────────────────────────────────────
-router.delete("/alert-rules/:id", async (req, res) => {
+router.delete("/alert-rules/:id", canAdmin, async (req, res) => {
   try {
     await db(req)(`DELETE FROM alert_rules WHERE id=$1 AND org_id=$2`, [req.params.id, org(req)]);
     res.json({ ok: true });
@@ -244,7 +246,7 @@ router.get("/alert-events", async (req, res) => {
 });
 
 // ── POST /alert-events ────────────────────────────────────────────────────────
-router.post("/alert-events", async (req, res) => {
+router.post("/alert-events", requireAdmin, async (req, res) => {
   const { ruleId, ruleName, type, metricValue, threshold, operator, severity, message, siteUrl, monitorId } = req.body as {
     ruleId?: string; ruleName?: string; type?: string; metricValue?: number;
     threshold?: number; operator?: string; severity?: string; message?: string;

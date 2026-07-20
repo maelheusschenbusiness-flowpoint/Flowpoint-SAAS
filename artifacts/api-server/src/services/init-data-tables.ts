@@ -724,7 +724,58 @@ export async function initDataTables(): Promise<void> {
     // ── Schema verification: log Present/Expected/Missing + auto-repair ─────────
     await verifyTeamMembersSchema(client);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages ready");
+    // ── organizations table (Wave 3 Lot A) ───────────────────────────────────
+    // Provides a first-class organization record for every org.
+    // Backfilled from org_settings so existing orgs are not orphaned.
+    // org_id (TEXT) is the canonical tenant key across all tables; this table
+    // extends it with audit fields, owner, slug and Stripe references.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS organizations (
+        id               TEXT        NOT NULL PRIMARY KEY,
+        name             TEXT        NOT NULL DEFAULT '',
+        slug             TEXT        NOT NULL DEFAULT '',
+        owner_user_id    TEXT        NOT NULL DEFAULT '',
+        status           TEXT        NOT NULL DEFAULT 'active',
+        plan             TEXT        NOT NULL DEFAULT 'standard',
+        stripe_customer_id      TEXT,
+        stripe_subscription_id  TEXT,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    // Backfill: insert one row per org_settings entry (idempotent via ON CONFLICT DO NOTHING).
+    // Uses org_settings as source-of-truth for plan, stripe fields, and name.
+    await run(client, `
+      INSERT INTO organizations (id, name, slug, owner_user_id, status, plan,
+                                  stripe_customer_id, stripe_subscription_id, created_at, updated_at)
+      SELECT
+        org_id                                AS id,
+        COALESCE(NULLIF(org_name, ''), org_id) AS name,
+        LOWER(REGEXP_REPLACE(COALESCE(NULLIF(org_name,''), org_id), '[^a-z0-9]+', '-', 'gi')) AS slug,
+        org_id                                AS owner_user_id,
+        CASE WHEN subscription_status IN ('active','trialing') THEN 'active'
+             WHEN subscription_status = 'canceled' THEN 'inactive'
+             ELSE 'active' END                AS status,
+        COALESCE(NULLIF(plan,''), 'standard') AS plan,
+        NULLIF(stripe_customer_id,'')         AS stripe_customer_id,
+        NULL                                  AS stripe_subscription_id,
+        COALESCE(created_at, NOW())           AS created_at,
+        NOW()                                 AS updated_at
+      FROM org_settings
+      ON CONFLICT (id) DO NOTHING;
+    `);
+    // Additive columns on existing organizations table (safe re-runs)
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS slug TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS owner_user_id TEXT NOT NULL DEFAULT '';`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'standard';`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;`);
+    await run(client, `CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations(owner_user_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS organizations_slug_idx  ON organizations(slug);`);
+
+    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;

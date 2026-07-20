@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { canWrite } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -32,7 +33,7 @@ router.get("/calendar-events", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/calendar-events", async (req: Request, res: Response) => {
+router.post("/calendar-events", canWrite, async (req: Request, res: Response) => {
   const { title, site, type, date, startTime, duration, notes } = req.body as {
     title?: string; site?: string; type?: string; date?: string;
     startTime?: string; duration?: number; notes?: string;
@@ -52,7 +53,7 @@ router.post("/calendar-events", async (req: Request, res: Response) => {
   }
 });
 
-router.patch("/calendar-events/:id", async (req: Request, res: Response) => {
+router.patch("/calendar-events/:id", canWrite, async (req: Request, res: Response) => {
   const { id } = req.params;
   const { title, site, type, date, startTime, duration, notes } = req.body as {
     title?: string; site?: string; type?: string; date?: string;
@@ -71,7 +72,7 @@ router.patch("/calendar-events/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/calendar-events/:id", async (req: Request, res: Response) => {
+router.delete("/calendar-events/:id", canWrite, async (req: Request, res: Response) => {
   try {
     await (req as OrgReq).orgDb(`DELETE FROM calendar_events WHERE id=$1`, [req.params.id]);
     res.json({ ok: true });

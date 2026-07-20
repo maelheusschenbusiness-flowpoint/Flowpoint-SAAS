@@ -58,3 +58,4 @@
 - [Alert rules enabled vs active](alert-rules-enabled-field.md) — backend returns `enabled` (boolean), never `active`; dashboard.js had 3 r.active refs on alertRules (L3684, L4161, L16074) — all fixed to r.enabled
 - [activity.ts parameterized SQL](activity-sql-params.md) — GET /api/activity now supports limit(1-200)/page/type via SQL; id included in SELECT for 60s-poll dedup; always returns array (backward compat)
 - [window.apiAction timing](window-apiaction-timing.md) — window.apiAction must be assigned at module level (near window.STATE) not only inside the async IIFE; IIFE awaits delay the assignment past onclick fire
+- [Wave 3 RBAC pattern](wave3-rbac.md) — requireRole exports, role matrix, ALLOWED roles, organizations table

@@ -19,6 +19,7 @@ import { Router, type Request, type Response } from "express";
 import { logger }                               from "../lib/logger.js";
 import { randomBytes, createHash, randomUUID }  from "crypto";
 import { pool }                                from "@workspace/db";
+import { canAdmin }                             from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -108,7 +109,7 @@ const INSERT_COLS = [
   "email_status", "created_at", "updated_at",
 ] as const;
 
-router.post("/team/invite", async (req: Request, res: Response) => {
+router.post("/team/invite", canAdmin, async (req: Request, res: Response) => {
   const reqId = `inv_req_${Date.now()}`;
 
   // ── STEP 1 — Auth / org context ──────────────────────────────────────────
@@ -142,7 +143,7 @@ router.post("/team/invite", async (req: Request, res: Response) => {
 
   const email      = rawEmail.toLowerCase().trim();
   const maskedEmail = maskEmail(email);
-  const ROLES      = ["manager", "editor", "viewer"];
+  const ROLES      = ["admin", "member", "viewer"];
   const rawRole    = (role ?? "viewer").toLowerCase();
   if (!ROLES.includes(rawRole)) {
     logger.warn({ reqId, rawRole }, "[team/invite] STEP 3 FAIL: invalid role → 400");
@@ -410,12 +411,12 @@ router.post("/team/invite", async (req: Request, res: Response) => {
 
 // ── PATCH /team/:id — change role ─────────────────────────────────────────────
 
-router.patch("/team/:id", async (req: Request, res: Response) => {
+router.patch("/team/:id", canAdmin, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
   const { role } = req.body as { role?: string };
   if (!role) { res.status(400).json({ ok: false, error: "role required" }); return; }
-  const ALLOWED = ["viewer", "editor", "admin", "owner", "manager"];
+  const ALLOWED = ["viewer", "member", "admin"];
   if (!ALLOWED.includes(role)) { res.status(400).json({ ok: false, error: "invalid role" }); return; }
   try {
     const r = await orgDb(req)(
@@ -452,7 +453,7 @@ router.patch("/team/:id", async (req: Request, res: Response) => {
 
 // ── DELETE /team/:id — remove member ──────────────────────────────────────────
 
-router.delete("/team/:id", async (req: Request, res: Response) => {
+router.delete("/team/:id", canAdmin, async (req: Request, res: Response) => {
   const org = requireOrg(req, res);
   if (!org) return;
   try {
