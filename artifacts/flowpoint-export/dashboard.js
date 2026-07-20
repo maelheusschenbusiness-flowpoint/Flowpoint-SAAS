@@ -2723,11 +2723,9 @@ function closeActivityPanel() {
 }
 
 function bindActivityPanel() {
-  $('#fp-activity-btn')?.addEventListener('click', e => {
-    e.stopPropagation();
-    if (STATE.activityPanelOpen) closeActivityPanel();
-    else openActivityPanel();
-  });
+  // NOTE: #fp-activity-btn toggle and .fp-activity-filter clicks are handled via
+  // document delegation at IIFE global scope (see end of file) for reliability
+  // independent of async errors that may prevent init() from completing.
 
   $('#fp-activity-close')?.addEventListener('click', closeActivityPanel);
   $('#fp-activity-overlay')?.addEventListener('click', closeActivityPanel);
@@ -2735,33 +2733,6 @@ function bindActivityPanel() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && STATE.activityPanelOpen) closeActivityPanel();
   });
-
-  const filters = $('#fp-activity-filters');
-  if (filters) {
-    filters.addEventListener('click', e => {
-      const btn = e.target.closest('.fp-activity-filter');
-      if (!btn) return;
-      $$('.fp-activity-filter', filters).forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const nextFilter = btn.dataset.filter || 'all';
-      STATE.activityFilter = nextFilter;
-      if (nextFilter === 'all') {
-        // ACT-001: reset to full cached events when returning to 'all'
-        STATE.activityFilteredEvents = null;
-        STATE.activityFilterLoading = false;
-        renderActivityList();
-      } else {
-        // ACT-001: fetch type-filtered events from API (server-side WHERE clause)
-        STATE.activityFilteredEvents = null;
-        STATE.activityFilterLoading = true;
-        renderActivityList();
-        apiFetch('/api/activity?type=' + encodeURIComponent(nextFilter) + '&limit=50')
-          .then(res => { STATE.activityFilteredEvents = Array.isArray(res) ? res : []; })
-          .catch(() => { STATE.activityFilteredEvents = []; })
-          .finally(() => { STATE.activityFilterLoading = false; renderActivityList(); });
-      }
-    });
-  }
 
   // Push notification toggle button in the activity panel header
   $('#fp-push-toggle-btn')?.addEventListener('click', () => togglePushNotifications());
@@ -14769,10 +14740,6 @@ async function init() {
   window.navigate = navigate;
   window.navigateSub = navigateSub;
   window.renderInvitePanel = renderInvitePanel;
-  window.openActivityPanel    = openActivityPanel;
-  window.closeActivityPanel   = closeActivityPanel;
-  window.apiFetch             = apiFetch;
-  window.renderActivityList   = renderActivityList;
   window.fpApplyAlertTemplate = async function(idx, btn) {
     const TMPL = [
       { name: 'Monitor DOWN', type: 'monitor_down', operator: 'eq', threshold: 1, durationMin: 0, channels: ['email'], siteUrls: [] },
@@ -29736,6 +29703,42 @@ document.addEventListener('click', function(e) {
 });
 document.addEventListener('keydown', function(e) {
   if (e.target && e.target.id === 'fp-psi-url-input' && e.key === 'Enter') fpAnalyzePSI();
+});
+
+// ── Activity panel button + filter delegation ─────────────────────────────────
+// Registered at IIFE global scope (not inside init()) so it works even when
+// init() encounters an async error before bindActivityPanel() is reached.
+document.addEventListener('click', function _activityDelegation(e) {
+  // Toggle panel open/close via header button
+  if (e.target.closest('#fp-activity-btn')) {
+    e.stopPropagation();
+    if (STATE.activityPanelOpen) closeActivityPanel();
+    else openActivityPanel();
+    return;
+  }
+  // ACT-001: filter button inside the activity panel
+  const filterBtn = e.target.closest('.fp-activity-filter');
+  if (filterBtn && filterBtn.closest('#fp-activity-filters')) {
+    const filters = document.getElementById('fp-activity-filters');
+    if (!filters) return;
+    filters.querySelectorAll('.fp-activity-filter').forEach(function(b) { b.classList.remove('active'); });
+    filterBtn.classList.add('active');
+    var nextFilter = filterBtn.dataset.filter || 'all';
+    STATE.activityFilter = nextFilter;
+    if (nextFilter === 'all') {
+      STATE.activityFilteredEvents = null;
+      STATE.activityFilterLoading = false;
+      renderActivityList();
+    } else {
+      STATE.activityFilteredEvents = null;
+      STATE.activityFilterLoading = true;
+      renderActivityList();
+      apiFetch('/api/activity?type=' + encodeURIComponent(nextFilter) + '&limit=50')
+        .then(function(res) { STATE.activityFilteredEvents = Array.isArray(res) ? res : []; })
+        .catch(function() { STATE.activityFilteredEvents = []; })
+        .finally(function() { STATE.activityFilterLoading = false; renderActivityList(); });
+    }
+  }
 });
 
 // ── BUG-W1-V32-005 — Audit polling controller ────────────────────────────────

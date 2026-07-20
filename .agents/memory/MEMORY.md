@@ -11,7 +11,8 @@
 - [dashboard.js map callback syntax](dashboard-map-syntax.md) — only block-body arrows (`=> {` + `return`) need `}` before `).join`; never batch-fix expression-body arrows (`=> \`...\``)
 - [AI provider strict mode](ai-provider-strict-mode.md) — strictProvider=true dans aiChat/aiStream désactive fallback cross-provider; uniquement /ai/chat; matrice provider×mode dans ai-provider-matrix.ts
 - [Inline onclick pattern](inline-onclick-pattern.md) — never JSON.stringify or template vars inside onclick attrs; use data-attributes + escHtml + this.dataset
-- [QA harness](qa-harness.md) — Playwright scans .local/qa_*.mjs, run from workspace root, sequential batches, token via addInitScript; key UI ids inside
+- [QA harness](qa-harness.md) — Playwright scans .local/qa_*.mjs/.cjs, run from workspace root, CJS (not ESM), token via addInitScript; key UI ids inside
+- [dashboard.js init() delegation pattern](dashboard-init-delegation.md) — event handlers that must always work (nav, panel buttons) must use document delegation at IIFE global scope, not inside init(); init() can crash from unhandledRejection before reaching bindXxx() calls
 - [De-mock completeness](flowpoint-demock-completeness.md) — fake data hides in sub-page side cards and forecast pages (fabricated past curves); audit every card per sub-route, derive slopes from real auditHistory
 - [innerHTML script extraction pattern](innerhtml-script-extraction.md) — <script> tags inside innerHTML strings do NOT execute; all window.* functions must live in the global setup block; _intg* functions (integrations) were extracted in this session; second script block at line ~28769 (GitHub IIFE) is still inside innerHTML
 - [FlowPoint plan names & Pro+ elimination](flowpoint-plan-names.md) — plan hierarchy is Standard < Pro < Ultra (never "Pro+"); Pro+ found and fixed in 6 places: Monitors interval select, Local SEO badge, Growth geo badge, Storage addon tag, AI credits tag, audit Fix IA label
