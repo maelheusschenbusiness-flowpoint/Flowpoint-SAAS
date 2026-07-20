@@ -538,6 +538,14 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS enabled       BOOLEAN NOT NULL DEFAULT true;`);
     await run(client, `ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `CREATE INDEX IF NOT EXISTS alert_rules_org_id_idx ON alert_rules(org_id);`);
+    // BUG-W2-ALT-002: event-based rule types (monitor_down, monitor_up) must store NULL
+    // for operator and threshold. Remove NOT NULL constraint on existing DBs.
+    await run(client, `ALTER TABLE alert_rules ALTER COLUMN operator  DROP NOT NULL;`);
+    await run(client, `ALTER TABLE alert_rules ALTER COLUMN operator  DROP DEFAULT;`);
+    await run(client, `ALTER TABLE alert_rules ALTER COLUMN threshold DROP NOT NULL;`);
+    await run(client, `ALTER TABLE alert_rules ALTER COLUMN threshold DROP DEFAULT;`);
+    // Clear stale sentinel values on existing event-based rules
+    await run(client, `UPDATE alert_rules SET operator=NULL, threshold=NULL WHERE type IN ('monitor_down','monitor_up') AND (operator='eq' OR threshold=1);`);
 
     // ── team_members — coerce UUID→TEXT if table was created via Supabase UI ──
     // Supabase Dashboard creates id/org_id as UUID; migrations expect TEXT.

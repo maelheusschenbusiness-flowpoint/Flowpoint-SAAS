@@ -10,12 +10,15 @@ type OrgReq = Request & {
 const org = (req: Request): string => (req as OrgReq).orgId ?? "default";
 const db  = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
-const VALID_TYPES    = ["seo_score", "latency", "uptime", "monitor_down", "keyword_ranking_drop"];
-const VALID_OPS      = ["lt", "gt", "eq"];
+// Event-based types fire on state transition — operator/threshold are not applicable
+const EVENT_TYPES    = ["monitor_down", "monitor_up"];
+const THRESHOLD_TYPES = ["seo_score", "latency", "uptime", "keyword_ranking_drop"];
+const VALID_TYPES    = [...EVENT_TYPES, ...THRESHOLD_TYPES];
+const VALID_OPS      = ["lt", "lte", "gt", "gte", "eq"];
 const VALID_CHANNELS = ["email", "sms"];
 
 const DEFAULT_TEMPLATES = [
-  { name: "Monitor DOWN",                   type: "monitor_down",          operator: "eq", threshold: 1,    durationMin: 0,  channels: ["email"],          siteUrls: [] },
+  { name: "Monitor DOWN",                   type: "monitor_down",          durationMin: 0,  channels: ["email"],          siteUrls: [] },
   { name: "Score SEO critique (< 50)",      type: "seo_score",             operator: "lt", threshold: 50,   durationMin: 0,  channels: ["email"],          siteUrls: [] },
   { name: "Chute ranking mot-clé (> 5 pos)",type: "keyword_ranking_drop",  operator: "gt", threshold: 5,    durationMin: 0,  channels: ["email"],          siteUrls: [] },
   { name: "Latence élevée (> 1s)",          type: "latency",               operator: "gt", threshold: 1000, durationMin: 5,  channels: ["email"],          siteUrls: [] },
@@ -53,22 +56,49 @@ router.post("/alert-rules", async (req, res) => {
     name?: string; type?: string; operator?: string; threshold?: number;
     durationMin?: number; channels?: string[]; siteUrls?: string[]; enabled?: boolean;
   };
-  if (!name || !type || !operator || threshold === undefined) {
-    res.status(400).json({ error: "name, type, operator, threshold required" }); return;
+
+  if (!name || !type) {
+    res.status(400).json({ error: "name et type sont obligatoires" }); return;
   }
   if (!VALID_TYPES.includes(type)) {
-    res.status(400).json({ error: "type must be seo_score|latency|uptime|monitor_down|keyword_ranking_drop" }); return;
+    res.status(400).json({ error: "type invalide — valeurs autorisées : " + VALID_TYPES.join("|") }); return;
   }
-  if (!VALID_OPS.includes(operator)) {
-    res.status(400).json({ error: "operator must be lt|gt|eq" }); return;
+
+  const isEvent = EVENT_TYPES.includes(type);
+
+  if (!isEvent) {
+    // Threshold-based rules require operator + threshold
+    if (!operator) {
+      res.status(400).json({ error: "operator est obligatoire pour ce type de règle" }); return;
+    }
+    if (!VALID_OPS.includes(operator)) {
+      res.status(400).json({ error: "operator invalide — valeurs autorisées : " + VALID_OPS.join("|") }); return;
+    }
+    if (threshold === undefined || threshold === null || !isFinite(Number(threshold))) {
+      res.status(400).json({ error: "threshold doit être un nombre fini" }); return;
+    }
+    // Business range validation
+    if (type === "seo_score" && (Number(threshold) < 0 || Number(threshold) > 100)) {
+      res.status(400).json({ error: "threshold pour seo_score doit être compris entre 0 et 100" }); return;
+    }
+    if (type === "uptime" && (Number(threshold) < 0 || Number(threshold) > 100)) {
+      res.status(400).json({ error: "threshold pour uptime doit être compris entre 0 et 100" }); return;
+    }
+    if (type === "latency" && Number(threshold) < 0) {
+      res.status(400).json({ error: "threshold pour latency doit être >= 0" }); return;
+    }
   }
+
+  // For event-based types, operator and threshold are semantically inapplicable → store NULL
+  const finalOperator  = isEvent ? null : operator!;
+  const finalThreshold = isEvent ? null : Number(threshold);
 
   const id = `ar_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
     await db(req)(
       `INSERT INTO alert_rules (id, org_id, name, type, operator, threshold, duration_min, channels, site_urls, enabled)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [id, org(req), name, type, operator, Number(threshold), Number(durationMin ?? 0),
+      [id, org(req), name, type, finalOperator, finalThreshold, Number(durationMin ?? 0),
        JSON.stringify(channels ?? ["email"]), JSON.stringify(siteUrls ?? []), enabled ?? true]
     );
     const r = await db(req)(`SELECT * FROM alert_rules WHERE id=$1`, [id]);
@@ -98,12 +128,22 @@ router.patch("/alert-rules/:id", async (req, res) => {
   if (body.type !== undefined && !VALID_TYPES.includes(body.type as string)) {
     res.status(400).json({ error: "type invalide" }); return;
   }
-  if (body.operator !== undefined && !VALID_OPS.includes(body.operator as string)) {
-    res.status(400).json({ error: "operator must be lt|gt|eq" }); return;
+
+  // Determine whether the rule being updated is event-based
+  // If body.type is provided, use it; otherwise we must trust the client is consistent
+  const newType = body.type as string | undefined;
+  const isEventType = newType !== undefined && EVENT_TYPES.includes(newType);
+
+  if (!isEventType) {
+    // Only validate operator/threshold for threshold-based rules
+    if (body.operator !== undefined && !VALID_OPS.includes(body.operator as string)) {
+      res.status(400).json({ error: "operator invalide — valeurs autorisées : " + VALID_OPS.join("|") }); return;
+    }
+    if (body.threshold !== undefined && (!isFinite(Number(body.threshold)))) {
+      res.status(400).json({ error: "threshold doit être un nombre fini" }); return;
+    }
   }
-  if (body.threshold !== undefined && isNaN(Number(body.threshold))) {
-    res.status(400).json({ error: "threshold must be a number" }); return;
-  }
+
   if (body.channels !== undefined) {
     if (!Array.isArray(body.channels) || (body.channels as string[]).some(c => !VALID_CHANNELS.includes(c))) {
       res.status(400).json({ error: "channels must be array of email|sms" }); return;
@@ -115,14 +155,21 @@ router.patch("/alert-rules/:id", async (req, res) => {
 
   const setClauses: string[] = [];
   const params: unknown[] = [];
-  if (body.name !== undefined)      { params.push(body.name);                             setClauses.push(`name=$${params.length}`); }
-  if (body.type !== undefined)      { params.push(body.type);                             setClauses.push(`type=$${params.length}`); }
-  if (body.operator !== undefined)  { params.push(body.operator);                        setClauses.push(`operator=$${params.length}`); }
-  if (body.threshold !== undefined) { params.push(Number(body.threshold));               setClauses.push(`threshold=$${params.length}`); }
-  if (body.durationMin !== undefined){ params.push(Number(body.durationMin));            setClauses.push(`duration_min=$${params.length}`); }
-  if (body.channels !== undefined)  { params.push(JSON.stringify(body.channels));        setClauses.push(`channels=$${params.length}`); }
-  if (body.siteUrls !== undefined)  { params.push(JSON.stringify(body.siteUrls));        setClauses.push(`site_urls=$${params.length}`); }
-  if (body.enabled !== undefined)   { params.push(body.enabled);                         setClauses.push(`enabled=$${params.length}`); }
+  if (body.name !== undefined)       { params.push(body.name);                      setClauses.push(`name=$${params.length}`); }
+  if (body.type !== undefined)       { params.push(body.type);                      setClauses.push(`type=$${params.length}`); }
+  if (body.durationMin !== undefined){ params.push(Number(body.durationMin));       setClauses.push(`duration_min=$${params.length}`); }
+  if (body.channels !== undefined)   { params.push(JSON.stringify(body.channels));  setClauses.push(`channels=$${params.length}`); }
+  if (body.siteUrls !== undefined)   { params.push(JSON.stringify(body.siteUrls)); setClauses.push(`site_urls=$${params.length}`); }
+  if (body.enabled !== undefined)    { params.push(body.enabled);                   setClauses.push(`enabled=$${params.length}`); }
+
+  // When switching to an event-based type, null out operator/threshold
+  if (isEventType) {
+    setClauses.push(`operator=NULL`);
+    setClauses.push(`threshold=NULL`);
+  } else {
+    if (body.operator !== undefined)  { params.push(body.operator);                 setClauses.push(`operator=$${params.length}`); }
+    if (body.threshold !== undefined) { params.push(Number(body.threshold));        setClauses.push(`threshold=$${params.length}`); }
+  }
 
   if (setClauses.length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
 
@@ -190,7 +237,7 @@ router.post("/alert-events", async (req, res) => {
       `INSERT INTO alert_events (id, org_id, rule_id, rule_name, type, metric_value, threshold, operator, severity, message, site_url)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [id, org(req), ruleId ?? "", ruleName ?? "", type ?? "seo_score", metricValue ?? null, threshold ?? null,
-       operator ?? "lt", severity ?? "warning", message ?? "", siteUrl ?? ""]
+       operator ?? null, severity ?? "warning", message ?? "", siteUrl ?? ""]
     );
     res.status(201).json({ id, triggeredAt: new Date().toISOString() });
   } catch {

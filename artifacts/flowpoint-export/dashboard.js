@@ -483,13 +483,38 @@ function exportCsv(headerRow, dataRows, filename) {
   URL.revokeObjectURL(url);
 }
 
-function downloadReportPdf(reportId, name) {
-  const link = document.createElement('a');
-  link.href = `/api/reports/${reportId}/download`;
-  link.download = (name || 'rapport') + '.pdf';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+async function downloadReportPdf(reportId, name, triggerEl) {
+  const filename = (name || 'rapport') + '.pdf';
+  if (triggerEl) { triggerEl.disabled = true; triggerEl.dataset._origText = triggerEl.textContent; triggerEl.textContent = '…'; }
+  try {
+    const token = localStorage.getItem('token') || localStorage.getItem('fp_token') || '';
+    const res = await fetch(`/api/reports/${reportId}/download`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Cache-Control': 'no-cache' },
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const msg = res.status === 401 ? 'Session expirée — reconnectez-vous'
+                : res.status === 403 ? 'Accès refusé à ce rapport'
+                : res.status === 404 ? 'Rapport introuvable'
+                : `Erreur serveur (${res.status})`;
+      showToast('error', msg); return;
+    }
+    const ct = res.headers.get('Content-Type') || '';
+    if (!ct.includes('application/pdf') && !ct.includes('octet-stream')) {
+      showToast('error', 'Réponse inattendue — le fichier n\'est pas un PDF'); return;
+    }
+    const blob = await res.blob();
+    if (blob.size === 0) { showToast('error', 'PDF vide — réessayez'); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    showToast('error', 'Erreur lors du téléchargement : ' + (e?.message || ''));
+  } finally {
+    if (triggerEl) { triggerEl.disabled = false; triggerEl.textContent = triggerEl.dataset._origText || triggerEl.textContent; }
+  }
 }
 
 // ── Action navigation helper — maps insight action text → correct page ────────
@@ -4548,10 +4573,10 @@ function renderMonitors() {
   const nUp   = monitors.filter(m => m.status === 'up').length;
   const nDown = monitors.filter(m => m.status === 'down').length;
   const nWarn = monitors.filter(m => m.status === 'warn').length;
-  const avgLatency = Math.round(
-    monitors.filter(m => m.status !== 'down').reduce((s, m) => s + m.latency, 0) /
-    Math.max(1, monitors.filter(m => m.status !== 'down').length)
-  );
+  const _upMonsLat = monitors.filter(m => m.status !== 'down' && m.latency != null);
+  const avgLatency = _upMonsLat.length
+    ? Math.round(_upMonsLat.reduce((s, m) => s + m.latency, 0) / _upMonsLat.length)
+    : 0;
   const avgUptime = (
     monitors.reduce((s, m) => s + parseFloat(computeRealUptime(m)), 0) /
     Math.max(1, monitors.length)
@@ -4564,8 +4589,8 @@ function renderMonitors() {
     type: m.status === 'down' ? 'down' : m.status === 'warn' ? 'alert' : 'up',
     site: (m.url||m.name||'').replace(/^https?:\/\//,''),
     msg: m.status === 'down' ? 'Site DOWN — vérification requise'
-       : m.status === 'warn' ? `Latence élevée : ${m.latency||'—'}ms`
-       : `Check OK · Latence : ${m.latency||'—'}ms`,
+       : m.status === 'warn' ? `Latence élevée : ${m.latency == null ? '—' : m.latency + 'ms'}`
+       : `Check OK · Latence : ${m.latency == null ? '—' : m.latency + 'ms'}`,
   }));
   const _monAiMsg = (() => {
     if (nDown > 0) return `🚨 <strong>${nDown} monitor(s) DOWN</strong> en ce moment — intervention immédiate requise. Latence moyenne : ${avgLatency}ms. Uptime global : ${avgUptime}%.`;
@@ -4576,7 +4601,7 @@ function renderMonitors() {
   const deps = (STATE.monitors||[]).slice(0,6).map(m => ({
     name:    (m.name||m.url||'Monitor').replace(/^https?:\/\//,'').slice(0,24),
     status:  m.status==='up'?'operational':m.status==='warn'?'degraded':'down',
-    latency: m.latency ? m.latency+'ms' : '—',
+    latency: m.latency == null ? '—' : m.latency + 'ms',
     icon:    m.status==='up'?'✅':m.status==='warn'?'⚠️':'🔴',
     desc:    (m.url||m.name||'').replace(/^https?:\/\//,'').slice(0,30),
   }));
@@ -4646,8 +4671,8 @@ function renderMonitors() {
           <div class="fp-monitor-url">${escHtml(m.url)}</div>
           <div class="fp-monitor-stats">
             <div><div class="fp-monitor-stat-label">Uptime</div><div class="fp-monitor-stat-value" style="color:#22c55e">${computeRealUptime(m)}%</div></div>
-            <div><div class="fp-monitor-stat-label">Latence</div><div class="fp-monitor-stat-value" style="color:${m.latency > 500 ? '#ef4444' : m.latency > 200 ? '#f59e0b' : 'var(--fp-text)'}">${m.status === 'down' ? 'DOWN' : m.latency + 'ms'}</div></div>
-            <div><div class="fp-monitor-stat-label">Check</div><div style="font-size:11px;color:var(--fp-text-muted)">Il y a ${m.lastCheck}</div></div>
+            <div><div class="fp-monitor-stat-label">Latence</div><div class="fp-monitor-stat-value" style="color:${m.latency != null && m.latency > 500 ? '#ef4444' : m.latency != null && m.latency > 200 ? '#f59e0b' : 'var(--fp-text)'}">${m.status === 'down' ? 'DOWN' : m.latency == null ? '—' : m.latency + 'ms'}</div></div>
+            <div><div class="fp-monitor-stat-label">Check</div><div style="font-size:11px;color:var(--fp-text-muted)">${m.lastCheck ? 'Il y a ' + m.lastCheck : 'Jamais vérifié'}</div></div>
           </div>
           <div class="fp-uptime-bars">${uptimeBars(m)}</div>
           <div class="fp-monitor-uptime30">
@@ -4819,7 +4844,7 @@ function renderMonitors() {
                 url: (m.url||'').replace(/^https?:\/\//,''),
                 method: 'GET',
                 status: m.status === 'up' ? 'UP' : m.status === 'warn' ? 'SLOW' : 'DOWN',
-                latency: m.latency ? m.latency + 'ms' : '—',
+                latency: m.latency == null ? '—' : m.latency + 'ms',
                 rate: m.uptime != null ? m.uptime.toFixed(1) + '%' : '—',
                 last: m.lastCheck || '—',
               }));
@@ -6573,7 +6598,7 @@ function renderReports() {
                 <div style="font-size:11px;font-weight:600;color:var(--fp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.name)}</div>
                 <div style="font-size:10px;color:var(--fp-text-faint)">${typeof r.pages === 'number' ? (r.pages > 1 ? r.pages + ' pages' : r.pages + ' page') + ' · ' : ''}${escHtml(r.date)} · ${escHtml(r.size)}${r.shared ? ' · <span style="color:#22c55e">Partage</span>' : ''}</div>
               </div>
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="(function(b){const link=document.createElement('a');link.href='/api/reports/'+b.dataset.rid+'/download';link.download=b.dataset.rname+'.pdf';document.body.appendChild(link);link.click();document.body.removeChild(link)})(this)">↓</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0" data-rid="${escHtml(r.id)}" data-rname="${escHtml(r.name)}" onclick="downloadReportPdf(this.dataset.rid,this.dataset.rname,this)">↓</button>
             </div>
           `).join('')}
         </div>
@@ -8420,7 +8445,7 @@ function renderAlertRules() {
           <div style="min-width:0">
             <div style="font-size:13px;font-weight:600;color:var(--fp-text)">${escHtml(r.name)}</div>
             <div style="font-size:11px;color:var(--fp-text-muted);margin-top:1px">
-              ${escHtml(typeLabels[r.type] || r.type)} ${escHtml(opLabels[r.operator] || r.operator)} ${r.threshold}${unit}
+              ${escHtml(typeLabels[r.type] || r.type)}${r.operator ? ' ' + escHtml(opLabels[r.operator] || r.operator) : ''}${r.threshold != null ? ' ' + r.threshold + unit : ''}
               ${r.durationMin > 0 ? ` · ${r.durationMin} min` : ''}
               · <span style="color:var(--fp-accent)">${channels.join(', ')}</span>
               ${sites.length > 0 ? ` · <span title="${sites.join(', ')}">${sites.length} site(s) ciblé(s)</span>` : ' · tous les sites'}
@@ -8540,15 +8565,17 @@ function renderAlertRules() {
               <option value="keyword_ranking_drop">Chute ranking mot-clé</option>
             </select>
           </div>
-          <div class="fp-form-group">
+          <div class="fp-form-group" id="rule-operator-group">
             <label class="fp-form-label">Condition</label>
             <select class="fp-select" id="rule-operator" style="width:100%">
               <option value="lt">Inférieur à (&lt;)</option>
+              <option value="lte">Inférieur ou égal à (≤)</option>
               <option value="gt">Supérieur à (&gt;)</option>
+              <option value="gte">Supérieur ou égal à (≥)</option>
               <option value="eq">Égal à (=)</option>
             </select>
           </div>
-          <div class="fp-form-group">
+          <div class="fp-form-group" id="rule-threshold-group">
             <label class="fp-form-label">Seuil</label>
             <input class="fp-input" id="rule-threshold" type="number" placeholder="ex. 50" style="width:100%"/>
           </div>
@@ -11351,8 +11378,8 @@ function openMonitorPanel(monitor) {
     <div class="fp-mono" style="font-size:11px;color:var(--fp-text-muted);margin-bottom:16px;word-break:break-all">${escHtml(monitor.url)}</div>
     ${[
       {l:'Uptime',   v: monitor.uptime + '%',                                        c:'#22c55e'},
-      {l:'Latence',  v: monitor.status==='down' ? 'Timeout' : monitor.latency+'ms', c:'#f1f5ff'},
-      {l:'Dernier check', v: 'Il y a ' + monitor.lastCheck,                         c:'#94a3b8'},
+      {l:'Latence',  v: monitor.status==='down' ? 'Timeout' : monitor.latency == null ? '—' : monitor.latency + 'ms', c:'#f1f5ff'},
+      {l:'Dernier check', v: monitor.lastCheck ? 'Il y a ' + monitor.lastCheck : 'Jamais vérifié', c:'#94a3b8'},
     ].map(s=>`
       <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
         <span style="font-size:13px;color:var(--fp-text-muted)">${s.l}</span>
@@ -11726,7 +11753,7 @@ function setupNewEndpointPanel() {
       if (!url) { showToast('warning', 'Entrez une URL'); return; }
       try {
         const res = await apiAction('POST', '/api/monitors', { url, name, alertEmail: $('#nep-email')?.value, type: 'api', method: $('#nep-method')?.value });
-        const m = res || { id: 'm'+Date.now(), name, url, status:'up', uptime:100, latency:0, lastCheck:'À l\'instant', type:'api' };
+        const m = res || { id: 'm'+Date.now(), name, url, status:'up', uptime:100, latency:null, lastCheck:null, type:'api' };
         STATE.monitors.push(m);
         showToast('success', `Endpoint ajouté : ${escHtml(name)}`);
         closeFloatPanel();
@@ -11762,7 +11789,7 @@ function setupNewMonitorPanel() {
       if (!url) { showToast('warning','Entrez une URL'); return; }
       try {
         const res = await apiAction('POST', '/api/monitors', { url, name, alertEmail: $('#nm-email')?.value, frequency: $('#nm-freq')?.value });
-        const m = res || { id:'m'+Date.now(), name, url, status:'up', uptime:100, latency:0, lastCheck:'À l\'instant' };
+        const m = res || { id:'m'+Date.now(), name, url, status:'up', uptime:100, latency:null, lastCheck:null };
         STATE.monitors.push(m);
         showToast('success', `Monitor créé pour ${escHtml(url)}`);
         closeFloatPanel();
@@ -11913,12 +11940,7 @@ function setupNewReportPanel() {
 
         if (format === 'PDF' && r.id) {
           showToast('success', `Téléchargement du rapport PDF « ${escHtml(name)} »…`);
-          const link = document.createElement('a');
-          link.href = `/api/reports/${r.id}/download`;
-          link.download = `${name}.pdf`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          downloadReportPdf(r.id, name);
         } else {
           const notesSuffix = meetingNotes.length ? ` · ${meetingNotes.length} note${meetingNotes.length>1?'s':''} de réunion incluse${meetingNotes.length>1?'s':''}` : '';
           showToast('success', `Rapport ${format} « ${escHtml(name)} » généré${notesSuffix}.`);
@@ -13847,21 +13869,40 @@ function bindSectionEvents() {
         const form = $('#add-rule-form');
         if (form) form.style.display = 'none';
       });
+      // ALT-002: hide operator/threshold for event-based types (monitor_down, monitor_up)
+      const _ALT_EVENT_TYPES = ['monitor_down', 'monitor_up'];
+      function _toggleRuleThresholdFields(type) {
+        const isEvt = _ALT_EVENT_TYPES.includes(type);
+        const og = $('#rule-operator-group');
+        const tg = $('#rule-threshold-group');
+        if (og) { og.style.display = isEvt ? 'none' : ''; const s = og.querySelector('#rule-operator'); if (s) s.required = !isEvt; }
+        if (tg) { tg.style.display = isEvt ? 'none' : ''; const i = tg.querySelector('#rule-threshold'); if (i) i.required = !isEvt; }
+      }
+      // Init visibility for current type value
+      _toggleRuleThresholdFields($('#rule-type')?.value || 'seo_score');
+      $('#rule-type')?.addEventListener('change', e => _toggleRuleThresholdFields(e.target.value));
+
       $('#save-alert-rule')?.addEventListener('click', async () => {
         const name = $('#rule-name')?.value.trim();
         const type = $('#rule-type')?.value;
-        const operator = $('#rule-operator')?.value;
-        const threshold = parseFloat($('#rule-threshold')?.value);
         const durationMin = parseInt($('#rule-duration')?.value || '0', 10);
         const channels = [];
         if ($('#rule-ch-email')?.checked) channels.push('email');
         if ($('#rule-ch-sms')?.checked) channels.push('sms');
         const siteUrls = [...$$('.new-rule-site:checked')].map(cb => cb.dataset.url).filter(Boolean);
-        if (!name || !type || !operator || isNaN(threshold)) {
-          showToast('error', 'Remplissez tous les champs obligatoires'); return;
+        if (!name || !type) { showToast('error', 'Remplissez le nom et le type'); return; }
+        const isEvt = _ALT_EVENT_TYPES.includes(type);
+        const payload = { name, type, durationMin, channels, siteUrls, enabled: true };
+        if (!isEvt) {
+          const operator = $('#rule-operator')?.value;
+          const threshold = parseFloat($('#rule-threshold')?.value);
+          if (!operator) { showToast('error', 'Sélectionnez un opérateur'); return; }
+          if (isNaN(threshold)) { showToast('error', 'Entrez un seuil numérique valide'); return; }
+          payload.operator = operator;
+          payload.threshold = threshold;
         }
         try {
-          const rule = await apiAction('POST', '/api/alert-rules', { name, type, operator, threshold, durationMin, channels, siteUrls, enabled: true });
+          const rule = await apiAction('POST', '/api/alert-rules', payload);
           if (rule) {
             STATE.alertRules.push(rule);
             showToast('success', `Règle "${name}" créée !`);
@@ -13942,18 +13983,24 @@ function bindSectionEvents() {
           if (!formEl) return;
           const name = formEl.querySelector('.edit-rule-name')?.value.trim();
           const type = formEl.querySelector('.edit-rule-type')?.value;
-          const operator = formEl.querySelector('.edit-rule-operator')?.value;
-          const threshold = parseFloat(formEl.querySelector('.edit-rule-threshold')?.value);
           const durationMin = parseInt(formEl.querySelector('.edit-rule-duration')?.value || '0', 10);
           const channels = [];
           if (formEl.querySelector('.edit-rule-ch-email')?.checked) channels.push('email');
           if (formEl.querySelector('.edit-rule-ch-sms')?.checked) channels.push('sms');
           const siteUrls = [...formEl.querySelectorAll('.edit-rule-site:checked')].map(cb => cb.dataset.url).filter(Boolean);
-          if (!name || !type || !operator || isNaN(threshold)) {
-            showToast('error', 'Remplissez tous les champs obligatoires'); return;
+          if (!name || !type) { showToast('error', 'Remplissez le nom et le type'); return; }
+          const _isEvtEdit = _ALT_EVENT_TYPES.includes(type);
+          const patchPayload = { name, type, durationMin, channels, siteUrls };
+          if (!_isEvtEdit) {
+            const operator = formEl.querySelector('.edit-rule-operator')?.value;
+            const threshold = parseFloat(formEl.querySelector('.edit-rule-threshold')?.value);
+            if (!operator) { showToast('error', 'Sélectionnez un opérateur'); return; }
+            if (isNaN(threshold)) { showToast('error', 'Entrez un seuil numérique valide'); return; }
+            patchPayload.operator = operator;
+            patchPayload.threshold = threshold;
           }
           try {
-            const updated = await apiAction('PATCH', `/api/alert-rules/${ruleId}`, { name, type, operator, threshold, durationMin, channels, siteUrls });
+            const updated = await apiAction('PATCH', `/api/alert-rules/${ruleId}`, patchPayload);
             if (updated) {
               Object.assign(rule, updated);
               showToast('success', `Règle "${name}" mise à jour`);
@@ -13964,7 +14011,7 @@ function bindSectionEvents() {
       });
 
       const TEMPLATES = [
-        { name: 'Monitor DOWN', type: 'monitor_down', operator: 'eq', threshold: 1, durationMin: 0, channels: ['email'], siteUrls: [] },
+        { name: 'Monitor DOWN', type: 'monitor_down', durationMin: 0, channels: ['email'], siteUrls: [] },
         { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
         { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
         { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },
@@ -14751,9 +14798,11 @@ async function init() {
   window.navigate = navigate;
   window.navigateSub = navigateSub;
   window.renderInvitePanel = renderInvitePanel;
+  window.downloadReportPdf = downloadReportPdf;
+  window.exportCsv = exportCsv;
   window.fpApplyAlertTemplate = async function(idx, btn) {
     const TMPL = [
-      { name: 'Monitor DOWN', type: 'monitor_down', operator: 'eq', threshold: 1, durationMin: 0, channels: ['email'], siteUrls: [] },
+      { name: 'Monitor DOWN', type: 'monitor_down', durationMin: 0, channels: ['email'], siteUrls: [] },
       { name: 'Score SEO critique (< 50)', type: 'seo_score', operator: 'lt', threshold: 50, durationMin: 0, channels: ['email'], siteUrls: [] },
       { name: 'Chute ranking (> 5 positions)', type: 'keyword_ranking_drop', operator: 'gt', threshold: 5, durationMin: 0, channels: ['email'], siteUrls: [] },
       { name: 'Latence élevée (> 1s)', type: 'latency', operator: 'gt', threshold: 1000, durationMin: 5, channels: ['email'], siteUrls: [] },

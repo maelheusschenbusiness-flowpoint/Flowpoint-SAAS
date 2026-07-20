@@ -13,7 +13,7 @@ export async function initMonitorsTables(): Promise<void> {
         url             TEXT NOT NULL,
         status          TEXT NOT NULL DEFAULT 'up',
         uptime          REAL NOT NULL DEFAULT 100,
-        latency         INTEGER NOT NULL DEFAULT 0,
+        latency         INTEGER,
         last_check      TEXT,
         alert_email     TEXT NOT NULL DEFAULT '',
         alert_phone     TEXT NOT NULL DEFAULT '',
@@ -33,6 +33,15 @@ export async function initMonitorsTables(): Promise<void> {
     await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS last_alert_sent BIGINT;`);
     await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMP NOT NULL DEFAULT NOW();`);
     await client.query(`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS created_at      TIMESTAMP NOT NULL DEFAULT NOW();`);
+    // BUG-W2-MON-002: latency=0 on a never-checked monitor is ambiguous.
+    // Allow NULL to mean "no measurement yet"; 0 = genuine 0ms measurement.
+    await client.query(`ALTER TABLE monitors ALTER COLUMN latency DROP NOT NULL;`);
+    await client.query(`ALTER TABLE monitors ALTER COLUMN latency DROP DEFAULT;`);
+    // Also drop NOT NULL on last_check — a newly created monitor has never been checked.
+    await client.query(`ALTER TABLE monitors ALTER COLUMN last_check DROP NOT NULL;`);
+    // Backfill: monitors that have never run a check had latency=0 set at creation time.
+    // Convert those 0s to NULL so the UI can display "—" instead of "0 ms".
+    await client.query(`UPDATE monitors SET latency = NULL WHERE last_check IS NULL AND latency = 0;`);
 
     // ── 2. monitor_checks ─────────────────────────────────────────────────────
     await client.query(`

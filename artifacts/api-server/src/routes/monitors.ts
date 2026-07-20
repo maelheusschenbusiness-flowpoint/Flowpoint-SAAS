@@ -456,8 +456,8 @@ router.post("/monitors", monitorCreateRateLimit, async (req: Request, res: Respo
       `INSERT INTO monitors
          (id, org_id, name, url, status, uptime, latency,
           frequency, alert_email, alert_phone, is_critical, last_check, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,'up',100,0,$5,$6,$7,$8,$9,NOW(),NOW())`,
-      [id, orgId, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false, new Date().toISOString()],
+       VALUES ($1,$2,$3,$4,'up',100,NULL,$5,$6,$7,$8,NULL,NOW(),NOW())`,
+      [id, orgId, name, url, frequency ?? "5min", alertEmail ?? "", alertPhone ?? "", isCritical ?? false],
     );
 
     const row = await req.orgDb(`SELECT * FROM monitors WHERE id = $1`, [id]);
