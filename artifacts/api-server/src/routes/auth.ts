@@ -4,6 +4,7 @@ import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { createSession, deleteSession, getSession, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
+import { requireAuth } from "../middlewares/requireAuth.js";
 import { Resend } from "resend";
 import { pool } from "@workspace/db";
 
@@ -95,8 +96,13 @@ function isEmailAllowed(email: string): boolean {
 }
 
 // ── Alias /auth/me → /me (success.html frontend legacy path)
-router.get("/auth/me", async (req: Request, res: Response) => {
-  const orgId = req.orgContext?.orgId ?? "default";
+// Requires a valid authenticated session — never returns a hardcoded fallback user.
+router.get("/auth/me", requireAuth, async (req: Request, res: Response) => {
+  const orgId = req.orgContext?.orgId;
+  if (!orgId || orgId === "default") {
+    res.status(401).json({ error: "Unauthorized: no valid session" });
+    return;
+  }
   try {
     const { loadOrgSettings } = await import("../services/org-settings.js");
     const dbData = await loadOrgSettings(orgId);
@@ -122,19 +128,8 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       });
       return;
     }
-  } catch { /* fall through to store fallback */ }
-  res.json({
-    id: orgId,
-    firstName: "Utilisateur",
-    lastName: "",
-    email: req.orgContext?.email ?? "",
-    plan: "Pro",
-    role: "owner",
-    org: { name: "FlowPoint", website: "" },
-    subscriptionStatus: "trialing",
-    limits: { audits: 100, monitors: 50, reports: 100, exports: 100, teamMembers: 3, workspaces: 1, retention: 90 },
-    createdAt: new Date().toISOString(),
-  });
+  } catch { /* fall through */ }
+  res.status(401).json({ error: "Unauthorized: organization data not found" });
 });
 
 function getPublicUrl(): string {

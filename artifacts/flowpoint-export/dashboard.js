@@ -3481,8 +3481,8 @@ function renderNotifications() {
         <div class="fp-notif-dot" style="background:${typeColors[n.type]||'#2563EB'}"></div>
         <div class="fp-notif-body">
           <div class="fp-notif-item-title">${n.title}</div>
-          <div class="fp-notif-item-desc">${n.desc}</div>
-          <div class="fp-notif-item-time">Il y a ${n.time}</div>
+          <div class="fp-notif-item-desc">${escHtml(n.message || n.desc || '')}</div>
+          <div class="fp-notif-item-time">${(function(v){if(!v)return '';try{var d=new Date(v);return isNaN(d.getTime())?'':d.toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}})( n.createdAt||n.time)}</div>
         </div>
       </div>
     `).join('')}
@@ -4021,13 +4021,13 @@ function renderOverview() {
         <div class="fp-card-title" style="margin-bottom:14px">🗺️ Workspace Intelligence Map</div>
         <div class="fp-ws-map-grid" style="gap:8px;flex:1;align-content:start">
           ${wsModules.map((m, _wsi) => {
-            const sc = m.score >= 70 ? '#22c55e' : m.score >= 50 ? '#f59e0b' : '#ef4444';
+            const sc = m.score == null ? 'var(--fp-text-faint)' : m.score >= 70 ? '#22c55e' : m.score >= 50 ? '#f59e0b' : '#ef4444';
             const bg = m.status === 'ok' ? 'rgba(34,197,94,0.04)' : m.status === 'down' ? 'rgba(239,68,68,0.07)' : 'rgba(245,158,11,0.05)';
             const br = m.status === 'ok' ? 'rgba(34,197,94,0.15)' : m.status === 'down' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.15)';
             return `<div class="fp-ws-module-card${_wsi >= 6 ? ' fp-ws-extra' : ''}" style="padding:10px;border-radius:10px;background:${bg};border:1px solid ${br};cursor:pointer;transition:all 0.15s" onclick="navigate('${m.route}')">
               <div style="font-size:16px;margin-bottom:4px">${m.icon}</div>
               <div style="font-size:10px;font-weight:700;color:var(--fp-text);margin-bottom:4px;line-height:1.2">${m.name}</div>
-              <div style="font-size:12px;font-weight:800;color:${sc}">${m.score}</div>
+              <div style="font-size:12px;font-weight:800;color:${sc}">${m.score ?? '—'}</div>
               ${m.issues > 0 ? `<div style="font-size:9px;color:#ef4444;margin-top:2px">${m.issues} issue${m.issues>1?'s':''}</div>` : `<div style="font-size:9px;color:#22c55e;margin-top:2px">✓ OK</div>`}
             </div>`;
           }).join('')}
@@ -22737,7 +22737,7 @@ function renderActivityFeed() {
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${members.map(m => {
-            const pct = m.score;
+            const pct = m.score ?? 0;
             return `<div style="padding:16px;border-radius:12px;border:1px solid ${m.color}28;background:${m.color}07">
               <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
                 <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,${m.color},${m.color}88);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0">${m.avatar}</div>
@@ -22746,7 +22746,7 @@ function renderActivityFeed() {
                   <div style="font-size:11px;color:var(--fp-text-muted)">${escHtml(m.role)}</div>
                 </div>
                 <div style="text-align:right">
-                  <div style="font-size:18px;font-weight:800;color:${m.color}">${m.score}<span style="font-size:11px;color:var(--fp-text-faint)">/100</span></div>
+                  <div style="font-size:18px;font-weight:800;color:${m.color}">${m.score ?? '—'}<span style="font-size:11px;color:var(--fp-text-faint)">/100</span></div>
                   <div style="font-size:10px;color:var(--fp-text-faint)">${escHtml(m.trend)}</div>
                 </div>
               </div>
@@ -26830,7 +26830,7 @@ function renderTeamPerformance() {
               <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">${m.role} · Streak : <span style="color:#f97316">🔥 ${typeof m.streak === 'number' ? m.streak + ' j' : m.streak}</span></div>
             </div>
             <div style="text-align:right">
-              <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">${m.score}</div>
+              <div style="font-size:24px;font-weight:800;color:${m.roleColor};font-family:var(--fp-font-head)">${m.score ?? '—'}</div>
               <div style="font-size:10px;color:var(--fp-text-faint)">score activité</div>
             </div>
           </div>
