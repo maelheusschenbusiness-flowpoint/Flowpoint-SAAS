@@ -12,6 +12,7 @@
  */
 import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
+import { setGA4FunnelBaseUrl } from "../services/ga4-funnel-service.js";
 
 const router = Router();
 
@@ -162,6 +163,17 @@ router.delete("/qa/monitor-checks/:monitorId", qaGuard, async (req: Request, res
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
+});
+
+// ── POST /qa/ga4-funnel-base-url — override GA4 v1alpha base URL for tests ───
+router.post("/qa/ga4-funnel-base-url", qaGuard, (req: Request, res: Response) => {
+  const { url } = req.body as { url?: string };
+  if (!url || typeof url !== "string") {
+    res.status(400).json({ error: "url (string) is required" });
+    return;
+  }
+  setGA4FunnelBaseUrl(url);
+  res.json({ ok: true, ga4FunnelBaseUrl: url });
 });
 
 export { router as qaFixturesRouter };

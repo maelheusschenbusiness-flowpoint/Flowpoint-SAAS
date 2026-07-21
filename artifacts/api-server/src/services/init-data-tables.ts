@@ -1137,6 +1137,107 @@ export async function initDataTables(): Promise<void> {
       END $$;
     `);
 
+    // ── funnels + funnel_steps ────────────────────────────────────────────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS funnels (
+        id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id              TEXT         NOT NULL,
+        site_url            TEXT         NOT NULL,
+        name                TEXT         NOT NULL CHECK (trim(name) <> ''),
+        description         TEXT,
+        ga4_property_id     TEXT,
+        is_open_funnel      BOOLEAN      NOT NULL DEFAULT false,
+        lookback_days       INTEGER      NOT NULL DEFAULT 30
+                                         CHECK (lookback_days BETWEEN 1 AND 365),
+        breakdown_dimension TEXT,
+        created_by          TEXT,
+        created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS funnel_steps (
+        id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id                TEXT         NOT NULL,
+        funnel_id             UUID         NOT NULL,
+        position              INTEGER      NOT NULL CHECK (position BETWEEN 1 AND 10),
+        name                  TEXT         NOT NULL CHECK (trim(name) <> ''),
+        event_name            TEXT,
+        page_path_match_type  TEXT,
+        page_path_value       TEXT,
+        parameter_filters     JSONB,
+        created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE (funnel_id, position)
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS funnels_org_id_idx          ON funnels(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS funnels_org_site_idx         ON funnels(org_id, site_url);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS funnel_steps_org_id_idx      ON funnel_steps(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS funnel_steps_funnel_pos_idx  ON funnel_steps(funnel_id, position);`);
+
+    // RLS for funnels
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'funnels') THEN
+          EXECUTE 'ALTER TABLE funnels ENABLE ROW LEVEL SECURITY';
+          EXECUTE 'ALTER TABLE funnels FORCE ROW LEVEL SECURITY';
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'funnels') THEN
+          DROP POLICY IF EXISTS funnels_isolation ON funnels;
+          DROP POLICY IF EXISTS tenant_select     ON funnels;
+          DROP POLICY IF EXISTS tenant_insert     ON funnels;
+          DROP POLICY IF EXISTS tenant_update     ON funnels;
+          DROP POLICY IF EXISTS tenant_delete     ON funnels;
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'funnels' AND rowsecurity = true) THEN
+          EXECUTE 'CREATE POLICY funnels_isolation ON funnels
+            FOR ALL
+            USING (org_id = current_setting(''app.current_org_id'', true))
+            WITH CHECK (org_id = current_setting(''app.current_org_id'', true))';
+        END IF;
+      END $$;
+    `);
+
+    // RLS for funnel_steps
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'funnel_steps') THEN
+          EXECUTE 'ALTER TABLE funnel_steps ENABLE ROW LEVEL SECURITY';
+          EXECUTE 'ALTER TABLE funnel_steps FORCE ROW LEVEL SECURITY';
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'funnel_steps') THEN
+          DROP POLICY IF EXISTS funnel_steps_isolation ON funnel_steps;
+          DROP POLICY IF EXISTS tenant_select          ON funnel_steps;
+          DROP POLICY IF EXISTS tenant_insert          ON funnel_steps;
+          DROP POLICY IF EXISTS tenant_update          ON funnel_steps;
+          DROP POLICY IF EXISTS tenant_delete          ON funnel_steps;
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'funnel_steps' AND rowsecurity = true) THEN
+          EXECUTE 'CREATE POLICY funnel_steps_isolation ON funnel_steps
+            FOR ALL
+            USING (org_id = current_setting(''app.current_org_id'', true))
+            WITH CHECK (org_id = current_setting(''app.current_org_id'', true))';
+        END IF;
+      END $$;
+    `);
+
     logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
