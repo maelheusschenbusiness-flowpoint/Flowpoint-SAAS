@@ -15433,24 +15433,11 @@ function renderSubPageContent(route, sub) {
       <div class="fp-grid-2">
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:12px">📈 Optimisations recommandées</div>
-          ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez GA4 et Search Console pour obtenir des recommandations basées sur vos données réelles.</div>` : [
-            {icon:'✅',c:'#22c55e',t:'Titles & meta-descriptions',d:'23 pages optimisées ce mois. Score moyen +7 pts.'},
-            {icon:'⚠️',c:'#f59e0b',t:'Contenu thin content détecté',d:'8 pages avec moins de 300 mots — risque de pénalité.'},
-            {icon:'🔗',c:'#2563EB',t:'3 opportunités de backlinks',d:'Sites partenaires identifiés pour link building.'},
-          ].map(x=>`<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-            <span style="font-size:14px;flex-shrink:0">${x.icon}</span>
-            <div><div style="font-size:11px;font-weight:600;color:${x.c}">${x.t}</div>
-            <div style="font-size:10px;color:var(--fp-text-muted)">${x.d}</div></div>
-          </div>`).join('')}
+          <div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez GA4 et Search Console pour obtenir des recommandations basées sur vos données réelles.</div>
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:12px">🎯 Performance SEO</div>
-          ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Les indicateurs SEO s'afficheront avec vos données Search Console réelles.</div>` : [['Position moy. Google','14.3','↓ -2.1'],['CTR SERP','4.8%','↑ +0.6%'],['Impressions','48 200','↑ +12%'],['Clics organiques', fmtN(filtered.reduce((a,r)=>a+parseFloat(r.metricValues?.[0]?.value||0),0)||5234),'↑ +8%']].map(([l,v,d])=>`
-            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-              <span style="font-size:11px;color:var(--fp-text-muted)">${l}</span>
-              <div style="text-align:right"><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${v}</span>
-              <span style="font-size:10px;color:${d.includes('↑')?'#22c55e':'#ef4444'};margin-left:4px">${d}</span></div>
-            </div>`).join('')}
+          <div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Les indicateurs SEO s'afficheront avec vos données Search Console réelles.</div>
         </div>
       </div>`;
     }
@@ -15464,24 +15451,11 @@ function renderSubPageContent(route, sub) {
       <div class="fp-grid-2">
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:12px">💸 Budget & ROI estimé</div>
-          ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez Google Ads pour voir votre budget et votre ROI réels.</div>` : [['Budget mensuel estimé','1 200€','—'],['Coût par clic moy.','0.87€','↓ -5%'],['Conversions payantes','23','↑ +3'],['ROAS estimé','3.2×','↑ +0.4']].map(([l,v,d])=>`
-            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-              <span style="font-size:11px;color:var(--fp-text-muted)">${l}</span>
-              <div style="text-align:right"><span style="font-size:12px;font-weight:700;color:var(--fp-text)">${v}</span>
-              <span style="font-size:10px;color:${d.includes('↑')?'#22c55e':d==='—'?'var(--fp-text-faint)':'#ef4444'};margin-left:4px">${d}</span></div>
-            </div>`).join('')}
+          <div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez Google Ads pour voir votre budget et votre ROI réels.</div>
         </div>
         <div class="fp-card">
           <div class="fp-card-title" style="margin-bottom:12px">⚡ Recommandations IA</div>
-          ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Les recommandations IA s'afficheront dès que des données de campagnes réelles seront disponibles.</div>` : [
-            {icon:'🎯',c:'#22c55e',t:'Augmenter budget Email retargeting',d:'ROI 8.4× — canal le plus rentable'},
-            {icon:'⚠️',c:'#f59e0b',t:'CPC trop élevé sur Brand',d:'Réduire enchères sur mots-clés de marque'},
-            {icon:'🔧',c:'#2563EB',t:'A/B test landing page Paid',d:'Potentiel +18% taux de conv. estimé'},
-          ].map(x=>`<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-            <span style="font-size:14px">${x.icon}</span>
-            <div><div style="font-size:11px;font-weight:600;color:${x.c}">${x.t}</div>
-            <div style="font-size:10px;color:var(--fp-text-muted)">${x.d}</div></div>
-          </div>`).join('')}
+          <div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Les recommandations IA s'afficheront dès que des données de campagnes réelles seront disponibles.</div>
         </div>
       </div>`;
     }
@@ -15494,18 +15468,7 @@ function renderSubPageContent(route, sub) {
       ${renderChannelTable(filtered, _ga4Connected()?'Actualisez pour voir les données sociales':'Connectez GA4 pour voir le trafic social')}
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:12px">📊 Analyse par réseau</div>
-        ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">${_ga4Connected()?'L\'analyse par réseau s\'affichera dès que du trafic social sera détecté.':'Connectez GA4 pour voir l\'analyse par réseau social.'}</div>` : [
-          {n:'LinkedIn',   s:780, c:42, color:'#0077b5', svg:`<svg viewBox="0 0 24 24" width="20" height="20" style="display:block"><rect width="24" height="24" rx="5" fill="#0077b5"/><path d="M7.2 9.6H5V17h2.2V9.6zm-1.1-3.5a1.3 1.3 0 100 2.6 1.3 1.3 0 000-2.6zM19 13.1c0-2.1-1.1-3.6-3-3.6-1.3 0-2.1.7-2.5 1.5V9.6H11V17h2.4v-4c0-1.1.5-1.9 1.6-1.9 1 0 1.5.8 1.5 1.9V17H19v-3.9z" fill="white"/></svg>`},
-          {n:'Instagram',  s:560, c:31, color:'#e1306c', svg:`<svg viewBox="0 0 24 24" width="20" height="20" style="display:block"><defs><linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#f09433"/><stop offset="25%" stop-color="#e6683c"/><stop offset="50%" stop-color="#dc2743"/><stop offset="75%" stop-color="#cc2366"/><stop offset="100%" stop-color="#bc1888"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="url(#ig)"/><rect x="7" y="7" width="10" height="10" rx="3" fill="none" stroke="white" stroke-width="1.5"/><circle cx="12" cy="12" r="2.5" fill="none" stroke="white" stroke-width="1.5"/><circle cx="16.5" cy="7.5" r="1" fill="white"/></svg>`},
-          {n:'Facebook',   s:340, c:19, color:'#1877f2', svg:`<svg viewBox="0 0 24 24" width="20" height="20" style="display:block"><rect width="24" height="24" rx="5" fill="#1877f2"/><path d="M15.5 8H13V6.5c0-.6.4-.6.8-.6h1.7V3.5l-2.4-.1c-2.4 0-3 1.6-3 3.1V8H8v3h2.1v7h2.9v-7h2l.4-3h-2.5z" fill="white"/></svg>`},
-          {n:'Twitter / X',s:180, c:6,  color:'#e5e7eb', svg:`<svg viewBox="0 0 24 24" width="20" height="20" style="display:block"><rect width="24" height="24" rx="5" fill="#000"/><path d="M17.5 4h2.7l-5.8 6.6L21 20h-5.4l-4-5.2L7 20H4.3l6.2-7-6-9H10l3.6 4.7L17.5 4zm-1 14.4h1.5L7.6 5.7H6z" fill="white"/></svg>`},
-          {n:'Pinterest',  s:63,  c:0,  color:'#e60023', svg:`<svg viewBox="0 0 24 24" width="20" height="20" style="display:block"><circle cx="12" cy="12" r="12" fill="#e60023"/><path d="M12 3C7 3 3 7 3 12c0 3.8 2.3 7 5.6 8.4-.1-.7-.1-1.8.2-2.6l1-4.3s-.3-.5-.3-1.4c0-1.3.7-2.2 1.6-2.2.8 0 1.2.6 1.2 1.3 0 .8-.5 2-.8 3.1-.2.9.5 1.7 1.4 1.7 1.7 0 2.8-2.1 2.8-4.6 0-1.9-1.3-3.2-3.2-3.2-2.2 0-3.5 1.6-3.5 3.3 0 .7.3 1.4.6 1.7.1.1.1.2 0 .4l-.4 1.3c-.1.2-.2.2-.4.1C7.6 14.2 7 12.4 7 10.9c0-3.3 2.4-6.3 7-6.3 3.7 0 6.6 2.6 6.6 6.2 0 3.7-2.3 6.6-5.5 6.6-1.1 0-2.1-.6-2.4-1.2l-.7 2.5c-.3 1-.9 2.1-1.3 2.8.9.3 1.8.5 2.8.5 5 0 9-4 9-9S17 3 12 3z" fill="white"/></svg>`},
-        ].map(x=>`<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
-          <div style="width:32px;height:32px;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0">${x.svg}</div>
-          <div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--fp-text)">${x.n}</div></div>
-          <div style="text-align:right"><div style="font-size:13px;font-weight:800;color:${x.color}">${x.s.toLocaleString('fr-FR')}<span style="font-size:9px;font-weight:500;color:var(--fp-text-faint)"> sess.</span></div>
-          <div style="font-size:10px;color:#22c55e;font-weight:600">${x.c} conv.</div></div>
-        </div>`).join('')}
+        ${_ga4Connected()?`<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">L'analyse par réseau s'affichera dès que du trafic social sera détecté.</div>`:`<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez GA4 pour voir l'analyse par réseau social.</div>`}
       </div>`;
     }
     if (sub === 'direct') {
@@ -15517,15 +15480,7 @@ function renderSubPageContent(route, sub) {
       ${renderChannelTable(filtered, _ga4Connected()?'Actualisez pour voir le trafic direct':'Connectez GA4 pour voir le trafic direct')}
       <div class="fp-card">
         <div class="fp-card-title" style="margin-bottom:12px">💡 Analyse fidélité</div>
-        ${!PREVIEW_MODE ? `<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">${_ga4Connected()?'L\'analyse de fidélité s\'affichera avec un historique de trafic suffisant.':'Connectez GA4 pour voir l\'analyse de fidélité.'}</div>` : [
-          {icon:'🔁',c:'#22c55e',t:'37% visiteurs récurrents',d:'Taux de retour stable — audience fidèle identifiée.'},
-          {icon:'📧',c:'#2563EB',t:'Email probable non tracké',d:'Partie du direct vient probablement d\'emails sans UTM.'},
-          {icon:'🔖',c:'#f59e0b',t:'Forte proportion bookmarks',d:'Marque mémorisée — opportunité d\'app ou PWA.'},
-        ].map(x=>`<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-          <span style="font-size:14px">${x.icon}</span>
-          <div><div style="font-size:11px;font-weight:600;color:${x.c}">${x.t}</div>
-          <div style="font-size:10px;color:var(--fp-text-muted)">${x.d}</div></div>
-        </div>`).join('')}
+        ${_ga4Connected()?`<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">L'analyse de fidélité s'affichera avec un historique de trafic suffisant.</div>`:`<div style="padding:16px;text-align:center;color:var(--fp-text-faint);font-size:11px">Connectez GA4 pour voir l'analyse de fidélité.</div>`}
       </div>`;
     }
     if (sub === 'anomalies') {
@@ -27563,9 +27518,10 @@ function renderGA4Analytics() {
   const conversions= totals[7] ? parseFloat(totals[7].value) : 0;
 
   const prevTotals = ov?.totals?.[1]?.metricValues || [];
-  const prevSess   = prevTotals[0] ? parseFloat(prevTotals[0].value) : 0;
-  const prevUsers  = prevTotals[1] ? parseFloat(prevTotals[1].value) : 0;
-  const prevConv   = prevTotals[7] ? parseFloat(prevTotals[7].value) : 0;
+  const prevSess     = prevTotals[0] ? parseFloat(prevTotals[0].value) : 0;
+  const prevUsers    = prevTotals[1] ? parseFloat(prevTotals[1].value) : 0;
+  const prevNewUsers = prevTotals[2] ? parseFloat(prevTotals[2].value) : 0;
+  const prevConv     = prevTotals[7] ? parseFloat(prevTotals[7].value) : 0;
 
   const sessArr = rows.map(r => parseFloat(r.metricValues?.[0]?.value || 0));
   const daysLabels = rows.map(r => {
@@ -27630,14 +27586,14 @@ function renderGA4Analytics() {
 
     <!-- KPI CARDS -->
     <div class="fp-stat-row fp-mb-20">
-      ${_ga4KPICard('📈', 'Sessions', sessions>0||PREVIEW_MODE?fmtNum(sessions||(PREVIEW_MODE?12847:0)):(_ga4Connected()?'0':'—'), _ga4Connected()&&sessions>0?_ga4PctChange(sessions, prevSess):null, 'vs période préc.')}
-      ${_ga4KPICard('👥', 'Utilisateurs', users>0||PREVIEW_MODE?fmtNum(users||(PREVIEW_MODE?9234:0)):(_ga4Connected()?'0':'—'), _ga4Connected()&&users>0?_ga4PctChange(users, prevUsers):null, `dont ${Math.round((newUsers||0)/Math.max(users||1,1)*100)}% nouveaux`)}
-      ${_ga4KPICard('📄', 'Pages vues', pageviews>0||PREVIEW_MODE?fmtNum(pageviews||(PREVIEW_MODE?41320:0)):(_ga4Connected()?'0':'—'), null, sessions&&pageviews ? `${(pageviews/sessions).toFixed(1)} pages/session` : '—')}
-      ${_ga4KPICard('⚡', 'Conversions', conversions>0||PREVIEW_MODE?fmtNum(conversions||(PREVIEW_MODE?847:0)):(_ga4Connected()?'0':'—'), _ga4Connected()&&conversions>0?_ga4PctChange(conversions, prevConv):null, sessions&&conversions ? `taux : ${(conversions/sessions*100).toFixed(2)}%` : '—')}
-      ${_ga4KPICard('⏱️', 'Durée moy.', avgDur>0||PREVIEW_MODE?fmtDur(avgDur||(PREVIEW_MODE?184:0)):(_ga4Connected()?'0m00s':'—'), null, 'par session')}
-      ${_ga4KPICard('💡', 'Engagement', engage>0||PREVIEW_MODE?`${(engage||(PREVIEW_MODE?68:0)).toFixed(1)}%`:(_ga4Connected()?'0%':'—'), null, `Bounce : ${(bounce||(PREVIEW_MODE?32:0)).toFixed(1)}%`)}
-      ${_ga4KPICard('🆕', 'Nouveaux utilisateurs', newUsers>0||PREVIEW_MODE?fmtNum(newUsers||(PREVIEW_MODE?4231:0)):(_ga4Connected()?'0':'—'), _ga4Connected()&&newUsers>0?_ga4PctChange(newUsers, Math.round(newUsers*0.82)):null, newUsers&&users?`${Math.round(newUsers/Math.max(users,1)*100)}% du total`:'—')}
-      ${_ga4KPICard('↩️', 'Taux de rebond', bounce>0||PREVIEW_MODE?`${(bounce||(PREVIEW_MODE?32:0)).toFixed(1)}%`:(_ga4Connected()?'0%':'—'), null, 'moy. secteur : 42%')}
+      ${_ga4KPICard('📈', 'Sessions', sessions>0?fmtNum(sessions):(_ga4Connected()?'0':'—'), _ga4Connected()&&sessions>0&&prevSess>0?_ga4PctChange(sessions, prevSess):null, 'vs période préc.')}
+      ${_ga4KPICard('👥', 'Utilisateurs', users>0?fmtNum(users):(_ga4Connected()?'0':'—'), _ga4Connected()&&users>0&&prevUsers>0?_ga4PctChange(users, prevUsers):null, users>0?`dont ${Math.round((newUsers||0)/Math.max(users,1)*100)}% nouveaux`:'—')}
+      ${_ga4KPICard('📄', 'Pages vues', pageviews>0?fmtNum(pageviews):(_ga4Connected()?'0':'—'), null, sessions&&pageviews?`${(pageviews/sessions).toFixed(1)} pages/session`:'—')}
+      ${_ga4KPICard('⚡', 'Conversions', conversions>0?fmtNum(conversions):(_ga4Connected()?'0':'—'), _ga4Connected()&&conversions>0&&prevConv>0?_ga4PctChange(conversions, prevConv):null, sessions&&conversions?`taux : ${(conversions/sessions*100).toFixed(2)}%`:'—')}
+      ${_ga4KPICard('⏱️', 'Durée moy.', avgDur>0?fmtDur(avgDur):(_ga4Connected()?'0m00s':'—'), null, 'par session')}
+      ${_ga4KPICard('💡', 'Engagement', engage>0?`${engage.toFixed(1)}%`:(_ga4Connected()?'0%':'—'), null, `Bounce : ${bounce>0?bounce.toFixed(1)+'%':'—'}`)}
+      ${_ga4KPICard('🆕', 'Nouveaux utilisateurs', newUsers>0?fmtNum(newUsers):(_ga4Connected()?'0':'—'), _ga4Connected()&&newUsers>0&&prevNewUsers>0?_ga4PctChange(newUsers, prevNewUsers):null, newUsers&&users?`${Math.round(newUsers/Math.max(users,1)*100)}% du total`:'—')}
+      ${_ga4KPICard('↩️', 'Taux de rebond', bounce>0?`${bounce.toFixed(1)}%`:(_ga4Connected()?'0%':'—'), null, 'moy. secteur : 42%')}
     </div>
 
     <!-- SESSIONS CHART + CHANNEL BREAKDOWN -->
@@ -27863,7 +27819,7 @@ function _renderGA4Realtime() {
       </div>
     </div>
     <div style="text-align:center;padding:32px;margin-bottom:20px">
-      <div style="font-size:88px;font-weight:900;color:#ef4444;font-family:var(--fp-font-head);line-height:1;margin-bottom:8px;animation:pulse 2s infinite">${active || 42}</div>
+      <div style="font-size:88px;font-weight:900;color:#ef4444;font-family:var(--fp-font-head);line-height:1;margin-bottom:8px;animation:pulse 2s infinite">${_ga4Connected() ? active : '—'}</div>
       <div style="font-size:16px;color:var(--fp-text-muted);font-weight:600">utilisateurs actifs en ce moment</div>
     </div>
     <div class="fp-grid-2 fp-mb-20">
@@ -27985,22 +27941,8 @@ function renderGA4Traffic() {
   });
 
   const channels = Object.entries(chMap).sort((a,b) => (b[1]).sessions - (a[1]).sessions);
-  const total = totalSess || (_ga4Connected() ? 0 : (PREVIEW_MODE ? 12847 : 0));
-
-  const fallbackCh = PREVIEW_MODE ? [
-    {ch:'Organic Search', s:5234, u:4102, b:28, c:312, e:72},
-    {ch:'Direct',         s:2847, u:2100, b:35, c:187, e:65},
-    {ch:'Organic Social', s:1923, u:1650, b:42, c:98,  e:58},
-    {ch:'Referral',       s:1240, u:980,  b:31, c:156, e:69},
-    {ch:'Email',          s:847,  u:720,  b:22, c:71,  e:78},
-    {ch:'Paid Search',    s:756,  u:640,  b:38, c:23,  e:62},
-    {ch:'Display',        s:412,  u:380,  b:55, c:8,   e:45},
-    {ch:'Video',          s:298,  u:270,  b:48, c:12,  e:52},
-    {ch:'Affiliate',      s:187,  u:160,  b:33, c:19,  e:67},
-    {ch:'Cross-network',  s:124,  u:110,  b:41, c:5,   e:59},
-  ] : [];
-
-  const displayCh = channels.length ? channels : fallbackCh.map(x => [x.ch, {sessions:x.s,users:x.u,bounceSum:x.b*x.s,conversions:x.c,engageSum:x.e*x.s,count:1,sources:[]}]);
+  const total = totalSess;
+  const displayCh = channels;
 
   return `
     <div class="fp-section-header">
@@ -28086,26 +28028,12 @@ function renderGA4Traffic() {
       </div>
     </div>
 
-    <!-- ANOMALY DETECTION -->
+        <!-- ANOMALY DETECTION -->
     <div class="fp-card">
       <div class="fp-card-title" style="margin-bottom:14px">⚠️ Détection d\'anomalies</div>
-      ${PREVIEW_MODE ? [
-        {type:'warn',  icon:'📉', title:'Chute trafic organique', desc:'Organic Search -23% lundi vs moyenne 30j. Possible mise à jour d\'algo Google.', action:'Investiguer'},
-        {type:'info',  icon:'📈', title:'Pic trafic referral', desc:'Referral +156% hier. Probable mention dans un article ou forum populaire.', action:'Voir source'},
-        {type:'danger',icon:'🚨', title:'Rebond mobile anormal', desc:'Bounce mobile 78% cette semaine vs 45% normale. Problème UX probable.', action:'Analyser'},
-      ].map(x => {
-        const c = x.type==='warn'?'#f59e0b':x.type==='danger'?'#ef4444':'#2563EB';
-        return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;background:${c}08;border-left:3px solid ${c};margin-bottom:6px">
-          <span style="font-size:18px;flex-shrink:0">${x.icon}</span>
-          <div style="flex:1">
-            <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${x.title}</div>
-            <div style="font-size:11px;color:var(--fp-text-muted)">${x.desc}</div>
-          </div>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;flex-shrink:0">${x.action}</button>
-        </div>`;
-      }).join('') : `<div style="padding:20px;text-align:center;font-size:12px;color:var(--fp-text-muted)">${_ga4Connected() ? '✅ Aucune anomalie détectée. La détection automatique analyse votre trafic au fil du temps.' : '🔌 Connectez GA4 pour activer la détection d\'anomalies sur votre trafic.'}</div>`}
+      <div style="padding:20px;text-align:center;font-size:12px;color:var(--fp-text-muted)">${_ga4Connected() ? '✅ Aucune anomalie détectée. La détection automatique analyse votre trafic au fil du temps.' : '🔌 Connectez GA4 pour activer la détection d\'anomalies sur votre trafic.'}</div>
     </div>
-  `;
+    `;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -31190,23 +31118,26 @@ window.FP_GBP_API = {
 window.FP_GA4_API = (function() {
   let _realtimeTimer = null;
 
-  async function _loadGA4Data(propertyId) {
+  async function _loadGA4Data(propertyId, days) {
+    const d = (Number.isInteger(days) && days >= 1 && days <= 365) ? days : 30;
     try {
+      const pid = encodeURIComponent(propertyId);
       const [ov, traffic, pages, audience, funnels] = await Promise.all([
-        apiFetch(`/api/ga4/overview?propertyId=${encodeURIComponent(propertyId)}&days=30`).catch(() => null),
-        apiFetch(`/api/ga4/traffic-sources?propertyId=${encodeURIComponent(propertyId)}&days=30`).catch(() => null),
-        apiFetch(`/api/ga4/top-pages?propertyId=${encodeURIComponent(propertyId)}&days=30`).catch(() => null),
-        apiFetch(`/api/ga4/audience?propertyId=${encodeURIComponent(propertyId)}&days=30`).catch(() => null),
-        apiFetch(`/api/ga4/funnel?propertyId=${encodeURIComponent(propertyId)}&days=30`).catch(() => null),
+        apiFetch(`/api/ga4/overview?propertyId=${pid}&days=${d}`).catch(() => null),
+        apiFetch(`/api/ga4/sources?propertyId=${pid}&days=${d}`).catch(() => null),
+        apiFetch(`/api/ga4/pages?propertyId=${pid}&days=${d}`).catch(() => null),
+        apiFetch(`/api/ga4/audience?propertyId=${pid}&days=${d}`).catch(() => null),
+        apiFetch(`/api/ga4/funnels?propertyId=${pid}&days=${d}`).catch(() => null),
       ]);
-      STATE.ga4 = {
-        ...(STATE.ga4 || {}),
-        overview: ov,
-        traffic: traffic,
-        pages: pages,
-        audience: audience,
-        funnels: funnels,
+      const update = {
+        overview: ov?.data ?? ov,
+        sources:  traffic?.data ?? traffic,
+        pages:    pages?.data ?? pages,
+        audience: audience?.data ?? audience,
+        funnels:  funnels?.data ?? funnels,
       };
+      STATE.ga4 = { ...(STATE.ga4 || {}), ...update };
+      if (window.FP_DATA?.ga4) Object.assign(window.FP_DATA.ga4, update);
     } catch(e) { console.warn('[FP_GA4_API] data load error:', e); }
   }
 
@@ -31261,7 +31192,7 @@ window.FP_GA4_API = (function() {
         if (r?.ok) {
           window.FP_DATA = window.FP_DATA || {};
           window.FP_DATA.ga4 = { ...window.FP_DATA.ga4, propertyId, connected: true };
-          await _loadGA4Data(propertyId);
+          await _loadGA4Data(propertyId, 30);
           render();
           showToast('success', `Propriété GA4 sélectionnée`);
         } else {
@@ -31270,9 +31201,9 @@ window.FP_GA4_API = (function() {
       } catch(e) { showToast('error', String(e)); }
     },
 
-    async reload() {
+    async reload(days) {
       const pid = window.FP_DATA?.ga4?.propertyId;
-      if (pid) await _loadGA4Data(pid);
+      if (pid) await _loadGA4Data(pid, days);
       render();
     },
 
@@ -31281,7 +31212,9 @@ window.FP_GA4_API = (function() {
       if (!pid) return;
       try {
         const r = await apiFetch(`/api/ga4/realtime?propertyId=${encodeURIComponent(pid)}`);
-        STATE.ga4 = { ...(STATE.ga4||{}), realtime: r };
+        const rtData = r?.data ?? r;
+        STATE.ga4 = { ...(STATE.ga4||{}), realtime: rtData };
+        if (window.FP_DATA?.ga4) window.FP_DATA.ga4.realtime = rtData;
         render();
       } catch(e) { console.warn('[GA4] realtime error:', e); }
     },

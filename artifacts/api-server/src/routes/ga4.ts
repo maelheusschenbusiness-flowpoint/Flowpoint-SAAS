@@ -21,8 +21,37 @@ const router = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Extract orgId from the authenticated request context.
+ * NEVER falls back to "default" for authenticated routes.
+ * Throws a 500-tagged error if orgContext is absent (middleware configuration bug).
+ */
 function getOrgId(req: Request): string {
-  return (req as unknown as Record<string, string>)["orgId"] ?? "default";
+  const orgId = req.orgContext?.orgId;
+  if (!orgId) {
+    const err = new Error("orgContext.orgId missing — requireAuth middleware must run first");
+    (err as Error & { status: number }).status = 500;
+    throw err;
+  }
+  return orgId;
+}
+
+/**
+ * Validate the `days` query parameter.
+ * Accepts integers in [1, 365]. Returns 30 when the parameter is absent.
+ * Throws a 400-tagged error for any invalid value (non-integer, out of range, non-numeric).
+ */
+function validateDays(req: Request): number {
+  const raw = req.query["days"] as string | undefined;
+  if (raw === undefined || raw === null || raw === "") return 30;
+  const trimmed = raw.trim();
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < 1 || n > 365 || trimmed === "" || trimmed !== String(n)) {
+    const err = new Error("days must be an integer between 1 and 365");
+    (err as Error & { status: number }).status = 400;
+    throw err;
+  }
+  return n;
 }
 
 function daysToRange(days: number): { startDate: string; endDate: string } {
@@ -34,14 +63,74 @@ function daysToRange(days: number): { startDate: string; endDate: string } {
   };
 }
 
-async function resolveProperty(req: Request): Promise<string | null> {
-  const pid = (
-    (req.query["propertyId"] as string | undefined) ??
-    ((req.body as Record<string, unknown>)?.["propertyId"] as string | undefined)
-  );
-  if (pid?.trim()) return pid.trim();
-  const stored = await getStoredProperty(getOrgId(req));
-  return stored?.propertyId ?? null;
+/**
+ * Resolve the GA4 property for this org with ownership validation.
+ *
+ * Security rules:
+ *   - Always load the property stored for the authenticated org from DB.
+ *   - If the client omits ?propertyId → use the stored property.
+ *   - If the client sends ?propertyId that MATCHES the stored one → accepted.
+ *   - If the client sends ?propertyId that DIFFERS → 403 property_not_owned.
+ *     (Never reveal whether the requested propertyId belongs to another org.)
+ *   - If no property is stored for the org → returns null (caller decides: 400).
+ */
+async function resolveProperty(
+  req: Request,
+  orgId: string
+): Promise<string | null> {
+  const stored    = await getStoredProperty(orgId);
+  const storedPid = stored?.propertyId ?? null;
+
+  const clientPid = (req.query["propertyId"] as string | undefined)?.trim() ||
+                    ((req.body as Record<string, unknown>)?.["propertyId"] as string | undefined)?.trim();
+
+  if (clientPid) {
+    if (storedPid && clientPid === storedPid) return storedPid;
+    const err = new Error("property_not_owned");
+    (err as Error & { status: number; code: string }).status = 403;
+    (err as Error & { status: number; code: string }).code   = "property_not_owned";
+    throw err;
+  }
+
+  return storedPid;
+}
+
+/** Build a standard meta envelope. Compatible with existing consumers — added at the top level. */
+function buildMeta(opts: {
+  source?: string;
+  days?: number;
+  startDate?: string;
+  endDate?: string;
+  cached?: boolean;
+  isEmpty?: boolean;
+}): Record<string, unknown> {
+  return {
+    source:      opts.source      ?? "ga4",
+    days:        opts.days        ?? null,
+    startDate:   opts.startDate   ?? null,
+    endDate:     opts.endDate     ?? null,
+    generatedAt: new Date().toISOString(),
+    cached:      opts.cached      ?? false,
+    isEmpty:     opts.isEmpty     ?? false,
+  };
+}
+
+/** Unified error handler for route-level try/catch. */
+function handleRouteError(res: Response, e: unknown, label: string): void {
+  const err    = e as Error & { status?: number; code?: string };
+  const status = err.status ?? 500;
+  if (status !== 400 && status !== 403) {
+    logger.error({ e, label }, `[GA4] ${label} failed`);
+  }
+  if (status === 403) {
+    res.status(403).json({ ok: false, error: err.code ?? "property_not_owned" });
+    return;
+  }
+  if (status === 400) {
+    res.status(400).json({ ok: false, error: err.message });
+    return;
+  }
+  res.status(status).json({ ok: false, error: String(e) });
 }
 
 // ── GET /api/ga4/status ───────────────────────────────────────────────────────
@@ -51,7 +140,6 @@ router.get("/ga4/status", async (req: Request, res: Response) => {
     const orgId        = getOrgId(req);
     const hasProperty  = await isGA4Connected(orgId);
     const stored       = hasProperty ? await getStoredProperty(orgId) : null;
-    // Treat as connected if property found OR if Google tokens exist (discovery in progress)
     const hasTokens    = hasProperty ? true : await hasGoogleConnection(orgId);
     const connected    = hasProperty || hasTokens;
     res.json({
@@ -62,7 +150,7 @@ router.get("/ga4/status", async (req: Request, res: Response) => {
       propertyName: stored?.displayName  ?? null,
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/status");
   }
 });
 
@@ -70,11 +158,11 @@ router.get("/ga4/status", async (req: Request, res: Response) => {
 
 router.get("/ga4/accounts", async (req: Request, res: Response) => {
   try {
-    const accounts = await listGA4Accounts(getOrgId(req));
+    const orgId    = getOrgId(req);
+    const accounts = await listGA4Accounts(orgId);
     res.json({ ok: true, accounts });
   } catch (e) {
-    logger.error({ e }, "[GA4] /accounts failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/accounts");
   }
 });
 
@@ -82,28 +170,29 @@ router.get("/ga4/accounts", async (req: Request, res: Response) => {
 
 router.get("/ga4/properties", async (req: Request, res: Response) => {
   try {
+    const orgId      = getOrgId(req);
     const { accountId } = req.query as { accountId?: string };
-    const properties = await listGA4Properties(accountId ?? "", getOrgId(req));
+    const properties = await listGA4Properties(accountId ?? "", orgId);
     res.json({ ok: true, properties });
   } catch (e) {
-    logger.error({ e }, "[GA4] /properties failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/properties");
   }
 });
 
 // ── POST /api/ga4/property ────────────────────────────────────────────────────
 
 router.post("/ga4/property", async (req: Request, res: Response) => {
-  const { propertyId, propertyName } = req.body as { propertyId?: string; propertyName?: string };
-  if (!propertyId?.trim()) {
-    res.status(400).json({ ok: false, error: "propertyId is required" });
-    return;
-  }
   try {
-    await setStoredProperty(getOrgId(req), propertyId.trim(), propertyName || propertyId.trim());
+    const orgId = getOrgId(req);
+    const { propertyId, propertyName } = req.body as { propertyId?: string; propertyName?: string };
+    if (!propertyId?.trim()) {
+      res.status(400).json({ ok: false, error: "propertyId is required" });
+      return;
+    }
+    await setStoredProperty(orgId, propertyId.trim(), propertyName || propertyId.trim());
     res.json({ ok: true, propertyId: propertyId.trim() });
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/property");
   }
 });
 
@@ -111,18 +200,27 @@ router.post("/ga4/property", async (req: Request, res: Response) => {
 
 router.get("/ga4/overview", async (req: Request, res: Response) => {
   try {
-    const pid = await resolveProperty(req);
+    const orgId = getOrgId(req);
+    const days  = validateDays(req);
+    const pid   = await resolveProperty(req, orgId);
     if (!pid) {
       res.status(400).json({ ok: false, error: "No GA4 property configured. POST /api/ga4/property first." });
       return;
     }
-    const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
     const { startDate, endDate } = daysToRange(days);
-    const data = await getGA4Overview(getOrgId(req), startDate, endDate);
-    res.json({ ok: true, propertyId: pid, days, startDate, endDate, data });
+    const data = await getGA4Overview(orgId, startDate, endDate);
+    const isEmpty = !data.rows?.length && !data.totals?.length;
+    res.json({
+      ok: true,
+      propertyId: pid,
+      days,
+      startDate,
+      endDate,
+      data,
+      meta: buildMeta({ days, startDate, endDate, isEmpty }),
+    });
   } catch (e) {
-    logger.error({ e }, "[GA4] /overview failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/overview");
   }
 });
 
@@ -130,16 +228,22 @@ router.get("/ga4/overview", async (req: Request, res: Response) => {
 
 router.get("/ga4/realtime", async (req: Request, res: Response) => {
   try {
-    const pid = await resolveProperty(req);
+    const orgId = getOrgId(req);
+    const pid   = await resolveProperty(req, orgId);
     if (!pid) {
       res.status(400).json({ ok: false, error: "No GA4 property configured." });
       return;
     }
-    const data = await getGA4Realtime(getOrgId(req));
-    res.json({ ok: true, propertyId: pid, data, ts: Date.now() });
+    const data = await getGA4Realtime(orgId);
+    res.json({
+      ok: true,
+      propertyId: pid,
+      data,
+      meta: buildMeta({ isEmpty: !data.rows?.length }),
+      ts: Date.now(),
+    });
   } catch (e) {
-    logger.error({ e }, "[GA4] /realtime failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/realtime");
   }
 });
 
@@ -147,61 +251,94 @@ router.get("/ga4/realtime", async (req: Request, res: Response) => {
 
 router.get(["/ga4/sources", "/ga4/traffic-sources"], async (req: Request, res: Response) => {
   try {
-    const pid = await resolveProperty(req);
+    const orgId = getOrgId(req);
+    const days  = validateDays(req);
+    const pid   = await resolveProperty(req, orgId);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
-    const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
     const { startDate, endDate } = daysToRange(days);
-    const data = await getGA4Sources(getOrgId(req), startDate, endDate);
-    res.json({ ok: true, propertyId: pid, days, data });
+    const data = await getGA4Sources(orgId, startDate, endDate);
+    const isEmpty = !data.rows?.length;
+    res.json({
+      ok: true,
+      propertyId: pid,
+      days,
+      data,
+      meta: buildMeta({ days, startDate, endDate, isEmpty }),
+    });
   } catch (e) {
-    logger.error({ e }, "[GA4] /sources failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/sources");
   }
 });
 
-// ── GET /api/ga4/pages ────────────────────────────────────────────────────────
+// ── GET /api/ga4/pages  &  /api/ga4/top-pages (canonical alias) ──────────────
 
-router.get("/ga4/pages", async (req: Request, res: Response) => {
+async function handlePagesRequest(req: Request, res: Response): Promise<void> {
   try {
-    const pid = await resolveProperty(req);
+    const orgId = getOrgId(req);
+    const days  = validateDays(req);
+    const pid   = await resolveProperty(req, orgId);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
-    const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
     const { startDate, endDate } = daysToRange(days);
-    const data = await getGA4Pages(getOrgId(req), startDate, endDate);
-    res.json({ ok: true, propertyId: pid, days, data });
+    const data = await getGA4Pages(orgId, startDate, endDate);
+    const isEmpty = !data.rows?.length;
+    res.json({
+      ok: true,
+      propertyId: pid,
+      days,
+      data,
+      meta: buildMeta({ days, startDate, endDate, isEmpty }),
+    });
   } catch (e) {
-    logger.error({ e }, "[GA4] /pages failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/pages");
   }
-});
+}
 
-// ── GET /api/ga4/funnels ──────────────────────────────────────────────────────
+router.get("/ga4/pages",     handlePagesRequest);
+router.get("/ga4/top-pages", handlePagesRequest);
 
-router.get("/ga4/funnels", async (req: Request, res: Response) => {
+// ── GET /api/ga4/funnels  &  /api/ga4/funnel (canonical alias) ───────────────
+
+async function handleFunnelsRequest(req: Request, res: Response): Promise<void> {
   try {
-    const pid = await resolveProperty(req);
+    const orgId = getOrgId(req);
+    const pid   = await resolveProperty(req, orgId);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
-    const data = await getGA4Funnels(getOrgId(req));
-    res.json({ ok: true, propertyId: pid, data });
+    const data = await getGA4Funnels(orgId);
+    const isEmpty = !data.landingPages?.rows?.length && !data.conversionPaths?.rows?.length;
+    res.json({
+      ok: true,
+      propertyId: pid,
+      data,
+      meta: buildMeta({ isEmpty }),
+    });
   } catch (e) {
-    logger.error({ e }, "[GA4] /funnels failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/funnels");
   }
-});
+}
+
+router.get("/ga4/funnels", handleFunnelsRequest);
+router.get("/ga4/funnel",  handleFunnelsRequest);
 
 // ── GET /api/ga4/conversions ──────────────────────────────────────────────────
 
 router.get("/ga4/conversions", async (req: Request, res: Response) => {
   try {
-    const pid = await resolveProperty(req);
+    const orgId = getOrgId(req);
+    const days  = validateDays(req);
+    const pid   = await resolveProperty(req, orgId);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
-    const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
     const { startDate, endDate } = daysToRange(days);
-    const data = await getGA4Conversions(getOrgId(req), startDate, endDate);
-    res.json({ ok: true, propertyId: pid, days, data });
+    const data = await getGA4Conversions(orgId, startDate, endDate);
+    const isEmpty = !data.rows?.length;
+    res.json({
+      ok: true,
+      propertyId: pid,
+      days,
+      data,
+      meta: buildMeta({ days, startDate, endDate, isEmpty }),
+    });
   } catch (e) {
-    logger.error({ e }, "[GA4] /conversions failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/conversions");
   }
 });
 
@@ -209,15 +346,22 @@ router.get("/ga4/conversions", async (req: Request, res: Response) => {
 
 router.get("/ga4/audience", async (req: Request, res: Response) => {
   try {
-    const pid = await resolveProperty(req);
+    const orgId = getOrgId(req);
+    const days  = validateDays(req);
+    const pid   = await resolveProperty(req, orgId);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
-    const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
     const { startDate, endDate } = daysToRange(days);
-    const data = await getGA4Audience(getOrgId(req), startDate, endDate);
-    res.json({ ok: true, propertyId: pid, days, data });
+    const data = await getGA4Audience(orgId, startDate, endDate);
+    const isEmpty = !data.devices?.rows?.length;
+    res.json({
+      ok: true,
+      propertyId: pid,
+      days,
+      data,
+      meta: buildMeta({ days, startDate, endDate, isEmpty }),
+    });
   } catch (e) {
-    logger.error({ e }, "[GA4] /audience failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/audience");
   }
 });
 
@@ -225,15 +369,59 @@ router.get("/ga4/audience", async (req: Request, res: Response) => {
 
 router.get("/ga4/campaigns", async (req: Request, res: Response) => {
   try {
-    const pid = await resolveProperty(req);
+    const orgId = getOrgId(req);
+    const days  = validateDays(req);
+    const pid   = await resolveProperty(req, orgId);
     if (!pid) { res.status(400).json({ ok: false, error: "No GA4 property configured." }); return; }
-    const days = Math.min(parseInt(req.query["days"] as string || "30"), 365);
     const { startDate, endDate } = daysToRange(days);
-    const data = await getGA4Campaigns(getOrgId(req), startDate, endDate);
-    res.json({ ok: true, propertyId: pid, days, data });
+    const data = await getGA4Campaigns(orgId, startDate, endDate);
+    res.json({
+      ok: true,
+      propertyId: pid,
+      days,
+      data,
+      meta: buildMeta({ days, startDate, endDate }),
+    });
   } catch (e) {
-    logger.error({ e }, "[GA4] /campaigns failed");
-    res.status(500).json({ ok: false, error: String(e) });
+    handleRouteError(res, e, "/ga4/campaigns");
+  }
+});
+
+// ── GET /api/ga4/export ───────────────────────────────────────────────────────
+
+router.get("/ga4/export", async (req: Request, res: Response) => {
+  try {
+    const orgId = getOrgId(req);
+    const days  = validateDays(req);
+    const pid   = await resolveProperty(req, orgId);
+    if (!pid) {
+      res.status(400).json({ ok: false, error: "No GA4 property configured." });
+      return;
+    }
+    const { startDate, endDate } = daysToRange(days);
+
+    const [overview, sources, pages] = await Promise.all([
+      getGA4Overview(orgId, startDate, endDate),
+      getGA4Sources(orgId, startDate, endDate),
+      getGA4Pages(orgId, startDate, endDate),
+    ]);
+
+    const isEmpty =
+      !overview.rows?.length &&
+      !sources.rows?.length &&
+      !pages.rows?.length;
+
+    res.json({
+      ok: true,
+      propertyId: pid,
+      days,
+      startDate,
+      endDate,
+      data: { overview, sources, pages },
+      meta: buildMeta({ days, startDate, endDate, isEmpty }),
+    });
+  } catch (e) {
+    handleRouteError(res, e, "/ga4/export");
   }
 });
 
