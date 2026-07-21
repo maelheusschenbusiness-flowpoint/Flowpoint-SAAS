@@ -124,7 +124,7 @@ export async function upsertCROScore(orgId: string, siteUrl: string, page: strin
       orgId,
       siteUrl,
       page,
-      score,
+      overallScore: score,
       frictionScore,
       ctaScore,
       formScore,

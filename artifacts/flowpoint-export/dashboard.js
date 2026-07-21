@@ -20745,7 +20745,7 @@ function renderConversion() {
       { label: 'Scroll > 50%',   mob: 2.4,  desk: 4.1  },
       { label: 'Contacts',       mob: 0.7,  desk: 1.5  },
       { label: 'Panier ajouté',  mob: 0.41, desk: 0.89 },
-      { label: 'Checkout',       mob: 0.21, desk: 0.52 },
+      { label: 'Checkout',       mob: 0.21, desk: 0.51 },
       { label: 'Clients',        mob: 0.12, desk: 0.34 },
     ] : []);
     const friction = STATE.behavioral?.friction || (PREVIEW_MODE ? [
@@ -23966,7 +23966,7 @@ function renderDataExplorer() {
     const _fcR = _preds && _preds.filter(p => p.scenario === 'base' && p.modelId && p.modelId.indexOf('revenue') > -1).slice(-6);
     const fMonths = (_fcT && _fcT.length) ? _fcT.map(p => { try { return new Date(p.date + '-01').toLocaleDateString('fr-FR',{month:'short'}); } catch(e){ return p.date; } }) : ['Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov'];
     const fTraffic   = (_fcT && _fcT.length) ? _fcT.map(p => Math.round(p.predictedValue)) : [13800, 15200, 14100, 16400, 17800, 19200];
-    const fConv      = [0.27, 0.31, 0.29, 0.34, 0.38, 0.41];
+    const fConv      = [0.27, 0.30, 0.29, 0.34, 0.38, 0.40];
     const fRev       = (_fcR && _fcR.length) ? _fcR.map(p => Math.round(p.predictedValue)) : [3240, 3800, 3400, 4420, 5140, 5920];
     const maxF       = Math.max(...fTraffic);
     const scenarios  = [
@@ -23987,7 +23987,7 @@ function renderDataExplorer() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Trafic M+6 (reco)', displayStat(null, '+24%'), PREVIEW_MODE ? '16 400 sessions prévues' : 'Connectez analytics', 'neutral')}
-        ${statCard('Conversion M+6', displayStat(null, '0.41%'), PREVIEW_MODE ? 'avec plan CRO complet' : 'Connectez analytics', 'neutral')}
+        ${statCard('Conversion M+6', displayStat(null, null), PREVIEW_MODE ? 'avec plan CRO complet' : 'Connectez analytics', 'neutral')}
         ${statCard('Revenue M+6', displayStat(null, '5 920€'), PREVIEW_MODE ? 'scénario recommandé' : 'Connectez analytics', 'neutral')}
         ${statCard('Confiance IA', displayStat(null, '74%'), PREVIEW_MODE ? 'basé sur 8 mois' : 'Données insuffisantes', 'neutral')}
       </div>

@@ -280,7 +280,9 @@ export const behaviorSessionsTable = pgTable("behavior_sessions", {
   bounce:          boolean("bounce").notNull().default(true),
   engagementScore: integer("engagement_score").notNull().default(0),
   rageClicks:      integer("rage_clicks").notNull().default(0),
-  createdAt:       timestamp("created_at").defaultNow(),
+  exitPage:        text("exit_page"),
+  startedAt:       timestamp("started_at"),
+  endedAt:         timestamp("ended_at"),
 });
 
 export const behaviorInsightsTable = pgTable("behavior_insights", {
@@ -299,13 +301,11 @@ export const behaviorInsightsTable = pgTable("behavior_insights", {
 });
 
 export const behaviorSiteTokensTable = pgTable("behavior_site_tokens", {
-  id:         text("id").primaryKey(),
-  siteUrl:    text("site_url").notNull(),
   tokenHash:  text("token_hash").notNull(),
-  siteSecret: text("site_secret").notNull(),
-  orgId:      text("org_id").default("default"),
-  active:     boolean("active").notNull().default(true),
+  siteUrl:    text("site_url").notNull(),
+  orgId:      text("org_id").notNull().default("default"),
   createdAt:  timestamp("created_at").defaultNow(),
+  lastUsedAt: timestamp("last_used_at"),
 });
 
 export const croRecommendationsTable = pgTable("cro_recommendations", {
@@ -331,43 +331,51 @@ export const croScoresTable = pgTable("cro_scores", {
   orgId:        text("org_id").notNull().default("default"),
   siteUrl:      text("site_url").notNull(),
   page:         text("page").notNull(),
-  score:        integer("score").notNull().default(50),
+  overallScore: integer("overall_score").notNull().default(50),
   frictionScore: integer("friction_score").default(50),
   ctaScore:     integer("cta_score").default(50),
   formScore:    integer("form_score").default(50),
   mobileScore:  integer("mobile_score").default(50),
   copyScore:    integer("copy_score").default(50),
+  issues:       jsonb("issues").default([]),
   updatedAt:    timestamp("updated_at").defaultNow(),
 });
 
 export const croExperimentsTable = pgTable("cro_experiments", {
-  id:             text("id").primaryKey(),
-  orgId:          text("org_id").notNull().default("default"),
-  siteUrl:        text("site_url").notNull(),
-  page:           text("page").notNull(),
-  name:           text("name").notNull(),
-  type:           text("type").default("a_b"),
-  status:         text("status").notNull().default("draft"),
-  controlVariant: jsonb("control_variant").default({}),
-  testVariant:    jsonb("test_variant").default({}),
-  winner:         text("winner"),
-  startedAt:      timestamp("started_at"),
-  endedAt:        timestamp("ended_at"),
-  createdAt:      timestamp("created_at").defaultNow(),
+  id:           text("id").primaryKey(),
+  orgId:        text("org_id").notNull().default("default"),
+  siteUrl:      text("site_url").notNull(),
+  page:         text("page").notNull(),
+  name:         text("name").notNull(),
+  hypothesis:   text("hypothesis"),
+  variantA:     jsonb("variant_a").default({}),
+  variantB:     jsonb("variant_b").default({}),
+  status:       text("status").notNull().default("draft"),
+  winner:       text("winner"),
+  conversionA:  real("conversion_a"),
+  conversionB:  real("conversion_b"),
+  confidence:   real("confidence"),
+  startedAt:    timestamp("started_at"),
+  endedAt:      timestamp("ended_at"),
+  createdAt:    timestamp("created_at").defaultNow(),
 });
 
 export const revenueLeaksTable = pgTable("revenue_leaks", {
-  id:           text("id").primaryKey(),
-  orgId:        text("org_id").notNull().default("default"),
-  siteUrl:      text("site_url"),
-  type:         text("type").notNull().default("conversion"),
-  title:        text("title").notNull(),
-  description:  text("description"),
-  severity:     text("severity").notNull().default("medium"),
-  estimatedLoss: real("estimated_loss").default(0),
-  status:       text("status").notNull().default("active"),
-  resolvedAt:   timestamp("resolved_at"),
-  createdAt:    timestamp("created_at").defaultNow(),
+  id:                   text("id").primaryKey(),
+  orgId:                text("org_id").notNull().default("default"),
+  siteUrl:              text("site_url"),
+  leakType:             text("leak_type").notNull().default("conversion"),
+  page:                 text("page").notNull().default("/"),
+  title:                text("title").notNull(),
+  description:          text("description"),
+  estimatedMonthlyLoss: real("estimated_monthly_loss").default(0),
+  impactScore:          integer("impact_score").default(50),
+  fixDifficultyMin:     integer("fix_difficulty_min").default(60),
+  quickFix:             text("quick_fix"),
+  status:               text("status").notNull().default("active"),
+  metadata:             jsonb("metadata").default({}),
+  detectedAt:           timestamp("detected_at").defaultNow(),
+  resolvedAt:           timestamp("resolved_at"),
 });
 
 export const reportTemplatesTable = pgTable("report_templates", {

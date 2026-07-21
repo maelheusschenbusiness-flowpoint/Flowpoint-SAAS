@@ -1007,6 +1007,7 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE cro_recommendations ADD COLUMN IF NOT EXISTS org_id  TEXT NOT NULL DEFAULT 'default';`);
     await run(client, `ALTER TABLE cro_recommendations ADD COLUMN IF NOT EXISTS source  TEXT NOT NULL DEFAULT 'rules';`);
     // Convert ai_generated from text → boolean (idempotent: skip if already boolean)
+    // Must DROP DEFAULT first, otherwise Postgres raises "cannot cast automatically"
     await run(client, `
       DO $$ BEGIN
         IF EXISTS (
@@ -1014,10 +1015,12 @@ export async function initDataTables(): Promise<void> {
           WHERE table_name='cro_recommendations' AND column_name='ai_generated'
             AND data_type IN ('character varying','text')
         ) THEN
+          ALTER TABLE cro_recommendations ALTER COLUMN ai_generated DROP DEFAULT;
           ALTER TABLE cro_recommendations
             ALTER COLUMN ai_generated TYPE BOOLEAN
             USING (ai_generated = 'true');
           ALTER TABLE cro_recommendations ALTER COLUMN ai_generated SET DEFAULT false;
+          UPDATE cro_recommendations SET ai_generated = false WHERE ai_generated = true;
         END IF;
       END $$;
     `);
@@ -1034,15 +1037,25 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS revenue_leaks_org_id_idx ON revenue_leaks(org_id);`);
 
     // ── Fix RLS on behavioral/CRO tables: USING=(true) → org_id filter ───────
+    // Drop both old *_isolation policies AND old tenant_* permissive bypass policies.
+    // Old tenant_select/update/delete with USING(true) coexist with *_isolation ALL
+    // and because PostgreSQL OR-fuses permissive policies, USING(true) wins → bypass.
     await run(client, `
-      DO $$ BEGIN
-        DROP POLICY IF EXISTS behavior_events_isolation   ON behavior_events;
-        DROP POLICY IF EXISTS behavior_sessions_isolation ON behavior_sessions;
-        DROP POLICY IF EXISTS behavior_insights_isolation ON behavior_insights;
-        DROP POLICY IF EXISTS cro_recommendations_isolation ON cro_recommendations;
-        DROP POLICY IF EXISTS cro_scores_isolation          ON cro_scores;
-        DROP POLICY IF EXISTS cro_experiments_isolation     ON cro_experiments;
-        DROP POLICY IF EXISTS revenue_leaks_isolation       ON revenue_leaks;
+      DO $$ DECLARE t TEXT; p TEXT;
+      BEGIN
+        FOREACH t IN ARRAY ARRAY['behavior_events','behavior_sessions','behavior_insights',
+                                  'traffic_losses','cro_recommendations','cro_scores',
+                                  'cro_experiments','revenue_leaks']
+        LOOP
+          FOREACH p IN ARRAY ARRAY['tenant_select','tenant_insert','tenant_update','tenant_delete',
+                                    'behavior_events_isolation','behavior_sessions_isolation',
+                                    'behavior_insights_isolation','cro_recommendations_isolation',
+                                    'cro_scores_isolation','cro_experiments_isolation',
+                                    'revenue_leaks_isolation']
+          LOOP
+            EXECUTE format('DROP POLICY IF EXISTS %I ON %I', p, t);
+          END LOOP;
+        END LOOP;
       END $$;
     `);
     await run(client, `

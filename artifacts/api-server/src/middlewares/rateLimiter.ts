@@ -189,7 +189,7 @@ const BEHAVIORAL_SITE_LIMITS: Record<string, { limitPerMin: number }> = {
   session: { limitPerMin: 60  },  // session upserts
 };
 
-const BEHAVIORAL_IP_TOKEN_LIMIT = 10; // token requests per IP per minute
+const BEHAVIORAL_IP_TOKEN_LIMIT = parseInt(process.env["BEHAVIORAL_IP_TOKEN_LIMIT"] ?? "20"); // token requests per IP per minute (env-overridable for tests)
 
 export function behavioralRateLimit(
   endpoint: keyof typeof BEHAVIORAL_SITE_LIMITS,
