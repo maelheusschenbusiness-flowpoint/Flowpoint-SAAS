@@ -1,6 +1,7 @@
 /**
- * Schema Checks — verifies DB schema invariants for Wave 3 Lot B
- * Tests: indexes, constraints, column presence, data integrity.
+ * Schema Checks — verifies DB schema invariants for Wave 3 Lot B/C
+ * Tests: indexes, constraints, column presence, data integrity,
+ *        and absence of ANY QA fixture under the 4 known QA prefixes.
  */
 import pg from '/home/runner/workspace/node_modules/.pnpm/pg@8.20.0/node_modules/pg/lib/index.js';
 
@@ -88,22 +89,61 @@ ok('Schema — 0 rows with invalid status in team_members',
    parseInt(invalidStatus.rows[0]?.cnt, 10) === 0,
    `invalid_status=${invalidStatus.rows[0]?.cnt}`);
 
-// ── 10. No QA data remaining ─────────────────────────────────────────────────
-// QA test orgs use pattern qa-{suite}-{timestamp} — exclude real orgs like qa@flowpoint.test
-const [qaOrgs, qaMems, qaInvs, qaSess] = await Promise.all([
-  DB.query(`SELECT COUNT(*) AS c FROM organizations WHERE id ~ '^qa-[a-z0-9].*-[0-9]{10,}$'`),
-  DB.query(`SELECT COUNT(*) AS c FROM team_members WHERE email LIKE '%-@qa.internal' OR email LIKE 'qa-%@qa.internal' OR email LIKE 'qa_%@qa.internal'`),
-  DB.query(`SELECT COUNT(*) AS c FROM team_invitations WHERE email LIKE 'qa-%@qa.internal' OR email LIKE 'qa_%@qa.internal'`),
-  DB.query(`SELECT COUNT(*) AS c FROM user_sessions WHERE email LIKE 'qa-%@qa.internal' OR email LIKE 'qa_%@qa.internal'`),
+// ── 10–21. No QA fixtures remaining — all 4 QA prefixes × all key tables ────
+// QA conventions used across the test suite:
+//   org_id : qa_*, qa-*, qat_*, lc_*
+//   email  : *@qa.internal, qa_*, qa-*
+
+const QA_ORG_FILTER = `
+  org_id LIKE 'qa_%' OR org_id LIKE 'qa-%' OR org_id LIKE 'qat_%' OR org_id LIKE 'lc_%'
+`;
+const QA_EMAIL_FILTER = `
+  email LIKE '%@qa.internal' OR email LIKE 'qa_%' OR email LIKE 'qa-%'
+`;
+const QA_ID_FILTER = `
+  id LIKE 'qa_%' OR id LIKE 'qa-%' OR id LIKE 'qat_%' OR id LIKE 'lc_%'
+`;
+
+const [
+  qaOrgs,
+  qaOrgSettings,
+  qaOrgAddons,
+  qaUserSessions,
+  qaTeamMembers,
+  qaTeamInvitations,
+  qaBillingEvents,
+  qaMonitors,
+  qaAlertRules,
+  qaAlertEvents,
+  qaReports,
+  qaAudits,
+] = await Promise.all([
+  DB.query(`SELECT COUNT(*) AS c FROM organizations     WHERE ${QA_ID_FILTER}`),
+  DB.query(`SELECT COUNT(*) AS c FROM org_settings      WHERE ${QA_ORG_FILTER}`),
+  DB.query(`SELECT COUNT(*) AS c FROM org_addons        WHERE ${QA_ORG_FILTER}`),
+  DB.query(`SELECT COUNT(*) AS c FROM user_sessions     WHERE (${QA_ORG_FILTER}) OR (${QA_EMAIL_FILTER})`),
+  DB.query(`SELECT COUNT(*) AS c FROM team_members      WHERE (${QA_ORG_FILTER}) OR (${QA_EMAIL_FILTER})`),
+  DB.query(`SELECT COUNT(*) AS c FROM team_invitations  WHERE (${QA_ORG_FILTER}) OR (${QA_EMAIL_FILTER})`),
+  DB.query(`SELECT COUNT(*) AS c FROM billing_events    WHERE ${QA_ORG_FILTER}`),
+  DB.query(`SELECT COUNT(*) AS c FROM monitors          WHERE ${QA_ORG_FILTER}`),
+  DB.query(`SELECT COUNT(*) AS c FROM alert_rules       WHERE ${QA_ORG_FILTER}`),
+  DB.query(`SELECT COUNT(*) AS c FROM alert_events      WHERE ${QA_ORG_FILTER}`),
+  DB.query(`SELECT COUNT(*) AS c FROM reports           WHERE ${QA_ORG_FILTER}`),
+  DB.query(`SELECT COUNT(*) AS c FROM audits            WHERE ${QA_ORG_FILTER}`),
 ]);
-ok('Schema — 0 QA organizations remaining',
-   parseInt(qaOrgs.rows[0]?.c, 10) === 0, `count=${qaOrgs.rows[0]?.c}`);
-ok('Schema — 0 QA team members remaining',
-   parseInt(qaMems.rows[0]?.c, 10) === 0, `count=${qaMems.rows[0]?.c}`);
-ok('Schema — 0 QA invitations remaining',
-   parseInt(qaInvs.rows[0]?.c, 10) === 0, `count=${qaInvs.rows[0]?.c}`);
-ok('Schema — 0 QA sessions remaining',
-   parseInt(qaSess.rows[0]?.c, 10) === 0, `count=${qaSess.rows[0]?.c}`);
+
+ok('Schema — 0 QA organizations',             parseInt(qaOrgs.rows[0]?.c, 10)             === 0, `count=${qaOrgs.rows[0]?.c}`);
+ok('Schema — 0 QA org_settings',              parseInt(qaOrgSettings.rows[0]?.c, 10)       === 0, `count=${qaOrgSettings.rows[0]?.c}`);
+ok('Schema — 0 QA org_addons',                parseInt(qaOrgAddons.rows[0]?.c, 10)         === 0, `count=${qaOrgAddons.rows[0]?.c}`);
+ok('Schema — 0 QA user_sessions',             parseInt(qaUserSessions.rows[0]?.c, 10)      === 0, `count=${qaUserSessions.rows[0]?.c}`);
+ok('Schema — 0 QA team_members',              parseInt(qaTeamMembers.rows[0]?.c, 10)       === 0, `count=${qaTeamMembers.rows[0]?.c}`);
+ok('Schema — 0 QA team_invitations',          parseInt(qaTeamInvitations.rows[0]?.c, 10)   === 0, `count=${qaTeamInvitations.rows[0]?.c}`);
+ok('Schema — 0 QA billing_events',            parseInt(qaBillingEvents.rows[0]?.c, 10)     === 0, `count=${qaBillingEvents.rows[0]?.c}`);
+ok('Schema — 0 QA monitors',                  parseInt(qaMonitors.rows[0]?.c, 10)          === 0, `count=${qaMonitors.rows[0]?.c}`);
+ok('Schema — 0 QA alert_rules',               parseInt(qaAlertRules.rows[0]?.c, 10)        === 0, `count=${qaAlertRules.rows[0]?.c}`);
+ok('Schema — 0 QA alert_events',              parseInt(qaAlertEvents.rows[0]?.c, 10)       === 0, `count=${qaAlertEvents.rows[0]?.c}`);
+ok('Schema — 0 QA reports',                   parseInt(qaReports.rows[0]?.c, 10)           === 0, `count=${qaReports.rows[0]?.c}`);
+ok('Schema — 0 QA audits',                    parseInt(qaAudits.rows[0]?.c, 10)            === 0, `count=${qaAudits.rows[0]?.c}`);
 
 await DB.end();
 

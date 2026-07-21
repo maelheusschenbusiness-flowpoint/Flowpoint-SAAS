@@ -21,8 +21,17 @@ let _testInstance: StripeAlike | null = null;
  * Inject a fake Stripe client for the current Node.js process.
  * Pass null to restore normal Stripe SDK behaviour.
  * Must only be called from test code — never from production paths.
+ *
+ * Throws immediately when NODE_ENV === "production" to prevent accidental
+ * injection in live environments.
  */
 export function setStripeForTesting(s: StripeAlike | null): void {
+  if (process.env["NODE_ENV"] === "production") {
+    throw new Error(
+      "[stripe-factory] setStripeForTesting() is disabled in NODE_ENV=production. " +
+      "Never inject a test Stripe client in a live environment."
+    );
+  }
   _testInstance = s;
 }
 

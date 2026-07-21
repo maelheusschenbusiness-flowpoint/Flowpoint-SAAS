@@ -195,6 +195,13 @@ async function runTests() {
   const { server, base } = await startServer();
   const tags: string[] = [];
 
+  // The production guard in setStripeForTesting() must not fire during the test
+  // runner itself.  We save the current NODE_ENV (which may be "production" on
+  // Render) and restore it after all tests.  T11 will temporarily override it
+  // back to "production" to verify the guard, then restore to "test".
+  const originalNodeEnv = process.env["NODE_ENV"];
+  process.env["NODE_ENV"] = "test";
+
   try {
     // Set fake Stripe price IDs so buildLineItems returns a non-empty array
     // (prevents the early mock exit that happens when no price IDs are configured)
@@ -427,8 +434,39 @@ async function runTests() {
       assert("T10 forbidden error", String(body["error"]).includes("owner"), String(body["error"]));
     }
 
+    // ── T11: production guard — setStripeForTesting throws in NODE_ENV=production
+    console.log("[T11] Production guard: setStripeForTesting() must throw when NODE_ENV=production");
+    {
+      const prevEnv = process.env["NODE_ENV"];
+      process.env["NODE_ENV"] = "production";
+      try {
+        let threw = false;
+        let errMsg = "";
+        try {
+          // Call with null (restore) — must still throw in production before any assignment
+          setStripeForTesting(null as unknown as Record<string, unknown>);
+        } catch (e: unknown) {
+          threw = true;
+          errMsg = (e as Error).message ?? "";
+        }
+        assert("T11 throws in production", threw,
+          "setStripeForTesting() must throw when NODE_ENV=production");
+        assert("T11 error mentions production", errMsg.toLowerCase().includes("production"),
+          `msg="${errMsg.slice(0, 80)}"`);
+      } finally {
+        // Must restore NODE_ENV before allowing setStripeForTesting to work again
+        process.env["NODE_ENV"] = prevEnv;
+        // Now safe to call (not production) — ensure clean state
+        setStripeForTesting(null);
+      }
+    }
+
   } finally {
+    // setStripeForTesting must be called while NODE_ENV is still "test"
+    // (we set it at the top of runTests).  Restoring originalNodeEnv afterward
+    // prevents the production guard from firing on this cleanup call.
     setStripeForTesting(null);
+    process.env["NODE_ENV"] = originalNodeEnv;
     delete process.env["STRIPE_PRICE_PRO"];
     await cleanup(tags);
     await stopServer(server);
