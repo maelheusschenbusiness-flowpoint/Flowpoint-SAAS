@@ -907,6 +907,375 @@ async function sectionPatch2() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Section [U] — UUID Validation (5 tests)
+// ═════════════════════════════════════════════════════════════════════════════
+async function sectionUUID() {
+  console.log('\n[U] UUID Validation');
+
+  const BAD_IDS = ['not-a-uuid', '123-abc', 'ffffffff-ffff-ffff-ffff-fffffffffff', '00000000-0000-0000-0000-00000000000Z', ''];
+  const id0 = 'not-a-uuid';
+
+  const rGet = await api(TOK_A, 'GET', `/funnels/${id0}`);
+  ok('U01 GET /funnels/not-a-uuid → 400 INVALID_FUNNEL_ID',
+     rGet.status === 400 && rGet.body?.code === 'INVALID_FUNNEL_ID',
+     `status=${rGet.status} code=${rGet.body?.code}`);
+
+  const rPatch = await api(TOK_A, 'PATCH', `/funnels/${id0}`, { name: 'x' });
+  ok('U02 PATCH /funnels/not-a-uuid → 400 INVALID_FUNNEL_ID',
+     rPatch.status === 400 && rPatch.body?.code === 'INVALID_FUNNEL_ID',
+     `status=${rPatch.status} code=${rPatch.body?.code}`);
+
+  const rDel = await api(TOK_A, 'DELETE', `/funnels/${id0}`);
+  ok('U03 DELETE /funnels/not-a-uuid → 400 INVALID_FUNNEL_ID',
+     rDel.status === 400 && rDel.body?.code === 'INVALID_FUNNEL_ID',
+     `status=${rDel.status} code=${rDel.body?.code}`);
+
+  const rRun = await api(TOK_A, 'POST', `/funnels/${id0}/run`, {});
+  ok('U04 POST /funnels/not-a-uuid/run → 400 INVALID_FUNNEL_ID',
+     rRun.status === 400 && rRun.body?.code === 'INVALID_FUNNEL_ID',
+     `status=${rRun.status} code=${rRun.body?.code}`);
+
+  // Short hex string (not UUID format) also invalid
+  const rShort = await api(TOK_A, 'GET', `/funnels/deadbeef-dead-dead-dead-deadbeefXXXX`);
+  ok('U05 malformed UUID → 400 INVALID_FUNNEL_ID',
+     rShort.status === 400 && rShort.body?.code === 'INVALID_FUNNEL_ID',
+     `status=${rShort.status} code=${rShort.body?.code}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Section [PL] — pageLocation condition (5 tests)
+// ═════════════════════════════════════════════════════════════════════════════
+async function sectionPageLocation() {
+  console.log('\n[PL] pageLocation condition');
+
+  // Create a funnel with pageLocationValue on one step
+  const rCreate = await api(TOK_A, 'POST', '/funnels', {
+    name: 'PL funnel',
+    siteUrl: SITE_A,
+    steps: [
+      { position: 1, name: 'Home',     pageLocationMatchType: 'EXACT', pageLocationValue: 'https://example.com/home' },
+      { position: 2, name: 'Checkout', pageLocationMatchType: 'BEGINS_WITH', pageLocationValue: 'https://example.com/checkout' },
+    ],
+  });
+  ok('PL01 Create funnel with pageLocationValue → 201',
+     rCreate.status === 201, `status=${rCreate.status} body=${JSON.stringify(rCreate.body).slice(0,200)}`);
+
+  const plFunnelId = rCreate.body?.funnelId ?? rCreate.body?.id;
+
+  if (!plFunnelId) {
+    ['PL02','PL03','PL04','PL05'].forEach(t => {
+      fail++; failures.push(`${t} (skipped — funnel creation failed)`);
+      console.log(`  ❌ FAIL — ${t} (skipped — funnel creation failed)`);
+    });
+    return;
+  }
+
+  // Verify page_location_value is stored in DB
+  const dbRow = await DB.query(
+    `SELECT page_location_value, page_location_match_type FROM funnel_steps WHERE funnel_id=$1 AND position=1`,
+    [plFunnelId]
+  );
+  ok('PL02 page_location_value stored in funnel_steps',
+     dbRow.rows[0]?.page_location_value === 'https://example.com/home',
+     `got ${dbRow.rows[0]?.page_location_value}`);
+
+  // Run it and check GA4 request body
+  mockGA4.lastRequest = null;
+  mockGA4.setOk(defaultGA4Response());
+  const rRun = await api(TOK_A, 'POST', `/funnels/${plFunnelId}/run`, {});
+  ok('PL03 Run funnel with pageLocation → 200',
+     rRun.status === 200, `status=${rRun.status} err=${rRun.body?.error}`);
+
+  const lastReq = mockGA4.lastRequest;
+  if (lastReq) {
+    const bodyStr = JSON.stringify(lastReq.body);
+    ok('PL04 GA4 request uses fieldName=pageLocation',
+       bodyStr.includes('pageLocation'),
+       `body=${bodyStr.slice(0,400)}`);
+    ok('PL05 GA4 request uses BEGINS_WITH matchType for step 2',
+       bodyStr.includes('BEGINS_WITH'),
+       `body=${bodyStr.slice(0,400)}`);
+  } else {
+    ['PL04','PL05'].forEach(t => {
+      fail++; failures.push(`${t} (skipped — mock not called)`);
+      console.log(`  ❌ FAIL — ${t} (skipped — mock not called)`);
+    });
+  }
+
+  // Cleanup the PL funnel
+  await api(TOK_A, 'DELETE', `/funnels/${plFunnelId}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Section [PF] — parameterFilters with allowlist (5 tests)
+// ═════════════════════════════════════════════════════════════════════════════
+async function sectionParamFilters() {
+  console.log('\n[PF] parameterFilters');
+
+  // Invalid paramName → 400 at route level
+  const rBad = await api(TOK_A, 'POST', '/funnels', {
+    name: 'PF bad', siteUrl: SITE_A,
+    steps: [
+      {
+        position: 1, name: 'Step A', eventName: 'page_view',
+        parameterFilters: [{ paramName: 'injected_sql', matchType: 'EXACT', value: "'; DROP TABLE funnels; --" }],
+      },
+      { position: 2, name: 'Step B', eventName: 'purchase' },
+    ],
+  });
+  ok('PF01 invalid paramName → 400',
+     rBad.status === 400,
+     `status=${rBad.status} err=${rBad.body?.error}`);
+
+  // Invalid matchType → 400
+  const rBadMT = await api(TOK_A, 'POST', '/funnels', {
+    name: 'PF bad mt', siteUrl: SITE_A,
+    steps: [
+      {
+        position: 1, name: 'Step A', eventName: 'page_view',
+        parameterFilters: [{ paramName: 'page_title', matchType: 'FUZZY', value: 'home' }],
+      },
+      { position: 2, name: 'Step B', eventName: 'purchase' },
+    ],
+  });
+  ok('PF02 invalid paramFilter matchType → 400',
+     rBadMT.status === 400,
+     `status=${rBadMT.status} err=${rBadMT.body?.error}`);
+
+  // Valid parameterFilters → 201
+  const rOk = await api(TOK_A, 'POST', '/funnels', {
+    name: 'PF valid', siteUrl: SITE_A,
+    steps: [
+      {
+        position: 1, name: 'Step A', eventName: 'page_view',
+        parameterFilters: [{ paramName: 'page_title', matchType: 'EXACT', value: 'Home' }],
+      },
+      { position: 2, name: 'Step B', eventName: 'purchase' },
+    ],
+  });
+  ok('PF03 valid parameterFilters → 201',
+     rOk.status === 201,
+     `status=${rOk.status} err=${rOk.body?.error}`);
+
+  const pfFunnelId = rOk.body?.funnelId ?? rOk.body?.id;
+
+  if (!pfFunnelId) {
+    ['PF04','PF05'].forEach(t => {
+      fail++; failures.push(`${t} (skipped — funnel creation failed)`);
+      console.log(`  ❌ FAIL — ${t} (skipped — funnel creation failed)`);
+    });
+    return;
+  }
+
+  // Run → GA4 request body should have funnelParameterFilter
+  mockGA4.lastRequest = null;
+  mockGA4.setOk(defaultGA4Response());
+  const rRun = await api(TOK_A, 'POST', `/funnels/${pfFunnelId}/run`, {});
+
+  if (mockGA4.lastRequest) {
+    const bodyStr = JSON.stringify(mockGA4.lastRequest.body);
+    ok('PF04 GA4 request contains funnelParameterFilter',
+       bodyStr.includes('funnelParameterFilter'),
+       `body=${bodyStr.slice(0,500)}`);
+    ok('PF05 paramName=page_title forwarded to GA4',
+       bodyStr.includes('page_title'),
+       `body=${bodyStr.slice(0,500)}`);
+  } else {
+    ['PF04','PF05'].forEach(t => {
+      fail++; failures.push(`${t} (skipped — mock not called, status=${rRun.status})`);
+      console.log(`  ❌ FAIL — ${t} (skipped — mock not called)`);
+    });
+  }
+
+  // Cleanup
+  await api(TOK_A, 'DELETE', `/funnels/${pfFunnelId}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Section [SK] — siteUrl normalized in cache key (3 tests)
+// ═════════════════════════════════════════════════════════════════════════════
+async function sectionSiteUrlCache() {
+  console.log('\n[SK] siteUrl in cache key');
+
+  // Create funnel
+  const rCreate = await api(TOK_A, 'POST', '/funnels', {
+    name: 'SK funnel', siteUrl: SITE_A, steps: makeSteps(),
+  });
+  const skId = rCreate.body?.funnelId ?? rCreate.body?.id;
+  if (!skId) {
+    ['SK01','SK02','SK03'].forEach(t => {
+      fail++; failures.push(`${t} (skipped — no funnel)`);
+      console.log(`  ❌ FAIL — ${t} (skipped — no funnel)`);
+    });
+    return;
+  }
+
+  // First run — cache miss
+  mockGA4.lastRequest = null;
+  mockGA4.setOk(defaultGA4Response());
+  const r1 = await api(TOK_A, 'POST', `/funnels/${skId}/run`, {});
+  ok('SK01 First run — cache miss (GA4 called)',
+     r1.status === 200 && r1.body?.result?.cached === false && !!mockGA4.lastRequest,
+     `status=${r1.status} cached=${r1.body?.result?.cached} mock=${!!mockGA4.lastRequest}`);
+
+  // Second run — cache hit (same siteUrl → same cache key)
+  mockGA4.lastRequest = null;
+  const r2 = await api(TOK_A, 'POST', `/funnels/${skId}/run`, {});
+  ok('SK02 Second run — cache hit (siteUrl stable in key)',
+     r2.status === 200 && r2.body?.result?.cached === true && !mockGA4.lastRequest,
+     `status=${r2.status} cached=${r2.body?.result?.cached} mock=${!!mockGA4.lastRequest}`);
+
+  // PATCH steps → config hash changes → cache miss on next run
+  await api(TOK_A, 'PATCH', `/funnels/${skId}`, {
+    steps: [
+      { position: 1, name: 'Modified Step 1', eventName: 'session_start' },
+      { position: 2, name: 'Modified Step 2', eventName: 'purchase' },
+    ],
+  });
+  mockGA4.lastRequest = null;
+  mockGA4.setOk(defaultGA4Response());
+  const r3 = await api(TOK_A, 'POST', `/funnels/${skId}/run`, {});
+  ok('SK03 After step change — cache miss (config hash updated)',
+     r3.status === 200 && r3.body?.result?.cached === false && !!mockGA4.lastRequest,
+     `status=${r3.status} cached=${r3.body?.result?.cached} mock=${!!mockGA4.lastRequest}`);
+
+  // Cleanup
+  await api(TOK_A, 'DELETE', `/funnels/${skId}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Section [RT] — Retry policy (3 tests)
+// ═════════════════════════════════════════════════════════════════════════════
+async function sectionRetry() {
+  console.log('\n[RT] Retry policy');
+
+  // Create a fresh funnel (not cached) for retry tests
+  const rCreate = await api(TOK_A, 'POST', '/funnels', {
+    name: 'RT funnel', siteUrl: SITE_A, steps: [
+      { position: 1, name: 'Retry Step 1', eventName: `retry_event_${Date.now()}` },
+      { position: 2, name: 'Retry Step 2', eventName: `retry_event2_${Date.now()}` },
+    ],
+  });
+  const rtId = rCreate.body?.funnelId ?? rCreate.body?.id;
+  if (!rtId) {
+    ['RT01','RT02','RT03'].forEach(t => {
+      fail++; failures.push(`${t} (skipped — no funnel)`);
+      console.log(`  ❌ FAIL — ${t} (skipped — no funnel)`);
+    });
+    return;
+  }
+
+  // RT01: 429 (all retries exhausted) → client gets 429 with GA4_QUOTA_EXCEEDED
+  mockGA4.setError(429);
+  const r1 = await api(TOK_A, 'POST', `/funnels/${rtId}/run`, {});
+  ok('RT01 429 exhausted after retries → client 429 GA4_QUOTA_EXCEEDED',
+     r1.status === 429 && r1.body?.code === 'GA4_QUOTA_EXCEEDED',
+     `status=${r1.status} code=${r1.body?.code}`);
+
+  // Reset cache (different step names ensure no cache collision)
+  const rCreate2 = await api(TOK_A, 'POST', '/funnels', {
+    name: 'RT no-retry funnel', siteUrl: SITE_A, steps: [
+      { position: 1, name: 'NoRetry Step 1', eventName: `noretry_event_${Date.now()}` },
+      { position: 2, name: 'NoRetry Step 2', eventName: `noretry_event2_${Date.now()}` },
+    ],
+  });
+  const rtId2 = rCreate2.body?.funnelId ?? rCreate2.body?.id;
+
+  // RT02: 401 must NOT be retried → immediate 401 to client
+  if (rtId2) {
+    mockGA4.lastRequest = null;
+    mockGA4.setError(401);
+    const r2 = await api(TOK_A, 'POST', `/funnels/${rtId2}/run`, {});
+    ok('RT02 401 not retried → client 401 GA4_REAUTH_REQUIRED',
+       r2.status === 401 && r2.body?.code === 'GA4_REAUTH_REQUIRED',
+       `status=${r2.status} code=${r2.body?.code}`);
+    await api(TOK_A, 'DELETE', `/funnels/${rtId2}`);
+  } else {
+    fail++; failures.push('RT02 (skipped — no funnel)');
+    console.log('  ❌ FAIL — RT02 (skipped — no funnel)');
+  }
+
+  // RT03: 429 on first call, then 200 on retry (timing: change at 500ms, retry at 1000ms)
+  // Use a new funnel with unique event names to avoid cache
+  const rCreate3 = await api(TOK_A, 'POST', '/funnels', {
+    name: 'RT retry-success funnel', siteUrl: SITE_A, steps: [
+      { position: 1, name: 'Retry3 Step 1', eventName: `retry3_${Date.now()}` },
+      { position: 2, name: 'Retry3 Step 2', eventName: `retry3b_${Date.now()}` },
+    ],
+  });
+  const rtId3 = rCreate3.body?.funnelId ?? rCreate3.body?.id;
+  if (rtId3) {
+    mockGA4.setError(429);
+    // After 500ms change to OK — service retries after 1000ms, so second call sees 200
+    const switchTimer = setTimeout(() => mockGA4.setOk(defaultGA4Response()), 500);
+    const r3 = await api(TOK_A, 'POST', `/funnels/${rtId3}/run`, {});
+    clearTimeout(switchTimer);
+    // The service retried after 1s delay and the second call returned 200
+    ok('RT03 retry on 429 succeeds when GA4 recovers',
+       r3.status === 200 && r3.body?.result?.source === 'ga4',
+       `status=${r3.status} source=${r3.body?.result?.source} code=${r3.body?.code}`);
+    mockGA4.setOk(defaultGA4Response()); // Reset to ok
+    await api(TOK_A, 'DELETE', `/funnels/${rtId3}`);
+  } else {
+    fail++; failures.push('RT03 (skipped — no funnel)');
+    console.log('  ❌ FAIL — RT03 (skipped — no funnel)');
+  }
+
+  // Cleanup RT funnel
+  await api(TOK_A, 'DELETE', `/funnels/${rtId}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Section [FE] — Frontend builder API contract (4 tests)
+// ═════════════════════════════════════════════════════════════════════════════
+async function sectionFrontend() {
+  console.log('\n[FE] Frontend builder API contract');
+
+  // GET /funnels returns array and is suitable for list rendering
+  const rList = await api(TOK_A, 'GET', '/funnels');
+  ok('FE01 GET /funnels returns funnels array with id/name/steps',
+     rList.status === 200 && Array.isArray(rList.body?.funnels) &&
+     (rList.body.funnels.length === 0 || (rList.body.funnels[0]?.id && rList.body.funnels[0]?.name !== undefined)),
+     `status=${rList.status} count=${rList.body?.funnels?.length}`);
+
+  // Create + run for shape tests
+  const rCreate = await api(TOK_A, 'POST', '/funnels', {
+    name: 'FE test funnel', siteUrl: SITE_A, steps: makeSteps(),
+  });
+  const feId = rCreate.body?.funnelId ?? rCreate.body?.id;
+  if (!feId) {
+    ['FE02','FE03','FE04'].forEach(t => {
+      fail++; failures.push(`${t} (skipped — no funnel)`);
+      console.log(`  ❌ FAIL — ${t} (skipped — no funnel)`);
+    });
+    return;
+  }
+
+  mockGA4.setOk(defaultGA4Response());
+  const rRun = await api(TOK_A, 'POST', `/funnels/${feId}/run`, {});
+  const result = rRun.body?.result;
+
+  ok('FE02 run result has source="ga4" for frontend source label',
+     result?.source === 'ga4',
+     `source=${result?.source}`);
+
+  ok('FE03 run result has fetchedAt ISO string for frontend timestamp',
+     typeof result?.fetchedAt === 'string' && result.fetchedAt.includes('T'),
+     `fetchedAt=${result?.fetchedAt}`);
+
+  ok('FE04 run result steps have all frontend-required fields',
+     Array.isArray(result?.steps) && result.steps.length > 0 &&
+     result.steps.every(s =>
+       'position' in s && 'name' in s && 'activeUsers' in s &&
+       'completionRate' in s && 'abandonmentRate' in s && 'abandonments' in s
+     ),
+     `steps=${JSON.stringify(result?.steps?.slice(0,1))}`);
+
+  await api(TOK_A, 'DELETE', `/funnels/${feId}`);
+}
+
 // Cleanup
 // ═════════════════════════════════════════════════════════════════════════════
 async function cleanup() {
@@ -952,6 +1321,12 @@ async function main() {
     await section12();
     await sectionBonus();
     await sectionPatch2();
+    await sectionUUID();
+    await sectionPageLocation();
+    await sectionParamFilters();
+    await sectionSiteUrlCache();
+    await sectionRetry();
+    await sectionFrontend();
 
   } catch (e) {
     console.error('\n[FATAL]', e.message, e.stack);

@@ -28041,161 +28041,449 @@ function renderGA4Traffic() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// GA4 FUNNELS
 // ══════════════════════════════════════════════════════════════════════
-function renderGA4Funnels() {
-  // Empty state when GA4 is not connected and not in preview mode
-  if (!_ga4Connected() && !PREVIEW_MODE) {
-    return `
-      <div class="fp-section-header">
-        <div><h1>🔄 Funnels & Parcours</h1><div class="fp-section-sub">Analyse du parcours utilisateur et des étapes de conversion</div></div>
+// GA4 FUNNELS — Configurable Funnel Builder
+// Standalone — no dependency on window.FP_DATA.ga4.overview
+// All JS at module scope (window._fpFunnel*) — script tags don't execute
+// inside innerHTML. Uses apiFetch() for authenticated API calls.
+// ══════════════════════════════════════════════════════════════════════
+
+window._fpFunnelState = { loading: false, funnels: null, editing: null, running: null, runResult: null, runError: null };
+
+// Escape HTML for safe rendering of user-supplied strings
+function _fpFunnelEsc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Format ISO date to readable local string
+function _fpFunnelFmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('fr-FR', { dateStyle:'short', timeStyle:'short' }); } catch { return iso; }
+}
+
+// Render the funnel list section
+function _fpFunnelRenderList(funnels) {
+  const root = document.getElementById('fp-funnels-list-section');
+  if (!root) return;
+  if (!funnels || !funnels.length) {
+    root.innerHTML = `
+      <div style="text-align:center;padding:48px 24px;color:var(--fp-text-muted)">
+        <div style="font-size:36px;margin-bottom:12px">🔵</div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:6px">Aucun funnel configuré</div>
+        <div style="font-size:12px;margin-bottom:20px">Créez votre premier funnel de conversion GA4.</div>
+        <button class="fp-btn fp-btn-primary" onclick="window._fpFunnelShowForm()">+ Nouveau funnel</button>
+      </div>`;
+    return;
+  }
+  root.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      ${funnels.map(f => `
+        <div class="fp-card" style="padding:16px 18px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:700;color:var(--fp-text);margin-bottom:3px">${_fpFunnelEsc(f.name)}</div>
+              <div style="font-size:11px;color:var(--fp-text-muted);margin-bottom:6px">${_fpFunnelEsc(f.site_url)} · ${Array.isArray(f.steps) ? f.steps.length : 0} étapes · ${f.is_open_funnel ? 'Ouvert' : 'Fermé'} · ${f.lookback_days}j</div>
+              ${f.breakdown_dimension ? `<span style="font-size:10px;background:rgba(37,99,235,0.1);color:#2563EB;border-radius:4px;padding:2px 7px">${_fpFunnelEsc(f.breakdown_dimension)}</span>` : ''}
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0;align-items:center">
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" data-fid="${_fpFunnelEsc(f.id)}" onclick="window._fpFunnelRun(this)" title="Exécuter">▶ Exécuter</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" data-fid="${_fpFunnelEsc(f.id)}" onclick="window._fpFunnelEdit(this)" title="Éditer">✏️</button>
+              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444" data-fid="${_fpFunnelEsc(f.id)}" data-fname="${_fpFunnelEsc(f.name)}" onclick="window._fpFunnelDelete(this)" title="Supprimer">🗑</button>
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// Build the step editor rows HTML
+function _fpFunnelStepRow(idx, step) {
+  const pos    = step ? step.position : idx + 1;
+  const name   = step ? step.name : '';
+  const evName = step ? (step.event_name || '') : '';
+  const ppmt   = step ? (step.page_path_match_type || 'EXACT') : 'EXACT';
+  const ppv    = step ? (step.page_path_value || '') : '';
+  const plmt   = step ? (step.page_location_match_type || 'EXACT') : 'EXACT';
+  const plv    = step ? (step.page_location_value || '') : '';
+  const ctype  = evName ? 'event' : (plv ? 'pageLocation' : 'pagePath');
+  const matchOpts = ['EXACT','BEGINS_WITH','ENDS_WITH','CONTAINS','REGEXP','PARTIAL_REGEXP'];
+  const mtSel = (sel, cur) => matchOpts.map(m => `<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
+
+  return `<div class="fp-funnel-step-row" style="background:var(--fp-bg-secondary,#f8fafc);border:1px solid var(--fp-border);border-radius:8px;padding:12px 14px;margin-bottom:8px" data-step-idx="${idx}">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:12px;font-weight:700;color:var(--fp-text-muted);width:22px;text-align:center">${pos}</span>
+      <input class="fp-input" style="flex:1" placeholder="Nom de l'étape" value="${_fpFunnelEsc(name)}" data-field="step-name-${idx}">
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" style="color:#ef4444;flex-shrink:0" onclick="window._fpFunnelRemoveStep(this)" data-idx="${idx}">✕</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <select class="fp-input" style="width:auto;font-size:12px" data-field="step-ctype-${idx}" onchange="window._fpFunnelToggleCtype(this)">
+        <option value="event" ${ctype==='event'?'selected':''}>Événement</option>
+        <option value="pagePath" ${ctype==='pagePath'?'selected':''}>Page path</option>
+        <option value="pageLocation" ${ctype==='pageLocation'?'selected':''}>Page location (URL)</option>
+      </select>
+    </div>
+    <div data-ctype-panel="event-${idx}" style="${ctype!=='event'?'display:none':''};display:${ctype==='event'?'flex':'none'};gap:8px">
+      <input class="fp-input" style="flex:1;font-size:12px" placeholder="Nom de l'événement (ex: purchase)" value="${_fpFunnelEsc(evName)}" data-field="step-eventname-${idx}">
+    </div>
+    <div data-ctype-panel="pagePath-${idx}" style="display:${ctype==='pagePath'?'flex':'none'};gap:8px;flex-wrap:wrap">
+      <select class="fp-input" style="width:auto;font-size:12px" data-field="step-ppmt-${idx}">${mtSel('ppmt', ppmt)}</select>
+      <input class="fp-input" style="flex:1;font-size:12px" placeholder="/checkout/success" value="${_fpFunnelEsc(ppv)}" data-field="step-ppv-${idx}">
+    </div>
+    <div data-ctype-panel="pageLocation-${idx}" style="display:${ctype==='pageLocation'?'flex':'none'};gap:8px;flex-wrap:wrap">
+      <select class="fp-input" style="width:auto;font-size:12px" data-field="step-plmt-${idx}">${mtSel('plmt', plmt)}</select>
+      <input class="fp-input" style="flex:1;font-size:12px" placeholder="https://example.com/checkout" value="${_fpFunnelEsc(plv)}" data-field="step-plv-${idx}">
+    </div>
+  </div>`;
+}
+
+// Toggle the condition type panels when the select changes
+window._fpFunnelToggleCtype = function(sel) {
+  const row = sel.closest('.fp-funnel-step-row');
+  if (!row) return;
+  const idx = row.dataset.stepIdx;
+  ['event','pagePath','pageLocation'].forEach(t => {
+    const panel = row.querySelector(`[data-ctype-panel="${t}-${idx}"]`);
+    if (panel) panel.style.display = sel.value === t ? 'flex' : 'none';
+  });
+};
+
+// Add a step row to the form
+window._fpFunnelAddStep = function() {
+  const container = document.getElementById('fp-funnel-steps-container');
+  if (!container) return;
+  const idx = container.querySelectorAll('.fp-funnel-step-row').length;
+  if (idx >= 10) { showToast?.('warning','Maximum 10 étapes'); return; }
+  container.insertAdjacentHTML('beforeend', _fpFunnelStepRow(idx, null));
+};
+
+// Remove a step row
+window._fpFunnelRemoveStep = function(btn) {
+  const row = btn.closest('.fp-funnel-step-row');
+  const container = document.getElementById('fp-funnel-steps-container');
+  if (!row || !container) return;
+  const rows = container.querySelectorAll('.fp-funnel-step-row');
+  if (rows.length <= 2) { showToast?.('warning','Minimum 2 étapes'); return; }
+  row.remove();
+  // Renumber
+  container.querySelectorAll('.fp-funnel-step-row').forEach((r, i) => {
+    r.dataset.stepIdx = i;
+    const numSpan = r.querySelector('span[style*="width:22px"]');
+    if (numSpan) numSpan.textContent = i + 1;
+  });
+};
+
+// Build the create/edit form HTML
+function _fpFunnelBuildForm(funnel) {
+  const isEdit = !!funnel;
+  const bd = funnel?.breakdown_dimension || '';
+  const bdOpts = ['','deviceCategory','country','browser','operatingSystem','sessionDefaultChannelGrouping','sourceMedium','city','region'];
+  const lookback = funnel?.lookback_days || 30;
+  const lbOpts = [7,14,30,60,90,180];
+  const steps = (funnel?.steps || [{position:1,name:'',event_name:'',page_path_match_type:'EXACT',page_path_value:''},{position:2,name:'',event_name:'',page_path_match_type:'EXACT',page_path_value:''}]);
+  return `
+    <div class="fp-card" style="padding:20px 22px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div style="font-size:15px;font-weight:700;color:var(--fp-text)">${isEdit ? '✏️ Modifier le funnel' : '➕ Nouveau funnel'}</div>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpFunnelCancel()">✕ Annuler</button>
       </div>
-      <div class="fp-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 32px;text-align:center;gap:18px">
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="rgba(37,99,235,0.5)" stroke-width="1.5">
-          <path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>
-        </svg>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div>
-          <div style="font-size:17px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Entonnoirs non disponibles</div>
-          <div style="font-size:13px;color:var(--fp-text-muted);max-width:380px;line-height:1.6">Connectez Google Analytics 4 pour visualiser vos entonnoirs de conversion, analyser les points de friction et optimiser votre parcours utilisateur.</div>
+          <label style="font-size:11px;font-weight:600;color:var(--fp-text-muted);display:block;margin-bottom:5px">Nom *</label>
+          <input id="fp-f-name" class="fp-input" placeholder="Mon funnel de conversion" value="${_fpFunnelEsc(funnel?.name||'')}">
         </div>
-        <button class="fp-btn fp-btn-primary" onclick="navigate('settings');setTimeout(()=>navigateSub('integrations'),50)">
-          Connecter GA4 →
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--fp-text-muted);display:block;margin-bottom:5px">Site URL *</label>
+          <input id="fp-f-siteurl" class="fp-input" placeholder="https://example.com" value="${_fpFunnelEsc(funnel?.site_url||window.STATE?.siteUrl||'')}">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--fp-text-muted);display:block;margin-bottom:5px">Période</label>
+          <select id="fp-f-lookback" class="fp-input" style="font-size:12px">
+            ${lbOpts.map(d=>`<option value="${d}" ${d==lookback?'selected':''}>${d} jours</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--fp-text-muted);display:block;margin-bottom:5px">Breakdown</label>
+          <select id="fp-f-breakdown" class="fp-input" style="font-size:12px">
+            ${bdOpts.map(d=>`<option value="${d}" ${d===bd?'selected':''}>${d||'Aucun'}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--fp-text-muted);display:block;margin-bottom:5px">Type de funnel</label>
+          <select id="fp-f-opentype" class="fp-input" style="font-size:12px">
+            <option value="closed" ${!funnel?.is_open_funnel?'selected':''}>Fermé (Closed)</option>
+            <option value="open" ${funnel?.is_open_funnel?'selected':''}>Ouvert (Open)</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="font-size:11px;font-weight:600;color:var(--fp-text-muted)">Étapes (2–10) *</label>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpFunnelAddStep()">+ Ajouter</button>
+        </div>
+        <div id="fp-funnel-steps-container">
+          ${steps.map((s,i) => _fpFunnelStepRow(i, s)).join('')}
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
+        <button class="fp-btn fp-btn-ghost" onclick="window._fpFunnelCancel()">Annuler</button>
+        <button id="fp-f-save-btn" class="fp-btn fp-btn-primary" onclick="window._fpFunnelSave()">
+          ${isEdit ? '💾 Enregistrer' : '✅ Créer le funnel'}
         </button>
       </div>
-    `;
+    </div>`;
+}
+
+// Show create or edit form
+window._fpFunnelShowForm = function(funnel) {
+  const listSec = document.getElementById('fp-funnels-list-section');
+  const formSec = document.getElementById('fp-funnel-form-section');
+  const resSec  = document.getElementById('fp-funnel-result-section');
+  if (!formSec) return;
+  window._fpFunnelState.editing = funnel || null;
+  if (listSec) listSec.style.display = 'none';
+  if (resSec)  resSec.style.display  = 'none';
+  formSec.style.display = 'block';
+  formSec.innerHTML = _fpFunnelBuildForm(funnel);
+};
+
+// Cancel form — go back to list
+window._fpFunnelCancel = function() {
+  const listSec = document.getElementById('fp-funnels-list-section');
+  const formSec = document.getElementById('fp-funnel-form-section');
+  const resSec  = document.getElementById('fp-funnel-result-section');
+  window._fpFunnelState.editing = null;
+  if (formSec) formSec.style.display = 'none';
+  if (resSec)  resSec.style.display  = 'none';
+  if (listSec) listSec.style.display = 'block';
+};
+
+// Read step data from DOM
+function _fpFunnelReadSteps() {
+  const rows = document.querySelectorAll('#fp-funnel-steps-container .fp-funnel-step-row');
+  const steps = [];
+  rows.forEach((row, i) => {
+    const get = field => (row.querySelector(`[data-field="${field}-${i}"]`) || {}).value || '';
+    const ctype = get('step-ctype') || 'pagePath';
+    steps.push({
+      position: i + 1,
+      name:     get('step-name').trim(),
+      eventName:             ctype === 'event'        ? get('step-eventname').trim() : null,
+      pagePathMatchType:     ctype === 'pagePath'     ? get('step-ppmt')             : null,
+      pagePathValue:         ctype === 'pagePath'     ? get('step-ppv').trim()       : null,
+      pageLocationMatchType: ctype === 'pageLocation' ? get('step-plmt')             : null,
+      pageLocationValue:     ctype === 'pageLocation' ? get('step-plv').trim()       : null,
+    });
+  });
+  return steps;
+}
+
+// Save funnel (create or update)
+window._fpFunnelSave = async function() {
+  const saveBtn = document.getElementById('fp-f-save-btn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Sauvegarde…'; }
+
+  const name      = (document.getElementById('fp-f-name')?.value || '').trim();
+  const siteUrl   = (document.getElementById('fp-f-siteurl')?.value || '').trim();
+  const lookback  = parseInt(document.getElementById('fp-f-lookback')?.value || '30', 10);
+  const breakdown = document.getElementById('fp-f-breakdown')?.value || null;
+  const openType  = document.getElementById('fp-f-opentype')?.value || 'closed';
+  const steps     = _fpFunnelReadSteps();
+
+  if (!name) { showToast?.('error','Le nom est requis'); if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='✅ Créer';} return; }
+  if (!siteUrl) { showToast?.('error','Le site URL est requis'); if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='✅ Créer';} return; }
+  if (steps.length < 2) { showToast?.('error','Minimum 2 étapes'); if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='✅ Créer';} return; }
+
+  const payload = {
+    name,
+    siteUrl,
+    lookbackDays: lookback,
+    breakdownDimension: breakdown || null,
+    isOpenFunnel: openType === 'open',
+    steps,
+  };
+
+  try {
+    const editing = window._fpFunnelState.editing;
+    let res;
+    if (editing) {
+      res = await apiFetch(`/api/funnels/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    } else {
+      res = await apiFetch('/api/funnels', { method: 'POST', body: JSON.stringify(payload) });
+    }
+    if (!res?.ok) throw new Error(res?.error || 'Erreur serveur');
+    showToast?.('success', editing ? 'Funnel mis à jour' : 'Funnel créé');
+    window._fpFunnelState.editing = null;
+    window._fpFunnelCancel();
+    window._fpFunnelLoad();
+  } catch (e) {
+    showToast?.('error', String(e.message || e));
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '✅ Créer'; }
+  }
+};
+
+// Edit — fetch funnel detail then show form
+window._fpFunnelEdit = async function(btn) {
+  const id = btn.dataset.fid;
+  if (!id) return;
+  try {
+    const res = await apiFetch(`/api/funnels/${id}`);
+    if (!res?.ok) throw new Error(res?.error || 'Funnel introuvable');
+    window._fpFunnelShowForm(res.funnel);
+  } catch (e) {
+    showToast?.('error', String(e.message || e));
+  }
+};
+
+// Delete with confirmation
+window._fpFunnelDelete = async function(btn) {
+  const id    = btn.dataset.fid;
+  const fname = btn.dataset.fname || 'ce funnel';
+  if (!id) return;
+  if (!confirm(`Supprimer "${fname}" ? Cette action est irréversible.`)) return;
+  try {
+    const res = await apiFetch(`/api/funnels/${id}`, { method: 'DELETE' });
+    if (!res?.ok) throw new Error(res?.error || 'Erreur lors de la suppression');
+    showToast?.('success', 'Funnel supprimé');
+    window._fpFunnelLoad();
+  } catch (e) {
+    showToast?.('error', String(e.message || e));
+  }
+};
+
+// Render run result
+function _fpFunnelRenderResult(result, funnelName) {
+  const resSec = document.getElementById('fp-funnel-result-section');
+  if (!resSec) return;
+  const pct = n => n === null ? '—' : `${Math.round((n||0)*100)}%`;
+  const num = n => n === null ? '—' : Number(n).toLocaleString('fr-FR');
+  resSec.style.display = 'block';
+  resSec.innerHTML = `
+    <div class="fp-card" style="padding:18px 20px;margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--fp-text)">${_fpFunnelEsc(funnelName)}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted);margin-top:2px">
+            <span style="background:rgba(37,99,235,0.1);color:#2563EB;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:600">Google Analytics 4</span>
+            &nbsp;${result.dateRange?.startDate} → ${result.dateRange?.endDate}
+            &nbsp;·&nbsp;${result.isOpenFunnel ? 'Ouvert' : 'Fermé'}
+          </div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:var(--fp-text-muted)">
+          ${result.cached ? `<span style="background:rgba(5,150,105,0.1);color:#059669;border-radius:4px;padding:2px 7px;font-weight:600">✓ Cached</span><br>cachedAt ${_fpFunnelFmtDate(result.cachedAt)}<br>` : ''}
+          fetchedAt ${_fpFunnelFmtDate(result.fetchedAt)}
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Taux global : <span style="color:#2563EB">${pct(result.overallConversionRate)}</span></div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="border-bottom:2px solid var(--fp-border)">
+                <th style="text-align:left;padding:6px 10px;color:var(--fp-text-muted);font-weight:600">Étape</th>
+                <th style="text-align:right;padding:6px 10px;color:var(--fp-text-muted);font-weight:600">Utilisateurs</th>
+                <th style="text-align:right;padding:6px 10px;color:var(--fp-text-muted);font-weight:600">Complétion</th>
+                <th style="text-align:right;padding:6px 10px;color:var(--fp-text-muted);font-weight:600">Abandon</th>
+                <th style="text-align:right;padding:6px 10px;color:var(--fp-text-muted);font-weight:600">Perdus</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(result.steps||[]).map((s, i) => {
+                const barPct = result.steps[0]?.activeUsers > 0 ? Math.round(s.activeUsers/result.steps[0].activeUsers*100) : 0;
+                return `<tr style="border-bottom:1px solid var(--fp-border)">
+                  <td style="padding:7px 10px">
+                    <span style="font-weight:600;color:var(--fp-text)">${i+1}. ${_fpFunnelEsc(s.name)}</span>
+                    <div style="height:4px;background:var(--fp-border);border-radius:2px;margin-top:3px;max-width:120px"><div style="height:4px;background:#2563EB;border-radius:2px;width:${barPct}%"></div></div>
+                  </td>
+                  <td style="text-align:right;padding:7px 10px;font-weight:700;color:var(--fp-text)">${num(s.activeUsers)}</td>
+                  <td style="text-align:right;padding:7px 10px;color:${s.completionRate===null?'var(--fp-text-muted)':s.completionRate>=0.7?'#059669':s.completionRate>=0.4?'#d97706':'#ef4444'};font-weight:600">${pct(s.completionRate)}</td>
+                  <td style="text-align:right;padding:7px 10px;color:${s.abandonmentRate===null?'var(--fp-text-muted)':'#ef4444'}">${pct(s.abandonmentRate)}</td>
+                  <td style="text-align:right;padding:7px 10px;color:var(--fp-text-muted)">${num(s.abandonments)}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="document.getElementById('fp-funnel-result-section').style.display='none'">✕ Fermer</button>
+      </div>
+    </div>`;
+}
+
+// Run a funnel
+window._fpFunnelRun = async function(btn) {
+  const id = btn.dataset.fid;
+  if (!id) return;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳…';
+  // Find funnel name
+  const funnel = (window._fpFunnelState.funnels || []).find(f => f.id === id);
+  try {
+    const res = await apiFetch(`/api/funnels/${id}/run`, { method: 'POST', body: JSON.stringify({}) });
+    if (!res?.ok) throw new Error(res?.error || 'Erreur d\'exécution');
+    _fpFunnelRenderResult(res.result, funnel?.name || 'Résultat');
+    showToast?.('success', 'Rapport GA4 chargé');
+  } catch (e) {
+    const resSec = document.getElementById('fp-funnel-result-section');
+    if (resSec) {
+      resSec.style.display = 'block';
+      resSec.innerHTML = `<div class="fp-card" style="padding:16px;color:#ef4444;font-size:13px">❌ Erreur : ${_fpFunnelEsc(String(e.message||e))}</div>`;
+    }
+    showToast?.('error', String(e.message || e));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+};
+
+// Load funnel list from API
+window._fpFunnelLoad = async function() {
+  if (window._fpFunnelState.loading) return;
+  window._fpFunnelState.loading = true;
+  const listSec = document.getElementById('fp-funnels-list-section');
+  if (listSec) listSec.innerHTML = `<div style="text-align:center;padding:32px;color:var(--fp-text-muted);font-size:13px">⏳ Chargement des funnels…</div>`;
+  try {
+    const res = await apiFetch('/api/funnels');
+    if (!res?.ok) throw new Error(res?.error || 'Erreur de chargement');
+    window._fpFunnelState.funnels = res.funnels || [];
+    _fpFunnelRenderList(window._fpFunnelState.funnels);
+  } catch (e) {
+    if (listSec) listSec.innerHTML = `<div style="text-align:center;padding:32px;color:#ef4444;font-size:13px">❌ ${_fpFunnelEsc(String(e.message||e))}</div>`;
+  } finally {
+    window._fpFunnelState.loading = false;
+  }
+};
+
+function renderGA4Funnels() {
+  if (!_ga4Connected()) {
+    return `
+      <div class="fp-section-header">
+        <div><h1>🔵 Funnels de conversion</h1><div class="fp-section-sub">Configurez et analysez vos funnels GA4</div></div>
+      </div>
+      ${_ga4NotConnectedBanner()}`;
   }
 
-  const ga4   = window.FP_DATA?.ga4 || {};
-  const lp    = ga4.funnels?.landingPages?.rows || [];
-  const cp    = ga4.funnels?.conversionPaths?.rows || [];
-
-  const _funnelBase = parseInt(ga4.overview?.totals?.[0]?.metricValues?.[0]?.value||'0') || 0;
-  const _funnelConv = parseInt(ga4.overview?.totals?.[0]?.metricValues?.[7]?.value||'0') || 0;
-  const funnelSteps = (_funnelBase > 0 && _funnelConv > 0) ? [
-    {label:'Visiteurs',  n: _funnelBase, color:'#2563EB'},
-    {label:'Conversion', n: _funnelConv, color:'#22c55e'},
-  ] : [];
-  const topN = funnelSteps.length > 0 ? (funnelSteps[0].n || 1) : 1;
+  // Schedule data load after DOM injection
+  setTimeout(() => window._fpFunnelLoad?.(), 60);
 
   return `
     <div class="fp-section-header">
-      <div><h1>🔄 Funnels & Parcours</h1><div class="fp-section-sub">Analyse du parcours utilisateur et des étapes de conversion</div></div>
+      <div><h1>🔵 Funnels de conversion</h1><div class="fp-section-sub">Configurez vos funnels GA4 — source : Google Analytics 4</div></div>
       <div class="fp-section-actions">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.reload()">🔄 Actualiser</button>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigate('campaigns')">📡 Attribution →</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpFunnelLoad()">🔄 Actualiser</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpFunnelShowForm()">+ Nouveau funnel</button>
       </div>
     </div>
 
-    ${_ga4NotConnectedBanner()}
-
-    ${aiBlock(
-      _ga4Connected()
-        ? funnelSteps.length > 0
-          ? (() => {
-              const _top = funnelSteps[0].n || 1;
-              const _bot = funnelSteps[funnelSteps.length-1].n || 0;
-              const _cr  = (_bot/_top*100).toFixed(2);
-              const _bigDrop = funnelSteps.reduce((best, s, i) => i===0?best:(s.n/funnelSteps[i-1].n<(best.pct||1)?{label:s.label,pct:s.n/funnelSteps[i-1].n}:best), {});
-              return `Taux de conversion global : <strong>${_cr}%</strong>. ${_bigDrop.label?'Plus grande perte : étape <strong>'+_bigDrop.label+'</strong> ('+Math.round((1-_bigDrop.pct)*100)+'% de drop). Optimisez cette étape en priorité.':'Analysez les étapes de votre entonnoir pour identifier les points de friction.'}`;
-            })()
-          : "Actualisez vos données GA4 pour afficher votre entonnoir de conversion."
-        : "Connectez Google Analytics 4 pour visualiser votre entonnoir de conversion complet.",
-      _ga4Connected() ? ['Analyser le trafic', 'Revenue Leak →', 'Optimiser le funnel'] : ['Connecter GA4']
-    )}
-
-    <!-- FUNNEL VISUALIZATION -->
-    <div class="fp-card fp-mb-20">
-      <div class="fp-card-title" style="margin-bottom:20px">🎯 Entonnoir de conversion principal</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${funnelSteps.length === 0 ? '<div style="padding:24px;text-align:center;background:var(--fp-inner-card);border-radius:10px;font-size:13px;color:var(--fp-text-muted)">🔌 ' + (_ga4Connected() ? 'Actualisez vos données GA4 pour afficher l\'entonnoir.' : 'Connectez Google Analytics pour afficher votre entonnoir de conversion.<br><button class="fp-btn fp-btn-primary fp-btn-sm" style="margin-top:10px" onclick="navigate(\'analytics\')">Connecter GA4</button>') + '</div>' : funnelSteps.map((step, i) => {
-          const pct = Math.round(step.n/topN*100);
-          const dropPct = i > 0 ? Math.round((1-step.n/funnelSteps[i-1].n)*100) : 0;
-          return `
-            <div>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:8px">
-                <span style="font-size:11px;font-weight:600;color:var(--fp-text);flex:1;min-width:0">${step.label}</span>
-                <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-                  <span style="font-size:12px;font-weight:700;color:var(--fp-text)">${step.n.toLocaleString('fr-FR')}</span>
-                  <span style="font-size:12px;font-weight:700;color:${step.color};min-width:36px;text-align:right">${pct}%</span>
-                  ${i>0 ? `<span style="font-size:10px;color:#ef4444;min-width:36px;text-align:right">-${dropPct}%</span>` : `<span style="min-width:36px"></span>`}
-                </div>
-              </div>
-              <div style="height:24px;background:var(--fp-inner-card);border-radius:4px;overflow:hidden">
-                <div style="height:100%;background:${step.color};border-radius:4px;width:${pct}%;transition:width 0.6s ease"></div>
-              </div>
-            </div>`;
-        }).join('')}
+    <div id="fp-funnels-root">
+      <div id="fp-funnels-list-section">
+        <div style="text-align:center;padding:32px;color:var(--fp-text-muted);font-size:13px">⏳ Chargement…</div>
       </div>
-      ${funnelSteps.length > 0 ? `<div style="margin-top:16px;padding:12px;background:rgba(34,197,94,0.06);border-radius:8px;font-size:12px;color:var(--fp-text-muted)">
-        Taux de conversion global : <strong style="color:#22c55e;font-size:14px">${((funnelSteps[funnelSteps.length-1].n/topN)*100).toFixed(2)}%</strong>
-        ${funnelSteps[4] ? '· Opportunité : optimiser l\'étape Checkout → +' + Math.round(funnelSteps[4].n*0.15) + ' conversions potentielles' : ''}
-      </div>` : ""}
-    </div>
-
-    <!-- LANDING PAGES + CONVERSION PATHS -->
-    <div class="fp-grid-2 fp-mb-20">
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:12px">🛬 Pages d\'atterrissage</div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
-          <thead><tr style="border-bottom:1px solid var(--fp-border)">
-            ${['Page','Sessions','Rebond','Conv.'].map(h=>`<th style="padding:5px 8px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
-          </tr></thead>
-          <tbody>${lp.slice(0,12).map(r => {
-            const pg  = r.dimensionValues?.[0]?.value||'/';
-            const s   = parseFloat(r.metricValues?.[0]?.value||0);
-            const b   = parseFloat(r.metricValues?.[2]?.value||0)*100;
-            const c   = parseFloat(r.metricValues?.[3]?.value||0);
-            return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
-              <td style="padding:6px 8px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-family:var(--fp-font-mono);color:var(--fp-text-muted)">${escHtml(pg)}</td>
-              <td style="padding:6px 8px;font-weight:700">${s.toLocaleString('fr-FR')}</td>
-              <td style="padding:6px 8px;color:${b>50?'#ef4444':b>35?'#f59e0b':'#22c55e'}">${b.toFixed(0)}%</td>
-              <td style="padding:6px 8px;color:#22c55e;font-weight:700">${c.toLocaleString('fr-FR')}</td>
-            </tr>`;
-          }).join('')||`<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--fp-text-muted)">${_ga4Connected()?'Chargement…':'Connectez GA4'}</td></tr>`}</tbody>
-        </table>
-      </div>
-
-      <div class="fp-card">
-        <div class="fp-card-title" style="margin-bottom:12px">⚡ Top événements de conversion</div>
-        ${cp.slice(0,10).map(r => {
-          const ev  = r.dimensionValues?.[0]?.value||'event';
-          const ch  = r.dimensionValues?.[1]?.value||'—';
-          const c   = parseFloat(r.metricValues?.[0]?.value||0);
-          const u   = parseFloat(r.metricValues?.[1]?.value||0);
-          const color = GA4_CHANNEL_COLORS[ch]||'#64748b';
-          return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-            <div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(ev)}</div>
-            <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${color}18;color:${color}">${ch}</span></div>
-            <div style="text-align:right"><div style="font-size:13px;font-weight:800;color:#22c55e">${c.toLocaleString('fr-FR')}</div>
-            <div style="font-size:10px;color:var(--fp-text-faint)">${u.toLocaleString('fr-FR')} users</div></div>
-          </div>`;
-        }).join('')||`<div style="padding:16px;text-align:center;color:var(--fp-text-muted);font-size:11px">${_ga4Connected()?'Chargement…':'Connectez GA4'}</div>`}
-      </div>
-    </div>
-
-    <!-- DROP-OFF ANALYSIS -->
-    <div class="fp-card">
-      <div class="fp-card-title" style="margin-bottom:14px">💡 Analyse drop-off & recommandations IA</div>
-      ${(() => {
-        if (!_ga4Connected()) return `<div style="padding:20px;text-align:center;font-size:12px;color:var(--fp-text-muted)">🔌 Connectez GA4 pour l'analyse automatique des points de friction dans votre entonnoir.</div>`;
-        if (funnelSteps.length < 2) return `<div style="padding:20px;text-align:center;font-size:12px;color:var(--fp-text-muted)">⏳ Actualisez vos données GA4 pour voir l'analyse drop-off de votre entonnoir.</div>`;
-        return funnelSteps.slice(1).map((step, i) => {
-          const prev = funnelSteps[i];
-          const drop = Math.round((1 - step.n / Math.max(prev.n, 1)) * 100);
-          if (drop <= 0) return '';
-          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:rgba(239,68,68,0.04);border-left:3px solid #ef4444;margin-bottom:6px;flex-wrap:wrap">
-            <div style="flex:1;min-width:200px">
-              <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:2px">${escHtml(prev.label)} → ${escHtml(step.label)} — <span style="color:#ef4444">-${drop}%</span></div>
-              <div style="font-size:11px;color:var(--fp-text-muted)">${(step.n).toLocaleString('fr-FR')} / ${(prev.n).toLocaleString('fr-FR')} visiteurs ont continué</div>
-            </div>
-            <div style="text-align:right;flex-shrink:0">
-              <button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="_fpMQ('Optimiser étape ${escHtml(step.label)}','Funnel','high')">Créer mission</button>
-            </div>
-          </div>`;
-        }).join('') || `<div style="padding:16px;text-align:center;font-size:12px;color:var(--fp-text-muted)">Aucun drop-off significatif détecté.</div>`;
-      })()}
-    </div>
-  `;
+      <div id="fp-funnel-form-section" style="display:none"></div>
+      <div id="fp-funnel-result-section" style="display:none"></div>
+    </div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════

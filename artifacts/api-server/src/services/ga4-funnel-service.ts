@@ -4,7 +4,8 @@
  * Calls POST /v1alpha/properties/{propertyId}:runFunnelReport
  * All step filters are validated against allowlists before forwarding.
  * No synthetic fallback — null or empty on missing/zero data.
- * Cache is tenant-safe (keyed by orgId + funnelId + config hash).
+ * Cache is tenant-safe (keyed by orgId + funnelId + siteUrl + config hash).
+ * Retry: max 2 retries on 429 / 5xx / transient network errors; none on 400/401/403.
  */
 
 import { createHash } from "node:crypto";
@@ -36,7 +37,22 @@ export const ALLOWED_BREAKDOWN_DIMENSIONS = new Set([
   "sessionDefaultChannelGrouping", "sourceMedium", "city", "region",
 ]);
 
+export const ALLOWED_PARAMETER_NAMES = new Set([
+  "page_title", "page_location", "page_referrer", "page_path",
+  "firebase_screen_class", "firebase_screen_name", "session_id",
+  "entrances", "engagement_time_msec", "transaction_id",
+  "currency", "value", "item_id", "item_name", "item_category",
+  "item_brand", "item_variant", "coupon", "affiliation",
+  "shipping", "tax", "search_term", "method", "content_type",
+]);
+
 // ── Types ──────────────────────────────────────────────────────────────────────
+
+export interface ParameterFilterInput {
+  paramName: string;
+  matchType: string;
+  value: string;
+}
 
 export interface FunnelStepConfig {
   position: number;
@@ -44,7 +60,9 @@ export interface FunnelStepConfig {
   eventName?: string | null;
   pagePathMatchType?: string | null;
   pagePathValue?: string | null;
-  parameterFilters?: unknown;
+  pageLocationMatchType?: string | null;
+  pageLocationValue?: string | null;
+  parameterFilters?: ParameterFilterInput[] | null;
 }
 
 export interface RunFunnelInput {
@@ -115,7 +133,12 @@ interface CacheEntry {
 const _cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
+function normalizeSiteUrl(url: string): string {
+  return url.trim().replace(/\/+$/, "").toLowerCase();
+}
+
 function buildCacheKey(input: RunFunnelInput): string {
+  const normalizedSiteUrl = normalizeSiteUrl(input.siteUrl);
   const configHash = createHash("md5")
     .update(
       JSON.stringify({
@@ -126,8 +149,9 @@ function buildCacheKey(input: RunFunnelInput): string {
     )
     .digest("hex")
     .slice(0, 12);
-  // Key always starts with orgId so there is NEVER cross-tenant sharing
-  return `${input.orgId}:${input.funnelId}:${input.startDate}:${input.endDate}:${configHash}`;
+  // Key always starts with orgId — never cross-tenant sharing
+  // siteUrl included to separate funnels used on different sites
+  return `${input.orgId}:${input.funnelId}:${normalizedSiteUrl}:${input.startDate}:${input.endDate}:${configHash}`;
 }
 
 function getCached(key: string): { hit: true; entry: CacheEntry } | { hit: false } {
@@ -150,6 +174,16 @@ setInterval(() => {
 
 // ── Step filter builder ────────────────────────────────────────────────────────
 
+function buildParameterFilterExpression(pf: ParameterFilterInput): unknown {
+  const matchType = ALLOWED_MATCH_TYPES.has(pf.matchType) ? pf.matchType : "EXACT";
+  return {
+    funnelParameterFilter: {
+      paramName: pf.paramName,
+      stringFilter: { matchType, value: pf.value },
+    },
+  };
+}
+
 function buildStepFilterExpression(step: FunnelStepConfig): unknown {
   const expressions: unknown[] = [];
 
@@ -168,6 +202,34 @@ function buildStepFilterExpression(step: FunnelStepConfig): unknown {
         stringFilter: { matchType, value: step.pagePathValue.trim() },
       },
     });
+  }
+
+  if (step.pageLocationValue?.trim()) {
+    const matchType =
+      step.pageLocationMatchType && ALLOWED_MATCH_TYPES.has(step.pageLocationMatchType)
+        ? step.pageLocationMatchType
+        : "EXACT";
+    expressions.push({
+      funnelFieldFilter: {
+        fieldName: "pageLocation",
+        stringFilter: { matchType, value: step.pageLocationValue.trim() },
+      },
+    });
+  }
+
+  // parameterFilters — only valid paramNames forwarded
+  if (Array.isArray(step.parameterFilters)) {
+    for (const pf of step.parameterFilters) {
+      if (!pf || typeof pf !== "object") continue;
+      const pfTyped = pf as ParameterFilterInput;
+      if (!ALLOWED_PARAMETER_NAMES.has(pfTyped.paramName)) {
+        throw Object.assign(
+          new Error(`Invalid parameter filter name: "${pfTyped.paramName}"`),
+          { status: 400, code: "INVALID_PARAMETER_NAME" }
+        );
+      }
+      expressions.push(buildParameterFilterExpression(pfTyped));
+    }
   }
 
   if (expressions.length === 0) {
@@ -209,6 +271,72 @@ export function buildGA4FunnelRequest(input: RunFunnelInput): unknown {
   return body;
 }
 
+// ── Retry-aware fetch wrapper ─────────────────────────────────────────────────
+
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = [1000, 2000]; // delay before attempt 1 and 2
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit
+): Promise<Response> {
+  let lastErr: unknown;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise<void>(r => setTimeout(r, RETRY_DELAY_MS[attempt - 1] ?? 2000));
+    }
+
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 25_000);
+
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+
+      // Never retry on 400 / 401 / 403
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        clearTimeout(tid);
+        return res;
+      }
+
+      // Retry on 429 or 5xx if retries remain
+      if ((res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES) {
+        clearTimeout(tid);
+        lastErr = new Error(`GA4 HTTP ${res.status}`);
+        continue;
+      }
+
+      clearTimeout(tid);
+      return res;
+    } catch (e) {
+      clearTimeout(tid);
+      const err = e as Error;
+
+      // Timeout from our own AbortController — retry it
+      if ((err.name === "AbortError" || err.name === "TimeoutError") && attempt < MAX_RETRIES) {
+        lastErr = e;
+        continue;
+      }
+      // Final timeout — throw typed error
+      if (err.name === "AbortError" || err.name === "TimeoutError") {
+        throw Object.assign(
+          new Error("GA4 request timed out after 25s"),
+          { status: 504, code: "GA4_TIMEOUT" }
+        );
+      }
+
+      // Transient network error — retry
+      if (attempt < MAX_RETRIES) {
+        lastErr = e;
+        continue;
+      }
+      throw e;
+    }
+  }
+
+  throw lastErr ?? new Error("GA4 request failed after retries");
+}
+
 // ── Response normalizer ────────────────────────────────────────────────────────
 
 function normalizeResponse(raw: GA4FunnelResponse, input: RunFunnelInput): NormalizedFunnelResult {
@@ -218,7 +346,6 @@ function normalizeResponse(raw: GA4FunnelResponse, input: RunFunnelInput): Norma
   const stepUsers: number[] = sortedSteps.map((_, i) => {
     const row = rows[i];
     if (!row) return 0;
-    // Primary metric is the first metricValue (cohortActiveUsers or activeUsers)
     const raw_val = row.metricValues?.[0]?.value;
     return raw_val !== undefined ? Math.max(0, parseInt(raw_val, 10) || 0) : 0;
   });
@@ -279,6 +406,7 @@ function normalizeResponse(raw: GA4FunnelResponse, input: RunFunnelInput): Norma
  * Run a configured funnel report via the GA4 v1alpha API.
  * Throws typed errors with `.code` for known failure modes (GA4_NOT_CONNECTED, etc.).
  * Returns null metrics — never synthetic data.
+ * Retries up to 2 times on 429 / 5xx / transient network errors.
  */
 export async function runConfiguredFunnel(input: RunFunnelInput): Promise<NormalizedFunnelResult> {
   if (input.steps.length < 2) {
@@ -309,29 +437,28 @@ export async function runConfiguredFunnel(input: RunFunnelInput): Promise<Normal
     );
   }
 
-  const requestBody = buildGA4FunnelRequest(input);
+  // Build request — may throw on invalid parameterFilters (400)
+  let requestBody: unknown;
+  try {
+    requestBody = buildGA4FunnelRequest(input);
+  } catch (e) {
+    throw e; // already typed with status/code
+  }
+
   const url = `${GA4_FUNNEL_BASE}/${encodeURIComponent(input.propertyId)}:runFunnelReport`;
 
   logger.info({ orgId: input.orgId, funnelId: input.funnelId, url_path: ":runFunnelReport" }, "[ga4-funnel] calling GA4 v1alpha");
 
   let raw: GA4FunnelResponse;
   try {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 25_000);
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(tid);
-    }
+    const res = await fetchWithRetry(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -380,13 +507,6 @@ export async function runConfiguredFunnel(input: RunFunnelInput): Promise<Normal
   } catch (e) {
     const err = e as Error & { code?: string; status?: number };
     if (err.code) throw e; // already typed
-    const name = err.name;
-    if (name === "AbortError" || name === "TimeoutError") {
-      throw Object.assign(
-        new Error("GA4 request timed out after 25s"),
-        { status: 504, code: "GA4_TIMEOUT" }
-      );
-    }
     logger.warn({ e, orgId: input.orgId }, "[ga4-funnel] fetch network error");
     throw Object.assign(
       new Error(`GA4 request failed: ${err.message}`),

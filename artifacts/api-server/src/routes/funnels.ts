@@ -6,15 +6,36 @@
  *  - propertyId ALWAYS from server DB — never from client
  *  - siteUrl validated via behavior_site_tokens (same org)
  *  - All cross-org reads silently return 404
+ *  - UUID validated before SQL (returns 400 INVALID_FUNNEL_ID on malformed input)
+ *  - All DB queries use withOrgDb (GUC + RLS) for tenant-scoped operations
  */
 import { Router, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { pool } from "@workspace/db";
+import { pool, withOrgDb } from "@workspace/db";
 import { getStoredProperty } from "../services/ga4-service.js";
-import { runConfiguredFunnel, ALLOWED_BREAKDOWN_DIMENSIONS, ALLOWED_MATCH_TYPES } from "../services/ga4-funnel-service.js";
+import {
+  runConfiguredFunnel,
+  ALLOWED_BREAKDOWN_DIMENSIONS,
+  ALLOWED_MATCH_TYPES,
+  ALLOWED_PARAMETER_NAMES,
+  type ParameterFilterInput,
+} from "../services/ga4-funnel-service.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
+
+// ── UUID validation ───────────────────────────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertValidUUID(id: string): void {
+  if (!UUID_RE.test(id)) {
+    throw Object.assign(
+      new Error(`Invalid funnel ID: "${id}"`),
+      { status: 400, code: "INVALID_FUNNEL_ID" }
+    );
+  }
+}
 
 // ── Org context extraction ────────────────────────────────────────────────────
 
@@ -40,7 +61,31 @@ interface StepInput {
   eventName?: unknown;
   pagePathMatchType?: unknown;
   pagePathValue?: unknown;
+  pageLocationMatchType?: unknown;
+  pageLocationValue?: unknown;
   parameterFilters?: unknown;
+}
+
+function validateParameterFilters(pfs: unknown[], stepName: string): string | null {
+  for (const pf of pfs) {
+    if (!pf || typeof pf !== "object") return `parameterFilters in step "${stepName}" must be objects`;
+    const p = pf as Record<string, unknown>;
+    const paramName = p["paramName"];
+    if (typeof paramName !== "string" || !paramName) {
+      return `parameterFilter in step "${stepName}" missing paramName`;
+    }
+    if (!ALLOWED_PARAMETER_NAMES.has(paramName)) {
+      return `Invalid parameter filter name: "${paramName}"`;
+    }
+    const matchType = p["matchType"];
+    if (typeof matchType !== "string" || !ALLOWED_MATCH_TYPES.has(matchType)) {
+      return `Invalid parameterFilter matchType: "${String(matchType)}" in step "${stepName}"`;
+    }
+    if (typeof p["value"] !== "string") {
+      return `parameterFilter in step "${stepName}" missing value string`;
+    }
+  }
+  return null;
 }
 
 function validateSteps(steps: unknown[]): string | null {
@@ -62,12 +107,24 @@ function validateSteps(steps: unknown[]): string | null {
     }
     const hasEvent = !!(s.eventName as string | undefined)?.trim();
     const hasPage = !!(s.pagePathValue as string | undefined)?.trim();
-    if (!hasEvent && !hasPage) {
-      return `Step "${String(name)}" at position ${pos} requires eventName or pagePathValue`;
+    const hasLocation = !!(s.pageLocationValue as string | undefined)?.trim();
+    if (!hasEvent && !hasPage && !hasLocation) {
+      return `Step "${String(name)}" at position ${pos} requires eventName, pagePathValue, or pageLocationValue`;
     }
     const mt = s.pagePathMatchType as string | undefined;
     if (mt && !ALLOWED_MATCH_TYPES.has(mt)) {
       return `Invalid pagePathMatchType: ${mt}`;
+    }
+    const lmt = s.pageLocationMatchType as string | undefined;
+    if (lmt && !ALLOWED_MATCH_TYPES.has(lmt)) {
+      return `Invalid pageLocationMatchType: ${lmt}`;
+    }
+    if (s.parameterFilters !== undefined && s.parameterFilters !== null) {
+      if (!Array.isArray(s.parameterFilters)) {
+        return `parameterFilters in step "${String(name)}" must be an array`;
+      }
+      const pfErr = validateParameterFilters(s.parameterFilters as unknown[], String(name));
+      if (pfErr) return pfErr;
     }
   }
   return null;
@@ -80,20 +137,17 @@ function validateLookbackDays(raw: unknown): number | string {
   return n;
 }
 
-// ── Site ownership guard ──────────────────────────────────────────────────────
+// ── Site ownership guard (uses pool with explicit WHERE — ownership check only)
 
 async function assertSiteOwnership(orgId: string, siteUrl: string): Promise<boolean> {
-  const client = await pool.connect();
   try {
-    const r = await client.query(
+    const r = await pool.query(
       `SELECT 1 FROM behavior_site_tokens WHERE org_id = $1 AND site_url = $2 LIMIT 1`,
       [orgId, siteUrl]
     );
     return r.rows.length > 0;
   } catch {
     return false;
-  } finally {
-    client.release();
   }
 }
 
@@ -110,7 +164,33 @@ function handleError(res: Response, e: unknown, label: string): void {
   });
 }
 
-// ── Funnel row builder (shared query) ─────────────────────────────────────────
+// ── Step row builder ──────────────────────────────────────────────────────────
+
+function stepParams(
+  stepId: string,
+  orgId: string,
+  funnelId: string,
+  step: StepInput,
+  now: string
+): unknown[] {
+  return [
+    stepId,
+    orgId,
+    funnelId,
+    step.position as number,
+    (step.name as string).trim(),
+    (step.eventName as string | undefined)?.trim() ?? null,
+    (step.pagePathMatchType as string | undefined) ?? null,
+    (step.pagePathValue as string | undefined)?.trim() ?? null,
+    (step.pageLocationMatchType as string | undefined) ?? null,
+    (step.pageLocationValue as string | undefined)?.trim() ?? null,
+    step.parameterFilters ? JSON.stringify(step.parameterFilters) : null,
+    now,
+    now,
+  ];
+}
+
+// ── Funnel SELECT (with steps) ────────────────────────────────────────────────
 
 const FUNNEL_SELECT = `
   SELECT f.id, f.org_id, f.site_url, f.name, f.description,
@@ -130,26 +210,21 @@ router.get("/funnels", async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
     const siteUrl = (req.query["siteUrl"] as string | undefined)?.trim();
-    const client = await pool.connect();
-    try {
-      let rows: unknown[];
+    const rows = await withOrgDb(orgId, async (client) => {
       if (siteUrl) {
         const r = await client.query(
           `${FUNNEL_SELECT} WHERE f.org_id = $1 AND f.site_url = $2 GROUP BY f.id ORDER BY f.created_at DESC`,
           [orgId, siteUrl]
         );
-        rows = r.rows;
-      } else {
-        const r = await client.query(
-          `${FUNNEL_SELECT} WHERE f.org_id = $1 GROUP BY f.id ORDER BY f.created_at DESC`,
-          [orgId]
-        );
-        rows = r.rows;
+        return r.rows;
       }
-      res.json({ ok: true, funnels: rows });
-    } finally {
-      client.release();
-    }
+      const r = await client.query(
+        `${FUNNEL_SELECT} WHERE f.org_id = $1 GROUP BY f.id ORDER BY f.created_at DESC`,
+        [orgId]
+      );
+      return r.rows;
+    });
+    res.json({ ok: true, funnels: rows });
   } catch (e) {
     handleError(res, e, "GET /funnels");
   }
@@ -161,7 +236,7 @@ router.post("/funnels", async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
     const body = { ...(req.body as Record<string, unknown>) };
-    delete body["orgId"]; // never accepted from client
+    delete body["orgId"];
 
     const name = (body["name"] as string | undefined)?.trim();
     const siteUrl = (body["siteUrl"] as string | undefined)?.trim();
@@ -193,9 +268,7 @@ router.post("/funnels", async (req: Request, res: Response) => {
     const funnelId = randomUUID();
     const now = new Date().toISOString();
 
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+    await withOrgDb(orgId, async (client) => {
       await client.query(
         `INSERT INTO funnels
            (id, org_id, site_url, name, description, ga4_property_id,
@@ -209,27 +282,14 @@ router.post("/funnels", async (req: Request, res: Response) => {
         await client.query(
           `INSERT INTO funnel_steps
              (id, org_id, funnel_id, position, name, event_name,
-              page_path_match_type, page_path_value, parameter_filters, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-          [
-            randomUUID(), orgId, funnelId, step.position as number,
-            (step.name as string).trim(),
-            (step.eventName as string | undefined)?.trim() ?? null,
-            (step.pagePathMatchType as string | undefined) ?? null,
-            (step.pagePathValue as string | undefined)?.trim() ?? null,
-            step.parameterFilters ? JSON.stringify(step.parameterFilters) : null,
-            now, now,
-          ]
+              page_path_match_type, page_path_value,
+              page_location_match_type, page_location_value,
+              parameter_filters, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          stepParams(randomUUID(), orgId, funnelId, step, now)
         );
       }
-
-      await client.query("COMMIT");
-    } catch (e) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
 
     res.status(201).json({ ok: true, id: funnelId, funnelId });
   } catch (e) {
@@ -243,17 +303,16 @@ router.get("/funnels/:id", async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
     const { id } = req.params as { id: string };
-    const client = await pool.connect();
-    try {
+    assertValidUUID(id);
+    const row = await withOrgDb(orgId, async (client) => {
       const r = await client.query(
         `${FUNNEL_SELECT} WHERE f.id = $1 AND f.org_id = $2 GROUP BY f.id`,
         [id, orgId]
       );
-      if (!r.rows[0]) return void res.status(404).json({ ok: false, error: "Not found" });
-      res.json({ ok: true, funnel: r.rows[0] });
-    } finally {
-      client.release();
-    }
+      return r.rows[0] ?? null;
+    });
+    if (!row) return void res.status(404).json({ ok: false, error: "Not found" });
+    res.json({ ok: true, funnel: row });
   } catch (e) {
     handleError(res, e, "GET /funnels/:id");
   }
@@ -265,6 +324,7 @@ router.patch("/funnels/:id", async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
     const { id } = req.params as { id: string };
+    assertValidUUID(id);
     const body = { ...(req.body as Record<string, unknown>) };
     delete body["orgId"];
 
@@ -316,16 +376,14 @@ router.patch("/funnels/:id", async (req: Request, res: Response) => {
     const whereId = params.length - 1;
     const whereOrg = params.length;
 
-    const client = await pool.connect();
-    try {
-      // Verify ownership first
+    await withOrgDb(orgId, async (client) => {
       const check = await client.query(
         `SELECT id FROM funnels WHERE id = $1 AND org_id = $2 LIMIT 1`,
         [id, orgId]
       );
-      if (!check.rows[0]) return void res.status(404).json({ ok: false, error: "Not found" });
-
-      await client.query("BEGIN");
+      if (!check.rows[0]) {
+        throw Object.assign(new Error("Not found"), { status: 404 });
+      }
 
       await client.query(
         `UPDATE funnels SET ${setClauses.join(", ")} WHERE id = $${whereId} AND org_id = $${whereOrg}`,
@@ -344,28 +402,15 @@ router.patch("/funnels/:id", async (req: Request, res: Response) => {
           await client.query(
             `INSERT INTO funnel_steps
                (id, org_id, funnel_id, position, name, event_name,
-                page_path_match_type, page_path_value, parameter_filters, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-            [
-              randomUUID(), orgId, id, step.position as number,
-              (step.name as string).trim(),
-              (step.eventName as string | undefined)?.trim() ?? null,
-              (step.pagePathMatchType as string | undefined) ?? null,
-              (step.pagePathValue as string | undefined)?.trim() ?? null,
-              step.parameterFilters ? JSON.stringify(step.parameterFilters) : null,
-              now, now,
-            ]
+                page_path_match_type, page_path_value,
+                page_location_match_type, page_location_value,
+                parameter_filters, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            stepParams(randomUUID(), orgId, id, step, now)
           );
         }
       }
-
-      await client.query("COMMIT");
-    } catch (e) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
 
     res.json({ ok: true });
   } catch (e) {
@@ -379,9 +424,10 @@ router.delete("/funnels/:id", async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
     const { id } = req.params as { id: string };
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+    assertValidUUID(id);
+
+    let found = false;
+    await withOrgDb(orgId, async (client) => {
       await client.query(
         `DELETE FROM funnel_steps WHERE funnel_id = $1 AND org_id = $2`,
         [id, orgId]
@@ -390,15 +436,11 @@ router.delete("/funnels/:id", async (req: Request, res: Response) => {
         `DELETE FROM funnels WHERE id = $1 AND org_id = $2 RETURNING id`,
         [id, orgId]
       );
-      await client.query("COMMIT");
-      if (!r.rows[0]) return void res.status(404).json({ ok: false, error: "Not found" });
-      res.json({ ok: true });
-    } catch (e) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw e;
-    } finally {
-      client.release();
-    }
+      found = !!r.rows[0];
+    });
+
+    if (!found) return void res.status(404).json({ ok: false, error: "Not found" });
+    res.json({ ok: true });
   } catch (e) {
     handleError(res, e, "DELETE /funnels/:id");
   }
@@ -410,8 +452,9 @@ router.post("/funnels/:id/run", async (req: Request, res: Response) => {
   try {
     const orgId = getOrgId(req);
     const { id } = req.params as { id: string };
+    assertValidUUID(id);
+
     const body = { ...(req.body as Record<string, unknown>) };
-    // Security: never accept orgId or propertyId from client
     delete body["orgId"];
     delete body["propertyId"];
     delete body["ga4PropertyId"];
@@ -423,25 +466,26 @@ router.post("/funnels/:id/run", async (req: Request, res: Response) => {
     const overrideDays = body["lookbackDays"] !== undefined ? daysResult : null;
 
     // Load funnel with org guard
-    const client = await pool.connect();
     let funnel: Record<string, unknown>;
     let steps: Array<Record<string, unknown>>;
-    try {
+
+    const queryResult = await withOrgDb(orgId, async (client) => {
       const fr = await client.query(
         `SELECT * FROM funnels WHERE id = $1 AND org_id = $2 LIMIT 1`,
         [id, orgId]
       );
-      if (!fr.rows[0]) return void res.status(404).json({ ok: false, error: "Funnel not found" });
-      funnel = fr.rows[0] as Record<string, unknown>;
-
+      if (!fr.rows[0]) {
+        throw Object.assign(new Error("Funnel not found"), { status: 404 });
+      }
       const sr = await client.query(
         `SELECT * FROM funnel_steps WHERE funnel_id = $1 AND org_id = $2 ORDER BY position`,
         [id, orgId]
       );
-      steps = sr.rows as Array<Record<string, unknown>>;
-    } finally {
-      client.release();
-    }
+      return { funnel: fr.rows[0] as Record<string, unknown>, steps: sr.rows as Array<Record<string, unknown>> };
+    });
+
+    funnel = queryResult.funnel;
+    steps = queryResult.steps;
 
     if (steps.length < 2) {
       return void res.status(400).json({ ok: false, error: "Funnel has no steps configured (min 2)" });
@@ -467,7 +511,13 @@ router.post("/funnels/:id/run", async (req: Request, res: Response) => {
       eventName: (s["event_name"] as string | null) ?? null,
       pagePathMatchType: (s["page_path_match_type"] as string | null) ?? null,
       pagePathValue: (s["page_path_value"] as string | null) ?? null,
-      parameterFilters: s["parameter_filters"] ?? null,
+      pageLocationMatchType: (s["page_location_match_type"] as string | null) ?? null,
+      pageLocationValue: (s["page_location_value"] as string | null) ?? null,
+      parameterFilters: s["parameter_filters"]
+        ? (JSON.parse(typeof s["parameter_filters"] === "string"
+            ? s["parameter_filters"]
+            : JSON.stringify(s["parameter_filters"])) as ParameterFilterInput[])
+        : null,
     }));
 
     const result = await runConfiguredFunnel({

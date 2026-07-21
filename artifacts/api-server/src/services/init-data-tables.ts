@@ -1176,6 +1176,10 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS funnel_steps_org_id_idx      ON funnel_steps(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS funnel_steps_funnel_pos_idx  ON funnel_steps(funnel_id, position);`);
 
+    // Self-healing: add pageLocation columns to funnel_steps if missing
+    await run(client, `ALTER TABLE funnel_steps ADD COLUMN IF NOT EXISTS page_location_match_type TEXT;`);
+    await run(client, `ALTER TABLE funnel_steps ADD COLUMN IF NOT EXISTS page_location_value TEXT;`);
+
     // RLS for funnels
     await run(client, `
       DO $$ BEGIN
