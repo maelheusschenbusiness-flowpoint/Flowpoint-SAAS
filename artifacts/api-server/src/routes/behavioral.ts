@@ -48,22 +48,18 @@ function verifyHmac(key: string, message: string, receivedHex: string): boolean 
  * Intentionally uses superuser Drizzle since siteTokens are validated before
  * org context is established (token-exchange endpoint is public, pre-auth).
  */
-async function lookupSiteToken(plaintextToken: string, siteUrl: string): Promise<boolean> {
+async function lookupSiteToken(plaintextToken: string, siteUrl: string): Promise<string | null> {
   try {
     const hash = hashToken(plaintextToken);
     const [row] = await db
-      .select({ siteUrl: behaviorSiteTokensTable.siteUrl })
+      .select({ siteUrl: behaviorSiteTokensTable.siteUrl, orgId: behaviorSiteTokensTable.orgId })
       .from(behaviorSiteTokensTable)
       .where(eq(behaviorSiteTokensTable.tokenHash, hash))
       .limit(1);
-    if (!row || row.siteUrl !== siteUrl) return false;
-    void db
-      .update(behaviorSiteTokensTable)
-      .set({ lastUsedAt: new Date() })
-      .where(eq(behaviorSiteTokensTable.tokenHash, hash));
-    return true;
+    if (!row || row.siteUrl !== siteUrl) return null;
+    return row.orgId ?? "default";
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -97,15 +93,15 @@ function consumeNonce(siteUrl: string, nonce: string, tsMs: number): boolean {
 
 // ── Short-lived session tokens ────────────────────────────────────────────────
 const SESSION_TOKEN_TTL_MS = 5 * 60 * 1000;
-interface SessionTokenEntry { siteUrl: string; allowedOrigin: string; exp: number; }
+interface SessionTokenEntry { siteUrl: string; allowedOrigin: string; exp: number; orgId: string; }
 const _sessionTokens = new Map<string, SessionTokenEntry>();
 
-function issueSessionToken(siteUrl: string, origin: string): { token: string; expiresAt: number } {
+function issueSessionToken(siteUrl: string, origin: string, orgId: string): { token: string; expiresAt: number } {
   const now = Date.now();
   for (const [k, v] of _sessionTokens) { if (v.exp < now) _sessionTokens.delete(k); }
   const token = randomBytes(32).toString("hex");
   const exp = now + SESSION_TOKEN_TTL_MS;
-  _sessionTokens.set(token, { siteUrl, allowedOrigin: origin, exp });
+  _sessionTokens.set(token, { siteUrl, allowedOrigin: origin, exp, orgId });
   return { token, expiresAt: exp };
 }
 
@@ -138,10 +134,11 @@ publicBehavioralRouter.post("/behavioral/token", behavioralRateLimit("token"), a
   if (!verifyHmac(siteToken, canonical, sig)) {
     res.status(403).json({ error: "Invalid HMAC signature" }); return;
   }
-  if (!await lookupSiteToken(siteToken, siteKey)) {
+  const resolvedOrgId = await lookupSiteToken(siteToken, siteKey);
+  if (!resolvedOrgId) {
     res.status(403).json({ error: "Unregistered site or invalid credentials" }); return;
   }
-  const { token, expiresAt } = issueSessionToken(siteKey, origin);
+  const { token, expiresAt } = issueSessionToken(siteKey, origin, resolvedOrgId);
   res.json({ sessionToken: token, expiresAt });
 });
 
@@ -158,9 +155,11 @@ publicBehavioralRouter.post("/behavioral/event", behavioralRateLimit("event"), a
     res.status(403).json({ error: "Origin header required and must match siteUrl" }); return;
   }
   const origin = req.headers["origin"] as string;
-  if (!validateSessionToken(sessionToken, siteUrl, origin)) {
+  const _evtEntry = _sessionTokens.get(sessionToken);
+  if (!_evtEntry || _evtEntry.exp < Date.now() || _evtEntry.siteUrl !== siteUrl || _evtEntry.allowedOrigin !== origin) {
     res.status(403).json({ error: "Invalid or expired session token — call POST /behavioral/token to refresh" }); return;
   }
+  const eventOrgId = _evtEntry.orgId;
   const tsNum = Number(ts);
   if (!ts || isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS) {
     res.status(403).json({ error: "Timestamp missing or outside acceptable window" }); return;
@@ -169,7 +168,7 @@ publicBehavioralRouter.post("/behavioral/event", behavioralRateLimit("event"), a
     res.status(403).json({ error: "Missing nonce or nonce already used — replay rejected" }); return;
   }
   try {
-    await trackBehaviorEvent({ sessionId, siteUrl, page, eventType, element, xPos, yPos, scrollDepth, timeOnPage, metadata });
+    await trackBehaviorEvent({ sessionId, orgId: eventOrgId, siteUrl, page, eventType, element, xPos, yPos, scrollDepth, timeOnPage, metadata });
     res.status(201).json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to track event" });
@@ -187,9 +186,11 @@ publicBehavioralRouter.post("/behavioral/session", behavioralRateLimit("session"
     res.status(403).json({ error: "Origin header required and must match siteUrl" }); return;
   }
   const origin = req.headers["origin"] as string;
-  if (!validateSessionToken(sessionToken, siteUrl, origin)) {
+  const _sessEntry = _sessionTokens.get(sessionToken);
+  if (!_sessEntry || _sessEntry.exp < Date.now() || _sessEntry.siteUrl !== siteUrl || _sessEntry.allowedOrigin !== origin) {
     res.status(403).json({ error: "Invalid or expired session token — call POST /behavioral/token to refresh" }); return;
   }
+  const sessionOrgId = _sessEntry.orgId;
   const tsNum = Number(ts);
   if (!ts || isNaN(tsNum) || Math.abs(Date.now() - tsNum) > MAX_TS_SKEW_MS) {
     res.status(403).json({ error: "Timestamp missing or outside acceptable window" }); return;
@@ -198,7 +199,7 @@ publicBehavioralRouter.post("/behavioral/session", behavioralRateLimit("session"
     res.status(403).json({ error: "Missing nonce or nonce already used — replay rejected" }); return;
   }
   try {
-    await upsertSession({ id, siteUrl, userAgent, deviceType, country });
+    await upsertSession({ id, orgId: sessionOrgId, siteUrl, userAgent, deviceType, country });
     res.status(201).json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to upsert session" });
@@ -349,8 +350,8 @@ router.get("/behavioral/status", async (req: Request, res: Response) => {
     }
 
     const countRow = await orgDb(req)(
-      `SELECT COUNT(*) AS total, MAX(created_at) AS last_event FROM behavior_events WHERE site_url=$1`,
-      [siteUrl]
+      `SELECT COUNT(*) AS total, MAX(created_at) AS last_event FROM behavior_events WHERE site_url=$1 AND org_id=$2`,
+      [siteUrl, orgId]
     );
     const row = countRow.rows[0] as { total: string; last_event: Date | null } | undefined;
     const total = Number(row?.total ?? 0);
@@ -376,7 +377,8 @@ router.use(requireFeature("behavioralAI", "Behavioral AI"));
 router.get("/behavioral/insights", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
-    const data = await getBehaviorInsights(siteUrl);
+    const reqOrgId = (req as OrgReq).orgId ?? "default";
+    const data = await getBehaviorInsights(reqOrgId, siteUrl);
     res.json(data);
   } catch {
     res.json({ insights: [], sessions: 0, events: 0, count: 0 });
@@ -386,8 +388,9 @@ router.get("/behavioral/insights", async (req: Request, res: Response) => {
 router.post("/behavioral/generate-insights", async (req: Request, res: Response) => {
   const { siteUrl } = req.body ?? {};
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
+  const reqOrgId = (req as OrgReq).orgId ?? "default";
   try {
-    await generateBehaviorInsights(siteUrl);
+    await generateBehaviorInsights(reqOrgId, siteUrl);
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to generate insights" });

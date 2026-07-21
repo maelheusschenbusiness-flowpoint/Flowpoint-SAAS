@@ -255,6 +255,7 @@ export const orgAddonsTable = pgTable("org_addons", {
 
 export const behaviorEventsTable = pgTable("behavior_events", {
   id:          text("id").primaryKey(),
+  orgId:       text("org_id").notNull().default("default"),
   sessionId:   text("session_id").notNull(),
   siteUrl:     text("site_url").notNull(),
   page:        text("page").notNull(),
@@ -270,6 +271,7 @@ export const behaviorEventsTable = pgTable("behavior_events", {
 
 export const behaviorSessionsTable = pgTable("behavior_sessions", {
   id:              text("id").primaryKey(),
+  orgId:           text("org_id").notNull().default("default"),
   siteUrl:         text("site_url").notNull(),
   userAgent:       text("user_agent"),
   deviceType:      text("device_type").default("desktop"),
@@ -283,6 +285,7 @@ export const behaviorSessionsTable = pgTable("behavior_sessions", {
 
 export const behaviorInsightsTable = pgTable("behavior_insights", {
   id:             text("id").primaryKey(),
+  orgId:          text("org_id").notNull().default("default"),
   siteUrl:        text("site_url").notNull(),
   insightType:    text("insight_type").notNull(),
   severity:       text("severity").notNull().default("medium"),
@@ -291,6 +294,7 @@ export const behaviorInsightsTable = pgTable("behavior_insights", {
   affectedPages:  jsonb("affected_pages").default([]),
   estimatedImpact: text("estimated_impact"),
   aiSuggestion:   text("ai_suggestion"),
+  status:         text("status").notNull().default("open"),
   createdAt:      timestamp("created_at").defaultNow(),
 });
 
@@ -306,6 +310,7 @@ export const behaviorSiteTokensTable = pgTable("behavior_site_tokens", {
 
 export const croRecommendationsTable = pgTable("cro_recommendations", {
   id:              text("id").primaryKey(),
+  orgId:           text("org_id").notNull().default("default"),
   siteUrl:         text("site_url").notNull(),
   page:            text("page").notNull(),
   type:            text("type").notNull(),
@@ -315,13 +320,15 @@ export const croRecommendationsTable = pgTable("cro_recommendations", {
   implementation:  text("implementation"),
   estimatedUplift: real("estimated_uplift").default(0),
   status:          text("status").notNull().default("pending"),
-  aiGenerated:     text("ai_generated").default("false"),
+  aiGenerated:     boolean("ai_generated").default(false),
+  source:          text("source").default("rules"),
   metadata:        jsonb("metadata").default({}),
   createdAt:       timestamp("created_at").defaultNow(),
 });
 
 export const croScoresTable = pgTable("cro_scores", {
   id:           text("id").primaryKey(),
+  orgId:        text("org_id").notNull().default("default"),
   siteUrl:      text("site_url").notNull(),
   page:         text("page").notNull(),
   score:        integer("score").notNull().default(50),
@@ -335,6 +342,7 @@ export const croScoresTable = pgTable("cro_scores", {
 
 export const croExperimentsTable = pgTable("cro_experiments", {
   id:             text("id").primaryKey(),
+  orgId:          text("org_id").notNull().default("default"),
   siteUrl:        text("site_url").notNull(),
   page:           text("page").notNull(),
   name:           text("name").notNull(),
@@ -350,6 +358,7 @@ export const croExperimentsTable = pgTable("cro_experiments", {
 
 export const revenueLeaksTable = pgTable("revenue_leaks", {
   id:           text("id").primaryKey(),
+  orgId:        text("org_id").notNull().default("default"),
   siteUrl:      text("site_url"),
   type:         text("type").notNull().default("conversion"),
   title:        text("title").notNull(),

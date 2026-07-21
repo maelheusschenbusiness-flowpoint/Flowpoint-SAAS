@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { getRevenueLeakData, detectRevenueLeaks } from "../services/revenue-leak-service.js";
+import { requireFeature } from "../middlewares/planGate.js";
 
 const router = Router();
 
@@ -9,10 +10,13 @@ type OrgReq = Request & {
 };
 const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
+router.use(requireFeature("cro", "Revenue Leak"));
+
 router.get("/revenue-leak", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
-    const data = await getRevenueLeakData(siteUrl);
+    const orgId = (req as OrgReq).orgId ?? "default";
+    const data = await getRevenueLeakData(orgId, siteUrl);
     res.json(data);
   } catch {
     res.json({ leaks: [], totalLost: 0, currency: "EUR", detectedAt: null });
@@ -22,9 +26,10 @@ router.get("/revenue-leak", async (req: Request, res: Response) => {
 router.post("/revenue-leak/detect", async (req: Request, res: Response) => {
   const { siteUrl } = req.body ?? {};
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
+  const orgId = (req as OrgReq).orgId ?? "default";
   try {
-    await detectRevenueLeaks(siteUrl);
-    const data = await getRevenueLeakData(siteUrl);
+    await detectRevenueLeaks(orgId, siteUrl);
+    const data = await getRevenueLeakData(orgId, siteUrl);
     res.json({ ok: true, ...data });
   } catch {
     res.status(500).json({ error: "Failed to detect revenue leaks" });
@@ -33,10 +38,11 @@ router.post("/revenue-leak/detect", async (req: Request, res: Response) => {
 
 router.patch("/revenue-leak/:id/resolve", async (req: Request, res: Response) => {
   const { id } = req.params;
+  const orgId = (req as OrgReq).orgId ?? "default";
   try {
     await db(req)(
-      `UPDATE revenue_leaks SET status='resolved', resolved_at=now() WHERE id=$1`,
-      [id]
+      `UPDATE revenue_leaks SET status='resolved', resolved_at=now() WHERE id=$1 AND org_id=$2`,
+      [id, orgId]
     );
     res.json({ ok: true });
   } catch {

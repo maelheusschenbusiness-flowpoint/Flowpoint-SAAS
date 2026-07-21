@@ -1,9 +1,16 @@
-import { db, behaviorEventsTable, behaviorSessionsTable, behaviorInsightsTable } from "@workspace/db";
+import { randomUUID } from "crypto";
+import {
+  db,
+  behaviorEventsTable,
+  behaviorSessionsTable,
+  behaviorInsightsTable,
+} from "@workspace/db";
 import { eq, desc, sql, and, gte } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 
 export async function trackBehaviorEvent(event: {
   sessionId: string;
+  orgId: string;
   siteUrl: string;
   page: string;
   eventType: "scroll" | "click" | "rage_click" | "dead_click" | "exit" | "form_abandon" | "hover" | "copy";
@@ -15,12 +22,27 @@ export async function trackBehaviorEvent(event: {
   metadata?: Record<string, unknown>;
 }): Promise<void> {
   try {
-    const id = `be_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    await db.insert(behaviorEventsTable).values({ id, ...event });
+    const id = randomUUID();
+    await db.insert(behaviorEventsTable).values({
+      id,
+      orgId:       event.orgId,
+      sessionId:   event.sessionId,
+      siteUrl:     event.siteUrl,
+      page:        event.page,
+      eventType:   event.eventType,
+      element:     event.element,
+      xPos:        event.xPos,
+      yPos:        event.yPos,
+      scrollDepth: event.scrollDepth,
+      timeOnPage:  event.timeOnPage,
+      metadata:    event.metadata,
+    });
 
     if (event.eventType === "rage_click") {
       await db.execute(sql`
-        UPDATE behavior_sessions SET rage_clicks = rage_clicks + 1 WHERE id = ${event.sessionId}
+        UPDATE behavior_sessions
+        SET rage_clicks = rage_clicks + 1
+        WHERE id = ${event.sessionId} AND org_id = ${event.orgId}
       `);
     }
   } catch (err) {
@@ -30,6 +52,7 @@ export async function trackBehaviorEvent(event: {
 
 export async function upsertSession(session: {
   id: string;
+  orgId: string;
   siteUrl: string;
   userAgent?: string;
   deviceType?: string;
@@ -37,32 +60,38 @@ export async function upsertSession(session: {
 }): Promise<void> {
   try {
     await db.insert(behaviorSessionsTable).values({
-      id: session.id,
-      siteUrl: session.siteUrl,
-      userAgent: session.userAgent,
-      deviceType: session.deviceType ?? "desktop",
-      country: session.country,
-      pageViews: 1,
-      bounce: true,
+      id:          session.id,
+      orgId:       session.orgId,
+      siteUrl:     session.siteUrl,
+      userAgent:   session.userAgent,
+      deviceType:  session.deviceType ?? "desktop",
+      country:     session.country,
+      pageViews:   1,
+      bounce:      true,
       engagementScore: 0,
-      rageClicks: 0,
+      rageClicks:  0,
     }).onConflictDoNothing();
   } catch { /* silent */ }
 }
 
-export async function generateBehaviorInsights(siteUrl: string): Promise<void> {
+export async function generateBehaviorInsights(orgId: string, siteUrl: string): Promise<void> {
   try {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
     const events = await db.select()
       .from(behaviorEventsTable)
-      .where(and(eq(behaviorEventsTable.siteUrl, siteUrl), gte(behaviorEventsTable.createdAt, since)))
+      .where(and(
+        eq(behaviorEventsTable.orgId, orgId),
+        eq(behaviorEventsTable.siteUrl, siteUrl),
+        gte(behaviorEventsTable.createdAt, since),
+      ))
       .limit(500);
 
-    const rageClicks = events.filter(e => e.eventType === "rage_click");
-    const exits = events.filter(e => e.eventType === "exit");
+    const rageClicks   = events.filter(e => e.eventType === "rage_click");
+    const exits        = events.filter(e => e.eventType === "exit");
     const formAbandons = events.filter(e => e.eventType === "form_abandon");
 
     const insights: Array<{
+      orgId: string;
       siteUrl: string;
       insightType: string;
       severity: string;
@@ -80,6 +109,7 @@ export async function generateBehaviorInsights(siteUrl: string): Promise<void> {
       }, {});
       const worstPage = Object.entries(pageMap).sort((a, b) => b[1] - a[1])[0];
       insights.push({
+        orgId,
         siteUrl,
         insightType: "rage_clicks",
         severity: rageClicks.length > 25 ? "critical" : "high",
@@ -93,6 +123,7 @@ export async function generateBehaviorInsights(siteUrl: string): Promise<void> {
 
     if (formAbandons.length > 5) {
       insights.push({
+        orgId,
         siteUrl,
         insightType: "form_abandon",
         severity: "high",
@@ -107,6 +138,7 @@ export async function generateBehaviorInsights(siteUrl: string): Promise<void> {
     const lowScrollPages = events.filter(e => e.eventType === "scroll" && (e.scrollDepth ?? 100) < 30);
     if (lowScrollPages.length > 20) {
       insights.push({
+        orgId,
         siteUrl,
         insightType: "low_engagement",
         severity: "medium",
@@ -121,40 +153,61 @@ export async function generateBehaviorInsights(siteUrl: string): Promise<void> {
     void exits;
 
     for (const insight of insights) {
-      const id = `bi_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      await db.insert(behaviorInsightsTable).values({ id, status: "open", ...insight }).onConflictDoNothing();
+      const id = randomUUID();
+      await db.insert(behaviorInsightsTable).values({
+        id,
+        orgId:           insight.orgId,
+        siteUrl:         insight.siteUrl,
+        insightType:     insight.insightType,
+        severity:        insight.severity,
+        title:           insight.title,
+        description:     insight.description,
+        affectedPages:   insight.affectedPages as Record<string, unknown>[],
+        estimatedImpact: insight.estimatedImpact,
+        aiSuggestion:    insight.aiSuggestion,
+      }).onConflictDoNothing();
     }
   } catch (err) {
     logger.error({ err }, "[Behavioral] Failed to generate insights");
   }
 }
 
-export async function getBehaviorInsights(siteUrl?: string): Promise<{
-  insights: Array<{ id: string; insightType: string; severity: string; title: string; description: string; aiSuggestion: string | null; estimatedImpact: string | null; createdAt: Date }>;
+export async function getBehaviorInsights(
+  orgId: string,
+  siteUrl?: string,
+): Promise<{
+  insights: Array<typeof behaviorInsightsTable.$inferSelect>;
   sessionStats: { total: number; bounceRate: number; avgEngagement: number; rageClicks: number };
 }> {
-  const query = db.select().from(behaviorInsightsTable).orderBy(desc(behaviorInsightsTable.createdAt)).limit(20);
   const insights = siteUrl
-    ? await query.where(eq(behaviorInsightsTable.siteUrl, siteUrl))
-    : await query;
+    ? await db.select().from(behaviorInsightsTable)
+        .where(and(eq(behaviorInsightsTable.orgId, orgId), eq(behaviorInsightsTable.siteUrl, siteUrl)))
+        .orderBy(desc(behaviorInsightsTable.createdAt))
+        .limit(20)
+    : await db.select().from(behaviorInsightsTable)
+        .where(eq(behaviorInsightsTable.orgId, orgId))
+        .orderBy(desc(behaviorInsightsTable.createdAt))
+        .limit(20);
 
   const [sessionRow] = await db.select({
-    total: sql<number>`count(*)`,
-    bounces: sql<number>`sum(case when bounce then 1 else 0 end)`,
+    total:         sql<number>`count(*)`,
+    bounces:       sql<number>`sum(case when bounce then 1 else 0 end)`,
     avgEngagement: sql<number>`avg(engagement_score)`,
-    rageClicks: sql<number>`sum(rage_clicks)`,
-  }).from(behaviorSessionsTable).limit(1);
+    rageClicks:    sql<number>`sum(rage_clicks)`,
+  }).from(behaviorSessionsTable)
+    .where(eq(behaviorSessionsTable.orgId, orgId))
+    .limit(1);
 
-  const total = Number(sessionRow?.total ?? 0);
+  const total   = Number(sessionRow?.total   ?? 0);
   const bounces = Number(sessionRow?.bounces ?? 0);
 
   return {
     insights,
     sessionStats: {
       total,
-      bounceRate: total > 0 ? Math.round((bounces / total) * 100) : 0,
+      bounceRate:    total > 0 ? Math.round((bounces / total) * 100) : 0,
       avgEngagement: Math.round(Number(sessionRow?.avgEngagement ?? 0)),
-      rageClicks: Number(sessionRow?.rageClicks ?? 0),
+      rageClicks:    Number(sessionRow?.rageClicks ?? 0),
     },
   };
 }

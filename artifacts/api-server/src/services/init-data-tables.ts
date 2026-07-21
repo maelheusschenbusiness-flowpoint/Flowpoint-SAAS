@@ -947,6 +947,161 @@ export async function initDataTables(): Promise<void> {
         CHECK (status IN ('pending','accepted','revoked','expired'));
     `);
 
+    // ── behavior_events / behavior_sessions / behavior_insights — org_id column ─
+    // Wave 4 Lot 4B-S: add org_id to behavioral tables that were created without it.
+    // Backfill from behavior_site_tokens so existing rows are correctly isolated.
+    await run(client, `ALTER TABLE behavior_events   ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE behavior_sessions ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE behavior_insights ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE behavior_insights ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';`);
+
+    // Backfill behavior_events.org_id from behavior_site_tokens JOIN on site_url
+    await run(client, `
+      UPDATE behavior_events be
+      SET org_id = bst.org_id
+      FROM behavior_site_tokens bst
+      WHERE be.site_url = bst.site_url
+        AND be.org_id = 'default'
+        AND bst.org_id IS NOT NULL
+        AND bst.org_id <> '';
+    `);
+
+    // Backfill behavior_sessions.org_id
+    await run(client, `
+      UPDATE behavior_sessions bs
+      SET org_id = bst.org_id
+      FROM behavior_site_tokens bst
+      WHERE bs.site_url = bst.site_url
+        AND bs.org_id = 'default'
+        AND bst.org_id IS NOT NULL
+        AND bst.org_id <> '';
+    `);
+
+    // Backfill behavior_insights.org_id
+    await run(client, `
+      UPDATE behavior_insights bi
+      SET org_id = bst.org_id
+      FROM behavior_site_tokens bst
+      WHERE bi.site_url = bst.site_url
+        AND bi.org_id = 'default'
+        AND bst.org_id IS NOT NULL
+        AND bst.org_id <> '';
+    `);
+
+    await run(client, `CREATE INDEX IF NOT EXISTS behavior_events_org_id_idx   ON behavior_events(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS behavior_sessions_org_id_idx ON behavior_sessions(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS behavior_insights_org_id_idx ON behavior_insights(org_id);`);
+
+    // ── traffic_losses — org_id column ────────────────────────────────────────
+    // traffic_losses existed with USING=(true) RLS; add org_id for proper isolation.
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'traffic_losses') THEN
+          EXECUTE 'ALTER TABLE traffic_losses ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
+          EXECUTE 'CREATE INDEX IF NOT EXISTS traffic_losses_org_id_idx ON traffic_losses(org_id)';
+        END IF;
+      END $$;
+    `);
+
+    // ── cro_recommendations — add org_id, source, fix ai_generated type ──────
+    await run(client, `ALTER TABLE cro_recommendations ADD COLUMN IF NOT EXISTS org_id  TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE cro_recommendations ADD COLUMN IF NOT EXISTS source  TEXT NOT NULL DEFAULT 'rules';`);
+    // Convert ai_generated from text → boolean (idempotent: skip if already boolean)
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='cro_recommendations' AND column_name='ai_generated'
+            AND data_type IN ('character varying','text')
+        ) THEN
+          ALTER TABLE cro_recommendations
+            ALTER COLUMN ai_generated TYPE BOOLEAN
+            USING (ai_generated = 'true');
+          ALTER TABLE cro_recommendations ALTER COLUMN ai_generated SET DEFAULT false;
+        END IF;
+      END $$;
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS cro_recommendations_org_id_idx ON cro_recommendations(org_id);`);
+
+    // ── cro_scores / cro_experiments — add org_id ─────────────────────────────
+    await run(client, `ALTER TABLE cro_scores      ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `ALTER TABLE cro_experiments ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS cro_scores_org_id_idx      ON cro_scores(org_id);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS cro_experiments_org_id_idx ON cro_experiments(org_id);`);
+
+    // ── revenue_leaks — add org_id ────────────────────────────────────────────
+    await run(client, `ALTER TABLE revenue_leaks ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
+    await run(client, `CREATE INDEX IF NOT EXISTS revenue_leaks_org_id_idx ON revenue_leaks(org_id);`);
+
+    // ── Fix RLS on behavioral/CRO tables: USING=(true) → org_id filter ───────
+    await run(client, `
+      DO $$ BEGIN
+        DROP POLICY IF EXISTS behavior_events_isolation   ON behavior_events;
+        DROP POLICY IF EXISTS behavior_sessions_isolation ON behavior_sessions;
+        DROP POLICY IF EXISTS behavior_insights_isolation ON behavior_insights;
+        DROP POLICY IF EXISTS cro_recommendations_isolation ON cro_recommendations;
+        DROP POLICY IF EXISTS cro_scores_isolation          ON cro_scores;
+        DROP POLICY IF EXISTS cro_experiments_isolation     ON cro_experiments;
+        DROP POLICY IF EXISTS revenue_leaks_isolation       ON revenue_leaks;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'behavior_events' AND rowsecurity = true) THEN
+          CREATE POLICY behavior_events_isolation ON behavior_events
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'behavior_sessions' AND rowsecurity = true) THEN
+          CREATE POLICY behavior_sessions_isolation ON behavior_sessions
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'behavior_insights' AND rowsecurity = true) THEN
+          CREATE POLICY behavior_insights_isolation ON behavior_insights
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'cro_recommendations' AND rowsecurity = true) THEN
+          CREATE POLICY cro_recommendations_isolation ON cro_recommendations
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'cro_scores' AND rowsecurity = true) THEN
+          CREATE POLICY cro_scores_isolation ON cro_scores
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'cro_experiments' AND rowsecurity = true) THEN
+          CREATE POLICY cro_experiments_isolation ON cro_experiments
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'revenue_leaks' AND rowsecurity = true) THEN
+          CREATE POLICY revenue_leaks_isolation ON revenue_leaks
+            USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+
     logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");

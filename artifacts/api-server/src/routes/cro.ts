@@ -17,8 +17,8 @@ router.use(requireFeature("cro", "CRO AI"));
 router.get("/cro", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
-    const data = await getCROData(siteUrl);
-    // Compute a top-level score from the scores array, or derive from recommendations
+    const orgId = (req as OrgReq).orgId ?? "default";
+    const data = await getCROData(orgId, siteUrl);
     const recs = data.recommendations;
     const latestScore = data.scores.length > 0
       ? Math.round(data.scores.reduce((s, r) => s + Number((r as Record<string, unknown>).score ?? 0), 0) / data.scores.length)
@@ -40,13 +40,14 @@ router.get("/cro", async (req: Request, res: Response) => {
 router.post("/cro/generate", canWrite, async (req: Request, res: Response) => {
   const { siteUrl } = req.body ?? {};
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
+  const orgId = (req as OrgReq).orgId ?? "default";
   try {
-    await generateCRORecommendations(siteUrl);
+    await generateCRORecommendations(orgId, siteUrl);
   } catch {
     // generateCRORecommendations has its own error handling; ignore re-throw
   }
   try {
-    const data = await getCROData(siteUrl);
+    const data = await getCROData(orgId, siteUrl);
     res.json({ ok: true, ...data });
   } catch (err) {
     logger.warn({ err, siteUrl }, "[CRO] getCROData failed, returning empty response");
@@ -58,15 +59,18 @@ router.patch("/cro/recommendations/:id", canWrite, async (req: Request, res: Res
   const { id } = req.params;
   const { status } = req.body ?? {};
   if (!status) { res.status(400).json({ error: "status required" }); return; }
+  const orgId = (req as OrgReq).orgId ?? "default";
   try {
     await db(req)(
-      `UPDATE cro_recommendations SET status=$1, updated_at=now() WHERE id=$2`,
-      [status, id]
+      `UPDATE cro_recommendations SET status=$1, updated_at=now() WHERE id=$2 AND org_id=$3`,
+      [status, id, orgId]
     );
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to update recommendation" });
   }
 });
+
+void upsertCROScore;
 
 export default router;

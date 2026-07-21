@@ -21292,7 +21292,9 @@ function renderConversion() {
     ].filter(() => PREVIEW_MODE);
     return `
       ${isUltra
-        ? aiBlock("Avec le plan CRO IA complet sur 4 semaines, votre taux peut passer de <strong>0.23% à 0.41%</strong> (+78%). Gain estimé : <strong>+23 clients/mois</strong> soit <strong>+2 300€/mois</strong>. Priorité absolue cette semaine : formulaire simplifié + CTA urgence. Ces 2 actions seules = +52% de conversion.",
+        ? aiBlock(STATE.overview?.conversionRate
+            ? "Taux de conversion actuel : <strong>" + (STATE.overview.conversionRate*100).toFixed(2) + "%</strong>. Activez le plan CRO IA complet pour obtenir des recommandations personnalisées et des prévisions de gain basées sur vos données réelles."
+            : "Connectez vos analytics pour activer le plan CRO IA complet : recommandations prioritaires, prévisions de gain et plan d'optimisation sur-mesure.",
             ["Lancer le plan CRO", "Créer toutes les missions", "Rapport stratégique"])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
             <div style="font-size:24px">🤖</div>
@@ -21303,7 +21305,7 @@ function renderConversion() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard("Taux actuel", displayStat(STATE.overview?.conversionRate ? (STATE.overview.conversionRate*100).toFixed(2)+'%' : null, "0.23%"), PREVIEW_MODE ? "Secteur : 0.18%" : "Connectez analytics", "neutral")}
-        ${statCard("Taux cible M+3", displayStat(null, "0.41%"), PREVIEW_MODE ? "+78% avec le plan CRO" : "Connectez analytics", "neutral")}
+        ${statCard("Taux cible M+3", displayStat(STATE.overview?.conversionRateTarget != null ? (STATE.overview.conversionRateTarget*100).toFixed(2)+'%' : null, null), PREVIEW_MODE ? "Objectif à définir" : "Connectez analytics", "neutral")}
         ${statCard("Gain clients estimé", displayStat(null, "+23/mois"), PREVIEW_MODE ? "en 3 mois avec plan" : "Connectez analytics", "neutral")}
         ${statCard("ROI estimé plan CRO", displayStat(null, "+2 300€/mois"), PREVIEW_MODE ? "à 100€ client moyen" : "Connectez analytics", "neutral")}
       </div>
@@ -21444,7 +21446,9 @@ function renderConversion() {
     ${isUltra
       ? aiBlock(
           PREVIEW_MODE
-            ? "Taux de conversion actuel : <strong>0.23%</strong>. Avec les optimisations prioritaires, vous pouvez atteindre <strong>0.41% en 4 semaines</strong> (+78%). 3 fuites critiques : formulaire 8 champs, CTA invisible sur mobile, absence de preuves sociales. Gain estimé : <strong>+2 300€/mois</strong>."
+            ? (STATE.overview?.conversionRate
+            ? "Taux de conversion actuel : <strong>" + (STATE.overview.conversionRate*100).toFixed(2) + "%</strong>. Activez les optimisations CRO prioritaires pour améliorer votre taux. Connectez vos sources comportementales pour des recommandations ciblées."
+            : "Connectez vos analytics pour activer l'analyse CRO IA : fuites de conversion, recommandations prioritaires et prévisions de gain personnalisées.")
             : (STATE.overview?.conversionRate
                 ? "Taux de conversion actuel : <strong>" + (STATE.overview.conversionRate*100).toFixed(2) + "%</strong>. Connectez vos sources comportementales pour activer les recommandations CRO personnalisées et les prévisions de gain."
                 : "Connectez vos analytics pour activer l'analyse CRO IA : fuites de conversion, recommandations prioritaires et prévisions de gain personnalisées."),
@@ -28065,15 +28069,11 @@ function renderGA4Funnels() {
   const lp    = ga4.funnels?.landingPages?.rows || [];
   const cp    = ga4.funnels?.conversionPaths?.rows || [];
 
-  const _funnelBase = parseInt(ga4.overview?.totals?.[0]?.metricValues?.[0]?.value||'0') || (_ga4Connected() ? 0 : (PREVIEW_MODE ? 12847 : 0));
-  const _funnelConv = parseInt(ga4.overview?.totals?.[0]?.metricValues?.[7]?.value||'0') || (_ga4Connected() ? 0 : (PREVIEW_MODE ? 847 : 0));
-  const funnelSteps = _funnelBase > 0 ? [
-    {label:'Visiteurs',         n: _funnelBase, color:'#2563EB'},
-    {label:'Pages vues > 1',    n: Math.round(_funnelBase*0.74), color:'#8b5cf6'},
-    {label:'Engagement > 30s',  n: Math.round(_funnelBase*0.52), color:'#f59e0b'},
-    {label:'Clé / CTA vu',      n: Math.round(_funnelBase*0.31), color:'#f97316'},
-    {label:'Checkout / Form',   n: Math.round(_funnelBase*0.14), color:'#ef4444'},
-    {label:'Conversion',        n: _funnelConv, color:'#22c55e'},
+  const _funnelBase = parseInt(ga4.overview?.totals?.[0]?.metricValues?.[0]?.value||'0') || 0;
+  const _funnelConv = parseInt(ga4.overview?.totals?.[0]?.metricValues?.[7]?.value||'0') || 0;
+  const funnelSteps = (_funnelBase > 0 && _funnelConv > 0) ? [
+    {label:'Visiteurs',  n: _funnelBase, color:'#2563EB'},
+    {label:'Conversion', n: _funnelConv, color:'#22c55e'},
   ] : [];
   const topN = funnelSteps.length > 0 ? (funnelSteps[0].n || 1) : 1;
 
