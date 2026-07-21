@@ -411,11 +411,11 @@ console.log('\n[7] CRO — org_id isolation, aiGenerated=false, source=rules');
      recsB.every(r => r.orgId === ORG_B),
      `orgIds=${recsB.map(r=>r.orgId).join(',').slice(0,60)}`);
 
-  // User A + ?siteUrl=SITE_B → must return 0 of B's recs (org_id filter enforced from session)
+  // User A + ?siteUrl=SITE_B → 404 (site not in ORG_A's registered sites)
   const crossCRO = await api(TOK_A, 'GET', `/cro?siteUrl=${encodeURIComponent(SITE_B)}`);
-  ok('CRO13 User A + siteUrl=B → 200 with 0 recs (org filter from session)',
-     crossCRO.status === 200 && (crossCRO.body.recommendations ?? []).every(r => r.orgId === ORG_A),
-     `recs with orgId!=A: ${(crossCRO.body.recommendations ?? []).filter(r=>r.orgId!==ORG_A).length}`);
+  ok('CRO13 User A + siteUrl=B → 404 (foreign site rejected)',
+     crossCRO.status === 404,
+     `got ${crossCRO.status} (expected 404)`);
 
   // User A + ?orgId=B param → must not override session orgId
   const paramOrgId = await api(TOK_A, 'GET', `/cro?siteUrl=${encodeURIComponent(SITE_A)}&orgId=${ORG_B}`);
@@ -469,12 +469,11 @@ console.log('\n[8] Revenue Leak — org_id isolation, plan gate');
      leaksB.every(l => l.orgId === ORG_B),
      `non-B: ${leaksB.filter(l=>l.orgId!==ORG_B).length}`);
 
-  // User A + siteUrl B → 0 of B's leaks
+  // User A + siteUrl B → 404 (site not in ORG_A's registered sites)
   const crossRL = await api(TOK_A, 'GET', `/revenue-leak?siteUrl=${encodeURIComponent(SITE_B)}`);
-  const crossLeaks = crossRL.body.leaks ?? [];
-  ok('RL10 User A + siteUrl=B → 0 B-org leaks returned',
-     crossLeaks.every(l => l.orgId !== ORG_B),
-     `B leaks in A response: ${crossLeaks.filter(l=>l.orgId===ORG_B).length}`);
+  ok('RL10 User A + siteUrl=B → 404 (foreign site rejected)',
+     crossRL.status === 404,
+     `got ${crossRL.status} (expected 404)`);
 
   // siteUrl absent → all A's leaks, none of B
   const noSiteA = await api(TOK_A, 'GET', '/revenue-leak');
@@ -537,8 +536,14 @@ console.log('\n[9] Behavioral Insights — org_id isolation');
 // ── [10] AI Credits — static templates don't consume credits ──────────────────
 console.log('\n[10] AI Credits — CRO generation must NOT consume credits');
 {
-  // Get AI usage count before generation for a fresh site
+  // Register SITE_C for ORG_A so assertSiteOwnership passes
   const SITE_C = `https://cred-test-${RUN}.qa.test`;
+  const tokenHashC = `credit-token-${RUN}`;
+  await DB.query(
+    `INSERT INTO behavior_site_tokens (token_hash, site_url, org_id, created_at)
+     VALUES ($1, $2, $3, now()) ON CONFLICT (token_hash) DO NOTHING`,
+    [tokenHashC, SITE_C, ORG_A]
+  );
   const beforeCount = await DB.query(
     `SELECT COUNT(*) FROM ai_usage_logs WHERE org_id=$1`, [ORG_A]
   );
@@ -663,6 +668,102 @@ console.log('\n[13] Static Frontend — synthetic funnel values absent from dash
        !/displayStat\s*\(\s*(null|undefined)\s*,\s*["']0\.41%["']/.test(dashJs),
        'found displayStat fallback');
   }
+}
+
+// ── [14] Foreign siteUrl → 404 cross-validation ───────────────────────────────
+console.log('\n[14] Foreign siteUrl → 404 (cross-org site ownership boundary)');
+{
+  // CRO — Org B token + siteUrl belonging to Org A → 404
+  const cro_b_on_a = await api(TOK_B, 'GET', `/cro?siteUrl=${encodeURIComponent(SITE_A)}`);
+  ok('FS01 CRO: Org B GET /cro?siteUrl=SITE_A → 404',
+     cro_b_on_a.status === 404,
+     `got ${cro_b_on_a.status}`);
+
+  // CRO — Org A token + siteUrl belonging to Org B → 404 (already in CRO13, duplicate here as FS02)
+  const cro_a_on_b = await api(TOK_A, 'GET', `/cro?siteUrl=${encodeURIComponent(SITE_B)}`);
+  ok('FS02 CRO: Org A GET /cro?siteUrl=SITE_B → 404',
+     cro_a_on_b.status === 404,
+     `got ${cro_a_on_b.status}`);
+
+  // CRO — POST /cro/generate with foreign siteUrl → 404
+  const cro_post_foreign = await api(TOK_A, 'POST', '/cro/generate', { siteUrl: SITE_B });
+  ok('FS03 CRO: Org A POST /cro/generate siteUrl=SITE_B → 404',
+     cro_post_foreign.status === 404,
+     `got ${cro_post_foreign.status}`);
+
+  // Revenue Leak — Org B token + siteUrl belonging to Org A → 404
+  const rl_b_on_a = await api(TOK_B, 'GET', `/revenue-leak?siteUrl=${encodeURIComponent(SITE_A)}`);
+  ok('FS04 RL: Org B GET /revenue-leak?siteUrl=SITE_A → 404',
+     rl_b_on_a.status === 404,
+     `got ${rl_b_on_a.status}`);
+
+  // Revenue Leak — POST /revenue-leak/detect with foreign siteUrl → 404
+  const rl_post_foreign = await api(TOK_A, 'POST', '/revenue-leak/detect', { siteUrl: SITE_B });
+  ok('FS05 RL: Org A POST /revenue-leak/detect siteUrl=SITE_B → 404',
+     rl_post_foreign.status === 404,
+     `got ${rl_post_foreign.status}`);
+
+  // Behavioral Insights — Org A token + SITE_B → 404
+  const ins_a_on_b = await api(TOK_A, 'GET', `/behavioral/insights?siteUrl=${encodeURIComponent(SITE_B)}`);
+  ok('FS06 Behavioral: Org A GET /behavioral/insights?siteUrl=SITE_B → 404',
+     ins_a_on_b.status === 404,
+     `got ${ins_a_on_b.status}`);
+
+  // Behavioral Insights — Org B token + SITE_A → 404
+  const ins_b_on_a = await api(TOK_B, 'GET', `/behavioral/insights?siteUrl=${encodeURIComponent(SITE_A)}`);
+  ok('FS07 Behavioral: Org B GET /behavioral/insights?siteUrl=SITE_A → 404',
+     ins_b_on_a.status === 404,
+     `got ${ins_b_on_a.status}`);
+
+  // Own site → NOT 404 (regression guard)
+  const cro_own = await api(TOK_A, 'GET', `/cro?siteUrl=${encodeURIComponent(SITE_A)}`);
+  ok('FS08 CRO: Org A GET /cro?siteUrl=SITE_A → not 404 (own site allowed)',
+     cro_own.status !== 404,
+     `got ${cro_own.status}`);
+}
+
+// ── [15] traffic_losses RLS — FORCE RLS + isolation policy ───────────────────
+console.log('\n[15] traffic_losses RLS — FORCE RLS + org isolation policy');
+{
+  const { rows: rlsRows } = await DB.query(
+    `SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = 'traffic_losses'`
+  );
+  ok('TL01 traffic_losses table exists in pg_class',
+     rlsRows.length > 0,
+     'table not found');
+
+  const rls = rlsRows[0] ?? {};
+  ok('TL02 traffic_losses has RLS enabled (relrowsecurity = true)',
+     rls.relrowsecurity === true,
+     `got ${rls.relrowsecurity}`);
+
+  ok('TL03 traffic_losses has FORCE RLS (relforcerowsecurity = true)',
+     rls.relforcerowsecurity === true,
+     `got ${rls.relforcerowsecurity}`);
+
+  const { rows: polRows } = await DB.query(
+    `SELECT policyname, cmd, qual FROM pg_policies WHERE tablename = 'traffic_losses' AND policyname = 'traffic_losses_isolation'`
+  );
+  ok('TL04 traffic_losses_isolation policy exists',
+     polRows.length > 0,
+     'policy not found');
+
+  const pol = polRows[0] ?? {};
+  ok('TL05 traffic_losses_isolation uses org_id filter (not USING(true))',
+     pol.qual?.includes('current_setting') && pol.qual?.includes('app.current_org_id'),
+     `qual=${pol.qual}`);
+
+  ok('TL06 traffic_losses_isolation applies to ALL commands (cmd=ALL)',
+     pol.cmd === 'ALL',
+     `got cmd=${pol.cmd}`);
+
+  // Verify no stale USING(true) bypass policy remains on traffic_losses
+  const { rows: bypassRows } = await DB.query(
+    `SELECT policyname FROM pg_policies WHERE tablename = 'traffic_losses' AND qual = 'true'`
+  );
+  ok('TL07 No USING(true) bypass policy remains on traffic_losses',
+     bypassRows.length === 0,
+     `found bypass policies: ${bypassRows.map(r=>r.policyname).join(',')}`);
 }
 
 // ── CLEANUP ───────────────────────────────────────────────────────────────────

@@ -12,10 +12,32 @@ const db = (req: Request) => (req as OrgReq).orgDb.bind(req as OrgReq);
 
 router.use(requireFeature("cro", "Revenue Leak"));
 
+async function assertSiteOwnership(req: OrgReq, siteUrl: string, res: Response): Promise<boolean> {
+  const orgId = req.orgId ?? "default";
+  try {
+    const { rows } = await req.orgDb(
+      `SELECT 1 FROM behavior_site_tokens WHERE org_id = $1 AND site_url = $2 LIMIT 1`,
+      [orgId, siteUrl]
+    );
+    if (rows.length === 0) {
+      res.status(404).json({ error: "Site not found" });
+      return false;
+    }
+    return true;
+  } catch {
+    res.status(404).json({ error: "Site not found" });
+    return false;
+  }
+}
+
 router.get("/revenue-leak", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
     const orgId = (req as OrgReq).orgId ?? "default";
+    if (siteUrl) {
+      const owned = await assertSiteOwnership(req as OrgReq, siteUrl, res);
+      if (!owned) return;
+    }
     const data = await getRevenueLeakData(orgId, siteUrl);
     res.json(data);
   } catch {
@@ -27,6 +49,8 @@ router.post("/revenue-leak/detect", async (req: Request, res: Response) => {
   const { siteUrl } = req.body ?? {};
   if (!siteUrl) { res.status(400).json({ error: "siteUrl required" }); return; }
   const orgId = (req as OrgReq).orgId ?? "default";
+  const owned = await assertSiteOwnership(req as OrgReq, siteUrl, res);
+  if (!owned) return;
   try {
     await detectRevenueLeaks(orgId, siteUrl);
     const data = await getRevenueLeakData(orgId, siteUrl);

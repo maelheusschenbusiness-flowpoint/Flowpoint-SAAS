@@ -992,13 +992,14 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS behavior_sessions_org_id_idx ON behavior_sessions(org_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS behavior_insights_org_id_idx ON behavior_insights(org_id);`);
 
-    // ── traffic_losses — org_id column ────────────────────────────────────────
+    // ── traffic_losses — org_id column + FORCE RLS ────────────────────────────
     // traffic_losses existed with USING=(true) RLS; add org_id for proper isolation.
     await run(client, `
       DO $$ BEGIN
         IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'traffic_losses') THEN
           EXECUTE 'ALTER TABLE traffic_losses ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
           EXECUTE 'CREATE INDEX IF NOT EXISTS traffic_losses_org_id_idx ON traffic_losses(org_id)';
+          EXECUTE 'ALTER TABLE traffic_losses ENABLE ROW LEVEL SECURITY';
         END IF;
       END $$;
     `);
@@ -1051,7 +1052,7 @@ export async function initDataTables(): Promise<void> {
                                     'behavior_events_isolation','behavior_sessions_isolation',
                                     'behavior_insights_isolation','cro_recommendations_isolation',
                                     'cro_scores_isolation','cro_experiments_isolation',
-                                    'revenue_leaks_isolation']
+                                    'revenue_leaks_isolation','traffic_losses_isolation']
           LOOP
             EXECUTE format('DROP POLICY IF EXISTS %I ON %I', p, t);
           END LOOP;
@@ -1111,6 +1112,27 @@ export async function initDataTables(): Promise<void> {
         IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'revenue_leaks' AND rowsecurity = true) THEN
           CREATE POLICY revenue_leaks_isolation ON revenue_leaks
             USING (org_id = current_setting('app.current_org_id', true));
+        END IF;
+      END $$;
+    `);
+
+    // ── traffic_losses — FORCE RLS + isolation policy ─────────────────────────
+    // RLS was already enabled; add FORCE RLS so superuser connections (pooler)
+    // are also subject to the policy, and add the org_id isolation policy.
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'traffic_losses') THEN
+          EXECUTE 'ALTER TABLE traffic_losses ENABLE ROW LEVEL SECURITY';
+          EXECUTE 'ALTER TABLE traffic_losses FORCE ROW LEVEL SECURITY';
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_policies
+            WHERE tablename = 'traffic_losses' AND policyname = 'traffic_losses_isolation'
+          ) THEN
+            EXECUTE 'CREATE POLICY traffic_losses_isolation ON traffic_losses
+              FOR ALL
+              USING (org_id = current_setting(''app.current_org_id'', true))
+              WITH CHECK (org_id = current_setting(''app.current_org_id'', true))';
+          END IF;
         END IF;
       END $$;
     `);

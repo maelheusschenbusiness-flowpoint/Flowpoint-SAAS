@@ -378,6 +378,13 @@ router.get("/behavioral/insights", async (req: Request, res: Response) => {
   try {
     const { siteUrl } = req.query as { siteUrl?: string };
     const reqOrgId = (req as OrgReq).orgId ?? "default";
+    if (siteUrl) {
+      const { rows } = await (req as OrgReq).orgDb(
+        `SELECT 1 FROM behavior_site_tokens WHERE org_id = $1 AND site_url = $2 LIMIT 1`,
+        [reqOrgId, siteUrl]
+      );
+      if (rows.length === 0) { res.status(404).json({ error: "Site not found" }); return; }
+    }
     const data = await getBehaviorInsights(reqOrgId, siteUrl);
     res.json(data);
   } catch {
