@@ -45,47 +45,16 @@
 
     var billing  = isAnnual ? 'annual' : 'monthly';
 
-    /* Always persist the plan selection so checkout.html can read it */
+    /* Persist plan selection then route to checkout summary page */
     try { localStorage.setItem('fp_cart', JSON.stringify({ plan: plan, addons: {}, billing: billing })); } catch(e) {}
 
     btn.disabled = true;
     btn.innerHTML = '<span class="fp-spinner"></span>Chargement…';
 
-    fetch('/api/billing/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        plan: plan,
-        billing: billing,
-        successUrl: window.location.origin + '/success',
-        cancelUrl:  window.location.origin + '/cancel',
-      }),
-    })
-    .then(function (res) {
-      if (res.status === 401) {
-        /* Not logged in — save plan and redirect to signup */
-        try { sessionStorage.setItem('fp_next', '/checkout.html?plan=' + encodeURIComponent(plan) + '&billing=' + encodeURIComponent(billing)); } catch(e) {}
-        window.location.href = '/login.html';
-        return null;
-      }
-      return res.json();
-    })
-    .then(function (data) {
-      if (!data) return;
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(data.error || 'Impossible de démarrer le paiement. Réessayez.');
-        btn.disabled = false;
-        btn.textContent = plan === 'pro' ? 'Commencer — Pro' : 'Commencer';
-      }
-    })
-    .catch(function () {
-      alert('Erreur réseau. Vérifiez votre connexion et réessayez.');
-      btn.disabled = false;
-      btn.textContent = plan === 'pro' ? 'Commencer — Pro' : 'Commencer';
-    });
+    /* Route to checkout.html with plan pre-selected via URL param.
+     * checkout.html reads fp_cart from localStorage (primary) or ?plan= (fallback)
+     * and lets the user review before hitting Stripe. */
+    window.location.href = '/checkout.html?plan=' + encodeURIComponent(plan) + '&billing=' + encodeURIComponent(billing);
   });
 
   document.querySelectorAll('.fp-faq-q').forEach(function (btn) {
