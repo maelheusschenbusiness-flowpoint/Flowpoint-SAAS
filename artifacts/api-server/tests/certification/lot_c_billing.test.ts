@@ -67,9 +67,10 @@ async function cleanup(tags: string[]) {
   const ids = tags.map(t => orgId(t));
   const client = await pool.connect();
   try {
-    await client.query(`DELETE FROM org_settings WHERE org_id = ANY($1)`, [ids]);
-    await client.query(`DELETE FROM org_addons   WHERE org_id = ANY($1)`, [ids]);
+    await client.query(`DELETE FROM org_settings  WHERE org_id = ANY($1)`, [ids]);
+    await client.query(`DELETE FROM org_addons    WHERE org_id = ANY($1)`, [ids]);
     await client.query(`DELETE FROM user_sessions WHERE org_id = ANY($1)`, [ids]);
+    await client.query(`DELETE FROM organizations WHERE id     = ANY($1)`, [ids]);
   } catch { /* non-fatal */ } finally { client.release(); }
 }
 
