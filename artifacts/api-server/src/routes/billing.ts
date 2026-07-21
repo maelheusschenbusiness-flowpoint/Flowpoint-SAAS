@@ -1,10 +1,15 @@
 import { Router, type Request, type Response } from "express";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { ownerOnly, canAdmin } from "../middlewares/requireRole.js";
+import { ownerOnly } from "../middlewares/requireRole.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS } from "../lib/plans.js";
 import { upsertOrgSettings, loadOrgSettings } from "../services/org-settings.js";
-import { PLAN_CONFIG, ADDON_CATALOG, getUsageSummary, getMRRData, getSubscriptionAnalytics, startTrial, validateCoupon, getInvoices, trackBillingEvent } from "../services/billing-service.js";
+import { loadBillingContext } from "../services/billing-context.js";
+import { createStripeClient } from "../services/stripe-factory.js";
+import {
+  getUsageSummary, getMRRData, getSubscriptionAnalytics,
+  startTrial, validateCoupon, getInvoices, trackBillingEvent,
+} from "../services/billing-service.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 
 /* Add-ons included in each plan — same source as public-billing.ts */
@@ -29,7 +34,7 @@ function buildLineItems(plan: string, addons: AddonsMap): Array<{ price: string;
 
   for (const key of FLAG_ADDONS) {
     if (!addons[key]) continue;
-    if (included.has(key)) continue; /* skip add-ons already included in the plan */
+    if (included.has(key)) continue;
     const priceId = ADDON_PRICE_IDS[key];
     if (priceId) items.push({ price: priceId, quantity: 1 });
   }
@@ -43,18 +48,22 @@ function buildLineItems(plan: string, addons: AddonsMap): Array<{ price: string;
   return items;
 }
 
-// Alias for legacy frontend calls using old endpoint name
 router.post("/billing/create-checkout-session", billingCheckoutRateLimit, async (req: Request, res: Response) => {
   res.redirect(307, "/api/billing/checkout");
 });
 
+// ── POST /billing/checkout ───────────────────────────────────────────────────
 router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, res: Response) => {
   const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
+  const orgId = req.orgId ?? "default";
+
+  // Load billing state from DB — never from the in-memory store singleton
+  const billingCtx = await loadBillingContext(orgId);
 
   // Guard: reject if a subscription is already active — direct to upgrade instead
-  const currentStatus = store.me.subscriptionStatus;
+  const currentStatus = billingCtx.subscriptionStatus;
   if (currentStatus === "active" || currentStatus === "trialing") {
-    logger.warn({ currentStatus, plan }, "[Billing] checkout blocked — subscription already active");
+    logger.warn({ currentStatus, plan, orgId }, "[Billing] checkout blocked — subscription already active");
     res.status(409).json({
       error: "subscription_already_active",
       message: "Vous avez déjà un abonnement actif. Utilisez la mise à niveau pour changer de plan.",
@@ -78,8 +87,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
 
     const lineItems = buildLineItems(plan, addons);
 
@@ -96,23 +104,25 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       return;
     }
 
-    let customerId = store.me.stripeCustomerId;
+    let customerId = billingCtx.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: req.orgContext?.email || store.me.email || undefined,
-        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { plan, orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
+        email: req.orgContext?.email || billingCtx.email || undefined,
+        name: billingCtx.firstName || req.orgContext?.email || billingCtx.email || billingCtx.orgName || "FlowPoint User",
+        metadata: { plan, orgId, userId: req.userId ?? "unknown" },
       });
       customerId = customer.id;
-      store.me.stripeCustomerId = customerId;
+      // Persist new customer ID to DB for future requests
+      upsertOrgSettings(orgId, { stripeCustomerId: customerId }).catch(err =>
+        logger.warn({ err, orgId }, "[Billing] Failed to persist new stripeCustomerId")
+      );
     }
 
-    // Authoritative Stripe-side check: if customer exists, verify no active/trialing sub exists
-    // This catches stale store state where subscriptionStatus may be null/canceled but Stripe is active
+    // Belt-and-suspenders Stripe-side check for stale DB subscription_status
     if (customerId) {
       const existingSubs = await stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 });
       if (existingSubs.data.length > 0) {
-        logger.warn({ customerId, plan }, "[Billing] checkout blocked by Stripe — active subscription already exists");
+        logger.warn({ customerId, plan, orgId }, "[Billing] checkout blocked by Stripe — active subscription exists");
         res.status(409).json({
           error: "subscription_already_active",
           message: "Vous avez déjà un abonnement actif. Utilisez la mise à niveau pour changer de plan.",
@@ -120,10 +130,9 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
         });
         return;
       }
-      // Also check trialing
       const trialingSubs = await stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 });
       if (trialingSubs.data.length > 0) {
-        logger.warn({ customerId, plan }, "[Billing] checkout blocked by Stripe — trialing subscription already exists");
+        logger.warn({ customerId, plan, orgId }, "[Billing] checkout blocked by Stripe — trialing subscription exists");
         res.status(409).json({
           error: "subscription_already_active",
           message: "Vous êtes en période d'essai. Vous ne pouvez pas créer un second abonnement.",
@@ -133,10 +142,8 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       }
     }
 
-    // Guard: only grant 14-day trial for true first-time subscribers
-    // Check trialEndsAt (set whenever a trial was ever started) AND Stripe full subscription history
-    // (status: "all" includes canceled/unpaid/past_due — prevents re-trial after cancellation)
-    const hasHadTrial = !!store.me.trialEndsAt;
+    // Only grant 14-day trial for confirmed first-time subscribers
+    const hasHadTrial = !!billingCtx.trialEndsAt;
     let hasStripeSubHistory = false;
     if (customerId) {
       const allSubs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
@@ -147,9 +154,9 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
     const subscriptionData: Record<string, unknown> = {};
     if (grantTrial) {
       subscriptionData["trial_period_days"] = 14;
-      logger.info({ plan }, "[Billing] Granting 14-day trial — confirmed first-time subscriber");
+      logger.info({ plan, orgId }, "[Billing] Granting 14-day trial — confirmed first-time subscriber");
     } else {
-      logger.info({ plan, hasHadTrial, hasStripeSubHistory }, "[Billing] Skipping trial — user has prior subscription history");
+      logger.info({ plan, hasHadTrial, hasStripeSubHistory, orgId }, "[Billing] Skipping trial — prior subscription history");
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -169,10 +176,14 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
   }
 });
 
+// ── POST /billing/checkout-embedded ─────────────────────────────────────────
 router.post("/billing/checkout-embedded", async (req: Request, res: Response) => {
   const body = req.body as { plan?: string; planId?: string; addons?: AddonsMap };
   const plan = body.plan || body.planId || "";
   const addons: AddonsMap = body.addons ?? {};
+  const orgId = req.orgId ?? "default";
+
+  const billingCtx = await loadBillingContext(orgId);
 
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
@@ -189,8 +200,7 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
 
     const lineItems = buildLineItems(plan, addons);
     if (lineItems.length === 0) {
@@ -198,15 +208,17 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
       return;
     }
 
-    let customerId = store.me.stripeCustomerId;
+    let customerId = billingCtx.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: req.orgContext?.email || store.me.email || undefined,
-        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { plan, orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
+        email: req.orgContext?.email || billingCtx.email || undefined,
+        name: billingCtx.firstName || req.orgContext?.email || billingCtx.email || billingCtx.orgName || "FlowPoint User",
+        metadata: { plan, orgId, userId: req.userId ?? "unknown" },
       });
       customerId = customer.id;
-      store.me.stripeCustomerId = customerId;
+      upsertOrgSettings(orgId, { stripeCustomerId: customerId }).catch(err =>
+        logger.warn({ err, orgId }, "[Billing] Failed to persist new stripeCustomerId")
+      );
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -222,8 +234,9 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
   } catch (err) {
     logger.error({ err }, "[Billing] Embedded checkout failed — falling back to redirect mode");
     try {
-      const { default: Stripe } = await import("stripe");
-      const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+      const stripe = await createStripeClient(
+        process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"] || ""
+      );
       const lineItems = buildLineItems(plan, addons);
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
@@ -240,12 +253,12 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
   }
 });
 
+// ── GET /billing/verify ──────────────────────────────────────────────────────
 router.get("/billing/verify", async (req: Request, res: Response) => {
   const sessionId = String(req.query["session_id"] || "");
   if (!sessionId) { res.status(400).json({ error: "session_id required" }); return; }
 
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  const apiSecretKey = process.env["API_SECRET_KEY"];
 
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
@@ -259,9 +272,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-
+    const stripe = await createStripeClient(stripeKey);
     const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
 
     if (session.payment_status !== "paid" && session.status !== "complete") {
@@ -275,41 +286,29 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
       store.broadcastPlanUpdate(planMeta, orgIdVerify);
     }
 
-    if (session.customer) {
-      store.me.stripeCustomerId = String(session.customer);
-    }
-    store.me.subscriptionStatus = "active";
-
     let addonsMeta: Record<string, boolean | number> = {};
     try { addonsMeta = JSON.parse(session.metadata?.["addons"] || "{}"); } catch {}
 
-    // Activate all purchased FLAG addons
+    const activatedAddons: Record<string, unknown> = {};
     for (const key of FLAG_ADDONS) {
-      if (addonsMeta[key] !== undefined) {
-        (store.me.addons as Record<string, unknown>)[key] = !!addonsMeta[key];
-      }
+      if (addonsMeta[key] !== undefined) activatedAddons[key] = !!addonsMeta[key];
     }
-    // Activate all purchased QTY addons
     for (const key of QTY_ADDONS) {
-      if (addonsMeta[key] !== undefined) {
-        (store.me.addons as Record<string, unknown>)[key] = Number(addonsMeta[key] || 0);
-      }
+      if (addonsMeta[key] !== undefined) activatedAddons[key] = Number(addonsMeta[key] || 0);
     }
 
-    // Persist addon changes to DB so they survive server restart
-    const orgId = orgIdVerify;
-    upsertOrgSettings(orgId, {
-      plan: store.me.plan,
-      firstName: store.me.firstName,
-      orgName: store.me.org.name,
-      subscriptionStatus: "active",
-      stripeCustomerId: store.me.stripeCustomerId ?? "",
-      addons: store.me.addons as Record<string, unknown>,
-      usage: store.me.usage,
-      trialEndsAt: store.me.trialEndsAt ?? null,
-    }).catch(err => logger.error({ err }, "[Billing] Failed to persist addons after checkout"));
+    const billingCtx = await loadBillingContext(orgIdVerify);
 
-    logger.info({ plan: planMeta, sessionId }, "[Billing] Checkout verified — plan activated");
+    // Persist all billing state to DB — this is the authoritative write path after checkout
+    await upsertOrgSettings(orgIdVerify, {
+      plan: planMeta,
+      subscriptionStatus: "active",
+      stripeCustomerId: session.customer ? String(session.customer) : (billingCtx.stripeCustomerId ?? undefined),
+      addons: { ...billingCtx.addons, ...activatedAddons },
+      trialEndsAt: billingCtx.trialEndsAt ?? undefined,
+    }).catch(err => logger.error({ err }, "[Billing] Failed to persist state after checkout verify"));
+
+    logger.info({ plan: planMeta, sessionId, orgId: orgIdVerify }, "[Billing] Checkout verified — plan activated");
 
     res.json({ ok: true, plan: planMeta });
   } catch (err) {
@@ -318,6 +317,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
   }
 });
 
+// ── POST /billing/portal ─────────────────────────────────────────────────────
 router.post("/billing/portal", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
@@ -334,19 +334,18 @@ router.post("/billing/portal", billingCheckoutRateLimit, ownerOnly, async (req: 
     return;
   }
 
-  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
-  const dbData = await loadOrgSettings(orgId).catch(() => null);
-  const customerId = dbData?.stripeCustomerId ?? store.me.stripeCustomerId ?? null;
+  const orgId = req.orgId ?? "default";
+  const billingCtx = await loadBillingContext(orgId);
+  const customerId = billingCtx.stripeCustomerId ?? null;
 
   if (!customerId) {
-    logger.warn({ orgId }, "[Billing] portal requested but no stripeCustomerId — no active subscription");
+    logger.warn({ orgId }, "[Billing] portal requested but no stripeCustomerId");
     res.status(422).json({ error: "no_customer", message: "Aucun abonnement actif — souscrivez d'abord un plan." });
     return;
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
     res.json({ url: session.url });
   } catch (err) {
@@ -355,9 +354,7 @@ router.post("/billing/portal", billingCheckoutRateLimit, ownerOnly, async (req: 
   }
 });
 
-// ── NOTE: GET /billing/plans is handled by public-billing.ts (pre-auth) ─────
-
-// ── NEW: GET /billing/usage ──────────────────────────────────────────────────
+// ── GET /billing/usage ───────────────────────────────────────────────────────
 router.get("/billing/usage", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
   try {
@@ -369,7 +366,7 @@ router.get("/billing/usage", async (req: Request, res: Response) => {
   }
 });
 
-// ── NEW: GET /billing/analytics ──────────────────────────────────────────────
+// ── GET /billing/analytics ───────────────────────────────────────────────────
 router.get("/billing/analytics", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
   try {
@@ -381,7 +378,7 @@ router.get("/billing/analytics", async (req: Request, res: Response) => {
   }
 });
 
-// ── NEW: GET /billing/mrr ────────────────────────────────────────────────────
+// ── GET /billing/mrr ─────────────────────────────────────────────────────────
 router.get("/billing/mrr", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
   try {
@@ -393,12 +390,12 @@ router.get("/billing/mrr", async (req: Request, res: Response) => {
   }
 });
 
-// ── NEW: GET /billing/invoices ───────────────────────────────────────────────
+// ── GET /billing/invoices ────────────────────────────────────────────────────
 router.get("/billing/invoices", async (req: Request, res: Response) => {
   const limit = Math.min(Number((req.query as Record<string, string>)["limit"] || 20), 100);
-  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
-  const dbData = await loadOrgSettings(orgId).catch(() => null);
-  const stripeCustomerId = dbData?.stripeCustomerId ?? store.me.stripeCustomerId ?? undefined;
+  const orgId = req.orgId ?? "default";
+  const billingCtx = await loadBillingContext(orgId);
+  const stripeCustomerId = billingCtx.stripeCustomerId ?? undefined;
   try {
     const result = await getInvoices(limit, stripeCustomerId);
     res.json(result);
@@ -408,17 +405,19 @@ router.get("/billing/invoices", async (req: Request, res: Response) => {
   }
 });
 
-// ── NEW: POST /billing/trial ─────────────────────────────────────────────────
+// ── POST /billing/trial ──────────────────────────────────────────────────────
 router.post("/billing/trial", async (req: Request, res: Response) => {
   const { plan = "pro", days = 14 } = req.body as { plan?: string; days?: number };
   const orgId = req.orgId ?? "default";
-  if (store.me.subscriptionStatus === "active") {
+
+  const billingCtx = await loadBillingContext(orgId);
+  if (billingCtx.subscriptionStatus === "active") {
     res.status(409).json({ error: "Vous avez déjà un abonnement actif" });
     return;
   }
   try {
     const result = await startTrial(plan, days, orgId);
-    await trackBillingEvent("trial_started", { plan, days, ...result }, orgId).catch(() => {});
+    await trackBillingEvent("trial_started", { days, ...result }, orgId).catch(() => {});
     res.json(result);
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to start trial");
@@ -426,7 +425,7 @@ router.post("/billing/trial", async (req: Request, res: Response) => {
   }
 });
 
-// ── NEW: POST /billing/coupon/validate ───────────────────────────────────────
+// ── POST /billing/coupon/validate ────────────────────────────────────────────
 router.post("/billing/coupon/validate", async (req: Request, res: Response) => {
   const { code } = req.body as { code?: string };
   if (!code) { res.status(400).json({ error: "Coupon code requis" }); return; }
@@ -439,23 +438,24 @@ router.post("/billing/coupon/validate", async (req: Request, res: Response) => {
   }
 });
 
-// ── NEW: GET /billing/subscription ──────────────────────────────────────────
 // ── POST /billing/cancel ─────────────────────────────────────────────────────
 router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) => {
   const { atPeriodEnd = true } = req.body as { atPeriodEnd?: boolean };
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const orgId = req.orgId ?? "default";
 
-  if (!stripeKey || !store.me.stripeCustomerId) {
-    store.me.subscriptionStatus = "canceled";
-    logger.warn("[Billing] cancel: no Stripe key or customerId — marking canceled locally");
+  const billingCtx = await loadBillingContext(orgId);
+
+  if (!stripeKey || !billingCtx.stripeCustomerId) {
+    await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+    logger.warn({ orgId }, "[Billing] cancel: no Stripe key or customerId — marking canceled in DB");
     res.json({ ok: true, cancelAtPeriodEnd: atPeriodEnd, mock: true });
     return;
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-    const subs = await stripe.subscriptions.list({ customer: store.me.stripeCustomerId, status: "active", limit: 1 });
+    const stripe = await createStripeClient(stripeKey);
+    const subs = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "active", limit: 1 });
     const sub = subs.data[0];
     if (!sub) { res.status(404).json({ error: "No active subscription found" }); return; }
 
@@ -464,7 +464,7 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
       res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: sub.current_period_end });
     } else {
       await stripe.subscriptions.cancel(sub.id);
-      store.me.subscriptionStatus = "canceled";
+      await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
       res.json({ ok: true, cancelAtPeriodEnd: false });
     }
   } catch (err) {
@@ -475,15 +475,18 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
 
 // ── POST /billing/upgrade ─────────────────────────────────────────────────────
 router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
-  const { plan = "", interval = "monthly" } = req.body as { plan?: string; interval?: string };
+  const { plan = "" } = req.body as { plan?: string; interval?: string };
   if (!plan) { res.status(400).json({ error: "plan required" }); return; }
 
+  const orgId = req.orgId ?? "default";
+  const billingCtx = await loadBillingContext(orgId);
+
   // Guard: reject if target plan is already the active plan
-  const currentPlan   = (store.me.plan || "").toLowerCase();
+  const currentPlan   = billingCtx.plan.toLowerCase();
   const targetPlan    = plan.toLowerCase();
-  const upgradeStatus = store.me.subscriptionStatus;
+  const upgradeStatus = billingCtx.subscriptionStatus;
   if (targetPlan && targetPlan === currentPlan && (upgradeStatus === "active" || upgradeStatus === "trialing")) {
-    logger.warn({ currentPlan, targetPlan }, "[Billing] upgrade blocked — plan already active");
+    logger.warn({ currentPlan, targetPlan, orgId }, "[Billing] upgrade blocked — plan already active");
     res.status(409).json({
       error: "plan_already_active",
       message: `Le plan ${plan} est déjà votre plan actuel.`,
@@ -501,25 +504,23 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
 
-    // Try to update existing subscription first (active OR trialing — prevents double subscription)
-    if (store.me.stripeCustomerId) {
+    // Try to update existing subscription first (active OR trialing)
+    if (billingCtx.stripeCustomerId) {
       const [activeSubs, trialingSubs] = await Promise.all([
-        stripe.subscriptions.list({ customer: store.me.stripeCustomerId, status: "active",   limit: 1 }),
-        stripe.subscriptions.list({ customer: store.me.stripeCustomerId, status: "trialing", limit: 1 }),
+        stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "active",   limit: 1 }),
+        stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "trialing", limit: 1 }),
       ]);
       const sub = activeSubs.data[0] ?? trialingSubs.data[0];
       if (sub) {
         const priceId = PLAN_PRICE_IDS[plan.toLowerCase()];
         if (!priceId) { res.status(400).json({ error: `Unknown plan: ${plan}` }); return; }
-        /* Build updated items: replace plan price, preserve existing add-on items */
         const planItemIds = new Set(Object.values(PLAN_PRICE_IDS));
         const existingAddonItems = sub.items.data
-          .filter(item => !planItemIds.has(item.price.id))
-          .map(item => ({ id: item.id }));
-        const planItem = sub.items.data.find(item => planItemIds.has(item.price.id));
+          .filter((item: { price: { id: string } }) => !planItemIds.has(item.price.id))
+          .map((item: { id: string }) => ({ id: item.id }));
+        const planItem = sub.items.data.find((item: { price: { id: string } }) => planItemIds.has(item.price.id));
         await stripe.subscriptions.update(sub.id, {
           items: [
             { id: planItem?.id, price: priceId },
@@ -528,8 +529,8 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           proration_behavior: "create_prorations",
           metadata: { plan },
         });
-        store.me.plan = plan;
-        logger.info({ plan, subId: sub.id, subStatus: sub.status }, "[Billing] upgrade: subscription updated");
+        await upsertOrgSettings(orgId, { plan }).catch(() => {});
+        logger.info({ plan, subId: sub.id, subStatus: sub.status, orgId }, "[Billing] upgrade: subscription updated");
         res.json({ ok: true, plan, upgraded: true });
         return;
       }
@@ -552,23 +553,23 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
   }
 });
 
+// ── GET /billing/subscription ────────────────────────────────────────────────
 router.get("/billing/subscription", async (req: Request, res: Response) => {
-  const orgId = (req as Request & { orgId?: string }).orgId ?? "default";
-  const dbData = await loadOrgSettings(orgId).catch(() => null);
-  const me = store.me;
+  const orgId = req.orgId ?? "default";
+  const billingCtx = await loadBillingContext(orgId);
 
-  const plan = (dbData?.plan || me.plan || "standard").toLowerCase();
-  const subscriptionStatus = dbData?.subscriptionStatus || me.subscriptionStatus || "none";
-  const trialEndsAt = dbData?.trialEndsAt ?? me.trialEndsAt ?? null;
-  const stripeCustomerId = dbData?.stripeCustomerId ?? me.stripeCustomerId ?? null;
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const plan               = billingCtx.plan;
+  const subscriptionStatus = billingCtx.subscriptionStatus || "none";
+  const trialEndsAt        = billingCtx.trialEndsAt ?? null;
+  const stripeCustomerId   = billingCtx.stripeCustomerId ?? null;
+  const stripeKey          = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
 
   if (!stripeKey || !stripeCustomerId) {
     res.json({
       plan,
       status: subscriptionStatus,
       trialEndsAt,
-      addons: me.addons,
+      addons: billingCtx.addons,
       subscriptionId: null,
       mock: !stripeKey,
     });
@@ -576,8 +577,7 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const subs = await stripe.subscriptions.list({ customer: stripeCustomerId, limit: 1 });
     const sub = subs.data[0];
 
@@ -588,26 +588,26 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       currentPeriodEnd: sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
       cancelAtPeriodEnd: sub?.cancel_at_period_end || false,
       subscriptionId: sub?.id ?? null,
-      addons: me.addons,
+      addons: billingCtx.addons,
       stripeCustomerId,
     });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to get subscription");
-    res.json({ plan, status: subscriptionStatus, addons: me.addons, subscriptionId: null });
+    res.json({ plan, status: subscriptionStatus, addons: billingCtx.addons, subscriptionId: null });
   }
 });
 
-// ── NEW: POST /billing/checkout with coupon + annual support ─────────────────
-// (Also supports ?annual=true and ?coupon=CODE query params in the enhanced version)
-// The existing /billing/checkout handler handles basic checkout.
-// We add /billing/checkout/annual as a convenience.
+// ── POST /billing/checkout/annual ────────────────────────────────────────────
 router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
   const { plan = "pro", addons = {}, coupon } = req.body as { plan?: string; addons?: AddonsMap; coupon?: string };
+  const orgId = req.orgId ?? "default";
+
+  const billingCtx = await loadBillingContext(orgId);
 
   // Guard: reject if a subscription is already active
-  const currentStatusAnnual = store.me.subscriptionStatus;
+  const currentStatusAnnual = billingCtx.subscriptionStatus;
   if (currentStatusAnnual === "active" || currentStatusAnnual === "trialing") {
-    logger.warn({ currentStatus: currentStatusAnnual, plan }, "[Billing] annual-checkout blocked — subscription already active");
+    logger.warn({ currentStatus: currentStatusAnnual, plan, orgId }, "[Billing] annual-checkout blocked — subscription already active");
     res.status(409).json({
       error: "subscription_already_active",
       message: "Vous avez déjà un abonnement actif. Utilisez la mise à niveau pour changer de plan.",
@@ -630,8 +630,7 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
 
     const annualPriceEnvKey = `STRIPE_PRICE_${plan.toUpperCase()}_ANNUAL`;
     const annualPriceId = process.env[annualPriceEnvKey] || PLAN_PRICE_IDS[plan.toLowerCase()];
@@ -641,22 +640,24 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
       return;
     }
 
-    let customerId = store.me.stripeCustomerId;
+    let customerId = billingCtx.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: req.orgContext?.email || store.me.email || undefined,
-        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { plan, orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
+        email: req.orgContext?.email || billingCtx.email || undefined,
+        name: billingCtx.firstName || req.orgContext?.email || billingCtx.email || billingCtx.orgName || "FlowPoint User",
+        metadata: { plan, orgId, userId: req.userId ?? "unknown" },
       });
       customerId = customer.id;
-      store.me.stripeCustomerId = customerId;
+      upsertOrgSettings(orgId, { stripeCustomerId: customerId }).catch(err =>
+        logger.warn({ err, orgId }, "[Billing] Failed to persist new stripeCustomerId")
+      );
     }
 
-    // Authoritative Stripe-side check: verify no active/trialing subscription exists
+    // Stripe-side guard
     if (customerId) {
       const existingActiveSubs = await stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 });
       if (existingActiveSubs.data.length > 0) {
-        logger.warn({ customerId, plan }, "[Billing] annual-checkout blocked by Stripe — active subscription already exists");
+        logger.warn({ customerId, plan, orgId }, "[Billing] annual-checkout blocked by Stripe — active subscription exists");
         res.status(409).json({
           error: "subscription_already_active",
           message: "Vous avez déjà un abonnement actif. Utilisez la mise à niveau pour changer de plan.",
@@ -666,7 +667,7 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
       }
       const existingTrialSubs = await stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 });
       if (existingTrialSubs.data.length > 0) {
-        logger.warn({ customerId, plan }, "[Billing] annual-checkout blocked by Stripe — trialing subscription already exists");
+        logger.warn({ customerId, plan, orgId }, "[Billing] annual-checkout blocked by Stripe — trialing subscription exists");
         res.status(409).json({
           error: "subscription_already_active",
           message: "Vous êtes en période d'essai. Vous ne pouvez pas créer un second abonnement.",
@@ -676,7 +677,7 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
       }
     }
 
-    const sessionParams: Parameters<typeof stripe.checkout.sessions.create>[0] = {
+    const sessionParams: Record<string, unknown> = {
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: annualPriceId, quantity: 1 }],
@@ -685,10 +686,7 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
       metadata: { plan, addons: JSON.stringify(addons), billing: "annual" },
       subscription_data: { metadata: { plan, billing: "annual" } },
     };
-
-    if (coupon) {
-      (sessionParams as Record<string, unknown>)["discounts"] = [{ coupon }];
-    }
+    if (coupon) sessionParams["discounts"] = [{ coupon }];
 
     const session = await stripe.checkout.sessions.create(sessionParams);
     res.json({ url: session.url, plan, annual: true });
@@ -699,13 +697,10 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
 });
 
 // ── GET /billing/usage-details ───────────────────────────────────────────────
-// Returns real counters for billing page (reports, team).
-// Infrastructure metrics (storage, bandwidth, API calls, emails) are not yet
-// instrumented server-side — those fields return null so the UI shows "—".
 router.get("/billing/usage-details", async (req: Request, res: Response): Promise<void> => {
   const orgId = req.orgContext?.orgId ?? "default";
-  const me    = store.me;
-  const limits = PLAN_LIMITS[me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
+  const billingCtx = await loadBillingContext(orgId);
+  const limits = PLAN_LIMITS[billingCtx.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
 
   let reportsUsed: number | null = null;
   let teamMembersUsed: number | null = null;
@@ -728,10 +723,9 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
 
   res.json({
     reportsUsed,
-    reportsLimit:       limits.reports,
+    reportsLimit:     limits.reports,
     teamMembersUsed,
-    teamMembersLimit:   limits.teamMembers,
-    // Not yet instrumented on server side — return null so UI shows "—"
+    teamMembersLimit: limits.teamMembers,
     emailsSent:    null,
     apiCalls:      null,
     storageUsed:   null,
@@ -739,7 +733,7 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
   });
 });
 
-// ── POST /billing/checkout-ai-credits — one-time AI credit pack purchase ─────
+// ── POST /billing/checkout-ai-credits ─────────────────────────────────────────
 router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req: Request, res: Response) => {
   const { pack = "" } = req.body as { pack?: string };
 
@@ -754,6 +748,9 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req
     res.status(400).json({ error: `Pack IA inconnu : ${pack}. Valeurs valides : ai_credits_50k, ai_credits_200k, ai_credits_500k` });
     return;
   }
+
+  const orgId = req.orgId ?? "default";
+  const billingCtx = await loadBillingContext(orgId);
 
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
@@ -781,18 +778,19 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req
   }
 
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
 
-    let customerId = store.me.stripeCustomerId;
+    let customerId = billingCtx.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: req.orgContext?.email || store.me.email || undefined,
-        name: store.me.firstName || req.orgContext?.email || store.me.email || store.me.org?.name || "FlowPoint User",
-        metadata: { orgId: req.orgId ?? store.me.org?.id ?? "default", userId: req.userId ?? store.me.id ?? "unknown" },
+        email: req.orgContext?.email || billingCtx.email || undefined,
+        name: billingCtx.firstName || req.orgContext?.email || billingCtx.email || billingCtx.orgName || "FlowPoint User",
+        metadata: { orgId, userId: req.userId ?? "unknown" },
       });
       customerId = customer.id;
-      store.me.stripeCustomerId = customerId;
+      upsertOrgSettings(orgId, { stripeCustomerId: customerId }).catch(err =>
+        logger.warn({ err, orgId }, "[Billing] Failed to persist new stripeCustomerId")
+      );
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -802,14 +800,14 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req
       success_url: `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}&type=ai_credits&pack=${encodeURIComponent(pack)}&credits=${packInfo.credits}`,
       cancel_url:  `${publicUrl}/dashboard.html#billing`,
       metadata: {
-        type:            "ai_credits",
+        type:           "ai_credits",
         pack,
-        credits:         String(packInfo.credits),
-        amountEurCents:  String(packInfo.amountEurCents),
+        credits:        String(packInfo.credits),
+        amountEurCents: String(packInfo.amountEurCents),
       },
     });
 
-    logger.info({ pack, credits: packInfo.credits }, "[Billing] AI credits checkout session created");
+    logger.info({ pack, credits: packInfo.credits, orgId }, "[Billing] AI credits checkout session created");
     res.json({ url: session.url, pack, credits: packInfo.credits });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to create AI credits checkout session");
@@ -817,20 +815,25 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req
   }
 });
 
+// ── GET /billing/config ──────────────────────────────────────────────────────
 router.get("/billing/config", (_req: Request, res: Response) => {
   const publishableKey = process.env["STRIPE_PUBLISHABLE_KEY"] ?? process.env["PUBLIC_STRIPE_API_KEY"] ?? "";
   res.json({ publishableKey });
 });
 
-router.get("/billing/events", (req: Request, res: Response) => {
+// ── GET /billing/events (SSE) ─────────────────────────────────────────────────
+router.get("/billing/events", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  res.write(`data: ${JSON.stringify({ type: "connected", plan: store.me.plan })}\n\n`);
+  // Load current plan from DB for the initial "connected" event
+  const billingCtx = await loadBillingContext(orgId);
+  res.write(`data: ${JSON.stringify({ type: "connected", plan: billingCtx.plan })}\n\n`);
 
   const send = (data: string) => res.write(data);
   store.addSseClient(orgId, send);
@@ -844,7 +847,6 @@ router.get("/billing/events", (req: Request, res: Response) => {
 });
 
 // ── Stripe Webhook ────────────────────────────────────────────────────────────
-// Raw body is already applied in app.ts for /api/billing/webhook
 router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res: Response) => {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] || process.env["STRIPE_WEBHOOK_SECRET_RENDER"];
@@ -862,8 +864,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
 
   let event: import("stripe").Stripe.Event;
   try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+    const stripe = await createStripeClient(stripeKey);
     const rawBody = req.rawBody ?? req.body;
 
     if (webhookSecret) {
@@ -885,14 +886,13 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
   logger.info({ type: event.type }, "[Webhook] Stripe event received");
 
   try {
-    const { upsertOrgSettings } = await import("../services/org-settings.js");
+    const { upsertOrgSettings: upsert } = await import("../services/org-settings.js");
 
-    // Derive orgId from Stripe customer ID stored in org_settings.
-    // Falls back to "default" for single-tenant deployments or if lookup fails.
+    // Derive orgId from Stripe customer ID stored in org_settings
     let orgId = "default";
     try {
       const stripeCustomerId =
-        (event.data.object as Record<string, unknown>)["customer"] as string | undefined;
+        ((event.data.object as unknown) as Record<string, unknown>)["customer"] as string | undefined;
       if (stripeCustomerId) {
         const { pool: rawPool } = await import("@workspace/db");
         const orgLookup = await rawPool.query<{ org_id: string }>(
@@ -905,20 +905,18 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
       logger.warn({ lookupErr }, "[Webhook] org lookup by stripe_customer_id failed — falling back to default");
     }
 
+    // Load current DB plan for plan-fallback and event logging
+    const orgSettings = await loadOrgSettings(orgId).catch(() => null);
+
     switch (event.type) {
-      // ── Trial started ──────────────────────────────────────────────────────
       case "customer.subscription.created": {
         const sub = event.data.object as import("stripe").Stripe.Subscription;
         const plan = (sub.metadata?.["plan"] || "standard").toLowerCase();
-        const status = sub.status; // "trialing" | "active" | ...
+        const status = sub.status;
         const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
 
-        store.me.subscriptionStatus = status;
-        store.me.trialEndsAt = trialEnd ?? store.me.trialEndsAt;
-        if (plan) { store.me.plan = plan; store.broadcastPlanUpdate(plan, orgId); }
-        if (sub.customer) store.me.stripeCustomerId = String(sub.customer);
-
-        await upsertOrgSettings(orgId, {
+        if (plan) store.broadcastPlanUpdate(plan, orgId);
+        await upsert(orgId, {
           subscriptionStatus: status,
           plan: plan || undefined,
           trialEndsAt: trialEnd ?? undefined,
@@ -928,18 +926,14 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         break;
       }
 
-      // ── Subscription changed (upgrade/downgrade/cancel scheduled) ──────────
       case "customer.subscription.updated": {
         const sub = event.data.object as import("stripe").Stripe.Subscription;
-        const plan = (sub.metadata?.["plan"] || store.me.plan || "standard").toLowerCase();
+        const plan = (sub.metadata?.["plan"] || orgSettings?.plan || "standard").toLowerCase();
         const status = sub.status;
         const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
 
-        store.me.subscriptionStatus = status;
-        if (trialEnd) store.me.trialEndsAt = trialEnd;
-        if (plan) { store.me.plan = plan; store.broadcastPlanUpdate(plan, orgId); }
-
-        await upsertOrgSettings(orgId, {
+        if (plan) store.broadcastPlanUpdate(plan, orgId);
+        await upsert(orgId, {
           subscriptionStatus: status,
           plan: plan || undefined,
           trialEndsAt: trialEnd ?? undefined,
@@ -947,60 +941,53 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         break;
       }
 
-      // ── Subscription ended (canceled / trial expired without payment) ───────
       case "customer.subscription.deleted": {
         const sub = event.data.object as import("stripe").Stripe.Subscription;
-        store.me.subscriptionStatus = "canceled";
-
-        await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" });
-        await trackBillingEvent("subscription_canceled", { plan: store.me.plan, amount: 0, currency: "eur", subscriptionId: sub.id }, orgId);
-        logger.warn({ subId: sub.id }, "[Webhook] Subscription canceled");
+        store.broadcast({ type: "billing:subscription_canceled" }, orgId);
+        await upsert(orgId, { subscriptionStatus: "canceled" });
+        await trackBillingEvent("subscription_canceled", {
+          plan: orgSettings?.plan ?? "standard",
+          amount: 0, currency: "eur", subscriptionId: sub.id,
+        }, orgId);
+        logger.warn({ subId: sub.id, orgId }, "[Webhook] Subscription canceled");
         break;
       }
 
-      // ── Trial ending soon (3 days before) ─────────────────────────────────
       case "customer.subscription.trial_will_end": {
         const sub = event.data.object as import("stripe").Stripe.Subscription;
         const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
-        logger.info({ trialEnd, subId: sub.id }, "[Webhook] Trial will end soon — send reminder email here");
-        // TODO: trigger reminder email via Resend
+        logger.info({ trialEnd, subId: sub.id, orgId }, "[Webhook] Trial will end soon");
         break;
       }
 
-      // ── Payment succeeded → mark active ────────────────────────────────────
       case "invoice.payment_succeeded": {
         const invoice = event.data.object as import("stripe").Stripe.Invoice;
         const subId = (invoice as { subscription?: string }).subscription;
         const amount = (invoice.amount_paid || 0) / 100;
 
-        store.me.subscriptionStatus = "active";
-        await upsertOrgSettings(orgId, { subscriptionStatus: "active" });
+        store.broadcast({ type: "billing:payment_succeeded" }, orgId);
+        await upsert(orgId, { subscriptionStatus: "active" });
         await trackBillingEvent("subscription_renewed", {
-          plan: store.me.plan, amount, currency: invoice.currency ?? "eur",
+          plan: orgSettings?.plan ?? "standard", amount, currency: invoice.currency ?? "eur",
           invoiceId: invoice.id, subscriptionId: subId,
         }, orgId);
-        logger.info({ invoiceId: invoice.id, amount }, "[Webhook] Payment succeeded — subscription active");
+        logger.info({ invoiceId: invoice.id, amount, orgId }, "[Webhook] Payment succeeded — subscription active");
         break;
       }
 
-      // ── Payment failed → mark past_due ─────────────────────────────────────
       case "invoice.payment_failed": {
         const invoice = event.data.object as import("stripe").Stripe.Invoice;
-        store.me.subscriptionStatus = "past_due";
-        await upsertOrgSettings(orgId, { subscriptionStatus: "past_due" });
-        logger.warn({ invoiceId: invoice.id }, "[Webhook] Payment failed — subscription past_due");
+        store.broadcast({ type: "billing:payment_failed" }, orgId);
+        await upsert(orgId, { subscriptionStatus: "past_due" });
+        logger.warn({ invoiceId: invoice.id, orgId }, "[Webhook] Payment failed — subscription past_due");
         break;
       }
 
-      // ── Checkout session completed (alternative activation path) ───────────
       case "checkout.session.completed": {
         const session = event.data.object as import("stripe").Stripe.Checkout.Session;
         const plan = (session.metadata?.["plan"] || "pro").toLowerCase();
-        if (session.customer) store.me.stripeCustomerId = String(session.customer);
-        store.me.subscriptionStatus = "active";
-        store.me.plan = plan;
         store.broadcastPlanUpdate(plan, orgId);
-        await upsertOrgSettings(orgId, {
+        await upsert(orgId, {
           subscriptionStatus: "active",
           plan,
           stripeCustomerId: session.customer ? String(session.customer) : undefined,
@@ -1013,14 +1000,14 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         logger.debug({ type: event.type }, "[Webhook] Unhandled Stripe event type");
     }
 
-    // Log raw event to DB for audit trail (uses superuser pool — webhook is called by Stripe, not org-user)
+    // Log raw event to DB for audit trail
     try {
       const { pool: rawPool } = await import("@workspace/db");
       await rawPool.query(
         `INSERT INTO billing_events (org_id, type, amount, currency, plan, metadata, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,now())
          ON CONFLICT DO NOTHING`,
-        [orgId, event.type, 0, "eur", store.me.plan, JSON.stringify({ eventId: event.id })]
+        [orgId, event.type, 0, "eur", orgSettings?.plan ?? "standard", JSON.stringify({ eventId: event.id })]
       );
     } catch { /* non-fatal */ }
 
@@ -1032,57 +1019,51 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
 });
 
 // ── POST /billing/addon-checkout ───────────────────────────────────────────────
-// Creates a Stripe checkout session for a single add-on purchase.
 router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Request, res: Response): Promise<void> => {
-  const { addonKey = "", addonName = "", price = "" } = req.body as { addonKey?: string; addonName?: string; price?: string };
+  const { addonKey = "", addonName = "" } = req.body as { addonKey?: string; addonName?: string; price?: string };
   if (!addonKey) { res.status(400).json({ error: "addonKey required" }); return; }
 
-  // Guard: reject if add-on is already active — Stripe is authoritative when possible
+  const orgId = req.orgId ?? "default";
+  const billingCtx = await loadBillingContext(orgId);
+
   const addonPriceId = ADDON_PRICE_IDS[addonKey];
   const stripeKeyForAddonCheck = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
 
-  if (stripeKeyForAddonCheck && store.me.stripeCustomerId) {
-    // Always check Stripe directly — regardless of local store state — to prevent stale-state bypasses
+  if (stripeKeyForAddonCheck && billingCtx.stripeCustomerId) {
     try {
-      const { default: Stripe } = await import("stripe");
-      const stripeForAddonCheck = new Stripe(stripeKeyForAddonCheck, { apiVersion: "2026-04-22.dahlia" });
+      const stripeForAddonCheck = await createStripeClient(stripeKeyForAddonCheck);
       const activeSubs = await stripeForAddonCheck.subscriptions.list({
-        customer: store.me.stripeCustomerId,
+        customer: billingCtx.stripeCustomerId,
         status: "active",
         limit: 10,
       });
-      // Also check trialing subscriptions
       const trialSubs = await stripeForAddonCheck.subscriptions.list({
-        customer: store.me.stripeCustomerId,
+        customer: billingCtx.stripeCustomerId,
         status: "trialing",
         limit: 10,
       });
       const allSubs = [...activeSubs.data, ...trialSubs.data];
-      if (addonPriceId && allSubs.some(sub =>
-        sub.items.data.some(item => item.price.id === addonPriceId)
+      if (addonPriceId && allSubs.some((sub: { items: { data: { price: { id: string } }[] } }) =>
+        sub.items.data.some((item: { price: { id: string } }) => item.price.id === addonPriceId)
       )) {
-        logger.warn({ addonKey, customerId: store.me.stripeCustomerId }, "[Billing] addon-checkout blocked — addon already active in Stripe subscription");
+        logger.warn({ addonKey, orgId }, "[Billing] addon-checkout blocked — addon already active in Stripe");
         res.status(409).json({ error: "addon_already_active", message: `L'add-on "${addonName || addonKey}" est déjà actif sur votre abonnement.` });
         return;
       }
-      // Stripe confirms not active — allow purchase even if local store says otherwise
     } catch (stripeCheckErr) {
-      // Stripe check failed — fall back to local store state as a safety net
-      logger.warn({ stripeCheckErr, addonKey }, "[Billing] Stripe addon active-check failed — falling back to store state");
-      const existingAddons = store.me.addons as Record<string, boolean | number>;
-      const existingVal = existingAddons[addonKey];
+      logger.warn({ stripeCheckErr, addonKey, orgId }, "[Billing] Stripe addon active-check failed — falling back to DB state");
+      const existingVal = billingCtx.addons[addonKey];
       if (existingVal === true || (typeof existingVal === "number" && existingVal > 0)) {
-        logger.warn({ addonKey }, "[Billing] addon-checkout blocked by store state fallback — addon active");
+        logger.warn({ addonKey, orgId }, "[Billing] addon-checkout blocked by DB state fallback");
         res.status(409).json({ error: "addon_already_active", message: `L'add-on "${addonName || addonKey}" est déjà actif sur votre abonnement.` });
         return;
       }
     }
   } else {
-    // No Stripe credentials or no customer — fall back to local store state
-    const existingAddons = store.me.addons as Record<string, boolean | number>;
-    const existingVal = existingAddons[addonKey];
+    // No Stripe credentials or no customer — check DB state
+    const existingVal = billingCtx.addons[addonKey];
     if (existingVal === true || (typeof existingVal === "number" && existingVal > 0)) {
-      logger.warn({ addonKey }, "[Billing] addon-checkout blocked — addon already active (store state, no Stripe key)");
+      logger.warn({ addonKey, orgId }, "[Billing] addon-checkout blocked — addon already active (DB state, no Stripe key)");
       res.status(409).json({ error: "addon_already_active", message: `L'add-on "${addonName || addonKey}" est déjà actif sur votre abonnement.` });
       return;
     }
@@ -1109,9 +1090,7 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
   }
 
   try {
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-05-28.basil" as Parameters<typeof Stripe>[1]["apiVersion"] });
-    const orgId  = (req as Request & { orgId?: string }).orgId ?? "default";
+    const stripe = await createStripeClient(stripeKey);
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -1121,10 +1100,18 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
       metadata: { addonKey, addonName, orgId },
     });
 
-    store.logActivity({ type: "billing", label: `Add-on checkout initié : ${addonName || addonKey}`, targetId: session.id, targetType: "billing", metadata: { addonKey } }).catch(err => logger.warn("logActivity failed", { err: err?.message }));
+    const sessionId: string = typeof session.id === "string" ? session.id : String(session.id ?? "");
+    store.logActivity({
+      type: "billing",
+      label: `Add-on checkout initié : ${addonName || addonKey}`,
+      targetId: sessionId,
+      targetType: "billing",
+      metadata: { addonKey },
+    }).catch(() => {});
+
     res.json({ url: session.url });
   } catch (err) {
-    logger.error({ err, addonKey }, "[Billing] addon-checkout failed");
+    logger.error({ err, addonKey, orgId }, "[Billing] addon-checkout failed");
     res.status(500).json({ error: "Erreur lors de la création du paiement" });
   }
 });
