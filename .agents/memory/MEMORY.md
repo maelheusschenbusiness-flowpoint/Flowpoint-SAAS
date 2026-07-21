@@ -64,3 +64,4 @@
 - [Alert-events service-only gate](alert-events-service-gate.md) — POST /alert-events blocked for user sessions via userId check (not role); service bypass in routes/index.ts allows userId="service" past org-context gate
 - [QA harness run order](qa-harness.md) — never parallelize purge with suite runs; purge deletes session tokens mid-test; always purge LAST after all suites; B3 _qa_result calls must use apiSvc()
 - [Lot B team QA isolation](lot-b-qa-isolation.md) — GROUP 15 needs its own org (G15_ORG); ultra plan saturates with accumulated members from prior groups; DB constraint test must use same org_id as first insert ($2=G15_ORG not ORG)
+- [Lot 4B audit findings](lot4b-audit-findings.md) — P0: behavior_events/sessions/traffic_losses RLS=(true), getRevenueLeakData ignores siteUrl, getCROData superuser pool; P1: funnel steps 2-5 fake ratios, 27 PREVIEW_MODE occurrences, CRO templates not AI
