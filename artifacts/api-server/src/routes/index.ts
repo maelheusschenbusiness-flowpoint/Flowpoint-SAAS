@@ -57,6 +57,9 @@ import growthObjectivesRouter from "./growth-objectives.js";
 import plansRouter from "./plans.js";
 import securityRouter from "./security.js";
 import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixtures.js";
+import analyticsRouter from "./analytics.js";
+import trafficRouter from "./traffic.js";
+import campaignsRouter from "./campaigns.js";
 
 const router: IRouter = Router();
 
@@ -215,5 +218,8 @@ router.use(diagnosticsRouter);
 router.use(locationRouter);
 router.use(securityRouter);
 router.use(growthObjectivesRouter);
+router.use("/analytics", analyticsRouter);
+router.use("/traffic",   trafficRouter);
+router.use("/campaigns", campaignsRouter);
 
 export default router;

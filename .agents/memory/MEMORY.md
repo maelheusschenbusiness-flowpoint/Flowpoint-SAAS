@@ -67,3 +67,4 @@
 - [Lot B team QA isolation](lot-b-qa-isolation.md) — GROUP 15 needs its own org (G15_ORG); ultra plan saturates with accumulated members from prior groups; DB constraint test must use same org_id as first insert ($2=G15_ORG not ORG)
 - [Lot 4B audit findings](lot4b-audit-findings.md) — P0: behavior_events/sessions/traffic_losses RLS=(true), getRevenueLeakData ignores siteUrl, getCROData superuser pool; P1: funnel steps 2-5 fake ratios, 27 PREVIEW_MODE occurrences, CRO templates not AI
 - [Drizzle schema vs actual DB mismatches](drizzle-schema-mismatches.md) — behaviorSessions/croScores/croExperiments/revenueLeaks had wrong columns; fixes required
+- [Wave 4 Part 1 — Acquisition routes](wave4-part1-acquisition.md) — analytics/traffic/campaigns thin-wrapper services + 12 endpoints; dashboard.js API modules pattern; QA orgs use user_sessions (not sessions), organizations lacks trial_ends_at
