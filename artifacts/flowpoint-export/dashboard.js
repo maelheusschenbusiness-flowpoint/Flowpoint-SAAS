@@ -7652,15 +7652,12 @@ function renderBilling() {
       if (!key) { fpGoToPricing(); return; }
       showToast('info', 'Chargement…');
       try {
-        const _resp = await fetch('/api/billing/addon-checkout', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ addonKey: key, addonName: _a.name, price: _a.price || '' })
-        });
-        const _data = await _resp.json();
-        if (_resp.ok && _data.url) { window.location.href = _data.url; }
-        else { showToast('error', _data.message || _data.error || 'Erreur activation'); }
+        const cart = { plan: null, addons: {}, fromDashboard: true };
+        cart.addons[key] = 1;
+        const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
+        Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
+        localStorage.setItem('fp_cart', JSON.stringify(cart));
+        window.location.href = 'https://app.flowpoint.pro/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
     };
     window._fpAllAddons = allAddons;
@@ -12147,28 +12144,13 @@ async function fpGoToPricing(targetPlan) {
     return;
   }
   showToast('Chargement du parcours upgrade…', 'loading');
-  try {
-    const r = await apiFetch('/api/billing/upgrade', { method: 'POST', body: JSON.stringify({ plan }) });
-    if (r && r.url) {
-      window.location.href = r.url;
-      return;
-    }
-    if (r && r.upgraded) {
-      showToast('Plan mis à jour vers ' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' !', 'success');
-      if (STATE.billing) STATE.billing.plan = plan;
-      setTimeout(function() { loadBillingState && loadBillingState(); }, 800);
-      return;
-    }
-    if (r && r.error === 'plan_already_active') {
-      showToast('Ce plan est déjà actif.', 'info');
-      return;
-    }
-    showToast((r && (r.message || r.error)) || 'Erreur lors de l\'upgrade.', 'error');
-  } catch (e) {
-    showToast('Erreur réseau lors de l\'upgrade.', 'error');
-  }
+  // Redirect to pricing.html with pre-selected plan + active addons
+  const cart = { plan: plan, addons: {}, fromDashboard: true };
+  const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
+  Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
+  try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
+  window.location.href = 'https://app.flowpoint.pro/pricing.html?from=dashboard&plan=' + encodeURIComponent(plan);
 }
-window.fpGoToPricing = fpGoToPricing;
 
 function navigate(route, subRoute) {
   const _n = normalizeRoute(route, subRoute || null);
@@ -13825,32 +13807,18 @@ function bindSectionEvents() {
             const plan = checkBtn.dataset.checkoutPlan;
             checkBtn.disabled = true;
             checkBtn.textContent = 'Redirection…';
-            showToast('info', 'Ouverture du paiement Stripe…');
+            showToast('info', 'Ouverture de la page tarifs…');
             try {
-              const subStatus = STATE.me?.subscriptionStatus;
-              const isActiveSub = subStatus === 'active' || subStatus === 'trialing';
-              const endpoint = isActiveSub ? '/api/billing/upgrade' : '/api/billing/checkout';
-              const res = await apiAction('POST', endpoint, { plan });
-              if (res?.url) {
-                window.location.href = res.url;
-              } else if (res?.ok) {
-                showToast('success', 'Plan mis à jour avec succès');
-                setTimeout(() => window.location.reload(), 1200);
-              } else if (res?.error === 'plan_already_active') {
-                showToast('info', res.message || 'Ce plan est déjà votre plan actuel');
-                checkBtn.disabled = false;
-                checkBtn.textContent = 'Plan actuel';
-              } else {
-                showToast('error', 'Impossible de démarrer le paiement');
-                checkBtn.disabled = false;
-                checkBtn.textContent = 'Choisir';
-              }
+              const cart = { plan: plan, addons: {}, fromDashboard: true };
+              const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
+              Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
+              localStorage.setItem('fp_cart', JSON.stringify(cart));
+              window.location.href = 'https://app.flowpoint.pro/pricing.html?from=dashboard&plan=' + encodeURIComponent(plan);
             } catch(e) {
-              showToast('error', 'Erreur Stripe — réessayez');
+              showToast('error', 'Erreur de redirection — réessayez');
               checkBtn.disabled = false;
               checkBtn.textContent = 'Choisir';
             }
-          });
         });
       }, 80);
     });
@@ -32697,17 +32665,12 @@ window.FP_ADDONS_API = {
   },
 
   async buyCredits(pack) {
-    showToast('info', 'Redirection vers le paiement Stripe…');
+    showToast('info', 'Redirection vers la page tarifs…');
     try {
-      const r = await apiFetch('/api/billing/checkout-ai-credits', { method: 'POST', body: JSON.stringify({ pack }) });
-      if (r?.url) {
-        window.location.href = r.url;
-      } else if (r?.mock) {
-        showToast('success', `[Dev] Pack ${pack} — Stripe non configuré · ${(r.credits||0).toLocaleString('fr-FR')} crédits`);
-      } else {
-        showToast('error', r?.error || 'Erreur lors du paiement');
-      }
-      return r;
+      const cart = { plan: null, addons: {}, fromDashboard: true };
+      cart.addons[pack] = 1;
+      localStorage.setItem('fp_cart', JSON.stringify(cart));
+      window.location.href = 'https://app.flowpoint.pro/pricing.html?from=dashboard&addon=' + encodeURIComponent(pack);
     } catch(e) { showToast('error', String(e)); return null; }
   },
 };
