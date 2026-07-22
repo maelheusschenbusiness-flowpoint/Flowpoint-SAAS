@@ -34472,20 +34472,23 @@ window._fpReportsState = { loading: false, loaded: false, reports: null, error: 
 window._fpReportsAPI = {
   async load() {
     window._fpReportsState = { ...window._fpReportsState, loading: true, error: null };
-    render();
+    render(); // debounced — shows skeleton while fetching
     try {
       const data = await apiFetch('/api/reports');
       window._fpReportsState = { loading: false, loaded: true, reports: Array.isArray(data) ? data : [], error: null };
     } catch(e) {
       window._fpReportsState = { ...window._fpReportsState, loading: false, loaded: true, error: e.message || String(e) };
     }
-    render();
+    // Cancel any pending debounced render and fire immediately so the
+    // freshly-loaded list is visible without waiting for the 30ms timer.
+    if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+    _doRender();
   },
   async create(payload) {
     try {
       const r = await apiFetch('/api/reports', { method: 'POST', body: JSON.stringify(payload || {}) });
       showToast('success', 'Rapport créé !');
-      await this.load();
+      await this.load(); // reload from API, then _doRender() inside load()
       return r;
     } catch(e) { showToast('error', 'Erreur création rapport'); return null; }
   },
@@ -34494,7 +34497,7 @@ window._fpReportsAPI = {
     try {
       await apiFetch('/api/reports/' + id, { method: 'DELETE' });
       showToast('success', 'Rapport supprimé');
-      await this.load();
+      await this.load(); // reload from API, then _doRender() inside load()
     } catch(e) { showToast('error', 'Erreur suppression'); }
   },
   async share(id) {
