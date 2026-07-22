@@ -12320,7 +12320,7 @@ function _doRender() {
     case 'missions':       html = renderMissions(); break;
     case 'audits':         html = renderAudits(); break;
     case 'monitors':       html = renderMonitors(); break;
-    case 'reports':        html = renderReports(); break;
+    case 'reports':        html = renderGA4Reports(); break;
     case 'local-seo':      html = renderLocalSEO(); break;
     case 'team':           html = renderTeam(); break;
     case 'billing':        html = renderBilling(); break;
@@ -12331,8 +12331,8 @@ function _doRender() {
     case 'conversion':     html = renderGA4Conversion(); break;
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
-    case 'data-explorer':  html = renderDataExplorer(); break;
-    case 'client-mode':    html = renderClientMode(); break;
+    case 'data-explorer':  html = renderGA4DataExplorer(); break;
+    case 'client-mode':    html = renderGA4ClientMode(); break;
     case 'analytics':      html = renderGA4Analytics(); break;
     case 'traffic':        html = renderGA4Traffic(); break;
     case 'funnels':        html = renderGA4Funnels(); break;
@@ -34389,5 +34389,604 @@ window.FP_CONNECTORS_API = {
     return !!(conn && (conn.connected || conn.status === 'connected' || conn.status === 'active'));
   },
 };
+
+// ══════════════════════════════════════════════════════════════════════
+// DATA EXPLORER API MODULE — real data from /api/data-explorer/*
+// No synthetic values. No Math.random(). No PREVIEW_MODE.
+// ══════════════════════════════════════════════════════════════════════
+window._fpDEState = { loading: false, loaded: false, source: 'audits', days: 30, limit: 50, offset: 0, sort: null, sortDir: 'desc', filter: '', data: null, sources: null, error: null };
+
+window._fpDataExplorerAPI = {
+  async loadSources() {
+    try {
+      const s = await apiFetch('/api/data-explorer/sources').catch(() => null);
+      if (Array.isArray(s)) { window._fpDEState.sources = s; render(); }
+    } catch(e) { console.warn('[DE] sources error', e); }
+  },
+  async query(opts) {
+    const st = window._fpDEState;
+    const source = (opts && opts.source) || st.source || 'audits';
+    const days   = (opts && opts.days)   || st.days   || 30;
+    const limit  = (opts && opts.limit)  || st.limit  || 50;
+    const offset = (opts && opts.offset != null ? opts.offset : st.offset) || 0;
+    const sort   = (opts && opts.sort)   || st.sort   || '';
+    const sortDir = (opts && opts.sortDir)|| st.sortDir|| 'desc';
+    const filter  = (opts && opts.filter != null ? opts.filter : st.filter) || '';
+    window._fpDEState = { ...window._fpDEState, loading: true, source, days, limit, offset, sort, sortDir, filter, error: null };
+    render();
+    try {
+      const params = new URLSearchParams({ source, days: String(days), limit: String(limit), offset: String(offset) });
+      if (sort) params.set('sort', sort);
+      params.set('sortDir', sortDir);
+      if (filter) params.set('filter', filter);
+      const data = await apiFetch('/api/data-explorer/query?' + params.toString());
+      window._fpDEState = { ...window._fpDEState, loading: false, loaded: true, data, error: null };
+    } catch(e) {
+      window._fpDEState = { ...window._fpDEState, loading: false, loaded: true, error: e.message || String(e) };
+    }
+    render();
+  },
+  async loadAll(source) {
+    if (!window._fpDEState.sources) await this.loadSources();
+    await this.query({ source: source || window._fpDEState.source });
+  },
+  setSource(source) { this.query({ source, offset: 0 }); },
+  setDays(days) { this.query({ days: parseInt(days, 10), offset: 0 }); },
+  setFilter(filter) { this.query({ filter, offset: 0 }); },
+  setSort(col) {
+    const st = window._fpDEState;
+    const dir = (st.sort === col && st.sortDir === 'desc') ? 'asc' : 'desc';
+    this.query({ sort: col, sortDir: dir });
+  },
+  nextPage() {
+    const st = window._fpDEState;
+    const newOffset = (st.offset || 0) + (st.limit || 50);
+    if (st.data && newOffset < (st.data.total || 0)) this.query({ offset: newOffset });
+  },
+  prevPage() {
+    const st = window._fpDEState;
+    const newOffset = Math.max(0, (st.offset || 0) - (st.limit || 50));
+    this.query({ offset: newOffset });
+  },
+  exportData(format) {
+    const st = window._fpDEState;
+    const params = new URLSearchParams({ source: st.source || 'audits', days: String(st.days || 30), format: format || 'csv' });
+    if (st.filter) params.set('filter', st.filter);
+    const token = (window.STATE && STATE.token) ? STATE.token : (localStorage.getItem('fp_token') || '');
+    const a = document.createElement('a');
+    a.href = '/api/data-explorer/export?' + params.toString();
+    a.download = 'data-explorer-' + st.source + '.' + (format || 'csv');
+    if (token) a.href += '&__token=' + encodeURIComponent(token);
+    a.click();
+    showToast('info', 'Export ' + (format || 'csv').toUpperCase() + ' en cours…');
+  },
+  refresh() { this.query(); },
+};
+
+// ══════════════════════════════════════════════════════════════════════
+// REPORTS API MODULE — fetch from /api/reports routes
+// No synthetic values. No Math.random(). No PREVIEW_MODE.
+// ══════════════════════════════════════════════════════════════════════
+window._fpReportsState = { loading: false, loaded: false, reports: null, error: null };
+
+window._fpReportsAPI = {
+  async load() {
+    window._fpReportsState = { ...window._fpReportsState, loading: true, error: null };
+    render();
+    try {
+      const data = await apiFetch('/api/reports');
+      window._fpReportsState = { loading: false, loaded: true, reports: Array.isArray(data) ? data : [], error: null };
+    } catch(e) {
+      window._fpReportsState = { ...window._fpReportsState, loading: false, loaded: true, error: e.message || String(e) };
+    }
+    render();
+  },
+  async create(payload) {
+    try {
+      const r = await apiFetch('/api/reports', { method: 'POST', body: JSON.stringify(payload || {}) });
+      showToast('success', 'Rapport créé !');
+      await this.load();
+      return r;
+    } catch(e) { showToast('error', 'Erreur création rapport'); return null; }
+  },
+  async delete(id, name) {
+    if (!confirm('Supprimer le rapport "' + (name || id) + '" ?')) return;
+    try {
+      await apiFetch('/api/reports/' + id, { method: 'DELETE' });
+      showToast('success', 'Rapport supprimé');
+      await this.load();
+    } catch(e) { showToast('error', 'Erreur suppression'); }
+  },
+  async share(id) {
+    try {
+      const r = await apiFetch('/api/reports/' + id + '/share', { method: 'POST', body: '{}' });
+      if (r && r.token) showToast('success', 'Rapport partagé — token : ' + r.token.slice(0, 8) + '…');
+      await this.load();
+      return r;
+    } catch(e) { showToast('error', 'Erreur partage'); return null; }
+  },
+  downloadPdf(id, name) {
+    const token = (window.STATE && STATE.token) ? STATE.token : (localStorage.getItem('fp_token') || '');
+    const a = document.createElement('a');
+    a.href = '/api/reports/' + id + '/download';
+    a.download = (name || 'rapport') + '.pdf';
+    a.click();
+    showToast('info', 'Téléchargement PDF…');
+  },
+  refresh() { return this.load(); },
+};
+
+// ══════════════════════════════════════════════════════════════════════
+// CLIENT MODE API MODULE — fetch from /api/client-mode/*
+// No synthetic values. No Math.random(). No PREVIEW_MODE.
+// ══════════════════════════════════════════════════════════════════════
+window._fpCMState = { loading: false, loaded: false, status: null, kpis: null, reports: null, audits: null, error: null };
+
+window._fpClientModeAPI = {
+  async loadAll() {
+    window._fpCMState = { ...window._fpCMState, loading: true, error: null };
+    render();
+    try {
+      const [status, kpis, reports, audits] = await Promise.all([
+        apiFetch('/api/client-mode/status').catch(() => null),
+        apiFetch('/api/client-mode/kpis').catch(() => null),
+        apiFetch('/api/client-mode/reports').catch(() => []),
+        apiFetch('/api/client-mode/audits').catch(() => []),
+      ]);
+      window._fpCMState = { loading: false, loaded: true, status, kpis, reports: Array.isArray(reports) ? reports : [], audits: Array.isArray(audits) ? audits : [], error: null };
+    } catch(e) {
+      window._fpCMState = { ...window._fpCMState, loading: false, loaded: true, error: e.message || String(e) };
+    }
+    render();
+  },
+  refresh() { return this.loadAll(); },
+};
+
+// ══════════════════════════════════════════════════════════════════════
+// renderGA4DataExplorer — Data Explorer real data
+// ══════════════════════════════════════════════════════════════════════
+function renderGA4DataExplorer() {
+  const st = window._fpDEState || {};
+  if (!st.loaded && !st.loading) setTimeout(() => window._fpDataExplorerAPI.loadAll(), 60);
+
+  const sources = st.sources || [];
+  const data = st.data;
+  const sub = STATE.subRoute;
+
+  const sourceLabel = (src) => {
+    const found = sources.find(s => s.source === src);
+    return found ? found.label : src;
+  };
+
+  const sourcesByCategory = sources.reduce((acc, s) => {
+    (acc[s.category] = acc[s.category] || []).push(s);
+    return acc;
+  }, {});
+
+  const header = `
+    <div class="fp-section-header" style="margin-bottom:16px">
+      <div>
+        <h1 style="font-size:22px;font-weight:800;color:var(--fp-text)">🔍 Data Explorer</h1>
+        <p style="font-size:12px;color:var(--fp-text-muted);margin-top:2px">Explorez vos données GA4, Search Console et FlowPoint en temps réel</p>
+      </div>
+    </div>`;
+
+  if (st.loading && !data) {
+    return header + `
+      <div style="display:flex;flex-direction:column;gap:12px">
+        ${Array.from({length:3},()=>'<div class="fp-skel-block" style="height:64px;border-radius:10px"></div>').join('')}
+        <div class="fp-skel-block" style="height:240px;border-radius:10px"></div>
+      </div>`;
+  }
+
+  if (st.error && !data) {
+    return header + `
+      <div style="text-align:center;padding:60px 20px">
+        <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+        <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:6px">Erreur de chargement</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${escHtml(String(st.error))}</div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpDataExplorerAPI.refresh()">🔄 Réessayer</button>
+      </div>`;
+  }
+
+  const controlsRow = `
+    <div class="fp-card fp-mb-20" style="padding:12px 16px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <div style="flex:1;min-width:200px">
+          <label style="font-size:10px;font-weight:600;color:var(--fp-text-faint);display:block;margin-bottom:4px">SOURCE DE DONNÉES</label>
+          <select class="fp-select" style="width:100%;font-size:12px" onchange="window._fpDataExplorerAPI.setSource(this.value)">
+            ${Object.entries(sourcesByCategory).map(([cat, srcs]) => `
+              <optgroup label="${escHtml(cat)}">
+                ${srcs.map(s => `<option value="${escHtml(s.source)}" ${s.source === (st.source||'audits') ? 'selected' : ''}>${escHtml(s.label)}</option>`).join('')}
+              </optgroup>
+            `).join('')}
+            ${sources.length === 0 ? `<option value="audits" selected>Audits SEO</option><option value="monitors">Monitors uptime</option><option value="missions">Missions</option>` : ''}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:600;color:var(--fp-text-faint);display:block;margin-bottom:4px">PÉRIODE</label>
+          <select class="fp-select" style="font-size:12px" onchange="window._fpDataExplorerAPI.setDays(this.value)">
+            <option value="7"  ${(st.days||30)===7  ?'selected':''}>7 jours</option>
+            <option value="30" ${(st.days||30)===30 ?'selected':''}>30 jours</option>
+            <option value="90" ${(st.days||30)===90 ?'selected':''}>90 jours</option>
+            <option value="180"${(st.days||30)===180?'selected':''}>6 mois</option>
+            <option value="365"${(st.days||30)===365?'selected':''}>12 mois</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:160px">
+          <label style="font-size:10px;font-weight:600;color:var(--fp-text-faint);display:block;margin-bottom:4px">FILTRE</label>
+          <input class="fp-input" style="width:100%;font-size:12px" placeholder="Filtrer les résultats…" value="${escHtml(st.filter||'')}" oninput="clearTimeout(window._fpDEFilterTimer);window._fpDEFilterTimer=setTimeout(()=>window._fpDataExplorerAPI.setFilter(this.value),500)"/>
+        </div>
+        <div style="display:flex;gap:6px;align-items:flex-end">
+          <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpDataExplorerAPI.refresh()" ${st.loading?'disabled':''}>
+            ${st.loading?'<span style="opacity:0.7">⏳ Chargement…</span>':'🔄 Actualiser'}
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  const exportRow = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:12px;color:var(--fp-text-muted)">
+        ${data ? `<strong>${data.total}</strong> résultat${data.total>1?'s':''} — <span style="color:var(--fp-text-faint)">${escHtml(sourceLabel(st.source||'audits'))}</span>` : ''}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpDataExplorerAPI.exportData('csv')">⬇ CSV</button>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpDataExplorerAPI.exportData('json')">⬇ JSON</button>
+      </div>
+    </div>`;
+
+  if (!data || !data.rows) {
+    return header + controlsRow + `
+      <div style="text-align:center;padding:60px 20px;background:var(--fp-card);border-radius:var(--fp-radius-lg);border:1px solid var(--fp-border)">
+        <div style="font-size:36px;margin-bottom:12px">🔍</div>
+        <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:6px">Sélectionnez une source de données</div>
+        <div style="font-size:12px;color:var(--fp-text-muted)">Choisissez une source ci-dessus pour explorer vos données</div>
+      </div>`;
+  }
+
+  if (data.rows.length === 0) {
+    return header + controlsRow + exportRow + `
+      <div style="text-align:center;padding:60px 20px;background:var(--fp-card);border-radius:var(--fp-radius-lg);border:1px solid var(--fp-border)">
+        <div style="font-size:36px;margin-bottom:12px">📭</div>
+        <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:6px">Aucune donnée disponible</div>
+        <div style="font-size:12px;color:var(--fp-text-muted)">
+          ${st.filter ? 'Aucun résultat pour ce filtre.' : 'Aucune donnée pour cette source sur la période sélectionnée.'}
+        </div>
+        ${st.filter ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:12px" onclick="window._fpDataExplorerAPI.setFilter('')">Réinitialiser le filtre</button>` : ''}
+      </div>`;
+  }
+
+  const cols = data.columns || [];
+  const rows = data.rows || [];
+  const total = data.total || rows.length;
+  const limit = st.limit || 50;
+  const offset = st.offset || 0;
+  const page = Math.floor(offset / limit) + 1;
+  const totalPages = Math.ceil(total / limit);
+
+  const tableHtml = `
+    <div class="fp-card fp-mb-20">
+      ${exportRow}
+      <div style="overflow-x:auto">
+        <table class="fp-data-table">
+          <thead>
+            <tr>
+              ${cols.map(col => {
+                const isActive = st.sort === col.key;
+                const icon = isActive ? (st.sortDir === 'asc' ? '↑' : '↓') : '↕';
+                return `<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="window._fpDataExplorerAPI.setSort('${escHtml(col.key)}')">
+                  ${escHtml(col.label)} <span style="opacity:${isActive?1:0.4};font-size:10px">${icon}</span>
+                </th>`;
+              }).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(row => `
+              <tr>
+                ${cols.map(col => {
+                  const v = row[col.key];
+                  const isNum = col.type === 'number';
+                  const disp = v == null ? '<span style="color:var(--fp-text-faint)">—</span>' : escHtml(String(typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString('fr-FR') : v.toLocaleString('fr-FR', {maximumFractionDigits:2})) : v));
+                  return `<td style="text-align:${isNum?'right':'left'};font-variant-numeric:tabular-nums">${disp}</td>`;
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${totalPages > 1 ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--fp-border)">
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" ${page<=1?'disabled':''} onclick="window._fpDataExplorerAPI.prevPage()">← Précédent</button>
+          <span style="font-size:12px;color:var(--fp-text-muted)">Page ${page} / ${totalPages} — ${total} résultats</span>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" ${page>=totalPages?'disabled':''} onclick="window._fpDataExplorerAPI.nextPage()">Suivant →</button>
+        </div>
+      ` : `<div style="margin-top:10px;font-size:11px;color:var(--fp-text-faint);text-align:right">${total} résultat${total>1?'s':''}</div>`}
+    </div>`;
+
+  return header + controlsRow + tableHtml;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// renderGA4Reports — Reports real data from /api/reports
+// ══════════════════════════════════════════════════════════════════════
+function renderGA4Reports() {
+  if (STATE.loading) {
+    return `<div class="fp-skeleton-page">
+      <div class="fp-skel-block" style="height:48px;margin-bottom:20px"></div>
+      <div class="fp-skel-block" style="height:52px;margin-bottom:20px"></div>
+      ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:72px;margin-bottom:8px"></div>').join('')}
+    </div>`;
+  }
+
+  const st = window._fpReportsState || {};
+  if (!st.loaded && !st.loading) setTimeout(() => window._fpReportsAPI.load(), 60);
+
+  const sub = STATE.subRoute;
+  const plan = STATE.me?.plan || 'Standard';
+  const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+
+  const header = `
+    <div class="fp-section-header" style="margin-bottom:16px">
+      <div><h1 style="font-size:22px;font-weight:800;color:var(--fp-text)">📄 Rapports</h1>
+      <p style="font-size:12px;color:var(--fp-text-muted);margin-top:2px">Générez, gérez et partagez vos rapports SEO</p></div>
+      <div style="display:flex;gap:8px">
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpReportsAPI.refresh()" ${st.loading?'disabled':''}>🔄 Actualiser</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpReportsAPI.create({name:'Rapport SEO — '+new Date().toLocaleDateString('fr-FR'),format:'PDF'})">+ Nouveau rapport</button>
+      </div>
+    </div>`;
+
+  if (st.loading && !st.reports) {
+    return header + `<div style="display:flex;flex-direction:column;gap:10px">
+      ${Array.from({length:4},()=>'<div class="fp-skel-block" style="height:72px;border-radius:10px"></div>').join('')}
+    </div>`;
+  }
+
+  if (st.error && !st.reports) {
+    return header + `
+      <div style="text-align:center;padding:60px 20px">
+        <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+        <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:6px">Erreur de chargement</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${escHtml(String(st.error||'Erreur inconnue'))}</div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpReportsAPI.refresh()">🔄 Réessayer</button>
+      </div>`;
+  }
+
+  const reports = st.reports || STATE.reports || [];
+
+  if (reports.length === 0) {
+    return header + `
+      <div style="text-align:center;padding:80px 20px;background:var(--fp-card);border-radius:var(--fp-radius-lg);border:1px solid var(--fp-border)">
+        <div style="font-size:48px;margin-bottom:14px">📄</div>
+        <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucun rapport généré</div>
+        <div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px">Créez votre premier rapport pour partager vos résultats SEO avec vos clients ou votre équipe.</div>
+        <button class="fp-btn fp-btn-primary" onclick="window._fpReportsAPI.create({name:'Rapport SEO — '+new Date().toLocaleDateString('fr-FR'),format:'PDF'})">Créer le premier rapport</button>
+      </div>`;
+  }
+
+  const shared = reports.filter(r => r.shared || r.isShared).length;
+  const recent = reports[0];
+
+  const statsRow = `
+    <div class="fp-stat-row fp-mb-20">
+      ${statCard('Rapports totaux', String(reports.length), 'générés', 'neutral')}
+      ${statCard('Partagés', String(shared), 'avec vos clients', shared > 0 ? 'up' : 'neutral')}
+      ${statCard('Dernier rapport', recent ? new Date(recent.date || recent.createdAt || Date.now()).toLocaleDateString('fr-FR') : '—', recent ? escHtml(String(recent.name || '').slice(0, 30)) : 'Aucun rapport', 'neutral')}
+      ${statCard('Types PDF', String(reports.filter(r => (r.type||r.format||'PDF').toUpperCase()==='PDF').length), 'téléchargeables', 'neutral')}
+    </div>`;
+
+  const historyHtml = `
+    <div class="fp-card fp-mb-20">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div class="fp-card-title" style="margin-bottom:0">
+          ${svgIcon('file-text').replace('stroke="currentColor"','stroke="#2563EB"')}
+          Historique des rapports
+        </div>
+        ${st.loading ? '<span style="font-size:11px;color:var(--fp-text-faint)">Mise à jour…</span>' : ''}
+      </div>
+      <div style="overflow-x:auto">
+        <table class="fp-data-table">
+          <thead><tr>
+            <th>Nom du rapport</th>
+            <th style="text-align:center">Type</th>
+            <th style="text-align:center">Date</th>
+            <th style="text-align:center">Partagé</th>
+            <th style="text-align:center">Pages</th>
+            <th style="text-align:center">Actions</th>
+          </tr></thead>
+          <tbody>
+            ${reports.map(r => {
+              const rId = r.id || r._id || '';
+              const rName = String(r.name || r.title || 'Rapport');
+              const rType = String(r.type || r.format || 'PDF').toUpperCase();
+              const rDate = r.date ? new Date(r.date).toLocaleDateString('fr-FR') : r.createdAt ? new Date(r.createdAt).toLocaleDateString('fr-FR') : '—';
+              const rShared = !!(r.shared || r.isShared);
+              const rPages = r.pages != null ? Number(r.pages) : null;
+              return `<tr>
+                <td style="font-weight:600;font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(rName)}">${escHtml(rName)}</td>
+                <td style="text-align:center">${badge(rType, rType==='PDF'?'#2563EB':'#475569')}</td>
+                <td style="text-align:center;color:var(--fp-text-faint);font-size:11px">${rDate}</td>
+                <td style="text-align:center">${badge(rShared?'Partagé':'Privé', rShared?'#22c55e':'#475569')}</td>
+                <td style="text-align:center;color:var(--fp-text-muted);font-size:11px">${rPages != null ? rPages : '—'}</td>
+                <td style="text-align:center">
+                  <div style="display:inline-flex;gap:4px">
+                    ${rId ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._fpReportsAPI.downloadPdf('${escHtml(rId)}','${escHtml(rName.replace(/'/g,"'"))}')">⬇ PDF</button>` : ''}
+                    ${rId && !rShared ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._fpReportsAPI.share('${escHtml(rId)}')">🔗 Partager</button>` : ''}
+                    ${rId ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px;color:#ef4444" onclick="window._fpReportsAPI.delete('${escHtml(rId)}','${escHtml(rName.replace(/'/g,"'"))}')">Suppr.</button>` : ''}
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  const quickCreateHtml = `
+    <div class="fp-card">
+      <div class="fp-card-title" style="margin-bottom:14px">⚡ Génération rapide</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+        ${[
+          { label: 'Rapport SEO mensuel', icon: '🔍', color: '#2563EB' },
+          { label: 'Rapport de monitoring', icon: '📊', color: '#22c55e' },
+          { label: 'Rapport Executive', icon: '📈', color: '#8b5cf6' },
+          { label: 'Export données complet', icon: '📦', color: '#f59e0b' },
+        ].map(t => `
+          <div style="padding:14px;border-radius:10px;border:1px solid ${t.color}25;background:${t.color}07;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="window._fpReportsAPI.create({name:'${escHtml(t.label)} — '+new Date().toLocaleDateString('fr-FR'),format:'PDF'})">
+            <span style="font-size:22px;flex-shrink:0">${t.icon}</span>
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--fp-text)">${escHtml(t.label)}</div>
+              <div style="font-size:10px;color:var(--fp-text-faint)">Générer maintenant</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+
+  return header + statsRow + historyHtml + quickCreateHtml;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// renderGA4ClientMode — Client Mode real data from /api/client-mode/*
+// ══════════════════════════════════════════════════════════════════════
+function renderGA4ClientMode() {
+  const cmSt = window._fpCMState || {};
+  if (!cmSt.loaded && !cmSt.loading) setTimeout(() => window._fpClientModeAPI.loadAll(), 60);
+
+  const sub = STATE.subRoute;
+  const plan = STATE.me?.plan || 'Standard';
+  const isPro = plan === 'Pro' || plan === 'Agency' || plan === 'Ultra';
+
+  const header = `
+    <div class="fp-section-header" style="margin-bottom:16px">
+      <div>
+        <h1 style="font-size:22px;font-weight:800;color:var(--fp-text)">👔 Mode Client</h1>
+        <p style="font-size:12px;color:var(--fp-text-muted);margin-top:2px">Espace de consultation en lecture seule pour vos clients</p>
+      </div>
+      <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpClientModeAPI.refresh()">🔄 Actualiser</button>
+    </div>`;
+
+  if (cmSt.loading && !cmSt.kpis) {
+    return header + `<div style="display:flex;flex-direction:column;gap:12px">
+      <div class="fp-skel-block" style="height:56px;border-radius:10px"></div>
+      <div class="fp-skel-block" style="height:120px;border-radius:10px"></div>
+      <div class="fp-skel-block" style="height:200px;border-radius:10px"></div>
+    </div>`;
+  }
+
+  if (cmSt.error && !cmSt.kpis) {
+    return header + `
+      <div style="text-align:center;padding:60px 20px">
+        <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+        <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:6px">Erreur de chargement</div>
+        <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">${escHtml(String(cmSt.error||''))}</div>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpClientModeAPI.refresh()">🔄 Réessayer</button>
+      </div>`;
+  }
+
+  const kpis = cmSt.kpis || {};
+  const reports = cmSt.reports || [];
+  const audits = cmSt.audits || [];
+  const status = cmSt.status || {};
+  const perms = status.permissions || {};
+
+  const permsBanner = `
+    <div style="padding:12px 16px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:var(--fp-radius-lg);margin-bottom:20px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <span style="font-size:13px;font-weight:700;color:var(--fp-text)">🔒 Mode Client actif</span>
+      <span style="font-size:11px;color:var(--fp-text-muted)">Consultation uniquement — sans accès aux paramètres, à la facturation ni aux clés API</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto">
+        ${badge('Lecture seule','#22c55e')}
+        ${badge('Multi-tenant isolé','#2563EB')}
+        ${badge('Sans accès billing','#ef4444')}
+      </div>
+    </div>`;
+
+  const kpisRow = `
+    <div class="fp-stat-row fp-mb-20">
+      ${statCard('Score SEO moyen', kpis.avg_seo_score != null ? kpis.avg_seo_score + '/100' : '—', kpis.audit_count > 0 ? kpis.audit_count + ' site(s) audité(s)' : 'Aucun audit', kpis.avg_seo_score >= 70 ? 'up' : kpis.avg_seo_score > 0 ? 'neutral' : 'neutral')}
+      ${statCard('Disponibilité', kpis.avg_uptime != null ? kpis.avg_uptime + '%' : '—', kpis.monitor_count > 0 ? kpis.monitor_count + ' monitor(s)' : 'Aucun monitor', kpis.avg_uptime >= 99 ? 'up' : 'neutral')}
+      ${statCard('Missions', kpis.missions_total > 0 ? kpis.missions_done + '/' + kpis.missions_total : '—', kpis.missions_total > 0 ? 'complétées' : 'Aucune mission', 'neutral')}
+      ${statCard('Rapports partagés', String(kpis.reports_shared || reports.length), 'accessibles', 'neutral')}
+    </div>`;
+
+  const monitorsHtml = kpis.monitor_count > 0 ? `
+    <div class="fp-card fp-mb-20">
+      <div class="fp-card-title" style="margin-bottom:12px">🔔 Disponibilité des services</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:120px;padding:14px;border-radius:10px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#22c55e">${kpis.monitors_up || 0}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">En ligne</div>
+        </div>
+        <div style="flex:1;min-width:120px;padding:14px;border-radius:10px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);text-align:center">
+          <div style="font-size:22px;font-weight:800;color:${kpis.monitors_down>0?'#ef4444':'var(--fp-text-faint)'}">${kpis.monitors_down || 0}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Hors ligne</div>
+        </div>
+        <div style="flex:1;min-width:120px;padding:14px;border-radius:10px;background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.2);text-align:center">
+          <div style="font-size:22px;font-weight:800;color:#2563EB">${kpis.avg_uptime != null ? kpis.avg_uptime + '%' : '—'}</div>
+          <div style="font-size:11px;color:var(--fp-text-muted)">Uptime moyen</div>
+        </div>
+      </div>
+    </div>` : '';
+
+  const auditsHtml = audits.length > 0 ? `
+    <div class="fp-card fp-mb-20">
+      <div class="fp-card-title" style="margin-bottom:14px">📊 Audits SEO</div>
+      <div style="overflow-x:auto">
+        <table class="fp-data-table">
+          <thead><tr>
+            <th>Site</th>
+            <th style="text-align:center">Score</th>
+            <th style="text-align:center">Statut</th>
+            <th style="text-align:center">Date</th>
+          </tr></thead>
+          <tbody>
+            ${audits.map(a => {
+              const sc = Number(a.score) || 0;
+              const color = sc >= 80 ? '#22c55e' : sc >= 60 ? '#f59e0b' : '#ef4444';
+              return `<tr>
+                <td style="font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(String(a.url||''))}"><strong>${escHtml(String(a.url||'—').replace('https://',''))}</strong></td>
+                <td style="text-align:center;font-weight:800;color:${color}">${sc > 0 ? sc + '/100' : '—'}</td>
+                <td style="text-align:center">${badge(String(a.status||'done'), '#475569')}</td>
+                <td style="text-align:center;color:var(--fp-text-faint);font-size:11px">${escHtml(String(a.date||'—'))}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : `
+    <div class="fp-card fp-mb-20" style="text-align:center;padding:32px">
+      <div style="font-size:24px;margin-bottom:8px">📊</div>
+      <div style="font-size:13px;color:var(--fp-text-muted)">Aucun audit disponible pour ce client.</div>
+    </div>`;
+
+  const reportsHtml = `
+    <div class="fp-card">
+      <div class="fp-card-title" style="margin-bottom:14px">📄 Rapports partagés</div>
+      ${reports.length === 0
+        ? `<div style="text-align:center;padding:32px;color:var(--fp-text-muted);font-size:13px">Aucun rapport partagé disponible.</div>`
+        : `<div style="overflow-x:auto">
+          <table class="fp-data-table">
+            <thead><tr>
+              <th>Rapport</th>
+              <th style="text-align:center">Type</th>
+              <th style="text-align:center">Date</th>
+              <th style="text-align:center">Télécharger</th>
+            </tr></thead>
+            <tbody>
+              ${reports.map(r => `<tr>
+                <td style="font-weight:600;font-size:11px">${escHtml(String(r.name||'—'))}</td>
+                <td style="text-align:center">${badge(String(r.type||'PDF').toUpperCase(), '#2563EB')}</td>
+                <td style="text-align:center;color:var(--fp-text-faint);font-size:11px">${escHtml(String(r.date||'—'))}</td>
+                <td style="text-align:center">
+                  ${r.id ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="font-size:10px" onclick="window._fpReportsAPI.downloadPdf('${escHtml(String(r.id))}','${escHtml(String(r.name||'rapport').replace(/'/g,"'"))}')">⬇ PDF</button>` : '<span style="color:var(--fp-text-faint);font-size:11px">—</span>'}
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`}
+    </div>`;
+
+  return header + permsBanner + kpisRow + monitorsHtml + auditsHtml + reportsHtml;
+}
 
 })(); // end IIFE
