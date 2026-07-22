@@ -383,9 +383,14 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
       if (msg.startsWith("RESEND_API_KEY_MISSING")) {
         res.status(503).json({ error: "Service email non configuré." });
       } else if (msg.startsWith("DOMAIN_NOT_VERIFIED")) {
-        res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019e-mail\u00a0: configuration Resend invalide (domaine expéditeur non vérifié)." });
+        // 503 = service unavailable (external config issue, not internal error)
+        res.status(503).json({
+          error: "Service email indisponible\u00a0: le domaine expéditeur n\u2019est pas vérifié dans Resend.",
+          hint:  "Vérifiez les enregistrements DNS (SPF, DKIM) pour le domaine configuré dans RESEND_FROM.",
+          from:  process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>",
+        });
       } else {
-        res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019e-mail\u00a0: " + msg.substring(0, 120) });
+        res.status(503).json({ error: "Service email temporairement indisponible\u00a0: " + msg.substring(0, 120) });
       }
     }
     return;

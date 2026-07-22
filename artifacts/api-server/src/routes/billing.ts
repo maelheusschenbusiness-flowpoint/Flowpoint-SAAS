@@ -714,11 +714,12 @@ router.get("/billing/usage-details", async (req: Request, res: Response): Promis
   } catch { /* reports table may not exist yet */ }
 
   try {
+    // Count active members only (mirrors /team getSeatUsage: 1 owner + active members)
     const r = await req.orgDb(
-      `SELECT COUNT(*) FROM team_members WHERE org_id = $1`,
+      `SELECT COUNT(*) FROM team_members WHERE org_id = $1 AND status = 'active'`,
       [orgId]
     );
-    teamMembersUsed = Math.max(1, Number(r.rows[0]?.count ?? 1));
+    teamMembersUsed = 1 + Number(r.rows[0]?.count ?? 0); // 1 = owner always counts
   } catch { /* team_members table may not exist yet */ }
 
   res.json({

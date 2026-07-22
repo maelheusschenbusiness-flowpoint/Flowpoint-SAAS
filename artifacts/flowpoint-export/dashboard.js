@@ -97,6 +97,7 @@ const STATE = {
   aiMessages: [],
   aiLoading: false,
   aiCredits: null,
+  aiProvider: 'openai',
   checklistExtra: {},
   ctxMenu: null,
   floatPanel: null,
@@ -10869,11 +10870,10 @@ function renderAI() {
         <div class="fp-section-sub"><span style="color:#2563EB;font-weight:700">IA Performante</span> · Contexte complet workspace · Réponses &lt; 3s</div>
       </div>
       <div class="fp-section-actions">
-        <select class="fp-select" style="font-size:11px;color:#2563EB;font-weight:700;border-color:rgba(37,99,235,0.4);background:rgba(37,99,235,0.06)" onchange="(function(sel){const v=sel.options[sel.selectedIndex].text;const labels={'ChatGPT':'GPT-5','Claude (Anthropic)':'Claude','Gemini (Google)':'Gemini','Mistral':'Mistral'};const badge=labels[v]||v;STATE.aiModel=badge;const b=document.getElementById('fp-ai-badge');if(b)b.textContent=badge;const s=document.getElementById('fp-ai-chat-model-label');if(s)s.textContent=badge+' · FlowPoint Expert';showToast('success','Modèle IA : '+v)})(this)">
-          <option selected>ChatGPT</option>
-          <option>Claude (Anthropic)</option>
-          <option>Gemini (Google)</option>
-          <option>Mistral</option>
+        <select class="fp-select" style="font-size:11px;color:#2563EB;font-weight:700;border-color:rgba(37,99,235,0.4);background:rgba(37,99,235,0.06)" onchange="(function(sel){const v=sel.options[sel.selectedIndex].value;const labels={openai:'GPT-5',anthropic:'Claude',gemini:'Gemini'};const badge=labels[v]||v;STATE.aiModel=badge;STATE.aiProvider=v;const b=document.getElementById('fp-ai-badge');if(b)b.textContent=badge;const s=document.getElementById('fp-ai-chat-model-label');if(s)s.textContent=badge+' · FlowPoint Expert';showToast('success','Modèle IA : '+badge)})(this)">
+          <option value="openai" selected>ChatGPT</option>
+          <option value="anthropic">Claude (Anthropic)</option>
+          <option value="gemini">Gemini (Google)</option>
         </select>
         ${btn('Nouvelle conv.','fp-btn fp-btn-ghost fp-btn-sm','','onclick="STATE.aiMessages=[];updateAIUI();render()"')}
       </div>
@@ -11155,7 +11155,7 @@ async function sendAIMessage(text) {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, context, stream: true, history }),
+      body: JSON.stringify({ message: text, context, stream: true, history, ...(STATE.aiProvider && STATE.aiProvider !== 'openai' ? { provider: STATE.aiProvider } : {}) }),
     });
 
     if (!resp.ok || !resp.body) {

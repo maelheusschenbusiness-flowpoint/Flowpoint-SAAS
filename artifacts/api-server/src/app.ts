@@ -181,6 +181,35 @@ app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
 // express.static only intercepts actual files, so /api/* routes are never blocked.
 const dashboardDir = path.resolve(__dirname, "../../flowpoint-export");
 
+// ── CSP for HTML pages ────────────────────────────────────────────────────────
+// Applied only to HTML page responses — NOT to JSON API responses.
+// The API server uses helmet({ contentSecurityPolicy: false }) because
+// API JSON responses don't need CSP.  HTML pages served to browsers do.
+//
+// Directive rationale:
+//  script-src   'unsafe-inline' required: dashboard.js uses many inline onclick=
+//               handlers.  'unsafe-eval' required: no dynamic eval in current
+//               code but Stripe.js and Google Maps need it.
+//  style-src    'unsafe-inline': inline style attributes throughout dashboard.
+//  img-src      data: for inline SVG/base64, blob: for canvas export.
+//  connect-src  self + Stripe API + Google APIs (Maps, GSC) + Resend CDN.
+//  frame-src    Stripe payment iframes.
+//  object-src   'none': block Flash/plugins.
+//  base-uri     'self': prevent base tag injection.
+//  form-action  'self': prevent form hijacking.
+const CSP_HTML = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://maps.googleapis.com https://*.replit.dev https://*.replit.app",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https: http:",
+  "connect-src 'self' https://api.stripe.com https://maps.googleapis.com https://maps.gstatic.com https://fonts.googleapis.com https://*.onrender.com https://*.replit.dev https://*.replit.app https://api.resend.com",
+  "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join("; ");
+
 // ── HTML page helpers ─────────────────────────────────────────────────────────
 function servePage(file: string) {
   return (_req: Request, res: Response): void => {
@@ -189,6 +218,7 @@ function servePage(file: string) {
       const html = fs.readFileSync(htmlPath, "utf8");
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Content-Security-Policy", CSP_HTML);
       res.send(html);
     } catch {
       res.status(500).send(`${file} not found`);

@@ -65,6 +65,44 @@ async function main() {
   //    Throws on any failure: missing tables = broken AI routes.
   await runCriticalStartupStep("AI migration", initAiMigration);
 
+  // ── Optional: Resend email config check (non-blocking, log only) ─────────────
+  // Helps diagnose DOMAIN_NOT_VERIFIED errors at startup rather than at send-time.
+  (async () => {
+    const resendKey  = process.env["RESEND_API_KEY"];
+    const resendFrom = process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>";
+    if (!resendKey) {
+      logger.warn("[Resend] RESEND_API_KEY is not set — magic-link emails will fail (503)");
+      return;
+    }
+    // Extract raw domain from "Name <addr@domain>" or "addr@domain"
+    const addrMatch = resendFrom.match(/<([^>]+)>/) ?? resendFrom.match(/(\S+@\S+)/);
+    const fromAddr  = addrMatch?.[1] ?? resendFrom;
+    const domain    = fromAddr.split("@")[1] ?? "";
+    logger.info(`[Resend] Configured from="${resendFrom}" domain="${domain}" — verify SPF/DKIM in Resend dashboard if emails fail`);
+    // Light check: list Resend domains via API (does not send any email)
+    try {
+      const resp = await fetch("https://api.resend.com/domains", {
+        headers: { Authorization: `Bearer ${resendKey}` },
+      });
+      if (!resp.ok) {
+        logger.warn({ status: resp.status }, "[Resend] Could not list domains — check RESEND_API_KEY");
+        return;
+      }
+      const body = (await resp.json()) as { data?: Array<{ name: string; status: string }> };
+      const domains: Array<{ name: string; status: string }> = body.data ?? [];
+      const matched = domains.find(d => domain.endsWith(d.name));
+      if (!matched) {
+        logger.warn(`[Resend] Domain "${domain}" is NOT in your Resend account. Add and verify it (SPF + DKIM records in DNS) or set RESEND_FROM to a verified domain.`);
+      } else if (matched.status !== "verified") {
+        logger.warn(`[Resend] Domain "${matched.name}" found but status="${matched.status}" (not verified). Complete DNS verification to enable email delivery.`);
+      } else {
+        logger.info(`[Resend] Domain "${matched.name}" is verified ✓ — email delivery should work.`);
+      }
+    } catch {
+      logger.debug("[Resend] Domain check skipped (network error — non-critical)");
+    }
+  })();
+
   // ── All critical steps succeeded — safe to open port and start crons ────────
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
