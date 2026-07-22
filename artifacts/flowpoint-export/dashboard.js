@@ -34470,11 +34470,13 @@ window._fpDataExplorerAPI = {
 window._fpReportsState = { loading: false, loaded: false, reports: null, error: null };
 
 window._fpReportsAPI = {
-  async load() {
+  async load(opts) {
     window._fpReportsState = { ...window._fpReportsState, loading: true, error: null };
     render(); // debounced — shows skeleton while fetching
     try {
-      const data = await apiFetch('/api/reports');
+      // force:true clears _apiFetchCache + _apiFetchInFlight for /api/reports,
+      // guaranteeing a real network GET after any mutation (not stale cached data).
+      const data = await apiFetch('/api/reports', { force: !!(opts && opts.force) });
       window._fpReportsState = { loading: false, loaded: true, reports: Array.isArray(data) ? data : [], error: null };
     } catch(e) {
       window._fpReportsState = { ...window._fpReportsState, loading: false, loaded: true, error: e.message || String(e) };
@@ -34488,7 +34490,7 @@ window._fpReportsAPI = {
     try {
       const r = await apiFetch('/api/reports', { method: 'POST', body: JSON.stringify(payload || {}) });
       showToast('success', 'Rapport créé !');
-      await this.load(); // reload from API, then _doRender() inside load()
+      await this.load({ force: true }); // bypass cache — real GET after mutation
       return r;
     } catch(e) { showToast('error', 'Erreur création rapport'); return null; }
   },
@@ -34497,14 +34499,14 @@ window._fpReportsAPI = {
     try {
       await apiFetch('/api/reports/' + id, { method: 'DELETE' });
       showToast('success', 'Rapport supprimé');
-      await this.load(); // reload from API, then _doRender() inside load()
+      await this.load({ force: true }); // bypass cache — real GET after mutation
     } catch(e) { showToast('error', 'Erreur suppression'); }
   },
   async share(id) {
     try {
       const r = await apiFetch('/api/reports/' + id + '/share', { method: 'POST', body: '{}' });
       if (r && r.token) showToast('success', 'Rapport partagé — token : ' + r.token.slice(0, 8) + '…');
-      await this.load();
+      await this.load({ force: true }); // bypass cache — KPI partagés mis à jour immédiatement
       return r;
     } catch(e) { showToast('error', 'Erreur partage'); return null; }
   },
