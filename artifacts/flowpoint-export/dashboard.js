@@ -27585,6 +27585,67 @@ window._fpCampaignsAPI = {
   },
 };
 
+// ══════════════════════════════════════════════════════════════════════
+// AUDIENCE API MODULE — fetch from /api/audience/*
+// ══════════════════════════════════════════════════════════════════════
+window._fpAudienceState = {};
+
+window._fpAudienceAPI = {
+  async loadAll(days) {
+    const d = (Number.isInteger(days) && days > 0) ? days : 30;
+    window._fpAudienceState = { loading: true, loaded: false, data: window._fpAudienceState.data || null, error: null };
+    render();
+    try {
+      const res = await apiFetch(`/api/audience/overview?days=${d}`);
+      if (!res?.ok) throw new Error(res?.error || 'Erreur audience');
+      const payload = res.data || {};
+      const data = { audience: payload.audience || {}, overview: payload.overview || {}, source: 'ga4', connected: payload.connected };
+      window._fpAudienceState = { loading: false, loaded: true, data, error: null };
+    } catch(e) {
+      window._fpAudienceState = { loading: false, loaded: true, data: window._fpAudienceState.data, error: e.message || String(e) };
+    }
+    render();
+  },
+};
+
+// ══════════════════════════════════════════════════════════════════════
+// LIVE API MODULE — fetch from /api/live/* with 30s auto-poll + cleanup
+// ══════════════════════════════════════════════════════════════════════
+window._fpLiveState = {};
+let _fpLiveTimer = null;
+
+window._fpLiveAPI = {
+  async refresh() {
+    if (window.STATE?.subRoute !== 'live') { this.stopPolling(); return; }
+    window._fpLiveState = { loading: !window._fpLiveState.loaded, loaded: window._fpLiveState.loaded, data: window._fpLiveState.data || null, error: null };
+    try {
+      const res = await apiFetch('/api/live/realtime');
+      if (!res?.ok) throw new Error(res?.error || 'Erreur realtime');
+      const rtData = res.realtime || { activeUsers: 0, rows: [] };
+      window._fpLiveState = { loading: false, loaded: true, data: { realtime: rtData, connected: res.connected, source: 'ga4' }, error: null };
+      // Update DOM elements without full re-render to preserve scroll
+      const cntEl = document.getElementById('fp-live-count');
+      if (cntEl) { cntEl.textContent = String(rtData.activeUsers || 0); }
+      const tsEl = document.getElementById('fp-live-last-update');
+      if (tsEl) { tsEl.textContent = 'Dernière MAJ : ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+      if (!window._fpLiveState.loaded || cntEl === null) render();
+    } catch(e) {
+      window._fpLiveState = { loading: false, loaded: true, data: window._fpLiveState.data, error: e.message || String(e) };
+      render();
+    }
+  },
+  startPolling(ms) {
+    const interval = (typeof ms === 'number' && ms >= 5000) ? ms : 30000;
+    this.stopPolling();
+    this.refresh();
+    _fpLiveTimer = setInterval(() => window._fpLiveAPI.refresh(), interval);
+  },
+  stopPolling() {
+    if (_fpLiveTimer) { clearInterval(_fpLiveTimer); _fpLiveTimer = null; }
+  },
+  setInterval(ms) { this.startPolling(ms); },
+};
+
 // ── Loading / Error skeleton helpers ──────────────────────────────────────────
 function _fpAnaLoadingSkeleton() {
   return '<div class="fp-section-header"><div><h1>📊 Analytics GA4</h1><div class="fp-section-sub">Chargement des données…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement des Analytics en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
@@ -27603,6 +27664,18 @@ function _fpCampLoadingSkeleton() {
 }
 function _fpCampErrorSkeleton(err) {
   return '<div class="fp-section-header"><div><h1>📡 Campagnes &amp; Attribution</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||''))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpCampaignsAPI.loadAll()">🔄 Réessayer</button></div>';
+}
+function _fpAudLoadingSkeleton() {
+  return '<div class="fp-section-header"><div><h1>👥 Audience</h1><div class="fp-section-sub">Chargement des données…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement de l\'Audience en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
+}
+function _fpAudErrorSkeleton(err) {
+  return '<div class="fp-section-header"><div><h1>👥 Audience</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||''))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpAudienceAPI.loadAll()">🔄 Réessayer</button></div>';
+}
+function _fpLiveLoadingSkeleton() {
+  return '<div class="fp-section-header"><div><h1>Live Analytics</h1><div class="fp-section-sub">Chargement des données temps réel…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement Live en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
+}
+function _fpLiveErrorSkeleton(err) {
+  return '<div class="fp-section-header"><div><h1>Live Analytics</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||''))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpLiveAPI.startPolling()">🔄 Réessayer</button></div>';
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -28600,7 +28673,11 @@ function renderGA4Funnels() {
 // GA4 AUDIENCE
 // ══════════════════════════════════════════════════════════════════════
 function renderGA4Audience() {
-  const ga4 = window.FP_DATA?.ga4 || {};
+  const _audS = window._fpAudienceState || {};
+  if (!_audS.loaded && !_audS.loading) setTimeout(() => window._fpAudienceAPI?.loadAll(), 60);
+  if (_audS.loading && !_audS.data && !(window.FP_DATA?.ga4?.audience)) return _fpAudLoadingSkeleton();
+  if (_audS.error  && !_audS.data && !(window.FP_DATA?.ga4?.audience)) return _fpAudErrorSkeleton(_audS.error);
+  const ga4 = _audS.data || window.FP_DATA?.ga4 || {};
   const devRows = ga4.audience?.devices?.rows || [];
   const geoRows = ga4.audience?.geo?.rows || [];
   const nvr     = ga4.audience?.newVsReturn?.rows || [];
@@ -28623,9 +28700,13 @@ function renderGA4Audience() {
 
   return `
     <div class="fp-section-header">
-      <div><h1>👥 Audience</h1><div class="fp-section-sub">Profil des visiteurs — appareils, géographie, démographie</div></div>
+      <div><h1>👥 Audience</h1><div class="fp-section-sub">Profil des visiteurs — appareils, géographie, démographie — source : Google Analytics 4</div></div>
       <div class="fp-section-actions">
-        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.reload()">🔄 Actualiser</button>
+        <select onchange="window._fpAudienceAPI?.loadAll(parseInt(this.value))"
+          style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">
+          <option value="7">7 jours</option><option value="30" selected>30 jours</option><option value="90">90 jours</option>
+        </select>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpAudienceAPI?.loadAll()">🔄 Actualiser</button>
       </div>
     </div>
 
@@ -28895,7 +28976,11 @@ function renderGA4Campaigns() {
 // GA4 LIVE
 // ══════════════════════════════════════════════════════════════════════
 function renderGA4Live() {
-  const ga4 = window.FP_DATA?.ga4 || {};
+  const _liveS = window._fpLiveState || {};
+  if (!_liveS.loaded && !_liveS.loading) setTimeout(() => window._fpLiveAPI?.startPolling(), 60);
+  if (_liveS.loading && !_liveS.data && !(window.FP_DATA?.ga4?.realtime)) return _fpLiveLoadingSkeleton();
+  if (_liveS.error  && !_liveS.data && !(window.FP_DATA?.ga4?.realtime)) return _fpLiveErrorSkeleton(_liveS.error);
+  const ga4 = _liveS.data || window.FP_DATA?.ga4 || {};
   const rt  = ga4.realtime || {};
   const active = rt.activeUsers || 0;
   const rows   = rt.rows || [];
@@ -28926,7 +29011,7 @@ function renderGA4Live() {
       </div>
       <div class="fp-section-actions">
         <span style="font-size:11px;color:var(--fp-text-faint)" id="fp-live-last-update">Dernière MAJ : maintenant</span>
-        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window.FP_GA4_API&&window.FP_GA4_API.refreshRealtime()">🔄 Actualiser</button>
+        <button class="fp-btn fp-btn-primary fp-btn-sm" onclick="window._fpLiveAPI?.refresh()">🔄 Actualiser</button>
       </div>
     </div>
 
@@ -28975,7 +29060,7 @@ function renderGA4Live() {
           </div>`;
         }).join('') : `<div style="text-align:center;padding:24px;color:var(--fp-text-muted);font-size:11px">
           ${_ga4Connected() ? 'Actualisez pour voir les pages actives' : 'Connectez GA4 pour voir les données live'}
-          ${_ga4Connected() ? '<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_GA4_API&&window.FP_GA4_API.refreshRealtime()">🔄 Actualiser</button>' : ''}
+          ${_ga4Connected() ? '<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window._fpLiveAPI?.refresh()">🔄 Actualiser</button>' : ''}
         </div>`}
       </div>
 
@@ -28995,7 +29080,7 @@ function renderGA4Live() {
 
         <div style="margin-top:16px;padding:10px;background:rgba(239,68,68,0.06);border-radius:8px">
           <div style="font-size:11px;font-weight:600;color:var(--fp-text);margin-bottom:4px">📡 Fréquence d\'actualisation</div>
-          <select onchange="window.FP_GA4_API&&window.FP_GA4_API.setRealtimeInterval(parseInt(this.value)*1000)"
+          <select onchange="window._fpLiveAPI?.setInterval(parseInt(this.value)*1000)"
             style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:11px;padding:4px 8px;width:100%">
             <option value="30">Toutes les 30 secondes</option>
             <option value="60">Toutes les minutes</option>
@@ -29016,10 +29101,10 @@ function renderGA4Live() {
       </div>
       <div id="fp-event-stream" style="font-family:var(--fp-font-mono);font-size:11px;color:var(--fp-text-muted);max-height:200px;overflow-y:auto">
         ${(()=>{
-          const _rt = window.FP_DATA?.ga4?.realtime;
+          const _rt = (window._fpLiveState?.data?.realtime) || (window.FP_DATA?.ga4?.realtime);
           const _rtRows = _rt?.rows || [];
           if (!_ga4Connected()) return '<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">🔌 Connectez Google Analytics 4 pour voir les événements en temps réel.</div>';
-          if (!_rtRows.length) return '<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">📡 Actualisez les données temps réel pour voir le flux d'événements.<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window.FP_GA4_API&&window.FP_GA4_API.refreshRealtime()">🔄 Actualiser</button></div>';
+          if (!_rtRows.length) return '<div style="padding:24px;text-align:center;color:var(--fp-text-muted);font-size:11px">📡 Actualisez les données temps réel pour voir le flux d\u2019événements.<br><button class="fp-btn fp-btn-ghost fp-btn-sm" style="margin-top:8px" onclick="window._fpLiveAPI?.refresh()">🔄 Actualiser</button></div>';
           return _rtRows.slice(0,10).map(r => {
             const page = r.dimensionValues?.[2]?.value || '/';
             const city = r.dimensionValues?.[1]?.value || '';

@@ -60,6 +60,8 @@ import { qaFixturesRouter, publicQaRouter, isQaFixturesEnabled } from "./qa-fixt
 import analyticsRouter from "./analytics.js";
 import trafficRouter from "./traffic.js";
 import campaignsRouter from "./campaigns.js";
+import audienceRouter from "./audience.js";
+import liveRouter from "./live.js";
 
 const router: IRouter = Router();
 
@@ -221,5 +223,7 @@ router.use(growthObjectivesRouter);
 router.use("/analytics", analyticsRouter);
 router.use("/traffic",   trafficRouter);
 router.use("/campaigns", campaignsRouter);
+router.use("/audience",  audienceRouter);
+router.use("/live",      liveRouter);
 
 export default router;
