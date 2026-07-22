@@ -520,3 +520,82 @@ export async function getGA4Campaigns(
     return EMPTY;
   }
 }
+
+/**
+ * Conversion landing pages: landingPage with sessions, users, conversions, revenue.
+ * dim[0]=landingPage  met[0]=sessions  met[1]=totalUsers  met[2]=conversions  met[3]=totalRevenue
+ */
+export async function getGA4ConversionPages(
+  orgId: string, startDate: string, endDate: string
+): Promise<{ rows: GA4Row[] }> {
+  const ctx = await getGA4Context(orgId);
+  if (!ctx) return { rows: [] };
+  try {
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: "landingPage" }],
+      metrics: [
+        { name: "sessions" }, { name: "totalUsers" },
+        { name: "conversions" }, { name: "totalRevenue" },
+      ],
+      orderBys: [{ metric: { metricName: "conversions" }, desc: true }],
+      limit: 20,
+    });
+    return { rows: data.rows ?? [] };
+  } catch (e) {
+    logger.warn({ e, orgId }, "[ga4] getGA4ConversionPages failed");
+    return { rows: [] };
+  }
+}
+
+/**
+ * Conversion by device: deviceCategory with sessions, conversions, revenue, convRate.
+ * dim[0]=deviceCategory  met[0]=sessions  met[1]=conversions  met[2]=totalRevenue  met[3]=sessionConversionRate
+ */
+export async function getGA4ConversionDevices(
+  orgId: string, startDate: string, endDate: string
+): Promise<{ rows: GA4Row[] }> {
+  const ctx = await getGA4Context(orgId);
+  if (!ctx) return { rows: [] };
+  try {
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: "deviceCategory" }],
+      metrics: [
+        { name: "sessions" }, { name: "conversions" },
+        { name: "totalRevenue" }, { name: "sessionConversionRate" },
+      ],
+      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+    });
+    return { rows: data.rows ?? [] };
+  } catch (e) {
+    logger.warn({ e, orgId }, "[ga4] getGA4ConversionDevices failed");
+    return { rows: [] };
+  }
+}
+
+/**
+ * Conversion by geo: country + city with sessions, conversions, revenue.
+ * dim[0]=country  dim[1]=city  met[0]=sessions  met[1]=conversions  met[2]=totalRevenue
+ */
+export async function getGA4ConversionGeo(
+  orgId: string, startDate: string, endDate: string
+): Promise<{ rows: GA4Row[] }> {
+  const ctx = await getGA4Context(orgId);
+  if (!ctx) return { rows: [] };
+  try {
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: "country" }, { name: "city" }],
+      metrics: [
+        { name: "sessions" }, { name: "conversions" }, { name: "totalRevenue" },
+      ],
+      orderBys: [{ metric: { metricName: "conversions" }, desc: true }],
+      limit: 20,
+    });
+    return { rows: data.rows ?? [] };
+  } catch (e) {
+    logger.warn({ e, orgId }, "[ga4] getGA4ConversionGeo failed");
+    return { rows: [] };
+  }
+}

@@ -12328,7 +12328,7 @@ function _doRender() {
     case 'ai':             html = renderAI(); break;
     case 'growth':         html = renderGrowth(); break;
     case 'competitor':     html = renderCompetitor(); break;
-    case 'conversion':     html = renderConversion(); break;
+    case 'conversion':     html = renderGA4Conversion(); break;
     case 'alerts-center':  html = renderAlertsCenter(); break;
     case 'activity-feed':  html = renderActivityFeed(); break;
     case 'data-explorer':  html = renderDataExplorer(); break;
@@ -27646,7 +27646,58 @@ window._fpLiveAPI = {
   setInterval(ms) { this.startPolling(ms); },
 };
 
+// ══════════════════════════════════════════════════════════════════════
+// CONVERSION API MODULE — fetch from /api/conversion/* routes
+// All data is real GA4 only — no synthetic/fake values returned.
+// ══════════════════════════════════════════════════════════════════════
+window._fpConversionState = {};
+
+window._fpConversionAPI = {
+  async loadAll(days) {
+    const d = (Number.isInteger(days) && days > 0) ? days : 30;
+    window._fpConversionState = { loading: true, loaded: false, days: d, data: window._fpConversionState.data || null, error: null };
+    render();
+    try {
+      const [status, overview, events, landingPages, sources, devices, geo] = await Promise.all([
+        apiFetch('/api/conversion/status').catch(() => null),
+        apiFetch('/api/conversion/overview?days=' + d).catch(() => null),
+        apiFetch('/api/conversion/events?days=' + d).catch(() => null),
+        apiFetch('/api/conversion/landing-pages?days=' + d).catch(() => null),
+        apiFetch('/api/conversion/sources?days=' + d).catch(() => null),
+        apiFetch('/api/conversion/devices?days=' + d).catch(() => null),
+        apiFetch('/api/conversion/geo?days=' + d).catch(() => null),
+      ]);
+      const connected = status?.connected ?? overview?.connected ?? false;
+      const data = {
+        connected,
+        source: 'ga4',
+        overview:     overview?.data      || null,
+        events:       events?.data?.events || [],
+        totalRevenue: events?.data?.totalRevenue || 0,
+        totalConversions: events?.data?.totalConversions || 0,
+        avgRevenuePerConversion: events?.data?.avgRevenuePerConversion || null,
+        pages:        landingPages?.data?.pages  || [],
+        sources:      sources?.data?.sources     || [],
+        devices:      devices?.data?.devices     || [],
+        geo:          geo?.data?.geo             || [],
+      };
+      window._fpConversionState = { loading: false, loaded: true, days: d, data, error: null };
+    } catch(e) {
+      window._fpConversionState = { loading: false, loaded: true, days: d, data: window._fpConversionState.data, error: e.message || String(e) };
+    }
+    render();
+  },
+  refresh() { return this.loadAll(window._fpConversionState.days || 30); },
+};
+
 // ── Loading / Error skeleton helpers ──────────────────────────────────────────
+function _fpConvLoadingSkeleton() {
+  return '<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Chargement des données…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement des Conversions en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
+}
+function _fpConvErrorSkeleton(err) {
+  return '<div class="fp-section-header"><div><h1>🎯 Conversion GA4</h1></div></div><div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">⚠️</div><div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Erreur de chargement</div><div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:16px">'+escHtml(String(err||'Erreur inconnue'))+'</div><button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 Réessayer</button></div>';
+}
+
 function _fpAnaLoadingSkeleton() {
   return '<div class="fp-section-header"><div><h1>📊 Analytics GA4</h1><div class="fp-section-sub">Chargement des données…</div></div></div><div style="text-align:center;padding:60px 24px"><div style="font-size:36px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--fp-text-muted)">Chargement des Analytics en cours…</div><div style="font-size:12px;color:var(--fp-text-faint);margin-top:6px">Connexion à Google Analytics 4</div></div>';
 }
@@ -28101,6 +28152,228 @@ function _renderGA4Conversions() {
 // ══════════════════════════════════════════════════════════════════════
 // GA4 TRAFFIC — SOURCES & CANAUX
 // ══════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════
+// GA4 CONVERSION — Real data from /api/conversion/* endpoints
+// No Math.random, no PREVIEW_MODE fallbacks, no hardcoded metrics.
+// Conversion rates: conversions / sessions × 100  (null when sessions = 0)
+// Revenue per conversion: totalRevenue / conversions (null when 0 conversions)
+// ══════════════════════════════════════════════════════════════════════
+function renderGA4Conversion() {
+  const sub = STATE.subRoute;
+  if (sub && ['funnel','ux-lab','cta','revenue-leak','cro'].includes(sub)) {
+    return renderConversion();
+  }
+
+  const cvS = window._fpConversionState || {};
+  if (!cvS.loaded && !cvS.loading) setTimeout(() => window._fpConversionAPI.loadAll(), 60);
+  if (cvS.loading && !cvS.data) return _fpConvLoadingSkeleton();
+  if (cvS.error  && !cvS.data) return _fpConvErrorSkeleton(cvS.error);
+
+  const days    = cvS.days || 30;
+  const data    = cvS.data || {};
+  const connected = data.connected;
+
+  const periodSel = `
+    <select onchange="window._fpConversionAPI.loadAll(parseInt(this.value))"
+      style="background:var(--fp-track);border:1px solid var(--fp-border);border-radius:6px;color:var(--fp-text);font-size:12px;padding:5px 8px">
+      <option value="7"  ${days===7?'selected':''}>7 jours</option>
+      <option value="30" ${days===30?'selected':''}>30 jours</option>
+      <option value="90" ${days===90?'selected':''}>90 jours</option>
+    </select>
+    <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 Actualiser</button>`;
+
+  const header = `
+    <div class="fp-section-header">
+      <div><h1>🎯 Conversion GA4</h1><div class="fp-section-sub">Événements de conversion, revenus et landing pages — ${days} derniers jours</div></div>
+      <div class="fp-section-actions">${periodSel}</div>
+    </div>`;
+
+  // ── DISCONNECTED STATE ─────────────────────────────────────────────
+  if (!connected) {
+    return header + `
+      <div style="text-align:center;padding:56px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
+        <div style="font-size:40px;margin-bottom:14px">🔌</div>
+        <div style="font-size:16px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Google Analytics 4 non connecté</div>
+        <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 20px">
+          Connectez GA4 pour afficher vos conversions réelles, revenus, landing pages et analyses par source.
+        </div>
+        <button class="fp-btn fp-btn-primary" onclick="navigate('integrations')">Connecter GA4</button>
+      </div>`;
+  }
+
+  const ov      = data.overview   || {};
+  const events  = data.events     || [];
+  const pages   = data.pages      || [];
+  const sources = data.sources    || [];
+  const devices = data.devices    || [];
+  const geo     = data.geo        || [];
+
+  const fmt    = n => (n != null && n !== '') ? Number(n).toLocaleString('fr-FR', {maximumFractionDigits:0}) : '—';
+  const fmtPct = n => n != null ? Number(n).toFixed(2) + '%' : '—';
+  const fmtRev = n => (n != null && n > 0) ? Number(n).toFixed(2) + '\u202f€' : '—';
+
+  const totalConv  = data.totalConversions || ov.conversions || 0;
+  const totalRev   = data.totalRevenue     || 0;
+  const convRate   = ov.conversionRate;
+  const sessions   = ov.sessions;
+  const users      = ov.users;
+  const avgRevConv = data.avgRevenuePerConversion;
+  const convDiff   = ov.conversionRateDiff;
+
+  // ── EMPTY STATE ────────────────────────────────────────────────────
+  if (totalConv === 0 && events.length === 0) {
+    return header + `
+      <div style="text-align:center;padding:48px 24px;background:var(--fp-inner-card);border:1px dashed var(--fp-border);border-radius:14px;margin-bottom:20px">
+        <div style="font-size:36px;margin-bottom:12px">🎯</div>
+        <div style="font-size:15px;font-weight:700;color:var(--fp-text);margin-bottom:8px">Aucune conversion GA4 sur la période</div>
+        <div style="font-size:13px;color:var(--fp-text-muted);max-width:480px;margin:0 auto 16px">
+          Aucun événement de conversion configuré ou aucune conversion enregistrée sur les ${days} derniers jours.<br>
+          Configurez des <strong>Key Events</strong> dans GA4 pour commencer le suivi.
+        </div>
+        <button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="window._fpConversionAPI.refresh()">🔄 Actualiser</button>
+      </div>`;
+  }
+
+  // ── KPI CARDS ─────────────────────────────────────────────────────
+  const kpiRow = `
+    <div class="fp-stat-row fp-mb-20">
+      <div class="fp-stat-card">
+        <div class="fp-stat-label">Conversions totales</div>
+        <div class="fp-stat-value">${fmt(totalConv)}</div>
+        ${convDiff != null ? `<div class="fp-stat-sub" style="color:${convDiff>=0?'#22c55e':'#ef4444'}">${convDiff>=0?'+':''}${convDiff}% taux vs période préc.</div>` : '<div class="fp-stat-sub">—</div>'}
+      </div>
+      <div class="fp-stat-card">
+        <div class="fp-stat-label">Taux de conversion</div>
+        <div class="fp-stat-value">${fmtPct(convRate)}</div>
+        <div class="fp-stat-sub">${sessions ? fmt(sessions) + ' sessions' : '—'}</div>
+      </div>
+      <div class="fp-stat-card">
+        <div class="fp-stat-label">Revenus GA4</div>
+        <div class="fp-stat-value">${fmtRev(totalRev)}</div>
+        <div class="fp-stat-sub">${avgRevConv != null ? 'Moy./conv. ' + fmtRev(avgRevConv) : 'Revenus non configurés'}</div>
+      </div>
+      <div class="fp-stat-card">
+        <div class="fp-stat-label">Utilisateurs</div>
+        <div class="fp-stat-value">${fmt(users)}</div>
+        <div class="fp-stat-sub">${events.length ? events.length + ' type(s) d\'événement' : '—'}</div>
+      </div>
+    </div>`;
+
+  // ── CONVERSION EVENTS ─────────────────────────────────────────────
+  const eventsBlock = events.length > 0 ? `
+    <div class="fp-card fp-mb-20">
+      <div class="fp-card-title" style="margin-bottom:14px">⚡ Événements de conversion</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;min-width:440px;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:1px solid var(--fp-border)">
+            ${['Événement','Conversions','Revenu','Revenu moy./conv.'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${events.slice(0,20).map(ev => `
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
+                <td style="padding:8px 10px;font-weight:700;color:var(--fp-text)">${escHtml(ev.name)}</td>
+                <td style="padding:8px 10px;font-weight:800;color:#22c55e;font-size:13px">${fmt(ev.count)}</td>
+                <td style="padding:8px 10px;color:var(--fp-text-muted)">${fmtRev(ev.revenue)}</td>
+                <td style="padding:8px 10px;font-size:11px;color:var(--fp-text-muted)">${fmtRev(ev.avgRevenuePerConversion)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : `
+    <div class="fp-card fp-mb-20" style="text-align:center;padding:28px">
+      <div style="font-size:13px;color:var(--fp-text-muted)">Aucun événement de conversion trouvé.<br>Configurez des <strong>Key Events</strong> dans votre propriété GA4.</div>
+    </div>`;
+
+  // ── LANDING PAGES ─────────────────────────────────────────────────
+  const pagesBlock = pages.length > 0 ? `
+    <div class="fp-card fp-mb-20">
+      <div class="fp-card-title" style="margin-bottom:14px">📄 Landing pages — conversions</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;min-width:500px;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:1px solid var(--fp-border)">
+            ${['Page','Sessions','Utilisateurs','Conversions','Taux','Revenu'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${pages.slice(0,15).map(p => `
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
+                <td style="padding:7px 10px;font-family:var(--fp-font-mono);font-size:11px;color:var(--fp-text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.path)}">${escHtml(p.path)}</td>
+                <td style="padding:7px 10px">${fmt(p.sessions)}</td>
+                <td style="padding:7px 10px">${fmt(p.users)}</td>
+                <td style="padding:7px 10px;font-weight:700;color:#22c55e">${fmt(p.conversions)}</td>
+                <td style="padding:7px 10px;font-weight:700;color:${p.conversionRate>2?'#22c55e':p.conversionRate>0.5?'#f59e0b':'var(--fp-text-muted)'}">${fmtPct(p.conversionRate)}</td>
+                <td style="padding:7px 10px">${fmtRev(p.revenue)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+  // ── SOURCES + DEVICES + GEO ───────────────────────────────────────
+  const sourcesBlock = sources.length > 0 ? `
+    <div class="fp-card fp-mb-20">
+      <div class="fp-card-title" style="margin-bottom:14px">🚦 Sources — conversions</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;min-width:480px;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:1px solid var(--fp-border)">
+            ${['Canal','Source / Medium','Sessions','Conversions','Taux'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${sources.slice(0,15).map(s => {
+              const color = GA4_CHANNEL_COLORS[s.channel] || '#64748b';
+              return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
+                <td style="padding:7px 10px"><span style="font-size:10px;padding:2px 7px;border-radius:6px;background:${color}18;color:${color};font-weight:600">${escHtml(s.channel)}</span></td>
+                <td style="padding:7px 10px;font-size:11px;font-family:var(--fp-font-mono);color:var(--fp-text-muted)">${escHtml(s.sourceMedium)}</td>
+                <td style="padding:7px 10px">${fmt(s.sessions)}</td>
+                <td style="padding:7px 10px;font-weight:700;color:#22c55e">${fmt(s.conversions)}</td>
+                <td style="padding:7px 10px;font-weight:700">${fmtPct(s.conversionRate)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+  const devicesBlock = devices.length > 0 ? `
+    <div class="fp-card fp-mb-20">
+      <div class="fp-card-title" style="margin-bottom:14px">📱 Appareils — conversions</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
+        ${devices.map(d => `
+          <div class="fp-card" style="padding:14px 16px">
+            <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:6px;text-transform:capitalize">${escHtml(d.device)}</div>
+            <div style="font-size:22px;font-weight:900;color:#2563EB;font-family:var(--fp-font-head);margin-bottom:3px">${fmt(d.conversions)}</div>
+            <div style="font-size:10px;color:var(--fp-text-faint);margin-bottom:6px">conversions · ${fmt(d.sessions)} sessions</div>
+            <div style="font-size:11px;font-weight:700;color:${d.conversionRate>2?'#22c55e':d.conversionRate>0.5?'#f59e0b':'var(--fp-text-muted)'}">${fmtPct(d.conversionRate)} taux</div>
+            ${d.revenue > 0 ? `<div style="font-size:10px;color:var(--fp-text-faint);margin-top:3px">${fmtRev(d.revenue)}</div>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>` : '';
+
+  const geoBlock = geo.length > 0 ? `
+    <div class="fp-card fp-mb-20">
+      <div class="fp-card-title" style="margin-bottom:14px">🌍 Géographie — conversions</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;min-width:400px;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:1px solid var(--fp-border)">
+            ${['Pays','Ville','Sessions','Conversions','Taux','Revenu'].map(h=>`<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--fp-text-faint);font-weight:600">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${geo.slice(0,15).map(g => `
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
+                <td style="padding:7px 10px;font-weight:600">${escHtml(g.country)}</td>
+                <td style="padding:7px 10px;font-size:11px;color:var(--fp-text-muted)">${escHtml(g.city)}</td>
+                <td style="padding:7px 10px">${fmt(g.sessions)}</td>
+                <td style="padding:7px 10px;font-weight:700;color:#22c55e">${fmt(g.conversions)}</td>
+                <td style="padding:7px 10px;font-weight:700">${fmtPct(g.conversionRate)}</td>
+                <td style="padding:7px 10px">${fmtRev(g.revenue)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+  return header + kpiRow + eventsBlock + pagesBlock + sourcesBlock + devicesBlock + geoBlock;
+}
+
 function renderGA4Traffic() {
   const _trafS = window._fpTrafficState || {};
   if (!_trafS.loaded && !_trafS.loading) setTimeout(() => window._fpTrafficAPI.loadAll(), 60);

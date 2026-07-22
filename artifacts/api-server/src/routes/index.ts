@@ -62,6 +62,7 @@ import trafficRouter from "./traffic.js";
 import campaignsRouter from "./campaigns.js";
 import audienceRouter from "./audience.js";
 import liveRouter from "./live.js";
+import conversionRouter from "./conversion.js";
 
 const router: IRouter = Router();
 
@@ -223,7 +224,8 @@ router.use(growthObjectivesRouter);
 router.use("/analytics", analyticsRouter);
 router.use("/traffic",   trafficRouter);
 router.use("/campaigns", campaignsRouter);
-router.use("/audience",  audienceRouter);
-router.use("/live",      liveRouter);
+router.use("/audience",    audienceRouter);
+router.use("/live",        liveRouter);
+router.use("/conversion",  conversionRouter);
 
 export default router;
