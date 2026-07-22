@@ -328,40 +328,8 @@ router.post("/billing/portal", billingPortalRateLimit, ownerOnly, async (req: Re
 
   try {
     const stripe = await createStripeClient(stripeKey);
-
-    // ── Debug instrumentation (STRIPE_PORTAL_DEBUG=true only) ─────────────────
-    const customerFromDb = billingCtx.stripeCustomerId ?? null;
-    console.info("[stripe-portal-debug]", {
-      userId: orgId,
-      customerFromDb,
-      resolvedCustomerId: customerId,
-      action: customerFromDb === customerId ? "reuse" : "create_or_replace",
-    });
-
     const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
-
-    console.info("[stripe-portal-session]", {
-      userId: orgId,
-      resolvedCustomerId: customerId,
-      sessionId: session.id,
-      sessionCustomer: session.customer,
-    });
-
-    const debugMode = process.env["STRIPE_PORTAL_DEBUG"] === "true";
-    if (debugMode) {
-      res.json({
-        url: session.url,
-        debug: {
-          customerFromDb,
-          resolvedCustomerId: customerId,
-          portalSessionId: session.id,
-          portalSessionCustomer: session.customer,
-          customerCreated: customerFromDb !== customerId,
-        },
-      });
-    } else {
-      res.json({ url: session.url });
-    }
+    res.json({ url: session.url });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to create Stripe portal session");
     res.status(500).json({ error: "Failed to create billing portal session" });
