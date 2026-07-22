@@ -27,3 +27,12 @@ All billing code that needs a Stripe Customer ID must call `ensureStripeCustomer
 
 ## Stripe search indexing latency
 Stripe's `/v1/customers/search` has ~10-30s indexing latency. Direct `retrieve(id)` is authoritative. Tests using email search right after create will see false negatives — verify via direct retrieve or check DB + portal response instead.
+
+## Root bug confirmed in v1 (empty string)
+stripe_customer_id='' (empty string) in DB: `"" ?? null = ""` (not nullish), then `if ("")` is falsy → validation skipped → new customer created every call. Fix: `(rawId && rawId.trim()) ? rawId : null`. QA rows had '' written directly; production rows may too after old code paths.
+
+## Validation approach
+Tests A-F run via tsx directly calling ensureStripeCustomer (A-E) and real HTTP calls with Bearer session tokens to localhost:PORT (F). countStripeByOrg uses stripe.customers.list() not search() (no indexing lag). 6/6 pass confirmed on Stripe live key.
+
+## GitHub push limitation  
+git add/commit/push blocked in sandbox. Code is at Replit checkpoint; user must push manually. Local HEAD is always ahead of origin.
