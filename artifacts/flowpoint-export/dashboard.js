@@ -7424,7 +7424,7 @@ function renderBilling() {
     { l:'PDF',         icon:'file-text',  v:_usage.pdf?.used      ?? 0, max:_usage.pdf?.limit      ?? _planLimits.reports,   color:'#8b5cf6', forecast:_dynFcst(_usage.pdf?.used??0, _usage.pdf?.limit??_planLimits.reports) },
     { l:'Exports',     icon:'download',   v:_usage.exports?.used  ?? 0, max:_usage.exports?.limit  ?? _planLimits.exports,   color:'#22c55e', forecast:_dynFcst(_usage.exports?.used??0, _usage.exports?.limit??_planLimits.exports) },
     { l:'Monitors',    icon:'activity',   v:_usage.monitor?.used  ?? 0, max:_usage.monitor?.limit  ?? _planLimits.monitors,  color:'#f59e0b', forecast:_dynFcst(_usage.monitor?.used??0, _usage.monitor?.limit??_planLimits.monitors) },
-    { l:'Sièges',      icon:'users',      v:(_ud.teamMembersUsed??1), max:(_ud.teamMembersLimit??_planLimits.teamMembers),   color:'#06b6d4', forecast:Math.round((_ud.teamMembersUsed??1)/(_ud.teamMembersLimit??_planLimits.teamMembers)*100) },
+    { l:'Sièges',      icon:'users',      v:(STATE.seatUsage?.used ?? _ud.teamMembersUsed ?? 1), max:(STATE.seatUsage?.limit ?? _ud.teamMembersLimit ?? _planLimits.teamMembers ?? 1), color:'#06b6d4', forecast:_dynFcst(STATE.seatUsage?.used ?? _ud.teamMembersUsed ?? 1, STATE.seatUsage?.limit ?? _ud.teamMembersLimit ?? _planLimits.teamMembers ?? 1) },
     { l:'Storage',     icon:'database',   v:_ud.storageUsed,          max:10,    color:'#8b5cf6', forecast:null, unit:'GB',  na:_ud.storageUsed==null },
     { l:'API Appels',  icon:'code',       v:_ud.apiCalls,             max:10000, color:'#f59e0b', forecast:null,             na:_ud.apiCalls==null },
     { l:'Bandwidth',   icon:'wifi',       v:_ud.bandwidthUsed,        max:50,    color:'#06b6d4', forecast:null, unit:'GB',  na:_ud.bandwidthUsed==null },
@@ -7946,10 +7946,10 @@ function renderBilling() {
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between">
               <div style="font-size:9px;color:var(--fp-text-faint)">Prévision 30j :</div>
-              <div style="font-size:10px;font-weight:700;color:${fcc}">${fc}%</div>
+              <div style="font-size:10px;font-weight:700;color:${fc != null && Number.isFinite(fc) ? fcc : 'var(--fp-text-faint)'}">${fc != null && Number.isFinite(fc) ? fc + '%' : '—'}</div>
             </div>
             <div class="fp-progress-track" style="height:2px;margin-top:3px;background:var(--fp-track)">
-              <div style="height:100%;width:${fc}%;background:${fcc};border-radius:99px;transition:width 0.6s ease"></div>
+              <div style="height:100%;width:${fc != null && Number.isFinite(fc) ? fc : 0}%;background:${fcc};border-radius:99px;transition:width 0.6s ease"></div>
             </div>
           </div>`;
         }).join('')}
@@ -10246,39 +10246,45 @@ function renderAI() {
         detail:_repsCount>0?_repsCount+' rapport(s) généré(s)':PREVIEW_MODE?'Rapport mensuel généré · 3 clients actifs':'Aucun rapport généré'},
       {name:'Alertes', icon:'🔔', score:_mkSysScore(_alertScore), status:_mkSysStatus(_alertScore), color:_mkSysColor(_alertScore), route:'alerts-center',
         detail:_aActive>0?_aActive+' alerte(s) · '+_aFiring+' déclenchée(s)':PREVIEW_MODE?'3 incidents actifs · 2 non résolus':'Aucune alerte configurée'},
-      {name:'Facturation', icon:'💳', score:_mkSysScore(_billOk?88:null), status:_mkSysStatus(_billOk?88:null), color:_mkSysColor(_billOk?88:null), route:'billing',
+      {name:'Facturation', icon:'💳', score:null, status:_billOk?'Plan '+STATE.me.plan+' actif':'—', color:_billOk?'#22c55e':'var(--fp-text-faint)', route:'billing',
         detail:_billOk?'Plan '+STATE.me.plan+' actif':PREVIEW_MODE?'Plan Pro actif · Prochain débit 01/06':'Aucun abonnement actif'},
       {name:'Missions IA', icon:'✅', score:_mkSysScore(_missTotal>0?Math.round((_missDone/_missTotal)*100):null), status:_mkSysStatus(_missTotal>0?Math.round((_missDone/_missTotal)*100):null), color:_mkSysColor(_missTotal>0?Math.round((_missDone/_missTotal)*100):null), route:'missions',
         detail:_missTotal>0?_missTotal+' mission(s) · '+_missDone+' terminée(s)':PREVIEW_MODE?'5 missions actives · 2 terminées ce mois':'Aucune mission IA — Lancez votre première mission'},
       {name:'Workflows', icon:'⚡', score:_mkSysScore(_wfActive>0?85:null), status:_mkSysStatus(_wfActive>0?85:null), color:_mkSysColor(_wfActive>0?85:null), route:'settings',
         detail:_wfActive>0?_wfActive+' workflow(s) actif(s)':PREVIEW_MODE?'4 actifs · 0 erreur · ~6h économisées/mois':'Aucun workflow actif'},
     ];
+    const _corrMonDown = STATE.monitors && STATE.monitors.some(m=>m.status==='down');
+    const _corrAudits  = STATE.audits && STATE.audits.length > 0;
+    const _corrComps   = STATE.competitors && STATE.competitors.length > 0;
+    const _corrLseo    = STATE.localSeo != null;
+    const _corrLowSpd  = _corrAudits && STATE.audits.some(a=>(a.speed||100)<60);
+    const _corrReports = STATE.reports && STATE.reports.length > 0;
     const correlations = [
-      {
+      (_corrMonDown && _corrAudits) ? {
         icon:'🔗', color:'#ef4444',
         title:'SEO + Monitors',
-        body:(STATE.monitors&&STATE.monitors.find(m=>m.status==='down')?((STATE.monitors.find(m=>m.status==='down').url||STATE.monitors.find(m=>m.status==='down').name||'').replace(/^https?:\/\//,'')||'Un monitor'):'Un monitor') + ' est DOWN — votre score SEO chute en temps réel. Un monitor down génère en moyenne -3 pts/jour de crawl Google.',
+        body:((STATE.monitors.find(m=>m.status==='down')?.url||STATE.monitors.find(m=>m.status==='down')?.name||'Un monitor').replace(/^https?:\/\//,'')) + ' est DOWN — votre score SEO chute en temps réel. Un monitor down génère en moyenne -3 pts/jour de crawl Google.',
         chips:[chip('Voir les monitors','monitors',null), chip('Auditer le site','audits','analysis')],
-      },
-      {
+      } : null,
+      (_corrComps && _corrLseo) ? {
         icon:'🔗', color:'#f59e0b',
         title:'Local SEO + Concurrents',
-        body:(STATE.competitors&&STATE.competitors.length>0?escHtml(STATE.competitors[0].name||'Un concurrent'):'Un concurrent') + ' gagne du terrain sur les mots-clés locaux pendant que votre visibilité Map stagne. Opportunité : optimiser les horaires GBP.',
+        body:escHtml(STATE.competitors[0].name||'Un concurrent') + ' gagne du terrain sur les mots-clés locaux. Opportunité\u00a0: optimiser les horaires GBP et renforcer la présence Maps.',
         chips:[chip('Local SEO','local-seo',null), chip('Analyser les concurrents','competitor','local')],
-      },
-      {
+      } : null,
+      (_corrLowSpd) ? {
         icon:'🔗', color:'#8b5cf6',
         title:'Conversion + Performance mobile',
-        body:'Score Core Web Vitals mobile < 60 sur ' + (STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.speed||a.score||0)<(b.speed||b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')||'votre site'):'votre site') + '. Corrélation directe avec le taux de conversion mobile à 1.2% (benchmark secteur : 3.8%).',
+        body:'Score Core Web Vitals mobile faible sur ' + ((STATE.audits.reduce((b,a)=>(a.speed||a.score||0)<(b.speed||b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')||'votre site') + '. Corrélation directe avec votre taux de conversion mobile.',
         chips:[chip('Analyser la conversion','conversion','ux-lab'), chip('Audit performance','audits','analysis')],
-      },
-      {
+      } : null,
+      (_corrReports) ? {
         icon:'🔗', color:'#06b6d4',
         title:'Rapports + Mode Client',
-        body:(STATE.reports&&STATE.reports.length>0 ? STATE.reports.length+' rapport(s) généré(s) ce mois. Activez le Mode Client pour notifier vos clients et suivre les consultations.' : PREVIEW_MODE ? '3 rapports PDF programmés ce mois — aucun n\'a été consulté par vos clients. Suggérez un accès Mode Client pour améliorer l\'engagement.' : 'Aucun rapport généré ce mois. Configurez vos rapports automatiques pour vos clients.'),
+        body:STATE.reports.length + ' rapport(s) généré(s). Activez le Mode Client pour notifier vos clients et suivre les consultations.',
         chips:[chip('Mode Client','client-mode',null), chip('Voir les rapports','reports',null)],
-      },
-    ];
+      } : null,
+    ].filter(Boolean);
     return `
       <div class="fp-section-header">
         <div><h1 style="display:flex;align-items:center;gap:10px">Workspace Intelligence</h1>
@@ -10317,8 +10323,11 @@ function renderAI() {
       </div>
 
       <!-- CROSS-SYSTEM CORRELATIONS -->
-      <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">🔗 Corrélations inter-systèmes détectées par l\'IA</div>
-      ${correlations.map(c => insightCard(c.icon, c.title, c.body, c.chips, c.color)).join('')}
+      <div style="font-size:12px;font-weight:700;color:var(--fp-text);margin-bottom:12px">🔗 Corrélations inter-systèmes</div>
+      ${correlations.length > 0
+        ? correlations.map(c => insightCard(c.icon, c.title, c.body, c.chips, c.color)).join('')
+        : '<div style="color:var(--fp-text-faint);font-size:12px;padding:20px;text-align:center;border:1px dashed var(--fp-border);border-radius:12px">Pas encore assez de données pour détecter des corrélations inter-modules.</div>'
+      }
     `;
   }
 
@@ -10326,69 +10335,96 @@ function renderAI() {
   // SUB: INSIGHTS & RECOMMANDATIONS
   // ══════════════════════════════════════════════════════════
   if (sub === 'insights') {
+    const _hasMonDown        = !!(STATE.monitors && STATE.monitors.some(m=>m.status==='down'));
+    const _hasAudits         = !!(STATE.audits && STATE.audits.length > 0);
+    const _hasLowSpd         = _hasAudits && STATE.audits.some(a=>(a.speed||100)<60);
+    const _hasLowScore       = _hasAudits && STATE.audits.some(a=>(a.score||100)<70);
+    const _hasCompetitors    = !!(STATE.competitors && STATE.competitors.length > 0);
+    const _hasGbpUnanswered  = !!(STATE.gbp && STATE.gbp.unansweredReviews > 0);
+    const _hasLocalOpp       = !!(STATE.localSeo && (
+      (STATE.localSeo.opportunities && STATE.localSeo.opportunities.length > 0) ||
+      (STATE.localSeo.zones && STATE.localSeo.zones.some(z=>!z.dominated))
+    ));
+    const _hasReports        = !!(STATE.reports && STATE.reports.length > 0);
+    const _downMon           = _hasMonDown ? STATE.monitors.find(m=>m.status==='down') : null;
+
     const insights = [
-      {
+      _hasMonDown ? {
         icon:'🔴', color:'#ef4444', priority:'Critique',
-        title:'Monitor DOWN depuis 44 min',
-        body:(STATE.monitors&&STATE.monitors.find(m=>m.status==='down')?((STATE.monitors.find(m=>m.status==='down').url||STATE.monitors.find(m=>m.status==='down').name||'').replace(/^https?:\/\//,'')||'Un monitor'):'Un monitor') + ' est inaccessible. Impact SEO immédiat : pénalité crawl Google si > 2h.',
+        title:'Monitor DOWN — ' + ((_downMon?.url||_downMon?.name||'').replace(/^https?:\/\//,'')||'site inaccessible'),
+        body:((_downMon?.url||_downMon?.name||'Un monitor').replace(/^https?:\/\//,'')) + ' est inaccessible. Impact SEO immédiat\u00a0: pénalité crawl Google si > 2h.',
         chips:[chip('Voir les monitors','monitors',null), chip('Incidents','alerts-center','incidents')],
-      },
-      {
+      } : null,
+      _hasCompetitors ? {
         icon:'🟠', color:'#f59e0b', priority:'Urgent',
-        title:'Visibilité locale stagnante à 68%',
-        body:'2 zones géographiques non couvertes. Vos concurrents gagnent du terrain sur les requêtes locales.',
-        chips:[chip('Analyser Local SEO','local-seo',null), chip('Heatmap zones','local-seo','zones')],
-      },
-      {
-        icon:'🟠', color:'#f59e0b', priority:'Urgent',
-        title:'Pression concurrentielle en hausse',
-        body:(STATE.competitors&&STATE.competitors.length>0?escHtml(STATE.competitors[0].name||'Un concurrent'):'Un concurrent') + ' en progression cette semaine. Vérifiez les mots-clés cibles.',
+        title:'Pression concurrentielle — ' + escHtml(STATE.competitors[0].name||'concurrent #1') + ' en progression',
+        body:escHtml(STATE.competitors[0].name||'Un concurrent') + ' en progression cette semaine. Vérifiez les mots-clés cibles et votre positionnement.',
         chips:[chip('Veille concurrents','competitor',null), chip('Analyse mots-clés','competitor','keywords')],
-      },
-      {
+      } : null,
+      _hasLowSpd ? {
         icon:'🟡', color:'#eab308', priority:'Cette semaine',
-        title:'Friction mobile sur ' + (STATE.audits&&STATE.audits.length>0?((STATE.audits.reduce((b,a)=>(a.speed||a.score||0)<(b.speed||b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')||'votre site'):'votre site'),
-        body:'Score mobile 52/100. Taux de conversion mobile 1.2% vs benchmark 3.8%. LCP > 4s identifié.',
+        title:'Friction mobile sur ' + ((STATE.audits.reduce((b,a)=>(a.speed||a.score||0)<(b.speed||b.score||0)?a:b,STATE.audits[0]).url||'').replace(/^https?:\/\//,'')||'votre site'),
+        body:'Score mobile faible détecté. Analysez le LCP, le CLS et le FID pour identifier les points de friction.',
         chips:[chip('Analyse UX','conversion','ux-lab'), chip('Revenue Leak','conversion','revenue-leak')],
-      },
-      {
+      } : null,
+      _hasGbpUnanswered ? {
         icon:'🟡', color:'#eab308', priority:'Cette semaine',
-        title:(STATE.gbp?.unansweredReviews != null ? STATE.gbp.unansweredReviews : (PREVIEW_MODE ? 14 : 'Des')) + ' avis Google sans réponse',
-        body:'Impact négatif sur le score GBP et le trust signal local. Recommandation : répondre sous 24h.',
+        title:STATE.gbp.unansweredReviews + ' avis Google sans réponse',
+        body:'Impact négatif sur le score GBP et le trust signal local. Recommandation\u00a0: répondre sous 24h.',
         chips:[chip('Gérer le GBP','local-seo','gbp'), chip('Dashboard local','local-seo',null)],
-      },
-      {
+      } : null,
+      _hasLowScore ? {
         icon:'🟢', color:'#22c55e', priority:'Opportunité',
-        title:'Quick wins SEO disponibles',
-        body:'+8 points SEO atteignables en 2 semaines via balises title (3 sites) et Core Web Vitals.',
+        title:'Quick wins SEO — ' + STATE.audits.filter(a=>(a.score||100)<70).length + ' site(s) sous 70/100',
+        body:'Améliorez les balises title manquantes et les Core Web Vitals pour progresser rapidement.',
         chips:[chip('Quick Wins','overview','quick-wins'), chip('Lancer les audits','audits',null)],
-      },
-      {
+      } : null,
+      _hasLocalOpp ? {
         icon:'🟢', color:'#22c55e', priority:'Opportunité',
-        title:'Plan d\'expansion Local SEO',
-        body:'2 nouvelles zones à fort potentiel identifiées : 18e arrondissement et Boulogne-Billancourt.',
+        title:'Opportunités Local SEO disponibles',
+        body:'Des zones géographiques à fort potentiel ont été identifiées dans votre heatmap locale.',
         chips:[chip('Voir les opportunités','local-seo','opportunities'), chip('Analyser les zones','local-seo','zones')],
-      },
-      {
+      } : null,
+      _hasReports ? {
         icon:'🔵', color:'#2563EB', priority:'Pro tip',
-        title:'Rapport mensuel prêt à envoyer',
-        body:'Votre rapport PDF mai 2026 est généré. 3 clients attendent leur résumé mensuel.',
+        title:STATE.reports.length + ' rapport(s) prêt(s) à partager',
+        body:'Activez le Mode Client pour notifier vos clients et suivre les consultations de vos rapports PDF.',
         chips:[chip('Voir les rapports','reports',null), chip('Mode Client','client-mode',null)],
-      },
-    ];
+      } : null,
+    ].filter(Boolean);
+
+    if (insights.length === 0) {
+      return `
+        <div class="fp-section-header">
+          <div><h1>Insights & Recommandations IA</h1>
+          <div class="fp-section-sub">Analyse proactive de votre workspace · Mis à jour en temps réel</div></div>
+        </div>
+        <div class="fp-stat-row fp-mb-20">
+          ${statCard('Critiques', '0', 'aucune action immédiate', 'neutral')}
+          ${statCard('Urgents', '0', 'tout est à jour', 'neutral')}
+          ${statCard('Opportunités', '0', 'connectez vos sources', 'neutral')}
+          ${statCard('Score global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,null); })(), 'score moyen portfolio', 'neutral')}
+        </div>
+        <div style="padding:40px 20px;text-align:center;color:var(--fp-text-faint)">
+          <div style="font-size:32px;margin-bottom:12px">💡</div>
+          <div style="font-size:14px;font-weight:600;color:var(--fp-text);margin-bottom:8px">Aucun insight disponible pour le moment.</div>
+          <div style="font-size:12px;line-height:1.6">Connectez vos sources de données ou lancez un audit<br>pour générer des recommandations personnalisées.</div>
+        </div>
+      `;
+    }
     return `
       <div class="fp-section-header">
         <div><h1>Insights & Recommandations IA</h1>
         <div class="fp-section-sub">Analyse proactive de votre workspace · Mis à jour en temps réel</div></div>
         <div class="fp-section-actions">
-          <span style="font-size:11px;color:var(--fp-text-faint)">${insights.length} insights actifs</span>
+          <span style="font-size:11px;color:var(--fp-text-faint)">${insights.length} insight${insights.length>1?'s':''} actif${insights.length>1?'s':''}</span>
         </div>
       </div>
       <div class="fp-stat-row fp-mb-20">
-        ${statCard('Critiques', String(insights.filter(i => i.priority === 'Critique').length), 'actions immédiates', 'down')}
+        ${statCard('Critiques', String(insights.filter(i => i.priority === 'Critique').length), 'actions immédiates', insights.filter(i=>i.priority==='Critique').length>0?'down':'neutral')}
         ${statCard('Urgents', String(insights.filter(i => i.priority === 'Urgent').length), 'cette semaine', 'neutral')}
         ${statCard('Opportunités', String(insights.filter(i => i.priority === 'Opportunité').length), 'quick wins détectés', 'up')}
-        ${statCard('Score global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,'69/100'); })(), PREVIEW_MODE ? '+4 pts cette semaine' : 'score moyen portfolio', 'neutral')}
+        ${statCard('Score global', (()=>{ const _a = STATE.audits&&STATE.audits.length>0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null; return displayStat(_a!==null?_a+'/100':null,null); })(), 'score moyen portfolio', 'neutral')}
       </div>
       ${['Critique','Urgent','Cette semaine','Opportunité','Pro tip'].map(prio => {
         const group = insights.filter(i => i.priority === prio);
@@ -10918,7 +10954,11 @@ function renderAI() {
 
 function renderAIMessages() {
   if (STATE.aiMessages.length === 0) {
-    STATE.aiMessages = [{ from:'ai', text:'Bonjour ! Je suis votre co-pilote FlowPoint IA. J\'ai accès à vos audits, monitors, score SEO (74/100), alertes actives et métriques clients. Par où commençons-nous ?', chips:['audits','monitors'] }];
+    const _wAvg = STATE.audits && STATE.audits.length > 0 ? Math.round(STATE.audits.reduce((s,a)=>s+(a.score||0),0)/STATE.audits.length) : null;
+    const _wTxt = _wAvg !== null
+      ? 'Bonjour\u00a0! Je suis votre co-pilote FlowPoint IA. Votre score SEO moyen est de\u00a0<strong>' + _wAvg + '/100</strong> sur ' + STATE.audits.length + '\u00a0site(s) audité(s). Par où commençons-nous\u00a0?'
+      : 'Bonjour\u00a0! Je suis votre co-pilote FlowPoint IA. Je peux analyser vos audits, monitors, alertes et métriques lorsqu\'ils sont disponibles. Par où commençons-nous\u00a0?';
+    STATE.aiMessages = [{ from:'ai', text:_wTxt, chips:['audits','monitors'] }];
   }
 
   // Detect contextual chips to add from message content
