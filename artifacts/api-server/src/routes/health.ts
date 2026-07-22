@@ -18,6 +18,30 @@ router.get("/health", (_req, res) => {
   res.json({ status: "ok", uptime: Math.round(process.uptime()) });
 });
 
+// ── Version / deployment identity ─────────────────────────────────────────────
+// Public — no auth. Used to verify which commit is actually running in production.
+// Render sets RENDER_GIT_COMMIT automatically; GIT_COMMIT is a manual override.
+router.get("/version", (_req, res) => {
+  const commit =
+    process.env["RENDER_GIT_COMMIT"] ??
+    process.env["GIT_COMMIT"] ??
+    "local-dev";
+  res.json({
+    commit,
+    stripeCustomerFix: "v2",
+    features: {
+      emptyStringNormalization: true,
+      postgresAdvisoryLock: true,
+      strictDbPersist: true,
+      dedicatedPortalRateLimit: true,
+      idempotencyKey: true,
+    },
+    deployedAt: new Date().toISOString(),
+    uptime: Math.round(process.uptime()),
+    nodeEnv: process.env["NODE_ENV"] ?? "development",
+  });
+});
+
 // ── Upstream probe helper ─────────────────────────────────────────────────────
 interface ProbeResult {
   status: "ok" | "degraded" | "down";
