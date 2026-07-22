@@ -11969,7 +11969,7 @@ function renderInvitePanel() {
     <div class="fp-form-group">
       <label class="fp-form-label">Rôle</label>
       <select class="fp-select" style="width:100%" id="invite-role">
-        ${['Manager','Editor','Viewer'].map(r=>`<option>${r}</option>`).join('')}
+        <option value="admin">Manager</option><option value="member">Editor</option><option value="viewer">Viewer</option>
       </select>
     </div>
     <div style="margin-top:20px">
