@@ -1527,6 +1527,64 @@
     })
     .catch(function() { /* non-fatal: offline or API down — cached state already applied */ });
 })();
+
+/* ── From-dashboard: pre-select plan & add-ons, show back button ── */
+(function() {
+  'use strict';
+
+  var params = new URLSearchParams(window.location.search);
+  var fromDashboard = params.get('from') === 'dashboard';
+  var cart = null;
+  try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+  if (!fromDashboard && cart) fromDashboard = !!cart.fromDashboard;
+
+  if (!fromDashboard) return;
+
+  function applyCart() {
+    /* ── Back button in nav ── */
+    var navLinks = document.querySelector('.fp-nav-links');
+    if (navLinks && !document.getElementById('fp-back-btn')) {
+      var btn = document.createElement('a');
+      btn.id = 'fp-back-btn';
+      btn.href = 'https://app.flowpoint.pro/dashboard.html';
+      btn.style.cssText = 'color:var(--blue,#2563eb);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;margin-right:8px;';
+      btn.innerHTML = '\u2190 Tableau de bord';
+      navLinks.insertAdjacentElement('afterbegin', btn);
+    }
+
+    if (!cart) return;
+
+    /* ── Pre-select plan ── */
+    var plan = cart.plan || params.get('plan');
+    if (plan) {
+      var planBtn = document.querySelector('.fp-card-btn[data-plan="' + plan.toLowerCase() + '"]');
+      if (planBtn && !planBtn.disabled) {
+        planBtn.click();
+      }
+    }
+
+    /* ── Pre-select addons ── */
+    var addons = cart.addons || {};
+    Object.keys(addons).forEach(function(addonKey) {
+      /* Find button: onclick="addToCart(this,'addonKey'..." */
+      var btns = document.querySelectorAll('button[onclick]');
+      for (var i = 0; i < btns.length; i++) {
+        var m = (btns[i].getAttribute('onclick') || '').match(/addToCart\s*\(\s*this\s*,\s*'([^']+)'/);
+        if (m && m[1] === addonKey && !btns[i].disabled) {
+          btns[i].click();
+          break;
+        }
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyCart);
+  } else {
+    /* DOM already ready — defer slightly so other init scripts run first */
+    setTimeout(applyCart, 120);
+  }
+})();
 </script>
 </body>
 </html>

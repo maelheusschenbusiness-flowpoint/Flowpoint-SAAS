@@ -13819,6 +13819,7 @@ function bindSectionEvents() {
               checkBtn.disabled = false;
               checkBtn.textContent = 'Choisir';
             }
+          });
         });
       }, 80);
     });
