@@ -221,12 +221,8 @@ export async function startTrial(plan: string = "pro", days: number = 14, orgId 
       return { ok: true, trialEndsAt: trialEnd, plan, noPrice: true };
     }
 
-    let customerId = store.me.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({ name: store.me.firstName, metadata: { plan } });
-      customerId = customer.id;
-      store.me.stripeCustomerId = customerId;
-    }
+    const { ensureStripeCustomer } = await import("./ensure-stripe-customer.js");
+    const customerId = await ensureStripeCustomer(orgId, null, stripeKey);
 
     const sub = await stripe.subscriptions.create({
       customer: customerId,
@@ -284,7 +280,7 @@ export async function validateCoupon(code: string) {
 // ── Invoices ──────────────────────────────────────────────────────────────────
 export async function getInvoices(limit: number = 20, stripeCustomerId?: string) {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  const customerId = stripeCustomerId ?? store.me.stripeCustomerId;
+  const customerId = stripeCustomerId ?? null;
   if (!stripeKey || !customerId) {
     return { invoices: [], mock: !stripeKey };
   }

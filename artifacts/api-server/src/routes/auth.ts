@@ -726,6 +726,27 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
     email: entry.email,
     message: "Connexion réussie",
   });
+
+  // P0: ensure org_settings row + Stripe customer exist for this org.
+  // Fire-and-forget — never blocks the login response.
+  const verifiedEmail = entry.email;
+  (async () => {
+    try {
+      const { upsertOrgSettings: _upsert } = await import("../services/org-settings.js");
+      await _upsert(verifiedEmail, { email: verifiedEmail });
+    } catch (settingsErr) {
+      logger.warn({ settingsErr, email: verifiedEmail }, "[Auth] login-verify: upsertOrgSettings failed (non-fatal)");
+    }
+    const stripeKey = process.env["STRIPE_LIVE_API_KEY"] ?? process.env["STRIPE_SECRET_KEY"] ?? "";
+    if (!stripeKey) return;
+    try {
+      const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
+      await ensureStripeCustomer(verifiedEmail);
+      logger.info({ email: verifiedEmail }, "[Auth] login-verify: Stripe customer ensured");
+    } catch (stripeErr) {
+      logger.warn({ stripeErr, email: verifiedEmail }, "[Auth] login-verify: ensureStripeCustomer failed (non-fatal)");
+    }
+  })();
 });
 
 // ── Google OAuth Login (separate from GBP — for account authentication) ──────

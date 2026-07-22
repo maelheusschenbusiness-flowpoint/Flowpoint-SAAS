@@ -6,6 +6,7 @@ import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS, PLAN_LIMITS }
 import { upsertOrgSettings, loadOrgSettings } from "../services/org-settings.js";
 import { loadBillingContext } from "../services/billing-context.js";
 import { createStripeClient } from "../services/stripe-factory.js";
+import { ensureStripeCustomer } from "../services/ensure-stripe-customer.js";
 import {
   getUsageSummary, getMRRData, getSubscriptionAnalytics,
   startTrial, validateCoupon, getInvoices, trackBillingEvent,
@@ -104,19 +105,7 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
       return;
     }
 
-    let customerId = billingCtx.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: req.orgContext?.email || billingCtx.email || undefined,
-        name: billingCtx.firstName || req.orgContext?.email || billingCtx.email || billingCtx.orgName || "FlowPoint User",
-        metadata: { plan, orgId, userId: req.userId ?? "unknown" },
-      });
-      customerId = customer.id;
-      // Persist new customer ID to DB for future requests
-      upsertOrgSettings(orgId, { stripeCustomerId: customerId }).catch(err =>
-        logger.warn({ err, orgId }, "[Billing] Failed to persist new stripeCustomerId")
-      );
-    }
+    const customerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
 
     // Belt-and-suspenders Stripe-side check for stale DB subscription_status
     if (customerId) {
@@ -208,18 +197,7 @@ router.post("/billing/checkout-embedded", async (req: Request, res: Response) =>
       return;
     }
 
-    let customerId = billingCtx.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: req.orgContext?.email || billingCtx.email || undefined,
-        name: billingCtx.firstName || req.orgContext?.email || billingCtx.email || billingCtx.orgName || "FlowPoint User",
-        metadata: { plan, orgId, userId: req.userId ?? "unknown" },
-      });
-      customerId = customer.id;
-      upsertOrgSettings(orgId, { stripeCustomerId: customerId }).catch(err =>
-        logger.warn({ err, orgId }, "[Billing] Failed to persist new stripeCustomerId")
-      );
-    }
+    const customerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -336,11 +314,13 @@ router.post("/billing/portal", billingCheckoutRateLimit, ownerOnly, async (req: 
 
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
-  const customerId = billingCtx.stripeCustomerId ?? null;
 
-  if (!customerId) {
-    logger.warn({ orgId }, "[Billing] portal requested but no stripeCustomerId");
-    res.status(422).json({ error: "no_customer", message: "Aucun abonnement actif — souscrivez d'abord un plan." });
+  let customerId: string;
+  try {
+    customerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
+  } catch (ensureErr) {
+    logger.error({ ensureErr, orgId }, "[Billing] portal: ensureStripeCustomer failed");
+    res.status(503).json({ error: "stripe_unavailable", message: "Impossible de créer le portail — réessayez dans quelques secondes." });
     return;
   }
 
@@ -640,18 +620,7 @@ router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
       return;
     }
 
-    let customerId = billingCtx.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: req.orgContext?.email || billingCtx.email || undefined,
-        name: billingCtx.firstName || req.orgContext?.email || billingCtx.email || billingCtx.orgName || "FlowPoint User",
-        metadata: { plan, orgId, userId: req.userId ?? "unknown" },
-      });
-      customerId = customer.id;
-      upsertOrgSettings(orgId, { stripeCustomerId: customerId }).catch(err =>
-        logger.warn({ err, orgId }, "[Billing] Failed to persist new stripeCustomerId")
-      );
-    }
+    const customerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
 
     // Stripe-side guard
     if (customerId) {
@@ -781,18 +750,7 @@ router.post("/billing/checkout-ai-credits", billingCheckoutRateLimit, async (req
   try {
     const stripe = await createStripeClient(stripeKey);
 
-    let customerId = billingCtx.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: req.orgContext?.email || billingCtx.email || undefined,
-        name: billingCtx.firstName || req.orgContext?.email || billingCtx.email || billingCtx.orgName || "FlowPoint User",
-        metadata: { orgId, userId: req.userId ?? "unknown" },
-      });
-      customerId = customer.id;
-      upsertOrgSettings(orgId, { stripeCustomerId: customerId }).catch(err =>
-        logger.warn({ err, orgId }, "[Billing] Failed to persist new stripeCustomerId")
-      );
-    }
+    const customerId = await ensureStripeCustomer(orgId, billingCtx, stripeKey);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
