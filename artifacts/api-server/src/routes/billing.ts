@@ -20,7 +20,9 @@ const PLAN_INCLUDED_ADDONS: Record<string, Set<string>> = {
   ultra:    new Set(["whiteLabel", "agencyPacks"]),
 };
 
-const billingCheckoutRateLimit = createRateLimit("reportsPerHour");
+/** Dedicated billing rate limiters — do NOT share quota with reports/exports. */
+const billingPortalRateLimit   = createRateLimit("billingPortalPerMinute");
+const billingCheckoutRateLimit = createRateLimit("billingCheckoutPerMinute");
 
 const router = Router();
 
@@ -296,7 +298,7 @@ router.get("/billing/verify", async (req: Request, res: Response) => {
 });
 
 // ── POST /billing/portal ─────────────────────────────────────────────────────
-router.post("/billing/portal", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
+router.post("/billing/portal", billingPortalRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
   const returnUrl = process.env["STRIPE_RETURN_URL"] || `${publicUrl}/dashboard`;
