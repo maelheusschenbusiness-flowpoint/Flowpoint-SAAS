@@ -11155,7 +11155,7 @@ async function sendAIMessage(text) {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, context, stream: true, history, ...(STATE.aiProvider && STATE.aiProvider !== 'openai' ? { provider: STATE.aiProvider } : {}) }),
+      body: JSON.stringify({ message: text, context, stream: true, history, provider: STATE.aiProvider || 'openai' }),
     });
 
     if (!resp.ok || !resp.body) {
@@ -19799,7 +19799,7 @@ function renderCompetitor() {
 
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Leader du marché', _leader ? escHtml(_leader.name) : '—', _leader ? _leader.score + '/100 SEO' : 'Aucun concurrent ajouté', _leader ? 'down' : 'neutral')}
-        ${statCard('Votre position', comps.length > 0 ? '#2/' + comps.length : '—', 'sur le marché local', 'up')}
+        ${statCard('Votre position', comps.length > 0 ? '#' + (comps.filter(c => c.score > (myScore ?? 0)).length + 1) + '/' + (comps.length + 1) : '—', comps.length > 0 ? 'sur le marché local' : 'Aucun classement disponible', comps.length > 0 ? 'up' : 'neutral')}
         ${statCard('Part de marché est.', displayStat(null, '22%'), PREVIEW_MODE ? '+2% vs mois dernier' : 'Données insuffisantes', 'neutral')}
         ${statCard('Menaces actives', comps.filter(c => c.threat === 'high').length, 'concurrents à surveiller', 'neutral')}
       </div>
@@ -20518,8 +20518,8 @@ function renderCompetitor() {
 
     <!-- KPI ROW -->
     <div class="fp-stat-row fp-mb-20">
-      ${statCard('Concurrents suivis', comps.length, '+ 1 nouveau ce mois', 'up')}
-      ${statCard('Votre rang marché', '#2/' + comps.length, 'sur l\'ensemble du secteur', 'up')}
+      ${statCard('Concurrents suivis', comps.length, comps.length > 0 ? comps.length + ' concurrent(s) suivis' : 'Aucun concurrent ajouté', comps.length > 0 ? 'up' : 'neutral')}
+      ${statCard('Votre rang marché', comps.length > 0 ? '#' + (comps.filter(c => c.score > (myScore ?? 0)).length + 1) + '/' + (comps.length + 1) : '—', comps.length > 0 ? 'sur l\'ensemble du secteur' : 'Ajoutez des concurrents', comps.length > 0 ? 'up' : 'neutral')}
       ${statCard('Menaces critiques', comps.filter(c => c.threat === 'high').length, 'à traiter cette semaine', 'down')}
       ${statCard('Opportunités détectées', oppHijack.filter(o => o.urgency !== 'done').length, 'à saisir maintenant', 'neutral')}
     </div>
