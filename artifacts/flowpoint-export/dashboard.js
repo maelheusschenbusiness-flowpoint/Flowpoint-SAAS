@@ -318,7 +318,6 @@ function getMissionLibrarySuggested() {
     if (t.category === 'Local SEO' && hasAudits) score += 20;
     if (t.category === 'GBP' && hasGbp) score += 25;
     if (t.category === 'Monitoring' && hasMonitors) score += 15;
-    score += Math.random() * 3;
     return { ...t, _score: score };
   });
   return scored.sort((a, b) => b._score - a._score).slice(0, 12);
@@ -7202,9 +7201,9 @@ function renderTeam() {
     <!-- TEAM STATS -->
     <div class="fp-stat-row fp-mb-20">
       ${statCard('Membres actifs', (STATE.seatUsage ? STATE.seatUsage.used + '/' + STATE.seatUsage.limit : STATE.team.length + '/' + (1+(me.addons.extraSeats||0))), 'seats utilisés', 'neutral')}
-      ${statCard('Messages aujourd\'hui', displayStat(null, '12'), PREVIEW_MODE ? '+4 vs hier' : 'Connectez messagerie', 'neutral')}
-      ${statCard('Fichiers partagés', displayStat(null, '6'), PREVIEW_MODE ? 'ce mois' : 'Activité réelle', 'neutral')}
-      ${statCard('Tâches assignées', displayStat(STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.length) : null, '4'), STATE.missions && STATE.missions.length > 0 ? 'missions actives' : PREVIEW_MODE ? '1 terminée' : 'Aucune mission', 'neutral')}
+      ${statCard('Messages aujourd\'hui', STATE.channelMessages ? String(Object.values(STATE.channelMessages).reduce((n,arr)=>n+(Array.isArray(arr)?arr.length:0),0)) : '—', 'messages dans les canaux', 'neutral')}
+      ${statCard('Fichiers partagés', STATE.teamFiles && STATE.teamFiles.length > 0 ? String(STATE.teamFiles.length) : '—', STATE.teamFiles && STATE.teamFiles.length > 0 ? 'fichiers partagés' : 'Aucun fichier partagé', 'neutral')}
+      ${statCard('Tâches assignées', STATE.missions && STATE.missions.length > 0 ? String(STATE.missions.length) : '—', STATE.missions && STATE.missions.length > 0 ? 'missions actives' : 'Aucune mission', 'neutral')}
     </div>
 
     <!-- MEMBERS + PERMISSIONS -->
@@ -7735,7 +7734,7 @@ function renderBilling() {
         ${statCard('Add-ons actifs', String(allAddons.filter(a=>a.active).length), 'activés manuellement', 'up')}
         ${statCard('Inclus dans votre plan', String(allAddons.filter(a=>isIncluded(a)).length), 'sans coût additionnel', 'up')}
         ${statCard('Modules IA dispo', String(allAddons.filter(a => a.cat === 'IA').length), 'modules d\'intelligence', 'up')}
-        ${statCard('ROI estimé', displayStat(null, '+42%'), PREVIEW_MODE ? 'efficacité agence' : 'Connectez analytics', 'neutral')}
+        ${statCard('ROI estimé', '—', 'Connectez analytics', 'neutral')}
       </div>
 
       <!-- CATEGORY FILTER -->
@@ -8094,7 +8093,7 @@ function renderBilling() {
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Score optimisation', displayStat(upgradeScore!=null?upgradeScore+'/100':null, '62/100'), PREVIEW_MODE ? '+15 pts ce mois' : upgradeScore!=null?'+'+upgradeScore+'pts':'Analyse en cours', 'neutral')}
         ${statCard('Actions identifiées', displayStat(strategies.length > 0 ? String(strategies.length) : null, '3'), PREVIEW_MODE ? 'opportunités prioritaires' : (strategies.length > 0 ? 'opportunités identifiées' : 'Aucune action'), 'neutral')}
-        ${statCard('ROI add-ons estimé', displayStat(null, '+42%'), PREVIEW_MODE ? 'efficacité agence' : 'Activez des add-ons', 'neutral')}
+        ${statCard('ROI add-ons estimé', '—', 'Activez des add-ons', 'neutral')}
         ${statCard('Alertes churn', isUltra ? String(churnRisks.length) : '—', churnRisks.length > 0 ? 'signaux faibles détectés' : 'aucun signal faible', 'neutral')}
       </div>
 
@@ -8165,7 +8164,7 @@ function renderBilling() {
     ];
     return `
       ${isUltra
-        ? aiBlock(`Agency Lab actif. <strong>${workspaces.length} workspace${workspaces.length!==1?'s':''} géré${workspaces.length!==1?'s':''}</strong> — ${workspaces.reduce((s,w)=>s+(w.clients||0),0)} client${workspaces.reduce((s,w)=>s+(w.clients||0),0)!==1?'s':''}. MRR agence : ${displayStat(null, PREVIEW_MODE?'316€':'—')}. White-label et custom domain disponibles — activez le portail client personnalisé pour une expérience premium maximale.`,
+        ? aiBlock(`Agency Lab actif. <strong>${workspaces.length} workspace${workspaces.length!==1?'s':''} géré${workspaces.length!==1?'s':''}</strong> — ${workspaces.reduce((s,w)=>s+(w.clients||0),0)} client${workspaces.reduce((s,w)=>s+(w.clients||0),0)!==1?'s':''}. MRR agence : —. White-label et custom domain disponibles — activez le portail client personnalisé pour une expérience premium maximale.`,
             ['Configurer portail client', 'Ajouter un workspace', 'Générer rapport agence'])
         : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:20px 24px;margin-bottom:20px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
@@ -8185,7 +8184,7 @@ function renderBilling() {
       ${!isUltra ? '' : `
       <div class="fp-stat-row fp-mb-20">
         ${statCard('Workspaces', String(workspaces.length), 'agence + clients', 'up')}
-        ${statCard('MRR Agence', displayStat(null, '316€'), PREVIEW_MODE ? 'revenus récurrents' : 'Connectez facturation', 'neutral')}
+        ${statCard('MRR Agence', '—', 'Connectez facturation', 'neutral')}
         ${statCard('Fonctions actives', String(features.filter(f => f.active).length) + '/' + features.length, 'Ultra actives', 'up')}
         ${statCard('Conformité RGPD', 'En cours', 'audit log à activer', 'neutral')}
       </div>
@@ -8742,7 +8741,8 @@ function renderSettings() {
             {l:'Pays',         id:'prof-country',v:me.location?.country||'',                t:'text', ph:'France'},
           ].map(f => `<div class="fp-form-group">
             <label class="fp-form-label">${escHtml(f.l)}</label>
-            <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}${f.ro ? ' readonly title="L\'adresse email est gérée via votre authentification — modifiable depuis votre provider SSO" style="opacity:0.6;cursor:not-allowed"' : ''}/>
+            <input class="fp-input" id="${f.id}" type="${f.t}" value="${escHtml(f.v)}"${f.ph ? ` placeholder="${escHtml(f.ph)}"` : ''}${f.ro ? ' readonly style="opacity:0.6;cursor:not-allowed"' : ''}/>
+            ${f.ro ? '<div style="font-size:11px;color:var(--fp-text-faint);margin-top:4px">Votre adresse email est gérée par votre méthode d\'authentification.</div>' : ''}
           </div>`).join('')}
           <hr style="border:none;border-top:1px solid var(--fp-border);margin:14px 0 10px"/>
           <div style="font-size:11px;font-weight:700;color:var(--fp-text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Canaux d'alerte</div>
@@ -10213,7 +10213,7 @@ function renderAI() {
   if (sub === 'intelligence') {
     const domScore = STATE.localSeo?.domScore ?? null;
     const _aiScore = STATE.overview?.avgScore ?? ((STATE.audits||[]).length>0?Math.round((STATE.audits||[]).reduce((s,a)=>s+(a.score||0),0)/(STATE.audits||[]).length):null);
-    const _mkSysScore = v => v!=null?v:(PREVIEW_MODE?Math.floor(Math.random()*25)+55:null);
+    const _mkSysScore = v => v != null ? v : null;
     const _mkSysStatus = v => v==null?'—':v>=80?'Bon':v>=60?'Attention':'Faible';
     const _mkSysColor  = v => v==null?'var(--fp-text-faint)':v>=80?'#22c55e':v>=60?'#f59e0b':'#ef4444';
     const _auditScore  = STATE.overview?.avgScore ?? null;
