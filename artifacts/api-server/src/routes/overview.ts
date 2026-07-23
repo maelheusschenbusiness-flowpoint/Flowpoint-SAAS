@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { getOverviewMetrics } from "../services/overview-service.js";
+import { aiChat } from "../services/ai-provider.js";
 import { pool } from "@workspace/db";
 
 const router = Router();
@@ -148,6 +149,87 @@ router.put("/overview/checklist", async (req: Request, res: Response) => {
     return res.json({ ok: true, items: row?.items ?? [], extra: row?.extra ?? {}, updatedAt: row?.updated_at });
   } catch (err) {
     return res.status(500).json({ error: "Failed to save checklist" });
+  }
+});
+
+// ── GET /overview/insights — AI-generated executive insights (cached 5min) ────
+const _insightsCache = new Map<string, { text: string; expiresAt: number }>();
+
+router.get("/overview/insights", async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as unknown as { orgContext?: { orgId?: string }; orgId?: string })
+      .orgContext?.orgId ?? (req as unknown as { orgId?: string }).orgId ?? "default";
+
+    const cached = _insightsCache.get(orgId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return res.json({ text: cached.text, cached: true });
+    }
+
+    // Build a compact real-data context for the AI prompt
+    const [auditQ, kwnQ, monQ, msnQ, compQ] = await Promise.allSettled([
+      pool.query(
+        `SELECT ROUND(AVG(score))::int AS avg, COUNT(*) AS cnt,
+                MIN(score)::int AS low, MAX(score)::int AS high
+         FROM audits WHERE org_id=$1 AND created_at > NOW() - INTERVAL '30 days'`,
+        [orgId]
+      ),
+      pool.query(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN trend='up' THEN 1 ELSE 0 END) AS up,
+                SUM(CASE WHEN current_position<=10 THEN 1 ELSE 0 END) AS top10
+         FROM tracked_keywords WHERE org_id=$1 AND active=true`,
+        [orgId]
+      ),
+      pool.query(
+        `SELECT SUM(CASE WHEN status='down' THEN 1 ELSE 0 END) AS down,
+                COUNT(*) AS total
+         FROM monitors WHERE org_id=$1`,
+        [orgId]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FILTER (WHERE status='done') AS done,
+                COUNT(*) AS total
+         FROM missions WHERE org_id=$1`,
+        [orgId]
+      ),
+      pool.query(`SELECT COUNT(*) AS cnt FROM competitors WHERE org_id=$1`, [orgId]),
+    ]);
+
+    const aud = auditQ.status === "fulfilled" ? auditQ.value.rows[0] : null;
+    const kw  = kwnQ.status  === "fulfilled" ? kwnQ.value.rows[0]  : null;
+    const mon = monQ.status   === "fulfilled" ? monQ.value.rows[0]  : null;
+    const msn = msnQ.status   === "fulfilled" ? msnQ.value.rows[0]  : null;
+    const cmp = compQ.status  === "fulfilled" ? compQ.value.rows[0] : null;
+
+    const ctx = [
+      aud?.avg   ? `Score SEO moyen: ${aud.avg}/100 (${aud.cnt} audits, min ${aud.low}, max ${aud.high})` : "",
+      kw?.total  ? `Mots-clés suivis: ${kw.total} actifs, ${kw.up} en hausse, ${kw.top10} top-10` : "",
+      mon?.total ? `Monitors: ${mon.total} total, ${mon.down} DOWN` : "",
+      msn?.total ? `Missions: ${msn.done}/${msn.total} complétées` : "",
+      cmp?.cnt   ? `Concurrents: ${cmp.cnt} suivis` : "",
+    ].filter(Boolean).join(". ");
+
+    if (!ctx) {
+      const fallback = "Connectez vos sites et démarrez des audits pour recevoir des insights IA personnalisés basés sur vos données réelles.";
+      return res.json({ text: fallback, cached: false });
+    }
+
+    const result = await aiChat({
+      provider: "openai",
+      model: "gpt-5-mini",
+      systemPrompt: "Tu es un consultant SEO expert. Génère une analyse synthétique et actionnable en 2-3 phrases maximum (150 caractères max). Sois précis, direct, utilise les vraies données fournies. Pas de bullets, pas de titres, texte continu uniquement.",
+      userPrompt: `Analyse ces métriques FlowPoint et donne une priorité d'action immédiate : ${ctx}`,
+      maxTokens: 200,
+      temperature: 0.5,
+    });
+
+    const text = result.text?.trim() ?? "";
+    if (text) {
+      _insightsCache.set(orgId, { text, expiresAt: Date.now() + 5 * 60_000 });
+    }
+    return res.json({ text: text || "Données insuffisantes pour générer des insights.", cached: false });
+  } catch {
+    return res.status(500).json({ error: "Failed to generate insights" });
   }
 });
 

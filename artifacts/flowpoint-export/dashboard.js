@@ -97,6 +97,8 @@ const STATE = {
   aiMessages: [],
   aiLoading: false,
   aiCredits: null,
+  gbp: null,
+  overviewInsightsText: null,
   aiProvider: 'openai',
   checklistExtra: {},
   ctxMenu: null,
@@ -1069,6 +1071,18 @@ async function loadData() {
   STATE.calendarEvents = [];
   STATE.clients = [];
   STATE.overview = overview;
+  // Map GBP fields from overview response to STATE.gbp (used throughout dashboard)
+  if (overview && typeof overview === 'object') {
+    STATE.gbp = {
+      connected:        !!overview.gbpConnected,
+      averageRating:    overview.gbpRating       ?? null,
+      totalReviews:     overview.gbpReviewCount  ?? null,
+      unansweredReviews:overview.gbpUnansweredCount ?? null,
+      completionScore:  overview.gbpCompletionPct  ?? null,
+      listings:         [],
+      locations:        [],
+    };
+  }
   if (!STATE.historySiteUrl && STATE.audits.length > 0) STATE.historySiteUrl = STATE.audits[0].url;
 
   // ── Phase 3: Early render with primary data so the UI is visible immediately ──
@@ -3642,7 +3656,9 @@ function renderOverview() {
   const activeMonitors = (STATE.monitors||[]).filter(m => m.status !== 'down').length;
   const totalMonitors  = (STATE.monitors||[]).length;
   const pingOk = totalMonitors > 0 ? Math.round(activeMonitors / totalMonitors * 100) : 100;
-  const conversionScore = STATE.overview?.conversionScore || 0;
+  // Real GA4 conversion rate (e.g. 2.31 %) → normalize to 0-100 for gauges (5% = 100)
+  const conversionRate  = STATE.overview?.conversionRate ?? STATE.overview?.conversionScore ?? null;
+  const conversionScore = conversionRate != null ? Math.min(100, Math.round(conversionRate * 20)) : 0;
   const localScore = STATE.overview?.localScore > 0 ? STATE.overview.localScore
                    : STATE.overview?.seoScore   > 0 ? STATE.overview.seoScore
                    : 0;
@@ -3663,13 +3679,13 @@ function renderOverview() {
   const _growthTrend = (() => { const g = STATE.overview?.organicGrowthPct; return g != null ? (g > 0 ? '+' : '') + g + '%' : '—'; })();
   const healthMetrics = [
     { label:'SEO Health',         val:avg,                 max:100, color:'#2563EB',  icon:'🔍', trend:_seoTrend,   unit:'/100', route:'audits' },
-    { label:'Conversion',         val:conversionScore,     max:100, color:'#22c55e',  icon:'⚡', trend:'—',         unit:'/100', route:'conversion' },
+    { label:'Conversion GA4',     val:conversionScore,     max:100, color:'#22c55e',  icon:'⚡', trend:conversionRate != null ? conversionRate.toFixed(2)+'%' : '—', unit:'/100', route:'conversion' },
     { label:'Monitoring',         val:pingOk,              max:100, color:pingOk===100?'#22c55e':'#ef4444', icon:'📡', trend:down>0?'-'+down:'OK', unit:'%', route:'monitors' },
     { label:'Local Visibility',   val:localScore,          max:100, color:'#f59e0b',  icon:'📍', trend:'—',         unit:'%',    route:'local-seo' },
     { label:'Competitor Pressure',val:competitorPressure,  max:100, color:'#ef4444',  icon:'⚔️', trend:'—',         unit:'/100', route:'competitor' },
     { label:'Growth Momentum',    val:growthMomentum,      max:100, color:'#8b5cf6',  icon:'🚀', trend:_growthTrend, unit:'/100', route:'growth' },
     { label:'Revenue Opportunity',val:revenueOpp != null ? Math.min(100,Math.round(revenueOpp/50)) : 0, max:100, color:'#06b6d4', icon:'💰', trend:revenueOpp != null ? (revenueOpp>0?'+':'') + Math.round(revenueOpp/1000)+'k€' : '—', unit:'k€', route:'conversion' },
-    { label:'Workspace Stability',val:Math.round((activeMonitors/Math.max(totalMonitors,1))*100), max:100, color:'#22c55e', icon:'🏢', trend:'Stable', unit:'%', route:'monitors' },
+    { label:'Santé Workspace',    val:STATE.overview?.workspaceHealth ?? null, max:100, color:'#22c55e', icon:'🏢', trend:(()=>{ const _wh=STATE.overview?.workspaceHealth; return _wh!=null?(_wh>=70?'Excellent':_wh>=40?'Moyen':'À améliorer'):'—'; })(), unit:'/100', route:'missions' },
   ];
 
   const circ30 = 2 * Math.PI * 30;
@@ -3766,36 +3782,35 @@ function renderOverview() {
         })
     : [];
 
-  var _ah = (Array.isArray(STATE.overview?.auditHistory) ? STATE.overview.auditHistory : []).map(function(h){ return Number(h.avg || h.score || 0); }).filter(function(v){ return !isNaN(v); });
-  var _gscClicks = STATE.overview?.gscClicks30d ?? null;
-  var _gscPrev   = STATE.overview?.organicGrowthPct ?? null;
-  var _convCurr  = conversionScore > 0 ? conversionScore + '%' : '—';
-  var _localCurr = localScore > 0 ? localScore + '%' : '—';
-  var _traficCurr = PREVIEW_MODE ? '+18%' : (_gscClicks != null ? _gscClicks.toLocaleString('fr-FR') : '—');
-  // Forecast labels: PREVIEW_MODE shows synthetic projections; production shows real API data or '—'
-  var _seoTrend30d = STATE.overview?.seoTrend30d ?? null;
-  var _seoFcast   = avg > 0 ? (avg >= 90 ? '95+/100' : Math.min(100, Math.round(avg * (1 + (_seoTrend30d != null ? Math.max(0, _seoTrend30d/100) : 0.08)))) + '/100') : '—';
-  var _traficFcast = _gscClicks != null && _gscPrev != null ? ((_gscPrev > 0 ? '+' : '') + _gscPrev + '%') : (avg > 0 ? '+' + Math.round(avg * 0.08) + '%' : '—');
+  var _ah = (Array.isArray(STATE.overview?.auditHistory) ? STATE.overview.auditHistory : []).map(function(h){ return Number((h && typeof h === 'object' ? h.avg : h) || 0); }).filter(function(v){ return !isNaN(v) && v > 0; });
+  var _gscHistory = Array.isArray(STATE.overview?.gscClicksHistory) ? STATE.overview.gscClicksHistory : null;
+  var _gscClicks  = STATE.overview?.gscClicks30d ?? null;
+  var _gscPrev    = STATE.overview?.organicGrowthPct ?? null;
+  var _convCurr   = conversionRate != null ? conversionRate.toFixed(2) + '%' : '—';
+  var _localCurr  = localScore > 0 ? localScore + '%' : '—';
+  var _traficCurr = _gscClicks != null ? _gscClicks.toLocaleString('fr-FR') + ' clics' : '—';
+  // Forecast labels: real data only — never synthetic extrapolation
+  var _seoFcast   = _ah.length >= 2 ? (Math.min(100, _ah[_ah.length-1] + Math.round((_ah[_ah.length-1] - _ah[0]) / Math.max(_ah.length-1,1))) + '/100') : (avg > 0 ? avg + '/100' : '—');
+  var _traficFcast = _gscClicks != null && _gscPrev != null ? ((_gscPrev > 0 ? '+' : '') + _gscPrev + '%') : '—';
   var _convFcast  = '—';
   var _localFcast = '—';
-  // Sparkline data: PREVIEW_MODE can use synthetic projections; production uses real history only
-  var _seoData = PREVIEW_MODE
-    ? (_ah.length >= 4 ? _ah.slice(-4).concat([Math.round(avg*1.04), Math.round(avg*1.08), Math.min(100, Math.round(avg*1.12))]) : [avg-6,avg-4,avg-2,avg,avg+2,avg+5,avg+9])
-    : (_ah.length >= 2 ? _ah.slice(-7) : (avg > 0 ? [Math.max(0,avg-12),Math.max(0,avg-8),Math.max(0,avg-5),Math.max(0,avg-3),Math.max(0,avg-1),avg,avg] : null));
-  var _convData  = PREVIEW_MODE ? [2.1,2.2,2.3,2.4,2.6,2.8,3.1] : null;
-  var _localData = PREVIEW_MODE ? [65,67,70,74,77,82,88] : null;
+  // Sparklines: real DB data only — null triggers "collecting" state in UI
+  var _seoData = _ah.length >= 2 ? _ah.slice(-7) : null;
+  var _gscData = _gscHistory != null ? _gscHistory.slice(-7).map(function(r){ return typeof r === 'object' ? r.clicks : r; }) : null;
+  var _convData  = null;
+  var _localData = null;
   const forecasts = [
-    { label:'Score SEO',  current:avg,          forecast:_seoFcast,    unit:'/100', color:'#2563EB', data:_seoData,   collecting: !PREVIEW_MODE && _ah.length < 12 },
-    { label:'Trafic GSC', current:_traficCurr,  forecast:_traficFcast, unit:'',     color:'#22c55e', data:PREVIEW_MODE?[8,11,14,18,22,26,31]:null, collecting: !PREVIEW_MODE && _gscClicks == null },
-    { label:'Conversion', current:_convCurr,    forecast:conversionScore > 0 ? (conversionScore >= 90 ? '98%' : Math.min(99,Math.round(conversionScore*1.1))+'%') : '—',   unit:'',     color:'#8b5cf6', data:conversionScore > 0 ? [Math.max(0,conversionScore-12),Math.max(0,conversionScore-8),Math.max(0,conversionScore-4),conversionScore,conversionScore+2,conversionScore+4,Math.min(99,conversionScore+6)] : null,  collecting: conversionScore === 0 },
-    { label:'Local Pack', current:_localCurr,   forecast:_localFcast,  unit:'',     color:'#f59e0b', data:_localData, collecting: !PREVIEW_MODE && localScore === 0 },
+    { label:'Score SEO',  current:avg > 0 ? avg + '/100' : '—', forecast:_seoFcast, unit:'/100', color:'#2563EB', data:_seoData, collecting: _seoData == null },
+    { label:'Trafic GSC', current:_traficCurr, forecast:_traficFcast, unit:'clics', color:'#22c55e', data:_gscData, collecting: _gscClicks == null },
+    { label:'Taux conv.', current:_convCurr,   forecast:'—', unit:'',  color:'#8b5cf6', data:null, collecting: conversionRate == null },
+    { label:'Local Pack', current:_localCurr,  forecast:'—', unit:'%', color:'#f59e0b', data:null, collecting: localScore === 0 },
   ];
 
   const achievements = [
     { icon:'🏆', title: missionsCompleted > 0 ? missionsCompleted + ' mission' + (missionsCompleted > 1 ? 's' : '') + ' complétée' + (missionsCompleted > 1 ? 's' : '') : 'Aucune mission complétée', desc: missionsCompleted > 0 ? 'Continuez sur votre lancée !' : 'Créez votre première mission', color:'#f59e0b', unlocked: missionsCompleted > 0 },
     { icon:'🔥', title: realStreak > 0 ? 'Streak ' + realStreak + ' jour' + (realStreak > 1 ? 's' : '') : 'Streak à démarrer', desc: realStreak > 0 ? 'Optimisation quotidienne active' : 'Connectez-vous chaque jour pour cumuler', color:'#ef4444', unlocked: realStreak > 0 },
     { icon:'⭐', title:'Score 70+ atteint',       desc:'Benchmark professionnel franchi', color:'#22c55e', unlocked: avg >= 70 },
-    { icon:'🚀', title:'Premier Ultra Client',    desc:'Prochain objectif : 80/100', color:'#8b5cf6', unlocked:false },
+    { icon:'🚀', title: isUltra ? 'Plan Ultra actif' : 'Passer en Ultra', desc: isUltra ? 'Accès complet à toutes les fonctionnalités avancées' : 'Prochain objectif : plan Ultra', color:'#8b5cf6', unlocked: isUltra },
     { icon:'💎', title:'100% Uptime — 30 jours', desc:'Stabilité monitoring exemplaire', color:'#06b6d4', unlocked: down === 0 && totalMonitors > 0 },
   ];
 
@@ -12751,7 +12766,21 @@ function bindSectionEvents() {
         _overviewFetchCtrl = new AbortController();
         var _sig = _overviewFetchCtrl.signal;
         apiFetch('/api/overview?range=' + STATE.overviewRange)
-          .then(function(ov) { if (!_sig.aborted && ov && typeof ov === 'object') { STATE.overview = ov; render(); } })
+          .then(function(ov) {
+            if (!_sig.aborted && ov && typeof ov === 'object') {
+              STATE.overview = ov;
+              STATE.gbp = {
+                connected:        !!ov.gbpConnected,
+                averageRating:    ov.gbpRating       ?? null,
+                totalReviews:     ov.gbpReviewCount  ?? null,
+                unansweredReviews:ov.gbpUnansweredCount ?? null,
+                completionScore:  ov.gbpCompletionPct  ?? null,
+                listings:  [],
+                locations: [],
+              };
+              render();
+            }
+          })
           .catch(function(e) { if (!e || e.name !== 'AbortError') render(); });
       }
     }));
@@ -15961,16 +15990,30 @@ function renderOverviewInsights() {
   ];
 
   const _wDays=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-  const _wHist=(STATE.overview?.auditHistory||[]).slice(-7);
+  const _wHist=(STATE.overview?.auditHistory||[]).slice(-7).map(function(h){ return typeof h === 'object' ? h.avg : h; });
   const _wAvg=avgScore()||70;
   const weeklyData = _wHist.length>=1
-    ? _wHist.map((sc,i)=>({day:_wDays[i%7],score:sc,issues:Math.max(0,Math.round((100-sc)/12)),visitors:null}))
+    ? _wHist.map((sc,i)=>({day:_wDays[i%7],score:Number(sc)||0,issues:Math.max(0,Math.round((100-(Number(sc)||0))/12)),visitors:null}))
     : (PREVIEW_MODE
         ? [{day:'Lun',score:71,issues:8,visitors:142},{day:'Mar',score:72,issues:7,visitors:165},{day:'Mer',score:73,issues:6,visitors:158},{day:'Jeu',score:73,issues:6,visitors:189},{day:'Ven',score:74,issues:5,visitors:203},{day:'Sam',score:74,issues:5,visitors:98},{day:'Dim',score:74,issues:5,visitors:87}]
         : []);  // No fabricated days in production
 
+  // Insights IA — load once, cache in STATE, re-render when ready
+  if (STATE.overviewInsightsText === null && !STATE._insightsFetchInProgress) {
+    STATE._insightsFetchInProgress = true;
+    apiFetch('/api/overview/insights').then(function(r) {
+      STATE._insightsFetchInProgress = false;
+      if (r && r.text) { STATE.overviewInsightsText = r.text; render(); }
+      else { STATE.overviewInsightsText = ''; }
+    }).catch(function() { STATE._insightsFetchInProgress = false; STATE.overviewInsightsText = ''; });
+  }
+  const _aiInsightsText = STATE.overviewInsightsText
+    || (STATE.overviewInsightsText === null || STATE._insightsFetchInProgress
+        ? '⏳ Génération des insights IA en cours…'
+        : 'Lancez un audit pour obtenir des recommandations personnalisées basées sur vos données réelles.');
+
   return `
-    ${aiBlock('Axes d\'amélioration classiques à vérifier ce mois : réponses aux avis Google, optimisation des sites sous 65/100, et création de pages locales. Lancez un audit pour obtenir des recommandations personnalisées basées sur vos données.',
+    ${aiBlock(_aiInsightsText,
       [(()=>{const _w=(STATE.audits||[]).sort((a,b)=>(a.score||99)-(b.score||99))[0];return _w?'Corriger '+(((_w.url||_w.name||'').replace(/^https?:\/\//,'')).split('/')[0]||'le site'):'Optimiser les audits';})(), 'Répondre aux avis', 'Créer pages locales', 'Plan d\'action complet'])}
 
     <!-- TENDANCES SEMAINE -->
