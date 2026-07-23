@@ -215,7 +215,11 @@ function servePage(file: string) {
   return (_req: Request, res: Response): void => {
     const htmlPath = path.join(dashboardDir, file);
     try {
-      const html = fs.readFileSync(htmlPath, "utf8");
+      let html = fs.readFileSync(htmlPath, "utf8");
+      // Force browsers to load the latest JS/CSS by injecting a dynamic
+      // cache-bust timestamp. This avoids stale cached scripts across restarts.
+      const ts = Date.now();
+      html = html.replace(/\?v=\d+[a-z]?"/g, `?v=${ts}"`);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("Content-Security-Policy", CSP_HTML);
