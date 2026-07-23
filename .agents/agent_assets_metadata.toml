@@ -30,3 +30,9 @@ id = "OQnzCQsKKoUPF7Hpv3A-q"
 uri = "file://flowpoint-complete-project.zip"
 type = "unspecified"
 title = "FlowPoint — Projet Complet (backend + frontend)"
+
+[[outputs]]
+id = "mJp8yqXAxRrbdgOKn9Mzv"
+uri = "file://flowpoint-full-export-20260723.zip"
+type = "unspecified"
+title = "FlowPoint — Export complet du projet (1.4 Mo)"
