@@ -1270,7 +1270,19 @@ export async function initDataTables(): Promise<void> {
       );
     `);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache ready");
+    // ── overview_insights_rl — PG-based rate limit + generation mutex ──────────
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS overview_insights_rl (
+        org_id        TEXT         PRIMARY KEY,
+        window_start  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        gen_count     INTEGER      NOT NULL DEFAULT 0,
+        generating    BOOLEAN      NOT NULL DEFAULT FALSE,
+        gen_started   TIMESTAMPTZ,
+        last_gen_at   TIMESTAMPTZ
+      );
+    `);
+
+    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache, overview_insights_rl ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;

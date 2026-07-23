@@ -16022,6 +16022,7 @@ function renderOverviewInsights() {
     if (_ins.status === 'no_data')                return 'Lancez un audit pour obtenir des recommandations personnalisées basées sur vos données réelles.';
     if (_ins.status === 'quota_exhausted')        return '⚠️ Quota IA atteint ce mois-ci. ' + (_ins.resetHint || 'Renouvellement en début de mois.');
     if (_ins.status === 'temporarily_unavailable') return '⏳ Insights temporairement indisponibles. Réessayez dans quelques instants.';
+    if (_ins.status === 'rate_limited')           return '⏱️ Trop de générations IA demandées. Réessayez dans ' + Math.ceil(_ins.retryAfterSeconds || 120) + ' secondes.';
     if (_ins.status === 'configuration_error')    return '⚙️ Configuration IA incomplète. Vérifiez vos paramètres dans Réglages → IA.';
     return 'Connectez vos sources de données pour des insights personnalisés.';
   })();

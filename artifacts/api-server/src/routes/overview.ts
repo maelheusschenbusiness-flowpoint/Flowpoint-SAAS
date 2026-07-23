@@ -156,22 +156,111 @@ router.put("/overview/checklist", async (req: Request, res: Response) => {
 
 // ── Typed insight response ──────────────────────────────────────────────────
 type InsightResponse =
-  | { status: "ready";                  text: string; generatedAt: string; cached: boolean }
+  | { status: "ready";                   text: string; generatedAt: string; cached: boolean }
   | { status: "no_data" }
-  | { status: "quota_exhausted";        resetHint: string }
+  | { status: "quota_exhausted";         resetHint: string }
+  | { status: "rate_limited";            retryAfterSeconds: number }
   | { status: "temporarily_unavailable"; retryAfterMs: number }
   | { status: "configuration_error" };
 
-// ── In-process hot cache (avoids DB round-trip for bursts) ──────────────────
+// ── Rate-limit / mutex constants ────────────────────────────────────────────
+const INSIGHTS_MAX_GEN       = 3;          // max new OpenAI calls per window per org
+const INSIGHTS_WINDOW_S      = 10 * 60;   // 10-minute rolling window (seconds)
+const INSIGHTS_GEN_TIMEOUT_S = 120;       // stale-lock TTL: max seconds a generation may hold the mutex
+const INSIGHTS_COST_CREDITS  = 500;       // fixed credits per successful generation
+
+// ── In-process hot cache (avoids DB round-trip for repeated identical context) ──
 const _insightsHot = new Map<string, { text: string; hash: string; expiresAt: number }>();
 
-// ── GET /overview/insights — AI executive insights, quota-gated, PG-cached ─
+// ── PG-based distributed slot acquire (rate limit + mutex) ──────────────────
+// Returns { ok: true } when the slot is acquired (generating=true committed to DB),
+// or { ok: false, retryAfterSeconds } when rate-limited or concurrent lock held.
+async function _acquireInsightsSlot(
+  orgId: string
+): Promise<{ ok: true } | { ok: false; retryAfterSeconds: number }> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Ensure the row exists (idempotent)
+    await client.query(
+      `INSERT INTO overview_insights_rl (org_id) VALUES ($1) ON CONFLICT DO NOTHING`,
+      [orgId]
+    );
+
+    // Lock the row exclusively for this transaction
+    const { rows: [row] } = await client.query(
+      `SELECT * FROM overview_insights_rl WHERE org_id=$1 FOR UPDATE`,
+      [orgId]
+    );
+
+    const now          = Date.now();
+    const windowStart  = new Date(row.window_start as string).getTime();
+    const windowExpired = (now - windowStart) >= INSIGHTS_WINDOW_S * 1_000;
+    const effectiveCount = windowExpired ? 0 : (row.gen_count as number);
+    const effectiveWindowStart = windowExpired ? new Date(now).toISOString() : (row.window_start as string);
+
+    // Concurrent-generation check (stale lock recovery)
+    const isGenerating = row.generating as boolean;
+    const genStarted   = row.gen_started ? new Date(row.gen_started as string).getTime() : 0;
+    const lockIsStale  = genStarted > 0 && (now - genStarted) > INSIGHTS_GEN_TIMEOUT_S * 1_000;
+
+    if (isGenerating && !lockIsStale) {
+      const retryAfterSeconds = Math.max(1,
+        Math.ceil((genStarted + INSIGHTS_GEN_TIMEOUT_S * 1_000 - now) / 1_000)
+      );
+      await client.query("ROLLBACK");
+      return { ok: false, retryAfterSeconds };
+    }
+
+    // Rate-limit check (max generations per window)
+    if (effectiveCount >= INSIGHTS_MAX_GEN) {
+      const windowEnd = windowExpired
+        ? now + INSIGHTS_WINDOW_S * 1_000
+        : windowStart + INSIGHTS_WINDOW_S * 1_000;
+      const retryAfterSeconds = Math.max(1, Math.ceil((windowEnd - now) / 1_000));
+      await client.query("ROLLBACK");
+      return { ok: false, retryAfterSeconds };
+    }
+
+    // Acquire: mark generating=true, set window state
+    await client.query(
+      `UPDATE overview_insights_rl
+       SET generating=true, gen_started=NOW(), window_start=$2, gen_count=$3
+       WHERE org_id=$1`,
+      [orgId, effectiveWindowStart, effectiveCount]
+    );
+    await client.query("COMMIT");
+    return { ok: true };
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch { /* ignore */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ── Release slot after generation attempt ────────────────────────────────────
+async function _releaseInsightsSlot(orgId: string, succeeded: boolean): Promise<void> {
+  try {
+    await pool.query(
+      `UPDATE overview_insights_rl
+       SET generating = false,
+           gen_count  = gen_count + $2,
+           last_gen_at = CASE WHEN $2 = 1 THEN NOW() ELSE last_gen_at END
+       WHERE org_id = $1`,
+      [orgId, succeeded ? 1 : 0]
+    );
+  } catch { /* non-fatal */ }
+}
+
+// ── GET /overview/insights — AI executive insights, quota + rate-limit gated ─
 router.get("/overview/insights", async (req: Request, res: Response) => {
   try {
     const orgId = (req as unknown as { orgContext?: { orgId?: string }; orgId?: string })
       .orgContext?.orgId ?? (req as unknown as { orgId?: string }).orgId ?? "default";
 
-    // ── 1. Build context string (real DB data) ──────────────────────────────
+    // ── 1. Build context from real DB data ──────────────────────────────────
     const [auditQ, kwnQ, monQ, msnQ, compQ, leakQ] = await Promise.allSettled([
       pool.query(
         `SELECT ROUND(AVG(score))::int AS avg, COUNT(*) AS cnt,
@@ -213,21 +302,15 @@ router.get("/overview/insights", async (req: Request, res: Response) => {
     const leak = leakQ.status   === "fulfilled" ? leakQ.value.rows[0]   : null;
 
     const ctxLines = [
-      Number(aud?.cnt)   > 0 ? `Score SEO moyen: ${aud!.avg}/100 (${aud!.cnt} audits, min ${aud!.low}, max ${aud!.high})` : "",
-      Number(kw?.total)  > 0 ? `Mots-clés: ${kw!.total} suivis, ${kw!.up} en hausse, ${kw!.top10} top-10` : "",
-      Number(mon?.total) > 0 ? `Monitors: ${mon!.total} total, ${mon!.down} DOWN` : "",
-      Number(msn?.total) > 0 ? `Missions: ${msn!.done}/${msn!.total} complétées` : "",
-      Number(cmp?.cnt)   > 0 ? `Concurrents: ${cmp!.cnt} suivis` : "",
+      Number(aud?.cnt)    > 0 ? `Score SEO moyen: ${aud!.avg}/100 (${aud!.cnt} audits, min ${aud!.low}, max ${aud!.high})` : "",
+      Number(kw?.total)   > 0 ? `Mots-clés: ${kw!.total} suivis, ${kw!.up} en hausse, ${kw!.top10} top-10` : "",
+      Number(mon?.total)  > 0 ? `Monitors: ${mon!.total} total, ${mon!.down} DOWN` : "",
+      Number(msn?.total)  > 0 ? `Missions: ${msn!.done}/${msn!.total} complétées` : "",
+      Number(cmp?.cnt)    > 0 ? `Concurrents: ${cmp!.cnt} suivis` : "",
       Number(leak?.total) > 0 ? `Opportunité revenue: ${Math.round(Number(leak!.total))}€` : "",
     ].filter(Boolean);
 
-    // ── 2. Quota check (before no_data — quota_exhausted has higher priority) ──
-    let planRow: { plan?: string } | null = null;
-    try {
-      const planRes = await pool.query(`SELECT plan FROM org_settings WHERE org_id=$1 LIMIT 1`, [orgId]);
-      planRow = planRes.rows[0] ?? null;
-    } catch { /* ignore */ }
-
+    // ── 2. Quota check (highest priority — always before any generation) ────
     const quota = await checkAIQuota({ feature: "overview_insights", orgId });
     if (!quota.allowed) {
       const resp: InsightResponse = {
@@ -237,22 +320,26 @@ router.get("/overview/insights", async (req: Request, res: Response) => {
       return res.json(resp);
     }
 
+    // ── 3. No-data guard ────────────────────────────────────────────────────
     if (ctxLines.length === 0) {
-      const resp: InsightResponse = { status: "no_data" };
-      return res.json(resp);
+      return res.json({ status: "no_data" } as InsightResponse);
     }
 
-    const ctx      = ctxLines.join(". ");
-    const ctxHash  = createHash("sha256").update(ctx).digest("hex").slice(0, 16);
+    const ctx     = ctxLines.join(". ");
+    const ctxHash = createHash("sha256").update(ctx).digest("hex").slice(0, 16);
 
-    // ── 3. Hot memory cache ─────────────────────────────────────────────────
+    // ── 4. Hot in-process cache (cache hits never consume credits or a slot) ─
     const hot = _insightsHot.get(orgId);
     if (hot && hot.hash === ctxHash && hot.expiresAt > Date.now()) {
-      const resp: InsightResponse = { status: "ready", text: hot.text, generatedAt: new Date(hot.expiresAt - 5 * 60_000).toISOString(), cached: true };
+      const resp: InsightResponse = {
+        status: "ready", text: hot.text,
+        generatedAt: new Date(hot.expiresAt - 5 * 60_000).toISOString(),
+        cached: true,
+      };
       return res.json(resp);
     }
 
-    // ── 4. PostgreSQL persistent cache ─────────────────────────────────────
+    // ── 5. PostgreSQL persistent cache (cache hits never consume credits) ───
     try {
       const pgRow = await pool.query(
         `SELECT content, context_hash, generated_at FROM overview_insights_cache
@@ -268,11 +355,24 @@ router.get("/overview/insights", async (req: Request, res: Response) => {
       }
     } catch { /* DB unavailable — proceed to generate */ }
 
-    // ── 5. Generate with AI ─────────────────────────────────────────────────
+    // ── 6. Acquire generation slot (PG-based rate limit + mutex) ───────────
+    let slotAcquired = false;
+    try {
+      const slot = await _acquireInsightsSlot(orgId);
+      if (!slot.ok) {
+        const resp: InsightResponse = { status: "rate_limited", retryAfterSeconds: slot.retryAfterSeconds };
+        return res.status(429).json(resp);
+      }
+      slotAcquired = true;
+    } catch {
+      // If PG is unreachable, allow generation (degraded mode, no rate limit)
+    }
+
+    // ── 7. Generate with OpenAI ─────────────────────────────────────────────
     const t0 = Date.now();
-    let aiText = "";
+    let aiText   = "";
     let tokensIn = 0, tokensOut = 0;
-    let success = false;
+    let genSucceeded = false;
 
     try {
       const result = await aiChat({
@@ -283,49 +383,54 @@ router.get("/overview/insights", async (req: Request, res: Response) => {
         maxTokens:    220,
         temperature:  0.4,
       });
-      aiText    = result.text?.trim() ?? "";
-      tokensIn  = result.usage?.promptTokens     ?? 0;
-      tokensOut = result.usage?.completionTokens ?? 0;
-      success   = aiText.length > 0;
+      aiText       = result.text?.trim() ?? "";
+      tokensIn     = result.usage?.promptTokens     ?? 0;
+      tokensOut    = result.usage?.completionTokens ?? 0;
+      genSucceeded = aiText.length > 0;
     } catch (aiErr) {
       void aiErr;
+      if (slotAcquired) await _releaseInsightsSlot(orgId, false);
       const resp: InsightResponse = { status: "temporarily_unavailable", retryAfterMs: 30_000 };
       return res.json(resp);
     }
 
     const latencyMs = Date.now() - t0;
 
-    // ── 6. Record usage ─────────────────────────────────────────────────────
-    await recordCompletedUsage({
-      orgId,
-      feature:   "overview_insights",
-      userId:    "service",
-      model:     "gpt-4o-mini",
-      tokensIn,
-      tokensOut,
-      latencyMs,
-      success,
-    }).catch(() => { /* non-blocking */ });
+    // ── 8. Release slot (increment gen_count only on success) ───────────────
+    if (slotAcquired) await _releaseInsightsSlot(orgId, genSucceeded);
 
-    if (!success) {
+    // ── 9. Record usage — only on real successful generation (500 credits) ──
+    if (genSucceeded) {
+      recordCompletedUsage({
+        orgId,
+        feature:         "overview_insights",
+        userId:          "service",
+        model:           "gpt-4o-mini",
+        tokensIn,
+        tokensOut,
+        latencyMs,
+        success:         true,
+        fixedCreditCost: INSIGHTS_COST_CREDITS,  // always 500, never discounted by model multiplier
+      }).catch(() => { /* non-blocking */ });
+    }
+
+    if (!genSucceeded) {
       const resp: InsightResponse = { status: "temporarily_unavailable", retryAfterMs: 60_000 };
       return res.json(resp);
     }
 
-    // ── 7. Persist in PostgreSQL + hot cache (5 min TTL) ───────────────────
+    // ── 10. Persist in PG cache + hot cache (5 min TTL) ────────────────────
     const generatedAt  = new Date().toISOString();
     const expiresInMin = 5;
 
-    try {
-      await pool.query(
-        `INSERT INTO overview_insights_cache (org_id, content, context_hash, generated_at, expires_at)
-         VALUES ($1, $2, $3, NOW(), NOW() + INTERVAL '${expiresInMin} minutes')
-         ON CONFLICT (org_id) DO UPDATE
-           SET content = EXCLUDED.content, context_hash = EXCLUDED.context_hash,
-               generated_at = EXCLUDED.generated_at, expires_at = EXCLUDED.expires_at`,
-        [orgId, aiText, ctxHash]
-      );
-    } catch { /* DB write failure is non-fatal */ }
+    pool.query(
+      `INSERT INTO overview_insights_cache (org_id, content, context_hash, generated_at, expires_at)
+       VALUES ($1, $2, $3, NOW(), NOW() + INTERVAL '${expiresInMin} minutes')
+       ON CONFLICT (org_id) DO UPDATE
+         SET content = EXCLUDED.content, context_hash = EXCLUDED.context_hash,
+             generated_at = EXCLUDED.generated_at, expires_at = EXCLUDED.expires_at`,
+      [orgId, aiText, ctxHash]
+    ).catch(() => { /* non-fatal */ });
 
     _insightsHot.set(orgId, { text: aiText, hash: ctxHash, expiresAt: Date.now() + expiresInMin * 60_000 });
 

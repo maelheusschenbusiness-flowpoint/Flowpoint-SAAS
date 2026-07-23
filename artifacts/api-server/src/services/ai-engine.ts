@@ -281,12 +281,17 @@ export async function recordCompletedUsage(opts: {
   requestId?: string;
   /** Economy metadata — requestedModel, effectiveModel, economyTier, etc. */
   metadata?: Record<string, unknown>;
+  /** Override the computed credit cost. Use to enforce the feature base cost
+   *  regardless of model multiplier (e.g. feature-priced endpoints). */
+  fixedCreditCost?: number;
 }): Promise<{ creditsDebited: number; remaining: number }> {
   const { orgId, userId, model, feature, tokensIn, tokensOut, latencyMs } = opts;
   const provider    = opts.provider ?? "openai";
   const cachedTok   = opts.cachedTokens ?? 0;
   const realCostEur = computeRealCostEur({ model, tokensIn, tokensOut, cachedTokens: cachedTok });
-  const creditsDeb  = computeCreditsDebited({ feature, model, realCostEur });
+  const creditsDeb  = opts.fixedCreditCost !== undefined
+    ? opts.fixedCreditCost
+    : computeCreditsDebited({ feature, model, realCostEur });
   const month       = currentMonth();
   const logId       = `aul_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const idemKey     = opts.requestId ?? null;

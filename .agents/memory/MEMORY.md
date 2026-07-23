@@ -70,3 +70,4 @@
 - [Drizzle schema vs actual DB mismatches](drizzle-schema-mismatches.md) — behaviorSessions/croScores/croExperiments/revenueLeaks had wrong columns; fixes required
 - [Wave 4 Part 1 — Acquisition routes](wave4-part1-acquisition.md) — analytics/traffic/campaigns thin-wrapper services + 12 endpoints; dashboard.js API modules pattern; QA orgs use user_sessions (not sessions), organizations lacks trial_ends_at
 - [Overview insights quota-vs-no_data order](overview-insights-priority.md) — quota_exhausted must be checked BEFORE no_data; "0" string from COUNT(*) is truthy, use Number(x)>0 for DB row guards
+- [Overview insights RL + fixed credits](overview-insights-rl.md) — PG SELECT FOR UPDATE mutex; fixedCreditCost:500 bypasses gpt-4o-mini multiplier (0.4); cache hits skip slot; QA: bust in-process hot cache by changing audit score (new context hash)
