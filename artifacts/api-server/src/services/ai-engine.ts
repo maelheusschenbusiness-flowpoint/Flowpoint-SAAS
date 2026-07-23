@@ -32,7 +32,8 @@ export type AIFeature =
   | "market_intel"
   | "behavior_analysis"
   | "revenue_leak"
-  | "audit_summary";
+  | "audit_summary"
+  | "overview_insights";
 
 function currentMonth(): string {
   const d = new Date();

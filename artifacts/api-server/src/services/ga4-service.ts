@@ -575,6 +575,41 @@ export async function getGA4ConversionDevices(
 }
 
 /**
+ * Conversion time series: daily {date, sessions, conversions, conversionRate}.
+ * Returns null when GA4 is not connected or no data exists.
+ * Uses an independent lightweight runReport call (only sessions + conversions).
+ */
+export async function getGA4ConversionHistory(
+  orgId: string, startDate: string, endDate: string
+): Promise<Array<{ date: string; sessions: number; conversions: number; conversionRate: number | null }> | null> {
+  const ctx = await getGA4Context(orgId);
+  if (!ctx) return null;
+  try {
+    const data = await ga4Post<GA4ReportResponse>(ctx.token, ctx.propertyId, ":runReport", {
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: "date" }],
+      metrics: [{ name: "sessions" }, { name: "conversions" }],
+      orderBys: [{ dimension: { dimensionName: "date" }, desc: false }],
+    });
+    if (!data.rows?.length) return null;
+    const rows = (data.rows ?? []).map(row => {
+      const dateRaw  = row.dimensionValues?.[0]?.value ?? "";
+      const sessions  = parseFloat(row.metricValues?.[0]?.value ?? "0");
+      const convs     = parseFloat(row.metricValues?.[1]?.value ?? "0");
+      const rate      = sessions > 0 ? Math.round((convs / sessions) * 10000) / 100 : null;
+      const date      = dateRaw.length === 8
+        ? `${dateRaw.slice(0, 4)}-${dateRaw.slice(4, 6)}-${dateRaw.slice(6, 8)}`
+        : dateRaw;
+      return { date, sessions: Math.round(sessions), conversions: Math.round(convs), conversionRate: rate };
+    });
+    return rows.length >= 1 ? rows : null;
+  } catch (e) {
+    logger.warn({ e, orgId }, "[ga4] getGA4ConversionHistory failed");
+    return null;
+  }
+}
+
+/**
  * Conversion by geo: country + city with sessions, conversions, revenue.
  * dim[0]=country  dim[1]=city  met[0]=sessions  met[1]=conversions  met[2]=totalRevenue
  */

@@ -69,3 +69,4 @@
 - [Lot 4B audit findings](lot4b-audit-findings.md) — P0: behavior_events/sessions/traffic_losses RLS=(true), getRevenueLeakData ignores siteUrl, getCROData superuser pool; P1: funnel steps 2-5 fake ratios, 27 PREVIEW_MODE occurrences, CRO templates not AI
 - [Drizzle schema vs actual DB mismatches](drizzle-schema-mismatches.md) — behaviorSessions/croScores/croExperiments/revenueLeaks had wrong columns; fixes required
 - [Wave 4 Part 1 — Acquisition routes](wave4-part1-acquisition.md) — analytics/traffic/campaigns thin-wrapper services + 12 endpoints; dashboard.js API modules pattern; QA orgs use user_sessions (not sessions), organizations lacks trial_ends_at
+- [Overview insights quota-vs-no_data order](overview-insights-priority.md) — quota_exhausted must be checked BEFORE no_data; "0" string from COUNT(*) is truthy, use Number(x)>0 for DB row guards

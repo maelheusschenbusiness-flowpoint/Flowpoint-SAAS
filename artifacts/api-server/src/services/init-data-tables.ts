@@ -1242,7 +1242,35 @@ export async function initDataTables(): Promise<void> {
       END $$;
     `);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations ready");
+    // ── local_pack_history — persists Local Pack positions from DataForSEO/GBP scans ──
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS local_pack_history (
+        id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id          TEXT         NOT NULL,
+        recorded_date   DATE         NOT NULL DEFAULT CURRENT_DATE,
+        avg_position    NUMERIC(5,2),
+        in_pack_count   INTEGER      DEFAULT 0,
+        keyword_count   INTEGER      DEFAULT 0,
+        source          TEXT         NOT NULL DEFAULT 'dataforseo',
+        created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS local_pack_history_org_date_idx ON local_pack_history(org_id, recorded_date DESC);`);
+    await run(client, `CREATE UNIQUE INDEX IF NOT EXISTS local_pack_history_org_date_src_uidx ON local_pack_history(org_id, recorded_date, source);`);
+
+    // ── overview_insights_cache — persistent AI insights cache (context-hash dedup) ──
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS overview_insights_cache (
+        org_id          TEXT         NOT NULL,
+        content         TEXT         NOT NULL,
+        context_hash    TEXT         NOT NULL,
+        generated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        expires_at      TIMESTAMPTZ  NOT NULL,
+        PRIMARY KEY (org_id)
+      );
+    `);
+
+    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;

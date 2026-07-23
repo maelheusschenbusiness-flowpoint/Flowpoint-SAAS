@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from "express";
+import { createHash } from "node:crypto";
 import { getOverviewMetrics } from "../services/overview-service.js";
 import { aiChat } from "../services/ai-provider.js";
+import { checkAIQuota, recordCompletedUsage } from "../services/ai-engine.js";
 import { pool } from "@workspace/db";
 
 const router = Router();
@@ -152,21 +154,25 @@ router.put("/overview/checklist", async (req: Request, res: Response) => {
   }
 });
 
-// ── GET /overview/insights — AI-generated executive insights (cached 5min) ────
-const _insightsCache = new Map<string, { text: string; expiresAt: number }>();
+// ── Typed insight response ──────────────────────────────────────────────────
+type InsightResponse =
+  | { status: "ready";                  text: string; generatedAt: string; cached: boolean }
+  | { status: "no_data" }
+  | { status: "quota_exhausted";        resetHint: string }
+  | { status: "temporarily_unavailable"; retryAfterMs: number }
+  | { status: "configuration_error" };
 
+// ── In-process hot cache (avoids DB round-trip for bursts) ──────────────────
+const _insightsHot = new Map<string, { text: string; hash: string; expiresAt: number }>();
+
+// ── GET /overview/insights — AI executive insights, quota-gated, PG-cached ─
 router.get("/overview/insights", async (req: Request, res: Response) => {
   try {
     const orgId = (req as unknown as { orgContext?: { orgId?: string }; orgId?: string })
       .orgContext?.orgId ?? (req as unknown as { orgId?: string }).orgId ?? "default";
 
-    const cached = _insightsCache.get(orgId);
-    if (cached && cached.expiresAt > Date.now()) {
-      return res.json({ text: cached.text, cached: true });
-    }
-
-    // Build a compact real-data context for the AI prompt
-    const [auditQ, kwnQ, monQ, msnQ, compQ] = await Promise.allSettled([
+    // ── 1. Build context string (real DB data) ──────────────────────────────
+    const [auditQ, kwnQ, monQ, msnQ, compQ, leakQ] = await Promise.allSettled([
       pool.query(
         `SELECT ROUND(AVG(score))::int AS avg, COUNT(*) AS cnt,
                 MIN(score)::int AS low, MAX(score)::int AS high
@@ -193,43 +199,141 @@ router.get("/overview/insights", async (req: Request, res: Response) => {
         [orgId]
       ),
       pool.query(`SELECT COUNT(*) AS cnt FROM competitors WHERE org_id=$1`, [orgId]),
+      pool.query(
+        `SELECT COALESCE(SUM(estimated_loss),0) AS total FROM revenue_leaks WHERE org_id=$1 AND status='active'`,
+        [orgId]
+      ),
     ]);
 
-    const aud = auditQ.status === "fulfilled" ? auditQ.value.rows[0] : null;
-    const kw  = kwnQ.status  === "fulfilled" ? kwnQ.value.rows[0]  : null;
-    const mon = monQ.status   === "fulfilled" ? monQ.value.rows[0]  : null;
-    const msn = msnQ.status   === "fulfilled" ? msnQ.value.rows[0]  : null;
-    const cmp = compQ.status  === "fulfilled" ? compQ.value.rows[0] : null;
+    const aud  = auditQ.status  === "fulfilled" ? auditQ.value.rows[0]  : null;
+    const kw   = kwnQ.status    === "fulfilled" ? kwnQ.value.rows[0]    : null;
+    const mon  = monQ.status    === "fulfilled" ? monQ.value.rows[0]    : null;
+    const msn  = msnQ.status    === "fulfilled" ? msnQ.value.rows[0]    : null;
+    const cmp  = compQ.status   === "fulfilled" ? compQ.value.rows[0]   : null;
+    const leak = leakQ.status   === "fulfilled" ? leakQ.value.rows[0]   : null;
 
-    const ctx = [
-      aud?.avg   ? `Score SEO moyen: ${aud.avg}/100 (${aud.cnt} audits, min ${aud.low}, max ${aud.high})` : "",
-      kw?.total  ? `Mots-clés suivis: ${kw.total} actifs, ${kw.up} en hausse, ${kw.top10} top-10` : "",
-      mon?.total ? `Monitors: ${mon.total} total, ${mon.down} DOWN` : "",
-      msn?.total ? `Missions: ${msn.done}/${msn.total} complétées` : "",
-      cmp?.cnt   ? `Concurrents: ${cmp.cnt} suivis` : "",
-    ].filter(Boolean).join(". ");
+    const ctxLines = [
+      Number(aud?.cnt)   > 0 ? `Score SEO moyen: ${aud!.avg}/100 (${aud!.cnt} audits, min ${aud!.low}, max ${aud!.high})` : "",
+      Number(kw?.total)  > 0 ? `Mots-clés: ${kw!.total} suivis, ${kw!.up} en hausse, ${kw!.top10} top-10` : "",
+      Number(mon?.total) > 0 ? `Monitors: ${mon!.total} total, ${mon!.down} DOWN` : "",
+      Number(msn?.total) > 0 ? `Missions: ${msn!.done}/${msn!.total} complétées` : "",
+      Number(cmp?.cnt)   > 0 ? `Concurrents: ${cmp!.cnt} suivis` : "",
+      Number(leak?.total) > 0 ? `Opportunité revenue: ${Math.round(Number(leak!.total))}€` : "",
+    ].filter(Boolean);
 
-    if (!ctx) {
-      const fallback = "Connectez vos sites et démarrez des audits pour recevoir des insights IA personnalisés basés sur vos données réelles.";
-      return res.json({ text: fallback, cached: false });
+    // ── 2. Quota check (before no_data — quota_exhausted has higher priority) ──
+    let planRow: { plan?: string } | null = null;
+    try {
+      const planRes = await pool.query(`SELECT plan FROM org_settings WHERE org_id=$1 LIMIT 1`, [orgId]);
+      planRow = planRes.rows[0] ?? null;
+    } catch { /* ignore */ }
+
+    const quota = await checkAIQuota({ feature: "overview_insights", orgId });
+    if (!quota.allowed) {
+      const resp: InsightResponse = {
+        status:    "quota_exhausted",
+        resetHint: "Les crédits IA seront renouvelés en début de mois prochain.",
+      };
+      return res.json(resp);
     }
 
-    const result = await aiChat({
-      provider: "openai",
-      model: "gpt-5-mini",
-      systemPrompt: "Tu es un consultant SEO expert. Génère une analyse synthétique et actionnable en 2-3 phrases maximum (150 caractères max). Sois précis, direct, utilise les vraies données fournies. Pas de bullets, pas de titres, texte continu uniquement.",
-      userPrompt: `Analyse ces métriques FlowPoint et donne une priorité d'action immédiate : ${ctx}`,
-      maxTokens: 200,
-      temperature: 0.5,
-    });
-
-    const text = result.text?.trim() ?? "";
-    if (text) {
-      _insightsCache.set(orgId, { text, expiresAt: Date.now() + 5 * 60_000 });
+    if (ctxLines.length === 0) {
+      const resp: InsightResponse = { status: "no_data" };
+      return res.json(resp);
     }
-    return res.json({ text: text || "Données insuffisantes pour générer des insights.", cached: false });
+
+    const ctx      = ctxLines.join(". ");
+    const ctxHash  = createHash("sha256").update(ctx).digest("hex").slice(0, 16);
+
+    // ── 3. Hot memory cache ─────────────────────────────────────────────────
+    const hot = _insightsHot.get(orgId);
+    if (hot && hot.hash === ctxHash && hot.expiresAt > Date.now()) {
+      const resp: InsightResponse = { status: "ready", text: hot.text, generatedAt: new Date(hot.expiresAt - 5 * 60_000).toISOString(), cached: true };
+      return res.json(resp);
+    }
+
+    // ── 4. PostgreSQL persistent cache ─────────────────────────────────────
+    try {
+      const pgRow = await pool.query(
+        `SELECT content, context_hash, generated_at FROM overview_insights_cache
+         WHERE org_id=$1 AND expires_at > NOW()`,
+        [orgId]
+      );
+      if (pgRow.rows.length > 0 && pgRow.rows[0].context_hash === ctxHash) {
+        const text = pgRow.rows[0].content as string;
+        const generatedAt = (pgRow.rows[0].generated_at as Date).toISOString();
+        _insightsHot.set(orgId, { text, hash: ctxHash, expiresAt: Date.now() + 5 * 60_000 });
+        const resp: InsightResponse = { status: "ready", text, generatedAt, cached: true };
+        return res.json(resp);
+      }
+    } catch { /* DB unavailable — proceed to generate */ }
+
+    // ── 5. Generate with AI ─────────────────────────────────────────────────
+    const t0 = Date.now();
+    let aiText = "";
+    let tokensIn = 0, tokensOut = 0;
+    let success = false;
+
+    try {
+      const result = await aiChat({
+        provider:     "openai",
+        model:        "gpt-4o-mini",
+        systemPrompt: "Tu es un consultant SEO expert FlowPoint. Génère une analyse concise et actionnable en 2-3 phrases max. Utilise exclusivement les données fournies. Langue : français. Pas de bullets, pas de titres.",
+        userPrompt:   `Analyse ces métriques et indique la priorité d'action immédiate : ${ctx}`,
+        maxTokens:    220,
+        temperature:  0.4,
+      });
+      aiText    = result.text?.trim() ?? "";
+      tokensIn  = result.usage?.promptTokens     ?? 0;
+      tokensOut = result.usage?.completionTokens ?? 0;
+      success   = aiText.length > 0;
+    } catch (aiErr) {
+      void aiErr;
+      const resp: InsightResponse = { status: "temporarily_unavailable", retryAfterMs: 30_000 };
+      return res.json(resp);
+    }
+
+    const latencyMs = Date.now() - t0;
+
+    // ── 6. Record usage ─────────────────────────────────────────────────────
+    await recordCompletedUsage({
+      orgId,
+      feature:   "overview_insights",
+      userId:    "service",
+      model:     "gpt-4o-mini",
+      tokensIn,
+      tokensOut,
+      latencyMs,
+      success,
+    }).catch(() => { /* non-blocking */ });
+
+    if (!success) {
+      const resp: InsightResponse = { status: "temporarily_unavailable", retryAfterMs: 60_000 };
+      return res.json(resp);
+    }
+
+    // ── 7. Persist in PostgreSQL + hot cache (5 min TTL) ───────────────────
+    const generatedAt  = new Date().toISOString();
+    const expiresInMin = 5;
+
+    try {
+      await pool.query(
+        `INSERT INTO overview_insights_cache (org_id, content, context_hash, generated_at, expires_at)
+         VALUES ($1, $2, $3, NOW(), NOW() + INTERVAL '${expiresInMin} minutes')
+         ON CONFLICT (org_id) DO UPDATE
+           SET content = EXCLUDED.content, context_hash = EXCLUDED.context_hash,
+               generated_at = EXCLUDED.generated_at, expires_at = EXCLUDED.expires_at`,
+        [orgId, aiText, ctxHash]
+      );
+    } catch { /* DB write failure is non-fatal */ }
+
+    _insightsHot.set(orgId, { text: aiText, hash: ctxHash, expiresAt: Date.now() + expiresInMin * 60_000 });
+
+    const resp: InsightResponse = { status: "ready", text: aiText, generatedAt, cached: false };
+    return res.json(resp);
   } catch {
-    return res.status(500).json({ error: "Failed to generate insights" });
+    const resp: InsightResponse = { status: "temporarily_unavailable", retryAfterMs: 60_000 };
+    return res.status(500).json(resp);
   }
 });
 

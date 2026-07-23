@@ -1,11 +1,12 @@
 import { pool } from "@workspace/db";
-import { getGA4Overview } from "./ga4-service.js";
+import { getGA4Overview, getGA4ConversionHistory } from "./ga4-service.js";
 import { getImpressionsOverTime } from "./gsc-service.js";
 import { PLAN_AI_CREDITS } from "../lib/plans.js";
 
 export interface OverviewMetrics {
   seoScore: number;
-  seoScoreDelta: number;
+  /** Null when no prior-period audit data exists — never fabricated */
+  seoScoreDelta: number | null;
   avgScore: number;
   traffic: number | null;
   trafficDelta: number | null;
@@ -15,7 +16,7 @@ export interface OverviewMetrics {
   revenueDelta: number | null;
   /** Real GA4 conversion rate as % (e.g. 2.31) — null when GA4 not connected */
   conversionRate: number | null;
-  /** Backwards-compat alias for conversionRate */
+  /** Backwards-compat alias kept for downstream readers — same value as conversionRate */
   conversionScore: number | null;
   analyticsConnected: boolean;
   monitorsUp: number;
@@ -64,6 +65,17 @@ export interface OverviewMetrics {
   gbpReviewCount: number | null;
   gbpUnansweredCount: number | null;
   gbpCompletionPct: number | null;
+  /** Daily GA4 conversion time series — null when GA4 not connected or no data */
+  ga4ConversionHistory: Array<{ date: string; sessions: number; conversions: number; conversionRate: number | null }> | null;
+  /** Local Pack position history — null when no data persisted yet */
+  localPackHistory: Array<{ date: string; value: number }> | null;
+  /**
+   * True once at least one revenue_leaks analysis has been run for this org.
+   * When false: no analysis run yet → display "Collecte en cours".
+   * When true + revenueOpportunity === null: analysis done, 0 € detected.
+   * When true + revenueOpportunity > 0: real opportunity detected.
+   */
+  revenueOpportunityAnalyzed: boolean;
 }
 
 /** In-memory cache keyed by `orgId:range` — 60 s TTL */
@@ -84,6 +96,7 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
       connectors, gbpPosts, competitorsQ, orgPlan,
       ga4Data, gscData,
       alertEventsQ, gbpProfileQ, gbpTokenQ,
+      ga4ConvHistQ, localPackQ, revLeakExistsQ,
     ] = await Promise.allSettled([
       // Current period audit avg + count
       pool.query(
@@ -164,6 +177,21 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
       ).catch(() => ({ rows: [] as Array<Record<string, unknown>> })),
       // GBP connected = google_tokens exists
       pool.query(`SELECT 1 FROM google_tokens WHERE org_id=$1 LIMIT 1`, [orgId]),
+      // GA4 conversion time series (daily)
+      getGA4ConversionHistory(orgId, rangeAgo, today),
+      // Local Pack position history (last 90 days, most recent first)
+      pool.query(
+        `SELECT recorded_date::text AS date, avg_position AS value
+         FROM local_pack_history
+         WHERE org_id=$1 AND avg_position IS NOT NULL
+         ORDER BY recorded_date DESC LIMIT 90`,
+        [orgId]
+      ).catch(() => ({ rows: [] as Array<{ date: string; value: string }> })),
+      // Revenue opportunity analyzed = any row exists in revenue_leaks (regardless of status)
+      pool.query(
+        `SELECT 1 FROM revenue_leaks WHERE org_id=$1 LIMIT 1`,
+        [orgId]
+      ).catch(() => ({ rows: [] })),
     ]);
 
     const auditRow      = audits.status          === "fulfilled" ? audits.value.rows[0]       : null;
@@ -182,7 +210,18 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
     const gbpProfileRow = gbpProfileQ.status      === "fulfilled"
       ? (gbpProfileQ.value as { rows: Array<Record<string, unknown>> }).rows[0]
       : null;
-    const gbpConnected  = gbpTokenQ.status        === "fulfilled" && gbpTokenQ.value.rows.length > 0;
+    const gbpConnected        = gbpTokenQ.status === "fulfilled" && gbpTokenQ.value.rows.length > 0;
+    const ga4ConversionHistory =
+      ga4ConvHistQ.status === "fulfilled" ? ga4ConvHistQ.value : null;
+    const localPackRaw = localPackQ.status === "fulfilled"
+      ? (localPackQ.value as { rows: Array<{ date: string; value: string }> }).rows
+      : [];
+    const localPackHistory: Array<{ date: string; value: number }> | null =
+      localPackRaw.length > 0
+        ? localPackRaw.map(r => ({ date: r.date, value: parseFloat(r.value) })).reverse()
+        : null;
+    const revenueOpportunityAnalyzed =
+      revLeakExistsQ.status === "fulfilled" && revLeakExistsQ.value.rows.length > 0;
 
     // ── Plan credits ─────────────────────────────────────────────────────────────
     const orgPlanKey  = ((orgPlanRow?.plan ?? "standard") as string).toLowerCase();
@@ -339,7 +378,7 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
     const result: OverviewMetrics = {
       seoScore,
       avgScore:      seoScore,
-      seoScoreDelta: seoTrendDelta ?? (seoScore > 50 ? 3 : -2),
+      seoScoreDelta: seoTrendDelta,   // null when no prior-period data — never fabricated
 
       traffic:          realTraffic,
       trafficDelta:     ga4TrafficDelta,
@@ -348,7 +387,7 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
       revenue:          null,
       revenueDelta:     null,
       conversionRate:   realConvRate,
-      conversionScore:  realConvRate,
+      conversionScore:  realConvRate, // alias — same real value
       analyticsConnected: analyticsConnected || realTraffic !== null,
 
       monitorsUp, monitorsDown, monitorUptime,
@@ -381,6 +420,9 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
       gbpReviewCount,
       gbpUnansweredCount,
       gbpCompletionPct,
+      ga4ConversionHistory,
+      localPackHistory,
+      revenueOpportunityAnalyzed,
     };
 
     _cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60_000 });

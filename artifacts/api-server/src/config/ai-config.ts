@@ -105,6 +105,7 @@ export const FEATURE_BASE_COSTS: Record<string, number> = {
   behavior_analysis: 1000,
   revenue_leak:      900,
   audit_summary:     500,
+  overview_insights: 500,
 };
 
 /** ── Tool / image call costs (EUR per call) ──────────────────────────── */

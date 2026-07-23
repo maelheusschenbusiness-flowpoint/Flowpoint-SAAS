@@ -3656,9 +3656,8 @@ function renderOverview() {
   const activeMonitors = (STATE.monitors||[]).filter(m => m.status !== 'down').length;
   const totalMonitors  = (STATE.monitors||[]).length;
   const pingOk = totalMonitors > 0 ? Math.round(activeMonitors / totalMonitors * 100) : 100;
-  // Real GA4 conversion rate (e.g. 2.31 %) → normalize to 0-100 for gauges (5% = 100)
+  // Real GA4 conversion rate (e.g. 2.31 %) — shown as-is, never normalised /100
   const conversionRate  = STATE.overview?.conversionRate ?? STATE.overview?.conversionScore ?? null;
-  const conversionScore = conversionRate != null ? Math.min(100, Math.round(conversionRate * 20)) : 0;
   const localScore = STATE.overview?.localScore > 0 ? STATE.overview.localScore
                    : STATE.overview?.seoScore   > 0 ? STATE.overview.seoScore
                    : 0;
@@ -3668,7 +3667,7 @@ function renderOverview() {
         : 0);
   const revenueOpp = STATE.overview?.revenueOpportunity ?? null;
   const growthMomentum = STATE.overview?.growthMomentum ?? null;
-  const _scoreVals = [avg, localScore, conversionScore, growthMomentum].filter(v => v != null && Number.isFinite(v));
+  const _scoreVals = [avg, localScore, growthMomentum].filter(v => v != null && Number.isFinite(v));
   const globalScore = _scoreVals.length > 0 ? Math.round(_scoreVals.reduce((a,b) => a+b, 0) / _scoreVals.length) : null;
 
   const missionsCompleted = STATE.missions.filter(m => m.status === 'done' || m.done === true).length;
@@ -3679,7 +3678,7 @@ function renderOverview() {
   const _growthTrend = (() => { const g = STATE.overview?.organicGrowthPct; return g != null ? (g > 0 ? '+' : '') + g + '%' : '—'; })();
   const healthMetrics = [
     { label:'SEO Health',         val:avg,                 max:100, color:'#2563EB',  icon:'🔍', trend:_seoTrend,   unit:'/100', route:'audits' },
-    { label:'Conversion GA4',     val:conversionScore,     max:100, color:'#22c55e',  icon:'⚡', trend:conversionRate != null ? conversionRate.toFixed(2)+'%' : '—', unit:'/100', route:'conversion' },
+    { label:'Conversion GA4',     val:conversionRate ?? 0, max:100, color:'#22c55e',  icon:'⚡', trend:conversionRate != null ? conversionRate.toFixed(2)+'%' : '—', unit:'%', route:'conversion' },
     { label:'Monitoring',         val:pingOk,              max:100, color:pingOk===100?'#22c55e':'#ef4444', icon:'📡', trend:down>0?'-'+down:'OK', unit:'%', route:'monitors' },
     { label:'Local Visibility',   val:localScore,          max:100, color:'#f59e0b',  icon:'📍', trend:'—',         unit:'%',    route:'local-seo' },
     { label:'Competitor Pressure',val:competitorPressure,  max:100, color:'#ef4444',  icon:'⚔️', trend:'—',         unit:'/100', route:'competitor' },
@@ -3761,7 +3760,7 @@ function renderOverview() {
     { name:'Monitors',        score:pingOk, status:down===0?'ok':'down', icon:'📡', issues:down, color:'#22c55e', route:'monitors' },
     { name:'Local SEO',       score:localScore||0,       status:localScore>70?'ok':localScore>0?'warn':'no-data', icon:'📍', issues:0, color:'#f59e0b', route:'local-seo' },
     { name:'Concurrents',     score:competitorPressure||0, status:competitorPressure>0?'ok':'no-data', icon:'⚔️', issues:0, color:'#ef4444', route:'competitor' },
-    { name:'Conversion',      score:conversionScore||0,  status:conversionScore>70?'ok':conversionScore>0?'warn':'no-data', icon:'⚡', issues:0, color:'#8b5cf6', route:'conversion' },
+    { name:'Conversion',      score:conversionRate != null ? Math.min(100, Math.round(conversionRate*20)) : 0, status:conversionRate != null ? (conversionRate >= 3.5 ? 'ok' : conversionRate > 0 ? 'warn' : 'no-data') : 'no-data', icon:'⚡', issues:0, color:'#8b5cf6', route:'conversion' },
     { name:'Data Explorer',   score: (function(){ var _ac=(STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length; return _ac > 0 ? Math.min(98, 50 + _ac*15 + (STATE.reports.length>0?8:0)) : null; }()), status:(STATE.connectors||[]).filter(c=>c.connected||c.status==='active').length>0?'ok':'no-data', icon:'📊', issues:0, color:'#06b6d4', route:'data-explorer' },
     { name:'Rapports',        score: STATE.reports.length > 0 ? Math.min(98, 55 + Math.min(40, STATE.reports.length * 6)) : null, status: STATE.reports.length > 0 ? 'ok' : 'no-data', icon:'📄', issues:0, color:'#2563EB', route:'reports' },
     { name:'Alertes',         score: STATE.alertRules.length > 0 ? Math.min(98, 55 + Math.min(38, STATE.alertRules.filter(r=>r.enabled).length * 6)) : null, status: STATE.alertRules.length > 0 ? 'ok' : 'no-data', icon:'🔔', issues: STATE.alertEvents.filter(e=>!e.resolvedAt).length, color:'#f59e0b', route:'alerts-center' },
@@ -3797,13 +3796,17 @@ function renderOverview() {
   // Sparklines: real DB data only — null triggers "collecting" state in UI
   var _seoData = _ah.length >= 2 ? _ah.slice(-7) : null;
   var _gscData = _gscHistory != null ? _gscHistory.slice(-7).map(function(r){ return typeof r === 'object' ? r.clicks : r; }) : null;
-  var _convData  = null;
-  var _localData = null;
+  var _convData  = STATE.overview?.ga4ConversionHistory
+    ? STATE.overview.ga4ConversionHistory.slice(-7).map(function(r){ return r.conversionRate; }).filter(function(v){ return v != null; })
+    : null;
+  var _localData = STATE.overview?.localPackHistory
+    ? STATE.overview.localPackHistory.slice(-7).map(function(r){ return r.value; })
+    : null;
   const forecasts = [
-    { label:'Score SEO',  current:avg > 0 ? avg + '/100' : '—', forecast:_seoFcast, unit:'/100', color:'#2563EB', data:_seoData, collecting: _seoData == null },
+    { label:'Score SEO',  current:avg > 0 ? avg + '/100' : '—', forecast:_seoFcast !== '—' ? _seoFcast + ' estim.' : '—', unit:'/100', color:'#2563EB', data:_seoData, collecting: _seoData == null },
     { label:'Trafic GSC', current:_traficCurr, forecast:_traficFcast, unit:'clics', color:'#22c55e', data:_gscData, collecting: _gscClicks == null },
-    { label:'Taux conv.', current:_convCurr,   forecast:'—', unit:'',  color:'#8b5cf6', data:null, collecting: conversionRate == null },
-    { label:'Local Pack', current:_localCurr,  forecast:'—', unit:'%', color:'#f59e0b', data:null, collecting: localScore === 0 },
+    { label:'Taux conv.', current:_convCurr,   forecast:'—', unit:'%', color:'#8b5cf6', data:_convData, collecting: conversionRate == null },
+    { label:'Local Pack', current:_localCurr,  forecast:'—', unit:'pos', color:'#f59e0b', data:_localData, collecting: _localData == null },
   ];
 
   const achievements = [
@@ -11141,7 +11144,7 @@ async function sendAIMessage(text) {
     activeAlertsCount: STATE.alertEvents.filter(e=>!e.resolvedAt).length,
     streak: STATE.streak||0,
     localScore: STATE.overview?.localScore||0,
-    conversionScore: STATE.overview?.conversionScore||0,
+    conversionRate: STATE.overview?.conversionRate ?? null,
     competitorPressure: STATE.overview?.competitorPressure||0,
     gscClicks30d: STATE.overview?.gscClicks30d??null,
     recentActivity: (STATE.activityEvents||[]).slice(0,5).map(e=>e.label).filter(Boolean),
@@ -15999,18 +16002,29 @@ function renderOverviewInsights() {
         : []);  // No fabricated days in production
 
   // Insights IA — load once, cache in STATE, re-render when ready
-  if (STATE.overviewInsightsText === null && !STATE._insightsFetchInProgress) {
+  // STATE.overviewInsights = null (not fetched) | { status, ... } typed object
+  if (STATE.overviewInsights === undefined) STATE.overviewInsights = null;
+  if (STATE.overviewInsights === null && !STATE._insightsFetchInProgress) {
     STATE._insightsFetchInProgress = true;
     apiFetch('/api/overview/insights').then(function(r) {
       STATE._insightsFetchInProgress = false;
-      if (r && r.text) { STATE.overviewInsightsText = r.text; render(); }
-      else { STATE.overviewInsightsText = ''; }
-    }).catch(function() { STATE._insightsFetchInProgress = false; STATE.overviewInsightsText = ''; });
+      STATE.overviewInsights = (r && r.status) ? r : { status: 'temporarily_unavailable', retryAfterMs: 60000 };
+      render();
+    }).catch(function() {
+      STATE._insightsFetchInProgress = false;
+      STATE.overviewInsights = { status: 'temporarily_unavailable', retryAfterMs: 60000 };
+    });
   }
-  const _aiInsightsText = STATE.overviewInsightsText
-    || (STATE.overviewInsightsText === null || STATE._insightsFetchInProgress
-        ? '⏳ Génération des insights IA en cours…'
-        : 'Lancez un audit pour obtenir des recommandations personnalisées basées sur vos données réelles.');
+  const _ins = STATE.overviewInsights;
+  const _aiInsightsText = (function() {
+    if (!_ins || STATE._insightsFetchInProgress) return '⏳ Génération des insights IA en cours…';
+    if (_ins.status === 'ready')                  return _ins.text;
+    if (_ins.status === 'no_data')                return 'Lancez un audit pour obtenir des recommandations personnalisées basées sur vos données réelles.';
+    if (_ins.status === 'quota_exhausted')        return '⚠️ Quota IA atteint ce mois-ci. ' + (_ins.resetHint || 'Renouvellement en début de mois.');
+    if (_ins.status === 'temporarily_unavailable') return '⏳ Insights temporairement indisponibles. Réessayez dans quelques instants.';
+    if (_ins.status === 'configuration_error')    return '⚙️ Configuration IA incomplète. Vérifiez vos paramètres dans Réglages → IA.';
+    return 'Connectez vos sources de données pour des insights personnalisés.';
+  })();
 
   return `
     ${aiBlock(_aiInsightsText,
@@ -16184,7 +16198,7 @@ function renderOverviewChecklist() {
       icon: 'map',
       color: '#22c55e',
       items: [
-        { id:'lo1', label:'Fiche GBP complète à 100% (photos, horaires, description)', done: _clItem('lo1', STATE.gbp?.completionScore >= 90) },
+        { id:'lo1', label:'Fiche GBP complète à 100% (photos, horaires, description)', done: _clsLS['lo1'] !== undefined ? _clsLS['lo1'] : (STATE.gbp?.completionScore != null ? STATE.gbp.completionScore >= 90 : false) },
         { id:'lo2', label:'Citations NAP cohérentes sur les 20 principaux annuaires', done: _clItem('lo2', false) },
         { id:'lo3', label:'Pages locales créées pour chaque zone géographique', done: _clItem('lo3', false) },
         { id:'lo4', label:'Mots-clés géolocalisés dans les balises h1', done: _clItem('lo4', false) },
@@ -16196,8 +16210,8 @@ function renderOverviewChecklist() {
       icon: 'star',
       color: '#8b5cf6',
       items: [
-        { id:'re1', label:'Note Google moyenne > 4.5 étoiles', done: _clItem('re1', STATE.gbp?.averageRating >= 4.5) },
-        { id:'re2', label:'Réponse à tous les avis < 48h', done: _clItem('re2', STATE.gbp?.unansweredReviews === 0) },
+        { id:'re1', label:'Note Google moyenne > 4.5 étoiles', done: _clsLS['re1'] !== undefined ? _clsLS['re1'] : (STATE.gbp?.averageRating != null ? STATE.gbp.averageRating >= 4.5 : false) },
+        { id:'re2', label:'Réponse à tous les avis < 48h', done: _clsLS['re2'] !== undefined ? _clsLS['re2'] : (STATE.gbp != null ? (STATE.gbp.unansweredReviews === 0 || STATE.overview?.gbpUnansweredCount === 0) : false) },
         { id:'re3', label:'Processus de collecte d\'avis en place', done: _clItem('re3', false) },
         { id:'re4', label:'Présence sur Trustpilot / PagesJaunes', done: _clItem('re4', false) },
         { id:'re5', label:'Alertes Google My Business configurées', done: _clItem('re5', STATE.alertRules && STATE.alertRules.some(r => r.type === 'review_received' && r.enabled)) },
@@ -19299,7 +19313,7 @@ function renderGrowthCommandCenter() {
         <div class="fp-growth-rings">
           ${growthRing(avgSc,'var(--fp-accent)',84,7,'Momentum SEO', STATE.overview?.scoreChange30d != null ? (STATE.overview.scoreChange30d>=0?'+':'')+STATE.overview.scoreChange30d+' pts/mois' : 'Score moyen')}
           ${growthRing(_mySpeed||0,'#22c55e',84,7,'Performance', _mySpeed != null ? 'Score PSI moyen' : 'Connectez PSI')}
-          ${growthRing(STATE.overview?.conversionScore||0,'#8b5cf6',84,7,'Conversion', STATE.overview?.conversionScore ? '/100' : 'Connectez GA4')}
+          ${growthRing(STATE.overview?.conversionRate != null ? Math.min(100, Math.round(STATE.overview.conversionRate*20)) : 0,'#8b5cf6',84,7,'Conversion', STATE.overview?.conversionRate != null ? STATE.overview.conversionRate.toFixed(2)+'%' : 'Connectez GA4')}
           ${growthRing(_myAvis,'#f59e0b',84,7,'Avis GBP', _lseo.avgRating ? _lseo.avgRating+'/5' : '—')}
           ${growthRing(_c1Score||0,'#06b6d4',84,7,'Concurrence', _c1Score ? 'vs '+escHtml(_comp1?.name||'Concurrent').substring(0,12) : 'Ajoutez concurrents')}
           ${growthRing(_myLocal,'#f97316',84,7,'Local SEO', _lseo.domScore ? _lseo.domScore+'/100' : 'Connectez LSEO')}
