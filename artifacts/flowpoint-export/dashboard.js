@@ -3582,8 +3582,9 @@ function renderSidebarStatus() {
   const topDot = $('#topbar-status-dot');
   const topTxt = $('#topbar-status-text');
   const topStatus = $('#topbar-status');
+  const _totMon = (STATE.monitors||[]).length;
   if (topDot) topDot.className = 'fp-status-dot' + (down > 0 ? ' down' : '');
-  if (topTxt) topTxt.textContent = down > 0 ? `${down} DOWN` : 'Tous UP';
+  if (topTxt) topTxt.textContent = down > 0 ? `${down} DOWN` : _totMon > 0 ? 'Tous UP' : 'Aucun monitor';
   if (topStatus) topStatus.className = 'fp-topbar-status' + (down > 0 ? ' down' : '');
 
   // Monitors badge in sidebar
@@ -3660,11 +3661,11 @@ function renderOverview() {
   const conversionRate  = STATE.overview?.conversionRate ?? STATE.overview?.conversionScore ?? null;
   const localScore = STATE.overview?.localScore > 0 ? STATE.overview.localScore
                    : STATE.overview?.seoScore   > 0 ? STATE.overview.seoScore
-                   : 0;
+                   : null;
   const competitorPressure = STATE.overview?.competitorPressure
     ?? (STATE.competitors && STATE.competitors.length > 0
         ? Math.min(100, Math.round(STATE.competitors.filter(c => (c.domainRating||0) > 30).length / STATE.competitors.length * 100))
-        : 0);
+        : null);
   const revenueOpp = STATE.overview?.revenueOpportunity ?? null;
   const growthMomentum = STATE.overview?.growthMomentum ?? null;
   const _scoreVals = [avg, localScore, growthMomentum].filter(v => v != null && Number.isFinite(v));
@@ -3677,13 +3678,13 @@ function renderOverview() {
   const _seoTrend = (() => { const d = STATE.overview?.seoTrendDelta; return d != null ? (d > 0 ? '+' : '') + d + 'pt' : '—'; })();
   const _growthTrend = (() => { const g = STATE.overview?.organicGrowthPct; return g != null ? (g > 0 ? '+' : '') + g + '%' : '—'; })();
   const healthMetrics = [
-    { label:'SEO Health',         val:avg,                 max:100, color:'#2563EB',  icon:'🔍', trend:_seoTrend,   unit:'/100', route:'audits' },
-    { label:'Conversion GA4',     val:conversionRate ?? 0, max:100, color:'#22c55e',  icon:'⚡', trend:conversionRate != null ? conversionRate.toFixed(2)+'%' : '—', unit:'%', route:'conversion' },
+    { label:'SEO Health',         val:STATE.audits.length > 0 ? avg : null, max:100, color:'#2563EB',  icon:'🔍', trend:_seoTrend,   unit:'/100', route:'audits' },
+    { label:'Conversion GA4',     val:conversionRate,      max:100, color:'#22c55e',  icon:'⚡', trend:conversionRate != null ? conversionRate.toFixed(2)+'%' : '—', unit:'%', route:'conversion' },
     { label:'Monitoring',         val:pingOk,              max:100, color:pingOk===100?'#22c55e':'#ef4444', icon:'📡', trend:down>0?'-'+down:'OK', unit:'%', route:'monitors' },
     { label:'Local Visibility',   val:localScore,          max:100, color:'#f59e0b',  icon:'📍', trend:'—',         unit:'%',    route:'local-seo' },
     { label:'Competitor Pressure',val:competitorPressure,  max:100, color:'#ef4444',  icon:'⚔️', trend:'—',         unit:'/100', route:'competitor' },
     { label:'Growth Momentum',    val:growthMomentum,      max:100, color:'#8b5cf6',  icon:'🚀', trend:_growthTrend, unit:'/100', route:'growth' },
-    { label:'Revenue Opportunity',val:revenueOpp != null ? Math.min(100,Math.round(revenueOpp/50)) : 0, max:100, color:'#06b6d4', icon:'💰', trend:revenueOpp != null ? (revenueOpp>0?'+':'') + Math.round(revenueOpp/1000)+'k€' : '—', unit:'k€', route:'conversion' },
+    { label:'Revenue Opportunity',val:revenueOpp != null ? Math.min(100,Math.round(revenueOpp/50)) : null, max:100, color:'#06b6d4', icon:'💰', trend:revenueOpp != null ? (revenueOpp>0?'+':'') + Math.round(revenueOpp/1000)+'k€' : '—', unit:'k€', route:'conversion' },
     { label:'Santé Workspace',    val:STATE.overview?.workspaceHealth ?? null, max:100, color:'#22c55e', icon:'🏢', trend:(()=>{ const _wh=STATE.overview?.workspaceHealth; return _wh!=null?(_wh>=70?'Excellent':_wh>=40?'Moyen':'À améliorer'):'—'; })(), unit:'/100', route:'missions' },
   ];
 
@@ -3692,14 +3693,17 @@ function renderOverview() {
 
   const scoreGauge = (val, max, color, size=70, r=28) => {
     const c = 2*Math.PI*r;
-    const fill = (val/max*c).toFixed(1);
-    const empty = (c*(1-val/max)).toFixed(1);
+    const hasVal = val != null && Number.isFinite(val);
+    const fill = hasVal ? (val/max*c).toFixed(1) : '0';
+    const empty = c.toFixed(1);
+    const _textColor = hasVal ? color : (STATE.theme==='light'?'rgba(0,0,0,0.25)':'rgba(255,255,255,0.30)');
+    const _label = hasVal ? String(val) : '—';
     return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
       <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${STATE.theme==='light'?'rgba(0,0,0,0.10)':'rgba(255,255,255,0.08)'}" stroke-width="5"/>
-      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="5"
+      ${hasVal ? `<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="5"
         stroke-dasharray="${fill} ${empty}" stroke-linecap="round"
-        transform="rotate(-90 ${size/2} ${size/2})"/>
-      <text x="${size/2}" y="${size/2+5}" text-anchor="middle" font-size="12" font-weight="900" fill="${color}" font-family="Outfit,sans-serif">${val}</text>
+        transform="rotate(-90 ${size/2} ${size/2})"/>` : ''}
+      <text x="${size/2}" y="${size/2+5}" text-anchor="middle" font-size="12" font-weight="900" fill="${_textColor}" font-family="Outfit,sans-serif">${_label}</text>
     </svg>`;
   };
 
@@ -3878,7 +3882,8 @@ function renderOverview() {
       <!-- 8 Health Gauge Grid -->
       <div class="fp-health-gauge-grid" style="gap:12px;position:relative">
         ${healthMetrics.map(h => {
-          const col = h.val >= 70 ? '#22c55e' : h.val >= 50 ? '#f59e0b' : '#ef4444';
+          const _hv = h.val != null && Number.isFinite(h.val);
+          const col = _hv ? (h.val >= 70 ? '#22c55e' : h.val >= 50 ? '#f59e0b' : '#ef4444') : 'var(--fp-text-faint)';
           const isUp = h.trend.startsWith('+');
           const isNeg = h.trend.startsWith('▲') || h.trend.startsWith('-');
           return `<div class="fp-gauge-card" style="background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 12px;cursor:pointer;transition:all 0.18s" onclick="navigate('${h.route}')">
@@ -3891,10 +3896,12 @@ function renderOverview() {
             </div>
             ${scoreGauge(h.val, h.max, h.color, 62, 24)}
             <div style="margin-top:6px;text-align:center">
-              <div style="font-size:11px;font-weight:700;color:${col};display:inline-block;padding:2px 8px;border-radius:99px;background:${col}18">${h.val >= 70 ? 'Bon' : h.val >= 50 ? 'Attention' : 'Faible'}</div>
+              ${_hv
+                ? `<div style="font-size:11px;font-weight:700;color:${col};display:inline-block;padding:2px 8px;border-radius:99px;background:${col}18">${h.val >= 70 ? 'Bon' : h.val >= 50 ? 'Attention' : 'Faible'}</div>`
+                : `<div style="font-size:11px;color:var(--fp-text-faint);font-style:italic">Pas de données</div>`}
             </div>
             <div style="margin-top:4px">
-              <div class="fp-progress-track" style="height:3px;border-radius:99px"><div class="fp-progress-fill" style="width:${Math.round(h.val/h.max*100)}%;background:${h.color};border-radius:99px"></div></div>
+              <div class="fp-progress-track" style="height:3px;border-radius:99px"><div class="fp-progress-fill" style="width:${_hv ? Math.round(h.val/h.max*100) : 0}%;background:${_hv ? h.color : 'transparent'};border-radius:99px"></div></div>
             </div>
           </div>`;
         }).join('')}
@@ -4009,7 +4016,7 @@ function renderOverview() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div style="display:flex;align-items:center;gap:8px">
             <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;animation:fp-pulse-dot 2s infinite"></div>
-            <span class="fp-card-title" style="margin-bottom:0">Activité récente</span>
+            <span class="fp-card-title" style="margin-bottom:0">Flux en direct</span>
           </div>
           <span style="font-size:10px;color:var(--fp-text-faint)">Mise à jour en temps réel</span>
         </div>

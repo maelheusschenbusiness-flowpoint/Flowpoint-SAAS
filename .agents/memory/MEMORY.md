@@ -2,6 +2,7 @@
 - [ensureStripeCustomer pattern](ensure-stripe-customer.md) — P0 service at services/ensure-stripe-customer.ts; DB-first, concurrency lock, deleted-customer recovery, metadata search before create
 - [GA4 funnel v1alpha service](ga4-funnel-service-pattern.md) — runConfiguredFunnel via v1alpha; setGA4FunnelBaseUrl for QA; google_tokens UNIQUE(org_id,account_id) not org_id alone
 - [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
+- [scoreGauge null-safe pattern](scoregauge-null-safe.md) — scoreGauge must guard val with hasVal (!=null && isFinite); null→"—" grey text, no arc; healthMetrics source vals use null not 0 for absent data
 - [FlowPoint isDemoMode pattern](flowpoint-demodmode.md) — all Math.random fake data must be isDemoMode()-gated; import from services/mock-data.js
 - [FlowPoint dashboard.js editing](flowpoint-dashboard-editing.md) — 32925-line file (read tool capped at 14681); use bash sed -n for lines > 14681, always get exact context before editing
 - [Settings plan casing & real data](settings-plan-casing.md) — plan stored lowercase in DB; me.ts must normalize to Title Case; team member map needs id field; security vuln fallback uses twoFactorEnabled
