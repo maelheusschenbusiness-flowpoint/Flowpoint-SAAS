@@ -12065,7 +12065,7 @@ const PAGE_NAMES = {
 };
 
 const SUB_NAVS = {
-  'overview':   [{id:null,label:'Aperçu'}],
+  'overview':   [{id:null,label:'Aperçu'},{id:'insights',label:'Insights IA'},{id:'quick-wins',label:'Quick Wins'},{id:'checklist',label:'Checklist'}],
   'missions':   [{id:null,label:'Toutes'},{id:'todo',label:'À faire'},{id:'inprogress',label:'En cours'},{id:'done',label:'Terminées'},{id:'ai',label:'IA Missions'}],
   'audits':     [{id:null,label:'Liste'},{id:'analysis',label:'Analyse'},{id:'compare',label:'Comparaison'},{id:'history',label:'Historique'},{id:'opportunites',label:'Opportunités'}],
   'monitors':   [{id:null,label:'Status'},{id:'performance',label:'Performance'},{id:'incidents',label:'Incidents'},{id:'config',label:'Config'},{id:'sla',label:'SLA'}],
