@@ -302,6 +302,9 @@ router.post("/billing/portal", billingPortalRateLimit, ownerOnly, async (req: Re
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
   const returnUrl = process.env["STRIPE_RETURN_URL"] || `${publicUrl}/dashboard`;
+  // Diagnostic instrumentation — emits one structured log per successful call.
+  // Controlled by BILLING_STRIPE_DIAGNOSTICS=true. Off by default.
+  const diagnosticsEnabled = process.env["BILLING_STRIPE_DIAGNOSTICS"] === "true";
 
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
@@ -316,6 +319,9 @@ router.post("/billing/portal", billingPortalRateLimit, ownerOnly, async (req: Re
 
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
+  // Snapshot the DB value BEFORE ensureStripeCustomer so we can tell whether
+  // a new Customer was created during this call (customerCreated = true).
+  const dbStripeCustomerId: string | null = billingCtx.stripeCustomerId ?? null;
 
   let customerId: string;
   try {
@@ -329,6 +335,23 @@ router.post("/billing/portal", billingPortalRateLimit, ownerOnly, async (req: Re
   try {
     const stripe = await createStripeClient(stripeKey);
     const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
+
+    if (diagnosticsEnabled) {
+      // Never log: Stripe keys, full portal URL, session token, email, or secrets.
+      logger.info({
+        event:                    "billing_portal_customer_resolution",
+        requestId:                (req.headers["x-request-id"] as string | undefined) ?? `portal-${Date.now()}`,
+        userId:                   (req as Record<string, unknown>)["userId"] ?? orgId,
+        orgId,
+        dbStripeCustomerId,
+        resolvedStripeCustomerId: customerId,
+        customerCreated:          !dbStripeCustomerId || dbStripeCustomerId !== customerId,
+        portalSessionId:          session.id,
+        lockAcquired:             true,
+        transactionCommitted:     true,
+      }, "[Billing] billing_portal_customer_resolution");
+    }
+
     res.json({ url: session.url });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to create Stripe portal session");
