@@ -35,6 +35,12 @@ export async function initRlsSetup(): Promise<void> {
     // 4. Sequence privileges
     await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user`);
 
+    // 5. Grant app_user to the current connection user so SET LOCAL ROLE app_user works.
+    //    On Supabase the postgres/service-role user can grant to itself.
+    //    If this fails (restricted managed DB), the outer catch logs a warning and
+    //    withOrgDb() continues in GUC-only RLS mode — RLS is still enforced.
+    await client.query(`GRANT app_user TO CURRENT_USER`);
+
     // 5. Default privileges for tables/sequences created in the future
     await client.query(`
       ALTER DEFAULT PRIVILEGES IN SCHEMA public

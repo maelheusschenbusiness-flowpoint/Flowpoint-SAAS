@@ -733,8 +733,7 @@ export async function initDataTables(): Promise<void> {
       SET    subscription_status =
                CASE
                  WHEN trial_ends_at IS NOT NULL
-                      AND trial_ends_at <> ''
-                      AND trial_ends_at::timestamptz > NOW()               THEN 'trialing'
+                      AND trial_ends_at > NOW()                            THEN 'trialing'
                  WHEN stripe_customer_id IS NOT NULL
                       AND stripe_customer_id <> ''                         THEN 'incomplete'
                  ELSE                                                            'none'
@@ -864,6 +863,8 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'standard';`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;`);
     await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    await run(client, `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations(owner_user_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS organizations_slug_idx  ON organizations(slug);`);
 
@@ -972,48 +973,59 @@ export async function initDataTables(): Promise<void> {
 
     // ── behavior_events / behavior_sessions / behavior_insights — org_id column ─
     // Wave 4 Lot 4B-S: add org_id to behavioral tables that were created without it.
-    // Backfill from behavior_site_tokens so existing rows are correctly isolated.
-    await run(client, `ALTER TABLE behavior_events   ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
-    await run(client, `ALTER TABLE behavior_sessions ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
-    await run(client, `ALTER TABLE behavior_insights ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
-    await run(client, `ALTER TABLE behavior_insights ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';`);
-
-    // Backfill behavior_events.org_id from behavior_site_tokens JOIN on site_url
+    // Each block is wrapped in IF EXISTS so startup never raises 42P01 when the
+    // behavioral module has not been deployed to this environment.
     await run(client, `
-      UPDATE behavior_events be
-      SET org_id = bst.org_id
-      FROM behavior_site_tokens bst
-      WHERE be.site_url = bst.site_url
-        AND be.org_id = 'default'
-        AND bst.org_id IS NOT NULL
-        AND bst.org_id <> '';
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='behavior_events') THEN
+          EXECUTE 'ALTER TABLE behavior_events ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
+          EXECUTE 'CREATE INDEX IF NOT EXISTS behavior_events_org_id_idx ON behavior_events(org_id)';
+          IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='behavior_site_tokens') THEN
+            EXECUTE $upd$
+              UPDATE behavior_events be SET org_id = bst.org_id
+              FROM behavior_site_tokens bst
+              WHERE be.site_url = bst.site_url AND be.org_id = 'default'
+                AND bst.org_id IS NOT NULL AND bst.org_id <> ''
+            $upd$;
+          END IF;
+        END IF;
+      END $$;
     `);
 
-    // Backfill behavior_sessions.org_id
     await run(client, `
-      UPDATE behavior_sessions bs
-      SET org_id = bst.org_id
-      FROM behavior_site_tokens bst
-      WHERE bs.site_url = bst.site_url
-        AND bs.org_id = 'default'
-        AND bst.org_id IS NOT NULL
-        AND bst.org_id <> '';
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='behavior_sessions') THEN
+          EXECUTE 'ALTER TABLE behavior_sessions ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
+          EXECUTE 'CREATE INDEX IF NOT EXISTS behavior_sessions_org_id_idx ON behavior_sessions(org_id)';
+          IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='behavior_site_tokens') THEN
+            EXECUTE $upd$
+              UPDATE behavior_sessions bs SET org_id = bst.org_id
+              FROM behavior_site_tokens bst
+              WHERE bs.site_url = bst.site_url AND bs.org_id = 'default'
+                AND bst.org_id IS NOT NULL AND bst.org_id <> ''
+            $upd$;
+          END IF;
+        END IF;
+      END $$;
     `);
 
-    // Backfill behavior_insights.org_id
     await run(client, `
-      UPDATE behavior_insights bi
-      SET org_id = bst.org_id
-      FROM behavior_site_tokens bst
-      WHERE bi.site_url = bst.site_url
-        AND bi.org_id = 'default'
-        AND bst.org_id IS NOT NULL
-        AND bst.org_id <> '';
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='behavior_insights') THEN
+          EXECUTE 'ALTER TABLE behavior_insights ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
+          EXECUTE 'ALTER TABLE behavior_insights ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT ''open''';
+          EXECUTE 'CREATE INDEX IF NOT EXISTS behavior_insights_org_id_idx ON behavior_insights(org_id)';
+          IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='behavior_site_tokens') THEN
+            EXECUTE $upd$
+              UPDATE behavior_insights bi SET org_id = bst.org_id
+              FROM behavior_site_tokens bst
+              WHERE bi.site_url = bst.site_url AND bi.org_id = 'default'
+                AND bst.org_id IS NOT NULL AND bst.org_id <> ''
+            $upd$;
+          END IF;
+        END IF;
+      END $$;
     `);
-
-    await run(client, `CREATE INDEX IF NOT EXISTS behavior_events_org_id_idx   ON behavior_events(org_id);`);
-    await run(client, `CREATE INDEX IF NOT EXISTS behavior_sessions_org_id_idx ON behavior_sessions(org_id);`);
-    await run(client, `CREATE INDEX IF NOT EXISTS behavior_insights_org_id_idx ON behavior_insights(org_id);`);
 
     // ── traffic_losses — org_id column + FORCE RLS ────────────────────────────
     // traffic_losses existed with USING=(true) RLS; add org_id for proper isolation.
@@ -1028,37 +1040,51 @@ export async function initDataTables(): Promise<void> {
     `);
 
     // ── cro_recommendations — add org_id, source, fix ai_generated type ──────
-    await run(client, `ALTER TABLE cro_recommendations ADD COLUMN IF NOT EXISTS org_id  TEXT NOT NULL DEFAULT 'default';`);
-    await run(client, `ALTER TABLE cro_recommendations ADD COLUMN IF NOT EXISTS source  TEXT NOT NULL DEFAULT 'rules';`);
-    // Convert ai_generated from text → boolean (idempotent: skip if already boolean)
-    // Must DROP DEFAULT first, otherwise Postgres raises "cannot cast automatically"
+    // Wrapped in IF EXISTS: table absent on deployments without the CRO module.
     await run(client, `
       DO $$ BEGIN
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='cro_recommendations' AND column_name='ai_generated'
-            AND data_type IN ('character varying','text')
-        ) THEN
-          ALTER TABLE cro_recommendations ALTER COLUMN ai_generated DROP DEFAULT;
-          ALTER TABLE cro_recommendations
-            ALTER COLUMN ai_generated TYPE BOOLEAN
-            USING (ai_generated = 'true');
-          ALTER TABLE cro_recommendations ALTER COLUMN ai_generated SET DEFAULT false;
-          UPDATE cro_recommendations SET ai_generated = false WHERE ai_generated = true;
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='cro_recommendations') THEN
+          EXECUTE 'ALTER TABLE cro_recommendations ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
+          EXECUTE 'ALTER TABLE cro_recommendations ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''rules''';
+          -- Convert ai_generated text → boolean only if still text type
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='cro_recommendations' AND column_name='ai_generated'
+              AND data_type IN ('character varying','text')
+          ) THEN
+            EXECUTE 'ALTER TABLE cro_recommendations ALTER COLUMN ai_generated DROP DEFAULT';
+            EXECUTE 'ALTER TABLE cro_recommendations ALTER COLUMN ai_generated TYPE BOOLEAN USING (ai_generated = ''true'')';
+            EXECUTE 'ALTER TABLE cro_recommendations ALTER COLUMN ai_generated SET DEFAULT false';
+            EXECUTE 'UPDATE cro_recommendations SET ai_generated = false WHERE ai_generated = true';
+          END IF;
+          EXECUTE 'CREATE INDEX IF NOT EXISTS cro_recommendations_org_id_idx ON cro_recommendations(org_id)';
         END IF;
       END $$;
     `);
-    await run(client, `CREATE INDEX IF NOT EXISTS cro_recommendations_org_id_idx ON cro_recommendations(org_id);`);
 
     // ── cro_scores / cro_experiments — add org_id ─────────────────────────────
-    await run(client, `ALTER TABLE cro_scores      ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
-    await run(client, `ALTER TABLE cro_experiments ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
-    await run(client, `CREATE INDEX IF NOT EXISTS cro_scores_org_id_idx      ON cro_scores(org_id);`);
-    await run(client, `CREATE INDEX IF NOT EXISTS cro_experiments_org_id_idx ON cro_experiments(org_id);`);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='cro_scores') THEN
+          EXECUTE 'ALTER TABLE cro_scores ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
+          EXECUTE 'CREATE INDEX IF NOT EXISTS cro_scores_org_id_idx ON cro_scores(org_id)';
+        END IF;
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='cro_experiments') THEN
+          EXECUTE 'ALTER TABLE cro_experiments ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
+          EXECUTE 'CREATE INDEX IF NOT EXISTS cro_experiments_org_id_idx ON cro_experiments(org_id)';
+        END IF;
+      END $$;
+    `);
 
     // ── revenue_leaks — add org_id ────────────────────────────────────────────
-    await run(client, `ALTER TABLE revenue_leaks ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT 'default';`);
-    await run(client, `CREATE INDEX IF NOT EXISTS revenue_leaks_org_id_idx ON revenue_leaks(org_id);`);
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='revenue_leaks') THEN
+          EXECUTE 'ALTER TABLE revenue_leaks ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''default''';
+          EXECUTE 'CREATE INDEX IF NOT EXISTS revenue_leaks_org_id_idx ON revenue_leaks(org_id)';
+        END IF;
+      END $$;
+    `);
 
     // ── Fix RLS on behavioral/CRO tables: USING=(true) → org_id filter ───────
     // Drop both old *_isolation policies AND old tenant_* permissive bypass policies.
