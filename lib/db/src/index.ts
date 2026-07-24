@@ -534,6 +534,11 @@ let _appUserRoleUnavailable = false;
  */
 export async function probeAppUserRole(): Promise<void> {
   const client = await pool.connect();
+  // Absorb any async 'error' events on this client.
+  // SET ROLE failures are normally synchronous errors (caught below), but on some
+  // managed DBs a FATAL response can close the connection asynchronously.
+  // Without this listener Node.js would crash with "Unhandled 'error' event".
+  client.on("error", () => { /* absorbed — pool.on('error') covers idle clients */ });
   try {
     await client.query("SET ROLE app_user");
     await client.query("RESET ROLE");

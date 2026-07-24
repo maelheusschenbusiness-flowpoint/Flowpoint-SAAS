@@ -15,6 +15,14 @@ import { logger } from "../lib/logger.js";
 
 export async function initRlsSetup(): Promise<void> {
   const client = await pool.connect();
+  // Absorb any async 'error' events emitted on this client instance.
+  // On managed DBs (Supabase, Render) a FATAL PostgreSQL error terminates the
+  // connection at wire level: pg emits 'error' asynchronously AFTER the query
+  // promise rejects. Without this listener Node.js would crash with
+  // "Unhandled 'error' event". pool.on('error') only covers idle clients.
+  client.on("error", (err) => {
+    logger.warn({ err }, "[init-rls-setup] client error event absorbed (connection terminated by server)");
+  });
   try {
     // 1. Create role if missing
     await client.query(`
@@ -35,11 +43,12 @@ export async function initRlsSetup(): Promise<void> {
     // 4. Sequence privileges
     await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user`);
 
-    // 5. Grant app_user to the current connection user so SET LOCAL ROLE app_user works.
-    //    On Supabase the postgres/service-role user can grant to itself.
-    //    If this fails (restricted managed DB), the outer catch logs a warning and
-    //    withOrgDb() continues in GUC-only RLS mode — RLS is still enforced.
-    await client.query(`GRANT app_user TO CURRENT_USER`);
+    // NOTE: GRANT app_user TO CURRENT_USER is intentionally omitted.
+    // On Supabase / Render the connection user cannot grant role membership to itself
+    // without superuser. Attempting it triggers a FATAL PostgreSQL error that closes
+    // the connection at wire level, emitting an async 'error' event that crashes Node.
+    // GUC-only RLS mode (set via app.current_org_id) is the correct and safe mode
+    // on managed DBs — RLS policies are still enforced via the GUC.
 
     // 5. Default privileges for tables/sequences created in the future
     await client.query(`
