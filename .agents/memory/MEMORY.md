@@ -1,4 +1,5 @@
 - [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
+- [Billing audit findings](billing-audit-findings.md) — store.me singleton contamination, persistSubscriptionMeta orgId="default" bug, full P0/P1 list + reliability estimates
 - [ensureStripeCustomer pattern](ensure-stripe-customer.md) — P0 service at services/ensure-stripe-customer.ts; DB-first, concurrency lock, deleted-customer recovery, metadata search before create
 - [GA4 funnel v1alpha service](ga4-funnel-service-pattern.md) — runConfiguredFunnel via v1alpha; setGA4FunnelBaseUrl for QA; google_tokens UNIQUE(org_id,account_id) not org_id alone
 - [displayStat helper pattern](displaystat-pattern.md) — canonical guard for fabricated metrics in dashboard.js; use displayStat(liveVal, previewFallback) not raw literals; PREVIEW_MODE gates subtitles.
