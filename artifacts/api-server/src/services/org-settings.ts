@@ -11,6 +11,7 @@ export interface OrgSettings {
   website: string | null;
   subscriptionStatus: string | null;
   stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
   trialEndsAt: string | null;
   addons: Record<string, unknown>;
   usage: Record<string, unknown>;
@@ -50,6 +51,7 @@ export async function loadOrgSettings(orgId = "default"): Promise<OrgSettings | 
       website: r.website ?? null,
       subscriptionStatus: r.subscription_status ?? null,
       stripeCustomerId: r.stripe_customer_id ?? null,
+      stripeSubscriptionId: r.stripe_subscription_id ?? null,
       trialEndsAt: r.trial_ends_at ?? null,
       addons: r.addons ?? {},
       usage: r.usage ?? {},
@@ -109,26 +111,27 @@ export async function upsertOrgSettings(
 
     // text columns (plain text, no cast needed)
     const textCols: Array<[string | null | undefined, string]> = [
-      [data.firstName,          "first_name"],
-      [data.lastName,           "last_name"],
-      [data.orgName,            "org_name"],
-      [data.email,              "email"],
-      [data.website,            "website"],
-      [data.plan,               "plan"],
-      [data.subscriptionStatus, "subscription_status"],
-      [data.stripeCustomerId,   "stripe_customer_id"],
-      [data.address,            "address"],
-      [data.city,               "city"],
-      [data.postalCode,         "postal_code"],
-      [data.country,            "country"],
-      [data.region,             "region"],
-      [data.phone,              "phone"],
-      [data.locationSource,     "location_source"],
-      [data.timezone,           "timezone"],
-      [data.language,           "language"],
-      [data.currency,           "currency"],
-      [data.dateFormat,         "date_format"],
-      [data.timeFormat,         "time_format"],
+      [data.firstName,           "first_name"],
+      [data.lastName,            "last_name"],
+      [data.orgName,             "org_name"],
+      [data.email,               "email"],
+      [data.website,             "website"],
+      [data.plan,                "plan"],
+      [data.subscriptionStatus,  "subscription_status"],
+      [data.stripeCustomerId,    "stripe_customer_id"],
+      [data.stripeSubscriptionId,"stripe_subscription_id"],
+      [data.address,             "address"],
+      [data.city,                "city"],
+      [data.postalCode,          "postal_code"],
+      [data.country,             "country"],
+      [data.region,              "region"],
+      [data.phone,               "phone"],
+      [data.locationSource,      "location_source"],
+      [data.timezone,            "timezone"],
+      [data.language,            "language"],
+      [data.currency,            "currency"],
+      [data.dateFormat,          "date_format"],
+      [data.timeFormat,          "time_format"],
     ];
     for (const [val, col] of textCols) {
       if (val !== undefined && val !== null) {

@@ -499,7 +499,9 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_ending_notified_at  TIMESTAMPTZ;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS email                     TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS first_name                TEXT;`);
-    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS subscription_status       TEXT NOT NULL DEFAULT 'active';`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS subscription_status       TEXT NOT NULL DEFAULT 'none';`);
+    // Fix existing rows: change DEFAULT so new rows get 'none', not 'active'
+    await run(client, `ALTER TABLE org_settings ALTER COLUMN subscription_status SET DEFAULT 'none';`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_settings_trial_ends_at_idx ON org_settings(trial_ends_at) WHERE trial_ends_at IS NOT NULL;`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_settings_sub_status_idx    ON org_settings(subscription_status);`);
 
@@ -720,7 +722,28 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS last_name           TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS org_name            TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS website             TEXT;`);
-    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS stripe_customer_id  TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS stripe_customer_id       TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS stripe_subscription_id  TEXT;`);
+    // P0-2 normalisation: impossible states where status='active' but no stripe_subscription_id.
+    // Root cause: old DEFAULT 'active' created ghost-active rows for every new org.
+    // This UPDATE is idempotent — only touches rows that are genuinely invalid.
+    // Runs AFTER stripe_subscription_id column is guaranteed to exist.
+    await run(client, `
+      UPDATE org_settings
+      SET    subscription_status =
+               CASE
+                 WHEN trial_ends_at IS NOT NULL
+                      AND trial_ends_at <> ''
+                      AND trial_ends_at::timestamptz > NOW()               THEN 'trialing'
+                 WHEN stripe_customer_id IS NOT NULL
+                      AND stripe_customer_id <> ''                         THEN 'incomplete'
+                 ELSE                                                            'none'
+               END,
+             updated_at = NOW()
+      WHERE  subscription_status = 'active'
+        AND  (stripe_subscription_id IS NULL OR stripe_subscription_id = '')
+        AND  org_id NOT LIKE 'test\_%';
+    `);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS addons              JSONB NOT NULL DEFAULT '{}';`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS usage               JSONB NOT NULL DEFAULT '{}';`);
     // Locale / timezone columns

@@ -540,42 +540,87 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
 
-  const plan               = billingCtx.plan;
-  const subscriptionStatus = billingCtx.subscriptionStatus || "none";
-  const trialEndsAt        = billingCtx.trialEndsAt ?? null;
-  const stripeCustomerId   = billingCtx.stripeCustomerId ?? null;
-  const stripeKey          = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const plan                  = billingCtx.plan;
+  const trialEndsAt           = billingCtx.trialEndsAt ?? null;
+  const stripeCustomerId      = billingCtx.stripeCustomerId ?? null;
+  const stripeSubscriptionId  = billingCtx.stripeSubscriptionId ?? null;
+  const stripeKey             = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
 
+  // billingCtx.subscriptionStatus is already normalised by the state machine:
+  // it NEVER returns "active" when stripeSubscriptionId is null.
+  const normalisedStatus = billingCtx.subscriptionStatus ?? "none";
+
+  // ── No Stripe key or no customer → return DB state (already normalised) ───
   if (!stripeKey || !stripeCustomerId) {
     res.json({
       plan,
-      status: subscriptionStatus,
+      status: normalisedStatus,
       trialEndsAt,
       addons: billingCtx.addons,
-      subscriptionId: null,
+      subscriptionId: stripeSubscriptionId,
+      stripeCustomerId,
       mock: !stripeKey,
     });
     return;
   }
 
+  // ── Reconcile with Stripe (live subscription data) ─────────────────────────
   try {
     const stripe = await createStripeClient(stripeKey);
-    const subs = await stripe.subscriptions.list({ customer: stripeCustomerId, limit: 1 });
-    const sub = subs.data[0];
+
+    // Prefer the tracked subscription ID for a precise lookup; fall back to
+    // listing all active subscriptions for this customer.
+    let sub: Awaited<ReturnType<typeof stripe.subscriptions.list>>["data"][0] | undefined;
+
+    if (stripeSubscriptionId) {
+      try {
+        const fetched = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+        if (fetched && fetched.id) sub = fetched;
+      } catch (fetchErr: unknown) {
+        const code = (fetchErr as { code?: string })?.code;
+        if (code !== "resource_missing") throw fetchErr;
+        // Subscription no longer exists in Stripe — treat as none
+      }
+    } else {
+      const subs = await stripe.subscriptions.list({ customer: stripeCustomerId, status: "all", limit: 1 });
+      sub = subs.data[0];
+    }
+
+    // The Stripe status is authoritative when a subscription is found.
+    // Re-apply the state machine to avoid impossible combos from Stripe.
+    const stripeStatus = sub?.status ?? null;
+    const effectiveSubId = sub?.id ?? stripeSubscriptionId;
+    const { normalizeSubscriptionStatus } = await import("../lib/subscription-state.js");
+    const reconciled = normalizeSubscriptionStatus({
+      rawStatus:           stripeStatus ?? normalisedStatus,
+      stripeSubscriptionId: effectiveSubId ?? null,
+      stripeCustomerId,
+      trialEndsAt:          sub?.trial_end
+        ? new Date(sub.trial_end * 1000).toISOString()
+        : trialEndsAt,
+    });
 
     res.json({
       plan,
-      status: sub?.status || subscriptionStatus,
-      trialEndsAt: sub?.trial_end ? new Date(sub.trial_end * 1000).toISOString() : trialEndsAt,
-      currentPeriodEnd: sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
-      cancelAtPeriodEnd: sub?.cancel_at_period_end || false,
-      subscriptionId: sub?.id ?? null,
-      addons: billingCtx.addons,
+      status:            reconciled,
+      trialEndsAt:       sub?.trial_end ? new Date(sub.trial_end * 1000).toISOString() : trialEndsAt,
+      currentPeriodEnd:  sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+      cancelAtPeriodEnd: sub?.cancel_at_period_end ?? false,
+      subscriptionId:    effectiveSubId ?? null,
+      addons:            billingCtx.addons,
       stripeCustomerId,
     });
   } catch (err) {
-    logger.error({ err }, "[Billing] Failed to get subscription");
-    res.json({ plan, status: subscriptionStatus, addons: billingCtx.addons, subscriptionId: null });
+    logger.error({ err }, "[Billing] Failed to get subscription from Stripe — returning normalised DB state");
+    // Fallback: DB state is already normalised — safe to return
+    res.json({
+      plan,
+      status:         normalisedStatus,
+      trialEndsAt,
+      addons:         billingCtx.addons,
+      subscriptionId: stripeSubscriptionId,
+      stripeCustomerId,
+    });
   }
 });
 

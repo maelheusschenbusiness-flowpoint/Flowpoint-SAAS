@@ -10,13 +10,14 @@ import { upsertOrgSettings, loadOrgSettings } from "../services/org-settings.js"
 async function persistSubscriptionMeta(opts: {
   subscriptionStatus?: string;
   stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
   plan?: string;
   orgId: string;          // required — no default
   trialEndsAt?: string;
 }): Promise<void> {
-  const { orgId, subscriptionStatus, stripeCustomerId, plan, trialEndsAt } = opts;
+  const { orgId, subscriptionStatus, stripeCustomerId, stripeSubscriptionId, plan, trialEndsAt } = opts;
 
-  if (!subscriptionStatus && !stripeCustomerId && !plan) return;
+  if (!subscriptionStatus && !stripeCustomerId && !stripeSubscriptionId && !plan) return;
 
   // Guard: refuse writes to "default" — they would corrupt or shadow other orgs
   if (!orgId || orgId === "default") {
@@ -26,13 +27,14 @@ async function persistSubscriptionMeta(opts: {
 
   try {
     const update: Parameters<typeof upsertOrgSettings>[1] = {};
-    if (subscriptionStatus) update.subscriptionStatus = subscriptionStatus;
-    if (stripeCustomerId)   update.stripeCustomerId   = stripeCustomerId;
-    if (plan)               update.plan               = plan;
-    if (trialEndsAt)        update.trialEndsAt        = trialEndsAt;
+    if (subscriptionStatus)    update.subscriptionStatus    = subscriptionStatus;
+    if (stripeCustomerId)      update.stripeCustomerId      = stripeCustomerId;
+    if (stripeSubscriptionId)  update.stripeSubscriptionId  = stripeSubscriptionId;
+    if (plan)                  update.plan                  = plan;
+    if (trialEndsAt)           update.trialEndsAt           = trialEndsAt;
 
     await upsertOrgSettings(orgId, update);
-    logger.info({ orgId, subscriptionStatus, plan }, "[Webhook] Subscription meta persisted to org_settings");
+    logger.info({ orgId, subscriptionStatus, stripeSubscriptionId, plan }, "[Webhook] Subscription meta persisted to org_settings");
   } catch (err) {
     logger.error({ err, orgId }, "[Webhook] Failed to persist subscription meta to org_settings");
   }
@@ -313,7 +315,12 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       // P0-1: explicit orgId
       // P0-3: no store.me mutation
-      const updatePayload: Parameters<typeof persistSubscriptionMeta>[0] = { orgId, subscriptionStatus: status };
+      const subscriptionId = obj["id"] ? String(obj["id"]) : undefined;
+      const updatePayload: Parameters<typeof persistSubscriptionMeta>[0] = {
+        orgId,
+        subscriptionStatus: status,
+        ...(subscriptionId ? { stripeSubscriptionId: subscriptionId } : {}),
+      };
       if (newPlan) updatePayload.plan = newPlan;
       await persistSubscriptionMeta(updatePayload);
 

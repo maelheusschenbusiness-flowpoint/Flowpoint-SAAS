@@ -1,17 +1,31 @@
 /**
- * ensure-stripe-customer.ts — P0 Stripe Customer Guarantee (v2)
+ * ensure-stripe-customer.ts — P0 Stripe Customer Guarantee (v3)
  *
  * Guarantees every org always has exactly ONE valid Stripe Customer.
  *
- * Protections:
- *  1. Empty-string normalization  — stripe_customer_id='' treated as null (was causing duplicates)
- *  2. In-process concurrency lock — _inflight Map prevents duplicate creation within one Node process
- *  3. Postgres advisory lock      — pg_advisory_lock prevents duplicate creation across Render instances
- *  4. Re-read inside lock         — re-reads DB after acquiring lock to detect creation by another instance
- *  5. Stripe metadata search      — finds orphaned customers if DB write failed on previous attempt
- *  6. Stripe idempotency key      — belt-and-suspenders: Stripe rejects duplicate creates with same key
- *  7. Strict persistence          — throws (not swallows) if DB write cannot be confirmed by re-read
- *  8. Deleted-customer recovery   — detects deleted:true and resource_missing, creates replacement
+ * Architecture (two-layer deduplication):
+ *  Layer 1 — _inflight Map (in-process)
+ *    Same-process concurrent requests for the same orgId share one Promise.
+ *    Fast path: no DB/Stripe I/O for callers beyond the first.
+ *
+ *  Layer 2 — pg_advisory_lock (cross-process)
+ *    The ENTIRE sequence (read → validate → create → persist → confirm) runs
+ *    inside the advisory lock.  This serialises all server instances for a given
+ *    org so that cross-process races cannot produce duplicate customers.
+ *
+ *    Previous v2 held the lock only around creation, leaving a window where two
+ *    processes both passed Step 1 (DB read outside the lock) and both proceeded
+ *    to create.  v3 closes that window by moving Step 1 inside the lock.
+ *
+ * Guarantees:
+ *  1. Empty-string normalisation  — stripe_customer_id='' treated as null
+ *  2. In-process lock             — _inflight Map deduplicates within one Node process
+ *  3. Advisory lock around ALL    — DB read, Stripe validate, create, persist all atomic
+ *  4. Re-read inside lock         — authoritative DB state read after lock acquired
+ *  5. Stripe metadata search      — orphan recovery (works after Stripe indexing lag)
+ *  6. Stable idempotency key      — `fp-cust-<orgId>` stable across restarts
+ *  7. Strict DB persistence       — throws if write cannot be confirmed; no orphan leak
+ *  8. Deleted-customer recovery   — detects deleted:true / resource_missing, recreates
  */
 
 import { pool } from "@workspace/db";
@@ -19,7 +33,7 @@ import { loadOrgSettings, upsertOrgSettings } from "./org-settings.js";
 import { store } from "./store.js";
 import { logger } from "../lib/logger.js";
 
-/** Subset of org data accepted as a performance hint (avoids a second DB read). */
+/** Subset of org data accepted as a performance hint (avoids an extra DB read for email/name). */
 export interface CustomerHint {
   stripeCustomerId: string | null;
   email: string | null;
@@ -28,15 +42,15 @@ export interface CustomerHint {
 }
 
 // ── In-process concurrency lock ───────────────────────────────────────────────
-// One Promise per orgId within the same Node.js process. A second concurrent
-// request for the same org awaits the same Promise rather than starting its own.
+// One Promise per orgId within the same Node.js process.  Subsequent concurrent
+// requests for the same org await the existing Promise instead of starting a new one.
 const _inflight = new Map<string, Promise<string>>();
 
 /**
  * Return a guaranteed-valid Stripe Customer ID for `orgId`.
  *
  * @param orgId     — org_settings primary key (user email in production)
- * @param hint      — optional pre-loaded billing context (performance shortcut only — DB is authoritative)
+ * @param hint      — optional pre-loaded billing context (used for email/name only)
  * @param stripeKey — Stripe secret key (defaults to STRIPE_LIVE_API_KEY / STRIPE_SECRET_KEY)
  * @throws          — if Stripe is unreachable, key is missing, or DB write cannot be confirmed
  */
@@ -45,18 +59,18 @@ export async function ensureStripeCustomer(
   hint?: CustomerHint | null,
   stripeKey?: string,
 ): Promise<string> {
-  // Fast path: another request for the same org is already in flight in this process.
+  // Layer 1: another request for the same org is already in flight in this process.
   const inflight = _inflight.get(orgId);
   if (inflight) return inflight;
 
-  const promise = _run(orgId, hint, stripeKey).finally(() => _inflight.delete(orgId));
+  const promise = _runWithLock(orgId, hint, stripeKey).finally(() => _inflight.delete(orgId));
   _inflight.set(orgId, promise);
   return promise;
 }
 
-// ── Core logic ────────────────────────────────────────────────────────────────
+// ── Core logic (runs inside advisory lock) ────────────────────────────────────
 
-async function _run(
+async function _runWithLock(
   orgId: string,
   hint: CustomerHint | null | undefined,
   stripeKeyOverride: string | undefined,
@@ -68,79 +82,59 @@ async function _run(
     "";
   if (!key) throw new Error("[ensureStripeCustomer] No Stripe key configured");
 
+  // Import Stripe BEFORE acquiring the advisory lock to avoid holding the lock
+  // during module initialisation (which only happens once per process lifetime).
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(key, { apiVersion: "2026-04-22.dahlia" });
 
-  // ── Step 1: DB is the authoritative source ─────────────────────────────────
-  const settings = await loadOrgSettings(orgId).catch(() => null);
-
-  // CRITICAL FIX: normalize empty string → null.
-  // Some rows have stripe_customer_id='' (not NULL). The `??` operator does NOT
-  // treat empty string as nullish, so `"" ?? null` returns "". Then `if ("")`
-  // is falsy, skipping validation and always creating a new customer.
-  const rawId =
-    settings?.stripeCustomerId ??
-    hint?.stripeCustomerId ??
-    null;
-  const candidateId: string | null =
-    rawId && rawId.trim() ? rawId.trim() : null;
-
-  // ── Step 2: Validate existing customer ────────────────────────────────────
-  if (candidateId) {
-    try {
-      const customer = await stripe.customers.retrieve(candidateId);
-      if (!(customer as { deleted?: boolean }).deleted) {
-        // Customer is alive — return immediately without touching DB.
-        _syncStore(candidateId);
-        logger.debug({ orgId, customerId: candidateId }, "[ensureStripeCustomer] Valid customer found");
-        return candidateId;
-      }
-      logger.warn(
-        { orgId, candidateId },
-        "[ensureStripeCustomer] Customer deleted in Stripe — will recreate",
-      );
-    } catch (err: unknown) {
-      const stripeErr = err as { code?: string };
-      if (stripeErr?.code !== "resource_missing") throw err;
-      logger.warn(
-        { orgId, candidateId },
-        "[ensureStripeCustomer] Customer not found (resource_missing) — will recreate",
-      );
-    }
-  }
-
-  // ── Step 3: Create needed — acquire Postgres advisory lock ─────────────────
-  // Prevents duplicate creation across multiple Render/server instances.
+  // Layer 2: Postgres advisory lock — serialises ALL instances for this orgId.
+  // The lock encompasses the entire sequence:
+  //   read DB → validate Stripe → create → persist → confirm
   return _withPgLock(orgId, async () => {
-    // Re-read DB inside the lock: another instance may have created while we waited.
-    const freshSettings = await loadOrgSettings(orgId).catch(() => null);
-    const freshRaw =
-      freshSettings?.stripeCustomerId ??
-      null;
-    const freshId: string | null =
-      freshRaw && freshRaw.trim() ? freshRaw.trim() : null;
+    // ── Step 1: Read DB inside the lock (authoritative source) ─────────────
+    // Any customer created by a competing process will be visible here.
+    const settings = await loadOrgSettings(orgId).catch(() => null);
 
-    if (freshId && freshId !== candidateId) {
-      // Another instance wrote a new customer — validate and use it.
+    // CRITICAL: normalise empty-string → null.
+    // Some rows have stripe_customer_id='' (not NULL); `??` does NOT treat '' as nullish.
+    const rawId =
+      settings?.stripeCustomerId ??
+      hint?.stripeCustomerId ??
+      null;
+    const candidateId: string | null =
+      rawId && rawId.trim() ? rawId.trim() : null;
+
+    // ── Step 2: Validate existing customer ─────────────────────────────────
+    if (candidateId) {
       try {
-        const cust = await stripe.customers.retrieve(freshId);
-        if (!(cust as { deleted?: boolean }).deleted) {
-          _syncStore(freshId);
-          logger.info(
-            { orgId, customerId: freshId },
-            "[ensureStripeCustomer] Another instance created customer — reusing",
+        const customer = await stripe.customers.retrieve(candidateId);
+        if (!(customer as { deleted?: boolean }).deleted) {
+          // Customer is alive — reuse without touching DB.
+          _syncStore(candidateId);
+          logger.debug(
+            { orgId, customerId: candidateId },
+            "[ensureStripeCustomer] Valid customer found in DB — reusing",
           );
-          return freshId;
+          return candidateId;
         }
+        logger.warn(
+          { orgId, candidateId },
+          "[ensureStripeCustomer] Customer deleted in Stripe — will recreate",
+        );
       } catch (err: unknown) {
         const stripeErr = err as { code?: string };
         if (stripeErr?.code !== "resource_missing") throw err;
+        logger.warn(
+          { orgId, candidateId },
+          "[ensureStripeCustomer] Customer not found (resource_missing) — will recreate",
+        );
       }
     }
 
-    // ── Step 4: Search Stripe by orgId metadata (recovers orphaned customers) ─
-    // Stripe search has ~15-30s indexing lag, so this only helps on retry
-    // after a previous DB-write failure, not on the first attempt.
+    // ── Step 3: Search Stripe by orgId metadata (orphan recovery) ──────────
+    // Stripe search has ~15-30s indexing lag; this recovers previously created
+    // customers whose DB write failed.  On a fresh first-ever call it finds nothing
+    // and we proceed to Step 4.
     try {
       const search = await stripe.customers.search({
         query: `metadata['orgId']:'${orgId}'`,
@@ -162,21 +156,22 @@ async function _run(
       );
     }
 
-    // ── Step 5: Create exactly one customer ────────────────────────────────────
+    // ── Step 4: Create exactly one customer ────────────────────────────────
     // Idempotency key strategy:
-    //  • No prior customer  → `fp-cust-${orgId}`  (stable across process restarts)
-    //  • Replacing deleted  → `fp-cust-${orgId}-rpl-${last12chars}` (unique per deletion event)
-    // Stripe caches create responses for 24h by idempotency key, so concurrent
-    // calls with the same key ACROSS instances return the identical customer.
+    //   No prior customer:   `fp-cust-<orgId>`                    (stable across restarts)
+    //   Replacing deleted:   `fp-cust-<orgId>-rpl-<last12chars>`  (unique per deletion event)
+    // Stripe caches responses for 24h, so concurrent cross-instance calls with the
+    // same key return the identical customer object — no duplicate is created.
     const idempotencyKey = candidateId
       ? `fp-cust-${orgId}-rpl-${candidateId.slice(-12)}`
       : `fp-cust-${orgId}`;
 
-    const email: string | null = freshSettings?.email ?? hint?.email ?? null;
+    const email: string | null =
+      settings?.email ?? hint?.email ?? null;
     const isValidEmail =
       email != null && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
     const displayName =
-      [freshSettings?.firstName, freshSettings?.orgName]
+      [settings?.firstName ?? hint?.firstName, settings?.orgName ?? hint?.orgName]
         .filter(Boolean)
         .join(" ")
         .trim() || "FlowPoint User";
@@ -199,7 +194,9 @@ async function _run(
       "[ensureStripeCustomer] New Stripe customer created",
     );
 
-    // ── Step 6: Persist and confirm ───────────────────────────────────────────
+    // ── Step 5: Persist and confirm ────────────────────────────────────────
+    // Throws if the write cannot be confirmed — caller receives 503.
+    // This prevents returning a customer ID that isn't in the DB.
     await _persistStrict(orgId, customer.id);
     return customer.id;
   });
@@ -209,19 +206,20 @@ async function _run(
 
 /**
  * Acquire a Postgres session-level advisory lock keyed on orgId, run `fn`,
- * then release. Blocks other instances/processes until the lock is released.
+ * then release.  Blocks other instances/processes until the lock is released.
+ *
+ * The lock is held for the duration of fn() including Stripe API calls (~1-3s).
+ * This is intentional: it prevents cross-process customer duplication at the
+ * cost of serialising portal/checkout calls for a given org.
  */
 async function _withPgLock<T>(orgId: string, fn: () => Promise<T>): Promise<T> {
   const lockKey = _hashOrgId(orgId);
   const client = await pool.connect();
   try {
-    // Session-level advisory lock — blocks until acquired.
-    // Released explicitly in the inner finally (or implicitly when the session ends).
     await client.query("SELECT pg_advisory_lock($1)", [lockKey]);
     try {
       return await fn();
     } finally {
-      // Always release on the same connection.
       await client.query("SELECT pg_advisory_unlock($1)", [lockKey]).catch((err) =>
         logger.warn({ err, orgId }, "[ensureStripeCustomer] pg_advisory_unlock failed"),
       );
@@ -232,13 +230,12 @@ async function _withPgLock<T>(orgId: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Stable 32-bit signed integer hash of orgId for use as pg_advisory_lock key.
+ * Stable 32-bit signed integer hash of orgId for pg_advisory_lock key.
  * djb2 variant — fast and low-collision for email-like strings.
  */
 function _hashOrgId(orgId: string): number {
   let h = 5381;
   for (let i = 0; i < orgId.length; i++) {
-    // Math.imul avoids floating-point; `| 0` keeps it 32-bit signed
     h = (Math.imul(h, 31) + orgId.charCodeAt(i)) | 0;
   }
   return h;
@@ -248,8 +245,9 @@ function _hashOrgId(orgId: string): number {
 
 /**
  * Write customerId to DB and confirm with a re-read.
- * THROWS if the write cannot be confirmed after 2 attempts.
- * Caller (inside the advisory lock) must handle the error.
+ * THROWS (after 2 attempts) if the write cannot be confirmed.
+ * Called inside the advisory lock — a throw here releases the lock and
+ * propagates to the portal/checkout handler which returns 503.
  */
 async function _persistStrict(orgId: string, customerId: string): Promise<void> {
   _syncStore(customerId);
@@ -258,35 +256,41 @@ async function _persistStrict(orgId: string, customerId: string): Promise<void> 
     try {
       await upsertOrgSettings(orgId, { stripeCustomerId: customerId });
 
-      // Confirm the write took effect (guards against silent RLS-UPDATE-0-rows).
       const confirm = await loadOrgSettings(orgId);
       if (confirm?.stripeCustomerId === customerId) {
         logger.debug(
           { orgId, customerId },
           "[ensureStripeCustomer] DB write confirmed",
         );
-        return; // ✅ confirmed
+        return;
       }
 
-      const msg = `[ensureStripeCustomer] DB write NOT confirmed: expected ${customerId}, got ${confirm?.stripeCustomerId ?? "null"}`;
-      logger.error({ orgId, expected: customerId, actual: confirm?.stripeCustomerId }, msg);
+      const msg =
+        `[ensureStripeCustomer] DB write NOT confirmed: expected ${customerId}, got ${confirm?.stripeCustomerId ?? "null"}`;
+      logger.error(
+        { orgId, expected: customerId, actual: confirm?.stripeCustomerId },
+        msg,
+      );
 
       if (attempt === 2) throw new Error(msg);
     } catch (err) {
       if (attempt === 2) {
         logger.error(
           { err, orgId, customerId },
-          "[ensureStripeCustomer] DB persist failed after 2 attempts — throwing to prevent silent duplicate creation on next request",
+          "[ensureStripeCustomer] DB persist failed after 2 attempts — throwing to prevent orphan customer",
         );
         throw err;
       }
-      logger.warn({ err, orgId }, "[ensureStripeCustomer] DB persist attempt 1 failed — retrying in 250ms");
+      logger.warn(
+        { err, orgId },
+        "[ensureStripeCustomer] DB persist attempt 1 failed — retrying in 250ms",
+      );
       await new Promise((r) => setTimeout(r, 250));
     }
   }
 }
 
-/** Best-effort sync of store.me (secondary cache — never the source of truth). */
+/** Best-effort sync to store.me (SSE cache only — never the source of truth). */
 function _syncStore(customerId: string): void {
   try {
     store.me.stripeCustomerId = customerId;

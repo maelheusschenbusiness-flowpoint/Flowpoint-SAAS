@@ -3,6 +3,7 @@ import { requireOrgId } from "../lib/require-org-id.js";
 import { store } from "../services/store.js";
 import { PLAN_LIMITS } from "../lib/plans.js";
 import { loadOrgSettings, upsertOrgSettings } from "../services/org-settings.js";
+import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
@@ -48,16 +49,25 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         (req.orgContext?.email?.split("@")[0] ?? store.me.firstName);
 
       const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
+      // Normalise subscription status — never return "active" without a subscriptionId
+      const normStatus = normalizeSubscriptionStatus({
+        rawStatus:            dbData.subscriptionStatus,
+        stripeSubscriptionId: dbData.stripeSubscriptionId,
+        stripeCustomerId:     dbData.stripeCustomerId,
+        trialEndsAt:          dbData.trialEndsAt,
+      });
+
       res.json({
         firstName,
-        lastName:           dbData.lastName ?? "",
-        email:              req.orgContext?.email ?? "",
-        plan:               normPlan(dbData.plan),
-        role:               req.orgContext?.role ?? "owner",
-        org:                { name: dbData.orgName, website: dbData.website ?? "" },
-        subscriptionStatus: dbData.subscriptionStatus,
-        trialEndsAt:        dbData.trialEndsAt,
-        stripeCustomerId:   dbData.stripeCustomerId,
+        lastName:            dbData.lastName ?? "",
+        email:               req.orgContext?.email ?? "",
+        plan:                normPlan(dbData.plan),
+        role:                req.orgContext?.role ?? "owner",
+        org:                 { name: dbData.orgName, website: dbData.website ?? "" },
+        subscriptionStatus:  normStatus,
+        stripeSubscriptionId: dbData.stripeSubscriptionId,
+        trialEndsAt:         dbData.trialEndsAt,
+        stripeCustomerId:    dbData.stripeCustomerId,
         usage:              dbData.usage,
         addons:             dbData.addons,
         limits,
