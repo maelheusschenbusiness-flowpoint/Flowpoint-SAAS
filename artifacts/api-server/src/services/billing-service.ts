@@ -97,22 +97,121 @@ export async function getUsageSummary(orgId = "default") {
 }
 
 // ── Quota enforcement ─────────────────────────────────────────────────────────
-export function checkQuota(resource: "audits" | "monitors" | "reports" | "exports" | "seats"): { allowed: boolean; used: number; limit: number; plan: string } {
-  const me = store.me;
-  const plan = (me.plan || "standard").toLowerCase();
+/**
+ * P0-6 FIX: checkQuota now loads plan and live usage from the database using
+ * the org's actual orgId — never from store.me (global singleton).
+ *
+ * This ensures quotas are enforced per-tenant and survive process restarts.
+ *
+ * @param resource  — resource type to check
+ * @param orgId     — the requesting org's ID (required — do NOT pass "default")
+ */
+export async function checkQuota(
+  resource: "audits" | "monitors" | "reports" | "exports" | "seats",
+  orgId: string
+): Promise<{ allowed: boolean; used: number; limit: number; plan: string }> {
+
+  // Safety net: if orgId is unresolved, fall back to standard limits (most restrictive)
+  const resolvedOrgId = orgId && orgId !== "default" ? orgId : null;
+
+  let plan = "standard";
+  let extraMonitors = 0;
+  let extraSeats = 0;
+
+  if (resolvedOrgId) {
+    try {
+      const settings = await loadOrgSettings(resolvedOrgId);
+      plan = (settings?.plan || "standard").toLowerCase();
+
+      // Load add-ons from DB for accurate quota expansion
+      // org_addons has no quantity column — each active row = 1 unit of the addon
+      const { pool: pgPool } = await import("@workspace/db");
+      const addonsResult = await pgPool.query<{ addon_key: string }>(
+        `SELECT addon_key FROM org_addons WHERE org_id = $1 AND active = true`,
+        [resolvedOrgId]
+      );
+      for (const row of addonsResult.rows) {
+        if (row.addon_key === "monitorsPack50") extraMonitors += 50;
+        if (row.addon_key === "extraSeats")     extraSeats    += 5;
+      }
+    } catch (err) {
+      logger.warn({ err, orgId: resolvedOrgId }, "[Billing] checkQuota: DB load failed — using standard limits");
+    }
+  }
+
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.standard;
 
-  const u = (me as Record<string, unknown>).usage as Record<string, Record<string, number>> | undefined;
-  const map: Record<string, { used: number; limit: number }> = {
-    audits:   { used: u?.audit?.used   ?? 0, limit: u?.audit?.limit   || limits.audits },
-    monitors: { used: u?.monitor?.used ?? 0, limit: u?.monitor?.limit || limits.monitors },
-    reports:  { used: u?.pdf?.used     ?? 0, limit: u?.pdf?.limit     || limits.reports },
-    exports:  { used: u?.exports?.used ?? 0, limit: u?.exports?.limit || limits.exports },
-    seats:    { used: 1,                     limit: limits.teamMembers },
-  };
+  // Live usage counts from DB
+  let usedCount = 0;
+  let limit = 0;
 
-  const q = map[resource];
-  return { allowed: !q || q.used < q.limit, used: q?.used ?? 0, limit: q?.limit ?? 0, plan };
+  if (resolvedOrgId) {
+    try {
+      const { pool: pgPool } = await import("@workspace/db");
+      const client = await pgPool.connect();
+      try {
+        switch (resource) {
+          case "audits": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM audits WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit = limits.audits;
+            break;
+          }
+          case "monitors": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM monitors WHERE org_id=$1`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit = limits.monitors + extraMonitors;
+            break;
+          }
+          case "reports": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM reports WHERE org_id=$1 AND created_at > date_trunc('month', now())`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit = limits.reports;
+            break;
+          }
+          case "seats": {
+            const r = await client.query(
+              `SELECT COUNT(*)::int AS n FROM team_members WHERE org_id=$1`,
+              [resolvedOrgId]
+            );
+            usedCount = Number(r.rows[0]?.n ?? 0);
+            limit = limits.teamMembers + extraSeats;
+            break;
+          }
+          case "exports": {
+            limit = limits.exports;
+            usedCount = 0; // exports tracked separately — not blocked here
+            break;
+          }
+        }
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      logger.warn({ err, orgId: resolvedOrgId, resource }, "[Billing] checkQuota: usage count failed — allowing");
+      return { allowed: true, used: 0, limit: limits[resource as keyof typeof limits] as number || 0, plan };
+    }
+  } else {
+    // No orgId — use standard limits with zero usage (most conservative: allow but log)
+    limit = limits[resource as keyof typeof limits] as number || 0;
+    logger.warn({ resource }, "[Billing] checkQuota: unresolved orgId — returning standard limit, usage=0");
+  }
+
+  return {
+    allowed: usedCount < limit,
+    used:    usedCount,
+    limit,
+    plan,
+  };
 }
 
 // ── Billing events / MRR tracking ─────────────────────────────────────────────
