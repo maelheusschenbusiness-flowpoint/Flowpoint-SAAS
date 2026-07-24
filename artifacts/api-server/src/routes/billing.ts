@@ -24,6 +24,18 @@ const PLAN_INCLUDED_ADDONS: Record<string, Set<string>> = {
 const billingPortalRateLimit   = createRateLimit("billingPortalPerMinute");
 const billingCheckoutRateLimit = createRateLimit("billingCheckoutPerMinute");
 
+// ── Stripe diagnostics gate ───────────────────────────────────────────────────
+// Evaluated once at module load. Trim + lowercase so Render's " true" or "True"
+// all resolve correctly. Never log the raw variable value.
+const diagnosticsEnabled =
+  String(process.env.BILLING_STRIPE_DIAGNOSTICS ?? "").trim().toLowerCase() === "true";
+
+logger.info({
+  event:           "billing_stripe_diagnostics_config",
+  enabled:         diagnosticsEnabled,
+  variablePresent: process.env.BILLING_STRIPE_DIAGNOSTICS != null,
+}, "[Billing] diagnostics configuration");
+
 const router = Router();
 
 type AddonsMap = Record<string, boolean | number>;
@@ -302,9 +314,17 @@ router.post("/billing/portal", billingPortalRateLimit, ownerOnly, async (req: Re
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "http://localhost:3001";
   const returnUrl = process.env["STRIPE_RETURN_URL"] || `${publicUrl}/dashboard`;
-  // Diagnostic instrumentation — emits one structured log per successful call.
-  // Controlled by BILLING_STRIPE_DIAGNOSTICS=true. Off by default.
-  const diagnosticsEnabled = process.env["BILLING_STRIPE_DIAGNOSTICS"] === "true";
+
+  // ── Log 1/3 : request received (before any async work) ────────────────────
+  if (diagnosticsEnabled) {
+    logger.info({
+      event:     "billing_portal_request_received",
+      requestId: (req as Record<string, unknown>)["id"]
+                   ?? (req.headers["x-request-id"] as string | undefined)
+                   ?? `portal-${Date.now()}`,
+      orgId:     req.orgId ?? "default",
+    }, "[Billing] billing_portal_request_received");
+  }
 
   if (!stripeKey) {
     if (process.env["NODE_ENV"] === "production") {
