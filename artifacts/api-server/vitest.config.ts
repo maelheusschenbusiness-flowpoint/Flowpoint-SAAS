@@ -26,6 +26,7 @@ export default defineConfig({
       "src/routes/team-files.test.ts",
       "src/routes/overview.test.ts",
       "src/routes/growth-objectives.test.ts",
+      "src/services/ensure-stripe-customer.test.ts",
     ],
     environment: "node",
     globals:     false,

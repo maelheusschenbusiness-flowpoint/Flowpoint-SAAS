@@ -1,6 +1,17 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
+// Structural interface covering the pg PoolClient operations used in this module.
+// We cannot import PoolClient from "pg" directly because pg lives in @workspace/db's
+// private node_modules (not hoisted).  Using Awaited<ReturnType<typeof pool.connect>>
+// is also broken: TypeScript picks the callback overload of Pool.connect() → void.
+interface DbClient {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query(queryText: string, values?: any[]): Promise<{ rows: any[]; rowCount: number | null }>;
+  release(err?: boolean | Error): void;
+}
+type PoolClient = DbClient;
+
 export interface OrgSettings {
   orgId: string;
   plan: string;
@@ -35,10 +46,27 @@ export interface OrgSettings {
   timeFormat: string | null;
 }
 
-export async function loadOrgSettings(orgId = "default"): Promise<OrgSettings | null> {
-  const client = await pool.connect();
+/**
+ * Load org settings for the given orgId.
+ *
+ * @param orgId          — org_settings primary key (default: "default")
+ * @param clientOverride — optional shared PoolClient; when provided the caller owns the
+ *                         connection lifecycle (no connect/release performed here).
+ *                         Used by ensure-stripe-customer to keep all critical operations
+ *                         on a single connection inside one BEGIN/COMMIT transaction
+ *                         so pg_advisory_xact_lock is held for the full duration.
+ */
+export async function loadOrgSettings(
+  orgId = "default",
+  clientOverride?: PoolClient,
+): Promise<OrgSettings | null> {
+  const ownClient = !clientOverride;
+  const client: PoolClient = clientOverride ?? (await pool.connect() as unknown as PoolClient);
   try {
-    const res = await client.query(`SELECT * FROM org_settings WHERE org_id = $1 LIMIT 1`, [orgId]);
+    const res = await client.query(
+      `SELECT * FROM org_settings WHERE org_id = $1 LIMIT 1`,
+      [orgId],
+    );
     if (!res.rows[0]) return null;
     const r = res.rows[0];
     return {
@@ -65,7 +93,11 @@ export async function loadOrgSettings(orgId = "default"): Promise<OrgSettings | 
       phone: r.phone ?? null,
       latitude: r.latitude != null ? parseFloat(r.latitude) : null,
       longitude: r.longitude != null ? parseFloat(r.longitude) : null,
-      serviceArea: Array.isArray(r.service_area) ? r.service_area : (r.service_area ? JSON.parse(r.service_area) : []),
+      serviceArea: Array.isArray(r.service_area)
+        ? r.service_area
+        : r.service_area
+          ? JSON.parse(r.service_area)
+          : [],
       locationConfigured: r.location_configured ?? false,
       locationSource: r.location_source ?? null,
       timezone: r.timezone ?? null,
@@ -78,7 +110,7 @@ export async function loadOrgSettings(orgId = "default"): Promise<OrgSettings | 
     logger.debug({ err }, "[org-settings] loadOrgSettings failed");
     return null;
   } finally {
-    client.release();
+    if (ownClient) client.release();
   }
 }
 
@@ -89,49 +121,55 @@ export async function loadOrgSettings(orgId = "default"): Promise<OrgSettings | 
  * Step 1 — Ensure the row exists with safe NOT NULL defaults (INSERT ON CONFLICT DO NOTHING).
  * Step 2 — UPDATE only the columns that were explicitly provided (non-null in `data`).
  *           Each column gets its own typed bind parameter, so pg can resolve types trivially.
+ *
+ * @param clientOverride — optional shared PoolClient (same contract as loadOrgSettings).
+ *                         When provided, the confirm-read at the end uses the same client
+ *                         so it sees uncommitted writes from the same transaction.
  */
 export async function upsertOrgSettings(
   orgId: string,
-  data: Partial<Omit<OrgSettings, "orgId" | "createdAt" | "updatedAt">>
+  data: Partial<Omit<OrgSettings, "orgId" | "createdAt" | "updatedAt">>,
+  clientOverride?: PoolClient,
 ): Promise<OrgSettings> {
-  const client = await pool.connect();
+  const ownClient = !clientOverride;
+  const client: PoolClient = clientOverride ?? (await pool.connect() as unknown as PoolClient);
   try {
-    // ── Step 1: guarantee row exists ──────────────────────────────────────────
+    // ── Step 1: guarantee row exists ─────────────────────────────────────────
     await client.query(
       `INSERT INTO org_settings (org_id)
        VALUES ($1)
        ON CONFLICT (org_id) DO NOTHING`,
-      [orgId]
+      [orgId],
     );
 
-    // ── Step 2: update only provided fields ───────────────────────────────────
+    // ── Step 2: update only provided fields ──────────────────────────────────
     const sets: string[] = [];
     const vals: unknown[] = [];
     let n = 1;
 
     // text columns (plain text, no cast needed)
     const textCols: Array<[string | null | undefined, string]> = [
-      [data.firstName,           "first_name"],
-      [data.lastName,            "last_name"],
-      [data.orgName,             "org_name"],
-      [data.email,               "email"],
-      [data.website,             "website"],
-      [data.plan,                "plan"],
-      [data.subscriptionStatus,  "subscription_status"],
-      [data.stripeCustomerId,    "stripe_customer_id"],
-      [data.stripeSubscriptionId,"stripe_subscription_id"],
-      [data.address,             "address"],
-      [data.city,                "city"],
-      [data.postalCode,          "postal_code"],
-      [data.country,             "country"],
-      [data.region,              "region"],
-      [data.phone,               "phone"],
-      [data.locationSource,      "location_source"],
-      [data.timezone,            "timezone"],
-      [data.language,            "language"],
-      [data.currency,            "currency"],
-      [data.dateFormat,          "date_format"],
-      [data.timeFormat,          "time_format"],
+      [data.firstName,            "first_name"],
+      [data.lastName,             "last_name"],
+      [data.orgName,              "org_name"],
+      [data.email,                "email"],
+      [data.website,              "website"],
+      [data.plan,                 "plan"],
+      [data.subscriptionStatus,   "subscription_status"],
+      [data.stripeCustomerId,     "stripe_customer_id"],
+      [data.stripeSubscriptionId, "stripe_subscription_id"],
+      [data.address,              "address"],
+      [data.city,                 "city"],
+      [data.postalCode,           "postal_code"],
+      [data.country,              "country"],
+      [data.region,               "region"],
+      [data.phone,                "phone"],
+      [data.locationSource,       "location_source"],
+      [data.timezone,             "timezone"],
+      [data.language,             "language"],
+      [data.currency,             "currency"],
+      [data.dateFormat,           "date_format"],
+      [data.timeFormat,           "time_format"],
     ];
     for (const [val, col] of textCols) {
       if (val !== undefined && val !== null) {
@@ -180,15 +218,17 @@ export async function upsertOrgSettings(
       sets.push(`updated_at = NOW()`);
       await client.query(
         `UPDATE org_settings SET ${sets.join(", ")} WHERE org_id = $${n}`,
-        [...vals, orgId]
+        [...vals, orgId],
       );
     }
 
-    return (await loadOrgSettings(orgId))!;
+    // Pass the shared client so the confirm-read sees the uncommitted write
+    // when called inside a transaction (e.g., from ensure-stripe-customer).
+    return (await loadOrgSettings(orgId, client))!;
   } catch (err) {
     logger.error({ err }, "[org-settings] upsertOrgSettings failed");
     throw err;
   } finally {
-    client.release();
+    if (ownClient) client.release();
   }
 }
