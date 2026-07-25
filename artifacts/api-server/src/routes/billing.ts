@@ -621,28 +621,73 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             return;
           }
 
-          const schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id });
-          await stripe.subscriptionSchedules.update(schedule.id, {
-            end_behavior: "release",
-            phases: [
-              {
-                start_date:         "now" as unknown as number,
-                end_date:           sub.current_period_end,
-                items:              [
-                  { price: currentPriceId ?? undefined, quantity: 1 },
-                  ...currentAddonPrices,
-                ],
-                proration_behavior: "none",
-              },
-              {
-                items: [
-                  { price: priceId, quantity: 1 },
-                  ...nextAddonPrices,
-                ],
-                proration_behavior: "none",
-              },
-            ],
-          });
+          let scheduleId: string;
+          try {
+            const schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id });
+            scheduleId = schedule.id;
+            await stripe.subscriptionSchedules.update(scheduleId, {
+              end_behavior: "release",
+              phases: [
+                {
+                  start_date:         "now" as unknown as number,
+                  end_date:           sub.current_period_end,
+                  items:              [
+                    { price: currentPriceId ?? undefined, quantity: 1 },
+                    ...currentAddonPrices,
+                  ],
+                  proration_behavior: "none",
+                },
+                {
+                  items: [
+                    { price: priceId, quantity: 1 },
+                    ...nextAddonPrices,
+                  ],
+                  proration_behavior: "none",
+                },
+              ],
+            });
+          } catch (schedErr: unknown) {
+            // Stripe can reject the create() when a schedule is already attached
+            // to this subscription (race condition or duplicate request).
+            // Detect that specific case and return the idempotent success response
+            // instead of propagating a misleading 500.
+            const isAlreadyAttached = ((): boolean => {
+              if (!schedErr || typeof schedErr !== "object") return false;
+              const e = schedErr as Record<string, unknown>;
+              const code    = String(e["code"]    ?? "");
+              const message = String(e["message"] ?? "").toLowerCase();
+              return (
+                code === "resource_already_exists" ||
+                message.includes("schedule") ||
+                message.includes("already attached") ||
+                message.includes("already has a schedule")
+              );
+            })();
+
+            if (!isAlreadyAttached) throw schedErr; // genuine Stripe error → bubble up to outer catch → 500
+
+            // Re-read the subscription to confirm the schedule is now present
+            const freshSub = await stripe.subscriptions.retrieve(sub.id, { expand: ["schedule"] });
+            if (!freshSub.schedule) throw schedErr; // schedule still absent → treat as genuine error
+
+            const attachedId = typeof freshSub.schedule === "string"
+              ? freshSub.schedule
+              : (freshSub.schedule as { id: string }).id;
+            logger.warn(
+              { scheduleId: attachedId, subId: sub.id, orgId },
+              "[Billing] schedule already attached (race) — idempotent downgrade return",
+            );
+            res.json({
+              ok:                   true,
+              plan,
+              downgrade:            true,
+              effective:            "period_end",
+              effectiveDate,
+              removedIncludedAddons: removedAddonKeys,
+              idempotent:           true,
+            });
+            return;
+          }
 
           // Do NOT change org_settings.plan now — the subscription is still on
           // the current (higher) plan until the period end. Only store the
