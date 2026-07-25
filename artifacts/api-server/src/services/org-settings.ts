@@ -44,6 +44,8 @@ export interface OrgSettings {
   currency: string | null;
   dateFormat: string | null;
   timeFormat: string | null;
+  pendingPlan: string | null;
+  pendingPlanDate: string | null;
 }
 
 /**
@@ -105,6 +107,8 @@ export async function loadOrgSettings(
       currency: r.currency ?? null,
       dateFormat: r.date_format ?? null,
       timeFormat: r.time_format ?? null,
+      pendingPlan: r.pending_plan ?? null,
+      pendingPlanDate: r.pending_plan_date ?? null,
     };
   } catch (err) {
     logger.debug({ err }, "[org-settings] loadOrgSettings failed");
@@ -175,6 +179,22 @@ export async function upsertOrgSettings(
       if (val !== undefined && val !== null) {
         sets.push(`${col} = $${n++}`);
         vals.push(val);
+      }
+    }
+
+    // nullable text columns — undefined = skip; null = SET col = NULL; string = SET col = value
+    const nullableTextCols: Array<[string | null | undefined, string]> = [
+      [data.pendingPlan,     "pending_plan"],
+      [data.pendingPlanDate, "pending_plan_date"],
+    ];
+    for (const [val, col] of nullableTextCols) {
+      if (val !== undefined) {
+        if (val === null) {
+          sets.push(`${col} = NULL`);
+        } else {
+          sets.push(`${col} = $${n++}`);
+          vals.push(val);
+        }
       }
     }
 

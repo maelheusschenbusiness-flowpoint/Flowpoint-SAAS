@@ -7466,7 +7466,17 @@ function renderBilling() {
   // SUB: PLANS & ABONNEMENTS
   // ══════════════════════════════════════════════════════════
   if (sub === 'plans') {
+    const _pendingPlan     = STATE.billing?.pendingPlan     || null;
+    const _pendingPlanDate = STATE.billing?.pendingPlanDate || null;
+    const _pendingBanner   = _pendingPlan ? `
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);margin-bottom:16px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div style="font-size:13px;color:var(--fp-text-soft);line-height:1.4">
+          Votre abonnement passera au plan <strong style="color:var(--fp-text);text-transform:capitalize">${escHtml(_pendingPlan)}</strong> le <strong style="color:var(--fp-text)">${escHtml(_pendingPlanDate)}</strong>. Votre plan actuel reste actif jusqu\'à cette date.
+        </div>
+      </div>` : '';
     return `
+      ${_pendingBanner}
       ${aiBlock(
         isPro
           ? "Plan <strong>Pro</strong> actif. Si votre équipe dépasse 5 sièges ou si vos audits approchent la limite mensuelle, le plan Ultra devient pertinent — comparez les fonctionnalités ci-dessous."

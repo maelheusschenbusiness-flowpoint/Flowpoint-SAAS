@@ -751,6 +751,8 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS currency    TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS date_format TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS time_format TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS pending_plan      TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS pending_plan_date TEXT;`);
     // Location extended
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS region      TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS phone       TEXT;`);

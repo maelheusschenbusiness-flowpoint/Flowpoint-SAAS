@@ -600,6 +600,27 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             return !addonKey || !targetIncluded.has(addonKey);
           });
 
+          // Compute effective date early — needed by both the idempotency path and the normal path
+          const effectiveDate = new Date(sub.current_period_end * 1000).toLocaleDateString("fr-FR", {
+            day: "2-digit", month: "long", year: "numeric",
+          });
+
+          // ── Idempotency: if subscription already has an active schedule, skip ──
+          if (sub.schedule) {
+            const existingScheduleId = typeof sub.schedule === "string" ? sub.schedule : (sub.schedule as { id: string }).id;
+            logger.info({ scheduleId: existingScheduleId, orgId }, "[Billing] downgrade schedule already exists — idempotent return");
+            res.json({
+              ok:                   true,
+              plan,
+              downgrade:            true,
+              effective:            "period_end",
+              effectiveDate,
+              removedIncludedAddons: [],
+              idempotent:           true,
+            });
+            return;
+          }
+
           const schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id });
           await stripe.subscriptionSchedules.update(schedule.id, {
             end_behavior: "release",
@@ -623,10 +644,10 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
             ],
           });
 
-          await upsertOrgSettings(orgId, { plan }).catch(() => {});
-          const effectiveDate = new Date(sub.current_period_end * 1000).toLocaleDateString("fr-FR", {
-            day: "2-digit", month: "long", year: "numeric",
-          });
+          // Do NOT change org_settings.plan now — the subscription is still on
+          // the current (higher) plan until the period end. Only store the
+          // pending change so the dashboard can show the scheduled downgrade.
+          await upsertOrgSettings(orgId, { pendingPlan: plan, pendingPlanDate: effectiveDate }).catch(() => {});
           logger.info(
             { plan, subId: sub.id, orgId, effectiveDate, removedAddonKeys },
             "[Billing] downgrade scheduled for period end",
@@ -704,12 +725,14 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
   if (!stripeKey || !stripeCustomerId) {
     res.json({
       plan,
-      status: normalisedStatus,
+      status:          normalisedStatus,
       trialEndsAt,
-      addons: billingCtx.addons,
-      subscriptionId: stripeSubscriptionId,
+      addons:          billingCtx.addons,
+      subscriptionId:  stripeSubscriptionId,
       stripeCustomerId,
-      mock: !stripeKey,
+      pendingPlan:     billingCtx.pendingPlan     ?? null,
+      pendingPlanDate: billingCtx.pendingPlanDate ?? null,
+      mock:            !stripeKey,
     });
     return;
   }
@@ -759,6 +782,8 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       subscriptionId:    effectiveSubId ?? null,
       addons:            billingCtx.addons,
       stripeCustomerId,
+      pendingPlan:       billingCtx.pendingPlan     ?? null,
+      pendingPlanDate:   billingCtx.pendingPlanDate ?? null,
     });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to get subscription from Stripe — returning normalised DB state");
@@ -1091,8 +1116,11 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         if (plan) store.broadcastPlanUpdate(plan, orgId);
         await upsert(orgId, {
           subscriptionStatus: status,
-          plan: plan || undefined,
-          trialEndsAt: trialEnd ?? undefined,
+          plan:               plan || undefined,
+          trialEndsAt:        trialEnd ?? undefined,
+          // Clear any pending downgrade now that the plan has been applied by Stripe
+          pendingPlan:        null,
+          pendingPlanDate:    null,
         });
         break;
       }

@@ -34,6 +34,10 @@ export interface BillingContext {
   orgName: string | null;
   /** Active add-ons from org_addons table (keyed by addon_key) */
   addons: Record<string, boolean | number>;
+  /** Pending plan (scheduled downgrade, not yet in effect) */
+  pendingPlan: string | null;
+  /** Human-readable date when pendingPlan becomes effective */
+  pendingPlanDate: string | null;
 }
 
 /**
@@ -117,5 +121,7 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     firstName:             settings?.firstName ?? null,
     orgName:               settings?.orgName ?? null,
     addons,
+    pendingPlan:           settings?.pendingPlan     ?? null,
+    pendingPlanDate:       settings?.pendingPlanDate ?? null,
   };
 }
