@@ -86,7 +86,7 @@
     .fp-nav-signup:hover { border-color: var(--blue); color: var(--blue); background: rgba(37,99,235,0.04); }
     .fp-nav-cta { font-size: 13px; font-weight: 600; color: #fff; background: var(--blue); border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; text-decoration: none; transition: background 0.15s; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
     .fp-nav-cta:hover { background: var(--blue-h); }
-    .fp-cart-badge { display: none; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: #fff; color: var(--blue); font-size: 11px; font-weight: 800; border-radius: 20px; margin-left: 2px; }
+    .fp-cart-badge { display: none; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: #fff; color: var(--blue); font-size: 11px; font-weight: 800; border-radius: 20px; margin-left: 8px; }
     .fp-cart-badge.visible { display: inline-flex; }
     .fp-card-btn-selected { background: rgba(16,185,129,0.12) !important; color: #34d399 !important; border-color: rgba(16,185,129,0.35) !important; }
     .fp-card.cart-selected { border-color: rgba(16,185,129,0.4) !important; box-shadow: 0 0 0 3px rgba(16,185,129,0.1), var(--shadow-lg) !important; }
@@ -1392,12 +1392,13 @@
       var banner = document.createElement('div');
       banner.id = 'fp-db-banner';
       banner.style.cssText = 'background:rgba(37,99,235,0.07);border-bottom:1px solid rgba(37,99,235,0.15);padding:8px 28px;font-size:12px;color:var(--text-soft);display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+      var _isFromDashboard = new URLSearchParams(window.location.search).get('from') === 'dashboard';
       banner.innerHTML = '<span style="font-size:16px">📊</span>'
         + '<span>Tableau de bord\u00a0· Plan actuel\u00a0: <strong>' + planName + '</strong>'
         + (data.nextDate ? ' · Renouvellement\u00a0: ' + data.nextDate : '')
         + (data.trialEndsAt ? ' · <span style="color:var(--blue)">Essai jusqu\'au ' + new Date(data.trialEndsAt).toLocaleDateString('fr-FR') + '</span>' : '')
         + '</span>'
-        + '<a href="/dashboard.html" style="margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap">\u2190 Retour au tableau de bord</a>';
+        + (_isFromDashboard ? '<a href="/dashboard.html" style="margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap">\u2190 Retour au tableau de bord</a>' : '');
       navEl.insertAdjacentElement('afterend', banner);
     } else if (navEl) {
       /* Update existing banner content on backend refresh */
@@ -1568,6 +1569,14 @@
       }
       try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
       window.location.href = '/checkout.html' + (targetPlan ? '?plan=' + encodeURIComponent(targetPlan) : '');
+      return;
+    }
+
+    /* ── If plan in cart is unchanged (add-on-only purchase) → skip upgrade, use checkout.html ── */
+    var _currentBillingPlan = bs && bs.plan;
+    if (isSubscribed && targetPlan && _currentBillingPlan && targetPlan.toLowerCase() === _currentBillingPlan.toLowerCase()) {
+      try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
+      window.location.href = '/checkout.html';
       return;
     }
 

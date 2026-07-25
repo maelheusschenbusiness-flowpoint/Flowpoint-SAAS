@@ -7687,7 +7687,8 @@ function renderBilling() {
       if (!key) { fpGoToPricing(); return; }
       showToast('info', 'Chargement…');
       try {
-        const cart = { plan: null, addons: {}, fromDashboard: true };
+        const _activePlan = ((STATE.billing && STATE.billing.plan) || (STATE.me && STATE.me.plan) || '').toLowerCase();
+        const cart = { plan: _activePlan || null, addons: {}, fromDashboard: true };
         cart.addons[key] = 1;
         const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
         Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
@@ -8120,7 +8121,7 @@ function renderBilling() {
             ? "IA Stratégiste activé — analyse complète du compte. <strong>3 opportunités d\'optimisation détectées</strong>. Priorité : activer Review Intelligence (ROI < 1 semaine). Prévision : dépassement plan dans 8 jours. White-Label non configuré — setup en 10 minutes."
             : "IA Stratégiste activé. <strong>" + strategies.length + " opportunité" + (strategies.length > 1 ? "s" : "") + " d\'optimisation identifiée" + (strategies.length > 1 ? "s" : "") + "</strong> à partir de vos données réelles.",
             ['Appliquer toutes les recommandations', 'Rapport ROI complet', 'Prévision 6 mois'])
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Stratégiste complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToPricing('ultra')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(37,99,235,0.06));border:1px solid rgba(139,92,246,0.2);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Stratégiste complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">Analyse ROI, prévision d\'upgrade, et optimisation des coûts SaaS automatisée.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -8210,7 +8211,7 @@ function renderBilling() {
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px">
               ${['🏢 Multi-workspace','🔑 SSO SAML','🌐 Custom domain','🎨 Portail white-label','🧾 Facturation client','📋 Audit log RGPD','🚀 Onboarding dédié','🛡️ SLA 99.9% garanti'].map(f => `<div style="font-size:11px;padding:8px 12px;background:var(--fp-inner-card);border-radius:8px;border:1px solid rgba(255,255,255,0.07);color:var(--fp-text-soft)">${f}</div>`).join('')}
             </div>
-            <button class="fp-btn fp-btn-primary" onclick="fpGoToPricing('ultra')" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Débloquer Agency Lab → Passer Ultra (149€/mois)</button>
+            <button class="fp-btn fp-btn-primary" onclick="navigateSub('plans')" style="width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Débloquer Agency Lab → Passer Ultra (149€/mois)</button>
           </div>`
       }
 
@@ -9886,7 +9887,7 @@ function renderSettings() {
             "IA Config Lab actif. <strong>7 modules IA disponibles</strong> — 5 actifs. Recommandation : activer le module <strong>Intelligence marché IA</strong> pour une veille concurrentielle automatique. Intensité IA actuelle : Équilibré.",
             ['Activer tous les modules', 'Optimiser l\'intensité IA', 'Rapport IA Lab']
           )
-        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">IA Stratégiste, churn prevention, market intelligence et automation agressive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="fpGoToPricing('ultra')">Passer Ultra</button></div>`
+        : `<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(37,99,235,0.08));border:1px solid rgba(139,92,246,0.25);border-radius:var(--fp-radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px"><div style="font-size:24px">🧠</div><div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:2px">IA Config Lab complet — Ultra requis</div><div style="font-size:12px;color:var(--fp-text-muted)">IA Stratégiste, churn prevention, market intelligence et automation agressive.</div></div><button class="fp-btn fp-btn-primary fp-btn-sm" onclick="navigateSub('plans')">Passer Ultra</button></div>`
       }
 
       <div class="fp-stat-row fp-mb-20">
@@ -32743,10 +32744,12 @@ window.FP_ADDONS_API = {
   async buyCredits(pack) {
     showToast('info', 'Redirection vers la page tarifs…');
     try {
+      const _packKeyMap = { 'ai_credits_50k': 'aiCreditsPack50k', 'ai_credits_200k': 'aiCreditsPack200k', 'ai_credits_500k': 'aiCreditsPack500k' };
+      const cartKey = _packKeyMap[pack] || pack;
       const cart = { plan: null, addons: {}, fromDashboard: true };
-      cart.addons[pack] = 1;
+      cart.addons[cartKey] = 1;
       localStorage.setItem('fp_cart', JSON.stringify(cart));
-      window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(pack);
+      window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(cartKey);
     } catch(e) { showToast('error', String(e)); return null; }
   },
 };
