@@ -1533,12 +1533,19 @@
   'use strict';
 
   var params = new URLSearchParams(window.location.search);
+  /* Only trust the explicit URL parameter — never re-activate fromDashboard
+     from a stale fp_cart (user may arrive from signin.html / flowpoint.pro). */
   var fromDashboard = params.get('from') === 'dashboard';
+
+  /* When NOT coming from the dashboard: clear any leftover cart so the page
+     renders in its default state (no pre-selections, no back button).        */
+  if (!fromDashboard) {
+    try { localStorage.removeItem('fp_cart'); } catch(e) {}
+    return;
+  }
+
   var cart = null;
   try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
-  if (!fromDashboard && cart) fromDashboard = !!cart.fromDashboard;
-
-  if (!fromDashboard) return;
 
   /* ── Override goToCheckout for active/trialing subscribers ────────────────────
      We override immediately and unconditionally when fromDashboard=true.
