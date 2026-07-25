@@ -7692,7 +7692,7 @@ function renderBilling() {
         const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
         Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
         localStorage.setItem('fp_cart', JSON.stringify(cart));
-        window.location.href = 'https://app.flowpoint.pro/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
+        window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(key);
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'activation impossible')); }
     };
     window._fpAllAddons = allAddons;
@@ -12184,7 +12184,7 @@ async function fpGoToPricing(targetPlan) {
   const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
   Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
   try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
-  window.location.href = 'https://app.flowpoint.pro/pricing.html?from=dashboard&plan=' + encodeURIComponent(plan);
+  window.location.href = '/pricing.html?from=dashboard&plan=' + encodeURIComponent(plan);
 }
 
 function navigate(route, subRoute) {
@@ -13862,7 +13862,7 @@ function bindSectionEvents() {
               const currentAddons = (STATE.me && STATE.me.addons) || (STATE.billing && STATE.billing.addons) || {};
               Object.keys(currentAddons).forEach(function(k) { if (currentAddons[k]) cart.addons[k] = 1; });
               localStorage.setItem('fp_cart', JSON.stringify(cart));
-              window.location.href = 'https://app.flowpoint.pro/pricing.html?from=dashboard&plan=' + encodeURIComponent(plan);
+              window.location.href = '/pricing.html?from=dashboard&plan=' + encodeURIComponent(plan);
             } catch(e) {
               showToast('error', 'Erreur de redirection — réessayez');
               checkBtn.disabled = false;
@@ -32746,7 +32746,7 @@ window.FP_ADDONS_API = {
       const cart = { plan: null, addons: {}, fromDashboard: true };
       cart.addons[pack] = 1;
       localStorage.setItem('fp_cart', JSON.stringify(cart));
-      window.location.href = 'https://app.flowpoint.pro/pricing.html?from=dashboard&addon=' + encodeURIComponent(pack);
+      window.location.href = '/pricing.html?from=dashboard&addon=' + encodeURIComponent(pack);
     } catch(e) { showToast('error', String(e)); return null; }
   },
 };

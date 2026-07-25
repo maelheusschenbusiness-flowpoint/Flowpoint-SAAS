@@ -1593,8 +1593,12 @@
       }
       var d = result.data;
 
-      /* No existing subscription found server-side → redirect to Stripe Checkout */
-      if (d.url) { window.location.href = d.url; return; }
+      /* No existing subscription found server-side → use our own checkout pages */
+      if (d.url || d.noSubscription) {
+        try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
+        window.location.href = '/checkout.html' + (targetPlan ? '?plan=' + encodeURIComponent(targetPlan) : '');
+        return;
+      }
 
       /* Plan updated — clear cart, show confirmation, redirect to dashboard */
       try { localStorage.removeItem('fp_cart'); } catch(e) {}
@@ -1612,8 +1616,7 @@
       if (typeof showToast === 'function') showToast(confirmMsg);
 
       setTimeout(function() {
-        window.location.href =
-          'https://app.flowpoint.pro/dashboard.html?plan_changed=1&plan=' + encodeURIComponent(targetPlan);
+        window.location.href = '/dashboard.html?plan_changed=1&plan=' + encodeURIComponent(targetPlan);
       }, 2000);
     })
     .catch(function() {
@@ -1628,7 +1631,7 @@
     if (navLinks && !document.getElementById('fp-back-btn')) {
       var btn = document.createElement('a');
       btn.id = 'fp-back-btn';
-      btn.href = 'https://app.flowpoint.pro/dashboard.html';
+      btn.href = '/dashboard.html';
       btn.style.cssText = 'color:var(--blue,#2563eb);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;margin-right:8px;';
       btn.innerHTML = '\u2190 Tableau de bord';
       navLinks.insertAdjacentElement('afterbegin', btn);

@@ -689,17 +689,11 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
       }
     }
 
-    // No existing sub — create a new Stripe checkout session
-    const lineItems = buildLineItems(plan, {});
-    if (lineItems.length === 0) { res.status(400).json({ error: `No price for plan: ${plan}` }); return; }
-    const session = await stripe.checkout.sessions.create({
-      mode:        "subscription",
-      line_items:  lineItems,
-      success_url: `${publicUrl}/dashboard.html?checkout=success&plan=${plan}`,
-      cancel_url:  `${publicUrl}/pricing.html`,
-      metadata:    { plan },
-    });
-    res.json({ url: session.url, plan });
+    // No existing sub — tell the frontend to use our embedded checkout pages
+    // (checkout.html → checkout-payment.html → checkout-return.html).
+    // Never redirect to Stripe-hosted checkout from this endpoint.
+    logger.info({ plan, orgId }, "[Billing] upgrade: no active subscription — redirecting to embedded checkout");
+    res.json({ noSubscription: true, redirectTo: "/checkout.html", plan });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to upgrade");
     res.status(500).json({ error: "Failed to process upgrade" });
