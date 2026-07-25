@@ -499,6 +499,9 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
 });
 
 // ── POST /billing/upgrade ─────────────────────────────────────────────────────
+// Handles: trial (any direction, immediate), upgrade (immediate + prorations),
+//          downgrade (scheduled to period end via subscription schedule).
+// Also reconciles add-ons that become included in the new plan.
 router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const { plan = "" } = req.body as { plan?: string; interval?: string };
   if (!plan) { res.status(400).json({ error: "plan required" }); return; }
@@ -528,48 +531,152 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
     return;
   }
 
+  // ── Plan hierarchy: standard < pro < ultra ───────────────────────────────────
+  const PLAN_LEVELS: Record<string, number> = { standard: 0, pro: 1, ultra: 2 };
+  const currentLevel = PLAN_LEVELS[currentPlan] ?? 0;
+  const targetLevel  = PLAN_LEVELS[targetPlan]  ?? 0;
+  const isUpgrade    = targetLevel > currentLevel;
+  const isDowngrade  = targetLevel < currentLevel;
+
+  // ── Reverse map: Stripe price ID → addon key (for reconciliation) ────────────
+  const addonPriceToKey: Record<string, string> = {};
+  for (const [key, pid] of Object.entries(ADDON_PRICE_IDS)) {
+    if (pid) addonPriceToKey[pid] = key;
+  }
+  const targetIncluded = PLAN_INCLUDED_ADDONS[targetPlan] ?? new Set<string>();
+  const planPriceIdSet  = new Set(Object.values(PLAN_PRICE_IDS).filter(Boolean));
+
+  type SubItem = { id: string; price: { id: string }; quantity?: number };
+
   try {
     const stripe = await createStripeClient(stripeKey);
 
-    // Try to update existing subscription first (active OR trialing)
+    // ── Try to update existing subscription first (active OR trialing) ──────────
     if (billingCtx.stripeCustomerId) {
       const [activeSubs, trialingSubs] = await Promise.all([
         stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "active",   limit: 1 }),
         stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "trialing", limit: 1 }),
       ]);
       const sub = activeSubs.data[0] ?? trialingSubs.data[0];
+
       if (sub) {
-        const priceId = PLAN_PRICE_IDS[plan.toLowerCase()];
+        const isTrialing = sub.status === "trialing";
+        const priceId    = PLAN_PRICE_IDS[targetPlan];
         if (!priceId) { res.status(400).json({ error: `Unknown plan: ${plan}` }); return; }
-        const planItemIds = new Set(Object.values(PLAN_PRICE_IDS));
-        const existingAddonItems = sub.items.data
-          .filter((item: { price: { id: string } }) => !planItemIds.has(item.price.id))
-          .map((item: { id: string }) => ({ id: item.id }));
-        const planItem = sub.items.data.find((item: { price: { id: string } }) => planItemIds.has(item.price.id));
+
+        const planItem = sub.items.data.find((item: SubItem) => planPriceIdSet.has(item.price.id));
+
+        // Add-on items now included in the new plan (to be removed from billing)
+        const removedIncludedItems = sub.items.data
+          .filter((item: SubItem) => !planPriceIdSet.has(item.price.id))
+          .filter((item: SubItem) => {
+            const addonKey = addonPriceToKey[item.price.id];
+            return addonKey && targetIncluded.has(addonKey);
+          });
+        const removedAddonKeys = removedIncludedItems
+          .map((i: SubItem) => addonPriceToKey[i.price.id])
+          .filter(Boolean);
+
+        // Add-on items to keep (not a plan item, not included in new plan)
+        const keptAddonItems = sub.items.data
+          .filter((item: SubItem) => !planPriceIdSet.has(item.price.id))
+          .filter((item: SubItem) => {
+            const addonKey = addonPriceToKey[item.price.id];
+            return !addonKey || !targetIncluded.has(addonKey);
+          });
+
+        if (isDowngrade && !isTrialing) {
+          // ── Active downgrade → schedule change at period end ─────────────────
+          // Phase 1: keep current plan until period end (no change)
+          // Phase 2: switch to new lower plan at period end
+          const currentPriceId = planItem?.price?.id ?? PLAN_PRICE_IDS[currentPlan];
+
+          const currentAddonPrices = sub.items.data
+            .filter((item: SubItem) => !planPriceIdSet.has(item.price.id))
+            .map((item: SubItem) => ({ price: item.price.id, quantity: item.quantity ?? 1 }));
+
+          const nextAddonPrices = currentAddonPrices.filter((it: { price: string }) => {
+            const addonKey = addonPriceToKey[it.price];
+            return !addonKey || !targetIncluded.has(addonKey);
+          });
+
+          const schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id });
+          await stripe.subscriptionSchedules.update(schedule.id, {
+            end_behavior: "release",
+            phases: [
+              {
+                start_date:         "now" as unknown as number,
+                end_date:           sub.current_period_end,
+                items:              [
+                  { price: currentPriceId ?? undefined, quantity: 1 },
+                  ...currentAddonPrices,
+                ],
+                proration_behavior: "none",
+              },
+              {
+                items: [
+                  { price: priceId, quantity: 1 },
+                  ...nextAddonPrices,
+                ],
+                proration_behavior: "none",
+              },
+            ],
+          });
+
+          await upsertOrgSettings(orgId, { plan }).catch(() => {});
+          const effectiveDate = new Date(sub.current_period_end * 1000).toLocaleDateString("fr-FR", {
+            day: "2-digit", month: "long", year: "numeric",
+          });
+          logger.info(
+            { plan, subId: sub.id, orgId, effectiveDate, removedAddonKeys },
+            "[Billing] downgrade scheduled for period end",
+          );
+          res.json({
+            ok:                   true,
+            plan,
+            downgrade:            true,
+            effective:            "period_end",
+            effectiveDate,
+            removedIncludedAddons: removedAddonKeys,
+          });
+          return;
+        }
+
+        // ── Upgrade or trialing → immediate update ───────────────────────────
+        const prorationBehavior = (isUpgrade && !isTrialing) ? "create_prorations" : "none";
         await stripe.subscriptions.update(sub.id, {
           items: [
             { id: planItem?.id, price: priceId },
-            ...existingAddonItems,
+            ...keptAddonItems.map((item: SubItem) => ({ id: item.id })),
           ],
-          proration_behavior: "create_prorations",
+          proration_behavior: prorationBehavior,
           metadata: { plan },
         });
         await upsertOrgSettings(orgId, { plan }).catch(() => {});
-        logger.info({ plan, subId: sub.id, subStatus: sub.status, orgId }, "[Billing] upgrade: subscription updated");
-        res.json({ ok: true, plan, upgraded: true });
+        logger.info(
+          { plan, subId: sub.id, subStatus: sub.status, isTrialing, isUpgrade, prorationBehavior, removedAddonKeys, orgId },
+          "[Billing] upgrade/trial plan change applied immediately",
+        );
+        res.json({
+          ok:                   true,
+          plan,
+          upgraded:             true,
+          effective:            "now",
+          removedIncludedAddons: removedAddonKeys,
+        });
         return;
       }
     }
 
-    // No existing sub — create new checkout
+    // No existing sub — create a new Stripe checkout session
     const lineItems = buildLineItems(plan, {});
     if (lineItems.length === 0) { res.status(400).json({ error: `No price for plan: ${plan}` }); return; }
     const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      line_items: lineItems,
+      mode:        "subscription",
+      line_items:  lineItems,
       success_url: `${publicUrl}/dashboard.html?checkout=success&plan=${plan}`,
-      cancel_url: `${publicUrl}/pricing.html`,
-      metadata: { plan },
+      cancel_url:  `${publicUrl}/pricing.html`,
+      metadata:    { plan },
     });
     res.json({ url: session.url, plan });
   } catch (err) {

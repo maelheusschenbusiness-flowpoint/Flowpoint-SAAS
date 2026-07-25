@@ -1528,7 +1528,7 @@
     .catch(function() { /* non-fatal: offline or API down — cached state already applied */ });
 })();
 
-/* ── From-dashboard: pre-select plan & add-ons, show back button ── */
+/* ── From-dashboard: pre-select plan & add-ons, show back button, intercept checkout ── */
 (function() {
   'use strict';
 
@@ -1539,6 +1539,81 @@
   if (!fromDashboard && cart) fromDashboard = !!cart.fromDashboard;
 
   if (!fromDashboard) return;
+
+  /* ── Override goToCheckout for active/trialing subscribers ────────────────────
+     We override immediately and unconditionally when fromDashboard=true.
+     At click time we check window._fpBillingState (set by the billing-state
+     IIFE's async fetch), so timing is not an issue.                           */
+  window.goToCheckout = function() {
+    var bs = window._fpBillingState;
+    var isSubscribed = bs && (bs.status === 'active' || bs.status === 'trialing');
+
+    var currentCart;
+    try { currentCart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+    var targetPlan = currentCart && currentCart.plan;
+
+    /* ── Non-subscriber or add-only cart → use standard checkout.html flow ── */
+    if (!isSubscribed || !targetPlan) {
+      var count = (targetPlan ? 1 : 0) + Object.keys((currentCart && currentCart.addons) || {}).length;
+      if (count === 0) {
+        if (typeof showToast === 'function') showToast('Sélectionnez d\'abord un plan, un add-on ou des crédits IA', true);
+        return;
+      }
+      try { localStorage.setItem('fp_cart', JSON.stringify(currentCart || {})); } catch(e) {}
+      window.location.href = '/checkout.html' + (targetPlan ? '?plan=' + encodeURIComponent(targetPlan) : '');
+      return;
+    }
+
+    /* ── Active/trialing subscriber changing plan → call /api/billing/upgrade ── */
+    var cartBtn = document.getElementById('fp-cart-btn');
+    if (cartBtn) { cartBtn.disabled = true; cartBtn.textContent = 'Mise à jour…'; }
+
+    fetch('/api/billing/upgrade', {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify({ plan: targetPlan }),
+    })
+    .then(function(r) {
+      return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+    })
+    .then(function(result) {
+      if (!result.ok) {
+        var errMsg = result.data.message || result.data.error || 'Erreur lors du changement de plan';
+        if (typeof showToast === 'function') showToast(errMsg, true);
+        if (cartBtn) { cartBtn.disabled = false; cartBtn.textContent = 'Finaliser'; }
+        return;
+      }
+      var d = result.data;
+
+      /* No existing subscription found server-side → redirect to Stripe Checkout */
+      if (d.url) { window.location.href = d.url; return; }
+
+      /* Plan updated — clear cart, show confirmation, redirect to dashboard */
+      try { localStorage.removeItem('fp_cart'); } catch(e) {}
+
+      var planLabel = targetPlan.charAt(0).toUpperCase() + targetPlan.slice(1);
+      var confirmMsg;
+      if (d.downgrade) {
+        confirmMsg = 'Plan ' + planLabel + ' actif le ' + (d.effectiveDate || 'à la prochaine échéance') + ' ✓';
+      } else {
+        confirmMsg = 'Plan ' + planLabel + ' activé immédiatement ✓';
+        if (d.removedIncludedAddons && d.removedIncludedAddons.length > 0) {
+          confirmMsg += ' · add-ons inclus retirés de la facturation';
+        }
+      }
+      if (typeof showToast === 'function') showToast(confirmMsg);
+
+      setTimeout(function() {
+        window.location.href =
+          'https://app.flowpoint.pro/dashboard.html?plan_changed=1&plan=' + encodeURIComponent(targetPlan);
+      }, 2000);
+    })
+    .catch(function() {
+      if (typeof showToast === 'function') showToast('Erreur réseau — réessayez', true);
+      if (cartBtn) { cartBtn.disabled = false; cartBtn.textContent = 'Finaliser'; }
+    });
+  };
 
   function applyCart() {
     /* ── Back button in nav ── */
