@@ -379,7 +379,9 @@ async function saveCheckResult(
       const { evaluateCondition, fireAlertEvent: fireAE, resolveAlertEvents: resolveAE } =
         await import("../services/alert-events-service.js");
       // Fetch monitor URL — needed for site_url field and event message.
-      const monUrlRes = await pool.query(`SELECT url FROM monitors WHERE id = $1 LIMIT 1`, [monitorId]);
+      // Explicit org_id guard: pool runs as postgres (superuser, BYPASSRLS) so RLS is bypassed;
+      // the AND org_id = $2 ensures we never leak a URL belonging to another tenant.
+      const monUrlRes = await pool.query(`SELECT url FROM monitors WHERE id = $1 AND org_id = $2 LIMIT 1`, [monitorId, orgId]);
       const monUrl    = (monUrlRes.rows[0]?.["url"] as string | undefined) ?? "";
       const rClient2  = await pool.connect();
       try {

@@ -133,14 +133,18 @@ export async function runRlsMigrationIfNeeded(): Promise<void> {
         ) AS gaps,
         (SELECT COUNT(*)::int
          FROM pg_tables t
+         JOIN pg_class  c ON c.relname = t.tablename
+         JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE t.schemaname = 'public'
+           AND n.nspname    = 'public'
+           AND c.relkind    = 'r'
            AND t.rowsecurity = true
-           AND t.forcedrowsecurity = false
+           AND c.relforcerowsecurity = false
            AND EXISTS (
-             SELECT 1 FROM information_schema.columns c
-             WHERE c.table_schema = 'public'
-               AND c.table_name   = t.tablename
-               AND c.column_name  = 'org_id'
+             SELECT 1 FROM information_schema.columns ic
+             WHERE ic.table_schema = 'public'
+               AND ic.table_name   = t.tablename
+               AND ic.column_name  = 'org_id'
            )
         ) AS force_gaps
     `);
@@ -213,15 +217,19 @@ export async function runRlsMigrationIfNeeded(): Promise<void> {
     // ── 4. Enable RLS on every table still missing it ────────────────────────
     // ── 4b. FORCE RLS on every tenant-isolated table ─────────────────────────
     //
-    // FORCE ROW LEVEL SECURITY makes policies apply even when the connection
-    // user is a superuser or has the BYPASSRLS attribute (e.g. the `postgres`
-    // user on Render/Supabase).  Without FORCE, ENABLE alone is bypassed for
-    // those roles and GUC-only mode would NOT enforce tenant isolation.
+    // FORCE ROW LEVEL SECURITY forces policies to apply to the TABLE OWNER even
+    // when the owner is not a superuser (defense-in-depth for non-Render setups).
+    // NOTE: PostgreSQL superusers (rolsuper=t) and BYPASSRLS roles ALWAYS bypass
+    // RLS regardless of FORCE — FORCE has no effect on them.  The real isolation
+    // for the postgres/Render connection is withOrgDb → SET LOCAL ROLE app_user,
+    // which drops superuser privileges for the duration of each transaction.
     //
     // Idempotent: ALTER TABLE … FORCE ROW LEVEL SECURITY is a no-op if already set.
     const forcedRes = await client.query<{ tablename: string }>(`
-      SELECT tablename FROM pg_tables
-      WHERE schemaname = 'public' AND forcedrowsecurity = true
+      SELECT c.relname AS tablename
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relforcerowsecurity = true
     `);
     const alreadyForced = new Set<string>(forcedRes.rows.map(r => r.tablename));
 

@@ -1,4 +1,5 @@
 - [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
+- [pool.query() org_id audit](pool-query-orgid-audit.md) — all pool.query() on tenant tables need explicit org_id; RLS bypassed for postgres superuser; pg_class.relforcerowsecurity not pg_tables.forcedrowsecurity
 - [Billing P0 fixes](billing-p0-fixes.md) — 6 P0 fixes implemented 2026-07-24; patterns for webhook orgId, planGate DB-first, checkQuota async, email from DB
 - [Billing audit findings](billing-audit-findings.md) — store.me singleton contamination, persistSubscriptionMeta orgId="default" bug, full P0/P1 list + reliability estimates
 - [ensureStripeCustomer pattern](ensure-stripe-customer.md) — P0 service at services/ensure-stripe-customer.ts; DB-first, concurrency lock, deleted-customer recovery, metadata search before create

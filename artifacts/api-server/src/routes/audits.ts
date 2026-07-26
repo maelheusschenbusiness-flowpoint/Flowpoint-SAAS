@@ -116,16 +116,17 @@ router.post("/audits", auditRateLimit, canWrite, async (req: Request, res: Respo
         const speed  = d?.scores.performance ?? m?.scores.performance ?? 0;
         const issues = (m?.criticalIssues.length ?? 0) + (d?.criticalIssues.length ?? 0);
 
+        // org_id guard: pool runs as postgres (superuser, BYPASSRLS) — RLS bypassed.
         await pool.query(
-          `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5`,
-          [score, status, speed, issues, auditId],
+          `UPDATE audits SET score=$1, status=$2, speed=$3, issues=$4 WHERE id=$5 AND org_id=$6`,
+          [score, status, speed, issues, auditId, orgId],
         );
         evaluateAlertRulesForAudit(normalizedUrl, score, orgId).catch(() => {});
         store.broadcast({ type: "audit:complete", auditId, score, status }, orgId);
       } catch {
         await pool.query(
-          `UPDATE audits SET status='error', score=0 WHERE id=$1`,
-          [auditId],
+          `UPDATE audits SET status='error', score=0 WHERE id=$1 AND org_id=$2`,
+          [auditId, orgId],
         ).catch(() => {});
         store.broadcast({ type: "audit:error", auditId }, orgId);
       }
