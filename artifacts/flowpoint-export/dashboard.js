@@ -4157,7 +4157,7 @@ function renderOverview() {
           <div style="padding:14px;border-radius:12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:11px;font-weight:600;color:var(--fp-text-muted);margin-bottom:8px">${f.label}</div>
             ${f.collecting
-              ? `<div style="height:36px;display:flex;align-items:center;justify-content:center;gap:6px;opacity:0.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="font-size:10px;color:var(--fp-text-faint)">Collecte en cours…</span></div>`
+              ? `<div style="height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;opacity:0.65"><span style="font-size:11px;color:var(--fp-text-muted);font-weight:600">Pas encore assez de données</span><span style="font-size:10px;color:var(--fp-text-faint)">Les prévisions apparaîtront après la collecte des premières données.</span></div>`
               : sparklineSVG(f.data && f.data.length ? f.data : [0,0,0,0,0,0,0], f.color, 200, 36)}
             <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:8px">
               <div>
@@ -7368,24 +7368,26 @@ function renderTeam() {
         <button class="fp-link-btn" onclick="navigateSub('activity')">Voir tout →</button>
       </div>
       <div class="fp-team-activity-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
-        ${(STATE.activityEvents && STATE.activityEvents.length > 0
-            ? STATE.activityEvents.slice(0,6).map(e => {
-                const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
-                const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
-                return { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: e.label||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time:'récemment' };
-              })
-            : (STATE.activityEvents && STATE.activityEvents.length > 0 ? STATE.activityEvents.slice(0,6).map(e => ({ type:'info', icon:'activity', title: e.label||'Événement', desc:(e.description||''), time:(e.createdAt?Math.round((Date.now()-new Date(e.createdAt).getTime())/60000)+'min':'?') })) : [])
-          ).map(item => {
-          const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
-          const c = colors[item.type] || '#2563EB';
-          return `<div class="fp-activity-item" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:8px 12px">
-            <div class="fp-activity-icon" style="background:${c}18">${svgIcon(item.icon).replace('stroke="currentColor"',`stroke="${c}"`)}</div>
-            <div style="flex:1;min-width:0">
-              <div class="fp-activity-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.title}</div>
-              <div class="fp-activity-time">Il y a ${item.time}</div>
-            </div>
-          </div>`;
-        }).join('')}
+        ${(STATE.activityEvents && STATE.activityEvents.length > 0)
+          ? STATE.activityEvents.slice(0,6).map(e => {
+              const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
+              const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
+              const _ts = e.createdAt || e.created_at;
+              const _m = _ts ? Math.round((Date.now() - new Date(_ts).getTime()) / 60000) : 0;
+              const _t = _m < 1 ? 'l\'instant' : _m < 60 ? _m + ' min' : _m < 1440 ? Math.round(_m/60) + 'h' : Math.round(_m/1440) + 'j';
+              const it = { type: tMap[e.type]||'info', icon: iMap[e.type]||'activity', title: e.label||'Événement', desc:(e.metadata&&(e.metadata.url||e.metadata.message))||'', time: _t };
+              const colors = {success:'#22c55e',error:'#ef4444',info:'#2563EB',warning:'#f59e0b',purple:'#8b5cf6'};
+              const c = colors[it.type] || '#2563EB';
+              return `<div class="fp-activity-item" style="background:var(--fp-inner-card);border:1px solid var(--fp-border);border-radius:8px;padding:8px 12px">
+                <div class="fp-activity-icon" style="background:${c}18">${svgIcon(it.icon).replace('stroke="currentColor"',`stroke="${c}"`)}</div>
+                <div style="flex:1;min-width:0">
+                  <div class="fp-activity-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.title)}</div>
+                  <div class="fp-activity-time">Il y a ${it.time}</div>
+                </div>
+              </div>`;
+            }).join('')
+          : `<div style="grid-column:1/-1;text-align:center;padding:20px 16px;color:var(--fp-text-faint);font-size:12px">Aucune activité d'équipe récente.</div>`
+        }
       </div>
     </div>
   `;
@@ -29546,9 +29548,10 @@ window._fpToggleChecklistExtra = function(id, done) {
   saveChecklistExtra();
   render();
 };
-window.showToast = showToast;
-window.navigate  = navigate;
-window.apiAction = apiAction;
+window.showToast   = showToast;
+window.navigate    = navigate;
+window.navigateSub = navigateSub;
+window.apiAction   = apiAction;
 
 // ─────────────────────────────────────────────────────────────────
 // START
