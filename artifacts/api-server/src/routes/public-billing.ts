@@ -2,7 +2,6 @@ import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
 import { PLAN_PRICE_IDS, ADDON_PRICE_IDS, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
 import { PLAN_CONFIG, ADDON_CATALOG } from "../services/billing-service.js";
-import { store } from "../services/store.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 
 const publicCheckoutRateLimit = createRateLimit("reportsPerHour");
@@ -11,20 +10,38 @@ const router = Router();
 
 // ── GET /api/billing/plans ────────────────────────────────────────────────────
 // Public endpoint — returns the full plan catalog + add-on catalog.
-// The `current` field reflects the authenticated org's plan when available
-// (store.me is a singleton populated after auth), defaulting to "standard".
-// Registered BEFORE requireAuth so the dashboard never gets a 401 on this call.
-router.get("/billing/plans", (_req: Request, res: Response): void => {
+// When an authenticated orgId is present on the request (set by auth middleware
+// that runs before this route), we load the org-specific billing context from DB.
+// Falls back to "standard" defaults for unauthenticated / public pricing page.
+router.get("/billing/plans", async (req: Request, res: Response): Promise<void> => {
   const plans = Object.values(PLAN_CONFIG).map((p) => ({
     ...p,
     priceId: PLAN_PRICE_IDS[p.id] ?? "",
   }));
+
+  const orgId = (req as Request & { orgId?: string }).orgId;
+  let current: string = "standard";
+  let subscriptionStatus: string | null = null;
+  let trialEndsAt: string | null = null;
+
+  if (orgId && orgId !== "default") {
+    try {
+      const { loadBillingContext } = await import("../services/billing-context.js");
+      const ctx = await loadBillingContext(orgId);
+      current = (ctx.plan || "standard").toLowerCase();
+      subscriptionStatus = ctx.subscriptionStatus ?? null;
+      trialEndsAt = ctx.trialEndsAt ?? null;
+    } catch (ctxErr) {
+      logger.warn({ ctxErr, orgId }, "[PublicBilling] billing-context load failed — using defaults");
+    }
+  }
+
   res.json({
     plans,
     addons: ADDON_CATALOG,
-    current: (store.me.plan || "standard").toLowerCase(),
-    subscriptionStatus: store.me.subscriptionStatus ?? null,
-    trialEndsAt: store.me.trialEndsAt ?? null,
+    current,
+    subscriptionStatus,
+    trialEndsAt,
   });
 });
 
@@ -421,24 +438,65 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       return;
     }
 
-    /* ── 2. Create customer & attach payment method ── */
-    const customer = await stripe.customers.create({
-      payment_method: paymentMethodId,
-      invoice_settings: { default_payment_method: paymentMethodId },
-      metadata: { source: "checkout_payment", plan: planKey },
-    });
+    /* ── 2. Resolve or create Stripe customer (deduplicated by email) ── */
+    // Retrieve email from payment method to match existing customers
+    const pm    = await stripe.paymentMethods.retrieve(paymentMethodId);
+    const email = pm.billing_details?.email ?? null;
 
-    /* ── 3a. Plan subscription — 14-day trial, plan price only ── */
+    let customerId: string | null = null;
+    let hasSubscriptionHistory    = false;
+
+    if (email) {
+      // Search existing customers by email — prevents duplicate customer records
+      const existingCustomers = await stripe.customers.list({ email, limit: 5 });
+      for (const ec of existingCustomers.data) {
+        if ((ec as { deleted?: boolean }).deleted) continue;
+        // Check if this customer already has subscription history (trial already used)
+        const prevSubs = await stripe.subscriptions.list({ customer: ec.id, status: "all", limit: 1 });
+        if (prevSubs.data.length > 0) {
+          customerId = ec.id;
+          hasSubscriptionHistory = true;
+          logger.info({ customerId, email }, "[PublicBilling] finalize: reusing existing Stripe customer (has history)");
+          break;
+        }
+        // Customer exists but no subs — prefer to reuse to avoid duplication
+        if (!customerId) customerId = ec.id;
+      }
+    }
+
+    if (!customerId) {
+      // No existing customer — create a new one
+      const customer = await stripe.customers.create({
+        ...(email ? { email } : {}),
+        payment_method: paymentMethodId,
+        invoice_settings: { default_payment_method: paymentMethodId },
+        metadata: { source: "checkout_payment", plan: planKey },
+      });
+      customerId = customer.id;
+      logger.info({ customerId }, "[PublicBilling] finalize: new Stripe customer created");
+    } else {
+      // Attach PM to existing customer (may already be attached — ignore error)
+      await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId }).catch(() => {});
+      await stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+    }
+
+    /* ── 3a. Plan subscription — trial only for confirmed first-time subscribers ── */
     const planPriceId = PLAN_PRICE_IDS[planKey];
     if (!planPriceId) {
       res.status(400).json({ error: "Plan introuvable dans Stripe." });
       return;
     }
 
+    // Only grant 14-day trial when we have no prior subscription history on this customer
+    const grantTrial = !hasSubscriptionHistory;
+    logger.info({ planKey, grantTrial, hasSubscriptionHistory, customerId }, "[PublicBilling] finalize: trial decision");
+
     const planSubscription = await stripe.subscriptions.create({
-      customer:               customer.id,
+      customer:               customerId,
       items:                  [{ price: planPriceId, quantity: 1 }],
-      trial_period_days:      14,
+      ...(grantTrial ? { trial_period_days: 14 } : {}),
       default_payment_method: paymentMethodId,
       metadata: {
         plan:           planKey,
@@ -459,7 +517,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     if (addonItems.length > 0) {
       const thirtyDaysFromNow = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
       const addonSub = await stripe.subscriptions.create({
-        customer:               customer.id,
+        customer:               customerId,
         items:                  addonItems,
         trial_end:              thirtyDaysFromNow,   /* skip first 30d — already paid via PI */
         default_payment_method: paymentMethodId,
@@ -474,7 +532,7 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     }
 
     logger.info(
-      { plan: planKey, planSubscriptionId: planSubscription.id, addonSubscriptionId, customerId: customer.id },
+      { plan: planKey, planSubscriptionId: planSubscription.id, addonSubscriptionId, customerId },
       "[PublicBilling] finalize: subscriptions created"
     );
     res.json({ success: true, subscriptionId: planSubscription.id, addonSubscriptionId });

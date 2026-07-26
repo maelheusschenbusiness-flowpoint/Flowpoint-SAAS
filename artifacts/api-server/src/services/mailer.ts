@@ -582,6 +582,87 @@ async function sendSeoAlert(opts: {
   });
 }
 
+// ── 12. Subscription Canceled ─────────────────────────────────────────────────
+
+async function sendSubscriptionCanceled(opts: {
+  to: string;
+  name: string;
+  plan: string;
+  cancelDate: string | null;
+}): Promise<MailResult> {
+  const planLabel = opts.plan.charAt(0).toUpperCase() + opts.plan.slice(1).toLowerCase();
+  const body = opts.cancelDate
+    ? `<p style="margin:0 0 16px;">Ton abonnement <strong>FlowPoint ${planLabel}</strong> a bien été programmé pour annulation. Tu conserves l'accès à toutes les fonctionnalités jusqu'au <strong>${opts.cancelDate}</strong>.</p>
+       <p style="margin:0 0 16px;">À cette date, ton compte passera automatiquement en accès limité (plan Standard gratuit).</p>
+       <p style="margin:0;">Tu peux réactiver ton abonnement à tout moment depuis le tableau de bord, sans perdre tes données.</p>`
+    : `<p style="margin:0 0 16px;">Ton abonnement <strong>FlowPoint ${planLabel}</strong> a été annulé immédiatement. Ton compte est maintenant en accès limité.</p>
+       <p style="margin:0;">Tu peux te réabonner à tout moment depuis la page de tarification.</p>`;
+  return send({
+    to: opts.to,
+    subject: `Abonnement FlowPoint ${planLabel} annulé`,
+    tag: "subscription_canceled",
+    html: layout({
+      eyebrow: "Abonnement annulé",
+      accentColor: "#64748b",
+      title: `Confirmation d'annulation`,
+      body,
+      cta: { label: "Voir mes options →", url: "https://app.flowpoint.pro/billing" },
+      note: "Si tu as annulé par erreur, connecte-toi et clique sur \"Réactiver\" pour rétablir ton abonnement.",
+    }),
+  });
+}
+
+// ── 13. Subscription Reactivated ──────────────────────────────────────────────
+
+async function sendSubscriptionReactivated(opts: {
+  to: string;
+  name: string;
+  plan: string;
+}): Promise<MailResult> {
+  const planLabel = opts.plan.charAt(0).toUpperCase() + opts.plan.slice(1).toLowerCase();
+  return send({
+    to: opts.to,
+    subject: `✅ Abonnement FlowPoint ${planLabel} réactivé`,
+    tag: "subscription_reactivated",
+    html: layout({
+      eyebrow: "Abonnement réactivé",
+      accentColor: "#22c55e",
+      title: `Ton abonnement est de nouveau actif`,
+      body: `<p style="margin:0 0 16px;">Bonne nouvelle ! Ton abonnement <strong>FlowPoint ${planLabel}</strong> a été réactivé avec succès. Le renouvellement automatique est rétabli.</p>
+             <p style="margin:0;">Tu conserves toutes tes données, configurations et add-ons. Rien n'a changé.</p>`,
+      cta: { label: "Retour au dashboard →", url: "https://app.flowpoint.pro" },
+    }),
+  });
+}
+
+// ── 14. Trial Canceled ────────────────────────────────────────────────────────
+
+async function sendTrialCanceled(opts: {
+  to: string;
+  name: string;
+  plan: string;
+  cancelDate: string | null;
+}): Promise<MailResult> {
+  const planLabel = opts.plan.charAt(0).toUpperCase() + opts.plan.slice(1).toLowerCase();
+  const body = opts.cancelDate
+    ? `<p style="margin:0 0 16px;">Ton essai gratuit <strong>FlowPoint ${planLabel}</strong> se terminera le <strong>${opts.cancelDate}</strong>. Tu conserves l'accès complet jusqu'à cette date.</p>
+       <p style="margin:0;">Si tu changes d'avis, tu peux te réabonner à tout moment depuis ton tableau de bord.</p>`
+    : `<p style="margin:0 0 16px;">Ton essai gratuit <strong>FlowPoint ${planLabel}</strong> a été arrêté. Ton accès aux fonctionnalités payantes a été suspendu immédiatement.</p>
+       <p style="margin:0;">Tu peux te réabonner à tout moment en choisissant un plan sur notre page de tarification.</p>`;
+  return send({
+    to: opts.to,
+    subject: `Fin de l'essai FlowPoint ${planLabel}`,
+    tag: "trial_canceled",
+    html: layout({
+      eyebrow: "Essai terminé",
+      accentColor: "#f59e0b",
+      title: `Ton essai a été arrêté`,
+      body,
+      cta: { label: "Voir les plans →", url: "https://app.flowpoint.pro/pricing.html" },
+    }),
+  });
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export const mailer = {
@@ -597,4 +678,7 @@ export const mailer = {
   sendInvitationAccepted,
   sendNewMissions,
   sendSeoAlert,
+  sendSubscriptionCanceled,
+  sendSubscriptionReactivated,
+  sendTrialCanceled,
 };

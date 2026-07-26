@@ -11,6 +11,7 @@ import {
   getUsageSummary, getMRRData, getSubscriptionAnalytics,
   startTrial, validateCoupon, getInvoices, trackBillingEvent,
 } from "../services/billing-service.js";
+import { mailer } from "../services/mailer.js";
 import { createRateLimit } from "../middlewares/rateLimiter.js";
 
 /* Add-ons included in each plan — same source as public-billing.ts */
@@ -480,21 +481,139 @@ router.post("/billing/cancel", ownerOnly, async (req: Request, res: Response) =>
 
   try {
     const stripe = await createStripeClient(stripeKey);
-    const subs = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "active", limit: 1 });
-    const sub = subs.data[0];
+    // Check both active AND trialing subscriptions (trial can also be cancelled at period end)
+    const activeSubs  = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "active",   limit: 1 });
+    const trialSubs   = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "trialing", limit: 1 });
+    const sub = activeSubs.data[0] ?? trialSubs.data[0];
     if (!sub) { res.status(404).json({ error: "No active subscription found" }); return; }
+
+    const email = billingCtx.email ?? req.orgContext?.email;
 
     if (atPeriodEnd) {
       await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+      if (email) {
+        mailer.sendSubscriptionCanceled({
+          to: email, name: email.split("@")[0], plan: billingCtx.plan,
+          cancelDate: new Date(sub.current_period_end * 1000).toLocaleDateString("fr-FR"),
+        }).catch(() => {});
+      }
       res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: sub.current_period_end });
     } else {
       await stripe.subscriptions.cancel(sub.id);
       await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+      if (email) {
+        mailer.sendSubscriptionCanceled({
+          to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
+        }).catch(() => {});
+      }
       res.json({ ok: true, cancelAtPeriodEnd: false });
     }
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to cancel subscription");
     res.status(500).json({ error: "Failed to cancel subscription" });
+  }
+});
+
+// ── POST /billing/reactivate ──────────────────────────────────────────────────
+// Removes cancel_at_period_end flag — restores automatic renewal.
+router.post("/billing/reactivate", ownerOnly, async (req: Request, res: Response) => {
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const orgId = req.orgId ?? "default";
+  const billingCtx = await loadBillingContext(orgId);
+
+  if (!stripeKey || !billingCtx.stripeCustomerId) {
+    await upsertOrgSettings(orgId, { subscriptionStatus: "active" }).catch(() => {});
+    logger.warn({ orgId }, "[Billing] reactivate: no Stripe key — marking active in DB (mock)");
+    res.json({ ok: true, reactivated: true, mock: true });
+    return;
+  }
+
+  try {
+    const stripe = await createStripeClient(stripeKey);
+    // Look for active OR trialing subscription with cancel_at_period_end=true
+    const [activeSubs, trialSubs] = await Promise.all([
+      stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "active",   limit: 5 }),
+      stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "trialing", limit: 5 }),
+    ]);
+    const allSubs = [...activeSubs.data, ...trialSubs.data];
+    const sub = allSubs.find((s) => s.cancel_at_period_end);
+
+    if (!sub) {
+      res.status(404).json({ error: "Aucun abonnement en cours d'annulation trouvé." });
+      return;
+    }
+
+    await stripe.subscriptions.update(sub.id, { cancel_at_period_end: false });
+    const newStatus = sub.status === "trialing" ? "trialing" : "active";
+    await upsertOrgSettings(orgId, { subscriptionStatus: newStatus }).catch(() => {});
+
+    const email = billingCtx.email ?? req.orgContext?.email;
+    if (email) {
+      mailer.sendSubscriptionReactivated({
+        to: email, name: email.split("@")[0], plan: billingCtx.plan,
+      }).catch(() => {});
+    }
+
+    store.broadcastPlanUpdate(billingCtx.plan, orgId);
+    logger.info({ orgId, subId: sub.id, newStatus }, "[Billing] Subscription reactivated");
+    res.json({ ok: true, reactivated: true, status: newStatus });
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to reactivate subscription");
+    res.status(500).json({ error: "Failed to reactivate subscription" });
+  }
+});
+
+// ── POST /billing/cancel-trial ────────────────────────────────────────────────
+// Cancels an active trial immediately or at period end.
+router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Response) => {
+  const { atPeriodEnd = false } = req.body as { atPeriodEnd?: boolean };
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  const orgId = req.orgId ?? "default";
+  const billingCtx = await loadBillingContext(orgId);
+
+  if (!stripeKey || !billingCtx.stripeCustomerId) {
+    await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+    logger.warn({ orgId }, "[Billing] cancel-trial: no Stripe key — marking canceled in DB (mock)");
+    res.json({ ok: true, mock: true });
+    return;
+  }
+
+  try {
+    const stripe = await createStripeClient(stripeKey);
+    const subs = await stripe.subscriptions.list({
+      customer: billingCtx.stripeCustomerId, status: "trialing", limit: 5,
+    });
+    const sub = subs.data[0];
+    if (!sub) {
+      res.status(404).json({ error: "Aucun essai actif trouvé." });
+      return;
+    }
+
+    const email = billingCtx.email ?? req.orgContext?.email;
+
+    if (atPeriodEnd) {
+      await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+      if (email) {
+        mailer.sendTrialCanceled({
+          to: email, name: email.split("@")[0], plan: billingCtx.plan,
+          cancelDate: new Date(sub.trial_end! * 1000).toLocaleDateString("fr-FR"),
+        }).catch(() => {});
+      }
+      res.json({ ok: true, cancelAtPeriodEnd: true, cancelAt: sub.trial_end });
+    } else {
+      await stripe.subscriptions.cancel(sub.id);
+      await upsertOrgSettings(orgId, { subscriptionStatus: "canceled" }).catch(() => {});
+      if (email) {
+        mailer.sendTrialCanceled({
+          to: email, name: email.split("@")[0], plan: billingCtx.plan, cancelDate: null,
+        }).catch(() => {});
+      }
+      logger.info({ orgId, subId: sub.id }, "[Billing] Trial cancelled immediately");
+      res.json({ ok: true, cancelAtPeriodEnd: false });
+    }
+  } catch (err) {
+    logger.error({ err }, "[Billing] Failed to cancel trial");
+    res.status(500).json({ error: "Failed to cancel trial" });
   }
 });
 
@@ -1151,6 +1270,7 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
         const plan = (sub.metadata?.["plan"] || orgSettings?.plan || "standard").toLowerCase();
         const status = sub.status;
         const trialEnd = sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
+        const cancelAtPeriodEnd = sub.cancel_at_period_end;
 
         if (plan) store.broadcastPlanUpdate(plan, orgId);
         await upsert(orgId, {
@@ -1161,6 +1281,12 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
           pendingPlan:        null,
           pendingPlanDate:    null,
         });
+
+        if (cancelAtPeriodEnd) {
+          // Subscription scheduled for cancellation — broadcast so SSE clients update UI
+          store.broadcast({ type: "billing:cancel_scheduled", cancelAt: sub.cancel_at }, orgId);
+          logger.info({ subId: sub.id, orgId, cancelAt: sub.cancel_at }, "[Webhook] Subscription scheduled for cancellation");
+        }
         break;
       }
 
@@ -1172,6 +1298,16 @@ router.post("/billing/webhook", async (req: Request & { rawBody?: Buffer }, res:
           plan: orgSettings?.plan ?? "standard",
           amount: 0, currency: "eur", subscriptionId: sub.id,
         }, orgId);
+        // Send cancellation email (fire-and-forget)
+        try {
+          const orgEmail = (orgSettings as unknown as { email?: string } | null)?.email;
+          if (orgEmail) {
+            mailer.sendSubscriptionCanceled({
+              to: orgEmail, name: orgEmail.split("@")[0],
+              plan: orgSettings?.plan ?? "standard", cancelDate: null,
+            }).catch(() => {});
+          }
+        } catch { /* non-fatal */ }
         logger.warn({ subId: sub.id, orgId }, "[Webhook] Subscription canceled");
         break;
       }

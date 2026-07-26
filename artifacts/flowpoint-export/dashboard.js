@@ -7528,7 +7528,7 @@ function renderBilling() {
                 ${escHtml(f)}
               </div>`).join('')}
             </div>
-            <button class="fp-btn ${isCurrent ? 'fp-btn-ghost' : 'fp-btn-primary'} fp-btn-sm" style="width:100%;margin-top:auto;${isCurrent ? 'opacity:0.5;cursor:default' : `background:${p.color};border-color:${p.color}`}" ${isCurrent ? '' : `onclick="fpGoToPricing('${p.id}')"`}>
+            <button class="fp-btn ${isCurrent ? 'fp-btn-ghost' : 'fp-btn-primary'} fp-btn-sm" style="width:100%;margin-top:auto;${isCurrent ? 'opacity:0.5;cursor:default' : `background:${p.color};border-color:${p.color}`}" ${isCurrent ? '' : `onclick="fpUpgradeOrCheckout('${p.id}')"`}>
               ${isCurrent ? 'Plan actuel' : `Passer ${p.name} →`}
             </button>
           </div>`;
@@ -7610,6 +7610,26 @@ function renderBilling() {
           </table>
         </div>
       </div>
+
+      <!-- SUBSCRIPTION MANAGEMENT -->
+      ${(()=>{
+        const _bs  = STATE.billing || {};
+        const _ss  = _bs.subscriptionStatus || '';
+        const _cap = !!_bs.cancelAtPeriodEnd;
+        const _has = _ss === 'active' || _ss === 'trialing' || _cap;
+        if (!_has) return '';
+        const _ca  = _bs.cancelAt ? new Date(_bs.cancelAt * 1000).toLocaleDateString('fr-FR') : null;
+        const _te  = STATE.me && STATE.me.trialEndsAt ? new Date(STATE.me.trialEndsAt).toLocaleDateString('fr-FR') : null;
+        const _bc  = _cap ? '#ef4444' : _ss === 'trialing' ? '#f59e0b' : '#22c55e';
+        const _st  = _cap ? `⚠️ Annulation programmée · Accès jusqu'au ${_ca || '—'}` : _ss === 'trialing' ? `🎯 Essai gratuit · Expire le ${_te || '—'}` : `✅ Abonnement actif · Résiliation à tout moment`;
+        const _btn = _cap
+          ? `<button class="fp-btn fp-btn-primary fp-btn-sm" style="background:#22c55e;border-color:#22c55e;flex-shrink:0" onclick="fpReactivateSubscription()">Réactiver l'abonnement</button>`
+          : _ss === 'trialing'
+            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelTrialModal()">Terminer l'essai</button>`
+            : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelSubscriptionModal()">Annuler l'abonnement</button>`;
+        const _warn = _cap ? `<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444;margin-top:10px">Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur "Réactiver" pour rétablir le renouvellement automatique.</div>` : '';
+        return `<div class="fp-card" style="margin-top:16px;border-left:4px solid ${_bc}"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${_warn ? '12px' : '0'}"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${_st}</div></div><div style="flex-shrink:0">${_btn}</div></div>${_warn}</div>`;
+      })()}
     `;
   }
 
@@ -7690,6 +7710,71 @@ function renderBilling() {
       'SSO SAML':'ssoEnterprise', 'AI Workspace Launch':'aiWorkspaceLaunch',
     };
     window._fpAddonStripeKeys = _ADDON_STRIPE_KEYS;
+
+    // ── Billing lifecycle: upgrade / cancel / reactivate ──────────────────────
+    window.fpUpgradeOrCheckout = async function(plan) {
+      const _ss = (STATE.billing && STATE.billing.subscriptionStatus) || (STATE.me && STATE.me.subscriptionStatus) || '';
+      if (_ss === 'active' || _ss === 'trialing') {
+        showToast('info', 'Mise à niveau en cours…');
+        try {
+          const r = await apiAction('POST', '/api/billing/upgrade', { plan });
+          if (r && r.url) { window.location.href = r.url; }
+          else if (r && r.ok) { showToast('success', 'Plan mis à jour'); setTimeout(()=>navigateSub('plans'), 700); }
+          else { showToast('error', (r && r.error) || 'Erreur lors de la mise à niveau'); }
+        } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'mise à niveau impossible')); }
+      } else {
+        fpGoToPricing(plan);
+      }
+    };
+    window.fpCancelSubscriptionModal = function() {
+      if (document.getElementById('fp-cancel-sub-modal')) return;
+      const _modal = document.createElement('div');
+      _modal.id = 'fp-cancel-sub-modal';
+      _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+      _modal.innerHTML = `<div style="background:var(--fp-card-bg,#fff);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">⚠️</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">Annuler l'abonnement</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton abonnement sera annulé à la fin de la période en cours. Tu conserves l'accès jusqu'à cette date.<br><br><strong style="color:var(--fp-text)">Toutes les fonctionnalités payantes seront désactivées après cette date.</strong></div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-sub-modal').remove()">Garder mon abonnement</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelSubscription()">Confirmer l'annulation</button></div></div>`;
+      document.body.appendChild(_modal);
+    };
+    window.fpConfirmCancelSubscription = async function() {
+      document.getElementById('fp-cancel-sub-modal')?.remove();
+      showToast('info', 'Annulation en cours…');
+      try {
+        const r = await apiAction('POST', '/api/billing/cancel', { atPeriodEnd: true });
+        if (r && r.ok) {
+          showToast('success', 'Abonnement annulé — accès conservé jusqu\'à la fin de la période');
+          if (STATE.billing) STATE.billing.cancelAtPeriodEnd = true;
+          setTimeout(()=>navigateSub('plans'), 700);
+        } else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
+      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
+    };
+    window.fpReactivateSubscription = async function() {
+      showToast('info', 'Réactivation en cours…');
+      try {
+        const r = await apiAction('POST', '/api/billing/reactivate');
+        if (r && r.ok) {
+          showToast('success', 'Abonnement réactivé — renouvellement automatique rétabli');
+          if (STATE.billing) STATE.billing.cancelAtPeriodEnd = false;
+          setTimeout(()=>navigateSub('plans'), 700);
+        } else { showToast('error', (r && r.error) || 'Erreur lors de la réactivation'); }
+      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'réactivation impossible')); }
+    };
+    window.fpCancelTrialModal = function() {
+      if (document.getElementById('fp-cancel-trial-modal')) return;
+      const _modal = document.createElement('div');
+      _modal.id = 'fp-cancel-trial-modal';
+      _modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+      _modal.innerHTML = `<div style="background:var(--fp-card-bg,#fff);border-radius:16px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--fp-border)"><div style="font-size:32px;margin-bottom:12px;text-align:center">🎯</div><div style="font-size:17px;font-weight:800;color:var(--fp-text);margin-bottom:8px;text-align:center">Terminer l'essai gratuit</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:20px;text-align:center;line-height:1.6">Ton essai gratuit sera annulé immédiatement. Tu perdras l'accès aux fonctionnalités payantes.<br><br>Tu peux te réabonner à tout moment.</div><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-cancel-trial-modal').remove()">Continuer l'essai</button><button class="fp-btn fp-btn-primary" style="flex:1;background:#ef4444;border-color:#ef4444" onclick="fpConfirmCancelTrial()">Terminer l'essai</button></div></div>`;
+      document.body.appendChild(_modal);
+    };
+    window.fpConfirmCancelTrial = async function() {
+      document.getElementById('fp-cancel-trial-modal')?.remove();
+      showToast('info', 'Annulation de l\'essai en cours…');
+      try {
+        const r = await apiAction('POST', '/api/billing/cancel-trial', { atPeriodEnd: false });
+        if (r && r.ok) { showToast('success', 'Essai annulé'); setTimeout(()=>window.location.reload(), 1200); }
+        else { showToast('error', (r && r.error) || 'Erreur lors de l\'annulation'); }
+      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
+    };
+
     window.fpActivateAddon = async function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
       if (!_a) { fpGoToPricing(); return; }
