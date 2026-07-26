@@ -3809,11 +3809,13 @@ function renderOverview() {
   var _localData = STATE.overview?.localPackHistory
     ? STATE.overview.localPackHistory.slice(-7).map(function(r){ return r.value; })
     : null;
+  // 3-state forecasting: loading (API in-flight) / noData (API done, no metric) / data
+  const _ovReturned = STATE.overview != null;  // true once /api/overview responded
   const forecasts = [
-    { label:'Score SEO',  current:avg > 0 ? avg + '/100' : '—', forecast:_seoFcast !== '—' ? _seoFcast + ' estim.' : '—', unit:'/100', color:'#2563EB', data:_seoData, collecting: _seoData == null },
-    { label:'Trafic GSC', current:_traficCurr, forecast:_traficFcast, unit:'clics', color:'#22c55e', data:_gscData, collecting: _gscClicks == null },
-    { label:'Taux conv.', current:_convCurr,   forecast:'—', unit:'%', color:'#8b5cf6', data:_convData, collecting: conversionRate == null },
-    { label:'Local Pack', current:_localCurr,  forecast:'—', unit:'pos', color:'#f59e0b', data:_localData, collecting: _localData == null },
+    { label:'Score SEO',  current:avg > 0 ? avg + '/100' : '—', forecast:_seoFcast !== '—' ? _seoFcast + ' estim.' : '—', unit:'/100', color:'#2563EB', data:_seoData, loading:!_ovReturned, noData:_ovReturned && _seoData == null },
+    { label:'Trafic GSC', current:_traficCurr, forecast:_traficFcast, unit:'clics', color:'#22c55e', data:_gscData, loading:!_ovReturned, noData:_ovReturned && _gscClicks == null },
+    { label:'Taux conv.', current:_convCurr,   forecast:'—', unit:'%', color:'#8b5cf6', data:_convData, loading:!_ovReturned, noData:_ovReturned && conversionRate == null },
+    { label:'Local Pack', current:_localCurr,  forecast:'—', unit:'pos', color:'#f59e0b', data:_localData, loading:!_ovReturned, noData:_ovReturned && _localData == null },
   ];
 
   const achievements = [
@@ -4156,8 +4158,10 @@ function renderOverview() {
         ${forecasts.map(f => `
           <div style="padding:14px;border-radius:12px;background:var(--fp-inner-card);border:1px solid rgba(255,255,255,0.06)">
             <div style="font-size:11px;font-weight:600;color:var(--fp-text-muted);margin-bottom:8px">${f.label}</div>
-            ${f.collecting
-              ? `<div style="height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;opacity:0.65"><span style="font-size:11px;color:var(--fp-text-muted);font-weight:600">Pas encore assez de données</span><span style="font-size:10px;color:var(--fp-text-faint)">Les prévisions apparaîtront après la collecte des premières données.</span></div>`
+            ${f.loading
+              ? `<div style="height:36px;display:flex;align-items:center;justify-content:center;gap:6px;opacity:0.45"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg><span style="font-size:10px;color:var(--fp-text-faint)">Chargement des prévisions…</span></div>`
+              : f.noData
+              ? `<div style="height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;opacity:0.65"><span style="font-size:11px;color:var(--fp-text-muted);font-weight:600">Pas encore assez de données pour générer une prévision.</span><span style="font-size:10px;color:var(--fp-text-faint)">Les prévisions apparaîtront après la collecte des premières données.</span></div>`
               : sparklineSVG(f.data && f.data.length ? f.data : [0,0,0,0,0,0,0], f.color, 200, 36)}
             <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:8px">
               <div>
