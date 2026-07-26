@@ -502,6 +502,21 @@ export async function initDataTables(): Promise<void> {
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS subscription_status       TEXT NOT NULL DEFAULT 'none';`);
     // Fix existing rows: change DEFAULT so new rows get 'none', not 'active'
     await run(client, `ALTER TABLE org_settings ALTER COLUMN subscription_status SET DEFAULT 'none';`);
+    // Fix: if trial_ends_at was created as TEXT in an older schema, cast to TIMESTAMPTZ
+    // so that comparisons with NOW() work (prevents 42883 operator mismatch).
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'org_settings'
+            AND column_name = 'trial_ends_at' AND data_type = 'text'
+        ) THEN
+          ALTER TABLE org_settings
+            ALTER COLUMN trial_ends_at TYPE TIMESTAMPTZ
+            USING NULLIF(trial_ends_at, '')::timestamptz;
+        END IF;
+      END $$;
+    `);
     await run(client, `CREATE INDEX IF NOT EXISTS org_settings_trial_ends_at_idx ON org_settings(trial_ends_at) WHERE trial_ends_at IS NOT NULL;`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_settings_sub_status_idx    ON org_settings(subscription_status);`);
 
@@ -822,6 +837,20 @@ export async function initDataTables(): Promise<void> {
     // Backfilled from org_settings so existing orgs are not orphaned.
     // org_id (TEXT) is the canonical tenant key across all tables; this table
     // extends it with audit fields, owner, slug and Stripe references.
+    //
+    // Fix: if a previous schema created organizations.id as UUID (42804), cast
+    // it to TEXT before the INSERT so org_id (TEXT) maps without type error.
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'organizations'
+            AND column_name = 'id' AND data_type = 'uuid'
+        ) THEN
+          ALTER TABLE organizations ALTER COLUMN id TYPE TEXT USING id::text;
+        END IF;
+      END $$;
+    `);
     await run(client, `
       CREATE TABLE IF NOT EXISTS organizations (
         id               TEXT        NOT NULL PRIMARY KEY,
@@ -1099,6 +1128,11 @@ export async function initDataTables(): Promise<void> {
                                   'traffic_losses','cro_recommendations','cro_scores',
                                   'cro_experiments','revenue_leaks']
         LOOP
+          -- Guard: skip tables that do not yet exist (prevents 42P01 relation not found).
+          -- DROP POLICY IF EXISTS only suppresses a missing policy, NOT a missing table.
+          IF to_regclass('public.' || t) IS NULL THEN
+            CONTINUE;
+          END IF;
           FOREACH p IN ARRAY ARRAY['tenant_select','tenant_insert','tenant_update','tenant_delete',
                                     'behavior_events_isolation','behavior_sessions_isolation',
                                     'behavior_insights_isolation','cro_recommendations_isolation',

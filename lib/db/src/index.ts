@@ -540,14 +540,28 @@ export async function probeAppUserRole(): Promise<void> {
   // Without this listener Node.js would crash with "Unhandled 'error' event".
   client.on("error", () => { /* absorbed — pool.on('error') covers idle clients */ });
   try {
+    // First check if the role even exists.
+    const { rows } = await client.query<{ exists: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'app_user') AS exists`
+    );
+    if (!rows[0]?.exists) {
+      _appUserRoleUnavailable = true;
+      console.warn("[withOrgDb] app_user role absent — GUC-only RLS mode. Run initRlsSetup() first.");
+      return;
+    }
+
+    // Role exists — verify the current connection user can actually SET ROLE.
     await client.query("SET ROLE app_user");
     await client.query("RESET ROLE");
-    // Role is available — _appUserRoleUnavailable stays false.
+    // Role is present and usable — _appUserRoleUnavailable stays false.
+    console.info("[withOrgDb] app_user role present and usable — full RLS enforcement active");
   } catch {
     _appUserRoleUnavailable = true;
+    // Role exists but membership is not granted to the connection user (managed DB).
+    // GUC-only mode is correct and safe: RLS policies evaluate app.current_org_id.
     console.warn(
-      "[withOrgDb] app_user role not available — GUC-only RLS mode.",
-      "Fix: GRANT app_user TO <db-connection-user>;",
+      "[withOrgDb] app_user role present but SET ROLE failed — GUC-only RLS mode (correct for managed DBs).",
+      "To enable full RLS: GRANT app_user TO <db-connection-user>;",
     );
   } finally {
     client.release();

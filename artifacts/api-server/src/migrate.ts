@@ -1,87 +1,121 @@
 /**
- * migrate.ts — FlowPoint database migration runner
+ * migrate.ts — FlowPoint full database migration runner
  *
  * Standalone entrypoint. Never imported by the API server at runtime.
- * Run explicitly with:
+ * Runs ALL schema init steps so the web process can start and listen
+ * immediately without waiting for migrations.
  *
+ * Render usage:
+ *   Pre-Deploy Command : node --enable-source-maps ./dist/migrate.mjs
+ *   Start Command      : node --enable-source-maps ./dist/index.mjs
+ *
+ * Local dev:
  *   pnpm --filter @workspace/api-server run migrate
- *
- * Or on a Render one-off job / pre-deploy hook:
- *
- *   node --enable-source-maps ./dist/migrate.mjs
  *
  * Exit codes:
  *   0 — all migrations applied (or already up-to-date)
  *   1 — fatal error (DB unreachable, unrecoverable DDL failure, etc.)
  */
 
-import { pool } from "@workspace/db";
+import { pool, probeAppUserRole } from "@workspace/db";
+import { initRlsSetup }          from "./services/init-rls-setup.js";
 import { runRlsMigrationIfNeeded } from "./services/init-rls-migration.js";
+import { initMissionsTables }    from "./services/init-missions.js";
+import { initAutomationTables }  from "./services/init-automation.js";
+import { initMonitorsTables }    from "./services/init-monitors.js";
+import { initDataTables }        from "./services/init-data-tables.js";
+import { initAiMigration }       from "./services/init-ai-migration.js";
+
+function section(label: string) {
+  console.log("\n" + "─".repeat(60));
+  console.log(label);
+  console.log("─".repeat(60));
+}
 
 async function migrate() {
   console.log("=".repeat(60));
-  console.log("FlowPoint — database migration runner");
+  console.log("FlowPoint — full migration runner");
   console.log("=".repeat(60));
   console.log(`  DATABASE_URL host : ${process.env["DATABASE_URL"]?.replace(/\/\/[^@]+@/, "//***@") ?? "(not set)"}`);
   console.log(`  Timestamp         : ${new Date().toISOString()}`);
   console.log("=".repeat(60));
 
   // ── 1. Verify connectivity ──────────────────────────────────────────────────
-  console.log("\n[1/3] Checking database connectivity…");
+  section("[1/8] Database connectivity");
   try {
     const res = await pool.query<{ version: string }>("SELECT version()");
-    console.log(`      ✓ Connected — ${res.rows[0]?.version?.split(" ").slice(0, 2).join(" ")}`);
+    console.log(`  ✓ Connected — ${res.rows[0]?.version?.split(" ").slice(0, 2).join(" ")}`);
   } catch (err: any) {
-    console.error(`      ✗ Cannot reach database: ${err.message}`);
+    console.error(`  ✗ Cannot reach database: ${err.message}`);
     process.exit(1);
   }
 
-  // ── 2. Pre-migration state ──────────────────────────────────────────────────
-  console.log("\n[2/3] Pre-migration state…");
-  const before = await pool.query(`
-    SELECT
-      (SELECT COUNT(*)::int FROM pg_tables  WHERE schemaname='public' AND rowsecurity=true) AS rls_tables,
-      (SELECT COUNT(*)::int FROM pg_policies WHERE schemaname='public')                     AS policies,
-      (SELECT COUNT(*)::int FROM pg_tables  WHERE schemaname='public')                      AS total_tables,
-      (SELECT COUNT(*)::int FROM information_schema.columns
-       WHERE table_schema='public' AND column_name='org_id')                                AS org_id_cols
-  `);
-  const pre = before.rows[0] as Record<string, number>;
-  console.log(`      Tables total      : ${pre.total_tables}`);
-  console.log(`      Tables with RLS   : ${pre.rls_tables}`);
-  console.log(`      Policies          : ${pre.policies}`);
-  console.log(`      Columns w/ org_id : ${pre.org_id_cols}`);
+  // ── 2. app_user role + grants ───────────────────────────────────────────────
+  section("[2/8] app_user role (init-rls-setup)");
+  try {
+    await initRlsSetup();
+    console.log("  ✓ Done");
+  } catch (err: any) {
+    console.error(`  ✗ initRlsSetup failed: ${err.message}`);
+    process.exit(1);
+  }
 
-  // ── 3. Run migrations ───────────────────────────────────────────────────────
-  console.log("\n[3/3] Running migrations…");
+  // ── 3. Probe SET ROLE ───────────────────────────────────────────────────────
+  section("[3/8] app_user role probe");
+  try {
+    await probeAppUserRole();
+    console.log("  ✓ Done");
+  } catch (err: any) {
+    // Non-fatal: probe failure just means GUC-only mode
+    console.warn(`  ⚠ probeAppUserRole warn: ${err.message}`);
+  }
+
+  // ── 4. RLS tenant-isolation policies ───────────────────────────────────────
+  section("[4/8] RLS migration (tenant-isolation policies)");
   try {
     await runRlsMigrationIfNeeded();
+    console.log("  ✓ Done");
   } catch (err: any) {
-    console.error(`\n✗ Migration failed: ${err.message}`);
-    await pool.end();
+    console.error(`  ✗ RLS migration failed: ${err.message}`);
     process.exit(1);
   }
 
-  // ── Post-migration state ────────────────────────────────────────────────────
-  console.log("\n" + "=".repeat(60));
-  console.log("Post-migration state");
-  console.log("=".repeat(60));
+  // ── 5–7. Domain tables ──────────────────────────────────────────────────────
+  section("[5/8] init-missions");
+  try { await initMissionsTables();  console.log("  ✓ Done"); }
+  catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
+
+  section("[6/8] init-automation");
+  try { await initAutomationTables(); console.log("  ✓ Done"); }
+  catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
+
+  section("[7/8] init-monitors");
+  try { await initMonitorsTables();  console.log("  ✓ Done"); }
+  catch (err: any) { console.error(`  ✗ ${err.message}`); process.exit(1); }
+
+  // ── 8. Core + AI tables ─────────────────────────────────────────────────────
+  section("[8/8] init-data-tables + AI migration");
+  try { await initDataTables();  console.log("  ✓ init-data-tables done"); }
+  catch (err: any) { console.error(`  ✗ initDataTables: ${err.message}`); process.exit(1); }
+
+  try { await initAiMigration(); console.log("  ✓ init-ai-migration done"); }
+  catch (err: any) { console.error(`  ✗ initAiMigration: ${err.message}`); process.exit(1); }
+
+  // ── Summary ─────────────────────────────────────────────────────────────────
+  section("Post-migration summary");
   const after = await pool.query(`
     SELECT
       (SELECT COUNT(*)::int FROM pg_tables  WHERE schemaname='public' AND rowsecurity=true) AS rls_tables,
       (SELECT COUNT(*)::int FROM pg_policies WHERE schemaname='public')                     AS policies,
-      (SELECT COUNT(*)::int FROM pg_tables  WHERE schemaname='public')                      AS total_tables,
-      (SELECT COUNT(*)::int FROM information_schema.columns
-       WHERE table_schema='public' AND column_name='org_id')                                AS org_id_cols
+      (SELECT COUNT(*)::int FROM pg_tables  WHERE schemaname='public')                      AS total_tables
   `);
   const post = after.rows[0] as Record<string, number>;
-  console.log(`  Tables total      : ${post.total_tables}`);
-  console.log(`  Tables with RLS   : ${post.rls_tables}  (target: 145)`);
-  console.log(`  Policies          : ${post.policies}  (target: 508)`);
-  console.log(`  Columns w/ org_id : ${post.org_id_cols}`);
+  console.log(`  Tables total    : ${post.total_tables}`);
+  console.log(`  Tables with RLS : ${post.rls_tables}`);
+  console.log(`  Policies        : ${post.policies}`);
 
   const ok = post.rls_tables >= 100 && post.policies >= 400;
-  console.log("\n" + (ok ? "✓ Migration successful" : "⚠ Migration ended but counts look low — review logs above"));
+  console.log("\n" + (ok ? "✓ Migration successful" : "⚠ Migration counts look low — review logs above"));
 
   await pool.end();
   process.exit(ok ? 0 : 1);

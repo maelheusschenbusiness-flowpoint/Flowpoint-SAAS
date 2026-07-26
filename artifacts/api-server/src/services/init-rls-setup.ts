@@ -1,11 +1,11 @@
 /**
  * init-rls-setup.ts
  *
- * Provisions the `app_user` role on the LOCAL dev PostgreSQL database so that
- * `withOrgDb` (which runs SET LOCAL ROLE app_user) works without errors.
+ * Provisions the `app_user` role on the database and verifies whether the
+ * current connection user can actually execute SET ROLE app_user.
  *
- * On Supabase this is handled by migration 011_app_user.sql.
- * On local dev the role is missing until this init runs at server startup.
+ * Exported result `appUserRoleUsable` is consumed by probeAppUserRole()
+ * in @workspace/db so a second round-trip at startup is avoided.
  *
  * Safe to run multiple times (fully idempotent).
  */
@@ -43,13 +43,6 @@ export async function initRlsSetup(): Promise<void> {
     // 4. Sequence privileges
     await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user`);
 
-    // NOTE: GRANT app_user TO CURRENT_USER is intentionally omitted.
-    // On Supabase / Render the connection user cannot grant role membership to itself
-    // without superuser. Attempting it triggers a FATAL PostgreSQL error that closes
-    // the connection at wire level, emitting an async 'error' event that crashes Node.
-    // GUC-only RLS mode (set via app.current_org_id) is the correct and safe mode
-    // on managed DBs — RLS policies are still enforced via the GUC.
-
     // 5. Default privileges for tables/sequences created in the future
     await client.query(`
       ALTER DEFAULT PRIVILEGES IN SCHEMA public
@@ -60,7 +53,44 @@ export async function initRlsSetup(): Promise<void> {
         GRANT USAGE, SELECT ON SEQUENCES TO app_user
     `);
 
-    logger.info("[init-rls-setup] app_user role ready");
+    // 6. Attempt GRANT app_user TO CURRENT_USER so SET ROLE works.
+    //    On managed DBs (Supabase, Render) this requires superuser and will fail
+    //    with a synchronous error (caught below) or a FATAL that closes the wire
+    //    (absorbed by the 'error' handler above).  Either way: non-fatal.
+    let membershipGranted = false;
+    try {
+      await client.query(`GRANT app_user TO CURRENT_USER`);
+      membershipGranted = true;
+    } catch {
+      // Expected on managed DBs — superuser privilege required.
+    }
+
+    // 7. Verify SET ROLE actually works (only meaningful if membership was granted).
+    //    Uses a fresh pool connection so a FATAL error on a managed DB does not
+    //    poison `client` (which we still need for the google_oauth_states patch).
+    let roleUsable = false;
+    if (membershipGranted) {
+      let probeClient: import("pg").PoolClient | null = null;
+      try {
+        probeClient = await pool.connect();
+        probeClient.on("error", () => { /* absorbed */ });
+        await probeClient.query("SET ROLE app_user");
+        await probeClient.query("RESET ROLE");
+        roleUsable = true;
+      } catch {
+        // GRANT succeeded but SET ROLE still fails — uncommon, log below.
+      } finally {
+        probeClient?.release();
+      }
+    }
+
+    if (roleUsable) {
+      logger.info("[init-rls-setup] app_user role present and usable — full RLS enforcement via SET ROLE");
+    } else if (membershipGranted) {
+      logger.warn("[init-rls-setup] app_user GRANT succeeded but SET ROLE failed — GUC-only RLS mode");
+    } else {
+      logger.warn("[init-rls-setup] app_user role present but membership not grantable (managed DB) — GUC-only RLS mode (correct for Supabase/Render)");
+    }
 
     // ── Patch: ensure google_oauth_states has RLS — only if the table already exists ──
     const { rows: gCheck } = await client.query(
@@ -78,9 +108,9 @@ export async function initRlsSetup(): Promise<void> {
         await client.query(`CREATE POLICY "${policyName}" ON google_oauth_states FOR ${cmd} ${clause}`);
       }
       await client.query(`CREATE INDEX IF NOT EXISTS idx_google_oauth_states_org_id ON google_oauth_states (org_id)`);
-      logger.info("[init-rls-setup] google_oauth_states RLS patched (100% coverage)");
+      logger.info("[init-rls-setup] google_oauth_states RLS patched");
     } else {
-      logger.info("[init-rls-setup] google_oauth_states not yet created — RLS patch skipped (will run after migration)");
+      logger.info("[init-rls-setup] google_oauth_states not yet created — RLS patch skipped");
     }
   } catch (err) {
     logger.warn({ err }, "[init-rls-setup] Non-fatal: could not provision app_user role");

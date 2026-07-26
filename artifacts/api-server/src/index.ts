@@ -14,26 +14,27 @@ import { runCriticalStartupStep, getErrorCode, getSafeErrorMessage } from "./lib
 
 const PORT = env.PORT;
 
-// ── Bootstrap classification ───────────────────────────────────────────────────
+// ── Schema health check ────────────────────────────────────────────────────────
 //
-// CRITICAL — any failure after exhausted retries aborts startup, prevents
-//            app.listen(), and exits with a non-zero code.
+// When the Render Pre-Deploy Command (`node dist/migrate.mjs`) has already run
+// all migrations, the web process only needs a DB ping + app_user probe before
+// it can open the port.  Full init (which can take 10-30 s) is skipped.
 //
-//   1. database connection   — no DB access means nothing works
-//   2. init-rls-setup        — creates app_user role required by all RLS policies
-//   3. app_user role probe   — sets the global RLS mode flag for withOrgDb()
-//   4. rls-migration         — applies tenant-isolation policies to every table
-//   5. init-missions         — mission routes write on every user action
-//   6. init-automation       — automation routes require these tables
-//   7. init-monitors         — monitor cron and routes require these tables
-//   8. init-data-tables      — core tables (audits, notifications, competitors…)
-//   9. AI migration          — AI routes require ai_recommendations et al.
+// Fallback: if core tables are absent (local dev, first deploy without
+// Pre-Deploy command), the full init sequence runs as before.
 //
-// OPTIONAL — none currently.
-//   A step may only be optional when its absence demonstrably does not break
-//   any active route, any multi-tenant isolation boundary, or any write path.
-//
+// Sentinel: presence of the `audits` table indicates migrations have run.
 // ──────────────────────────────────────────────────────────────────────────────
+async function schemaAlreadyMigrated(): Promise<boolean> {
+  try {
+    const { rows } = await pool.query<{ exists: boolean }>(
+      `SELECT to_regclass('public.audits') IS NOT NULL AS exists`
+    );
+    return rows[0]?.exists === true;
+  } catch {
+    return false;
+  }
+}
 
 async function main() {
   // 1. Verify the DB is reachable before any init that assumes a connection.
@@ -42,31 +43,30 @@ async function main() {
     logger.info("Database connection OK");
   });
 
-  // 2. Create/verify app_user role + grant schema + sequence privileges.
-  //    MUST run before probeAppUserRole: role must exist before being probed.
-  await runCriticalStartupStep("init-rls-setup", initRlsSetup);
+  // 2. Check if Pre-Deploy already ran all migrations (fast path for Render).
+  const migrated = await schemaAlreadyMigrated();
 
-  // 3. Probe whether the connection user can SET ROLE app_user.
-  //    Sets _appUserRoleUnavailable flag consumed by every withOrgDb() call.
-  await runCriticalStartupStep("app_user role probe", probeAppUserRole);
+  if (migrated) {
+    // ── Fast path: Pre-Deploy has already run. ─────────────────────────────
+    // Only probe the app_user role (cheap: 2 queries) so withOrgDb() knows
+    // whether to use SET ROLE or GUC-only mode.
+    logger.info("[startup] Schema already migrated — skipping full init (Pre-Deploy completed)");
+    await runCriticalStartupStep("app_user role probe", probeAppUserRole);
+  } else {
+    // ── Full init path: local dev or first deploy without Pre-Deploy. ──────
+    logger.info("[startup] Core tables absent — running full init sequence");
 
-  // 4. Apply tenant-isolation RLS policies to any tables still missing them.
-  await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
-
-  // 5–7. Domain tables — routes assume these exist at every request.
-  await runCriticalStartupStep("init-missions",   initMissionsTables);
-  await runCriticalStartupStep("init-automation", initAutomationTables);
-  await runCriticalStartupStep("init-monitors",   initMonitorsTables);
-
-  // 8. Core data tables (audits, notifications, competitors, …).
-  await runCriticalStartupStep("init-data-tables", initDataTables);
-
-  // 9. AI tables — creates & validates ai_recommendations et al.
-  //    Throws on any failure: missing tables = broken AI routes.
-  await runCriticalStartupStep("AI migration", initAiMigration);
+    await runCriticalStartupStep("init-rls-setup", initRlsSetup);
+    await runCriticalStartupStep("app_user role probe", probeAppUserRole);
+    await runCriticalStartupStep("rls-migration", runRlsMigrationIfNeeded);
+    await runCriticalStartupStep("init-missions",   initMissionsTables);
+    await runCriticalStartupStep("init-automation", initAutomationTables);
+    await runCriticalStartupStep("init-monitors",   initMonitorsTables);
+    await runCriticalStartupStep("init-data-tables", initDataTables);
+    await runCriticalStartupStep("AI migration", initAiMigration);
+  }
 
   // ── Optional: Resend email config check (non-blocking, log only) ─────────────
-  // Helps diagnose DOMAIN_NOT_VERIFIED errors at startup rather than at send-time.
   (async () => {
     const resendKey  = process.env["RESEND_API_KEY"];
     const resendFrom = process.env["RESEND_FROM"] || "FlowPoint <noreply@flowpoint.pro>";
@@ -74,12 +74,10 @@ async function main() {
       logger.warn("[Resend] RESEND_API_KEY is not set — magic-link emails will fail (503)");
       return;
     }
-    // Extract raw domain from "Name <addr@domain>" or "addr@domain"
     const addrMatch = resendFrom.match(/<([^>]+)>/) ?? resendFrom.match(/(\S+@\S+)/);
     const fromAddr  = addrMatch?.[1] ?? resendFrom;
     const domain    = fromAddr.split("@")[1] ?? "";
     logger.info(`[Resend] Configured from="${resendFrom}" domain="${domain}" — verify SPF/DKIM in Resend dashboard if emails fail`);
-    // Light check: list Resend domains via API (does not send any email)
     try {
       const resp = await fetch("https://api.resend.com/domains", {
         headers: { Authorization: `Bearer ${resendKey}` },
@@ -92,9 +90,9 @@ async function main() {
       const domains: Array<{ name: string; status: string }> = body.data ?? [];
       const matched = domains.find(d => domain.endsWith(d.name));
       if (!matched) {
-        logger.warn(`[Resend] Domain "${domain}" is NOT in your Resend account. Add and verify it (SPF + DKIM records in DNS) or set RESEND_FROM to a verified domain.`);
+        logger.warn(`[Resend] Domain "${domain}" is NOT in your Resend account.`);
       } else if (matched.status !== "verified") {
-        logger.warn(`[Resend] Domain "${matched.name}" found but status="${matched.status}" (not verified). Complete DNS verification to enable email delivery.`);
+        logger.warn(`[Resend] Domain "${matched.name}" found but status="${matched.status}" (not verified).`);
       } else {
         logger.info(`[Resend] Domain "${matched.name}" is verified ✓ — email delivery should work.`);
       }
@@ -124,8 +122,6 @@ async function main() {
 }
 
 main().catch((err: unknown) => {
-  // Log only code + message — never log DATABASE_URL, passwords, or full
-  // stack traces that may contain connection parameters.
   logger.error(
     {
       code:    getErrorCode(err),
