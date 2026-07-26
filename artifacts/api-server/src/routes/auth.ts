@@ -420,9 +420,7 @@ router.post("/auth/register", authRateLimit, async (req: Request, res: Response)
     return;
   }
 
-  if (firstName && String(firstName).trim()) store.me.firstName = String(firstName).trim();
-  if (companyName && String(companyName).trim()) store.me.org = { name: String(companyName).trim() };
-  if (plan && ["standard","pro","ultra"].includes(String(plan))) store.me.plan = String(plan);
+  // SECURITY: store.me writes removed — global singleton causes cross-user data leakage.
 
   const token = generateToken();
   const publicUrl = getPublicUrl();
@@ -841,8 +839,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       return;
     }
 
-    if (user.name) store.me.firstName = user.name.split(" ")[0];
-    if (user.email && !store.me.org?.name) store.me.org = { name: user.email };
+    // SECURITY: store.me writes removed — user data must be read from DB, not global singleton.
 
     // Apply plan & redirect from OAuth state if present
     let redirectAfterLogin = `${publicUrl}/dashboard.html?provider=google`;
@@ -853,7 +850,6 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
         const stateObj = JSON.parse(Buffer.from(rawState, "base64").toString("utf8")) as { plan?: string; redirect_to?: string | null };
         if (stateObj.plan && ["standard","pro","ultra"].includes(stateObj.plan)) {
           planFromState = stateObj.plan;
-          store.me.plan = stateObj.plan;
           logger.info({ plan: stateObj.plan }, "[Auth] Google login — plan set from OAuth state");
         }
         if (stateObj.redirect_to && stateObj.redirect_to.startsWith("/")) {
@@ -869,7 +865,7 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
       await upsertOrgSettings(resolvedEmail, {
         email: resolvedEmail,
         firstName: user.name ? user.name.split(" ")[0] : undefined,
-        plan: planFromState ?? store.me.plan ?? "pro",
+        plan: planFromState ?? "standard",
         subscriptionStatus: "trialing",
         trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60_000).toISOString(),
         name: user.email ?? undefined,
@@ -943,7 +939,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
       return;
     }
 
-    if (user.name || user.login) store.me.firstName = (user.name || user.login || "").split(" ")[0];
+    // SECURITY: store.me.firstName write removed — global singleton causes cross-user data leakage.
 
     // Persist per-user org so /api/me returns correct data after restart
     try {
@@ -951,7 +947,7 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
       await upsertOrgSettings(resolvedEmail, {
         email: resolvedEmail,
         firstName: user.name ? user.name.split(" ")[0] : (user.login ?? undefined),
-        plan: store.me.plan ?? "pro",
+        plan: "standard",
         subscriptionStatus: "trialing",
         trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60_000).toISOString(),
         name: user.login ?? undefined,
@@ -986,13 +982,13 @@ router.get("/auth/session", async (req: Request, res: Response) => {
   const session = cookieToken ? await getSession(cookieToken) : null;
   const authenticated = session !== null;
 
+  // SECURITY: return only session-scoped data — never read from store.me (global singleton).
   res.json({
     authenticated,
     user: authenticated ? {
-      firstName: store.me.firstName,
-      plan: store.me.plan,
-      subscriptionStatus: store.me.subscriptionStatus,
-      trialEndsAt: store.me.trialEndsAt,
+      email:     session.email,
+      role:      session.role,
+      firstName: session.email?.split("@")[0] ?? "User",
     } : null,
   });
 });
