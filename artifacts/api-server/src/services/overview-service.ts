@@ -105,13 +105,13 @@ export async function getOverviewMetrics(orgId = "default", range = 30, rangeLab
          WHERE org_id = $1 AND created_at > NOW() - INTERVAL '1 day' * $2`,
         [orgId, range]
       ),
-      // Previous 30-day period for trend
+      // Previous period for trend (same length as selected range, immediately prior)
       pool.query(
         `SELECT AVG(score) as prev_avg
          FROM audits
          WHERE org_id = $1
-           AND created_at BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days'`,
-        [orgId]
+           AND created_at BETWEEN NOW() - INTERVAL '1 day' * $2 AND NOW() - INTERVAL '1 day' * $3`,
+        [orgId, range * 2, range]
       ),
       // Real weekly audit score history (last 16 weeks)
       pool.query(

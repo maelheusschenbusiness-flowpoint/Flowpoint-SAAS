@@ -14,6 +14,7 @@ const RANGE_MAP: Record<string, number> = {
   "3d":  3,
   "7d":  7,
   "30d": 30,
+  "90d": 90,
 };
 
 /**
@@ -29,7 +30,7 @@ function parseRange(raw: string | undefined): { days: number; label: string } | 
 
   // Pure integer fallback (legacy / direct API calls)
   const n = parseInt(raw, 10);
-  if (Number.isFinite(n) && n >= 1 && n <= 30) {
+  if (Number.isFinite(n) && n >= 1 && n <= 90) {
     const label = n === 1 ? "today" : `${n}d`;
     return { days: n, label };
   }
@@ -48,7 +49,7 @@ router.get("/overview", async (req: Request, res: Response) => {
       res.status(400).json({
         error: "Invalid range parameter",
         code: "INVALID_RANGE",
-        allowed: ["today", "3d", "7d", "30d"],
+        allowed: ["today", "3d", "7d", "30d", "90d"],
         received: req.query["range"],
       });
       return;

@@ -130,7 +130,7 @@ const STATE = {
   teamChatHistory: [],
   settings: JSON.parse(localStorage.getItem('fp:settings') || '{"themeAuto":true,"liveStatus":true,"hoverNotifs":true,"streaks":true,"aiTips":true,"newTab":false,"bgDashboard":false,"recentActivity":true,"confirmActions":true,"statusPageUrl":"","webhookUrl":"","smsPhone":""}'),
   checklist: null,
-  overviewRange: '7d',
+  overviewRange: localStorage.getItem('fp:overview-range') || '7d',
   freeModules: JSON.parse(localStorage.getItem('fp:free-modules') || '{"compactMode":false,"dailyAI":true,"soundAlerts":false,"focusMode":false}'),
   sidebarCollapsed: localStorage.getItem('fp:sidebar-collapsed') === '1',
   calendarYear: new Date().getFullYear(),
@@ -527,6 +527,7 @@ window._openNewMonitor = function() { openFloatPanel('Nouveau monitor', renderNe
 function fpInsightAction(action) {
   const a = (action || '').toLowerCase();
   if (a.includes('corriger') || a.includes('formulaire') || a.includes('audit') || a.includes('technique') || a.includes('balise')) { navigate('audits'); }
+
   else if (a.includes('avis') || a.includes('réputation') || a.includes('note') || a.includes('répondre')) { navigate('local-seo'); setTimeout(() => navigateSub('reviews'), 50); }
   else if (a.includes('local seo') || a.includes('pages locales') || a.includes('gbp') || a.includes('renforcer') || a.includes('fiche') || a.includes('local') || a.includes('zone')) { navigate('local-seo'); }
   else if (a.includes('mission') || a.includes('plan d\'action') || a.includes('priorit'))  { navigate('missions'); }
@@ -545,6 +546,7 @@ function fpInsightAction(action) {
     }, 200);
   }
 }
+window.fpInsightAction = fpInsightAction;
 
 function exportActivityCsv() {
   const rows = (STATE.activity || (PREVIEW_MODE ? ACTIVITY_FEED : []) || []).map(item =>
@@ -2636,7 +2638,7 @@ function relTimeActivity(dateStr) {
 }
 
 function countActivityUnread() {
-  return STATE.activityEvents.filter(e => new Date(e.createdAt).getTime() > STATE.activityLastSeen).length;
+  return STATE.activityEvents.filter(e => new Date(e.createdAt || e.created_at).getTime() > STATE.activityLastSeen).length;
 }
 
 function updateActivityBadge() {
@@ -2686,7 +2688,7 @@ function renderActivityList() {
   let html = events.map(e => {
     const cfg = ACTIVITY_TYPE_CONFIG[e.type] || ACTIVITY_TYPE_CONFIG.audit;
     const avatarColor = getAvatarColor(e.userName || 'U');
-    const isNew = new Date(e.createdAt).getTime() > lastSeen;
+    const isNew = new Date(e.createdAt || e.created_at).getTime() > lastSeen;
     return `
       <div class="fp-activity-item${isNew ? ' fp-activity-new' : ''}">
         <div class="fp-activity-avatar" style="background:${avatarColor}20;color:${avatarColor}">
@@ -3771,13 +3773,14 @@ function renderOverview() {
     { name:'IA Copilot',      score: (function(){ var _au=STATE.aiCredits?.used??0,_ar=STATE.aiCredits?.requestCount??0,_al=(STATE.aiCredits?.limit??0)+(STATE.aiCredits?.extra??0); if(!_au||!_ar||!_al) return null; var _rate=_au/Math.max(_al,1); return Math.min(98,Math.round(40+Math.min(58,_rate*58))); }()), status:(STATE.aiCredits?.used>0&&STATE.aiCredits?.requestCount>0)?'ok':'no-data', icon:'🧠', issues:0, color:'#8b5cf6', route:'ai' },
   ];
 
-  var _rangeToMs = { 'today':86400000, '1d':86400000, '3d':3*86400000, '7d':7*86400000, '30d':30*86400000 };
+  var _rangeToMs = { 'today':86400000, '1d':86400000, '3d':3*86400000, '7d':7*86400000, '30d':30*86400000, '90d':90*86400000 };
   var _liveRangeMs = _rangeToMs[STATE.overviewRange] || 7*86400000;
   const liveEvents = (STATE.activityEvents && STATE.activityEvents.length > 0)
     ? STATE.activityEvents
-        .filter(function(e) { return (Date.now() - new Date(e.createdAt).getTime()) < _liveRangeMs; })
+        .filter(function(e) { var _ts = e.createdAt || e.created_at; return _ts && (Date.now() - new Date(_ts).getTime()) < _liveRangeMs; })
         .slice(0, 4).map(function(e) {
-          var mins = Math.round((Date.now() - new Date(e.createdAt).getTime()) / 60000);
+          var _ts = e.createdAt || e.created_at;
+          var mins = Math.round((Date.now() - new Date(_ts).getTime()) / 60000);
           var time = mins < 1 ? 'À l\'instant' : mins < 60 ? 'Il y a ' + mins + ' min' : mins < 1440 ? 'Il y a ' + Math.round(mins/60) + 'h' : 'Il y a ' + Math.round(mins/1440) + 'j';
           var typeMap = { audit:'info', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'info' };
           var iconMap = { audit:'🔍', monitor:'📡', alert:'⚠️', report:'📄', team:'👥' };
@@ -3793,12 +3796,12 @@ function renderOverview() {
   var _localCurr  = localScore > 0 ? localScore + '%' : '—';
   var _traficCurr = _gscClicks != null ? _gscClicks.toLocaleString('fr-FR') + ' clics' : '—';
   // Forecast labels: real data only — never synthetic extrapolation
-  var _seoFcast   = _ah.length >= 2 ? (Math.min(100, _ah[_ah.length-1] + Math.round((_ah[_ah.length-1] - _ah[0]) / Math.max(_ah.length-1,1))) + '/100') : (avg > 0 ? avg + '/100' : '—');
+  var _seoFcast   = _ah.length >= 1 ? (Math.min(100, _ah[_ah.length-1] + (_ah.length >= 2 ? Math.round((_ah[_ah.length-1] - _ah[0]) / Math.max(_ah.length-1,1)) : 0)) + '/100') : (avg > 0 ? avg + '/100' : '—');
   var _traficFcast = _gscClicks != null && _gscPrev != null ? ((_gscPrev > 0 ? '+' : '') + _gscPrev + '%') : '—';
   var _convFcast  = '—';
   var _localFcast = '—';
   // Sparklines: real DB data only — null triggers "collecting" state in UI
-  var _seoData = _ah.length >= 2 ? _ah.slice(-7) : null;
+  var _seoData = _ah.length >= 1 ? _ah.slice(-7) : null;
   var _gscData = _gscHistory != null ? _gscHistory.slice(-7).map(function(r){ return typeof r === 'object' ? r.clicks : r; }) : null;
   var _convData  = STATE.overview?.ga4ConversionHistory
     ? STATE.overview.ga4ConversionHistory.slice(-7).map(function(r){ return r.conversionRate; }).filter(function(v){ return v != null; })
@@ -3869,10 +3872,9 @@ function renderOverview() {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <div class="fp-view-toggle" id="chart-range-toggle">
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='today'?' active':''}" data-range="today">Auj.</button>
-            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='3d'?' active':''}" data-range="3d">3j</button>
             <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='7d'?' active':''}" data-range="7d">7j</button>
             <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='30d'?' active':''}" data-range="30d">30j</button>
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='90d'?' active':''}" data-range="90d">90j</button>
           </div>
           ${btn('Actualiser','fp-btn fp-btn-ghost fp-btn-sm','refresh','id="refresh-btn"')}
           ${btn('Exporter','fp-btn fp-btn-ghost fp-btn-sm','download','id="export-btn"')}
@@ -4291,7 +4293,8 @@ function renderOverview() {
             ? STATE.activityEvents.slice(0,6).map(e => {
                 const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
                 const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
-                const _mins = Math.round((Date.now() - new Date(e.createdAt).getTime()) / 60000);
+                const _ts4 = e.createdAt || e.created_at;
+                const _mins = _ts4 ? Math.round((Date.now() - new Date(_ts4).getTime()) / 60000) : 0;
                 const _t = _mins < 1 ? 'À l\'instant' : _mins < 60 ? _mins + ' min' : _mins < 1440 ? Math.round(_mins/60) + 'h' : Math.round(_mins/1440) + 'j';
                 return { type: tMap[e.type] || 'info', icon: iMap[e.type] || 'activity', title: e.label || 'Événement', desc: (e.metadata && (e.metadata.url || e.metadata.message)) || '', time: _t };
               })
@@ -12729,7 +12732,8 @@ function bindSectionEvents() {
       // Use live events first, fallback to PREVIEW_MODE static list only in demo
       const _liveItems = (STATE.activityEvents && STATE.activityEvents.length > 0)
         ? STATE.activityEvents.map(e => {
-            const _mins = Math.round((Date.now() - new Date(e.createdAt).getTime()) / 60000);
+            const _tsA = e.createdAt || e.created_at;
+            const _mins = _tsA ? Math.round((Date.now() - new Date(_tsA).getTime()) / 60000) : 0;
             const _t = _mins < 1 ? 'À l\'instant' : _mins < 60 ? _mins + ' min' : _mins < 1440 ? Math.round(_mins/60) + 'h' : Math.round(_mins/1440) + 'j';
             const tMap = { audit:'success', monitor:e.label&&e.label.includes('DOWN')?'error':'success', alert:'warning', report:'info', team:'purple', misc:'info' };
             const iMap = { audit:'check', monitor:'wifi', alert:'alert', report:'file', team:'users', misc:'activity' };
@@ -12781,6 +12785,7 @@ function bindSectionEvents() {
     var _overviewFetchCtrl = null;
     $$('#chart-range-toggle .fp-view-toggle-btn').forEach(b => b.addEventListener('click', function() {
       STATE.overviewRange = this.dataset.range || '7d';
+      localStorage.setItem('fp:overview-range', STATE.overviewRange);
       render(); // instant active-class update
       if (!PREVIEW_MODE) {
         if (_overviewFetchCtrl) _overviewFetchCtrl.abort();
@@ -14727,6 +14732,12 @@ async function init() {
   // Load data
   await loadData();
 
+  // Log session start once per browser session to feed activity feed + streak
+  if (!sessionStorage.getItem('fp:session-logged')) {
+    sessionStorage.setItem('fp:session-logged', '1');
+    logActivityEvent('misc', 'Session démarrée', { page: 'overview' });
+  }
+
   // Missions rotation automatique toutes les 3 jours
   (() => {
     const lastKey = 'fp-mission-rotate-date';
@@ -16124,17 +16135,49 @@ function renderOverviewQuickWins() {
   const _qs = i => _auditSites.length > 0 ? _auditSites[i % _auditSites.length] : '—';
   const _catColor = c => c==='local_seo'?'#22c55e':c==='seo'?'#2563EB':c==='performance'?'#f59e0b':c==='conversion'?'#8b5cf6':'#06b6d4';
   const _catLabel = c => c==='local_seo'?'Local SEO':c==='seo'?'Technique':c==='performance'?'Performance':c==='conversion'?'CRO':'GBP';
-  const _liveMissionsQW = STATE.missions && STATE.missions.length > 0
-    ? STATE.missions.filter(m => m.status !== 'done' && !m.done && (m.effort || m.estimated_time)).slice(0, 10).map(m => ({
-        effort: m.effort || m.estimated_time || '—',
-        gain: m.estimated_score_gain ? '+'+m.estimated_score_gain+' pts' : '—',
-        title: m.title,
-        site: m.target_url ? (m.target_url||'').replace(/^https?:\/\//,'') : _qs(0),
-        done: m.status === 'done' || m.done === true,
-        cat: _catLabel(m.category),
-        color: _catColor(m.category),
-      }))
-    : null;
+
+  // Build Quick Wins from real audit data (low-score pages → actionable suggestions)
+  // NOT from existing missions — that would duplicate the Missions page content
+  const _activeMissionTitles = new Set(
+    (STATE.missions||[]).filter(m => m.status !== 'done').map(m => (m.title||'').toLowerCase().trim())
+  );
+  const _isDup = title => _activeMissionTitles.has((title||'').toLowerCase().trim());
+
+  const _auditQW = [];
+  if (STATE.audits && STATE.audits.length > 0) {
+    STATE.audits.filter(a => a.score != null && a.score < 70).slice(0, 4).forEach(a => {
+      const site = (a.url||'').replace(/^https?:\/\//,'');
+      const gain = Math.max(3, Math.round((70 - a.score) * 0.35));
+      const title = 'Corriger les problèmes SEO — ' + (site || 'site');
+      if (!_isDup(title)) _auditQW.push({ effort: '30-60 min', gain: '+' + gain + ' pts', title, site, done: false, cat: 'Technique', color: '#2563EB' });
+    });
+    STATE.audits.filter(a => a.score != null && a.score >= 70 && a.score < 85).slice(0, 3).forEach(a => {
+      const site = (a.url||'').replace(/^https?:\/\//,'');
+      const title = 'Optimiser les performances — ' + (site || 'site');
+      if (!_isDup(title)) _auditQW.push({ effort: '20 min', gain: '+' + Math.max(2, Math.round((85 - a.score) * 0.2)) + ' pts', title, site, done: false, cat: 'Performance', color: '#f59e0b' });
+    });
+  }
+  // Add contextual suggestions based on connected data
+  const _ov = STATE.overview || {};
+  if (_ov.gbpConnected && _ov.gbpUnansweredCount > 0) {
+    const title = 'Répondre aux ' + _ov.gbpUnansweredCount + ' avis Google sans réponse';
+    if (!_isDup(title)) _auditQW.push({ effort: '10 min', gain: '+5 pts', title, site: _qs(0), done: false, cat: 'Réputation', color: '#22c55e' });
+  }
+  if (!_ov.analyticsConnected) {
+    const title = 'Connecter Google Analytics pour mesurer le trafic réel';
+    if (!_isDup(title)) _auditQW.push({ effort: '5 min', gain: '+GA4', title, site: _qs(0), done: false, cat: 'Analytics', color: '#8b5cf6' });
+  }
+  if (_ov.monitorsDown > 0) {
+    const title = 'Investiguer ' + _ov.monitorsDown + ' monitor(s) DOWN';
+    if (!_isDup(title)) _auditQW.unshift({ effort: 'Urgent', gain: 'Uptime', title, site: _qs(0), done: false, cat: 'Monitor', color: '#ef4444' });
+  }
+  if (_ov.revenueLeaks > 0) {
+    const title = 'Corriger ' + _ov.revenueLeaks + ' fuite(s) de revenus détectée(s)';
+    if (!_isDup(title)) _auditQW.unshift({ effort: '1-2h', gain: '+€€', title, site: _qs(0), done: false, cat: 'Conversion', color: '#ef4444' });
+  }
+
+  const _liveMissionsQW = _auditQW.length > 0 ? _auditQW.slice(0, 10) : null;
+
   const _previewQW = [
     { effort:'5 min',  gain:'+8 pts',  title:'Ajouter balise title manquante sur 3 pages', site:_qs(0)||'votre-site.fr', done:false, cat:'Technique', color:'#2563EB' },
     { effort:'15 min', gain:'+5 pts',  title:'Compresser images JPEG → WebP', site:_qs(1)||'votre-site.fr', done:false, cat:'Performance', color:'#22c55e' },
