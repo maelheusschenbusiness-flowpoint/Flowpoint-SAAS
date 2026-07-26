@@ -7614,7 +7614,8 @@ function renderBilling() {
       <!-- SUBSCRIPTION MANAGEMENT -->
       ${(()=>{
         const _bs  = STATE.billing || {};
-        const _ss  = _bs.subscriptionStatus || '';
+        // Use getBillingStatus() — reads .subscriptionStatus OR .status (normalised key)
+        const _ss  = (typeof window.getBillingStatus === 'function' ? window.getBillingStatus() : (_bs.subscriptionStatus || _bs.status || ''));
         const _cap = !!_bs.cancelAtPeriodEnd;
         const _has = _ss === 'active' || _ss === 'trialing' || _cap;
         if (!_has) return '';
@@ -7713,7 +7714,7 @@ function renderBilling() {
 
     // ── Billing lifecycle: upgrade / cancel / reactivate ──────────────────────
     window.fpUpgradeOrCheckout = async function(plan) {
-      const _ss = (STATE.billing && STATE.billing.subscriptionStatus) || (STATE.me && STATE.me.subscriptionStatus) || '';
+      const _ss = (typeof window.getBillingStatus === 'function' ? window.getBillingStatus() : ((STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || ''));
       if (_ss === 'active' || _ss === 'trialing') {
         showToast('info', 'Mise à niveau en cours…');
         try {
@@ -29642,6 +29643,19 @@ function renderGA4Live() {
 // pour mettre à jour le dashboard en temps réel sans modifier ce fichier.
 window.STATE     = STATE;
 window.render    = render;
+
+// ─────────────────────────────────────────────────────────────────
+// getBillingStatus() — canonical read for the current subscription status.
+// Reads from STATE.billing first (both .subscriptionStatus and .status),
+// then falls back to STATE.me.subscriptionStatus.
+// Always returns a string — never undefined or null.
+// ─────────────────────────────────────────────────────────────────
+window.getBillingStatus = function() {
+  var b = STATE.billing || {};
+  var m = STATE.me || {};
+  return b.subscriptionStatus || b.status || m.subscriptionStatus || 'pending_billing';
+};
+
 window._fpToggleChecklistExtra = function(id, done) {
   if (!STATE.checklistExtra) STATE.checklistExtra = {};
   STATE.checklistExtra[id] = !done;

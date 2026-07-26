@@ -537,7 +537,6 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   const fn = String(firstName || "").trim();
   const ln = String(lastName  || "").trim();
   const company = String(companyName || "").trim();
-  const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60_000).toISOString();
   // Each user gets their own org keyed by their email — never share the "default" seed org
   const orgId = normalizedEmail;
 
@@ -569,8 +568,7 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
         companySize:        companySize ?? null,
         industry:           objective ?? null,
         plan:               selectedPlan,
-        subscriptionStatus: "trialing",
-        trialEndsAt:        trialEndsAt,
+        subscriptionStatus: "pending_billing",
         country:            country ?? null,
         city:               city?.trim()    ?? null,
         address:            address?.trim() ?? null,
@@ -659,12 +657,8 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
       const { mailer: _mailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
       if (_mailer) {
         _mailer.sendWelcome({ to: normalizedEmail, name: fn }).catch(() => {});
-        _mailer.sendTrialStarted({
-          to: normalizedEmail,
-          name: fn,
-          plan: selectedPlan,
-          trialEndsAt,
-        }).catch(() => {});
+        // Note: sendTrialStarted fires from the Stripe webhook when a real trial subscription
+        // is created — NOT at signup (trial is no longer granted at signup).
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -861,16 +855,27 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
 
     // Persist org settings (including plan) so /api/me returns correct plan after restart
     try {
-      const { upsertOrgSettings } = await import("../services/org-settings.js");
-      await upsertOrgSettings(resolvedEmail, {
-        email: resolvedEmail,
-        firstName: user.name ? user.name.split(" ")[0] : undefined,
-        plan: planFromState ?? "standard",
-        subscriptionStatus: "trialing",
-        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60_000).toISOString(),
-        name: user.email ?? undefined,
-      });
-      logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — org_settings persisted");
+      const { upsertOrgSettings, loadOrgSettings: _loadGoogleOrg } = await import("../services/org-settings.js");
+      const _existingGoogleOrg = await _loadGoogleOrg(resolvedEmail).catch(() => null);
+      if (_existingGoogleOrg) {
+        // Existing account — update non-billing fields only (NEVER overwrite plan/trial/billing)
+        await upsertOrgSettings(resolvedEmail, {
+          email: resolvedEmail,
+          firstName: _existingGoogleOrg.firstName || (user.name ? user.name.split(" ")[0] : undefined),
+          plan: planFromState ? planFromState : (_existingGoogleOrg.plan ?? "standard"),
+        });
+        logger.info({ email: resolvedEmail }, "[Auth] Google login — existing org, billing data preserved");
+      } else {
+        // New account — pending_billing (trial not granted at signup)
+        await upsertOrgSettings(resolvedEmail, {
+          email: resolvedEmail,
+          firstName: user.name ? user.name.split(" ")[0] : undefined,
+          plan: planFromState ?? "standard",
+          subscriptionStatus: "pending_billing",
+          name: user.email ?? undefined,
+        });
+        logger.info({ email: resolvedEmail, plan: planFromState }, "[Auth] Google login — new org created with pending_billing");
+      }
     } catch (err) {
       logger.warn({ err }, "[Auth] Google login — org_settings persist failed (non-fatal)");
     }
@@ -943,15 +948,25 @@ router.get("/auth/github/callback", async (req: Request, res: Response) => {
 
     // Persist per-user org so /api/me returns correct data after restart
     try {
-      const { upsertOrgSettings } = await import("../services/org-settings.js");
-      await upsertOrgSettings(resolvedEmail, {
-        email: resolvedEmail,
-        firstName: user.name ? user.name.split(" ")[0] : (user.login ?? undefined),
-        plan: "standard",
-        subscriptionStatus: "trialing",
-        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60_000).toISOString(),
-        name: user.login ?? undefined,
-      });
+      const { upsertOrgSettings, loadOrgSettings: _loadGithubOrg } = await import("../services/org-settings.js");
+      const _existingGithubOrg = await _loadGithubOrg(resolvedEmail).catch(() => null);
+      if (_existingGithubOrg) {
+        await upsertOrgSettings(resolvedEmail, {
+          email: resolvedEmail,
+          firstName: _existingGithubOrg.firstName || (user.name ? user.name.split(" ")[0] : (user.login ?? undefined)),
+          plan: _existingGithubOrg.plan ?? "standard",
+        });
+        logger.info({ login: user.login }, "[Auth] GitHub login — existing org, billing data preserved");
+      } else {
+        await upsertOrgSettings(resolvedEmail, {
+          email: resolvedEmail,
+          firstName: user.name ? user.name.split(" ")[0] : (user.login ?? undefined),
+          plan: "standard",
+          subscriptionStatus: "pending_billing",
+          name: user.login ?? undefined,
+        });
+        logger.info({ login: user.login }, "[Auth] GitHub login — new org created with pending_billing");
+      }
     } catch (err) {
       logger.warn({ err }, "[Auth] GitHub login — org_settings persist failed (non-fatal)");
     }

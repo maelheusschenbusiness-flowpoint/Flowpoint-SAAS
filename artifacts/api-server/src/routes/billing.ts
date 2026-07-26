@@ -883,14 +883,18 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
   if (!stripeKey || !stripeCustomerId) {
     res.json({
       plan,
-      status:          normalisedStatus,
+      status:            normalisedStatus,
+      subscriptionStatus: normalisedStatus,
       trialEndsAt,
-      addons:          billingCtx.addons,
-      subscriptionId:  stripeSubscriptionId,
+      canStartTrial:     billingCtx.canStartTrial,
+      hasPremiumAccess:  billingCtx.hasPremiumAccess,
+      mustCompleteBilling: billingCtx.mustCompleteBilling,
+      addons:            billingCtx.addons,
+      subscriptionId:    stripeSubscriptionId,
       stripeCustomerId,
-      pendingPlan:     billingCtx.pendingPlan     ?? null,
-      pendingPlanDate: billingCtx.pendingPlanDate ?? null,
-      mock:            !stripeKey,
+      pendingPlan:       billingCtx.pendingPlan     ?? null,
+      pendingPlanDate:   billingCtx.pendingPlanDate ?? null,
+      mock:              !stripeKey,
     });
     return;
   }
@@ -910,7 +914,27 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
       } catch (fetchErr: unknown) {
         const code = (fetchErr as { code?: string })?.code;
         if (code !== "resource_missing") throw fetchErr;
-        // Subscription no longer exists in Stripe — treat as none
+        // Subscription no longer exists in Stripe — reconcile DB
+        logger.warn({ orgId, stripeSubscriptionId }, "[Billing] resource_missing: Stripe subscription gone — clearing stale reference");
+        try {
+          const { pool: pgPool } = await import("@workspace/db");
+          const _client = await pgPool.connect();
+          try {
+            const newStatus = stripeCustomerId ? "incomplete" : "pending_billing";
+            await _client.query(
+              `UPDATE org_settings
+               SET    stripe_subscription_id = NULL,
+                      subscription_status    = $1,
+                      updated_at             = NOW()
+               WHERE  org_id = $2`,
+              [newStatus, orgId]
+            );
+            logger.info({ orgId, newStatus }, "[Billing] resource_missing: DB reconciled — subscription ID cleared");
+          } finally { _client.release(); }
+        } catch (cleanupErr) {
+          logger.warn({ cleanupErr, orgId }, "[Billing] resource_missing: DB cleanup failed (non-fatal)");
+        }
+        // sub remains undefined — reconciled will reflect cleared state
       }
     } else {
       const subs = await stripe.subscriptions.list({ customer: stripeCustomerId, status: "all", limit: 1 });
@@ -922,37 +946,47 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
     const stripeStatus = sub?.status ?? null;
     const effectiveSubId = sub?.id ?? stripeSubscriptionId;
     const { normalizeSubscriptionStatus } = await import("../lib/subscription-state.js");
+    const reconciledTrialEndsAt = sub?.trial_end
+      ? new Date(sub.trial_end * 1000).toISOString()
+      : trialEndsAt;
     const reconciled = normalizeSubscriptionStatus({
-      rawStatus:           stripeStatus ?? normalisedStatus,
+      rawStatus:            stripeStatus ?? normalisedStatus,
       stripeSubscriptionId: effectiveSubId ?? null,
       stripeCustomerId,
-      trialEndsAt:          sub?.trial_end
-        ? new Date(sub.trial_end * 1000).toISOString()
-        : trialEndsAt,
+      trialEndsAt:          reconciledTrialEndsAt,
+      trialConsumedAt:      billingCtx.trialConsumedAt,
     });
 
     res.json({
       plan,
-      status:            reconciled,
-      trialEndsAt:       sub?.trial_end ? new Date(sub.trial_end * 1000).toISOString() : trialEndsAt,
-      currentPeriodEnd:  sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
-      cancelAtPeriodEnd: sub?.cancel_at_period_end ?? false,
-      subscriptionId:    effectiveSubId ?? null,
-      addons:            billingCtx.addons,
+      status:              reconciled,
+      subscriptionStatus:  reconciled,
+      trialEndsAt:         reconciledTrialEndsAt,
+      currentPeriodEnd:    sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+      cancelAtPeriodEnd:   sub?.cancel_at_period_end ?? false,
+      subscriptionId:      effectiveSubId ?? null,
+      addons:              billingCtx.addons,
       stripeCustomerId,
-      pendingPlan:       billingCtx.pendingPlan     ?? null,
-      pendingPlanDate:   billingCtx.pendingPlanDate ?? null,
+      pendingPlan:         billingCtx.pendingPlan     ?? null,
+      pendingPlanDate:     billingCtx.pendingPlanDate ?? null,
+      canStartTrial:       billingCtx.canStartTrial,
+      hasPremiumAccess:    billingCtx.hasPremiumAccess,
+      mustCompleteBilling: billingCtx.mustCompleteBilling,
     });
   } catch (err) {
     logger.error({ err }, "[Billing] Failed to get subscription from Stripe — returning normalised DB state");
     // Fallback: DB state is already normalised — safe to return
     res.json({
       plan,
-      status:         normalisedStatus,
+      status:              normalisedStatus,
+      subscriptionStatus:  normalisedStatus,
       trialEndsAt,
-      addons:         billingCtx.addons,
-      subscriptionId: stripeSubscriptionId,
+      addons:              billingCtx.addons,
+      subscriptionId:      stripeSubscriptionId,
       stripeCustomerId,
+      canStartTrial:       billingCtx.canStartTrial,
+      hasPremiumAccess:    billingCtx.hasPremiumAccess,
+      mustCompleteBilling: billingCtx.mustCompleteBilling,
     });
   }
 });

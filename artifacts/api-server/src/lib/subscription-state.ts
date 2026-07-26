@@ -1,28 +1,38 @@
 /**
  * subscription-state.ts — FlowPoint subscription state machine.
  *
- * RULES:
- *  - "active"     requires stripe_subscription_id (non-null, non-empty)
- *  - "past_due"   requires stripe_subscription_id
- *  - "canceled"   stripe_subscription_id existed at some point (preserved for history)
- *  - "unpaid"     requires stripe_subscription_id
- *  - "paused"     requires stripe_subscription_id
- *  - "trialing"   requires trial_ends_at > NOW()
- *  - "incomplete" stripe_customer_id exists, no active subscription
- *  - "none"       no customer, no subscription, no trial
+ * LIFECYCLE:
+ *  signup                → "pending_billing"         (no trial yet)
+ *  Stripe webhook trialing → "trialing"              (real trial, trialConsumedAt set)
+ *  Stripe webhook active   → "active"
+ *  Stripe webhook canceled → "canceled"
+ *  resource_missing        → "pending_billing" / "none" (reconciled, IDs cleared)
  *
- * NEVER return "active" when stripe_subscription_id is null.
+ * STATUS RULES:
+ *  "pending_billing" — account created, checkout not completed; NO premium access
+ *  "trialing"        — real Stripe trial active (stripeSubscriptionId non-null OR trialConsumedAt set + trialActive)
+ *  "active"          — paid subscription (stripeSubscriptionId required)
+ *  "past_due"        — payment failed, subscription still alive (stripeSubscriptionId required)
+ *  "canceled"        — subscription ended (stripeSubscriptionId existed at some point)
+ *  "incomplete"      — stripeCustomerId exists, no live subscription
+ *  "unpaid"          — requires stripeSubscriptionId
+ *  "paused"          — requires stripeSubscriptionId
+ *  "none"            — no customer, no subscription, no trial
  *
- * Dashboard access policy (documented here as single source of truth):
- *  - Dashboard shell:         all authenticated users (access gate is auth only)
- *  - Paid features / quota:   plan gate reads plan from DB per-request
- *  - Trial access:            status="trialing" grants same quota as the trial plan
- *  - After trial expiry:      status normalises to "none" / "incomplete"
- *  - Without subscription:    status="none" or "incomplete" → standard-plan limits only
- *  - Cancelled:               planGate reverts to "standard" limits immediately
+ * PREMIUM ACCESS:
+ *  Only "active" and "trialing" grant paid-feature access.
+ *  "pending_billing" does NOT grant access — dashboard shows billing completion page.
+ *
+ * Dashboard access policy (single source of truth):
+ *  - Dashboard shell:        all authenticated users (access gate is auth only)
+ *  - Premium features/quota: requires statusGrantsAccess(status) === true
+ *  - pending_billing:        dashboard shows only Billing / Pricing / Account pages
+ *  - After trial expiry:     status normalises to "pending_billing" (DB not yet migrated)
+ *                            or "incomplete" / "none" (DB up to date)
  */
 
 export type SubscriptionStatus =
+  | "pending_billing"
   | "none"
   | "trialing"
   | "active"
@@ -41,6 +51,13 @@ export interface SubscriptionStateInput {
   stripeCustomerId: string | null;
   /** ISO string from org_settings.trial_ends_at */
   trialEndsAt: string | null;
+  /**
+   * ISO string from org_settings.trial_consumed_at.
+   * Set by the Stripe webhook when the first trialing subscription is created.
+   * NULL means no real Stripe trial was ever started (accounts before 2026-07-26
+   * that were given a fake DB trial at signup).
+   */
+  trialConsumedAt?: string | null;
 }
 
 /**
@@ -49,70 +66,98 @@ export interface SubscriptionStateInput {
  * subscription status MUST pass through this function.
  */
 export function normalizeSubscriptionStatus(input: SubscriptionStateInput): SubscriptionStatus {
-  const { rawStatus, stripeSubscriptionId, stripeCustomerId, trialEndsAt } = input;
+  const { rawStatus, stripeSubscriptionId, stripeCustomerId, trialEndsAt, trialConsumedAt } = input;
 
   const hasSubscription = !!(stripeSubscriptionId && stripeSubscriptionId.trim());
   const hasCustomer     = !!(stripeCustomerId     && stripeCustomerId.trim());
   const trialActive     = !!(trialEndsAt && new Date(trialEndsAt) > new Date());
+  const wasConsumed     = !!(trialConsumedAt);
 
-  // Statuses that require a real Stripe subscription
+  // ── pending_billing: explicit new-account state ──────────────────────────
+  // Signup no longer grants a trial — accounts start here.
+  // Only upgraded via Stripe webhook (subscription created/updated).
+  if (rawStatus === "pending_billing") {
+    if (hasSubscription) {
+      // Webhook fired and set a subscriptionId — normalise based on real state
+      if (trialActive)  return "trialing";
+      return "active";
+    }
+    return "pending_billing";
+  }
+
+  // ── Statuses that require a real Stripe subscription ────────────────────
   const requiresSubscription = new Set(["active", "past_due", "unpaid", "paused"]);
-
   if (rawStatus && requiresSubscription.has(rawStatus)) {
     if (!hasSubscription) {
-      // Impossible state: has billing status but no subscription ID.
-      // Normalise based on what actually exists.
-      if (trialActive)    return "trialing";
-      if (hasCustomer)    return "incomplete";
+      // Impossible state: billing status but no subscription ID.
+      if (trialActive && wasConsumed) return "trialing";
+      if (trialActive)               return "pending_billing";
+      if (hasCustomer)               return "incomplete";
       return "none";
     }
     return rawStatus as SubscriptionStatus;
   }
 
+  // ── canceled: valid even without a live subscription ────────────────────
   if (rawStatus === "canceled") {
-    // Canceled is valid even without a live subscription (it ended).
     return "canceled";
   }
 
+  // ── trialing ─────────────────────────────────────────────────────────────
   if (rawStatus === "trialing") {
-    if (trialActive)       return "trialing";
-    // Trial expired — if a subscription was created during the trial, trust it
-    if (hasSubscription)   return "active";
-    if (hasCustomer)       return "incomplete";
+    if (hasSubscription) {
+      // Stripe-backed trial
+      if (trialActive)   return "trialing";
+      return "active";   // trial period over but subscription continues
+    }
+    // No Stripe subscription:
+    if (!wasConsumed) {
+      // No trial_consumed_at → this was the OLD fake DB trial set at signup.
+      // Treat as pending_billing (no real trial ever started).
+      return "pending_billing";
+    }
+    // trial_consumed_at IS set → trial was real, but subscription is gone
+    if (trialActive)   return "trialing"; // still within trial window
+    if (hasCustomer)   return "incomplete";
     return "none";
   }
 
+  // ── incomplete ───────────────────────────────────────────────────────────
   if (rawStatus === "incomplete") {
     return hasCustomer ? "incomplete" : "none";
   }
 
-  // null / "none" / unknown raw status
-  if (trialActive)     return "trialing";
+  // ── null / "none" / unknown raw status ──────────────────────────────────
+  // DO NOT fall back to "trialing" based on trialEndsAt alone —
+  // trialEndsAt is set by the old signup code and is not a reliable signal.
   if (hasCustomer)     return "incomplete";
   return "none";
 }
 
 /**
  * Returns true when the status grants access to paid-tier features.
- * "active" and "trialing" grant paid access.
+ * Only "active" and "trialing" (real Stripe-backed) grant premium access.
+ * "pending_billing" does NOT grant premium access.
  */
 export function statusGrantsAccess(status: SubscriptionStatus): boolean {
   return status === "active" || status === "trialing";
 }
 
 /**
- * SQL to normalise existing rows that have status='active' without a
- * stripe_subscription_id (impossible state from the old DEFAULT 'active' bug).
+ * SQL to normalise:
+ * 1. Active without subscription (impossible state from old DEFAULT 'active' bug)
+ * 2. Trialing without subscription AND without trial_consumed_at (old fake DB trial)
  *
- * Safe to run repeatedly — only touches rows that are genuinely invalid.
- * Does NOT delete any Stripe data.
+ * Safe to run repeatedly (only touches invalid rows). Does NOT delete Stripe data.
  */
-export const NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL = `
+export const NORMALIZE_IMPOSSIBLE_STATES_SQL = `
+-- Fix 1: active without subscription
 UPDATE org_settings
 SET    subscription_status =
          CASE
            WHEN trial_ends_at IS NOT NULL
-                AND trial_ends_at > NOW()           THEN 'trialing'
+                AND trial_ends_at > NOW()
+                AND trial_consumed_at IS NOT NULL  THEN 'trialing'
            WHEN stripe_customer_id IS NOT NULL
                 AND stripe_customer_id <> ''        THEN 'incomplete'
            ELSE                                          'none'
@@ -120,7 +165,18 @@ SET    subscription_status =
        updated_at = NOW()
 WHERE  subscription_status = 'active'
   AND  (stripe_subscription_id IS NULL OR stripe_subscription_id = '');
+
+-- Fix 2: trialing without subscription AND without trial_consumed_at = fake DB trial
+UPDATE org_settings
+SET    subscription_status = 'pending_billing',
+       updated_at = NOW()
+WHERE  subscription_status = 'trialing'
+  AND  (stripe_subscription_id IS NULL OR stripe_subscription_id = '')
+  AND  trial_consumed_at IS NULL;
 `;
+
+/** Keep for backward compat — callers can switch to NORMALIZE_IMPOSSIBLE_STATES_SQL */
+export const NORMALIZE_ACTIVE_WITHOUT_SUBSCRIPTION_SQL = NORMALIZE_IMPOSSIBLE_STATES_SQL;
 
 /**
  * Returns an object suitable for a structured log entry summarising the
@@ -128,11 +184,12 @@ WHERE  subscription_status = 'active'
  */
 export function impossibleStateReport(input: SubscriptionStateInput, resolved: SubscriptionStatus) {
   return {
-    rawStatus:           input.rawStatus,
+    rawStatus:            input.rawStatus,
     stripeSubscriptionId: input.stripeSubscriptionId,
-    stripeCustomerId:    input.stripeCustomerId,
-    trialEndsAt:         input.trialEndsAt,
-    normalizedTo:        resolved,
-    wasImpossible:       resolved !== input.rawStatus,
+    stripeCustomerId:     input.stripeCustomerId,
+    trialEndsAt:          input.trialEndsAt,
+    trialConsumedAt:      input.trialConsumedAt,
+    normalizedTo:         resolved,
+    wasImpossible:        resolved !== input.rawStatus,
   };
 }

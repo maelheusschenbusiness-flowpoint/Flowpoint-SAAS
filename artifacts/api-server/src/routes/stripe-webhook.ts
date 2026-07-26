@@ -14,8 +14,11 @@ async function persistSubscriptionMeta(opts: {
   plan?: string;
   orgId: string;          // required — no default
   trialEndsAt?: string;
+  /** ISO timestamp: set when the first real Stripe trialing subscription is confirmed */
+  trialConsumedAt?: string;
+  trialStartedAt?: string;
 }): Promise<void> {
-  const { orgId, subscriptionStatus, stripeCustomerId, stripeSubscriptionId, plan, trialEndsAt } = opts;
+  const { orgId, subscriptionStatus, stripeCustomerId, stripeSubscriptionId, plan, trialEndsAt, trialConsumedAt, trialStartedAt } = opts;
 
   if (!subscriptionStatus && !stripeCustomerId && !stripeSubscriptionId && !plan) return;
 
@@ -32,6 +35,8 @@ async function persistSubscriptionMeta(opts: {
     if (stripeSubscriptionId)  update.stripeSubscriptionId  = stripeSubscriptionId;
     if (plan)                  update.plan                  = plan;
     if (trialEndsAt)           update.trialEndsAt           = trialEndsAt;
+    if (trialConsumedAt)       update.trialConsumedAt       = trialConsumedAt;
+    if (trialStartedAt)        update.trialStartedAt        = trialStartedAt;
 
     await upsertOrgSettings(orgId, update);
     logger.info({ orgId, subscriptionStatus, stripeSubscriptionId, plan }, "[Webhook] Subscription meta persisted to org_settings");
@@ -322,6 +327,28 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
         ...(subscriptionId ? { stripeSubscriptionId: subscriptionId } : {}),
       };
       if (newPlan) updatePayload.plan = newPlan;
+
+      // Set trial_consumed_at when a real Stripe trialing subscription is first created.
+      // This distinguishes real Stripe trials from old fake DB trials set at signup.
+      // Only set once (idempotent: skip if already consumed).
+      if (status === "trialing" && event.type === "customer.subscription.created") {
+        try {
+          const existingSettings = await loadOrgSettings(orgId).catch(() => null);
+          if (!existingSettings?.trialConsumedAt) {
+            const now = new Date().toISOString();
+            updatePayload.trialConsumedAt = now;
+            updatePayload.trialStartedAt  = now;
+            // Persist the Stripe trial_end date
+            if (obj["trial_end"] && typeof obj["trial_end"] === "number") {
+              updatePayload.trialEndsAt = new Date(obj["trial_end"] * 1000).toISOString();
+            }
+            logger.info({ orgId, subscriptionId }, "[Webhook] First real Stripe trial — trial_consumed_at set");
+          }
+        } catch (trialErr) {
+          logger.warn({ trialErr, orgId }, "[Webhook] trial_consumed_at check failed (non-fatal)");
+        }
+      }
+
       await persistSubscriptionMeta(updatePayload);
 
       if (newPlan) {

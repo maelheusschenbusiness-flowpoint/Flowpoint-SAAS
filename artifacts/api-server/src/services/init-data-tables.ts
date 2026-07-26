@@ -520,6 +520,29 @@ export async function initDataTables(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS org_settings_trial_ends_at_idx ON org_settings(trial_ends_at) WHERE trial_ends_at IS NOT NULL;`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_settings_sub_status_idx    ON org_settings(subscription_status);`);
 
+    // ── trial_consumed_at / trial_started_at — explicit trial lifecycle tracking ──
+    // trial_consumed_at: set by Stripe webhook when the FIRST real trialing subscription
+    //   is created. NULL = no real Stripe trial was ever started (may be old fake DB trial).
+    // trial_started_at:  set when trial_consumed_at is set (can be same value, kept separate
+    //   for analytics).
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_consumed_at TIMESTAMPTZ;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_started_at  TIMESTAMPTZ;`);
+    await run(client, `CREATE INDEX IF NOT EXISTS org_settings_trial_consumed_idx ON org_settings(trial_consumed_at) WHERE trial_consumed_at IS NOT NULL;`);
+
+    // ── Reclassify fake DB trials → pending_billing ──────────────────────────
+    // Accounts created before 2026-07-26 got subscription_status='trialing' at signup
+    // without a real Stripe subscription. These are NOT real trials.
+    // This UPDATE is idempotent — only touches rows that match the pattern.
+    // Accounts with a real Stripe subscription OR trial_consumed_at are left untouched.
+    await run(client, `
+      UPDATE org_settings
+      SET    subscription_status = 'pending_billing',
+             updated_at          = NOW()
+      WHERE  subscription_status = 'trialing'
+        AND  (stripe_subscription_id IS NULL OR stripe_subscription_id = '')
+        AND  trial_consumed_at IS NULL;
+    `);
+
     // ── team_members — self-healing creation ──────────────────────────────────
     // ALL columns required by the STEP 6 INSERT are included here so fresh DBs
     // (where CREATE TABLE IF NOT EXISTS actually runs) never hit 42703.

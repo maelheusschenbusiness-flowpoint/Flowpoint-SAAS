@@ -10,7 +10,7 @@
 
 import { pool } from "@workspace/db";
 import { loadOrgSettings } from "./org-settings.js";
-import { normalizeSubscriptionStatus } from "../lib/subscription-state.js";
+import { normalizeSubscriptionStatus, statusGrantsAccess } from "../lib/subscription-state.js";
 import { logger } from "../lib/logger.js";
 
 export interface BillingContext {
@@ -26,6 +26,11 @@ export interface BillingContext {
   stripeSubscriptionId: string | null;
   /** Trial end ISO string from org_settings.trial_ends_at */
   trialEndsAt: string | null;
+  /**
+   * Set by webhook when first real Stripe trialing subscription is created.
+   * NULL = no real Stripe trial was ever started.
+   */
+  trialConsumedAt: string | null;
   /** Contact email from org_settings.email */
   email: string | null;
   /** First name from org_settings.first_name */
@@ -38,6 +43,20 @@ export interface BillingContext {
   pendingPlan: string | null;
   /** Human-readable date when pendingPlan becomes effective */
   pendingPlanDate: string | null;
+
+  // ── Derived access flags ─────────────────────────────────────────────────
+  /** true when status is "active" or "trialing" (real Stripe trial) */
+  hasPremiumAccess: boolean;
+  /**
+   * true when account has never consumed a real trial AND has no Stripe subscription history.
+   * Computed from trialConsumedAt IS NULL AND stripeSubscriptionId IS NULL.
+   */
+  canStartTrial: boolean;
+  /**
+   * true when account must complete billing before accessing premium features.
+   * Equivalent to !hasPremiumAccess AND status is pending_billing / none / incomplete.
+   */
+  mustCompleteBilling: boolean;
 }
 
 /**
@@ -73,13 +92,13 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     }),
   ]);
 
-  // Build addons map from org_addons table (the canonical source)
+  // Build addons map from org_addons table (the canonical source of truth)
   const addons: Record<string, boolean | number> = {};
   for (const row of addonsResult.rows) {
     addons[row.addon_key] = row.active;
   }
 
-  // Merge addons from org_settings.addons JSONB as supplemental data
+  // Merge addons from org_settings.addons JSONB as legacy supplemental
   // (org_addons table takes precedence when both exist for the same key)
   if (settings?.addons && typeof settings.addons === "object") {
     for (const [key, val] of Object.entries(settings.addons)) {
@@ -93,6 +112,7 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
   const stripeSubscriptionId  = settings?.stripeSubscriptionId ?? null;
   const stripeCustomerId      = settings?.stripeCustomerId ?? null;
   const trialEndsAt           = settings?.trialEndsAt ?? null;
+  const trialConsumedAt       = settings?.trialConsumedAt ?? null;
 
   // Normalise status — never returns "active" without a stripeSubscriptionId
   const normalised = normalizeSubscriptionStatus({
@@ -100,15 +120,20 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     stripeSubscriptionId,
     stripeCustomerId,
     trialEndsAt,
+    trialConsumedAt,
   });
 
   // Log impossible states for audit trail (does not mutate DB here)
   if (normalised !== rawSubscriptionStatus && rawSubscriptionStatus !== null) {
     logger.warn(
-      { orgId, rawSubscriptionStatus, normalizedTo: normalised, stripeSubscriptionId },
-      "[BillingContext] Impossible subscription state normalised at read-time",
+      { orgId, rawSubscriptionStatus, normalizedTo: normalised, stripeSubscriptionId, trialConsumedAt },
+      "[BillingContext] Subscription state normalised at read-time",
     );
   }
+
+  const hasPremiumAccess    = statusGrantsAccess(normalised);
+  const canStartTrial       = !trialConsumedAt && !stripeSubscriptionId;
+  const mustCompleteBilling = !hasPremiumAccess;
 
   return {
     subscriptionStatus:    normalised,
@@ -117,11 +142,43 @@ export async function loadBillingContext(orgId: string): Promise<BillingContext>
     stripeCustomerId,
     stripeSubscriptionId,
     trialEndsAt,
+    trialConsumedAt,
     email:                 settings?.email ?? null,
     firstName:             settings?.firstName ?? null,
     orgName:               settings?.orgName ?? null,
     addons,
     pendingPlan:           settings?.pendingPlan     ?? null,
     pendingPlanDate:       settings?.pendingPlanDate ?? null,
+    hasPremiumAccess,
+    canStartTrial,
+    mustCompleteBilling,
+  };
+}
+
+/**
+ * Lightweight billing access resolver — returns a summary of billing state.
+ * Use this on any route that needs to gate premium access without loading
+ * the full billing context.
+ */
+export async function resolveBillingAccess(orgId: string): Promise<{
+  status: string;
+  hasDashboardAccess: boolean;
+  hasPremiumAccess: boolean;
+  mustCompleteBilling: boolean;
+  canStartTrial: boolean;
+  currentPlan: string;
+  trialEndsAt: string | null;
+  currentPeriodEnd: string | null;
+}> {
+  const ctx = await loadBillingContext(orgId);
+  return {
+    status:             ctx.subscriptionStatus ?? "pending_billing",
+    hasDashboardAccess: true,  // all authenticated users can access the dashboard shell
+    hasPremiumAccess:   ctx.hasPremiumAccess,
+    mustCompleteBilling: ctx.mustCompleteBilling,
+    canStartTrial:      ctx.canStartTrial,
+    currentPlan:        ctx.plan,
+    trialEndsAt:        ctx.trialEndsAt,
+    currentPeriodEnd:   null,   // populated by billing.ts after Stripe reconciliation
   };
 }

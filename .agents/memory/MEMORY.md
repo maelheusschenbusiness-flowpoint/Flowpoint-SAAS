@@ -76,3 +76,4 @@
 - [Overview insights quota-vs-no_data order](overview-insights-priority.md) — quota_exhausted must be checked BEFORE no_data; "0" string from COUNT(*) is truthy, use Number(x)>0 for DB row guards
 - [Overview insights RL + fixed credits](overview-insights-rl.md) — PG SELECT FOR UPDATE mutex; fixedCreditCost:500 bypasses gpt-4o-mini multiplier (0.4); cache hits skip slot; QA: bust in-process hot cache by changing audit score (new context hash)
 - [P0 auth isolation fixes](auth-isolation-fixes.md) — store.me global singleton causes cross-user leakage; me.ts fallback must use safe defaults; login-verify.js must purgeUserCache before redirect
+- [Billing state-machine corrections](billing-state-machine.md) — 9 structural fixes: pending_billing at signup, subscriptionStatus dual-key, canStartTrial DB-only, resource_missing DB cleanup, cart versioning, org_addons source of truth

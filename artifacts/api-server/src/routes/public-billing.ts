@@ -394,6 +394,50 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     return;
   }
 
+  // ── Authentication gate — finalize-checkout must be behind an authenticated session ──
+  // A Stripe PaymentIntent can only be completed for a known, verified org.
+  // Anonymous callers (no cookie) must complete signup first.
+  const _fckToken = (req.cookies as Record<string, string>)?.["fp_token"] ?? "";
+  let _authenticatedOrgId: string | null = null;
+  if (_fckToken) {
+    try {
+      const { pool: _sp } = await import("@workspace/db");
+      const _sc = await _sp.connect();
+      try {
+        // user_sessions hashes the token with SHA-256 (consistent with requireAuth middleware)
+        const _sr = await _sc.query<{ org_id: string }>(
+          `SELECT org_id
+           FROM   user_sessions
+           WHERE  token_hash = encode(sha256($1::bytea), 'hex')
+             AND  expires_at > NOW()
+           LIMIT  1`,
+          [_fckToken]
+        );
+        if (_sr.rows[0]?.org_id && _sr.rows[0].org_id !== "default") {
+          _authenticatedOrgId = _sr.rows[0].org_id;
+        }
+      } finally { _sc.release(); }
+    } catch (sessionErr) {
+      logger.warn({ sessionErr }, "[PublicBilling/finalize-checkout] Session lookup failed (non-fatal)");
+    }
+  }
+  if (!_authenticatedOrgId) {
+    res.status(401).json({
+      error:      "auth_required",
+      message:    "Veuillez vous connecter ou créer un compte avant de finaliser votre abonnement.",
+      redirectTo: "/login.html",
+    });
+    return;
+  }
+
+  // Derive trial eligibility from the authenticated org — never trust the client
+  const { loadBillingContext: _lbc } = await import("../services/billing-context.js").catch(() => ({ loadBillingContext: null }));
+  const _billingCtxForCheckout = _lbc ? await _lbc(_authenticatedOrgId).catch(() => null) : null;
+  const _checkoutCanStartTrial = _billingCtxForCheckout?.canStartTrial ?? false;
+  // Expose to the rest of the handler via locals (the handler reads from intent metadata + body)
+  (req as Record<string, unknown>)["_authenticatedOrgId"]    = _authenticatedOrgId;
+  (req as Record<string, unknown>)["_checkoutCanStartTrial"] = _checkoutCanStartTrial;
+
   try {
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });

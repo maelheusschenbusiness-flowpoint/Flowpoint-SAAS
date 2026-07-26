@@ -24,6 +24,10 @@ export interface OrgSettings {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   trialEndsAt: string | null;
+  /** Set by Stripe webhook when the first real trialing subscription is created. NULL = no real trial ever started. */
+  trialConsumedAt: string | null;
+  /** Same timestamp as trialConsumedAt — kept separately for analytics. */
+  trialStartedAt: string | null;
   addons: Record<string, unknown>;
   usage: Record<string, unknown>;
   createdAt: string;
@@ -83,6 +87,8 @@ export async function loadOrgSettings(
       stripeCustomerId: r.stripe_customer_id ?? null,
       stripeSubscriptionId: r.stripe_subscription_id ?? null,
       trialEndsAt: r.trial_ends_at ?? null,
+      trialConsumedAt: r.trial_consumed_at ?? null,
+      trialStartedAt: r.trial_started_at ?? null,
       addons: r.addons ?? {},
       usage: r.usage ?? {},
       createdAt: r.created_at ?? new Date().toISOString(),
@@ -202,6 +208,14 @@ export async function upsertOrgSettings(
     if (data.trialEndsAt !== undefined && data.trialEndsAt !== null) {
       sets.push(`trial_ends_at = $${n++}::timestamptz`);
       vals.push(data.trialEndsAt);
+    }
+    if (data.trialConsumedAt !== undefined && data.trialConsumedAt !== null) {
+      sets.push(`trial_consumed_at = $${n++}::timestamptz`);
+      vals.push(data.trialConsumedAt);
+    }
+    if (data.trialStartedAt !== undefined && data.trialStartedAt !== null) {
+      sets.push(`trial_started_at = $${n++}::timestamptz`);
+      vals.push(data.trialStartedAt);
     }
 
     // jsonb

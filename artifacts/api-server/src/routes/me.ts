@@ -49,13 +49,31 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         (req.orgContext?.email?.split("@")[0] ?? "User");
 
       const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
-      // Normalise subscription status — never return "active" without a subscriptionId
+      // Normalise subscription status — include trialConsumedAt for pending_billing detection
       const normStatus = normalizeSubscriptionStatus({
         rawStatus:            dbData.subscriptionStatus,
         stripeSubscriptionId: dbData.stripeSubscriptionId,
         stripeCustomerId:     dbData.stripeCustomerId,
         trialEndsAt:          dbData.trialEndsAt,
+        trialConsumedAt:      dbData.trialConsumedAt,
       });
+
+      // Read addons from org_addons table (single source of truth — Correction 8)
+      const _addonsRows = await orgDb(req)(
+        `SELECT addon_key, active FROM org_addons WHERE org_id=$1`,
+        [orgId]
+      ).catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
+      const _mergedAddons: Record<string, boolean | number> = {};
+      for (const row of _addonsRows.rows) {
+        _mergedAddons[String(row["addon_key"])] = Boolean(row["active"]);
+      }
+      // Merge org_settings.addons as legacy supplemental (org_addons takes precedence)
+      if (dbData.addons && typeof dbData.addons === "object") {
+        for (const [key, val] of Object.entries(dbData.addons)) {
+          if (!(key in _mergedAddons)) _mergedAddons[key] = val as boolean | number;
+        }
+      }
+      const _canStartTrial = !dbData.trialConsumedAt && !dbData.stripeSubscriptionId;
 
       res.json({
         firstName,
@@ -68,8 +86,11 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
         stripeSubscriptionId: dbData.stripeSubscriptionId,
         trialEndsAt:         dbData.trialEndsAt,
         stripeCustomerId:    dbData.stripeCustomerId,
+        canStartTrial:       _canStartTrial,
+        hasPremiumAccess:    normStatus === "active" || normStatus === "trialing",
+        mustCompleteBilling: normStatus !== "active" && normStatus !== "trialing",
         usage:              dbData.usage,
-        addons:             dbData.addons,
+        addons:             _mergedAddons,
         limits,
         publicApiKey:       `fp_pub_${_pkHash}`,
         createdAt:          dbData.createdAt ?? new Date().toISOString(),

@@ -318,8 +318,40 @@
 
   /* ────────────────── Cart ────────────────── */
 
+  /* ────── Trial eligibility (from /api/me when logged in) ────── */
+  var _fpCanStartTrial = false;  /* default: no trial badge shown */
+  var _fpAuthOrgId = null;       /* set when authenticated session found */
+  (function() {
+    /* Check for fp_token cookie synchronously; async /api/me called below */
+    var _fpCookie = (document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('fp_token=')}) || '');
+    if (!_fpCookie) return; /* no session → no trial */
+    fetch('/api/me', { credentials: 'include', headers: { 'Cache-Control': 'no-cache' } })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(me) {
+        if (!me) return;
+        _fpAuthOrgId = me.email || null;
+        _fpCanStartTrial = !!me.canStartTrial;
+        /* Re-render summary with updated trial flag */
+        renderSummary();
+      }).catch(function(){});
+  })();
+
   var cart = null;
   try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
+  /* Cart versioning: invalidate stale carts (org mismatch or >1h old) */
+  if (cart && cart._v === 1) {
+    var _cartAge = Date.now() - (cart._updatedAt || 0);
+    var _cartOrgMismatch = _fpAuthOrgId && cart._orgId && cart._orgId !== _fpAuthOrgId;
+    if (_cartAge > 3600000 || _cartOrgMismatch) {
+      try { localStorage.removeItem('fp_cart'); } catch(e) {}
+      cart = null;
+    }
+  } else if (cart && !cart._v) {
+    /* Legacy cart without versioning — migrate it */
+    cart._v = 1;
+    cart._updatedAt = Date.now();
+    cart._orgId = _fpAuthOrgId;
+  }
 
   if (!cart || (!cart.plan && !Object.keys(cart.addons || {}).length)) {
     var params = new URLSearchParams(window.location.search);
@@ -362,6 +394,8 @@
   window.startPayment = function () {
     var btn = document.getElementById('fp-pay-btn');
     if (!btn || btn.disabled) return;
+    /* Stamp cart with version + org + timestamp before saving */
+    if (cart) { cart._v = 1; cart._orgId = _fpAuthOrgId; cart._updatedAt = Date.now(); }
     try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
     btn.disabled = true;
     document.getElementById('fp-btn-text').textContent = 'Redirection…';
@@ -372,6 +406,7 @@
   window.selectPlanFromCard = function (key) {
     if (!cart) cart = { plan: null, addons: {} };
     cart.plan = key;
+    cart._v = 1; cart._orgId = _fpAuthOrgId; cart._updatedAt = Date.now();
     try { localStorage.setItem('fp_cart', JSON.stringify(cart)); } catch(e) {}
     document.querySelectorAll('.fp-plan-pick-card').forEach(function (c) { c.classList.remove('selected'); });
     var el = document.getElementById('ppc-' + key);
@@ -421,7 +456,7 @@
           '<svg width="20" height="20" viewBox="0 0 48 48" fill="none"><polygon points="25 4 5 28 23 28 22 44 42 20 24 20 25 4" fill="#3b82f6"/></svg>' +
         '</div>' +
         '<div class="fp-plan-info">' +
-          '<div class="fp-plan-name">' + p.name + '<span class="fp-badge fp-badge-trial" style="margin-left:8px">14j offerts</span></div>' +
+          '<div class="fp-plan-name">' + p.name + (_fpCanStartTrial ? '<span class="fp-badge fp-badge-trial" style="margin-left:8px">14j offerts</span>' : '') + '</div>' +
           '<div class="fp-plan-sub">Débité après la période d\'essai · annulable avant</div>' +
         '</div>' +
         '<div class="fp-plan-price-wrap">' +
