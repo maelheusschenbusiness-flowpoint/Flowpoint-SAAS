@@ -29,14 +29,10 @@
  *   - A summary table is printed before any commit.
  */
 
-import { Pool } from "pg";
+// Uses the workspace shared pool (reads DATABASE_URL from env, same as the server)
+import { pool } from "@workspace/db";
 
 const DRY_RUN = !process.argv.includes("--apply");
-
-const pool = new Pool({
-  connectionString: process.env["DATABASE_URL"] || process.env["SUPABASE_URL"],
-  max: 1,
-});
 
 interface MigrationRow {
   org_id: string;
@@ -57,6 +53,10 @@ async function main(): Promise<void> {
 
   try {
     await client.query("BEGIN");
+
+    // ── 0. Ensure trial_consumed_at column exists (idempotent) ───────────────
+    await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_consumed_at TIMESTAMPTZ`);
+    await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_started_at  TIMESTAMPTZ`);
 
     // ── 1. Fetch all org_settings rows for audit ──────────────────────────────
     const { rows } = await client.query<{
@@ -203,7 +203,7 @@ async function main(): Promise<void> {
     process.exit(1);
   } finally {
     client.release();
-    await pool.end();
+    // Note: don't end the shared pool — it's managed by @workspace/db
   }
 }
 

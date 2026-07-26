@@ -389,14 +389,12 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
     res.status(503).json({ error: "Payment service not configured." });
     return;
   }
-  if (!intentId || !intentType) {
-    res.status(400).json({ error: "Intent ID manquant." });
-    return;
-  }
 
-  // ── Authentication gate — finalize-checkout must be behind an authenticated session ──
+  // ── Authentication gate FIRST — before any body validation ───────────────
   // A Stripe PaymentIntent can only be completed for a known, verified org.
   // Anonymous callers (no cookie) must complete signup first.
+  // Auth is checked before intentId validation so unauthenticated callers
+  // always get 401 and never learn which body fields are required.
   const _fckToken = (req.cookies as Record<string, string>)?.["fp_token"] ?? "";
   let _authenticatedOrgId: string | null = null;
   if (_fckToken) {
@@ -405,10 +403,11 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       const _sc = await _sp.connect();
       try {
         // user_sessions hashes the token with SHA-256 (consistent with requireAuth middleware)
+        // user_sessions stores the raw token (see services/sessions.ts: INSERT token=$1)
         const _sr = await _sc.query<{ org_id: string }>(
           `SELECT org_id
            FROM   user_sessions
-           WHERE  token_hash = encode(sha256($1::bytea), 'hex')
+           WHERE  token = $1
              AND  expires_at > NOW()
            LIMIT  1`,
           [_fckToken]
@@ -427,6 +426,12 @@ router.post("/public/finalize-checkout", publicCheckoutRateLimit, async (req: Re
       message:    "Veuillez vous connecter ou créer un compte avant de finaliser votre abonnement.",
       redirectTo: "/login.html",
     });
+    return;
+  }
+
+  // ── Body validation (after auth so unauthenticated callers don't learn schema) ──
+  if (!intentId || !intentType) {
+    res.status(400).json({ error: "Intent ID manquant." });
     return;
   }
 

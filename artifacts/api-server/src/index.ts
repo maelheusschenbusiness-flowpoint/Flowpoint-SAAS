@@ -52,6 +52,17 @@ async function main() {
     // whether to use SET ROLE or GUC-only mode.
     logger.info("[startup] Schema already migrated — skipping full init (Pre-Deploy completed)");
     await runCriticalStartupStep("app_user role probe", probeAppUserRole);
+    // Always add new billing columns even on fast-path (idempotent: IF NOT EXISTS)
+    await runCriticalStartupStep("billing-trial-columns", async () => {
+      const client = await pool.connect();
+      try {
+        await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_consumed_at TIMESTAMPTZ`);
+        await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS trial_started_at  TIMESTAMPTZ`);
+        logger.info("[startup] billing trial columns ensured (trial_consumed_at, trial_started_at)");
+      } finally { client.release(); }
+    }).catch((err: unknown) => {
+      logger.warn({ err }, "[startup] billing-trial-columns step failed (non-fatal — columns may already exist)");
+    });
   } else {
     // ── Full init path: local dev or first deploy without Pre-Deploy. ──────
     logger.info("[startup] Core tables absent — running full init sequence");
