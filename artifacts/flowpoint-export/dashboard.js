@@ -3872,6 +3872,7 @@ function renderOverview() {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <div class="fp-view-toggle" id="chart-range-toggle">
+            <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='1d'?' active':''}" data-range="1d">1j</button>
             <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='7d'?' active':''}" data-range="7d">7j</button>
             <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='30d'?' active':''}" data-range="30d">30j</button>
             <button class="fp-view-toggle-btn${(STATE.overviewRange||'7d')=='90d'?' active':''}" data-range="90d">90j</button>
@@ -16176,7 +16177,15 @@ function renderOverviewQuickWins() {
     if (!_isDup(title)) _auditQW.unshift({ effort: '1-2h', gain: '+€€', title, site: _qs(0), done: false, cat: 'Conversion', color: '#ef4444' });
   }
 
-  const _liveMissionsQW = _auditQW.length > 0 ? _auditQW.slice(0, 10) : null;
+  // Deduplicate Quick Wins by normalised title (prevents doubles when same URL
+  // appears under different protocols or trailing-slash variants in STATE.audits)
+  const _qwSeenTitles = new Set();
+  const _auditQWDeduped = [];
+  for (var _qi = 0; _qi < _auditQW.length; _qi++) {
+    var _qwNorm = (_auditQW[_qi].title || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!_qwSeenTitles.has(_qwNorm)) { _qwSeenTitles.add(_qwNorm); _auditQWDeduped.push(_auditQW[_qi]); }
+  }
+  const _liveMissionsQW = _auditQWDeduped.length > 0 ? _auditQWDeduped.slice(0, 10) : null;
 
   const _previewQW = [
     { effort:'5 min',  gain:'+8 pts',  title:'Ajouter balise title manquante sur 3 pages', site:_qs(0)||'votre-site.fr', done:false, cat:'Technique', color:'#2563EB' },
@@ -16227,7 +16236,7 @@ function renderOverviewQuickWins() {
             <div style="font-size:11px;color:var(--fp-text-faint)">${escHtml(q.effort)}</div>
           </div>
           ${!q.done
-            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" onclick="_fpMQ(${JSON.stringify(q.title||'Mission Quick Win')},'Optimisation','medium')">+ Mission</button>`
+            ? `<button class="fp-btn fp-btn-ghost fp-btn-sm qw-mission-btn" data-qw-title="${escHtml(q.title||'Mission Quick Win')}" data-qw-cat="Optimisation" data-qw-priority="medium">+ Mission</button>`
             : `<span style="font-size:10px;font-weight:700;color:#22c55e">✓ Fait</span>`}
         </div>
       `).join('')}
@@ -30646,6 +30655,31 @@ async function fpGetPSIAIReco() {
     if (btn) btn.disabled = false;
   }
 }
+
+// ── Quick Wins "+ Mission" buttons — stable document-level delegation ─────────
+// Registered at IIFE global scope so it works across all re-renders and
+// sub-route changes. Uses data-attributes (never JSON.stringify in onclick attrs).
+document.addEventListener('click', function(e) {
+  var btn = e.target && e.target.closest && e.target.closest('.qw-mission-btn');
+  if (!btn) return;
+  if (btn.disabled) return;
+  var title = btn.dataset.qwTitle || 'Mission Quick Win';
+  var cat   = btn.dataset.qwCat   || 'Optimisation';
+  var prio  = btn.dataset.qwPriority || 'medium';
+  btn.disabled = true;
+  btn.textContent = '…';
+  Promise.resolve(window._fpMQ ? window._fpMQ(title, cat, prio) : null)
+    .then(function() {
+      btn.textContent = '✓ Créé';
+      btn.style.color = '#22c55e';
+      btn.style.fontWeight = '700';
+      btn.style.border = '1px solid #22c55e40';
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = '+ Mission';
+    });
+});
 
 // ── Wire analyze button after render (delegated — avoids function redeclaration hoisting conflict) ──
 document.addEventListener('click', function(e) {

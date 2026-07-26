@@ -49,7 +49,7 @@ router.get("/overview", async (req: Request, res: Response) => {
       res.status(400).json({
         error: "Invalid range parameter",
         code: "INVALID_RANGE",
-        allowed: ["today", "3d", "7d", "30d", "90d"],
+        allowed: ["today", "1d", "3d", "7d", "30d", "90d"],
         received: req.query["range"],
       });
       return;
