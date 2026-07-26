@@ -7718,9 +7718,20 @@ function renderBilling() {
         showToast('info', 'Mise à niveau en cours…');
         try {
           const r = await apiAction('POST', '/api/billing/upgrade', { plan });
-          if (r && r.url) { window.location.href = r.url; }
-          else if (r && r.ok) { showToast('success', 'Plan mis à jour'); setTimeout(()=>navigateSub('plans'), 700); }
-          else { showToast('error', (r && r.error) || 'Erreur lors de la mise à niveau'); }
+          if (r && r.url) {
+            window.location.href = r.url;
+          } else if (r && r.noSubscription) {
+            // No Stripe subscription yet (internal trial or no plan) — go to checkout
+            const _dest = (r.redirectTo || '/checkout.html') + '?plan=' + encodeURIComponent(plan);
+            window.location.href = _dest;
+          } else if (r && r.ok) {
+            showToast('success', 'Plan mis à jour avec succès');
+            setTimeout(()=>navigateSub('plans'), 700);
+          } else if (r && r.error === 'plan_already_active') {
+            showToast('info', r.message || 'Ce plan est déjà votre plan actuel');
+          } else {
+            showToast('error', (r && (r.message || r.error)) || 'Erreur lors de la mise à niveau');
+          }
         } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'mise à niveau impossible')); }
       } else {
         fpGoToPricing(plan);

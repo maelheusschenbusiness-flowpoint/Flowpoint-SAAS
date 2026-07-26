@@ -46,7 +46,7 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
       const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS["standard"];
 
       const firstName = dbData.firstName ||
-        (req.orgContext?.email?.split("@")[0] ?? store.me.firstName);
+        (req.orgContext?.email?.split("@")[0] ?? "User");
 
       const _pkHash = Buffer.from(orgId).toString("base64").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(0, 22);
       // Normalise subscription status — never return "active" without a subscriptionId
@@ -98,8 +98,36 @@ router.get("/me", async (req: Request, res: Response): Promise<void> => {
     // Non-fatal — fall through to in-memory store
   }
 
-  const limits = PLAN_LIMITS[store.me.plan.toLowerCase()] ?? PLAN_LIMITS["standard"];
-  res.json({ ...store.me, plan: normPlan(store.me.plan), email: req.orgContext?.email ?? "", lastName: "", limits, timezone: settingsTimezone ?? null });
+  // SECURITY: never fall back to store.me (global singleton — would leak other users' data).
+  // Return minimal safe defaults derived from the authenticated org context only.
+  const _safeEmail = req.orgContext?.email ?? "";
+  const _safeFirstName = _safeEmail.split("@")[0] || "User";
+  res.json({
+    firstName:           _safeFirstName,
+    lastName:            "",
+    email:               _safeEmail,
+    plan:                "Standard",
+    role:                req.orgContext?.role ?? "owner",
+    org:                 { name: "", website: "" },
+    subscriptionStatus:  "unknown",
+    stripeSubscriptionId: null,
+    trialEndsAt:         null,
+    stripeCustomerId:    null,
+    usage:               {},
+    addons:              {},
+    limits:              PLAN_LIMITS["standard"],
+    publicApiKey:        null,
+    createdAt:           new Date().toISOString(),
+    timezone:            settingsTimezone ?? null,
+    language:            null,
+    currency:            null,
+    dateFormat:          null,
+    timeFormat:          null,
+    location: {
+      address: null, city: null, postalCode: null, country: null, region: null,
+      phone: null, latitude: null, longitude: null, serviceArea: [], locationConfigured: false, locationSource: null,
+    },
+  });
 });
 
 // ── PATCH /api/me ─────────────────────────────────────────────────────────────

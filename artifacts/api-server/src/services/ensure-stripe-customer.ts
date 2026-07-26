@@ -256,15 +256,34 @@ async function _runWithLock(
       "[ESC][DEBUG] Step 4 — creating Stripe customer",
     );
 
+    // Collect additional fields from org settings for richer Stripe profile
+    const orgCountry  = settings?.country  ?? null;
+    const orgCity     = settings?.city     ?? null;
+    const orgAddress  = settings?.address  ?? null;
+    const orgCompany  = settings?.orgName  ?? hint?.orgName ?? null;
+    const orgWebsite  = (settings as unknown as { primarySite?: string } | null)?.primarySite ?? null;
+
     const t4 = Date.now();
     const customer = await stripe.customers.create(
       {
         ...(isValidEmail ? { email } : {}),
         name: displayName,
+        ...(orgCompany ? { description: orgCompany } : {}),
+        ...(orgCountry || orgCity || orgAddress ? {
+          address: {
+            ...(orgCountry ? { country: orgCountry } : {}),
+            ...(orgCity    ? { city:    orgCity    } : {}),
+            ...(orgAddress ? { line1:   orgAddress } : {}),
+          },
+        } : {}),
         metadata: {
           orgId,
           flowpointUserId: orgId,
-          environment: process.env["NODE_ENV"] ?? "development",
+          flowpoint_org_id: orgId,
+          company:         orgCompany  ?? "",
+          website:         orgWebsite  ?? "",
+          environment:     process.env["NODE_ENV"] ?? "development",
+          signup_source:   "flowpoint_web",
         },
       },
       { idempotencyKey },

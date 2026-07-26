@@ -12,6 +12,26 @@
     return params.get(name);
   }
 
+  // SECURITY (P0): Purge ALL cached user state before validating a new magic link.
+  // Prevents cross-user data leakage when the same browser switches between accounts.
+  function purgeUserCache() {
+    try {
+      var keysToRemove = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && (k.startsWith('fp-') || k.startsWith('fp_') || k.startsWith('fp:'))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) { /* non-fatal */ }
+    try {
+      var _next = sessionStorage.getItem('fp_next') || null;
+      sessionStorage.clear();
+      if (_next && _next.startsWith('/')) sessionStorage.setItem('fp_next', _next);
+    } catch (e) { /* non-fatal */ }
+  }
+
   var token = getParam('token');
 
   if (!token) {
@@ -19,6 +39,10 @@
     show('fp-error');
     return;
   }
+
+  // Purge cache immediately — before calling the API — so the dashboard
+  // cannot read stale localStorage from a previously logged-in user.
+  purgeUserCache();
 
   fetch('/api/auth/login-verify?token=' + encodeURIComponent(token), {
     method: 'GET',
@@ -39,7 +63,9 @@
             sessionStorage.removeItem('fp_next');
           }
         } catch(e) {}
-        window.location.href = next;
+        // Cache-bust to prevent browser serving stale dashboard from disk cache
+        var sep = next.indexOf('?') === -1 ? '?' : '&';
+        window.location.replace(next + sep + '_cb=' + Date.now());
       }, 1200);
     } else {
       var msg = (r.data && r.data.error) ? r.data.error : 'Lien invalide ou expiré.';

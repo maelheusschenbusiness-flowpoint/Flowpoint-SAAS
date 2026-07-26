@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
-import { createSession, deleteSession, getSession, SESSION_TTL_MS } from "../services/sessions.js";
+import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
 import { authRateLimit } from "../middlewares/rateLimiter.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { Resend } from "resend";
@@ -544,36 +544,50 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   const orgId = normalizedEmail;
 
   // Upsert org_settings (create or update org)
+  // SECURITY (P0): Detect existing account — never overwrite billing data on re-signup.
+  let _signupIsNewAccount = true;
   try {
-    const { upsertOrgSettings } = await import("../services/org-settings.js");
-    await upsertOrgSettings(orgId, {
-      email:              normalizedEmail,
-      name:               company,
-      firstName:          fn,
-      lastName:           ln,
-      primarySite:        normalizedSite || null,
-      companySize:        companySize ?? null,
-      industry:           objective ?? null,
-      plan:               selectedPlan,
-      subscriptionStatus: "trialing",
-      trialEndsAt:        trialEndsAt,
-      country:            country ?? null,
-      city:               city?.trim()    ?? null,
-      address:            address?.trim() ?? null,
-      locationConfigured: !!(city?.trim() || address?.trim()),
-      locationSource:     "manual",
-    });
+    const { loadOrgSettings: _loadExisting, upsertOrgSettings } = await import("../services/org-settings.js");
+    const _existing = await _loadExisting(orgId).catch(() => null);
+    _signupIsNewAccount = !_existing;
+
+    if (_existing) {
+      // Account already exists — update contact info ONLY, never touch plan/trial/billing.
+      await upsertOrgSettings(orgId, {
+        firstName: fn  || _existing.firstName  || undefined,
+        lastName:  ln  || _existing.lastName   || undefined,
+        country:   country  ?? _existing.country  ?? null,
+        city:      city?.trim()    ?? _existing.city    ?? null,
+        address:   address?.trim() ?? _existing.address ?? null,
+      }).catch((e) => logger.warn({ e }, "[Auth/Signup] contact-only upsert failed"));
+      logger.info({ orgId, email: normalizedEmail }, "[Auth/Signup] Existing account detected — billing data preserved");
+    } else {
+      await upsertOrgSettings(orgId, {
+        email:              normalizedEmail,
+        name:               company,
+        firstName:          fn,
+        lastName:           ln,
+        primarySite:        normalizedSite || null,
+        companySize:        companySize ?? null,
+        industry:           objective ?? null,
+        plan:               selectedPlan,
+        subscriptionStatus: "trialing",
+        trialEndsAt:        trialEndsAt,
+        country:            country ?? null,
+        city:               city?.trim()    ?? null,
+        address:            address?.trim() ?? null,
+        locationConfigured: !!(city?.trim() || address?.trim()),
+        locationSource:     "manual",
+      });
+    }
   } catch (err) {
     logger.warn({ err }, "[Auth/Signup] upsertOrgSettings failed (non-fatal)");
     // Non-fatal — still send the magic link
   }
 
-  // Update in-memory store
-  store.me.firstName = fn;
-  store.me.org = { name: company };
-  store.me.plan = selectedPlan;
-  store.me.subscriptionStatus = "trialing";
-  store.me.trialEndsAt = trialEndsAt;
+  // REMOVED: store.me writes deliberately omitted.
+  // store.me is a global singleton — writing user-specific data here causes cross-user
+  // data leakage when /api/me falls back to the in-memory store.
 
   // Log activity
   store.logActivity({
@@ -611,30 +625,34 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     try {
       await sendMagicEmail(normalizedEmail, verifyPath);
       logger.info({ email: normalizedEmail, company, plan: selectedPlan }, "[Auth/Signup] Account created — magic link sent");
+      const _signupMsg = _signupIsNewAccount
+        ? "Compte créé. Lien envoyé par email."
+        : "Un compte existe déjà avec cette adresse. Un lien de connexion vous a été envoyé.";
       if (isDevWorkspaceS) {
-        res.json({ ok: true, debugLink: verifyPath, message: "Compte créé. Lien envoyé par email." });
+        res.json({ ok: true, existingAccount: !_signupIsNewAccount, debugLink: verifyPath, message: _signupMsg });
       } else {
-        res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
+        res.json({ ok: true, existingAccount: !_signupIsNewAccount, message: _signupMsg });
       }
 
-      // ── Fire-and-forget: create Stripe customer + start trial ───────────
+      // ── Fire-and-forget: ensure Stripe customer exists (deduplicates by orgId) ──────────
+      // Uses ensureStripeCustomer which checks for an existing customer BEFORE creating,
+      // preventing duplicate Stripe customers when the same email re-signs up.
       const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
       if (stripeKey) {
+        const _fn = fn; const _ln = ln; const _company = company;
+        const _selectedPlan = selectedPlan; const _orgId = orgId; const _email = normalizedEmail;
         (async () => {
           try {
-            const { default: Stripe } = await import("stripe");
-            const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-            const customer = await stripe.customers.create({
-              name: `${fn} ${ln}`.trim(),
-              email: normalizedEmail,
-              metadata: { plan: selectedPlan, orgId, company },
+            const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
+            const customerId = await ensureStripeCustomer(_orgId, {
+              stripeCustomerId: null,
+              email: _email,
+              firstName: `${_fn} ${_ln}`.trim(),
+              orgName: _company,
             });
-            store.me.stripeCustomerId = customer.id;
-            const { upsertOrgSettings } = await import("../services/org-settings.js");
-            await upsertOrgSettings(orgId, { stripeCustomerId: customer.id });
-            logger.info({ customerId: customer.id, plan: selectedPlan }, "[Auth/Signup] Stripe customer created");
+            logger.info({ customerId, plan: _selectedPlan, email: _email }, "[Auth/Signup] Stripe customer ensured (no duplicate)");
           } catch (stripeErr) {
-            logger.warn({ err: stripeErr }, "[Auth/Signup] Stripe customer creation failed (non-fatal)");
+            logger.warn({ err: stripeErr }, "[Auth/Signup] Stripe customer ensure failed (non-fatal)");
           }
         })();
       }
@@ -700,6 +718,12 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
     logger.warn({ err: dbErr }, "[Auth] login-verify: could not mark token as used");
     // Non-fatal — continue with session creation
   }
+
+  // SECURITY (P0): Invalidate ALL existing sessions for this user before creating a new one.
+  // Prevents session-bleeding when the same browser switches between accounts via magic link.
+  await invalidateAllSessions(entry.email).catch((err) =>
+    logger.warn({ err, email: entry.email }, "[Auth] login-verify: invalidateAllSessions failed (non-fatal)"),
+  );
 
   const sessionToken = await createSession({
     userId: entry.email,
