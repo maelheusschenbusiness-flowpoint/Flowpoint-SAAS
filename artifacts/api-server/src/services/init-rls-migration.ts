@@ -105,34 +105,51 @@ export async function runRlsMigrationIfNeeded(): Promise<void> {
   const missingRls = Number(sentinelRes.rows[0]?.missing ?? 0);
 
   // Step 2: even if all have RLS, check that tenant tables have 4 policies each
+  //          AND have FORCE ROW LEVEL SECURITY (required for BYPASSRLS connections).
   let policyGaps = 0;
+  let forceGaps  = 0;
   if (missingRls === 0) {
-    const gapRes = await pool.query<{ gaps: number }>(`
-      SELECT COUNT(*)::int AS gaps
-      FROM (
-        SELECT t.tablename
-        FROM pg_tables t
-        WHERE t.schemaname = 'public'
-          AND t.rowsecurity = true
-          AND EXISTS (
-            SELECT 1 FROM information_schema.columns c
-            WHERE c.table_schema = 'public'
-              AND c.table_name   = t.tablename
-              AND c.column_name  = 'org_id'
-          )
-          AND (
-            SELECT COUNT(*) FROM pg_policies p
-            WHERE p.schemaname = 'public'
-              AND p.tablename  = t.tablename
-              AND p.policyname LIKE 'tenant_%'
-          ) < 4
-      ) gaps_subq
+    const gapRes = await pool.query<{ gaps: number; force_gaps: number }>(`
+      SELECT
+        (SELECT COUNT(*)::int
+         FROM (
+           SELECT t.tablename
+           FROM pg_tables t
+           WHERE t.schemaname = 'public'
+             AND t.rowsecurity = true
+             AND EXISTS (
+               SELECT 1 FROM information_schema.columns c
+               WHERE c.table_schema = 'public'
+                 AND c.table_name   = t.tablename
+                 AND c.column_name  = 'org_id'
+             )
+             AND (
+               SELECT COUNT(*) FROM pg_policies p
+               WHERE p.schemaname = 'public'
+                 AND p.tablename  = t.tablename
+                 AND p.policyname LIKE 'tenant_%'
+             ) < 4
+         ) g
+        ) AS gaps,
+        (SELECT COUNT(*)::int
+         FROM pg_tables t
+         WHERE t.schemaname = 'public'
+           AND t.rowsecurity = true
+           AND t.forcedrowsecurity = false
+           AND EXISTS (
+             SELECT 1 FROM information_schema.columns c
+             WHERE c.table_schema = 'public'
+               AND c.table_name   = t.tablename
+               AND c.column_name  = 'org_id'
+           )
+        ) AS force_gaps
     `);
     policyGaps = Number(gapRes.rows[0]?.gaps ?? 0);
+    forceGaps  = Number(gapRes.rows[0]?.force_gaps ?? 0);
   }
 
-  if (missingRls === 0 && policyGaps === 0) {
-    logger.info(`${LOG} All public tables have RLS + tenant policies — no migration needed`);
+  if (missingRls === 0 && policyGaps === 0 && forceGaps === 0) {
+    logger.info(`${LOG} All public tables have RLS + FORCE + tenant policies — no migration needed`);
     return;
   }
 
@@ -194,15 +211,38 @@ export async function runRlsMigrationIfNeeded(): Promise<void> {
     }
 
     // ── 4. Enable RLS on every table still missing it ────────────────────────
+    // ── 4b. FORCE RLS on every tenant-isolated table ─────────────────────────
+    //
+    // FORCE ROW LEVEL SECURITY makes policies apply even when the connection
+    // user is a superuser or has the BYPASSRLS attribute (e.g. the `postgres`
+    // user on Render/Supabase).  Without FORCE, ENABLE alone is bypassed for
+    // those roles and GUC-only mode would NOT enforce tenant isolation.
+    //
+    // Idempotent: ALTER TABLE … FORCE ROW LEVEL SECURITY is a no-op if already set.
+    const forcedRes = await client.query<{ tablename: string }>(`
+      SELECT tablename FROM pg_tables
+      WHERE schemaname = 'public' AND forcedrowsecurity = true
+    `);
+    const alreadyForced = new Set<string>(forcedRes.rows.map(r => r.tablename));
+
     let rlsEnabled = 0;
+    let rlsForced  = 0;
     for (const [t, hasRls] of allTables) {
       if (!hasRls) {
         await run(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`);
         rlsEnabled++;
       }
+      // Apply FORCE to every tenant-isolated table (has org_id).
+      if (tablesWithOrgId.has(t) && !alreadyForced.has(t)) {
+        await run(`ALTER TABLE "${t}" FORCE ROW LEVEL SECURITY`);
+        rlsForced++;
+      }
     }
     if (rlsEnabled > 0) {
       logger.info(`${LOG} Enabled RLS on ${rlsEnabled} table(s)`);
+    }
+    if (rlsForced > 0) {
+      logger.info(`${LOG} Applied FORCE ROW LEVEL SECURITY to ${rlsForced} tenant table(s)`);
     }
 
     // ── 5. Snapshot: existing tenant_* policy counts per table ───────────────
