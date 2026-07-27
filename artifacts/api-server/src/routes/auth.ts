@@ -376,7 +376,13 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
       return;
     }
   } catch (_accountGuardErr) {
-    logger.warn({ err: _accountGuardErr, email }, "[Auth] login-request: org guard failed (non-fatal) — allowing");
+    // DB unavailable — cannot verify account existence. Return 503 rather than
+    // silently allowing, so that unauthenticated requests never slip through.
+    logger.error({ err: _accountGuardErr, email }, "[Auth] login-request: DB unreachable during account guard — 503");
+    res.status(503).json({
+      error: "Service temporairement indisponible. Veuillez réessayer dans quelques instants.",
+    });
+    return;
   }
 
   // ── Store token in PostgreSQL (survives Render restarts) ──────────────────────
