@@ -58,6 +58,15 @@ export async function initPhase1Users(): Promise<void> {
         CONSTRAINT users_email_unique UNIQUE (email)
       );
     `);
+    // ── Self-healing: ensure every users column exists when the table predates this migration ──
+    // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so columns
+    // added in later iterations of the schema definition (e.g. status, email_verified)
+    // never appear in older production tables.  Without this block:
+    //   CREATE INDEX ON users(status) → ERROR: column "status" does not exist → DDL warning.
+    await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS status         TEXT    NOT NULL DEFAULT 'pending';`);
+    await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;`);
+    await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider  TEXT    NOT NULL DEFAULT 'magic_link';`);
+    await run(client, `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at  TIMESTAMPTZ;`);
     await run(client, `CREATE INDEX IF NOT EXISTS users_email_idx  ON users(email);`);
     await run(client, `CREATE INDEX IF NOT EXISTS users_status_idx ON users(status);`);
 
@@ -84,6 +93,26 @@ export async function initPhase1Users(): Promise<void> {
     await run(client, `CREATE INDEX IF NOT EXISTS org_members_user_idx   ON organization_members(user_id);`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_members_role_idx   ON organization_members(role);`);
     await run(client, `CREATE INDEX IF NOT EXISTS org_members_status_idx ON organization_members(status);`);
+
+    // ── 2b. Self-healing: coerce organizations.id UUID→TEXT ──────────────────
+    // Some production DBs have organizations.id typed as UUID (created by an
+    // older migration or the Supabase Dashboard before the TEXT primary key fix).
+    // This file JOINs on lower(o.id) and compares o.id = os.org_id (both TEXT ops).
+    // Without this coercion:
+    //   lower(uuid)  → ERROR: function lower(uuid) does not exist      (warning 2)
+    //   uuid = text  → ERROR: operator does not exist: uuid = text     (warning 3)
+    // USING id::text is lossless — UUID strings are valid TEXT values.
+    await run(client, `
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'organizations'
+            AND column_name = 'id' AND data_type = 'uuid'
+        ) THEN
+          ALTER TABLE organizations ALTER COLUMN id TYPE TEXT USING id::text;
+        END IF;
+      END $$;
+    `);
 
     // ── 3. user_sessions — add nullable user_id for Phase 2 backfill ─────────
     await run(client, `ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_id_v2 UUID;`);
