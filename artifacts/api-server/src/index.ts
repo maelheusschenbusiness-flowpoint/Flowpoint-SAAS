@@ -91,7 +91,25 @@ async function main() {
         `);
         await client.query(`CREATE INDEX IF NOT EXISTS pending_signups_email_idx   ON pending_signups(email)`);
         await client.query(`CREATE INDEX IF NOT EXISTS pending_signups_expires_idx ON pending_signups(expires_at)`);
-        logger.info("[startup] new-signup-schema ensured (pending_signups, postal_code, vat)");
+        // consumed_at: set when webhook/checkout-complete successfully created the account
+        await client.query(`ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ`);
+        // checkout_post_tokens: single-use token created by webhook after org creation
+        // checkout-return.html exchanges stripe_session_id for a FlowPoint session (auto-login)
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS checkout_post_tokens (
+            stripe_session_id  TEXT        PRIMARY KEY,
+            stripe_event_id    TEXT,
+            org_id             TEXT        NOT NULL,
+            email              TEXT        NOT NULL,
+            pre_register_token TEXT,
+            created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            expires_at         TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '30 minutes',
+            consumed_at        TIMESTAMPTZ
+          )
+        `);
+        await client.query(`CREATE INDEX IF NOT EXISTS cpt_org_idx     ON checkout_post_tokens(org_id)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS cpt_expires_idx ON checkout_post_tokens(expires_at)`);
+        logger.info("[startup] new-signup-schema ensured (pending_signups, checkout_post_tokens, postal_code, vat)");
       } finally { client.release(); }
     }).catch((err: unknown) => {
       logger.warn({ err }, "[startup] new-signup-schema step failed (non-fatal)");
@@ -149,6 +167,27 @@ async function main() {
   const server = app.listen(PORT, () => {
     logger.info(`FlowPoint API listening on port ${PORT} (${env.NODE_ENV})`);
     startMonitorCron();
+
+    // Cleanup cron: purge expired pending_signups and checkout_post_tokens every hour
+    setInterval(async () => {
+      const client = await pool.connect();
+      try {
+        const ps = await client.query(
+          `DELETE FROM pending_signups WHERE expires_at < NOW() - INTERVAL '1 hour' RETURNING token`
+        );
+        const ct = await client.query(
+          `DELETE FROM checkout_post_tokens WHERE expires_at < NOW() - INTERVAL '1 hour' RETURNING stripe_session_id`
+        );
+        if (ps.rowCount || ct.rowCount) {
+          logger.info({ purgedPendingSignups: ps.rowCount, purgedPostTokens: ct.rowCount },
+            "[signup-cleanup] Purged expired signup records");
+        }
+      } catch (e) {
+        logger.warn({ e }, "[signup-cleanup] Cleanup failed (non-fatal)");
+      } finally {
+        client.release();
+      }
+    }, 60 * 60 * 1000); // every hour
   });
 
   async function shutdown(signal: string) {

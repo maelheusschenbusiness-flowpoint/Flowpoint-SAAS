@@ -302,6 +302,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       // This fires when the user hasn't called /auth/checkout-complete yet (e.g. tab closed).
       // Idempotent: if checkout-complete already created the org, loadOrgSettings finds it.
       const preRegToken = meta["pre_register_token"] ?? "";
+      const stripeSessionId = String(obj["id"] ?? "");
       if (preRegToken) {
         (async () => {
           try {
@@ -345,6 +346,34 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
                     name: signupRow["first_name"] ?? "",
                   }).catch(() => {});
                 }
+              }
+
+              // ── Create one-time post-checkout token for auto-login ──────────────
+              // checkout-return.html exchanges stripe_session_id for a FlowPoint session.
+              // Token is single-use (consumed_at), expires in 30 min, idempotent (ON CONFLICT).
+              try {
+                const tokenClient = await pgPool.connect();
+                try {
+                  await tokenClient.query(`
+                    INSERT INTO checkout_post_tokens
+                      (stripe_session_id, stripe_event_id, org_id, email, pre_register_token, expires_at)
+                    VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '30 minutes')
+                    ON CONFLICT (stripe_session_id) DO NOTHING
+                  `, [
+                    stripeSessionId, eventId, orgId,
+                    signupRow["email"] ?? orgId, preRegToken,
+                  ]);
+                  // Mark pending_signup consumed so cleanup knows it was used
+                  await tokenClient.query(
+                    `UPDATE pending_signups SET consumed_at = NOW() WHERE token = $1 AND consumed_at IS NULL`,
+                    [preRegToken]
+                  );
+                } finally {
+                  tokenClient.release();
+                }
+                logger.info({ orgId, stripeSessionId }, "[Webhook] checkout_post_tokens entry created for auto-login");
+              } catch (tokenErr) {
+                logger.warn({ tokenErr, orgId }, "[Webhook] Failed to create checkout_post_tokens (non-fatal)");
               }
             }
           } catch (e) {

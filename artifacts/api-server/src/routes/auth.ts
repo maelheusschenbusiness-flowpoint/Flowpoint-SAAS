@@ -757,8 +757,24 @@ router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Respo
 /* ════════════════════════════════════════════════════════════════════════════
    GET /api/auth/checkout-complete?session_id=...
    ─ Appelé par checkout-return.html après la redirection Stripe.
-     Vérifie que le paiement est confirmé, crée le compte FlowPoint et démarre
-     la session (auto-login option A). Idempotent avec le webhook Stripe.
+
+   FLUX SÉCURISÉ (2 chemins) :
+
+   A) PRIMAIRE — via checkout_post_tokens (webhook a déjà créé le jeton) :
+      1. Cherche l'entrée par stripe_session_id.
+      2. Si consumed_at IS NOT NULL → 409 (déjà utilisé).
+      3. Si expiré → 410 (recommencer).
+      4. Si valide → UPDATE consumed_at + CREATE session + cookie httpOnly.
+      → Garantie: jeton à usage unique, hashé en DB, 30 min TTL.
+
+   B) FALLBACK — via Stripe API directe (webhook lent / non encore reçu) :
+      1. Vérifie avec Stripe que la session est payée.
+      2. Si non payée → 402 (retry dans checkout-return.html).
+      3. Si payée → crée l'org depuis pending_signups + insère+consomme
+         checkout_post_tokens + CREATE session + cookie.
+      → Garantie: même résultat idempotent.
+
+   Jamais de token de session permanent dans l'URL.
 ════════════════════════════════════════════════════════════════════════════ */
 router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
   const { session_id: sessionId } = req.query as { session_id?: string };
@@ -767,39 +783,107 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     return;
   }
 
-  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
-  if (!stripeKey) {
-    if (process.env["NODE_ENV"] !== "production") {
-      // Dev fallback: accept mock session IDs
-      logger.warn({ sessionId }, "[Auth/CheckoutComplete] No Stripe key — dev mode, auto-login skipped");
-      res.status(503).json({ error: "Stripe non configuré en dev." });
-      return;
-    }
-    res.status(503).json({ error: "Service de paiement non configuré." });
-    return;
+  /** Helper: emit cookie + JSON response after successful auth. */
+  async function emitSession(orgId: string): Promise<void> {
+    const sessionToken = await createSession({ userId: orgId, orgId, email: orgId, role: "owner" });
+    const isProd = isDeployedProd();
+    res.cookie("fp_token", sessionToken, {
+      httpOnly: true,
+      secure:   isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge:   SESSION_TTL_MS,
+      path:     "/",
+    });
+    logger.info({ orgId }, "[Auth/CheckoutComplete] Auto-login successful — session created");
+    store.logActivity({
+      type: "account", label: `Compte activé après paiement : ${orgId}`,
+      targetId: orgId, targetType: "user",
+    }).catch(() => {});
+    res.json({ ok: true, redirectTo: "/dashboard.html" });
   }
 
   try {
+    // ─────────────────────────────────────────────────────────────────────────
+    // PATH A: check checkout_post_tokens (set by webhook after org creation)
+    // ─────────────────────────────────────────────────────────────────────────
+    const dbClient = await pool.connect();
+    let postToken: {
+      org_id: string; email: string; pre_register_token: string | null;
+      consumed_at: string | null; expires_at: string;
+    } | null = null;
+    try {
+      const r = await dbClient.query(
+        `SELECT org_id, email, pre_register_token, consumed_at, expires_at
+         FROM checkout_post_tokens WHERE stripe_session_id = $1 LIMIT 1`,
+        [sessionId]
+      );
+      if (r.rows.length > 0) postToken = r.rows[0];
+    } finally {
+      dbClient.release();
+    }
+
+    if (postToken) {
+      // 409: already consumed (second call / replay attack)
+      if (postToken.consumed_at) {
+        logger.warn({ sessionId, orgId: postToken.org_id }, "[Auth/CheckoutComplete] Token already consumed — replay blocked");
+        res.status(409).json({ error: "Session déjà utilisée.", alreadyCreated: true });
+        return;
+      }
+      // 410: expired
+      if (new Date(postToken.expires_at) < new Date()) {
+        logger.warn({ sessionId }, "[Auth/CheckoutComplete] Post-checkout token expired");
+        res.status(410).json({ error: "Session expirée. Veuillez vous connecter via le lien de bienvenue." });
+        return;
+      }
+      // Valid: consume atomically then emit session
+      const consumeClient = await pool.connect();
+      try {
+        const upd = await consumeClient.query(
+          `UPDATE checkout_post_tokens SET consumed_at = NOW()
+           WHERE stripe_session_id = $1 AND consumed_at IS NULL
+           RETURNING org_id`,
+          [sessionId]
+        );
+        if (upd.rowCount === 0) {
+          // Race: another request consumed it first
+          logger.warn({ sessionId }, "[Auth/CheckoutComplete] Token consumed by concurrent request");
+          res.status(409).json({ error: "Session déjà utilisée.", alreadyCreated: true });
+          return;
+        }
+      } finally {
+        consumeClient.release();
+      }
+      logger.info({ sessionId, orgId: postToken.org_id }, "[Auth/CheckoutComplete] Token consumed (webhook path)");
+      await emitSession(postToken.org_id);
+      return;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PATH B: webhook not yet fired — verify directly with Stripe API
+    // ─────────────────────────────────────────────────────────────────────────
+    const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+    if (!stripeKey) {
+      res.status(503).json({ error: "Service de paiement non configuré." });
+      return;
+    }
+
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
-
-    // Verify with Stripe
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-    // Accept: complete + (paid OR no_payment_required=trial)
     const isConfirmed = session.status === "complete" &&
       (session.payment_status === "paid" || session.payment_status === "no_payment_required");
 
     if (!isConfirmed) {
       logger.warn({ sessionId, status: session.status, paymentStatus: session.payment_status },
-        "[Auth/CheckoutComplete] Session not yet confirmed");
+        "[Auth/CheckoutComplete] Session not yet confirmed (Stripe API fallback)");
       res.status(402).json({ error: "Paiement non encore confirmé. Réessayez dans quelques secondes." });
       return;
     }
 
     const meta = (session.metadata as Record<string, string>) ?? {};
     const preRegisterToken = meta["pre_register_token"] ?? "";
-    const orgId = meta["orgId"] ?? ""; // = email address
+    const orgId = meta["orgId"] ?? "";
 
     if (!orgId) {
       logger.error({ sessionId }, "[Auth/CheckoutComplete] orgId missing from session metadata");
@@ -807,33 +891,33 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       return;
     }
 
-    // Load pending_signups data to create org with full contact info
-    let signupRow: {
+    // Load pending_signups data (Stripe API path — webhook hasn't fired yet)
+    type SignupRow = {
       email: string; first_name: string; last_name: string; company_name: string;
       country: string | null; address: string | null; city: string | null;
       postal_code: string | null; phone: string | null; vat: string | null;
-    } | null = null;
-
+    };
+    let signupRow: SignupRow | null = null;
     if (preRegisterToken) {
-      const dbClient = await pool.connect();
+      const srClient = await pool.connect();
       try {
-        const r = await dbClient.query(
+        const r = await srClient.query(
           `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
            FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
           [preRegisterToken]
         );
-        if (r.rows.length > 0) signupRow = r.rows[0];
+        if (r.rows.length > 0) signupRow = r.rows[0] as SignupRow;
       } finally {
-        dbClient.release();
+        srClient.release();
       }
     }
 
-    // Create or confirm org_settings (idempotent with webhook)
+    // Create org (idempotent with webhook — first writer wins)
     const { upsertOrgSettings, loadOrgSettings: _loadExisting } = await import("../services/org-settings.js");
     const existing = await _loadExisting(orgId).catch(() => null);
+    const customerId = session.customer ? String(session.customer) : undefined;
 
     if (!existing && signupRow) {
-      // New signup — first writer wins (webhook or checkout-complete)
       await upsertOrgSettings(orgId, {
         email:              signupRow.email,
         name:               signupRow.company_name,
@@ -844,58 +928,57 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
         address:            signupRow.address,
         postalCode:         signupRow.postal_code,
         subscriptionStatus: "active",
-        stripeCustomerId:   session.customer ? String(session.customer) : undefined,
+        stripeCustomerId:   customerId,
         locationConfigured: !!(signupRow.city || signupRow.address),
         locationSource:     "manual",
       });
-      logger.info({ orgId }, "[Auth/CheckoutComplete] Org created from pending_signups");
+      logger.info({ orgId }, "[Auth/CheckoutComplete] Org created (Stripe API fallback path)");
     } else if (existing) {
-      // Org already exists (webhook fired first) — ensure subscription is active
       if (existing.subscriptionStatus !== "active" && existing.subscriptionStatus !== "trialing") {
         await upsertOrgSettings(orgId, {
           subscriptionStatus: "active",
-          stripeCustomerId:   session.customer ? String(session.customer) : (existing.stripeCustomerId ?? undefined),
+          stripeCustomerId:   customerId ?? (existing.stripeCustomerId ?? undefined),
         });
       }
     } else {
-      // pending_signups expired or token missing — create minimal org
-      logger.warn({ orgId, preRegisterToken }, "[Auth/CheckoutComplete] No pending_signups data — creating minimal org");
-      await upsertOrgSettings(orgId, {
-        email:              orgId,
-        subscriptionStatus: "active",
-        stripeCustomerId:   session.customer ? String(session.customer) : undefined,
-      });
+      logger.warn({ orgId, preRegisterToken }, "[Auth/CheckoutComplete] No pending_signups — creating minimal org");
+      await upsertOrgSettings(orgId, { email: orgId, subscriptionStatus: "active", stripeCustomerId: customerId });
     }
 
-    // Create session token (auto-login — option A)
-    const sessionToken = await createSession({
-      userId: orgId,
-      orgId:  orgId,
-      email:  orgId,
-      role:   "owner",
-    });
+    // Insert + immediately consume a checkout_post_tokens entry (idempotency + audit)
+    const insertClient = await pool.connect();
+    try {
+      await insertClient.query(`
+        INSERT INTO checkout_post_tokens
+          (stripe_session_id, org_id, email, pre_register_token, expires_at, consumed_at)
+        VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 minute', NOW())
+        ON CONFLICT (stripe_session_id) DO UPDATE SET consumed_at = COALESCE(checkout_post_tokens.consumed_at, NOW())
+      `, [sessionId, orgId, orgId, preRegisterToken || null]);
+      // Also mark pending_signup consumed if it exists
+      if (preRegisterToken) {
+        await insertClient.query(
+          `UPDATE pending_signups SET consumed_at = NOW() WHERE token = $1 AND consumed_at IS NULL`,
+          [preRegisterToken]
+        );
+      }
+    } finally {
+      insertClient.release();
+    }
 
-    const isProd = isDeployedProd();
-    res.cookie("fp_token", sessionToken, {
-      httpOnly: true,
-      secure:   isProd,
-      sameSite: isProd ? "none" : "lax",
-      maxAge:   SESSION_TTL_MS,
-      path:     "/",
-    });
-
-    logger.info({ orgId }, "[Auth/CheckoutComplete] Auto-login successful — session created");
-
-    store.logActivity({
-      type:       "account",
-      label:      `Compte activé après paiement : ${orgId}`,
-      targetId:   orgId,
-      targetType: "user",
-    }).catch(() => {});
-
-    res.json({ ok: true, redirectTo: "/dashboard.html" });
+    await emitSession(orgId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // Stripe API errors (invalid session_id, no such resource) → 400, not 500
+    const isStripeErr = err instanceof Error && (
+      (err as Record<string, unknown>)["type"] === "StripeInvalidRequestError" ||
+      msg.includes("No such") || msg.includes("no such") ||
+      msg.includes("resource_missing") || msg.includes("invalid_request")
+    );
+    if (isStripeErr) {
+      logger.warn({ err: msg, sessionId }, "[Auth/CheckoutComplete] Invalid Stripe session");
+      res.status(400).json({ error: "Session de paiement introuvable ou invalide." });
+      return;
+    }
     logger.error({ err: msg, sessionId }, "[Auth/CheckoutComplete] Error");
     res.status(500).json({ error: "Erreur lors de la finalisation du compte. Réessayez." });
   }
