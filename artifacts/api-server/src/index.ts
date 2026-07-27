@@ -93,18 +93,30 @@ async function main() {
         await client.query(`CREATE INDEX IF NOT EXISTS pending_signups_expires_idx ON pending_signups(expires_at)`);
         // consumed_at: set when webhook/checkout-complete successfully created the account
         await client.query(`ALTER TABLE pending_signups ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ`);
-        // checkout_post_tokens: single-use token created by webhook after org creation
-        // checkout-return.html exchanges stripe_session_id for a FlowPoint session (auto-login)
+        // checkout_post_tokens: single-use token created by webhook after org creation.
+        // SECURITY: token_hash = SHA256(stripe_session_id) — raw session ID never stored in plaintext.
+        // Expiry: 15 minutes (spec requirement). Row is DELETED on consumption (not merely flagged).
+        // Migration: if old schema (stripe_session_id PK, no token_hash column) exists, drop + recreate.
+        await client.query(`
+          DO $$ BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'checkout_post_tokens' AND column_name = 'token_hash'
+            ) THEN
+              DROP TABLE IF EXISTS checkout_post_tokens;
+            END IF;
+          END $$
+        `);
         await client.query(`
           CREATE TABLE IF NOT EXISTS checkout_post_tokens (
-            stripe_session_id  TEXT        PRIMARY KEY,
+            token_hash         TEXT        PRIMARY KEY,           -- SHA256(stripe_session_id)
+            stripe_session_id  TEXT        UNIQUE NOT NULL,       -- kept for Stripe event idempotency
             stripe_event_id    TEXT,
             org_id             TEXT        NOT NULL,
             email              TEXT        NOT NULL,
             pre_register_token TEXT,
             created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            expires_at         TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '30 minutes',
-            consumed_at        TIMESTAMPTZ
+            expires_at         TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '15 minutes'
           )
         `);
         await client.query(`CREATE INDEX IF NOT EXISTS cpt_org_idx     ON checkout_post_tokens(org_id)`);

@@ -1,5 +1,10 @@
 import { Router, type Request, type Response } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
+
+/** SHA-256 hex digest — used to hash checkout_post_tokens before DB storage. */
+function sha256hex(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { createSession, deleteSession, getSession, invalidateAllSessions, SESSION_TTL_MS } from "../services/sessions.js";
@@ -405,60 +410,17 @@ router.post("/auth/login-request", authRateLimit, async (req: Request, res: Resp
   }
 });
 
-router.post("/auth/register", authRateLimit, async (req: Request, res: Response) => {
-  const { email, firstName, companyName, plan } = req.body as { email?: string; firstName?: string; companyName?: string; plan?: string };
-
-  const normalizedEmail = String(email ?? "").toLowerCase().trim();
-  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) {
-    res.status(400).json({ error: "Adresse email invalide ou manquante" });
-    return;
-  }
-
-  if (!isEmailAllowed(normalizedEmail)) {
-    logger.warn({ email: normalizedEmail }, "[Auth] Registration rejected — email not on allowlist");
-    res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
-    return;
-  }
-
-  // SECURITY: store.me writes removed — global singleton causes cross-user data leakage.
-
-  const token = generateToken();
-  const publicUrl = getPublicUrl();
-  const verifyPath = `${publicUrl}/login-verify.html?token=${token}`;
-
-  try {
-    await storeMagicToken(token, normalizedEmail);
-  } catch (dbErr) {
-    const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-    logger.error({ err: msg, email: normalizedEmail }, "[Auth] DB error in register");
-    res.status(500).json({ error: "Impossible de créer le lien de connexion\u00a0: base de données indisponible." });
-    return;
-  }
-
-  const resendKey = process.env["RESEND_API_KEY"];
-  const isProduction = isDeployedProd();
-  const isDevWorkspaceR = !!process.env["REPLIT_DEV_DOMAIN"];
-
-  if (resendKey) {
-    try {
-      await sendMagicEmail(normalizedEmail, verifyPath);
-      if (isDevWorkspaceR) {
-        res.json({ ok: true, debugLink: verifyPath, message: "Compte créé. Lien envoyé par email." });
-      } else {
-        res.json({ ok: true, message: "Compte créé. Lien envoyé par email." });
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg }, "[Auth] register: Resend failed");
-      res.status(500).json({ error: "Impossible d\u2019envoyer l\u2019e-mail\u00a0: " + msg.substring(0, 120) });
-    }
-  } else if (!isProduction) {
-    res.json({ ok: true, debugLink: verifyPath, message: "Mode debug\u00a0: lien retourné directement." });
-  } else {
-    logger.error("[Auth] RESEND_API_KEY not set in production");
-    res.status(503).json({ error: "Service email non configuré." });
-  }
+// ── BLOCKED: /auth/register is no longer available. ──────────────────────────
+// All new accounts must go through pending_signup → Stripe Checkout → webhook.
+// Existing route is preserved as a 410 to avoid breaking old clients silently.
+router.post("/auth/register", authRateLimit, (_req: Request, res: Response) => {
+  logger.warn("[Auth] /auth/register called — BLOCKED (legacy path)");
+  res.status(410).json({
+    error: "Cette voie d'inscription n'est plus disponible. Créez votre compte sur /signin.html après paiement.",
+    redirectTo: "/signin.html",
+  });
 });
+
 
 // ── Full signup: créer compte + org + quotas + magic link ─────────────────────
 const DISPOSABLE_DOMAINS = new Set([
@@ -548,37 +510,30 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
     const _existing = await _loadExisting(orgId).catch(() => null);
     _signupIsNewAccount = !_existing;
 
-    if (_existing) {
-      // Account already exists — update contact info ONLY, never touch plan/trial/billing.
-      await upsertOrgSettings(orgId, {
-        firstName: fn  || _existing.firstName  || undefined,
-        lastName:  ln  || _existing.lastName   || undefined,
-        country:   country  ?? _existing.country  ?? null,
-        city:      city?.trim()    ?? _existing.city    ?? null,
-        address:   address?.trim() ?? _existing.address ?? null,
-      }).catch((e) => logger.warn({ e }, "[Auth/Signup] contact-only upsert failed"));
-      logger.info({ orgId, email: normalizedEmail }, "[Auth/Signup] Existing account detected — billing data preserved");
-    } else {
-      await upsertOrgSettings(orgId, {
-        email:              normalizedEmail,
-        name:               company,
-        firstName:          fn,
-        lastName:           ln,
-        primarySite:        normalizedSite || null,
-        companySize:        companySize ?? null,
-        industry:           objective ?? null,
-        plan:               selectedPlan,
-        subscriptionStatus: "pending_billing",
-        country:            country ?? null,
-        city:               city?.trim()    ?? null,
-        address:            address?.trim() ?? null,
-        locationConfigured: !!(city?.trim() || address?.trim()),
-        locationSource:     "manual",
+    if (!_existing) {
+      // SECURITY: New account creation via /auth/signup is BLOCKED.
+      // All new accounts must go through: /auth/pre-register → Stripe Checkout → webhook → checkout_post_tokens.
+      // This prevents creating accounts and sessions before Stripe payment is confirmed.
+      logger.warn({ orgId }, "[Auth/Signup] New account creation BLOCKED — must use /signin.html + Stripe");
+      res.status(410).json({
+        error: "Les nouveaux comptes doivent être créés via /signin.html après paiement Stripe. Si vous avez déjà un compte, connectez-vous avec le lien reçu par email.",
+        redirectTo: "/signin.html",
       });
+      return;
     }
+
+    // Existing account — update contact info ONLY, never touch billing data.
+    await upsertOrgSettings(orgId, {
+      firstName: fn  || _existing.firstName  || undefined,
+      lastName:  ln  || _existing.lastName   || undefined,
+      country:   country  ?? _existing.country  ?? null,
+      city:      city?.trim()    ?? _existing.city    ?? null,
+      address:   address?.trim() ?? _existing.address ?? null,
+    }).catch((e) => logger.warn({ e }, "[Auth/Signup] contact-only upsert failed"));
+    logger.info({ orgId, email: normalizedEmail }, "[Auth/Signup] Existing account detected — billing data preserved");
   } catch (err) {
     logger.warn({ err }, "[Auth/Signup] upsertOrgSettings failed (non-fatal)");
-    // Non-fatal — still send the magic link
+    // Non-fatal — still send the magic link for existing account
   }
 
   // REMOVED: store.me writes deliberately omitted.
@@ -805,17 +760,20 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
   try {
     // ─────────────────────────────────────────────────────────────────────────
     // PATH A: check checkout_post_tokens (set by webhook after org creation)
+    // SECURITY: lookup by SHA256(stripe_session_id) — raw session ID not stored in DB.
+    // Consumption: DELETE the row atomically (spec: "supprimé après consommation").
     // ─────────────────────────────────────────────────────────────────────────
+    const tokenHash = sha256hex(sessionId);
     const dbClient = await pool.connect();
     let postToken: {
-      org_id: string; email: string; pre_register_token: string | null;
-      consumed_at: string | null; expires_at: string;
+      org_id: string; email: string; pre_register_token: string | null; expires_at: string;
     } | null = null;
     try {
+      // Look up by token_hash — do NOT select consumed_at (column removed from schema)
       const r = await dbClient.query(
-        `SELECT org_id, email, pre_register_token, consumed_at, expires_at
-         FROM checkout_post_tokens WHERE stripe_session_id = $1 LIMIT 1`,
-        [sessionId]
+        `SELECT org_id, email, pre_register_token, expires_at
+         FROM checkout_post_tokens WHERE token_hash = $1 LIMIT 1`,
+        [tokenHash]
       );
       if (r.rows.length > 0) postToken = r.rows[0];
     } finally {
@@ -823,38 +781,32 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
     }
 
     if (postToken) {
-      // 409: already consumed (second call / replay attack)
-      if (postToken.consumed_at) {
-        logger.warn({ sessionId, orgId: postToken.org_id }, "[Auth/CheckoutComplete] Token already consumed — replay blocked");
-        res.status(409).json({ error: "Session déjà utilisée.", alreadyCreated: true });
-        return;
-      }
-      // 410: expired
+      // 410: expired (should not happen if webhook respected 15 min, but guard anyway)
       if (new Date(postToken.expires_at) < new Date()) {
         logger.warn({ sessionId }, "[Auth/CheckoutComplete] Post-checkout token expired");
-        res.status(410).json({ error: "Session expirée. Veuillez vous connecter via le lien de bienvenue." });
+        res.status(410).json({ error: "Session expirée. Veuillez vous connecter via le lien de bienvenue reçu par email." });
         return;
       }
-      // Valid: consume atomically then emit session
+      // Atomically DELETE the row — if 0 rows deleted, a concurrent request consumed it first
       const consumeClient = await pool.connect();
+      let deletedOrgId: string | null = null;
       try {
-        const upd = await consumeClient.query(
-          `UPDATE checkout_post_tokens SET consumed_at = NOW()
-           WHERE stripe_session_id = $1 AND consumed_at IS NULL
-           RETURNING org_id`,
-          [sessionId]
+        const del = await consumeClient.query(
+          `DELETE FROM checkout_post_tokens WHERE token_hash = $1 AND expires_at > NOW() RETURNING org_id`,
+          [tokenHash]
         );
-        if (upd.rowCount === 0) {
-          // Race: another request consumed it first
-          logger.warn({ sessionId }, "[Auth/CheckoutComplete] Token consumed by concurrent request");
+        if (del.rowCount === 0) {
+          // Row was either already deleted (consumed) or expired between SELECT and DELETE
+          logger.warn({ sessionId }, "[Auth/CheckoutComplete] Token already consumed or expired — replay blocked");
           res.status(409).json({ error: "Session déjà utilisée.", alreadyCreated: true });
           return;
         }
+        deletedOrgId = del.rows[0].org_id;
       } finally {
         consumeClient.release();
       }
-      logger.info({ sessionId, orgId: postToken.org_id }, "[Auth/CheckoutComplete] Token consumed (webhook path)");
-      await emitSession(postToken.org_id);
+      logger.info({ sessionId, orgId: deletedOrgId }, "[Auth/CheckoutComplete] Token consumed + deleted (webhook path)");
+      await emitSession(deletedOrgId ?? postToken.org_id);
       return;
     }
 
@@ -945,15 +897,29 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
       await upsertOrgSettings(orgId, { email: orgId, subscriptionStatus: "active", stripeCustomerId: customerId });
     }
 
-    // Insert + immediately consume a checkout_post_tokens entry (idempotency + audit)
+    // PATH B: if org already exists with an active subscription, this is a replay → 409.
+    // (The webhook has already processed this session and created the account.)
+    if (existing && (existing.subscriptionStatus === "active" || existing.subscriptionStatus === "trialing")) {
+      logger.warn({ orgId, status: existing.subscriptionStatus }, "[Auth/CheckoutComplete] Org already active — PATH B replay guard");
+      res.status(409).json({ error: "Compte déjà activé.", alreadyCreated: true });
+      return;
+    }
+
+    // Insert a pre-consumed checkout_post_tokens entry for audit trail.
+    // Uses token_hash PK (SHA256 of stripe_session_id). No consumed_at column in new schema —
+    // row is immediately removed (audit entry only; webhook will ON CONFLICT ignore it).
     const insertClient = await pool.connect();
     try {
       await insertClient.query(`
         INSERT INTO checkout_post_tokens
-          (stripe_session_id, org_id, email, pre_register_token, expires_at, consumed_at)
-        VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 minute', NOW())
-        ON CONFLICT (stripe_session_id) DO UPDATE SET consumed_at = COALESCE(checkout_post_tokens.consumed_at, NOW())
-      `, [sessionId, orgId, orgId, preRegisterToken || null]);
+          (token_hash, stripe_session_id, org_id, email, pre_register_token, expires_at)
+        VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '1 minute')
+        ON CONFLICT (token_hash) DO NOTHING
+      `, [tokenHash, sessionId, orgId, orgId, preRegisterToken || null]);
+      // Delete immediately — PATH B creates the session directly; row is only for idempotency
+      await insertClient.query(
+        `DELETE FROM checkout_post_tokens WHERE token_hash = $1`, [tokenHash]
+      );
       // Also mark pending_signup consumed if it exists
       if (preRegisterToken) {
         await insertClient.query(
@@ -1015,6 +981,25 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
   } catch (dbErr) {
     logger.warn({ err: dbErr }, "[Auth] login-verify: could not mark token as used");
     // Non-fatal — continue with session creation
+  }
+
+  // SECURITY: Block sessions for accounts that were created via the old /auth/signup flow
+  // without a confirmed Stripe payment (subscriptionStatus = "pending_billing").
+  // Existing paid accounts ("active", "trialing", "past_due", "canceled") are always allowed.
+  try {
+    const { loadOrgSettings: _checkOrg } = await import("../services/org-settings.js");
+    const orgCheck = await _checkOrg(entry.email).catch(() => null);
+    if (orgCheck && orgCheck.subscriptionStatus === "pending_billing") {
+      logger.warn({ email: entry.email }, "[Auth] login-verify: pending_billing account — session blocked");
+      res.status(402).json({
+        error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription et votre paiement sur /signin.html.",
+        redirectTo: "/signin.html",
+      });
+      return;
+    }
+  } catch (guardErr) {
+    logger.warn({ err: guardErr, email: entry.email }, "[Auth] login-verify: subscription guard failed (non-fatal)");
+    // Non-fatal — do not block existing users on DB hiccup
   }
 
   // SECURITY (P0): Invalidate ALL existing sessions for this user before creating a new one.

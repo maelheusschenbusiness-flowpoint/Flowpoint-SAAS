@@ -1,4 +1,9 @@
 import { Router, type Request, type Response } from "express";
+import { createHash } from "crypto";
+
+function sha256hex(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
 import { store } from "../services/store.js";
 import { logger } from "../lib/logger.js";
 import { getPlanForPriceId, getAddonForPriceId, FLAG_ADDONS, QTY_ADDONS } from "../lib/plans.js";
@@ -349,18 +354,20 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
               }
 
               // ── Create one-time post-checkout token for auto-login ──────────────
-              // checkout-return.html exchanges stripe_session_id for a FlowPoint session.
-              // Token is single-use (consumed_at), expires in 30 min, idempotent (ON CONFLICT).
+              // checkout-return.html exchanges stripe_session_id → SHA256 hash → FlowPoint session.
+              // SECURITY: token_hash = SHA256(stripe_session_id) stored (raw session ID not in DB).
+              // Expires in 15 min. Row is DELETED by checkout-complete after consumption.
               try {
+                const sessionTokenHash = sha256hex(stripeSessionId);
                 const tokenClient = await pgPool.connect();
                 try {
                   await tokenClient.query(`
                     INSERT INTO checkout_post_tokens
-                      (stripe_session_id, stripe_event_id, org_id, email, pre_register_token, expires_at)
-                    VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '30 minutes')
-                    ON CONFLICT (stripe_session_id) DO NOTHING
+                      (token_hash, stripe_session_id, stripe_event_id, org_id, email, pre_register_token, expires_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '15 minutes')
+                    ON CONFLICT (token_hash) DO NOTHING
                   `, [
-                    stripeSessionId, eventId, orgId,
+                    sessionTokenHash, stripeSessionId, eventId, orgId,
                     signupRow["email"] ?? orgId, preRegToken,
                   ]);
                   // Mark pending_signup consumed so cleanup knows it was used

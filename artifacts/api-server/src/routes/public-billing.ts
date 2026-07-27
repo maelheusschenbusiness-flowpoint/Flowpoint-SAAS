@@ -190,10 +190,14 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         email: signupRow.email,
         name:  `${signupRow.first_name} ${signupRow.last_name}`.trim(),
         metadata: {
-          orgId:       signupRow.email,
-          companyName: signupRow.company_name,
-          firstName:   signupRow.first_name,
-          lastName:    signupRow.last_name,
+          flowpointOrgId:  signupRow.email,        // canonical orgId (= email in FlowPoint)
+          flowpointUserId: signupRow.email,         // same as orgId — owner account
+          orgId:           signupRow.email,         // legacy — kept for webhook compatibility
+          companyName:     signupRow.company_name,
+          firstName:       signupRow.first_name,
+          lastName:        signupRow.last_name,
+          signup_source:   "new_signup_flow",
+          environment:     process.env["NODE_ENV"] === "production" ? "production" : "development",
           ...(signupRow.vat ? { vat: signupRow.vat } : {}),
         },
       };
