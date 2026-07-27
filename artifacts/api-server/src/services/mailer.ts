@@ -663,6 +663,36 @@ async function sendTrialCanceled(opts: {
   });
 }
 
+// ── 15. Account Deleted ───────────────────────────────────────────────────────
+
+async function sendAccountDeleted(opts: {
+  to: string;
+  name: string;
+}): Promise<MailResult> {
+  return send({
+    to: opts.to,
+    subject: "Votre compte FlowPoint a été supprimé",
+    tag: "account_deleted",
+    html: layout({
+      eyebrow: "Compte supprimé",
+      accentColor: "#64748b",
+      title: "Suppression confirmée",
+      body: `<p style="margin:0 0 16px;">Bonjour ${opts.name},</p>
+             <p style="margin:0 0 16px;">La suppression définitive de votre compte FlowPoint a bien été effectuée. L'ensemble de vos données a été supprimé de nos serveurs :</p>
+             <ul style="margin:0 0 16px;padding-left:20px;line-height:2;color:#64748b;font-size:13px">
+               <li>Projets, audits et rapports</li>
+               <li>Monitors, alertes et concurrents</li>
+               <li>Données SEO et analytics</li>
+               <li>Membres de l'équipe et intégrations</li>
+               <li>Abonnement Stripe résilié</li>
+             </ul>
+             <p style="margin:0;">Si vous souhaitez revenir sur FlowPoint à l'avenir, vous pouvez créer un nouveau compte à tout moment sur notre site.</p>`,
+      cta: { label: "Retour sur FlowPoint →", url: "https://flowpoint.pro" },
+      note: "Cet email confirme la suppression définitive. Aucune autre action n'est requise de votre part.",
+    }),
+  });
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export const mailer = {
@@ -681,4 +711,5 @@ export const mailer = {
   sendSubscriptionCanceled,
   sendSubscriptionReactivated,
   sendTrialCanceled,
+  sendAccountDeleted,
 };

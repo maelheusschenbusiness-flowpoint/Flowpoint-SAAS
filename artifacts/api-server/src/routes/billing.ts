@@ -27,6 +27,7 @@ const PLAN_INCLUDED_ADDONS: Record<string, Set<string>> = {
 /** Dedicated billing rate limiters — do NOT share quota with reports/exports. */
 const billingPortalRateLimit   = createRateLimit("billingPortalPerMinute");
 const billingCheckoutRateLimit = createRateLimit("billingCheckoutPerMinute");
+const billingDeleteRateLimit   = createRateLimit("billingDeletePerMinute");
 
 // ── Stripe diagnostics gate ───────────────────────────────────────────────────
 // Evaluated once at module load. Trim + lowercase so Render's " true" or "True"
@@ -1595,77 +1596,137 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
 
 
 // ── DELETE /billing/account ───────────────────────────────────────────────────
-// Hard-deletes the org and all its data. Cancels Stripe subscription/customer first.
-router.delete("/billing/account", ownerOnly, async (req: Request, res: Response) => {
+// Hard-deletes the org and ALL its data.
+// Steps: (1) cancel Stripe — abort if Stripe fails, (2) transactional DB delete,
+//        (3) send confirmation email only after full success.
+router.delete("/billing/account", billingDeleteRateLimit, ownerOnly, async (req: Request, res: Response) => {
   const orgId = req.orgId ?? "default";
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
 
   try {
     const billingCtx = await loadBillingContext(orgId);
+    const email      = billingCtx.email ?? "";
+    const name       = billingCtx.firstName ?? email.split("@")[0] ?? "utilisateur";
 
     // ── Step 1: Cancel and delete Stripe resources ───────────────────────────
+    // If Stripe has an active subscription and cancellation fails → abort entirely.
+    // No local data is touched until Stripe is confirmed clean.
     if (stripeKey && billingCtx.stripeCustomerId) {
-      try {
-        const stripe = await createStripeClient(stripeKey);
-        // Cancel active subscription immediately
-        const subs = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "all", limit: 10 });
-        for (const sub of subs.data) {
-          if (sub.status !== "canceled") {
-            await stripe.subscriptions.cancel(sub.id).catch(() => {});
-          }
+      const stripe = await createStripeClient(stripeKey);
+      // Cancel every non-canceled subscription — throw on failure (no .catch)
+      const subs = await stripe.subscriptions.list({
+        customer: billingCtx.stripeCustomerId,
+        status: "all",
+        limit: 10,
+      });
+      for (const sub of subs.data) {
+        if (sub.status !== "canceled") {
+          await stripe.subscriptions.cancel(sub.id);
         }
-        // Delete Stripe customer (triggers customer.deleted webhook → redundant cleanup)
-        await stripe.customers.del(billingCtx.stripeCustomerId).catch(() => {});
-      } catch (stripeErr) {
-        logger.warn({ stripeErr, orgId }, "[Billing/DeleteAccount] Stripe cleanup failed — continuing with DB deletion");
       }
+      // Delete Stripe customer — throw on failure
+      await stripe.customers.del(billingCtx.stripeCustomerId);
+      logger.info({ orgId, customerId: billingCtx.stripeCustomerId }, "[Billing/DeleteAccount] Stripe resources deleted");
     }
 
-    // ── Step 2: Delete all org data from DB ──────────────────────────────────
+    // ── Step 2: Transactional DB deletion ────────────────────────────────────
+    // All DELETEs run inside a single transaction. If any statement throws,
+    // the entire transaction is rolled back and no data is partially deleted.
     const { pool: pgPool } = await import("@workspace/db");
     const client = await pgPool.connect();
     try {
-      // Tables with org_id column — delete all rows for this org
-      const tables = [
-        "audits", "reports", "monitors", "monitor_events", "alert_rules", "alert_events",
-        "keywords", "competitors", "notes", "calendar_events", "team_members",
-        "api_keys", "automation_integrations", "automation_workflows", "workflow_runs",
-        "missions", "review_intelligence", "psi_cache", "ga4_accounts", "gsc_keyword_data",
-        "gsc_page_data", "gsc_sync_logs", "google_tokens", "org_addons", "org_checklist",
-        "billing_addons", "org_monitor_quota", "pending_signups", "user_sessions",
-        "google_oauth_states", "behavior_events", "behavior_sessions", "traffic_sources",
-        "traffic_losses", "cro_scores", "cro_experiments", "revenue_leaks",
-        "activity_log", "org_quota_usage",
+      // ── 2a. Build confirmed table list: only tables that actually exist ────
+      // Checked against pg_tables before opening the transaction so we never
+      // run a DELETE on a missing relation (which would abort the transaction).
+      // In production all tables exist; in dev some may not yet be initialised.
+      const wantedTables: string[] = [
+        // Core product data
+        "audits", "audit_schedules", "reports", "report_exports",
+        "monitors", "monitor_checks", "monitor_incidents",
+        "alert_rules", "alert_events",
+        "tracked_keywords",
+        "calendar_events",
+        // Team & access
+        "team_members", "team_invitations", "team_messages", "team_files",
+        "user_sessions", "google_oauth_states",
+        // Automation
+        "automation_integrations", "automation_workflows", "automation_runs",
+        "automation_logs", "workflow_runs", "incoming_webhooks",
+        // Missions & AI
+        "missions", "mission_history", "mission_ai_logs",
+        // SEO & analytics
+        "psi_cache", "seo_forecasts", "funnels", "funnel_steps",
+        "ga4_accounts", "gsc_keyword_data", "gsc_page_data", "gsc_sync_logs",
+        "google_tokens", "github_connections",
+        "behavior_events", "behavior_sessions",
+        "traffic_sources", "traffic_losses",
+        "cro_scores", "cro_experiments", "revenue_leaks",
+        "local_pack_history",
+        // Billing & org config
+        "org_addons", "org_checklist", "org_monitor_quota", "org_secrets",
+        "org_quota_usage", "checkout_post_tokens",
+        // Insights & cache
+        "overview_insights_cache", "overview_insights_rl",
+        "activity_log",
+        // Sharing & tokens
+        "share_tokens",
+        // Growth
+        "growth_objectives",
       ];
-      for (const table of tables) {
-        await client.query(`DELETE FROM ${table} WHERE org_id = $1`, [orgId]).catch(() => {});
+      const existCheck = await client.query<{ tablename: string }>(
+        `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1)`,
+        [wantedTables]
+      );
+      const existingSet = new Set(existCheck.rows.map(r => r.tablename));
+      const orgIdTables = wantedTables.filter(t => existingSet.has(t));
+      logger.info({ orgId, total: wantedTables.length, present: orgIdTables.length }, "[Billing/DeleteAccount] Tables to purge");
+
+      await client.query("BEGIN");
+
+      for (const table of orgIdTables) {
+        await client.query(`DELETE FROM ${table} WHERE org_id = $1`, [orgId]);
       }
-      // Delete the org itself
+
+      // ── 2b. Tables keyed by email (no org_id column) ──────────────────────
+      if (email) {
+        await client.query(`DELETE FROM pending_signups    WHERE email = $1`, [email]);
+        await client.query(`DELETE FROM magic_link_tokens  WHERE email = $1`, [email]);
+      }
+
+      // ── 2c. organizations table — keyed by id (= orgId) ───────────────────
+      await client.query(`DELETE FROM organizations WHERE id = $1`, [orgId]);
+
+      // ── 2d. Delete the org itself (must be last — FK target) ──────────────
       await client.query(`DELETE FROM org_settings WHERE org_id = $1`, [orgId]);
-    } finally { client.release(); }
 
-    // ── Step 3: Invalidate all sessions ──────────────────────────────────────
-    try {
-      const { pool: pgPool2 } = await import("@workspace/db");
-      const sc = await pgPool2.connect();
-      try {
-        await sc.query(`DELETE FROM user_sessions WHERE org_id = $1`, [orgId]);
-      } finally { sc.release(); }
-    } catch (_se) {}
+      await client.query("COMMIT");
+      logger.info({ orgId, tables: orgIdTables.length + 4 }, "[Billing/DeleteAccount] DB transaction committed");
+    } catch (dbErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      logger.error({ dbErr, orgId }, "[Billing/DeleteAccount] DB transaction rolled back");
+      throw dbErr;
+    } finally {
+      client.release();
+    }
 
-    // ── Step 4: Send confirmation email ──────────────────────────────────────
-    try {
-      const { mailer } = await import("../services/mailer.js");
-      if (billingCtx.email) {
-        await mailer.sendWelcome({ to: billingCtx.email, name: billingCtx.firstName ?? billingCtx.email.split("@")[0] }).catch(() => {});
-      }
-    } catch (_me) {}
+    // ── Step 3: Send confirmation email — only after full success ─────────────
+    if (email) {
+      mailer.sendAccountDeleted({ to: email, name }).catch((mailErr: unknown) => {
+        logger.warn({ mailErr, orgId }, "[Billing/DeleteAccount] Confirmation email failed (non-fatal)");
+      });
+    }
 
     logger.info({ orgId }, "[Billing/DeleteAccount] Account deleted successfully");
     res.json({ ok: true });
+
   } catch (err) {
     logger.error({ err, orgId }, "[Billing/DeleteAccount] Failed");
-    res.status(500).json({ error: "Erreur lors de la suppression du compte." });
+    const isStripeErr = err instanceof Error && err.message.includes("Stripe");
+    res.status(500).json({
+      error: isStripeErr
+        ? "Échec de la résiliation Stripe. Aucune donnée n'a été supprimée. Réessayez ou contactez le support."
+        : "Erreur lors de la suppression du compte.",
+    });
   }
 });
 

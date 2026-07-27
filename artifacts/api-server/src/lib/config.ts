@@ -68,22 +68,23 @@ export const AI_LIMITS: Record<PlanTier, AILimits> = {
 
 // ── Rate limits (requests per window) ─────────────────────────────────────────
 export interface RateLimits {
-  globalPerMinute:        number;  // total requests per minute per org
-  aiPerMinute:            number;  // AI endpoint calls per minute
-  reportsPerHour:         number;
-  exportsPerHour:         number;
-  webhooksPerMinute:      number;
-  billingPortalPerMinute: number;  // POST /billing/portal — generous to allow legit retries
-  billingCheckoutPerMinute: number; // POST /billing/checkout* and /billing/upgrade
+  globalPerMinute:          number;  // total requests per minute per org
+  aiPerMinute:              number;  // AI endpoint calls per minute
+  reportsPerHour:           number;
+  exportsPerHour:           number;
+  webhooksPerMinute:        number;
+  billingPortalPerMinute:   number;  // POST /billing/portal — generous to allow legit retries
+  billingCheckoutPerMinute: number;  // POST /billing/checkout* and /billing/upgrade
+  billingDeletePerMinute:   number;  // DELETE /billing/account — very restrictive
 }
 
 export const RATE_LIMITS: Record<PlanTier, RateLimits> = {
   // standard: 600/min ≈ 10/sec — dashboard loads ~20 endpoints simultaneously on boot
   // plus polling (google/status, ga4/status, etc.) every few seconds; 120 was too low.
-  standard: { globalPerMinute:600,  aiPerMinute:10,  reportsPerHour:20,  exportsPerHour:20,  webhooksPerMinute:20,  billingPortalPerMinute:60,  billingCheckoutPerMinute:30  },
-  pro:      { globalPerMinute:2000, aiPerMinute:60,  reportsPerHour:120, exportsPerHour:120, webhooksPerMinute:60,  billingPortalPerMinute:120, billingCheckoutPerMinute:60  },
-  ultra:    { globalPerMinute:5000, aiPerMinute:200, reportsPerHour:600, exportsPerHour:600, webhooksPerMinute:300, billingPortalPerMinute:300, billingCheckoutPerMinute:120 },
-  agency:   { globalPerMinute:9999, aiPerMinute:999, reportsPerHour:999, exportsPerHour:999, webhooksPerMinute:999, billingPortalPerMinute:999, billingCheckoutPerMinute:999 },
+  standard: { globalPerMinute:600,  aiPerMinute:10,  reportsPerHour:20,  exportsPerHour:20,  webhooksPerMinute:20,  billingPortalPerMinute:60,  billingCheckoutPerMinute:30,  billingDeletePerMinute:3  },
+  pro:      { globalPerMinute:2000, aiPerMinute:60,  reportsPerHour:120, exportsPerHour:120, webhooksPerMinute:60,  billingPortalPerMinute:120, billingCheckoutPerMinute:60,  billingDeletePerMinute:3  },
+  ultra:    { globalPerMinute:5000, aiPerMinute:200, reportsPerHour:600, exportsPerHour:600, webhooksPerMinute:300, billingPortalPerMinute:300, billingCheckoutPerMinute:120, billingDeletePerMinute:3  },
+  agency:   { globalPerMinute:9999, aiPerMinute:999, reportsPerHour:999, exportsPerHour:999, webhooksPerMinute:999, billingPortalPerMinute:999, billingCheckoutPerMinute:999, billingDeletePerMinute:10 },
 };
 
 // ── Feature flags ──────────────────────────────────────────────────────────────
