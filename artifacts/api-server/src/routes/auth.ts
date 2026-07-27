@@ -1029,6 +1029,7 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
     return;
   }
 
+  // ── Step 1: Validate token ────────────────────────────────────────────────
   let entry: { email: string; used: boolean } | null = null;
   try {
     entry = await getMagicToken(String(token));
@@ -1048,57 +1049,170 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
     return;
   }
 
+  // Consume token immediately — single-use guarantee
   try {
     await consumeMagicToken(String(token));
   } catch (dbErr) {
     logger.warn({ err: dbErr }, "[Auth] login-verify: could not mark token as used");
-    // Non-fatal — continue with session creation
   }
 
-  // SECURITY: Block sessions for accounts that were created via the old /auth/signup flow
-  // without a confirmed Stripe payment (subscriptionStatus = "pending_billing").
-  // Existing paid accounts ("active", "trialing", "past_due", "canceled") are always allowed.
+  const email = entry.email;
+
+  // ── Steps 2-7: Six mandatory pre-session checks ───────────────────────────
+  // All six must pass before any session is created.
+  // Uses the new architecture (users + organization_members + organizations)
+  // with a graceful fallback to org_settings for legacy accounts not yet migrated.
+  const { pool: pgPool } = await import("@workspace/db");
+  let sessionOrgId: string;
+  let sessionRole: string;
+
   try {
-    const { loadOrgSettings: _checkOrg } = await import("../services/org-settings.js");
-    const orgCheck = await _checkOrg(entry.email).catch(() => null);
-    if (orgCheck === null) {
-      // null = DB reachable but no row found — no account
-      logger.warn({ email: entry.email }, "[Auth] login-verify: no org found — session blocked");
-      res.status(404).json({
-        error: "Aucun compte associé à cette adresse email. Créez votre compte sur /signin.html.",
-        redirectTo: "/signin.html",
-      });
-      return;
-    }
-    if (orgCheck && orgCheck.subscriptionStatus === "pending_billing") {
-      logger.warn({ email: entry.email }, "[Auth] login-verify: pending_billing account — session blocked");
-      res.status(402).json({
-        error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription et votre paiement sur /signin.html.",
-        redirectTo: "/signin.html",
-      });
-      return;
+    // Parallel fetch: user record + org membership via new architecture
+    const [userRow, memberRow] = await Promise.all([
+      pgPool.query<{
+        id: string; status: string; email_verified: boolean;
+      }>(
+        `SELECT id, status, email_verified FROM users WHERE email = $1`,
+        [email]
+      ),
+      pgPool.query<{
+        organization_id: string; role: string; status: string; org_status: string; subscription_status: string;
+      }>(
+        `SELECT om.organization_id, om.role, om.status AS member_status,
+                o.status AS org_status, o.subscription_status
+         FROM organization_members om
+         JOIN organizations o ON o.id = om.organization_id
+         WHERE om.user_id = (SELECT id FROM users WHERE email = $1 LIMIT 1)
+           AND om.status = 'active'
+           AND o.status != 'deleted'
+         ORDER BY om.joined_at ASC
+         LIMIT 1`,
+        [email]
+      ),
+    ]);
+
+    // Check 2: utilisateur existant
+    if (userRow.rows.length === 0) {
+      // Graceful fallback: legacy account not yet in users table
+      const { loadOrgSettings: _checkOrg } = await import("../services/org-settings.js");
+      const orgCheck = await _checkOrg(email).catch(() => null);
+      if (orgCheck === null) {
+        logger.warn({ email }, "[Auth] login-verify: CHECK 2 FAIL — no account found");
+        res.status(404).json({
+          error: "Aucun compte associé à cette adresse email.",
+          redirectTo: "/signin.html",
+        });
+        return;
+      }
+      // Legacy account exists in org_settings — apply legacy guard only
+      if (orgCheck.subscriptionStatus === "pending_billing") {
+        logger.warn({ email }, "[Auth] login-verify: CHECK legacy — pending_billing blocked");
+        res.status(402).json({
+          error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.",
+          redirectTo: "/signin.html",
+        });
+        return;
+      }
+      // Legacy path: create session using email as orgId (backward compat)
+      logger.info({ email }, "[Auth] login-verify: legacy path (user not yet in users table)");
+      sessionOrgId = email;
+      sessionRole = "owner";
+    } else {
+      const user = userRow.rows[0];
+
+      // Check 3: email vérifié
+      if (!user.email_verified) {
+        logger.warn({ email, userId: user.id }, "[Auth] login-verify: CHECK 3 FAIL — email not verified");
+        res.status(403).json({
+          error: "Adresse email non vérifiée. Vérifiez votre boîte mail.",
+        });
+        return;
+      }
+
+      // Check 4: utilisateur actif
+      if (user.status !== "active") {
+        logger.warn({ email, userId: user.id, status: user.status }, "[Auth] login-verify: CHECK 4 FAIL — user not active");
+        res.status(403).json({
+          error: user.status === "suspended"
+            ? "Votre compte a été suspendu. Contactez le support."
+            : "Votre compte n'est plus actif.",
+        });
+        return;
+      }
+
+      // Check 5: appartenance à une organisation + rôle valide
+      if (memberRow.rows.length === 0) {
+        // No membership in new table — fallback to org_settings for legacy owners
+        const { loadOrgSettings: _fallback } = await import("../services/org-settings.js");
+        const orgFallback = await _fallback(email).catch(() => null);
+        if (!orgFallback) {
+          logger.warn({ email }, "[Auth] login-verify: CHECK 5 FAIL — no org membership");
+          res.status(403).json({
+            error: "Votre compte n'est associé à aucune organisation active.",
+          });
+          return;
+        }
+        if (orgFallback.subscriptionStatus === "pending_billing") {
+          logger.warn({ email }, "[Auth] login-verify: CHECK 6 FAIL (fallback) — pending_billing");
+          res.status(402).json({
+            error: "Votre compte n'est pas encore activé. Veuillez compléter votre inscription.",
+            redirectTo: "/signin.html",
+          });
+          return;
+        }
+        sessionOrgId = email;
+        sessionRole = "owner";
+      } else {
+        const member = memberRow.rows[0];
+
+        // Check 5b: rôle valide
+        if (!["owner", "admin", "member", "viewer"].includes(member.role)) {
+          logger.warn({ email, role: member.role }, "[Auth] login-verify: CHECK 5 FAIL — invalid role");
+          res.status(403).json({ error: "Rôle invalide." });
+          return;
+        }
+
+        // Check 6: abonnement cohérent
+        const blockedStatuses = ["pending_billing", "canceled", "incomplete"];
+        if (blockedStatuses.includes(member.subscription_status)) {
+          logger.warn({ email, subStatus: member.subscription_status }, "[Auth] login-verify: CHECK 6 FAIL — subscription blocked");
+          res.status(402).json({
+            error: "Votre abonnement n'est pas actif. Veuillez régulariser votre situation.",
+            redirectTo: "/signin.html",
+          });
+          return;
+        }
+
+        sessionOrgId = member.organization_id;
+        sessionRole = member.role;
+        logger.info({ email, orgId: sessionOrgId, role: sessionRole, subStatus: member.subscription_status },
+          "[Auth] login-verify: All 6 checks passed (new architecture)");
+      }
     }
   } catch (guardErr) {
-    logger.warn({ err: guardErr, email: entry.email }, "[Auth] login-verify: subscription guard failed (non-fatal)");
-    // Non-fatal — do not block existing users on DB hiccup
+    logger.error({ err: guardErr, email }, "[Auth] login-verify: Pre-session guard threw — session blocked");
+    res.status(500).json({ error: "Erreur de vérification. Veuillez réessayer." });
+    return;
   }
 
-  // SECURITY (P0): Invalidate ALL existing sessions for this user before creating a new one.
-  // Prevents session-bleeding when the same browser switches between accounts via magic link.
-  await invalidateAllSessions(entry.email).catch((err) =>
-    logger.warn({ err, email: entry.email }, "[Auth] login-verify: invalidateAllSessions failed (non-fatal)"),
+  // ── All checks passed — create session ───────────────────────────────────
+  // Invalidate ALL existing sessions first (prevents session bleeding)
+  await invalidateAllSessions(email).catch((err) =>
+    logger.warn({ err, email }, "[Auth] login-verify: invalidateAllSessions failed (non-fatal)"),
   );
 
   const sessionToken = await createSession({
-    userId: entry.email,
-    orgId: entry.email,
-    email: entry.email,
-    // Direct magic-link login = org creator → owner.
-    // Invited members who accept an invitation token get their role from team_members (see /team/accept).
-    role: "owner",
+    userId: sessionOrgId,   // backward compat: userId = orgId for existing session lookups
+    orgId: sessionOrgId,
+    email,
+    role: sessionRole,
   });
 
-  logger.info({ email: entry.email }, "[Auth] Magic link verified — session started");
+  // Update last_login_at in users table (fire-and-forget)
+  pgPool.query(`UPDATE users SET last_login_at = NOW() WHERE email = $1`, [email])
+    .catch((err) => logger.warn({ err, email }, "[Auth] login-verify: last_login_at update failed"));
+
+  logger.info({ email, orgId: sessionOrgId, role: sessionRole }, "[Auth] Magic link verified — session started");
 
   const isProd = isDeployedProd();
   res.cookie("fp_token", sessionToken, {
@@ -1111,28 +1225,20 @@ router.get("/auth/login-verify", async (req: Request, res: Response) => {
 
   res.json({
     ok: true,
-    email: entry.email,
+    email,
     message: "Connexion réussie",
   });
 
-  // P0: ensure org_settings row + Stripe customer exist for this org.
-  // Fire-and-forget — never blocks the login response.
-  const verifiedEmail = entry.email;
+  // Fire-and-forget: ensure Stripe customer exists (non-blocking)
   (async () => {
-    try {
-      const { upsertOrgSettings: _upsert } = await import("../services/org-settings.js");
-      await _upsert(verifiedEmail, { email: verifiedEmail });
-    } catch (settingsErr) {
-      logger.warn({ settingsErr, email: verifiedEmail }, "[Auth] login-verify: upsertOrgSettings failed (non-fatal)");
-    }
     const stripeKey = process.env["STRIPE_LIVE_API_KEY"] ?? process.env["STRIPE_SECRET_KEY"] ?? "";
     if (!stripeKey) return;
     try {
       const { ensureStripeCustomer } = await import("../services/ensure-stripe-customer.js");
-      await ensureStripeCustomer(verifiedEmail);
-      logger.info({ email: verifiedEmail }, "[Auth] login-verify: Stripe customer ensured");
+      await ensureStripeCustomer(sessionOrgId);
+      logger.info({ email, orgId: sessionOrgId }, "[Auth] login-verify: Stripe customer ensured");
     } catch (stripeErr) {
-      logger.warn({ stripeErr, email: verifiedEmail }, "[Auth] login-verify: ensureStripeCustomer failed (non-fatal)");
+      logger.warn({ stripeErr, email }, "[Auth] login-verify: ensureStripeCustomer failed (non-fatal)");
     }
   })();
 });
