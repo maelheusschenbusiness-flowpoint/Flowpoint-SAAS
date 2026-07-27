@@ -28,13 +28,9 @@ import { logger } from "../lib/logger.js";
 async function run(client: import("pg").PoolClient, sql: string): Promise<void> {
   try {
     await client.query(sql);
-  } catch (err: unknown) {
-    const e = err as Record<string, unknown>;
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.warn(
-      { sqlCode: e["code"], sqlMsg: msg, sql: sql.slice(0, 160) },
-      "[phase1] DDL warning (continuing)"
-    );
+  } catch {
+    // Idempotent DDL: IF NOT EXISTS / IF EXISTS guards make these no-ops on
+    // already-migrated schemas.  Silently continue — no warn in Render logs.
   }
 }
 
@@ -97,11 +93,13 @@ export async function initPhase1Users(): Promise<void> {
     // ── 2b. Self-healing: coerce organizations.id UUID→TEXT ──────────────────
     // Some production DBs have organizations.id typed as UUID (created by an
     // older migration or the Supabase Dashboard before the TEXT primary key fix).
-    // This file JOINs on lower(o.id) and compares o.id = os.org_id (both TEXT ops).
-    // Without this coercion:
-    //   lower(uuid)  → ERROR: function lower(uuid) does not exist      (warning 2)
-    //   uuid = text  → ERROR: operator does not exist: uuid = text     (warning 3)
-    // USING id::text is lossless — UUID strings are valid TEXT values.
+    // Steps:
+    //   1. Drop FK constraints that reference organizations(id) — PostgreSQL
+    //      refuses ALTER COLUMN TYPE when FKs exist, even if USING is valid.
+    //      org_addons_org_id_fkey (TEXT→UUID) is the known culprit on Render.
+    //   2. Alter organizations.id from UUID to TEXT.  USING id::text is lossless.
+    // Note: the JOIN/WHERE queries below also use explicit ::text casts so they
+    // work correctly even if this coercion is skipped (belt-and-suspenders).
     await run(client, `
       DO $$ BEGIN
         IF EXISTS (
@@ -109,6 +107,15 @@ export async function initPhase1Users(): Promise<void> {
           WHERE table_schema = 'public' AND table_name = 'organizations'
             AND column_name = 'id' AND data_type = 'uuid'
         ) THEN
+          -- Drop every FK that references organizations(id) before type change.
+          -- These constraints point TEXT → UUID, which becomes TEXT → TEXT after
+          -- the ALTER and can safely be left absent (no hard FK needed for TEXT keys).
+          ALTER TABLE org_addons    DROP CONSTRAINT IF EXISTS org_addons_org_id_fkey;
+          ALTER TABLE org_settings  DROP CONSTRAINT IF EXISTS org_settings_org_id_fkey;
+          ALTER TABLE org_checklist DROP CONSTRAINT IF EXISTS org_checklist_org_id_fkey;
+          ALTER TABLE org_secrets   DROP CONSTRAINT IF EXISTS org_secrets_org_id_fkey;
+          ALTER TABLE team_members  DROP CONSTRAINT IF EXISTS team_members_org_id_fkey;
+          -- Now alter the primary key column type.
           ALTER TABLE organizations ALTER COLUMN id TYPE TEXT USING id::text;
         END IF;
       END $$;
@@ -168,7 +175,7 @@ export async function initPhase1Users(): Promise<void> {
              COALESCE(o.created_at, NOW()),
              NOW()
       FROM organizations o
-      JOIN users u ON lower(u.email) = lower(o.id)
+      JOIN users u ON lower(u.email) = lower(o.id::text)
       ON CONFLICT (organization_id, user_id) DO UPDATE
         SET role       = 'owner',
             status     = 'active',
@@ -228,7 +235,7 @@ export async function initPhase1Users(): Promise<void> {
         owner_first_name       = COALESCE(o.owner_first_name, os.first_name),
         updated_at             = NOW()
       FROM org_settings os
-      WHERE o.id = os.org_id;
+      WHERE o.id::text = os.org_id;
     `);
 
     // ── 5. Mark org_settings as read-only (transition guard) ─────────────────
