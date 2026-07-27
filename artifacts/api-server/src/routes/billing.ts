@@ -1593,4 +1593,80 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
   }
 });
 
+
+// ── DELETE /billing/account ───────────────────────────────────────────────────
+// Hard-deletes the org and all its data. Cancels Stripe subscription/customer first.
+router.delete("/billing/account", ownerOnly, async (req: Request, res: Response) => {
+  const orgId = req.orgId ?? "default";
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+
+  try {
+    const billingCtx = await loadBillingContext(orgId);
+
+    // ── Step 1: Cancel and delete Stripe resources ───────────────────────────
+    if (stripeKey && billingCtx.stripeCustomerId) {
+      try {
+        const stripe = await createStripeClient(stripeKey);
+        // Cancel active subscription immediately
+        const subs = await stripe.subscriptions.list({ customer: billingCtx.stripeCustomerId, status: "all", limit: 10 });
+        for (const sub of subs.data) {
+          if (sub.status !== "canceled") {
+            await stripe.subscriptions.cancel(sub.id).catch(() => {});
+          }
+        }
+        // Delete Stripe customer (triggers customer.deleted webhook → redundant cleanup)
+        await stripe.customers.del(billingCtx.stripeCustomerId).catch(() => {});
+      } catch (stripeErr) {
+        logger.warn({ stripeErr, orgId }, "[Billing/DeleteAccount] Stripe cleanup failed — continuing with DB deletion");
+      }
+    }
+
+    // ── Step 2: Delete all org data from DB ──────────────────────────────────
+    const { pool: pgPool } = await import("@workspace/db");
+    const client = await pgPool.connect();
+    try {
+      // Tables with org_id column — delete all rows for this org
+      const tables = [
+        "audits", "reports", "monitors", "monitor_events", "alert_rules", "alert_events",
+        "keywords", "competitors", "notes", "calendar_events", "team_members",
+        "api_keys", "automation_integrations", "automation_workflows", "workflow_runs",
+        "missions", "review_intelligence", "psi_cache", "ga4_accounts", "gsc_keyword_data",
+        "gsc_page_data", "gsc_sync_logs", "google_tokens", "org_addons", "org_checklist",
+        "billing_addons", "org_monitor_quota", "pending_signups", "user_sessions",
+        "google_oauth_states", "behavior_events", "behavior_sessions", "traffic_sources",
+        "traffic_losses", "cro_scores", "cro_experiments", "revenue_leaks",
+        "activity_log", "org_quota_usage",
+      ];
+      for (const table of tables) {
+        await client.query(`DELETE FROM ${table} WHERE org_id = $1`, [orgId]).catch(() => {});
+      }
+      // Delete the org itself
+      await client.query(`DELETE FROM org_settings WHERE org_id = $1`, [orgId]);
+    } finally { client.release(); }
+
+    // ── Step 3: Invalidate all sessions ──────────────────────────────────────
+    try {
+      const { pool: pgPool2 } = await import("@workspace/db");
+      const sc = await pgPool2.connect();
+      try {
+        await sc.query(`DELETE FROM user_sessions WHERE org_id = $1`, [orgId]);
+      } finally { sc.release(); }
+    } catch (_se) {}
+
+    // ── Step 4: Send confirmation email ──────────────────────────────────────
+    try {
+      const { mailer } = await import("../services/mailer.js");
+      if (billingCtx.email) {
+        await mailer.sendWelcome({ to: billingCtx.email, name: billingCtx.firstName ?? billingCtx.email.split("@")[0] }).catch(() => {});
+      }
+    } catch (_me) {}
+
+    logger.info({ orgId }, "[Billing/DeleteAccount] Account deleted successfully");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err, orgId }, "[Billing/DeleteAccount] Failed");
+    res.status(500).json({ error: "Erreur lors de la suppression du compte." });
+  }
+});
+
 export default router;

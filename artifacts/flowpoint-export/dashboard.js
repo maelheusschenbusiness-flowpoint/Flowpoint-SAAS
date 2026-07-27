@@ -7653,7 +7653,7 @@ function renderBilling() {
             ? `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelTrialModal()">Terminer l'essai</button>`
             : `<button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444;flex-shrink:0" onclick="fpCancelSubscriptionModal()">Annuler l'abonnement</button>`;
         const _warn = _cap ? `<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px 14px;font-size:12px;color:#ef4444;margin-top:10px">Ton abonnement est programmé pour être annulé. Tu conserves l'accès jusqu'à la fin de la période en cours. Clique sur "Réactiver" pour rétablir le renouvellement automatique.</div>` : '';
-        return `<div class="fp-card" style="margin-top:16px;border-left:4px solid ${_bc}"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${_warn ? '12px' : '0'}"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${_st}</div></div><div style="flex-shrink:0">${_btn}</div></div>${_warn}</div>`;
+        return `<div class="fp-card" style="margin-top:16px;border-left:4px solid ${_bc}"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${_warn ? '12px' : '0'}"><div><div class="fp-card-title" style="margin-bottom:4px">⚙️ Gestion de l'abonnement</div><div style="font-size:12px;color:var(--fp-text-muted)">${_st}</div></div><div style="flex-shrink:0">${_btn}</div></div>${_warn}<div style="border-top:1px solid var(--fp-border);margin-top:14px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="font-size:11px;color:var(--fp-text-muted)">Zone danger — action irréversible</div><button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.25);color:#ef4444;font-size:11px" onclick="fpDeleteAccountModal()">🗑️ Supprimer mon compte</button></div></div>`;
       })()}
     `;
   }
@@ -7741,24 +7741,9 @@ function renderBilling() {
     window.fpUpgradeOrCheckout = async function(plan) {
       const _ss = (typeof window.getBillingStatus === 'function' ? window.getBillingStatus() : ((STATE.billing && (STATE.billing.subscriptionStatus || STATE.billing.status)) || (STATE.me && STATE.me.subscriptionStatus) || ''));
       if (_ss === 'active' || _ss === 'trialing') {
-        showToast('info', 'Mise à niveau en cours…');
-        try {
-          const r = await apiAction('POST', '/api/billing/upgrade', { plan });
-          if (r && r.url) {
-            window.location.href = r.url;
-          } else if (r && r.noSubscription) {
-            // No Stripe subscription yet (internal trial or no plan) — go to checkout
-            const _dest = (r.redirectTo || '/checkout.html') + '?plan=' + encodeURIComponent(plan);
-            window.location.href = _dest;
-          } else if (r && r.ok) {
-            showToast('success', 'Plan mis à jour avec succès');
-            setTimeout(()=>navigateSub('plans'), 700);
-          } else if (r && r.error === 'plan_already_active') {
-            showToast('info', r.message || 'Ce plan est déjà votre plan actuel');
-          } else {
-            showToast('error', (r && (r.message || r.error)) || 'Erreur lors de la mise à niveau');
-          }
-        } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'mise à niveau impossible')); }
+        // Teaser buttons navigate to the plans sub-page for review, not an immediate API upgrade.
+        // Upgrade is triggered from within the plans section itself.
+        navigateSub('plans');
       } else {
         fpGoToPricing(plan);
       }
@@ -7812,6 +7797,38 @@ function renderBilling() {
       } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'annulation impossible')); }
     };
 
+    window.fpDeleteAccountModal = function() {
+      if (document.getElementById('fp-delete-account-modal')) return;
+      const _m = document.createElement('div');
+      _m.id = 'fp-delete-account-modal';
+      _m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+      _m.innerHTML = `<div style="background:var(--fp-card-bg,#fff);border-radius:16px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--fp-border)"><div style="font-size:36px;margin-bottom:12px;text-align:center">🗑️</div><div style="font-size:18px;font-weight:800;color:#ef4444;margin-bottom:8px;text-align:center">Supprimer définitivement mon compte</div><div style="font-size:13px;color:var(--fp-text-muted);margin-bottom:16px;text-align:center;line-height:1.6">Cette action est <strong style="color:#ef4444">irréversible</strong>. Les éléments suivants seront supprimés :</div><ul style="font-size:12px;color:var(--fp-text-muted);margin:0 0 16px 0;padding-left:20px;line-height:2"><li>Tous vos projets, audits et rapports</li><li>Tous vos monitors, alertes et concurrents</li><li>Toutes vos données SEO et analytics</li><li>Tous les membres de l'équipe</li><li>Toutes les clés API et intégrations</li><li>Votre abonnement Stripe (résilié immédiatement)</li></ul><div style="font-size:12px;color:var(--fp-text);margin-bottom:8px;font-weight:600">Tapez <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;color:#ef4444">SUPPRIMER</code> pour confirmer :</div><input id="fp-delete-confirm-input" type="text" placeholder="SUPPRIMER" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:var(--fp-bg,#f8fafc);color:var(--fp-text);font-size:13px;margin-bottom:16px;outline:none"><div style="display:flex;gap:8px"><button class="fp-btn fp-btn-ghost" style="flex:1" onclick="document.getElementById('fp-delete-account-modal').remove()">Annuler</button><button class="fp-btn fp-btn-primary" id="fp-delete-confirm-btn" style="flex:1;background:#ef4444;border-color:#ef4444;opacity:0.4;cursor:not-allowed" disabled onclick="fpConfirmDeleteAccount()">Supprimer définitivement</button></div></div>`;
+      document.body.appendChild(_m);
+      const _inp = document.getElementById('fp-delete-confirm-input');
+      const _btn = document.getElementById('fp-delete-confirm-btn');
+      if (_inp && _btn) _inp.addEventListener('input', function() {
+        const ok = (_inp.value === 'SUPPRIMER');
+        _btn.disabled = !ok; _btn.style.opacity = ok ? '1' : '0.4'; _btn.style.cursor = ok ? 'pointer' : 'not-allowed';
+      });
+    };
+    window.fpConfirmDeleteAccount = async function() {
+      const _inp = document.getElementById('fp-delete-confirm-input');
+      if (!_inp || _inp.value !== 'SUPPRIMER') return;
+      if (!confirm('Dernière confirmation — cette action est irréversible et définitive. Continuer ?')) return;
+      document.getElementById('fp-delete-account-modal')?.remove();
+      showToast('info', 'Suppression du compte en cours…');
+      try {
+        const r = await apiAction('DELETE', '/api/billing/account');
+        if (r && r.ok) {
+          showToast('success', 'Compte supprimé. Redirection…');
+          setTimeout(() => {
+            try { document.cookie.split(';').forEach(c => { document.cookie = c.split('=')[0].trim() + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); } catch(e) {}
+            try { localStorage.clear(); sessionStorage.clear(); } catch(e) {}
+            window.location.href = '/';
+          }, 1800);
+        } else { showToast('error', (r && r.error) || 'Erreur lors de la suppression du compte'); }
+      } catch(e) { showToast('error', 'Erreur : ' + ((e && e.message) || 'suppression impossible')); }
+    };
     window.fpActivateAddon = async function(addonIdx) {
       const _a = window._fpAllAddons && window._fpAllAddons[addonIdx];
       if (!_a) { fpGoToPricing(); return; }
@@ -10193,7 +10210,7 @@ function renderSettings() {
         <div style="font-size:12px;color:var(--fp-text-muted);margin-bottom:12px">Ces actions sont irréversibles. Agissez avec précaution.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="openDataDeletionPanel('data')">Supprimer toutes les données</button>
-          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="openDataDeletionPanel('account')">Supprimer mon compte</button>
+          <button class="fp-btn fp-btn-ghost fp-btn-sm" style="border-color:rgba(239,68,68,0.3);color:#ef4444" onclick="fpDeleteAccountModal()">Supprimer définitivement mon compte</button>
         </div>
       </div>
     `;
@@ -14859,6 +14876,15 @@ async function init() {
 
   // Load data
   await loadData();
+
+  // ── Billing gate: block dashboard for past_due/unpaid subscriptions ─────
+  try {
+    const _gStatus = (STATE.me && (STATE.me.subscriptionStatus || STATE.me.subscription_status)) || '';
+    if (_gStatus === 'past_due' || _gStatus === 'unpaid') {
+      window.location.href = '/suspended.html';
+      return;
+    }
+  } catch(_ge) {}
 
   // Log session start once per browser session to feed activity feed + streak
   if (!sessionStorage.getItem('fp:session-logged')) {

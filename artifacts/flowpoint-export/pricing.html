@@ -191,7 +191,7 @@
     .fp-addon-qty-btn { width: 24px; height: 24px; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; justify-content: center; transition: border-color 0.1s; }
     .fp-addon-qty-btn:hover { border-color: var(--blue); color: var(--blue); }
     .fp-addon-qty-input { width: 36px; text-align: center; border: 1px solid var(--border); border-radius: 6px; padding: 2px 4px; font-size: 13px; background: var(--surface); color: var(--text); }
-    .fp-addon-btn { flex: 1; font-size: 12px; font-weight: 600; color: var(--blue); background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2); border-radius: 7px; padding: 7px 12px; cursor: pointer; white-space: nowrap; text-align: center; transition: all 0.15s; }
+    .fp-addon-btn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 600; color: var(--blue); background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2); border-radius: 7px; padding: 7px 10px; cursor: pointer; white-space: nowrap; text-align: center; transition: all 0.15s; }
     .fp-addon-btn:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
     .fp-addon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -1219,9 +1219,12 @@
     if (_p.get('from') !== 'dashboard') return;
     var _saved = null;
     try { _saved = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
-    if (!_saved) return;
+    /* Also pre-select plan from URL param (dashboard \u2192 pricing flow) */
+    var _urlPlan = _p.get('plan');
+    if (_urlPlan && !_cart.plan) _cart.plan = _urlPlan.toLowerCase();
+    if (!_saved && !_cart.plan) return;
     /* Populate internal cart so badge and checkout work */
-    if (_saved.plan) _cart.plan = _saved.plan;
+    if (_saved && _saved.plan) _cart.plan = _saved.plan;
     if (_saved.addons) Object.keys(_saved.addons).forEach(function(k) { _cart.addons[k] = _saved.addons[k]; });
     updateCartBadge();
     /* After DOM is ready: visually mark add-on buttons and active plan.
@@ -1243,6 +1246,20 @@
             _planBtn.style.cssText = 'background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.35);color:#34d399;cursor:default;opacity:1';
             var _planCard = _planBtn.closest('.fp-card');
             if (_planCard) { _planCard.style.borderColor = 'rgba(16,185,129,0.4)'; _planCard.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.1)'; }
+          }
+        }
+      } catch(e) {}
+      /* Highlight target plan card from _cart.plan (dashboard upgrade flow) */
+      try {
+        var _ds2 = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null');
+        var _curPlan = _ds2 && _ds2.plan ? _ds2.plan.toLowerCase() : null;
+        if (_cart.plan && _cart.plan !== _curPlan) {
+          var _tBtn = document.querySelector('.fp-card-btn[data-plan="' + _cart.plan + '"]');
+          if (_tBtn && !_tBtn.disabled) {
+            _tBtn.textContent = '\u2192 S\u00e9lectionn\u00e9';
+            _tBtn.style.cssText = 'background:rgba(37,99,235,0.15);border-color:rgba(37,99,235,0.4);color:#3b82f6;cursor:pointer;opacity:1';
+            var _tCard = _tBtn.closest('.fp-card');
+            if (_tCard) { _tCard.style.borderColor = 'rgba(37,99,235,0.4)'; _tCard.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.08)'; }
           }
         }
       } catch(e) {}

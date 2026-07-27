@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Abonnement expiré — FlowPoint</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --card: #1a1d27; --border: rgba(255,255,255,0.08);
+      --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6; --orange: #f59e0b;
+    }
+    html[data-theme="light"] { --bg: #f8fafc; --card: #fff; --border: rgba(0,0,0,0.08); --text: #0f172a; --muted: #64748b; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 48px 40px; max-width: 540px; width: 100%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    .logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 32px; }
+    .logo-icon { width: 36px; height: 36px; background: var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .logo-text { font-size: 20px; font-weight: 800; color: var(--text); }
+    .icon { font-size: 52px; margin-bottom: 20px; }
+    h1 { font-size: 22px; font-weight: 800; color: var(--text); margin-bottom: 12px; }
+    p { font-size: 14px; color: var(--muted); line-height: 1.7; margin-bottom: 20px; }
+    .info-box { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); border-radius: 12px; padding: 14px 18px; margin-bottom: 28px; font-size: 13px; color: var(--text); text-align: left; line-height: 1.6; }
+    .features { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 28px; text-align: left; }
+    .feat { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--muted); }
+    .feat strong { display: block; font-size: 13px; color: var(--text); margin-bottom: 2px; }
+    .btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; transition: all 0.15s; width: 100%; margin-bottom: 10px; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: rgba(37,99,235,0.08); color: var(--accent); border: 1px solid rgba(37,99,235,0.2); }
+    .btn-secondary:hover { background: rgba(37,99,235,0.15); }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+    .footer { margin-top: 20px; font-size: 12px; color: var(--muted); }
+    .footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <span class="logo-text">FlowPoint</span>
+    </div>
+    <div class="icon">📭</div>
+    <h1>Votre abonnement a expiré</h1>
+    <p>Votre accès aux fonctionnalités Premium a pris fin. Vos données sont conservées et accessibles dès que vous reprenez un abonnement.</p>
+    <div class="info-box">
+      ✅ <strong>Vos données sont en sécurité.</strong> Historique, audits, rapports et paramètres sont conservés. Reprenez votre abonnement à tout moment pour y accéder.
+    </div>
+    <div class="features">
+      <div class="feat"><strong>📊 Audits SEO</strong>Analyses complètes de votre site</div>
+      <div class="feat"><strong>🔍 Monitors</strong>Surveillance uptime 24/7</div>
+      <div class="feat"><strong>🤖 IA Insights</strong>Recommandations intelligentes</div>
+      <div class="feat"><strong>📈 Analytics</strong>GA4 & GSC intégrés</div>
+    </div>
+    <a class="btn btn-primary" href="/pricing.html">🚀 Reprendre mon abonnement</a>
+    <a class="btn btn-secondary" href="/pricing.html">📋 Voir les offres</a>
+    <hr class="divider">
+    <a class="btn btn-ghost" href="/dashboard.html?expired=1">Accéder au dashboard (mode limité)</a>
+    <div class="footer">
+      <a href="/dashboard.html?route=billing&sub=invoices">Voir mes factures</a> &nbsp;·&nbsp;
+      <a href="mailto:support@flowpoint.pro">Support</a> &nbsp;·&nbsp;
+      <a href="#" onclick="logout()">Se déconnecter</a>
+    </div>
+  </div>
+  <script>
+    try { var t = localStorage.getItem('fp-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch(e) {}
+    async function logout() {
+      try { await fetch('/auth/logout', { method: 'POST', credentials: 'include' }); } catch(e) {}
+      localStorage.clear(); sessionStorage.clear();
+      window.location.href = '/';
+    }
+  </script>
+</body>
+</html>

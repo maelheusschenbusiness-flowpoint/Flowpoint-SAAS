@@ -562,6 +562,40 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
       break;
     }
 
+    case "customer.deleted": {
+      // Customer hard-deleted in Stripe (e.g. via dashboard or API) — clear billing refs in DB.
+      const deletedCustomerId = String(obj["id"] ?? "");
+      if (deletedCustomerId) {
+        try {
+          const { pool: pgPool } = await import("@workspace/db");
+          const dbCl = await pgPool.connect();
+          try {
+            const upd = await dbCl.query(
+              `UPDATE org_settings
+               SET stripe_customer_id     = NULL,
+                   stripe_subscription_id = NULL,
+                   subscription_status    = 'none',
+                   plan                   = 'standard',
+                   updated_at             = NOW()
+               WHERE stripe_customer_id = $1
+               RETURNING org_id`,
+              [deletedCustomerId],
+            );
+            if (upd.rowCount && upd.rowCount > 0) {
+              const affected = upd.rows[0]?.org_id;
+              logger.info({ customerId: deletedCustomerId, affected }, "[Webhook] customer.deleted — billing refs cleared");
+              store.broadcastPlanUpdate("standard", affected ?? orgId ?? "");
+            } else {
+              logger.warn({ customerId: deletedCustomerId }, "[Webhook] customer.deleted — no org matched this customer");
+            }
+          } finally { dbCl.release(); }
+        } catch (err) {
+          logger.error({ err, customerId: deletedCustomerId }, "[Webhook] customer.deleted — DB update failed");
+        }
+      }
+      break;
+    }
+
     case "customer.updated": {
       // P0-3: removed store.me.stripeCustomerId mutation
       // If we resolved an orgId, persist the customer ID update
