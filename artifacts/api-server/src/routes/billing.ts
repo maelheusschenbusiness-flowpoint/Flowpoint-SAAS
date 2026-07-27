@@ -898,7 +898,9 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
           return;
         }
 
-        // ── Upgrade or trialing → immediate update ───────────────────────────
+        // ── Upgrade OR downgrade-during-trial → immediate update ────────────
+        // Active downgrades go through the schedule path above (isDowngrade && !isTrialing).
+        // During a trial, a downgrade is applied immediately (no prorations — trial not yet billed).
         const prorationBehavior = (isUpgrade && !isTrialing) ? "create_prorations" : "none";
         await stripe.subscriptions.update(sub.id, {
           items: [
@@ -910,14 +912,17 @@ router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req:
         });
         await upsertOrgSettings(orgId, { plan }).catch(() => {});
         logger.info(
-          { plan, subId: sub.id, subStatus: sub.status, isTrialing, isUpgrade, prorationBehavior, removedAddonKeys, orgId },
-          "[Billing] upgrade/trial plan change applied immediately",
+          { plan, subId: sub.id, subStatus: sub.status, isTrialing, isUpgrade, isDowngrade, prorationBehavior, removedAddonKeys, orgId },
+          "[Billing] plan change applied immediately",
         );
+        // Return the semantically correct key: downgrade vs upgraded
         res.json({
-          ok:                   true,
+          ok:                    true,
           plan,
-          upgraded:             true,
-          effective:            "now",
+          ...(isDowngrade
+            ? { downgrade: true, effective: "now" }
+            : { upgraded:  true, effective: "now" }
+          ),
           removedIncludedAddons: removedAddonKeys,
         });
         return;

@@ -335,12 +335,36 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       }
     }
 
-    /* ── Case 1: subscription (with optional one-time add_invoice_items) ── */
+    /* ── Case 1: subscription (plan ± recurring add-ons, optional AI credit packs) ── */
     if (checkoutType === "subscription") {
       if (subscriptionItems.length === 0) {
         res.status(400).json({ error: "Plan invalide ou introuvable." });
         return;
       }
+
+      // stripe.checkout.sessions.create() in API 2026-04-22.dahlia does NOT support
+      // add_invoice_items (neither at root level nor inside subscription_data — both
+      // return parameter_unknown).  The correct approach for one-time AI credit items
+      // bundled with a subscription checkout is to pre-create pending invoice items on
+      // the Stripe Customer *before* creating the session.  They are automatically
+      // picked up on the customer's first subscription invoice (end of trial or cycle 1).
+      if (oneTimeItems.length > 0 && stripeCustomerId) {
+        await Promise.all(
+          oneTimeItems.map(item =>
+            stripe.invoiceItems.create({
+              customer:  stripeCustomerId as string,
+              price:     item.price,
+              quantity:  item.quantity,
+            })
+          )
+        );
+        logger.info(
+          { stripeCustomerId, count: oneTimeItems.length },
+          "[PublicBilling] AI credit invoice items pre-created on customer",
+        );
+      }
+      // When no stripeCustomerId (anonymous/Mode-B checkout), AI credits cannot be
+      // pre-created; they are tracked in session metadata for post-checkout webhook handling.
 
       const sessionParams = urlOrEmbedded({
         mode: "subscription",
@@ -348,9 +372,6 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
         subscription_data: {
           trial_period_days: 14,
           metadata,
-          ...(oneTimeItems.length > 0 ? {
-            add_invoice_items: oneTimeItems.map(i => ({ price: i.price, quantity: i.quantity })),
-          } : {}),
         },
         metadata,
       }) as Parameters<typeof stripe.checkout.sessions.create>[0];

@@ -1,6 +1,7 @@
 - [FlowPoint production context](flowpoint-context.md) — 10-phase spec, full mock inventory, P0/P1/P2 blockers; read before any session
 - [pool.query() org_id audit](pool-query-orgid-audit.md) — all pool.query() on tenant tables need explicit org_id; RLS bypassed for postgres superuser; pg_class.relforcerowsecurity not pg_tables.forcedrowsecurity
 - [Billing P0 fixes](billing-p0-fixes.md) — 6 P0 fixes implemented 2026-07-24; patterns for webhook orgId, planGate DB-first, checkQuota async, email from DB
+- [Stripe checkout add_invoice_items](stripe-checkout-invoice-items.md) — add_invoice_items invalid in checkout.sessions.create() (2026-04-22.dahlia); use stripe.invoiceItems.create() before session instead
 - [Billing audit findings](billing-audit-findings.md) — store.me singleton contamination, persistSubscriptionMeta orgId="default" bug, full P0/P1 list + reliability estimates
 - [ensureStripeCustomer pattern](ensure-stripe-customer.md) — P0 service at services/ensure-stripe-customer.ts; DB-first, concurrency lock, deleted-customer recovery, metadata search before create
 - [GA4 funnel v1alpha service](ga4-funnel-service-pattern.md) — runConfiguredFunnel via v1alpha; setGA4FunnelBaseUrl for QA; google_tokens UNIQUE(org_id,account_id) not org_id alone
