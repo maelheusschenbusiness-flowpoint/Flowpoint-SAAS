@@ -339,6 +339,7 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
                   address:            signupRow["address"]      ?? null,
                   postalCode:         signupRow["postal_code"]  ?? null,
                   phone:              signupRow["phone"]        ?? null,
+                  vat:                signupRow["vat"]          ?? null,
                   locationConfigured: !!(signupRow["city"] || signupRow["address"]),
                   locationSource:     "manual",
                 });

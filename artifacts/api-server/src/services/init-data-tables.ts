@@ -794,8 +794,8 @@ export async function initDataTables(): Promise<void> {
     // Location extended
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS region      TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS phone       TEXT;`);
-    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS postal_code TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS vat         TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS postal_code TEXT;`);
 
     // ── org_checklist — server-side checklist persistence (replaces localStorage) ─
     await run(client, `

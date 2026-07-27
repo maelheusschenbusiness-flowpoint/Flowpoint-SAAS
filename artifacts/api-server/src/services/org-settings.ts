@@ -38,6 +38,7 @@ export interface OrgSettings {
   country: string | null;
   region: string | null;
   phone: string | null;
+  vat: string | null;
   latitude: number | null;
   longitude: number | null;
   serviceArea: string[];
@@ -99,6 +100,7 @@ export async function loadOrgSettings(
       country: r.country ?? null,
       region: r.region ?? null,
       phone: r.phone ?? null,
+      vat:   r.vat   ?? null,
       latitude: r.latitude != null ? parseFloat(r.latitude) : null,
       longitude: r.longitude != null ? parseFloat(r.longitude) : null,
       serviceArea: Array.isArray(r.service_area)
@@ -174,6 +176,7 @@ export async function upsertOrgSettings(
       [data.country,              "country"],
       [data.region,               "region"],
       [data.phone,                "phone"],
+      [data.vat,                  "vat"],
       [data.locationSource,       "location_source"],
       [data.timezone,             "timezone"],
       [data.language,             "language"],

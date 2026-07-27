@@ -950,6 +950,7 @@ router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
         address:            signupRow.address,
         postalCode:         signupRow.postal_code,
         phone:              signupRow.phone ?? null,
+        vat:                signupRow.vat   ?? null,
         subscriptionStatus: "active",
         stripeCustomerId:   customerId,
         locationConfigured: !!(signupRow.city || signupRow.address),
