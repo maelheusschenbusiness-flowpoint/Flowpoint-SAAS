@@ -41,6 +41,64 @@ const router = Router();
 
 type AddonsMap = Record<string, boolean | number>;
 
+// ── Input validation helpers ───────────────────────────────────────────────────
+const ALLOWED_PLANS    = new Set<string>(["standard", "pro", "ultra"]);
+const KNOWN_ADDON_KEYS = new Set<string>([...FLAG_ADDONS, ...QTY_ADDONS]);
+const MAX_ADDON_QTY    = 500;
+const AI_CREDIT_PACK_KEYS = new Set<string>(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
+
+/** Validates and normalises a plan string. Sends 400 + returns null on failure. */
+function parsePlan(raw: unknown, res: Response): string | null {
+  if (raw === undefined || raw === null || raw === "") {
+    res.status(400).json({ error: "plan requis — valeurs acceptées : standard, pro, ultra" });
+    return null;
+  }
+  if (typeof raw !== "string") {
+    const typ = Array.isArray(raw) ? "array" : typeof raw;
+    res.status(400).json({ error: `plan doit être une chaîne de caractères (reçu : ${typ})` });
+    return null;
+  }
+  const p = raw.trim().toLowerCase();
+  if (!ALLOWED_PLANS.has(p)) {
+    res.status(400).json({ error: `Plan inconnu : "${raw}". Plans autorisés : standard, pro, ultra` });
+    return null;
+  }
+  return p;
+}
+
+/** Like parsePlan but returns defaultPlan when the field is absent (undefined only — null still fails). */
+function parsePlanWithDefault(raw: unknown, defaultPlan: string, res: Response): string | null {
+  if (raw === undefined) return defaultPlan;
+  return parsePlan(raw, res);
+}
+
+/** Validates the addons object. Sends 400 + returns null on failure. */
+function parseAddons(raw: unknown, res: Response): AddonsMap | null {
+  if (raw === undefined || raw === null) return {};
+  if (Array.isArray(raw) || typeof raw !== "object") {
+    res.status(400).json({ error: 'addons doit être un objet (ex: { "whiteLabel": true })' });
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  const result: AddonsMap = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (!KNOWN_ADDON_KEYS.has(key)) {
+      res.status(400).json({ error: `Add-on inconnu : "${key}"` });
+      return null;
+    }
+    if (typeof val === "boolean") { result[key] = val; continue; }
+    if (typeof val !== "number" || !Number.isFinite(val) || !Number.isInteger(val)) {
+      const typ = Array.isArray(val) ? "array" : typeof val;
+      res.status(400).json({ error: `Quantité invalide pour "${key}" : entier attendu (reçu : ${typ})` });
+      return null;
+    }
+    if (val <= 0) { res.status(400).json({ error: `Quantité invalide pour "${key}" : doit être > 0` }); return null; }
+    if (val > MAX_ADDON_QTY) { res.status(400).json({ error: `Quantité invalide pour "${key}" : maximum ${MAX_ADDON_QTY}` }); return null; }
+    result[key] = val;
+  }
+  return result;
+}
+
 function buildLineItems(plan: string, addons: AddonsMap): Array<{ price: string; quantity: number }> {
   const items: Array<{ price: string; quantity: number }> = [];
   const included = PLAN_INCLUDED_ADDONS[plan.toLowerCase()] ?? new Set<string>();
@@ -70,7 +128,10 @@ router.post("/billing/create-checkout-session", billingCheckoutRateLimit, async 
 
 // ── POST /billing/checkout ───────────────────────────────────────────────────
 router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, res: Response) => {
-  const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
+  const plan = parsePlan(req.body?.plan, res);
+  if (plan === null) return;
+  const addons = parseAddons(req.body?.addons, res);
+  if (addons === null) return;
   const orgId = req.orgId ?? "default";
 
   // Load billing state from DB — never from the in-memory store singleton
@@ -182,9 +243,11 @@ router.post("/billing/checkout", billingCheckoutRateLimit, async (req: Request, 
 
 // ── POST /billing/checkout-embedded ─────────────────────────────────────────
 router.post("/billing/checkout-embedded", async (req: Request, res: Response) => {
-  const body = req.body as { plan?: string; planId?: string; addons?: AddonsMap };
-  const plan = body.plan || body.planId || "";
-  const addons: AddonsMap = body.addons ?? {};
+  const body = req.body as { plan?: unknown; planId?: unknown; addons?: unknown };
+  const plan = parsePlan(body.plan ?? body.planId, res);
+  if (plan === null) return;
+  const addons = parseAddons(body.addons, res);
+  if (addons === null) return;
   const orgId = req.orgId ?? "default";
 
   const billingCtx = await loadBillingContext(orgId);
@@ -433,12 +496,20 @@ router.get("/billing/invoices", async (req: Request, res: Response) => {
 
 // ── POST /billing/trial ──────────────────────────────────────────────────────
 router.post("/billing/trial", async (req: Request, res: Response) => {
-  const { plan = "pro", days = 14 } = req.body as { plan?: string; days?: number };
+  const plan = parsePlanWithDefault(req.body?.plan, "pro", res);
+  if (plan === null) return;
+  const rawDays = req.body?.days;
+  const days = (rawDays === undefined)
+    ? 14
+    : (typeof rawDays === "number" && Number.isInteger(rawDays) && rawDays >= 1 && rawDays <= 30)
+      ? rawDays
+      : null;
+  if (days === null) { res.status(400).json({ error: "days doit être un entier entre 1 et 30" }); return; }
   const orgId = req.orgId ?? "default";
 
   const billingCtx = await loadBillingContext(orgId);
-  if (billingCtx.subscriptionStatus === "active") {
-    res.status(409).json({ error: "Vous avez déjà un abonnement actif" });
+  if (billingCtx.subscriptionStatus === "active" || billingCtx.subscriptionStatus === "trialing") {
+    res.status(409).json({ error: "Vous avez déjà un abonnement actif ou en période d'essai" });
     return;
   }
   try {
@@ -622,8 +693,8 @@ router.post("/billing/cancel-trial", ownerOnly, async (req: Request, res: Respon
 //          downgrade (scheduled to period end via subscription schedule).
 // Also reconciles add-ons that become included in the new plan.
 router.post("/billing/upgrade", billingCheckoutRateLimit, ownerOnly, async (req: Request, res: Response) => {
-  const { plan = "" } = req.body as { plan?: string; interval?: string };
-  if (!plan) { res.status(400).json({ error: "plan required" }); return; }
+  const plan = parsePlan(req.body?.plan, res);
+  if (plan === null) return;
 
   const orgId = req.orgId ?? "default";
   const billingCtx = await loadBillingContext(orgId);
@@ -993,7 +1064,11 @@ router.get("/billing/subscription", async (req: Request, res: Response) => {
 
 // ── POST /billing/checkout/annual ────────────────────────────────────────────
 router.post("/billing/checkout/annual", async (req: Request, res: Response) => {
-  const { plan = "pro", addons = {}, coupon } = req.body as { plan?: string; addons?: AddonsMap; coupon?: string };
+  const plan = parsePlan(req.body?.plan, res);
+  if (plan === null) return;
+  const addons = parseAddons(req.body?.addons, res);
+  if (addons === null) return;
+  const coupon = typeof req.body?.coupon === "string" ? req.body.coupon.trim() || undefined : undefined;
   const orgId = req.orgId ?? "default";
 
   const billingCtx = await loadBillingContext(orgId);
@@ -1485,8 +1560,9 @@ router.post("/billing/addon-checkout", billingCheckoutRateLimit, async (req: Req
   try {
     const stripe = await createStripeClient(stripeKey);
 
+    const isAiCreditPack = AI_CREDIT_PACK_KEYS.has(addonKey);
     const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
+      mode: isAiCreditPack ? "payment" : "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${publicUrl}/billing?addon_success=${encodeURIComponent(addonKey)}`,
       cancel_url:  `${publicUrl}/billing?addon_cancel=1`,

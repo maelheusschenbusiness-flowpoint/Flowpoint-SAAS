@@ -323,6 +323,20 @@ export async function startTrial(plan: string = "pro", days: number = 14, orgId 
     const { ensureStripeCustomer } = await import("./ensure-stripe-customer.js");
     const customerId = await ensureStripeCustomer(orgId, null, stripeKey);
 
+    // Guard: never create a second subscription — idempotent across retries and concurrent calls
+    const [existingActive, existingTrialing] = await Promise.all([
+      stripe.subscriptions.list({ customer: customerId, status: "active",   limit: 1 }),
+      stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 }),
+    ]);
+    const existingSub = existingActive.data[0] ?? existingTrialing.data[0];
+    if (existingSub) {
+      const trialEnd = existingSub.trial_end
+        ? new Date(existingSub.trial_end * 1000).toISOString()
+        : new Date(Date.now() + days * 86400000).toISOString();
+      logger.info({ subId: existingSub.id, orgId }, "[Billing] startTrial — existing subscription found, returning idempotent result");
+      return { ok: true, trialEndsAt: trialEnd, subscriptionId: existingSub.id, plan, idempotent: true };
+    }
+
     const sub = await stripe.subscriptions.create({
       customer: customerId,
       items: [{ price: planPriceId }],

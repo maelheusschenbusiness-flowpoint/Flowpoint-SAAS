@@ -47,6 +47,71 @@ router.get("/billing/plans", async (req: Request, res: Response): Promise<void> 
 
 type AddonsMap = Record<string, boolean | number>;
 
+// ── Input validation helpers (mirrors billing.ts) ─────────────────────────────
+const ALLOWED_PLANS_PUB    = new Set<string>(["standard", "pro", "ultra"]);
+const KNOWN_ADDON_KEYS_PUB = new Set<string>([...FLAG_ADDONS, ...QTY_ADDONS]);
+const MAX_ADDON_QTY_PUB    = 500;
+
+function parsePlanPub(raw: unknown, res: Response): string | null {
+  if (raw === undefined || raw === null || raw === "") {
+    res.status(400).json({ error: "plan requis — valeurs acceptées : standard, pro, ultra" });
+    return null;
+  }
+  if (typeof raw !== "string") {
+    const typ = Array.isArray(raw) ? "array" : typeof raw;
+    res.status(400).json({ error: `plan doit être une chaîne de caractères (reçu : ${typ})` });
+    return null;
+  }
+  const p = raw.trim().toLowerCase();
+  if (!ALLOWED_PLANS_PUB.has(p)) {
+    res.status(400).json({ error: `Plan inconnu : "${raw}". Plans autorisés : standard, pro, ultra` });
+    return null;
+  }
+  return p;
+}
+
+function parseAddonsPub(raw: unknown, res: Response): AddonsMap | null {
+  if (raw === undefined || raw === null) return {};
+  if (Array.isArray(raw) || typeof raw !== "object") {
+    res.status(400).json({ error: 'addons doit être un objet (ex: { "whiteLabel": true })' });
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  const result: AddonsMap = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (!KNOWN_ADDON_KEYS_PUB.has(key)) {
+      res.status(400).json({ error: `Add-on inconnu : "${key}"` });
+      return null;
+    }
+    if (typeof val === "boolean") { result[key] = val; continue; }
+    if (typeof val !== "number" || !Number.isFinite(val) || !Number.isInteger(val)) {
+      const typ = Array.isArray(val) ? "array" : typeof val;
+      res.status(400).json({ error: `Quantité invalide pour "${key}" : entier attendu (reçu : ${typ})` });
+      return null;
+    }
+    if (val <= 0) { res.status(400).json({ error: `Quantité invalide pour "${key}" : doit être > 0` }); return null; }
+    if (val > MAX_ADDON_QTY_PUB) { res.status(400).json({ error: `Quantité invalide pour "${key}" : maximum ${MAX_ADDON_QTY_PUB}` }); return null; }
+    result[key] = val;
+  }
+  return result;
+}
+
+/** Like parsePlanPub but allows "" for addon/AI-credits-only flows. null/array/number still fail. */
+function parsePlanOrEmptyPub(raw: unknown, res: Response): string | null {
+  if (raw === undefined || raw === null || raw === "") return "";
+  if (typeof raw !== "string") {
+    const typ = Array.isArray(raw) ? "array" : typeof raw;
+    res.status(400).json({ error: `plan doit être une chaîne de caractères (reçu : ${typ})` });
+    return null;
+  }
+  const p = raw.trim().toLowerCase();
+  if (p !== "" && !ALLOWED_PLANS_PUB.has(p)) {
+    res.status(400).json({ error: `Plan inconnu : "${raw}". Plans autorisés : standard, pro, ultra` });
+    return null;
+  }
+  return p;
+}
+
 /* Add-ons that are one-time purchases (not subscription items) */
 const AI_CREDIT_PACKS = new Set(["aiCreditsPack50k", "aiCreditsPack200k", "aiCreditsPack500k"]);
 
@@ -109,16 +174,17 @@ function buildLineItems(
 }
 
 router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Request, res: Response) => {
-  const {
-    plan = "", addons = {}, source = "checkout_html", embedded = false,
-    preRegisterToken = "",
-  } = req.body as {
-    plan?: string;
-    addons?: AddonsMap;
-    source?: string;
-    embedded?: boolean;
-    preRegisterToken?: string;  // New signup flow: opaque token from /auth/pre-register
-  };
+  // Validate types before any business logic — prevents .toLowerCase() crashes on null/array/number
+  const plan = parsePlanOrEmptyPub(req.body?.plan, res);
+  if (plan === null) return;
+  const addons = parseAddonsPub(req.body?.addons, res);
+  if (addons === null) return;
+  const source           = typeof req.body?.source === "string" ? req.body.source : "checkout_html";
+  const embedded         = req.body?.embedded === true;
+  // preRegisterToken: optional — two documented modes:
+  //   A (token present)  → New signup: creates Stripe Customer from pending_signups record.
+  //   B (token absent)   → Authenticated or anonymous session: no customer pre-linked.
+  const preRegisterToken = typeof req.body?.preRegisterToken === "string" ? req.body.preRegisterToken : "";
 
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
@@ -369,7 +435,10 @@ const ADDON_PRICES_EUR_CENTS: Record<string, number> = {
    (plan-only trial — no charge today, card saved for subscription).
  ───────────────────────────────────────────────────────────────────────── */
 router.post("/public/payment-intent", publicCheckoutRateLimit, async (req: Request, res: Response) => {
-  const { plan = "", addons = {} } = req.body as { plan?: string; addons?: AddonsMap };
+  const plan = parsePlanOrEmptyPub(req.body?.plan, res);
+  if (plan === null) return;
+  const addons = parseAddonsPub(req.body?.addons, res);
+  if (addons === null) return;
   const stripeKey      = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
 
