@@ -678,6 +678,229 @@ router.post("/auth/signup", authRateLimit, async (req: Request, res: Response) =
   }
 });
 
+/* ════════════════════════════════════════════════════════════════════════════
+   POST /api/auth/pre-register
+   ─ Nouveau flux signup étape 1 : valide le formulaire, stocke les données
+     dans pending_signups, retourne un token opaque.
+     Aucun compte créé, aucun magic link, aucune session.
+════════════════════════════════════════════════════════════════════════════ */
+router.post("/auth/pre-register", authRateLimit, async (req: Request, res: Response) => {
+  const {
+    _hp,
+    firstName, lastName, email, companyName,
+    country, address, city, postalCode,
+    phone, vat,
+  } = req.body as Record<string, string | undefined>;
+
+  // Honeypot — bots fill hidden fields, humans don't
+  if (_hp && String(_hp).trim().length > 0) {
+    res.json({ ok: true, preRegisterToken: "hp_" + Date.now() });
+    return;
+  }
+
+  // Validate required fields
+  const normalizedEmail = String(email ?? "").toLowerCase().trim();
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) {
+    res.status(400).json({ error: "Adresse email invalide ou manquante." });
+    return;
+  }
+  const fn          = String(firstName   || "").trim();
+  const ln          = String(lastName    || "").trim();
+  const company     = String(companyName || "").trim();
+  const countryVal  = String(country     || "").trim();
+  const addressVal  = String(address     || "").trim();
+  const cityVal     = String(city        || "").trim();
+  const postalVal   = String(postalCode  || "").trim();
+
+  if (!fn)         { res.status(400).json({ error: "Le prénom est requis." });              return; }
+  if (!ln)         { res.status(400).json({ error: "Le nom est requis." });                 return; }
+  if (!company)    { res.status(400).json({ error: "Le nom de l'entreprise est requis." }); return; }
+  if (!countryVal) { res.status(400).json({ error: "Le pays est requis." });                return; }
+  if (!addressVal) { res.status(400).json({ error: "L'adresse est requise." });             return; }
+  if (!cityVal)    { res.status(400).json({ error: "La ville est requise." });              return; }
+  if (!postalVal)  { res.status(400).json({ error: "Le code postal est requis." });         return; }
+
+  if (isDisposableEmail(normalizedEmail)) {
+    res.status(400).json({ error: "Les adresses email temporaires ne sont pas acceptées." });
+    return;
+  }
+  if (!isEmailAllowed(normalizedEmail)) {
+    // Silent success — don't reveal allowlist
+    res.json({ ok: true, preRegisterToken: "blocked_" + Date.now() });
+    return;
+  }
+
+  // Store in pending_signups (no account created yet)
+  const preToken = generateToken();
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO pending_signups
+         (token, email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat, created_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW() + INTERVAL '2 hours')
+       ON CONFLICT (token) DO NOTHING`,
+      [
+        preToken, normalizedEmail, fn, ln, company,
+        countryVal, addressVal, cityVal, postalVal,
+        String(phone || "").trim() || null,
+        String(vat   || "").trim() || null,
+      ]
+    );
+  } finally {
+    client.release();
+  }
+
+  logger.info({ email: normalizedEmail, company }, "[Auth/PreRegister] Pre-registration stored — awaiting plan + payment");
+  res.json({ ok: true, preRegisterToken: preToken });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════
+   GET /api/auth/checkout-complete?session_id=...
+   ─ Appelé par checkout-return.html après la redirection Stripe.
+     Vérifie que le paiement est confirmé, crée le compte FlowPoint et démarre
+     la session (auto-login option A). Idempotent avec le webhook Stripe.
+════════════════════════════════════════════════════════════════════════════ */
+router.get("/auth/checkout-complete", async (req: Request, res: Response) => {
+  const { session_id: sessionId } = req.query as { session_id?: string };
+  if (!sessionId || typeof sessionId !== "string" || sessionId.length < 8) {
+    res.status(400).json({ error: "session_id manquant ou invalide." });
+    return;
+  }
+
+  const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
+  if (!stripeKey) {
+    if (process.env["NODE_ENV"] !== "production") {
+      // Dev fallback: accept mock session IDs
+      logger.warn({ sessionId }, "[Auth/CheckoutComplete] No Stripe key — dev mode, auto-login skipped");
+      res.status(503).json({ error: "Stripe non configuré en dev." });
+      return;
+    }
+    res.status(503).json({ error: "Service de paiement non configuré." });
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
+
+    // Verify with Stripe
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    // Accept: complete + (paid OR no_payment_required=trial)
+    const isConfirmed = session.status === "complete" &&
+      (session.payment_status === "paid" || session.payment_status === "no_payment_required");
+
+    if (!isConfirmed) {
+      logger.warn({ sessionId, status: session.status, paymentStatus: session.payment_status },
+        "[Auth/CheckoutComplete] Session not yet confirmed");
+      res.status(402).json({ error: "Paiement non encore confirmé. Réessayez dans quelques secondes." });
+      return;
+    }
+
+    const meta = (session.metadata as Record<string, string>) ?? {};
+    const preRegisterToken = meta["pre_register_token"] ?? "";
+    const orgId = meta["orgId"] ?? ""; // = email address
+
+    if (!orgId) {
+      logger.error({ sessionId }, "[Auth/CheckoutComplete] orgId missing from session metadata");
+      res.status(400).json({ error: "Session invalide — identifiant organisation manquant." });
+      return;
+    }
+
+    // Load pending_signups data to create org with full contact info
+    let signupRow: {
+      email: string; first_name: string; last_name: string; company_name: string;
+      country: string | null; address: string | null; city: string | null;
+      postal_code: string | null; phone: string | null; vat: string | null;
+    } | null = null;
+
+    if (preRegisterToken) {
+      const dbClient = await pool.connect();
+      try {
+        const r = await dbClient.query(
+          `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
+           FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+          [preRegisterToken]
+        );
+        if (r.rows.length > 0) signupRow = r.rows[0];
+      } finally {
+        dbClient.release();
+      }
+    }
+
+    // Create or confirm org_settings (idempotent with webhook)
+    const { upsertOrgSettings, loadOrgSettings: _loadExisting } = await import("../services/org-settings.js");
+    const existing = await _loadExisting(orgId).catch(() => null);
+
+    if (!existing && signupRow) {
+      // New signup — first writer wins (webhook or checkout-complete)
+      await upsertOrgSettings(orgId, {
+        email:              signupRow.email,
+        name:               signupRow.company_name,
+        firstName:          signupRow.first_name,
+        lastName:           signupRow.last_name,
+        country:            signupRow.country,
+        city:               signupRow.city,
+        address:            signupRow.address,
+        postalCode:         signupRow.postal_code,
+        subscriptionStatus: "active",
+        stripeCustomerId:   session.customer ? String(session.customer) : undefined,
+        locationConfigured: !!(signupRow.city || signupRow.address),
+        locationSource:     "manual",
+      });
+      logger.info({ orgId }, "[Auth/CheckoutComplete] Org created from pending_signups");
+    } else if (existing) {
+      // Org already exists (webhook fired first) — ensure subscription is active
+      if (existing.subscriptionStatus !== "active" && existing.subscriptionStatus !== "trialing") {
+        await upsertOrgSettings(orgId, {
+          subscriptionStatus: "active",
+          stripeCustomerId:   session.customer ? String(session.customer) : (existing.stripeCustomerId ?? undefined),
+        });
+      }
+    } else {
+      // pending_signups expired or token missing — create minimal org
+      logger.warn({ orgId, preRegisterToken }, "[Auth/CheckoutComplete] No pending_signups data — creating minimal org");
+      await upsertOrgSettings(orgId, {
+        email:              orgId,
+        subscriptionStatus: "active",
+        stripeCustomerId:   session.customer ? String(session.customer) : undefined,
+      });
+    }
+
+    // Create session token (auto-login — option A)
+    const sessionToken = await createSession({
+      userId: orgId,
+      orgId:  orgId,
+      email:  orgId,
+      role:   "owner",
+    });
+
+    const isProd = isDeployedProd();
+    res.cookie("fp_token", sessionToken, {
+      httpOnly: true,
+      secure:   isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge:   SESSION_TTL_MS,
+      path:     "/",
+    });
+
+    logger.info({ orgId }, "[Auth/CheckoutComplete] Auto-login successful — session created");
+
+    store.logActivity({
+      type:       "account",
+      label:      `Compte activé après paiement : ${orgId}`,
+      targetId:   orgId,
+      targetType: "user",
+    }).catch(() => {});
+
+    res.json({ ok: true, redirectTo: "/dashboard.html" });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ err: msg, sessionId }, "[Auth/CheckoutComplete] Error");
+    res.status(500).json({ error: "Erreur lors de la finalisation du compte. Réessayez." });
+  }
+});
+
 router.get("/auth/login-verify", async (req: Request, res: Response) => {
   const { token } = req.query as { token?: string };
   if (!token) {

@@ -298,6 +298,61 @@ async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
 
       const customerId = obj["customer"] ? String(obj["customer"]) : undefined;
 
+      // ── New signup flow: create org from pending_signups if pre_register_token present ──
+      // This fires when the user hasn't called /auth/checkout-complete yet (e.g. tab closed).
+      // Idempotent: if checkout-complete already created the org, loadOrgSettings finds it.
+      const preRegToken = meta["pre_register_token"] ?? "";
+      if (preRegToken) {
+        (async () => {
+          try {
+            const { pool: pgPool } = await import("@workspace/db");
+            const dbClient = await pgPool.connect();
+            let signupRow: Record<string, string | null> | null = null;
+            try {
+              const r = await dbClient.query(
+                `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
+                 FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+                [preRegToken]
+              );
+              if (r.rows.length > 0) signupRow = r.rows[0];
+            } finally {
+              dbClient.release();
+            }
+
+            if (signupRow) {
+              const { upsertOrgSettings, loadOrgSettings: _load } = await import("../services/org-settings.js");
+              const _existing = await _load(orgId).catch(() => null);
+              if (!_existing) {
+                await upsertOrgSettings(orgId, {
+                  email:              signupRow["email"]        ?? orgId,
+                  name:               signupRow["company_name"] ?? "",
+                  firstName:          signupRow["first_name"]   ?? "",
+                  lastName:           signupRow["last_name"]    ?? "",
+                  country:            signupRow["country"]      ?? null,
+                  city:               signupRow["city"]         ?? null,
+                  address:            signupRow["address"]      ?? null,
+                  postalCode:         signupRow["postal_code"]  ?? null,
+                  locationConfigured: !!(signupRow["city"] || signupRow["address"]),
+                  locationSource:     "manual",
+                });
+                logger.info({ orgId }, "[Webhook] Org created from pending_signups (webhook path)");
+
+                // Send welcome email so user can log in if they closed the tab
+                const { mailer: _mailer } = await import("../services/mailer.js").catch(() => ({ mailer: null }));
+                if (_mailer && signupRow["email"]) {
+                  _mailer.sendWelcome({
+                    to:   signupRow["email"],
+                    name: signupRow["first_name"] ?? "",
+                  }).catch(() => {});
+                }
+              }
+            }
+          } catch (e) {
+            logger.warn({ e, orgId }, "[Webhook] Failed to create org from pending_signups (non-fatal)");
+          }
+        })();
+      }
+
       // P0-1: pass explicit orgId — never defaults to "default"
       await persistSubscriptionMeta({ orgId, subscriptionStatus: "active", stripeCustomerId: customerId });
 

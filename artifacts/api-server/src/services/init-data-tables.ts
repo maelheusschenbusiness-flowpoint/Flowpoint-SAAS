@@ -794,6 +794,8 @@ export async function initDataTables(): Promise<void> {
     // Location extended
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS region      TEXT;`);
     await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS phone       TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS postal_code TEXT;`);
+    await run(client, `ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS vat         TEXT;`);
 
     // ── org_checklist — server-side checklist persistence (replaces localStorage) ─
     await run(client, `
@@ -1390,7 +1392,29 @@ export async function initDataTables(): Promise<void> {
       );
     `);
 
-    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache, overview_insights_rl ready");
+    // ── pending_signups — temporary pre-registration storage (new signup flow) ──
+    // Rows expire after 2 hours. No account exists until Stripe payment is confirmed.
+    await run(client, `
+      CREATE TABLE IF NOT EXISTS pending_signups (
+        token        TEXT         PRIMARY KEY,
+        email        TEXT         NOT NULL,
+        first_name   TEXT         NOT NULL,
+        last_name    TEXT         NOT NULL,
+        company_name TEXT         NOT NULL,
+        country      TEXT,
+        address      TEXT,
+        city         TEXT,
+        postal_code  TEXT,
+        phone        TEXT,
+        vat          TEXT,
+        created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        expires_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW() + INTERVAL '2 hours'
+      );
+    `);
+    await run(client, `CREATE INDEX IF NOT EXISTS pending_signups_email_idx   ON pending_signups(email);`);
+    await run(client, `CREATE INDEX IF NOT EXISTS pending_signups_expires_idx ON pending_signups(expires_at);`);
+
+    logger.info("[init-data-tables] audits, audit_schedules, notifications, competitors, alert_events, calendar_events, report_exports, team_messages, organizations, team_invitations, local_pack_history, overview_insights_cache, overview_insights_rl, pending_signups ready");
   } catch (err) {
     logger.error({ err }, "[init-data-tables] Unexpected error");
     throw err;

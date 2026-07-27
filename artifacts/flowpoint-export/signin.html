@@ -192,23 +192,12 @@
 
 <div class="card">
 
-  <!-- ── SIGNUP ── -->
+  <!-- ── ÉTAPE 1 : Formulaire d'inscription ── -->
   <div id="signup-screen">
     <h1 class="card-title">Créer votre compte FlowPoint</h1>
-    <p class="card-sub">Choisissez votre plan, puis configurez votre compte en 30 secondes</p>
+    <p class="card-sub">Remplissez vos informations — le paiement se fera à l'étape suivante</p>
 
-    <!-- ── Plan selector ── -->
-    <div class="plan-selector">
-      <div class="plan-label">Choisir mon plan</div>
-      <div class="plan-btns">
-        <button class="plan-btn" data-plan="standard" onclick="selectPlan('standard', this)" lang="en">Standard</button>
-        <button class="plan-btn selected" data-plan="pro" onclick="selectPlan('pro', this)" lang="en">Pro</button>
-        <button class="plan-btn" data-plan="ultra" onclick="selectPlan('ultra', this)" lang="en">Ultra</button>
-      </div>
-      <div class="plan-trial-note"><strong>14 jours d'essai gratuit</strong> — Carte requise, débit après l'essai · Annulation à tout moment</div>
-    </div>
-
-    <a href="/api/auth/google/login?plan=pro" class="btn-oauth fp-hidden" id="btn-google-oauth">
+    <a href="/api/auth/google/login" class="btn-oauth fp-hidden" id="btn-google-oauth">
       <svg width="18" height="18" viewBox="0 0 48 48">
         <path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 29.8 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c10.5 0 20-7.8 20-21 0-1.4-.1-2.7-.5-4z"/>
         <path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 17 19.2 14 24 14c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3c-7.7 0-14.3 4.6-17.7 11.7z"/>
@@ -217,7 +206,6 @@
       </svg>
       Continuer avec Google
     </a>
-
     <div class="divider fp-hidden" id="signup-oauth-divider">ou remplissez le formulaire</div>
 
     <form id="signup-form" novalidate>
@@ -247,90 +235,118 @@
           <input type="text" id="companyName" name="companyName" placeholder="Mon Agence Digitale" required autocomplete="organization" />
         </div>
 
+        <div class="field">
+          <label for="country">Pays *</label>
+          <select id="country" name="country" required autocomplete="country">
+            <option value="">— Sélectionner —</option>
+            <option value="FR" selected>🇫🇷 France</option>
+            <option value="BE">🇧🇪 Belgique</option>
+            <option value="CH">🇨🇭 Suisse</option>
+            <option value="LU">🇱🇺 Luxembourg</option>
+            <option value="CA">🇨🇦 Canada (FR)</option>
+            <option value="MA">🇲🇦 Maroc</option>
+            <option value="DZ">🇩🇿 Algérie</option>
+            <option value="TN">🇹🇳 Tunisie</option>
+            <option value="OTHER">Autre</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="address">Adresse *</label>
+          <input type="text" id="address" name="address" placeholder="12 rue de la Paix" required autocomplete="street-address" />
+        </div>
+
         <div class="row-2">
           <div class="field">
-            <label for="website">Site web</label>
-            <input type="url" id="website" name="website" placeholder="https://monsite.fr" autocomplete="url" />
+            <label for="city">Ville *</label>
+            <input type="text" id="city" name="city" placeholder="Paris" required autocomplete="address-level2" />
           </div>
           <div class="field">
-            <label for="country">Pays</label>
-            <select id="country" name="country" autocomplete="country">
-              <option value="">— Pays —</option>
-              <option value="FR" selected>🇫🇷 France</option>
-              <option value="BE">🇧🇪 Belgique</option>
-              <option value="CH">🇨🇭 Suisse</option>
-              <option value="LU">🇱🇺 Luxembourg</option>
-              <option value="CA">🇨🇦 Canada (FR)</option>
-              <option value="MA">🇲🇦 Maroc</option>
-              <option value="DZ">🇩🇿 Algérie</option>
-              <option value="TN">🇹🇳 Tunisie</option>
-              <option value="OTHER">Autre</option>
-            </select>
+            <label for="postalCode">Code postal *</label>
+            <input type="text" id="postalCode" name="postalCode" placeholder="75001" required autocomplete="postal-code" />
           </div>
         </div>
 
         <div class="row-2">
           <div class="field">
-            <label for="address">Adresse</label>
-            <input type="text" id="address" name="address" placeholder="12 rue de la Paix" autocomplete="street-address" />
+            <label for="phone">Téléphone <span style="font-weight:400;color:var(--text-muted)">(optionnel)</span></label>
+            <input type="tel" id="phone" name="phone" placeholder="+33 6 12 34 56 78" autocomplete="tel" />
           </div>
           <div class="field">
-            <label for="city">Ville</label>
-            <input type="text" id="city" name="city" placeholder="Paris, Lyon, Bruxelles…" autocomplete="address-level2" />
-          </div>
-        </div>
-
-        <div class="row-2">
-          <div class="field">
-            <label for="companySize">Taille de l'équipe</label>
-            <select id="companySize" name="companySize">
-              <option value="">— Taille —</option>
-              <option value="solo">Solo / Freelance</option>
-              <option value="2-10">2–10 personnes</option>
-              <option value="11-50">11–50 personnes</option>
-              <option value="51-200">51–200 personnes</option>
-              <option value="200+">200+ personnes</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="objective">Objectif principal</label>
-            <select id="objective" name="objective">
-              <option value="">— Objectif —</option>
-              <option value="seo-local">SEO local</option>
-              <option value="monitoring">Monitoring</option>
-              <option value="rapports">Rapports clients</option>
-              <option value="automatisation">Automatisation</option>
-              <option value="ia">IA &amp; analytics</option>
-              <option value="autre">Autre</option>
-            </select>
+            <label for="vat">N° TVA <span style="font-weight:400;color:var(--text-muted)">(optionnel)</span></label>
+            <input type="text" id="vat" name="vat" placeholder="FR 12 345678901" autocomplete="off" />
           </div>
         </div>
       </div>
 
       <div id="signup-msg" class="msg" role="alert"></div>
 
-      <button type="submit" class="btn-primary" id="signup-btn">
+      <button type="submit" class="btn-primary" id="signup-btn" style="margin-top:20px">
         <div class="spinner"></div>
-        <span class="btn-text">Démarrer l'essai Pro →</span>
+        <span class="btn-text">Continuer vers le choix du plan →</span>
       </button>
     </form>
 
     <p class="footer-link">Déjà un compte ? <a href="/login.html">Se connecter</a></p>
-    <p class="footer-link" style="margin-top:6px"><a href="/pricing.html">Voir plans et tarifs →</a></p>
+    <p class="footer-link" style="margin-top:6px"><a href="/pricing.html">Voir les plans et tarifs →</a></p>
   </div>
 
-  <!-- ── SUCCESS ── -->
-  <div id="success-screen">
-    <div class="s-icon">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-        <path d="M5 13l4 4L19 7" stroke="#22c55e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
+  <!-- ── ÉTAPE 2 : Choix du plan ── -->
+  <div id="plan-screen" style="display:none">
+    <div style="text-align:center;margin-bottom:6px">
+      <div class="s-icon" style="width:48px;height:48px;margin:0 auto 12px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path d="M5 13l4 4L19 7" stroke="#22c55e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
     </div>
-    <h2>Vérifiez votre boîte mail</h2>
-    <p>Un lien de connexion a été envoyé à<br><span class="email-shown" id="success-email"></span></p>
-    <p style="margin-top:8px;font-size:13px;color:var(--text-muted)">Plan sélectionné : <strong id="success-plan" style="color:var(--text-soft)"></strong></p>
-    <p style="margin-top:6px;font-size:13px;color:var(--text-muted)">Si vous ne le recevez pas dans 2 minutes, vérifiez vos spams.</p>
-    <span class="resend-link" id="resend-btn">↺ Renvoyer un lien</span>
+    <h1 class="card-title">Choisissez votre plan</h1>
+    <p class="card-sub">14 jours d'essai gratuit · Carte requise · Annulation à tout moment</p>
+
+    <div id="plan-msg" class="msg" role="alert"></div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
+
+      <button class="plan-card-btn" data-plan="standard" onclick="choosePlan('standard',this)">
+        <div class="plan-card-inner">
+          <div>
+            <div class="plan-card-name">Standard</div>
+            <div class="plan-card-desc">Idéal pour les indépendants et petites équipes</div>
+          </div>
+          <div class="plan-card-price">49 €<span>/mois</span></div>
+        </div>
+        <div class="plan-card-spinner" style="display:none"></div>
+      </button>
+
+      <button class="plan-card-btn plan-card-popular" data-plan="pro" onclick="choosePlan('pro',this)">
+        <div class="plan-card-badge">Recommandé</div>
+        <div class="plan-card-inner">
+          <div>
+            <div class="plan-card-name">Pro</div>
+            <div class="plan-card-desc">Pour les agences et équipes en croissance</div>
+          </div>
+          <div class="plan-card-price">99 €<span>/mois</span></div>
+        </div>
+        <div class="plan-card-spinner" style="display:none"></div>
+      </button>
+
+      <button class="plan-card-btn" data-plan="ultra" onclick="choosePlan('ultra',this)">
+        <div class="plan-card-inner">
+          <div>
+            <div class="plan-card-name">Ultra</div>
+            <div class="plan-card-desc">Pour les grandes agences et entreprises</div>
+          </div>
+          <div class="plan-card-price">199 €<span>/mois</span></div>
+        </div>
+        <div class="plan-card-spinner" style="display:none"></div>
+      </button>
+
+    </div>
+
+    <p style="text-align:center;margin-top:16px;font-size:12px;color:var(--text-muted)">
+      Paiement sécurisé via Stripe · Aucune carte débitée avant la fin de l'essai
+    </p>
+    <p class="footer-link"><a href="/pricing.html" target="_blank">Comparer les plans en détail →</a></p>
   </div>
 
 </div>
@@ -342,24 +358,86 @@
   <a href="https://flowpoint.pro/informations-legales" target="_blank" rel="noopener">Politique de confidentialité</a>.
 </p>
 
-<script>
-  /* ── Plan selector (global, called by onclick) ── */
-  var _selectedPlan = 'pro';
+<style>
+  .plan-card-btn {
+    position: relative; width: 100%; background: var(--surface);
+    border: 1.5px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; cursor: pointer; text-align: left;
+    transition: border-color .15s, background .15s; font-family: inherit;
+    color: var(--text);
+  }
+  .plan-card-btn:hover:not(:disabled) { border-color: var(--blue-light); background: rgba(37,99,235,.05); }
+  .plan-card-btn:disabled { opacity: .6; cursor: default; }
+  .plan-card-popular { border-color: var(--blue) !important; background: rgba(37,99,235,.07) !important; }
+  .plan-card-badge {
+    position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+    background: var(--blue); color: #fff; font-size: 11px; font-weight: 700;
+    padding: 2px 12px; border-radius: 20px; letter-spacing: .04em;
+  }
+  .plan-card-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .plan-card-name  { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .plan-card-desc  { font-size: 12.5px; color: var(--text-muted); }
+  .plan-card-price { font-size: 20px; font-weight: 700; white-space: nowrap; color: var(--text); flex-shrink: 0; }
+  .plan-card-price span { font-size: 13px; font-weight: 400; color: var(--text-muted); }
+  .plan-card-spinner {
+    position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.3); border-top-color: var(--blue-light);
+    animation: spin .7s linear infinite;
+  }
+</style>
 
-  function selectPlan(plan, el) {
-    _selectedPlan = plan;
-    document.querySelectorAll('.plan-btn').forEach(function(c) { c.classList.remove('selected'); });
-    el.classList.add('selected');
-    // Update the submit button label
-    var names = { standard: 'Standard', pro: 'Pro', ultra: 'Ultra' };
-    var btn = document.getElementById('signup-btn');
-    if (btn) {
-      var span = btn.querySelector('.btn-text');
-      if (span) span.textContent = 'Démarrer l\'essai ' + names[plan] + ' →';
+<script>
+  var _preRegisterToken = '';
+  var _planBtnsLocked   = false;
+
+  /* ── Called when user clicks a plan card ── */
+  function choosePlan(plan, btn) {
+    if (_planBtnsLocked) return;
+    if (!_preRegisterToken) {
+      var msgEl = document.getElementById('plan-msg');
+      if (msgEl) { msgEl.className = 'msg error'; msgEl.textContent = 'Erreur : session d\'inscription introuvable. Rechargez la page.'; }
+      return;
     }
-    // Pass plan + redirect_to to Google OAuth href so sign-up lands in checkout
-    var gBtn = document.getElementById('btn-google-oauth');
-    if (gBtn) gBtn.href = '/api/auth/google/login?plan=' + encodeURIComponent(plan) + '&redirect_to=' + encodeURIComponent('/checkout.html');
+    _planBtnsLocked = true;
+
+    // Show spinner on clicked button, disable all
+    document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = true; });
+    var spinner = btn.querySelector('.plan-card-spinner');
+    if (spinner) spinner.style.display = 'block';
+
+    fetch('/api/public/checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: plan, addons: {}, source: 'signin_new_flow', preRegisterToken: _preRegisterToken })
+    })
+    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+    .then(function(res) {
+      if (!res.ok || (!res.data.url && !res.data.mock)) {
+        _planBtnsLocked = false;
+        document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = false; });
+        if (spinner) spinner.style.display = 'none';
+        var msgEl = document.getElementById('plan-msg');
+        if (msgEl) { msgEl.className = 'msg error'; msgEl.textContent = res.data.error || 'Erreur lors de la création de la session. Réessayez.'; }
+        return;
+      }
+      if (res.data.mock) {
+        var msgEl = document.getElementById('plan-msg');
+        if (msgEl) { msgEl.className = 'msg success'; msgEl.textContent = '[Dev] Session mock créée — Stripe non configuré. Plan : ' + plan; }
+        _planBtnsLocked = false;
+        document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = false; });
+        if (spinner) spinner.style.display = 'none';
+        return;
+      }
+      window.location.href = res.data.url;
+    })
+    .catch(function() {
+      _planBtnsLocked = false;
+      document.querySelectorAll('.plan-card-btn').forEach(function(b) { b.disabled = false; });
+      if (spinner) spinner.style.display = 'none';
+      var msgEl = document.getElementById('plan-msg');
+      if (msgEl) { msgEl.className = 'msg error'; msgEl.textContent = 'Impossible de joindre le serveur. Vérifiez votre connexion.'; }
+    });
   }
 
 (function () {
@@ -372,18 +450,11 @@
 
   function isDisposable(email) {
     var domain = (email.split('@')[1] || '').toLowerCase().replace(/\.$/, '');
-    return DISPOSABLE.some(function (d) { return domain === d || domain.endsWith('.' + d); });
-  }
-
-  function normalizeUrl(val) {
-    if (!val || !val.trim()) return '';
-    val = val.trim();
-    if (!/^https?:\/\//i.test(val)) val = 'https://' + val;
-    return val;
+    return DISPOSABLE.some(function(d) { return domain === d || domain.endsWith('.' + d); });
   }
 
   function escHtml(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
   function showMsg(el, type, html) { el.className = 'msg ' + type; el.innerHTML = html; }
@@ -394,9 +465,9 @@
     btn.classList.toggle('is-loading', on);
   }
 
-  var lastEmail = '';
+  function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
 
-  /* ── Handle ?error= from OAuth redirects (Google signup via this page) ── */
+  /* ── Handle ?error= from OAuth redirects ── */
   var urlParams  = new URLSearchParams(window.location.search);
   var errorParam = urlParams.get('error');
   if (errorParam) {
@@ -406,125 +477,88 @@
       github_auth_failed: "Erreur d'authentification GitHub. Veuillez réessayer.",
       missing_code:       "Code OAuth manquant. Veuillez réessayer."
     };
-    showMsg(
-      document.getElementById('signup-msg'), 'error',
-      escHtml(ERROR_MAP[errorParam] || decodeURIComponent(errorParam).replace(/_/g, ' '))
-    );
+    var msgEl = document.getElementById('signup-msg');
+    if (msgEl) showMsg(msgEl, 'error', escHtml(ERROR_MAP[errorParam] || decodeURIComponent(errorParam).replace(/_/g,' ')));
     history.replaceState({}, '', '/');
   }
 
-  /* ── Signup ── */
+  /* ── Step 1: form submit → POST /auth/pre-register ── */
   var signupBtn = document.getElementById('signup-btn');
   var signupMsg = document.getElementById('signup-msg');
 
-  document.getElementById('signup-form').addEventListener('submit', function (e) {
+  document.getElementById('signup-form').addEventListener('submit', function(e) {
     e.preventDefault();
     clearMsg(signupMsg);
 
-    var hp        = document.getElementById('_hp').value;
-    var firstName = document.getElementById('firstName').value.trim();
-    var lastName  = document.getElementById('lastName').value.trim();
-    var email     = document.getElementById('email').value.trim().toLowerCase();
-    var company   = document.getElementById('companyName').value.trim();
-    var website   = normalizeUrl(document.getElementById('website').value);
-    var country   = document.getElementById('country').value;
-    var size      = document.getElementById('companySize').value;
-    var objective = document.getElementById('objective').value;
+    var hp         = val('_hp');
+    var firstName  = val('firstName');
+    var lastName   = val('lastName');
+    var email      = val('email').toLowerCase();
+    var companyName= val('companyName');
+    var country    = val('country');
+    var address    = val('address');
+    var city       = val('city');
+    var postalCode = val('postalCode');
+    var phone      = val('phone');
+    var vat        = val('vat');
 
-    if (!firstName)  { showMsg(signupMsg, 'error', 'Le prénom est requis.'); return; }
-    if (!lastName)   { showMsg(signupMsg, 'error', 'Le nom est requis.'); return; }
-    if (!email || !email.includes('@') || email.indexOf('.', email.indexOf('@')) < 0) {
-      showMsg(signupMsg, 'error', 'Adresse email invalide.'); return;
+    if (!firstName)   { showMsg(signupMsg,'error','Le prénom est requis.');              return; }
+    if (!lastName)    { showMsg(signupMsg,'error','Le nom est requis.');                 return; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      showMsg(signupMsg,'error','Adresse email invalide.'); return;
     }
     if (isDisposable(email)) {
-      showMsg(signupMsg, 'error', "Les adresses email temporaires ne sont pas acceptées."); return;
+      showMsg(signupMsg,'error','Les adresses email temporaires ne sont pas acceptées.'); return;
     }
-    if (!company) { showMsg(signupMsg, 'error', "Le nom de l'entreprise est requis."); return; }
+    if (!companyName) { showMsg(signupMsg,'error',"Le nom de l'entreprise est requis."); return; }
+    if (!country)     { showMsg(signupMsg,'error','Le pays est requis.');                return; }
+    if (!address)     { showMsg(signupMsg,'error',"L'adresse est requise.");             return; }
+    if (!city)        { showMsg(signupMsg,'error','La ville est requise.');              return; }
+    if (!postalCode)  { showMsg(signupMsg,'error','Le code postal est requis.');         return; }
 
-    lastEmail = email;
     setLoading(signupBtn, true);
 
-    try {
-      localStorage.setItem('fp_cart', JSON.stringify({ plan: _selectedPlan || 'pro', addons: {} }));
-    } catch (e) {}
-    try {
-      sessionStorage.setItem('fp_next', '/checkout.html');
-    } catch (e) {}
-
-    fetch('/api/auth/signup', {
+    fetch('/api/auth/pre-register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        _hp: hp, firstName: firstName, lastName: lastName,
-        email: email, companyName: company, website: website,
-        country: country, companySize: size, objective: objective,
-        city: (document.getElementById('city') ? document.getElementById('city').value.trim() : ''),
-        address: (document.getElementById('address') ? document.getElementById('address').value.trim() : ''),
-        plan: _selectedPlan || 'pro'
-      })
+      body: JSON.stringify({ _hp: hp, firstName: firstName, lastName: lastName,
+        email: email, companyName: companyName, country: country,
+        address: address, city: city, postalCode: postalCode,
+        phone: phone || undefined, vat: vat || undefined })
     })
-    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-    .then(function (res) {
+    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+    .then(function(res) {
       setLoading(signupBtn, false);
       if (!res.ok) {
-        var html = escHtml(res.data.error || "Une erreur est survenue.");
-        if (res.data.code === 'ALREADY_EXISTS') {
-          html += ' <a href="/login.html" style="color:#93c5fd;text-decoration:underline">Se connecter →</a>';
-        }
-        showMsg(signupMsg, 'error', html);
+        showMsg(signupMsg, 'error', escHtml(res.data.error || 'Une erreur est survenue.'));
         return;
       }
-      // Dev mode: server returns debugLink directly (no Resend configured) — follow it
-      if (res.data.debugLink) {
-        window.location.href = res.data.debugLink;
-        return;
-      }
-      var planNames = { standard: 'Standard', pro: 'Pro', ultra: 'Ultra' };
-      document.getElementById('success-email').textContent = email;
-      var planEl = document.getElementById('success-plan');
-      if (planEl) planEl.textContent = planNames[_selectedPlan] || _selectedPlan;
+      // Store token for the plan selection step
+      _preRegisterToken = res.data.preRegisterToken || '';
+
+      // Show plan selection screen
       document.getElementById('signup-screen').style.display = 'none';
-      document.getElementById('success-screen').style.display = 'block';
-      // Redirect to checkout after short delay so user sees confirmation
-      setTimeout(function () {
-        window.location.href = '/checkout.html';
-      }, 2500);
+      document.getElementById('plan-screen').style.display   = 'block';
     })
-    .catch(function () {
+    .catch(function() {
       setLoading(signupBtn, false);
-      showMsg(signupMsg, 'error', "Impossible de joindre le serveur. Vérifiez votre connexion.");
+      showMsg(signupMsg, 'error', 'Impossible de joindre le serveur. Vérifiez votre connexion.');
     });
   });
 
-  /* ── Load providers — show OAuth buttons only if configured ── */
+  /* ── Load providers — show OAuth button only if configured ── */
   fetch('/api/auth/providers', { credentials: 'include' })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      var googleP = (data.providers || []).find(function (x) { return x.id === 'google'; });
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var googleP = (data.providers || []).find(function(x) { return x.id === 'google'; });
       if (googleP && googleP.configured) {
         var gBtn = document.getElementById('btn-google-oauth');
         var div  = document.getElementById('signup-oauth-divider');
-        if (gBtn) { gBtn.classList.remove('fp-hidden'); }
-        if (div)  { div.classList.remove('fp-hidden'); }
+        if (gBtn) gBtn.classList.remove('fp-hidden');
+        if (div)  div.classList.remove('fp-hidden');
       }
     })
-    .catch(function () { /* OAuth buttons stay hidden on error */ });
-
-  /* ── Resend ── */
-  document.getElementById('resend-btn').addEventListener('click', function () {
-    if (!lastEmail) return;
-    var btn = this;
-    btn.textContent = 'Envoi en cours…';
-    fetch('/api/auth/login-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email: lastEmail })
-    })
-    .then(function () { btn.textContent = 'Lien renvoyé ✓'; })
-    .catch(function () { btn.textContent = 'Erreur — réessayez'; });
-  });
+    .catch(function() {});
 
 })();
 </script>

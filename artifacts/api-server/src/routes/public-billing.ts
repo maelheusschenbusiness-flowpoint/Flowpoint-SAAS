@@ -109,16 +109,19 @@ function buildLineItems(
 }
 
 router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Request, res: Response) => {
-  const { plan = "", addons = {}, source = "checkout_html", embedded = false } = req.body as {
+  const {
+    plan = "", addons = {}, source = "checkout_html", embedded = false,
+    preRegisterToken = "",
+  } = req.body as {
     plan?: string;
     addons?: AddonsMap;
     source?: string;
     embedded?: boolean;
+    preRegisterToken?: string;  // New signup flow: opaque token from /auth/pre-register
   };
 
   const stripeKey = process.env["STRIPE_LIVE_API_KEY"] || process.env["STRIPE_SECRET_KEY"];
   const publicUrl = process.env["PUBLIC_URL"] || "https://app.flowpoint.pro";
-
   const publishableKey = process.env["PUBLIC_STRIPE_API_KEY"] || "";
 
   /* No key in dev → mock */
@@ -132,10 +135,10 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
   }
 
   /* Require plan unless it's a pure addon/credits purchase */
-  const planKey      = plan.toLowerCase();
-  const hasPlan      = !!PLAN_PRICE_IDS[planKey];
-  const addonKeys    = Object.keys(addons).filter(k => addons[k]);
-  const hasOnlyAICr  = addonKeys.length > 0 && addonKeys.every(k => AI_CREDIT_PACKS.has(k));
+  const planKey     = plan.toLowerCase();
+  const hasPlan     = !!PLAN_PRICE_IDS[planKey];
+  const addonKeys   = Object.keys(addons).filter(k => addons[k]);
+  const hasOnlyAICr = addonKeys.length > 0 && addonKeys.every(k => AI_CREDIT_PACKS.has(k));
 
   if (!hasPlan && !hasOnlyAICr && addonKeys.length === 0) {
     res.status(400).json({ error: "Sélectionnez un plan avant de continuer." });
@@ -144,19 +147,77 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
 
   /* Diagnostic log */
   const keyMode = stripeKey.startsWith("sk_live_") ? "live" : stripeKey.startsWith("sk_test_") ? "test" : "unknown";
-  logger.info({
-    plan, addonCount: addonKeys.length, source, keyMode,
-  }, "[PublicBilling] checkout-session requested");
+  logger.info({ plan, addonCount: addonKeys.length, source, keyMode, hasPreRegisterToken: !!preRegisterToken },
+    "[PublicBilling] checkout-session requested");
 
   try {
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey, { apiVersion: "2026-04-22.dahlia" });
 
+    /* ── New signup flow: load pending_signups + create/find Stripe Customer ── */
+    let stripeCustomerId: string | undefined;
+    let signupOrgId: string | undefined; // = email, used as orgId in FlowPoint
+
+    if (preRegisterToken) {
+      const { pool: pgPool } = await import("@workspace/db");
+      const dbClient = await pgPool.connect();
+      let signupRow: {
+        email: string; first_name: string; last_name: string; company_name: string;
+        country: string | null; address: string | null; city: string | null;
+        postal_code: string | null; phone: string | null; vat: string | null;
+      } | null = null;
+
+      try {
+        const r = await dbClient.query(
+          `SELECT email, first_name, last_name, company_name, country, address, city, postal_code, phone, vat
+           FROM pending_signups WHERE token = $1 AND expires_at > NOW() LIMIT 1`,
+          [preRegisterToken]
+        );
+        if (r.rows.length > 0) signupRow = r.rows[0];
+      } finally {
+        dbClient.release();
+      }
+
+      if (!signupRow) {
+        res.status(400).json({ error: "Session d'inscription expirée ou invalide. Veuillez recommencer." });
+        return;
+      }
+
+      signupOrgId = signupRow.email; // orgId = email in FlowPoint
+
+      // Create Stripe Customer with full contact info (never empty)
+      const customerData: Parameters<typeof stripe.customers.create>[0] = {
+        email: signupRow.email,
+        name:  `${signupRow.first_name} ${signupRow.last_name}`.trim(),
+        metadata: {
+          orgId:       signupRow.email,
+          companyName: signupRow.company_name,
+          firstName:   signupRow.first_name,
+          lastName:    signupRow.last_name,
+          ...(signupRow.vat ? { vat: signupRow.vat } : {}),
+        },
+      };
+      if (signupRow.address || signupRow.city || signupRow.country) {
+        customerData.address = {
+          line1:       signupRow.address  ?? "",
+          city:        signupRow.city     ?? "",
+          postal_code: signupRow.postal_code ?? "",
+          country:     signupRow.country  ?? "",
+        };
+      }
+      if (signupRow.phone) customerData.phone = signupRow.phone;
+
+      const stripeCustomer = await stripe.customers.create(customerData);
+      stripeCustomerId = stripeCustomer.id;
+
+      logger.info({ customerId: stripeCustomerId, orgId: signupOrgId },
+        "[PublicBilling] Stripe Customer created for new signup");
+    }
+
     const { subscriptionItems, oneTimeItems, checkoutType } = buildLineItems(planKey, addons);
 
     const selectedAddonNames = addonKeys.join(",");
-    /* Classify add-ons for webhook processing */
-    const included       = PLAN_INCLUDED_ADDONS[planKey] ?? new Set();
+    const included        = PLAN_INCLUDED_ADDONS[planKey] ?? new Set();
     const immediateAddons = addonKeys.filter(k => !AI_CREDIT_PACKS.has(k) && !included.has(k));
     const includedAddons  = addonKeys.filter(k => included.has(k));
     const aiCredits       = addonKeys.filter(k => AI_CREDIT_PACKS.has(k));
@@ -176,18 +237,23 @@ router.post("/public/checkout-session", publicCheckoutRateLimit, async (req: Req
       addons_billed_now:       immediateAddons.length > 0 ? "true" : "false",
       source,
       flowpoint_cart:          "true",
+      // New signup fields — enable webhook + checkout-complete to create the account
+      ...(signupOrgId       ? { orgId: signupOrgId }                     : {}),
+      ...(preRegisterToken  ? { pre_register_token: preRegisterToken }    : {}),
     };
 
-    /* ── Helper: build common embedded vs redirect params ── */
-    const returnUrl = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
-    const successUrl = `${publicUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`;
+    /* ── Helper: build embedded vs redirect params, optionally pre-attach customer ── */
+    const returnUrl  = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
+    const successUrl = `${publicUrl}/checkout-return.html?session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl  = `${publicUrl}/cancel.html`;
+
+    const customerParam = stripeCustomerId ? { customer: stripeCustomerId } : {};
 
     function urlOrEmbedded(params: Record<string, unknown>) {
       if (embedded) {
-        return { ...params, ui_mode: "embedded_page", return_url: returnUrl };
+        return { ...params, ...customerParam, ui_mode: "embedded_page", return_url: returnUrl };
       }
-      return { ...params, success_url: successUrl, cancel_url: cancelUrl };
+      return { ...params, ...customerParam, success_url: successUrl, cancel_url: cancelUrl };
     }
 
     function respond(session: { id: string; url: string | null; client_secret: string | null }) {

@@ -28,27 +28,21 @@
 </head>
 <body>
   <div class="fp-spinner" id="fp-spinner"></div>
-  <div class="fp-title" id="fp-title">Finalisation de votre commande…</div>
+  <div class="fp-title" id="fp-title">Finalisation de votre compte…</div>
   <div class="fp-sub" id="fp-sub">Merci de patienter quelques instants.</div>
 
   <script>
   (function(){
-    var params = new URLSearchParams(window.location.search);
+    var params      = new URLSearchParams(window.location.search);
+    var sessionId   = params.get('session_id');
 
-    /* ── Case A: Stripe Elements redirect (new flow) ── */
-    var paymentIntentId    = params.get('payment_intent');
-    var setupIntentId      = params.get('setup_intent');
-    var paymentIntentStat  = params.get('payment_intent_client_secret');
-    var setupIntentStat    = params.get('setup_intent_client_secret');
-
-    /* ── Case B: legacy Stripe Checkout session_id ── */
-    var sessionId = params.get('session_id');
+    /* ── Case A: Stripe Elements flow (payment_intent / setup_intent params) ── */
+    var paymentIntentId = params.get('payment_intent');
+    var setupIntentId   = params.get('setup_intent');
 
     if (paymentIntentId || setupIntentId) {
-      /* New Elements flow: call finalize-checkout, then create subscription */
       var intentId   = paymentIntentId || setupIntentId;
       var intentType = paymentIntentId ? 'payment' : 'setup';
-
       var cart = null;
       try { cart = JSON.parse(localStorage.getItem('fp_cart') || 'null'); } catch(e) {}
       var plan   = (cart && cart.plan)   ? cart.plan   : '';
@@ -57,6 +51,7 @@
       fetch('/api/public/finalize-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ intentId: intentId, intentType: intentType, plan: plan, addons: addons })
       })
       .then(function(r){ return r.json(); })
@@ -66,9 +61,7 @@
           document.getElementById('fp-spinner').style.display = 'none';
           document.getElementById('fp-title').textContent = 'Votre commande est confirmée !';
           document.getElementById('fp-sub').innerHTML = 'Abonnement activé · 14 jours d\'essai en cours.<br>Vous allez être redirigé…';
-          setTimeout(function(){
-            window.location.href = '/success.html';
-          }, 1800);
+          setTimeout(function(){ window.location.href = '/dashboard.html'; }, 1800);
         } else {
           document.getElementById('fp-spinner').style.display = 'none';
           document.getElementById('fp-title').textContent = 'Erreur de finalisation';
@@ -81,38 +74,139 @@
         document.getElementById('fp-title').textContent = 'Connexion impossible';
         document.getElementById('fp-sub').innerHTML = 'Votre paiement a peut-être abouti. Rendez-vous sur votre tableau de bord pour vérifier.<br><br><a href="/dashboard.html" class="fp-btn">Tableau de bord</a>';
       });
+      return;
+    }
 
-    } else if (sessionId) {
-      /* Legacy Stripe Checkout session flow */
+    /* ── Case B: Stripe Checkout session_id ── */
+    if (!sessionId) {
+      window.location.href = '/pricing.html';
+      return;
+    }
+
+    /* Detect if user already has a session cookie (existing user: add-on / upgrade flow)
+       vs. new signup (no session yet — use checkout-complete to create account + auto-login) */
+    function hasFpToken() {
+      try {
+        /* HttpOnly cookie — cannot be read directly.
+           We detect "logged-in" state by checking if /api/me returns 200. */
+        return false; /* always use checkout-complete for reliability — it's idempotent */
+      } catch(e) { return false; }
+    }
+
+    /* ── New signup path: POST /auth/checkout-complete → auto-login → dashboard ── */
+    function runCheckoutComplete(retries) {
+      fetch('/api/auth/checkout-complete?session_id=' + encodeURIComponent(sessionId), {
+        method: 'GET',
+        credentials: 'include'
+      })
+      .then(function(r) { return r.json().then(function(d) { return { status: r.status, data: d }; }); })
+      .then(function(res) {
+        if (res.status === 200 && res.data.ok) {
+          try { localStorage.removeItem('fp_cart'); } catch(e) {}
+          document.getElementById('fp-spinner').style.display = 'none';
+          document.getElementById('fp-title').textContent = 'Compte activé !';
+          document.getElementById('fp-sub').innerHTML = 'Votre abonnement est actif.<br>Connexion automatique en cours…';
+          setTimeout(function(){
+            window.location.href = res.data.redirectTo || '/dashboard.html';
+          }, 1200);
+        } else if (res.status === 402 && retries > 0) {
+          /* Stripe webhook / session not yet confirmed — retry */
+          document.getElementById('fp-sub').textContent = 'Confirmation du paiement en cours (' + retries + ')…';
+          setTimeout(function(){ runCheckoutComplete(retries - 1); }, 2000);
+        } else if (res.status === 409) {
+          /* Session already used (idempotent: account exists, just redirect) */
+          try { localStorage.removeItem('fp_cart'); } catch(e) {}
+          window.location.href = '/dashboard.html';
+        } else {
+          document.getElementById('fp-spinner').style.display = 'none';
+          document.getElementById('fp-title').textContent = 'Erreur de finalisation';
+          document.getElementById('fp-sub').innerHTML =
+            (res.data.error || 'Une erreur inattendue est survenue.') +
+            '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
+        }
+      })
+      .catch(function() {
+        if (retries > 0) {
+          setTimeout(function(){ runCheckoutComplete(retries - 1); }, 2500);
+        } else {
+          document.getElementById('fp-spinner').style.display = 'none';
+          document.getElementById('fp-title').textContent = 'Connexion impossible';
+          document.getElementById('fp-sub').innerHTML =
+            'Votre paiement a été enregistré. Connectez-vous pour accéder à votre compte.' +
+            '<br><br><a href="/login.html" class="fp-btn">Se connecter →</a>';
+        }
+      });
+    }
+
+    /* ── Existing user path (add-on / upgrade): verify via /api/billing/verify ── */
+    function runBillingVerify() {
       var headers = { 'Content-Type': 'application/json' };
       var token = null;
       try { token = localStorage.getItem('fp_token') || sessionStorage.getItem('fp_token'); } catch(e) {}
       if (token) headers['Authorization'] = 'Bearer ' + token;
 
-      fetch('/api/billing/verify?session_id=' + encodeURIComponent(sessionId), { headers: headers })
-        .then(function(r){ return r.json(); })
-        .then(function(data) {
-          var status = (data.status || '').toLowerCase();
-          if (status === 'paid' || status === 'trialing' || status === 'complete' || status === 'active') {
-            try { localStorage.removeItem('fp_cart'); } catch(e) {}
-            window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId);
-          } else if (status === 'expired' || status === 'canceled') {
-            window.location.href = '/cancel.html';
-          } else {
-            document.getElementById('fp-title').textContent = 'Paiement en cours de traitement';
-            document.getElementById('fp-sub').textContent = 'Mise à jour de votre compte en cours. Vous serez redirigé automatiquement.';
-            setTimeout(function(){ window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId); }, 3000);
-          }
-        })
-        .catch(function() {
-          document.getElementById('fp-title').textContent = 'Vérification impossible';
-          document.getElementById('fp-sub').textContent = 'Rendez-vous sur le tableau de bord pour vérifier votre abonnement.';
-          setTimeout(function(){ window.location.href = '/dashboard.html'; }, 3000);
-        });
-
-    } else {
-      window.location.href = '/pricing.html';
+      fetch('/api/billing/verify?session_id=' + encodeURIComponent(sessionId), {
+        headers: headers,
+        credentials: 'include'
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        var status = (data.status || '').toLowerCase();
+        if (status === 'paid' || status === 'trialing' || status === 'complete' || status === 'active') {
+          try { localStorage.removeItem('fp_cart'); } catch(e) {}
+          window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId);
+        } else if (status === 'expired' || status === 'canceled') {
+          window.location.href = '/cancel.html';
+        } else {
+          document.getElementById('fp-title').textContent = 'Paiement en cours de traitement';
+          document.getElementById('fp-sub').textContent = 'Mise à jour de votre compte en cours. Vous serez redirigé automatiquement.';
+          setTimeout(function(){ window.location.href = '/success.html?session_id=' + encodeURIComponent(sessionId); }, 3000);
+        }
+      })
+      .catch(function() {
+        document.getElementById('fp-title').textContent = 'Vérification impossible';
+        document.getElementById('fp-sub').textContent = 'Rendez-vous sur le tableau de bord pour vérifier votre abonnement.';
+        setTimeout(function(){ window.location.href = '/dashboard.html'; }, 3000);
+      });
     }
+
+    /* ── Route: try checkout-complete first (new signup).
+           If it returns 401 or similar auth error, fall back to billing/verify (existing user). ── */
+    fetch('/api/auth/checkout-complete?session_id=' + encodeURIComponent(sessionId), {
+      method: 'GET',
+      credentials: 'include'
+    })
+    .then(function(r) { return r.json().then(function(d) { return { status: r.status, data: d }; }); })
+    .then(function(res) {
+      if (res.status === 200 && res.data.ok) {
+        /* New signup auto-login success */
+        try { localStorage.removeItem('fp_cart'); } catch(e) {}
+        document.getElementById('fp-spinner').style.display = 'none';
+        document.getElementById('fp-title').textContent = 'Compte activé !';
+        document.getElementById('fp-sub').innerHTML = 'Votre abonnement est actif.<br>Connexion automatique en cours…';
+        setTimeout(function(){
+          window.location.href = res.data.redirectTo || '/dashboard.html';
+        }, 1200);
+      } else if (res.status === 402) {
+        /* Payment not yet confirmed — retry up to 4 more times */
+        document.getElementById('fp-sub').textContent = 'Confirmation du paiement en cours…';
+        setTimeout(function(){ runCheckoutComplete(4); }, 2000);
+      } else if (res.status === 400 && res.data.error && res.data.error.indexOf('orgId') !== -1) {
+        /* No pre_register_token in session metadata → existing user upgrade flow */
+        runBillingVerify();
+      } else if (res.status === 409) {
+        /* Idempotent: account already fully created, redirect */
+        window.location.href = '/dashboard.html';
+      } else {
+        /* Unknown — try billing/verify as fallback */
+        runBillingVerify();
+      }
+    })
+    .catch(function() {
+      /* Network error — try billing/verify */
+      runBillingVerify();
+    });
+
   })();
   </script>
 </body>

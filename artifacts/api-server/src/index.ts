@@ -63,6 +63,39 @@ async function main() {
     }).catch((err: unknown) => {
       logger.warn({ err }, "[startup] billing-trial-columns step failed (non-fatal — columns may already exist)");
     });
+
+    // New signup flow: pre-registration table + extended org_settings columns (idempotent)
+    await runCriticalStartupStep("new-signup-schema", async () => {
+      const client = await pool.connect();
+      try {
+        // Extended org_settings columns for full billing address
+        await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS postal_code TEXT`);
+        await client.query(`ALTER TABLE org_settings ADD COLUMN IF NOT EXISTS vat         TEXT`);
+        // Temporary pre-registration storage (expires after 2 hours, no account until payment)
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS pending_signups (
+            token        TEXT         PRIMARY KEY,
+            email        TEXT         NOT NULL,
+            first_name   TEXT         NOT NULL,
+            last_name    TEXT         NOT NULL,
+            company_name TEXT         NOT NULL,
+            country      TEXT,
+            address      TEXT,
+            city         TEXT,
+            postal_code  TEXT,
+            phone        TEXT,
+            vat          TEXT,
+            created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            expires_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW() + INTERVAL '2 hours'
+          )
+        `);
+        await client.query(`CREATE INDEX IF NOT EXISTS pending_signups_email_idx   ON pending_signups(email)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS pending_signups_expires_idx ON pending_signups(expires_at)`);
+        logger.info("[startup] new-signup-schema ensured (pending_signups, postal_code, vat)");
+      } finally { client.release(); }
+    }).catch((err: unknown) => {
+      logger.warn({ err }, "[startup] new-signup-schema step failed (non-fatal)");
+    });
   } else {
     // ── Full init path: local dev or first deploy without Pre-Deploy. ──────
     logger.info("[startup] Core tables absent — running full init sequence");
