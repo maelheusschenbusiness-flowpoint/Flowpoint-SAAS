@@ -1188,9 +1188,29 @@
     if (_saved.plan) _cart.plan = _saved.plan;
     if (_saved.addons) Object.keys(_saved.addons).forEach(function(k) { _cart.addons[k] = _saved.addons[k]; });
     updateCartBadge();
-    /* After DOM is ready: visually mark add-on buttons as "Dans le panier" */
-    document.addEventListener('DOMContentLoaded', function() {
+    /* After DOM is ready: visually mark add-on buttons and active plan.
+       Script is at end of <body> so DOMContentLoaded may already have fired —
+       use readyState to run immediately if DOM is already available.          */
+    function _fpMarkCartItems() {
       updateCartBadge();
+      /* ── Immediately mark current plan from fp_dashboard_state (anti-flash) ── */
+      try {
+        var _ds = JSON.parse(localStorage.getItem('fp_dashboard_state') || 'null');
+        if (_ds && _ds.plan) {
+          var _planKey = _ds.plan.toLowerCase();
+          var _status  = (_ds.subscriptionStatus || _ds.status || '').toLowerCase();
+          var _isActive = _status === 'active' || _status === 'trialing';
+          var _planBtn = document.querySelector('.fp-card-btn[data-plan="' + _planKey + '"]');
+          if (_planBtn && _isActive) {
+            _planBtn.textContent = '✓ Votre plan actuel';
+            _planBtn.disabled = true;
+            _planBtn.style.cssText = 'background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.35);color:#34d399;cursor:default;opacity:1';
+            var _planCard = _planBtn.closest('.fp-card');
+            if (_planCard) { _planCard.style.borderColor = 'rgba(16,185,129,0.4)'; _planCard.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.1)'; }
+          }
+        }
+      } catch(e) {}
+      /* Mark add-on buttons that are in the cart */
       var addonKeys = Object.keys(_cart.addons);
       if (!addonKeys.length) return;
       document.querySelectorAll('button[onclick*="addToCart"]').forEach(function(btn) {
@@ -1200,12 +1220,18 @@
         /* Skip if billing-state already marked it as active */
         var bs = window._fpBillingState;
         if (bs && bs.addons && bs.addons[m[1]]) return;
-        btn.textContent = '\u2713 Dans le panier';
+        btn.textContent = '✓ Dans le panier';
         btn.style.background   = 'rgba(16,185,129,0.15)';
         btn.style.borderColor  = 'rgba(16,185,129,0.35)';
         btn.style.color        = '#34d399';
       });
-    });
+    }
+    /* Run immediately if DOM ready, otherwise wait */
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', _fpMarkCartItems);
+    } else {
+      _fpMarkCartItems();
+    }
   })();
 
 
@@ -1299,7 +1325,8 @@
     btn.style.borderColor = 'rgba(16,185,129,0.35)';
     btn.style.color = '#34d399';
     updateCartBadge();
-    showToast('Add-on ajouté au panier');
+    var _isCredits = addonId.indexOf('aiCreditsPack') === 0;
+    showToast(_isCredits ? 'Crédits IA ajoutés au panier ✓' : 'Add-on ajouté au panier ✓');
   };
 
   /* ── Go to checkout ── */
@@ -1421,7 +1448,8 @@
 
     /* ── Banner ── */
     var navEl = document.querySelector('.fp-nav');
-    if (navEl && !document.getElementById('fp-db-banner')) {
+    var _showBanner = new URLSearchParams(window.location.search).get('from') === 'dashboard';
+    if (_showBanner && navEl && !document.getElementById('fp-db-banner')) {
       var planName = (data.planLabel || data.plan || '').replace(/\b\w/g, function(l){ return l.toUpperCase(); });
       var banner = document.createElement('div');
       banner.id = 'fp-db-banner';
